@@ -131,7 +131,110 @@ namespace
     {"scoped_lock", "ScopedLock"}, {"true_type", "TrueType"}, {"false_type", "FalseType"}, {"bad_alloc", "BadAlloc"},
     {"time_t", "::time_t"}, {"time", "::time"}, {"tm", "::tm"}, {"localtime", "::localtime"},
     {"uncaught_exceptions", "::uncaught_exceptions"}, {"reverse_iterator", "ReverseIterator"},
-    {"uninitialized_copy", "uninitializedCopy"}, {"visit", "visit"}};
+    {"uninitialized_copy", "uninitializedCopy"}, {"visit", "visit"},
+    // --- batch 2: remaining unmapped names from Factorio ---
+    // C library functions → global
+    {"_Exit", "::_Exit"}, {"exit", "::exit"}, {"printf", "::printf"}, {"signal", "::signal"},
+    {"getenv", "::getenv"}, {"malloc", "::malloc"}, {"free", "::free"}, {"memcmp", "::memcmp"},
+    {"strcpy", "::strcpy"}, {"strstr", "::strstr"}, {"qsort", "::qsort"},
+    // math → global
+    {"acos", "::acos"}, {"atan", "::atan"}, {"hypot", "::hypot"}, {"log2", "::log2"},
+    {"log10", "::log10"}, {"modf", "::modf"}, {"isnormal", "::isnormal"},
+    {"nextafterf", "::nextafterf"},
+    // time → global
+    {"gmtime", "::gmtime"}, {"strftime", "::strftime"},
+    // string conversion → global
+    {"stoi", "stoi"}, {"stod", "stod"}, {"stoul", "stoul"}, {"stoull", "stoull"},
+    {"to_wstring", "toWString"}, {"getline", "getline"},
+    // algorithms → global (camelCase)
+    {"adjacent_find", "adjacentFind"}, {"copy_backward", "copyBackward"},
+    {"copy_n", "copyN"}, {"equal", "equal"}, {"fill_n", "fillN"},
+    {"generate_n", "generateN"}, {"is_sorted", "isSorted"},
+    {"iter_swap", "iterSwap"}, {"lexicographical_compare", "lexicographicalCompare"},
+    {"merge", "merge"}, {"move_backward", "moveBackward"},
+    {"next", "next"}, {"prev", "prev"}, {"next_permutation", "nextPermutation"},
+    {"nth_element", "nthElement"}, {"rotate", "rotate"},
+    {"set_difference", "setDifference"}, {"set_intersection", "setIntersection"},
+    {"destroy", "destroy"}, {"uninitialized_default_construct", "uninitializedDefaultConstruct"},
+    {"uninitialized_move", "uninitializedMove"},
+    {"uninitialized_value_construct", "uninitializedValueConstruct"},
+    {"make_reverse_iterator", "makeReverseIterator"},
+    // containers and data structures
+    {"bitset", "Bitset"}, {"stack", "Stack"}, {"priority_queue", "PriorityQueue"},
+    {"forward_list", "ForwardList"}, {"multimap", "MultiMap"}, {"multiset", "MultiSet"},
+    // concurrency
+    {"atomic_bool", "Atomic<bool>"}, {"atomic_size_t", "Atomic<size_t>"},
+    {"atomic_uint8_t", "Atomic<u8>"}, {"atomic_uint32_t", "Atomic<u32>"},
+    {"atomic_uint64_t", "Atomic<u64>"}, {"atomic_load", "atomicLoad"},
+    {"atomic_store", "atomicStore"},
+    {"async", "async"}, {"future", "Future"}, {"shared_future", "SharedFuture"},
+    {"promise", "Promise"}, {"future_status", "FutureStatus"}, {"launch", "Launch"},
+    {"this_thread", "thisThread"},
+    // type traits
+    {"source_location", "CallerLocation"},
+    {"type_info", "TypeInfo"}, {"nullopt_t", "NulloptType"},
+    {"is_abstract_v", "isAbstract"}, {"is_final_v", "isFinal"},
+    {"is_polymorphic_v", "isPolymorphic"}, {"is_class_v", "isClass"},
+    {"is_move_assignable_v", "isMoveAssignable"},
+    {"is_move_constructible_v", "isMoveConstructible"},
+    {"is_nothrow_move_assignable_v", "isNothrowMoveAssignable"},
+    {"is_nothrow_move_constructible_v", "isNothrowMoveConstructible"},
+    {"is_trivially_move_assignable_v", "isTriviallyMoveAssignable"},
+    {"is_trivially_move_constructible_v", "isTriviallyMoveConstructible"},
+    {"is_invocable_v", "isInvocable"}, {"is_invocable_r_v", "isInvocableR"},
+    {"is_member_function_pointer", "IsMemberFunctionPointer"},
+    {"is_member_object_pointer", "IsMemberObjectPointer"},
+    {"alignment_of_v", "alignmentOf"},
+    {"add_const_t", "AddConst"}, {"add_lvalue_reference_t", "AddLvalueReference"},
+    {"remove_cv", "RemoveCv"}, {"is_const", "IsConst"}, {"is_same", "IsSame"},
+    {"make_unsigned_t", "MakeUnsigned"}, {"conditional", "Conditional"},
+    {"enable_if", "EnableIf"}, {"void_t", "VoidT"},
+    {"bool_constant", "BoolConstant"}, {"integral_constant", "IntegralConstant"},
+    {"enable_shared_from_this", "EnableSharedFromThis"},
+    // variant helpers
+    {"holds_alternative", "holdsAlternative"}, {"get_if", "getIf"},
+    {"in_place_index", "inPlaceIndex"}, {"in_place_type_t", "InPlaceType"},
+    {"variant_alternative_t", "VariantAlternative"}, {"variant_size_v", "variantSize"},
+    // tuple helpers
+    {"forward_as_tuple", "forwardAsTuple"}, {"tuple_size_v", "tupleSize"},
+    {"piecewise_construct", "piecewiseConstruct"},
+    // iterator tags
+    {"input_iterator_tag", "InputIteratorTag"},
+    {"forward_iterator_tag", "ForwardIteratorTag"},
+    {"bidirectional_iterator_tag", "BidirectionalIteratorTag"},
+    {"random_access_iterator_tag", "RandomAccessIteratorTag"},
+    // misc
+    {"greater", "Greater"}, {"greater_equal", "GreaterEqual"},
+    {"as_const", "asConst"}, {"to_address", "toAddress"},
+    {"mem_fn", "memFn"}, {"move_iterator", "MoveIterator"},
+    {"inserter", "inserter"}, {"back_inserter", "backInserter"},
+    {"make_exception_ptr", "makeExceptionPtr"},
+    {"set_terminate", "setTerminate"},
+    {"make_unique_for_overwrite", "makeUniqueForOverwrite"},
+    {"basic_string_view", "StringView"},
+    {"istreambuf_iterator", "IstreambufIterator"},
+    {"streamsize", "StreamSize"},
+    // I/O
+    {"cerr", "cerr"}, {"endl", "endl"}, {"ifstream", "InFileStream"},
+    {"ofstream", "OutFileStream"},
+    // random
+    {"default_random_engine", "DefaultRandomEngine"},
+    {"random_device", "RandomDevice"},
+    {"uniform_int_distribution", "UniformIntDistribution"},
+    // concepts
+    {"convertible_to", "ConvertibleTo"}, {"equality_comparable", "EqualityComparable"},
+    // misc C++
+    {"sig_atomic_t", "::sig_atomic_t"}, {"isupper", "::isupper"},
+    {"get_time", "getTime"}, {"locale", "Locale"},
+    {"chrono_literals", "ChronoLiterals"}, {"literals", "literals"},
+    {"string_literals", "stringLiterals"},
+    {"numbers", "Numbers"}, {"ranges", "Ranges"}, {"views", "Views"},
+    {"filesystem", "Filesystem"},
+    {"error_code", "ErrorCode"}, {"errc", "Errc"},
+    {"system_error", "SystemError"}, {"system_category", "systemCategory"},
+    {"length_error", "LengthError"},
+    {"codecvt_utf8", "CodecvtUtf8"}, {"wstring_convert", "WStringConvert"},
+    {"milli", "Milli"}, {"rotr", "rotr"}, {"lcm", "lcm"}};
 
   bool isIdentChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
 
