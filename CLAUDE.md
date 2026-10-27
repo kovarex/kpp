@@ -19,7 +19,11 @@ simple templates, own standard library, C-only interop.
 - Work happens on PC-PRACOVNA (Windows 10, Ryzen 9 9950X 16C/32T, 128 GB RAM).
 - Toolchain: Visual Studio 2022 Community (MSVC 14.44, bundled clang 19.1.5, CMake, Ninja).
 - Factorio source (benchmark corpus) is at C:\Factorio. Read-only: never modify or commit there.
-- Several threads may work in this same clone (C:\kov): commit small, push promptly, pull before
+- Repositories: this one is C:\kpp (github.com/kovarex/kpp; it replaced C:\kov and
+  github.com/wube/kov, which are no longer worked in). The Factorio source converted to Kov is
+  C:\factorio-in-kpp (github.com/kovarex/factorio-in-kpp, private: it is game source), written by
+  `programs\factorio\convert.cmd`; commit and push it there when a converter change alters it.
+- Several threads may work in this same clone (C:\kpp): commit small, push promptly, pull before
   committing.
 
 ## Current phase
@@ -28,8 +32,8 @@ Front end (lexer, parser, resolver, type checker, template instantiation) is don
 and the bundled clang: `compiler\build\kovc.exe --exe out.exe program.kov`. Run the end-to-end
 tests with `compiler\tests\run_tests.cmd` and the specification suite `compiler\tests\spec.cmd`
 (one snippet per construct, pass/pending, writes docs/spec-status.md) after every compiler
-change, and `programs\factorio\convert.cmd`, which converts CommonUtil, Agui and Util and runs their
-three smoke tests (the one check that runs converted game code); the Factorio benchmark command in docs/prototype-results.md is the regression check for the
+change, and `programs\factorio\convert.cmd`, which converts the whole game into C:\factorio-in-kpp\kov,
+then CommonUtil, Agui and Util on their own into programs\factorio\kov and runs their three smoke tests (the one check that runs converted game code); the Factorio benchmark command in docs/prototype-results.md is the regression check for the
 front end. A new gap found in converted code gets a pending snippet in `compiler/tests/spec/`
 before it is fixed. Measure, don't guess: every speed claim comes with the benchmark command and
 numbers.
