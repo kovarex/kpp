@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(kov C CXX)
+project(kpp C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,7 +9,7 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_executable(kovc
+add_executable(kppc
   src/main.cpp
   src/convert.cpp
   src/lexer.cpp
@@ -19,9 +19,9 @@ add_executable(kovc
   src/codegen.cpp
   src/source.cpp
 )
-target_include_directories(kovc PRIVATE src)
+target_include_directories(kppc PRIVATE src)
 if (MSVC)
-  target_compile_options(kovc PRIVATE /W4 /EHsc)
-  target_compile_definitions(kovc PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_options(kovc PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
+  target_compile_options(kppc PRIVATE /W4 /EHsc)
+  target_compile_definitions(kppc PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_options(kppc PRIVATE /STACK:8388608)  # 8 MB stack for deep ASTs
 endif()

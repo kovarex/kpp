@@ -1,0 +1,10 @@
+// Stand-in for FloatCast.cpp's failure handler, for the Util smoke test (the original logs through
+// the game's global context).  Uses Logging::logAndAbortOrThrow like the converted code does.
+void FloatCastCheckFailed(float value, const char* targetType, float converted)
+{
+  Logging::logAndAbortOrThrow("FloatCast.kpp", 5, LogLevel::Error, "float_cast failed");
+}
+void FloatCastCheckFailed(double value, const char* targetType, double converted)
+{
+  Logging::logAndAbortOrThrow("FloatCast.kpp", 9, LogLevel::Error, "float_cast failed");
+}

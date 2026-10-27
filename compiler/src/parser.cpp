@@ -1,4 +1,4 @@
-// Recursive-descent parser for the Kov subset, tolerant of C++ so that real C++ code bases can
+// Recursive-descent parser for the Kpp subset, tolerant of C++ so that real C++ code bases can
 // be used as benchmark input. Where C++ needs semantic knowledge to disambiguate (declaration vs.
 // expression, template-id vs. less-than), this parser uses purely syntactic heuristics; the
 // resolver later checks the guesses. Unknown macros are recognised by their ALL_CAPS spelling.
@@ -408,7 +408,7 @@ namespace
     }
 
     // ALL_CAPS macro used as a specifier before a declaration, e.g. `FORCE_INLINE int f()` or
-    // `KOV_API(dll) class X`. Returns true if something was skipped.
+    // `KPP_API(dll) class X`. Returns true if something was skipped.
     bool skipMacroSpecifier()
     {
       if (cMode)
@@ -1015,7 +1015,7 @@ namespace
 
     // Parses one declaration (possibly producing several Decl nodes, e.g. `int a, b;`) and pushes
     // the results onto scratch.
-    // Generated members of a Kov enum: `static const int count`, `static const E values[]`,
+    // Generated members of a Kpp enum: `static const int count`, `static const E values[]`,
     // `const char* str() const` and `static Optional<E> fromStr(const char* text)` (unless written
     // by hand). Their bodies and initializers come from the compiler (Decl::builtin), not from the
     // AST.
@@ -1528,7 +1528,7 @@ namespace
           if (templ.present && deductionGuideAhead())
           {
             // `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;`: a deduction guide.
-            // Kov deduces class arguments from constructors; the converter drops these.
+            // Kpp deduces class arguments from constructors; the converter drops these.
             skipBalanced();
             while (!at(P::Semi) && !at(TokenKind::End))
               advance();
@@ -1947,7 +1947,7 @@ namespace
         }
         else if (atMacroName() && !at(P::LBrace, 1) && !at(P::Semi, 1) && !at(P::Colon, 1))
         {
-          // e.g. `void f() KOV_NORETURN;`
+          // e.g. `void f() KPP_NORETURN;`
           advance();
           if (at(P::LParen))
             skipBalanced();
@@ -2421,7 +2421,7 @@ namespace
     // that the caller should parse as a normal declaration (`struct X* p;`).
     // `union enum Property : u8 { { {int, Integer}, {double, Double}, {String, Text} } members... };`
     // (design.md 8.5): a class holding a tag and one alternative at a time. Desugared here into a
-    // class with a nested Kov enum `Tag` of the alternatives' names (unscoped, so `Property::Integer`
+    // class with a nested Kpp enum `Tag` of the alternatives' names (unscoped, so `Property::Integer`
     // names the tag value), a `tag` member and an anonymous union of one storage member per
     // alternative; the type checker and code generator add the tag-aware operations (p[Integer],
     // p == Integer, switch (p), construction, copying, destruction).
@@ -2462,7 +2462,7 @@ namespace
       currentClassName = c->name.last().symbol;
       size_t mark = scratch.size();
       EnumDecl* tag = decl<EnumDecl>(start);
-      tag->isKov = true;
+      tag->isKpp = true;
       tag->isDefinition = true;
       tag->underlying = underlying;
       NamePart tagPart;
@@ -2748,8 +2748,8 @@ namespace
         skipAttributes();
         if (at(P::LBrace))
         {
-          // Kov enum: the values in their own block, then members.
-          e->isKov = true;
+          // Kpp enum: the values in their own block, then members.
+          e->isKpp = true;
           advance();
           while (!at(P::RBrace) && !at(TokenKind::End))
           {
@@ -2798,12 +2798,12 @@ namespace
         }
         if (accept(P::Semi))
           continue;
-        // Kov: member declarations inside an enum.
+        // Kpp: member declarations inside an enum.
         parseDeclaration(Scope::Enum);
         if (inRecovery)
           break;
       }
-      if (e->isKov)
+      if (e->isKpp)
         addEnumBuiltins(e, start, mark);
       e->members = makeSpan<Decl*>(mark);
       e->enumerators = makeSpanOf(enumerators);
@@ -4545,7 +4545,7 @@ const char* nodeKindName(NodeKind kind)
   switch (kind)
   {
 #define X(name) case NodeKind::name: return #name;
-    KOV_NODE_KINDS(X)
+    KPP_NODE_KINDS(X)
 #undef X
   }
   return "?";

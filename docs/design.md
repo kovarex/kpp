@@ -1,6 +1,6 @@
-# Kov design
+# Kpp design
 
-Kov is a C++-like language with a new compiler built around one idea: **no includes at the
+Kpp is a C++-like language with a new compiler built around one idea: **no includes at the
 deepest level of how the compiler works**, so that builds are orders of magnitude faster.
 The original proposal lives in this repository: [readme.md](../readme.md) (language changes)
 and [compilation/index.md](../compilation/index.md) (compilation model).
@@ -51,7 +51,7 @@ builds win less unless machine code is cached per function.
   specializations, plus `if constexpr`, `requires` and variadics, so those stay.
 
 ### 4. Our own standard library
-- No C++ std. A smaller, saner library written in Kov: one UTF-8 `String` with small-string
+- No C++ std. A smaller, saner library written in Kpp: one UTF-8 `String` with small-string
   optimization (no traits/char-type/allocator template parameters; allocators passed at
   runtime), Vector, SmallVector, HashMap, Optional, Span, UniquePtr, Function, formatting,
   sorting, file/OS wrappers. No iostreams.
@@ -70,7 +70,7 @@ builds win less unless machine code is cached per function.
 - C++ libraries (glm, imgui, tracy, re2, Steam SDK...) get a thin C wrapper or a port.
 - Mechanism (decided 2026-10-23): `extern "C" import "header.h";` anywhere in the program. The
   compiler collects all imports, runs clang's preprocessor over them once (cached by content hash
-  under `%TEMP%\kov-imports`), parses the result in C mode as one more file of the program and
+  under `%TEMP%\kpp-imports`), parses the result in C mode as one more file of the program and
   turns object-like macros that look like constants (`EOF`, `MAX_PATH`, `HEAP_ZERO_MEMORY`) into
   `const auto` declarations. Function-like macros are not imported. Inline functions in headers are
   declared, not compiled: the library provides them (the link line adds
@@ -90,7 +90,7 @@ methods (the Factorio survey suggests generating save/load from the class may be
 
 ### 7. No preprocessor; what replaces macros (decided 2026-10-23)
 Based on [macro-survey.md](macro-survey.md): Factorio's 611 macros and 22,647 expansions fall
-into eleven cases and none of them needs textual substitution, so Kov has no preprocessor. The
+into eleven cases and none of them needs textual substitution, so Kpp has no preprocessor. The
 replacements, in the order of how much code they remove:
 1. Tests and `check` in the compiler: `test "name" { ... }` declarations the compiler collects
    and the standard runner selects; `check(expr)` reports the text, the location and the operand
@@ -100,9 +100,9 @@ replacements, in the order of how much code they remove:
    parameter (`CallerLocation here = caller`, filled at the call site); `conditional(config::x)`
    functions whose calls compile to nothing, arguments unevaluated, when the condition is false.
    Done 2026-10-24: `assert(expr);` and `release_assert(expr);` are statements; a failure prints
-   `file:line:column: assertion failed: <expression text>` through `kov_assert_failed`, which a
+   `file:line:column: assertion failed: <expression text>` through `kpp_assert_failed`, which a
    program may define itself as `extern "C"` (debugger break, test exception); `CallerLocation`
-   lives in `stdlib/core/Location.kov`; `conditional(expr)` is written where `static` would be.
+   lives in `stdlib/core/Location.kpp`; `conditional(expr)` is written where `static` would be.
    Operand values in the message: later.
 3. Compile-time reflection: `for constexpr (m : members(T))` with `m.name`, `m.type` and
    `object.[m]`; `enumerators(E)` and `count(E)`; `nameof(expr)`.
@@ -199,8 +199,8 @@ Done 2026-10-24: the brace block, methods with `this` as the value, `count`, `va
 generated or hand-written `str()`, `switch` without `default` that must name every value (a
 compile error otherwise) and aborts on a value outside them; `nameof(x)` from 8.3. A plain C++
 `enum class` without the inner block keeps the C++ rules. Done 2026-10-25: `fromStr(const char*
-text)` returns `Optional<E>`; the compiler declares it on every Kov enum and lowers it to the
-library's `enumFromStr<E>(text)` (stdlib/core/Optional.kov), which walks `E::values` comparing
+text)` returns `Optional<E>`; the compiler declares it on every Kpp enum and lowers it to the
+library's `enumFromStr<E>(text)` (stdlib/core/Optional.kpp), which walks `E::values` comparing
 `str()`; a `String` passes its `c_str()`, and a hand-written `fromStr` replaces the generated one.
 
 **8.5 Typed unions**, the proposal's `union enum`: an enum whose every value carries a typed
@@ -220,9 +220,9 @@ Alternatives are listed by `alternatives(Property)` for reflection. `InputAction
 `EditorAction`, `NetworkMessage`, `UpgradableEntity` in Factorio are this shape.
 Done 2026-10-25: `union enum` with methods; `p[Integer] = v` (destroys the alternative held, sets
 the tag, constructs the value), `p[Integer]` (a release_assert on another tag), `p == Integer`,
-`switch (p)` (exhaustive, as for a Kov enum), copying, assignment and destruction following the
+`switch (p)` (exhaustive, as for a Kpp enum), copying, assignment and destruction following the
 tag. Decided on the way: a default-constructed union holds its first alternative,
-default-constructed; the tag type is the nested Kov enum `Property::Tag` (so `tag.str()` and
+default-constructed; the tag type is the nested Kpp enum `Property::Tag` (so `tag.str()` and
 `Property::Tag::count` exist), and the alternatives' names are in the union's scope, as unscoped
 enumerators. The parser desugars the union to a class with the tag member and an anonymous union
 of the alternatives; the compiler adds the tag-aware operations. Not yet: `alternatives(U)`, a
@@ -239,11 +239,11 @@ test "Direction::isVertical"
 A `test "name" { ... }` declaration may appear at namespace scope or inside a class (where it
 sees private members). `check(expr)` records a failure with the expression text, the location
 and the operand values and continues; `require(expr)` ends the test. Tests are compiled only
-with `kovc --tests`, which generates the runner (`--run-test <name or file>` selects); without
+with `kppc --tests`, which generates the runner (`--run-test <name or file>` selects); without
 the switch they cost nothing. Fixtures are ordinary classes constructed in the test.
 
 ### 9. Exceptions and RTTI (decided 2026-10-24)
-- Kov has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
+- Kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
   unwinding (the Windows personality); the non-throwing path costs nothing. Factorio's 3,198
   `throw` sites convert as they are.
 - `dynamic_cast` and `typeid` exist for single-inheritance hierarchies: a type descriptor behind
@@ -311,14 +311,14 @@ executable together:
 
 (The first estimate here was 2 to 4 minutes; the measurement replaced it.) A 10x win therefore
 means a clean debug build in about 6 s and a one-line change, in any header, in under 2 s.
-Where Kov stands (see [prototype-results.md](prototype-results.md)): the whole front end over
+Where Kpp stands (see [prototype-results.md](prototype-results.md)): the whole front end over
 Factorio's own code runs in 0.32 s on 32 threads, and for a generated program with Factorio's
 number of function bodies a debug build is 1.7 s from source to executable and 1.25 s after a
 one-line change, release 3.8 s of LLVM; the converter will show what the real code costs.
 
-## Kov v0: the first runnable subset (proposed 2026-10-23, not yet reviewed by kovarex)
+## Kpp v0: the first runnable subset (proposed 2026-10-23, not yet reviewed by kovarex)
 
-The smallest language that is still Kov, as the target of the first code generator:
+The smallest language that is still Kpp, as the target of the first code generator:
 
 - **Files and scope.** No `#include`; the project is the set of files given to the compiler.
   Every top-level declaration is visible in every file, in any order. Namespaces as in C++.
@@ -344,20 +344,20 @@ The smallest language that is still Kov, as the target of the first code generat
 - **Statements and expressions.** The C++ set, with the proposal's rules: required `this->`,
   explicit by default, no implicit fallthrough, exhaustive `switch`, `?->` and `?:`.
 - **C interop.** `extern "C"` declarations of functions and structs; those are the only
-  externally linked names (nothing is mangled across Kov code, since everything is one program).
+  externally linked names (nothing is mangled across Kpp code, since everything is one program).
 - **Not in v0:** exceptions, RTTI, virtual inheritance, `both_const`/`class_const`, typed
   unions (plain C unions exist, for interop), `accumulate`, coroutines.
 
 **Backend plan.** The compiler writes textual LLVM IR for the whole program and runs the
 bundled clang on it (`clang -O2 program.ll`). This needs no LLVM development libraries on the
-machine (only the clang binaries exist here) and keeps every codegen decision in Kov's own
+machine (only the clang binaries exist here) and keeps every codegen decision in Kpp's own
 code; moving to the LLVM C++ API in-process is a later optimisation. Names in IR are the
-qualified Kov names with parameter types, quoted, so there is no mangling scheme to design.
+qualified Kpp names with parameter types, quoted, so there is no mangling scheme to design.
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
   or a template to parse `a * b;` or `f < a > (b)`. In the index-then-resolve model the parser
-  runs before any name is known, so Kov should make these cases unambiguous by grammar
+  runs before any name is known, so Kpp should make these cases unambiguous by grammar
   (candidates: a different template-argument bracket or a required disambiguation, no
   most-vexing-parse, declaration statements recognisable from their first tokens). The prototype
   parser uses heuristics that work on 99.2% of Factorio files; the resolver can flag misparses
@@ -365,7 +365,7 @@ qualified Kov names with parameter types, quoted, so there is no mangling scheme
 
 - **Library names and program names share one global scope.** The first clash happened on
   2026-10-24: a test's own `struct Pair` against the library's `Pair`. Options: the library in a
-  namespace (`kov::`) that programs see through an implicit `using`; or program declarations
+  namespace (`kpp::`) that programs see through an implicit `using`; or program declarations
   shadowing library ones; or simply distinct names. Not decided; the test was renamed.
 
 ## Roadmap
@@ -393,13 +393,13 @@ qualified Kov names with parameter types, quoted, so there is no mangling scheme
    6. Overload resolution with conversion ranking (done 2026-10-23; the library's `append`
       overloads depend on it). Later: members through templated bases, constexpr evaluation,
       per-instantiation diagnostics and expression types.
-3. Compiler that runs real Kov programs via LLVM (started 2026-10-23: the v0 subset compiles
+3. Compiler that runs real Kpp programs via LLVM (started 2026-10-23: the v0 subset compiles
    through textual IR and clang, see prototype-results.md "Stage 4"; constructors, destructors,
    copies, operators, templates and the standard library seed `stdlib/core` with `String` and
    `Vector<T>`, virtual functions, lambdas, `HashMap`, `Optional` and `toString`/`println`
    and variadic templates with a type-safe `format` followed the same day, then the C header
    importer: `extern "C" import` of the UCRT and `windows.h`, see "C header import" in
-   prototype-results.md; the first real program, `programs/kovlex`, the Kov lexer in Kov, runs
+   prototype-results.md; the first real program, `programs/kpplex`, the Kpp lexer in Kpp, runs
    as fast as its C++ transliteration on the Factorio corpus, 2026-10-24). Real programs live
    under `programs/<name>/`.
 4. Macro replacements (section 7), the small ones first because real programs and the converter
@@ -407,7 +407,7 @@ qualified Kov names with parameter types, quoted, so there is no mangling scheme
    constants with `if constexpr` at every scope, `_` locals, attributes; then the ones that need
    design work: reflection, `for constexpr`, typed unions, real enums, tests.
 5. Backend at Factorio scale (first measurement 2026-10-24, see prototype-results.md "Backend at
-   scale": for 73 k functions LLVM needs 5 s at -O0 and 109 s at -O2 on one thread, kovc 0.84 s
+   scale": for 73 k functions LLVM needs 5 s at -O0 and 109 s at -O2 on one thread, kppc 0.84 s
    for everything before it). Done the same day: one IR module per group of files, compiled by
    clang in parallel, -O0 for debug and -O2 for release: 0.6 s and 3.8 s of LLVM for the 73 k
    functions on 32 threads, a debug build of 615 k lines in 1.7 s; unchanged modules keep their
@@ -415,4 +415,4 @@ qualified Kov names with parameter types, quoted, so there is no mangling scheme
    writing). Next: write the IR in parallel too; cross-module inlining; in-process LLVM instead
    of clang.exe when the textual round trip shows up in the numbers.
 6. Persistent compiler + IDE integration: the one-line-change rebuild (16 s in Factorio today).
-7. Converter from Factorio-style C++ to Kov (needs 4).
+7. Converter from Factorio-style C++ to Kpp (needs 4).

@@ -1,5 +1,5 @@
 @echo off
-rem Configures (once) and builds kovc with clang-cl + Ninja into build\ next to this script.
+rem Configures (once) and builds kppc with clang-cl + Ninja into build\ next to this script.
 setlocal
 cd /d "%~dp0"
 set "PATH=%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\Installer"

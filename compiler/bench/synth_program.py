@@ -1,4 +1,4 @@
-"""Generates a large synthetic Kov program to measure the backend at scale.
+"""Generates a large synthetic Kpp program to measure the backend at scale.
 
 Usage: python synth_program.py <modules> <out-dir>
 
@@ -7,7 +7,7 @@ that do arithmetic over the fields and call methods of classes in other modules,
 method overriding a shared base, and a function using Vector<int>. The shape follows Factorio's
 averages (about 9 function bodies per 1,000 lines of declarations... roughly 170 lines per file,
 15-line methods), so N modules ~ N * 300 lines. main() touches one object per class so nothing
-is dead code. Everything stays inside the Kov v0 subset codegen supports today.
+is dead code. Everything stays inside the Kpp v0 subset codegen supports today.
 """
 import os, sys
 
@@ -31,7 +31,7 @@ struct Shape
 
 int mix(int a, int b) { return (a * 31 + b) ^ (a >> 3); }
 """
-write(os.path.join(out, "Common.kov"), common)
+write(os.path.join(out, "Common.kpp"), common)
 
 for m in range(modules):
     lines = ["// Generated module %d." % m, ""]
@@ -78,7 +78,7 @@ for m in range(modules):
     lines.append("  return total;")
     lines.append("}")
     lines.append("")
-    write(os.path.join(out, "Module%d.kov" % m), "\n".join(lines))
+    write(os.path.join(out, "Module%d.kpp" % m), "\n".join(lines))
 
 main = ["int main()", "{", "  int total = 0;"]
 for m in range(modules):
@@ -87,6 +87,6 @@ main.append('  println("{}", total);')
 main.append("  return 0;")
 main.append("}")
 main.append("")
-write(os.path.join(out, "Main.kov"), "\n".join(main))
-total_lines = sum(sum(1 for _ in open(os.path.join(out, f), encoding="utf-8")) for f in os.listdir(out) if f.endswith(".kov"))
+write(os.path.join(out, "Main.kpp"), "\n".join(main))
+total_lines = sum(sum(1 for _ in open(os.path.join(out, f), encoding="utf-8")) for f in os.listdir(out) if f.endswith(".kpp"))
 print("modules %d classes %d lines %d" % (modules, modules * CLASSES, total_lines))

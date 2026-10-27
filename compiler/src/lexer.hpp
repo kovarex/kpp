@@ -16,9 +16,9 @@ enum class TokenKind : uint8_t
   Error,
 };
 
-// C++ keywords. Kov-only keywords (implicit, fallthrough, both_const, class_const, accumulate)
+// C++ keywords. Kpp-only keywords (implicit, fallthrough, both_const, class_const, accumulate)
 // are contextual and recognised by the parser, so C++ code using them as names still parses.
-#define KOV_KEYWORDS(X) \
+#define KPP_KEYWORDS(X) \
   X(alignas) X(alignof) X(and) X(and_eq) X(asm) X(auto) X(bitand) X(bitor) X(bool) X(break) \
   X(case) X(catch) X(char) X(char8_t) X(char16_t) X(char32_t) X(class) X(compl) X(concept) \
   X(const) X(consteval) X(constexpr) X(constinit) X(const_cast) X(continue) X(co_await) \
@@ -34,13 +34,13 @@ enum class TokenKind : uint8_t
 enum class Kw : uint32_t
 {
 #define X(name) name##_,
-  KOV_KEYWORDS(X)
+  KPP_KEYWORDS(X)
 #undef X
   Count
 };
 
 // Punctuators. Within one leading character, longer spellings must come first (max munch).
-#define KOV_PUNCTUATORS(X) \
+#define KPP_PUNCTUATORS(X) \
   X(Spaceship, "<=>") X(ShlAssign, "<<=") X(ShrAssign, ">>=") X(ArrowStar, "->*") X(Ellipsis, "...") \
   X(ColonColon, "::") X(Arrow, "->") X(PlusPlus, "++") X(MinusMinus, "--") X(Shl, "<<") X(Shr, ">>") \
   X(LessEq, "<=") X(GreaterEq, ">=") X(EqEq, "==") X(NotEq, "!=") X(AndAnd, "&&") X(OrOr, "||") \
@@ -55,7 +55,7 @@ enum class Kw : uint32_t
 enum class P : uint32_t
 {
 #define X(name, spelling) name,
-  KOV_PUNCTUATORS(X)
+  KPP_PUNCTUATORS(X)
 #undef X
   Count
 };

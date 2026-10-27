@@ -343,7 +343,7 @@ struct GlobalScope::Impl
     return static_cast<ClassDecl*>(t->decl)->lambda;
   }
 
-  // A symbol's spelling for the KOV_DEBUG_CALLS trace; operators and unnamed parameters have none.
+  // A symbol's spelling for the KPP_DEBUG_CALLS trace; operators and unnamed parameters have none.
   std::string debugName(uint32_t symbol) const
   {
     return symbol == UINT32_MAX || symbol >= symbols.size() ? std::string("?") : std::string(symbols.name(symbol));
@@ -1956,7 +1956,7 @@ struct GlobalScope::Impl
         if (lastPart.templateArgs.size() == 1 && lastPart.symbol == functionSymbolId())
         {
           // The library's `Function<R(Args...)>`: the compiler takes the signature apart, the
-          // class behind it is FunctionImpl<R, Args...> (stdlib/core/Function.kov).
+          // class behind it is FunctionImpl<R, Args...> (stdlib/core/Function.kpp).
           const Ty* signature = templateArgument(lastPart.templateArgs[0], nullptr, ctx, depth);
           if (signature && signature->kind == TyKind::Function)
           {
@@ -4122,7 +4122,7 @@ struct GlobalScope::Impl
           }
         }
         {
-          static bool debugCalls = getenv("KOV_DEBUG_CALLS") != nullptr;
+          static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
           if (debugCalls)
           {
             std::string line = std::string(call ? "call " : "call(no expr) ") + impl.debugName(f->name.last().symbol) + ":";
@@ -5904,7 +5904,7 @@ Decl* GlobalScope::definitionOf(Decl* d)
           candidate->flags |= f->flags & (DF_Static | DF_Virtual);
           return candidate;
         }
-      static bool debugCalls = getenv("KOV_DEBUG_CALLS") != nullptr;
+      static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
       if (debugCalls)
       {
         std::string line = "definitionOf " + qualifiedName(f) + " : " + impl->types.toString(ft, &impl->symbols) + " candidates:";
@@ -6122,7 +6122,7 @@ void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty*
   if (f->name.parts.size() > 1)
     w.scope = w.semanticScopeFor(f->name);
   w.activeSubst = subst.pairs.empty() ? nullptr : &subst; // no arguments: the generic pass again (lambda types keep their identity)
-  static bool debugCalls = getenv("KOV_DEBUG_CALLS") != nullptr;
+  static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
   if (debugCalls)
   {
     std::string line = "retype " + impl->debugName(f->name.last().symbol) + ":";

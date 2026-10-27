@@ -60,7 +60,7 @@ namespace
   const std::set<std::string> undefinedSymbols = {"LINUX", "MAC_OSX", "NINTENDO_SWITCH", "NINTENDO_SWITCH1", "NINTENDO_SWITCH2", "__linux__",
                                                   "__APPLE__", "__GNUC__", "__clang__", "NDEBUG", "HEADLESS", "FACTORIO_USE_METAL", "DEMO"};
 
-  // Known object-like and function-like macros of the corpus that have a direct Kov spelling.
+  // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"VCALL", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"EXTERNC", "extern \"C\""},
@@ -85,7 +85,7 @@ namespace
                                                                   {"LOG_AND_ABORT_NEVER_THROW", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_ENUM_AND_ABORT", "Logging::logEnumAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"}};
 
-  // std:: names and their Kov library spelling. Names not here keep their name and are counted.
+  // std:: names and their Kpp library spelling. Names not here keep their name and are counted.
   // C library functions become `::name`: inside a namespace with its own `sqrt`, `std::sqrt` meant the C one.
   const std::map<std::string, std::string> stdNames = {
     {"string", "String"}, {"string_view", "StringView"}, {"wstring", "WString"}, {"vector", "Vector"}, {"pair", "Pair"},
@@ -425,7 +425,7 @@ namespace
     };
 
     // Turns `#define NAME body` into a constant where the body is one, else a TODO comment.
-    std::string macroToKov(const std::string& line, uint32_t offset)
+    std::string macroToKpp(const std::string& line, uint32_t offset)
     {
       size_t p = line.find("define") + 6;
       while (p < line.size() && isspace((unsigned char)line[p]))
@@ -512,7 +512,7 @@ namespace
       }
       todo(offset, "macro " + name + (functionLike ? "(...)" : "") + " kept as a comment");
       counts.add("macro todo");
-      std::string commented = "// TODO(kov) macro: ";
+      std::string commented = "// TODO(kpp) macro: ";
       for (char c : line)
       {
         commented += c;
@@ -717,7 +717,7 @@ namespace
           counts.add("#" + word + " removed");
         else if (word == "define")
         {
-          std::string replacement = macroToKov(line, offset);
+          std::string replacement = macroToKpp(line, offset);
           if (!replacement.empty())
           {
             replace(offset, length, replacement);
@@ -843,14 +843,14 @@ namespace
         }
         if (t.getKind() == TokenKind::Identifier && (spelling(i) == "__FILE__" || spelling(i) == "__LINE__"))
         {
-          // The preprocessor's file name and line: the literal values, since Kov has no preprocessor.
+          // The preprocessor's file name and line: the literal values, since Kpp has no preprocessor.
           replace(t.offset, endOffset(i) - t.offset, withFileAndLine(std::string(spelling(i)), t.offset));
           counts.add("__FILE__/__LINE__ replaced");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "Vector" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
         {
-          // The game's own 2D `Vector` class is Vector2D in Kov, where Vector is the library's std::vector.
+          // The game's own 2D `Vector` class is Vector2D in Kpp, where Vector is the library's std::vector.
           replace(t.offset, endOffset(i) - t.offset, "Vector2D");
           counts.add("Vector renamed to Vector2D");
           continue;
@@ -858,7 +858,7 @@ namespace
         if (t.getKind() == TokenKind::Identifier && i >= 2 && toks[i - 1].is(P::Tilde) && (toks[i - 2].is(P::Dot) || toks[i - 2].is(P::Arrow)) &&
             i + 1 < toks.size() && (toks[i + 1].is(P::LParen) || toks[i + 1].is(P::Less)))
         {
-          // `value.~vector()`: the destructor of a std class, by the class's Kov name.
+          // `value.~vector()`: the destructor of a std class, by the class's Kpp name.
           auto it = stdNames.find(std::string(spelling(i)));
           if (it != stdNames.end() && it->second.find("::") == std::string::npos && isupper((unsigned char)it->second[0]))
           {
@@ -971,7 +971,7 @@ namespace
           }
           if (name == "__try")
           {
-            // Structured exception handling: Kov's exceptions are SEH underneath, so `try` catches
+            // Structured exception handling: Kpp's exceptions are SEH underneath, so `try` catches
             // what `__try` did; the filter expression is lost (a todo).
             replace(t.offset, t.length, "try");
             counts.add("SEH __try to try");
@@ -1082,13 +1082,13 @@ namespace
         }
         if ((d->flags & DF_Friend) && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::FunctionDecl))
         {
-          removeDecl(d); // no friends in Kov; `friend class X;` would read as a nested class
+          removeDecl(d); // no friends in Kpp; `friend class X;` would read as a nested class
           counts.add("friend declarations removed");
           continue;
         }
         if (d->kind == NodeKind::EmptyDecl && static_cast<EmptyDecl*>(d)->isDeductionGuide)
         {
-          removeDecl(d); // Kov deduces class arguments from constructors
+          removeDecl(d); // Kpp deduces class arguments from constructors
           counts.add("deduction guides removed");
           continue;
         }
@@ -1140,7 +1140,7 @@ namespace
             auto* f = static_cast<FunctionDecl*>(d);
             if (f->templateParams.empty() && !f->body && !f->name.empty() && f->name.last().hasTemplateArgs && !(f->flags & DF_Specialization))
             {
-              removeDecl(d); // an explicit instantiation: templates compile from source in Kov
+              removeDecl(d); // an explicit instantiation: templates compile from source in Kpp
               counts.add("explicit instantiations removed");
               break;
             }
@@ -1709,7 +1709,7 @@ namespace
   }
 }
 
-std::string convertToKov(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
+std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir)
 {
@@ -1914,7 +1914,7 @@ std::string convertToKov(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".cc" && ext != ".inl")
       continue;
     std::string rel = relativeTo(in.path, roots);
-    std::string key = rel.substr(0, rel.size() - ext.size()) + ".kov";
+    std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
@@ -1942,7 +1942,7 @@ std::string convertToKov(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::string text = "// Converted from";
     for (const Piece& p : pieces)
       text += " " + std::filesystem::path(p.source).filename().string();
-    text += " by kovc --convert; see CONVERSION.md.\n\n";
+    text += " by kppc --convert; see CONVERSION.md.\n\n";
     for (const Piece& p : pieces)
     {
       text += p.text;

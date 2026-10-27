@@ -1,4 +1,4 @@
-"""Assigns every macro from macro_survey.json to one of the hand-made categories of the Kov macro
+"""Assigns every macro from macro_survey.json to one of the hand-made categories of the Kpp macro
 survey and sums definitions and use sites per category. Prints leftovers so the rules can be
 refined. Rules are by name first, then by what the body does."""
 import json, re, collections, os

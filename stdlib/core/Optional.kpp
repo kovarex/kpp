@@ -1,0 +1,78 @@
+// Kpp standard library: Optional<T>, a value that may be absent. The value is stored inline and
+// default-constructed while absent (a later version will avoid that with raw storage).
+struct NullOpt {};
+const NullOpt nullopt;
+
+template<typename T>
+struct Optional
+{
+  T stored;
+  bool present = false;
+
+  Optional() {}
+  implicit Optional(NullOpt) {}
+  implicit Optional(const T& v) : stored(v), present(true) {}
+
+  Optional<T>& operator=(NullOpt)
+  {
+    this->present = false;
+    return *this;
+  }
+  Optional<T>& operator=(const T& v)
+  {
+    this->stored = v;
+    this->present = true;
+    return *this;
+  }
+
+  // Comparisons with a value: an absent optional equals nothing.
+  bool operator==(const T& v) const { return this->present && this->stored == v; }
+  bool operator!=(const T& v) const { return !this->present || !(this->stored == v); }
+
+  bool hasValue() const { return this->present; }
+  bool has_value() const { return this->present; }
+  explicit operator bool() const { return this->present; }
+  bool operator!() const { return !this->present; }
+  T& get() { return this->stored; }
+  const T& get() const { return this->stored; }
+  T& value() { return this->stored; }
+  const T& value() const { return this->stored; }
+  T& operator*() { return this->stored; }
+  const T& operator*() const { return this->stored; }
+  T* operator->() { return &this->stored; }
+  const T* operator->() const { return &this->stored; }
+  T valueOr(const T& fallback) const
+  {
+    if (this->present)
+      return this->stored;
+    return fallback;
+  }
+  // Builds the value in place from the arguments (std::optional's emplace).
+  template<typename... Args>
+  T& emplace(Args&&... args)
+  {
+    this->stored = T(forward<Args>(args)...);
+    this->present = true;
+    return this->stored;
+  }
+  void set(const T& v)
+  {
+    this->stored = v;
+    this->present = true;
+  }
+  void reset() { this->present = false; }
+};
+
+template<typename T>
+Optional<T> makeOptional(const T& value) { return Optional<T>(value); }
+
+// The generated `E::fromStr(text)` of a Kpp enum (design.md 8.4): the value whose str() is text,
+// or none. The compiler lowers E::fromStr to this function.
+template<typename E>
+Optional<E> enumFromStr(const char* text)
+{
+  for (E value : E::values)
+    if (strcmp(value.str(), text) == 0)
+      return Optional<E>(value);
+  return Optional<E>();
+}

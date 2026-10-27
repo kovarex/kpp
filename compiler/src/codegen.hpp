@@ -1,6 +1,6 @@
 #pragma once
-// Code generation for the Kov v0 subset: textual LLVM IR for the whole program, compiled to
-// machine code by the bundled clang. See docs/design.md, "Kov v0".
+// Code generation for the Kpp v0 subset: textual LLVM IR for the whole program, compiled to
+// machine code by the bundled clang. See docs/design.md, "Kpp v0".
 #include "ast.hpp"
 #include "resolver.hpp"
 #include <memory>

@@ -1,21 +1,21 @@
-# From here to Factorio built by kovc
+# From here to Factorio built by kppc
 
 Written 2026-10-24, answering "what is needed to compile the game with our compiler". The counts
 are from the Factorio corpus (`src`, `tests`, `libraries/CommonUtil`, `libraries/Agui`, 1.33 M
 lines) with plain `grep` over use sites, so they say how much code touches each thing, not how
 hard each site is.
 
-## Where kovc is
+## Where kppc is
 
 - **Front end.** Parses 99.54% of Factorio's files and types 77% of the expressions and 78% of
   the member accesses in 0.32 s on 32 threads. What it cannot type is the standard library
   (54 k `std::` references), macro-generated code and a tail of resolver gaps (templated
   aliases, dependent members through templated bases).
-- **Code generation.** The Kov v0 subset runs end to end: classes with constructors, destructors,
+- **Code generation.** The Kpp v0 subset runs end to end: classes with constructors, destructors,
   copies and operators, single inheritance with virtual functions, templates with full
   specialisation and parameter packs, lambdas, `if constexpr`, the own library (`String`,
   `Vector`, `HashMap`, `Optional`, `format`), C headers imported straight from `windows.h` and
-  the UCRT. 15 end-to-end tests; the lexer written in Kov runs as fast as its C++ version.
+  the UCRT. 15 end-to-end tests; the lexer written in Kpp runs as fast as its C++ version.
 - **Backend.** One IR module per group of files, clang in parallel, unchanged modules cached: a
   program with Factorio's number of function bodies builds in 1.7 s (debug), 1.25 s after a
   one-line change, 3.8 s of LLVM for release.
@@ -24,7 +24,7 @@ hard each site is.
   `nameof` are in; `for constexpr`, reflection, typed unions and compiler tests are specified in
   design.md section 8 and wait for review.
 
-## What the game needs that kovc does not have
+## What the game needs that kppc does not have
 
 | area | in Factorio | what it takes | size |
 |---|---|---|---|
@@ -48,17 +48,17 @@ machinery, FASTBuild.
 
 ## The converter, first run (2026-10-24)
 
-`kovc --convert OUT <dirs>` rewrites the parsed and resolved C++ into Kov: preprocessor lines
+`kppc --convert OUT <dirs>` rewrites the parsed and resolved C++ into Kpp: preprocessor lines
 evaluated for Windows/MSVC/debug (`#include` of C headers becomes `extern "C" import`, the rest
-goes), constant macros become `const auto`, other macros stay as `// TODO(kov)` comments,
+goes), constant macros become `const auto`, other macros stay as `// TODO(kpp)` comments,
 forward declarations go, converting constructors get `implicit`, members get `this->`, a case
 that falls through gets `fallthrough;`, `typename`/`template` disambiguators go, and `std::`
 names map to the library's spelling (`std::string` to `String`, `std::vector` to `Vector`, 150
-names). A header and its source of the same stem merge into one `.kov` file; `CONVERSION.md` in
+names). A header and its source of the same stem merge into one `.kpp` file; `CONVERSION.md` in
 the output lists what was done and what is left per file.
 
-On `libraries/CommonUtil` (29 files, 4,140 lines): 21 Kov files, 1,008 `std::` names renamed,
-109 forward declarations removed, 26 macros turned into constants, 4 kept as comments. kovc
+On `libraries/CommonUtil` (29 files, 4,140 lines): 21 Kpp files, 1,008 `std::` names renamed,
+109 forward declarations removed, 26 macros turned into constants, 4 kept as comments. kppc
 parses the result 100% clean and types 88% of its expressions with the current library; the
 unresolved rest is the library worklist, in order: `Pair` (350 uses), `StringView` (38),
 `forward`/`move`, `min`/`max`, the type traits (`isArray`, `isSame`, `RemoveConst`...),
@@ -72,7 +72,7 @@ type names and 88.6% of expressions resolve, and code generation stops at 53 pla
 before the library work). By kind: 13 member accesses the library lacks (`rbegin().base()`,
 `wstring_convert`/`codecvt`, `chrono` durations), 8 reference bindings and constructor calls
 with no matching library constructor (`String` from a `char`, `Vector` from a brace list,
-`StringView` into a `String&`), 7 locals of unknown type (the anonymous unions `Math.kov` uses
+`StringView` into a `String&`), 7 locals of unknown type (the anonymous unions `Math.kpp` uses
 for float bit casts, `thread_local`, `auto begin = ...data()`), 6 unresolved calls (`va_start`,
 `va_copy`, the `EXTRACT_WORDS` macro, `trio_snprintf`), 3 `String` to integer conversions in
 `strtoint`, 3 unknown function types in a dropped `#if` region of `Demangle`, and single cases
@@ -84,7 +84,7 @@ hand-written overrides, the rest is library and compiler work.
 
 `programs/factorio/convert.cmd` now converts `libraries/CommonUtil`, compiles the result with
 zero code generation complaints, links it (without `SystemClipboard`, which needs SDL) with
-`programs/factorio/tests/smoke.kov`, runs it and compares the output with `smoke.expected`:
+`programs/factorio/tests/smoke.kpp`, runs it and compares the output with `smoke.expected`:
 trimming, splitting, `ssprintf`, number parsing with its `InputException`, UTF-8/UTF-16
 conversion, the fast float approximations and fdlibm's `pow`, `LowercaseString`, `CpuTimer`.
 
@@ -124,7 +124,7 @@ What it took, in the order it was found:
   `items` now); `back()`/`front()` by reference; `erase` by pointer range; `find_first_of` with
   a start position and a StringView set; `Vector(int count)`; `Optional` with `nullopt`,
   `value()`, `*`, `->`, `operator bool`; `InitializerList<T>` (call sites with brace lists are
-  not generated yet); `Time.kov` (Duration, TimePoint, Clock on QueryPerformanceCounter);
+  not generated yet); `Time.kpp` (Duration, TimePoint, Clock on QueryPerformanceCounter);
   `bitCast`; `lowerBound` with a comparator; `Limits<float/double>::quiet_NaN()`; `NAN`; `abs`
   for floats. Converted `std::sqrt` and the other C library functions become `::sqrt`, so a
   namespace's own `sqrt` wrapper does not call itself.
@@ -139,7 +139,7 @@ literals (`L"..."`), and SDL as a linked library for the few CommonUtil function
 
 ## Towards Agui (2026-10-25, later)
 
-`libraries/Agui` (235 files, 132 Kov files after conversion) parses 100% clean and types 92.6%
+`libraries/Agui` (235 files, 132 Kpp files after conversion) parses 100% clean and types 92.6%
 of its expressions; code generation started at 1,208 complaints and stands at 249 after one
 pass over the biggest categories (`compiler\build\tests\agui` is the scratch directory; the
 scouting command is the check step of convert.cmd pointed at the Agui output):
@@ -149,7 +149,7 @@ scouting command is the check step of convert.cmd pointed at the Agui output):
   constant and its type), so template argument lists, instantiation keys and substitution did
   not change shape; `N` in the body is a constant of the instantiation; defaults for
   parameters not written; `Array<char, bufferSize>` with a constant as the argument (the parser
-  reads a bare name as a type, the resolver evaluates it). Test: `valueparams.kov`.
+  reads a bare name as a type, the resolver evaluates it). Test: `valueparams.kpp`.
 - **Alias templates** (`template<class T> using Ptr = UniquePointer<T>`), member typedefs
   through instantiations (`Vector<int>::iterator`, also through an alias of the class),
   out-of-line member definitions seeing their class scope for parameter types, reference
@@ -158,7 +158,7 @@ scouting command is the check step of convert.cmd pointed at the Agui output):
 - **Pointers to data members**: `&Style::field` is the field's offset (an `i64`), `.*`/`->*`
   address it, `T C::*member` parameters deduce both the member and the class type: Agui's
   Style properties (`getProperty(&Style::defaultGraphicalSet)`, 290 sites) compile.
-  Test: `memberptr.kov`. Pointers to member functions are not supported.
+  Test: `memberptr.kpp`. Pointers to member functions are not supported.
 - **Library**: `UniquePtr<T>` with `makeUnique` (what `std::unique_ptr` converts to; CommonUtil's
   `UniquePointer` with a deleter exists beside it), `Queue<T>`, `Optional::emplace`, `at()`,
   `insert` at a position (also of a range), `replace`, `advance`, `makeOptional`, iterator
@@ -167,11 +167,11 @@ scouting command is the check step of convert.cmd pointed at the Agui output):
 
 The second pass (2026-10-25, later) took Agui from 249 to 103 complaints:
 
-- **`Function<R(Args...)>`** (stdlib/core/Function.kov): the compiler reads the signature and
+- **`Function<R(Args...)>`** (stdlib/core/Function.kpp): the compiler reads the signature and
   makes `Function<void(int)>` mean `FunctionImpl<void, int>`, a library class with the callable
   on the heap behind `invoke`/`destroy`/`clone` function pointers to member template
   specialisations; lambdas with captures, function pointers and functors; copied, moved,
-  reset, tested for emptiness. Test: `function.kov`.
+  reset, tested for emptiness. Test: `function.kpp`.
 - **Value categories.** Overload resolution now knows an lvalue from an rvalue: an lvalue
   argument presents itself as `T&`, binds to no `T&&`, and a forwarding reference `T&&` given
   an lvalue deduces `T = U&` (reference collapsing), so `emplace_back(name)` copies and
@@ -180,7 +180,7 @@ The second pass (2026-10-25, later) took Agui from 249 to 103 complaints:
   emptied the source), moves from `move(x)` and temporaries, and gives classes without copy or
   move constructors memberwise moves. Deleted functions are diagnosed when chosen. Library:
   `Vector`, `String`, `WString` have move constructors and move assignment, `push_back(T&&)`.
-  Test: `moves.kov`.
+  Test: `moves.kpp`.
 - Range-for over iterator objects (`rbegin()`, `ReverseIterator<T>`), init-captures
   (`[x = move(x)]`), pack expansions as the only constructor argument (`T(forward<Args>(args)...)`
   for copies, moves and aggregates), default arguments carried by the converter from a dropped
@@ -197,7 +197,7 @@ matter beyond Agui:
   another instantiation of the same template as a conversion, and takes the callable's
   parameters into account when a `Function<R(Args...)>` is built from a lambda
   (`onSliderMove(Function<void()>)` next to `onSliderMove(Function<void(double)>)`).
-- **Code generation**: calls through function pointers use the Kov calling convention
+- **Code generation**: calls through function pointers use the Kpp calling convention
   (classes and references by pointer, sret); casts to references are lvalues (a `forward`
   returning a scalar reference used to return the address of a dead temporary); `?:` with two
   objects yields one of them; brace lists as arguments (`push_back({a, b, c})`,
@@ -216,23 +216,23 @@ matter beyond Agui:
 - **Library**: `HashSet<T>`, `UniqueArray<T>`, `remove`, `max`/`min` of a brace list,
   `Vector::insert` of rvalues and `erase` returning the next position, `cbegin`/`crbegin`,
   `String(first, last)`, `Optional == value`, `UniquePtr == pointer`/`nullptr`, `hashOf`
-  for pointers. Tests: `conversions.kov`, `library2.kov`, `callables.kov`, `refparams.kov`,
-  `fnpointer.kov`, `outofline.kov`.
+  for pointers. Tests: `conversions.kpp`, `library2.kpp`, `callables.kpp`, `refparams.kpp`,
+  `fnpointer.kpp`, `outofline.kpp`.
 
 Two more fixes closed the pass: a template body re-typed for an instantiation now looks its
 qualifier up from the definition's namespace (`ScrollBar<Policy>::ScrollBar` in `agui` could
 not see `TextButton`), and `typeid(x)` yields the library's `TypeInfo`: every vtable starts
 with the class's name, so the dynamic type of a polymorphic object is one load away;
-`typeid(T)` and non-polymorphic objects get their static name. Test: `typeid.kov`.
+`typeid(T)` and non-polymorphic objects get their static name. Test: `typeid.kpp`.
 
 The generic lambda (an `auto` parameter) was the one construct left out at this point:
-`Table::findFirstRowWhere` was a hand-written template in `programs/factorio/overrides/Agui/Widget/Table.kov`
+`Table::findFirstRowWhere` was a hand-written template in `programs/factorio/overrides/Agui/Widget/Table.kpp`
 until generic lambdas arrived the same evening (below); the override is gone and `Table.cpp`
 converts as written.
 
 ## Agui links and runs (2026-10-25, later)
 
-The converted Agui (132 files) plus CommonUtil link with `programs/factorio/tests/agui_smoke.kov`
+The converted Agui (132 files) plus CommonUtil link with `programs/factorio/tests/agui_smoke.kpp`
 into one program, and the program computes a layout: a `Gui` of 640 x 480 with its Void backend
 (the backend Factorio uses for headless runs: fonts of 10 pixels per character and 20 per line),
 a `Label` added to the top container, `logic()` once, and the label measures 100 x 20 for
@@ -250,28 +250,28 @@ definition. Running found seven miscompiles that compile-time statistics, linkin
 suite had all passed over, each now a test:
 
 - Function-local statics were allocas (`static Style result(nullptr, nullptr)` in
-  `Widget::getStyleStatic`): now a guarded global of the program. `staticlocal.kov`.
+  `Widget::getStyleStatic`): now a guarded global of the program. `staticlocal.kpp`.
 - Reference globals were objects (`static const Style& defaultWidgetStyle = getStyleStatic()`):
   now a pointer bound by the global constructor. Out-of-line definitions of static data members
   (`double Gui::scale = 1.0`, `const Style& Widget::defaultWidgetStyle = ...`) are paired with
   their in-class declarations, so the initializer is no longer lost, and a constant defined that
-  way serves as an array bound. `staticmembers.kov`.
+  way serves as an array bound. `staticmembers.kpp`.
 - `this` in a const member function was `C*`, so `this->getStyle()` picked the non-const
-  virtual overload (null for the top container) over `getStyle() const`. `constthis.kov`.
+  virtual overload (null for the top container) over `getStyle() const`. `constthis.kpp`.
 - A global of class type without user constructors was zero-initialised even when the class has
   default member initializers, a vtable pointer, or members that need constructing.
-  `constthis.kov`.
+  `constthis.kpp`.
 - `Derived*` to `Base*` skipped the adjustment to a base that is not at offset 0 (a polymorphic
   `Widget` over the plain `GenericTargetable`: the base sits after the vtable pointer), because
   both are `ptr` in LLVM; and a null pointer must stay null across that adjustment, in both
-  directions. `nonprimarybase.kov`.
+  directions. `nonprimarybase.kpp`.
 - An out-of-line static member emitted before any call to it kept a hidden `this`
   (`ResizableText::splitNewlinesOnly` read its arguments shifted by one and produced empty
   lines): the main pass now pairs every out-of-line definition with its declaration first.
-  `staticoutofline.kov`.
+  `staticoutofline.kpp`.
 - Default arguments of constructors called by default construction and of members of class
-  templates (re-typed for the instantiation); `using namespace` inside a body. `defaultargs.kov`,
-  `templatemembers.kov`, `outoflinedefault.kov`, `defaulted.kov`.
+  templates (re-typed for the instantiation); `using namespace` inside a body. `defaultargs.kpp`,
+  `templatemembers.kpp`, `outoflinedefault.kpp`, `defaulted.kpp`.
 
 Crashes were located without a debugger: `--lib "-Wl,/MAP:file"` writes the linker map, the
 smoke program installs a vectored exception handler that prints the faulting address relative
@@ -289,7 +289,7 @@ window, or the game's `Util` library, whichever the game's dependency order want
 kovarex's direction for the next step: instead of learning what the compiler lacks by converting
 and recompiling the whole game at every step, build a suite of small snippets, one per construct
 the Factorio sources use, and let the suite be the specification of what is needed.
-`compiler/tests/spec/<area>/<name>.kov` holds one program per construct with its expected output;
+`compiler/tests/spec/<area>/<name>.kpp` holds one program per construct with its expected output;
 `compiler\tests\spec.cmd` compiles and runs them all (129 snippets in two seconds) and writes
 [spec-status.md](spec-status.md), where every construct is pass or pending (a known gap, with the
 compiler's first complaint and the construct's count in the game's sources). A pending snippet that
@@ -343,7 +343,7 @@ checked against the suite, the 40 end-to-end tests and the CommonUtil and Agui s
    garbage (which is what `agui::label()` in the smoke test had been).
 5. **Library.** `Map`, `Array<T, N>`, `Span<T>` (Vector and Array convert to it), `Tuple` with
    `get<I>`, `SharedPtr`/`WeakPtr`, `Thread`, `Mutex`, `LockGuard`, `UniqueLock`,
-   `ConditionVariable`, `Atomic` (SRW locks, CreateThread, and `kov_atomic_*` builtins the
+   `ConditionVariable`, `Atomic` (SRW locks, CreateThread, and `kpp_atomic_*` builtins the
    compiler turns into atomic instructions), `Vector` from a brace list, `memset`, `abs(int)`,
    the C math functions, `OutOfRange`/`InvalidArgument`.
 
@@ -367,42 +367,42 @@ checked against the suite, the 40 end-to-end tests and the CommonUtil and Agui s
    variable is a template parameter of the body; the body is re-typed and generated once per
    element exactly as a pack expansion is (the resolver's per-instantiation re-typing with the
    element bound, then the statement emitted under those arguments), so `T::name()`,
-   `squared<i>()` and `int buffer[i + 1]` work in it. Spec: `kov/for_constexpr_values`,
-   `kov/for_constexpr_types`, `kov/for_constexpr_constant`; `kov/for_constexpr_switch` (one
+   `squared<i>()` and `int buffer[i + 1]` work in it. Spec: `kpp/for_constexpr_values`,
+   `kpp/for_constexpr_types`, `kpp/for_constexpr_constant`; `kpp/for_constexpr_switch` (one
    `case` per type) is the next step.
 8. **Reflection** (design.md 8.3) on the same machinery: `for constexpr (auto m : members(T))`
    binds `m` to a member descriptor (a new compile-time type kind holding the member, its type
    in the class's instantiation and the class), `m.name` is a string constant, `m.offset` the
    field's offset, and `object.[m]` the member itself (an lvalue, so save and load loops can
-   read and write it). Spec: `kov/reflection_members`, `kov/reflection_bases_offsets`.
-9. **`E::fromStr(text)`** (design.md 8.4): generated on every Kov enum as `static Optional<E>
-   fromStr(const char*)` and lowered to the library's `enumFromStr<E>`, written in Kov over
+   read and write it). Spec: `kpp/reflection_members`, `kpp/reflection_bases_offsets`.
+9. **`E::fromStr(text)`** (design.md 8.4): generated on every Kpp enum as `static Optional<E>
+   fromStr(const char*)` and lowered to the library's `enumFromStr<E>`, written in Kpp over
    `E::values` and `str()`. Found on the way: a qualified name through a template parameter
    bound to an enum (`E::values`, `E::count` with E = Direction) stayed dependent; the lookup now
-   follows enum substitutions as it did class ones. Spec: `kov/enum_from_str`,
+   follows enum substitutions as it did class ones. Spec: `kpp/enum_from_str`,
    `templates/enum_through_parameter`.
 10. **Typed unions** (design.md 8.5), the shape of `InputAction` and `std::variant` uses. The
     parser desugars `union enum Property : u8 { { {int, Integer}, {String, Text} } ... }` to a
-    class with a nested Kov enum `Tag` (unscoped, so `Property::Integer` is the tag value), a `tag`
+    class with a nested Kpp enum `Tag` (unscoped, so `Property::Integer` is the tag value), a `tag`
     member and an anonymous union of one storage member per alternative; the type checker gives
     `p[Property::Integer]` the alternative's type and `p == Property::Integer` bool; the code
     generator makes `p[E] = v` destroy the alternative held, set the tag and construct the value,
     checks the tag on every other `p[E]` (release_assert), switches on the tag for `switch (p)`
-    (exhaustive like a Kov enum), and copies, assigns and destroys by the tag. Spec:
-    `kov/typed_unions`, `kov/typed_unions_switch_copy`.
+    (exhaustive like a Kpp enum), and copies, assigns and destroys by the tag. Spec:
+    `kpp/typed_unions`, `kpp/typed_unions_switch_copy`.
 11. **`case` labels from `for constexpr`** (the third example of design.md 8.2): a switch body
-    walks its `for constexpr` statements once per element to collect the labels (the Kov enum
+    walks its `for constexpr` statements once per element to collect the labels (the Kpp enum
     exhaustiveness check sees them too) and once more to emit them. **Pointers to member
     functions** (3 Factorio uses): `int (Calc::*op)(int) const = &Calc::mul;` parses as a
     declaration whose type keeps the class and the function type, `&Calc::mul` is the function's
     address (virtual ones are refused for now), and `(c.*op)(3)` calls through it with the
     object first, sharing the indirect-call emission with function pointers. Spec:
-    `kov/for_constexpr_switch`, `classes/member_function_pointers`.
+    `kpp/for_constexpr_switch`, `classes/member_function_pointers`.
 12. **Template template parameters** (one Factorio use): `Container<T>` with `Container` a
     template template parameter is the parameter applied to arguments (a parameter type carrying
     them); deduction against `Vector<int>` binds `Container` to the template itself and `T` to
     `int`, and substitution applies the bound template to the substituted arguments. **The SDL
-    header import** passes in the suite now that the runner hands kovc the game's SDL3 include
+    header import** passes in the suite now that the runner hands kppc the game's SDL3 include
     directory when the Factorio checkout is present: `SDL_Rect` and `SDL_INIT_VIDEO` come straight
     from `SDL3/SDL.h`. Spec: `templates/template_template_parameters`, `interop/sdl_header`.
 
@@ -416,12 +416,12 @@ section 8: `m.type`, `enumerators(E)`, `alternatives(U)`, and the `--tests` runn
 ## src/Util through the converter: the first run (2026-10-25, night)
 
 With the suite's compiler-side list empty, the next module of the roadmap is the game's `Util`
-(370 files, 47k lines; 144 .cpp and 226 .hpp merged into 304 Kov files). The first run, with
+(370 files, 47k lines; 144 .cpp and 226 .hpp merged into 304 Kpp files). The first run, with
 CommonUtil and Agui as context and nothing hand-written yet:
 
 ```
-compiler\build\kovc.exe --no-std --quiet --convert OUT --overrides programs\factorio\overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\src\Util
-compiler\build\kovc.exe --std stdlib --cinclude C:\Factorio\libraries\SDL3\include --errors 60 --unresolved 60 --emit-llvm out.ll OUT\CommonUtil OUT\Agui OUT\Util
+compiler\build\kppc.exe --no-std --quiet --convert OUT --overrides programs\factorio\overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\src\Util
+compiler\build\kppc.exe --std stdlib --cinclude C:\Factorio\libraries\SDL3\include --errors 60 --unresolved 60 --emit-llvm out.ll OUT\CommonUtil OUT\Agui OUT\Util
 ```
 
 | | |
@@ -451,7 +451,7 @@ The second pass, the same night, closed every parse error. Parser: specifiers af
 (`float static f()`, `void inline g()`, `const static int x[]`), array and function types as
 alias targets, operator functions called by name, calling conventions dropped from the tokens of
 every source (as the C importer already did), the `requires` clause before a body no longer read
-as a braced construction, and deduction guides parsed (and dropped by the converter: Kov deduces
+as a braced construction, and deduction guides parsed (and dropped by the converter: Kpp deduces
 from constructors). Converter: a carried default argument is the text after its `=` with std
 names mapped (`= std::string()` had become `= ()`), a removed friend or declaration takes the
 `template<...>` header and `[[attributes]]` written above it, `FORMAT_ATTR(4, 5)` goes with its
@@ -489,19 +489,19 @@ variable over `InitializerList<Pair<K, V>>`) and a brace list used as a value. S
 
 ## The Util smoke test runs (2026-10-25, night)
 
-`programs/factorio/tests/util_smoke.kov` evaluates four expressions with the game's
+`programs/factorio/tests/util_smoke.kpp` evaluates four expressions with the game's
 `MathExpressions::Evaluator` (`1 + 2 * 3`, `(1 + 2) * 3`, `10 / 4`, `2 * (3 + 4) - 5`) and prints
 7, 9, 2.5 and 9: the tokenizer, the postfix tokenizer and the evaluator, their `FlatMap` tables
 of operators and named functions (lambdas stored as function pointers), `Pair`, `StringView`,
 `Span`, `debug_float_cast` and the exceptions they declare, all converted from C++ and compiled
-by kovc. `convert.cmd` now converts Util with CommonUtil and Agui (461 files), links the subset
+by kppc. `convert.cmd` now converts Util with CommonUtil and Agui (461 files), links the subset
 the evaluator needs (CommonUtil, `Util/Container` without `ExtendedBitBuffer`, `Sort`,
 `MathExpressions`, `BitBuffer`, `ToStr`, the root `Typedefs`, `FloatCast`, `BitmapFormat`,
-`NoiseRegisterIndex`) with four stand-ins in `tests/stubs` (`Log.kov`: `logAndAbort`, which the
-converter now makes of `LOG_AND_ABORT` and `LOG_ENUM_AND_ABORT`; `UtilHelpers.kov`: the two map
+`NoiseRegisterIndex`) with four stand-ins in `tests/stubs` (`Log.kpp`: `logAndAbort`, which the
+converter now makes of `LOG_AND_ABORT` and `LOG_ENUM_AND_ABORT`; `UtilHelpers.kpp`: the two map
 helpers of `Util/Util.hpp`, whose whole header wants `Result`, SDL message boxes and regular
-expressions; `MathStubs.kov`: `Math::fabs`, since `Util/Math.hpp` brings the CPU intrinsics;
-`FloatCast.kov`: the failure handler that logs through the global context), and compares the
+expressions; `MathStubs.kpp`: `Math::fabs`, since `Util/Math.hpp` brings the CPU intrinsics;
+`FloatCast.kpp`: the failure handler that logs through the global context), and compares the
 output.
 
 Getting there took, in the compiler: class template argument deduction in expressions
@@ -509,7 +509,7 @@ Getting there took, in the compiler: class template argument deduction in expres
 instantiations, `Alias{}` of a scalar, `Map`/`Set` from brace lists, `Less<>` and `Name<>` taking
 every default, a conditional of a class and a converting branch having the class type, lambdas
 without captures as pointers to function (a thunk per lambda, also for pointer-to-function
-parameters and references to them), and the KOV_DEBUG_CALLS trace no longer crashing on
+parameters and references to them), and the KPP_DEBUG_CALLS trace no longer crashing on
 operators; in the converter: the function-macro table with text around `$1` (`toCStr`), the Log
 macros, default template arguments carried from forward declarations, a single file as an input.
 
@@ -524,7 +524,7 @@ running does. Spec suite: 156 pass, 2 pending.
 
 ## The whole converted set through the code generator (2026-10-26)
 
-Running `kovc --emit-llvm` over everything converted (CommonUtil, Agui, Util and the root
+Running `kppc --emit-llvm` over everything converted (CommonUtil, Agui, Util and the root
 headers: 488 files) is the next check after the smoke tests, since it exercises the generator
 on all the code that types. It first died three ways: `friend Description;` (a friend class
 named without the keyword) made an unnamed member that crashed the member walk; `operator<=>`
@@ -552,7 +552,7 @@ expressions 78.0% to 78.5%.
 1. Decide exceptions and RTTI; implement them (they shape what the converter emits).
 2. Library parity, driven by the converter on `libraries/CommonUtil` first (313 includes, its
    own unit tests), then `Agui`, then `Util`: the first real modules of the game compiled and
-   tested by kovc, with the resolver and codegen gaps fixed as they appear. (CommonUtil and
+   tested by kppc, with the resolver and codegen gaps fixed as they appear. (CommonUtil and
    Agui compile, link and run smoke tests as of 2026-10-25.)
 3. Statics, intrinsics, constexpr and the small language gaps in the order the converter reports
    them.

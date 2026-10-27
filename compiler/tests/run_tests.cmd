@@ -1,13 +1,14 @@
 @echo off
-rem Compiles every tests\run\*.kov with kovc, runs it, and compares stdout with the .expected file.
+rem Compiles every tests\run\*.kpp with kppc, runs it, and compares stdout with the .expected file.
 setlocal EnableDelayedExpansion
 cd /d "%~dp0.."
-set KOVC=build\kovc.exe
+set KPPC=build\kppc.exe
+if not exist build\tests mkdir build\tests
 set FAIL=0
 set PASS=0
-for %%f in (tests\run\*.kov) do (
+for %%f in (tests\run\*.kpp) do (
   set NAME=%%~nf
-  %KOVC% --quiet --exe build\tests\!NAME!.exe %%f > build\tests\!NAME!.compile.txt 2>&1
+  %KPPC% --quiet --exe build\tests\!NAME!.exe %%f > build\tests\!NAME!.compile.txt 2>&1
   if errorlevel 1 (
     echo FAIL !NAME!: compile
     type build\tests\!NAME!.compile.txt

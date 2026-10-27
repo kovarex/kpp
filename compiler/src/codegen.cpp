@@ -90,7 +90,7 @@ namespace
     uint32_t stringCount = 0;
     bool blockTerminated = false;
     bool debug = true;        // config::debug: asserts are compiled in
-    bool usesAssert = false;  // some assert was emitted: the module needs kov_assert_failed
+    bool usesAssert = false;  // some assert was emitted: the module needs kpp_assert_failed
     std::string currentBlock = "entry";
     FunctionDecl* currentFunction = nullptr;
     const Ty* currentReturn = nullptr;
@@ -135,7 +135,7 @@ namespace
     std::unordered_map<const Ty*, StructInfo> structs;
     std::unordered_map<Decl*, std::string> globals;
     std::unordered_map<Decl*, BitfieldInfo> bitfieldOf; // bit-field members of every laid-out class
-    bool dyncastEmitted = false; // the @kov.dyncast helper is in `decls`
+    bool dyncastEmitted = false; // the @kpp.dyncast helper is in `decls`
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     Span<uint32_t> pendingDesignators;                        // of the brace list constructInto is about to consume
     std::vector<std::pair<Decl*, int64_t>> constEnv;          // parameters bound while evalConst runs a constexpr call
@@ -194,7 +194,7 @@ namespace
     std::vector<Loop> loops;
     bool mallocDeclared = false;
 
-    // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kov_throw, one
+    // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kpp_throw, one
     // filter function per try statement matches the thrown type against the handlers, and the
     // destructors of the objects between a call and its handler run in cleanup pads.
     struct EHFrame
@@ -2492,7 +2492,7 @@ namespace
       if (global.isExternC(f))
         return "@" + sym(f->name.last().symbol);
       if (f->name.parts.size() == 1 && sym(f->name.parts[0].symbol) == "main" && !global.owningClass(f))
-        return "@kov.main"; // called by the generated @main, which reports uncaught exceptions
+        return "@kpp.main"; // called by the generated @main, which reports uncaught exceptions
       ArgsScope scope(*this, &args);
       std::string q;
       if (classTy && !classTy->args.empty())
@@ -2661,7 +2661,7 @@ namespace
     {
       if (f->builtin == BUILTIN_EnumFromStr)
       {
-        // The generated `E::fromStr(text)` of a Kov enum: the library's enumFromStr<E>(text),
+        // The generated `E::fromStr(text)` of a Kpp enum: the library's enumFromStr<E>(text),
         // which has the same signature (an Optional<E> result slot, the text).
         Decl* lib = global.enumFromStrDecl();
         if (!lib || lib->templateParams.size() != 1 || !f->parent || f->parent->kind != NodeKind::EnumDecl)
@@ -2729,7 +2729,7 @@ namespace
         return name;
       declaredNames[name] = true;
       {
-        static bool debugCalls = getenv("KOV_DEBUG_CALLS") != nullptr;
+        static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
         if (debugCalls)
           fprintf(stderr, "declare %s: def %s, def flags %x, def body %d, f flags %x, f body %d\n", name.c_str(), def == f ? "self" : "other", def->flags,
                   def->body != nullptr, f->flags, f->body != nullptr);
@@ -2758,7 +2758,7 @@ namespace
       return n;
     }
 
-    // The generated `const char* str() const` of a Kov enum: a switch over the enumerators.
+    // The generated `const char* str() const` of a Kpp enum: a switch over the enumerators.
     void emitEnumStr(FunctionDecl* f, const std::string& name)
     {
       emittingShared = true;
@@ -2796,11 +2796,11 @@ namespace
     }
 
     // Emits a call. thisArg/sret may be empty. For class returns the result is the sret address.
-    // `kov_atomic_add32(p, v)` and friends (stdlib/core/Thread.kov): atomic instructions, not calls.
+    // `kpp_atomic_add32(p, v)` and friends (stdlib/core/Thread.kpp): atomic instructions, not calls.
     std::optional<Value> atomicBuiltin(FunctionDecl* f, Span<Expr*> callArgs, Node* at)
     {
       std::string name = sym(f->name.last().symbol);
-      if (name.rfind("kov_atomic_", 0) != 0)
+      if (name.rfind("kpp_atomic_", 0) != 0)
         return std::nullopt;
       std::string op = name.substr(11);
       std::string width = op.size() >= 2 ? op.substr(op.size() - 2) : "";
@@ -2936,7 +2936,7 @@ namespace
         }
       }
       std::string sig = (s.variadic || !indirect.empty()) ? signatureText(s) + " " : s.returnType + " ";
-      bool mayThrow = !global.isExternC(f); // C functions do not throw Kov exceptions
+      bool mayThrow = !global.isExternC(f); // C functions do not throw Kpp exceptions
       if (s.returnType == "void")
       {
         emitCall("", sig + name + "(" + argText + ")", mayThrow);
@@ -3791,8 +3791,8 @@ namespace
       if (!dyncastEmitted)
       {
         dyncastEmitted = true;
-        decls += "$kov.dyncast = comdat any\n"
-                 "define linkonce_odr ptr @kov.dyncast(ptr %obj, ptr %target) comdat {\n"
+        decls += "$kpp.dyncast = comdat any\n"
+                 "define linkonce_odr ptr @kpp.dyncast(ptr %obj, ptr %target) comdat {\n"
                  "entry:\n  %isnull = icmp eq ptr %obj, null\n  br i1 %isnull, label %fail, label %start\n"
                  "start:\n  %vt = load ptr, ptr %obj\n  %d0 = load ptr, ptr %vt\n  br label %loop\n"
                  "loop:\n  %d = phi ptr [ %d0, %start ], [ %next, %step ]\n  %hit = icmp eq ptr %d, %target\n  br i1 %hit, label %ok, label %step\n"
@@ -3802,7 +3802,7 @@ namespace
                  "fail:\n  ret ptr null\n}\n";
       }
       std::string r = newTemp();
-      fn += "  " + r + " = call ptr @kov.dyncast(ptr " + o.text + ", ptr " + ti.typeInfoName + ")\n";
+      fn += "  " + r + " = call ptr @kpp.dyncast(ptr " + o.text + ", ptr " + ti.typeInfoName + ")\n";
       return Value{r, e->ty, false};
     }
 
@@ -3993,10 +3993,10 @@ namespace
       return prefix + decls + moduleDecls[k] + ctorsText(k) + "\n" + shared + declares + "\n" + bodies[k];
     }
 
-    // The default assert handler, unless the program defines `extern "C" kov_assert_failed`.
+    // The default assert handler, unless the program defines `extern "C" kpp_assert_failed`.
     void finishAssertRuntime()
     {
-      if (!usesAssert || declaredNames["@kov_assert_failed"])
+      if (!usesAssert || declaredNames["@kpp_assert_failed"])
         return;
       emittingShared = true;
       std::string format = cStringConstant("%s:%u:%u: assertion failed: %s\n");
@@ -4015,12 +4015,12 @@ namespace
         decls += "declare void @abort()\n";
         declaredNames["@abort"] = true;
       }
-      shared += "$kov_assert_failed = comdat any\n"
-                "define linkonce_odr void @kov_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {\nentry:\n"
+      shared += "$kpp_assert_failed = comdat any\n"
+                "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {\nentry:\n"
               "  %err = call ptr @__acrt_iob_func(i32 2)\n"
               "  %0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %file, i32 %line, i32 %column, ptr %expression)\n"
               "  call void @abort()\n  unreachable\n}\n";
-      declaredNames["@kov_assert_failed"] = true;
+      declaredNames["@kpp_assert_failed"] = true;
       emittingShared = false;
     }
 
@@ -4618,7 +4618,7 @@ namespace
       VariableDecl* def = variableDefinition(v);
       currentFile = def->file;
       emittingShared = false;
-      std::string fnName = "@\"kov.init." + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
+      std::string fnName = "@\"kpp.init." + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
       try
       {
         pushScope();
@@ -5306,7 +5306,7 @@ namespace
       return callIndirect(fnValue.text, ft, "", c->args, sret, c);
     }
 
-    // A call through a function pointer, with the same calling convention as a declared Kov
+    // A call through a function pointer, with the same calling convention as a declared Kpp
     // function: the object first for a member function (thisArg), the caller's result slot for a
     // class result, classes by pointer (a copy the callee owns), references as addresses.
     Value callIndirect(const std::string& fnText, const Ty* ft, const std::string& thisArg, Span<Expr*> callArgs, const std::string& sret, Node* c)
@@ -7075,7 +7075,7 @@ namespace
     void destroyObject(const Object& o)
     {
       if (o.exception)
-        fn += "  call void @kov_eh_end(ptr " + o.addr + ")" + bundle() + "\n";
+        fn += "  call void @kpp_eh_end(ptr " + o.addr + ")" + bundle() + "\n";
       else
         destroy(o.addr, o.ty, nullptr);
     }
@@ -7231,7 +7231,7 @@ namespace
       if (isClass(t))
       {
         StructInfo info = structFor(t, at); // copy: the base's descriptor may add structs
-        name = "@kov.ti." + info.name.substr(8);
+        name = "@kpp.ti." + info.name.substr(8);
         display = types.toString(t, &symbols);
         if (!info.bases.empty())
         {
@@ -7244,7 +7244,7 @@ namespace
       else
       {
         display = types.toString(t, &symbols);
-        name = "@\"kov.ti." + display + "\""; // one descriptor per scalar type, pointers by pointee
+        name = "@\"kpp.ti." + display + "\""; // one descriptor per scalar type, pointers by pointee
       }
       if (emittedShared[name])
         return name;
@@ -7263,7 +7263,7 @@ namespace
     {
       if (!needsDestruction(t, at))
         return "null";
-      std::string name = "@kov.dtor." + structFor(t, at).name.substr(8);
+      std::string name = "@kpp.dtor." + structFor(t, at).name.substr(8);
       if (emittedShared[name])
         return name;
       emittedShared[name] = true;
@@ -7304,7 +7304,7 @@ namespace
           unsupported(t, "`throw;` outside a catch handler");
         std::string slot = handler->exceptionSlot;
         destroyTemps();
-        emitCall("", "void @kov_eh_rethrow(ptr " + slot + ")");
+        emitCall("", "void @kpp_eh_rethrow(ptr " + slot + ")");
       }
       else
       {
@@ -7322,7 +7322,7 @@ namespace
           store(convert(rvalue(t->operand), ty, t), obj, ty, t);
         std::string ti = typeinfoFor(ty, t), dtor = destructorThunk(ty, t);
         destroyTemps();
-        emitCall("", "void @kov_throw(ptr " + obj + ", ptr " + ti + ", ptr " + dtor + ")");
+        emitCall("", "void @kpp_throw(ptr " + obj + ", ptr " + ti + ", ptr " + dtor + ")");
       }
       // No `unreachable` here, on purpose: the code after a throw stays, so that the optimizer never
       // proves a function noreturn. The SEH scope tables need an instruction after every throwing
@@ -7350,7 +7350,7 @@ namespace
         return;
       }
       // The filter function.
-      std::string filter = "@kov.filter." + std::to_string(filterCount++);
+      std::string filter = "@kpp.filter." + std::to_string(filterCount++);
       std::string ft = "define i32 " + filter + "(ptr %pointers, ptr %frame) {\nentry:\n"
                        "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n"
                        "  %tip = getelementptr inbounds i8, ptr %rec, i64 40\n  %ti = load ptr, ptr %tip\n"
@@ -7361,15 +7361,15 @@ namespace
         ft += "check" + n + ":\n";
         if (!t->handlers[i].param)
         {
-          ft += "  call void @kov_eh_push(ptr %rec, i32 " + n + ", i64 0)\n  ret i32 1\n";
+          ft += "  call void @kpp_eh_push(ptr %rec, i32 " + n + ", i64 0)\n  ret i32 1\n";
           break;
         }
         const Ty* pt = declType(t->handlers[i].param);
         if (!pt || !pt->isKnown())
           unsupported(t->handlers[i].param, "a catch parameter of unknown type");
-        ft += "  %off" + n + " = call i64 @kov_eh_offset(ptr %ti, ptr " + typeinfoFor(pt, t) + ")\n"
+        ft += "  %off" + n + " = call i64 @kpp_eh_offset(ptr %ti, ptr " + typeinfoFor(pt, t) + ")\n"
               "  %ok" + n + " = icmp sge i64 %off" + n + ", 0\n  br i1 %ok" + n + ", label %yes" + n + ", label %" + nextL + "\n"
-              "yes" + n + ":\n  call void @kov_eh_push(ptr %rec, i32 " + n + ", i64 %off" + n + ")\n  ret i32 1\n";
+              "yes" + n + ":\n  call void @kpp_eh_push(ptr %rec, i32 " + n + ", i64 %off" + n + ")\n  ret i32 1\n";
       }
       ft += "no:\n  ret i32 0\n}\n\n";
       addDefinition(filter, ft);
@@ -7384,7 +7384,7 @@ namespace
       std::string slot = "%v" + std::to_string(temp++);
       allocas += "  " + slot + " = alloca [5 x i64]\n"; // object, typeinfo, destructor, handler, adjusted object
       ehFrames.push_back({true, "", frame.parentFunclet, pad, slot, scopes.size()});
-      fn += "  call void @kov_eh_begin(ptr " + slot + ")" + bundle() + "\n";
+      fn += "  call void @kpp_eh_begin(ptr " + slot + ")" + bundle() + "\n";
       std::vector<std::string> handlerLabels;
       for (size_t i = 0; i < t->handlers.size(); ++i)
         handlerLabels.push_back(newLabel("catch.body"));
@@ -7450,7 +7450,7 @@ namespace
     // program's main and reports an exception nobody caught.
     void finishExceptionRuntime()
     {
-      std::string mainName = "@kov.main";
+      std::string mainName = "@kpp.main";
       auto declareOnce = [&](const char* name, const std::string& line)
       {
         if (declaredNames[name])
@@ -7469,24 +7469,24 @@ namespace
         emittingShared = true;
         std::string fmt1 = cStringConstant("unhandled exception of type %s"), fmt2 = cStringConstant(": %s"), fmt3 = cStringConstant("\n");
         emittingShared = false;
-        shared += sharedComdat("@kov.eh.stack") + "@kov.eh.stack = linkonce_odr thread_local global [160 x i64] zeroinitializer, comdat\n" +
-                  sharedComdat("@kov.eh.depth") + "@kov.eh.depth = linkonce_odr thread_local global i64 0, comdat\n";
-        shared += sharedComdat("@kov_throw") +
-                  "define linkonce_odr void @kov_throw(ptr %object, ptr %typeinfo, ptr %dtor) noinline comdat {\nentry:\n"
+        shared += sharedComdat("@kpp.eh.stack") + "@kpp.eh.stack = linkonce_odr thread_local global [160 x i64] zeroinitializer, comdat\n" +
+                  sharedComdat("@kpp.eh.depth") + "@kpp.eh.depth = linkonce_odr thread_local global i64 0, comdat\n";
+        shared += sharedComdat("@kpp_throw") +
+                  "define linkonce_odr void @kpp_throw(ptr %object, ptr %typeinfo, ptr %dtor) noinline comdat {\nentry:\n"
                   "  %args = alloca [3 x i64]\n  %a1 = getelementptr inbounds i64, ptr %args, i64 1\n  %a2 = getelementptr inbounds i64, ptr %args, i64 2\n"
                   "  store ptr %object, ptr %args\n  store ptr %typeinfo, ptr %a1\n  store ptr %dtor, ptr %a2\n"
                   "  call void @RaiseException(i32 -536870911, i32 1, i32 3, ptr %args)\n  ret void\n}\n";
-        shared += sharedComdat("@kov_eh_offset") +
-                  "define linkonce_odr i64 @kov_eh_offset(ptr %typeinfo, ptr %target) comdat {\nentry:\n  br label %loop\n"
+        shared += sharedComdat("@kpp_eh_offset") +
+                  "define linkonce_odr i64 @kpp_eh_offset(ptr %typeinfo, ptr %target) comdat {\nentry:\n  br label %loop\n"
                   "loop:\n  %ti = phi ptr [ %typeinfo, %entry ], [ %base, %next ]\n  %off = phi i64 [ 0, %entry ], [ %off1, %next ]\n"
                   "  %null = icmp eq ptr %ti, null\n  br i1 %null, label %no, label %check\n"
                   "check:\n  %same = icmp eq ptr %ti, %target\n  br i1 %same, label %yes, label %next\n"
                   "next:\n  %base = load ptr, ptr %ti\n  %op = getelementptr inbounds i8, ptr %ti, i64 16\n  %bo = load i64, ptr %op\n"
                   "  %off1 = add i64 %off, %bo\n  br label %loop\n"
                   "yes:\n  ret i64 %off\nno:\n  ret i64 -1\n}\n";
-        shared += sharedComdat("@kov_eh_push") +
-                  "define linkonce_odr void @kov_eh_push(ptr %record, i32 %handler, i64 %offset) comdat {\nentry:\n"
-                  "  %d = load i64, ptr @kov.eh.depth\n  %i = mul i64 %d, 5\n  %slot = getelementptr inbounds i64, ptr @kov.eh.stack, i64 %i\n"
+        shared += sharedComdat("@kpp_eh_push") +
+                  "define linkonce_odr void @kpp_eh_push(ptr %record, i32 %handler, i64 %offset) comdat {\nentry:\n"
+                  "  %d = load i64, ptr @kpp.eh.depth\n  %i = mul i64 %d, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
                   "  %info = getelementptr inbounds i8, ptr %record, i64 32\n  %obj = load i64, ptr %info\n"
                   "  %tip = getelementptr inbounds i8, ptr %record, i64 40\n  %ti = load i64, ptr %tip\n"
                   "  %dp = getelementptr inbounds i8, ptr %record, i64 48\n  %dtor = load i64, ptr %dp\n"
@@ -7494,40 +7494,40 @@ namespace
                   "  %s1 = getelementptr inbounds i64, ptr %slot, i64 1\n  %s2 = getelementptr inbounds i64, ptr %slot, i64 2\n"
                   "  %s3 = getelementptr inbounds i64, ptr %slot, i64 3\n  %s4 = getelementptr inbounds i64, ptr %slot, i64 4\n"
                   "  store i64 %obj, ptr %slot\n  store i64 %ti, ptr %s1\n  store i64 %dtor, ptr %s2\n  store i64 %h, ptr %s3\n  store i64 %adj, ptr %s4\n"
-                  "  %d1 = add i64 %d, 1\n  store i64 %d1, ptr @kov.eh.depth\n  ret void\n}\n";
-        shared += sharedComdat("@kov_eh_begin") +
-                  "define linkonce_odr void @kov_eh_begin(ptr %out) comdat {\nentry:\n"
-                  "  %d = load i64, ptr @kov.eh.depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr @kov.eh.depth\n"
-                  "  %i = mul i64 %d1, 5\n  %slot = getelementptr inbounds i64, ptr @kov.eh.stack, i64 %i\n"
+                  "  %d1 = add i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n  ret void\n}\n";
+        shared += sharedComdat("@kpp_eh_begin") +
+                  "define linkonce_odr void @kpp_eh_begin(ptr %out) comdat {\nentry:\n"
+                  "  %d = load i64, ptr @kpp.eh.depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n"
+                  "  %i = mul i64 %d1, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
                   "  call void @llvm.memcpy.p0.p0.i64(ptr %out, ptr %slot, i64 40, i1 false)\n  ret void\n}\n";
-        shared += sharedComdat("@kov_eh_end") +
-                  "define linkonce_odr void @kov_eh_end(ptr %out) comdat {\nentry:\n"
+        shared += sharedComdat("@kpp_eh_end") +
+                  "define linkonce_odr void @kpp_eh_end(ptr %out) comdat {\nentry:\n"
                   "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %done, label %live\n"
                   "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
                   "  %nodtor = icmp eq ptr %dtor, null\n  br i1 %nodtor, label %release, label %destroy\n"
                   "destroy:\n  call void %dtor(ptr %obj)\n  br label %release\n"
                   "release:\n  call void @free(ptr %obj)\n  store ptr null, ptr %out\n  br label %done\n"
                   "done:\n  ret void\n}\n";
-        shared += sharedComdat("@kov_eh_rethrow") +
-                  "define linkonce_odr void @kov_eh_rethrow(ptr %out) noinline comdat {\nentry:\n"
+        shared += sharedComdat("@kpp_eh_rethrow") +
+                  "define linkonce_odr void @kpp_eh_rethrow(ptr %out) noinline comdat {\nentry:\n"
                   "  %obj = load ptr, ptr %out\n  %tp = getelementptr inbounds i8, ptr %out, i64 8\n  %ti = load ptr, ptr %tp\n"
                   "  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n  store ptr null, ptr %out\n"
-                  "  call void @kov_throw(ptr %obj, ptr %ti, ptr %dtor)\n  ret void\n}\n";
-        shared += sharedComdat("@kov.eh.filter.any") +
-                  "define linkonce_odr i32 @kov.eh.filter.any(ptr %pointers, ptr %frame) comdat {\nentry:\n"
+                  "  call void @kpp_throw(ptr %obj, ptr %ti, ptr %dtor)\n  ret void\n}\n";
+        shared += sharedComdat("@kpp.eh.filter.any") +
+                  "define linkonce_odr i32 @kpp.eh.filter.any(ptr %pointers, ptr %frame) comdat {\nentry:\n"
                   "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n  %is = icmp eq i32 %code, -536870911\n"
-                  "  br i1 %is, label %yes, label %no\nyes:\n  call void @kov_eh_push(ptr %rec, i32 0, i64 0)\n  ret i32 1\nno:\n  ret i32 0\n}\n";
+                  "  br i1 %is, label %yes, label %no\nyes:\n  call void @kpp_eh_push(ptr %rec, i32 0, i64 0)\n  ret i32 1\nno:\n  ret i32 0\n}\n";
         std::string message;
         if (!exceptionTypeinfo.empty())
-          message = "  %off = call i64 @kov_eh_offset(ptr %typeinfo, ptr " + exceptionTypeinfo + ")\n  %isExc = icmp sge i64 %off, 0\n"
+          message = "  %off = call i64 @kpp_eh_offset(ptr %typeinfo, ptr " + exceptionTypeinfo + ")\n  %isExc = icmp sge i64 %off, 0\n"
                     "  br i1 %isExc, label %msg, label %end\n"
                     "msg:\n  %ep = getelementptr inbounds i8, ptr %object, i64 %off\n  %data = load ptr, ptr %ep\n"
                     "  %nodata = icmp eq ptr %data, null\n  br i1 %nodata, label %end, label %print\n"
                     "print:\n  %r2 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt2 + ", ptr %data)\n  br label %end\n";
         else
           message = "  br label %end\n";
-        shared += sharedComdat("@kov_eh_unhandled") +
-                  "define linkonce_odr void @kov_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {\nentry:\n"
+        shared += sharedComdat("@kpp_eh_unhandled") +
+                  "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {\nentry:\n"
                   "  %err = call ptr @__acrt_iob_func(i32 2)\n  %np = getelementptr inbounds i8, ptr %typeinfo, i64 8\n  %name = load ptr, ptr %np\n"
                   "  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
@@ -7554,10 +7554,10 @@ namespace
         text += "  %out = alloca [5 x i64]\n  %r = invoke " + call + " to label %done unwind label %dispatch\n"
                 "done:\n  ret i32 %r\n"
                 "dispatch:\n  %cs = catchswitch within none [label %handler] unwind to caller\n"
-                "handler:\n  %pad = catchpad within %cs [ptr @kov.eh.filter.any]\n"
-                "  call void @kov_eh_begin(ptr %out) [ \"funclet\"(token %pad) ]\n"
+                "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.any]\n"
+                "  call void @kpp_eh_begin(ptr %out) [ \"funclet\"(token %pad) ]\n"
                 "  %obj = load ptr, ptr %out\n  %tp = getelementptr inbounds i8, ptr %out, i64 8\n  %ti = load ptr, ptr %tp\n"
-                "  call void @kov_eh_unhandled(ptr %obj, ptr %ti) [ \"funclet\"(token %pad) ]\n"
+                "  call void @kpp_eh_unhandled(ptr %obj, ptr %ti) [ \"funclet\"(token %pad) ]\n"
                 "  catchret from %pad to label %failed\n"
                 "failed:\n  ret i32 3\n}\n\n";
       if (moduleCount <= 1)
@@ -7815,7 +7815,7 @@ namespace
           fn += "  br i1 " + cond.text + ", label %" + okL + ", label %" + failL + "\n";
           startBlock(failL);
           auto [line, column] = lineColumnOf(a->token);
-          emitCall("", "void @kov_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+          emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
                            std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ")", false);
           fn += "  unreachable\n";
           usesAssert = true;
@@ -8095,7 +8095,7 @@ namespace
         fn += "  br i1 " + same + ", label %" + okL + ", label %" + failL + "\n";
         startBlock(failL);
         auto [line, column] = lineColumnOf(at->token);
-        emitCall("", "void @kov_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+        emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
                          std::to_string(column) + ", ptr " + cStringConstant("the typed union holds another alternative") + ")", false);
         fn += "  unreachable\n";
         usesAssert = true;
@@ -8507,7 +8507,7 @@ namespace
       if (!sw->cond || sw->cond->kind == NodeKind::DeclStmt)
         unsupported(sw, "a switch on a declaration");
       Value cond = rvalue(static_cast<Expr*>(sw->cond));
-      const Ty* switchedTy = types.stripRef(static_cast<Expr*>(sw->cond)->ty); // the written type: a Kov enum's switch names every value
+      const Ty* switchedTy = types.stripRef(static_cast<Expr*>(sw->cond)->ty); // the written type: a Kpp enum's switch names every value
       if (ClassDecl* c = typedUnionOf(cond.ty, sw))
       {
         // `switch (p)` on a typed union: its tag.
@@ -8580,9 +8580,9 @@ namespace
       {
         Decl* def = global.definitionOf(condTy->decl);
         auto* e = def && def->kind == NodeKind::EnumDecl ? static_cast<EnumDecl*>(def) : nullptr;
-        if (e && e->isKov)
+        if (e && e->isKpp)
         {
-          // A Kov enum: every value needs a case, and a value outside them aborts.
+          // A Kpp enum: every value needs a case, and a value outside them aborts.
           std::string missing;
           for (Decl* d : e->enumerators)
             if (d->kind == NodeKind::EnumeratorDecl && !covered.count(enumeratorValue(static_cast<EnumeratorDecl*>(d))))
@@ -8598,7 +8598,7 @@ namespace
       {
         startBlock(invalidL);
         auto [line, column] = lineColumnOf(sw->token);
-        emitCall("", "void @kov_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+        emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
                          std::to_string(column) + ", ptr " + cStringConstant("invalid value in switch on " + global.qualifiedName(condTy->decl)) + ")", false);
         fn += "  unreachable\n";
         usesAssert = true;
@@ -8777,7 +8777,7 @@ namespace
           popScope();
           if (currentReturn->kind == TyKind::Void || isClass(currentReturn))
             fn += "  ret void\n";
-          else if (name == "@kov.main")
+          else if (name == "@kpp.main")
             fn += "  ret i32 0\n";
           else // falling off the end (after a throw, usually): a zero rather than `unreachable`, see emitThrow
             fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, f) + " zeroinitializer") + "\n";
@@ -8892,7 +8892,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
   // gigabytes of text just to discard it wastes memory and time.
   if (!result.errors.empty())
     return result;
-  std::string prefix = "; Kov v0: generated by kovc\n"
+  std::string prefix = "; Kpp v0: generated by kppc\n"
                        "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\n"
                        "target triple = \"x86_64-pc-windows-msvc\"\n\n";
   if (e.moduleCount <= 1)

@@ -12,14 +12,14 @@
 
 static constexpr std::string_view keywords[] = {
 #define X(name) #name,
-  KOV_KEYWORDS(X)
+  KPP_KEYWORDS(X)
 #undef X
 };
 static_assert(std::size(keywords) == size_t(Kw::Count));
 
 static constexpr std::string_view punctuators[] = {
 #define X(name, spelling) spelling,
-  KOV_PUNCTUATORS(X)
+  KPP_PUNCTUATORS(X)
 #undef X
 };
 static_assert(std::size(punctuators) == size_t(P::Count));

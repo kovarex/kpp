@@ -139,7 +139,7 @@ const Ty* TypeTable::pack(Span<const Ty*> elements)
 
 // Type constructors distribute over packs: `const Args&...` with Args = (int, String) is the
 // pack (const int&, const String&).
-#define KOV_DISTRIBUTE(expr) \
+#define KPP_DISTRIBUTE(expr) \
   if (inner && inner->kind == TyKind::Pack) \
   { \
     std::vector<const Ty*> mapped; \
@@ -153,7 +153,7 @@ const Ty* TypeTable::pack(Span<const Ty*> elements)
 
 const Ty* TypeTable::pointer(const Ty* inner)
 {
-  KOV_DISTRIBUTE(pointer(inner))
+  KPP_DISTRIBUTE(pointer(inner))
   Ty t{TyKind::Pointer};
   t.inner = inner;
   return intern(t);
@@ -161,7 +161,7 @@ const Ty* TypeTable::pointer(const Ty* inner)
 
 const Ty* TypeTable::lref(const Ty* inner)
 {
-  KOV_DISTRIBUTE(lref(inner))
+  KPP_DISTRIBUTE(lref(inner))
   if (inner->isReference())
     return inner->kind == TyKind::LRef ? inner : lref(inner->inner); // reference collapsing
   Ty t{TyKind::LRef};
@@ -171,7 +171,7 @@ const Ty* TypeTable::lref(const Ty* inner)
 
 const Ty* TypeTable::rref(const Ty* inner)
 {
-  KOV_DISTRIBUTE(rref(inner))
+  KPP_DISTRIBUTE(rref(inner))
   if (inner->isReference())
     return inner;
   Ty t{TyKind::RRef};

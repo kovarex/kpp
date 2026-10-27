@@ -1,0 +1,354 @@
+// Kpp standard library: algorithms over ranges given as pointer pairs, which is what the
+// containers' begin()/end() return.
+
+template<typename T>
+long long distance(const T* first, const T* last) { return last - first; }
+
+template<typename T, typename V>
+T* find(T* first, T* last, const V& value)
+{
+  for (; first != last; ++first)
+    if (*first == value)
+      return first;
+  return last;
+}
+
+template<typename T, typename F>
+T* findIf(T* first, T* last, F predicate)
+{
+  for (; first != last; ++first)
+    if (predicate(*first))
+      return first;
+  return last;
+}
+
+template<typename T, typename V>
+long long count(const T* first, const T* last, const V& value)
+{
+  long long n = 0;
+  for (; first != last; ++first)
+    if (*first == value)
+      ++n;
+  return n;
+}
+
+template<typename T, typename F>
+long long countIf(const T* first, const T* last, F predicate)
+{
+  long long n = 0;
+  for (; first != last; ++first)
+    if (predicate(*first))
+      ++n;
+  return n;
+}
+
+template<typename T, typename F>
+bool allOf(const T* first, const T* last, F predicate)
+{
+  for (; first != last; ++first)
+    if (!predicate(*first))
+      return false;
+  return true;
+}
+
+template<typename T, typename F>
+bool anyOf(const T* first, const T* last, F predicate)
+{
+  for (; first != last; ++first)
+    if (predicate(*first))
+      return true;
+  return false;
+}
+
+template<typename T, typename F>
+bool noneOf(const T* first, const T* last, F predicate) { return !anyOf(first, last, predicate); }
+
+// Writes f(x) for every x of [first, last) to out; returns one past the last written.
+template<typename T, typename U, typename F>
+U* transform(const T* first, const T* last, U* out, F f)
+{
+  for (; first != last; ++first, ++out)
+    *out = f(*first);
+  return out;
+}
+
+template<typename T, typename V>
+void fill(T* first, T* last, const V& value)
+{
+  for (; first != last; ++first)
+    *first = value;
+}
+
+template<typename T>
+void reverse(T* first, T* last)
+{
+  while (first < last)
+  {
+    --last;
+    swap(*first, *last);
+    ++first;
+  }
+}
+
+template<typename T>
+T* maxElement(T* first, T* last)
+{
+  T* best = first;
+  for (; first != last; ++first)
+    if (*best < *first)
+      best = first;
+  return best;
+}
+
+template<typename T>
+T* minElement(T* first, T* last)
+{
+  T* best = first;
+  for (; first != last; ++first)
+    if (*first < *best)
+      best = first;
+  return best;
+}
+
+// Moves the elements equal to value to the end; returns the new end of the kept ones.
+template<typename T, typename V>
+T* remove(T* first, T* last, const V& value)
+{
+  T* out = first;
+  for (; first != last; ++first)
+    if (!(*first == value))
+    {
+      if (out != first)
+        *out = move(*first);
+      ++out;
+    }
+  return out;
+}
+
+// The largest and the smallest of a brace list: `max({a, b, c})`.
+template<typename T>
+T max(InitializerList<T> values)
+{
+  T best = values[0];
+  for (int i = 1; i < values.size(); ++i)
+    if (best < values[i])
+      best = values[i];
+  return best;
+}
+template<typename T>
+T min(InitializerList<T> values)
+{
+  T best = values[0];
+  for (int i = 1; i < values.size(); ++i)
+    if (values[i] < best)
+      best = values[i];
+  return best;
+}
+
+// Moves the elements that satisfy predicate to the end; returns the new end of the kept ones.
+template<typename T, typename F>
+T* removeIf(T* first, T* last, F predicate)
+{
+  T* out = first;
+  for (; first != last; ++first)
+    if (!predicate(*first))
+    {
+      if (out != first)
+        *out = move(*first);
+      ++out;
+    }
+  return out;
+}
+
+template<typename T, typename V>
+T* lowerBound(T* first, T* last, const V& value)
+{
+  while (first < last)
+  {
+    T* middle = first + (last - first) / 2;
+    if (*middle < value)
+      first = middle + 1;
+    else
+      last = middle;
+  }
+  return first;
+}
+template<typename T, typename V, typename Less>
+T* lowerBound(T* first, T* last, const V& value, Less less)
+{
+  while (first < last)
+  {
+    T* middle = first + (last - first) / 2;
+    if (less(*middle, value))
+      first = middle + 1;
+    else
+      last = middle;
+  }
+  return first;
+}
+
+template<typename T, typename V>
+T* upperBound(T* first, T* last, const V& value)
+{
+  while (first < last)
+  {
+    T* middle = first + (last - first) / 2;
+    if (value < *middle)
+      last = middle;
+    else
+      first = middle + 1;
+  }
+  return first;
+}
+
+// Sorts [first, last) by operator< (insertion sort below 16 elements, quicksort above).
+template<typename T>
+void sort(T* first, T* last)
+{
+  long long n = last - first;
+  if (n < 16)
+  {
+    for (long long i = 1; i < n; ++i)
+    {
+      T value = move(first[i]);
+      long long j = i;
+      while (j > 0 && value < first[j - 1])
+      {
+        first[j] = move(first[j - 1]);
+        --j;
+      }
+      first[j] = move(value);
+    }
+    return;
+  }
+  T pivot = first[n / 2];
+  T* left = first;
+  T* right = last - 1;
+  while (left <= right)
+  {
+    while (*left < pivot)
+      ++left;
+    while (pivot < *right)
+      --right;
+    if (left <= right)
+    {
+      swap(*left, *right);
+      ++left;
+      --right;
+    }
+  }
+  sort(first, right + 1);
+  sort(left, last);
+}
+
+// Sorts by a less-than predicate.
+template<typename T, typename F>
+void sort(T* first, T* last, F less)
+{
+  long long n = last - first;
+  for (long long i = 1; i < n; ++i)
+  {
+    T value = move(first[i]);
+    long long j = i;
+    while (j > 0 && less(value, first[j - 1]))
+    {
+      first[j] = move(first[j - 1]);
+      --j;
+    }
+    first[j] = move(value);
+  }
+}
+
+// A view of a contiguous range.
+template<typename T>
+struct Span
+{
+  T* items = nullptr;
+  int length = 0;
+
+  using iterator = T*;
+  using value_type = T;
+
+  Span() {}
+  Span(T* items, int length) : items(items), length(length) {}
+  implicit Span(Vector<T>& values) : items(values.items), length(values.length) {}
+
+  int size() const { return this->length; }
+  bool empty() const { return this->length == 0; }
+  T* data() const { return this->items; }
+  T& operator[](int index) const { return this->items[index]; }
+  T* begin() const { return this->items; }
+  T* end() const { return this->items + this->length; }
+  T& front() const { return this->items[0]; }
+  T& back() const { return this->items[this->length - 1]; }
+  Span<T> subspan(int start, int count) const { return Span<T>(this->items + start, count); }
+};
+
+// Replaces every element equal to oldValue in [first, last) with newValue.
+template<typename T, typename V>
+void replace(T* first, T* last, const V& oldValue, const V& newValue)
+{
+  for (T* it = first; it != last; ++it)
+    if (*it == oldValue)
+      *it = newValue;
+}
+
+// Moves a pointer iterator n elements forward (backward for a negative n).
+template<typename T>
+void advance(T*& it, int n) { it += n; }
+
+// Walks a pointer range backwards: rbegin() of a vector is its end, and *it is the element before.
+template<typename T>
+struct ReverseIterator
+{
+  T* position = nullptr; // one past the element *this yields
+
+  ReverseIterator() {}
+  explicit ReverseIterator(T* position) : position(position) {}
+  template<typename U>
+  implicit ReverseIterator(ReverseIterator<U> other) : position(other.position) {} // const_reverse_iterator from reverse_iterator
+
+  T& operator*() const { return *(this->position - 1); }
+  T* operator->() const { return this->position - 1; }
+  T* base() const { return this->position; }
+  ReverseIterator<T>& operator++()
+  {
+    --this->position;
+    return *this;
+  }
+  ReverseIterator<T>& operator--()
+  {
+    ++this->position;
+    return *this;
+  }
+  ReverseIterator<T> operator+(int n) const { return ReverseIterator<T>(this->position - n); }
+  ReverseIterator<T> operator-(int n) const { return ReverseIterator<T>(this->position + n); }
+  int operator-(ReverseIterator<T> other) const { return int(other.position - this->position); }
+  bool operator==(ReverseIterator<T> other) const { return this->position == other.position; }
+  bool operator!=(ReverseIterator<T> other) const { return this->position != other.position; }
+};
+
+// Comparator objects (std::less, std::greater): `Less<T>` compares two T with <, the transparent
+// `Less<>` compares any two operands, so `FlatMap<K, V, Less<>>` can look a String up by a StringView.
+template<typename T = void>
+struct Less
+{
+  bool operator()(const T& a, const T& b) const { return a < b; }
+};
+template<>
+struct Less<void>
+{
+  template<typename A, typename B>
+  bool operator()(const A& a, const B& b) const { return a < b; }
+};
+template<typename T = void>
+struct Greater
+{
+  bool operator()(const T& a, const T& b) const { return b < a; }
+};
+template<>
+struct Greater<void>
+{
+  template<typename A, typename B>
+  bool operator()(const A& a, const B& b) const { return b < a; }
+};

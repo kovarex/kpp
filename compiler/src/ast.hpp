@@ -1,5 +1,5 @@
 #pragma once
-// AST for the Kov subset (tolerant of C++ so the Factorio corpus can be used as a benchmark).
+// AST for the Kpp subset (tolerant of C++ so the Factorio corpus can be used as a benchmark).
 // Nodes live in a per-file arena and are never freed individually.
 #include "lexer.hpp"
 #include <atomic>
@@ -79,7 +79,7 @@ struct Span
   T& operator[](size_t i) const { return data[i]; }
 };
 
-#define KOV_NODE_KINDS(X) \
+#define KPP_NODE_KINDS(X) \
   /* types */ \
   X(NamedType) X(PointerType) X(LRefType) X(RRefType) X(ConstType) X(ArrayType) X(FunctionType) \
   X(DecltypeType) X(AutoType) X(BuiltinType) X(MemberPointerType) X(PackType) \
@@ -100,7 +100,7 @@ struct Span
 enum class NodeKind : uint8_t
 {
 #define X(name) name,
-  KOV_NODE_KINDS(X)
+  KPP_NODE_KINDS(X)
 #undef X
 };
 const char* nodeKindName(NodeKind kind);
@@ -209,7 +209,7 @@ struct ClassDecl : Decl
   // `union enum` (design.md 8.5): a tag and one live alternative. The parser desugars it to the
   // members below; the compiler adds the tag-aware operations.
   bool isTypedUnion = false;
-  Decl* tagEnum = nullptr;        // the nested Kov enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
+  Decl* tagEnum = nullptr;        // the nested Kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
   Decl* tagField = nullptr;       // the `tag` data member
   Span<Decl*> alternatives;       // the storage member of each alternative, in tag order (inside an anonymous union)
 };
@@ -221,8 +221,8 @@ struct EnumDecl : Decl
   bool isDefinition = false;
   Type* underlying = nullptr;
   Span<Decl*> enumerators;
-  Span<Decl*> members; // Kov: methods inside enums.
-  bool isKov = false;  // Kov enum (values in their own brace block): count, values, str(), exhaustive switch.
+  Span<Decl*> members; // Kpp: methods inside enums.
+  bool isKpp = false;  // Kpp enum (values in their own brace block): count, values, str(), exhaustive switch.
 };
 struct ParamDecl : Decl { Type* type; uint32_t name = UINT32_MAX; Expr* defaultValue = nullptr; bool isPack = false; };
 struct FunctionDecl : Decl
@@ -253,7 +253,7 @@ struct UsingNameDecl : Decl { QualifiedName name; bool isEnum = false; };
 struct StaticAssertDecl : Decl { Expr* cond; };
 struct MacroDecl : Decl { uint32_t name; uint32_t endToken; };
 struct ErrorDecl : Decl { uint32_t endToken; };
-struct EmptyDecl : Decl { bool isDeductionGuide = false; }; // isDeductionGuide: `template<...> Name(args) -> Name<...>;`, skipped (Kov deduces from constructors)
+struct EmptyDecl : Decl { bool isDeductionGuide = false; }; // isDeductionGuide: `template<...> Name(args) -> Name<...>;`, skipped (Kpp deduces from constructors)
 struct AsmDecl : Decl {};
 struct FriendDecl : Decl { Type* type; Decl* decl; };
 struct ImportDecl : Decl { uint32_t pathToken; }; // extern "C" import "header.h"; (the string token)
