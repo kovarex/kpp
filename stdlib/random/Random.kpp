@@ -1,0 +1,94 @@
+// Random number generation: a simple engine and uniform distribution, enough for what
+// std::default_random_engine, std::random_device and std::uniform_int_distribution convert to.
+// The engine is a 64-bit xoshiro256**, fast and good enough for games and simulations.
+
+extern "C" int QueryPerformanceCounter(int64_t* count);
+
+struct RandomDevice
+{
+  unsigned long long operator()()
+  {
+    int64_t counter = 0;
+    QueryPerformanceCounter(&counter);
+    unsigned long long x = (unsigned long long)counter;
+    x ^= x >> 30;
+    x *= 0xbf58476d1ce4e5b9ull;
+    x ^= x >> 27;
+    x *= 0x94d049bb133111ebull;
+    x ^= x >> 31;
+    return x;
+  }
+};
+
+struct DefaultRandomEngine
+{
+  unsigned long long state[4];
+
+  DefaultRandomEngine()
+  {
+    RandomDevice rd;
+    this->state[0] = rd();
+    this->state[1] = rd();
+    this->state[2] = rd();
+    this->state[3] = rd();
+  }
+
+  explicit DefaultRandomEngine(unsigned long long seed)
+  {
+    this->state[0] = seed;
+    this->state[1] = seed * 6364136223846793005ull + 1;
+    this->state[2] = this->state[1] * 6364136223846793005ull + 1;
+    this->state[3] = this->state[2] * 6364136223846793005ull + 1;
+  }
+
+  void seed(unsigned long long s)
+  {
+    this->state[0] = s;
+    this->state[1] = s * 6364136223846793005ull + 1;
+    this->state[2] = this->state[1] * 6364136223846793005ull + 1;
+    this->state[3] = this->state[2] * 6364136223846793005ull + 1;
+  }
+
+  unsigned long long operator()()
+  {
+    unsigned long long result = this->state[1] * 5;
+    result = (result << 7 | result >> 57) * 9;
+    unsigned long long t = this->state[1] << 17;
+    this->state[2] ^= this->state[0];
+    this->state[3] ^= this->state[1];
+    this->state[1] ^= this->state[2];
+    this->state[0] ^= this->state[3];
+    this->state[2] ^= t;
+    this->state[3] = (this->state[3] << 45) | (this->state[3] >> 19);
+    return result;
+  }
+
+  static unsigned long long min() { return 0; }
+  static unsigned long long max() { return ~0ull; }
+  void discard(unsigned long long count)
+  {
+    for (unsigned long long i = 0; i < count; ++i)
+      (*this)();
+  }
+};
+
+template<typename IntType = int>
+struct UniformIntDistribution
+{
+  IntType low;
+  IntType high;
+
+  UniformIntDistribution() : low(0), high(0) {}
+  UniformIntDistribution(IntType low, IntType high) : low(low), high(high) {}
+
+  template<typename Engine>
+  IntType operator()(Engine& engine)
+  {
+    unsigned long long range = (unsigned long long)(this->high - this->low) + 1;
+    unsigned long long raw = engine();
+    return this->low + (IntType)(raw % range);
+  }
+
+  IntType a() const { return this->low; }
+  IntType b() const { return this->high; }
+};

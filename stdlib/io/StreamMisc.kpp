@@ -1,0 +1,31 @@
+// Miscellaneous stream types: IstreambufIterator and StreamSize, rarely used but mapped from
+// std::istreambuf_iterator and std::streamsize.
+
+using StreamSize = long long;
+
+struct IstreambufIterator
+{
+  InFileStream* stream = nullptr;
+  int current = -2;
+
+  IstreambufIterator() : current(-1) {}
+  explicit IstreambufIterator(InFileStream& s) : stream(&s)
+  {
+    this->current = s.get();
+  }
+
+  char operator*() const { return (char)this->current; }
+  IstreambufIterator& operator++()
+  {
+    if (this->stream)
+      this->current = this->stream->get();
+    return *this;
+  }
+  bool operator==(const IstreambufIterator& other) const
+  {
+    bool thisEnd = this->current == -1;
+    bool otherEnd = other.current == -1;
+    return thisEnd == otherEnd;
+  }
+  bool operator!=(const IstreambufIterator& other) const { return !(*this == other); }
+};

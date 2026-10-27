@@ -1,0 +1,26 @@
+// Extended tuple helpers: forwardAsTuple and tupleSize, beyond what Utility.kpp's Tuple provides.
+
+template<typename A>
+Tuple<A&> forwardAsTuple(A& a) { Tuple<A&> t; t.first = a; return t; }
+
+template<typename A, typename B>
+Tuple<A&, B&> forwardAsTuple(A& a, B& b) { Tuple<A&, B&> t; t.first = a; t.second = b; return t; }
+
+template<typename A, typename B, typename C>
+Tuple<A&, B&, C&> forwardAsTuple(A& a, B& b, C& c) { Tuple<A&, B&, C&> t; t.first = a; t.second = b; t.third = c; return t; }
+
+// tupleSize: the number of elements.
+template<typename T>
+constexpr int tupleSize = 0;
+
+template<typename A, typename B, typename C, typename D>
+constexpr int tupleSize<Tuple<A, B, C, D>> = 4;
+
+template<typename A, typename B, typename C>
+constexpr int tupleSize<Tuple<A, B, C, Nothing>> = 3;
+
+template<typename A, typename B>
+constexpr int tupleSize<Tuple<A, B, Nothing, Nothing>> = 2;
+
+template<typename A>
+constexpr int tupleSize<Tuple<A, Nothing, Nothing, Nothing>> = 1;

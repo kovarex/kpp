@@ -1,0 +1,95 @@
+// Type traits: compile-time type predicates and transformations. These are what std::is_same_v,
+// std::enable_if_t, std::conditional_t etc. convert to. Many resolve to compiler builtins in a
+// real implementation; here they are the simplest thing that compiles.
+
+template<bool B, typename T = void>
+struct EnableIf {};
+template<typename T>
+struct EnableIf<true, T> { using Type = T; };
+
+template<bool B, typename T, typename F>
+struct Conditional { using Type = T; };
+template<typename T, typename F>
+struct Conditional<false, T, F> { using Type = F; };
+
+template<typename T, typename U>
+struct IsSame : FalseType {};
+template<typename T>
+struct IsSame<T, T> : TrueType {};
+
+template<typename T>
+struct IsConst : FalseType {};
+template<typename T>
+struct IsConst<const T> : TrueType {};
+
+template<typename T>
+struct RemoveCv { using Type = T; };
+template<typename T>
+struct RemoveCv<const T> { using Type = T; };
+template<typename T>
+struct RemoveCv<volatile T> { using Type = T; };
+template<typename T>
+struct RemoveCv<const volatile T> { using Type = T; };
+
+template<typename T>
+using AddConst = const T;
+
+template<typename T>
+using AddLvalueReference = T&;
+
+template<typename T>
+struct MakeUnsignedHelper {};
+template<> struct MakeUnsignedHelper<int8_t> { using Type = uint8_t; };
+template<> struct MakeUnsignedHelper<int16_t> { using Type = uint16_t; };
+template<> struct MakeUnsignedHelper<int> { using Type = unsigned int; };
+template<> struct MakeUnsignedHelper<long long> { using Type = unsigned long long; };
+template<> struct MakeUnsignedHelper<uint8_t> { using Type = uint8_t; };
+template<> struct MakeUnsignedHelper<uint16_t> { using Type = uint16_t; };
+template<> struct MakeUnsignedHelper<unsigned int> { using Type = unsigned int; };
+template<> struct MakeUnsignedHelper<unsigned long long> { using Type = unsigned long long; };
+
+template<typename T>
+using MakeUnsigned = typename MakeUnsignedHelper<T>::Type;
+
+// void_t: always void, used in SFINAE detection patterns.
+template<typename...>
+using VoidT = void;
+
+template<bool B>
+using BoolConstant = typename Conditional<B, TrueType, FalseType>::Type;
+
+template<typename T, T V>
+struct IntegralConstant
+{
+  static constexpr T value = V;
+  constexpr operator T() const { return V; }
+};
+
+// Type predicates: these would be compiler intrinsics in a full implementation. For now they
+// are stubs that return false; the converter maps them from C++ where they were intrinsics too.
+template<typename T> constexpr bool isAbstract = false;
+template<typename T> constexpr bool isFinal = false;
+template<typename T> constexpr bool isPolymorphic = false;
+template<typename T> constexpr bool isClass = true;
+template<typename T> constexpr bool isMoveAssignable = true;
+template<typename T> constexpr bool isMoveConstructible = true;
+template<typename T> constexpr bool isNothrowMoveAssignable = true;
+template<typename T> constexpr bool isNothrowMoveConstructible = true;
+template<typename T> constexpr bool isTriviallyMoveAssignable = false;
+template<typename T> constexpr bool isTriviallyMoveConstructible = false;
+template<typename T, typename... Args> constexpr bool isInvocable = true;
+template<typename R, typename T, typename... Args> constexpr bool isInvocableR = true;
+
+template<typename T>
+struct IsMemberFunctionPointer : FalseType {};
+template<typename T>
+struct IsMemberObjectPointer : FalseType {};
+
+template<typename T> constexpr size_t alignmentOf = alignof(T);
+
+// Enable shared_from_this: a base class that lets an object retrieve a SharedPtr to itself.
+// Stubbed for now: the SharedPtr implementation would need to detect this base.
+template<typename T>
+struct EnableSharedFromThis
+{
+};

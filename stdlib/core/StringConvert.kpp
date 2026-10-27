@@ -1,0 +1,32 @@
+// String-to-number conversions: the Kpp equivalents of std::stoi, std::stod, etc.
+// These call through to the C runtime's strto* family.
+
+int stoi(const String& str, int base = 10)
+{
+  return (int)strtol(str.c_str(), nullptr, base);
+}
+
+long long stoll(const String& str, int base = 10)
+{
+  return strtoll(str.c_str(), nullptr, base);
+}
+
+unsigned long stoul(const String& str, int base = 10)
+{
+  return strtoul(str.c_str(), nullptr, base);
+}
+
+unsigned long long stoull(const String& str, int base = 10)
+{
+  return strtoull(str.c_str(), nullptr, base);
+}
+
+float stof(const String& str)
+{
+  return strtof(str.c_str(), nullptr);
+}
+
+double stod(const String& str)
+{
+  return strtod(str.c_str(), nullptr);
+}

@@ -1,0 +1,22 @@
+// toWString: number to wide string (what std::to_wstring converts to).
+
+WString toWString(long long value)
+{
+  String narrow = toString(value);
+  WString result;
+  for (int i = 0; i < narrow.size(); ++i)
+    result.push_back((wchar_t)narrow[i]);
+  return result;
+}
+
+WString toWString(int value) { return toWString((long long)value); }
+WString toWString(unsigned int value) { return toWString((long long)value); }
+
+WString toWString(double value)
+{
+  String narrow = toString(value);
+  WString result;
+  for (int i = 0; i < narrow.size(); ++i)
+    result.push_back((wchar_t)narrow[i]);
+  return result;
+}

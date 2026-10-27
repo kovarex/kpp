@@ -1,0 +1,22 @@
+// C stdio beyond what core/Format.kpp declares (printf, snprintf are already there).
+// FILE is an opaque handle; the C runtime defines it, we only pass pointers.
+extern "C" void* fopen(const char* filename, const char* mode);
+extern "C" int fclose(void* stream);
+extern "C" size_t fread(void* buffer, size_t size, size_t count, void* stream);
+extern "C" size_t fwrite(const void* buffer, size_t size, size_t count, void* stream);
+extern "C" int fseek(void* stream, long offset, int origin);
+extern "C" long ftell(void* stream);
+extern "C" int fflush(void* stream);
+extern "C" int fprintf(void* stream, const char* format, ...);
+extern "C" int feof(void* stream);
+extern "C" int ferror(void* stream);
+extern "C" int fgetc(void* stream);
+extern "C" int fputc(int c, void* stream);
+extern "C" char* fgets(char* str, int count, void* stream);
+extern "C" int fputs(const char* str, void* stream);
+extern "C" int sscanf(const char* str, const char* format, ...);
+extern "C" int sprintf(char* str, const char* format, ...);
+extern "C" int puts(const char* str);
+extern "C" int remove(const char* filename);
+extern "C" int rename(const char* oldname, const char* newname);
+extern "C" void* tmpfile();

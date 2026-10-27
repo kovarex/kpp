@@ -1,0 +1,60 @@
+// Error types beyond the base set in Utility.kpp (Exception, RuntimeError, LogicError,
+// OutOfRange, InvalidArgument are already there).
+
+struct BadAlloc : Exception
+{
+  BadAlloc() : Exception(String("bad allocation")) {}
+};
+
+struct LengthError : LogicError
+{
+  LengthError() {}
+  explicit LengthError(const String& message) : LogicError(message) {}
+};
+
+struct SystemError : RuntimeError
+{
+  int code_;
+
+  SystemError() : code_(0) {}
+  SystemError(int code, const String& message) : RuntimeError(message), code_(code) {}
+  int code() const { return this->code_; }
+};
+
+struct ErrorCode
+{
+  int value_ = 0;
+
+  ErrorCode() {}
+  explicit ErrorCode(int value) : value_(value) {}
+  int value() const { return this->value_; }
+  operator bool() const { return this->value_ != 0; }
+  bool operator==(const ErrorCode& other) const { return this->value_ == other.value_; }
+  bool operator!=(const ErrorCode& other) const { return this->value_ != other.value_; }
+  String message() const { return String(strerror(this->value_)); }
+};
+
+struct Errc
+{
+  int value;
+  explicit Errc(int v) : value(v) {}
+};
+
+ErrorCode systemCategory() { return ErrorCode(); }
+
+// Exception pointers: a handle to a thrown exception, for rethrowing across threads.
+struct ExceptionPtr
+{
+  void* ptr = nullptr;
+  ExceptionPtr() {}
+  operator bool() const { return this->ptr != nullptr; }
+};
+
+template<typename E>
+ExceptionPtr makeExceptionPtr(const E& exception) { return ExceptionPtr(); }
+
+// The uncaught exception count (C++17).
+extern "C" int __uncaught_exceptions();
+int uncaught_exceptions() { return __uncaught_exceptions(); }
+
+void setTerminate(void (*handler)()) {}

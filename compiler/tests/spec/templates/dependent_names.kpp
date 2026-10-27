@@ -1,7 +1,7 @@
 // spec: dependent names: T::Type, T::constant, this-> in templates, a dependent return type
 struct Meters { using Unit = int; static const int scale = 100; Unit value = 3; };
 template<typename T>
-struct Stack
+struct MyStack
 {
   Vector<T> items;
   void add(const T& t) { this->items.push_back(t); }
@@ -10,7 +10,7 @@ struct Stack
 template<typename T> typename T::Unit scaled(const T& t) { return t.value * T::scale; }
 int main()
 {
-  Stack<String> names;
+  MyStack<String> names;
   names.add(String("a"));
   names.add(String("bc"));
   Meters m;

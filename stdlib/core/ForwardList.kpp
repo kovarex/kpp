@@ -1,0 +1,88 @@
+// A singly-linked list (what std::forward_list converts to).
+template<typename T>
+struct ForwardList
+{
+  struct Node
+  {
+    T value;
+    Node* next;
+    Node(const T& v, Node* n) : value(v), next(n) {}
+    Node(T&& v, Node* n) : value(move(v)), next(n) {}
+  };
+
+  Node* head = nullptr;
+
+  using value_type = T;
+
+  ForwardList() {}
+  ForwardList(const ForwardList<T>& other) { this->copyFrom(other); }
+  ForwardList(ForwardList<T>&& other) : head(other.head) { other.head = nullptr; }
+  ~ForwardList() { this->clear(); }
+
+  ForwardList<T>& operator=(const ForwardList<T>& other)
+  {
+    if (this != &other)
+    {
+      this->clear();
+      this->copyFrom(other);
+    }
+    return *this;
+  }
+  ForwardList<T>& operator=(ForwardList<T>&& other)
+  {
+    if (this != &other)
+    {
+      this->clear();
+      this->head = other.head;
+      other.head = nullptr;
+    }
+    return *this;
+  }
+
+  bool empty() const { return this->head == nullptr; }
+  T& front() { return this->head->value; }
+  const T& front() const { return this->head->value; }
+
+  void push_front(const T& value) { this->head = new Node(value, this->head); }
+  void push_front(T&& value) { this->head = new Node(move(value), this->head); }
+  void pop_front()
+  {
+    Node* old = this->head;
+    this->head = old->next;
+    delete old;
+  }
+
+  void clear()
+  {
+    while (this->head)
+    {
+      Node* next = this->head->next;
+      delete this->head;
+      this->head = next;
+    }
+  }
+
+  struct Iterator
+  {
+    Node* node;
+    explicit Iterator(Node* n) : node(n) {}
+    T& operator*() { return this->node->value; }
+    Iterator& operator++() { this->node = this->node->next; return *this; }
+    bool operator==(const Iterator& other) const { return this->node == other.node; }
+    bool operator!=(const Iterator& other) const { return this->node != other.node; }
+  };
+
+  using iterator = Iterator;
+  Iterator begin() { return Iterator(this->head); }
+  Iterator end() { return Iterator(nullptr); }
+
+  void copyFrom(const ForwardList<T>& other)
+  {
+    Node** tail = &this->head;
+    for (Node* n = other.head; n; n = n->next)
+    {
+      *tail = new Node(n->value, nullptr);
+      tail = &(*tail)->next;
+    }
+  }
+};

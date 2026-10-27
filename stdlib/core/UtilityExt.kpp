@@ -1,0 +1,87 @@
+// Extended utilities: misc helpers that std::as_const, std::to_address, std::mem_fn etc.
+// convert to.
+
+template<typename T>
+const T& asConst(const T& value) { return value; }
+
+template<typename T>
+T* toAddress(T* ptr) { return ptr; }
+
+// mem_fn: wraps a member function pointer into a callable object.
+template<typename R, typename C>
+struct MemFnWrapper
+{
+  R C::*pmf;
+  explicit MemFnWrapper(R C::*pmf) : pmf(pmf) {}
+  template<typename... Args>
+  auto operator()(C& obj, Args... args) -> decltype((obj.*pmf)(args...))
+  {
+    return (obj.*pmf)(args...);
+  }
+};
+
+template<typename R, typename C>
+MemFnWrapper<R, C> memFn(R C::*pmf) { return MemFnWrapper<R, C>(pmf); }
+
+// NulloptType: what std::nullopt_t converts to; nullopt itself is in Optional.kpp.
+using NulloptType = NullOpt;
+
+// GreaterEqual comparator.
+template<typename T = void>
+struct GreaterEqual
+{
+  bool operator()(const T& a, const T& b) const { return !(a < b); }
+};
+template<>
+struct GreaterEqual<void>
+{
+  template<typename A, typename B>
+  bool operator()(const A& a, const B& b) const { return !(a < b); }
+};
+
+// Variant helpers: InPlaceIndex and InPlaceType tags used in Variant construction.
+template<int I>
+struct InPlaceIndex {};
+
+template<typename T>
+struct InPlaceType {};
+
+struct PiecewiseConstruct_t {};
+const PiecewiseConstruct_t piecewiseConstruct;
+
+// Bit rotation (C++20 std::rotr).
+unsigned int rotr(unsigned int value, int count)
+{
+  return (value >> count) | (value << (32 - count));
+}
+
+unsigned long long rotr(unsigned long long value, int count)
+{
+  return (value >> count) | (value << (64 - count));
+}
+
+// Least common multiple.
+long long gcd(long long a, long long b)
+{
+  if (a < 0) a = -a;
+  if (b < 0) b = -b;
+  while (b != 0)
+  {
+    long long t = b;
+    b = a % b;
+    a = t;
+  }
+  return a;
+}
+
+long long lcm(long long a, long long b)
+{
+  if (a == 0 || b == 0)
+    return 0;
+  long long result = a / gcd(a, b) * b;
+  return result < 0 ? -result : result;
+}
+
+// make_unique_for_overwrite: allocates uninitialized storage.
+template<typename T>
+UniquePtr<T> makeUniqueForOverwrite() { return UniquePtr<T>(new T); }

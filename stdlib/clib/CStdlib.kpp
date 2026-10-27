@@ -1,0 +1,18 @@
+// C standard library: process control, environment, sorting, and string-to-number conversions.
+extern "C" void exit(int status);
+extern "C" void _Exit(int status);
+extern "C" void abort();
+extern "C" char* getenv(const char* name);
+extern "C" int system(const char* command);
+extern "C" int atexit(void (*func)());
+extern "C" void qsort(void* base, size_t count, size_t size, int (*compare)(const void*, const void*));
+extern "C" void* bsearch(const void* key, const void* base, size_t count, size_t size,
+                          int (*compare)(const void*, const void*));
+extern "C" double strtod(const char* str, char** endptr);
+extern "C" float strtof(const char* str, char** endptr);
+extern "C" long strtol(const char* str, char** endptr, int base);
+extern "C" unsigned long strtoul(const char* str, char** endptr, int base);
+extern "C" long long strtoll(const char* str, char** endptr, int base);
+extern "C" unsigned long long strtoull(const char* str, char** endptr, int base);
+extern "C" int atoi(const char* str);
+extern "C" double atof(const char* str);

@@ -1,0 +1,2 @@
+// Package: C Library
+// Declarations of C runtime functions used through extern "C".

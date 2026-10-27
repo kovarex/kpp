@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**179 pass, 2 pending, 0 failing, 0 fixed** (181 snippets, 12.7 s).
+**179 pass, 2 pending, 0 failing, 0 fixed** (181 snippets, 3.6 s).
 
 ## Language: statements, expressions, declarations
 
@@ -125,9 +125,9 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/is_constructible_trait.kpp` | `isConstructible<T, Args...>` is true when T can be built from Args (what std::is_constructible_v converts to), in `if constexpr` and in variable templates | pass |  |  |
 | `templates/local_using_trait.kpp` | local_using_trait | pass |  |  |
 | `templates/member_alias_of_instantiation_cast.kpp` | a member alias of a class template instantiation, reached through an alias of the instantiation, names the substituted type (`Table::value_type(65)`) | pass |  |  |
-| `templates/member_template_in_class_template.kpp` | a member function template of a class template converting its argument to T (names.add("a") into Stack<String>) | pass |  |  |
+| `templates/member_template_in_class_template.kpp` | a member function template of a class template converting its argument to T (names.add("a") into MyStack<String>) | pass |  |  |
 | `templates/member_templates_explicit.kpp` | member function templates called with explicit arguments, static member templates | pass |  |  |
-| `templates/nested_template_instantiation.kpp` | a class template instantiated with another instantiation of itself (Stack<Stack<int>>) through a variadic push | pass |  |  |
+| `templates/nested_template_instantiation.kpp` | a class template instantiated with another instantiation of itself (MyStack<MyStack<int>>) through a variadic push | pass |  |  |
 | `templates/non_type_parameters.kpp` | non-type template parameters: ints, bools, defaults, used in the body | pass |  |  |
 | `templates/partial_specialisation.kpp` | partial specialisation of class templates | pass | 8 uses in 5 files |  |
 | `templates/requires_clause_before_body.kpp` | a requires clause between a member function's qualifiers and its body: `bool operator==(const V&) const requires Comparable<T> { ... }` | pass |  |  |

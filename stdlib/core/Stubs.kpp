@@ -1,0 +1,95 @@
+// Placeholder types for std:: names that converted code references but doesn't deeply use.
+// These let conversion compile without pulling in full implementations of filesystem, locale, etc.
+
+struct Locale
+{
+  Locale() {}
+  explicit Locale(const char* name) {}
+  explicit Locale(const String& name) {}
+};
+
+struct Filesystem
+{
+};
+
+// codecvt_utf8 / wstring_convert: used in Factorio for UTF-8 ↔ wstring conversion.
+// The real conversion is in WString.kpp (toUtf8/fromUtf8); these are thin stubs so code
+// that was written against the C++ <codecvt> API compiles.
+template<typename Elem>
+struct CodecvtUtf8 {};
+
+template<typename Codecvt>
+struct WStringConvert
+{
+  WStringConvert() {}
+  explicit WStringConvert(Codecvt* cvt) { delete cvt; }
+
+  String to_bytes(const WString& wide)
+  {
+    String result;
+    for (int i = 0; i < wide.size(); ++i)
+    {
+      wchar_t ch = wide[i];
+      if (ch < 0x80)
+        result.append((char)ch);
+      else if (ch < 0x800)
+      {
+        result.append((char)(0xC0 | (ch >> 6)));
+        result.append((char)(0x80 | (ch & 0x3F)));
+      }
+      else
+      {
+        result.append((char)(0xE0 | (ch >> 12)));
+        result.append((char)(0x80 | ((ch >> 6) & 0x3F)));
+        result.append((char)(0x80 | (ch & 0x3F)));
+      }
+    }
+    return result;
+  }
+
+  WString from_bytes(const String& narrow)
+  {
+    WString result;
+    int i = 0;
+    while (i < narrow.size())
+    {
+      unsigned char c = (unsigned char)narrow[i];
+      wchar_t ch;
+      if (c < 0x80)
+      {
+        ch = c;
+        ++i;
+      }
+      else if (c < 0xE0)
+      {
+        ch = (wchar_t)(((c & 0x1F) << 6) | ((unsigned char)narrow[i + 1] & 0x3F));
+        i += 2;
+      }
+      else
+      {
+        ch = (wchar_t)(((c & 0x0F) << 12) | (((unsigned char)narrow[i + 1] & 0x3F) << 6)
+              | ((unsigned char)narrow[i + 2] & 0x3F));
+        i += 3;
+      }
+      result.push_back(ch);
+    }
+    return result;
+  }
+};
+
+// Chrono literal tags: namespace stubs for std::chrono_literals etc.
+struct ChronoLiterals {};
+struct Milli {};
+
+// getTime: manipulator for reading time from a stream — stub.
+struct GetTimeResult {};
+GetTimeResult getTime(tm* t, const char* format) { return GetTimeResult(); }
+
+// Concept stubs.
+template<typename From, typename To> constexpr bool ConvertibleTo = true;
+template<typename T> constexpr bool EqualityComparable = true;
+
+// Namespace-like stubs for rarely-used sub-namespaces.
+struct Numbers {};
+struct Ranges {};
+struct Views {};

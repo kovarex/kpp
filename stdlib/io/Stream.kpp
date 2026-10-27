@@ -1,0 +1,202 @@
+// File streams: a thin wrapper over C stdio that gives the interface std::ifstream/ofstream
+// convert to. FILE* is declared in clib/CStdio.kpp.
+extern "C" void* __acrt_iob_func(unsigned index);
+
+struct InFileStream
+{
+  void* handle = nullptr;
+
+  InFileStream() {}
+  explicit InFileStream(const char* filename) { this->open(filename); }
+  explicit InFileStream(const String& filename) { this->open(filename.c_str()); }
+  InFileStream(const InFileStream&) = delete;
+  InFileStream(InFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
+  ~InFileStream()
+  {
+    if (this->handle)
+      fclose(this->handle);
+  }
+
+  void open(const char* filename) { this->handle = fopen(filename, "rb"); }
+  void open(const String& filename) { this->open(filename.c_str()); }
+  bool is_open() const { return this->handle != nullptr; }
+  bool isOpen() const { return this->handle != nullptr; }
+  void close()
+  {
+    if (this->handle)
+    {
+      fclose(this->handle);
+      this->handle = nullptr;
+    }
+  }
+
+  bool good() const { return this->handle != nullptr && feof(this->handle) == 0 && ferror(this->handle) == 0; }
+  bool eof() const { return this->handle != nullptr && feof(this->handle) != 0; }
+  operator bool() const { return this->good(); }
+  bool operator!() const { return !this->good(); }
+
+  int get() { return this->handle ? fgetc(this->handle) : -1; }
+  InFileStream& read(char* buffer, int count)
+  {
+    if (this->handle)
+      fread(buffer, 1, count, this->handle);
+    return *this;
+  }
+  InFileStream& seekg(long pos)
+  {
+    if (this->handle)
+      fseek(this->handle, pos, 0);
+    return *this;
+  }
+  long tellg()
+  {
+    return this->handle ? ftell(this->handle) : -1;
+  }
+};
+
+struct OutFileStream
+{
+  void* handle = nullptr;
+
+  OutFileStream() {}
+  explicit OutFileStream(const char* filename) { this->open(filename); }
+  explicit OutFileStream(const String& filename) { this->open(filename.c_str()); }
+  OutFileStream(const OutFileStream&) = delete;
+  OutFileStream(OutFileStream&& other) : handle(other.handle) { other.handle = nullptr; }
+  ~OutFileStream()
+  {
+    if (this->handle)
+      fclose(this->handle);
+  }
+
+  void open(const char* filename) { this->handle = fopen(filename, "wb"); }
+  void open(const String& filename) { this->open(filename.c_str()); }
+  bool is_open() const { return this->handle != nullptr; }
+  bool isOpen() const { return this->handle != nullptr; }
+  void close()
+  {
+    if (this->handle)
+    {
+      fclose(this->handle);
+      this->handle = nullptr;
+    }
+  }
+
+  bool good() const { return this->handle != nullptr && ferror(this->handle) == 0; }
+  operator bool() const { return this->good(); }
+
+  OutFileStream& write(const char* data, int count)
+  {
+    if (this->handle)
+      fwrite(data, 1, count, this->handle);
+    return *this;
+  }
+  void flush()
+  {
+    if (this->handle)
+      fflush(this->handle);
+  }
+};
+
+// The << operator for streams, so `cerr << "text" << value << endl;` works.
+struct StderrStream
+{
+  void* handle()
+  {
+    return __acrt_iob_func(2);
+  }
+};
+
+StderrStream& operator<<(StderrStream& s, const char* text)
+{
+  fputs(text, s.handle());
+  return s;
+}
+StderrStream& operator<<(StderrStream& s, const String& text)
+{
+  fputs(text.c_str(), s.handle());
+  return s;
+}
+StderrStream& operator<<(StderrStream& s, int value)
+{
+  fprintf(s.handle(), "%d", value);
+  return s;
+}
+StderrStream& operator<<(StderrStream& s, long long value)
+{
+  fprintf(s.handle(), "%lld", value);
+  return s;
+}
+StderrStream& operator<<(StderrStream& s, unsigned int value)
+{
+  fprintf(s.handle(), "%u", value);
+  return s;
+}
+StderrStream& operator<<(StderrStream& s, double value)
+{
+  fprintf(s.handle(), "%g", value);
+  return s;
+}
+StderrStream& operator<<(StderrStream& s, char c)
+{
+  fputc(c, s.handle());
+  return s;
+}
+StderrStream& operator<<(StderrStream& s, const void* ptr)
+{
+  fprintf(s.handle(), "%p", ptr);
+  return s;
+}
+
+// endl: writes a newline and flushes.
+struct EndlTag {};
+const EndlTag endl;
+
+StderrStream& operator<<(StderrStream& s, EndlTag)
+{
+  fputc('\n', s.handle());
+  fflush(s.handle());
+  return s;
+}
+
+OutFileStream& operator<<(OutFileStream& s, const char* text)
+{
+  if (s.handle)
+    fputs(text, s.handle);
+  return s;
+}
+OutFileStream& operator<<(OutFileStream& s, const String& text)
+{
+  if (s.handle)
+    fputs(text.c_str(), s.handle);
+  return s;
+}
+OutFileStream& operator<<(OutFileStream& s, EndlTag)
+{
+  if (s.handle)
+  {
+    fputc('\n', s.handle);
+    fflush(s.handle);
+  }
+  return s;
+}
+
+StderrStream cerr;
+
+// getline: reads from an InFileStream until a delimiter.
+bool getline(InFileStream& stream, String& line, char delimiter = '\n')
+{
+  line = String();
+  if (!stream.good())
+    return false;
+  int c;
+  bool read = false;
+  while ((c = stream.get()) != -1)
+  {
+    read = true;
+    if ((char)c == delimiter)
+      break;
+    line.append((char)c);
+  }
+  return read;
+}

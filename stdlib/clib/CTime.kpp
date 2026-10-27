@@ -1,0 +1,23 @@
+// C time functions: wall-clock time, calendar conversions, formatting.
+// (The monotonic clock is in core/Time.kpp, built on QueryPerformanceCounter.)
+using time_t = long long;
+
+struct tm
+{
+  int tm_sec;
+  int tm_min;
+  int tm_hour;
+  int tm_mday;
+  int tm_mon;
+  int tm_year;
+  int tm_wday;
+  int tm_yday;
+  int tm_isdst;
+};
+
+extern "C" time_t time(time_t* timer);
+extern "C" tm* localtime(const time_t* timer);
+extern "C" tm* gmtime(const time_t* timer);
+extern "C" time_t mktime(tm* timeptr);
+extern "C" size_t strftime(char* str, size_t maxsize, const char* format, const tm* timeptr);
+extern "C" double difftime(time_t end, time_t beginning);

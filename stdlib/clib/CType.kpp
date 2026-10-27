@@ -1,0 +1,12 @@
+// C character classification (the ctype.h functions).
+extern "C" int isalpha(int c);
+extern "C" int isdigit(int c);
+extern "C" int isalnum(int c);
+extern "C" int isspace(int c);
+extern "C" int isupper(int c);
+extern "C" int islower(int c);
+extern "C" int isprint(int c);
+extern "C" int ispunct(int c);
+extern "C" int isxdigit(int c);
+extern "C" int toupper(int c);
+extern "C" int tolower(int c);

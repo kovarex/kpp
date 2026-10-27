@@ -1,0 +1,266 @@
+// Futures and promises: the async/await primitives (what std::future, std::promise, std::async
+// and std::shared_future convert to). Built on Windows threads and condition variables.
+
+enum class FutureStatus { ready, timeout, deferred };
+
+struct Launch
+{
+  int value;
+};
+
+const Launch launchAsync = Launch{1};
+const Launch launchDeferred = Launch{2};
+
+
+template<typename T>
+struct SharedState
+{
+  Mutex mutex;
+  ConditionVariable cv;
+  Optional<T> value;
+  ExceptionPtr exception;
+  bool ready = false;
+
+  void set(const T& v)
+  {
+    LockGuard<Mutex> guard(this->mutex);
+    this->value = v;
+    this->ready = true;
+    this->cv.notifyAll();
+  }
+
+  void set(T&& v)
+  {
+    LockGuard<Mutex> guard(this->mutex);
+    this->value = move(v);
+    this->ready = true;
+    this->cv.notifyAll();
+  }
+
+  void setException(ExceptionPtr e)
+  {
+    LockGuard<Mutex> guard(this->mutex);
+    this->exception = e;
+    this->ready = true;
+    this->cv.notifyAll();
+  }
+
+  T& get()
+  {
+    UniqueLock<Mutex> lock(this->mutex);
+    this->cv.wait(lock, [this]() -> bool { return this->ready; });
+    return this->value.value();
+  }
+
+  void wait()
+  {
+    UniqueLock<Mutex> lock(this->mutex);
+    this->cv.wait(lock, [this]() -> bool { return this->ready; });
+  }
+
+  FutureStatus waitFor(Duration d)
+  {
+    UniqueLock<Mutex> lock(this->mutex);
+    if (this->ready)
+      return FutureStatus::ready;
+    this->cv.waitFor(lock, d);
+    return this->ready ? FutureStatus::ready : FutureStatus::timeout;
+  }
+};
+
+template<>
+struct SharedState<void>
+{
+  Mutex mutex;
+  ConditionVariable cv;
+  ExceptionPtr exception;
+  bool ready = false;
+
+  void set()
+  {
+    LockGuard<Mutex> guard(this->mutex);
+    this->ready = true;
+    this->cv.notifyAll();
+  }
+
+  void setException(ExceptionPtr e)
+  {
+    LockGuard<Mutex> guard(this->mutex);
+    this->exception = e;
+    this->ready = true;
+    this->cv.notifyAll();
+  }
+
+  void get()
+  {
+    UniqueLock<Mutex> lock(this->mutex);
+    this->cv.wait(lock, [this]() -> bool { return this->ready; });
+  }
+
+  void wait()
+  {
+    UniqueLock<Mutex> lock(this->mutex);
+    this->cv.wait(lock, [this]() -> bool { return this->ready; });
+  }
+
+  FutureStatus waitFor(Duration d)
+  {
+    UniqueLock<Mutex> lock(this->mutex);
+    if (this->ready)
+      return FutureStatus::ready;
+    this->cv.waitFor(lock, d);
+    return this->ready ? FutureStatus::ready : FutureStatus::timeout;
+  }
+};
+
+template<typename T>
+struct Future
+{
+  SharedPtr<SharedState<T>> state;
+
+  Future() {}
+  Future(SharedPtr<SharedState<T>> state) : state(move(state)) {}
+  Future(const Future<T>&) = delete;
+  Future(Future<T>&& other) : state(move(other.state)) {}
+  Future<T>& operator=(const Future<T>&) = delete;
+  Future<T>& operator=(Future<T>&& other)
+  {
+    this->state = move(other.state);
+    return *this;
+  }
+
+  bool valid() const { return (bool)this->state; }
+
+  T get()
+  {
+    return move(this->state->get());
+  }
+
+  void wait() const { this->state->wait(); }
+
+  FutureStatus wait_for(Duration d) const { return this->state->waitFor(d); }
+  FutureStatus waitFor(Duration d) const { return this->state->waitFor(d); }
+};
+
+template<>
+struct Future<void>
+{
+  SharedPtr<SharedState<void>> state;
+
+  Future() {}
+  Future(SharedPtr<SharedState<void>> state) : state(move(state)) {}
+  Future(const Future<void>&) = delete;
+  Future(Future<void>&& other) : state(move(other.state)) {}
+  Future<void>& operator=(const Future<void>&) = delete;
+  Future<void>& operator=(Future<void>&& other)
+  {
+    this->state = move(other.state);
+    return *this;
+  }
+
+  bool valid() const { return (bool)this->state; }
+  void get() { this->state->get(); }
+  void wait() const { this->state->wait(); }
+  FutureStatus wait_for(Duration d) const { return this->state->waitFor(d); }
+  FutureStatus waitFor(Duration d) const { return this->state->waitFor(d); }
+};
+
+template<typename T>
+struct SharedFuture
+{
+  SharedPtr<SharedState<T>> state;
+
+  SharedFuture() {}
+  SharedFuture(Future<T>&& f) : state(move(f.state)) {}
+  SharedFuture(const SharedFuture<T>& other) : state(other.state) {}
+
+  bool valid() const { return (bool)this->state; }
+  const T& get() const { return this->state->get(); }
+  void wait() const { this->state->wait(); }
+  FutureStatus wait_for(Duration d) const { return this->state->waitFor(d); }
+};
+
+template<typename T>
+struct Promise
+{
+  SharedPtr<SharedState<T>> state;
+
+  Promise() : state(makeShared<SharedState<T>>()) {}
+  Promise(const Promise<T>&) = delete;
+  Promise(Promise<T>&& other) : state(move(other.state)) {}
+  Promise<T>& operator=(const Promise<T>&) = delete;
+  Promise<T>& operator=(Promise<T>&& other)
+  {
+    this->state = move(other.state);
+    return *this;
+  }
+
+  Future<T> get_future() { return Future<T>(this->state); }
+  Future<T> getFuture() { return Future<T>(this->state); }
+
+  void set_value(const T& value) { this->state->set(value); }
+  void set_value(T&& value) { this->state->set(move(value)); }
+  void setValue(const T& value) { this->state->set(value); }
+  void setValue(T&& value) { this->state->set(move(value)); }
+
+  void set_exception(ExceptionPtr e) { this->state->setException(e); }
+};
+
+template<>
+struct Promise<void>
+{
+  SharedPtr<SharedState<void>> state;
+
+  Promise() : state(makeShared<SharedState<void>>()) {}
+  Promise(const Promise<void>&) = delete;
+  Promise(Promise<void>&& other) : state(move(other.state)) {}
+  Promise<void>& operator=(const Promise<void>&) = delete;
+  Promise<void>& operator=(Promise<void>&& other)
+  {
+    this->state = move(other.state);
+    return *this;
+  }
+
+  Future<void> get_future() { return Future<void>(this->state); }
+  Future<void> getFuture() { return Future<void>(this->state); }
+  void set_value() { this->state->set(); }
+  void setValue() { this->state->set(); }
+  void set_exception(ExceptionPtr e) { this->state->setException(e); }
+};
+
+// async: runs a callable on a new thread and returns a Future to its result.
+template<typename F>
+auto async(Launch policy, F callable) -> Future<decltype(callable())>
+{
+  using R = decltype(callable());
+  auto state = makeShared<SharedState<R>>();
+  Thread([state, callable]()
+  {
+    state->set(callable());
+  }).detach();
+  return Future<R>(state);
+}
+
+template<typename F>
+auto async(F callable) -> Future<decltype(callable())>
+{
+  return async(launchAsync, move(callable));
+}
+
+// thisThread: a namespace-like struct for sleep_for, yield, get_id.
+struct ThisThread_
+{
+  static void sleep_for(Duration d) { Thread::sleepFor(d); }
+  static void sleepFor(Duration d) { Thread::sleepFor(d); }
+  static void yield() { Thread::yield(); }
+  static unsigned long get_id() { return Thread::currentId(); }
+};
+
+ThisThread_ thisThread;
+
+// Free-standing atomic operations (what std::atomic_load/store convert to).
+template<typename T>
+T atomicLoad(const Atomic<T>* a) { return a->load(); }
+
+template<typename T>
+void atomicStore(Atomic<T>* a, T value) { a->store(value); }

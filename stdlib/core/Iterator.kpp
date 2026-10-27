@@ -1,0 +1,81 @@
+// Iterator tags and adapters: what std::input_iterator_tag, std::back_inserter, etc. convert to.
+
+struct InputIteratorTag {};
+struct ForwardIteratorTag : InputIteratorTag {};
+struct BidirectionalIteratorTag : ForwardIteratorTag {};
+struct RandomAccessIteratorTag : BidirectionalIteratorTag {};
+
+// MoveIterator: wraps a pointer so that dereferencing moves instead of copying.
+template<typename T>
+struct MoveIterator
+{
+  T* current;
+
+  explicit MoveIterator(T* it) : current(it) {}
+
+  T&& operator*() const { return move(*this->current); }
+  MoveIterator<T>& operator++()
+  {
+    ++this->current;
+    return *this;
+  }
+  MoveIterator<T> operator++(int)
+  {
+    MoveIterator<T> tmp = *this;
+    ++this->current;
+    return tmp;
+  }
+  T* base() const { return this->current; }
+  bool operator==(const MoveIterator<T>& other) const { return this->current == other.current; }
+  bool operator!=(const MoveIterator<T>& other) const { return this->current != other.current; }
+};
+
+template<typename T>
+MoveIterator<T> makeMoveIterator(T* it) { return MoveIterator<T>(it); }
+
+// BackInserter: an output iterator that push_back's into a container.
+template<typename Container>
+struct BackInsertIterator
+{
+  Container* container;
+
+  explicit BackInsertIterator(Container& c) : container(&c) {}
+
+  BackInsertIterator<Container>& operator=(const typename Container::value_type& value)
+  {
+    this->container->push_back(value);
+    return *this;
+  }
+  BackInsertIterator<Container>& operator=(typename Container::value_type&& value)
+  {
+    this->container->push_back(move(value));
+    return *this;
+  }
+  BackInsertIterator<Container>& operator*() { return *this; }
+  BackInsertIterator<Container>& operator++() { return *this; }
+};
+
+template<typename Container>
+BackInsertIterator<Container> backInserter(Container& c) { return BackInsertIterator<Container>(c); }
+
+// Inserter: an output iterator that insert's at a position.
+template<typename Container>
+struct InsertIterator
+{
+  Container* container;
+  typename Container::iterator position;
+
+  InsertIterator(Container& c, typename Container::iterator pos) : container(&c), position(pos) {}
+
+  InsertIterator<Container>& operator=(const typename Container::value_type& value)
+  {
+    this->position = this->container->insert(this->position, value);
+    ++this->position;
+    return *this;
+  }
+  InsertIterator<Container>& operator*() { return *this; }
+  InsertIterator<Container>& operator++() { return *this; }
+};
+
+template<typename Container>
+InsertIterator<Container> inserter(Container& c, typename Container::iterator pos) { return InsertIterator<Container>(c, pos); }
