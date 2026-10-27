@@ -293,6 +293,117 @@ qualified path through the same draft shares a single type chain.
 11.1% unresolved type names). Drafts give formerly-unknown types a stable `Ty*` identity,
 which downstream phases (codegen, template instantiation) can use when the definition appears.
 
+## Code packages (proposed 2026-10-27, not yet decided by kovarex)
+
+**Goal.** A big codebase needs a structure above the class, so that a reader can find
+`Vector` by walking *Standard Library > Containers > Vector*, or find the inserter code in
+Factorio by walking *Factorio > Entity > Inserter*, without knowing the name in advance and
+without understanding the rest of the program first. The IDE is the main consumer: the tree is
+how a newcomer explores the code and how anyone finds a class they do not remember by heart.
+
+**The rule that makes it different: a package is not a namespace.** Package names never appear
+in code. Every type and function is referred to by its plain name from anywhere (`Vector<int>`,
+never `std::Container::Vector<int>` and never `Container.Vector<int>`), and there is no
+`using namespace`, `import` or `use` that changes what a name means in a file. A snippet copied
+from one file to another, from a test into the program, or from documentation into a chat means
+the same thing everywhere, which is section 2's "every project symbol is visible everywhere"
+extended to the library.
+
+### Declaring the hierarchy
+- **A directory is a package.** The source roots given to the compiler (the program's
+  directory, `stdlib/`, each library) are the top-level packages; every subdirectory below them
+  is a child package. A file belongs to the package of the directory it is in. There is no
+  per-file `package` statement: the directory is the single source of truth, so the tree cannot
+  drift from the files, and moving a class to another package is moving its file.
+- **An optional `package.kpp` in the directory names and describes it**, for the tree's
+  display. Without it the directory name is used.
+  ```cpp
+  // stdlib/containers/package.kpp
+  package "Containers"
+  {
+      description = "Owning sequences and maps: Vector, HashMap, HashSet, UniqueArray.";
+      order = 1;   // position among its siblings in the tree; alphabetical when absent
+  }
+  ```
+  `package.kpp` may contain only this declaration. It has no effect on compilation other than
+  appearing in reflection and diagnostics.
+- C++ `namespace` stays what it is (an ordinary qualifying scope), for the code that wants
+  qualification on purpose: Factorio's `agui::`, `ActionData::` and the `config::` constants.
+  Packages and namespaces are independent: a namespace may span packages and a package may hold
+  several namespaces.
+
+### One global scope, so clashes are errors
+- All top-level names of all packages, the standard library and C imports included, are in one
+  scope. Two declarations of the same name in different packages are a compile error that names
+  both packages and both locations:
+  `error: 'Pair' is declared in Program > Tests (tests/pair.kpp:3) and in Standard Library >
+  Utility (stdlib/core/Utility.kpp:12); top-level names are global, rename one of them`.
+  Overloads of a function are not a clash (they are one name, as in C++), and neither are
+  `static` functions or names in an unnamed namespace, which are local to their file.
+- This settles the open question "Library names and program names share one global scope" with
+  the "distinct names" option, made into a rule the compiler checks instead of a convention. It
+  also replaces the `kpp::` namespace floated in the Speed-test prototype thread: that one needs
+  an implicit or explicit `using namespace kpp;` to keep `Vector` unqualified, which is exactly
+  the context dependency this design avoids. The standard library becomes the top-level package
+  *Standard Library*, not a namespace.
+- The cost: the standard library takes its names from every program, so it should claim few and
+  specific ones (`Pair` is a fair claim; `Node`, `Item` or `Data` are not), and two third-party
+  libraries that both define `Logger` cannot be used together until one is renamed (or its
+  author puts it in a namespace). That is the price of context-free names, and for a
+  whole-program compiler with its own library it is small: Factorio's 3,872 headers contain only
+  one file name twice (`MigrationHelpers.hpp`), so a codebase of that size already lives in one
+  flat scope by habit.
+- A later option if helpers clash too often: `internal` declarations, visible only inside their
+  package and its children and exempt from the global clash check. Not proposed now.
+
+### Tools and the IDE
+- **The package tree view** is the persistent compiler's model shown as a tree: package, then
+  its files, then the types and free functions each declares, with the package description on
+  hover. This is how one explores an unknown codebase: open *Factorio*, see *Entity*, *Train*,
+  *Gui*, *Logistics*..., open *Train*, see the classes.
+- **Go to symbol** searches the one global scope, so a name is always one hit; the result shows
+  its package path (`Inserter: Factorio > Entity`), and typing a package path narrows the search
+  (`entity ins` finds `Inserter`). Hover and breadcrumbs show the path of the symbol under the
+  cursor.
+- **Moving between packages** is a file move; since names are global, no reference anywhere
+  changes. A rename of a class is the only refactor that touches its users.
+- `kppc --packages` prints the tree with the declarations in each package (for the command line
+  and for scripts), and diagnostics name the package along with the file.
+- Reflection: `packageof(T)` gives a constant descriptor (`name`, `description`, `parent`), so
+  for example the test runner can run all tests of one package (`--run-test "Factorio > Train"`).
+- Cost to the compiler: the package is a field of the file, found once when the file list is
+  built. Name lookup does not look at it, so it changes nothing in the front-end numbers.
+
+### Packages for the converted Factorio and the standard library
+- The converter keeps the source directory layout, so Factorio's own directories become its
+  packages with no extra input: `src/Entity/Inserter.cpp` goes to *Factorio > Entity*, the 66
+  directories under `src/` (AI, Belt, Blueprint, CircuitNetwork, Entity, Gui, Train...) are the
+  second level, and the 340 files directly in `src/` are in *Factorio* itself until someone
+  sorts them. CommonUtil and Agui are top-level packages of their own. The converter writes a
+  `package.kpp` only when it has a description to give. Factorio's namespaces (`agui`,
+  `ActionData`, `MTL`...) stay namespaces, because the code refers to them qualified.
+- `stdlib/core` (23 files) would split into directories: *Containers* (Vector, HashMap,
+  HashSet, UniqueArray, InitializerList), *Text* (String, StringView, WString, Format),
+  *Memory* (Memory, UniquePtr, SharedPtr), *Functional* (Function, Algorithm, Hash, Utility,
+  Optional), *Math*, *Threads* (Thread, Time) and *Language* (TypeInfo, Location). The move
+  changes no code, since no name changes.
+
+### Compared with C++ namespaces and Java packages
+
+| | C++ nested namespaces | Java packages | Kpp code packages |
+|---|---|---|---|
+| Part of a name | yes, `std::chrono::seconds` | yes, `java.util.List` | no, only `Vector` |
+| Needs context to use a short name | `using namespace` / `using` | `import` per file | never |
+| Same name in two places | allowed, disambiguated by qualification | allowed, disambiguated by import | compile error |
+| Declared by | `namespace x { }` blocks, anywhere | `package a.b;` in each file, must match the directory | the directory, plus an optional `package.kpp` |
+| What it is for | avoiding clashes, ADL | avoiding clashes, access control (package-private) | browsing and navigation only |
+| A snippet means the same in any file | no (depends on usings and the enclosing namespace) | no (depends on imports) | yes |
+
+C++ namespaces and Java packages solve name clashes by making names longer and then let each
+file shorten them again, so the meaning of a short name depends on the file it is in. Kpp
+packages keep the hierarchy those systems give for browsing and drop the part that makes names
+contextual; clashes are prevented by the compiler refusing them instead.
+
 ## Benchmark target
 
 Factorio: ~1.3M lines of own C++ in ~8,000 files (~1.6M with tests). The real build, measured
@@ -367,6 +478,7 @@ qualified Kpp names with parameter types, quoted, so there is no mangling scheme
   2026-10-24: a test's own `struct Pair` against the library's `Pair`. Options: the library in a
   namespace (`kpp::`) that programs see through an implicit `using`; or program declarations
   shadowing library ones; or simply distinct names. Not decided; the test was renamed.
+  The proposal in "Code packages" above answers it with distinct names checked by the compiler.
 
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
