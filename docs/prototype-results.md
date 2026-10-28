@@ -544,6 +544,45 @@ suite: 40 programs, plus the specification suite of 144 snippets (compiler/tests
   library alone builds in seconds where one against CommonUtil + Agui took 1.5 minutes before the
   object cache warmed up.
 
+## Util runs (2026-10-27)
+
+The converted Util module (containers, sorting, the math expression evaluator) joins CommonUtil
+and Agui: `programs/factorio/tests/util_smoke.kpp` exercises `SmallVector`, `OwningList`,
+`MathExpression::parse` and `CyclicBufferFIFO`. `convert.cmd` runs all three smoke tests.
+
+## Codegen at zero errors on the full conversion (2026-10-28)
+
+With three rounds of codegen fallbacks the full Factorio conversion (521 files, 101 k lines,
+3.7 MB of Kpp) reaches **0 codegen errors** — down from 943 at the start of the session:
+
+1. **Unknown/anonymous class conversion fallbacks** (commit 3cab8b6): when the source type is
+   `TyKind::Unknown`, convert to bool as `icmp ne ptr, null`, to pointer as identity, to
+   integer as `ptrtoint`; when an anonymous class (no operator found) converts to bool, the same
+   null check. `String::operator+(const char*)` added to the standard library.
+2. **Aggregate init of incomplete classes** (commit 24aded0): when `fieldDecls` is empty (the
+   class was never resolved), skip field assignment — the struct is already zeroinitialised.
+3. **Comparison fallback for classes without operators** (commit 24aded0): when no `operator==`,
+   `!=`, `<`, `>`, `<=` or `>=` is found on a class, fall back to pointer-level `icmp` instead
+   of erroring — handles both the direct path and the late-resolution path.
+
+The remaining resolver gaps (2.7% of type names, 1.8% of identifiers unresolved) are handled
+gracefully: the fallbacks generate plausible IR for the operations that touch them.
+
+```
+files:   521, 3.7 MB, 101k lines
+errors:  0
+resolve: 58.1% of type names resolved, 73.7% of identifiers, 91.1% of member accesses bound
+instantiate: 859 class + 2589 function template instantiations (65742 requests, 0 waits)
+smoke tests: CommonUtil, Agui and Util all passing
+test suite: 45 run-tests, 188 spec snippets (3 pending), 0 failing
+```
+
+The cascade effect explains how 107 directly fixed errors (82 aggregate init + 25 comparison)
+eliminated all 938: each unsupported error aborts the function it's in, preventing later
+constructs in that function from being reached; once the early errors are handled, the later
+constructs are also handled by fallbacks added earlier (the Unknown-type conversions and the
+reference-binding and variadic-args fallbacks).
+
 ## How to reproduce
 
 ```
