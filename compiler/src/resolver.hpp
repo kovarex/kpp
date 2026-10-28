@@ -150,6 +150,10 @@ public:
   void indexFile(ParsedFile& file);
   // After all files are indexed: attach out-of-line class definitions (`struct A::B {}`).
   void finishIndex();
+  // After finishIndex: the errors for top-level names the program declares again although the
+  // standard library declares them (design.md, "One global scope, so clashes are errors"), one
+  // `path:line: error: ...` line each, sorted.
+  std::vector<std::string> topLevelClashes();
   // Phase 2, thread-safe and read-only on the scope tree: resolve and type one file.
   void resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats);
 

@@ -7856,6 +7856,77 @@ void GlobalScope::traceLine(const std::string& fileSuffix, uint32_t line)
   impl->whyAt.push_back({fileSuffix, line});
 }
 
+namespace
+{
+  // Whether d gives its name a new entity at the top level: not a forward declaration, an extern
+  // declaration of something defined elsewhere, or a specialisation of a template declared
+  // elsewhere (`template<> struct Hash<ItemID>` extends the library's Hash).
+  bool claimsTopLevelName(const Decl* d)
+  {
+    if (d->flags & (DF_Specialization | DF_Friend | DF_Extern))
+      return false;
+    switch (d->kind)
+    {
+      case NodeKind::ClassDecl: return static_cast<const ClassDecl*>(d)->isDefinition;
+      case NodeKind::EnumDecl: return static_cast<const EnumDecl*>(d)->isDefinition;
+      case NodeKind::FunctionDecl: case NodeKind::VariableDecl: case NodeKind::UsingAliasDecl: return true;
+      default: return false;
+    }
+  }
+
+  // A name only its own file sees: `static` at namespace scope, or in an unnamed namespace.
+  bool fileLocal(const Decl* d)
+  {
+    if ((d->kind == NodeKind::FunctionDecl || d->kind == NodeKind::VariableDecl) && (d->flags & DF_Static))
+      return true;
+    for (const Decl* p = d->parent; p; p = p->parent)
+      if (p->kind == NodeKind::NamespaceDecl && static_cast<const NamespaceDecl*>(p)->name == UINT32_MAX &&
+          !static_cast<const NamespaceDecl*>(p)->isInline)
+        return true;
+    return false;
+  }
+
+  std::string whereIs(const Decl* d)
+  {
+    uint32_t line = 0;
+    if (d->file && d->file->tokens && d->token < d->file->tokens->size())
+    {
+      std::string_view text = d->file->text;
+      size_t offset = std::min<size_t>((*d->file->tokens)[d->token].offset, text.size());
+      line = 1 + uint32_t(std::count(text.begin(), text.begin() + offset, '\n'));
+    }
+    return (d->file ? d->file->path : std::string("?")) + ":" + std::to_string(line);
+  }
+}
+
+std::vector<std::string> GlobalScope::topLevelClashes()
+{
+  std::vector<std::string> out;
+  Scope& root = impl->root;
+  for (uint32_t i = 0; i < root.shardCount; ++i)
+    for (const auto& [symbol, entries] : root.shards[i].map)
+    {
+      const Decl* library = nullptr;
+      for (const Entry& e : entries)
+        if (!library && e.decl->file && e.decl->file->isLibrary && claimsTopLevelName(e.decl) && !fileLocal(e.decl))
+          library = e.decl;
+      if (!library)
+        continue;
+      for (const Entry& e : entries)
+      {
+        const Decl* d = e.decl;
+        if (!d->file || d->file->isLibrary || d->file->isImported || !claimsTopLevelName(d) || fileLocal(d))
+          continue;
+        if (library->kind == NodeKind::FunctionDecl && d->kind == NodeKind::FunctionDecl)
+          continue; // overloads of one function
+        out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) + "' is declared here and in the standard library (" +
+                      whereIs(library) + "); top-level names are global, rename one of them");
+      }
+    }
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
 FunctionDecl* GlobalScope::enumOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context)
 {
   FunctionDecl* f = findFreeOperator(punctuator, lhs, rhs, context);

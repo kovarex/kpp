@@ -49,6 +49,7 @@ namespace
     std::string exe;      // --exe <path>
     std::string stdDir;   // --std <dir>; default: <kppc dir>\..\..\stdlib when it exists
     bool noStd = false;
+    std::filesystem::path libraryRoot; // the standard library's directory, when it joins the program
     std::vector<std::string> cIncludeDirs; // --cinclude DIR, for imported C headers
     std::vector<std::string> libs;         // --lib FILE: libraries linked into the executable
     bool showImportErrors = false; // --errors given: list parse errors in imported headers too
@@ -650,6 +651,8 @@ namespace
       {
         parsed[i] = std::make_unique<ParsedFile>();
         parsed[i]->path = files[i].path.string();
+        std::string library = options.libraryRoot.string();
+        parsed[i]->isLibrary = !library.empty() && parsed[i]->path.compare(0, library.size(), library) == 0;
         parseFile(round == 0 ? lexed[i].tokens : tokens[i], files[i].text, symbols, *parsed[i], false, &options.configValues);
       });
       double t = seconds(Clock::now() - start);
@@ -724,6 +727,11 @@ namespace
     double finishTime = seconds(Clock::now() - start);
     report("index:   %.3f s  (+%.3f s for out-of-line class definitions): %zu scopes, %zu entries\n", indexTime, finishTime,
            global.scopeCount(), global.entryCount());
+    for (const std::string& clash : global.topLevelClashes())
+    {
+      fprintf(stderr, "%s\n", clash.c_str());
+      codegenExit = 1;
+    }
 
     std::vector<ResolveStats> stats(parsed.size());
     start = Clock::now();
@@ -929,7 +937,10 @@ int main(int argc, char** argv)
       ? std::filesystem::absolute(argv[0], ec).parent_path() / ".." / ".." / "stdlib"
       : std::filesystem::path(options.stdDir);
     if (std::filesystem::is_directory(stdPath, ec))
-      options.roots.insert(options.roots.begin(), stdPath.lexically_normal());
+    {
+      options.libraryRoot = stdPath.lexically_normal();
+      options.roots.insert(options.roots.begin(), options.libraryRoot);
+    }
     else if (!options.stdDir.empty())
       fprintf(stderr, "warning: standard library directory %s not found\n", options.stdDir.c_str());
   }
