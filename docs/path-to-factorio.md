@@ -37,7 +37,7 @@ hard each site is.
 | **Smaller gaps** | multiple inheritance beyond the first polymorphic base, init-captures, member pointers, bit fields, `goto` (15), stream operators (136), partial specialisations (about 6) | Each small; the converter's error list tells which to do first | S each |
 | **Macro replacements, the big four** | the X-macro lists, `ADD_VALUE` reflection, `InputAction`-style unions, UnitTest++ | design.md section 8: `for constexpr`, `members(T)`, `union enum`, `test` blocks (after review) | L in total |
 | **Resolver tail** | 22% of expressions untyped today | Most of it is `std::`; the rest is templated `using` aliases, dependent lookups and ADL, fixed as the converter exposes them | M, continuous |
-| **C libraries** | Lua (1,665 includes), SDL3 (69), curl, zlib, png, jpeg, opus, vorbis, zstd, openssl, minizip, stb_image, fontstash, nvapi, Logitech, CL | `extern "C" import` works; function-like macros such as `lua_pop` need the importer's inline-function rule or a small shim | S |
+| **C libraries** | Lua (1,665 includes), SDL3 (69), curl, zlib, png, jpeg, opus, vorbis, zstd, openssl, minizip, stb_image, fontstash, nvapi, Logitech, CL | `extern "C" import` works. Lua is imported as C now and converted later (kovarex, 2026-10-28); the converter expands the function-like macros of lua.h, lauxlib.h and luaconf.h at their 642 uses (programs/factorio/overrides/expand-macros.txt). Left for Lua's own conversion: Factorio's copies of Lua's internal headers are C++ (`class LuaBindableObject*` in lobject.h's Udata, `extern "C"` in lapi.h), so the C import cannot take them, and with them go 61 uses of internal macros (hvalue 13, iscollectable 7, gcvalue 7, ttisnil 6, gval 6, ...) and 14 calls of index2addr in about 10 files | S |
 | **C++ libraries** | tracy (62), steam (62), glm (19), re2 (13), imgui (9), cxxopts, open-vcdiff, StackWalker; metal-cpp (193) is macOS only | Steam has a flat C API; tracy a C API; re2 and imgui need thin C wrappers; glm is a port (small); the rest are replaceable | M |
 | **DirectX 11** | 17 includes, COM interfaces | COM is C-callable through vtables; the importer must take the `lpVtbl` form of the headers, or a thin C wrapper does it | M |
 | **Debug info** | | `!dbg` metadata for CodeView so the game can be debugged in Visual Studio; not needed to run, needed to develop | M |
@@ -735,6 +735,25 @@ unchanged), so the two see the same code. In the game's own sources that changed
 for the better: Log macros, `ADD_VALUE`, the `GameMap` rename and `std::cin` now reach code in
 `#else` branches. cxxopts went from 26 errors to 13; the rest of the headline did not move (30,524
 before, 30,521 after, within the run-to-run noise); with cxxopts the count is 30,534.
+
+### Library and converter round (2026-10-28 evening)
+
+Measured with one compiler per pair (the base worktree at master, then the change on top),
+headline as defined above:
+
+| change | headline |
+|---|---:|
+| master at 54e87e8 (after the comparator, member-type, clash-rename, Atomic and Limits work) | 28,992 |
+| algorithms as iterator templates (docs/stdlib/algorithms.md) | 28,912 |
+| std::chrono as Duration/TimePoint/SteadyClock/SystemClock (docs/stdlib/time.md), literals | 27,866 |
+| Lua's function-like macros expanded at their 642 uses | 27,411 |
+
+By package from 28,992 to 27,411: Script 2,881 -> 2,545, src top level 2,456 -> 2,235, Util 1,670
+-> 1,404, Net 579 -> 378, Gui 2,779 -> 2,618, Graphics 1,036 -> 969, Input 458 -> 389, LED 79 ->
+48, CommonUtil 57 -> 38; Entity (8,113 -> 8,111) and CircuitNetwork (1,270) wait on class layouts
+(the second polymorphic base). Earlier the same evening, from 29,783: Map/Set comparators and
+HashMap hashers (-104), Atomic and SharedPtr atomics with `_WIN32_WINNT=0x0601` (-370), container
+member types and PriorityQueue (-209).
 
 ### Error breakdown by root cause
 
