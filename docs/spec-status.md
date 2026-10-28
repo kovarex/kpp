@@ -6,15 +6,15 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**180 pass, 7 pending, 0 failing, 0 fixed** (187 snippets, 6.0 s).
+**184 pass, 5 pending, 0 failing, 2 fixed** (191 snippets, 5.4 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `language/brace_argument_binds_rvalue.kpp` | a brace-list argument is a temporary, so it binds to an rvalue-reference overload: `map.insert({key, makeUnique<T>()})` picks insert(Pair&&) | pending | converted code inserts move-only values this way (AsteroidCollectorNavMesh: Map<ChunkPosition, UniquePtr<...>>) | overload resolution picks insert(const Pair&) for the brace list and then cannot copy the UniquePtr; line 1: got `1 0`, expected `0 1` |
-| `language/for_init_conditional.kpp` | a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)` | pending |  | the `:` of the conditional is taken for a range-for colon ("a range of unknown type"); C:\kpp\compiler\tests\spec\language\for_init_conditional.kpp:7: codegen does not support a range of unknown type yet (in @kpp.main) |
-| `language/postfix_increment_assignment.kpp` | assigning the result of a class's postfix ++ (`previous = it++;`): the old value is assigned, then the object is incremented | pending |  | the assignment receives the incremented object (prints 6 6); line 1: got `6 6`, expected `6 5` |
+| `language/for_init_conditional.kpp` | a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)` | fixed |  | passes now: remove the pending line |
+| `language/postfix_increment_assignment.kpp` | assigning the result of a class's postfix ++ (`previous = it++;`): the old value is assigned, then the object is incremented | fixed |  | passes now: remove the pending line |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
 | `language/array_brace_zero.kpp` | an array zero-filled by `= {0}` and `= {}`, with fewer initializers than elements | pass |  |  |
@@ -58,6 +58,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/switch_through_local_alias.kpp` | case labels named through a local alias of a nested enum: `using Kind = Token::Special; case Kind::Unary:` | pass |  |  |
 | `language/temporaries_in_branches.kpp` | a temporary made inside one branch of `?:`, or inside the right operand of `&&` / `||`, is destroyed only when that branch ran, and before the expression's value is used | pass |  |  |
 | `language/ternary_comma_sizeof.kpp` | conditional operator with objects, comma operator, sizeof of expressions | pass |  |  |
+| `language/ternary_in_for_init.kpp` | ternary_in_for_init | pass |  |  |
 | `language/thread_local.kpp` | thread_local variables | pass | 15 uses in 13 files |  |
 | `language/unions.kpp` | unions | pass | 47 uses in 39 files |  |
 | `language/variadic_c_functions.kpp` | calling C variadic functions and C-style ... declarations | pass |  |  |
@@ -71,6 +72,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
 | `classes/anonymous_members.kpp` | anonymous struct and union members | pass |  |  |
 | `classes/brace_init_assign.kpp` | brace-init on the right of assignment to a class object | pass | *this = {}; this->data = {a, b}; |  |
+| `classes/class_operator_rhs.kpp` | class_operator_rhs | pass |  |  |
 | `classes/conditional_explicit.kpp` | `explicit(condition)` makes a constructor explicit only while the condition holds, so Fixed<int, false> converts from double implicitly and Fixed<int, true> does not | pass |  |  |
 | `classes/const_and_mutable.kpp` | const member functions, const overloads, mutable members, const objects | pass | 198 mutable members in 127 files |  |
 | `classes/constructors.kpp` | constructors: default, converting, explicit, copy, move, delegating, = default, = delete | pass | 2065 `= default`, 904 `= delete`, 1100 delegating, 2035 explicit |  |
@@ -92,6 +94,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/nested_struct_in_template.kpp` | a struct nested in a class template, with members of the parameter type | pass |  |  |
 | `classes/nested_types.kpp` | nested classes and enums, access through the outer class | pass | 4603 nested classes in 2847 files |  |
 | `classes/operator_overloading.kpp` | operator overloading: arithmetic, comparison, subscript, call, unary, increment, conversions | pass | 2940 uses in 982 files, 376 conversion operators |  |
+| `classes/postincrement_assignment.kpp` | postincrement_assignment | pass |  |  |
 | `classes/reversed_equality.kpp` | `3 == id` and `3 != id` use Id::operator==(int) with the operands reversed, as C++20 does | pass |  |  |
 | `classes/static_members.kpp` | static data members (in-class and out-of-line definitions), static functions, static const | pass | 1174 static const members in 719 files |  |
 | `classes/three_way_comparison_user_defined.kpp` | a user-written operator<=> returning strong_ordering orders the class (`a < b` is `(a <=> b) < 0`), `x <=> y` of scalars is a strong_ordering, and a defaulted operator<=> uses the members' own | pass |  |  |
@@ -135,6 +138,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/member_templates_explicit.kpp` | member function templates called with explicit arguments, static member templates | pass |  |  |
 | `templates/nested_template_instantiation.kpp` | a class template instantiated with another instantiation of itself (MyStack<MyStack<int>>) through a variadic push | pass |  |  |
 | `templates/non_type_parameters.kpp` | non-type template parameters: ints, bools, defaults, used in the body | pass |  |  |
+| `templates/pack_forwarding_into_call.kpp` | pack_forwarding_into_call | pass |  |  |
 | `templates/partial_specialisation.kpp` | partial specialisation of class templates | pass | 8 uses in 5 files |  |
 | `templates/requires_clause_before_body.kpp` | a requires clause between a member function's qualifiers and its body: `bool operator==(const V&) const requires Comparable<T> { ... }` | pass |  |  |
 | `templates/requires_clauses.kpp` | constrained templates (requires clauses) | pass | 1274 requires/concept uses in 609 files |  |

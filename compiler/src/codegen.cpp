@@ -1715,7 +1715,7 @@ namespace
           }
           // Not a vector — fall through to the non-class converting constructor path.
         }
-        if (init->ty && !isClass(types.stripRef(init->ty)) && isClass(t))
+        if (init->ty && init->ty->isKnown() && !isClass(types.stripRef(init->ty)) && isClass(t))
         {
           // A non-class value: through a converting constructor (`String s = "text"`).
           Expr* one = init;
@@ -3142,8 +3142,17 @@ namespace
             unsupported(at, "binding a non-class to a class reference");
           std::string addr = o.text;
           if (isClass(o.ty) && classKey(o.ty) != classKey(pt))
-            if (!baseAddress(o.ty, types.stripRef(pt), o.text, addr, at))
-              unsupported(at, "binding an unrelated class to a reference");
+          {
+            if (baseAddress(o.ty, types.stripRef(pt), o.text, addr, at))
+              return "ptr " + addr;
+            // Fallback: try implicit constructor of the target class (e.g. Optional(const T&)
+            // when passing T where const Optional<T>& is expected).
+            if (findConstructor(cls, {o.ty}, at))
+              return "ptr " + convertedTemporary(cls, arg, at);
+            if (conversionOperator(o.ty, types.unqualified(cls), at))
+              return "ptr " + convert(o, types.unqualified(cls), at).text;
+            unsupported(at, "binding an unrelated class to a reference");
+          }
           return "ptr " + addr;
         }
         const Ty* referenced = types.stripRef(pt);
@@ -3221,6 +3230,18 @@ namespace
         a = convert(a, types.unqualified(pt), at); // `draw(image)` with `operator const Image*()`
       if (isLambda(a.ty) && pt && pt->kind == TyKind::Pointer && pt->inner && pt->inner->kind == TyKind::Function)
         a = convert(a, pt, at); // a lambda without captures as a pointer to function
+      if (isAggregate(a.ty) && !pt)
+      {
+        // Variadic C argument with no declared type: try the class's implicit conversion operator
+        // to a scalar (e.g. String's operator const char*() for lua_pushstring(L, str)).
+        FunctionDecl* conv = conversionOperator(a.ty, types.intType(32), at);
+        if (conv)
+        {
+          const Ty* ft = declType(conv);
+          const Ty* ret = types.unqualified(types.stripRef(ft->inner));
+          a = convert(a, ret, at);
+        }
+      }
       if (isAggregate(a.ty))
         unsupported(at, "passing a class (" + types.toString(a.ty, &symbols) + ") where a scalar is expected");
       if (pt && a.ty->kind == TyKind::Pointer && (pt->kind == TyKind::Int || pt->kind == TyKind::Char || pt->kind == TyKind::Enum))
@@ -6626,7 +6647,53 @@ namespace
         if (isClass(ot))
         {
           Value o = rvalue(u->operand);
-          return callRvalue(operatorCall(o, operatorName(op), {}, u, true), u);
+          std::string opName = operatorName(op);
+          if (u->postfix)
+          {
+            const Ty* foundIn = nullptr;
+            std::vector<const Ty*> intArg = {types.intType(32)};
+            FunctionDecl* pf = findMemberFunction(o.ty, opName, intArg, o.ty, u, &foundIn, true);
+            if (!pf)
+            {
+              // No postfix operator++(int): fall back to prefix operator++()
+              return callRvalue(operatorCall(o, opName, {}, u, true), u);
+            }
+            std::string thisArg = o.text;
+            if (canonicalClass(o.ty, u) != foundIn)
+            {
+              std::string addr;
+              if (baseAddress(o.ty, foundIn, o.text, addr, u))
+                thisArg = addr;
+            }
+            TemplateArgs fnArgs = global.classArgsOf(foundIn);
+            std::string fname = useFunction(pf, fnArgs, foundIn);
+            Signature s;
+            const Ty* ret;
+            {
+              ArgsScope scope(*this, &fnArgs);
+              s = signatureOf(pf);
+              ret = declType(pf)->inner;
+            }
+            std::string argText = "ptr " + thisArg;
+            std::string resultAddr;
+            if (s.hasSret)
+            {
+              resultAddr = newObjectSlot(ret, u);
+              statementTemps.push_back({resultAddr, ret});
+              argText += ", ptr " + resultAddr;
+            }
+            argText += ", i32 0";
+            std::string sig = s.returnType + " ";
+            if (s.returnType == "void")
+            {
+              emitCall("", sig + fname + "(" + argText + ")");
+              return s.hasSret ? callRvalue({resultAddr, ret, true}, u) : Value{"", types.voidType(), false};
+            }
+            std::string r = newTemp();
+            emitCall(r + " = ", sig + fname + "(" + argText + ")");
+            return callRvalue({r, ret, false}, u);
+          }
+          return callRvalue(operatorCall(o, opName, {}, u, true), u);
         }
         std::string addr = lvalue(u->operand);
         Value old = load(addr, ot, u);
