@@ -209,6 +209,11 @@ public:
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
   // the operand classes and enums and context's own), chosen by overload ranking; null if none.
   FunctionDecl* findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);
+  // What a class operand converts to for a built-in operator when no operator function takes it
+  // (`area < smallBlueprintAreaSize` with a Const<float>): the result type of its one non-explicit
+  // conversion operator to a non-class type, its own or inherited; null when it has none or
+  // several. The resolver types such operators by this.
+  const Ty* scalarConversionOf(const Ty* classType);
   // The user's free operator for `lhs op rhs` with an enumeration operand (`Flags operator|(Flags,
   // Flags)`), which wins over the built-in one; null when the built-in applies. The resolver types
   // the expression by the same rule.

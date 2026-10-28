@@ -4190,21 +4190,77 @@ struct GlobalScope::Impl
       default:
         break;
     }
-    // Conversion operator of the argument's class.
-    if (a->kind == TyKind::Class)
-      if (Scope* s = classScopeOf(a))
-      {
-        Subst subst = substFor(a);
-        for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
-        {
-          if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (m->flags & DF_Explicit))
-            continue;
-          const Ty* ft = declaredTypeOf(m, &subst, 0);
-          if (ft && ft->kind == TyKind::Function && conversionRank(ft->inner, param, depth + 1) < 4)
-            return 4;
-        }
-      }
+    // Conversion operator of the argument's class, or one it inherits.
+    if (a->kind == TyKind::Class && convertsByOperator(a, param, depth))
+      return 4;
     return NotViable;
+  }
+
+  // The type a class operand of a built-in operator converts to (`area < smallBlueprintAreaSize`
+  // with a Const<float>): the result of its one non-explicit conversion operator to a non-class
+  // type, its own or inherited (under its arguments); null when it has none or several.
+  const Ty* scalarConversionOf(const Ty* cls)
+  {
+    const Ty* found = nullptr;
+    bool ambiguous = false;
+    collectScalarConversions(types.unqualified(types.stripRef(cls)), found, ambiguous, 0);
+    return ambiguous ? nullptr : found;
+  }
+  void collectScalarConversions(const Ty* cls, const Ty*& found, bool& ambiguous, int depth)
+  {
+    if (!cls || cls->kind != TyKind::Class || depth > 8)
+      return;
+    Scope* s = classScopeOf(cls);
+    if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+      return;
+    Subst subst = substFor(cls);
+    for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || isExplicit(static_cast<FunctionDecl*>(m), &subst))
+        continue;
+      const Ty* ft = declaredTypeOf(m, &subst, 0);
+      if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown() || types.isDependent(ft->inner))
+        continue;
+      const Ty* t = types.unqualified(types.stripRef(ft->inner));
+      if (t->kind == TyKind::Class || t->kind == TyKind::Void || t->kind == TyKind::Lambda)
+        continue;
+      if (found && found != t)
+        ambiguous = true;
+      found = t;
+    }
+    ClassDecl* def = classDefinition(cls);
+    std::vector<const Ty*> bases;
+    if (def && directBases(cls, def, bases))
+      for (const Ty* b : bases)
+        collectScalarConversions(b, found, ambiguous, depth + 1);
+  }
+
+  // Whether a non-explicit conversion operator of class a, or of one of its bases (under a's
+  // arguments: `Const<float> : Value<float>` with Value's `operator const T&()`), gives a value
+  // that converts to param by a standard conversion.
+  bool convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth = 0)
+  {
+    if (baseDepth > 8)
+      return false;
+    Scope* s = classScopeOf(a);
+    if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+      return false;
+    Subst subst = substFor(a);
+    for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || isExplicit(static_cast<FunctionDecl*>(m), &subst))
+        continue;
+      const Ty* ft = declaredTypeOf(m, &subst, 0);
+      if (ft && ft->kind == TyKind::Function && conversionRank(ft->inner, param, depth + 1) < 4)
+        return true;
+    }
+    ClassDecl* def = classDefinition(a);
+    std::vector<const Ty*> bases;
+    if (def && directBases(a, def, bases))
+      for (const Ty* b : bases)
+        if (b->kind == TyKind::Class && convertsByOperator(b, param, depth, baseDepth + 1))
+          return true;
+    return false;
   }
 
   struct Candidate
@@ -5911,7 +5967,9 @@ struct GlobalScope::Impl
       return f && (f->flags & DF_Default);
     }
 
-    const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity)
+    // The type of `lhs op rhs` (or `op lhs`) through an operator function, or for what every class
+    // has; null when there is none (counted as unknown here only when countFailure).
+    const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true)
     {
       const Ty* l = types.stripRef(lhs);
       Subst subst;
@@ -5949,9 +6007,37 @@ struct GlobalScope::Impl
         case P::Assign: return lhs;                       // implicit copy/move assignment
         case P::AndAnd: case P::OrOr: case P::Bang: return types.boolType();
         case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
-          return l && l->kind == TyKind::Enum ? types.boolType() : unknown(Why::Operator);
-        default: return unknown(Why::Operator);
+          if (l && l->kind == TyKind::Enum)
+            return types.boolType();
+          break;
+        default:
+          break;
       }
+      return countFailure ? unknown(Why::Operator) : nullptr;
+    }
+
+    static bool isAssignmentOp(P op)
+    {
+      switch (op)
+      {
+        case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign: case P::PercentAssign:
+        case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign: case P::ShrAssign:
+          return true;
+        default:
+          return false;
+      }
+    }
+
+    // C++'s built-in candidates for an operator no function defines: a class operand takes part
+    // through its conversion operator to a non-class type (`area < smallBlueprintAreaSize` with a
+    // Const<float>). The operand's converted type, or null when it has no such conversion; an
+    // operand that is no class stays as it is.
+    const Ty* builtinOperand(const Ty* t)
+    {
+      const Ty* s = types.stripRef(t);
+      if (!s || s->kind != TyKind::Class)
+        return t;
+      return impl.scalarConversionOf(s);
     }
 
     // A user-defined operator on an enumeration operand (`Flags operator|(Flags, Flags)`) beats the
@@ -5998,7 +6084,18 @@ struct GlobalScope::Impl
           return types.unknown();
         if (types.isDependent(ls) || types.isDependent(rs))
           return types.param(ls->kind == TyKind::Param ? ls->decl : rs->decl);
-        return overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2);
+        if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false))
+          return t;
+        // No operator function: the built-in operator on the operands' scalar conversions (an
+        // assignment's left operand is the object itself and converts to nothing).
+        const Ty* lc = isAssignmentOp(op) ? (ls->kind == TyKind::Class ? nullptr : l) : builtinOperand(l);
+        const Ty* rc = builtinOperand(r);
+        if (!lc || !rc)
+          return unknown(Why::Operator);
+        l = lc;
+        r = rc;
+        ls = types.stripRef(l);
+        rs = types.stripRef(r);
       }
       if (!ls->isKnown() || !rs->isKnown())
       {
@@ -6115,7 +6212,15 @@ struct GlobalScope::Impl
           return types.pointer(s);
         if (types.isDependent(s))
           return types.unknown();
-        return overloadedOperator(op, t, nullptr, u->token, 1);
+        if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false))
+          return r;
+        // No operator function: the built-in one on the operand's scalar conversion (`-speed`
+        // with a Const<double>); ++ and -- change the object itself.
+        const Ty* c = op == P::PlusPlus || op == P::MinusMinus ? nullptr : builtinOperand(t);
+        if (!c)
+          return unknown(Why::Operator);
+        t = c;
+        s = types.stripRef(c);
       }
       switch (op)
       {
@@ -7314,6 +7419,8 @@ FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, 
     }
   return nullptr;
 }
+
+const Ty* GlobalScope::scalarConversionOf(const Ty* classType) { return impl->scalarConversionOf(classType); }
 
 FunctionDecl* GlobalScope::enumOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context)
 {
