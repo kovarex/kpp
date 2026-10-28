@@ -1,0 +1,19 @@
+// spec: a member function with a deduced return type (`auto f() const { return ...; }`) called before its class is reached: the return type comes from typing its body then, not from the order files and declarations are walked in
+// factorio: RenderParameters::getScreenPositionFunction() called from ChartRenderer, DebugVisualizationRenderer and others (`auto toScreenPosition = renderParameters.getScreenPositionFunction();`; that one returns a lambda, which the code generator cannot call before the lambda's closure is built yet)
+int main()
+{
+  Params p;
+  p.shift = 5;
+  auto offset = p.getOffset();
+  println("{} {} {}", offset.x, offset.y, p.twice(4));
+  return 0;
+}
+
+struct Offset { int x = 0; int y = 0; };
+
+struct Params
+{
+  int shift = 0;
+  auto getOffset() const { return Offset{this->shift, this->shift * 3}; }
+  auto twice(int x) const { return x * 2; }
+};

@@ -1,0 +1,28 @@
+// spec: `using super::front;` in a class template whose `using super = Store<T>;` names its base: the member is the base's, with the base's arguments (front() returns T&, not the base's own unbound parameter)
+// factorio: CircularBuffer<T> : CompactDeque<T> with `using super::front; using super::rbegin; ...` (SegmentEngine's `this->nodes.front()`, ElectricNetwork's `historyBuffer.rbegin()`)
+template<class T>
+class Store
+{
+public:
+  T& front() { return this->items[0]; }
+  T items[4];
+};
+
+template<class T>
+class Ring : Store<T>
+{
+  using super = Store<T>;
+public:
+  using super::front;
+  void put(T value) { this->items[0] = value; }
+};
+
+struct Point { int x = 0; int y = 0; };
+
+int main()
+{
+  Ring<Point> ring;
+  ring.put(Point{3, 4});
+  println("{}", ring.front().x + ring.front().y);
+  return 0;
+}

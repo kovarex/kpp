@@ -5488,8 +5488,30 @@ struct GlobalScope::Impl
       const Ty* foundInBase = nullptr; // the instantiation of the base l was found in, once computed
       if (name && name->parts.size() > 1)
       {
-        // `obj.Base::member`
+        // `obj.Base::member`: Base as the object's class sees it, else as the expression's context
+        // does (`prototype->Super::addValues(result)` with Super a template parameter).
         l = impl.lookupQualified(*name, cls, nullptr, 0);
+        if (l.found == Found::No || !l.decl)
+        {
+          QualifiedName qualifier = *name;
+          qualifier.parts.count -= 1;
+          NamedType written{};
+          written.kind = NodeKind::NamedType;
+          written.token = token;
+          written.name = qualifier;
+          const Ty* q = typeOf(&written);
+          if (q && q->isKnown() && types.isDependent(q))
+          {
+            r.type = types.param(nullptr); // known once Super is
+            return r;
+          }
+          if (Scope* qs = q && q->kind == TyKind::Class ? impl.classScopeOf(q) : nullptr)
+          {
+            Lookup inQualifier;
+            if (impl.lookupInScope(qs, symbol, inQualifier, 0))
+              l = inQualifier;
+          }
+        }
       }
       else
       {
@@ -5542,12 +5564,18 @@ struct GlobalScope::Impl
       }
       if (l.decl && l.decl->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(l.decl)->isEnum)
       {
-        // `using Base::f;` in the class: f means the base's overloads.
-        Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(l.decl)->name, cls, nullptr, 0);
+        // `using Base::f;` in the class: f means the base's overloads, as members of that base
+        // (`using super::front;` with `using super = CompactDeque<T>;`: front's T is CompactDeque's).
+        Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(l.decl)->name, l.foundIn ? l.foundIn : cls, nullptr, 0);
         if (target.found != Found::No && target.decl)
         {
           l.decl = target.decl;
           l.overloads = target.overloads;
+          if (target.foundIn && target.foundIn->kind == ScopeKind::Class)
+          {
+            l.foundIn = target.foundIn;
+            foundInBase = nullptr;
+          }
         }
       }
       if (l.found == Found::No || !l.decl)
@@ -5898,6 +5926,10 @@ struct GlobalScope::Impl
         if (const Ty* cached = f->cachedType.load(std::memory_order_acquire))
           if (cached->kind == TyKind::Function && !impl.containsAuto(cached->inner))
             return classSubst ? impl.substitute(cached->inner, *classSubst) : cached->inner;
+        // `renderParameters.getScreenPositionFunction()` before the file defining it was walked:
+        // its body is typed now, once, for the return type.
+        if (const Ty* r = instantiateFunction(f, Subst{}, true, classSubst))
+          return r;
         return unknown(Why::AutoReturn);
       }
       Subst subst = classSubst ? *classSubst : Subst{};
@@ -6030,10 +6062,14 @@ struct GlobalScope::Impl
                   (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
         {
           ++stats.callsResolved; // a functional cast, `int64_t(x)` included when int64_t is an imported typedef
-          if (n->name.parts.size() > 1 && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::VariableDecl))
+          if (n->name.parts.size() > 1 &&
+              (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::VariableDecl ||
+               (d->kind == NodeKind::ClassDecl && d->templateParams.empty() && !impl.effectiveParams(d).empty())))
           {
             // `Table::value_type(65)`: the alias as the type path reads it, with the qualifier's
-            // instantiation substituted (Array<unsigned char, 4>::value_type is unsigned char).
+            // instantiation substituted (Array<unsigned char, 4>::value_type is unsigned char);
+            // `Surface::const_iterator(surface)`: the nested class of the base
+            // InfiniteRectangle<Chunk*> with that base's arguments.
             NamedType written{};
             written.kind = NodeKind::NamedType;
             written.token = n->token;
