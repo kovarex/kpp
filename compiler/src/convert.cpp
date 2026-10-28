@@ -373,7 +373,7 @@ namespace
     {"as_const", "asConst"}, {"to_address", "toAddress"},
     {"mem_fn", "memFn"}, {"move_iterator", "MoveIterator"},
     {"inserter", "inserter"}, {"back_inserter", "backInserter"},
-    {"make_exception_ptr", "makeExceptionPtr"},
+    {"make_exception_ptr", "makeExceptionPtr"}, {"exception_ptr", "ExceptionPtr"}, {"rethrow_exception", "rethrowException"},
     {"set_terminate", "setTerminate"},
     {"make_unique_for_overwrite", "makeUniqueForOverwrite"},
     {"basic_string_view", "StringView"},

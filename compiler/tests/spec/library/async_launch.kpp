@@ -1,0 +1,12 @@
+// spec: async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R
+// factorio: 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache
+// pending: the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument
+int main()
+{
+  Future<int> now = async(Launch::async, []() -> int { return 6; });
+  int ran = 0;
+  Future<int> later = async(Launch::deferred, [&ran]() -> int { ++ran; return 7; });
+  println("before get: {}", ran);
+  println("{} {} {}", now.get(), later.get(), ran);
+  return 0;
+}

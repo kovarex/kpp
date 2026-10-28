@@ -1,0 +1,15 @@
+// spec: ExceptionPtr (std::make_exception_ptr) set on a Promise and thrown again by Future::get
+// factorio: SteamContext hands "Couldn't get Steam auth ticket" errors to the waiting thread this way
+int main()
+{
+  Promise<int> p;
+  Future<int> f = p.getFuture();
+  p.set_exception(makeExceptionPtr(RuntimeError(String("no ticket"))));
+  try { f.get(); } catch (const RuntimeError& e) { println("caught {}", e.what()); }
+  Promise<int> q;
+  Future<int> g = q.getFuture();
+  q.setValue(5);
+  ExceptionPtr empty;
+  println("{} {}", g.get(), (bool)empty);
+  return 0;
+}

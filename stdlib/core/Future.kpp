@@ -3,13 +3,8 @@
 
 enum class FutureStatus { ready, timeout, deferred };
 
-struct Launch
-{
-  int value;
-};
-
-const Launch launchAsync = Launch{1};
-const Launch launchDeferred = Launch{2};
+// How async runs its callable (std::launch): on a new thread now, or on the first get() or wait().
+enum class Launch { async = 1, deferred = 2 };
 
 
 template<typename T>
@@ -20,6 +15,16 @@ struct SharedState
   Optional<T> value;
   ExceptionPtr exception;
   bool ready = false;
+  Function<void()> deferred; // async with Launch::deferred: runs on the first get() or wait()
+
+  void runDeferred()
+  {
+    if (!this->deferred)
+      return;
+    Function<void()> run = move(this->deferred);
+    this->deferred = nullptr;
+    run();
+  }
 
   void set(const T& v)
   {
@@ -45,21 +50,28 @@ struct SharedState
     this->cv.notifyAll();
   }
 
+  // The value, once it is there; an exception set instead is thrown here.
   T& get()
   {
+    this->runDeferred();
     UniqueLock<Mutex> lock(this->mutex);
     this->cv.wait(lock, [this]() -> bool { return this->ready; });
+    if (this->exception)
+      rethrowException(this->exception);
     return this->value.value();
   }
 
   void wait()
   {
+    this->runDeferred();
     UniqueLock<Mutex> lock(this->mutex);
     this->cv.wait(lock, [this]() -> bool { return this->ready; });
   }
 
   FutureStatus waitFor(Duration d)
   {
+    if (this->deferred)
+      return FutureStatus::deferred;
     UniqueLock<Mutex> lock(this->mutex);
     if (this->ready)
       return FutureStatus::ready;
@@ -75,6 +87,16 @@ struct SharedState<void>
   ConditionVariable cv;
   ExceptionPtr exception;
   bool ready = false;
+  Function<void()> deferred; // async with Launch::deferred: runs on the first get() or wait()
+
+  void runDeferred()
+  {
+    if (!this->deferred)
+      return;
+    Function<void()> run = move(this->deferred);
+    this->deferred = nullptr;
+    run();
+  }
 
   void set()
   {
@@ -93,18 +115,24 @@ struct SharedState<void>
 
   void get()
   {
+    this->runDeferred();
     UniqueLock<Mutex> lock(this->mutex);
     this->cv.wait(lock, [this]() -> bool { return this->ready; });
+    if (this->exception)
+      rethrowException(this->exception);
   }
 
   void wait()
   {
+    this->runDeferred();
     UniqueLock<Mutex> lock(this->mutex);
     this->cv.wait(lock, [this]() -> bool { return this->ready; });
   }
 
   FutureStatus waitFor(Duration d)
   {
+    if (this->deferred)
+      return FutureStatus::deferred;
     UniqueLock<Mutex> lock(this->mutex);
     if (this->ready)
       return FutureStatus::ready;
@@ -228,23 +256,40 @@ struct Promise<void>
   void set_exception(ExceptionPtr e) { this->state->setException(e); }
 };
 
-// async: runs a callable on a new thread and returns a Future to its result.
+// Calls callable and stores what it returns in state (a void callable just completes it). An
+// exception thrown by callable is not stored: it ends the program (a difference from C++,
+// docs/stdlib-conformance.md).
+template<typename R, typename F>
+void runInto(SharedState<R>* state, F callable)
+{
+  if constexpr (isVoid<R>)
+  {
+    callable();
+    state->set();
+  }
+  else
+    state->set(callable());
+}
+
+// async: runs a callable on a new thread (Launch::async) or on the first get() or wait() of its
+// Future (Launch::deferred), and returns a Future to its result.
 template<typename F>
 auto async(Launch policy, F callable) -> Future<decltype(callable())>
 {
   using R = decltype(callable());
   auto state = makeShared<SharedState<R>>();
-  Thread([state, callable]()
-  {
-    state->set(callable());
-  }).detach();
+  SharedState<R>* raw = state.get(); // the state owns the deferred function, which only points back
+  if (policy == Launch::deferred)
+    state->deferred = [raw, callable]() { runInto<R>(raw, callable); };
+  else
+    Thread([state, callable]() { runInto<R>(state.get(), callable); }).detach();
   return Future<R>(state);
 }
 
 template<typename F>
 auto async(F callable) -> Future<decltype(callable())>
 {
-  return async(launchAsync, move(callable));
+  return async(Launch::async, move(callable));
 }
 
 // thisThread: a namespace-like struct for sleep_for, yield, get_id.

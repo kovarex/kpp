@@ -42,19 +42,49 @@ struct Errc
 
 ErrorCode systemCategory() { return ErrorCode(); }
 
-// Exception pointers: a handle to a thrown exception, for rethrowing across threads.
-struct ExceptionPtr
+// Exception pointers (std::exception_ptr): a shared handle to a copy of an exception, thrown again
+// where it is needed (Promise::setException, then Future::get on another thread). Copies of an
+// ExceptionPtr refer to the same exception object; an empty one refers to none.
+struct ExceptionHolderBase
 {
-  void* ptr = nullptr;
-  ExceptionPtr() {}
-  operator bool() const { return this->ptr != nullptr; }
+  virtual ~ExceptionHolderBase() {}
+  virtual void rethrow() const = 0;
+};
+template<typename E>
+struct ExceptionHolder : ExceptionHolderBase
+{
+  E exception;
+  explicit ExceptionHolder(const E& exception) : exception(exception) {}
+  void rethrow() const override { throw this->exception; }
 };
 
+struct ExceptionPtr
+{
+  SharedPtr<ExceptionHolderBase> holder;
+
+  ExceptionPtr() {}
+  implicit ExceptionPtr(nullptr_t) {}
+  explicit operator bool() const { return (bool)this->holder; }
+  bool operator==(const ExceptionPtr& other) const { return this->holder == other.holder; }
+  bool operator!=(const ExceptionPtr& other) const { return this->holder != other.holder; }
+};
+
+// An ExceptionPtr to a copy of exception (std::make_exception_ptr); rethrowing it throws an E.
 template<typename E>
-ExceptionPtr makeExceptionPtr(const E& exception) { return ExceptionPtr(); }
+ExceptionPtr makeExceptionPtr(const E& exception)
+{
+  ExceptionPtr result;
+  result.holder = SharedPtr<ExceptionHolderBase>(new ExceptionHolder<E>(exception));
+  return result;
+}
+
+// Throws the exception an ExceptionPtr refers to (std::rethrow_exception); it must not be empty.
+[[noreturn]] void rethrowException(const ExceptionPtr& pointer)
+{
+  release_assert(pointer.holder);
+  pointer.holder->rethrow();
+}
 
 // The uncaught exception count (C++17).
 extern "C" int __uncaught_exceptions();
 int uncaught_exceptions() { return __uncaught_exceptions(); }
-
-void setTerminate(void (*handler)()) {}
