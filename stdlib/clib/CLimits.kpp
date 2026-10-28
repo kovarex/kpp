@@ -1,32 +1,31 @@
-// C-style limit macros and constants: what NULL, UINT32_MAX, INT_MAX etc. expand to.
-// These are preprocessor macros in C/C++; Kpp defines them as global constants.
+// C-style limit constants derived from Limits<T>.
 
 const void* NULL = nullptr;
 
-const int8_t INT8_MIN = -128;
-const int8_t INT8_MAX = 127;
-const uint8_t UINT8_MAX = 255;
+const int8_t INT8_MIN = Limits<int8_t>::min();
+const int8_t INT8_MAX = Limits<int8_t>::max();
+const uint8_t UINT8_MAX = Limits<uint8_t>::max();
 
-const int16_t INT16_MIN = -32768;
-const int16_t INT16_MAX = 32767;
-const uint16_t UINT16_MAX = 65535;
+const int16_t INT16_MIN = Limits<int16_t>::min();
+const int16_t INT16_MAX = Limits<int16_t>::max();
+const uint16_t UINT16_MAX = Limits<uint16_t>::max();
 
-const int INT32_MIN = -2147483647 - 1;
-const int INT32_MAX = 2147483647;
-const unsigned int UINT32_MAX = 4294967295u;
+const int INT32_MIN = Limits<int>::min();
+const int INT32_MAX = Limits<int>::max();
+const unsigned int UINT32_MAX = Limits<unsigned int>::max();
 
-const long long INT64_MIN = -9223372036854775807ll - 1;
-const long long INT64_MAX = 9223372036854775807ll;
-const unsigned long long UINT64_MAX = 18446744073709551615ull;
+const long long INT64_MIN = Limits<long long>::min();
+const long long INT64_MAX = Limits<long long>::max();
+const unsigned long long UINT64_MAX = Limits<unsigned long long>::max();
 
-const unsigned long long SIZE_MAX = 18446744073709551615ull;
+const unsigned long long SIZE_MAX = Limits<unsigned long long>::max();
 
-const int INT_MIN = -2147483647 - 1;
-const int INT_MAX = 2147483647;
-const unsigned int UINT_MAX = 4294967295u;
+const int INT_MIN = Limits<int>::min();
+const int INT_MAX = Limits<int>::max();
+const unsigned int UINT_MAX = Limits<unsigned int>::max();
 
-const long long LLONG_MIN = -9223372036854775807ll - 1;
-const long long LLONG_MAX = 9223372036854775807ll;
-const unsigned long long ULLONG_MAX = 18446744073709551615ull;
+const long long LLONG_MIN = Limits<long long>::min();
+const long long LLONG_MAX = Limits<long long>::max();
+const unsigned long long ULLONG_MAX = Limits<unsigned long long>::max();
 
 const int CHAR_BIT = 8;

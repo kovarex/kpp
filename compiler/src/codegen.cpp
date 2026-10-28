@@ -2789,8 +2789,50 @@ namespace
       {
         if (!call || call->templateArgCount != f->templateParams.size())
           unsupported(at, "a call to " + global.qualifiedName(f) + " whose template arguments could not be deduced");
+        bool hasUnknown = false;
         for (size_t i = 0; i < f->templateParams.size(); ++i)
-          args.pairs.push_back({f->templateParams[i], call->templateArgs[i]});
+        {
+          const Ty* ta = call->templateArgs[i];
+          args.pairs.push_back({f->templateParams[i], ta});
+          if (!ta || !ta->isKnown())
+            hasUnknown = true;
+          else if (ta->kind == TyKind::Pack)
+            for (const Ty* e : ta->args)
+              if (!e || !e->isKnown())
+              { hasUnknown = true; break; }
+        }
+        if (hasUnknown)
+        {
+          // The type checker left some template args unresolved (e.g. a pack forwarded into
+          // another template). Remove them so deduceArgs can re-add with concrete types.
+          auto isUnresolved = [](const Ty* t) -> bool
+          {
+            if (!t || !t->isKnown()) return true;
+            if (t->kind == TyKind::Pack)
+              for (const Ty* e : t->args)
+                if (!e || !e->isKnown()) return true;
+            return false;
+          };
+          args.pairs.erase(
+            std::remove_if(args.pairs.begin(), args.pairs.end(),
+              [&](const auto& p) { return isUnresolved(p.second); }),
+            args.pairs.end());
+          std::vector<const Ty*> argTypes;
+          for (Expr* a : call->args)
+          {
+            if (isPackExpansion(a))
+            {
+              Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
+              forEachPackElement(pattern, at, [&](size_t)
+              {
+                argTypes.push_back(pattern->ty ? argumentType(pattern, pattern->ty, types) : nullptr);
+              });
+            }
+            else
+              argTypes.push_back(a ? argumentType(a, a->ty, types) : nullptr);
+          }
+          global.deduceArgs(f, argTypes, args);
+        }
       }
       return args;
     }
@@ -6885,6 +6927,19 @@ namespace
         return convert(rhs, t, b);
       }
       Value l = rvalue(b->lhs);
+      if (isClass(l.ty))
+      {
+        // Late resolution: the AST type was Unknown but codegen resolved a class.
+        std::string name = operatorName(op);
+        Expr* rhsExpr = b->rhs;
+        Span<Expr*> one{&rhsExpr, 1};
+        Value result = operatorCall(l, name, one, b, false);
+        if (result.ty)
+          return callRvalue(result, b);
+        if (std::optional<Value> rewritten = rewrittenComparison(b, op, l.ty, nullptr))
+          return *rewritten;
+        unsupported(b, global.qualifiedName(l.ty->decl) + " has no " + name);
+      }
       Value r = rvalue(b->rhs);
       switch (op)
       {

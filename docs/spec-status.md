@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**186 pass, 5 pending, 0 failing, 0 fixed** (191 snippets, 5.1 s).
+**188 pass, 3 pending, 0 failing, 0 fixed** (191 snippets, 4.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -106,8 +106,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/forward_pack_to_function_template.kpp` | forwarding a parameter pack into another function template: `this->inner.emplace(forward<Args>(args)...)` | pending |  | the inner template is instantiated with one parameter of unknown type ("the type <unknown> of CallExpr"); C:\kpp\compiler\tests\spec\templates\forward_pack_to_function_template.kpp:9: codegen does not support the type <unknown> of CallExpr yet (in @"Inner<String>::emplace<<unknown>>(<unknown>&&)", requested by @"Outer<String>::emplace<int32, char>(int32&&, char&&)") |
-| `templates/static_call_through_parameter_operator.kpp` | an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)` | pending |  | the comparison is emitted as a primitive compare of the struct values (invalid IR); C:\kpp\compiler\build\spec\templates.static_call_through_parameter_operator.exe.55.ll:375:28: error: '%t3' defined with type 'ptr' but expected '%struct.3 = type { %struct.4 }' |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |
@@ -128,6 +126,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/dependent_return_in_variadic_call.kpp` | a call whose return type is dependent (typename T::Unit) used directly as a variadic argument | pass |  |  |
 | `templates/enum_template_parameters.kpp` | enum values as non-type template arguments | pass |  |  |
 | `templates/enum_through_parameter.kpp` | a Kpp enum reached through a template parameter: E::values, E::count, value.str() | pass |  |  |
+| `templates/forward_pack_to_function_template.kpp` | forwarding a parameter pack into another function template: `this->inner.emplace(forward<Args>(args)...)` | pass |  |  |
 | `templates/forwarding_conversions.kpp` | forwarding a string literal through a variadic member template into a String constructor (emplace_back("x")) | pass |  |  |
 | `templates/function_templates.kpp` | function templates: deduction, explicit arguments, overloading with non-templates, full specialisation | pass | 592 full specialisations in 61 files |  |
 | `templates/is_constructible_trait.kpp` | `isConstructible<T, Args...>` is true when T can be built from Args (what std::is_constructible_v converts to), in `if constexpr` and in variable templates | pass |  |  |
@@ -146,6 +145,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/several_instantiations_in_one_call.kpp` | three instantiations of one function template as arguments of a single variadic call | pass |  |  |
 | `templates/sfinae_enable_if.kpp` | enable_if-style overload selection | pass | 1 use (Factorio uses requires clauses instead) |  |
 | `templates/short_circuit_consteval.kpp` | short-circuit evaluation in constant expressions (true || <unknown> is true) | pass | is_memcpy_saveable<T> = isFundamental<T> && !isPointer<T> || force_memcpy_save<T> |  |
+| `templates/static_call_through_parameter_operator.kpp` | an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)` | pass |  |  |
 | `templates/static_constexpr_member_in_instantiation.kpp` | a static constexpr member of a class template is computed with the instantiation's arguments (`T(1) << Bits`) wherever it is used | pass |  |  |
 | `templates/static_table_lookup_helper.kpp` | a class's static const table keyed by StringView with a nested value struct, defined out of line from a brace list, read through a helper template with an `auto*` return | pass |  |  |
 | `templates/template_template_parameters.kpp` | template template parameters | pass |  |  |

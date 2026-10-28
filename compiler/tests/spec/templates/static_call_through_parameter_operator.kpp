@@ -1,6 +1,6 @@
 // spec: an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)`
 // found in the stdlib B-tree (Map.kpp compares keys this way; it binds the left side to a reference first as a workaround)
-// pending: the comparison is emitted as a primitive compare of the struct values (invalid IR)
+// pass
 template<typename T>
 struct Identity
 {
