@@ -4950,6 +4950,11 @@ struct GlobalScope::Impl
             if (!activeSubst)
               thisType = computeThisType();
           }
+          else if (f->parent && f->parent->kind == NodeKind::NamespaceDecl && f->parent->ownScope)
+          {
+            // finishIndex simplified the qualified name but set the parent to the namespace decl.
+            scope = f->parent->ownScope;
+          }
           for (const NamePart& part : f->name.parts)
           {
             for (Node* arg : part.templateArgs)

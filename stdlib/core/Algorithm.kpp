@@ -4,6 +4,15 @@
 template<typename T>
 long long distance(const T* first, const T* last) { return last - first; }
 
+template<typename It>
+long long distance(It first, It last)
+{
+  long long n = 0;
+  for (; first != last; ++first)
+    ++n;
+  return n;
+}
+
 template<typename T, typename V>
 T* find(T* first, T* last, const V& value)
 {
@@ -194,6 +203,19 @@ T* upperBound(T* first, T* last, const V& value)
   {
     T* middle = first + (last - first) / 2;
     if (value < *middle)
+      last = middle;
+    else
+      first = middle + 1;
+  }
+  return first;
+}
+template<typename T, typename V, typename Less>
+T* upperBound(T* first, T* last, const V& value, Less less)
+{
+  while (first < last)
+  {
+    T* middle = first + (last - first) / 2;
+    if (less(value, *middle))
       last = middle;
     else
       first = middle + 1;
