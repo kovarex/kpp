@@ -2699,6 +2699,14 @@ struct GlobalScope::Impl
           std::optional<bool> v = traitValue(symbols.name(n->name.parts[0].symbol), a);
           return v ? std::optional<int64_t>(*v ? 1 : 0) : std::nullopt;
         }
+        // `if constexpr (has_get_entity<OwnerType>)`: a concept for these arguments, not the value its
+        // requires-expression was last typed to.
+        if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs)
+          if (VariableDecl* concept_ = conceptOf(l.decl))
+          {
+            std::optional<bool> v = conceptValue(concept_, n->name.parts[0], ctx, depth + 1);
+            return v ? std::optional<int64_t>(*v ? 1 : 0) : std::nullopt;
+          }
         // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`): the
         // declaration the type checker bound where the name is written.
         return constOfDecl(l.decl ? l.decl : n->resolved, ctx, depth);
@@ -4663,9 +4671,10 @@ struct GlobalScope::Impl
   };
 
   // The value of a requires clause under the deduced arguments: boolean traits (`isIntegral<T>`),
-  // `!`, `&&`, `||`, parentheses, true/false and constants. A clause this cannot evaluate holds
-  // (concepts and expression requirements are not checked).
-  std::optional<bool> constraintValue(Expr* e, FunctionDecl* f, const Subst& s, int depth = 0)
+  // concepts (their definitions for the arguments: `requires (...) { ... }` probed, or another
+  // constraint), `!`, `&&`, `||`, parentheses, true/false. A clause this cannot evaluate holds.
+  // f is the function (or the concept) whose template parameters s binds.
+  std::optional<bool> constraintValue(Expr* e, Decl* f, const Subst& s, int depth = 0)
   {
     if (!e || depth > 16)
       return std::nullopt;
@@ -4702,20 +4711,89 @@ struct GlobalScope::Impl
       case NodeKind::NameExpr:
       {
         auto* n = static_cast<NameExpr*>(e);
-        if (n->name.parts.size() != 1 || !n->name.parts[0].hasTemplateArgs || !isBoolTraitName(n->name.parts[0].symbol))
+        if (n->name.parts.size() != 1 || !n->name.parts[0].hasTemplateArgs)
           return std::nullopt;
         LocalStack own;
         for (Decl* p : f->templateParams)
           own.push(static_cast<TemplateParamDecl*>(p)->name, p);
         TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-        std::vector<const Ty*> args = traitArgs(n->name.parts[0], ctx, depth + 1);
-        if (args.empty())
-          return std::nullopt;
-        return traitValue(symbols.name(n->name.parts[0].symbol), args);
+        if (isBoolTraitName(n->name.parts[0].symbol))
+        {
+          std::vector<const Ty*> args = traitArgs(n->name.parts[0], ctx, depth + 1);
+          if (args.empty())
+            return std::nullopt;
+          return traitValue(symbols.name(n->name.parts[0].symbol), args);
+        }
+        // `has_str<T>` with `template<class T> concept has_str = requires(const T& value) { value.str(); };`.
+        Lookup l = lookupQualified(n->name, lexicalScopeOf(f), &own, depth + 1);
+        return conceptValue(conceptOf(l.decl), n->name.parts[0], ctx, depth + 1);
       }
       default:
         return std::nullopt;
     }
+  }
+
+  // The concept d declares (`template<class T> concept C = ...;`, a variable template with no
+  // type), or null.
+  static VariableDecl* conceptOf(Decl* d)
+  {
+    auto* v = d && d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
+    return v && !v->type && v->init && !v->templateParams.empty() ? v : nullptr;
+  }
+
+  // Whether the concept holds for the arguments part writes (`has_str<T>` under ctx): its
+  // definition evaluated for them; nullopt when that cannot be told (an argument still
+  // dependent, a pack).
+  std::optional<bool> conceptValue(VariableDecl* concept_, const NamePart& part, const TypeContext& ctx, int depth)
+  {
+    if (!concept_ || depth > 16 || part.templateArgs.size() != concept_->templateParams.size())
+      return std::nullopt;
+    Subst cs;
+    for (size_t i = 0; i < concept_->templateParams.size(); ++i)
+    {
+      auto* param = static_cast<TemplateParamDecl*>(concept_->templateParams[i]);
+      const Ty* a = param->isPack ? nullptr : templateArgument(part.templateArgs[i], param, ctx, depth + 1);
+      if (!a || !a->isKnown() || types.isDependent(a))
+        return std::nullopt;
+      cs.pairs.push_back({param, a});
+    }
+    if (concept_->init->kind == NodeKind::RequiresExpr)
+      return requirementsHold(static_cast<RequiresExpr*>(concept_->init), concept_, cs);
+    return constraintValue(concept_->init, concept_, cs, depth + 1);
+  }
+
+  // Whether every requirement of `requires (params) { ... }` in owner (a concept) is well-typed
+  // under s, probed on a scratch walker; nullopt while one still depends on a parameter.
+  std::optional<bool> requirementsHold(RequiresExpr* r, Decl* owner, const Subst& s)
+  {
+    ParsedFile* file = owner->file;
+    if (!file || !file->tokens)
+      return std::nullopt;
+    ResolveStats scratch;
+    Walker probe(*this, scratch, *file->tokens, file->text);
+    probe.file = file;
+    probe.scope = lexicalScopeOf(owner);
+    probe.activeSubst = &s;
+    for (Decl* p : owner->templateParams)
+      probe.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    for (Decl* p : r->params)
+      probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
+    bool dependent = false;
+    for (Type* t : r->typeRequirements)
+    {
+      const Ty* ty = probe.typeOf(t);
+      if (!ty || !ty->isKnown())
+        return false;
+      dependent = dependent || types.isDependent(ty);
+    }
+    for (Expr* requirement : r->requirements)
+    {
+      const Ty* ty = probe.walkExpr(requirement);
+      if (!ty || !ty->isKnown())
+        return false;
+      dependent = dependent || types.isDependent(ty);
+    }
+    return dependent ? std::nullopt : std::optional<bool>(true);
   }
 
   bool requiresHolds(FunctionDecl* f, const Subst& deduced)

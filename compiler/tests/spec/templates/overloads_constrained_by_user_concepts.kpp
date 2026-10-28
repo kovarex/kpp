@@ -1,0 +1,45 @@
+// spec: overloads constrained by user-defined concepts (`template<class T> concept has_str = requires(const T& value) { value.str(); };`, `str(const T&) requires has_str<T>` next to a container overload requiring `!has_str<T>`): the constraint is evaluated for the arguments, so a type without str() takes the other overload; `if constexpr (has_str<T>)` the same way
+// factorio: StringUtil::str (CommonUtil/StringUtil.kpp:132, `String(value.str())` instantiated for 22 types without str())
+template<class T>
+concept has_str = requires(const T& value) { value.str(); };
+template<class T>
+concept has_begin = requires(const T& value) { value.begin(); };
+
+struct Named
+{
+  String str() const { return "named"; }
+};
+struct Bag
+{
+  int items[2] = {1, 2};
+  const int* begin() const { return this->items; }
+  const int* end() const { return this->items + 2; }
+};
+
+template<class T> requires has_str<T>
+String describe(const T& value) { return value.str(); }
+template<class T> requires (has_begin<T> && !has_str<T>)
+String describe(const T& value)
+{
+  int sum = 0;
+  for (int x : value)
+    sum += x;
+  return sum == 3 ? "bag of 3" : "bag";
+}
+
+template<class T>
+const char* kind(const T&)
+{
+  if constexpr (has_str<T>)
+    return "has str";
+  else
+    return "no str";
+}
+
+int main()
+{
+  Named named;
+  Bag bag;
+  println("{} {} {} {}", describe(named), describe(bag), kind(named), kind(bag));
+  return 0;
+}

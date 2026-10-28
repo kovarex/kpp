@@ -1415,10 +1415,15 @@ namespace
         if (!parseQualifiedName(v->name, false, false))
           error("expected concept name");
         expect(P::Assign, "expected '='");
-        v->init = parseAssignment();
-        expect(P::Semi, "expected ';'");
         v->templateParams = templ.params;
         v->isTemplate = templ.present;
+        // The parameters of a requires-expression in it (`requires(const T& value)`) belong to the
+        // concept: their types name its template parameters.
+        Decl* savedParent = currentParent;
+        currentParent = v;
+        v->init = parseAssignment();
+        currentParent = savedParent;
+        expect(P::Semi, "expected ';'");
         pushDecl(v);
         return;
       }
