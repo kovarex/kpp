@@ -267,7 +267,7 @@ namespace
     {"make_unsigned_t", "MakeUnsigned"}, {"conditional", "Conditional"},
     {"enable_if", "EnableIf"}, {"void_t", "VoidT"},
     {"bool_constant", "BoolConstant"}, {"integral_constant", "IntegralConstant"},
-    {"enable_shared_from_this", "EnableSharedFromThis"},
+    {"enable_shared_from_this", "EnableSharedFromThis"}, {"bad_weak_ptr", "BadWeakPtr"},
     // variant helpers
     {"holds_alternative", "holdsAlternative"}, {"get_if", "getIf"},
     {"in_place_index", "inPlaceIndex"}, {"in_place_type_t", "InPlaceType"},

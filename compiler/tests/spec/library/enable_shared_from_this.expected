@@ -1,0 +1,11 @@
+owners 2 same true
+not owned: throws true
+derived: owners 2
+as base: 1 owners 1
+~Derived
+from unique: owners 1
+~Session 7
+expired true
+~Derived
+~Session 9
+~Session 0

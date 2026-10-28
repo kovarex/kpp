@@ -1,0 +1,37 @@
+// spec: EnableSharedFromThis (std::enable_shared_from_this), and SharedPtr from a derived class and from a UniquePtr
+// factorio: HttpSharedState hands shared_from_this() to the curl thread
+struct Session : EnableSharedFromThis<Session>
+{
+  int id = 0;
+  SharedPtr<Session> self() { return shared_from_this(); }
+  ~Session() { println("~Session {}", this->id); }
+};
+struct Special : Session {};
+struct Base { int b = 1; };
+struct Derived : Base { ~Derived() { println("~Derived"); } }; // no virtual destructor: deleted as created
+int main()
+{
+  SharedPtr<Session> s = makeShared<Session>();
+  s->id = 7;
+  SharedPtr<Session> t = s->self();
+  WeakPtr<Session> w = s->weak_from_this();
+  println("owners {} same {}", s.use_count(), s == t);
+  t = nullptr;
+  Session alone;
+  bool threw = false;
+  try { alone.self(); } catch (const BadWeakPtr& e) { threw = true; }
+  println("not owned: throws {}", threw);
+  SharedPtr<Special> special = makeShared<Special>();
+  special->id = 9;
+  SharedPtr<Session> viaBase = special->self();
+  println("derived: owners {}", special.use_count());
+  {
+    SharedPtr<Base> base(SharedPtr<Derived>(new Derived()));
+    println("as base: {} owners {}", base->b, base.use_count());
+  }
+  SharedPtr<Derived> fromUnique(makeUnique<Derived>()); // `= makeUnique<Derived>()`: spec language/copy_init_converting_from_prvalue
+  println("from unique: owners {}", fromUnique.use_count());
+  s = nullptr;
+  println("expired {}", w.expired());
+  return 0;
+}

@@ -75,10 +75,3 @@ struct IntegralConstant
 // these.
 
 template<typename T> constexpr size_t alignmentOf = alignof(T);
-
-// Enable shared_from_this: a base class that lets an object retrieve a SharedPtr to itself.
-// Stubbed for now: the SharedPtr implementation would need to detect this base.
-template<typename T>
-struct EnableSharedFromThis
-{
-};
