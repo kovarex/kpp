@@ -1,14 +1,20 @@
 // Source locations.
 
-// The place a function was called from. A parameter declared `CallerLocation here = caller` is
-// filled in by the compiler at every call that leaves it out:
+// The place a function was called from (what std::source_location converts to). A parameter
+// declared `CallerLocation here = caller` is filled in by the compiler at every call that leaves it
+// out, in the order of the fields below:
 //
 //   void log(const char* text, CallerLocation here = caller);
-//   log("hello");   // here = {"main.kpp", 12, 3, "main"}
+//   log("hello");   // here.file_name() "main.kpp", here.line() 12, here.column() 3, here.function_name() "main"
 struct CallerLocation
 {
-  const char* file;
-  uint32_t line;
-  uint32_t column;
-  const char* function;
+  const char* sourceFile;
+  uint32_t sourceLine;
+  uint32_t sourceColumn;
+  const char* sourceFunction;
+
+  const char* file_name() const { return this->sourceFile; }
+  uint32_t line() const { return this->sourceLine; }
+  uint32_t column() const { return this->sourceColumn; }
+  const char* function_name() const { return this->sourceFunction; }
 };

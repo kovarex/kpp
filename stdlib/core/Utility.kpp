@@ -20,6 +20,11 @@ T&& move(T& value) { return (T&&)value; }
 template<typename T>
 T&& forward(T& value) { return (T&&)value; }
 
+// A value of type T where only its type matters (`decltype(declval<T>().str())`): declared, never
+// defined, so a call outside decltype and requires does not link.
+template<typename T>
+T&& declval();
+
 // Relocation: moves count objects from source into the unconstructed memory at destination and
 // destroys the originals (move constructor, then destructor), as containers do when they grow or
 // shift. For types whose moves are plain copies, clang turns these loops into memcpy/memmove.

@@ -10,7 +10,7 @@ struct Guard
 
 void note(const char* text, CallerLocation here = caller)
 {
-  println("{} at line {} column {} in {}", text, int(here.line), int(here.column), here.function);
+  println("{} at line {} column {} in {}", text, int(here.line()), int(here.column()), here.function_name());
 }
 
 conditional(config::debug) void debugOnly(const char* text) { println("debug: {}", text); }

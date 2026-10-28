@@ -302,7 +302,8 @@ namespace
     // time → global
     {"gmtime", "::gmtime"}, {"strftime", "::strftime"},
     // string conversion → global
-    {"stoi", "stoi"}, {"stod", "stod"}, {"stoul", "stoul"}, {"stoull", "stoull"},
+    {"stoi", "stoi"}, {"stod", "stod"}, {"stoul", "stoul"}, {"stoull", "stoull"}, {"stof", "stof"}, {"stoll", "stoll"},
+    {"iterator_traits", "IteratorTraits"}, {"make_move_iterator", "makeMoveIterator"},
     {"to_wstring", "toWString"}, {"getline", "getline"},
     // algorithms → global (camelCase)
     {"adjacent_find", "adjacentFind"}, {"copy_backward", "copyBackward"},
@@ -1352,6 +1353,16 @@ namespace
             toks[i + 2].getKind() == TokenKind::Identifier)
         {
           std::string name(spelling(i + 2));
+          if (name == "source_location" && i + 6 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "current" &&
+              toks[i + 5].is(P::LParen) && toks[i + 6].is(P::RParen))
+          {
+            // `std::source_location loc = std::source_location::current()` as a default argument:
+            // Kpp's caller location, which the compiler fills at each call (design.md section 7).
+            replace(t.offset, endOffset(i + 6) - t.offset, "caller");
+            counts.add("source_location::current() to caller");
+            i += 6;
+            continue;
+          }
           auto it = stdNames.find(name);
           std::string to = it == stdNames.end() ? name : it->second;
           if ((name == "unique_ptr" || name == "make_unique") && i + 3 < toks.size() && toks[i + 3].is(P::Less))

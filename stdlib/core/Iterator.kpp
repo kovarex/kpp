@@ -5,33 +5,52 @@ struct ForwardIteratorTag : InputIteratorTag {};
 struct BidirectionalIteratorTag : ForwardIteratorTag {};
 struct RandomAccessIteratorTag : BidirectionalIteratorTag {};
 
-// MoveIterator: wraps a pointer so that dereferencing moves instead of copying.
+// What an iterator type yields (std::iterator_traits): a pointer's from the pointer, an iterator
+// class's from its value_type, difference_type and the rest.
+template<typename It>
+struct IteratorTraits
+{
+  using value_type = It::value_type;
+  using difference_type = int64_t;
+};
 template<typename T>
+struct IteratorTraits<T*>
+{
+  using value_type = T;
+  using difference_type = int64_t;
+  using pointer = T*;
+  using reference = T&;
+  using iterator_category = RandomAccessIteratorTag;
+};
+
+// MoveIterator<It> (std::move_iterator): an iterator of type It whose dereference moves the
+// element out instead of copying it.
+template<typename It>
 struct MoveIterator
 {
-  T* current;
+  It current;
 
-  explicit MoveIterator(T* it) : current(it) {}
+  explicit MoveIterator(It it) : current(it) {}
 
-  T&& operator*() const { return move(*this->current); }
-  MoveIterator<T>& operator++()
+  IteratorTraits<It>::value_type&& operator*() const { return move(*this->current); }
+  MoveIterator<It>& operator++()
   {
     ++this->current;
     return *this;
   }
-  MoveIterator<T> operator++(int)
+  MoveIterator<It> operator++(int)
   {
-    MoveIterator<T> tmp = *this;
+    MoveIterator<It> tmp = *this;
     ++this->current;
     return tmp;
   }
-  T* base() const { return this->current; }
-  bool operator==(const MoveIterator<T>& other) const { return this->current == other.current; }
-  bool operator!=(const MoveIterator<T>& other) const { return this->current != other.current; }
+  It base() const { return this->current; }
+  bool operator==(const MoveIterator<It>& other) const { return this->current == other.current; }
+  bool operator!=(const MoveIterator<It>& other) const { return this->current != other.current; }
 };
 
-template<typename T>
-MoveIterator<T> makeMoveIterator(T* it) { return MoveIterator<T>(it); }
+template<typename It>
+MoveIterator<It> makeMoveIterator(It it) { return MoveIterator<It>(it); }
 
 // BackInserter: an output iterator that push_back's into a container.
 template<typename Container>
