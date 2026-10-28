@@ -521,7 +521,12 @@ namespace
       return true;
     };
     std::string clang = clangPath();
-    const char* level = options.debug ? "-O0" : "-O2";
+    // A release build of several modules is a ThinLTO build: the modules become bitcode, and the
+    // link optimises them in parallel with what each needs from the others imported, so that calls
+    // into another module's instantiations inline as they do in one module (optimised separately,
+    // the library benchmarks in compiler/bench/stdlib ran up to 20 times slower).
+    bool thinLTO = !options.debug && !cg.modules.empty();
+    const char* level = options.debug ? "-O0" : thinLTO ? "-O2 -flto=thin" : "-O2";
     // Every function in its own section, so that the linker drops the ones nobody calls (and
     // the libraries they would need): a program pays only for what it uses.
     const char* compileFlags = "-ffunction-sections -fdata-sections";
@@ -608,6 +613,14 @@ namespace
       response += "\"" + slashes(o) + "\"\n";
     }
     response += "-o \"" + slashes(options.exe) + "\"\n";
+    if (thinLTO)
+    {
+      // lld runs the ThinLTO back ends on the compiler's threads, and keeps their results for the
+      // modules that did not change (the cache next to the executable).
+      response += "-fuse-ld=lld\n-flto=thin\n-O2\n";
+      response += "-Wl,/opt:lldltojobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
+      response += "\"-Wl,/lldltocache:" + slashes(options.exe) + ".ltocache\"\n";
+    }
     for (const std::string& flag : splitFlags(linkFlags(options)))
       response += slashes(flag) + "\n";
     std::string responsePath = options.exe + ".link.rsp";

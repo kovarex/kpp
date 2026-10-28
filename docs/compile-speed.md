@@ -202,6 +202,16 @@ A one-line edit in a release build recompiles one module at -O2 (0.3 to 1 s) on 
 incremental debug numbers, with or without kppc-side inlining; with ThinLTO the importing
 modules are recompiled too, so a few seconds.
 
+**ThinLTO is what release builds do (2026-10-29).** Since instantiations go to the module their
+name hashes to, a hot callee is usually in another module than its caller, and per-module -O2
+cannot inline it: the library benchmarks (compiler/bench/stdlib/run.cmd, 57 modules) ran up to
+20 times slower than one module (sort.int 80 ms against 44, map.lookup 119 against 72,
+vector.insert front 897 against 46). `--release` with several modules now compiles each to
+ThinLTO bitcode and links with lld (`-flto=thin`, back ends on the compiler's threads, a cache next
+to the executable): every benchmark is within noise of the one-module build again (sort.int 43.1,
+map.lookup 74.0, vector.insert front 45.9). The benchmark builds in 0.2 s of compiling and 0.3 s of
+link instead of 0.27 and 0.08. The full game's release build has not been timed this way yet.
+
 ## What would move these numbers most
 
 1. The remaining codegen errors, so that the first real full-game IR replaces the extrapolation
