@@ -2412,7 +2412,17 @@ namespace
       }
       if (accept(P::Ellipsis))
         p->isPack = true;
-      if (atIdent())
+      if (at(P::LParen))
+      {
+        // `float (*func)(float, float)`: a declarator, a constant parameter of the type it builds.
+        Declarator d;
+        d.type = p->valueType;
+        parseDeclarator(d, Scope::Local);
+        p->valueType = d.type;
+        if (!d.name.empty())
+          p->name = d.name.last().symbol;
+      }
+      else if (atIdent())
       {
         p->name = tok().id;
         advance();

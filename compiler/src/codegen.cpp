@@ -5630,7 +5630,8 @@ namespace
           if (std::optional<Value> v = sseBuiltin(n, c))
             return *v;
         if (!d || d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
-            d->kind == NodeKind::TemplateParamDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)))
+            (d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType) || // `func(a, b)` with a function as a constant parameter: a call
+            (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)))
         {
           const Ty* t = c->ty;
           if (!t || !t->isKnown())
@@ -6610,13 +6611,20 @@ namespace
             return {std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(d))), e->ty};
           if (d && d->kind == NodeKind::TemplateParamDecl)
           {
-            // A non-type template parameter is a constant of the instantiation.
+            // A non-type template parameter is a constant of the instantiation; a function given
+            // for `float (*func)(float, float)` is that function's address.
+            if (currentArgs)
+              for (auto& [p, bound] : currentArgs->pairs)
+                if (p == d && bound && bound->kind == TyKind::Value && bound->decl && bound->decl->kind == NodeKind::FunctionDecl)
+                  return {useFunction(static_cast<FunctionDecl*>(bound->decl), {}, nullptr), bound->inner};
             std::optional<int64_t> v = evalConst(e);
             const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
             if (t && t->kind == TyKind::Value && t->inner)
               t = t->inner;
             if (!v || !t || !t->isKnown())
               unsupported(e, "a template parameter whose value is not known here");
+            if (t->kind == TyKind::Pointer && *v == 0)
+              return {"null", t}; // `fold = nullptr` for a function pointer parameter
             return {t->kind == TyKind::Bool ? std::string(*v ? "true" : "false") : std::to_string(*v), t};
           }
           if (d && d->kind == NodeKind::FunctionDecl)

@@ -236,6 +236,14 @@ const Ty* TypeTable::valueType(const Ty* of, int64_t value)
   return intern(t);
 }
 
+const Ty* TypeTable::functionValue(const Ty* of, Decl* function)
+{
+  Ty t{TyKind::Value};
+  t.inner = of;
+  t.decl = function;
+  return intern(t);
+}
+
 const Ty* TypeTable::member(const Ty* memberType, Decl* decl, const Ty* cls)
 {
   Ty t{TyKind::Member};
@@ -424,6 +432,8 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
       name = &static_cast<ClassDecl*>(d)->name;
     else if (d->kind == NodeKind::EnumDecl)
       name = &static_cast<EnumDecl*>(d)->name;
+    else if (d->kind == NodeKind::FunctionDecl)
+      name = &static_cast<FunctionDecl*>(d)->name; // a function as a template argument
     else if (d->kind == NodeKind::TemplateParamDecl)
     {
       uint32_t n = static_cast<TemplateParamDecl*>(d)->name;
@@ -484,7 +494,20 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
     case TyKind::Param: s += declName(t->decl); break;
     case TyKind::DependentMember: s += toString(t->inner, symbols) + "::" + (symbols ? std::string(symbols->name(uint32_t(t->value))) : std::string("?")); break;
     case TyKind::Value:
-      s += t->inner && t->inner->kind == TyKind::Bool ? (t->value ? "true" : "false") : std::to_string(t->value);
+      if (t->decl)
+      {
+        // A function as the argument, named with its namespaces and classes: `Functions::add` and
+        // `Folding::add` are different arguments (and instantiation names).
+        std::string qualified = declName(t->decl);
+        for (Decl* p = t->decl->parent; p; p = p->parent)
+          if (p->kind == NodeKind::NamespaceDecl && symbols && static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
+            qualified = std::string(symbols->name(static_cast<NamespaceDecl*>(p)->name)) + "::" + qualified;
+          else if (p->kind == NodeKind::ClassDecl)
+            qualified = declName(p) + "::" + qualified;
+        s += "&" + qualified;
+      }
+      else
+        s += t->inner && t->inner->kind == TyKind::Bool ? (t->value ? "true" : "false") : std::to_string(t->value);
       break;
     case TyKind::Member:
       s += "member " + (t->decl ? declName(t->decl) : std::string("?"));

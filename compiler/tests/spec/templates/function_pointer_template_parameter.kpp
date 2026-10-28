@@ -1,0 +1,38 @@
+// spec: a function as a constant template argument, `template<OpType type, float (*func)(float, float), uint64_t complexity = 2>` given `Functions::add` or `&Functions::mul`, called inside; two functions of one name in different namespaces are different arguments; `= nullptr` as the default
+// found in the game's noise expressions (BinaryOperation<NoiseOperationType::Add, Functions::add>, BinaryExpression<..., Folding::add>: the parameter did not parse, the argument was unknown)
+enum class OpType { Add, Mul };
+namespace Functions
+{
+  float add(float a, float b) { return a + b; }
+  float mul(float a, float b) { return a * b; }
+}
+namespace Folding
+{
+  float add(float a, float b) { return 100 + a + b; }
+}
+
+template<OpType type, float (*func)(float, float), uint64_t complexity = 2>
+class BinaryOperation
+{
+public:
+  float apply(float a, float b) const { return func(a, b); }
+  int cost() const { return int(complexity); }
+};
+
+template<float (*fold)(float, float) = nullptr>
+struct Folder
+{
+  float apply(float a, float b) const { return fold ? fold(a, b) : -1; }
+};
+
+int main()
+{
+  BinaryOperation<OpType::Add, Functions::add> plus;
+  BinaryOperation<OpType::Mul, &Functions::mul, 5> times;
+  println("{} {} {} {}", plus.apply(2, 3), times.apply(2, 3), plus.cost(), times.cost());
+  Folder<Functions::add> a;
+  Folder<Folding::add> b;
+  Folder<> none;
+  println("{} {} {}", a.apply(1, 2), b.apply(1, 2), none.apply(1, 2));
+  return 0;
+}

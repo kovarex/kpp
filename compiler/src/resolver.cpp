@@ -2767,8 +2767,8 @@ struct GlobalScope::Impl
       case NodeKind::LiteralExpr:
       {
         auto* l = static_cast<LiteralExpr*>(e);
-        if (l->literalKind == TokenKind::Keyword)
-          return l->keyword == Kw::true_ ? 1 : l->keyword == Kw::false_ ? 0 : std::optional<int64_t>();
+        if (l->literalKind == TokenKind::Keyword) // nullptr: the null pointer constant (`fold = nullptr` as a template argument)
+          return l->keyword == Kw::true_ ? 1 : l->keyword == Kw::false_ || l->keyword == Kw::nullptr_ ? 0 : std::optional<int64_t>();
         const std::vector<Token>* toks = ctx.tokens ? ctx.tokens : fallbackTokens;
         std::string_view text = ctx.tokens ? ctx.text : fallbackText;
         if (l->literalKind != TokenKind::Number || !toks)
@@ -3044,6 +3044,31 @@ struct GlobalScope::Impl
 
   // A written template argument: a type, or a constant expression for a non-type parameter
   // (a Value type of the parameter's declared type), or unknown.
+  // A function named as a constant template argument, for a parameter `float (*func)(float,
+  // float)`: the function value (TypeTable::functionValue) of the overload whose type the
+  // parameter points to; unknown when none fits or the parameter takes no function.
+  const Ty* functionArgument(const Lookup& l, Decl* param, int depth)
+  {
+    auto* p = param && param->kind == NodeKind::TemplateParamDecl ? static_cast<TemplateParamDecl*>(param) : nullptr;
+    if (!p || p->isType || !p->valueType)
+      return types.unknown();
+    const Ty* pt = types.unqualified(convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1));
+    const Ty* wanted = pt && pt->kind == TyKind::Pointer ? pt->inner : pt;
+    if (!wanted || wanted->kind != TyKind::Function)
+      return types.unknown();
+    std::vector<Decl*> candidates;
+    if (l.overloads)
+      for (const Entry& e : *l.overloads)
+        if (e.decl && e.decl->kind == NodeKind::FunctionDecl)
+          candidates.push_back(e.decl);
+    if (candidates.empty())
+      candidates.push_back(l.decl);
+    for (Decl* f : candidates)
+      if (declaredTypeOf(f, nullptr, depth + 1) == wanted)
+        return types.functionValue(types.pointer(wanted), f);
+    return types.unknown();
+  }
+
   const Ty* templateArgument(Node* arg, Decl* param, const TypeContext& ctx, int depth)
   {
     if (!arg)
@@ -3061,8 +3086,13 @@ struct GlobalScope::Impl
       }
       // `Array<char, bufferSize>`: a bare name is a type to the parser; it may be a constant.
       Lookup l = lookupQualified(an, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      if (l.decl && l.decl->kind == NodeKind::FunctionDecl)
+        return functionArgument(l, param, depth); // `BinaryOperation<Add, Functions::add>`
       bool constant = l.decl && ((l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & DF_Typedef)) || l.decl->kind == NodeKind::EnumeratorDecl ||
                                  (l.decl->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(l.decl)->isType));
+      if (constant && l.decl->kind == NodeKind::TemplateParamDecl && ctx.subst)
+        if (const Ty* bound = ctx.subst->find(l.decl); bound && bound->kind == TyKind::Value && bound->decl)
+          return bound; // a function passed on (`Op<func>` inside a template given one)
       if (constant)
       {
         v = constOfDecl(l.decl, ctx, depth);
@@ -3074,6 +3104,15 @@ struct GlobalScope::Impl
     }
     else if (uint8_t(arg->kind) <= uint8_t(NodeKind::PackType))
       return convertType(static_cast<Type*>(arg), ctx, depth + 1);
+    else if (arg->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(arg)->isKeyword && P(static_cast<UnaryExpr*>(arg)->op) == P::Amp &&
+             static_cast<UnaryExpr*>(arg)->operand && static_cast<UnaryExpr*>(arg)->operand->kind == NodeKind::NameExpr)
+    {
+      // `BinaryOperation<Mul, &Functions::mul>`: the address of a function.
+      Lookup l = lookupQualified(static_cast<NameExpr*>(static_cast<UnaryExpr*>(arg)->operand)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      if (l.decl && l.decl->kind == NodeKind::FunctionDecl)
+        return functionArgument(l, param, depth);
+      v = constEval(static_cast<Expr*>(arg), ctx, depth + 1);
+    }
     else
       v = constEval(static_cast<Expr*>(arg), ctx, depth + 1);
     if (!v)
@@ -6241,6 +6280,8 @@ struct GlobalScope::Impl
         {
           const Ty* t = l.decl ? impl.declaredTypeOf(l.decl, activeSubst, 0) : types.unknown();
           record(n, t);
+          if (l.decl && l.decl->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(l.decl)->isType)
+            return callResultOfValue(t && t->kind == TyKind::Value && t->inner ? t->inner : t, c); // `func(a, b)`: a call through a constant parameter
           return t;
         }
         Decl* d = l.decl;

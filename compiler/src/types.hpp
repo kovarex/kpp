@@ -89,6 +89,7 @@ public:
   const Ty* param(Decl* decl, Span<const Ty*> args); // `Container<T>`: a template template parameter applied to arguments
   const Ty* dependentMember(const Ty* of, uint32_t symbol); // `T::Unit`
   const Ty* valueType(const Ty* of, int64_t value); // a non-type template argument
+  const Ty* functionValue(const Ty* of, Decl* function); // a function as one (`template<float (*func)(float, float)>`): decl = the function
   const Ty* member(const Ty* memberType, Decl* decl, const Ty* cls); // a data member as a value (`for constexpr (auto m : members(T))`)
   // instance: a hash of the enclosing instantiation's arguments, so that a lambda written in a
   // template is a different type (with its own closure and function) in each instantiation.
