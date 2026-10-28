@@ -1,6 +1,5 @@
 // spec: a variable direct-initialised with a functional cast, at namespace scope and in a function: `constexpr ID EMPTY(ID(-1));` declares a variable (its parenthesised initializer is an expression, so it is not a function declaration)
 // factorio: Space/CargoDelivery/CargoStationID.hpp (`static constexpr CargoStationID EMPTY_CARGO_STATION_ID(CargoStationID(-1));`, used in 15 places)
-// pending: the declaration does not parse (an ErrorDecl), so every use of the name is unresolved
 using ID = unsigned int;
 constexpr ID EMPTY(ID(-1));
 const int SMALL(int(3.7));

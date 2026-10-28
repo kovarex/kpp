@@ -1885,7 +1885,7 @@ namespace
           at(Kw::true_, 1) || at(Kw::false_, 1) || at(Kw::nullptr_, 1) || at(Kw::this_, 1))
         return false;
       if (scope != Scope::Local)
-        return true; // At namespace/class scope `name(...)` is a function.
+        return !firstParameterIsExpression(); // At namespace/class scope `name(...)` is a function.
       // Local: `T x(args);` is a variable, `T f(int);` a function (rare). Guess: parameter list if
       // empty or starts with a builtin type keyword / const / `void`.
       if (at(P::RParen, 1))
@@ -1894,6 +1894,52 @@ namespace
       if (t.getKind() == TokenKind::Keyword && (isBuiltinTypeKeyword(Kw(t.id)) || t.is(Kw::const_)))
         return !at(P::LParen, 2) && !at(P::LBrace, 2) && !at(P::ColonColon, 2) && !at(P::Dot, 2);
       return false;
+    }
+
+    // At the `(` after a declarator's name: whether what starts inside is an expression, so that
+    // `constexpr ID EMPTY(ID(-1));` declares a variable. A parameter is a type followed by a
+    // declarator, a default argument, `,` or `)`. `Type(args)` and `Type{args}` are expressions
+    // (design.md, Kpp v0 rule 2: no most vexing parse, so `Widget w(Size(s));` is a variable),
+    // except a parenthesised declarator followed by a parameter list or an array bound
+    // (`int (*f)(int)`, `T (&a)[3]`, rule 4).
+    bool firstParameterIsExpression()
+    {
+      uint32_t save = pos;
+      size_t mark = scratch.size();
+      bool savedRecovery = inRecovery;
+      size_t savedDiagnostics = out.diagnostics.size();
+      uint32_t nodes = out.nodeCount;
+      advance(); // '('
+      bool expression = at(P::Star) || at(P::Amp) || at(P::LParen) || at(P::Bang) || at(P::Tilde) || at(P::Plus) ||
+                        at(P::PlusPlus) || at(P::MinusMinus);
+      if (!expression && (atIdent() || at(P::ColonColon) || (at(TokenKind::Keyword) && isBuiltinTypeKeyword(Kw(tok().id)))))
+      {
+        Type* t = parseType();
+        if (!t || inRecovery || at(P::LBrace))
+          expression = true;
+        else if (at(P::LParen))
+        {
+          int i = 1;
+          if (atIdent(1) && at(P::ColonColon, 2) && at(P::Star, 3))
+            i = 4; // `R (C::*name)(...)`
+          else
+            while (at(P::Star, i) || at(P::Amp, i) || at(P::AndAnd, i) || at(Kw::const_, i))
+              ++i;
+          if (atIdent(i))
+            ++i;
+          bool declarator = i > 1 && at(P::RParen, i) && (at(P::LParen, i + 1) || at(P::LBracket, i + 1));
+          expression = !declarator;
+        }
+        else
+          expression = !(atIdent() || at(P::Star) || at(P::Amp) || at(P::AndAnd) || at(P::Comma) || at(P::RParen) ||
+                         at(P::Assign) || at(P::LBracket) || at(P::Ellipsis) || at(Kw::const_) || at(Kw::volatile_));
+      }
+      restore(save);
+      scratch.resize(mark);
+      inRecovery = savedRecovery;
+      out.diagnostics.resize(savedDiagnostics);
+      out.nodeCount = nodes;
+      return expression;
     }
 
     // Parses `(params) cv ref noexcept -> ret override final = 0/default/delete requires ...`.
