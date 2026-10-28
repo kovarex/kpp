@@ -2593,9 +2593,54 @@ struct GlobalScope::Impl
     return s;
   }
 
+  // The instantiation of the base class whose scope is `in` that class type t (scope cls)
+  // derives from (`Prototype<ItemID>` for ItemPrototype and Prototype's scope), t itself when in
+  // is cls; null when in is no base of it.
+  const Ty* instantiationOfBase(const Ty* t, Scope* cls, Scope* in, int depth)
+  {
+    if (cls == in)
+      return t;
+    if (!cls || depth > 16 || cls->baseTypes.empty() || !cls->owner)
+      return nullptr;
+    Subst own = substFor(t);
+    LocalStack params;
+    for (Decl* p : cls->templateParams)
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    ParsedFile* file = cls->owner->file;
+    TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+    for (Type* b : cls->baseTypes)
+    {
+      const Ty* bt = convertType(b, ctx, depth + 1);
+      if (!bt || bt->kind != TyKind::Class || !bt->decl)
+        continue;
+      Scope* bs = bt->decl->ownScope;
+      if (!bs)
+      {
+        Entry e{bt->decl, nullptr};
+        bs = scopeOfEntry(e, 0);
+      }
+      if (const Ty* found = instantiationOfBase(bt, bs, in, depth + 1))
+        return found;
+    }
+    return nullptr;
+  }
+
+  // The substitution a member found in scope foundIn sees through class type t: that of the
+  // base instantiation the member is declared in (`ItemPrototype::IDType` with `using IDType =
+  // IDTypeParameter;` in the base Prototype<ItemID>), else t's own.
+  Subst memberSubst(const Ty* t, Scope* foundIn, int depth)
+  {
+    Scope* cls = t && t->decl ? t->decl->ownScope : nullptr;
+    if (cls && foundIn && foundIn != cls && foundIn->kind == ScopeKind::Class)
+      if (const Ty* base = instantiationOfBase(t, cls, foundIn, depth + 1))
+        return substFor(base);
+    return substFor(t);
+  }
+
   // For `Vector<int>::iterator`: the substitution of the instantiation the qualifier names
-  // (its innermost part with template arguments), empty when there is none.
-  Subst qualifierSubst(const QualifiedName& name, const TypeContext& ctx, int depth)
+  // (its innermost part with template arguments), or of the base the member was found in
+  // (foundIn); empty when there is none.
+  Subst qualifierSubst(const QualifiedName& name, const TypeContext& ctx, int depth, Scope* foundIn = nullptr)
   {
     Subst s;
     if (name.parts.size() < 2 || depth > 20)
@@ -2612,16 +2657,16 @@ struct GlobalScope::Impl
       // arguments that resolve the member (`using value_type = T;` inside Vec<int> needs
       // Vec's T mapped to int).
       const Ty* sub = ctx.subst->find(l.decl);
-      if (sub && sub->kind == TyKind::Class && !sub->args.empty())
-        return substFor(sub);
+      if (sub && sub->kind == TyKind::Class)
+        return memberSubst(sub, foundIn, depth);
       return s;
     }
     if (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::UsingAliasDecl)
       return s;
     const Ty* qualifier = typeOfTypeDecl(l.decl, l, prefix.last(), ctx, depth + 1);
-    if (!qualifier || qualifier->kind != TyKind::Class || qualifier->args.empty())
+    if (!qualifier || qualifier->kind != TyKind::Class)
       return s;
-    return substFor(qualifier);
+    return memberSubst(qualifier, foundIn, depth);
   }
 
   // A written template argument: a type, or a constant expression for a non-type parameter
@@ -3062,7 +3107,7 @@ struct GlobalScope::Impl
                   Lookup inner = lookupQualified(rest, sub->decl->ownScope, nullptr, depth + 1);
                   if (inner.decl && inner.found != Found::No)
                   {
-                    Subst s2 = substFor(sub);
+                    Subst s2 = memberSubst(sub, inner.foundIn, depth); // a member of a base: that base's arguments
                     TypeContext c2{sub->decl->ownScope, nullptr, &s2};
                     return typeOfTypeDecl(inner.decl, inner, rest.last(), c2, depth + 1);
                   }
@@ -3099,8 +3144,9 @@ struct GlobalScope::Impl
              (l.decl->kind == NodeKind::ClassDecl && l.decl->templateParams.empty() && !effectiveParams(l.decl).empty())))
         {
           // `Vector<int>::iterator`: the alias as the instantiation named by the qualifier has it;
-          // `Holder<int>::Node`: the nested class with the enclosing instantiation's arguments.
-          Subst qs = qualifierSubst(n->name, ctx, depth);
+          // `Holder<int>::Node`: the nested class with the enclosing instantiation's arguments;
+          // `ItemPrototype::IDType`: the alias as the base it is declared in has it.
+          Subst qs = qualifierSubst(n->name, ctx, depth, l.foundIn);
           if (!qs.empty())
           {
             if (ctx.subst)
@@ -4757,31 +4803,7 @@ struct GlobalScope::Impl
     // on the way to `in`. `v.x` with x declared in Vector2<T, V> and v a Vec: Vector2<double, Vec>.
     const Ty* instantiationOfBase(const Ty* t, Scope* cls, Scope* in, int depth)
     {
-      if (cls == in)
-        return t;
-      if (!cls || depth > 16 || cls->baseTypes.empty() || !cls->owner)
-        return nullptr;
-      Subst own = impl.substFor(t);
-      LocalStack params;
-      for (Decl* p : cls->templateParams)
-        params.push(static_cast<TemplateParamDecl*>(p)->name, p);
-      ParsedFile* file = cls->owner->file;
-      TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
-      for (Type* b : cls->baseTypes)
-      {
-        const Ty* bt = impl.convertType(b, ctx, depth + 1);
-        if (!bt || bt->kind != TyKind::Class || !bt->decl)
-          continue;
-        Scope* bs = bt->decl->ownScope;
-        if (!bs)
-        {
-          Entry e{bt->decl, nullptr};
-          bs = impl.scopeOfEntry(e, 0);
-        }
-        if (const Ty* found = instantiationOfBase(bt, bs, in, depth + 1))
-          return found;
-      }
-      return nullptr;
+      return impl.instantiationOfBase(t, cls, in, depth);
     }
 
     MemberResult memberOf(const Ty* objectTy, uint32_t symbol, const QualifiedName* name, uint32_t token, bool countMissing = true)

@@ -1,0 +1,50 @@
+// spec: a member type a class inherits from a class template instantiation, `ItemPrototype::IDType` with `using IDType = IDTypeParameter;` in the base Prototype<ItemID>, named directly and through a template parameter (`PrototypeType::IDType`)
+// found in the game's ID system (PrototypeList<PrototypeType>::get/getSafe/getPointer(const PrototypeType::IDType&), ID::ID(StringView), LuaHelper::parse: ~170 instantiations)
+struct ItemID
+{
+  using IndexType = unsigned short;
+  IndexType index = 0;
+};
+
+template<class IDTypeParameter>
+class Prototype
+{
+public:
+  using IDType = IDTypeParameter;
+  IDType id;
+  IDType getID() const { return this->id; }
+};
+
+class ItemPrototype : public Prototype<ItemID>
+{
+public:
+  int stackSize = 50;
+};
+
+template<class PrototypeType>
+struct PrototypeList
+{
+  static Vector<const PrototypeType*> indexToPrototype;
+
+  static const PrototypeType* getSafe(const PrototypeType::IDType& id)
+  {
+    if (id.index >= PrototypeList<PrototypeType>::indexToPrototype.size())
+      return nullptr;
+    return PrototypeList<PrototypeType>::indexToPrototype[id.index];
+  }
+};
+
+template<class PrototypeType>
+Vector<const PrototypeType*> PrototypeList<PrototypeType>::indexToPrototype;
+
+int main()
+{
+  ItemPrototype iron;
+  iron.stackSize = 100;
+  PrototypeList<ItemPrototype>::indexToPrototype.push_back(&iron);
+  ItemPrototype::IDType id = iron.getID();
+  const ItemPrototype* found = PrototypeList<ItemPrototype>::getSafe(id);
+  id.index = 5;
+  println("{} {}", found ? found->stackSize : 0, PrototypeList<ItemPrototype>::getSafe(id) == nullptr);
+  return 0;
+}

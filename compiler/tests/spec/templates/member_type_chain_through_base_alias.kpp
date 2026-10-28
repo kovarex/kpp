@@ -1,0 +1,27 @@
+// spec: a qualified name that continues through an alias inherited from a class template instantiation, `ItemPrototype::IDType::IndexType` and `T::IDType::IndexType`
+// found in the game's Gui and GlobalContext (`PrototypeType::IDType::IndexType`, `FilterType::IDType::IteratorType`: 16 uses)
+// pending: lookupQualified follows the alias IDType (= IDTypeParameter) without the base Prototype<ItemID>'s arguments
+struct ItemID
+{
+  using IndexType = unsigned short;
+  IndexType index = 0;
+};
+template<class IDTypeParameter>
+struct Prototype { using IDType = IDTypeParameter; };
+struct ItemPrototype : Prototype<ItemID> {};
+
+template<class T>
+int viaParameter() { return int(T::IDType::IndexType(7)); }
+
+template<class T>
+int declared()
+{
+  T::IDType::IndexType value = 9;
+  return int(value);
+}
+
+int main()
+{
+  println("{} {} {}", int(ItemPrototype::IDType::IndexType(6)), viaParameter<ItemPrototype>(), declared<ItemPrototype>());
+  return 0;
+}
