@@ -502,6 +502,198 @@ namespace
     }
   }
 
+  // --- std::variant: typed unions (`union enum`, design.md 8.5) ---
+
+  // A std::variant the program declares. An alias (`using AIState = std::variant<A, B>;`) names
+  // its union; a member declared as a std::variant gets a union named after it (`data` ->
+  // DataVariant), declared just before it.
+  struct VariantAlternative
+  {
+    std::string spelling; // the C++ type as written, without spaces and a leading `::`
+    std::string name;     // the alternative's name in the union
+  };
+  struct VariantInfo
+  {
+    Decl* decl = nullptr;  // the UsingAliasDecl, or the member's VariableDecl
+    std::string unionName; // AIState, DataVariant
+    std::string qualified; // ::SegmentedUnitAI::AIState
+    std::vector<VariantAlternative> alternatives;
+  };
+  struct Variants
+  {
+    std::vector<VariantInfo> all;
+    std::map<Decl*, size_t> byDecl;
+  };
+
+  // Whether a written type is `std::variant<...>`.
+  bool isStdVariant(Type* t, const SymbolTable& symbols)
+  {
+    if (!t || t->kind != NodeKind::NamedType)
+      return false;
+    const QualifiedName& n = static_cast<NamedType*>(t)->name;
+    return n.parts.size() == 2 && n.parts[0].symbol != UINT32_MAX && n.parts[1].symbol != UINT32_MAX &&
+           symbols.name(n.parts[0].symbol) == "std" && symbols.name(n.parts[1].symbol) == "variant" && n.parts[1].hasTemplateArgs;
+  }
+
+  // The token ranges [first, last) of the arguments of the first `std::variant<...>` in tokens
+  // [from, to), and in variantClose the index of its closing `>`.
+  std::vector<std::pair<uint32_t, uint32_t>> variantArgumentTokens(const std::vector<Token>& tk, std::string_view text, uint32_t from, uint32_t to,
+                                                                   uint32_t& variantStart, uint32_t& variantClose)
+  {
+    std::vector<std::pair<uint32_t, uint32_t>> args;
+    for (uint32_t k = from; k + 3 < to; ++k)
+    {
+      if (text.substr(tk[k].offset, tk[k].length) != "std" || !tk[k + 1].is(P::ColonColon) ||
+          text.substr(tk[k + 2].offset, tk[k + 2].length) != "variant" || !tk[k + 3].is(P::Less))
+        continue;
+      int depth = 0;
+      uint32_t start = k + 4;
+      for (uint32_t j = k + 4; j < to; ++j)
+      {
+        if (tk[j].is(P::Less) || tk[j].is(P::LParen))
+          ++depth;
+        else if (tk[j].is(P::RParen))
+          --depth;
+        else if (tk[j].is(P::Greater) || tk[j].is(P::Shr))
+        {
+          if (depth == 0)
+          {
+            args.push_back({start, j});
+            variantStart = k;
+            variantClose = j;
+            return args;
+          }
+          depth -= tk[j].is(P::Shr) ? 2 : 1;
+        }
+        else if (tk[j].is(P::Comma) && depth == 0)
+        {
+          args.push_back({start, j});
+          start = j + 1;
+        }
+      }
+      return {};
+    }
+    return {};
+  }
+
+  // A type as written, for comparing: no whitespace, no leading `::`.
+  std::string normalizedSpelling(std::string_view text)
+  {
+    std::string s;
+    for (char c : text)
+      if (!isspace((unsigned char)c))
+        s += c;
+    if (s.rfind("::", 0) == 0)
+      s.erase(0, 2);
+    return s;
+  }
+
+  // The last component of a spelled type's name, outside template arguments
+  // (`SegmentedUnitAI::Patrolling` -> `Patrolling`, `ID<A::B>` -> `ID<A::B>`).
+  std::string lastComponent(const std::string& spelling)
+  {
+    int depth = 0;
+    size_t cut = 0;
+    for (size_t i = 0; i + 1 < spelling.size(); ++i)
+    {
+      if (spelling[i] == '<')
+        ++depth;
+      else if (spelling[i] == '>')
+        --depth;
+      else if (depth == 0 && spelling[i] == ':' && spelling[i + 1] == ':')
+        cut = i + 2;
+    }
+    return spelling.substr(cut);
+  }
+
+  // An alternative's name from its type: the identifiers of the type's last component and its
+  // template arguments, the first letter upper case (`IDWithQuality<FluidID>` -> IDWithQualityFluidID,
+  // `int` -> Int, `std::string` -> String).
+  std::string alternativeName(const std::string& spelling)
+  {
+    std::string last = lastComponent(spelling), name;
+    for (size_t i = 0; i < last.size();)
+    {
+      if (isalpha((unsigned char)last[i]) || last[i] == '_')
+      {
+        size_t j = i;
+        while (j < last.size() && isIdentChar(last[j]))
+          ++j;
+        std::string word = last.substr(i, j - i);
+        auto mapped = stdNames.find(word);
+        if (word != "std" && word != "const")
+          name += (i >= 5 && last.compare(i - 5, 5, "std::") == 0 && mapped != stdNames.end()) ? mapped->second : word;
+        i = j;
+      }
+      else
+        ++i;
+    }
+    if (!name.empty())
+      name[0] = (char)toupper((unsigned char)name[0]);
+    return name;
+  }
+
+  // Records the program's std::variant aliases and members (prefix: the enclosing scopes and `::`).
+  void collectVariants(Span<Decl*> decls, const std::string& prefix, const std::vector<Token>& tk, std::string_view text,
+                       const SymbolTable& symbols, Variants& out)
+  {
+    for (Decl* d : decls)
+    {
+      Type* type = nullptr;
+      std::string unionName;
+      if (d->kind == NodeKind::NamespaceDecl)
+      {
+        auto* n = static_cast<NamespaceDecl*>(d);
+        std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
+        collectVariants(n->decls, prefix + name + "::", tk, text, symbols, out);
+        continue;
+      }
+      if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->isDefinition && !static_cast<ClassDecl*>(d)->name.empty())
+      {
+        collectVariants(static_cast<ClassDecl*>(d)->members, prefix + nameText(static_cast<ClassDecl*>(d)->name, symbols) + "::", tk, text, symbols, out);
+        continue;
+      }
+      if (d->kind == NodeKind::UsingAliasDecl && isStdVariant(static_cast<UsingAliasDecl*>(d)->type, symbols))
+      {
+        type = static_cast<UsingAliasDecl*>(d)->type;
+        unionName = std::string(symbols.name(static_cast<UsingAliasDecl*>(d)->name));
+      }
+      else if (d->kind == NodeKind::VariableDecl && isStdVariant(static_cast<VariableDecl*>(d)->type, symbols) &&
+               static_cast<VariableDecl*>(d)->name.parts.size() == 1 && d->parent && d->parent->kind == NodeKind::ClassDecl)
+      {
+        type = static_cast<VariableDecl*>(d)->type;
+        unionName = std::string(symbols.name(static_cast<VariableDecl*>(d)->name.last().symbol));
+        unionName[0] = (char)toupper((unsigned char)unionName[0]);
+        unionName += "Variant";
+      }
+      if (!type || d->endToken <= d->token)
+        continue;
+      uint32_t variantStart = 0, variantClose = 0;
+      auto args = variantArgumentTokens(tk, text, type->token, d->endToken, variantStart, variantClose);
+      if (args.empty())
+        continue;
+      VariantInfo info;
+      info.decl = d;
+      info.unionName = unionName;
+      info.qualified = "::" + prefix + unionName;
+      std::set<std::string> used;
+      for (auto [a0, a1] : args)
+      {
+        VariantAlternative alternative;
+        alternative.spelling = normalizedSpelling(text.substr(tk[a0].offset, tk[a1 - 1].offset + tk[a1 - 1].length - tk[a0].offset));
+        alternative.name = alternativeName(alternative.spelling);
+        if (alternative.name.empty())
+          alternative.name = "Alternative";
+        std::string base = alternative.name;
+        for (int n = 2; !used.insert(alternative.name).second; ++n)
+          alternative.name = base + std::to_string(n);
+        info.alternatives.push_back(alternative);
+      }
+      out.byDecl[d] = out.all.size();
+      out.all.push_back(std::move(info));
+    }
+  }
+
   bool isFunctionDefinition(FunctionDecl* f) { return f->body != nullptr || (f->flags & (DF_Default | DF_Delete)); }
 
   void collectOverrideKeys(Span<Decl*> decls, const std::string& prefix, const SymbolTable& symbols, OverrideKeys& out)
@@ -554,6 +746,28 @@ namespace
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
     const ScopeNames* scopeNames = nullptr;
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
+    const Variants* variants = nullptr;
+    // A std::variant declared in this file, which becomes a union enum (run() writes it once the
+    // edits inside its alternatives' types are known).
+    struct VariantDeclaration
+    {
+      const VariantInfo* info;
+      uint32_t begin, end;                             // the alias declaration, or the member's type
+      bool member;                                     // a member: the union goes before it, its type becomes the union
+      uint32_t memberStart;                            // where the member's declaration starts (its line)
+      std::vector<std::pair<uint32_t, uint32_t>> args; // the alternatives' types, as offsets
+    };
+    std::vector<VariantDeclaration> variantDeclarations;
+    // std::get<T>(x), std::holds_alternative<T>(x), std::get_if<T>(p), std::visit(f, x) on a variant.
+    struct VariantUse
+    {
+      std::string kind;
+      uint32_t begin, end, calleeToken;
+      std::vector<std::pair<uint32_t, uint32_t>> args; // the call's arguments, as offsets
+      std::string typeSpelling;                        // T, normalized
+    };
+    std::vector<VariantUse> variantUses;
+    std::map<uint32_t, const VariantInfo*> callVariant; // a use's callee token -> the variant its argument is declared as
     // This file's namespaces and classes (and the class scope of out-of-line member definitions),
     // by text range: where a name would find something before the global library name.
     struct ScopeRange
@@ -1486,6 +1700,8 @@ namespace
             toks[i + 2].getKind() == TokenKind::Identifier)
         {
           std::string name(spelling(i + 2));
+          if (variants && !variants->all.empty() && (name == "get" || name == "holds_alternative" || name == "get_if" || name == "visit"))
+            recordVariantUse(name, i);
           if (name == "source_location" && i + 6 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "current" &&
               toks[i + 5].is(P::LParen) && toks[i + 6].is(P::RParen))
           {
@@ -2117,9 +2333,13 @@ namespace
           case NodeKind::VariableDecl:
           {
             auto* v = static_cast<VariableDecl*>(d);
+            recordVariantDeclaration(d, true);
             walkExpr(v->init, nullptr);
             break;
           }
+          case NodeKind::UsingAliasDecl:
+            recordVariantDeclaration(d, false);
+            break;
           default: break;
         }
       }
@@ -2242,6 +2462,191 @@ namespace
       walkStmt(f->body, nullptr); // not a member: no this->
       counts.add("hidden friends moved to namespace scope");
       return false;
+    }
+
+    // A std::variant alias or member of this file (one of `variants`): what run() turns into a union enum.
+    void recordVariantDeclaration(Decl* d, bool member)
+    {
+      if (!variants || d->endToken <= d->token)
+        return;
+      auto it = variants->byDecl.find(d);
+      if (it == variants->byDecl.end())
+        return;
+      Type* type = member ? static_cast<VariableDecl*>(d)->type : static_cast<UsingAliasDecl*>(d)->type;
+      uint32_t variantStart = 0, variantClose = 0;
+      auto args = variantArgumentTokens(toks, text, type->token, d->endToken, variantStart, variantClose);
+      if (args.empty())
+        return;
+      VariantDeclaration v;
+      v.info = &variants->all[it->second];
+      v.member = member;
+      v.memberStart = declStart(d);
+      if (member)
+      {
+        v.begin = toks[variantStart].offset;
+        v.end = endOffset(variantClose);
+      }
+      else
+      {
+        v.begin = declStart(d);
+        uint32_t last = d->endToken - 1;
+        if (!toks[last].is(P::Semi) && last + 1 < toks.size() && toks[last + 1].is(P::Semi))
+          ++last;
+        v.end = endOffset(last);
+      }
+      for (auto [a0, a1] : args)
+        v.args.push_back({toks[a0].offset, endOffset(a1 - 1)});
+      variantDeclarations.push_back(std::move(v));
+      counts.add("std::variant to union enum");
+    }
+
+    // The variant an expression is declared as: a variable, parameter or member whose type is one of
+    // the variant aliases (or a variant member itself), or a call of a function returning one.
+    const VariantInfo* variantOfType(Type* t)
+    {
+      while (t && (t->kind == NodeKind::LRefType || t->kind == NodeKind::RRefType || t->kind == NodeKind::ConstType))
+        t = t->kind == NodeKind::LRefType ? static_cast<LRefType*>(t)->referenced
+          : t->kind == NodeKind::RRefType ? static_cast<RRefType*>(t)->referenced
+                                          : static_cast<ConstType*>(t)->inner;
+      if (!t || t->kind != NodeKind::NamedType || !static_cast<NamedType*>(t)->resolved)
+        return nullptr;
+      auto it = variants->byDecl.find(static_cast<NamedType*>(t)->resolved);
+      return it == variants->byDecl.end() ? nullptr : &variants->all[it->second];
+    }
+    const VariantInfo* variantOfExpr(Expr* e)
+    {
+      if (!variants || !e)
+        return nullptr;
+      while (e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (e->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(e)->op) == P::Amp)
+        return variantOfExpr(static_cast<UnaryExpr*>(e)->operand); // get_if<T>(&x)
+      Decl* d = e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved
+              : e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved
+                                                : nullptr;
+      if (e->kind == NodeKind::CallExpr)
+      {
+        Expr* callee = static_cast<CallExpr*>(e)->callee;
+        Decl* f = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
+                : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
+                                                       : nullptr;
+        return f && f->kind == NodeKind::FunctionDecl ? variantOfType(static_cast<FunctionDecl*>(f)->returnType) : nullptr;
+      }
+      if (!d)
+        return nullptr;
+      if (auto it = variants->byDecl.find(d); it != variants->byDecl.end())
+        return &variants->all[it->second]; // a member declared as std::variant<...>
+      if (d->kind == NodeKind::VariableDecl)
+        return variantOfType(static_cast<VariableDecl*>(d)->type);
+      if (d->kind == NodeKind::ParamDecl)
+        return variantOfType(static_cast<ParamDecl*>(d)->type);
+      return nullptr;
+    }
+
+    // `std::get<T>(x)` and its relatives at token i (`std`): recorded with the call's arguments; run()
+    // rewrites it when it knows the variant. std::get<0>(tuple) and the like are no variant uses.
+    void recordVariantUse(const std::string& name, uint32_t i)
+    {
+      VariantUse use;
+      use.kind = name;
+      use.begin = toks[i].offset;
+      use.calleeToken = i;
+      uint32_t open = i + 3;
+      if (name != "visit")
+      {
+        if (!toks[open].is(P::Less))
+          return;
+        uint32_t close = open + 1;
+        for (int depth = 0; close < toks.size(); ++close)
+        {
+          if (toks[close].is(P::Less))
+            ++depth;
+          else if (toks[close].is(P::Greater) || toks[close].is(P::Shr))
+          {
+            if (depth == 0)
+              break;
+            depth -= toks[close].is(P::Shr) ? 2 : 1;
+            if (depth < 0)
+              break;
+          }
+          else if (toks[close].is(P::Semi))
+            return;
+        }
+        if (close >= toks.size() || close == open + 1)
+          return;
+        use.typeSpelling = normalizedSpelling(text.substr(toks[open + 1].offset, endOffset(close - 1) - toks[open + 1].offset));
+        bool anyAlternative = false;
+        for (const VariantInfo& v : variants->all)
+          anyAlternative = anyAlternative || alternativeFor(v, use.typeSpelling);
+        if (!anyAlternative)
+          return;
+        open = close + 1;
+      }
+      if (open >= toks.size() || !toks[open].is(P::LParen))
+        return;
+      uint32_t argStart = open + 1, k = open + 1;
+      for (int depth = 0; k < toks.size(); ++k)
+      {
+        const Token& tk = toks[k];
+        if (tk.is(P::LParen) || tk.is(P::LBracket) || tk.is(P::LBrace))
+          ++depth;
+        else if (tk.is(P::RParen) || tk.is(P::RBracket) || tk.is(P::RBrace))
+        {
+          if (depth-- == 0)
+            break;
+        }
+        else if (tk.is(P::Comma) && depth == 0)
+        {
+          use.args.push_back({toks[argStart].offset, endOffset(k - 1)});
+          argStart = k + 1;
+        }
+      }
+      if (k >= toks.size() || !toks[k].is(P::RParen) || k == argStart)
+        return;
+      use.args.push_back({toks[argStart].offset, endOffset(k - 1)});
+      use.end = endOffset(k);
+      variantUses.push_back(std::move(use));
+    }
+
+    // An alternative's type as the union enum lists it. Inside the union, its alternatives' names
+    // come first, so a type spelled like one of them (`Patrolling` next to the alternative
+    // Patrolling) is written qualified: by the innermost scope at offset that declares it, or as global.
+    std::string qualifiedAlternativeType(const std::string& type, const VariantInfo& info, uint32_t offset) const
+    {
+      if (type.rfind("::", 0) == 0)
+        return type;
+      size_t e = 0;
+      while (e < type.size() && isIdentChar(type[e]))
+        ++e;
+      std::string id = type.substr(0, e);
+      bool collides = false;
+      for (const VariantAlternative& a : info.alternatives)
+        collides = collides || a.name == id;
+      if (!collides)
+        return type;
+      std::string scope;
+      for (const ScopeRange& r : scopeRanges)
+        if (r.begin <= offset && offset < r.end && scopeNames)
+          if (auto it = scopeNames->find(r.key); it != scopeNames->end() && it->second.count(id))
+            scope = r.key;
+      return "::" + scope + type;
+    }
+
+    // The alternative of a variant that a written type names (exactly, or by its last component).
+    static const VariantAlternative* alternativeFor(const VariantInfo& info, const std::string& spelling)
+    {
+      for (const VariantAlternative& a : info.alternatives)
+        if (a.spelling == spelling)
+          return &a;
+      const VariantAlternative* found = nullptr;
+      for (const VariantAlternative& a : info.alternatives)
+        if (lastComponent(a.spelling) == lastComponent(spelling))
+        {
+          if (found)
+            return nullptr; // two alternatives end in the same name
+          found = &a;
+        }
+      return found;
     }
 
     static bool containsWord(std::string_view text, std::string_view word)
@@ -2590,9 +2995,26 @@ namespace
           break;
         }
         case NodeKind::CallExpr:
-          walkExpr(static_cast<CallExpr*>(e)->callee, owner);
-          walkExprs(static_cast<CallExpr*>(e)->args, owner);
+        {
+          auto* call = static_cast<CallExpr*>(e);
+          if (variants && call->callee->kind == NodeKind::NameExpr && !call->args.empty())
+          {
+            // std::get<T>(x), std::visit(f, x)...: which variant x is declared as, for the rewrite in run().
+            const QualifiedName& n = static_cast<NameExpr*>(call->callee)->name;
+            if (n.parts.size() == 2 && n.parts[0].symbol != UINT32_MAX && n.parts[1].symbol != UINT32_MAX && symbols.name(n.parts[0].symbol) == "std")
+            {
+              std::string_view f = symbols.name(n.parts[1].symbol);
+              Expr* variantArg = f == "visit" && call->args.size() >= 2 ? call->args[1]
+                               : (f == "get" || f == "holds_alternative" || f == "get_if") ? call->args[0]
+                                                                                            : nullptr;
+              if (const VariantInfo* info = variantOfExpr(variantArg))
+                callVariant[call->callee->token] = info;
+            }
+          }
+          walkExpr(call->callee, owner);
+          walkExprs(call->args, owner);
           break;
+        }
         case NodeKind::IndexExpr:
           walkExpr(static_cast<IndexExpr*>(e)->base, owner);
           walkExprs(static_cast<IndexExpr*>(e)->args, owner);
@@ -2742,6 +3164,78 @@ namespace
             spellings.push_back(std::string(text.substr(b, e - b)));
           }
           edits.push_back({use.begin, use.end - use.begin, expandArguments(*use.replacement, args, spellings)});
+        }
+        std::stable_sort(edits.begin(), edits.end(), byOffset);
+      }
+      // std::variant declarations and uses, now that the edits inside their types and arguments are known.
+      if (!variantDeclarations.empty() || !variantUses.empty())
+      {
+        for (const VariantDeclaration& v : variantDeclarations)
+        {
+          size_t lineStart = v.memberStart;
+          std::string indent;
+          for (size_t p = lineStart; p < text.size() && (text[p] == ' ' || text[p] == '\t'); ++p)
+            indent += text[p];
+          std::string list;
+          for (size_t a = 0; a < v.args.size() && a < v.info->alternatives.size(); ++a)
+          {
+            std::string type = applyEdits(edits, v.args[a].first, v.args[a].second);
+            type = qualifiedAlternativeType(type, *v.info, v.memberStart);
+            list += std::string(list.empty() ? "" : ", ") + "{" + type + ", " + v.info->alternatives[a].name + "}";
+          }
+          std::string declaration = indent + "union enum " + v.info->unionName + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + indent + "};";
+          if (v.member)
+          {
+            edits.push_back({v.memberStart, 0, declaration + "\n"});
+            edits.push_back({v.begin, v.end - v.begin, v.info->unionName});
+          }
+          else
+            edits.push_back({v.begin, v.end - v.begin, declaration});
+        }
+        for (const VariantUse& use : variantUses)
+        {
+          auto known = callVariant.find(use.calleeToken);
+          const VariantInfo* info = known != callVariant.end() ? known->second : nullptr;
+          if (!info && use.kind != "visit")
+            for (const VariantInfo& v : variants->all)
+              if (alternativeFor(v, use.typeSpelling))
+              {
+                if (info)
+                {
+                  info = nullptr; // several variants have this alternative: the argument's declaration has to tell
+                  break;
+                }
+                info = &v;
+              }
+          const VariantAlternative* alternative = info && use.kind != "visit" ? alternativeFor(*info, use.typeSpelling) : nullptr;
+          if (!info || (use.kind != "visit" && !alternative) || (use.kind == "visit" && use.args.size() != 2))
+          {
+            todo(use.begin, "std::" + use.kind + " on a variant the converter could not tell: left as written");
+            continue;
+          }
+          std::vector<std::string> args;
+          for (auto [b, e] : use.args)
+            args.push_back(applyEdits(edits, b, e));
+          std::string u = info->qualified + "::";
+          std::string replacement;
+          if (use.kind == "holds_alternative")
+            replacement = "((" + args[0] + ") == " + u + alternative->name + ")";
+          else if (use.kind == "get")
+            replacement = "(" + args[0] + ")[" + u + alternative->name + "]";
+          else if (use.kind == "get_if")
+            replacement = "(*(" + args[0] + ") == " + u + alternative->name + " ? &(*(" + args[0] + "))[" + u + alternative->name + "] : nullptr)";
+          else
+          {
+            // std::visit(f, x): f called with the alternative x holds, by a switch over the alternatives.
+            std::string cases;
+            for (const VariantAlternative& a : info->alternatives)
+              cases += "case " + u + a.name + ": return visitor(value[" + u + a.name + "]); ";
+            // (The visitor is held by value: `auto&&` bound to a lambda does not compile yet, spec
+            // language/forwarding_reference_to_lambda.)
+            replacement = "[&]() { auto visitor = " + args[0] + "; auto&& value = " + args[1] + "; switch (value) { " + cases + "} }()";
+          }
+          edits.push_back({use.begin, use.end - use.begin, replacement});
+          counts.add("std::" + use.kind + " on a union enum");
         }
         std::stable_sort(edits.begin(), edits.end(), byOffset);
       }
@@ -3041,9 +3535,14 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   }
   ScopeNames scopeNames;
   std::set<std::string> opaqueKept;
+  Variants variants;
   for (const ConvertInput& in : inputs)
     if (in.parsed && !in.parsed->isImported)
+    {
       collectScopeNames(in.parsed->decls, "", symbols, scopeNames);
+      if (in.tokens)
+        collectVariants(in.parsed->decls, "", *in.tokens, in.text, symbols, variants);
+    }
   for (const ConvertInput& in : inputs)
   {
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
@@ -3056,6 +3555,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     FileConverter fc(in, global, symbols);
     fc.scopeNames = &scopeNames;
     fc.opaqueKept = &opaqueKept;
+    fc.variants = &variants;
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
     if (OverrideFile* ov = overrideFor(key))
