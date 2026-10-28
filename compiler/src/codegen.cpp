@@ -3299,10 +3299,10 @@ namespace
       {
         // Parameters the call left out take their default arguments, evaluated at the call site
         // (the expression's literals belong to the callee's file; a `caller` location to this one).
-        // A member of a class template has them typed under the instantiation's arguments first
+        // A template's are the ones of the callee's own instantiation, typed under its arguments
         // (`ScrollBar(const Style* s = &Policy::defaultStyle)` with Policy = VerticalPolicy).
         ParsedFile* callerFile = currentFile;
-        bool retyped = false;
+        FunctionDecl* instance = nullptr;
         for (size_t i = provided; i < f->params.size(); ++i)
         {
           auto* pd = static_cast<ParamDecl*>(f->params[i]);
@@ -3311,19 +3311,19 @@ namespace
           if (!pd->defaultValue)
             unsupported(at, "a call to " + qualifiedName(f) + " without an argument for its parameter " +
                               (pd->name != UINT32_MAX ? sym(pd->name) : std::to_string(i + 1)) + " (and the overload resolution let it through)");
-          if (!retyped && !args.empty() && f != currentFunction)
-          {
-            global.retypeFor(f, args, classTy);
-            retyped = true;
-          }
+          if (!instance)
+            instance = args.empty() ? f : global.instanceBody(f, args, classTy);
+          Expr* value = i < instance->params.size() ? static_cast<ParamDecl*>(instance->params[i])->defaultValue : nullptr;
+          if (!value)
+            unsupported(at, "the default argument of " + qualifiedName(f) + " missing from its instantiation");
           const Ty* pt = position < s.paramTys.size() ? s.paramTys[position] : nullptr;
           std::string text;
-          if (pd->defaultValue->kind == NodeKind::CallerExpr)
+          if (value->kind == NodeKind::CallerExpr)
             text = "ptr " + callerLocation(pt, at);
           else
           {
             currentFile = f->file;
-            text = argumentText(pt, pd->defaultValue, at);
+            text = argumentText(pt, value, at);
             currentFile = callerFile;
           }
           argText += std::string(argText.empty() ? "" : ", ") + text;

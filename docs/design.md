@@ -526,10 +526,18 @@ at parity with master: 29,615 stderr lines against 29,567 on the same frozen tre
 being one pre-existing overload bug (templates/lvalue_reference_parameter_takes_no_prvalue) whose
 self-recursion goes deeper now that each copy's lambda is a closure type of its own. Codegen took
 6.3 to 9.1 s against master's 5.9 to 7.8 s in those runs (the copying, until the checker types the
-copies itself; the machine was shared with other builds, so the spread is wide). Next: the
-checker's instantiation checks type the same copies and codegen types nothing; per-instance
-member initializers, default arguments, pack expansions and generic lambdas; then the parallel
-codegen driver.
+copies itself; the machine was shared with other builds, so the spread is wide).
+
+Step 2 is done: the checker's instantiation checks (instantiateFunction, and every member body
+instantiateClass checks) type a copy each instead of the template's nodes, under one record per
+(function, arguments in any order, `this` type) that codegen's instanceBody shares, so codegen
+emits what the checker typed. The template's own nodes are written by the generic pass only. A
+callee's default arguments come from its instantiation's copy too. On the frozen tree: 29,196
+stderr lines against master's 29,177 (noise), codegen 6.45 s against 6.89, 79.7 k of codegen's
+94.9 k requests served by the checker's copies (the rest: instantiations the checker did not
+reach), peak memory 1.94 GB against 1.34 (the copies of every member of every instantiated class,
+as measured above). Next: per-instance member initializers and statics, pack expansions and
+generic lambdas (codegen still re-types those in place), then the parallel codegen driver.
 
 ## Benchmark target
 

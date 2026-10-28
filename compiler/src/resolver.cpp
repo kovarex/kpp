@@ -428,19 +428,119 @@ struct GlobalScope::Impl
     }
   }
 
-  // ---- instantiations' own bodies (GlobalScope::instanceBody) ----
+  // ---- instantiations' own bodies (docs/design.md, "Instantiations own their typed bodies") ----
+  // One record per (function, arguments, `this` type): the copy of the function's nodes typed for
+  // them, built once by whichever asks first (the checker's instantiation checks, or codegen for an
+  // instantiation the checker did not reach) and read by everyone after.
   struct InstanceRecord
   {
     std::atomic<int> state{0}; // 1 being built (by owner), 2 built
     std::thread::id owner;
     FunctionDecl* body = nullptr;
+    const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
   };
   struct InstanceShard
   {
     std::mutex mutex;
-    std::unordered_map<std::string, std::unique_ptr<InstanceRecord>> map; // key: f, object type, argument pointers
+    std::unordered_map<std::string, std::unique_ptr<InstanceRecord>> map; // key: f, this type, sorted argument pointers
   };
   InstanceShard instanceShards[64];
+
+  // The record of f's instantiation for subst with `this` of thisType (null: none), whatever the
+  // order of subst's pairs; producer: the caller just claimed it and builds it.
+  InstanceRecord* claimInstance(FunctionDecl* f, const Subst& subst, const Ty* thisType, bool& producer)
+  {
+    std::vector<std::pair<const void*, const void*>> pairs;
+    pairs.reserve(subst.pairs.size());
+    for (const Subst::Pair& p : subst.pairs)
+      pairs.push_back({p.param, p.type});
+    std::sort(pairs.begin(), pairs.end());
+    std::string key(reinterpret_cast<const char*>(&f), sizeof f);
+    key.append(reinterpret_cast<const char*>(&thisType), sizeof thisType);
+    for (auto& [d, t] : pairs)
+    {
+      key.append(reinterpret_cast<const char*>(&d), sizeof d);
+      key.append(reinterpret_cast<const char*>(&t), sizeof t);
+    }
+    InstanceShard& shard = instanceShards[std::hash<std::string>()(key) % std::size(instanceShards)];
+    std::lock_guard lock(shard.mutex);
+    auto& slot = shard.map[key];
+    if (slot)
+    {
+      producer = false;
+      return slot.get();
+    }
+    slot = std::make_unique<InstanceRecord>();
+    slot->owner = std::this_thread::get_id();
+    slot->state.store(1, std::memory_order_relaxed);
+    producer = true;
+    return slot.get();
+  }
+
+  // A copy of f's own nodes for one instantiation, its local classes and enums given scopes of
+  // their own under scope (the copy is typed next). An out-of-line definition takes `static` and
+  // `virtual` from its declaration first, so that the copy has them.
+  FunctionDecl* copyInstance(FunctionDecl* f, Scope* scope)
+  {
+    declarationOfDefinition(f);
+    InstanceCopier copier(instanceArena());
+    FunctionDecl* copy = copier.function(f);
+    if (copy->body)
+      indexLocalTypes(copy->body, scope, copy);
+    return copy;
+  }
+
+  // The class a member (possibly defined out of line) belongs to (GlobalScope::owningClass).
+  Decl* owningClassOf(Decl* d)
+  {
+    if (!d)
+      return nullptr;
+    if (d->parent && (d->parent->kind == NodeKind::ClassDecl || d->parent->kind == NodeKind::EnumDecl))
+      return d->parent;
+    if (d->kind == NodeKind::FunctionDecl)
+    {
+      auto* f = static_cast<FunctionDecl*>(d);
+      if (f->name.parts.size() > 1)
+      {
+        QualifiedName qualifier = f->name;
+        qualifier.parts.count -= 1;
+        LocalStack params;
+        for (Decl* p : f->templateParams)
+          params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+        Lookup l = lookupQualified(qualifier, lexicalScopeOf(f), &params, 0);
+        if (l.scope && l.scope->kind == ScopeKind::Class)
+          return l.scope->owner;
+      }
+    }
+    return nullptr;
+  }
+
+  // The in-class declaration of an out-of-line member definition, whose `static` and `virtual`
+  // def takes (GlobalScope::declarationOf); null when there is none.
+  FunctionDecl* declarationOfDefinition(FunctionDecl* def)
+  {
+    if (!def || def->name.parts.size() <= 1)
+      return nullptr;
+    Decl* cls = owningClassOf(def);
+    if (!cls || !cls->ownScope)
+      return nullptr;
+    uint32_t symbol = functionSymbol(def->name);
+    if (const std::vector<Entry>* entries = cls->ownScope->find(symbol))
+      for (const Entry& e : *entries)
+      {
+        if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || e.decl == def)
+          continue;
+        auto* decl = static_cast<FunctionDecl*>(e.decl);
+        if (decl->body)
+          continue;
+        if (typeAs(def, decl) == declaredTypeOf(decl, nullptr, 0))
+        {
+          def->flags |= decl->flags & (DF_Static | DF_Virtual);
+          return decl;
+        }
+      }
+    return nullptr;
+  }
   std::mutex instanceArenasMutex;
   std::vector<std::unique_ptr<Arena>> instanceArenas;
   // The arena this thread copies instantiations' bodies into (one per thread: no locking per node).
@@ -5702,6 +5802,9 @@ struct GlobalScope::Impl
       stats.add(local);
     }
 
+    // Types the instantiation of member f for the class's arguments, in a copy of f's nodes kept
+    // as that instantiation's body (unless it exists already: an `auto` member asked for its
+    // return type first).
     void checkMemberBody(Walker& sub, FunctionDecl* f, const Subst& classSubst)
     {
       // Out-of-line members carry their own template parameter list; map it positionally.
@@ -5711,15 +5814,27 @@ struct GlobalScope::Impl
         for (size_t i = 0; i < f->templateParams.size(); ++i)
           if (const Ty* t = classSubst.find(cls->templateParams[i]))
             merged.pairs.push_back({f->templateParams[i], t});
+      bool producer;
+      Impl::InstanceRecord* inst = impl.claimInstance(f, merged, sub.thisType, producer);
+      if (!producer)
+        return;
+      FunctionDecl* copy = impl.copyInstance(f, sub.scope);
+      inst->body = copy;
       sub.activeSubst = &merged;
       size_t mark = sub.locals.mark();
       if (f->parent != cls)
         for (Decl* p : f->templateParams)
           sub.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
-      sub.walkDecl(f);
+      sub.returnFrames.push_back(nullptr);
+      sub.walkDecl(copy);
+      const Ty* deduced = sub.returnFrames.back();
+      sub.returnFrames.pop_back();
+      if (deduced)
+        inst->deducedReturn = impl.deducedShape(copy->returnType && !copy->trailingReturn ? sub.typeOf(copy->returnType) : nullptr, deduced);
       sub.locals.pop(mark);
       sub.activeSubst = &classSubst;
       ++impl.instBodies;
+      inst->state.store(2, std::memory_order_release);
     }
 
     // Checks every member function body of a class template for one instantiation, once.
@@ -5769,8 +5884,15 @@ struct GlobalScope::Impl
         for (const Subst::Pair& pair : classSubst->pairs)
           if (!full.find(pair.param))
             full.pairs.push_back(pair);
+      Scope* bodyScope = f->name.parts.size() > 1 ? semanticScopeFor(f->name) : impl.lexicalScopeOf(f);
+      const Ty* bodyThis = nullptr;
+      if (objectType)
+        bodyThis = types.pointer(types.unqualified(types.stripRef(objectType)));
+      else if (Decl* cls = enclosingClassDecl(bodyScope))
+        bodyThis = types.pointer(impl.substitute(impl.selfType(cls), full));
+      ++impl.instRequests;
       bool producer;
-      Impl::Instantiation* inst = impl.claimFunction(f, full, producer);
+      Impl::InstanceRecord* inst = impl.claimInstance(f, full, bodyThis, producer);
       if (!producer)
       {
         if (!needReturn)
@@ -5785,23 +5907,21 @@ struct GlobalScope::Impl
         }
         return inst->deducedReturn;
       }
+      ++impl.instFunctions;
       auto start = std::chrono::steady_clock::now();
-      Scope* bodyScope = f->name.parts.size() > 1 ? semanticScopeFor(f->name) : impl.lexicalScopeOf(f);
-      const Ty* bodyThis = nullptr;
-      if (objectType)
-        bodyThis = types.pointer(types.unqualified(types.stripRef(objectType)));
-      else if (Decl* cls = enclosingClassDecl(bodyScope))
-        bodyThis = types.pointer(impl.substitute(impl.selfType(cls), full));
+      // The instantiation's own copy of f's nodes, typed here and kept as its body.
+      FunctionDecl* copy = impl.copyInstance(f, bodyScope);
+      inst->body = copy;
       const Ty* deduced = nullptr;
       const Ty* pattern = nullptr; // the written `auto&`, `const auto*`...: the deduced type takes its shape
       subCheck(f, full, bodyScope, bodyThis, [&](Walker& sub)
       {
         sub.returnFrames.push_back(nullptr);
-        sub.walkDecl(f);
+        sub.walkDecl(copy);
         deduced = sub.returnFrames.back();
         sub.returnFrames.pop_back();
-        if (f->returnType && !f->trailingReturn)
-          pattern = sub.typeOf(f->returnType);
+        if (copy->returnType && !copy->trailingReturn)
+          pattern = sub.typeOf(copy->returnType);
         ++impl.instBodies;
       });
       inst->deducedReturn = deduced ? impl.deducedShape(pattern, deduced) : nullptr;
@@ -8689,54 +8809,9 @@ const Ty* GlobalScope::typeOfAst(Type* t, Decl* context)
   return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, nullptr, file ? file->tokens : nullptr, file ? file->text : std::string_view()}, 0);
 }
 
-FunctionDecl* GlobalScope::declarationOf(FunctionDecl* def)
-{
-  if (!def || def->name.parts.size() <= 1)
-    return nullptr;
-  Decl* cls = owningClass(def);
-  if (!cls || !cls->ownScope)
-    return nullptr;
-  uint32_t symbol = impl->functionSymbol(def->name);
-  if (const std::vector<Entry>* entries = cls->ownScope->find(symbol))
-    for (const Entry& e : *entries)
-    {
-      if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || e.decl == def)
-        continue;
-      auto* decl = static_cast<FunctionDecl*>(e.decl);
-      if (decl->body)
-        continue;
-      if (impl->typeAs(def, decl) == impl->declaredTypeOf(decl, nullptr, 0))
-      {
-        def->flags |= decl->flags & (DF_Static | DF_Virtual);
-        return decl;
-      }
-    }
-  return nullptr;
-}
+FunctionDecl* GlobalScope::declarationOf(FunctionDecl* def) { return impl->declarationOfDefinition(def); }
 
-Decl* GlobalScope::owningClass(Decl* d)
-{
-  if (!d)
-    return nullptr;
-  if (d->parent && (d->parent->kind == NodeKind::ClassDecl || d->parent->kind == NodeKind::EnumDecl))
-    return d->parent;
-  if (d->kind == NodeKind::FunctionDecl)
-  {
-    auto* f = static_cast<FunctionDecl*>(d);
-    if (f->name.parts.size() > 1)
-    {
-      QualifiedName qualifier = f->name;
-      qualifier.parts.count -= 1;
-      LocalStack params;
-      for (Decl* p : f->templateParams)
-        params.push(static_cast<TemplateParamDecl*>(p)->name, p);
-      Lookup l = impl->lookupQualified(qualifier, impl->lexicalScopeOf(f), &params, 0);
-      if (l.scope && l.scope->kind == ScopeKind::Class)
-        return l.scope->owner;
-    }
-  }
-  return nullptr;
-}
+Decl* GlobalScope::owningClass(Decl* d) { return impl->owningClassOf(d); }
 
 TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArgs)
 {
@@ -9060,11 +9135,11 @@ TemplateArgs GlobalScope::classArgsOf(const Ty* classType)
 }
 
 // f's template parameters bound to args, `this` of objectType.
-void GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType)
+const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType)
 {
   Impl& impl = *this->impl;
   if (!f->file || !f->file->tokens)
-    return;
+    return nullptr;
   Subst subst = toSubst(args);
   ResolveStats scratch;
   Impl::Walker w(impl, scratch, *f->file->tokens, f->file->text);
@@ -9091,7 +9166,13 @@ void GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const Te
     w.thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
   if (nodes != f && nodes->body)
     impl.indexLocalTypes(nodes->body, w.scope, nodes); // the copy's local classes and enums: scopes of their own members
+  w.returnFrames.push_back(nullptr);
   w.walkDecl(nodes);
+  const Ty* deduced = w.returnFrames.back();
+  w.returnFrames.pop_back();
+  if (!deduced)
+    return nullptr;
+  return impl.deducedShape(nodes->returnType && !nodes->trailingReturn ? w.typeOf(nodes->returnType) : nullptr, deduced);
 }
 
 void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
@@ -9103,28 +9184,17 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
 {
   if (args.empty() || !f->file || !f->file->tokens)
     return f;
-  std::string key(reinterpret_cast<const char*>(&f), sizeof f);
-  key.append(reinterpret_cast<const char*>(&objectType), sizeof objectType);
-  for (auto& [d, t] : args.pairs)
-  {
-    key.append(reinterpret_cast<const char*>(&d), sizeof d);
-    key.append(reinterpret_cast<const char*>(&t), sizeof t);
-  }
-  Impl::InstanceShard& shard = impl->instanceShards[std::hash<std::string>()(key) % std::size(impl->instanceShards)];
-  Impl::InstanceRecord* record;
-  bool producer = false;
-  {
-    std::lock_guard lock(shard.mutex);
-    auto& slot = shard.map[key];
-    if (!slot)
-    {
-      slot = std::make_unique<Impl::InstanceRecord>();
-      slot->owner = std::this_thread::get_id();
-      slot->state.store(1, std::memory_order_relaxed);
-      producer = true;
-    }
-    record = slot.get();
-  }
+  // The record the checker's instantiation checks use too (the same `this` type as theirs), so
+  // that what they typed is used as it is.
+  Impl& impl = *this->impl;
+  Subst subst = toSubst(args);
+  const Ty* thisType = nullptr;
+  if (objectType)
+    thisType = impl.types.pointer(impl.types.unqualified(impl.types.stripRef(objectType)));
+  else if (Decl* cls = owningClass(f))
+    thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
+  bool producer;
+  Impl::InstanceRecord* record = impl.claimInstance(f, subst, thisType, producer);
   if (!producer)
   {
     if (record->state.load(std::memory_order_acquire) != 2)
@@ -9134,12 +9204,13 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
       while (record->state.load(std::memory_order_acquire) != 2)
         std::this_thread::yield();
     }
-    return record->body;
+    return record->body ? record->body : f;
   }
-  InstanceCopier copier(impl->instanceArena());
+  impl.declarationOfDefinition(f); // `static` and `virtual` onto an out-of-line definition before it is copied
+  InstanceCopier copier(impl.instanceArena());
   FunctionDecl* copy = copier.function(f);
   record->body = copy;
-  typeFunctionFor(f, copy, args, objectType);
+  record->deducedReturn = typeFunctionFor(f, copy, args, objectType);
   record->state.store(2, std::memory_order_release);
   return copy;
 }

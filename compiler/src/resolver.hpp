@@ -248,8 +248,9 @@ public:
 private:
   struct Impl;
   Impl* impl;
-  // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f.
-  void typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType);
+  // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f;
+  // returns what the body's returns deduced (an `auto` function's return type), or null.
+  const Ty* typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType);
   // The free function named symbol for these argument types, looked up from the namespaces of the
   // argument classes and enums and from context's (findFreeOperator, findFreeFunction).
   FunctionDecl* findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context);
