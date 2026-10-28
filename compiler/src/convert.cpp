@@ -177,7 +177,7 @@ namespace
       "    constexpr void validate() const\n"
       "    {\n"
       "      if (!this->isValid())\n"
-      "        throw RuntimeError(\"Invalid enum value \\\"\" + toString(this->asType()) + \"\\\" of " + name + "\");\n"
+      "        throw GameRuntimeError(\"Invalid enum value \\\"\" + toString(this->asType()) + \"\\\" of " + name + "\");\n"
       "    }\n"
       "\n"
       "    constexpr bool operator==(Enum other) const { return this->value == other; }\n"
@@ -215,7 +215,7 @@ namespace
         "  protected:\n"
         "    static Enum findValue(const char* val)\n"
         "    {\n" + fromStr +
-        "      throw RuntimeError(\"Invalid value \\\"\" + String(val) + \"\\\" of " + name + "\");\n"
+        "      throw GameRuntimeError(\"Invalid value \\\"\" + String(val) + \"\\\" of " + name + "\");\n"
         "    }\n";
     }
     return out + "  private:\n";
@@ -503,6 +503,86 @@ namespace
         default: break;
       }
     }
+  }
+
+  // The bases of the classes, as written (`ControllerProperties`, `agui::Widget`), by the class's
+  // ScopeNames key, with the scope the class is declared in (where a base's name is looked up).
+  struct ClassBases
+  {
+    std::string enclosing;
+    std::vector<std::string> bases;
+  };
+  void collectClassBases(Span<Decl*> decls, const std::string& prefix, const SymbolTable& symbols, std::map<std::string, ClassBases>& out)
+  {
+    for (Decl* d : decls)
+    {
+      if (d->kind == NodeKind::NamespaceDecl)
+      {
+        auto* n = static_cast<NamespaceDecl*>(d);
+        std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
+        collectClassBases(n->decls, prefix + name + "::", symbols, out);
+      }
+      else if (d->kind == NodeKind::ClassDecl)
+      {
+        auto* c = static_cast<ClassDecl*>(d);
+        if (c->name.empty() || c->name.last().symbol == UINT32_MAX || !c->isDefinition)
+          continue;
+        std::string key = prefix + nameText(c->name, symbols) + "::";
+        ClassBases& entry = out[key];
+        entry.enclosing = prefix;
+        for (const ClassDecl::Base& b : c->bases)
+          if (b.type && b.type->kind == NodeKind::NamedType && !static_cast<NamedType*>(b.type)->name.empty())
+            entry.bases.push_back(nameText(static_cast<NamedType*>(b.type)->name, symbols));
+        collectClassBases(c->members, key, symbols, out);
+      }
+    }
+  }
+  // Adds to every class's names the names its bases declare (transitively), which an unqualified
+  // name in the class finds before a global one: a class deriving from ControllerProperties sees
+  // its `TimePoint`.
+  void addInheritedNames(ScopeNames& names, const std::map<std::string, ClassBases>& bases)
+  {
+    // The base's key: looked up from the class's enclosing scope outwards, as C++ finds it.
+    auto keyOf = [&](const std::string& base, std::string scope) -> std::string
+    {
+      std::string written = base.rfind("::", 0) == 0 ? base.substr(2) : base;
+      while (true)
+      {
+        std::string key = scope + written + "::";
+        if (names.count(key))
+          return key;
+        if (scope.empty())
+          return "";
+        // "A::B::" -> "A::", "A::" (or an anonymous namespace's "::") -> "".
+        size_t cut = scope.size() > 2 ? scope.rfind("::", scope.size() - 3) : std::string::npos;
+        scope = cut == std::string::npos ? std::string() : scope.substr(0, cut + 2);
+      }
+    };
+    std::map<std::string, std::set<std::string>> inherited;
+    std::set<std::string> visited;
+    std::function<void(const std::string&, std::set<std::string>&)> gather = [&](const std::string& key, std::set<std::string>& into)
+    {
+      auto it = bases.find(key);
+      if (it == bases.end() || !visited.insert(key).second)
+        return;
+      for (const std::string& base : it->second.bases)
+      {
+        std::string baseKey = keyOf(base, it->second.enclosing);
+        if (baseKey.empty())
+          continue;
+        auto own = names.find(baseKey);
+        if (own != names.end())
+          into.insert(own->second.begin(), own->second.end());
+        gather(baseKey, into);
+      }
+    };
+    for (const auto& [key, entry] : bases)
+    {
+      visited.clear();
+      gather(key, inherited[key]);
+    }
+    for (auto& [key, extra] : inherited)
+      names[key].insert(extra.begin(), extra.end());
   }
 
   // --- std::variant: typed unions (`union enum`, design.md 8.5) ---
@@ -1599,8 +1679,8 @@ namespace
       return this->renameGameClasses(result);
     }
 
-    // The game's classes whose names the library uses (Vector, Map, Optional, Pair), renamed as
-    // convertTokens renames them, in text that never was tokens: a macro's expansion, whose body and
+    // The game's classes whose names the library uses (Vector, Map, Optional, Pair, RuntimeError),
+    // renamed as convertTokens renames them, in text that never was tokens: a macro's expansion, whose body and
     // arguments are the game's C++ (`MACRO(StartWalking,, Vector, vector)` in InputAction's list).
     // `std::` names in it are mapped later, by the pass over the whole output.
     std::string renameGameClasses(const std::string& s)
@@ -1609,7 +1689,8 @@ namespace
         {"Vector", {"Vector2D", "Vector renamed to Vector2D"}},
         {"Map", {"GameMap", "Map renamed to GameMap"}},
         {"Optional", {"GameOptional", "Optional renamed to GameOptional"}},
-        {"Pair", {"GamePair", "Pair renamed to GamePair"}}};
+        {"Pair", {"GamePair", "Pair renamed to GamePair"}},
+        {"RuntimeError", {"GameRuntimeError", "RuntimeError renamed to GameRuntimeError"}}};
       std::string out;
       for (size_t i = 0; i < s.size();)
       {
@@ -1750,6 +1831,32 @@ namespace
           replace(t.offset, endOffset(i) - t.offset, "GamePair");
           counts.add("Pair renamed to GamePair");
           continue;
+        }
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "RuntimeError" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        {
+          // The game's `class RuntimeError : public std::runtime_error` is GameRuntimeError in Kpp,
+          // where RuntimeError is the library's std::runtime_error.
+          replace(t.offset, endOffset(i) - t.offset, "GameRuntimeError");
+          counts.add("RuntimeError renamed to GameRuntimeError");
+          continue;
+        }
+        if (t.getKind() == TokenKind::Identifier && (spelling(i) == "Clock" || spelling(i) == "TimePoint"))
+        {
+          // `using Clock = std::chrono::steady_clock;` and `using TimePoint = Clock::time_point;` at
+          // global scope (three Net headers), where the library declares Clock and TimePoint: those
+          // are GameClock and GameTimePoint, at their declarations and wherever the unqualified (or
+          // `::`-qualified) name finds them. A class's own Clock (MainLoop::Clock) keeps its name.
+          bool qualified = i >= 2 && toks[i - 1].is(P::ColonColon) &&
+                           (toks[i - 2].getKind() == TokenKind::Identifier || toks[i - 2].is(P::Greater) || toks[i - 2].is(P::Shr) ||
+                            toks[i - 2].is(P::RParen));
+          bool global = i >= 1 && toks[i - 1].is(P::ColonColon) && !qualified;
+          std::string name(spelling(i));
+          if (!qualified && (global || !shadowedAt(name, t.offset)))
+          {
+            replace(t.offset, endOffset(i) - t.offset, "Game" + name);
+            counts.add(name + " renamed to Game" + name);
+            continue;
+          }
         }
         if (t.getKind() == TokenKind::Identifier && i >= 2 && toks[i - 1].is(P::Tilde) && (toks[i - 2].is(P::Dot) || toks[i - 2].is(P::Arrow)) &&
             i + 1 < toks.size() && (toks[i + 1].is(P::LParen) || toks[i + 1].is(P::Less)))
@@ -3744,13 +3851,16 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   ScopeNames scopeNames;
   std::set<std::string> opaqueKept;
   Variants variants;
+  std::map<std::string, ClassBases> classBases;
   for (const ConvertInput& in : inputs)
     if (in.parsed && !in.parsed->isImported)
     {
       collectScopeNames(in.parsed->decls, "", symbols, scopeNames);
+      collectClassBases(in.parsed->decls, "", symbols, classBases);
       if (in.tokens)
         collectVariants(in.parsed->decls, "", *in.tokens, in.text, symbols, variants);
     }
+  addInheritedNames(scopeNames, classBases);
   for (const ConvertInput& in : inputs)
   {
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
