@@ -1,0 +1,46 @@
+// spec: a nested class of a class template whose base the arguments choose among its sibling nested classes (`class Hook : public HookParentHolder` with `using HookParentHolder = Conditional<ParentAware, Normal, Empty>;` inside the template), reached through an alias template and inherited by a plain class: the chosen sibling's members and layout
+// factorio: IntrusiveListImplementation<T, Tag, ConstantTimeSize, ParentAware>::Hook (IntrusiveList.kpp:51, "a base class whose type is unknown", 592 cascading lines), its List : ListSizeHolder the same way
+template<class T, bool ParentAware>
+class Impl
+{
+public:
+  class Empty
+  {
+  public:
+    void* parent() const { return nullptr; }
+  };
+  class Normal
+  {
+  public:
+    void* p = nullptr;
+    void* parent() const { return this->p; }
+  };
+  using HookParentHolder = Conditional<ParentAware, Normal, Empty>;
+  class Hook : public HookParentHolder
+  {
+  public:
+    bool linked() const { return this->parent() != nullptr; }
+  };
+  class DirectHook : public Conditional<ParentAware, Normal, Empty> {};
+};
+
+template<class T, bool ParentAware = false>
+using H = typename Impl<T, ParentAware>::Hook;
+template<class T, bool ParentAware = false>
+using D = typename Impl<T, ParentAware>::DirectHook;
+
+struct Item : H<Item, true> {};
+struct Plain : H<Plain> {};
+struct Direct : D<Direct, true> {};
+
+int main()
+{
+  Item item;
+  int x = 5;
+  item.p = &x;
+  Plain plain;
+  Direct direct;
+  direct.p = &x;
+  println("{} {} {} {} {}", item.parent() == &x, item.linked(), plain.parent() == nullptr, direct.parent() == &x, sizeof(Item) > sizeof(Plain));
+  return 0;
+}

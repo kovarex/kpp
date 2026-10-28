@@ -5559,6 +5559,14 @@ struct GlobalScope::Impl
             if (std::optional<MemberResult> viaBase = memberOfInstantiatedBases(t, cls, symbol, token))
               return *viaBase;
         }
+        else if (!found && !types.isDependent(t) && !cls->baseTypes.empty())
+        {
+          // A plain class deriving from such an instantiation (`struct Item : H<Item, true>`,
+          // whose Hook takes a sibling nested class as its base by the arguments): the member
+          // through the bases as types.
+          if (std::optional<MemberResult> viaBase = memberOfInstantiatedBases(t, cls, symbol, token))
+            return *viaBase;
+        }
       }
       if (!found)
       {
