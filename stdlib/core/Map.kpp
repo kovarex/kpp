@@ -323,6 +323,10 @@ template<typename E>
 struct RbIterator
 {
   using value_type = E;
+  using difference_type = ptrdiff_t;
+  using pointer = E*;
+  using reference = E&;
+  using iterator_category = BidirectionalIteratorTag;
 
   RbNodeBase* node = nullptr;
 

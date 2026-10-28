@@ -78,6 +78,7 @@ struct Span
   Span() {}
   Span(T* items, int length) : items(items), length(length) {}
   Span(T* first, T* last) : items(first), length(int(last - first)) {}
+  implicit Span(Vector<T>& values) : items(values.items), length(values.length) {}
   template<int N>
   implicit Span(T (&a)[N]) : items(a), length(N) {}
 

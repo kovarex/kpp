@@ -1,6 +1,7 @@
 // Iterator tags and adapters: what std::input_iterator_tag, std::back_inserter, etc. convert to.
 
 struct InputIteratorTag {};
+struct OutputIteratorTag {};
 struct ForwardIteratorTag : InputIteratorTag {};
 struct BidirectionalIteratorTag : ForwardIteratorTag {};
 struct RandomAccessIteratorTag : BidirectionalIteratorTag {};
@@ -10,14 +11,17 @@ struct RandomAccessIteratorTag : BidirectionalIteratorTag {};
 template<typename It>
 struct IteratorTraits
 {
-  using value_type = It::value_type;
-  using difference_type = int64_t;
+  using value_type = typename It::value_type;
+  using difference_type = typename It::difference_type;
+  using pointer = typename It::pointer;
+  using reference = typename It::reference;
+  using iterator_category = typename It::iterator_category;
 };
 template<typename T>
 struct IteratorTraits<T*>
 {
-  using value_type = T;
-  using difference_type = int64_t;
+  using value_type = RemoveConst<T>;
+  using difference_type = ptrdiff_t;
   using pointer = T*;
   using reference = T&;
   using iterator_category = RandomAccessIteratorTag;
@@ -28,6 +32,12 @@ struct IteratorTraits<T*>
 template<typename It>
 struct MoveIterator
 {
+  using value_type = typename IteratorTraits<It>::value_type;
+  using difference_type = ptrdiff_t;
+  using pointer = typename IteratorTraits<It>::pointer;
+  using reference = typename IteratorTraits<It>::value_type&&;
+  using iterator_category = typename IteratorTraits<It>::iterator_category;
+
   It current;
 
   explicit MoveIterator(It it) : current(it) {}
@@ -56,6 +66,12 @@ MoveIterator<It> makeMoveIterator(It it) { return MoveIterator<It>(it); }
 template<typename Container>
 struct BackInsertIterator
 {
+  using value_type = void;
+  using difference_type = ptrdiff_t;
+  using pointer = void;
+  using reference = void;
+  using iterator_category = OutputIteratorTag;
+
   Container* container;
 
   explicit BackInsertIterator(Container& c) : container(&c) {}
@@ -81,6 +97,12 @@ BackInsertIterator<Container> backInserter(Container& c) { return BackInsertIter
 template<typename Container>
 struct InsertIterator
 {
+  using value_type = void;
+  using difference_type = ptrdiff_t;
+  using pointer = void;
+  using reference = void;
+  using iterator_category = OutputIteratorTag;
+
   Container* container;
   typename Container::iterator position;
 

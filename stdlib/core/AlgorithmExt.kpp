@@ -1,222 +1,207 @@
 // Extended algorithms: the less common ones that std::adjacent_find, std::copy_backward, etc.
-// convert to.
+// convert to, over iterators as in Algorithm.kpp. Specified in docs/stdlib/algorithms.md.
 
-template<typename T>
-T* adjacentFind(T* first, T* last)
+// The first of two equal neighbours (by == or same(a, b)), or last.
+template<typename It>
+It adjacentFind(It first, It last)
 {
   if (first == last)
     return last;
-  T* next = first + 1;
-  while (next != last)
-  {
+  It next = first;
+  for (++next; next != last; ++next, ++first)
     if (*first == *next)
       return first;
-    first = next;
-    ++next;
-  }
   return last;
 }
-
-template<typename T, typename F>
-T* adjacentFind(T* first, T* last, F predicate)
+template<typename It, typename F>
+It adjacentFind(It first, It last, F same)
 {
   if (first == last)
     return last;
-  T* next = first + 1;
-  while (next != last)
-  {
-    if (predicate(*first, *next))
+  It next = first;
+  for (++next; next != last; ++next, ++first)
+    if (same(*first, *next))
       return first;
-    first = next;
-    ++next;
-  }
   return last;
 }
 
-template<typename T>
-T* copyBackward(const T* first, const T* last, T* dLast)
+// Copies [first, last) to the range starting at out, in order; returns the end of the copies.
+template<typename InIt, typename OutIt>
+OutIt copy(InIt first, InIt last, OutIt out)
+{
+  for (; first != last; ++first, ++out)
+    *out = *first;
+  return out;
+}
+// Copies the elements that satisfy predicate.
+template<typename InIt, typename OutIt, typename F>
+OutIt copyIf(InIt first, InIt last, OutIt out, F predicate)
+{
+  for (; first != last; ++first)
+    if (predicate(*first))
+    {
+      *out = *first;
+      ++out;
+    }
+  return out;
+}
+template<typename InIt, typename OutIt>
+OutIt copyN(InIt first, ptrdiff_t count, OutIt out)
+{
+  for (; count > 0; --count, ++first, ++out)
+    *out = *first;
+  return out;
+}
+// Copies [first, last) to the range that ends at outLast, from the last element back (so the two
+// ranges may overlap when outLast is after last); returns the start of the copies.
+template<typename It1, typename It2>
+It2 copyBackward(It1 first, It1 last, It2 outLast)
 {
   while (first != last)
-  {
-    --last;
-    --dLast;
-    *dLast = *last;
-  }
-  return dLast;
+    *--outLast = *--last;
+  return outLast;
 }
-
-template<typename T>
-T* copyN(const T* first, int count, T* result)
+// Moves [first, last) to the range starting at out (std::move with three arguments).
+template<typename InIt, typename OutIt>
+OutIt move(InIt first, InIt last, OutIt out)
 {
-  for (int i = 0; i < count; ++i)
-  {
-    *result = *first;
-    ++first;
-    ++result;
-  }
-  return result;
+  for (; first != last; ++first, ++out)
+    *out = move(*first);
+  return out;
 }
-
-template<typename T>
-T* copy(const T* first, const T* last, T* result)
+template<typename It1, typename It2>
+It2 moveBackward(It1 first, It1 last, It2 outLast)
 {
   while (first != last)
-  {
-    *result = *first;
-    ++first;
-    ++result;
-  }
-  return result;
+    *--outLast = move(*--last);
+  return outLast;
 }
 
-template<typename T, typename V>
-bool equal(const T* first1, const T* last1, const V* first2)
+// Whether the ranges hold equal elements (by == or same(a, b)): the second one from first2 as long
+// as the first, or exactly [first2, last2).
+template<typename It1, typename It2>
+bool equal(It1 first1, It1 last1, It2 first2)
 {
-  while (first1 != last1)
-  {
+  for (; first1 != last1; ++first1, ++first2)
     if (!(*first1 == *first2))
       return false;
-    ++first1;
-    ++first2;
-  }
   return true;
 }
-
-template<typename T, typename V>
-void fillN(T* first, int count, const V& value)
+template<typename It1, typename It2, typename F>
+bool equal(It1 first1, It1 last1, It2 first2, F same)
 {
-  for (int i = 0; i < count; ++i)
-  {
+  for (; first1 != last1; ++first1, ++first2)
+    if (!same(*first1, *first2))
+      return false;
+  return true;
+}
+template<typename It1, typename It2>
+bool equal(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  for (; first1 != last1 && first2 != last2; ++first1, ++first2)
+    if (!(*first1 == *first2))
+      return false;
+  return first1 == last1 && first2 == last2;
+}
+
+template<typename It, typename V>
+It fillN(It first, ptrdiff_t count, const V& value)
+{
+  for (; count > 0; --count, ++first)
     *first = value;
-    ++first;
-  }
+  return first;
 }
-
-template<typename T, typename F>
-void generateN(T* first, int count, F generator)
+template<typename It, typename F>
+It generateN(It first, ptrdiff_t count, F generator)
 {
-  for (int i = 0; i < count; ++i)
-  {
+  for (; count > 0; --count, ++first)
     *first = generator();
-    ++first;
-  }
+  return first;
 }
 
-template<typename T>
-bool isSorted(const T* first, const T* last)
+// The end of the longest sorted prefix (by < or less), and whether that is the whole range.
+template<typename It, typename F>
+It isSortedUntil(It first, It last, F less)
 {
   if (first == last)
-    return true;
-  const T* next = first + 1;
-  while (next != last)
-  {
-    if (*next < *first)
-      return false;
-    first = next;
-    ++next;
-  }
-  return true;
-}
-
-template<typename T, typename F>
-bool isSorted(const T* first, const T* last, F less)
-{
-  if (first == last)
-    return true;
-  const T* next = first + 1;
-  while (next != last)
-  {
+    return last;
+  It next = first;
+  for (++next; next != last; ++next, ++first)
     if (less(*next, *first))
-      return false;
-    first = next;
-    ++next;
-  }
-  return true;
+      return next;
+  return last;
 }
+template<typename It>
+It isSortedUntil(It first, It last) { return isSortedUntil(first, last, Less<>()); }
+template<typename It, typename F>
+bool isSorted(It first, It last, F less) { return isSortedUntil(first, last, less) == last; }
+template<typename It>
+bool isSorted(It first, It last) { return isSortedUntil(first, last, Less<>()) == last; }
 
-template<typename T>
-void iterSwap(T* a, T* b) { swap(*a, *b); }
-
-template<typename T, typename U>
-bool lexicographicalCompare(const T* first1, const T* last1, const U* first2, const U* last2)
+// Whether the first range comes before the second in dictionary order (by < or less).
+template<typename It1, typename It2, typename F>
+bool lexicographicalCompare(It1 first1, It1 last1, It2 first2, It2 last2, F less)
 {
-  while (first1 != last1 && first2 != last2)
+  for (; first1 != last1 && first2 != last2; ++first1, ++first2)
   {
-    if (*first1 < *first2)
+    if (less(*first1, *first2))
       return true;
-    if (*first2 < *first1)
+    if (less(*first2, *first1))
       return false;
-    ++first1;
-    ++first2;
   }
   return first1 == last1 && first2 != last2;
 }
-
-template<typename T, typename U>
-T* merge(const T* first1, const T* last1, const U* first2, const U* last2, T* result)
+template<typename It1, typename It2>
+bool lexicographicalCompare(It1 first1, It1 last1, It2 first2, It2 last2)
 {
-  while (first1 != last1 && first2 != last2)
+  return lexicographicalCompare(first1, last1, first2, last2, Less<>());
+}
+
+// Merges two sorted ranges into the one starting at out; on ties the first range's element goes
+// first. Returns the end of the merged range.
+template<typename It1, typename It2, typename OutIt, typename F>
+OutIt merge(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F less)
+{
+  for (; first1 != last1; ++out)
   {
-    if (*first2 < *first1)
+    if (first2 == last2)
+      return copy(first1, last1, out);
+    if (less(*first2, *first1))
     {
-      *result = *first2;
+      *out = *first2;
       ++first2;
     }
     else
     {
-      *result = *first1;
+      *out = *first1;
       ++first1;
     }
-    ++result;
   }
-  while (first1 != last1)
-  {
-    *result = *first1;
-    ++first1;
-    ++result;
-  }
-  while (first2 != last2)
-  {
-    *result = *first2;
-    ++first2;
-    ++result;
-  }
-  return result;
+  return copy(first2, last2, out);
 }
+template<typename It1, typename It2, typename OutIt>
+OutIt merge(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out) { return merge(first1, last1, first2, last2, out, Less<>()); }
 
-template<typename T>
-T* moveBackward(T* first, T* last, T* dLast)
+// Rearranges a bidirectional range into the next greater permutation in dictionary order (by < or
+// less) and returns true, or into the first one (sorted) and returns false.
+template<typename It, typename F>
+bool nextPermutation(It first, It last, F less)
 {
-  while (first != last)
-  {
-    --last;
-    --dLast;
-    *dLast = move(*last);
-  }
-  return dLast;
-}
-
-template<typename T>
-T* next(T* it, int n = 1) { return it + n; }
-
-template<typename T>
-T* prev(T* it, int n = 1) { return it - n; }
-
-template<typename T>
-bool nextPermutation(T* first, T* last)
-{
-  if (first == last || first + 1 == last)
+  if (first == last)
     return false;
-  T* i = last - 1;
+  It i = last;
+  if (first == --i)
+    return false;
   while (true)
   {
-    T* ii = i;
+    It ii = i;
     --i;
-    if (*i < *ii)
+    if (less(*i, *ii))
     {
-      T* j = last;
-      while (!(*i < *--j))
-        ;
+      It j = last;
+      while (!less(*i, *--j))
+      {
+      }
       swap(*i, *j);
       reverse(ii, last);
       return true;
@@ -228,17 +213,20 @@ bool nextPermutation(T* first, T* last)
     }
   }
 }
+template<typename It>
+bool nextPermutation(It first, It last) { return nextPermutation(first, last, Less<>()); }
 
 // Puts into *nth the element a sort would put there, with nothing greater before it and nothing
-// less after it. Introselect: quicksort's partitioning (Algorithm.kpp) into the side holding nth
-// only, O(n) on average; heapsort of what is left past 2 log n rounds bounds the worst case.
-template<typename T, typename F>
-void nthElement(T* first, T* nth, T* last, F less)
+// less after it (random access iterators). Introselect: quicksort's partitioning (Algorithm.kpp)
+// into the side holding nth only, O(n) on average; heapsort of what is left past 2 log n rounds
+// bounds the worst case.
+template<typename It, typename F>
+void nthElement(It first, It nth, It last, F less)
 {
   if (nth == last)
     return;
   int depthLimit = 0;
-  for (long long k = last - first; k > 1; k >>= 1)
+  for (ptrdiff_t k = last - first; k > 1; k >>= 1)
     depthLimit += 2;
   while (last - first > 16)
   {
@@ -248,7 +236,7 @@ void nthElement(T* first, T* nth, T* last, F less)
       return;
     }
     moveMedianToFirst(first, first + 1, first + (last - first) / 2, last - 1, less);
-    T* cut = partitionAroundFirst(first, last, less);
+    It cut = partitionAroundFirst(first, last, less);
     if (cut <= nth)
       first = cut;
     else
@@ -256,73 +244,107 @@ void nthElement(T* first, T* nth, T* last, F less)
   }
   insertionSort(first, last, less);
 }
-
-template<typename T>
-void nthElement(T* first, T* nth, T* last)
+template<typename It>
+void nthElement(It first, It nth, It last)
 {
-  nthElement(first, nth, last, [](const T& a, const T& b) { return a < b; });
+  Less<> less;
+  nthElement(first, nth, last, less);
 }
 
-template<typename T>
-T* rotate(T* first, T* middle, T* last)
+// Rotates [first, last) so that middle becomes the first element; returns where first's element
+// went. Bidirectional ranges by three reversals, forward ones by swapping blocks.
+template<typename It>
+It rotate(It first, It middle, It last)
 {
   if (first == middle)
     return last;
   if (middle == last)
     return first;
-  reverse(first, middle);
-  reverse(middle, last);
-  reverse(first, last);
-  return first + (last - middle);
+  if constexpr (isBidirectionalIterator<It>)
+  {
+    ptrdiff_t moved = distance(middle, last);
+    reverse(first, middle);
+    reverse(middle, last);
+    reverse(first, last);
+    return next(first, moved);
+  }
+  else
+  {
+    It second = middle;
+    do
+    {
+      swap(*first, *second);
+      ++first;
+      ++second;
+      if (first == middle)
+        middle = second;
+    } while (second != last);
+    It result = first;
+    second = middle;
+    while (second != last)
+    {
+      swap(*first, *second);
+      ++first;
+      ++second;
+      if (first == middle)
+        middle = second;
+      else if (second == last)
+        second = middle;
+    }
+    return result;
+  }
 }
 
-template<typename T>
-T* setDifference(const T* first1, const T* last1, const T* first2, const T* last2, T* result)
+// The elements of the first sorted range that are not in the second (each counted as often as it
+// appears), written to out; returns the end of the written range.
+template<typename It1, typename It2, typename OutIt, typename F>
+OutIt setDifference(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F less)
 {
-  while (first1 != last1 && first2 != last2)
-  {
-    if (*first1 < *first2)
-    {
-      *result = *first1;
-      ++result;
-      ++first1;
-    }
-    else if (*first2 < *first1)
-      ++first2;
-    else
-    {
-      ++first1;
-      ++first2;
-    }
-  }
   while (first1 != last1)
   {
-    *result = *first1;
-    ++result;
-    ++first1;
-  }
-  return result;
-}
-
-template<typename T>
-T* setIntersection(const T* first1, const T* last1, const T* first2, const T* last2, T* result)
-{
-  while (first1 != last1 && first2 != last2)
-  {
-    if (*first1 < *first2)
+    if (first2 == last2)
+      return copy(first1, last1, out);
+    if (less(*first1, *first2))
+    {
+      *out = *first1;
+      ++out;
       ++first1;
-    else if (*first2 < *first1)
-      ++first2;
+    }
     else
     {
-      *result = *first1;
-      ++result;
-      ++first1;
+      if (!less(*first2, *first1))
+        ++first1;
       ++first2;
     }
   }
-  return result;
+  return out;
 }
+template<typename It1, typename It2, typename OutIt>
+OutIt setDifference(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out) { return setDifference(first1, last1, first2, last2, out, Less<>()); }
+
+// The elements of the first sorted range that are also in the second, written to out.
+template<typename It1, typename It2, typename OutIt, typename F>
+OutIt setIntersection(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out, F less)
+{
+  while (first1 != last1 && first2 != last2)
+  {
+    if (less(*first1, *first2))
+      ++first1;
+    else
+    {
+      if (!less(*first2, *first1))
+      {
+        *out = *first1;
+        ++out;
+        ++first1;
+      }
+      ++first2;
+    }
+  }
+  return out;
+}
+template<typename It1, typename It2, typename OutIt>
+OutIt setIntersection(It1 first1, It1 last1, It2 first2, It2 last2, OutIt out) { return setIntersection(first1, last1, first2, last2, out, Less<>()); }
 
 // Memory construction/destruction for uninitialized storage.
 template<typename T>

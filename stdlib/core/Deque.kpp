@@ -297,6 +297,10 @@ template<typename T>
 struct DequeIterator
 {
   using value_type = T;
+  using difference_type = ptrdiff_t;
+  using pointer = T*;
+  using reference = T&;
+  using iterator_category = RandomAccessIteratorTag;
 
   Deque<T>* deque = nullptr;
   int index = 0;
@@ -310,6 +314,9 @@ struct DequeIterator
   bool operator==(const DequeIterator<T>& other) const { return this->index == other.index; }
   bool operator!=(const DequeIterator<T>& other) const { return this->index != other.index; }
   bool operator<(const DequeIterator<T>& other) const { return this->index < other.index; }
+  bool operator>(const DequeIterator<T>& other) const { return this->index > other.index; }
+  bool operator<=(const DequeIterator<T>& other) const { return this->index <= other.index; }
+  bool operator>=(const DequeIterator<T>& other) const { return this->index >= other.index; }
   DequeIterator<T>& operator++()
   {
     ++this->index;

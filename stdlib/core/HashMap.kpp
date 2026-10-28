@@ -23,6 +23,10 @@ template<typename E, bool stable>
 struct HashIterator
 {
   using value_type = E;
+  using difference_type = ptrdiff_t;
+  using pointer = E*;
+  using reference = E&;
+  using iterator_category = ForwardIteratorTag;
 
   uint8_t* tags = nullptr;
   char* slots = nullptr;

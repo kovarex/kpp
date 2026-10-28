@@ -1,20 +1,69 @@
-// Kpp standard library: algorithms over ranges given as pointer pairs, which is what the
-// containers' begin()/end() return.
+// Kpp standard library: the algorithms over ranges [first, last) given by iterators (what std::sort,
+// std::find and the rest of <algorithm> convert to), and the reverse iterators and comparator
+// objects they use. Specified in docs/stdlib/algorithms.md. Each algorithm takes any iterator of
+// the category it needs (common.md): input iterators for the scans, forward iterators for the
+// algorithms that write in place, bidirectional ones for reverse, random access ones for sorting.
+// Pointers are random access iterators, and so are the iterators of Vector, String, Array, Deque.
 
-template<typename T>
-long long distance(const T* first, const T* last) { return last - first; }
+// --- Iterator steps ---
 
+// Whether It is at least a random access (or bidirectional) iterator, by its iterator_category.
 template<typename It>
-long long distance(It first, It last)
+constexpr bool isRandomAccessIterator = isBaseOf<RandomAccessIteratorTag, typename IteratorTraits<It>::iterator_category>;
+template<typename It>
+constexpr bool isBidirectionalIterator = isBaseOf<BidirectionalIteratorTag, typename IteratorTraits<It>::iterator_category>;
+
+// The number of steps from first to last: O(1) for random access iterators, O(n) for the others.
+template<typename It>
+ptrdiff_t distance(It first, It last)
 {
-  long long n = 0;
-  for (; first != last; ++first)
-    ++n;
-  return n;
+  if constexpr (isRandomAccessIterator<It>)
+    return last - first;
+  else
+  {
+    ptrdiff_t n = 0;
+    for (; first != last; ++first)
+      ++n;
+    return n;
+  }
 }
 
-template<typename T, typename V>
-T* find(T* first, T* last, const V& value)
+// Moves it n steps forward, or back for a negative n (a bidirectional iterator): O(1) for random
+// access iterators, O(|n|) for the others.
+template<typename It>
+void advance(It& it, ptrdiff_t n)
+{
+  if constexpr (isRandomAccessIterator<It>)
+    it += n;
+  else
+  {
+    for (; n > 0; --n)
+      ++it;
+    if constexpr (isBidirectionalIterator<It>)
+      for (; n < 0; ++n)
+        --it;
+  }
+}
+template<typename It>
+It next(It it, ptrdiff_t n = 1)
+{
+  advance(it, n);
+  return it;
+}
+template<typename It>
+It prev(It it, ptrdiff_t n = 1)
+{
+  advance(it, -n);
+  return it;
+}
+
+template<typename It1, typename It2>
+void iterSwap(It1 a, It2 b) { swap(*a, *b); }
+
+// --- Scans ---
+
+template<typename It, typename V>
+It find(It first, It last, const V& value)
 {
   for (; first != last; ++first)
     if (*first == value)
@@ -22,8 +71,8 @@ T* find(T* first, T* last, const V& value)
   return last;
 }
 
-template<typename T, typename F>
-T* findIf(T* first, T* last, F predicate)
+template<typename It, typename F>
+It findIf(It first, It last, F predicate)
 {
   for (; first != last; ++first)
     if (predicate(*first))
@@ -31,28 +80,37 @@ T* findIf(T* first, T* last, F predicate)
   return last;
 }
 
-template<typename T, typename V>
-long long count(const T* first, const T* last, const V& value)
+template<typename It, typename F>
+It findIfNot(It first, It last, F predicate)
 {
-  long long n = 0;
+  for (; first != last; ++first)
+    if (!predicate(*first))
+      return first;
+  return last;
+}
+
+template<typename It, typename V>
+ptrdiff_t count(It first, It last, const V& value)
+{
+  ptrdiff_t n = 0;
   for (; first != last; ++first)
     if (*first == value)
       ++n;
   return n;
 }
 
-template<typename T, typename F>
-long long countIf(const T* first, const T* last, F predicate)
+template<typename It, typename F>
+ptrdiff_t countIf(It first, It last, F predicate)
 {
-  long long n = 0;
+  ptrdiff_t n = 0;
   for (; first != last; ++first)
     if (predicate(*first))
       ++n;
   return n;
 }
 
-template<typename T, typename F>
-bool allOf(const T* first, const T* last, F predicate)
+template<typename It, typename F>
+bool allOf(It first, It last, F predicate)
 {
   for (; first != last; ++first)
     if (!predicate(*first))
@@ -60,8 +118,8 @@ bool allOf(const T* first, const T* last, F predicate)
   return true;
 }
 
-template<typename T, typename F>
-bool anyOf(const T* first, const T* last, F predicate)
+template<typename It, typename F>
+bool anyOf(It first, It last, F predicate)
 {
   for (; first != last; ++first)
     if (predicate(*first))
@@ -69,69 +127,64 @@ bool anyOf(const T* first, const T* last, F predicate)
   return false;
 }
 
-template<typename T, typename F>
-bool noneOf(const T* first, const T* last, F predicate) { return !anyOf(first, last, predicate); }
+template<typename It, typename F>
+bool noneOf(It first, It last, F predicate) { return !anyOf(first, last, predicate); }
 
-// Writes f(x) for every x of [first, last) to out; returns one past the last written.
-template<typename T, typename U, typename F>
-U* transform(const T* first, const T* last, U* out, F f)
-{
-  for (; first != last; ++first, ++out)
-    *out = f(*first);
-  return out;
-}
-
-template<typename T, typename V>
-void fill(T* first, T* last, const V& value)
+// Calls f(x) for every x in order; returns f.
+template<typename It, typename F>
+F forEach(It first, It last, F f)
 {
   for (; first != last; ++first)
-    *first = value;
+    f(*first);
+  return f;
 }
 
-template<typename T>
-void reverse(T* first, T* last)
+// The greatest element (the first of equal greatest ones), or last for an empty range.
+template<typename It>
+It maxElement(It first, It last)
 {
-  while (first < last)
-  {
-    --last;
-    swap(*first, *last);
-    ++first;
-  }
-}
-
-template<typename T>
-T* maxElement(T* first, T* last)
-{
-  T* best = first;
-  for (; first != last; ++first)
+  if (first == last)
+    return last;
+  It best = first;
+  for (++first; first != last; ++first)
     if (*best < *first)
       best = first;
   return best;
 }
-
-template<typename T>
-T* minElement(T* first, T* last)
+template<typename It, typename F>
+It maxElement(It first, It last, F less)
 {
-  T* best = first;
-  for (; first != last; ++first)
-    if (*first < *best)
+  if (first == last)
+    return last;
+  It best = first;
+  for (++first; first != last; ++first)
+    if (less(*best, *first))
       best = first;
   return best;
 }
 
-// Moves the elements equal to value to the end; returns the new end of the kept ones.
-template<typename T, typename V>
-T* remove(T* first, T* last, const V& value)
+// The least element (the first of equal least ones), or last for an empty range.
+template<typename It>
+It minElement(It first, It last)
 {
-  T* out = first;
-  for (; first != last; ++first)
-    if (!(*first == value))
-    {
-      if (out != first)
-        *out = move(*first);
-      ++out;
-    }
-  return out;
+  if (first == last)
+    return last;
+  It best = first;
+  for (++first; first != last; ++first)
+    if (*first < *best)
+      best = first;
+  return best;
+}
+template<typename It, typename F>
+It minElement(It first, It last, F less)
+{
+  if (first == last)
+    return last;
+  It best = first;
+  for (++first; first != last; ++first)
+    if (less(*first, *best))
+      best = first;
+  return best;
 }
 
 // The largest and the smallest of a brace list: `max({a, b, c})`.
@@ -154,101 +207,254 @@ T min(InitializerList<T> values)
   return best;
 }
 
-// Moves the elements that satisfy predicate to the end; returns the new end of the kept ones.
-template<typename T, typename F>
-T* removeIf(T* first, T* last, F predicate)
+// init with every element added in order (std::accumulate): `init = init + x`, or `init = op(init, x)`.
+template<typename It, typename T>
+T accumulate(It first, It last, T init)
 {
-  T* out = first;
   for (; first != last; ++first)
+    init = move(init) + *first;
+  return init;
+}
+template<typename It, typename T, typename F>
+T accumulate(It first, It last, T init, F op)
+{
+  for (; first != last; ++first)
+    init = op(move(init), *first);
+  return init;
+}
+
+// --- Writing ---
+
+// Writes f(x) for every x of [first, last) to out; returns one past the last written.
+template<typename InIt, typename OutIt, typename F>
+OutIt transform(InIt first, InIt last, OutIt out, F f)
+{
+  for (; first != last; ++first, ++out)
+    *out = f(*first);
+  return out;
+}
+// Writes f(x, y) for the elements x of [first1, last1) and y of the range from first2, in pairs.
+template<typename InIt1, typename InIt2, typename OutIt, typename F>
+OutIt transform(InIt1 first1, InIt1 last1, InIt2 first2, OutIt out, F f)
+{
+  for (; first1 != last1; ++first1, ++first2, ++out)
+    *out = f(*first1, *first2);
+  return out;
+}
+
+template<typename It, typename V>
+void fill(It first, It last, const V& value)
+{
+  for (; first != last; ++first)
+    *first = value;
+}
+
+template<typename It, typename F>
+void generate(It first, It last, F generator)
+{
+  for (; first != last; ++first)
+    *first = generator();
+}
+
+// Replaces every element equal to oldValue with newValue.
+template<typename It, typename V>
+void replace(It first, It last, const V& oldValue, const V& newValue)
+{
+  for (; first != last; ++first)
+    if (*first == oldValue)
+      *first = newValue;
+}
+template<typename It, typename F, typename V>
+void replaceIf(It first, It last, F predicate, const V& newValue)
+{
+  for (; first != last; ++first)
+    if (predicate(*first))
+      *first = newValue;
+}
+
+// Moves the elements not equal to value to the front, in order; returns the end of those. The
+// elements from there to last are left valid but unspecified (moved from).
+template<typename It, typename V>
+It remove(It first, It last, const V& value)
+{
+  first = find(first, last, value);
+  if (first == last)
+    return first;
+  It out = first;
+  for (++first; first != last; ++first)
+    if (!(*first == value))
+    {
+      *out = move(*first);
+      ++out;
+    }
+  return out;
+}
+// The same for the elements that do not satisfy predicate.
+template<typename It, typename F>
+It removeIf(It first, It last, F predicate)
+{
+  first = findIf(first, last, predicate);
+  if (first == last)
+    return first;
+  It out = first;
+  for (++first; first != last; ++first)
     if (!predicate(*first))
     {
-      if (out != first)
-        *out = move(*first);
+      *out = move(*first);
       ++out;
     }
   return out;
 }
 
-template<typename T, typename V>
-T* lowerBound(T* first, T* last, const V& value)
+// Keeps the first of every run of equal neighbours (equal by == or by same(a, b)), moved to the
+// front; returns the end of the kept ones.
+template<typename It>
+It unique(It first, It last)
 {
-  while (first < last)
-  {
-    T* middle = first + (last - first) / 2;
-    if (*middle < value)
-      first = middle + 1;
-    else
-      last = middle;
-  }
-  return first;
+  if (first == last)
+    return last;
+  It out = first;
+  for (++first; first != last; ++first)
+    if (!(*out == *first))
+    {
+      ++out;
+      if (out != first)
+        *out = move(*first);
+    }
+  return ++out;
 }
-template<typename T, typename V, typename Less>
-T* lowerBound(T* first, T* last, const V& value, Less less)
+template<typename It, typename F>
+It unique(It first, It last, F same)
 {
-  while (first < last)
+  if (first == last)
+    return last;
+  It out = first;
+  for (++first; first != last; ++first)
+    if (!same(*out, *first))
+    {
+      ++out;
+      if (out != first)
+        *out = move(*first);
+    }
+  return ++out;
+}
+
+// Reverses the order of the elements (a bidirectional range).
+template<typename It>
+void reverse(It first, It last)
+{
+  while (first != last)
   {
-    T* middle = first + (last - first) / 2;
+    --last;
+    if (first == last)
+      break;
+    swap(*first, *last);
+    ++first;
+  }
+}
+
+// --- Searching sorted ranges ---
+
+// The first position whose element is not less than value: O(log n) comparisons, and O(log n)
+// steps for random access iterators, O(n) for the others.
+template<typename It, typename V, typename F>
+It lowerBound(It first, It last, const V& value, F less)
+{
+  ptrdiff_t count = distance(first, last);
+  while (count > 0)
+  {
+    ptrdiff_t half = count / 2;
+    It middle = first;
+    advance(middle, half);
     if (less(*middle, value))
-      first = middle + 1;
+    {
+      first = ++middle;
+      count -= half + 1;
+    }
     else
-      last = middle;
+      count = half;
   }
   return first;
+}
+template<typename It, typename V>
+It lowerBound(It first, It last, const V& value)
+{
+  return lowerBound(first, last, value, Less<>());
 }
 
-template<typename T, typename V>
-T* upperBound(T* first, T* last, const V& value)
+// The first position whose element is greater than value.
+template<typename It, typename V, typename F>
+It upperBound(It first, It last, const V& value, F less)
 {
-  while (first < last)
+  ptrdiff_t count = distance(first, last);
+  while (count > 0)
   {
-    T* middle = first + (last - first) / 2;
-    if (value < *middle)
-      last = middle;
+    ptrdiff_t half = count / 2;
+    It middle = first;
+    advance(middle, half);
+    if (!less(value, *middle))
+    {
+      first = ++middle;
+      count -= half + 1;
+    }
     else
-      first = middle + 1;
+      count = half;
   }
   return first;
 }
-template<typename T, typename V, typename Less>
-T* upperBound(T* first, T* last, const V& value, Less less)
+template<typename It, typename V>
+It upperBound(It first, It last, const V& value)
 {
-  while (first < last)
-  {
-    T* middle = first + (last - first) / 2;
-    if (less(value, *middle))
-      last = middle;
-    else
-      first = middle + 1;
-  }
-  return first;
+  return upperBound(first, last, value, Less<>());
 }
 
-// Sorting. sort is introsort, as in the C++ libraries: quicksort around the median of three,
-// heapsort when the recursion gets deeper than 2 log n (so O(n log n) in the worst case),
-// insertion sort over the short ranges quicksort leaves. Not stable; stableSort is.
-template<typename T, typename F>
-void sort(T* first, T* last, F less)
+// Whether an element equivalent to value is there.
+template<typename It, typename V, typename F>
+bool binarySearch(It first, It last, const V& value, F less)
 {
-  long long count = last - first;
+  first = lowerBound(first, last, value, less);
+  return first != last && !less(value, *first);
+}
+template<typename It, typename V>
+bool binarySearch(It first, It last, const V& value) { return binarySearch(first, last, value, Less<>()); }
+
+// The range of the elements equivalent to value: (lowerBound, upperBound).
+template<typename It, typename V, typename F>
+Pair<It, It> equalRange(It first, It last, const V& value, F less)
+{
+  return Pair<It, It>(lowerBound(first, last, value, less), upperBound(first, last, value, less));
+}
+template<typename It, typename V>
+Pair<It, It> equalRange(It first, It last, const V& value) { return equalRange(first, last, value, Less<>()); }
+
+// --- Sorting (random access iterators) ---
+
+// sort is introsort, as in the C++ libraries: quicksort around the median of three, heapsort when
+// the recursion gets deeper than 2 log n (so O(n log n) in the worst case), insertion sort over the
+// short ranges quicksort leaves. Not stable; stableSort is.
+template<typename It, typename F>
+void sort(It first, It last, F less)
+{
+  ptrdiff_t count = last - first;
   if (count < 2)
     return;
   int depthLimit = 0;
-  for (long long k = count; k > 1; k >>= 1)
+  for (ptrdiff_t k = count; k > 1; k >>= 1)
     depthLimit += 2;
   introSortLoop(first, last, depthLimit, less);
   insertionSort(first, last, less);
 }
 
 // Sorts [first, last) by operator<.
-template<typename T>
-void sort(T* first, T* last)
+template<typename It>
+void sort(It first, It last)
 {
-  sort(first, last, [](const T& a, const T& b) { return a < b; });
+  sort(first, last, Less<>());
 }
 
 // Quicksorts until every range is at most 16 elements long, each element already in its range.
-template<typename T, typename F>
-void introSortLoop(T* first, T* last, int depthLimit, F& less)
+template<typename It, typename F>
+void introSortLoop(It first, It last, int depthLimit, F& less)
 {
   while (last - first > 16)
   {
@@ -259,15 +465,15 @@ void introSortLoop(T* first, T* last, int depthLimit, F& less)
     }
     --depthLimit;
     moveMedianToFirst(first, first + 1, first + (last - first) / 2, last - 1, less);
-    T* cut = partitionAroundFirst(first, last, less);
+    It cut = partitionAroundFirst(first, last, less);
     introSortLoop(cut, last, depthLimit, less);
     last = cut;
   }
 }
 
 // Swaps the median of *a, *b and *c into *result.
-template<typename T, typename F>
-void moveMedianToFirst(T* result, T* a, T* b, T* c, F& less)
+template<typename It, typename F>
+void moveMedianToFirst(It result, It a, It b, It c, F& less)
 {
   if (less(*a, *b))
   {
@@ -289,11 +495,11 @@ void moveMedianToFirst(T* result, T* a, T* b, T* c, F& less)
 // Partitions (first, last) around the pivot *first: returns cut with nothing in [first + 1, cut)
 // greater than the pivot and nothing in [cut, last) less. The median of three guarantees an
 // element on each side that stops the scans, so they need no bounds checks.
-template<typename T, typename F>
-T* partitionAroundFirst(T* first, T* last, F& less)
+template<typename It, typename F>
+It partitionAroundFirst(It first, It last, F& less)
 {
-  T* left = first + 1;
-  T* right = last;
+  It left = first + 1;
+  It right = last;
   while (true)
   {
     while (less(*left, *first))
@@ -308,15 +514,18 @@ T* partitionAroundFirst(T* first, T* last, F& less)
   }
 }
 
-template<typename T, typename F>
-void insertionSort(T* first, T* last, F& less)
+template<typename It, typename F>
+void insertionSort(It first, It last, F& less)
 {
-  for (T* next = first + 1; next < last; ++next)
+  using T = typename IteratorTraits<It>::value_type;
+  if (first == last)
+    return;
+  for (It next = first + 1; next < last; ++next)
   {
     if (!less(*next, *(next - 1)))
       continue;
     T value = move(*next);
-    T* hole = next;
+    It hole = next;
     do
     {
       *hole = move(*(hole - 1));
@@ -326,13 +535,13 @@ void insertionSort(T* first, T* last, F& less)
   }
 }
 
-template<typename T, typename F>
-void heapSort(T* first, T* last, F& less)
+template<typename It, typename F>
+void heapSort(It first, It last, F& less)
 {
-  long long count = last - first;
-  for (long long i = count / 2; i-- > 0;)
+  ptrdiff_t count = last - first;
+  for (ptrdiff_t i = count / 2; i-- > 0;)
     heapSiftDown(first, i, count, less);
-  for (long long end = count - 1; end > 0; --end)
+  for (ptrdiff_t end = count - 1; end > 0; --end)
   {
     swap(first[0], first[end]);
     heapSiftDown(first, 0, end, less);
@@ -340,13 +549,14 @@ void heapSort(T* first, T* last, F& less)
 }
 
 // Restores the max-heap property below hole in the heap first[0, count).
-template<typename T, typename F>
-void heapSiftDown(T* first, long long hole, long long count, F& less)
+template<typename It, typename F>
+void heapSiftDown(It first, ptrdiff_t hole, ptrdiff_t count, F& less)
 {
+  using T = typename IteratorTraits<It>::value_type;
   T value = move(first[hole]);
   while (true)
   {
-    long long child = 2 * hole + 1;
+    ptrdiff_t child = 2 * hole + 1;
     if (child >= count)
       break;
     if (child + 1 < count && less(first[child], first[child + 1]))
@@ -359,41 +569,60 @@ void heapSiftDown(T* first, long long hole, long long count, F& less)
   first[hole] = move(value);
 }
 
-// Sorts keeping equal elements in their order: insertion-sorted runs of 32, then merged in
-// passes between the range and a buffer, moving the elements (relocate in Utility.kpp).
-template<typename T, typename F>
-void stableSort(T* first, T* last, F less)
+// Sorts keeping equivalent elements in their order: insertion-sorted runs of 32, then merged in
+// passes between the range and a buffer, moving the elements (relocate in Utility.kpp). Over a
+// range that is not an array (a Deque's), the elements are moved into one, sorted and moved back.
+template<typename It, typename F>
+void stableSort(It first, It last, F less)
 {
-  long long count = last - first;
-  const long long run = 32;
-  for (long long start = 0; start < count; start += run)
-    insertionSort(first + start, first + (start + run < count ? start + run : count), less);
-  if (count <= run)
-    return;
-  T* buffer = (T*)malloc((size_t)count * sizeof(T));
-  T* from = first;
-  T* to = buffer;
-  for (long long width = run; width < count; width *= 2)
+  using T = typename IteratorTraits<It>::value_type;
+  if constexpr (!isPointer<It>)
   {
-    for (long long start = 0; start < count; start += 2 * width)
+    Vector<T> items;
+    items.reserve(int(last - first));
+    for (It it = first; it != last; ++it)
+      items.push_back(move(*it));
+    stableSort(items.begin(), items.end(), less);
+    It out = first;
+    for (T& item : items)
     {
-      long long middle = start + width < count ? start + width : count;
-      long long end = start + 2 * width < count ? start + 2 * width : count;
-      mergeRelocating(from + start, from + middle, from + end, to + start, less);
+      *out = move(item);
+      ++out;
     }
-    T* swapped = from;
-    from = to;
-    to = swapped;
   }
-  if (from != first)
-    relocate(first, from, count);
-  free(buffer);
+  else
+  {
+    ptrdiff_t count = last - first;
+    const ptrdiff_t run = 32;
+    for (ptrdiff_t start = 0; start < count; start += run)
+      insertionSort(first + start, first + (start + run < count ? start + run : count), less);
+    if (count <= run)
+      return;
+    T* buffer = (T*)malloc((size_t)count * sizeof(T));
+    T* from = first;
+    T* to = buffer;
+    for (ptrdiff_t width = run; width < count; width *= 2)
+    {
+      for (ptrdiff_t start = 0; start < count; start += 2 * width)
+      {
+        ptrdiff_t middle = start + width < count ? start + width : count;
+        ptrdiff_t end = start + 2 * width < count ? start + 2 * width : count;
+        mergeRelocating(from + start, from + middle, from + end, to + start, less);
+      }
+      T* swapped = from;
+      from = to;
+      to = swapped;
+    }
+    if (from != first)
+      relocate(first, from, count);
+    free(buffer);
+  }
 }
 
-template<typename T>
-void stableSort(T* first, T* last)
+template<typename It>
+void stableSort(It first, It last)
 {
-  stableSort(first, last, [](const T& a, const T& b) { return a < b; });
+  stableSort(first, last, Less<>());
 }
 
 // Moves the sorted [a, middle) and [middle, end) into the unconstructed out, merged; on ties the
@@ -413,48 +642,18 @@ void mergeRelocating(T* a, T* middle, T* end, T* out, F& less)
   relocate(out + (middle - a), b, end - b);
 }
 
-// A view of a contiguous range.
-template<typename T>
-struct Span
-{
-  T* items = nullptr;
-  int length = 0;
-
-  using iterator = T*;
-  using value_type = T;
-
-  Span() {}
-  Span(T* items, int length) : items(items), length(length) {}
-  implicit Span(Vector<T>& values) : items(values.items), length(values.length) {}
-
-  int size() const { return this->length; }
-  bool empty() const { return this->length == 0; }
-  T* data() const { return this->items; }
-  T& operator[](int index) const { return this->items[index]; }
-  T* begin() const { return this->items; }
-  T* end() const { return this->items + this->length; }
-  T& front() const { return this->items[0]; }
-  T& back() const { return this->items[this->length - 1]; }
-  Span<T> subspan(int start, int count) const { return Span<T>(this->items + start, count); }
-};
-
-// Replaces every element equal to oldValue in [first, last) with newValue.
-template<typename T, typename V>
-void replace(T* first, T* last, const V& oldValue, const V& newValue)
-{
-  for (T* it = first; it != last; ++it)
-    if (*it == oldValue)
-      *it = newValue;
-}
-
-// Moves a pointer iterator n elements forward (backward for a negative n).
-template<typename T>
-void advance(T*& it, int n) { it += n; }
+// --- Reverse iterators ---
 
 // Walks a pointer range backwards: rbegin() of a vector is its end, and *it is the element before.
 template<typename T>
 struct ReverseIterator
 {
+  using value_type = RemoveConst<T>;
+  using difference_type = ptrdiff_t;
+  using pointer = T*;
+  using reference = T&;
+  using iterator_category = RandomAccessIteratorTag;
+
   T* position = nullptr; // one past the element *this yields
 
   ReverseIterator() {}
@@ -464,22 +663,49 @@ struct ReverseIterator
 
   T& operator*() const { return *(this->position - 1); }
   T* operator->() const { return this->position - 1; }
+  T& operator[](ptrdiff_t n) const { return *(this->position - 1 - n); }
   T* base() const { return this->position; }
   ReverseIterator<T>& operator++()
   {
     --this->position;
     return *this;
   }
+  ReverseIterator<T> operator++(int)
+  {
+    ReverseIterator<T> before = *this;
+    --this->position;
+    return before;
+  }
   ReverseIterator<T>& operator--()
   {
     ++this->position;
     return *this;
   }
-  ReverseIterator<T> operator+(int n) const { return ReverseIterator<T>(this->position - n); }
-  ReverseIterator<T> operator-(int n) const { return ReverseIterator<T>(this->position + n); }
-  int operator-(ReverseIterator<T> other) const { return int(other.position - this->position); }
+  ReverseIterator<T> operator--(int)
+  {
+    ReverseIterator<T> before = *this;
+    ++this->position;
+    return before;
+  }
+  ReverseIterator<T>& operator+=(ptrdiff_t n)
+  {
+    this->position -= n;
+    return *this;
+  }
+  ReverseIterator<T>& operator-=(ptrdiff_t n)
+  {
+    this->position += n;
+    return *this;
+  }
+  ReverseIterator<T> operator+(ptrdiff_t n) const { return ReverseIterator<T>(this->position - n); }
+  ReverseIterator<T> operator-(ptrdiff_t n) const { return ReverseIterator<T>(this->position + n); }
+  ptrdiff_t operator-(ReverseIterator<T> other) const { return other.position - this->position; }
   bool operator==(ReverseIterator<T> other) const { return this->position == other.position; }
   bool operator!=(ReverseIterator<T> other) const { return this->position != other.position; }
+  bool operator<(ReverseIterator<T> other) const { return other.position < this->position; }
+  bool operator>(ReverseIterator<T> other) const { return this->position < other.position; }
+  bool operator<=(ReverseIterator<T> other) const { return !(other.position > this->position); }
+  bool operator>=(ReverseIterator<T> other) const { return !(this->position > other.position); }
 };
 
 // The reverse of a bidirectional iterator It (rbegin()/rend() of the maps, sets and lists): it
@@ -487,6 +713,12 @@ struct ReverseIterator
 template<typename It>
 struct ReverseOf
 {
+  using value_type = typename It::value_type;
+  using difference_type = ptrdiff_t;
+  using pointer = typename It::value_type*;
+  using reference = typename It::value_type&;
+  using iterator_category = BidirectionalIteratorTag;
+
   It position;
 
   ReverseOf() {}
@@ -505,14 +737,28 @@ struct ReverseOf
     --this->position;
     return *this;
   }
+  ReverseOf<It> operator++(int)
+  {
+    ReverseOf<It> before = *this;
+    --this->position;
+    return before;
+  }
   ReverseOf<It>& operator--()
   {
     ++this->position;
     return *this;
   }
+  ReverseOf<It> operator--(int)
+  {
+    ReverseOf<It> before = *this;
+    ++this->position;
+    return before;
+  }
   bool operator==(const ReverseOf<It>& other) const { return this->position == other.position; }
   bool operator!=(const ReverseOf<It>& other) const { return this->position != other.position; }
 };
+
+// --- Comparator objects ---
 
 // Comparator objects (std::less, std::greater, std::equal_to): `Less<T>` compares two T with <,
 // the transparent `Less<>` compares any two operands (and says so with `is_transparent`), so
