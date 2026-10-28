@@ -148,7 +148,7 @@ struct Scope
   std::vector<UsingDirectiveDecl*> usingDirectives;
   std::vector<Scope*> usingScopes;
   std::atomic<int> usingState{0};
-  std::vector<UsingNameDecl*> usingEnums; // `using enum E;` inside a class.
+  std::vector<UsingNameDecl*> usingEnums; // `using enum E;` inside a class or namespace.
   std::vector<Scope*> usingEnumScopes;
   std::atomic<int> usingEnumState{0};
   Span<Decl*> templateParams; // Of the owning class template.
@@ -307,6 +307,7 @@ struct GlobalScope::Impl
   std::vector<std::pair<FunctionDecl*, Scope*>> deferredFunctions; // Out-of-line member function definitions.
   std::vector<std::pair<VariableDecl*, Scope*>> deferredVariables; // Out-of-line static data member definitions.
   std::unordered_map<FunctionDecl*, std::vector<Scope*>> localTypesOfOutOfLine; // Scopes of classes and enums declared in their bodies.
+  std::vector<Scope*> scopesWithUsingEnums; // `using enum E;` in them: resolved once by finishIndex, before parallel lookups
   std::unordered_map<Decl*, VariableDecl*> variableDefinitions;    // Static data member -> its `T C::x = ...;` definition.
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
@@ -820,8 +821,12 @@ struct GlobalScope::Impl
         auto* u = static_cast<UsingNameDecl*>(d);
         if (u->isEnum)
         {
-          std::lock_guard lock(scope->shards[0].mutex);
-          scope->usingEnums.push_back(u);
+          {
+            std::lock_guard lock(scope->shards[0].mutex);
+            scope->usingEnums.push_back(u);
+          }
+          std::lock_guard lock(deferredMutex);
+          scopesWithUsingEnums.push_back(scope); // resolved by finishIndex
         }
         else if (!u->name.empty() && u->name.last().special == 0)
         {
@@ -1074,6 +1079,9 @@ struct GlobalScope::Impl
       cls->usingEnumScopes = std::move(scopes);
       cls->usingEnumState.store(2, std::memory_order_release);
     }
+    // Otherwise being resolved: finishIndex resolves them all before any lookup that runs in
+    // parallel, so only a lookup made while resolving them (the enum's name, in this scope) gets
+    // here, and goes on without them.
   }
 
   // Looks a symbol up in one scope: its own entries, template parameters, using-enums, bases.
@@ -1103,9 +1111,10 @@ struct GlobalScope::Impl
       if (!s->usingEnums.empty())
       {
         ensureUsingEnums(s, depth);
-        for (Scope* e : s->usingEnumScopes)
-          if (lookupInScope(e, symbol, out, depth + 1))
-            return true;
+        if (s->usingEnumState.load(std::memory_order_acquire) == 2) // not while another thread fills them
+          for (Scope* e : s->usingEnumScopes)
+            if (lookupInScope(e, symbol, out, depth + 1))
+              return true;
       }
       if (!s->baseTypes.empty())
       {
@@ -1115,12 +1124,25 @@ struct GlobalScope::Impl
             return true;
       }
     }
-    else if (s->kind == ScopeKind::Namespace && withUsing && !s->usingDirectives.empty())
+    else if (s->kind == ScopeKind::Namespace)
     {
-      ensureUsing(s, depth);
-      for (Scope* u : s->usingScopes)
-        if (lookupInScope(u, symbol, out, depth + 1, false))
-          return true;
+      // `namespace TileRenderLayer { enum class Enum {...}; using enum Enum; }`, then
+      // `TileRenderLayer::GROUND_NATURAL`: the enumerators are the namespace's names.
+      if (!s->usingEnums.empty())
+      {
+        ensureUsingEnums(s, depth);
+        if (s->usingEnumState.load(std::memory_order_acquire) == 2)
+          for (Scope* e : s->usingEnumScopes)
+            if (lookupInScope(e, symbol, out, depth + 1))
+              return true;
+      }
+      if (withUsing && !s->usingDirectives.empty())
+      {
+        ensureUsing(s, depth);
+        for (Scope* u : s->usingScopes)
+          if (lookupInScope(u, symbol, out, depth + 1, false))
+            return true;
+      }
     }
     return false;
   }
@@ -8147,6 +8169,11 @@ void GlobalScope::finishIndex()
   }
   impl->deferredVariables.clear();
   impl->collectTemplateParamNames(&impl->root);
+  // `using enum E;` in classes and namespaces: resolved here, single-threaded, so that the
+  // parallel lookups only read them.
+  for (Scope* s : impl->scopesWithUsingEnums)
+    impl->ensureUsingEnums(s, 0);
+  impl->scopesWithUsingEnums.clear();
 }
 
 void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats)

@@ -1,0 +1,20 @@
+// spec: `using enum Enum;` in a namespace makes the enumerators names of that namespace, qualified (`TileRenderLayer::GROUND_NATURAL`) and unqualified inside it
+// factorio: TileRenderLayer (`namespace TileRenderLayer { enum class Enum : LayerType {...}; using enum Enum; }`), Character.kpp, TileDrawQueue.kpp
+namespace Layer
+{
+  enum class Enum : uint8_t
+  {
+    WATER = 3,
+    GROUND = WATER + 4
+  };
+  using enum Enum;
+  constexpr Enum FIRST = WATER;
+  int distance(Enum e) { return int(e) - int(GROUND); }
+}
+
+int main()
+{
+  Layer::Enum e = Layer::GROUND;
+  println("{} {} {} {}", int(e), int(Layer::WATER), e > Layer::FIRST, Layer::distance(Layer::WATER));
+  return 0;
+}
