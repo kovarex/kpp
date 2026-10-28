@@ -1,0 +1,24 @@
+// spec: a pack expansion `forward<Args>(args)...` inside an instantiation is typed once per element, so the call it is passed to picks its overload from the elements' types
+// found in the stdlib (makeShared, makeUnique, emplace_back: `new T(forward<Args>(args)...)`, 3,957 untyped expansions in the game's instantiations) and wherever a forwarding call has overloads
+int pick(int a) { return 1; }
+int pick(int a, const String& b) { return 2; }
+int pick(double a, double b) { return 3; }
+
+template<class... Args>
+int call(Args&&... args) { return pick(forward<Args>(args)...); }
+
+struct Pair2
+{
+  int a;
+  String b;
+  Pair2(int a, const String& b) : a(a), b(b) {}
+};
+
+int main()
+{
+  String s = "x";
+  println("{} {} {}", call(5), call(1, s), call(1.5, 2.5));
+  SharedPtr<Pair2> p = makeShared<Pair2>(7, s);
+  println("{} {}", p->a, p->b);
+  return 0;
+}

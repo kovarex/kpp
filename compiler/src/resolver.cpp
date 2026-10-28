@@ -6024,8 +6024,40 @@ struct GlobalScope::Impl
       }
     }
 
+    // `forward<Args>(args)...` under an instantiation: the pattern typed once per element with the
+    // packs bound to that element, as C++ instantiates an expansion; its type the pack of the
+    // results (Args = (int, String&): (int&&, String&)). Null when the pattern names no pack
+    // parameter bound to a pack here.
+    const Ty* typeOfExpansion(UnaryExpr* u)
+    {
+      Decl* pd = activeSubst ? packParamIn(u->operand) : nullptr;
+      const Ty* pt = pd ? impl.declaredTypeOf(pd, activeSubst, 0) : nullptr;
+      if (!pt || pt->kind != TyKind::Pack)
+        return nullptr;
+      size_t n = pt->args.size();
+      const Subst* outer = activeSubst;
+      std::vector<const Ty*> elements;
+      for (size_t i = 0; i < n; ++i)
+      {
+        Subst one;
+        for (const Subst::Pair& p : outer->pairs)
+        {
+          bool pack = p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->isPack;
+          one.pairs.push_back({p.param, pack && p.type && p.type->kind == TyKind::Pack && p.type->args.size() == n ? p.type->args[i] : p.type});
+        }
+        activeSubst = &one;
+        const Ty* e = walkExpr(u->operand);
+        activeSubst = outer;
+        elements.push_back(e ? e : types.unknown());
+      }
+      return types.pack(Span<const Ty*>{elements.data(), uint32_t(elements.size())});
+    }
+
     const Ty* typeOfUnary(UnaryExpr* u)
     {
+      if (!u->isKeyword && P(u->op) == P::Ellipsis && u->postfix)
+        if (const Ty* pack = typeOfExpansion(u))
+          return pack;
       const Ty* t = walkExpr(u->operand);
       const Ty* s = types.stripRef(t);
       if (u->isKeyword)
