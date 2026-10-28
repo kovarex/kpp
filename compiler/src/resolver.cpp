@@ -58,6 +58,58 @@ void ResolveStats::add(const ResolveStats& o)
   instExprsTyped += o.instExprsTyped;
   instExprsDependent += o.instExprsDependent;
   instExprsUnknown += o.instExprsUnknown;
+  for (const auto& [key, site] : o.why)
+  {
+    auto [it, inserted] = why.emplace(key, site);
+    if (!inserted)
+      it->second.count += site.count;
+  }
+}
+
+std::string whyReport(const ResolveStats& total, SymbolTable& symbols, int perCause)
+{
+  static const char* causes[] = {"none", "name", "object type", "member", "overload", "deduction", "auto return",
+                                 "unsupported construct", "operator", "auto"};
+  std::vector<std::pair<uint64_t, ResolveStats::WhySite>> sites(total.why.begin(), total.why.end());
+  std::sort(sites.begin(), sites.end(), [](auto& a, auto& b)
+  {
+    if ((a.first >> 55) != (b.first >> 55))
+      return (a.first >> 55) < (b.first >> 55);
+    return a.second.count != b.second.count ? a.second.count > b.second.count : a.first < b.first;
+  });
+  std::string out;
+  char line[512];
+  for (size_t i = 0; i < sites.size();)
+  {
+    uint64_t group = sites[i].first >> 55;
+    uint64_t cause = group >> 1;
+    uint64_t sum = 0;
+    size_t end = i;
+    while (end < sites.size() && (sites[end].first >> 55) == group)
+      sum += sites[end++].second.count;
+    snprintf(line, sizeof line, "  unknown because of %s %s (%llu), most common constructs:\n",
+             cause < std::size(causes) ? causes[cause] : "?", group & 1 ? "inside template instantiations" : "in plain code",
+             (unsigned long long)sum);
+    out += line;
+    for (size_t k = i; k < end && int(k - i) < perCause; ++k)
+    {
+      const auto& [key, site] = sites[k];
+      auto kind = NodeKind(uint8_t(key >> 32));
+      uint32_t symbol = uint32_t(key);
+      std::string_view name = symbol == UINT32_MAX ? std::string_view("-") : symbols.name(symbol);
+      uint32_t lineNo = 0;
+      if (site.file && site.file->tokens && !site.file->tokens->empty())
+      {
+        const Token& t = (*site.file->tokens)[std::min<size_t>(site.token, site.file->tokens->size() - 1)];
+        lineNo = 1 + uint32_t(std::count(site.file->text.begin(), site.file->text.begin() + std::min<size_t>(t.offset, site.file->text.size()), '\n'));
+      }
+      snprintf(line, sizeof line, "    %6u  %-14s %-32.*s first at %s:%u\n", site.count, nodeKindName(kind), int(std::min<size_t>(name.size(), 60)),
+               name.data(), site.file ? site.file->path.c_str() : "?", lineNo);
+      out += line;
+    }
+    i = end;
+  }
+  return out;
 }
 
 // --- Scope tree ---------------------------------------------------------------------------
@@ -332,6 +384,7 @@ struct GlobalScope::Impl
     Subst subst;                          // the enclosing instantiation's arguments
     const std::vector<Token>* tokens = nullptr;
     std::string_view text;
+    const ParsedFile* file = nullptr;
     int depth = 0;
   };
   std::mutex lambdaEnvMutex;
@@ -3419,6 +3472,8 @@ struct GlobalScope::Impl
     const Ty* thisType = nullptr;
     const Subst* activeSubst = nullptr; // Set while checking a template body for an instantiation.
     int instantiationDepth = 0;
+    const ParsedFile* file = nullptr; // The file the tokens belong to (for --why sites).
+    Expr* current = nullptr;          // The expression being typed (for --why sites).
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
 
@@ -3489,6 +3544,43 @@ struct GlobalScope::Impl
 
     const Ty* unknown(Why why)
     {
+      if (stats.collectWhy && current && file)
+      {
+        uint32_t symbol = UINT32_MAX;
+        switch (current->kind)
+        {
+          case NodeKind::NameExpr:
+            if (!static_cast<NameExpr*>(current)->name.empty())
+              symbol = static_cast<NameExpr*>(current)->name.last().symbol;
+            break;
+          case NodeKind::MemberExpr:
+            if (!static_cast<MemberExpr*>(current)->member.empty())
+              symbol = static_cast<MemberExpr*>(current)->member.last().symbol;
+            break;
+          case NodeKind::CallExpr:
+            if (Expr* callee = static_cast<CallExpr*>(current)->callee)
+            {
+              if (callee->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(callee)->name.empty())
+                symbol = static_cast<NameExpr*>(callee)->name.last().symbol;
+              else if (callee->kind == NodeKind::MemberExpr && !static_cast<MemberExpr*>(callee)->member.empty())
+                symbol = static_cast<MemberExpr*>(callee)->member.last().symbol;
+            }
+            break;
+          case NodeKind::BinaryExpr:
+            if (!static_cast<BinaryExpr*>(current)->isKeyword && static_cast<BinaryExpr*>(current)->op < uint32_t(P::Count))
+              symbol = impl.opSymbols[static_cast<BinaryExpr*>(current)->op];
+            break;
+          case NodeKind::UnaryExpr:
+            if (!static_cast<UnaryExpr*>(current)->isKeyword && static_cast<UnaryExpr*>(current)->op < uint32_t(P::Count))
+              symbol = impl.opSymbols[static_cast<UnaryExpr*>(current)->op];
+            break;
+          default:
+            break;
+        }
+        uint64_t key = uint64_t(why) << 56 | uint64_t(activeSubst ? 1 : 0) << 55 | uint64_t(uint8_t(current->kind)) << 32 | symbol;
+        auto [it, inserted] = stats.why.emplace(key, ResolveStats::WhySite{file, current->token, 0});
+        ++it->second.count;
+      }
       switch (why)
       {
         case Why::Name: ++stats.unknownName; break;
@@ -3544,7 +3636,9 @@ struct GlobalScope::Impl
         return;
       ResolveStats local;
       local.fileIndex = stats.fileIndex;
+      local.collectWhy = stats.collectWhy;
       Walker sub(impl, local, *file->tokens, file->text);
+      sub.file = file;
       sub.scope = bodyScope;
       sub.thisType = bodyThis;
       sub.activeSubst = &subst;
@@ -5530,6 +5624,13 @@ struct GlobalScope::Impl
     {
       if (!e)
         return nullptr;
+      struct Current
+      {
+        Expr*& slot;
+        Expr* saved;
+        Current(Expr*& slot, Expr* e) : slot(slot), saved(slot) { slot = e; }
+        ~Current() { slot = saved; }
+      } guard(current, e);
       switch (e->kind)
       {
         case NodeKind::NameExpr: return record(e, resolveName(static_cast<NameExpr*>(e)));
@@ -5696,6 +5797,7 @@ struct GlobalScope::Impl
               env.subst = *activeSubst;
             env.tokens = &tokens;
             env.text = text;
+            env.file = file;
             env.depth = instantiationDepth;
             std::lock_guard lock(impl.lambdaEnvMutex);
             impl.lambdaEnvs[lambdaTy] = std::move(env);
@@ -5808,8 +5910,12 @@ struct GlobalScope::Impl
         full.pairs.push_back(p);
     ResolveStats local;
     if (statsInto)
+    {
       local.fileIndex = statsInto->fileIndex;
+      local.collectWhy = statsInto->collectWhy;
+    }
     Walker sub(*this, local, *env.tokens, env.text);
+    sub.file = env.file;
     sub.scope = env.scope;
     sub.thisType = env.thisType;
     sub.activeSubst = &full;
@@ -5973,6 +6079,7 @@ void GlobalScope::finishIndex()
 void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats)
 {
   Impl::Walker walker(*impl, stats, tokens, text);
+  walker.file = &file;
   walker.walkDecls(file.decls);
 }
 

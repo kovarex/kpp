@@ -7,6 +7,7 @@
 #include "types.hpp"
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -116,8 +117,18 @@ struct ResolveStats
   // Expressions typed while checking template bodies for an instantiation (also included above).
   uint64_t instExprsTyped = 0, instExprsDependent = 0, instExprsUnknown = 0;
 
+  // --why: where expression types became unknown, keyed by cause << 56 | node kind << 32 | the
+  // name or operator symbol of the expression whose typing failed.
+  bool collectWhy = false;
+  struct WhySite { const ParsedFile* file; uint32_t token; uint32_t count; };
+  std::unordered_map<uint64_t, WhySite> why;
+
   void add(const ResolveStats& o);
 };
+
+// The --why report: per cause of unknown expression types, the most common failing constructs
+// with a count and the first place each occurs.
+std::string whyReport(const ResolveStats& total, SymbolTable& symbols, int perCause);
 
 class GlobalScope
 {

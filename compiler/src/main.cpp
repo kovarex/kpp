@@ -42,6 +42,7 @@ namespace
     bool parse = true;
     int showErrors = 20;
     int showUnresolved = 25;
+    int showWhy = 0; // --why N
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
@@ -69,6 +70,7 @@ namespace
             "  --lex-only    skip parsing\n"
             "  --errors N    show the first N parse errors (default 20)\n"
             "  --unresolved N show the N most common unresolved names (default 25)\n"
+            "  --why N       per cause of unknown expression types, the N most common failing constructs\n"
             "  --quiet       no statistics\n"
             "  --emit-llvm F write LLVM IR for the program to F\n"
             "  --exe F       compile the program to the executable F (needs clang)\n"
@@ -691,9 +693,10 @@ namespace
     std::vector<ResolveStats> stats(parsed.size());
     start = Clock::now();
     for (size_t i = 0; i < stats.size(); ++i)
+    {
       stats[i].fileIndex = uint32_t(i);
-    for (size_t i = 0; i < stats.size(); ++i)
-      stats[i].fileIndex = uint32_t(i);
+      stats[i].collectWhy = options.showWhy > 0;
+    }
     parallelFor(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
     double resolveTime = seconds(Clock::now() - start);
     ResolveStats total;
@@ -754,6 +757,8 @@ namespace
       report("  most common members accessed on an object of unknown type:\n");
     for (size_t i = 0; i < unknownBase.size() && int(i) < options.showUnresolved / 2; ++i)
       report("    %6u  %.*s\n", unknownBase[i].second, int(symbols.name(unknownBase[i].first).size()), symbols.name(unknownBase[i].first).data());
+    if (options.showWhy > 0)
+      report("%s", whyReport(total, symbols, options.showWhy).c_str());
     if (options.showUnresolved > 0)
       report("  most common unresolved names:\n");
     std::vector<std::pair<uint32_t, uint32_t>> top(total.unresolvedSymbols.begin(), total.unresolvedSymbols.end());
@@ -828,6 +833,8 @@ int main(int argc, char** argv)
       options.showErrors = atoi(argv[++i]), options.showImportErrors = true;
     else if (arg == "--unresolved" && i + 1 < argc)
       options.showUnresolved = atoi(argv[++i]);
+    else if (arg == "--why" && i + 1 < argc)
+      options.showWhy = atoi(argv[++i]);
     else if (arg == "--quiet")
       options.quiet = true;
     else if (arg == "--emit-llvm" && i + 1 < argc)
