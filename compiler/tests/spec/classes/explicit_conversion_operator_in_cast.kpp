@@ -1,0 +1,23 @@
+// spec: an explicit conversion operator used by an explicit cast (`double(b)`, `static_cast<double>(b)`), also one returning a reference (`explicit operator const double&()`)
+// factorio: StrongTypedef's `explicit operator const ValueType&()` (Scale, Zoom, DisplayDensity: 98 lines "a conversion from StrongTypedef<double, ScaleTag, PositiveDoubleValidator> to double")
+// pending: the code generator considers explicit conversion operators only for a conversion to bool ("a conversion from B to double")
+struct A
+{
+  explicit A(double v) : value(v) {}
+  explicit operator const double&() const { return this->value; }
+  double value;
+};
+struct B
+{
+  explicit B(double v) : value(v) {}
+  explicit operator double() const { return this->value; }
+  double value;
+};
+
+int main()
+{
+  A a(1.5);
+  B b(2.5);
+  println("{} {} {} {}", double(b), static_cast<double>(b), double(a), static_cast<double>(a));
+  return 0;
+}
