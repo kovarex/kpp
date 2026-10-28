@@ -9,19 +9,6 @@ compile, loudly) last. State of 2026-10-28.
 
 ## Behaviour that differs
 
-**HashMap, HashSet** (hashmap.md):
-- Entries move when the table grows: the implementation is open addressing in one flat array, so
-  pointers and references to entries are invalidated by any insert that grows the table (the
-  specification keeps them valid, as std::unordered_map's node-based tables do).
-- `HashMap::insert(key, value)` assigns the value when the key exists; the specified
-  `insert(entry)` keeps the existing value and returns `Pair<iterator, bool>`.
-- `HashMap::find` returns `V*` (nullptr when absent) instead of an iterator, and HashMap cannot be
-  iterated (only `forEach`).
-- `erase(key)` returns bool instead of a count.
-- Proposed fix: make HashMap/HashSet node-stable with the specified interface (a flat table of
-  pointers to nodes keeps most of the speed), and keep today's table as an explicitly named type
-  such as FastHashMap, as FastMap is for Map.
-
 **Deque, Queue, Stack** (deque.md):
 - Deque is a Vector with a moving start: push_front is O(n) once the room before the start is
   used up, push_back invalidates references when it grows, and pop_front now and then slides all
@@ -49,8 +36,6 @@ average (the result is right).
 - **List**: the converter maps std::list to it, but it does not exist.
 - **Map, Set, MultiMap, MultiSet, FastMap, FastSet**: rbegin/rend, insert with a hint,
   emplace_hint, insert of a range, extract, merge, swap.
-- **HashMap, HashSet**: begin/end on HashMap, emplace, try_emplace, insert_or_assign, at, count,
-  reserve.
 - **Vector**: `capacity` is a field, not `capacity()`; const overloads of operator[], front and
   back; shrink_to_fit, swap.
 - **String**: rfind of a string, find_last_of.
@@ -64,4 +49,5 @@ Vector (invalidation, growth, relocation with move constructors, aliasing-safe p
 String (storage, terminator, searches, comparison), Map/Set/MultiMap/MultiSet (red-black tree,
 invalidation, complexity, return values of insert/erase/emplace/try_emplace), FastMap/FastSet
 (as specified, including their weaker invalidation rules), sort and stableSort, lowerBound and
-upperBound, PriorityQueue.
+upperBound, PriorityQueue, HashMap/HashSet (entries in nodes, std's interface) and
+FastHashMap/FastHashSet (as specified).

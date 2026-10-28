@@ -249,50 +249,54 @@ int64_t sortStrings()
   return values[0].size() + values[stringCount / 2].size();
 }
 
+template<typename M>
 int64_t hashIntInsert()
 {
-  HashMap<int, int> map;
+  M map;
   for (int i = 0; i < stringCount; ++i)
     map[int(nextRandom() % 4000000)] += i;
   return map.size();
 }
 
+template<typename M>
 int64_t hashIntLookup()
 {
-  HashMap<int, int> map;
+  M map;
   for (int i = 0; i < stringCount; ++i)
     map[i * 7] = i;
   int64_t found = 0;
   for (int round = 0; round < 4; ++round)
     for (int i = 0; i < stringCount; ++i)
     {
-      int* value = map.find(int(nextRandom() % 7000000));
-      if (value)
-        found += *value;
+      auto value = map.find(int(nextRandom() % 7000000));
+      if (value != map.end())
+        found += value->second;
     }
   return found;
 }
 
+template<typename M>
 int64_t hashStringInsert()
 {
-  HashMap<String, int> map;
+  M map;
   for (int i = 0; i < stringCount; ++i)
     map[sharedStrings[i]] = i;
   return map.size();
 }
 
+template<typename M>
 int64_t hashStringLookup()
 {
-  HashMap<String, int> map;
+  M map;
   for (int i = 0; i < stringCount; i += 2)
     map[sharedStrings[i]] = i;
   int64_t found = 0;
   for (int round = 0; round < 2; ++round)
     for (int i = 0; i < stringCount; ++i)
     {
-      int* value = map.find(sharedStrings[i]);
-      if (value)
-        found += *value;
+      auto value = map.find(sharedStrings[i]);
+      if (value != map.end())
+        found += value->second;
     }
   return found;
 }
@@ -368,10 +372,14 @@ int main(int argc, char** argv)
   run("sort.int", sortInts);
   run("sort.int predicate", sortIntsPredicate);
   run("sort.String", sortStrings);
-  run("hash.int insert", hashIntInsert);
-  run("hash.int lookup", hashIntLookup);
-  run("hash.String insert", hashStringInsert);
-  run("hash.String lookup", hashStringLookup);
+  run("hash.int insert", []() { return hashIntInsert<HashMap<int, int>>(); });
+  run("hash.int lookup", []() { return hashIntLookup<HashMap<int, int>>(); });
+  run("hash.String insert", []() { return hashStringInsert<HashMap<String, int>>(); });
+  run("hash.String lookup", []() { return hashStringLookup<HashMap<String, int>>(); });
+  run("fasthash.int insert", []() { return hashIntInsert<FastHashMap<int, int>>(); });
+  run("fasthash.int lookup", []() { return hashIntLookup<FastHashMap<int, int>>(); });
+  run("fasthash.String insert", []() { return hashStringInsert<FastHashMap<String, int>>(); });
+  run("fasthash.String lookup", []() { return hashStringLookup<FastHashMap<String, int>>(); });
   run("map.insert", mapInsert);
   run("map.lookup", mapLookup);
   run("map.iterate", mapIterate);

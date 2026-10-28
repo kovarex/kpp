@@ -9,7 +9,7 @@ int main()
   counts[String("y")] = 5;
   counts.insert(String("z"), 1);
   counts.erase(String("z"));
-  int* found = counts.find(String("y"));
+  int* found = &counts.find(String("y"))->second;
   int total = 0;
   counts.forEach([&](const String& k, int v) { total += v; });
   HashSet<int> seen;

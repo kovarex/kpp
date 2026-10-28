@@ -1,5 +1,5 @@
 // bench.kpp over the C++ standard library, line for line: std::vector, std::string,
-// std::unordered_map, std::map, std::sort. Built with clang -O2 against whichever standard library the
+// std::unordered_map, std::map, std::sort. (Kpp's FastHashMap rows run std::unordered_map again.) Built with clang -O2 against whichever standard library the
 // target uses (MSVC STL on Windows; libstdc++ or libc++ under WSL, see run.cmd).
 #include <algorithm>
 #include <chrono>
@@ -254,50 +254,54 @@ static int64_t sortStrings()
   return values[0].size() + values[stringCount / 2].size();
 }
 
+template<typename M>
 static int64_t hashIntInsert()
 {
-  std::unordered_map<int, int> map;
+  M map;
   for (int i = 0; i < stringCount; ++i)
     map[int(nextRandom() % 4000000)] += i;
   return map.size();
 }
 
+template<typename M>
 static int64_t hashIntLookup()
 {
-  std::unordered_map<int, int> map;
+  M map;
   for (int i = 0; i < stringCount; ++i)
     map[i * 7] = i;
   int64_t found = 0;
   for (int round = 0; round < 4; ++round)
     for (int i = 0; i < stringCount; ++i)
     {
-      auto it = map.find(int(nextRandom() % 7000000));
-      if (it != map.end())
-        found += it->second;
+      auto value = map.find(int(nextRandom() % 7000000));
+      if (value != map.end())
+        found += value->second;
     }
   return found;
 }
 
+template<typename M>
 static int64_t hashStringInsert()
 {
-  std::unordered_map<std::string, int> map;
+  M map;
   for (int i = 0; i < stringCount; ++i)
     map[sharedStrings[i]] = i;
   return map.size();
 }
 
+template<typename M>
 static int64_t hashStringLookup()
 {
-  std::unordered_map<std::string, int> map;
+  M map;
   for (int i = 0; i < stringCount; i += 2)
     map[sharedStrings[i]] = i;
   int64_t found = 0;
   for (int round = 0; round < 2; ++round)
     for (int i = 0; i < stringCount; ++i)
     {
-      auto it = map.find(sharedStrings[i]);
-      if (it != map.end())
-        found += it->second;
+      auto value = map.find(sharedStrings[i]);
+      if (value != map.end())
+        found += value->second;
     }
   return found;
 }
@@ -373,10 +377,14 @@ int main(int argc, char** argv)
   run("sort.int", sortInts);
   run("sort.int predicate", sortIntsPredicate);
   run("sort.String", sortStrings);
-  run("hash.int insert", hashIntInsert);
-  run("hash.int lookup", hashIntLookup);
-  run("hash.String insert", hashStringInsert);
-  run("hash.String lookup", hashStringLookup);
+  run("hash.int insert", []() { return hashIntInsert<std::unordered_map<int, int>>(); });
+  run("hash.int lookup", []() { return hashIntLookup<std::unordered_map<int, int>>(); });
+  run("hash.String insert", []() { return hashStringInsert<std::unordered_map<std::string, int>>(); });
+  run("hash.String lookup", []() { return hashStringLookup<std::unordered_map<std::string, int>>(); });
+  run("fasthash.int insert", []() { return hashIntInsert<std::unordered_map<int, int>>(); });
+  run("fasthash.int lookup", []() { return hashIntLookup<std::unordered_map<int, int>>(); });
+  run("fasthash.String insert", []() { return hashStringInsert<std::unordered_map<std::string, int>>(); });
+  run("fasthash.String lookup", []() { return hashStringLookup<std::unordered_map<std::string, int>>(); });
   run("map.insert", mapInsert);
   run("map.lookup", mapLookup);
   run("map.iterate", mapIterate);

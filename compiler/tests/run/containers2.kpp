@@ -190,7 +190,7 @@ void hashing()
     for (int i = 0; i < 100; ++i)
       churn.erase(round * 1000 + i);
   }
-  printf("%d %d\n", churn.size(), churn.capacity <= 256 ? 1 : 0);
+  printf("%d %d\n", churn.size(), churn.table.capacity <= 256 ? 1 : 0);
 
   // A copy keeps the deleted markers that later keys' probe paths run through.
   HashMap<String, int> map;
@@ -201,11 +201,11 @@ void hashing()
   HashMap<String, int> copy = map;
   int found = 0;
   for (int i = 0; i < 1000; ++i)
-    if (copy.find(toString(i)))
-      found += *copy.find(toString(i)) == i ? 1 : 100000;
+    if (copy.contains(toString(i)))
+      found += copy.find(toString(i))->second == i ? 1 : 100000;
   HashMap<String, int> moved = move(copy);
-  map.insert(String("1"), 11);
-  printf("%d %d %d %d %d\n", found, moved.size(), copy.size(), *map.find(String("1")), map.contains(String("3")) ? 1 : 0);
+  map.insert_or_assign(String("1"), 11);
+  printf("%d %d %d %d %d\n", found, moved.size(), copy.size(), map.find(String("1"))->second, map.contains(String("3")) ? 1 : 0);
 
   // Aligned pointers as keys.
   Vector<int*> blocks;
@@ -225,6 +225,28 @@ void hashing()
   printf("%d %d %d\n", present, pointers.size(), pointersCopy.contains(blocks[1]) ? 1 : 0);
   for (int* block : blocks)
     free(block);
+
+  // HashMap keeps entries in place while the table grows; FastHashMap agrees with it on contents.
+  HashMap<int, String> stable;
+  String* kept = &stable[7];
+  *kept = String("stays put while the table grows around it");
+  FastHashMap<int, int> fast;
+  int64_t sum = 0;
+  for (int i = 0; i < 20000; ++i)
+  {
+    stable[i * 13] = toString(i);
+    fast[i % 5000] += i;
+    if (i % 3 == 0)
+      fast.erase(nextInt(5000));
+  }
+  bool sameAddress = &stable[7] == kept;
+  auto inserted = stable.insert(Pair<int, String>(7, String("ignored")));
+  for (auto& entry : fast)
+    sum += entry.second;
+  int visited = 0;
+  for (auto it = stable.begin(); it != stable.end(); ++it)
+    ++visited;
+  printf("%d %d %s %d %d %lld\n", sameAddress ? 1 : 0, inserted.second ? 1 : 0, inserted.first->second.c_str(), visited, fast.size() <= 5000 ? 1 : 0, sum > 0 ? 1LL : 0LL);
 }
 
 int main()

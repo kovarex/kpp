@@ -10,7 +10,7 @@ int main()
   ages[String("cy")] += 5;
   int total = 0;
   ages.forEach([&](const String& name, int age) { total += age; });
-  int* bob = ages.find(String("bob"));
+  int* bob = &ages.find(String("bob"))->second;
   bool hasDan = ages.contains(String("dan"));
   printf("%d %d %d %d %d\n", ages.size(), total, *bob, hasDan ? 1 : 0, ages.erase(String("bob")) ? 1 : 0);
 
@@ -19,7 +19,7 @@ int main()
     names.insert(i, toString(i * 7));
   HashMap<int, String> copy = names;
   names.erase(50);
-  printf("%d %d %s %s\n", names.size(), copy.size(), copy.find(50)->c_str(), names.find(99)->c_str());
+  printf("%d %d %s %s\n", names.size(), copy.size(), copy.find(50)->second.c_str(), names.find(99)->second.c_str());
 
   Optional<String> maybe;
   Optional<String> some(String("value"));

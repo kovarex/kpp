@@ -5,8 +5,12 @@ common.md). **HashMap** holds entries `Pair<K, V>`, **HashSet** values. Iteratio
 entry once, in an unspecified order that may change with any insertion.
 
 Every entry lives at a fixed address from insertion until it is erased: inserting other entries,
-even when the table grows, does not move it. (A faster table that moves entries would be a
-separate, explicitly named type, as FastMap is for Map.)
+even when the table grows, does not move it.
+
+**FastHashMap<K, V> and FastHashSet<T>** have the same interface and differ in one rule: entries
+are stored in the table itself, so whenever the table grows, all pointers and references to
+entries are invalidated too (iterators already are). They are faster and smaller, and never
+produced by the converter.
 
 ## Invalidation
 
@@ -42,6 +46,8 @@ O(n), amortized O(1) per insert.
 - `insert_or_assign(key, value)`: inserts, or assigns the value of the existing entry.
 - `erase(key)`: returns the number removed (0 or 1); `erase(position)`: returns the next position.
 - `clear()`, `reserve(n)`.
+- Kpp additions: `insert(key, value)` (inserts when absent, returns whether it did; an existing
+  value is kept), `forEach(f)` calling f(key, value) for every entry.
 
 *Differences from C++*: hashing is the `hashOf` overload set rather than a hash type parameter;
 there is no bucket interface (bucket_count, load_factor, rehash).
