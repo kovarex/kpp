@@ -51,4 +51,5 @@ created type, shared_from_this throwing BadWeakPtr, atomic access), UniquePtr (c
 BadFunctionCall on an empty call), Atomic (every size from 1 to 8 bytes moved as bits, so bool,
 float, double and enums are exact; Atomic<SharedPtr<T>>). Until 2026-10-28 Atomic of a 1- or 2-byte
 type wrote 4 bytes (overwriting the fields after it) and Atomic<float>/<double> converted the value
-to an integer; both were silent.
+to an integer; both were silent. RecursiveMutex (re-entrant for its owning thread; until 2026-10-28 it was
+Mutex itself, which deadlocks when re-entered).

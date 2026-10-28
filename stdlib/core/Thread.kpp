@@ -129,7 +129,53 @@ struct Mutex
   bool tryLock() { return TryAcquireSRWLockExclusive(&this->lock_) != 0; }
   bool try_lock() { return this->tryLock(); }
 };
-using RecursiveMutex = Mutex; // not recursive yet: an SRW lock deadlocks when re-entered
+// A mutex its owning thread may lock again (std::recursive_mutex); every lock needs its unlock.
+struct RecursiveMutex
+{
+  Mutex mutex;
+  Atomic<unsigned long> owner; // the owning thread's id; 0 (never a thread's) when free
+  int depth = 0;
+
+  RecursiveMutex() {}
+  RecursiveMutex(const RecursiveMutex&) = delete;
+  RecursiveMutex& operator=(const RecursiveMutex&) = delete;
+
+  void lock()
+  {
+    unsigned long self = GetCurrentThreadId();
+    if (this->owner.load() == self)
+    {
+      ++this->depth;
+      return;
+    }
+    this->mutex.lock();
+    this->owner.store(self);
+    this->depth = 1;
+  }
+  bool tryLock()
+  {
+    unsigned long self = GetCurrentThreadId();
+    if (this->owner.load() == self)
+    {
+      ++this->depth;
+      return true;
+    }
+    if (!this->mutex.tryLock())
+      return false;
+    this->owner.store(self);
+    this->depth = 1;
+    return true;
+  }
+  bool try_lock() { return this->tryLock(); }
+  void unlock()
+  {
+    if (--this->depth == 0)
+    {
+      this->owner.store(0);
+      this->mutex.unlock();
+    }
+  }
+};
 
 struct SharedMutex
 {
