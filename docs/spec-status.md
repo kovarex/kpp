@@ -6,13 +6,13 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**240 pass, 7 pending, 0 failing, 0 fixed** (247 snippets, 10.9 s).
+**242 pass, 7 pending, 0 failing, 0 fixed** (249 snippets, 7.5 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `language/forwarding_reference_to_lambda.kpp` | a local `auto&&` bound to a lambda (a temporary whose lifetime the reference extends), then called | pending | the std::visit rewrite and generic code that holds a callable as `auto&& f = ...` | the IR treats the reference as the closure itself (clang: '%o4' defined with type 'ptr' but expected the closure type); C:\kpp-templates\compiler\build\spec\language.forwarding_reference_to_lambda.exe.55.ll:348:20: error: '%o2' defined with type 'ptr' but expected '%closure.3 = type { ptr }' |
+| `language/forwarding_reference_to_lambda.kpp` | a local `auto&&` bound to a lambda (a temporary whose lifetime the reference extends), then called | pending | the std::visit rewrite and generic code that holds a callable as `auto&& f = ...` | the IR treats the reference as the closure itself (clang: '%o4' defined with type 'ptr' but expected the closure type); C:\kpp-convert\compiler\build\spec\language.forwarding_reference_to_lambda.exe.55.ll:348:20: error: '%o2' defined with type 'ptr' but expected '%closure.3 = type { ptr }' |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
 | `language/alignas_template_member.kpp` | alignas on a class template and alignof of an instantiation (raw storage for a T: what Optional, Variant and small-buffer containers need) | pass | the library's Optional (docs/stdlib-conformance.md), and the game's own aligned buffers |  |
@@ -75,7 +75,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `classes/local_class.kpp` | classes and enums declared in a function body: their members and methods, their own name inside them (a defaulted `operator<=>(const Key&)`), and a local class as a template argument (`Map<Key, int>`) | pending | InsertPlan::sendChangeNotifications (`class Key { strong_ordering operator<=>(const Key&) const = default; ... }; Map<Key, ItemIDWithCount>`), TimeLimiter, ToVisit, local enums | the code generator does not emit the methods of a class declared in a function body (Key::sum is called but never defined); C:\kpp-templates\compiler\build\spec\classes.local_class.exe.55.ll:386:21: error: use of undefined value '@Key::sum() const' |
+| `classes/local_class.kpp` | classes and enums declared in a function body: their members and methods, their own name inside them (a defaulted `operator<=>(const Key&)`), and a local class as a template argument (`Map<Key, int>`) | pending | InsertPlan::sendChangeNotifications (`class Key { strong_ordering operator<=>(const Key&) const = default; ... }; Map<Key, ItemIDWithCount>`), TimeLimiter, ToVisit, local enums | the code generator does not emit the methods of a class declared in a function body (Key::sum is called but never defined); C:\kpp-convert\compiler\build\spec\classes.local_class.exe.55.ll:387:21: error: use of undefined value '@Key::sum() const' |
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
 | `classes/anonymous_members.kpp` | anonymous struct and union members | pass |  |  |
@@ -117,7 +117,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-convert\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -205,8 +205,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-templates\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support a conversion from Future<int32> to SharedPtr<SharedState<int32>> yet (in @kpp.main) |
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-convert\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support the layout of Future<F>: the member state (`SharedPtr<SharedState<T>> state`) has an unknown type yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-convert\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
 | `library/containers_deque_queue.kpp` | Deque and Queue (std::deque, std::queue): push at both ends, pop, front/back | pass | 116 deque uses in 68 files |  |
@@ -216,11 +216,13 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `library/exceptions_std.kpp` | the standard exception classes (Exception, RuntimeError, LogicError, OutOfRange, InvalidArgument) | pass | 410 std::exception / runtime_error uses in 216 files |  |
 | `library/format_print.kpp` | format, print, println, toString for the common types | pass |  |  |
 | `library/function.kpp` | Function (std::function): lambdas with captures, function pointers, copies, emptiness, callbacks in containers | pass | 1470 uses in 589 files |  |
+| `library/hash_map_hasher.kpp` | HashMap and HashSet with a hasher and a key equality argument (std::unordered_map<K, V, Hash, KeyEqual>), the default Hash<K> through hashOf for doubles, enums and SharedPtr keys, and FastHashMap with the same parameters | pass | 6 unordered containers with a hasher (RailLocation::Hasher, CoordinateHash, NoiseRegisterIndexHash), keys of type double, enum and shared_ptr |  |
 | `library/hash_map_set.kpp` | HashMap and HashSet (std::unordered_map/set): insert, find, operator[], erase, iteration, custom key hash | pass | 47 unordered_map, 19 unordered_set (and 827 std::map, 641 std::set) |  |
 | `library/initializer_list.kpp` | InitializerList parameters and brace lists as arguments | pass | 53 std::initializer_list uses in 33 files |  |
 | `library/initializer_list_constructor.kpp` | a constructor taking InitializerList, called with a brace list | pass |  |  |
 | `library/less_comparator.kpp` | Less<T> and the transparent Less<> (std::less<>) as comparator objects; `Name<>` written with empty brackets takes every default | pass |  |  |
 | `library/limits_math.kpp` | Limits (numeric_limits) and math functions (abs, sqrt, floor, ceil, round, pow, isnan) | pass | 631 numeric_limits uses in 279 files |  |
+| `library/map_comparator.kpp` | Map, Set and MultiMap ordered by a comparator argument: Greater, a comparator with state, a transparent one looked up by another key type (Less<> with StringView, a game-style comparator by unit number), the range constructor | pass | about 30 std::set/std::map with a comparator (UnitNumberComparator in 15, std::less<> in 8, SharedStringKeyComp, std::greater) |  |
 | `library/memory_c.kpp` | memcpy, memset, memcmp, strlen, malloc/free through the library's C declarations | pass | 164 mem* calls in 84 files, 48 str* calls |  |
 | `library/optional.kpp` | Optional (std::optional): value, hasValue, nullopt, assignment, comparison, valueOr | pass | 1587 uses in 658 files |  |
 | `library/optional_function_errors.kpp` | Optional's value() on empty throws BadOptionalAccess, reset() and emplace() destroy at once, nullopt and < comparisons; calling an empty Function throws BadFunctionCall | pass | 1,675 std::optional uses, 1,576 std::function |  |
@@ -248,8 +250,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `kpp/typed_union_alternatives.kpp` | `alternatives(U)` reflection over a typed union: `a.name`, `a.type`, `a.tag`, `u[a]`, `u == a.tag`, and `u.tag()`, enough to save the alternative held and load one by its index | pending |  | alternatives(U) and u.tag() are not implemented; C:\kpp-templates\compiler\tests\spec\kpp\typed_union_alternatives.kpp:35: codegen does not support a call that did not resolve to a function (the callee has type Tag) yet (in @kpp.main) |
-| `kpp/typed_union_from_value.kpp` | a typed union constructed and assigned from a value of exactly one alternative's type: `AIState s = Patrolling{1}`, `return Attacking{n}`, `s = Attacking{7}` | pending |  | a union is not constructed from an alternative's value ("conversion from Patrolling to Tag"); C:\kpp-templates\compiler\tests\spec\kpp\typed_union_from_value.kpp:15: codegen does not support a conversion from Attacking to Tag yet (in @"next(int32)") |
+| `kpp/typed_union_alternatives.kpp` | `alternatives(U)` reflection over a typed union: `a.name`, `a.type`, `a.tag`, `u[a]`, `u == a.tag`, and `u.tag()`, enough to save the alternative held and load one by its index | pending |  | alternatives(U) and u.tag() are not implemented; C:\kpp-convert\compiler\tests\spec\kpp\typed_union_alternatives.kpp:35: codegen does not support a call that did not resolve to a function (the callee has type Tag) yet (in @kpp.main) |
+| `kpp/typed_union_from_value.kpp` | a typed union constructed and assigned from a value of exactly one alternative's type: `AIState s = Patrolling{1}`, `return Attacking{n}`, `s = Attacking{7}` | pending |  | a union is not constructed from an alternative's value ("conversion from Patrolling to Tag"); C:\kpp-convert\compiler\tests\spec\kpp\typed_union_from_value.kpp:15: codegen does not support a conversion from Attacking to Tag yet (in @"next(int32)") |
 | `kpp/asserts_and_config.kpp` | assert and release_assert statements, config constants with if constexpr, conditional functions, CallerLocation | pass |  |  |
 | `kpp/attributes_inline.kpp` | [[noinline]] and [[forceinline]] attributes | pass |  |  |
 | `kpp/config_values.kpp` | config constants from the command line (`--config name=value`, `--release`) as compile-time values | pass |  |  |

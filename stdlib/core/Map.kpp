@@ -1,5 +1,6 @@
 // Kpp standard library: Map<K, V>, Set<T>, MultiMap<K, V> and MultiSet<T> (what std::map,
-// std::set, std::multimap and std::multiset convert to), ordered by operator<.
+// std::set, std::multimap and std::multiset convert to), ordered by a comparator: the last
+// template argument, Less<K> (operator<) unless given.
 //
 // They keep the guarantees of the C++ standard, which converted code relies on: each entry lives
 // in a node of its own, in a red-black tree (as in all three C++ libraries), so inserting never
@@ -357,39 +358,44 @@ struct RbIterator
 };
 
 // The tree behind the four containers: entries E ordered by their keys KeyOf::of(entry), of type
-// K. It allows equal keys; the unique containers look before they insert.
-template<typename E, typename K, typename KeyOf>
+// K, under the comparator Compare (`compare(a, b)` is a < b). It allows equal keys; the unique
+// containers look before they insert.
+template<typename E, typename K, typename KeyOf, typename Compare>
 struct RbTree
 {
   RbNodeBase header;
   int count = 0;
+  Compare compare;
 
   RbTree() { this->becomeEmpty(); }
-  RbTree(const RbTree<E, K, KeyOf>& other)
+  explicit RbTree(const Compare& compare) : compare(compare) { this->becomeEmpty(); }
+  RbTree(const RbTree<E, K, KeyOf, Compare>& other) : compare(other.compare)
   {
     this->becomeEmpty();
     this->copyFrom(other);
   }
-  RbTree(RbTree<E, K, KeyOf>&& other)
+  RbTree(RbTree<E, K, KeyOf, Compare>&& other) : compare(other.compare)
   {
     this->becomeEmpty();
     this->take(other);
   }
   ~RbTree() { this->clear(); }
-  RbTree<E, K, KeyOf>& operator=(const RbTree<E, K, KeyOf>& other)
+  RbTree<E, K, KeyOf, Compare>& operator=(const RbTree<E, K, KeyOf, Compare>& other)
   {
     if (this != &other)
     {
       this->clear();
+      this->compare = other.compare;
       this->copyFrom(other);
     }
     return *this;
   }
-  RbTree<E, K, KeyOf>& operator=(RbTree<E, K, KeyOf>&& other)
+  RbTree<E, K, KeyOf, Compare>& operator=(RbTree<E, K, KeyOf, Compare>&& other)
   {
     if (this != &other)
     {
       this->clear();
+      this->compare = other.compare;
       this->take(other);
     }
     return *this;
@@ -398,55 +404,93 @@ struct RbTree
   RbIterator<E> begin() const { return RbIterator<E>(this->header.left); }
   RbIterator<E> end() const { return RbIterator<E>((RbNodeBase*)&this->header); }
 
+  // The lookups take a key of any type when the comparator is transparent (`Less<>`), and convert
+  // any other argument to K once, before the search, otherwise.
+
   // The first entry whose key is not less than key.
-  RbIterator<E> lowerBound(const K& key) const
+  template<typename Key>
+  RbIterator<E> lowerBound(const Key& key) const
   {
-    RbNodeBase* result = (RbNodeBase*)&this->header;
-    RbNodeBase* node = this->header.parent;
-    while (node)
+    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
     {
-      const K& nodeKey = RbTree::keyOf(node);
-      if (nodeKey < key)
-        node = node->right;
-      else
-      {
-        result = node;
-        node = node->left;
-      }
+      const K& converted = key;
+      return this->lowerBound(converted);
     }
-    return RbIterator<E>(result);
+    else
+    {
+      RbNodeBase* result = (RbNodeBase*)&this->header;
+      RbNodeBase* node = this->header.parent;
+      while (node)
+      {
+        if (this->compare(RbTree::keyOf(node), key))
+          node = node->right;
+        else
+        {
+          result = node;
+          node = node->left;
+        }
+      }
+      return RbIterator<E>(result);
+    }
   }
   // The first entry whose key is greater than key.
-  RbIterator<E> upperBound(const K& key) const
+  template<typename Key>
+  RbIterator<E> upperBound(const Key& key) const
   {
-    RbNodeBase* result = (RbNodeBase*)&this->header;
-    RbNodeBase* node = this->header.parent;
-    while (node)
+    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
     {
-      if (key < RbTree::keyOf(node))
-      {
-        result = node;
-        node = node->left;
-      }
-      else
-        node = node->right;
+      const K& converted = key;
+      return this->upperBound(converted);
     }
-    return RbIterator<E>(result);
+    else
+    {
+      RbNodeBase* result = (RbNodeBase*)&this->header;
+      RbNodeBase* node = this->header.parent;
+      while (node)
+      {
+        if (this->compare(key, RbTree::keyOf(node)))
+        {
+          result = node;
+          node = node->left;
+        }
+        else
+          node = node->right;
+      }
+      return RbIterator<E>(result);
+    }
   }
-  // An entry with key (the first of equal ones), or end().
-  RbIterator<E> find(const K& key) const
+  // An entry with key (the first of equivalent ones), or end().
+  template<typename Key>
+  RbIterator<E> find(const Key& key) const
   {
-    RbIterator<E> at = this->lowerBound(key);
-    if (at.node == &this->header || key < RbTree::keyOf(at.node))
-      return this->end();
-    return at;
+    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
+    {
+      const K& converted = key;
+      return this->find(converted);
+    }
+    else
+    {
+      RbIterator<E> at = this->lowerBound(key);
+      if (at.node == &this->header || this->compare(key, RbTree::keyOf(at.node)))
+        return this->end();
+      return at;
+    }
   }
-  int countOf(const K& key) const
+  template<typename Key>
+  int countOf(const Key& key) const
   {
-    int n = 0;
-    for (RbIterator<E> at = this->lowerBound(key); at.node != &this->header && !(key < RbTree::keyOf(at.node)); ++at)
-      ++n;
-    return n;
+    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
+    {
+      const K& converted = key;
+      return this->countOf(converted);
+    }
+    else
+    {
+      int n = 0;
+      for (RbIterator<E> at = this->lowerBound(key); at.node != &this->header && !this->compare(key, RbTree::keyOf(at.node)); ++at)
+        ++n;
+      return n;
+    }
   }
 
   // Adds entry after any entries with an equal key and returns where it went.
@@ -468,7 +512,7 @@ struct RbTree
     while (node)
     {
       parent = node;
-      asLeft = key < RbTree::keyOf(node);
+      asLeft = this->compare(key, RbTree::keyOf(node));
       node = asLeft ? node->left : node->right;
     }
   }
@@ -478,12 +522,12 @@ struct RbTree
   bool hintPosition(RbNodeBase* hint, const K& key, bool unique, RbNodeBase*& parent, bool& asLeft) const
   {
     RbNodeBase* header = (RbNodeBase*)&this->header;
-    if (hint != header && (unique ? !(key < RbTree::keyOf(hint)) : RbTree::keyOf(hint) < key))
+    if (hint != header && (unique ? !this->compare(key, RbTree::keyOf(hint)) : this->compare(RbTree::keyOf(hint), key)))
       return false;
     if (hint != header->left)
     {
       RbNodeBase* before = rbPrevious(hint);
-      if (unique ? !(RbTree::keyOf(before) < key) : key < RbTree::keyOf(before))
+      if (unique ? !this->compare(RbTree::keyOf(before), key) : this->compare(key, RbTree::keyOf(before)))
         return false;
       if (!before->right)
       {
@@ -517,9 +561,9 @@ struct RbTree
     --this->count;
     return (RbNode<E>*)position.node;
   }
-  void swap(RbTree<E, K, KeyOf>& other)
+  void swap(RbTree<E, K, KeyOf, Compare>& other)
   {
-    RbTree<E, K, KeyOf> held(move(other));
+    RbTree<E, K, KeyOf, Compare> held(move(other));
     other = move(*this);
     *this = move(held);
   }
@@ -584,7 +628,7 @@ struct RbTree
     node->right = source->right ? this->clone(source->right, node) : nullptr;
     return node;
   }
-  void copyFrom(const RbTree<E, K, KeyOf>& other)
+  void copyFrom(const RbTree<E, K, KeyOf, Compare>& other)
   {
     if (!other.header.parent)
       return;
@@ -594,7 +638,7 @@ struct RbTree
     this->count = other.count;
   }
   // Takes other's nodes; the root has to point at this header instead.
-  void take(RbTree<E, K, KeyOf>& other)
+  void take(RbTree<E, K, KeyOf, Compare>& other)
   {
     if (!other.header.parent)
       return;
@@ -706,37 +750,66 @@ struct SetKey
   static const T& of(const T& entry) { return entry; }
 };
 
-// An ordered map with unique keys: entries are Pair<K, V> in key order.
-template<typename K, typename V>
+// An ordered map with unique keys: entries are Pair<K, V> in key order, ordered by Compare.
+template<typename K, typename V, typename Compare = Less<K>>
 struct Map
 {
-  RbTree<Pair<K, V>, K, MapKey<K, V>> tree;
+  RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
 
   using iterator = RbIterator<Pair<K, V>>;
   using const_iterator = RbIterator<Pair<K, V>>;
   using value_type = Pair<K, V>;
+  using key_type = K;
+  using mapped_type = V;
+  using key_compare = Compare;
 
   Map() {}
+  explicit Map(const Compare& compare) : tree(compare) {}
   // `Map<char, Kind> table = {{'+', Kind::Plus}, {'-', Kind::Minus}};`
-  implicit Map(InitializerList<Pair<K, V>> items)
+  implicit Map(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+  // The entries of [first, last), as insert(entry) one by one.
+  template<typename It>
+  Map(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
   int size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   RbIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
   RbIterator<Pair<K, V>> end() const { return this->tree.end(); }
+  Compare key_comp() const { return this->tree.compare; }
 
+  // The lookups by K, and by any other type: with a transparent comparator that key itself is
+  // compared, otherwise it is converted to K first.
   RbIterator<Pair<K, V>> find(const K& key) const { return this->tree.find(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> find(const Key& key) const { return this->tree.find(key); }
   bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
+  template<typename Key>
+  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
   int count(const K& key) const { return this->contains(key) ? 1 : 0; }
+  template<typename Key>
+  int count(const Key& key) const { return this->tree.countOf(key); }
   RbIterator<Pair<K, V>> lowerBound(const K& key) const { return this->tree.lowerBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<Pair<K, V>> lower_bound(const K& key) const { return this->tree.lowerBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<Pair<K, V>> upperBound(const K& key) const { return this->tree.upperBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> upperBound(const Key& key) const { return this->tree.upperBound(key); }
   RbIterator<Pair<K, V>> upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> upper_bound(const Key& key) const { return this->tree.upperBound(key); }
   Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>> equal_range(const K& key) const
+  {
+    return Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>>(this->tree.lowerBound(key), this->tree.upperBound(key));
+  }
+  template<typename Key>
+  Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>> equal_range(const Key& key) const
   {
     return Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>>(this->tree.lowerBound(key), this->tree.upperBound(key));
   }
@@ -745,7 +818,7 @@ struct Map
   V& operator[](const K& key)
   {
     RbIterator<Pair<K, V>> at = this->tree.lowerBound(key);
-    if (at != this->tree.end() && !(key < at->first))
+    if (at != this->tree.end() && !this->tree.compare(key, at->first))
       return at->second;
     return this->tree.insertEqual(Pair<K, V>(key, V()))->second;
   }
@@ -861,7 +934,8 @@ struct Map
   }
   // Moves the entries of other whose keys are not here into this container, node and all (no
   // copies; pointers and references to them now refer into this one). The rest stay in other.
-  void merge(Map<K, V>& other)
+  template<typename OtherCompare>
+  void merge(Map<K, V, OtherCompare>& other)
   {
     for (RbIterator<Pair<K, V>> it = other.tree.begin(); it != other.tree.end();)
     {
@@ -878,42 +952,70 @@ struct Map
       it = next;
     }
   }
-  void swap(Map<K, V>& other) { this->tree.swap(other.tree); }
+  void swap(Map<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
 
-// An ordered set of unique values.
-template<typename T>
+// An ordered set of unique values, ordered by Compare.
+template<typename T, typename Compare = Less<T>>
 struct Set
 {
-  RbTree<T, T, SetKey<T>> tree;
+  RbTree<T, T, SetKey<T>, Compare> tree;
 
   using iterator = RbIterator<T>;
   using const_iterator = RbIterator<T>;
   using value_type = T;
+  using key_type = T;
+  using key_compare = Compare;
 
   Set() {}
-  implicit Set(InitializerList<T> items)
+  explicit Set(const Compare& compare) : tree(compare) {}
+  implicit Set(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const T& value : items)
       this->insert(value);
   }
+  // The values of [first, last), as insert(value) one by one.
+  template<typename It>
+  Set(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
   int size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   RbIterator<T> begin() const { return this->tree.begin(); }
   RbIterator<T> end() const { return this->tree.end(); }
+  Compare key_comp() const { return this->tree.compare; }
 
+  // The lookups by T, and by any other type: with a transparent comparator that key itself is
+  // compared, otherwise it is converted to T first.
   RbIterator<T> find(const T& value) const { return this->tree.find(value); }
+  template<typename Key>
+  RbIterator<T> find(const Key& key) const { return this->tree.find(key); }
   bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
+  template<typename Key>
+  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
   int count(const T& value) const { return this->contains(value) ? 1 : 0; }
+  template<typename Key>
+  int count(const Key& key) const { return this->tree.countOf(key); }
   RbIterator<T> lowerBound(const T& value) const { return this->tree.lowerBound(value); }
+  template<typename Key>
+  RbIterator<T> lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<T> lower_bound(const T& value) const { return this->tree.lowerBound(value); }
+  template<typename Key>
+  RbIterator<T> lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<T> upperBound(const T& value) const { return this->tree.upperBound(value); }
+  template<typename Key>
+  RbIterator<T> upperBound(const Key& key) const { return this->tree.upperBound(key); }
   RbIterator<T> upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  template<typename Key>
+  RbIterator<T> upper_bound(const Key& key) const { return this->tree.upperBound(key); }
   Pair<RbIterator<T>, RbIterator<T>> equal_range(const T& value) const
   {
     return Pair<RbIterator<T>, RbIterator<T>>(this->tree.lowerBound(value), this->tree.upperBound(value));
+  }
+  template<typename Key>
+  Pair<RbIterator<T>, RbIterator<T>> equal_range(const Key& key) const
+  {
+    return Pair<RbIterator<T>, RbIterator<T>>(this->tree.lowerBound(key), this->tree.upperBound(key));
   }
 
   // std::set::insert: the entry with the value and whether it was added.
@@ -1001,7 +1103,8 @@ struct Set
   }
   // Moves the entries of other whose keys are not here into this container, node and all (no
   // copies; pointers and references to them now refer into this one). The rest stay in other.
-  void merge(Set<T>& other)
+  template<typename OtherCompare>
+  void merge(Set<T, OtherCompare>& other)
   {
     for (RbIterator<T> it = other.tree.begin(); it != other.tree.end();)
     {
@@ -1018,40 +1121,67 @@ struct Set
       it = next;
     }
   }
-  void swap(Set<T>& other) { this->tree.swap(other.tree); }
+  void swap(Set<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
 
-// An ordered map that allows equal keys, kept in insertion order among themselves.
-template<typename K, typename V>
+// An ordered map that allows equivalent keys, kept in insertion order among themselves.
+template<typename K, typename V, typename Compare = Less<K>>
 struct MultiMap
 {
-  RbTree<Pair<K, V>, K, MapKey<K, V>> tree;
+  RbTree<Pair<K, V>, K, MapKey<K, V>, Compare> tree;
 
   using iterator = RbIterator<Pair<K, V>>;
   using const_iterator = RbIterator<Pair<K, V>>;
   using value_type = Pair<K, V>;
+  using key_type = K;
+  using mapped_type = V;
+  using key_compare = Compare;
 
   MultiMap() {}
-  implicit MultiMap(InitializerList<Pair<K, V>> items)
+  explicit MultiMap(const Compare& compare) : tree(compare) {}
+  implicit MultiMap(InitializerList<Pair<K, V>> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+  template<typename It>
+  MultiMap(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
   int size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   RbIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
   RbIterator<Pair<K, V>> end() const { return this->tree.end(); }
+  Compare key_comp() const { return this->tree.compare; }
 
+  // The lookups by K, and by any other type as in Map.
   RbIterator<Pair<K, V>> find(const K& key) const { return this->tree.find(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> find(const Key& key) const { return this->tree.find(key); }
   bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
+  template<typename Key>
+  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
   int count(const K& key) const { return this->tree.countOf(key); }
+  template<typename Key>
+  int count(const Key& key) const { return this->tree.countOf(key); }
   RbIterator<Pair<K, V>> lowerBound(const K& key) const { return this->tree.lowerBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<Pair<K, V>> lower_bound(const K& key) const { return this->tree.lowerBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<Pair<K, V>> upperBound(const K& key) const { return this->tree.upperBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> upperBound(const Key& key) const { return this->tree.upperBound(key); }
   RbIterator<Pair<K, V>> upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  template<typename Key>
+  RbIterator<Pair<K, V>> upper_bound(const Key& key) const { return this->tree.upperBound(key); }
   Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>> equal_range(const K& key) const
+  {
+    return Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>>(this->tree.lowerBound(key), this->tree.upperBound(key));
+  }
+  template<typename Key>
+  Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>> equal_range(const Key& key) const
   {
     return Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>>(this->tree.lowerBound(key), this->tree.upperBound(key));
   }
@@ -1122,7 +1252,8 @@ struct MultiMap
     return at;
   }
   // Moves all entries of other into this container, node and all.
-  void merge(MultiMap<K, V>& other)
+  template<typename OtherCompare>
+  void merge(MultiMap<K, V, OtherCompare>& other)
   {
     while (!other.empty())
     {
@@ -1133,42 +1264,68 @@ struct MultiMap
       this->tree.link(node, parent, asLeft);
     }
   }
-  void swap(MultiMap<K, V>& other) { this->tree.swap(other.tree); }
+  void swap(MultiMap<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
 
-// An ordered set that allows equal values, kept in insertion order among themselves.
-template<typename T>
+// An ordered set that allows equivalent values, kept in insertion order among themselves.
+template<typename T, typename Compare = Less<T>>
 struct MultiSet
 {
-  RbTree<T, T, SetKey<T>> tree;
+  RbTree<T, T, SetKey<T>, Compare> tree;
 
   using iterator = RbIterator<T>;
   using const_iterator = RbIterator<T>;
   using value_type = T;
+  using key_type = T;
+  using key_compare = Compare;
 
   MultiSet() {}
-  implicit MultiSet(InitializerList<T> items)
+  explicit MultiSet(const Compare& compare) : tree(compare) {}
+  implicit MultiSet(InitializerList<T> items, const Compare& compare = Compare()) : tree(compare)
   {
     for (const T& value : items)
       this->insert(value);
   }
+  template<typename It>
+  MultiSet(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
   int size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   RbIterator<T> begin() const { return this->tree.begin(); }
   RbIterator<T> end() const { return this->tree.end(); }
+  Compare key_comp() const { return this->tree.compare; }
 
+  // The lookups by T, and by any other type as in Set.
   RbIterator<T> find(const T& value) const { return this->tree.find(value); }
+  template<typename Key>
+  RbIterator<T> find(const Key& key) const { return this->tree.find(key); }
   bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
+  template<typename Key>
+  bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
   int count(const T& value) const { return this->tree.countOf(value); }
+  template<typename Key>
+  int count(const Key& key) const { return this->tree.countOf(key); }
   RbIterator<T> lowerBound(const T& value) const { return this->tree.lowerBound(value); }
+  template<typename Key>
+  RbIterator<T> lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<T> lower_bound(const T& value) const { return this->tree.lowerBound(value); }
+  template<typename Key>
+  RbIterator<T> lower_bound(const Key& key) const { return this->tree.lowerBound(key); }
   RbIterator<T> upperBound(const T& value) const { return this->tree.upperBound(value); }
+  template<typename Key>
+  RbIterator<T> upperBound(const Key& key) const { return this->tree.upperBound(key); }
   RbIterator<T> upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  template<typename Key>
+  RbIterator<T> upper_bound(const Key& key) const { return this->tree.upperBound(key); }
   Pair<RbIterator<T>, RbIterator<T>> equal_range(const T& value) const
   {
     return Pair<RbIterator<T>, RbIterator<T>>(this->tree.lowerBound(value), this->tree.upperBound(value));
+  }
+  template<typename Key>
+  Pair<RbIterator<T>, RbIterator<T>> equal_range(const Key& key) const
+  {
+    return Pair<RbIterator<T>, RbIterator<T>>(this->tree.lowerBound(key), this->tree.upperBound(key));
   }
 
   RbIterator<T> insert(const T& value) { return this->tree.insertEqual(T(value)); }
@@ -1234,7 +1391,8 @@ struct MultiSet
     return at;
   }
   // Moves all entries of other into this container, node and all.
-  void merge(MultiSet<T>& other)
+  template<typename OtherCompare>
+  void merge(MultiSet<T, OtherCompare>& other)
   {
     while (!other.empty())
     {
@@ -1245,6 +1403,6 @@ struct MultiSet
       this->tree.link(node, parent, asLeft);
     }
   }
-  void swap(MultiSet<T>& other) { this->tree.swap(other.tree); }
+  void swap(MultiSet<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };

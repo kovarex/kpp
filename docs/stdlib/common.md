@@ -20,10 +20,23 @@ old one, then destroys the old one. No other operation is used to move elements:
 operators are only used where a page says so. A type that keeps its own address in itself, or has
 handed it out, can fix that in its move constructor.
 
-Ordered containers and sorting compare with `a < b` (`operator<`), which must be a strict weak
-ordering: irreflexive, transitive, and with incomparability transitive. Two values are
-**equivalent** when neither is less than the other. Hash containers use `hashOf(value)` and
-`a == b`; equal values must have equal hashes.
+Ordered containers and sorting compare with a **comparator**: a function object `comp` with
+`comp(a, b)` meaning "a is less than b". It is `Less<T>` unless given, which is `a < b`
+(`operator<`). It must be a strict weak ordering: irreflexive, transitive, and with
+incomparability transitive. Two values are **equivalent** when neither is less than the other.
+Hash containers use a **hasher**, `Hash<T>` unless given, which calls the `hashOf(value)`
+overload for the type, and a **key equality**, `EqualTo<T>` unless given, which is `a == b`;
+equal values must have equal hashes. A container keeps a copy of its comparator (or hasher and
+key equality), made when the container is constructed and copied along with it, so comparators
+that carry state work.
+
+The function objects: `Less<T>` (`a < b`), `Greater<T>` (`b < a`), `EqualTo<T>` (`a == b`) and
+`Hash<T>` (`hashOf(a)`). `Less<>`, `Greater<>` and `EqualTo<>` (T left at its default, void)
+take operands of any two types and are **transparent**: they declare a member type
+`is_transparent`. When an ordered container's comparator is transparent (any comparator that
+declares `is_transparent`; `isTransparent<C>` tells), its lookups (find, contains, count,
+lowerBound, upperBound, equal_range) take a key of any type the comparator accepts and compare it
+as it is; otherwise a key of another type is converted to the key type once, before the search.
 
 ## Iterators, pointers and references
 

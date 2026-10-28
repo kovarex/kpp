@@ -33,10 +33,11 @@ library Regex comes with a second user.
 
 Vector (invalidation, growth, relocation with move constructors, aliasing-safe push_back),
 String (storage, terminator, searches, comparison), Map/Set/MultiMap/MultiSet (red-black tree,
-invalidation, complexity, return values of insert/erase/emplace/try_emplace), FastMap/FastSet
+invalidation, complexity, return values of insert/erase/emplace/try_emplace, comparator parameter
+with stateful and transparent comparators), FastMap/FastSet
 (as specified, including their weaker invalidation rules), sort and stableSort, lowerBound and
 upperBound, PriorityQueue, nthElement (introselect), the checked accessors (`at()` of every container, String's `substr`
-and `erase` throw OutOfRange), HashMap/HashSet (entries in nodes, std's interface) and
+and `erase` throw OutOfRange), HashMap/HashSet (entries in nodes, std's interface, hasher and key equality parameters) and
 FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
 pops at both ends), List, SharedPtr/WeakPtr/EnableSharedFromThis (atomic counts, deletion as the
 created type, shared_from_this throwing BadWeakPtr), UniquePtr (conversions from UniquePtr<Derived>), Function (heap copy of the callable,

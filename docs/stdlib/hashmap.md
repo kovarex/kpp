@@ -1,8 +1,9 @@
-# HashMap<K, V>, HashSet<T>
+# HashMap<K, V, Hasher, KeyEqual>, HashSet<T, Hasher, KeyEqual>
 
-Unordered associative containers with unique keys, found through `hashOf(key)` and `==` (see
-common.md). **HashMap** holds entries `Pair<K, V>`, **HashSet** values. Iteration visits every
-entry once, in an unspecified order that may change with any insertion.
+Unordered associative containers with unique keys, found through the hasher and the key equality,
+`Hash<K>` (`hashOf(key)`) and `EqualTo<K>` (`==`) unless given (see common.md). **HashMap** holds
+entries `Pair<K, V>`, **HashSet** values. Iteration visits every entry once, in an unspecified
+order that may change with any insertion.
 
 Every entry lives at a fixed address from insertion until it is erased: inserting other entries,
 even when the table grows, does not move it.
@@ -34,7 +35,12 @@ O(n), amortized O(1) per insert.
 
 ## Members (HashMap; HashSet is the same with values for entries, without operator[] and at)
 
-- `HashMap()`, copy and move.
+- `HashMap()`; `HashMap(n)`, `HashMap(n, hasher)`, `HashMap(n, hasher, keyEqual)`: empty, with
+  room for n entries before the table grows, using copies of the hasher and key equality given;
+  `HashMap({{k1, v1}, ...})`; `HashMap(first, last)` (the entries of a range, as insert(first,
+  last)); copy and move (the hasher and key equality are copied too).
+- `hash_function()`, `key_eq()`: copies of the hasher and the key equality. Types `key_type`,
+  `mapped_type` (HashMap), `value_type`, `hasher`, `key_equal`.
 - `size()`, `empty()`, `begin()`, `end()` (forward iterators; `*it` is the entry; its key must not
   be changed).
 - `find(key)`: an iterator to the entry, or `end()`. `contains(key)`, `count(key)` (0 or 1).
@@ -56,5 +62,10 @@ O(n), amortized O(1) per insert.
 - Kpp additions: `insert(key, value)` (inserts when absent, returns whether it did; an existing
   value is kept), `forEach(f)` calling f(key, value) for every entry.
 
-*Differences from C++*: hashing is the `hashOf` overload set rather than a hash type parameter;
-there is no bucket interface (bucket_count, load_factor, rehash).
+The hash a key's slot and tag come from is the hasher's result, mixed once more unless the hasher
+is the library's `Hash<K>` (whose `hashOf` overloads mix already), so a hasher written for C++ that
+returns a key's bits nearly unchanged spreads the keys as well as `hashOf` does.
+
+*Differences from C++*: there is no bucket interface (bucket_count, load_factor, rehash), no
+heterogeneous lookup through a transparent hasher, and no allocator parameter; HashMap's fifth
+template parameter is `bool stable` (false is FastHashMap), where C++ has the allocator.

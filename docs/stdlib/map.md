@@ -1,10 +1,11 @@
-# Map<K, V>, Set<T>, MultiMap<K, V>, MultiSet<T>
+# Map<K, V, Compare>, Set<T, Compare>, MultiMap<K, V, Compare>, MultiSet<T, Compare>
 
 Ordered associative containers. **Map** holds entries `Pair<K, V>` (`first` is the key, `second`
 the value) with unique keys, **Set** unique values; **MultiMap** and **MultiSet** allow
-equivalent keys (see common.md for equivalence and the ordering requirement). Iteration visits the
-entries in ascending key order; equivalent keys of the multi containers in the order they were
-inserted.
+equivalent keys. The keys are ordered by the comparator Compare, `Less<K>` (`operator<`) unless
+given (see common.md for comparators, equivalence and the ordering requirement). Iteration visits
+the entries in ascending key order under the comparator; equivalent keys of the multi containers
+in the order they were inserted.
 
 Every entry lives at a fixed address from insertion until it is erased: other inserts and erases
 never move it. (FastMap and FastSet, fastmap.md, give that up for speed.)
@@ -27,7 +28,12 @@ O(n). `count` in a multi container: O(log n + number found).
 
 ## Members (Map; Set is the same with values for entries)
 
-- `Map()`, `Map({{k1, v1}, {k2, v2}})` (later duplicates of a key are ignored), copy and move.
+- `Map()`, `Map(compare)` (an empty map ordered by a copy of compare), `Map({{k1, v1}, {k2,
+  v2}})` and `Map({...}, compare)` (later duplicates of a key are ignored), `Map(first, last)` and
+  `Map(first, last, compare)` (the entries of a range, as insert(first, last)), copy and move (the
+  comparator is copied too).
+- `key_comp()`: a copy of the comparator. Types `key_type`, `mapped_type` (maps), `value_type`,
+  `key_compare`.
 - `size()`, `empty()`, `begin()`, `end()`. Iterators are bidirectional; `*it` is the entry. The
   key of an entry must not be changed through an iterator (the order would break); the value may.
 - `find(key)`: an iterator to the entry with an equivalent key, or `end()`. In a multi container,
@@ -36,6 +42,10 @@ O(n). `count` in a multi container: O(log n + number found).
 - `lowerBound(key)` / `lower_bound`: the first entry whose key is not less than key.
   `upperBound(key)` / `upper_bound`: the first whose key is greater. `equal_range(key)`: the pair
   (lower bound, upper bound). Each returns `end()` when there is no such entry.
+- The lookups above also take a key of another type: compared as it is when the comparator is
+  transparent (common.md), converted to the key type once otherwise. With a transparent
+  comparator, `count` of a unique container can exceed 1 when several keys are equivalent to the
+  argument.
 - `operator[](key)`: a reference to the value of key's entry, inserting `Pair(key, V())` first when
   there is none. Map only.
 - `at(key)`: the value of key's entry; throws OutOfRange when there is none. Map only.
@@ -66,15 +76,16 @@ O(n). `count` in a multi container: O(log n + number found).
   NodeInsertReturn: `position` (the entry with the key), `inserted`, and `node` (the handle back
   when the key was present); the multi containers return the position. An empty handle inserts
   nothing.
-- `merge(other)`: moves into this container the entries of other (of the same type) whose keys are
-  not present here (all of them for the multi containers), node and all: pointers and references
-  to them stay valid and now refer into this container. The rest stay in other.
-- `swap(other)`: exchanges the contents in O(1); iterators, pointers and references keep referring
-  to the same entries, now in the other container (end() excepted).
+- `merge(other)`: moves into this container the entries of other (of the same kind and key and
+  value types, its comparator may differ) whose keys are not present here (all of them for the
+  multi containers), node and all: pointers and references to them stay valid and now refer into
+  this container. The rest stay in other.
+- `swap(other)`: exchanges the contents and the comparators in O(1); iterators, pointers and
+  references keep referring to the same entries, now in the other container (end() excepted).
 - `clear()`.
 
 Kpp additions (not in C++): `insert(key, value)` returning whether the key was new (Map), and the
 camel-case spellings `lowerBound`, `upperBound`.
 
-*Differences from C++*: only `operator<` orders the keys (no comparator parameter); there is no
-separate const_iterator type.
+*Differences from C++*: there is no separate const_iterator type, no `value_comp()`, and no
+allocator parameter.

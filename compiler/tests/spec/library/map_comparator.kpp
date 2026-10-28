@@ -1,0 +1,52 @@
+// spec: Map, Set and MultiMap ordered by a comparator argument: Greater, a comparator with state, a transparent one looked up by another key type (Less<> with StringView, a game-style comparator by unit number), the range constructor
+// factorio: about 30 std::set/std::map with a comparator (UnitNumberComparator in 15, std::less<> in 8, SharedStringKeyComp, std::greater)
+struct Unit { int number; String name; };
+struct ByNumber
+{
+  using is_transparent = void;
+  bool operator()(const Unit* a, const Unit* b) const { return a->number < b->number; }
+  bool operator()(const Unit* a, int b) const { return a->number < b; }
+  bool operator()(int a, const Unit* b) const { return a < b->number; }
+};
+struct Modulo
+{
+  int m = 10;
+  bool operator()(int a, int b) const { return a % this->m < b % this->m; }
+};
+int main()
+{
+  Map<int, String, Greater<int>> descending;
+  descending[1] = "a";
+  descending[3] = "c";
+  descending[2] = "b";
+  String order;
+  for (auto& [k, v] : descending)
+    order += v;
+  Unit five{5, "five"}, two{2, "two"}, nine{9, "nine"};
+  Set<Unit*, ByNumber> units;
+  units.insert(&five);
+  units.insert(&nine);
+  units.insert(&two);
+  String names;
+  for (Unit* u : units)
+    names += u->name + " ";
+  Map<String, int, Less<>> byName;
+  byName[String("alpha")] = 1;
+  byName[String("beta")] = 2;
+  Set<int, Modulo> residues(Modulo{3});
+  residues.insert(4);
+  residues.insert(7);
+  residues.insert(5);
+  MultiMap<int, char, Greater<>> multi;
+  multi.insert(1, 'x');
+  multi.insert(2, 'y');
+  multi.insert(1, 'z');
+  String letters;
+  for (auto& entry : multi)
+    letters.append(entry.second);
+  Vector<int> source = {3, 1, 2, 3};
+  Set<int> fromRange(source.begin(), source.end());
+  println("{}|{}|{} {} {} {}|{} {}|{} {}", order, names, (*units.find(9))->name, byName.count(StringView("beta")), byName.find(StringView("beta"))->second,
+          byName.contains(StringView("gamma")), residues.size(), letters, fromRange.size(), *fromRange.begin());
+  return 0;
+}

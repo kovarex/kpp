@@ -31,3 +31,7 @@ position), clear, rbegin, rend, insert(hint, entry) and emplace_hint (the hint i
 insert(first, last), merge(other) (moving the entries whose keys are absent here; moving, so
 it invalidates pointers into both), swap. `erase(key)` may be given a key that refers to an entry
 of this container. There are no node handles (extract): entries do not have nodes of their own.
+
+FastMap and FastSet are ordered by `operator<` only: they have no comparator parameter (Map and
+Set do), so the constructors and key_comp() that take or give one, and lookups by keys of other
+types, are not there.

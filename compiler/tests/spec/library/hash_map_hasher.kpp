@@ -1,0 +1,28 @@
+// spec: HashMap and HashSet with a hasher and a key equality argument (std::unordered_map<K, V, Hash, KeyEqual>), the default Hash<K> through hashOf for doubles, enums and SharedPtr keys, and FastHashMap with the same parameters
+// factorio: 6 unordered containers with a hasher (RailLocation::Hasher, CoordinateHash, NoiseRegisterIndexHash), keys of type double, enum and shared_ptr
+struct Point { int x, y; bool operator==(const Point& o) const { return x == o.x && y == o.y; } };
+struct PointHash { size_t operator()(const Point& p) const { return (size_t)(p.x * 1000 + p.y); } };
+struct SameX { bool operator()(const Point& a, const Point& b) const { return a.x == b.x; } };
+enum class Color { Red, Green };
+int main()
+{
+  HashMap<Point, int, PointHash> grid;
+  grid[Point{1, 2}] = 12;
+  grid[Point{3, 4}] = 34;
+  HashSet<Point, PointHash, SameX> columns;
+  columns.insert(Point{1, 1});
+  HashSet<Point, Hash<int>, SameX>* unused = nullptr;
+  HashMap<double, int> byDouble;
+  byDouble[0.5] = 1;
+  byDouble[-0.0] = 2;
+  HashMap<Color, int> byColor;
+  byColor[Color::Green] = 7;
+  HashMap<SharedPtr<int>, int> byPointer;
+  SharedPtr<int> p = makeShared<int>(3);
+  byPointer[p] = 9;
+  FastHashMap<Point, int, PointHash> fast;
+  fast[Point{5, 6}] = 56;
+  println("{} {} {} {} {} {} {} {}", grid[Point{1, 2}], grid.size(), grid.contains(Point{3, 4}), byDouble[0.0], byColor[Color::Green], byPointer[p],
+          fast[Point{5, 6}], Hash<int>()(5) == hashOf(5));
+  return 0;
+}

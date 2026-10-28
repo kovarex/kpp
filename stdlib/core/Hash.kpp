@@ -1,6 +1,6 @@
-// Kpp standard library: hashing. HashMap<K, V> calls hashOf(key); add an overload for your own
-// key types. HashMap indexes by the low bits of the hash, so every bit of the result has to
-// depend on the whole key.
+// Kpp standard library: hashing. HashMap<K, V> hashes with Hash<K>, which calls hashOf(key); add
+// an overload for your own key types. HashMap indexes by the low bits of the hash, so every bit of
+// the result has to depend on the whole key.
 
 // Multiplies by 2^64 / golden ratio and folds the well-mixed high half into the low half (a
 // plain product leaves the low bits depending only on the low bits of the key: aligned pointers
@@ -45,3 +45,32 @@ size_t hashOf(const String& text) { return hashBytes(text.data(), text.size()); 
 // Pointers hash by address.
 template<typename T>
 size_t hashOf(T* pointer) { return hashBits((uint64_t)pointer); }
+
+// Floating-point values hash by value: 0.0 and -0.0 are equal, so they hash alike.
+size_t hashOf(double value)
+{
+  if (value == 0.0)
+    return hashBits(0);
+  uint64_t bits;
+  memcpy(&bits, &value, 8);
+  return hashBits(bits);
+}
+size_t hashOf(float value) { return hashOf((double)value); }
+
+// Enumerations hash by their value.
+template<typename T> requires isEnum<T>
+size_t hashOf(T value) { return hashBits((uint64_t)(long long)value); }
+
+// Smart pointers hash as the pointer they hold.
+template<typename T>
+size_t hashOf(const SharedPtr<T>& pointer) { return hashOf(pointer.get()); }
+template<typename T>
+size_t hashOf(const UniquePtr<T>& pointer) { return hashOf(pointer.get()); }
+
+// The default hasher of HashMap and HashSet (what std::hash converts to): hashOf of the value, so
+// a key type gets hashed by adding a hashOf overload for it.
+template<typename T>
+struct Hash
+{
+  size_t operator()(const T& value) const { return hashOf(value); }
+};

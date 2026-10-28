@@ -514,8 +514,9 @@ struct ReverseOf
   bool operator!=(const ReverseOf<It>& other) const { return this->position != other.position; }
 };
 
-// Comparator objects (std::less, std::greater): `Less<T>` compares two T with <, the transparent
-// `Less<>` compares any two operands, so `FlatMap<K, V, Less<>>` can look a String up by a StringView.
+// Comparator objects (std::less, std::greater, std::equal_to): `Less<T>` compares two T with <,
+// the transparent `Less<>` compares any two operands (and says so with `is_transparent`), so
+// `Map<String, V, Less<>>` can look a String up by a StringView.
 template<typename T = void>
 struct Less
 {
@@ -524,6 +525,7 @@ struct Less
 template<>
 struct Less<void>
 {
+  using is_transparent = void;
   template<typename A, typename B>
   bool operator()(const A& a, const B& b) const { return a < b; }
 };
@@ -535,6 +537,24 @@ struct Greater
 template<>
 struct Greater<void>
 {
+  using is_transparent = void;
   template<typename A, typename B>
   bool operator()(const A& a, const B& b) const { return b < a; }
 };
+template<typename T = void>
+struct EqualTo
+{
+  bool operator()(const T& a, const T& b) const { return a == b; }
+};
+template<>
+struct EqualTo<void>
+{
+  using is_transparent = void;
+  template<typename A, typename B>
+  bool operator()(const A& a, const B& b) const { return a == b; }
+};
+
+// True when the comparator (or hasher) C declares `is_transparent`: the containers then look keys
+// up by any type C accepts, without converting them to the key type first.
+template<typename C>
+constexpr bool isTransparent = requires { typename C::is_transparent; };

@@ -1,6 +1,7 @@
 // Kpp standard library: HashMap<K, V> and HashSet<T> (what std::unordered_map and
-// std::unordered_set convert to), and FastHashMap<K, V> and FastHashSet<T>. Keys need hashOf(key)
-// (see Hash.kpp) and operator==. Specified in docs/stdlib/hashmap.md.
+// std::unordered_set convert to), and FastHashMap<K, V> and FastHashSet<T>. Keys are hashed with
+// the Hasher argument and compared with the KeyEqual one, by default Hash<K> (the hashOf overloads,
+// see Hash.kpp) and EqualTo<K> (operator==). Specified in docs/stdlib/hashmap.md.
 //
 // One open-addressing table with linear probing serves all four: a byte per slot (empty,
 // deleted, or seven bits of the key's hash, so most probes that miss never look at an entry) and
@@ -63,7 +64,7 @@ struct HashIterator
 
 // The table behind the four containers: entries E with keys KeyOf::of(entry) of type K, in nodes
 // (stable) or in the slots.
-template<typename E, typename K, typename KeyOf, bool stable>
+template<typename E, typename K, typename KeyOf, typename Hasher, typename KeyEqual, bool stable>
 struct HashTable
 {
   uint8_t* tags = nullptr;
@@ -71,28 +72,47 @@ struct HashTable
   int capacity = 0;      // always a power of two
   int count = 0;         // used slots
   int used = 0;          // used + deleted slots: what the load limit counts
+  Hasher hasher;
+  KeyEqual equal;
 
   HashTable() {}
-  HashTable(const HashTable<E, K, KeyOf, stable>& other) { this->copyFrom(other); }
-  HashTable(HashTable<E, K, KeyOf, stable>&& other) { this->take(other); }
+  HashTable(const Hasher& hasher, const KeyEqual& equal) : hasher(hasher), equal(equal) {}
+  HashTable(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other) : hasher(other.hasher), equal(other.equal) { this->copyFrom(other); }
+  HashTable(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) : hasher(other.hasher), equal(other.equal) { this->take(other); }
   ~HashTable() { this->clear(); }
-  HashTable<E, K, KeyOf, stable>& operator=(const HashTable<E, K, KeyOf, stable>& other)
+  HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
     if (this != &other)
     {
       this->clear();
+      this->hasher = other.hasher;
+      this->equal = other.equal;
       this->copyFrom(other);
     }
     return *this;
   }
-  HashTable<E, K, KeyOf, stable>& operator=(HashTable<E, K, KeyOf, stable>&& other)
+  HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other)
   {
     if (this != &other)
     {
       this->clear();
+      this->hasher = other.hasher;
+      this->equal = other.equal;
       this->take(other);
     }
     return *this;
+  }
+
+  // The hash of a key: the hasher's result, mixed further unless the hasher is the library's
+  // Hash<K> (whose hashOf overloads mix already): slots come from the low bits and tags from the
+  // high ones, so every bit has to depend on the whole key, which a hasher written for std (often
+  // the identity, or a few shifts and xors) does not promise.
+  size_t hashKey(const K& key) const
+  {
+    if constexpr (isSame<Hasher, Hash<K>>)
+      return this->hasher(key);
+    else
+      return hashBits((uint64_t)this->hasher(key));
   }
 
   static int slotSize()
@@ -132,7 +152,7 @@ struct HashTable
       uint8_t t = this->tags[i];
       if (t == hashSlotEmpty)
         return -1;
-      if (t == tag && this->keyAt((int)i) == key)
+      if (t == tag && this->equal(this->keyAt((int)i), key))
         return (int)i;
       i = (i + 1) & mask;
     }
@@ -160,7 +180,7 @@ struct HashTable
         if (firstDeleted < 0)
           firstDeleted = (int)i;
       }
-      else if (t == tag && this->keyAt((int)i) == key)
+      else if (t == tag && this->equal(this->keyAt((int)i), key))
       {
         found = true;
         return (int)i;
@@ -217,14 +237,14 @@ struct HashTable
   // Moves the entries of other whose keys are not here into this table; the rest stay in other.
   // Nodes move as they are (pointers and references to their entries now refer into this table),
   // entries of fast tables are moved.
-  void mergeFrom(HashTable<E, K, KeyOf, stable>& other)
+  void mergeFrom(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
     for (int i = 0; i < other.capacity; ++i)
     {
       if (other.tags[i] < 0x80)
         continue;
       const K& key = other.keyAt(i);
-      size_t hash = hashOf(key);
+      size_t hash = this->hashKey(key);
       bool found;
       int slot = this->place(key, hash, found);
       if (found)
@@ -262,9 +282,9 @@ struct HashTable
       this->tags[slot] = hashSlotDeleted;
     --this->count;
   }
-  void swap(HashTable<E, K, KeyOf, stable>& other)
+  void swap(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
-    HashTable<E, K, KeyOf, stable> held(move(other));
+    HashTable<E, K, KeyOf, Hasher, KeyEqual, stable> held(move(other));
     other = move(*this);
     *this = move(held);
   }
@@ -338,7 +358,7 @@ struct HashTable
           entry = ((E**)oldSlots)[i];
         else
           entry = (E*)oldSlots + i;
-        size_t hash = hashOf(HashTable::keyOf(*entry));
+        size_t hash = this->hashKey(HashTable::keyOf(*entry));
         size_t j = hash & mask;
         while (this->tags[j] != hashSlotEmpty)
           j = (j + 1) & mask;
@@ -356,7 +376,7 @@ struct HashTable
   }
   // Copies other slot by slot: same capacity, same positions, deleted markers kept (the probe
   // paths of later keys run through them).
-  void copyFrom(const HashTable<E, K, KeyOf, stable>& other)
+  void copyFrom(const HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
     if (other.count == 0)
       return;
@@ -377,7 +397,7 @@ struct HashTable
     this->count = other.count;
     this->used = other.used;
   }
-  void take(HashTable<E, K, KeyOf, stable>& other)
+  void take(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& other)
   {
     this->tags = other.tags;
     this->slots = other.slots;
@@ -405,21 +425,30 @@ struct HashSetKey
 };
 
 // An unordered map with unique keys; entries are Pair<K, V>. `stable` false is FastHashMap.
-template<typename K, typename V, bool stable = true>
+template<typename K, typename V, typename Hasher = Hash<K>, typename KeyEqual = EqualTo<K>, bool stable = true>
 struct HashMap
 {
-  HashTable<Pair<K, V>, K, HashMapKey<K, V>, stable> table;
+  HashTable<Pair<K, V>, K, HashMapKey<K, V>, Hasher, KeyEqual, stable> table;
 
   using iterator = HashIterator<Pair<K, V>, stable>;
   using const_iterator = HashIterator<Pair<K, V>, stable>;
   using value_type = Pair<K, V>;
+  using key_type = K;
+  using mapped_type = V;
+  using hasher = Hasher;
+  using key_equal = KeyEqual;
 
   HashMap() {}
+  // An empty map with room for n entries before it grows.
+  explicit HashMap(int n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
   implicit HashMap(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+  // The entries of [first, last), as insert(entry) one by one.
+  template<typename It>
+  HashMap(It first, It last) { this->insert(first, last); }
 
   int size() const { return this->table.count; }
   bool empty() const { return this->table.count == 0; }
@@ -428,16 +457,16 @@ struct HashMap
 
   HashIterator<Pair<K, V>, stable> find(const K& key) const
   {
-    int slot = this->table.findSlot(key, hashOf(key));
+    int slot = this->table.findSlot(key, this->table.hashKey(key));
     return slot < 0 ? this->table.end() : this->table.iteratorAt(slot);
   }
-  bool contains(const K& key) const { return this->table.findSlot(key, hashOf(key)) >= 0; }
+  bool contains(const K& key) const { return this->table.findSlot(key, this->table.hashKey(key)) >= 0; }
   int count(const K& key) const { return this->contains(key) ? 1 : 0; }
 
   // The value for key, inserted default-constructed when new.
   V& operator[](const K& key)
   {
-    size_t hash = hashOf(key);
+    size_t hash = this->table.hashKey(key);
     bool found;
     int slot = this->table.place(key, hash, found);
     if (slot < 0)
@@ -469,7 +498,7 @@ struct HashMap
   // The entry with the key and whether it was inserted (an existing value is kept).
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert(const Pair<K, V>& entry)
   {
-    size_t hash = hashOf(entry.first);
+    size_t hash = this->table.hashKey(entry.first);
     bool found;
     int slot = this->table.place(entry.first, hash, found);
     if (slot < 0)
@@ -484,7 +513,7 @@ struct HashMap
   }
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert(Pair<K, V>&& entry)
   {
-    size_t hash = hashOf(entry.first);
+    size_t hash = this->table.hashKey(entry.first);
     bool found;
     int slot = this->table.place(entry.first, hash, found);
     if (slot < 0)
@@ -502,7 +531,7 @@ struct HashMap
   template<typename... Args>
   Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(const K& key, Args&&... args)
   {
-    size_t hash = hashOf(key);
+    size_t hash = this->table.hashKey(key);
     bool found;
     int slot = this->table.place(key, hash, found);
     if (slot < 0)
@@ -533,7 +562,7 @@ struct HashMap
   // The number of entries removed (0 or 1).
   int erase(const K& key)
   {
-    int slot = this->table.findSlot(key, hashOf(key));
+    int slot = this->table.findSlot(key, this->table.hashKey(key));
     if (slot < 0)
       return 0;
     this->table.eraseAt(slot);
@@ -562,10 +591,12 @@ struct HashMap
       this->insert(*first);
   }
   // Moves the entries of other whose keys are not here into this map; the rest stay in other.
-  void merge(HashMap<K, V, stable>& other) { this->table.mergeFrom(other.table); }
-  void swap(HashMap<K, V, stable>& other) { this->table.swap(other.table); }
+  void merge(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
+  void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(int n) { this->table.reserve(n); }
+  Hasher hash_function() const { return this->table.hasher; }
+  KeyEqual key_eq() const { return this->table.equal; }
 
   // Calls f(key, value) for every entry.
   template<typename F>
@@ -581,21 +612,29 @@ struct HashMap
 };
 
 // An unordered set of unique values. `stable` false is FastHashSet.
-template<typename T, bool stable = true>
+template<typename T, typename Hasher = Hash<T>, typename KeyEqual = EqualTo<T>, bool stable = true>
 struct HashSet
 {
-  HashTable<T, T, HashSetKey<T>, stable> table;
+  HashTable<T, T, HashSetKey<T>, Hasher, KeyEqual, stable> table;
 
   using iterator = HashIterator<T, stable>;
   using const_iterator = HashIterator<T, stable>;
   using value_type = T;
+  using key_type = T;
+  using hasher = Hasher;
+  using key_equal = KeyEqual;
 
   HashSet() {}
+  // An empty set with room for n values before it grows.
+  explicit HashSet(int n, const Hasher& hasher = Hasher(), const KeyEqual& equal = KeyEqual()) : table(hasher, equal) { this->table.reserve(n); }
   implicit HashSet(InitializerList<T> items)
   {
     for (const T& value : items)
       this->insert(value);
   }
+  // The values of [first, last), as insert(value) one by one.
+  template<typename It>
+  HashSet(It first, It last) { this->insert(first, last); }
 
   int size() const { return this->table.count; }
   bool empty() const { return this->table.count == 0; }
@@ -604,16 +643,16 @@ struct HashSet
 
   HashIterator<T, stable> find(const T& value) const
   {
-    int slot = this->table.findSlot(value, hashOf(value));
+    int slot = this->table.findSlot(value, this->table.hashKey(value));
     return slot < 0 ? this->table.end() : this->table.iteratorAt(slot);
   }
-  bool contains(const T& value) const { return this->table.findSlot(value, hashOf(value)) >= 0; }
+  bool contains(const T& value) const { return this->table.findSlot(value, this->table.hashKey(value)) >= 0; }
   int count(const T& value) const { return this->contains(value) ? 1 : 0; }
 
   // The entry with the value and whether it was inserted.
   Pair<HashIterator<T, stable>, bool> insert(const T& value)
   {
-    size_t hash = hashOf(value);
+    size_t hash = this->table.hashKey(value);
     bool found;
     int slot = this->table.place(value, hash, found);
     if (slot < 0)
@@ -628,7 +667,7 @@ struct HashSet
   }
   Pair<HashIterator<T, stable>, bool> insert(T&& value)
   {
-    size_t hash = hashOf(value);
+    size_t hash = this->table.hashKey(value);
     bool found;
     int slot = this->table.place(value, hash, found);
     if (slot < 0)
@@ -646,7 +685,7 @@ struct HashSet
   // The number of values removed (0 or 1).
   int erase(const T& value)
   {
-    int slot = this->table.findSlot(value, hashOf(value));
+    int slot = this->table.findSlot(value, this->table.hashKey(value));
     if (slot < 0)
       return 0;
     this->table.eraseAt(slot);
@@ -668,14 +707,16 @@ struct HashSet
     for (; first != last; ++first)
       this->insert(*first);
   }
-  void merge(HashSet<T, stable>& other) { this->table.mergeFrom(other.table); }
-  void swap(HashSet<T, stable>& other) { this->table.swap(other.table); }
+  void merge(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
+  void swap(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(int n) { this->table.reserve(n); }
+  Hasher hash_function() const { return this->table.hasher; }
+  KeyEqual key_eq() const { return this->table.equal; }
 };
 
 // The faster tables, whose entries move when the table grows (docs/stdlib/hashmap.md).
-template<typename K, typename V>
-using FastHashMap = HashMap<K, V, false>;
-template<typename T>
-using FastHashSet = HashSet<T, false>;
+template<typename K, typename V, typename Hasher = Hash<K>, typename KeyEqual = EqualTo<K>>
+using FastHashMap = HashMap<K, V, Hasher, KeyEqual, false>;
+template<typename T, typename Hasher = Hash<T>, typename KeyEqual = EqualTo<T>>
+using FastHashSet = HashSet<T, Hasher, KeyEqual, false>;
