@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**206 pass, 6 pending, 0 failing, 0 fixed** (212 snippets, 5.3 s).
+**208 pass, 5 pending, 0 failing, 0 fixed** (213 snippets, 6.6 s).
 
 ## Language: statements, expressions, declarations
 
@@ -91,6 +91,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/friends.kpp` | friend functions and friend classes | pass | 459 uses in 269 files |  |
 | `classes/inherited_constructors.kpp` | inherited constructors (using Base::Base;) in a class with members of its own | pass | Agui's Filler, Frame and others |  |
 | `classes/inherited_constructors_with_own.kpp` | `using Base::Base;` inherits the base's constructors next to the class's own ones, the default constructor included; the class's own constructors are preferred for the arguments they take | pass |  |  |
+| `classes/inherited_conversion_operator.kpp` | a conversion operator inherited from a base class, `operator bool` of BoolConstant<B>, converts the derived object (also in a condition and a switch) | pass |  |  |
 | `classes/interfaces.kpp` | abstract interfaces implemented by several classes, held through base pointers in containers | pass |  |  |
 | `classes/member_function_pointers.kpp` | pointers to member functions | pass | 3 uses in 3 files |  |
 | `classes/member_pointers.kpp` | pointers to data members | pass |  |  |
@@ -112,7 +113,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen binds one template pack per expansion (templatePackOf), `auto PrototypeT::*...` names two; C:\kpp-codegen\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-codegen\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
 | `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pending | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) | free operator templates are not found for operators on class templates ("Opt has no operator=="); C:\kpp-codegen\compiler\tests\spec\templates\free_operator_template.kpp:19: codegen does not support an operator with a class on the right that no function defines yet (in @kpp.main) |
-| `templates/trait_in_base_argument.kpp` | a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`) | pending | the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>) | the argument is not evaluated under the instantiation; Conditional's primary template (TrueType) is chosen for every T; line 1: got `true true true`, expected `false true false` |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |
@@ -165,6 +165,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/static_constexpr_member_in_instantiation.kpp` | a static constexpr member of a class template is computed with the instantiation's arguments (`T(1) << Bits`) wherever it is used | pass |  |  |
 | `templates/static_table_lookup_helper.kpp` | a class's static const table keyed by StringView with a nested value struct, defined out of line from a brace list, read through a helper template with an `auto*` return | pass |  |  |
 | `templates/template_template_parameters.kpp` | template template parameters | pass |  |  |
+| `templates/trait_in_base_argument.kpp` | a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`) | pass | the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>) |  |
 | `templates/traits_as_values.kpp` | type traits used as values (bool isSame<A, B> in an expression, not only in if constexpr) | pass |  |  |
 | `templates/type_traits_fundamental.kpp` | isFundamental, isTriviallyDestructible, isTriviallyCopyAssignable, isTriviallyDefaultConstructible | pass | is_fundamental_v, is_trivially_destructible_v used in Serialiser/Container code |  |
 | `templates/variable_template_default_args.kpp` | variable templates with default template arguments | pass | force_memcpy_save<T, class = void> used with one argument |  |
