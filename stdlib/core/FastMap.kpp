@@ -577,6 +577,12 @@ struct FastMap
   using iterator = BTreeIterator<Pair<K, V>>;
   using const_iterator = BTreeIterator<Pair<K, V>>;
   using value_type = Pair<K, V>;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = Pair<K, V>&;
+  using const_reference = const Pair<K, V>&;
+  using pointer = Pair<K, V>*;
+  using const_pointer = const Pair<K, V>*;
 
   FastMap() {}
   implicit FastMap(InitializerList<Pair<K, V>> items)
@@ -704,6 +710,12 @@ struct FastSet
   using iterator = BTreeIterator<T>;
   using const_iterator = BTreeIterator<T>;
   using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
 
   FastSet() {}
   implicit FastSet(InitializerList<T> items)

@@ -21,6 +21,12 @@ struct Deque
   using iterator = DequeIterator<T>;
   using const_iterator = DequeIterator<T>;
   using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
 
   Deque() {}
   implicit Deque(InitializerList<T> items)
@@ -342,10 +348,16 @@ struct DequeIterator
 };
 
 // First in, first out: push at the back, pop at the front.
-template<typename T>
+template<typename T, typename Container = Deque<T>>
 struct Queue
 {
-  Deque<T> values;
+  Container values;
+
+  using container_type = Container;
+  using value_type = T;
+  using size_type = int;
+  using reference = T&;
+  using const_reference = const T&;
 
   int size() const { return this->values.size(); }
   bool empty() const { return this->values.empty(); }
@@ -360,10 +372,16 @@ struct Queue
 };
 
 // Last in, first out: push and pop at the top.
-template<typename T>
+template<typename T, typename Container = Deque<T>>
 struct Stack
 {
-  Deque<T> values;
+  Container values;
+
+  using container_type = Container;
+  using value_type = T;
+  using size_type = int;
+  using reference = T&;
+  using const_reference = const T&;
 
   int size() const { return this->values.size(); }
   bool empty() const { return this->values.empty(); }

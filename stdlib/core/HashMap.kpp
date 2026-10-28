@@ -433,6 +433,12 @@ struct HashMap
   using iterator = HashIterator<Pair<K, V>, stable>;
   using const_iterator = HashIterator<Pair<K, V>, stable>;
   using value_type = Pair<K, V>;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = Pair<K, V>&;
+  using const_reference = const Pair<K, V>&;
+  using pointer = Pair<K, V>*;
+  using const_pointer = const Pair<K, V>*;
   using key_type = K;
   using mapped_type = V;
   using hasher = Hasher;
@@ -620,6 +626,12 @@ struct HashSet
   using iterator = HashIterator<T, stable>;
   using const_iterator = HashIterator<T, stable>;
   using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
   using key_type = T;
   using hasher = Hasher;
   using key_equal = KeyEqual;

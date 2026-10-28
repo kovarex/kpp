@@ -25,6 +25,12 @@ struct String
   using iterator = char*;
   using const_iterator = const char*;
   using value_type = char;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = char&;
+  using const_reference = const char&;
+  using pointer = char*;
+  using const_pointer = const char*;
 
   String() { this->becomeEmpty(); }
   implicit String(const char* text) { this->initialize(text, (int)strlen(text)); }

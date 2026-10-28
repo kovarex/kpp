@@ -2022,8 +2022,8 @@ namespace
             continue;
           }
           // Members of std types whose library spelling differs and that no game class declares:
-          // std::optional's value_or is Optional's valueOr.
-          static const std::map<std::string_view, std::string> memberRenames = {{"value_or", "valueOr"}};
+          // std::optional's value_or is Optional's valueOr, std::type_info's hash_code TypeInfo's hashCode.
+          static const std::map<std::string_view, std::string> memberRenames = {{"value_or", "valueOr"}, {"hash_code", "hashCode"}};
           auto mr = memberRenames.find(spelling(i));
           if (mr != memberRenames.end() && i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)))
           {

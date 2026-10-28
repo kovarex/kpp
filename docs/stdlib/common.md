@@ -38,6 +38,15 @@ declares `is_transparent`; `isTransparent<C>` tells), its lookups (find, contain
 lowerBound, upperBound, equal_range) take a key of any type the comparator accepts and compare it
 as it is; otherwise a key of another type is converted to the key type once, before the search.
 
+## Member types
+
+Every container names its types as members: `value_type` (the element), `size_type` (`int`),
+`difference_type` (`ptrdiff_t`), `reference` and `const_reference`, `pointer` and `const_pointer`,
+`iterator` and `const_iterator`, and, where the container has `rbegin()`, `reverse_iterator` and
+`const_reverse_iterator`. The maps and sets also have `key_type` and, for maps, `mapped_type`;
+the ordered ones `key_compare`, the hash ones `hasher` and `key_equal`. A view (StringView) has
+const element types for `reference` and `pointer`.
+
 ## Iterators, pointers and references
 
 An iterator, pointer or reference is **invalidated** by an operation when using it afterwards

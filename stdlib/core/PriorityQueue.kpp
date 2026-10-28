@@ -1,12 +1,35 @@
-// A max-heap priority queue (what std::priority_queue converts to).
-template<typename T>
+// A max-heap priority queue (what std::priority_queue converts to): top() is a greatest element
+// under Compare (Less<T>, operator<, unless given), kept in a Container (a Vector unless given:
+// any container with random access, push_back and pop_back). Specified in
+// docs/stdlib/priorityqueue.md.
+template<typename T, typename Container = Vector<T>, typename Compare = Less<T>>
 struct PriorityQueue
 {
-  Vector<T> heap;
+  Container heap;
+  Compare compare;
+
+  using container_type = Container;
+  using value_compare = Compare;
+  using value_type = T;
+  using size_type = int;
+  using reference = T&;
+  using const_reference = const T&;
+
+  PriorityQueue() {}
+  explicit PriorityQueue(const Compare& compare) : compare(compare) {}
+  PriorityQueue(const Compare& compare, const Container& elements) : heap(elements), compare(compare) { this->makeHeap(); }
+  // The elements of [first, last).
+  template<typename It>
+  PriorityQueue(It first, It last, const Compare& compare = Compare()) : compare(compare)
+  {
+    for (; first != last; ++first)
+      this->heap.push_back(*first);
+    this->makeHeap();
+  }
 
   int size() const { return this->heap.size(); }
   bool empty() const { return this->heap.empty(); }
-  const T& top() const { return this->heap.items[0]; }
+  const T& top() const { return this->heap[0]; }
 
   void push(const T& value)
   {
@@ -29,29 +52,36 @@ struct PriorityQueue
   {
     int last = this->heap.size() - 1;
     if (last > 0)
-      swap(this->heap.items[0], this->heap.items[last]);
+      ::swap(this->heap[0], this->heap[last]);
     this->heap.pop_back();
     if (!this->heap.empty())
       this->siftDown(0);
   }
-
+  void swap(PriorityQueue<T, Container, Compare>& other)
+  {
+    ::swap(this->heap, other.heap);
+    ::swap(this->compare, other.compare);
+  }
+  // Kpp addition: removes every element.
   void clear() { this->heap.clear(); }
 
+  // Internals.
+  void makeHeap()
+  {
+    for (int i = this->heap.size() / 2 - 1; i >= 0; --i)
+      this->siftDown(i);
+  }
   void siftUp(int i)
   {
     while (i > 0)
     {
       int parent = (i - 1) / 2;
-      if (this->heap.items[parent] < this->heap.items[i])
-      {
-        swap(this->heap.items[parent], this->heap.items[i]);
-        i = parent;
-      }
-      else
+      if (!this->compare(this->heap[parent], this->heap[i]))
         break;
+      ::swap(this->heap[parent], this->heap[i]);
+      i = parent;
     }
   }
-
   void siftDown(int i)
   {
     int n = this->heap.size();
@@ -60,87 +90,14 @@ struct PriorityQueue
       int largest = i;
       int left = 2 * i + 1;
       int right = 2 * i + 2;
-      if (left < n && this->heap.items[largest] < this->heap.items[left])
+      if (left < n && this->compare(this->heap[largest], this->heap[left]))
         largest = left;
-      if (right < n && this->heap.items[largest] < this->heap.items[right])
+      if (right < n && this->compare(this->heap[largest], this->heap[right]))
         largest = right;
       if (largest == i)
         break;
-      swap(this->heap.items[i], this->heap.items[largest]);
+      ::swap(this->heap[i], this->heap[largest]);
       i = largest;
-    }
-  }
-};
-
-// With a custom comparator.
-template<typename T, typename Compare>
-struct PriorityQueueCmp
-{
-  Vector<T> heap;
-  Compare compare;
-
-  PriorityQueueCmp() {}
-  explicit PriorityQueueCmp(Compare cmp) : compare(cmp) {}
-
-  int size() const { return this->heap.size(); }
-  bool empty() const { return this->heap.empty(); }
-  const T& top() const { return this->heap.items[0]; }
-
-  void push(const T& value)
-  {
-    this->heap.push_back(value);
-    this->siftUp(this->heap.size() - 1);
-  }
-  void push(T&& value)
-  {
-    this->heap.push_back(move(value));
-    this->siftUp(this->heap.size() - 1);
-  }
-  template<typename... Args>
-  void emplace(Args&&... args)
-  {
-    this->heap.emplace_back(forward<Args>(args)...);
-    this->siftUp(this->heap.size() - 1);
-  }
-  void siftUp(int i)
-  {
-    while (i > 0)
-    {
-      int parent = (i - 1) / 2;
-      if (this->compare(this->heap.items[parent], this->heap.items[i]))
-      {
-        swap(this->heap.items[parent], this->heap.items[i]);
-        i = parent;
-      }
-      else
-        break;
-    }
-  }
-
-  void pop()
-  {
-    int last = this->heap.size() - 1;
-    if (last > 0)
-      swap(this->heap.items[0], this->heap.items[last]);
-    this->heap.pop_back();
-    if (!this->heap.empty())
-    {
-      int i = 0;
-      int n = this->heap.size();
-      while (true)
-      {
-        int largest = i;
-        int left = 2 * i + 1;
-        int right = 2 * i + 2;
-        if (left < n && this->compare(this->heap.items[largest], this->heap.items[left]))
-          largest = left;
-        if (right < n && this->compare(this->heap.items[largest], this->heap.items[right]))
-          largest = right;
-        if (largest == i)
-          break;
-        swap(this->heap.items[i], this->heap.items[largest]);
-        i = largest;
-      }
     }
   }
 };

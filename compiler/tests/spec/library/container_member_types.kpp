@@ -1,0 +1,40 @@
+// spec: the containers' member types (size_type, difference_type, reference, pointer, reverse_iterator, key_type, mapped_type, container_type) used through a template parameter, and PriorityQueue with a container and a comparator (std::priority_queue<T, std::vector<T>, Compare>)
+// factorio: FlatSet (`using size_type = container_type::size_type;`), 17 ::size_type, 32 ::reverse_iterator, 9 ::mapped_type; PathFinder's openList priority_queue with TilePositionExpansionPriority
+template<typename Container>
+struct Wrapper
+{
+  using size_type = typename Container::size_type;
+  using difference_type = typename Container::difference_type;
+  using reference = typename Container::reference;
+  using pointer = typename Container::pointer;
+  Container items;
+  size_type count() const { return this->items.size(); }
+};
+struct ByDistance
+{
+  bool operator()(int a, int b) const { return a > b; } // the smallest on top
+};
+int main()
+{
+  Wrapper<Vector<int>> w;
+  w.items.push_back(3);
+  w.items.push_back(4);
+  Wrapper<Vector<int>>::reference first = w.items[0];
+  first = 7;
+  Wrapper<Vector<int>>::pointer p = &w.items[1];
+  Wrapper<Vector<int>>::difference_type d = p - &w.items[0];
+  Map<String, int>::mapped_type m = 5;
+  Map<String, int>::key_type k = "key";
+  Set<int> digits = {1, 2, 3};
+  Set<int>::reverse_iterator r = digits.rbegin();
+  PriorityQueue<int, Vector<int>, ByDistance> open;
+  open.push(5);
+  open.push(2);
+  open.push(9);
+  Queue<int>::container_type deque;
+  deque.push_back(1);
+  Vector<int> values = {4, 1, 3};
+  PriorityQueue<int> fromRange(values.begin(), values.end());
+  println("{} {} {} {} {} {} {} {} {}", w.count(), w.items[0], d, m, k, *r, open.top(), deque.size(), fromRange.top());
+  return 0;
+}

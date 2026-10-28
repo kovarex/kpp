@@ -25,11 +25,13 @@ the element after the erased one; `resize(n)`, `clear()`.
 
 ## Queue
 
-First in, first out, over a Deque: `push(value)` / `emplace(args...)` at the back, `pop()` at the
-front, `front()`, `back()`, `size()`, `empty()`, `clear()`. Same invalidation and complexity as
-the Deque operations they use.
+`Queue<T, Container>`: first in, first out, over a Container (`Deque<T>` unless given):
+`push(value)` / `emplace(args...)` at the back, `pop()` at the front, `front()`, `back()`,
+`size()`, `empty()`, `clear()`. Same invalidation and complexity as the Deque operations they use.
+Types `container_type`, `value_type`, `size_type`, `reference`, `const_reference`.
 
 ## Stack
 
-Last in, first out, over a Deque: `push(value)` / `emplace(args...)`, `pop()`, `top()`, `size()`,
-`empty()`. References to elements stay valid while other elements are pushed and popped.
+`Stack<T, Container>`: last in, first out, over a Container (`Deque<T>` unless given):
+`push(value)` / `emplace(args...)`, `pop()`, `top()`, `size()`, `empty()`. References to elements
+stay valid while other elements are pushed and popped. Member types as Queue's.

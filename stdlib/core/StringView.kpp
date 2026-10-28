@@ -8,6 +8,12 @@ struct StringView
   using iterator = const char*;
   using const_iterator = const char*;
   using value_type = char;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = const char&;
+  using const_reference = const char&;
+  using pointer = const char*;
+  using const_pointer = const char*;
 
   static const int npos = -1;
 

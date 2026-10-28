@@ -10,6 +10,12 @@ struct Array
   using iterator = T*;
   using const_iterator = const T*;
   using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
 
   int size() const { return N; }
   bool empty() const { return N == 0; }
@@ -62,6 +68,12 @@ struct Span
 
   using iterator = T*;
   using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
 
   Span() {}
   Span(T* items, int length) : items(items), length(length) {}

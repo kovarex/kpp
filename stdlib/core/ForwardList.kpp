@@ -48,6 +48,12 @@ struct ForwardList
   using iterator = ForwardIterator<T>;
   using const_iterator = ForwardIterator<T>;
   using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
 
   ForwardList() {}
   implicit ForwardList(InitializerList<T> items)

@@ -13,6 +13,12 @@ struct Vector
   using reverse_iterator = ReverseIterator<T>;
   using const_reverse_iterator = ReverseIterator<const T>;
   using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
 
   Vector() {}
   // count default-constructed elements.
