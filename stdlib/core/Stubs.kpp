@@ -8,9 +8,7 @@ struct Locale
   explicit Locale(const String& name) {}
 };
 
-struct Filesystem
-{
-};
+// Filesystem: moved to Filesystem.kpp
 
 // codecvt_utf8 / wstring_convert: used in Factorio for UTF-8 ↔ wstring conversion.
 // The real conversion is in WString.kpp (toUtf8/fromUtf8); these are thin stubs so code

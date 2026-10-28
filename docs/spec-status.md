@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**179 pass, 2 pending, 0 failing, 0 fixed** (181 snippets, 3.6 s).
+**180 pass, 2 pending, 0 failing, 0 fixed** (182 snippets, 4.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -123,6 +123,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/forwarding_conversions.kpp` | forwarding a string literal through a variadic member template into a String constructor (emplace_back("x")) | pass |  |  |
 | `templates/function_templates.kpp` | function templates: deduction, explicit arguments, overloading with non-templates, full specialisation | pass | 592 full specialisations in 61 files |  |
 | `templates/is_constructible_trait.kpp` | `isConstructible<T, Args...>` is true when T can be built from Args (what std::is_constructible_v converts to), in `if constexpr` and in variable templates | pass |  |  |
+| `templates/local_using_alias_member.kpp` | member access through a local using alias of a template instantiation | pass |  |  |
 | `templates/local_using_trait.kpp` | local_using_trait | pass |  |  |
 | `templates/member_alias_of_instantiation_cast.kpp` | a member alias of a class template instantiation, reached through an alias of the instantiation, names the substituted type (`Table::value_type(65)`) | pass |  |  |
 | `templates/member_template_in_class_template.kpp` | a member function template of a class template converting its argument to T (names.add("a") into MyStack<String>) | pass |  |  |
