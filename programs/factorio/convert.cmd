@@ -17,6 +17,8 @@ type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include
 %KPPC% --no-std --quiet --convert kpp --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui %SRC%\Util %SRC%\Typedefs.hpp %SRC%\Graphics\BitmapFormat.hpp %SRC%\Noise\NoiseRegisterIndex.hpp %SRC%\FloatCast.hpp || exit /b 1
 type kpp\CONVERSION.md | findstr /B "Files -"
+rem Copy stubs for types that are outside the converted subset but needed for codegen.
+if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
 echo == kppc on the converted sources
 %KPPC% --std ..\..\stdlib %CINC% --errors 10 --unresolved 20 --emit-llvm kpp\out.ll kpp
 echo == smoke test: tests\smoke.kpp against the converted CommonUtil (SystemClipboard stubbed: the real one needs SDL)

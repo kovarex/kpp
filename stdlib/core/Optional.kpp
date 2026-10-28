@@ -28,6 +28,13 @@ struct Optional
   // Comparisons with a value: an absent optional equals nothing.
   bool operator==(const T& v) const { return this->present && this->stored == v; }
   bool operator!=(const T& v) const { return !this->present || !(this->stored == v); }
+  bool operator==(const Optional<T>& other) const
+  {
+    if (this->present != other.present)
+      return false;
+    return !this->present || this->stored == other.stored;
+  }
+  bool operator!=(const Optional<T>& other) const { return !(*this == other); }
 
   bool hasValue() const { return this->present; }
   bool has_value() const { return this->present; }
@@ -61,6 +68,14 @@ struct Optional
     this->present = true;
   }
   void reset() { this->present = false; }
+  void clear() { this->present = false; }
+
+  // Unchecked access (Factorio's operator~ on Optional).
+  T& operator~() { return this->stored; }
+  const T& operator~() const { return this->stored; }
+
+  // Sentinel for types using MAKE_OPTIONAL; returns default T.
+  static constexpr T emptyValue() { return T(); }
 };
 
 template<typename T>

@@ -283,4 +283,6 @@ struct Atomic
   T operator--(int) { return this->fetchSub(1); }
   T operator+=(T delta) { return this->fetchAdd(delta) + delta; }
   T operator-=(T delta) { return this->fetchSub(delta) - delta; }
+  bool operator==(T other) const { return this->load() == other; }
+  bool operator!=(T other) const { return this->load() != other; }
 };
