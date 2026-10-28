@@ -1,119 +1,67 @@
 # Standard library conformance
 
-The converter turns std::vector into Vector, std::map into Map and so on (compiler/src/convert.cpp,
-`stdNames`). Converted code relies on what the C++ standard guarantees about those types, so the
-rule (kovarex, 2026-10-28) is: each Kpp container keeps the guarantees of the std type it replaces
-(iterator, pointer and reference invalidation, complexity, the meaning of return values), and
-anything that behaves differently is either fixed or a separate, explicitly named type. This file
-lists, per type, where Kpp stands against the standard. "Differs" items are open unless marked
-done; API that is merely missing (a converted call then fails to compile, loudly) is listed last.
+The specification of the library is docs/stdlib/ (self-contained: it started from the C++
+standard library's guarantees, which converted code relies on, and writes them out). This file
+lists where the implementation in stdlib/ does not meet that specification yet. Each item is a bug
+to fix, or, if the rule should change instead, a decision to record in the specification and in
+design.md. Behaviour that differs silently comes first; API that is missing (a call then fails to
+compile, loudly) last. State of 2026-10-28.
 
-Applies to all containers: sizes and indices are `int`, not `size_t` (design.md: Kpp's choice,
-containers above 2^31 elements are out of scope), and `at()` does not check the index (std throws
-std::out_of_range).
+## Behaviour that differs
 
-## Map, Set, MultiMap, MultiSet (std::map, set, multimap, multiset)
+**HashMap, HashSet** (hashmap.md):
+- Entries move when the table grows: the implementation is open addressing in one flat array, so
+  pointers and references to entries are invalidated by any insert that grows the table (the
+  specification keeps them valid, as std::unordered_map's node-based tables do).
+- `HashMap::insert(key, value)` assigns the value when the key exists; the specified
+  `insert(entry)` keeps the existing value and returns `Pair<iterator, bool>`.
+- `HashMap::find` returns `V*` (nullptr when absent) instead of an iterator, and HashMap cannot be
+  iterated (only `forEach`).
+- `erase(key)` returns bool instead of a count.
+- Proposed fix: make HashMap/HashSet node-stable with the specified interface (a flat table of
+  pointers to nodes keeps most of the speed), and keep today's table as an explicitly named type
+  such as FastHashMap, as FastMap is for Map.
 
-Conforms (stdlib/core/Map.kpp, 2026-10-28): node-based red-black tree as in all three C++
-libraries. Inserting never invalidates iterators, pointers or references; erasing invalidates only
-those to the erased entries. Lookup, insert and erase O(log n); iteration in key order; equal keys
-of the multi containers stay in insertion order. `insert(entry)` returns Pair<iterator, bool> and
-keeps an existing value, `erase(key)` returns the number removed, `erase(iterator)` returns the
-next position; `emplace`, `try_emplace`, `equal_range`, `lower_bound`, `upper_bound` as in std.
+**Deque, Queue, Stack** (deque.md):
+- Deque is a Vector with a moving start: push_front is O(n) once the room before the start is
+  used up, push_back invalidates references when it grows, and pop_front now and then slides all
+  elements down. The specification (a deque of fixed-size blocks) keeps references valid for
+  pushes and pops at both ends.
+- Stack is built on Vector instead of Deque, so pushes invalidate references to elements.
 
-Differs:
-- Only `operator<` orders the keys: no comparator template parameter (std::map<K, V, Compare>).
-- `const_iterator` is the same type as `iterator`.
-- Kpp additions (not in std): `contains` (C++20 has it too), `insert(key, value)` returning bool,
-  camel-case `lowerBound`/`upperBound`.
-- Compiler gap: `map.insert({key, makeUnique<T>()})` picks insert(const Pair&) and fails to copy
-  the move-only value (spec language/brace_argument_binds_rvalue, pending).
+**String** (string.md):
+- `substr(start)` and `erase(index)` with start/index past the end return an empty string / do
+  nothing instead of throwing OutOfRange.
 
-Missing API: rbegin/rend, insert with a hint, emplace_hint, insert of a range, extract, merge,
-key_comp, swap.
+**All containers**: `at()` does not check its argument (specified: throws OutOfRange).
 
-**FastMap / FastSet** (FastMap.kpp) are the explicit alternative: a B-tree with entries inside
-the nodes, faster (docs/stdlib-performance.md), but every insert and erase invalidates all
-iterators, pointers and references, as for Vector. Never produced by the converter.
+**Algorithms** (algorithms.md): `nthElement` sorts the whole range, O(n log n) instead of O(n) on
+average (the result is right).
 
-## HashMap, HashSet (std::unordered_map, unordered_set)
+**Compiler gaps that break library use** (pending spec snippets in compiler/tests/spec):
+- `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
+  cannot copy the move-only value (language/brace_argument_binds_rvalue).
+- `KeyOf::of(a) < b` with a class type emits invalid IR; Map.kpp and FastMap.kpp avoid the form
+  (templates/static_call_through_parameter_operator).
 
-Differs (open, needs a decision):
-- **References**: std's unordered containers allocate a node per element, so pointers and
-  references to elements survive every insert and rehash (only iterators are invalidated by a
-  rehash). Kpp's are open addressing in one flat array: any insert that grows the table moves all
-  elements, invalidating pointers and references too. Converted code that keeps `&map[key]`
-  across inserts breaks.
-- **HashMap::insert(key, value) overwrites** an existing value; std::unordered_map::insert keeps
-  it and returns Pair<iterator, bool>.
-- **HashMap::find returns V\*** (nullptr when absent), not an iterator; HashMap has no
-  begin()/end() (only forEach), so range-for over a converted unordered_map fails to compile.
-- `erase(key)` returns bool, not a count.
-- Hashing is the `hashOf` overload set, not a std::hash-style template parameter.
+## Missing types and API
 
-Missing API: emplace, try_emplace, at, count, iteration on HashMap, bucket and load-factor
-functions, reserve.
+- **List**: the converter maps std::list to it, but it does not exist.
+- **Map, Set, MultiMap, MultiSet, FastMap, FastSet**: rbegin/rend, insert with a hint,
+  emplace_hint, insert of a range, extract, merge, swap.
+- **HashMap, HashSet**: begin/end on HashMap, emplace, try_emplace, insert_or_assign, at, count,
+  reserve.
+- **Vector**: `capacity` is a field, not `capacity()`; const overloads of operator[], front and
+  back; shrink_to_fit, swap.
+- **String**: rfind of a string, find_last_of.
+- **Deque**: insert and erase in the middle, emplace_front/emplace_back, at, resize.
+- **ForwardList**: insert_after, erase_after, before_begin.
+- **PriorityQueue**: emplace.
 
-The way to conform, as for Map: make HashMap/HashSet node-stable with std's API (Abseil's
-node_hash_map does this with a flat table of pointers to nodes, keeping most of the speed), and
-keep today's table as an explicitly named FlatHashMap/FlatHashSet.
+## Conforming
 
-## Vector (std::vector)
-
-Conforms: invalidation (growth invalidates everything; insert and erase invalidate from the
-position on), amortized O(1) push_back, exact reserve, elements moved with their move constructors
-(2026-10-28), contiguous storage, `push_back(v[0])` safe.
-
-Differs:
-- Vector<bool> is a plain Vector of bools, not std's bit-packed specialization with proxy
-  references (converted code gets real `bool&`; only memory use differs).
-- Kpp additions: `insert(int index, ...)`, `erase(int index)`, `contains`.
-
-Missing API: const overloads of operator[], front and back; assign, shrink_to_fit, swap, insert
-of n copies.
-
-## String (std::string)
-
-Conforms: contiguous, always zero-terminated, `data()`/`c_str()` valid for an empty string,
-small-string optimization (22 characters in place; std leaves the size unspecified), invalidation
-(any non-const operation may invalidate, as in std).
-
-Differs:
-- `find` and friends return `int`, with `npos == -1`. Assigned to a `size_t` or compared with
-  `npos` this behaves as in C++, but compared with a size it does not: `s.find(x) < s.size()` is
-  false in C++ when x is absent (npos is the largest size_t) and true in Kpp (-1 < size).
-- `substr(start)` with start past the end returns an empty string; `erase(index)` past the end
-  does nothing (std throws std::out_of_range for both).
-- Kpp additions: `startsWith`, `endsWith`, `insert(int index, ...)` overloads.
-
-Missing API: compare, rfind of a string, find_last_of, replace with iterators, assign forms.
-
-## Deque, Queue, Stack (std::deque, queue, stack)
-
-Differs (open):
-- **Deque** is a Vector with a moving start index: push_front is O(n) once the space before the
-  start is used up (std: O(1)); push_back invalidates references when it grows, and pop_front
-  occasionally slides all elements down (std::deque keeps references valid on push and pop at
-  either end, invalidating iterators only). No insert or erase in the middle.
-- **Queue** is a Deque, so it shares this; **Stack** is a Vector (std::stack defaults to a deque:
-  references to the elements survive pushes there, not here).
-
-To conform: a real deque (a map of fixed-size blocks, as all three C++ libraries do).
-
-## List, ForwardList, PriorityQueue
-
-- **List** (std::list): the converter maps it, but the type does not exist yet.
-- **ForwardList**: node-based like std::forward_list (conforms in behaviour); API is a subset.
-- **PriorityQueue**: a max-heap on a Vector, as std::priority_queue on std::vector (conforms).
-
-## Algorithms
-
-Conform: `sort` (introsort, O(n log n), not stable), `stableSort` (stable, O(n log n)),
-`lowerBound`, `upperBound`.
-Differs: `nthElement` sorts the whole range (O(n log n); std: O(n) on average); the result
-satisfies std's postcondition.
-
-## Not audited yet
-
-Optional, UniquePtr, SharedPtr/WeakPtr, Function, Variant (by decision a typed union), Tuple,
-Span, Array, StringView, the stream classes and the C library wrappers.
+Vector (invalidation, growth, relocation with move constructors, aliasing-safe push_back),
+String (storage, terminator, searches, comparison), Map/Set/MultiMap/MultiSet (red-black tree,
+invalidation, complexity, return values of insert/erase/emplace/try_emplace), FastMap/FastSet
+(as specified, including their weaker invalidation rules), sort and stableSort, lowerBound and
+upperBound, PriorityQueue.

@@ -8,6 +8,8 @@ simple templates, own standard library, C-only interop.
 - `readme.md`, `compilation/`: the original language proposal.
 - `docs/design.md`: the record of decided rules. Read it before making design choices and update
   it when a decision is made or changed. `docs/prototype-results.md`: measurements and method.
+  `docs/stdlib/`: the standard library specification (self-contained; changing a rule there is a
+  design decision), `docs/stdlib-conformance.md`: where stdlib/ does not meet it yet.
 - `compiler/`: the compiler. `compiler\build.cmd` builds `compiler\build\kppc.exe` (CMake + Ninja +
   clang-cl from VS 2022). Benchmarks live in `compiler/bench/`, test inputs in `compiler/tests/`.
 - `stdlib/`: the standard library, written in Kpp and compiled from source with every program

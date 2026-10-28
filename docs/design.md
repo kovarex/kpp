@@ -65,7 +65,8 @@ builds win less unless machine code is cached per function.
 - Each library type that a std type converts to keeps the guarantees the C++ standard gives that
   type (iterator, pointer and reference invalidation, complexity, the meaning of return values),
   since converted code relies on them. A faster type that breaks one is a separate, explicitly
-  named type (FastMap next to Map). docs/stdlib-conformance.md lists where each type stands.
+  named type (FastMap next to Map). The rules are written out, self-contained, in docs/stdlib/
+  (the specification); docs/stdlib-conformance.md lists where the code does not meet it yet.
   (kovarex 2026-10-28.)
 - Containers move elements as the C++ ones do: when Vector grows or shifts, HashMap rehashes or
   stableSort merges, each element is move-constructed at its new place and the old one destroyed
