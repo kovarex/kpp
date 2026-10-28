@@ -1,0 +1,31 @@
+// spec: a typed union constructed and assigned from a value of exactly one alternative's type: `AIState s = Patrolling{1}`, `return Attacking{n}`, `s = Attacking{7}`
+// design.md 8.5 (constructing a union from a value); the converter's std::variant mapping: SegmentedUnitAI's computeNextState returning AIState from its visit lambdas
+// pending: a union is not constructed from an alternative's value ("conversion from Patrolling to Tag")
+struct Patrolling { int steps; };
+struct Attacking { int target; };
+
+union enum AIState : uint8_t
+{
+  { {Patrolling, Patrol}, {Attacking, Attack} }
+};
+
+AIState next(int n)
+{
+  if (n > 2)
+    return Attacking{n};
+  return Patrolling{n};
+}
+
+void report(const AIState& s) { println("{}", s == AIState::Attack ? "attack" : "patrol"); }
+
+int main()
+{
+  AIState s = Patrolling{1};
+  println("{} {}", s == AIState::Patrol, s[AIState::Patrol].steps);
+  s = Attacking{7};
+  println("{} {}", s == AIState::Attack, s[AIState::Attack].target);
+  AIState t = next(5);
+  println("{} {}", t == AIState::Attack, next(1) == AIState::Patrol);
+  report(Patrolling{3});
+  return 0;
+}

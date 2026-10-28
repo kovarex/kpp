@@ -1,0 +1,41 @@
+// spec: `alternatives(U)` reflection over a typed union: `a.name`, `a.type`, `a.tag`, `u[a]`, `u == a.tag`, and `u.tag()`, enough to save the alternative held and load one by its index
+// design.md 8.5 (proposal of 2026-10-28, waiting for review); the converter's std::variant mapping: SerialiserHelper/DeserialiserHelper save and load of variants (index, variant_size, variant_alternative_t)
+// pending: alternatives(U) and u.tag() are not implemented
+union enum Value : uint8_t
+{
+  { {int, Number}, {double, Ratio}, {String, Text} }
+};
+
+template<class U>
+void describe(const U& u)
+{
+  for constexpr (auto a : alternatives(U))
+    if (u == a.tag)
+      println("{} {} {}", int(a.tag), a.name, u[a]);
+}
+
+template<class U>
+U defaultAt(int index)
+{
+  U u;
+  for constexpr (auto a : alternatives(U))
+    if (index == int(a.tag))
+    {
+      a.type value = a.type();
+      u[a] = value;
+    }
+  return u;
+}
+
+int main()
+{
+  Value v;
+  v[Value::Ratio] = 0.5;
+  describe(v);
+  println("{} {}", int(v.tag()), int(Value::Tag::count));
+  Value w = defaultAt<Value>(2);
+  println("{} {}", w == Value::Text, w[Value::Text].size());
+  for constexpr (auto a : alternatives(Value))
+    println("{}", a.name);
+  return 0;
+}

@@ -257,6 +257,24 @@ enumerators. The parser desugars the union to a class with the tag member and an
 of the alternatives; the compiler adds the tag-aware operations. Not yet: `alternatives(U)`, a
 generated `str()`, constructing a union from a value in one expression.
 
+Proposed 2026-10-28, for review (the converter maps `std::variant` to named typed unions, and
+the game constructs them from values and saves and loads them generically):
+- *From a value.* `U u = x;`, `u = x;`, `return x;` in a function returning U, and x passed for
+  a `U` (or `const U&`) parameter set the alternative whose type is x's type without references
+  and `const`, when exactly one alternative has that type: `AIState next() { return
+  Patrolling(...); }`. No other conversion takes part (an `int` does not set a `double`
+  alternative), and a type two alternatives share (`{String, Text}, {String, Comment}`) is a
+  compile error naming both (write `u[Text] = x`).
+- *`alternatives(U)`*, as `members(T)` (8.3): U's alternatives in declaration order, for `for
+  constexpr`. An alternative `a` has `a.name` (a string literal), `a.type` (usable where a type is
+  written) and `a.tag` (its `U::Tag` value; `int(a.tag)` is its index); `u[a]` and `u == a.tag` are
+  `u[Name]` and `u == Name` for it.
+- *`u.tag()`*, generated like `str()`: the `U::Tag` value held (`U::Tag::count` already exists).
+- Setting by index needs nothing more: `for constexpr (auto a : alternatives(U)) if (index ==
+  int(a.tag)) { a.type value; load(value); u[a] = move(value); }`. The variants' save and load in
+  SerialiserHelper/DeserialiserHelper become one override each, written this way.
+Spec snippets: kpp/typed_union_from_value, kpp/typed_union_alternatives (pending).
+
 **8.6 Tests in the compiler.**
 ```
 test "Direction::isVertical"
