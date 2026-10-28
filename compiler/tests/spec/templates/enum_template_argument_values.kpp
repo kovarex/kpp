@@ -1,0 +1,27 @@
+// spec: a constant template argument of enum class type whose enumerator is defined by others (`GENERIC = NOTHING`, `BOTH = ONE | TWO`), as an argument and as a parameter's default
+// found in the game's Targeter<TargetType, TargeterType Type = GENERIC, TargeterFlags Flags = TargeterFlags::GENERIC> (157 instantiations' getFlags, TargeterFlags::PERSISTENT and friends)
+enum class Flags : unsigned short
+{
+  NOTHING = 0,
+  GENERIC = NOTHING,
+  ONE = 1 << 0,
+  TWO = 1 << 1,
+  BOTH = ONE | TWO,
+  SAME = BOTH & 3,
+};
+
+template<class T, Flags F = Flags::GENERIC>
+struct Targeter
+{
+  static constexpr Flags FLAGS = F;
+  int flags() const { return int(F); }
+};
+
+int main()
+{
+  Targeter<int> a;
+  Targeter<int, Flags::BOTH> b;
+  Targeter<int, Flags::SAME> c;
+  println("{} {} {} {}", a.flags(), b.flags(), c.flags(), int(Targeter<char, Flags::TWO>::FLAGS));
+  return 0;
+}

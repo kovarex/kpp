@@ -2318,7 +2318,9 @@ struct GlobalScope::Impl
       auto* e = static_cast<EnumDecl*>(d->parent);
       if (!e || e->kind != NodeKind::EnumDecl)
         return std::nullopt;
-      TypeContext ectx{lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr, e->file ? e->file->text : std::string_view()};
+      // In the enum's own scope: `GENERIC = NOTHING` names an earlier enumerator of an enum class.
+      TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
+                       e->file ? e->file->text : std::string_view()};
       int64_t next = 0;
       for (Decl* m : e->enumerators)
       {
@@ -2649,6 +2651,15 @@ struct GlobalScope::Impl
           case P::Percent: return *r ? *l % *r : std::optional<int64_t>();
           case P::Shl: return *l << *r;
           case P::Shr: return *l >> *r;
+          case P::Amp: return *l & *r; // `BOTH = ONE | 2` inside an enum: the underlying values
+          case P::Pipe: return *l | *r;
+          case P::Caret: return *l ^ *r;
+          case P::Less: return *l < *r;
+          case P::Greater: return *l > *r;
+          case P::LessEq: return *l <= *r;
+          case P::GreaterEq: return *l >= *r;
+          case P::EqEq: return *l == *r;
+          case P::NotEq: return *l != *r;
           default: return std::nullopt;
         }
       }
