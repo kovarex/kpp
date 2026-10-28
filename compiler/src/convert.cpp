@@ -60,9 +60,12 @@ namespace
   }
 
   // Preprocessor symbols the converter treats as defined (Windows, MSVC, debug) and as undefined.
-  const std::set<std::string> definedSymbols = {"WIN32", "_WIN32", "_WIN64", "_MSC_VER", "DEBUG", "__cplusplus", "FACTORIO_PACKAGE"};
+  const std::set<std::string> definedSymbols = {"WIN32", "_WIN32", "_WIN64", "_MSC_VER", "DEBUG", "__cplusplus", "FACTORIO_PACKAGE",
+                                                "__cpp_lib_optional"};
+  // The cxxopts library as the game builds it: without ICU, with RTTI.
   const std::set<std::string> undefinedSymbols = {"LINUX", "MAC_OSX", "NINTENDO_SWITCH", "NINTENDO_SWITCH1", "NINTENDO_SWITCH2", "__linux__",
-                                                  "__APPLE__", "__GNUC__", "__clang__", "NDEBUG", "HEADLESS", "FACTORIO_USE_METAL", "DEMO"};
+                                                  "__APPLE__", "__GNUC__", "__clang__", "NDEBUG", "HEADLESS", "FACTORIO_USE_METAL", "DEMO",
+                                                  "CXXOPTS_USE_UNICODE", "CXXOPTS_NO_RTTI"};
 
   // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
@@ -1742,6 +1745,35 @@ namespace
             }
           }
           auto variable = stdNames.find(name + "_v");
+          auto alias = stdNames.find(name + "_t");
+          if (alias != stdNames.end() && i + 3 < toks.size() && toks[i + 3].is(P::Less))
+          {
+            // `std::make_unsigned<T>::type`: the trait's type, which is the library's MakeUnsigned<T>
+            // (what std::make_unsigned_t<T> converts to).
+            uint32_t j = i + 4;
+            for (int depth = 0; j < toks.size(); ++j)
+            {
+              if (toks[j].is(P::Less))
+                ++depth;
+              else if (toks[j].is(P::Greater) || toks[j].is(P::Shr))
+              {
+                if (depth == 0)
+                  break;
+                depth -= toks[j].is(P::Shr) ? 2 : 1;
+                if (depth < 0)
+                  break;
+              }
+              else if (toks[j].is(P::Semi) || toks[j].getKind() == TokenKind::End)
+                break;
+            }
+            if (j + 2 < toks.size() && toks[j + 1].is(P::ColonColon) && spelling(j + 2) == "type")
+            {
+              to = alias->second;
+              it = alias;
+              remove(toks[j + 1].offset, endOffset(j + 2) - toks[j + 1].offset);
+              counts.add("trait class to its type");
+            }
+          }
           if (name.compare(0, 3, "is_") == 0 && variable != stdNames.end() && i + 3 < toks.size() && toks[i + 3].is(P::Less))
           {
             // `std::is_member_function_pointer<T>()` and `std::is_const<T>::value`: the trait's
@@ -3334,6 +3366,119 @@ namespace
     }
     return abs.filename().generic_string();
   }
+}
+
+std::string selectConfiguredBranches(std::string_view text)
+{
+  // The same decisions as FileConverter::convertPreprocessor: known symbols decide, an unknown
+  // #if keeps its first branch, an unknown #elif is false.
+  std::string out(text);
+  auto blank = [&](size_t from, size_t to)
+  {
+    for (size_t i = from; i < to && i < out.size(); ++i)
+      if (out[i] != '\n' && out[i] != '\r')
+        out[i] = ' ';
+  };
+  struct Level
+  {
+    bool parentActive, taken;
+  };
+  std::vector<Level> stack;
+  bool active = true;
+  size_t pos = 0;
+  while (pos < text.size())
+  {
+    // A logical line: continuations joined.
+    size_t start = pos, end = text.find('\n', pos);
+    if (end == std::string_view::npos)
+      end = text.size();
+    while (end < text.size())
+    {
+      size_t last = end;
+      while (last > start && (text[last - 1] == '\r' || text[last - 1] == ' '))
+        --last;
+      if (last <= start || text[last - 1] != '\\')
+        break;
+      end = text.find('\n', end + 1);
+      if (end == std::string_view::npos)
+        end = text.size();
+    }
+    pos = end + 1;
+    size_t p = start;
+    while (p < end && (text[p] == ' ' || text[p] == '\t'))
+      ++p;
+    if (p >= end || text[p] != '#')
+    {
+      if (!active)
+        blank(start, end);
+      continue;
+    }
+    ++p;
+    while (p < end && (text[p] == ' ' || text[p] == '\t'))
+      ++p;
+    size_t ws = p;
+    while (p < end && isalpha((unsigned char)text[p]))
+      ++p;
+    std::string word(text.substr(ws, p - ws));
+    std::string rest(text.substr(p, end - p));
+    if (size_t c = rest.find("//"); c != std::string::npos)
+      rest = rest.substr(0, c);
+    for (char& ch : rest)
+      if (ch == '\\' || ch == '\r')
+        ch = ' ';
+    if (word == "if" || word == "ifdef" || word == "ifndef")
+    {
+      FileConverter::IfEval e{word == "if" ? rest : std::string()};
+      bool value;
+      if (word == "if")
+        value = e.orExpr() != 0;
+      else
+      {
+        std::string symbol;
+        for (char ch : rest)
+          if (isIdentChar(ch))
+            symbol += ch;
+          else if (!symbol.empty())
+            break;
+        value = e.symbol(symbol) != 0;
+        if (word == "ifndef")
+          value = !value;
+      }
+      if (!e.known)
+        value = true;
+      stack.push_back({active, value});
+      active = active && value;
+      blank(start, end);
+    }
+    else if (word == "elif" || word == "else")
+    {
+      if (!stack.empty())
+      {
+        Level& l = stack.back();
+        bool value = word == "else";
+        if (word == "elif")
+        {
+          FileConverter::IfEval e{rest};
+          value = e.orExpr() != 0 && e.known;
+        }
+        active = l.parentActive && !l.taken && value;
+        l.taken = l.taken || active;
+      }
+      blank(start, end);
+    }
+    else if (word == "endif")
+    {
+      if (!stack.empty())
+      {
+        active = stack.back().parentActive;
+        stack.pop_back();
+      }
+      blank(start, end);
+    }
+    else if (!active)
+      blank(start, end);
+  }
+  return out;
 }
 
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,

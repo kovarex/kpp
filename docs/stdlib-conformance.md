@@ -25,6 +25,10 @@ Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue()
 
 None of the members specified in docs/stdlib/ are missing (2026-10-28).
 
+Not in the library by decision: `<regex>`. Its one user is cxxopts, whose five fixed patterns are
+hand-written matchers in the conversion's overrides (docs/path-to-factorio.md, "cxxopts"); a
+library Regex comes with a second user.
+
 ## Conforming
 
 Vector (invalidation, growth, relocation with move constructors, aliasing-safe push_back),

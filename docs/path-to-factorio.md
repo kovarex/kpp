@@ -578,20 +578,21 @@ entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the c
 ### The headline number: how it is measured
 
 The one number tracked from here on is **full-src codegen errors**: the error lines the code
-generator writes for the converted CommonUtil, Agui and `src/`. After `convert.cmd` (or just its
-conversion step into `kpp\`), from `programs\factorio`:
+generator writes for the converted CommonUtil, Agui, cxxopts and `src/`. After `convert.cmd` (or
+just its conversion step into `kpp\`), from `programs\factorio`:
 
 ```
 ..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
   --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
   --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include ^
-  --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\src 2> kpp\full-errors.txt
+  --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\src 2> kpp\full-errors.txt
 find /c /v "" kpp\full-errors.txt
 ```
 
-- Inputs: exactly `kpp\CommonUtil`, `kpp\Agui` and `kpp\src` (4,099 files with the standard
-  library), not the whole `kpp\`: that directory also holds the `kpp\Util` copy of `kpp\src\Util`
-  the smoke tests use and whatever stubs were copied in.
+- Inputs: exactly `kpp\CommonUtil`, `kpp\Agui`, `kpp\cxxopts` and `kpp\src`, not the whole
+  `kpp\`: that directory also holds the `kpp\Util` copy of `kpp\src\Util` the smoke tests use and
+  whatever stubs were copied in. `kpp\cxxopts` is in since 2026-10-28 (see "cxxopts" below); a
+  count from before that leaves out its errors (13 when it came in).
 - The SDL_Mixer include directory is required: the imported C headers compile as one unit, so a
   single missing header fails all 50 of them and every Lua, SDL and C library use becomes an error.
   The run is valid only if its output shows `imports: 50 header(s)` and no `importing C headers
@@ -672,6 +673,29 @@ the 28,000 new lines (one frozen tree, master 4c98ac0's converter output, two ru
   `Variant<...>` (4); one each of CURLcode, cxxopts::ParseResult, Gdiplus Status, a DXGI function
   pointer and a few local enums.
 - **5 bases of unknown type.**
+
+### cxxopts (2026-10-28)
+
+The command-line parser the game uses (`libraries/cxxopts`, one header) converts like game code:
+it is in the conversion and in the headline inputs. Its one standard header without a Kpp
+counterpart is `<regex>`, for five fixed patterns matched with `std::regex_match`: an integer,
+`true`, `false`, an option (`--name=value` or `-abc`) and an option specifier (`s,long`).
+Decided: no stdlib Regex while cxxopts would be its only user (about 500 lines for five
+patterns); `programs/factorio/overrides/cxxopts/cxxopts.kpp` hand-writes the five matchers, with
+std's capture groups and `regex_match`'s whole-text rule (`basic_regex`, `match_results`,
+`sub_match`, `smatch` and `regex_match` in namespace cxxopts; any other pattern throws). A
+library Regex comes when a second user does. kovarex can overrule this.
+
+The converter evaluates `#if` over the symbols it knows (`CXXOPTS_USE_UNICODE` and
+`CXXOPTS_NO_RTTI` are undefined: the game builds cxxopts without ICU and with RTTI), but the front
+end parsed the first branch of every `#if`. In cxxopts that put the ICU branch in the AST and the
+`std::string` branch in the output (`typedef String String;`), so every rewrite that needs the
+AST missed the code written out. In convert mode the front end now lexes each C++ file with the
+branches the converter drops blanked out (`selectConfiguredBranches` in convert.cpp; offsets are
+unchanged), so the two see the same code. In the game's own sources that changed 7 files, each
+for the better: Log macros, `ADD_VALUE`, the `GameMap` rename and `std::cin` now reach code in
+`#else` branches. cxxopts went from 26 errors to 13; the rest of the headline did not move (30,524
+before, 30,521 after, within the run-to-run noise); with cxxopts the count is 30,534.
 
 ### Error breakdown by root cause
 

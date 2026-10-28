@@ -27,3 +27,8 @@ struct ConvertInput
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir = {});
+
+// The C++ text with the #if branches the converter drops, and every conditional directive line,
+// blanked (newlines and offsets kept), so that the front end parses the branches that are written
+// out instead of the first branch of each #if.
+std::string selectConfiguredBranches(std::string_view text);

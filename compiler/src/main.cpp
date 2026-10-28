@@ -944,6 +944,16 @@ int main(int argc, char** argv)
     totalBytes += config.text.size();
     files.push_back(std::move(config));
   }
+  // Converting, the front end lexes the C++ sources with the #if branches the converter drops
+  // blanked, so that its rewrites reach the branches that are written out (offsets are unchanged:
+  // tokens still index files[i].text).
+  std::vector<std::string> configured(paths.size());
+  if (!options.convertDir.empty())
+    parallelFor(paths.size(), options.threads, [&](size_t i)
+    {
+      if (files[i].path.extension() != ".kpp")
+        configured[i] = selectConfiguredBranches(files[i].text);
+    });
   double collectTime = seconds(Clock::now() - startCollect);
 
   // Phase 1: lex everything in parallel.
@@ -957,7 +967,7 @@ int main(int argc, char** argv)
     auto start = Clock::now();
     parallelFor(files.size(), options.threads, [&](size_t i)
     {
-      results[i] = lex(files[i].text, symbols);
+      results[i] = lex(i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols);
       stats[i].bytes = files[i].text.size();
       stats[i].tokens = results[i].tokens.size();
       stats[i].lines = results[i].lineCount;

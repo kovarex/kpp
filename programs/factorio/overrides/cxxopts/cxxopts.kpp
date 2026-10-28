@@ -1,0 +1,218 @@
+// Hand-written part of cxxopts: cxxopts matches five fixed patterns with std::regex, and the Kpp
+// library has no regex (cxxopts is its only user so far; decided 2026-10-28, see
+// docs/path-to-factorio.md). The converted cxxopts keeps its basic_regex objects and regex_match
+// calls; these give them what std::regex would for exactly those five patterns, with the same
+// capture groups, under regex_match's rule that the whole text matches.
+namespace cxxopts
+{
+  template<typename CharT>
+  struct basic_regex
+  {
+    const char* pattern;
+    implicit basic_regex(const char* pattern) : pattern(pattern) {}
+  };
+
+  // A capture group (std::sub_match): [first, second) of the text when matched.
+  template<typename It>
+  struct sub_match
+  {
+    It first = nullptr;
+    It second = nullptr;
+    bool matched = false;
+
+    int length() const { return this->matched ? int(this->second - this->first) : 0; }
+    String str() const { return this->matched ? String(StringView(this->first, int(this->second - this->first))) : String(); }
+    implicit operator String() const { return this->str(); }
+  };
+
+  // The groups of a successful match (std::match_results); empty after a failed one.
+  template<typename It>
+  struct match_results
+  {
+    Vector<sub_match<It>> groups;
+
+    bool empty() const { return this->groups.empty(); }
+    int length(int index = 0) const { return index < this->groups.size() ? this->groups[index].length() : 0; }
+    sub_match<It> operator[](int index) const { return index < this->groups.size() ? this->groups[index] : sub_match<It>(); }
+  };
+  using smatch = match_results<const char*>;
+
+  bool isAlnum(char c) { return isalnum((unsigned char)c) != 0; }
+  bool isOptionChar(char c) { return isAlnum(c) || c == '-' || c == '_'; }
+
+  // Fills groups 0..count-1 of result, group 0 being [begin, end), from (start, end) pairs (null: unmatched).
+  void fillMatch(match_results<const char*>& result, const char* begin, const char* end, InitializerList<Pair<const char*, const char*>> groups)
+  {
+    result.groups.clear();
+    sub_match<const char*> whole;
+    whole.first = begin;
+    whole.second = end;
+    whole.matched = true;
+    result.groups.push_back(whole);
+    for (const Pair<const char*, const char*>& g : groups)
+    {
+      sub_match<const char*> group;
+      group.first = g.first;
+      group.second = g.second;
+      group.matched = g.first != nullptr;
+      result.groups.push_back(group);
+    }
+  }
+
+  // `(-)?(0x)?([0-9a-zA-Z]+)|((0x)?0)`
+  bool matchInteger(const char* s, const char* end, match_results<const char*>& result)
+  {
+    const char* p = s;
+    const char* minus = nullptr;
+    if (p < end && *p == '-')
+      minus = p++;
+    // (0x)? is greedy, then backtracks when the digits cannot follow it.
+    for (int withPrefix = 1; withPrefix >= 0; --withPrefix)
+    {
+      const char* q = p;
+      const char* prefix = nullptr;
+      if (withPrefix)
+      {
+        if (end - q < 2 || q[0] != '0' || q[1] != 'x')
+          continue;
+        prefix = q;
+        q += 2;
+      }
+      const char* digits = q;
+      while (q < end && isAlnum(*q))
+        ++q;
+      if (q == end && q > digits)
+      {
+        fillMatch(result, s, end, {Pair<const char*, const char*>(minus, minus ? minus + 1 : nullptr),
+                                   Pair<const char*, const char*>(prefix, prefix ? prefix + 2 : nullptr), Pair<const char*, const char*>(digits, end),
+                                   Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr)});
+        return true;
+      }
+    }
+    // The second alternative: "0" or "0x0".
+    const char* prefix = end - s == 3 && s[0] == '0' && s[1] == 'x' ? s : nullptr;
+    if ((end - s == 1 && s[0] == '0') || (prefix && s[2] == '0'))
+    {
+      fillMatch(result, s, end, {Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr),
+                                 Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(s, end),
+                                 Pair<const char*, const char*>(prefix, prefix ? prefix + 2 : nullptr)});
+      return true;
+    }
+    return false;
+  }
+
+  // `(t|T)(rue)?` and `((f|F)(alse)?)?`
+  bool matchBoolean(const char* s, const char* end, match_results<const char*>& result, bool truthy)
+  {
+    int length = int(end - s);
+    if (!truthy && length == 0)
+    {
+      fillMatch(result, s, end, {Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr),
+                                 Pair<const char*, const char*>(nullptr, nullptr)});
+      return true;
+    }
+    char lower = truthy ? 't' : 'f', upper = truthy ? 'T' : 'F';
+    const char* rest = truthy ? "rue" : "alse";
+    int restLength = truthy ? 3 : 4;
+    if (length < 1 || (s[0] != lower && s[0] != upper))
+      return false;
+    bool longForm = length == 1 + restLength && strncmp(s + 1, rest, restLength) == 0;
+    if (length != 1 && !longForm)
+      return false;
+    Pair<const char*, const char*> first(s, s + 1);
+    Pair<const char*, const char*> tail = longForm ? Pair<const char*, const char*>(s + 1, end) : Pair<const char*, const char*>(nullptr, nullptr);
+    if (truthy)
+      fillMatch(result, s, end, {first, tail});
+    else
+      fillMatch(result, s, end, {Pair<const char*, const char*>(s, end), first, tail});
+    return true;
+  }
+
+  // `--([[:alnum:]][-_[:alnum:]]+)(=(.*))?|-([[:alnum:]]+)`
+  bool matchOption(const char* s, const char* end, match_results<const char*>& result)
+  {
+    if (end - s >= 4 && s[0] == '-' && s[1] == '-' && isAlnum(s[2]) && isOptionChar(s[3]))
+    {
+      const char* name = s + 2;
+      const char* q = s + 4;
+      while (q < end && isOptionChar(*q))
+        ++q;
+      if (q == end || *q == '=')
+      {
+        Pair<const char*, const char*> assignment = q < end ? Pair<const char*, const char*>(q, end) : Pair<const char*, const char*>(nullptr, nullptr);
+        Pair<const char*, const char*> value = q < end ? Pair<const char*, const char*>(q + 1, end) : Pair<const char*, const char*>(nullptr, nullptr);
+        fillMatch(result, s, end, {Pair<const char*, const char*>(name, q), assignment, value, Pair<const char*, const char*>(nullptr, nullptr)});
+        return true;
+      }
+    }
+    if (end - s >= 2 && s[0] == '-')
+    {
+      const char* q = s + 1;
+      while (q < end && isAlnum(*q))
+        ++q;
+      if (q == end)
+      {
+        fillMatch(result, s, end, {Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(nullptr, nullptr),
+                                   Pair<const char*, const char*>(nullptr, nullptr), Pair<const char*, const char*>(s + 1, end)});
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // `(([[:alnum:]]),)?[ ]*([[:alnum:]][-_[:alnum:]]*)?`
+  bool matchSpecifier(const char* s, const char* end, match_results<const char*>& result)
+  {
+    // The optional "x," first (greedy), then without it when the rest does not match.
+    for (int withShort = 1; withShort >= 0; --withShort)
+    {
+      const char* q = s;
+      Pair<const char*, const char*> shortGroup(nullptr, nullptr), shortName(nullptr, nullptr);
+      if (withShort)
+      {
+        if (end - q < 2 || !isAlnum(q[0]) || q[1] != ',')
+          continue;
+        shortGroup = Pair<const char*, const char*>(q, q + 2);
+        shortName = Pair<const char*, const char*>(q, q + 1);
+        q += 2;
+      }
+      while (q < end && *q == ' ')
+        ++q;
+      Pair<const char*, const char*> longName(nullptr, nullptr);
+      if (q < end && isAlnum(*q))
+      {
+        const char* name = q++;
+        while (q < end && isOptionChar(*q))
+          ++q;
+        longName = Pair<const char*, const char*>(name, q);
+      }
+      if (q == end)
+      {
+        fillMatch(result, s, end, {shortGroup, shortName, longName});
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool regex_match(const char* text, match_results<const char*>& result, const basic_regex<char>& pattern)
+  {
+    result.groups.clear();
+    const char* end = text + strlen(text);
+    if (strcmp(pattern.pattern, "(-)?(0x)?([0-9a-zA-Z]+)|((0x)?0)") == 0)
+      return matchInteger(text, end, result);
+    if (strcmp(pattern.pattern, "(t|T)(rue)?") == 0)
+      return matchBoolean(text, end, result, true);
+    if (strcmp(pattern.pattern, "((f|F)(alse)?)?") == 0)
+      return matchBoolean(text, end, result, false);
+    if (strcmp(pattern.pattern, "--([[:alnum:]][-_[:alnum:]]+)(=(.*))?|-([[:alnum:]]+)") == 0)
+      return matchOption(text, end, result);
+    if (strcmp(pattern.pattern, "(([[:alnum:]]),)?[ ]*([[:alnum:]][-_[:alnum:]]*)?") == 0)
+      return matchSpecifier(text, end, result);
+    throw LogicError(String("cxxopts: a pattern the hand-written matchers do not know: ") + pattern.pattern);
+  }
+  bool regex_match(const String& text, match_results<const char*>& result, const basic_regex<char>& pattern)
+  {
+    return regex_match(text.c_str(), result, pattern);
+  }
+}
