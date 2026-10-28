@@ -3126,13 +3126,15 @@ struct GlobalScope::Impl
             args.push_back(templateArgument(p->defaultArg, p, dctx, depth));
           }
         }
-        if (args.empty() && !params.empty() && ctx.subst)
+        // `Signal<>` of `template<typename... Args>`: written, its pack empty (no arguments at all).
+        bool emptyPack = lastPart.hasTemplateArgs && params.size() == 1 && static_cast<TemplateParamDecl*>(params[0])->isPack;
+        if (args.empty() && !params.empty() && !emptyPack && ctx.subst)
         {
           // Injected class name inside its own template, or a dependent mention: keep parameters.
           for (Decl* p : params)
             args.push_back(ctx.subst->find(p) ? ctx.subst->find(p) : types.param(p));
         }
-        else if (args.empty() && !params.empty())
+        else if (args.empty() && !params.empty() && !emptyPack)
           for (Decl* p : params)
             args.push_back(types.param(p));
         if (!params.empty())

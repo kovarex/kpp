@@ -1,6 +1,5 @@
 // spec: a class template whose only parameter is a pack, instantiated with no arguments (`Signal<>`)
 // factorio: Signal<> members (ConfigItemBase::onChanged, GlobalModSettings::onChanged, CraftingQueue::ChangedSignal), 11 layouts
-// pending: `Sig<>` has an unknown type ("the member ... has an unknown type"); `Sig<int>` works
 template<typename... Args>
 struct Sig
 {
