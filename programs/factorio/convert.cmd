@@ -19,8 +19,11 @@ set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\li
 type kpp\CONVERSION.md | findstr /B "Files -"
 rem Remove stale top-level directories left by older conversions (the converter now writes src\
 rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).
-rem Keep CommonUtil, Agui, Util (from the libraries) and src itself.
+rem Keep CommonUtil, Agui, Util (from the libraries and the smoke tests) and src itself.
 if exist kpp\src for /d %%d in (kpp\src\*) do if exist "kpp\%%~nxd" if /i not "%%~nxd"=="src" if /i not "%%~nxd"=="CommonUtil" if /i not "%%~nxd"=="Agui" if /i not "%%~nxd"=="Util" rd /s /q "kpp\%%~nxd"
+rem Mirror kpp\src\Util\ to kpp\Util\ so the smoke tests find their files (the converter writes
+rem src files under kpp\src\ but the smoke tests reference kpp\Util\).
+if not exist kpp\Util if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
 rem Copy stubs for types that are outside the converted subset but needed for codegen.
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
 echo == kppc on the converted sources

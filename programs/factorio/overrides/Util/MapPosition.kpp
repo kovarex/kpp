@@ -1,2 +1,2 @@
 // MAKE_OPTIONAL(MapPosition, ...) expands to this alias in C++.
-using OptionalMapPosition = Optional<MapPosition>;
+using OptionalMapPosition = GameOptional<MapPosition>;
