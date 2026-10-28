@@ -1,6 +1,5 @@
 // spec: alignas on a class template and alignof of an instantiation (raw storage for a T: what Optional, Variant and small-buffer containers need)
 // factorio: the library's Optional (docs/stdlib-conformance.md), and the game's own aligned buffers
-// pending: alignas(Align) with a template argument is ignored, and alignof gives the size (prints 3 8, not 16 4)
 template<size_t Size, size_t Align>
 struct alignas(Align) AlignedBytes { unsigned char bytes[Size]; };
 struct Pair4 { int a; char b; };

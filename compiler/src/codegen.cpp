@@ -397,17 +397,23 @@ namespace
       }
     }
 
-    // The alignment a class declares with alignas(N), or 1.
+    // The alignment a class declares with alignas(N), or 1; N under the instantiation's arguments
+    // (`template<size_t Align> struct alignas(Align) AlignedBytes`).
     uint64_t declaredAlignment(const Ty* t, Node* at)
     {
       ClassDecl* c = classDef(t->decl, at);
       if (!c->alignment)
         return 1;
+      TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+      ArgsScope scope(*this, &args);
+      ConstContextScope context(*this, c);
       ParsedFile* saved = currentFile;
       currentFile = c->file ? c->file : currentFile;
       std::optional<int64_t> v = evalConst(c->alignment);
       currentFile = saved;
-      return v && *v > 0 ? uint64_t(*v) : 1;
+      if (!v || *v <= 0 || (*v & (*v - 1)))
+        unsupported(at, "the alignment of " + types.toString(t, &symbols) + ", which is not a constant power of two");
+      return uint64_t(*v);
     }
 
     ClassDecl* classDef(Decl* decl, Node* at)
@@ -3894,6 +3900,15 @@ namespace
                 return constEnv[i].second;
             return std::nullopt;
           }
+          if (!d && n->name.parts.size() == 1 && constContext && currentArgs)
+          {
+            // A template parameter of the declaration being folded, in a place the resolver does
+            // not walk (`template<size_t Align> struct alignas(Align) AlignedBytes`).
+            for (Decl* p = constContext; p && !d; p = p->parent)
+              for (Decl* tp : p->templateParams)
+                if (static_cast<TemplateParamDecl*>(tp)->name == n->name.parts[0].symbol)
+                  d = tp;
+          }
           if (!d)
           {
             // A builtin type trait, evaluated under the current instantiation.
@@ -3975,7 +3990,7 @@ namespace
             t = s->operand ? s->operand->ty : nullptr;
           if (!t || !t->isKnown() || types.isDependent(t))
             return std::nullopt;
-          return int64_t(sizeOf(types.stripRef(t), e));
+          return int64_t(s->sizeofKind == Kw::alignof_ ? alignOf(types.stripRef(t), e) : sizeOf(types.stripRef(t), e));
         }
         case NodeKind::CastExpr: return evalConst(static_cast<CastExpr*>(e)->operand, depth + 1);
         case NodeKind::NamedCastExpr: return evalConst(static_cast<NamedCastExpr*>(e)->operand, depth + 1);
