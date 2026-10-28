@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**260 pass, 15 pending, 1 failing, 0 fixed** (276 snippets, 9.4 s).
+**261 pass, 15 pending, 0 failing, 0 fixed** (276 snippets, 9.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -14,7 +14,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 |---|---|---|---|---|
 | `language/forwarding_reference_to_lambda.kpp` | a local `auto&&` bound to a lambda (a temporary whose lifetime the reference extends), then called | pending | the std::visit rewrite and generic code that holds a callable as `auto&& f = ...` | the IR treats the reference as the closure itself (clang: '%o4' defined with type 'ptr' but expected the closure type); C:\kpp-templates\compiler\build\spec\language.forwarding_reference_to_lambda.exe.55.ll:348:20: error: '%o2' defined with type 'ptr' but expected '%closure.3 = type { ptr }' |
 | `language/range_for_free_begin_end.kpp` | a range-for over a class that has no begin()/end() members uses the free begin(x) and end(x) found for its type | pending | CommonUtil's reverse(container) wrappers (`auto begin(ReversionWrapperByReference<T> w) { return std::rbegin(w.iterable); }`) behind every reversed range-for | codegen reports "a range without begin()/end()"; C:\kpp-templates\compiler\tests\spec\language\range_for_free_begin_end.kpp:16: codegen does not support a range without begin()/end() yet (in @kpp.main) |
-| `language/using_enum_in_namespace.kpp` | `using enum Enum;` in a namespace makes the enumerators names of that namespace, qualified (`TileRenderLayer::GROUND_NATURAL`) and unqualified inside it | FAIL | TileRenderLayer (`namespace TileRenderLayer { enum class Enum : LayerType {...}; using enum Enum; }`), Character.kpp, TileDrawQueue.kpp | C:\kpp-templates\compiler\tests\spec\language\using_enum_in_namespace.kpp:12: codegen does not support an unresolved name (GROUND) yet (in @"Layer::distance(Enum)") |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
 | `language/alignas_template_member.kpp` | alignas on a class template and alignof of an instantiation (raw storage for a T: what Optional, Variant and small-buffer containers need) | pass | the library's Optional (docs/stdlib-conformance.md), and the game's own aligned buffers |  |
@@ -70,6 +69,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/thread_local.kpp` | thread_local variables | pass | 15 uses in 13 files |  |
 | `language/throwing_call_result_temporary.kpp` | a call that throws built no result: the temporary its class result was to live in is not destroyed by the cleanup | pass |  |  |
 | `language/unions.kpp` | unions | pass | 47 uses in 39 files |  |
+| `language/using_enum_in_namespace.kpp` | `using enum Enum;` in a namespace makes the enumerators names of that namespace, qualified (`TileRenderLayer::GROUND_NATURAL`) and unqualified inside it | pass | TileRenderLayer (`namespace TileRenderLayer { enum class Enum : LayerType {...}; using enum Enum; }`), Character.kpp, TileDrawQueue.kpp |  |
 | `language/variadic_c_functions.kpp` | calling C variadic functions and C-style ... declarations | pass |  |  |
 | `language/wide_strings.kpp` | wide string literals and WString | pass | 44 uses in 10 files (literals), 58 (std::wstring) |  |
 
@@ -227,7 +227,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-templates\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support the layout of Future<F>: the member state (`SharedPtr<SharedState<T>> state`) has an unknown type yet (in @kpp.main) |
+| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-templates\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support a conversion from Future<int32> to SharedPtr<SharedState<int32>> yet (in @kpp.main) |
 | `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
