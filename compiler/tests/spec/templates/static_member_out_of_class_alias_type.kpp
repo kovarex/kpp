@@ -1,0 +1,23 @@
+// spec: an out-of-class definition of a static data member of a class template, its type a member alias of the class and its initializer naming the parameter
+// factorio: HeuristicEntitySearch<SurfaceT>::endIterator, the end() of every heuristic entity search
+// pending: the initializer is generated without the instantiation's arguments (codegen: the layout of Iter<T>: the member at has an unknown type)
+template<typename T>
+struct Iter
+{
+  T* at = nullptr;
+};
+template<typename T>
+struct Search
+{
+  using Iterator = Iter<T>;
+  static const Iterator endIterator;
+  const Iterator& end() { return Search::endIterator; }
+};
+template<typename T>
+const typename Search<T>::Iterator Search<T>::endIterator = Iter<T>();
+int main()
+{
+  Search<int> s;
+  println("{}", s.end().at == nullptr);
+  return 0;
+}
