@@ -6924,13 +6924,6 @@ namespace
           assignObject(l.text, src, l.ty, b, r.isTemporary || isXvalue(b->rhs));
           return l;
         }
-        if (op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq)
-        {
-          Value r = rvalue(b->rhs);
-          std::string cmp = newTemp();
-          fn += "  " + cmp + " = icmp " + (op == P::EqEq ? "eq" : op == P::NotEq ? "ne" : op == P::Less ? "ult" : op == P::Greater ? "ugt" : op == P::LessEq ? "ule" : "uge") + " ptr " + l.text + ", " + r.text + "\n";
-          return Value{cmp, types.boolType()};
-        }
         unsupported(b, global.qualifiedName(l.ty->decl) + " has no " + name);
       }
       if (isAssignment(op))
@@ -6989,13 +6982,6 @@ namespace
           return callRvalue(result, b);
         if (std::optional<Value> rewritten = rewrittenComparison(b, op, l.ty, nullptr))
           return *rewritten;
-        if (op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq)
-        {
-          Value r = rvalue(b->rhs);
-          std::string cmp = newTemp();
-          fn += "  " + cmp + " = icmp " + (op == P::EqEq ? "eq" : op == P::NotEq ? "ne" : op == P::Less ? "ult" : op == P::Greater ? "ugt" : op == P::LessEq ? "ule" : "uge") + " ptr " + l.text + ", " + r.text + "\n";
-          return Value{cmp, types.boolType()};
-        }
         unsupported(b, global.qualifiedName(l.ty->decl) + " has no " + name);
       }
       Value r = rvalue(b->rhs);
