@@ -6,15 +6,15 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**230 pass, 4 pending, 0 failing, 0 fixed** (234 snippets, 7.0 s).
+**232 pass, 3 pending, 0 failing, 0 fixed** (235 snippets, 10.9 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `language/alignas_template_member.kpp` | alignas on a class template and alignof of an instantiation (raw storage for a T: what Optional, Variant and small-buffer containers need) | pending | the library's Optional (docs/stdlib-conformance.md), and the game's own aligned buffers | alignas(Align) with a template argument is ignored, and alignof gives the size (prints 3 8, not 16 4); line 1: got `3 8`, expected `16 4` |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
+| `language/alignas_template_member.kpp` | alignas on a class template and alignof of an instantiation (raw storage for a T: what Optional, Variant and small-buffer containers need) | pass | the library's Optional (docs/stdlib-conformance.md), and the game's own aligned buffers |  |
 | `language/array_brace_zero.kpp` | an array zero-filled by `= {0}` and `= {}`, with fewer initializers than elements | pass |  |  |
 | `language/arrays_2d.kpp` | two-dimensional arrays: nested brace initialisation and indexing | pass |  |  |
 | `language/assign_through_returned_reference.kpp` | assigning through a reference returned from a function | pass |  |  |
@@ -264,6 +264,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `interop/c_callbacks.kpp` | Kpp functions as C callbacks (function pointers with C signatures) and C function pointers stored in Kpp | pass |  |  |
+| `interop/c_import_anonymous_enum.kpp` | a C header's anonymous enum behind a typedef, `typedef enum { ... } CURLcode;`, as a type in Kpp, also inside a struct's anonymous union (curl's CURLMsg.data.result) | pass |  |  |
 | `interop/c_import_stdlib.kpp` | importing C standard headers and using their functions, types and callbacks (qsort) | pass |  |  |
 | `interop/c_import_windows.kpp` | importing a C header (`extern "C" import "windows.h";`) and calling into it | pass |  |  |
 | `interop/c_structs_layout.kpp` | C-compatible layout: plain structs passed to and filled by C, sizeof agreement, arrays of structs | pass |  |  |
