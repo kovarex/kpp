@@ -1,0 +1,34 @@
+// spec: overloaded member templates, one called with an explicit argument and an empty pack
+// factorio: MapDeserialiser::load<T>() next to load(T&, Args...) (524 complaints in the full src)
+
+extern "C" import "stdio.h";
+
+struct Reader
+{
+  int next = 40;
+
+  template<class T, typename... Args>
+  T load(Args&&... args)
+  {
+    T result;
+    this->load(result, forward<Args>(args)...);
+    return result;
+  }
+
+  template<class T, typename... Args>
+  void load(T& result, Args&&... args)
+  {
+    result = T(this->next++);
+  }
+};
+
+int main()
+{
+  Reader r;
+  int a = 0;
+  r.load(a);
+  bool b = r.load<bool>();
+  int c = r.load<int>();
+  printf("%d %d %d\n", a, b ? 1 : 0, c);
+  return 0;
+}

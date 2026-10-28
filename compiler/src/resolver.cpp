@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -3259,10 +3260,17 @@ struct GlobalScope::Impl
   }
 
   // Picks the best candidate by C++'s rule (better in one argument, not worse in any); on a tie
-  // the non-template, then the first one. Null when no candidate is viable.
+  // the non-template, then the first one. Null when no candidate is viable. bindExplicit, when
+  // given, binds the call's explicit template arguments for a candidate (false: the list does not
+  // fit it); a template candidate then has to have every parameter bound or deduced
+  // (`T load(Args&&...)` is no candidate for `load(x)`, whose T nothing gives).
   FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
-                            const Subst* classSubst, const Ty* objectTy, bool& ambiguous)
+                            const Subst* classSubst, const Ty* objectTy, bool& ambiguous,
+                            const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr)
   {
+    bool argsConcrete = true;
+    for (const Ty* at : argTypes)
+      argsConcrete = argsConcrete && at && at->isKnown() && !types.isDependent(at);
     std::vector<Candidate> viable;
     bool objectConst = objectTy && types.stripRef(objectTy)->isConst;
     bool single = candidates.size() == 1; // One candidate: arity decides, no ranking needed.
@@ -3290,11 +3298,21 @@ struct GlobalScope::Impl
       }
       const Ty* ft = declaredTypeOf(f, classSubst, 0);
       Subst deduced = classSubst ? *classSubst : Subst{};
+      if (bindExplicit && !(*bindExplicit)(f, deduced))
+        continue;
       if (!f->templateParams.empty() && ft && ft->kind == TyKind::Function)
       {
         deduceCall(f, ft, argTypes, deduced);
         if (!fillDefaultTemplateArgs(f, deduced))
           continue; // a default template argument that is no type: not a candidate
+        if (bindExplicit && argsConcrete)
+        {
+          bool complete = true;
+          for (Decl* p : f->templateParams)
+            complete = complete && (deduced.find(p) || static_cast<TemplateParamDecl*>(p)->isPack);
+          if (!complete)
+            continue;
+        }
       }
       bool ok = true;
       for (size_t i = 0; i < argTypes.size() && ok; ++i)
@@ -4106,7 +4124,8 @@ struct GlobalScope::Impl
 
     // Picks a function among overloads by argument count and conversion ranking.
     FunctionDecl* pickOverload(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes,
-                               const Subst* classSubst, const Ty* objectTy, bool& ambiguous)
+                               const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const NamePart* namePart = nullptr,
+                               Span<Expr*> callArgs = {})
     {
       std::vector<FunctionDecl*> candidates;
       if (overloads)
@@ -4117,7 +4136,20 @@ struct GlobalScope::Impl
       }
       else if (primary && primary->kind == NodeKind::FunctionDecl)
         candidates.push_back(static_cast<FunctionDecl*>(primary));
-      return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous);
+      if (!namePart)
+        return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous);
+      // The explicit template arguments (`load<bool>()`): a candidate with fewer parameters than
+      // the list names, and no pack to take the rest, is not one.
+      std::function<bool(FunctionDecl*, Subst&)> bind = [&](FunctionDecl* f, Subst& s)
+      {
+        size_t n = f->templateParams.size(), given = namePart->hasTemplateArgs ? namePart->templateArgs.size() : 0;
+        if (given > n && !(n && static_cast<TemplateParamDecl*>(f->templateParams[n - 1])->isPack))
+          return false;
+        if (given)
+          bindExplicitArgs(f, *namePart, callArgs, s);
+        return true;
+      };
+      return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind);
     }
 
     // Argument types of a call; a pack expansion `args...` contributes one type per element.
@@ -4371,7 +4403,7 @@ struct GlobalScope::Impl
         Decl* d = l.decl;
         if (d && d->kind == NodeKind::FunctionDecl)
         {
-          FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), nullptr, nullptr, ambiguous);
+          FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), nullptr, nullptr, ambiguous, &n->name.last(), c->args);
           if (!f)
           {
             record(n, types.unknown());
@@ -4458,7 +4490,7 @@ struct GlobalScope::Impl
         }
         if (r.decl->kind == NodeKind::FunctionDecl)
         {
-          FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(c->args), &r.subst, object, ambiguous);
+          FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(c->args), &r.subst, object, ambiguous, &last, c->args);
           if (!f)
           {
             ++stats.membersBound;
