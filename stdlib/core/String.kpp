@@ -482,6 +482,14 @@ struct String
     result.append(other);
     return result;
   }
+  String operator+(const char* text) const
+  {
+    String result;
+    result.reserve(this->size() + (int)strlen(text));
+    result.append(*this);
+    result.append(text);
+    return result;
+  }
   String operator+(char c) const
   {
     String result;

@@ -4157,6 +4157,25 @@ namespace
         unsupported(at, "a conversion to an unknown type");
       if (from == to || types.unqualified(from) == types.unqualified(to))
         return {v.text, to, v.isTemporary};
+      // Unknown source type: treat as opaque pointer for conversions.
+      if (!from->isKnown())
+      {
+        if (to->kind == TyKind::Bool)
+        {
+          std::string r = newTemp();
+          fn += "  " + r + " = icmp ne ptr " + v.text + ", null\n";
+          return {r, to};
+        }
+        if (to->kind == TyKind::Pointer || to->kind == TyKind::Nullptr)
+          return {v.text, to};
+        if (to->kind == TyKind::Int || to->kind == TyKind::Char)
+        {
+          std::string r = newTemp();
+          fn += "  " + r + " = ptrtoint ptr " + v.text + " to " + llType(to, at) + "\n";
+          return {r, to};
+        }
+        unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));
+      }
       auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? TyKind::Int : t->kind; };
       TyKind fk = kindOf(from), tk = kindOf(to);
       auto bitsOf = [&](const Ty* t) -> uint8_t { return t->kind == TyKind::Enum ? uint8_t(enumUnderlying(t->decl)->bits) : t->bits; };
@@ -4177,6 +4196,13 @@ namespace
             TemplateArgs args = global.classArgsOf(canonicalClass(from, at));
             return convert(callRvalue(callFunction(op, args, canonicalClass(from, at), v.text, "", {}, at), at), to, at);
           }
+        if (fk == TyKind::Class && tk == TyKind::Bool)
+        {
+          // Anonymous/incomplete class to bool: treat as pointer-like (non-null check).
+          std::string r = newTemp();
+          fn += "  " + r + " = icmp ne ptr " + v.text + ", null\n";
+          return {r, to};
+        }
         unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));
       }
       std::string r = newTemp();
