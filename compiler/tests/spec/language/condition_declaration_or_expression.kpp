@@ -1,0 +1,35 @@
+// spec: an if/while condition that reads like a declaration but is an expression (`p && f(p)`, `a & mask(a)`), next to real condition declarations (`T x = e`, `T x{e}`) and init-statements with a parenthesized initializer
+// factorio: `if (entity && entity->isValid())`-style conditions, everywhere
+struct Box
+{
+  int v = 0;
+  implicit Box(int v) : v(v) {}
+  explicit operator bool() const { return this->v != 0; }
+};
+
+bool positive(int* p) { return *p > 0; }
+int mask(int x) { return x & 6; }
+int* same(int* p) { return p; }
+
+int main()
+{
+  int value = 5;
+  int* p = &value;
+  int hits = 0;
+  if (p && positive(p))
+    hits += 1;
+  int a = 3;
+  if (a & mask(a))
+    hits += 10;
+  int count = 0;
+  while (p && positive(p) && count < 3)
+    ++count;
+  if (int* q = same(p))
+    hits += 100 * *q;
+  if (Box b{4})
+    hits += 10000 * b.v;
+  if (Box c(1); c.v == 1)
+    hits += 100000;
+  println("{} {}", hits, count);
+  return 0;
+}

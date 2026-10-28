@@ -3235,13 +3235,25 @@ namespace
           d->decls = makeSpan<Decl*>(mark);
           // parseDeclarationInner consumed a ';' only if it was an init-statement.
           bool initStatement = toks[pos - 1].is(P::Semi) && allowInit;
-          // A declaration in a condition has an initializer: `flags & MASK` and `a && b` with
-          // variables on both sides are expressions that read like reference declarations.
+          // A declaration in a condition is a variable with `= e` or `{e}`: `flags & MASK` and
+          // `a && b` with variables on both sides are expressions that read like reference
+          // declarations, and so are `p && f(p)` and `a & mask(a)` (a function declarator or a
+          // parenthesized initializer, which a condition cannot have).
           bool uninitialised = false;
           if (!initStatement)
             for (Decl* x : d->decls)
-              if (x->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(x)->init && !(x->flags & DF_Typedef))
+            {
+              if (x->kind == NodeKind::FunctionDecl)
                 uninitialised = true;
+              if (x->kind != NodeKind::VariableDecl || (x->flags & DF_Typedef))
+                continue;
+              auto* v = static_cast<VariableDecl*>(x);
+              if (!v->init)
+                uninitialised = true;
+              else if (v->init->kind == NodeKind::FunctionalCastExpr && !static_cast<FunctionalCastExpr*>(v->init)->braced &&
+                       static_cast<FunctionalCastExpr*>(v->init)->type == v->type)
+                uninitialised = true; // `T x(args)`: direct initialization
+            }
           if (!uninitialised)
           {
             if (initStatement)
