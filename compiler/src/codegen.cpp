@@ -3161,7 +3161,7 @@ namespace
     Value callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg,
                        const std::string& sret, Span<Expr*> callArgs, Node* at, const std::string& indirect = "")
     {
-      if (f->flags & DF_Delete)
+      if ((f->flags & DF_Delete) && global.definitionOf(f, args) == f) // a deleted template's explicit specialisation is no deleted function
         unsupported(at, "a call to the deleted function " + qualifiedName(f));
       if (global.isExternC(f))
         if (std::optional<Value> v = atomicBuiltin(f, callArgs, at))

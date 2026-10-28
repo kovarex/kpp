@@ -1,0 +1,42 @@
+// spec: explicit specialisations of a function template are the bodies its calls run, not overloads: `parse<ForceID>(L, i)` beside a deleted primary, also for a return type no parameter names and for a specialisation of a member template
+// found in the game's LuaHelper (`template<typename T> T parse(lua_State*, int32_t, const char*) = delete;` and its specialisations: 476 calls), 592 full specialisations in 61 files
+struct ForceID { int value = 0; };
+struct FluidID { int value = 0; };
+
+namespace Helper
+{
+  template<typename T> T parse(int index, const char* debugName = nullptr) = delete;
+
+  template<> ForceID parse<ForceID>(int index, const char*)
+  {
+    ForceID id;
+    id.value = index * 10;
+    return id;
+  }
+
+  template<> FluidID parse<FluidID>(int index, const char* debugName)
+  {
+    FluidID id;
+    id.value = index + 100;
+    return id;
+  }
+
+  template<typename T> const char* kind(T) { return "generic"; }
+  template<> const char* kind(bool) { return "bool"; }
+  template<> const char* kind<char>(char) { return "char"; }
+}
+
+struct Box
+{
+  template<class T> int put(T value) { return 1; }
+};
+template<> int Box::put<double>(double value) { return 2; }
+
+int main()
+{
+  println("{} {}", Helper::parse<ForceID>(4).value, Helper::parse<FluidID>(5, "fluid").value);
+  println("{} {} {}", Helper::kind(1), Helper::kind(true), Helper::kind('c'));
+  Box box;
+  println("{} {}", box.put(1), box.put(2.5));
+  return 0;
+}

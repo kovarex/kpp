@@ -3796,6 +3796,60 @@ struct GlobalScope::Impl
     return t && t->kind == TyKind::Class && !types.isDependent(t) ? t : nullptr;
   }
 
+  // `template<> ForceID parse<ForceID>(lua_State*, int32_t, const char*)`: an explicit
+  // specialisation of a function template. It is no candidate of overload resolution (C++
+  // chooses among the templates), only the body a call of its template runs with its arguments.
+  static bool isFunctionSpecialization(const FunctionDecl* f)
+  {
+    return (f->flags & DF_Specialization) && f->isTemplate && f->templateParams.empty() && !isMemberSpecialization(f);
+  }
+
+  // The explicit specialisation of function template f written for these arguments of f's
+  // parameters (`parse<ForceID>`, or deduced from its parameter types as in `template<> const
+  // char* kind(bool)`) whose signature is f's with them; null when there is none.
+  FunctionDecl* functionSpecializationFor(FunctionDecl* f, const Subst& args)
+  {
+    if (f->templateParams.empty() || f->name.empty())
+      return nullptr;
+    uint32_t symbol = functionSymbol(f->name);
+    std::vector<FunctionDecl*> candidates;
+    auto consider = [&](Decl* d)
+    {
+      if (d && d != f && d->kind == NodeKind::FunctionDecl && isFunctionSpecialization(static_cast<FunctionDecl*>(d)) &&
+          static_cast<FunctionDecl*>(d)->body && functionSymbol(static_cast<FunctionDecl*>(d)->name) == symbol)
+        candidates.push_back(static_cast<FunctionDecl*>(d));
+    };
+    if (Scope* s = lexicalScopeOf(f))
+      if (const std::vector<Entry>* entries = s->find(symbol))
+        for (const Entry& e : *entries)
+          consider(e.decl);
+    if (f->parent && f->parent->kind == NodeKind::ClassDecl && f->parent->ownScope)
+      for (FunctionDecl* m : f->parent->ownScope->outOfLineMembers) // `template<> void Box::put<int>(int)`
+        consider(m);
+    const Ty* primary = declaredTypeOf(f, nullptr, 0);
+    if (!primary || primary->kind != TyKind::Function)
+      return nullptr;
+    for (FunctionDecl* spec : candidates)
+    {
+      TokenScope tokenScope(spec->file ? spec->file->tokens : nullptr, spec->file ? spec->file->text : std::string_view());
+      const Ty* st = declaredTypeOf(spec, nullptr, 0);
+      if (!st || st->kind != TyKind::Function)
+        continue;
+      Subst written;
+      TypeContext ctx{lexicalScopeOf(spec), nullptr, nullptr, spec->file ? spec->file->tokens : nullptr, spec->file ? spec->file->text : std::string_view()};
+      const NamePart& last = spec->name.last();
+      for (size_t i = 0; i < last.templateArgs.size() && i < f->templateParams.size(); ++i)
+        written.pairs.push_back({f->templateParams[i], templateArgument(last.templateArgs[i], f->templateParams[i], ctx, 0)});
+      deduceCall(f, primary, std::vector<const Ty*>(st->args.begin(), st->args.end()), written);
+      bool same = true;
+      for (Decl* p : f->templateParams)
+        same = same && written.find(p) && written.find(p) == args.find(p);
+      if (same && substitute(primary, written) == st)
+        return spec;
+    }
+    return nullptr;
+  }
+
   const Ty* typeAs(FunctionDecl* candidate, FunctionDecl* f)
   {
     const Ty* t = declaredTypeOf(candidate, nullptr, 0);
@@ -4425,6 +4479,8 @@ struct GlobalScope::Impl
     bool single = candidates.size() == 1; // One candidate: arity decides, no ranking needed.
     for (FunctionDecl* f : candidates)
     {
+      if (isFunctionSpecialization(f))
+        continue; // `template<> ForceID parse<ForceID>(...)`: its template is the candidate
       size_t required = 0, total = f->params.size();
       bool variadic = (f->flags & DF_Variadic) != 0;
       for (Decl* p : f->params)
@@ -7526,6 +7582,16 @@ Decl* GlobalScope::strongOrderingDecl() { return impl->strongOrderingDecl(); }
 
 Decl* GlobalScope::definitionOf(Decl* d, const TemplateArgs& classArgs)
 {
+  // A function template with its arguments: the explicit specialisation written for them
+  // (`template<> ForceID parse<ForceID>(...)`), when there is one.
+  if (d && d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->templateParams.empty() && !classArgs.empty())
+  {
+    Subst s;
+    for (auto& [p, t] : classArgs.pairs)
+      s.pairs.push_back({p, t});
+    if (FunctionDecl* spec = impl->functionSpecializationFor(static_cast<FunctionDecl*>(d), s))
+      return spec;
+  }
   // A member of a class template instantiation: the explicit specialisation written for that
   // instantiation (`template<> const char* Button<RecipeID>::tooltip()`), when there is one.
   Decl* cls = d && d->kind == NodeKind::FunctionDecl && !classArgs.empty() ? owningClass(d) : nullptr;
@@ -7698,9 +7764,10 @@ bool GlobalScope::isTemplateContext(Decl* d)
   for (Decl* p = d; p; p = p->parent)
     if (!p->templateParams.empty())
       return true;
-  // An explicit specialisation of a class template's member: emitted as that instantiation's
-  // member (definitionOf with its arguments), never on its own.
-  return d && d->kind == NodeKind::FunctionDecl && Impl::isMemberSpecialization(static_cast<FunctionDecl*>(d));
+  // An explicit specialisation of a class template's member or of a function template: emitted
+  // as that instantiation (definitionOf with its arguments), never on its own.
+  return d && d->kind == NodeKind::FunctionDecl &&
+         (Impl::isMemberSpecialization(static_cast<FunctionDecl*>(d)) || Impl::isFunctionSpecialization(static_cast<FunctionDecl*>(d)));
 }
 
 namespace

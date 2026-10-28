@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**223 pass, 5 pending, 0 failing, 0 fixed** (228 snippets, 7.1 s).
+**224 pass, 5 pending, 0 failing, 0 fixed** (229 snippets, 102.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -113,8 +113,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue); C:\kpp-convert\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-convert\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue); C:\kpp-templates\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |
@@ -144,6 +144,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/forward_pack_to_function_template.kpp` | forwarding a parameter pack into another function template: `this->inner.emplace(forward<Args>(args)...)` | pass |  |  |
 | `templates/forwarding_conversions.kpp` | forwarding a string literal through a variadic member template into a String constructor (emplace_back("x")) | pass |  |  |
 | `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pass | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) |  |
+| `templates/function_explicit_specialisation.kpp` | explicit specialisations of a function template are the bodies its calls run, not overloads: `parse<ForceID>(L, i)` beside a deleted primary, also for a return type no parameter names and for a specialisation of a member template | pass |  |  |
 | `templates/function_templates.kpp` | function templates: deduction, explicit arguments, overloading with non-templates, full specialisation | pass | 592 full specialisations in 61 files |  |
 | `templates/is_constructible_trait.kpp` | `isConstructible<T, Args...>` is true when T can be built from Args (what std::is_constructible_v converts to), in `if constexpr` and in variable templates | pass |  |  |
 | `templates/local_alias_in_variable_template_argument.kpp` | a local alias of a dependent member type as a variable template's argument, `using T = VectorType::value_type; if constexpr (is_memcpy_loadable<T>)` | pass |  |  |
@@ -189,8 +190,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-convert\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support the layout of Future<F>: the member state (`SharedPtr<SharedState<T>> state`) has an unknown type yet (in @kpp.main) |
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-convert\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-templates\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support a conversion from Future<int32> to SharedPtr<SharedState<int32>> yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
 | `library/containers_deque_queue.kpp` | Deque and Queue (std::deque, std::queue): push at both ends, pop, front/back | pass | 116 deque uses in 68 files |  |
