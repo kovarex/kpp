@@ -142,6 +142,9 @@ class GlobalScope
 public:
   explicit GlobalScope(SymbolTable& symbols);
   ~GlobalScope();
+  // --why-at: print every expression typed on this line of the file whose path ends with
+  // fileSuffix, with its type (to stderr, while resolving).
+  void traceLine(const std::string& fileSuffix, uint32_t line);
 
   // Phase 1, thread-safe: index all top-level declarations of one file.
   void indexFile(ParsedFile& file);

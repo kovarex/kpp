@@ -479,6 +479,8 @@ struct GlobalScope::Impl
   uint32_t symStd, symValue;
   uint32_t opSymbols[size_t(P::Count)]; // "operator+" etc., so operators can be looked up by name.
   uint32_t symBegin, symFirst, symSecond;
+  std::string whyAtFile; // --why-at: trace the expressions typed on this file's line whyAtLine
+  uint32_t whyAtLine = 0;
   struct BuiltinName
   {
     uint32_t symbol;
@@ -4821,7 +4823,33 @@ struct GlobalScope::Impl
         ++stats.exprsDependent;
       else
         ++stats.exprsTyped;
+      if (!impl.whyAtFile.empty() && file)
+        traceAt(e, t);
       return t;
+    }
+
+    // --why-at FILE:LINE: every expression typed on that line, with its type (innermost first).
+    void traceAt(Expr* e, const Ty* t)
+    {
+      const std::string& path = file->path;
+      const std::string& want = impl.whyAtFile;
+      if (path.size() < want.size() || path.compare(path.size() - want.size(), want.size(), want) != 0)
+        return;
+      const Token& tk = tokens[std::min<size_t>(e->token, tokens.size() - 1)];
+      uint32_t line = 1 + uint32_t(std::count(text.begin(), text.begin() + std::min<size_t>(tk.offset, text.size()), '\n'));
+      if (line != impl.whyAtLine)
+        return;
+      std::string what = nodeKindName(e->kind);
+      if (e->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(e)->name.empty())
+        what += " " + std::string(symbols.name(static_cast<NameExpr*>(e)->name.last().symbol));
+      else if (e->kind == NodeKind::MemberExpr && !static_cast<MemberExpr*>(e)->member.empty())
+        what += " ." + std::string(symbols.name(static_cast<MemberExpr*>(e)->member.last().symbol));
+      std::string inst;
+      if (activeSubst)
+        for (const Subst::Pair& p : activeSubst->pairs)
+          inst += (inst.empty() ? " [" : ", ") + types.toString(p.type, &symbols);
+      fprintf(stderr, "why-at %s:%u %s at '%.*s' -> %s%s%s\n", path.c_str(), line, what.c_str(), int(std::min<uint32_t>(tk.length, 40)),
+              text.data() + tk.offset, types.toString(t, &symbols).c_str(), inst.c_str(), inst.empty() ? "" : "]");
     }
 
     TypeContext ctx() const { return TypeContext{scope, &locals, activeSubst, &tokens, text}; }
@@ -7534,6 +7562,12 @@ FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, 
 }
 
 const Ty* GlobalScope::scalarConversionOf(const Ty* classType) { return impl->scalarConversionOf(classType); }
+
+void GlobalScope::traceLine(const std::string& fileSuffix, uint32_t line)
+{
+  impl->whyAtFile = fileSuffix;
+  impl->whyAtLine = line;
+}
 
 FunctionDecl* GlobalScope::enumOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context)
 {

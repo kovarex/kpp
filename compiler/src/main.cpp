@@ -43,6 +43,7 @@ namespace
     int showErrors = 20;
     int showUnresolved = 25;
     int showWhy = 0; // --why N
+    std::string whyAt; // --why-at FILE:LINE
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
@@ -71,6 +72,7 @@ namespace
             "  --errors N    show the first N parse errors (default 20)\n"
             "  --unresolved N show the N most common unresolved names (default 25)\n"
             "  --why N       per cause of unknown expression types, the N most common failing constructs\n"
+            "  --why-at F:L  print every expression typed on line L of the file whose path ends with F\n"
             "  --quiet       no statistics\n"
             "  --emit-llvm F write LLVM IR for the program to F\n"
             "  --exe F       compile the program to the executable F (needs clang)\n"
@@ -681,6 +683,12 @@ namespace
   {
     using Clock = std::chrono::steady_clock;
     GlobalScope global(symbols);
+    if (size_t colon = options.whyAt.rfind(':'); colon != std::string::npos)
+    {
+      std::string file = options.whyAt.substr(0, colon);
+      std::replace(file.begin(), file.end(), '/', '\\');
+      global.traceLine(file, uint32_t(atoi(options.whyAt.c_str() + colon + 1)));
+    }
     auto start = Clock::now();
     parallelFor(parsed.size(), options.threads, [&](size_t i) { global.indexFile(*parsed[i]); });
     double indexTime = seconds(Clock::now() - start);
@@ -835,6 +843,8 @@ int main(int argc, char** argv)
       options.showUnresolved = atoi(argv[++i]);
     else if (arg == "--why" && i + 1 < argc)
       options.showWhy = atoi(argv[++i]);
+    else if (arg == "--why-at" && i + 1 < argc)
+      options.whyAt = argv[++i];
     else if (arg == "--quiet")
       options.quiet = true;
     else if (arg == "--emit-llvm" && i + 1 < argc)
