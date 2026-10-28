@@ -835,7 +835,7 @@ namespace
 
     // The body of a local macro with its parameters replaced by the argument texts; `#x` quotes,
     // `##` pastes.
-    std::string expandMacro(const LocalMacro& m, const std::vector<std::string>& args)
+    std::string expandMacroOnce(const LocalMacro& m, const std::vector<std::string>& args)
     {
       std::string out;
       const std::string& b = m.body;
@@ -888,6 +888,80 @@ namespace
         ++i;
       }
       return out;
+    }
+
+    std::string expandMacro(const LocalMacro& m, const std::vector<std::string>& args)
+    {
+      std::string result = expandMacroOnce(m, args);
+      // Re-scan for nested local macro calls (X-macro pattern: outer expands to inner(args) calls).
+      for (int pass = 0; pass < 4; ++pass)
+      {
+        bool changed = false;
+        std::string next;
+        for (size_t i = 0; i < result.size();)
+        {
+          if (isalpha((unsigned char)result[i]) || result[i] == '_')
+          {
+            size_t j = i;
+            while (j < result.size() && isIdentChar(result[j]))
+              ++j;
+            std::string name = result.substr(i, j - i);
+            auto it = localMacros.find(name);
+            if (it != localMacros.end() && j < result.size() && result[j] == '(')
+            {
+              // Parse arguments from the text.
+              size_t k = j + 1;
+              int depth = 0;
+              std::vector<std::string> innerArgs;
+              size_t argStart = k;
+              bool closed = false;
+              for (; k < result.size(); ++k)
+              {
+                if (result[k] == '(' || result[k] == '[' || result[k] == '{')
+                  ++depth;
+                else if (result[k] == ')' || result[k] == ']' || result[k] == '}')
+                {
+                  if (depth == 0) { closed = result[k] == ')'; break; }
+                  --depth;
+                }
+                else if (result[k] == ',' && depth == 0)
+                {
+                  innerArgs.push_back(result.substr(argStart, k - argStart));
+                  argStart = k + 1;
+                }
+                else if (result[k] == '"')
+                {
+                  ++k;
+                  while (k < result.size() && result[k] != '"') { if (result[k] == '\\') ++k; ++k; }
+                }
+              }
+              if (closed && (k > argStart || !innerArgs.empty()))
+                innerArgs.push_back(result.substr(argStart, k - argStart));
+              // Trim whitespace from args.
+              for (auto& a : innerArgs)
+              {
+                while (!a.empty() && isspace((unsigned char)a.front())) a.erase(a.begin());
+                while (!a.empty() && isspace((unsigned char)a.back())) a.pop_back();
+              }
+              if (closed && innerArgs.size() == it->second.params.size())
+              {
+                next += expandMacroOnce(it->second, innerArgs);
+                changed = true;
+                i = k + 1;
+                continue;
+              }
+            }
+            next.append(result, i, j - i);
+            i = j;
+            continue;
+          }
+          next += result[i++];
+        }
+        if (!changed)
+          break;
+        result = std::move(next);
+      }
+      return result;
     }
 
     void convertTokens()
