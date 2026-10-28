@@ -292,16 +292,14 @@ auto async(F callable) -> Future<decltype(callable())>
   return async(Launch::async, move(callable));
 }
 
-// thisThread: a namespace-like struct for sleep_for, yield, get_id.
-struct ThisThread_
+// The calling thread (what std::this_thread converts to): `thisThread::yield()`.
+namespace thisThread
 {
-  static void sleep_for(Duration d) { Thread::sleepFor(d); }
-  static void sleepFor(Duration d) { Thread::sleepFor(d); }
-  static void yield() { Thread::yield(); }
-  static unsigned long get_id() { return Thread::currentId(); }
-};
-
-ThisThread_ thisThread;
+  void sleepFor(Duration d) { Thread::sleepFor(d); }
+  void sleep_for(Duration d) { Thread::sleepFor(d); }
+  void yield() { Thread::yield(); }
+  unsigned long get_id() { return Thread::currentId(); }
+}
 
 // Free-standing atomic operations (what std::atomic_load/store convert to).
 template<typename T>

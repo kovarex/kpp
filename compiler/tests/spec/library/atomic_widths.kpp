@@ -1,0 +1,41 @@
+// spec: Atomic<T> for every size and kind of T: bool and 16-bit values next to plain fields (a store writes only its own bytes), an enum class, double and float (their bits, not a conversion), a small struct, a pointer, compare-exchange, integer and floating-point arithmetic
+// factorio: 53 std::atomic_bool, 15 std::atomic<bool>, 10 std::atomic<float> and <double> (loading progress), atomics of enums (ProcessResult, HeavyMode), of a time point and of pointers
+enum class Mode : uint8_t { Off, On, Heavy };
+struct Pair32 { int a, b; };
+struct Flags
+{
+  Atomic<bool> a;
+  bool b = true;
+  uint8_t c = 7;
+  Atomic<uint16_t> d;
+  uint16_t e = 9;
+  Atomic<Mode> mode;
+  Atomic<double> progress = 0.5;
+  Atomic<float> fraction = 0.25f;
+  Atomic<Pair32> pair;
+  Atomic<int*> pointer;
+};
+int main()
+{
+  Flags f;
+  f.a.store(true);
+  f.d.store(1);
+  f.d += 2;
+  f.mode = Mode::Heavy;
+  f.progress = 0.75;
+  f.progress.fetchAdd(0.125);
+  f.fraction += 0.5f;
+  f.pair.store(Pair32{3, 4});
+  int x = 5;
+  f.pointer = &x;
+  Mode expected = Mode::On;
+  bool swapped = f.mode.compareExchange(expected, Mode::Off);
+  Atomic<int> counter = 10;
+  counter.fetchSub(3);
+  Atomic<uint64_t> big = 1ull << 40;
+  big++;
+  println("{} {} {} {} {} {} {} {} {} {} {} {} {}", f.a.load(), f.b, f.c, f.d.load(), f.e, (int)f.mode.load(), f.progress.load(), f.fraction.load(),
+          f.pair.load().b, *f.pointer.load(), swapped, (int)expected, counter.load());
+  println("{} {}", big.load(), sizeof(Atomic<bool>));
+  return 0;
+}

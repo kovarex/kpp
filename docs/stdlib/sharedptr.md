@@ -64,3 +64,13 @@ owner yet, the object records that SharedPtr's ownership (as a weak reference). 
   `shared_from_this()` then gives SharedPtr<Base>.
 
 `BadWeakPtr`: an Exception, what shared_from_this() throws.
+
+## Atomic access
+
+`atomicLoad(&p)`, `atomicStore(&p, q)` and `atomicExchange(&p, q)` read, write and exchange the
+SharedPtr p as one indivisible step with respect to each other (and to the other calls of these
+functions on p): `atomicLoad` returns a copy sharing ownership, `atomicExchange` the SharedPtr p
+held before. They are not lock-free (`atomicIsLockFree(&p)` is false): each takes one of sixteen
+locks, picked by p's address. A plain read or write of p is not synchronised with them. An object
+whose last owner is replaced is deleted after the lock is released. For a SharedPtr that is only
+ever used this way, `Atomic<SharedPtr<T>>` (atomic.md) says so in its type.

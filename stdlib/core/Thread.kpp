@@ -1,7 +1,8 @@
 // Kpp standard library: threads and what keeps them apart, on the Windows API (what std::thread,
 // std::mutex, std::lock_guard, std::condition_variable and std::atomic convert to). Mutex is an
 // SRW lock, ConditionVariable a CONDITION_VARIABLE, both one pointer of storage zeroed; Atomic<T>
-// is for the integer types and pointers, through the Interlocked functions.
+// holds a T of 1, 2, 4 or 8 bytes (integers, floating point, enums, pointers, small structs) and
+// works on its bits with the processor's atomic instructions; Atomic<SharedPtr<T>> takes a lock.
 extern "C" void* CreateThread(void* attributes, size_t stackSize, unsigned long (*start)(void*), void* parameter, unsigned long flags, unsigned long* threadId);
 extern "C" unsigned long WaitForSingleObject(void* handle, unsigned long milliseconds);
 extern "C" int CloseHandle(void* handle);
@@ -18,6 +19,16 @@ extern "C" void WakeConditionVariable(void** condition);
 extern "C" void WakeAllConditionVariable(void** condition);
 // The compiler turns these into atomic instructions (sequentially consistent); they are not
 // functions of any library.
+extern "C" uint8_t kpp_atomic_add8(uint8_t* target, uint8_t value);
+extern "C" uint8_t kpp_atomic_exchange8(uint8_t* target, uint8_t value);
+extern "C" uint8_t kpp_atomic_cas8(uint8_t* target, uint8_t exchange, uint8_t comparand);
+extern "C" uint8_t kpp_atomic_load8(const uint8_t* target);
+extern "C" void kpp_atomic_store8(uint8_t* target, uint8_t value);
+extern "C" uint16_t kpp_atomic_add16(uint16_t* target, uint16_t value);
+extern "C" uint16_t kpp_atomic_exchange16(uint16_t* target, uint16_t value);
+extern "C" uint16_t kpp_atomic_cas16(uint16_t* target, uint16_t exchange, uint16_t comparand);
+extern "C" uint16_t kpp_atomic_load16(const uint16_t* target);
+extern "C" void kpp_atomic_store16(uint16_t* target, uint16_t value);
 extern "C" long kpp_atomic_add32(long* target, long value);
 extern "C" long kpp_atomic_exchange32(long* target, long value);
 extern "C" long kpp_atomic_cas32(long* target, long exchange, long comparand);
@@ -213,64 +224,138 @@ struct ConditionVariable
   void notify_all() { this->notifyAll(); }
 };
 
-// An integer or pointer read and written atomically; arithmetic through the Interlocked functions.
+// The unsigned integer of each size the atomic instructions work on.
+template<int size>
+struct AtomicWord {};
+template<> struct AtomicWord<1> { using Type = uint8_t; };
+template<> struct AtomicWord<2> { using Type = uint16_t; };
+template<> struct AtomicWord<4> { using Type = uint32_t; };
+template<> struct AtomicWord<8> { using Type = uint64_t; };
+
+// A T read and written atomically (sequentially consistent), for a T of 1, 2, 4 or 8 bytes that is
+// copied by its bits: integers, bool, floating point, enums, pointers, small structs. The value is
+// aligned to its size and moved through the integer of its size as bits, never converted; a
+// compare-exchange compares bits. Arithmetic for integers (wrapping, as in C++) and floating point.
 template<typename T>
 struct Atomic
 {
-  T value;
+  static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8, "Atomic<T> needs a T of 1, 2, 4 or 8 bytes");
+  using Word = typename AtomicWord<sizeof(T)>::Type;
+  using value_type = T;
+
+  alignas(sizeof(T)) T value;
 
   Atomic() : value(T()) {}
   implicit Atomic(T initial) : value(initial) {}
   Atomic(const Atomic<T>&) = delete;
   Atomic<T>& operator=(const Atomic<T>&) = delete;
 
+  static Word wordOf(const T& v)
+  {
+    Word w = 0;
+    memcpy(&w, &v, sizeof(T));
+    return w;
+  }
+  static T valueOf(Word w)
+  {
+    T v;
+    memcpy(&v, &w, sizeof(T));
+    return v;
+  }
+  Word* word() const { return (Word*)&this->value; }
+
   T load() const
   {
     if constexpr (sizeof(T) == 8)
-      return (T)kpp_atomic_load64((const long long*)&this->value);
+      return Atomic::valueOf((Word)kpp_atomic_load64((const long long*)this->word()));
+    else if constexpr (sizeof(T) == 4)
+      return Atomic::valueOf((Word)kpp_atomic_load32((const long*)this->word()));
+    else if constexpr (sizeof(T) == 2)
+      return Atomic::valueOf(kpp_atomic_load16((const uint16_t*)this->word()));
     else
-      return (T)kpp_atomic_load32((const long*)&this->value);
+      return Atomic::valueOf(kpp_atomic_load8((const uint8_t*)this->word()));
   }
   void store(T v)
   {
+    Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
-      kpp_atomic_store64((long long*)&this->value, (long long)v);
+      kpp_atomic_store64((long long*)this->word(), (long long)w);
+    else if constexpr (sizeof(T) == 4)
+      kpp_atomic_store32((long*)this->word(), (long)w);
+    else if constexpr (sizeof(T) == 2)
+      kpp_atomic_store16((uint16_t*)this->word(), w);
     else
-      kpp_atomic_store32((long*)&this->value, (long)v);
+      kpp_atomic_store8((uint8_t*)this->word(), w);
   }
   T exchange(T v)
   {
+    Word w = Atomic::wordOf(v);
     if constexpr (sizeof(T) == 8)
-      return (T)kpp_atomic_exchange64((long long*)&this->value, (long long)v);
+      return Atomic::valueOf((Word)kpp_atomic_exchange64((long long*)this->word(), (long long)w));
+    else if constexpr (sizeof(T) == 4)
+      return Atomic::valueOf((Word)kpp_atomic_exchange32((long*)this->word(), (long)w));
+    else if constexpr (sizeof(T) == 2)
+      return Atomic::valueOf(kpp_atomic_exchange16((uint16_t*)this->word(), w));
     else
-      return (T)kpp_atomic_exchange32((long*)&this->value, (long)v);
+      return Atomic::valueOf(kpp_atomic_exchange8((uint8_t*)this->word(), w));
   }
-  T fetchAdd(T delta)
-  {
-    if constexpr (sizeof(T) == 8)
-      return (T)kpp_atomic_add64((long long*)&this->value, (long long)delta);
-    else
-      return (T)kpp_atomic_add32((long*)&this->value, (long)delta);
-  }
-  T fetch_add(T delta) { return this->fetchAdd(delta); }
-  T fetchSub(T delta) { return this->fetchAdd((T)(0 - delta)); }
-  T fetch_sub(T delta) { return this->fetchSub(delta); }
-  // True and `expected` kept when the value was `expected` and is now `desired`; otherwise
-  // `expected` receives the current value.
+  // True when the value had expected's bits and now has desired's; otherwise false, and expected
+  // receives the current value.
   bool compareExchange(T& expected, T desired)
   {
-    T seen;
+    Word want = Atomic::wordOf(expected);
+    Word next = Atomic::wordOf(desired);
+    Word seen;
     if constexpr (sizeof(T) == 8)
-      seen = (T)kpp_atomic_cas64((long long*)&this->value, (long long)desired, (long long)expected);
+      seen = (Word)kpp_atomic_cas64((long long*)this->word(), (long long)next, (long long)want);
+    else if constexpr (sizeof(T) == 4)
+      seen = (Word)kpp_atomic_cas32((long*)this->word(), (long)next, (long)want);
+    else if constexpr (sizeof(T) == 2)
+      seen = kpp_atomic_cas16((uint16_t*)this->word(), next, want);
     else
-      seen = (T)kpp_atomic_cas32((long*)&this->value, (long)desired, (long)expected);
-    if (seen == expected)
+      seen = kpp_atomic_cas8((uint8_t*)this->word(), next, want);
+    if (seen == want)
       return true;
-    expected = seen;
+    expected = Atomic::valueOf(seen);
     return false;
   }
   bool compare_exchange_strong(T& expected, T desired) { return this->compareExchange(expected, desired); }
   bool compare_exchange_weak(T& expected, T desired) { return this->compareExchange(expected, desired); }
+
+  // The value before adding delta.
+  T fetchAdd(T delta)
+  {
+    if constexpr (isFloatingPoint<T>)
+    {
+      T seen = this->load();
+      while (!this->compareExchange(seen, seen + delta))
+      {
+      }
+      return seen;
+    }
+    else
+    {
+      Word w = Atomic::wordOf(delta);
+      if constexpr (sizeof(T) == 8)
+        return Atomic::valueOf((Word)kpp_atomic_add64((long long*)this->word(), (long long)w));
+      else if constexpr (sizeof(T) == 4)
+        return Atomic::valueOf((Word)kpp_atomic_add32((long*)this->word(), (long)w));
+      else if constexpr (sizeof(T) == 2)
+        return Atomic::valueOf(kpp_atomic_add16((uint16_t*)this->word(), w));
+      else
+        return Atomic::valueOf(kpp_atomic_add8((uint8_t*)this->word(), w));
+    }
+  }
+  T fetch_add(T delta) { return this->fetchAdd(delta); }
+  T fetchSub(T delta)
+  {
+    if constexpr (isFloatingPoint<T>)
+      return this->fetchAdd(-delta);
+    else
+      return this->fetchAdd((T)(0 - delta));
+  }
+  T fetch_sub(T delta) { return this->fetchSub(delta); }
+  bool is_lock_free() const { return true; }
 
   operator T() const { return this->load(); }
   Atomic<T>& operator=(T v)

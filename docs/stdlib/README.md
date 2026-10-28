@@ -19,9 +19,10 @@ Files:
 - [Algorithms](algorithms.md): sorting and searching ranges.
 - [UniquePtr, UniqueArray](uniqueptr.md), [SharedPtr, WeakPtr, EnableSharedFromThis](sharedptr.md)
 - [Optional](optional.md), [Function](function.md)
+- [Atomic](atomic.md): values that threads share without locks; Atomic<SharedPtr<T>>.
 
 Not specified yet: Tuple, Pair beyond what the
-maps use, Span, Array, StringView, formatting, streams, threads, time, and the C library wrappers.
+maps use, Span, Array, StringView, formatting, streams, threads and locks, time, and the C library wrappers.
 
 Changing a rule here is a design decision (docs/design.md section 4): it needs to be explicit,
 recorded with its date and reason, and listed as a difference from C++ if it is one.

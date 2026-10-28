@@ -1,4 +1,4 @@
-// spec: Thread, Mutex, LockGuard, Atomic (std::thread, std::mutex, std::atomic)
+// spec: Thread, Mutex, LockGuard, Atomic (std::thread, std::mutex, std::atomic), thisThread::yield and sleepFor (std::this_thread)
 // factorio: 78 std::thread, 479 mutex/lock_guard, 47 std::atomic
 int main()
 {
@@ -6,9 +6,10 @@ int main()
   Mutex m;
   Vector<Thread> threads;
   for (int i = 0; i < 4; ++i)
-    threads.emplace_back([&]() { LockGuard<Mutex> lock(m); counter += 1; });
+    threads.emplace_back([&]() { thisThread::yield(); LockGuard<Mutex> lock(m); counter += 1; });
   for (Thread& t : threads)
     t.join();
+  thisThread::sleepFor(milliseconds(1));
   println("{}", counter.load());
   return 0;
 }

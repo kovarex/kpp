@@ -3165,15 +3165,20 @@ namespace
       std::string name = sym(f->name.last().symbol);
       if (name.rfind("kpp_atomic_", 0) != 0)
         return std::nullopt;
+      // The operation, then the width in bits: kpp_atomic_load8, kpp_atomic_cas64.
       std::string op = name.substr(11);
-      std::string width = op.size() >= 2 ? op.substr(op.size() - 2) : "";
-      op = op.substr(0, op.size() - 2);
-      std::string ty = width == "64" ? "i64" : "i32";
-      std::string align = width == "64" ? "8" : "4";
+      size_t digits = op.find_first_of("0123456789");
+      std::string width = digits == std::string::npos ? "" : op.substr(digits);
+      op = op.substr(0, digits);
+      if (width != "8" && width != "16" && width != "32" && width != "64")
+        unsupported(at, "the atomic builtin " + name + " (widths are 8, 16, 32 and 64)");
+      int bits = std::stoi(width);
+      std::string ty = "i" + width;
+      std::string align = std::to_string(bits / 8);
       if (callArgs.empty())
         unsupported(at, "an atomic builtin without its pointer");
       std::string p = convert(rvalue(callArgs[0]), types.pointer(types.voidType()), at).text;
-      const Ty* valueTy = width == "64" ? types.intType(64, false) : types.intType(32, false);
+      const Ty* valueTy = types.intType(bits, false);
       auto arg = [&](size_t i) { return convert(rvalue(callArgs[i]), valueTy, at).text; };
       std::string r = newTemp();
       if (op == "load")

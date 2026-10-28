@@ -330,3 +330,104 @@ struct EnableSharedFromThis : EnableSharedFromThisBase
   WeakPtr<T> weakFromThis() { return this->weak_from_this(); }
   WeakPtr<const T> weakFromThis() const { return this->weak_from_this(); }
 };
+
+// Atomic access to a SharedPtr (std::atomic_load, atomic_store and atomic_exchange on a
+// shared_ptr, and std::atomic<std::shared_ptr<T>>): a read, write or exchange of the whole
+// SharedPtr happens as one step with respect to the others on the same SharedPtr. Not lock-free:
+// each takes an SRW lock, for the free functions one of sixteen picked by the SharedPtr's address
+// (as C++ libraries do). Plain reads and writes of that SharedPtr are not synchronised with them.
+void* sharedPtrLocks[16]; // SRW locks: zero is unlocked
+
+void** sharedPtrLockFor(const void* address) { return &sharedPtrLocks[hashBits((uint64_t)address) >> 60]; }
+
+template<typename T>
+SharedPtr<T> atomicLoad(const SharedPtr<T>* p)
+{
+  void** lock = sharedPtrLockFor(p);
+  AcquireSRWLockShared(lock);
+  SharedPtr<T> copy = *p;
+  ReleaseSRWLockShared(lock);
+  return copy;
+}
+// The value p held before is released after the lock (its object may be destroyed then).
+template<typename T>
+void atomicStore(SharedPtr<T>* p, SharedPtr<T> desired)
+{
+  void** lock = sharedPtrLockFor(p);
+  AcquireSRWLockExclusive(lock);
+  p->swap(desired);
+  ReleaseSRWLockExclusive(lock);
+}
+template<typename T>
+SharedPtr<T> atomicExchange(SharedPtr<T>* p, SharedPtr<T> desired)
+{
+  void** lock = sharedPtrLockFor(p);
+  AcquireSRWLockExclusive(lock);
+  p->swap(desired);
+  ReleaseSRWLockExclusive(lock);
+  return desired;
+}
+template<typename T>
+bool atomicIsLockFree(const SharedPtr<T>* p) { return false; }
+
+template<typename T>
+struct Atomic<SharedPtr<T>>
+{
+  using value_type = SharedPtr<T>;
+
+  SharedPtr<T> value;
+  mutable void* lock = nullptr; // an SRW lock
+
+  Atomic() {}
+  implicit Atomic(SharedPtr<T> initial) : value(move(initial)) {}
+  Atomic(const Atomic<SharedPtr<T>>&) = delete;
+  Atomic<SharedPtr<T>>& operator=(const Atomic<SharedPtr<T>>&) = delete;
+
+  SharedPtr<T> load() const
+  {
+    AcquireSRWLockShared(&this->lock);
+    SharedPtr<T> copy = this->value;
+    ReleaseSRWLockShared(&this->lock);
+    return copy;
+  }
+  void store(SharedPtr<T> desired)
+  {
+    AcquireSRWLockExclusive(&this->lock);
+    this->value.swap(desired);
+    ReleaseSRWLockExclusive(&this->lock);
+  }
+  SharedPtr<T> exchange(SharedPtr<T> desired)
+  {
+    AcquireSRWLockExclusive(&this->lock);
+    this->value.swap(desired);
+    ReleaseSRWLockExclusive(&this->lock);
+    return desired;
+  }
+  // True when the value held the same object with the same ownership as expected (and now holds
+  // desired); otherwise false, and expected receives the value.
+  bool compareExchange(SharedPtr<T>& expected, SharedPtr<T> desired)
+  {
+    SharedPtr<T> previous; // what expected held, released after the lock
+    AcquireSRWLockExclusive(&this->lock);
+    bool same = this->value.pointer == expected.pointer && this->value.control == expected.control;
+    if (same)
+      this->value.swap(desired);
+    else
+    {
+      previous = move(expected);
+      expected = this->value;
+    }
+    ReleaseSRWLockExclusive(&this->lock);
+    return same;
+  }
+  bool compare_exchange_strong(SharedPtr<T>& expected, SharedPtr<T> desired) { return this->compareExchange(expected, move(desired)); }
+  bool compare_exchange_weak(SharedPtr<T>& expected, SharedPtr<T> desired) { return this->compareExchange(expected, move(desired)); }
+  bool is_lock_free() const { return false; }
+
+  operator SharedPtr<T>() const { return this->load(); }
+  Atomic<SharedPtr<T>>& operator=(SharedPtr<T> desired)
+  {
+    this->store(move(desired));
+    return *this;
+  }
+};

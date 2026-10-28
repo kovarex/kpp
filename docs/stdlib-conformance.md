@@ -40,5 +40,8 @@ upperBound, PriorityQueue, nthElement (introselect), the checked accessors (`at(
 and `erase` throw OutOfRange), HashMap/HashSet (entries in nodes, std's interface, hasher and key equality parameters) and
 FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
 pops at both ends), List, SharedPtr/WeakPtr/EnableSharedFromThis (atomic counts, deletion as the
-created type, shared_from_this throwing BadWeakPtr), UniquePtr (conversions from UniquePtr<Derived>), Function (heap copy of the callable,
-BadFunctionCall on an empty call).
+created type, shared_from_this throwing BadWeakPtr, atomic access), UniquePtr (conversions from UniquePtr<Derived>), Function (heap copy of the callable,
+BadFunctionCall on an empty call), Atomic (every size from 1 to 8 bytes moved as bits, so bool,
+float, double and enums are exact; Atomic<SharedPtr<T>>). Until 2026-10-28 Atomic of a 1- or 2-byte
+type wrote 4 bytes (overwriting the fields after it) and Atomic<float>/<double> converted the value
+to an integer; both were silent.
