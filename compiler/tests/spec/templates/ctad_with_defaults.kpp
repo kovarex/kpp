@@ -1,0 +1,13 @@
+// spec: class template argument deduction leaves the parameters the constructor does not deduce to their defaults: `Tuple(mask, gap, id)` of `template<A, B = Nothing, C = Nothing, D = Nothing>`
+// found in the game's ChunkComponents (`neighborComponentConnections[Tuple(collisionMask, maxGapSize, component)]`): Tuple<A, B, C, D> stayed dependent and its layout failed
+struct Mask { int bits = 1; };
+int main()
+{
+  Mask m;
+  unsigned char gap = 2;
+  int id = 7;
+  auto t = Tuple(m, gap, id);
+  Tuple<int, double> p = Tuple(1, 2.5);
+  println("{} {} {} {}", t.first.bits, int(t.second), t.third, p.second);
+  return 0;
+}

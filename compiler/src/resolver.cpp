@@ -3145,9 +3145,23 @@ struct GlobalScope::Impl
       deduceCall(ctor, ft, argTypes, d);
       std::vector<const Ty*> args;
       bool all = true;
+      LocalStack own; // the parameters by name, for defaults that name earlier ones
+      for (Decl* p : cls->templateParams)
+        own.push(static_cast<TemplateParamDecl*>(p)->name, p);
       for (Decl* p : cls->templateParams)
       {
         const Ty* t = d.find(p);
+        if (!t && static_cast<TemplateParamDecl*>(p)->defaultArg)
+        {
+          // `Tuple(mask, gap, id)` of `template<A, B = Nothing, C = Nothing, D = Nothing>`: what the
+          // constructor does not deduce takes its default.
+          TypeContext dctx{lexicalScopeOf(cls), &own, &d, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
+          t = templateArgument(static_cast<TemplateParamDecl*>(p)->defaultArg, p, dctx, 0);
+          if (t && t->isKnown())
+            d.pairs.push_back({p, t});
+          else
+            t = nullptr;
+        }
         if (!t)
           all = false;
         else
