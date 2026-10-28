@@ -1152,11 +1152,13 @@ struct GlobalScope::Impl
               continue;
             }
         }
-        // `using X = T::IDType;` in a template body, then `X::IndexType`: the alias's type under the
-        // instantiation's arguments.
-        if (subst && step.found == Found::Local)
+        // `using X = T::IDType;` in a template body, or `using IDType = IDTypeParameter;` in the class
+        // being instantiated, then `X::IndexType` / `IDType::PrototypeType`: the alias's type under the
+        // instantiation's arguments (a member alias in its own class's scope).
+        if (subst && (step.found == Found::Local || step.found == Found::Member))
         {
-          const Ty* at = convertType(alias->type, TypeContext{context, locals, subst}, depth + 1);
+          bool local = step.found == Found::Local;
+          const Ty* at = convertType(alias->type, TypeContext{local ? context : lexicalScopeOf(alias), local ? locals : nullptr, subst}, depth + 1);
           if (at && at->kind == TyKind::Class && at->decl && !types.isDependent(at))
             if (Scope* inside = classScopeOf(at))
             {
@@ -1174,6 +1176,15 @@ struct GlobalScope::Impl
           currentTy = nullptr;
           out = step;
           continue;
+        }
+        // `using IDType = IDTypeParameter;` and then `IDType::PrototypeType` in the class template:
+        // dependent on the parameter the alias names, the same type as `IDTypeParameter::PrototypeType`
+        // (which an out-of-line definition may write instead).
+        if (!subst && step.found != Found::Local && alias->type && alias->type->kind == NodeKind::NamedType)
+        {
+          Lookup target = lookupQualified(static_cast<NamedType*>(alias->type)->name, lexicalScopeOf(alias), nullptr, depth + 1);
+          if (target.found == Found::Dependent && target.decl && target.decl->kind == NodeKind::TemplateParamDecl)
+            return target;
         }
       }
       if (!step.scope)
@@ -3963,7 +3974,7 @@ struct GlobalScope::Impl
               return types.qualified(r, t->isConst || (r && r->isConst), t->isVolatile);
             }
           }
-        return sub == t->inner ? t : types.dependentMember(sub, uint32_t(t->value));
+        return sub == t->inner ? t : types.qualified(types.dependentMember(sub, uint32_t(t->value)), t->isConst, t->isVolatile);
       }
       case TyKind::Pointer: return types.qualified(types.pointer(substitute(t->inner, s, depth + 1)), t->isConst, t->isVolatile);
       case TyKind::LRef: return types.lref(substitute(t->inner, s, depth + 1));

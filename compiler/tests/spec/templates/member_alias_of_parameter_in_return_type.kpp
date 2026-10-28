@@ -1,0 +1,39 @@
+// spec: a member function whose return type goes through a member alias of the class's own parameter (`const IDType::PrototypeType* operator->()` with `using IDType = IDTypeParameter;`), defined out of line as `const IDTypeParameter::PrototypeType* IDWithQuality<IDTypeParameter>::getPrototype() const`
+// factorio: IDWithQuality<IDType>'s getPrototype and operator-> (`itemWithQualityID->placeResult`, `id->stackSize`)
+template<class P, class I>
+class MyID
+{
+public:
+  using PrototypeType = P;
+  const P* getPrototype() const { return this->p; }
+  const P* p = nullptr;
+};
+
+struct ItemProto { int stackSize = 50; };
+using ItemID = MyID<ItemProto, int>;
+
+template<class IDTypeParameter>
+class WithQuality
+{
+public:
+  using IDType = IDTypeParameter;
+  const IDType::PrototypeType* getPrototype() const;
+  const IDType::PrototypeType* operator->() const { return this->getPrototype(); }
+  IDType id;
+};
+
+template<class IDTypeParameter>
+const IDTypeParameter::PrototypeType* WithQuality<IDTypeParameter>::getPrototype() const { return this->id.getPrototype(); }
+
+using ItemWithQ = WithQuality<ItemID>;
+
+int count(ItemWithQ w) { return w->stackSize + w.getPrototype()->stackSize; }
+
+int main()
+{
+  ItemProto proto;
+  ItemWithQ w;
+  w.id.p = &proto;
+  println("{} {}", w->stackSize, count(w));
+  return 0;
+}
