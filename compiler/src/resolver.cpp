@@ -1110,6 +1110,18 @@ struct GlobalScope::Impl
           out.found = Found::Dependent;
           return true;
         }
+      // The injected class name: in a class, and in the classes derived from it, its own name
+      // names it (`ToolTip::defaultLabelStyle` in a member of a class deriving agui::ToolTip).
+      if (s->owner && s->owner->kind == NodeKind::ClassDecl && !(s->owner->flags & DF_Specialization))
+        if (const QualifiedName& cn = static_cast<ClassDecl*>(s->owner)->name; !cn.empty() && cn.last().symbol == symbol)
+        {
+          out.decl = s->owner;
+          out.scope = s;
+          out.found = Found::Member;
+          out.overloads = nullptr;
+          out.foundIn = s;
+          return true;
+        }
       if (!s->usingEnums.empty())
       {
         ensureUsingEnums(s, depth);

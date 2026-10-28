@@ -1,0 +1,40 @@
+// spec: the injected class name of a base class: in a class deriving from `ui::ToolTip`, `ToolTip::defaultLabelStyle` names the base's static member without the namespace (as C++ makes a base's name a member of the derived class); a base template's name means the instantiation derived from
+// factorio: ChartSearchItemTooltip : public agui::ToolTip (`this->addLabel(string, &ToolTip::defaultLabelStyle);`), FeaturedTechnologyGui, OpenableObjectWrapper
+namespace ui
+{
+  class ToolTip
+  {
+  public:
+    static int defaultLabelStyle;
+    int style = 1;
+  };
+  int ToolTip::defaultLabelStyle = 5;
+
+  template<class T>
+  class Holder
+  {
+  public:
+    T value{};
+    static int size() { return int(sizeof(T)); }
+  };
+}
+
+class ChartTooltip : public ui::ToolTip
+{
+public:
+  int labelStyle() const { return ToolTip::defaultLabelStyle + this->ToolTip::style; }
+};
+
+class Doubles : public ui::Holder<double>
+{
+public:
+  int width() const { return Holder::size(); }
+};
+
+int main()
+{
+  ChartTooltip tip;
+  Doubles numbers;
+  println("{} {}", tip.labelStyle(), numbers.width());
+  return 0;
+}
