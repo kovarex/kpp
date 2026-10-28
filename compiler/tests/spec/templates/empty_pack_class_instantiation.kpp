@@ -1,0 +1,24 @@
+// spec: a class template whose only parameter is a pack, instantiated with no arguments (`Signal<>`)
+// factorio: Signal<> members (ConfigItemBase::onChanged, GlobalModSettings::onChanged, CraftingQueue::ChangedSignal), 11 layouts
+// pending: `Sig<>` has an unknown type ("the member ... has an unknown type"); `Sig<int>` works
+template<typename... Args>
+struct Sig
+{
+  Vector<Function<void(Args...)>> handlers;
+  void connect(Function<void(Args...)> f) { this->handlers.push_back(move(f)); }
+  void operator()(Args... args) { for (auto& f : this->handlers) f(args...); }
+};
+struct Holder
+{
+  Sig<> changed;
+  Sig<int> valued;
+};
+int main()
+{
+  Holder h;
+  h.changed.connect([]() { println("changed"); });
+  h.valued.connect([](int v) { println("value {}", v); });
+  h.changed();
+  h.valued(4);
+  return 0;
+}

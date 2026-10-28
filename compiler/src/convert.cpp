@@ -553,6 +553,7 @@ namespace
     const CarriedDefaults* carriedDefaults = nullptr;
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
     const ScopeNames* scopeNames = nullptr;
+    std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
     // This file's namespaces and classes (and the class scope of out-of-line member definitions),
     // by text range: where a name would find something before the global library name.
     struct ScopeRange
@@ -2025,7 +2026,16 @@ namespace
             auto* c = static_cast<ClassDecl*>(d);
             if (!c->isDefinition)
             {
-              if (namespaceScope)
+              Decl* def = global.definitionOf(c);
+              if (namespaceScope && !prefix.empty() && opaqueKept && (!def || def == c) && opaqueKept->insert(global.qualifiedName(c)).second)
+              {
+                // No definition anywhere (`namespace TaskBar { class Interface; }`, used only through
+                // pointers): the declaration is the class, an opaque type; kept once in the program.
+                // Only inside a namespace: at global scope such a name is a C library's type (the C
+                // import defines it) or a class a macro defines (BITFIELD), which the resolver did not see.
+                counts.add("declarations of classes defined nowhere kept");
+              }
+              else if (namespaceScope)
               {
                 removeDecl(d);
                 counts.add("forward declarations removed");
@@ -3030,6 +3040,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         scan(in.parsed->decls);
   }
   ScopeNames scopeNames;
+  std::set<std::string> opaqueKept;
   for (const ConvertInput& in : inputs)
     if (in.parsed && !in.parsed->isImported)
       collectScopeNames(in.parsed->decls, "", symbols, scopeNames);
@@ -3044,6 +3055,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
     fc.scopeNames = &scopeNames;
+    fc.opaqueKept = &opaqueKept;
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
     if (OverrideFile* ov = overrideFor(key))
