@@ -1,0 +1,25 @@
+// spec: a local alias of a dependent member type as a variable template's argument, `using T = VectorType::value_type; if constexpr (is_memcpy_loadable<T>)`
+// found in the game's SerialiserHelper::saveVector and DeserialiserHelper::loadVector (~210 instantiations): codegen saw no type for the local alias
+template<class T>
+inline constexpr bool is_memcpy_loadable = isFundamental<T> && !isPointer<T> && !isNullPointer<T>;
+
+struct Point { int x; int y; };
+
+template<class VectorType>
+int loadVector(const VectorType& target)
+{
+  using T = VectorType::value_type;
+  if constexpr (is_memcpy_loadable<T>)
+    return 1;
+  else
+    return 2;
+}
+
+int main()
+{
+  Vector<int> numbers;
+  Vector<Point> points;
+  Vector<int*> pointers;
+  println("{} {} {}", loadVector(numbers), loadVector(points), loadVector(pointers));
+  return 0;
+}

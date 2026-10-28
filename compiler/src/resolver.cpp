@@ -2337,6 +2337,11 @@ struct GlobalScope::Impl
         auto* n = static_cast<NamedType*>(t);
         if (n->name.empty())
           return types.unknown();
+        // An alias local to a function body (`using T = VectorType::value_type;`), as the walk
+        // found it: also where the context has no locals (the code generator's typeOfAstIn).
+        if (n->name.parts.size() == 1 && n->resolved && n->resolved->kind == NodeKind::UsingAliasDecl &&
+            n->resolved->parent && n->resolved->parent->kind == NodeKind::FunctionDecl && n->resolved->templateParams.empty())
+          return convertType(static_cast<UsingAliasDecl*>(n->resolved)->type, ctx, depth + 1);
         if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs)
           if (const Ty* trait = typeTrait(n->name.parts[0], ctx, depth))
             return trait;
