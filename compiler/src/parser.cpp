@@ -813,9 +813,11 @@ namespace
       else
       {
         bool typename_ = accept(Kw::typename_);
+        bool elaborated = false;
         if (at(Kw::class_) || at(Kw::struct_) || at(Kw::union_) || at(Kw::enum_))
         {
           // Elaborated type specifier `struct X`.
+          elaborated = !at(Kw::enum_);
           advance();
           accept(Kw::class_); // enum class
           accept(Kw::struct_);
@@ -830,6 +832,7 @@ namespace
         }
         NamedType* n = node<NamedType>(pos);
         n->typename_ = typename_;
+        n->elaborated = elaborated;
         if (!parseQualifiedName(n->name, true, false))
         {
           pos = start;

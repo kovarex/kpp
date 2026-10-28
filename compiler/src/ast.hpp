@@ -139,7 +139,13 @@ struct QualifiedName
 // --- Types ---
 
 struct Type : Node {};
-struct NamedType : Type { QualifiedName name; bool typename_ = false; Decl* resolved = nullptr; };
+struct NamedType : Type
+{
+  QualifiedName name;
+  bool typename_ = false;
+  bool elaborated = false; // written `class X` / `struct X` / `union X`: declares X where nothing named X is visible
+  Decl* resolved = nullptr;
+};
 struct BuiltinType : Type { Kw keyword; uint8_t longCount = 0; bool isUnsigned = false, isSigned = false; };
 struct PointerType : Type { Type* pointee; };
 struct LRefType : Type { Type* referenced; };

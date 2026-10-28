@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -321,6 +322,10 @@ struct GlobalScope::Impl
   DraftShard draftShards[draftShardCount];
   std::mutex draftStorageMutex;
   std::vector<std::unique_ptr<ClassDecl>> draftClasses;
+  // Classes an elaborated type specifier declares (`class ScaleTag` in a template argument), made
+  // the same way, one per (namespace scope, name): real classes with a name, not drafts.
+  DraftShard tagShards[draftShardCount];
+  std::deque<NamePart> tagNames; // their names' storage (under draftStorageMutex)
   std::unordered_set<uint32_t> templateParamNames;
 
   void collectTemplateParamNames(Scope* scope)
@@ -359,6 +364,37 @@ struct GlobalScope::Impl
     if (d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
               (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
       p->isType = false;
+  }
+
+  // The class `class ScaleTag` declares where nothing named ScaleTag is visible: one per namespace
+  // scope and name, an empty class (only its identity matters to a tag) with its name and
+  // namespace, so that it mangles and prints as written.
+  ClassDecl* getOrCreateTag(Scope* scope, uint32_t symbol)
+  {
+    DraftKey key{scope, symbol};
+    DraftShard& shard = tagShards[symbol % draftShardCount];
+    {
+      std::lock_guard lock(shard.mutex);
+      if (auto it = shard.map.find(key); it != shard.map.end())
+        return it->second;
+    }
+    auto cd = std::make_unique<ClassDecl>();
+    cd->kind = NodeKind::ClassDecl;
+    cd->keyword = Kw::class_;
+    cd->isDefinition = true;
+    cd->parent = scope->owner;
+    cd->ownScope = new Scope(ScopeKind::Class, scope, cd.get(), 1);
+    ClassDecl* raw = cd.get();
+    {
+      std::lock_guard lock(draftStorageMutex);
+      NamePart& part = tagNames.emplace_back();
+      part.symbol = symbol;
+      cd->name.parts = Span<NamePart>{&part, 1};
+      draftClasses.push_back(std::move(cd));
+    }
+    std::lock_guard lock(shard.mutex);
+    auto [it, inserted] = shard.map.emplace(key, raw);
+    return it->second; // If another thread beat us, theirs.
   }
 
   ClassDecl* getOrCreateDraft(Scope* scope, uint32_t symbol)
@@ -3625,6 +3661,10 @@ struct GlobalScope::Impl
               Scope* target = ctx.scope ? ctx.scope : &root;
               while (target->parent && target->kind != ScopeKind::Namespace)
                 target = target->parent;
+              // `StrongTypedef<double, class ScaleTag, PositiveDoubleValidator>`: the elaborated
+              // type specifier declares the class ScaleTag in the namespace, as C++ has it.
+              if (n->elaborated && n->name.parts.size() == 1 && !first.hasTemplateArgs)
+                return types.classType(getOrCreateTag(target, sym), {});
               ClassDecl* draft = getOrCreateDraft(target, sym);
               // The arguments live until the type is interned: a span into a vector destroyed
               // earlier read freed memory, which other threads' allocations overwrote (the

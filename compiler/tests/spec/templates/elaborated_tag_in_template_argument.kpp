@@ -1,0 +1,23 @@
+// spec: an elaborated type specifier in a template argument declares the class (`StrongTypedef<double, class ScaleTag, PositiveDoubleValidator>`): a distinct tag type per name with that name, so typedefs with different tags are different types (overloads tell them apart)
+// factorio: Scale, Zoom and DisplayDensity (`using Scale = StrongTypedef<double, class ScaleTag, PositiveDoubleValidator>;`), which came out as StrongTypedef<double, ?, PositiveDoubleValidator>
+template<typename ValueType, class Tag>
+class Strong
+{
+public:
+  constexpr explicit Strong(const ValueType& value) : value(value) {}
+  ValueType value;
+};
+
+using Scale = Strong<double, class ScaleTag>;
+using Zoom = Strong<double, class ZoomTag>;
+
+double twice(Scale s) { return s.value * 2; }
+double twice(Zoom z) { return z.value * 3; }
+
+int main()
+{
+  Scale s(1.5);
+  Zoom z(2.5);
+  println("{} {} {}", twice(s), twice(z), isSame<Scale, Zoom>);
+  return 0;
+}
