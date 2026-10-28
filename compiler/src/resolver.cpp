@@ -2822,7 +2822,25 @@ struct GlobalScope::Impl
       {
         auto* s = static_cast<SizeofExpr*>(e);
         if (s->isPack)
-          return std::nullopt;
+        {
+          // `sizeof...(Renderers)` (a template argument: StaticVector<T, sizeof...(Renderers)>):
+          // the number of elements the pack, a type pack or a function parameter pack, is bound to.
+          const QualifiedName* name = s->type && s->type->kind == NodeKind::NamedType ? &static_cast<NamedType*>(s->type)->name
+                                    : s->operand && s->operand->kind == NodeKind::NameExpr ? &static_cast<NameExpr*>(s->operand)->name : nullptr;
+          if (!name || name->parts.size() != 1 || !ctx.subst)
+            return std::nullopt;
+          Lookup l = lookupQualified(*name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+          Decl* d = l.decl;
+          if (!d) // `sizeof...(args)` where the context has no locals (the code generator's): what the walk found
+            d = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved
+              : s->operand && s->operand->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(s->operand)->resolved : nullptr;
+          const Ty* pack = nullptr;
+          if (d && d->kind == NodeKind::TemplateParamDecl)
+            pack = ctx.subst->find(d);
+          else if (d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack)
+            pack = declaredTypeOf(d, ctx.subst, depth + 1);
+          return pack && pack->kind == TyKind::Pack ? std::optional<int64_t>(int64_t(pack->args.size())) : std::nullopt;
+        }
         const Ty* t = nullptr;
         if (s->type)
           t = convertType(s->type, ctx, depth + 1);

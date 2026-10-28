@@ -1,0 +1,26 @@
+// spec: `sizeof...(Pack)` as a constant template argument, of a type pack and of a function parameter pack, also in an expression and in a member alias
+// found in the game's RendererContainer (`using DataType = StaticVector<RenderInterface*, sizeof...(Renderers)>`): the argument was unknown
+template<class T, size_t Size>
+struct Fixed
+{
+  T items[Size];
+  int capacity() const { return int(Size); }
+};
+template<class... Renderers>
+struct Container
+{
+  using DataType = Fixed<int, sizeof...(Renderers)>;
+  DataType data;
+};
+template<class... Args>
+int count(Args... args)
+{
+  Fixed<char, sizeof...(args) + 1> buffer;
+  return buffer.capacity();
+}
+int main()
+{
+  Container<int, double, char> c;
+  println("{} {}", c.data.capacity(), count(1, 2, 3, 4));
+  return 0;
+}
