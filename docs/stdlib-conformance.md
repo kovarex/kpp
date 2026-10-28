@@ -9,9 +9,6 @@ compile, loudly) last. State of 2026-10-28.
 
 ## Behaviour that differs
 
-**Algorithms** (algorithms.md): `nthElement` sorts the whole range, O(n log n) instead of O(n) on
-average (the result is right).
-
 **Compiler gaps that break library use** (pending spec snippets in compiler/tests/spec):
 - `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
@@ -36,7 +33,7 @@ Vector (invalidation, growth, relocation with move constructors, aliasing-safe p
 String (storage, terminator, searches, comparison), Map/Set/MultiMap/MultiSet (red-black tree,
 invalidation, complexity, return values of insert/erase/emplace/try_emplace), FastMap/FastSet
 (as specified, including their weaker invalidation rules), sort and stableSort, lowerBound and
-upperBound, PriorityQueue, the checked accessors (`at()` of every container, String's `substr`
+upperBound, PriorityQueue, nthElement (introselect), the checked accessors (`at()` of every container, String's `substr`
 and `erase` throw OutOfRange), HashMap/HashSet (entries in nodes, std's interface) and
 FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
 pops at both ends), List.

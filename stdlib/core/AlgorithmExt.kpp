@@ -229,17 +229,38 @@ bool nextPermutation(T* first, T* last)
   }
 }
 
-template<typename T>
-void nthElement(T* first, T* nth, T* last)
-{
-  // Simple selection: sort works for now, a real nth_element would be O(n).
-  sort(first, last);
-}
-
+// Puts into *nth the element a sort would put there, with nothing greater before it and nothing
+// less after it. Introselect: quicksort's partitioning (Algorithm.kpp) into the side holding nth
+// only, O(n) on average; heapsort of what is left past 2 log n rounds bounds the worst case.
 template<typename T, typename F>
 void nthElement(T* first, T* nth, T* last, F less)
 {
-  sort(first, last, less);
+  if (nth == last)
+    return;
+  int depthLimit = 0;
+  for (long long k = last - first; k > 1; k >>= 1)
+    depthLimit += 2;
+  while (last - first > 16)
+  {
+    if (depthLimit-- == 0)
+    {
+      heapSort(first, last, less);
+      return;
+    }
+    moveMedianToFirst(first, first + 1, first + (last - first) / 2, last - 1, less);
+    T* cut = partitionAroundFirst(first, last, less);
+    if (cut <= nth)
+      first = cut;
+    else
+      last = cut;
+  }
+  insertionSort(first, last, less);
+}
+
+template<typename T>
+void nthElement(T* first, T* nth, T* last)
+{
+  nthElement(first, nth, last, [](const T& a, const T& b) { return a < b; });
 }
 
 template<typename T>

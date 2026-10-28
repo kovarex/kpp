@@ -177,6 +177,24 @@ void sorting()
     if (pairs[i].first < pairs[i - 1].first || (pairs[i].first == pairs[i - 1].first && pairs[i].second < pairs[i - 1].second))
       stable = false;
   printf("%d %d %d\n", stable ? 1 : 0, pairs[0].first, pairs[999].first);
+
+  // nthElement against a full sort.
+  int selectionErrors = 0;
+  for (int round = 0; round < 100; ++round)
+  {
+    int n = 1 + nextInt(3000);
+    Vector<int> data, reference;
+    for (int i = 0; i < n; ++i)
+      data.push_back(nextInt(round % 2 == 1 ? 50 : 100000));
+    reference = data;
+    sort(reference.begin(), reference.end());
+    int k = nextInt(n);
+    nthElement(data.begin(), data.begin() + k, data.end());
+    selectionErrors += data[k] == reference[k] ? 0 : 1;
+    for (int i = 0; i < n; ++i)
+      selectionErrors += (i < k && data[k] < data[i]) || (i > k && data[i] < data[k]) ? 1 : 0;
+  }
+  printf("%d\n", selectionErrors);
 }
 
 void hashing()
