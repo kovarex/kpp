@@ -1,6 +1,5 @@
 // spec: a range-for with an `auto` loop variable over a range whose type depends on a template parameter
 // factorio: most of the ~100 `item.first` codegen errors in the full src (Dialog<T>, MenuGui<T>, generic lambdas)
-// pending: the loop variable's type is not deduced in the instantiation (`<unknown>` at its first use)
 template<class T>
 struct Dialog
 {
