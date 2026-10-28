@@ -1280,10 +1280,23 @@ namespace
             return;
           }
         }
+        // C++17 aggregate init: base sub-objects consume the first args, then data members.
+        size_t argIdx = 0;
+        if (!info.bases.empty() && designators.empty())
+        {
+          for (auto& [baseDef, baseFieldIdx] : info.bases)
+          {
+            if (argIdx >= args.size())
+              break;
+            std::string baseAddr = gep(info.name, addr, baseFieldIdx);
+            const Ty* bt = info.fieldTypes[baseFieldIdx];
+            initializeFrom(baseAddr, bt, args[argIdx++], at);
+          }
+        }
         // Which value goes to which field: in order, or by name for `.x = 1` designators.
         std::vector<Expr*> valueOf(info.fieldDecls.size(), nullptr);
         size_t next = 0;
-        for (size_t k = 0; k < args.size(); ++k)
+        for (size_t k = argIdx; k < args.size(); ++k)
         {
           uint32_t designator = k < designators.size() ? designators[k] : UINT32_MAX;
           if (designator != UINT32_MAX)
@@ -4501,8 +4514,6 @@ namespace
         {
           auto* m = static_cast<MemberExpr*>(e);
           Decl* d = m->resolved;
-          if (!d || d->kind != NodeKind::VariableDecl)
-            unsupported(e, "a member access that did not resolve to a field");
           std::string object;
           const Ty* baseTy;
           if (m->op == P::Arrow)
@@ -4524,14 +4535,17 @@ namespace
           baseTy = types.stripRef(baseTy);
           if (!baseTy || !isClass(baseTy))
             unsupported(e, "a member access on a non-class object");
+          if ((!d || d->kind != NodeKind::VariableDecl) && !m->member.empty())
+            d = findFieldByName(baseTy, m->member.last().symbol, e);
+          if (!d || d->kind != NodeKind::VariableDecl)
+            unsupported(e, "a member access that did not resolve to a field");
           if (d->flags & DF_Static)
-            return globalAddress(static_cast<VariableDecl*>(d), e, baseTy); // `object.staticMember`: the object's instantiation
+            return globalAddress(static_cast<VariableDecl*>(d), e, baseTy);
           std::string addr;
           if (!fieldAddress(baseTy, d, object, addr, e))
             unsupported(e, "a member that is not a field of the object's class");
           if (const Ty* ft = global.typeOfDecl(d); ft && ft->isReference())
           {
-            // A reference member: the field holds the address of what it refers to.
             std::string referenced = newTemp();
             fn += "  " + referenced + " = load ptr, ptr " + addr + "\n";
             return referenced;
