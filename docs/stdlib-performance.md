@@ -25,7 +25,45 @@ Columns:
   benchmarks, like vector.copy int, pay for fresh pages there), so compare these two columns
   for the algorithms, and Kpp against MSVC STL for absolute numbers.
 
-PC-PRACOVNA (Ryzen 9 9950X), 2026-10-28, milliseconds, lower is better:
+Current state (after the work below and the conformance changes: containers move elements with
+move constructors, Map is a red-black tree, HashMap keeps entries in nodes, docs/stdlib/), PC-PRACOVNA
+(Ryzen 9 9950X), 2026-10-28, milliseconds, lower is better. The fasthash rows run FastHashMap in
+Kpp and std::unordered_map again in C++:
+
+| benchmark | Kpp | Kpp, 1 module | MSVC STL | libstdc++ | libc++ |
+|---|---:|---:|---:|---:|---:|
+| vector.push int | 14.4 | 15.4 | 19.2 | 22.2 | 21.5 |
+| vector.push reserved | 5.2 | 5.8 | 8.7 | 11.4 | 10.8 |
+| vector.resize | 2.7 | 2.6 | 2.6 | 9.3 | 10.4 |
+| vector.iterate | 10.0 | 9.8 | 9.8 | 16.8 | 8.8 |
+| vector.copy int | 42.1 | 41.5 | 41.8 | 114.6 | 112.8 |
+| vector.insert front | 45.9 | 46.3 | 45.9 | 25.7 | 24.6 |
+| vector.push String | 19.1 | 16.8 | 26.3 | 18.9 | 9.5 |
+| string.small | 88.7 | 85.1 | 85.9 | 75.0 | 84.6 |
+| string.vector copy | 22.4 | 18.2 | 29.5 | 10.0 | 4.2 |
+| string.append char | 13.9 | 10.4 | 11.4 | 6.8 | 14.1 |
+| string.append pieces | 13.4 | 12.8 | 13.9 | 10.1 | 8.3 |
+| string.concat | 29.1 | 22.2 | 20.3 | 7.3 | 7.3 |
+| string.find | 6.7 | 6.5 | 2.2 | 6.1 | 6.0 |
+| string.find char | 2.6 | 4.4 | 1.2 | 0.9 | 0.9 |
+| string.compare | 21.2 | 15.4 | 11.2 | 8.1 | 12.7 |
+| sort.int | 45.1 | 43.6 | 47.9 | 39.8 | 38.8 |
+| sort.int predicate | 43.0 | 43.1 | 48.0 | 39.0 | 38.8 |
+| sort.String | 161.9 | 126.4 | 142.6 | 147.9 | 129.9 |
+| hash.int insert | 67.5 | 67.8 | 116.6 | 82.5 | 91.7 |
+| hash.int lookup | 132.4 | 124.3 | 256.8 | 86.1 | 103.4 |
+| hash.String insert | 171.7 | 168.1 | 242.5 | 215.4 | 227.3 |
+| hash.String lookup | 116.6 | 111.9 | 164.0 | 143.2 | 150.8 |
+| fasthash.int insert | 27.5 | 24.6 | 111.7 | 80.7 | 95.3 |
+| fasthash.int lookup | 74.7 | 67.4 | 252.3 | 91.3 | 106.7 |
+| fasthash.String insert | 58.4 | 52.1 | 240.2 | 213.9 | 227.0 |
+| fasthash.String lookup | 78.2 | 75.4 | 167.0 | 142.7 | 148.4 |
+| map.insert | 14.2 | 14.1 | 12.7 | 11.0 | 10.0 |
+| map.lookup | 70.7 | 72.9 | 69.0 | 94.0 | 59.9 |
+| map.iterate | 17.4 | 17.2 | 14.9 | 7.9 | 5.7 |
+
+The first pass, with the stdlib before this work in the first column (Map was then a sorted
+Vector, HashMap a flat table without std's guarantees):
 
 | benchmark | Kpp, before | Kpp | Kpp, 1 module | MSVC STL | libstdc++ | libc++ |
 |---|---:|---:|---:|---:|---:|---:|
@@ -112,6 +150,13 @@ partition, heapsort past 2 log n levels, final insertion sort) and on par with t
 `stableSort` did not exist although the converter maps std::stable_sort to it (three call sites
 in converted Factorio code); it is now a merge sort of insertion-sorted runs that relocates
 elements bitwise between the range and one buffer.
+
+**Hash tables, now.** HashMap and HashSet keep each entry in a node of its own, as the
+specification requires (references survive growth, like std::unordered_map's), behind the same
+open-addressing table with a byte of hash bits per slot, so a lookup that misses rarely touches a
+node. FastHashMap and FastHashSet keep the entries in the table: 2-4x faster than every C++
+library's unordered_map in the table above, with the weaker invalidation rule. The rest of this
+paragraph describes the first pass, on the flat table.
 
 **Hash tables.** The std unordered containers are node-based (one allocation per element,
 pointer chasing on lookup), which is why every flat open-addressing table beats them. Kpp's
