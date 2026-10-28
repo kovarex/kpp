@@ -1,136 +1,380 @@
-// Kpp standard library: Map<K, V> and Set<T> (what std::map and std::set convert to), ordered by
-// operator< and kept in a B-tree: nodes of up to 15 entries in key order, interior nodes with 16
-// children around them, every node but the root at least half full. Wide nodes keep lookups
-// cache-friendly (a few nodes per search instead of a pointer per level), inserting and erasing
-// are O(log n), and iterating walks the entries in order.
+// Kpp standard library: Map<K, V>, Set<T>, MultiMap<K, V> and MultiSet<T> (what std::map,
+// std::set, std::multimap and std::multiset convert to), ordered by operator<.
 //
-// Unlike std::map, entries move between nodes when others are inserted or erased: that
-// invalidates iterators and references into the map, as for Vector.
+// They keep the guarantees of the C++ standard, which converted code relies on: each entry lives
+// in a node of its own, in a red-black tree (as in all three C++ libraries), so inserting never
+// invalidates iterators, pointers or references, and erasing invalidates only those to the erased
+// entries; lookups, inserts and erases are O(log n), iterator steps amortized O(1). The multi
+// versions keep equal keys in insertion order. FastMap/FastSet (FastMap.kpp) are faster but
+// move entries around: a choice to make explicitly.
 
-// A node: the entries in key order. Nodes are malloc'd and their entries constructed one by one,
-// so the node types themselves are never constructed or destroyed.
-template<typename E>
-struct BTreeNode
+// The links of a node. Every tree has a header node of its own: header.parent is the root (whose
+// parent is the header), header.left the first node, header.right the last, and the header itself
+// is end(). The header is red and the root black, which is how decrementing tells end() apart.
+struct RbNodeBase
 {
-  BTreeNode<E>* parent;
-  int count;
-  int parentIndex; // this node's place among its parent's children
-  bool leaf;
-  E entries[15];
+  RbNodeBase* parent = nullptr;
+  RbNodeBase* left = nullptr;
+  RbNodeBase* right = nullptr;
+  bool red = false;
 };
 
-// An interior node: children[i] holds the entries ordered before entries[i], children[count]
-// those after the last one.
 template<typename E>
-struct BTreeInterior : BTreeNode<E>
+struct RbNode : RbNodeBase
 {
-  BTreeNode<E>* children[16];
+  E entry;
 };
 
-const int bTreeMaxEntries = 15;
-const int bTreeMinEntries = 7; // in every node but the root
-
-template<typename E>
-BTreeNode<E>** bTreeChildren(BTreeNode<E>* node) { return ((BTreeInterior<E>*)node)->children; }
-
-// A position in the tree: an entry, or one past the last entry of the last leaf (end()).
-template<typename E>
-struct BTreeIterator
+RbNodeBase* rbMinimum(RbNodeBase* node)
 {
-  BTreeNode<E>* node = nullptr;
-  int index = 0;
+  while (node->left)
+    node = node->left;
+  return node;
+}
 
-  BTreeIterator() {}
-  BTreeIterator(BTreeNode<E>* node, int index) : node(node), index(index) {}
+RbNodeBase* rbMaximum(RbNodeBase* node)
+{
+  while (node->right)
+    node = node->right;
+  return node;
+}
 
-  E& operator*() const { return this->node->entries[this->index]; }
-  E* operator->() const { return &this->node->entries[this->index]; }
-  bool operator==(const BTreeIterator<E>& other) const { return this->node == other.node && this->index == other.index; }
-  bool operator!=(const BTreeIterator<E>& other) const { return !(*this == other); }
-
-  BTreeIterator<E>& operator++()
+// The node after node in order; the header after the last one.
+RbNodeBase* rbNext(RbNodeBase* node)
+{
+  if (node->right)
+    return rbMinimum(node->right);
+  RbNodeBase* parent = node->parent;
+  while (node == parent->right)
   {
-    if (!this->node->leaf)
+    node = parent;
+    parent = parent->parent;
+  }
+  // From the last node the climb ends at the header, whose parent is the root: then node is the
+  // header already.
+  return node->right != parent ? parent : node;
+}
+
+// The node before node in order; the last one before the header.
+RbNodeBase* rbPrevious(RbNodeBase* node)
+{
+  if (node->red && node->parent->parent == node)
+    return node->right; // the header
+  if (node->left)
+    return rbMaximum(node->left);
+  RbNodeBase* parent = node->parent;
+  while (node == parent->left)
+  {
+    node = parent;
+    parent = parent->parent;
+  }
+  return parent;
+}
+
+void rbRotateLeft(RbNodeBase* node, RbNodeBase*& root)
+{
+  RbNodeBase* pivot = node->right;
+  node->right = pivot->left;
+  if (pivot->left)
+    pivot->left->parent = node;
+  pivot->parent = node->parent;
+  if (node == root)
+    root = pivot;
+  else if (node == node->parent->left)
+    node->parent->left = pivot;
+  else
+    node->parent->right = pivot;
+  pivot->left = node;
+  node->parent = pivot;
+}
+
+void rbRotateRight(RbNodeBase* node, RbNodeBase*& root)
+{
+  RbNodeBase* pivot = node->left;
+  node->left = pivot->right;
+  if (pivot->right)
+    pivot->right->parent = node;
+  pivot->parent = node->parent;
+  if (node == root)
+    root = pivot;
+  else if (node == node->parent->right)
+    node->parent->right = pivot;
+  else
+    node->parent->left = pivot;
+  pivot->right = node;
+  node->parent = pivot;
+}
+
+// Links node in as the left or right child of parent (the header for an empty tree) and restores
+// the red-black properties.
+void rbInsertAndRebalance(bool asLeft, RbNodeBase* node, RbNodeBase* parent, RbNodeBase& header)
+{
+  node->parent = parent;
+  node->left = nullptr;
+  node->right = nullptr;
+  node->red = true;
+  if (asLeft)
+  {
+    parent->left = node; // the header's left too: the first node of an empty tree
+    if (parent == &header)
     {
-      // The first entry of the subtree after this entry.
-      BTreeNode<E>* next = bTreeChildren(this->node)[this->index + 1];
-      while (!next->leaf)
-        next = bTreeChildren(next)[0];
-      this->node = next;
-      this->index = 0;
-      return *this;
+      header.parent = node;
+      header.right = node;
     }
-    ++this->index;
-    if (this->index < this->node->count)
-      return *this;
-    // The leaf is done: the next entry is in the first ancestor whose subtree this one is left of.
-    BTreeNode<E>* climb = this->node;
-    while (climb->parent && climb->parentIndex == climb->parent->count)
-      climb = climb->parent;
-    if (climb->parent)
+    else if (parent == header.left)
+      header.left = node;
+  }
+  else
+  {
+    parent->right = node;
+    if (parent == header.right)
+      header.right = node;
+  }
+  RbNodeBase*& root = header.parent;
+  while (node != root && node->parent->red)
+  {
+    RbNodeBase* grandparent = node->parent->parent;
+    if (node->parent == grandparent->left)
     {
-      this->node = climb->parent;
-      this->index = climb->parentIndex;
+      RbNodeBase* uncle = grandparent->right;
+      if (uncle && uncle->red)
+      {
+        node->parent->red = false;
+        uncle->red = false;
+        grandparent->red = true;
+        node = grandparent;
+      }
+      else
+      {
+        if (node == node->parent->right)
+        {
+          node = node->parent;
+          rbRotateLeft(node, root);
+        }
+        node->parent->red = false;
+        grandparent->red = true;
+        rbRotateRight(grandparent, root);
+      }
     }
-    // Otherwise that was the last entry, and (last leaf, count) is end().
+    else
+    {
+      RbNodeBase* uncle = grandparent->left;
+      if (uncle && uncle->red)
+      {
+        node->parent->red = false;
+        uncle->red = false;
+        grandparent->red = true;
+        node = grandparent;
+      }
+      else
+      {
+        if (node == node->parent->left)
+        {
+          node = node->parent;
+          rbRotateRight(node, root);
+        }
+        node->parent->red = false;
+        grandparent->red = true;
+        rbRotateLeft(grandparent, root);
+      }
+    }
+  }
+  root->red = false;
+}
+
+// Unlinks node from the tree and restores the red-black properties; the caller frees the node.
+void rbEraseAndRebalance(RbNodeBase* node, RbNodeBase& header)
+{
+  RbNodeBase*& root = header.parent;
+  RbNodeBase* removed = node; // the node that leaves its place: node, or its successor
+  RbNodeBase* child = nullptr; // what takes removed's place
+  RbNodeBase* childParent = nullptr;
+  if (!removed->left)
+    child = removed->right;
+  else if (!removed->right)
+    child = removed->left;
+  else
+  {
+    removed = rbMinimum(removed->right);
+    child = removed->right;
+  }
+  bool removedRed = removed->red;
+  if (removed != node)
+  {
+    // node has two children: its successor takes its place (and colour).
+    node->left->parent = removed;
+    removed->left = node->left;
+    if (removed != node->right)
+    {
+      childParent = removed->parent;
+      if (child)
+        child->parent = removed->parent;
+      removed->parent->left = child;
+      removed->right = node->right;
+      node->right->parent = removed;
+    }
+    else
+      childParent = removed;
+    if (root == node)
+      root = removed;
+    else if (node->parent->left == node)
+      node->parent->left = removed;
+    else
+      node->parent->right = removed;
+    removed->parent = node->parent;
+    removedRed = removed->red;
+    removed->red = node->red;
+  }
+  else
+  {
+    childParent = removed->parent;
+    if (child)
+      child->parent = removed->parent;
+    if (root == node)
+      root = child;
+    else if (node->parent->left == node)
+      node->parent->left = child;
+    else
+      node->parent->right = child;
+    if (header.left == node)
+      header.left = node->right ? rbMinimum(child) : node->parent;
+    if (header.right == node)
+      header.right = node->left ? rbMaximum(child) : node->parent;
+  }
+  if (removedRed)
+    return;
+  // A black node left: child carries an extra black up until it can be absorbed.
+  while (child != root && (!child || !child->red))
+  {
+    if (child == childParent->left)
+    {
+      RbNodeBase* sibling = childParent->right;
+      if (sibling->red)
+      {
+        sibling->red = false;
+        childParent->red = true;
+        rbRotateLeft(childParent, root);
+        sibling = childParent->right;
+      }
+      if ((!sibling->left || !sibling->left->red) && (!sibling->right || !sibling->right->red))
+      {
+        sibling->red = true;
+        child = childParent;
+        childParent = childParent->parent;
+      }
+      else
+      {
+        if (!sibling->right || !sibling->right->red)
+        {
+          sibling->left->red = false;
+          sibling->red = true;
+          rbRotateRight(sibling, root);
+          sibling = childParent->right;
+        }
+        sibling->red = childParent->red;
+        childParent->red = false;
+        if (sibling->right)
+          sibling->right->red = false;
+        rbRotateLeft(childParent, root);
+        break;
+      }
+    }
+    else
+    {
+      RbNodeBase* sibling = childParent->left;
+      if (sibling->red)
+      {
+        sibling->red = false;
+        childParent->red = true;
+        rbRotateRight(childParent, root);
+        sibling = childParent->left;
+      }
+      if ((!sibling->right || !sibling->right->red) && (!sibling->left || !sibling->left->red))
+      {
+        sibling->red = true;
+        child = childParent;
+        childParent = childParent->parent;
+      }
+      else
+      {
+        if (!sibling->left || !sibling->left->red)
+        {
+          sibling->right->red = false;
+          sibling->red = true;
+          rbRotateLeft(sibling, root);
+          sibling = childParent->left;
+        }
+        sibling->red = childParent->red;
+        childParent->red = false;
+        if (sibling->left)
+          sibling->left->red = false;
+        rbRotateRight(childParent, root);
+        break;
+      }
+    }
+  }
+  if (child)
+    child->red = false;
+}
+
+// A position in a tree: an entry's node, or the header for end().
+template<typename E>
+struct RbIterator
+{
+  RbNodeBase* node = nullptr;
+
+  RbIterator() {}
+  explicit RbIterator(RbNodeBase* node) : node(node) {}
+
+  E& operator*() const { return ((RbNode<E>*)this->node)->entry; }
+  E* operator->() const { return &((RbNode<E>*)this->node)->entry; }
+  bool operator==(const RbIterator<E>& other) const { return this->node == other.node; }
+  bool operator!=(const RbIterator<E>& other) const { return this->node != other.node; }
+  RbIterator<E>& operator++()
+  {
+    this->node = rbNext(this->node);
     return *this;
   }
-  BTreeIterator<E> operator++(int)
+  RbIterator<E> operator++(int)
   {
-    BTreeIterator<E> before = *this;
-    ++*this;
+    RbIterator<E> before = *this;
+    this->node = rbNext(this->node);
     return before;
   }
-  BTreeIterator<E>& operator--()
+  RbIterator<E>& operator--()
   {
-    if (!this->node->leaf)
-    {
-      // The last entry of the subtree before this entry.
-      BTreeNode<E>* previous = bTreeChildren(this->node)[this->index];
-      while (!previous->leaf)
-        previous = bTreeChildren(previous)[previous->count];
-      this->node = previous;
-      this->index = previous->count - 1;
-      return *this;
-    }
-    if (this->index > 0)
-    {
-      --this->index;
-      return *this;
-    }
-    BTreeNode<E>* climb = this->node;
-    while (climb->parentIndex == 0)
-      climb = climb->parent;
-    this->node = climb->parent;
-    this->index = climb->parentIndex - 1;
+    this->node = rbPrevious(this->node);
     return *this;
   }
-  BTreeIterator<E> operator--(int)
+  RbIterator<E> operator--(int)
   {
-    BTreeIterator<E> before = *this;
-    --*this;
+    RbIterator<E> before = *this;
+    this->node = rbPrevious(this->node);
     return before;
   }
 };
 
-// The tree behind Map and Set: entries E, ordered by their keys KeyOf::of(entry), of type K.
+// The tree behind the four containers: entries E ordered by their keys KeyOf::of(entry), of type
+// K. It allows equal keys; the unique containers look before they insert.
 template<typename E, typename K, typename KeyOf>
-struct BTree
+struct RbTree
 {
-  BTreeNode<E>* root = nullptr;
-  BTreeNode<E>* rightmost = nullptr; // the last leaf: end() is (rightmost, its count)
+  RbNodeBase header;
   int count = 0;
 
-  BTree() {}
-  BTree(const BTree<E, K, KeyOf>& other) { this->copyFrom(other); }
-  BTree(BTree<E, K, KeyOf>&& other) : root(other.root), rightmost(other.rightmost), count(other.count)
+  RbTree() { this->becomeEmpty(); }
+  RbTree(const RbTree<E, K, KeyOf>& other)
   {
-    other.root = nullptr;
-    other.rightmost = nullptr;
-    other.count = 0;
+    this->becomeEmpty();
+    this->copyFrom(other);
   }
-  ~BTree() { this->clear(); }
-  BTree<E, K, KeyOf>& operator=(const BTree<E, K, KeyOf>& other)
+  RbTree(RbTree<E, K, KeyOf>&& other)
+  {
+    this->becomeEmpty();
+    this->take(other);
+  }
+  ~RbTree() { this->clear(); }
+  RbTree<E, K, KeyOf>& operator=(const RbTree<E, K, KeyOf>& other)
   {
     if (this != &other)
     {
@@ -139,435 +383,194 @@ struct BTree
     }
     return *this;
   }
-  BTree<E, K, KeyOf>& operator=(BTree<E, K, KeyOf>&& other)
+  RbTree<E, K, KeyOf>& operator=(RbTree<E, K, KeyOf>&& other)
   {
-    if (this == &other)
-      return *this;
-    this->clear();
-    this->root = other.root;
-    this->rightmost = other.rightmost;
-    this->count = other.count;
-    other.root = nullptr;
-    other.rightmost = nullptr;
-    other.count = 0;
+    if (this != &other)
+    {
+      this->clear();
+      this->take(other);
+    }
     return *this;
   }
 
-  BTreeIterator<E> begin() const
-  {
-    if (!this->root)
-      return this->end();
-    BTreeNode<E>* node = this->root;
-    while (!node->leaf)
-      node = bTreeChildren(node)[0];
-    return BTreeIterator<E>(node, 0);
-  }
-  BTreeIterator<E> end() const { return BTreeIterator<E>(this->rightmost, this->rightmost ? this->rightmost->count : 0); }
+  RbIterator<E> begin() const { return RbIterator<E>(this->header.left); }
+  RbIterator<E> end() const { return RbIterator<E>((RbNodeBase*)&this->header); }
 
-  BTreeIterator<E> find(const K& key) const
+  // The first entry whose key is not less than key.
+  RbIterator<E> lowerBound(const K& key) const
   {
-    BTreeNode<E>* node = this->root;
+    RbNodeBase* result = (RbNodeBase*)&this->header;
+    RbNodeBase* node = this->header.parent;
     while (node)
     {
-      int i = this->lowerIndex(node, key);
-      if (i < node->count && !(key < this->keyAt(node, i)))
-        return BTreeIterator<E>(node, i);
-      if (node->leaf)
-        break;
-      node = bTreeChildren(node)[i];
+      const K& nodeKey = RbTree::keyOf(node);
+      if (nodeKey < key)
+        node = node->right;
+      else
+      {
+        result = node;
+        node = node->left;
+      }
     }
-    return this->end();
-  }
-  // The first entry whose key is not less than key. Each node on the way down narrows the range,
-  // so the deepest candidate is the answer.
-  BTreeIterator<E> lowerBound(const K& key) const
-  {
-    BTreeIterator<E> result = this->end();
-    BTreeNode<E>* node = this->root;
-    while (node)
-    {
-      int i = this->lowerIndex(node, key);
-      if (i < node->count)
-        result = BTreeIterator<E>(node, i);
-      if (node->leaf)
-        break;
-      node = bTreeChildren(node)[i];
-    }
-    return result;
+    return RbIterator<E>(result);
   }
   // The first entry whose key is greater than key.
-  BTreeIterator<E> upperBound(const K& key) const
+  RbIterator<E> upperBound(const K& key) const
   {
-    BTreeIterator<E> result = this->end();
-    BTreeNode<E>* node = this->root;
+    RbNodeBase* result = (RbNodeBase*)&this->header;
+    RbNodeBase* node = this->header.parent;
     while (node)
     {
-      int i = this->upperIndex(node, key);
-      if (i < node->count)
-        result = BTreeIterator<E>(node, i);
-      if (node->leaf)
-        break;
-      node = bTreeChildren(node)[i];
+      if (key < RbTree::keyOf(node))
+      {
+        result = node;
+        node = node->left;
+      }
+      else
+        node = node->right;
     }
-    return result;
+    return RbIterator<E>(result);
+  }
+  // An entry with key (the first of equal ones), or end().
+  RbIterator<E> find(const K& key) const
+  {
+    RbIterator<E> at = this->lowerBound(key);
+    if (at.node == &this->header || key < RbTree::keyOf(at.node))
+      return this->end();
+    return at;
+  }
+  int countOf(const K& key) const
+  {
+    int n = 0;
+    for (RbIterator<E> at = this->lowerBound(key); at.node != &this->header && !(key < RbTree::keyOf(at.node)); ++at)
+      ++n;
+    return n;
   }
 
-  // Adds entry, whose key must not be in the tree yet, and returns where it went. Full nodes on
-  // the way down are split before entering them, so the leaf it ends in has room.
-  BTreeIterator<E> insertNew(E&& entry)
+  // Adds entry after any entries with an equal key and returns where it went.
+  RbIterator<E> insertEqual(E&& entry)
   {
-    if (!this->root)
-    {
-      this->root = this->newNode(true);
-      this->rightmost = this->root;
-    }
-    if (this->root->count == bTreeMaxEntries)
-    {
-      BTreeNode<E>* oldRoot = this->root;
-      this->root = this->newNode(false);
-      this->setChild(this->root, 0, oldRoot);
-      this->splitChild(this->root, 0);
-    }
     const K& key = KeyOf::of(entry);
-    BTreeNode<E>* node = this->root;
-    while (!node->leaf)
+    RbNodeBase* parent = &this->header;
+    RbNodeBase* node = this->header.parent;
+    bool asLeft = true;
+    while (node)
     {
-      int i = this->upperIndex(node, key);
-      if (bTreeChildren(node)[i]->count == bTreeMaxEntries)
-      {
-        this->splitChild(node, i);
-        if (this->keyAt(node, i) < key)
-          ++i;
-      }
-      node = bTreeChildren(node)[i];
+      parent = node;
+      asLeft = key < RbTree::keyOf(node);
+      node = asLeft ? node->left : node->right;
     }
-    int i = this->upperIndex(node, key);
-    relocateBackward(node->entries + i + 1, node->entries + i, node->count - i);
-    new (node->entries + i) E(move(entry));
-    ++node->count;
+    RbNode<E>* fresh = (RbNode<E>*)malloc(sizeof(RbNode<E>));
+    new (&fresh->entry) E(move(entry));
+    rbInsertAndRebalance(asLeft, fresh, parent, this->header);
     ++this->count;
-    return BTreeIterator<E>(node, i);
+    return RbIterator<E>(fresh);
   }
 
-  // Removes the entry with key; false when there is none. Nodes on the way down are first given
-  // more than the minimum of entries (from a sibling, or by merging with one), so that taking
-  // one out of them never needs to go back up.
-  bool erase(const K& key)
+  // Removes the entry at position; returns the position after it.
+  RbIterator<E> erase(RbIterator<E> position)
   {
-    BTreeNode<E>* node = this->root;
-    if (!node)
-      return false;
-    bool found = false;
-    while (true)
-    {
-      int i = this->lowerIndex(node, key);
-      if (i < node->count && !(key < KeyOf::of(node->entries[i])))
-      {
-        this->eraseAt(node, i);
-        found = true;
-        break;
-      }
-      if (node->leaf)
-        break;
-      node = bTreeChildren(node)[this->fill(node, i)];
-    }
-    this->shrinkRoot();
-    return found;
+    RbNodeBase* next = rbNext(position.node);
+    rbEraseAndRebalance(position.node, this->header);
+    this->destroyNode(position.node);
+    --this->count;
+    return RbIterator<E>(next);
+  }
+  RbIterator<E> erase(RbIterator<E> first, RbIterator<E> last)
+  {
+    while (first != last)
+      first = this->erase(first);
+    return last;
   }
 
   void clear()
   {
-    if (this->root)
-      this->destroy(this->root);
-    this->root = nullptr;
-    this->rightmost = nullptr;
+    if (this->header.parent)
+      this->destroySubtree(this->header.parent);
+    this->becomeEmpty();
     this->count = 0;
   }
 
   // Internals.
-  // The key of entry i of node. (Going through this function also keeps `KeyOf::of(a) < b` out of
-  // the comparisons, which kppc does not compile for class types yet: spec
-  // templates/static_call_through_parameter_operator.)
-  static const K& keyAt(const BTreeNode<E>* node, int i) { return KeyOf::of(node->entries[i]); }
-  // Small keys (numbers, pointers, ids) are searched linearly, which beats a binary search's
-  // unpredictable branches over 15 entries (map.lookup 99 -> 57 ms for int keys); other keys
-  // binary, since each comparison costs more.
-  static int lowerIndex(const BTreeNode<E>* node, const K& key)
-  {
-    if constexpr (sizeof(K) <= 8)
-    {
-      int i = 0;
-      while (i < node->count && BTree::keyAt(node, i) < key)
-        ++i;
-      return i;
-    }
-    int low = 0, high = node->count;
-    while (low < high)
-    {
-      int middle = (low + high) / 2;
-      if (BTree::keyAt(node, middle) < key)
-        low = middle + 1;
-      else
-        high = middle;
-    }
-    return low;
-  }
-  static int upperIndex(const BTreeNode<E>* node, const K& key)
-  {
-    if constexpr (sizeof(K) <= 8)
-    {
-      int i = 0;
-      while (i < node->count && !(key < BTree::keyAt(node, i)))
-        ++i;
-      return i;
-    }
-    int low = 0, high = node->count;
-    while (low < high)
-    {
-      int middle = (low + high) / 2;
-      if (key < BTree::keyAt(node, middle))
-        high = middle;
-      else
-        low = middle + 1;
-    }
-    return low;
-  }
+  static const K& keyOf(const RbNodeBase* node) { return KeyOf::of(((const RbNode<E>*)node)->entry); }
 
-  BTreeNode<E>* newNode(bool leaf)
+  void becomeEmpty()
   {
-    BTreeNode<E>* node = (BTreeNode<E>*)malloc(leaf ? sizeof(BTreeNode<E>) : sizeof(BTreeInterior<E>));
-    node->parent = nullptr;
-    node->count = 0;
-    node->parentIndex = 0;
-    node->leaf = leaf;
-    return node;
+    this->header.parent = nullptr;
+    this->header.left = &this->header;
+    this->header.right = &this->header;
+    this->header.red = true;
   }
-  void setChild(BTreeNode<E>* node, int index, BTreeNode<E>* child)
+  void destroyNode(RbNodeBase* node)
   {
-    bTreeChildren(node)[index] = child;
-    child->parent = node;
-    child->parentIndex = index;
-  }
-  // Moves children [from, from + count) of source to target from index at.
-  void moveChildren(BTreeNode<E>* target, int at, BTreeNode<E>* source, int from, int count)
-  {
-    BTreeNode<E>** children = bTreeChildren(source);
-    if (target == source && at > from)
-      for (int k = count; k-- > 0;)
-        this->setChild(target, at + k, children[from + k]);
-    else
-      for (int k = 0; k < count; ++k)
-        this->setChild(target, at + k, children[from + k]);
-  }
-
-  // Splits the full child i of node: its upper 7 entries go to a new right sibling, the middle
-  // one up into node.
-  void splitChild(BTreeNode<E>* node, int i)
-  {
-    BTreeNode<E>* child = bTreeChildren(node)[i];
-    BTreeNode<E>* right = this->newNode(child->leaf);
-    relocate(right->entries, child->entries + bTreeMinEntries + 1, bTreeMinEntries);
-    right->count = bTreeMinEntries;
-    if (!child->leaf)
-      this->moveChildren(right, 0, child, bTreeMinEntries + 1, bTreeMinEntries + 1);
-    relocateBackward(node->entries + i + 1, node->entries + i, node->count - i);
-    relocate(node->entries + i, child->entries + bTreeMinEntries, 1);
-    child->count = bTreeMinEntries;
-    this->moveChildren(node, i + 2, node, i + 1, node->count - i);
-    this->setChild(node, i + 1, right);
-    ++node->count;
-    if (child == this->rightmost)
-      this->rightmost = right;
-  }
-
-  // Makes sure child i of node has more than the minimum of entries and returns the index of the
-  // child that then holds what child i held (i - 1 after merging into the left sibling).
-  int fill(BTreeNode<E>* node, int i)
-  {
-    BTreeNode<E>** children = bTreeChildren(node);
-    if (children[i]->count > bTreeMinEntries)
-      return i;
-    if (i > 0 && children[i - 1]->count > bTreeMinEntries)
-    {
-      this->rotateRight(node, i - 1);
-      return i;
-    }
-    if (i < node->count && children[i + 1]->count > bTreeMinEntries)
-    {
-      this->rotateLeft(node, i);
-      return i;
-    }
-    if (i < node->count)
-    {
-      this->merge(node, i);
-      return i;
-    }
-    this->merge(node, i - 1);
-    return i - 1;
-  }
-  // Entry k of node moves down to the front of child k + 1; the last entry of child k takes its place.
-  void rotateRight(BTreeNode<E>* node, int k)
-  {
-    BTreeNode<E>* left = bTreeChildren(node)[k];
-    BTreeNode<E>* right = bTreeChildren(node)[k + 1];
-    relocateBackward(right->entries + 1, right->entries, right->count);
-    relocate(right->entries, node->entries + k, 1);
-    relocate(node->entries + k, left->entries + left->count - 1, 1);
-    if (!right->leaf)
-    {
-      this->moveChildren(right, 1, right, 0, right->count + 1);
-      this->setChild(right, 0, bTreeChildren(left)[left->count]);
-    }
-    --left->count;
-    ++right->count;
-  }
-  // Entry k of node moves down to the end of child k; the first entry of child k + 1 takes its place.
-  void rotateLeft(BTreeNode<E>* node, int k)
-  {
-    BTreeNode<E>* left = bTreeChildren(node)[k];
-    BTreeNode<E>* right = bTreeChildren(node)[k + 1];
-    relocate(left->entries + left->count, node->entries + k, 1);
-    relocate(node->entries + k, right->entries, 1);
-    relocate(right->entries, right->entries + 1, right->count - 1);
-    if (!left->leaf)
-    {
-      this->setChild(left, left->count + 1, bTreeChildren(right)[0]);
-      this->moveChildren(right, 0, right, 1, right->count);
-    }
-    ++left->count;
-    --right->count;
-  }
-  // Merges child k + 1 of node and entry k into child k (both children at the minimum).
-  void merge(BTreeNode<E>* node, int k)
-  {
-    BTreeNode<E>* left = bTreeChildren(node)[k];
-    BTreeNode<E>* right = bTreeChildren(node)[k + 1];
-    relocate(left->entries + left->count, node->entries + k, 1);
-    relocate(left->entries + left->count + 1, right->entries, right->count);
-    if (!left->leaf)
-      this->moveChildren(left, left->count + 1, right, 0, right->count + 1);
-    left->count += right->count + 1;
-    relocate(node->entries + k, node->entries + k + 1, node->count - k - 1);
-    this->moveChildren(node, k + 1, node, k + 2, node->count - k - 1);
-    --node->count;
-    if (right == this->rightmost)
-      this->rightmost = left;
-    free(right);
-  }
-
-  // Removes entry i of node, which is the root or has more than the minimum of entries.
-  void eraseAt(BTreeNode<E>* node, int i)
-  {
-    while (!node->leaf)
-    {
-      BTreeNode<E>** children = bTreeChildren(node);
-      if (children[i]->count > bTreeMinEntries)
-      {
-        // Replaced by its predecessor, the last entry of the subtree before it.
-        node->entries[i].~E();
-        this->takeLast(children[i], node->entries + i);
-        --this->count;
-        return;
-      }
-      if (children[i + 1]->count > bTreeMinEntries)
-      {
-        node->entries[i].~E();
-        this->takeFirst(children[i + 1], node->entries + i);
-        --this->count;
-        return;
-      }
-      // Both neighbours at the minimum: merged around the entry, which is then the middle of the
-      // merged child.
-      this->merge(node, i);
-      node = children[i];
-      i = bTreeMinEntries;
-    }
-    node->entries[i].~E();
-    relocate(node->entries + i, node->entries + i + 1, node->count - i - 1);
-    --node->count;
-    --this->count;
-  }
-  // Moves the last entry of the subtree under node (which has more than the minimum) into the
-  // unconstructed target.
-  void takeLast(BTreeNode<E>* node, E* target)
-  {
-    while (!node->leaf)
-      node = bTreeChildren(node)[this->fill(node, node->count)];
-    relocate(target, node->entries + node->count - 1, 1);
-    --node->count;
-  }
-  void takeFirst(BTreeNode<E>* node, E* target)
-  {
-    while (!node->leaf)
-      node = bTreeChildren(node)[this->fill(node, 0)];
-    relocate(target, node->entries, 1);
-    relocate(node->entries, node->entries + 1, node->count - 1);
-    --node->count;
-  }
-  // An emptied root gives way to its only child, or the tree becomes empty.
-  void shrinkRoot()
-  {
-    if (!this->root || this->root->count > 0)
-      return;
-    BTreeNode<E>* old = this->root;
-    if (old->leaf)
-    {
-      this->root = nullptr;
-      this->rightmost = nullptr;
-    }
-    else
-    {
-      this->root = bTreeChildren(old)[0];
-      this->root->parent = nullptr;
-      this->root->parentIndex = 0;
-    }
-    free(old);
-  }
-
-  void destroy(BTreeNode<E>* node)
-  {
-    if (!node->leaf)
-      for (int i = 0; i <= node->count; ++i)
-        this->destroy(bTreeChildren(node)[i]);
-    for (int i = 0; i < node->count; ++i)
-      node->entries[i].~E();
+    ((RbNode<E>*)node)->entry.~E();
     free(node);
   }
-  BTreeNode<E>* clone(const BTreeNode<E>* source)
+  void destroySubtree(RbNodeBase* node)
   {
-    BTreeNode<E>* node = this->newNode(source->leaf);
-    for (int i = 0; i < source->count; ++i)
-      new (node->entries + i) E(source->entries[i]);
-    node->count = source->count;
-    if (!source->leaf)
-      for (int i = 0; i <= source->count; ++i)
-        this->setChild(node, i, this->clone(bTreeChildren((BTreeNode<E>*)source)[i]));
-    else
-      this->rightmost = node; // leaves are cloned left to right: the last one is the rightmost
+    while (node)
+    {
+      if (node->right)
+        this->destroySubtree(node->right);
+      RbNodeBase* left = node->left;
+      this->destroyNode(node);
+      node = left;
+    }
+  }
+  RbNodeBase* clone(const RbNodeBase* source, RbNodeBase* parent)
+  {
+    RbNode<E>* node = (RbNode<E>*)malloc(sizeof(RbNode<E>));
+    new (&node->entry) E(((const RbNode<E>*)source)->entry);
+    node->red = source->red;
+    node->parent = parent;
+    node->left = source->left ? this->clone(source->left, node) : nullptr;
+    node->right = source->right ? this->clone(source->right, node) : nullptr;
     return node;
   }
-  void copyFrom(const BTree<E, K, KeyOf>& other)
+  void copyFrom(const RbTree<E, K, KeyOf>& other)
   {
-    if (other.root)
-      this->root = this->clone(other.root);
+    if (!other.header.parent)
+      return;
+    this->header.parent = this->clone(other.header.parent, &this->header);
+    this->header.left = rbMinimum(this->header.parent);
+    this->header.right = rbMaximum(this->header.parent);
     this->count = other.count;
+  }
+  // Takes other's nodes; the root has to point at this header instead.
+  void take(RbTree<E, K, KeyOf>& other)
+  {
+    if (!other.header.parent)
+      return;
+    this->header.parent = other.header.parent;
+    this->header.left = other.header.left;
+    this->header.right = other.header.right;
+    this->header.parent->parent = &this->header;
+    this->count = other.count;
+    other.becomeEmpty();
+    other.count = 0;
   }
 };
 
 template<typename K, typename V>
-struct MapEntryKey
+struct MapKey
 {
   static const K& of(const Pair<K, V>& entry) { return entry.first; }
 };
 
-// An ordered map: entries are Pair<K, V> in key order.
+template<typename T>
+struct SetKey
+{
+  static const T& of(const T& entry) { return entry; }
+};
+
+// An ordered map with unique keys: entries are Pair<K, V> in key order.
 template<typename K, typename V>
 struct Map
 {
-  BTree<Pair<K, V>, K, MapEntryKey<K, V>> tree;
+  RbTree<Pair<K, V>, K, MapKey<K, V>> tree;
 
-  using iterator = BTreeIterator<Pair<K, V>>;
-  using const_iterator = BTreeIterator<Pair<K, V>>;
+  using iterator = RbIterator<Pair<K, V>>;
+  using const_iterator = RbIterator<Pair<K, V>>;
   using value_type = Pair<K, V>;
 
   Map() {}
@@ -575,73 +578,87 @@ struct Map
   implicit Map(InitializerList<Pair<K, V>> items)
   {
     for (const Pair<K, V>& item : items)
-      this->insert(item.first, item.second);
+      this->insert(item);
   }
 
   int size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
-  BTreeIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
-  BTreeIterator<Pair<K, V>> end() const { return this->tree.end(); }
+  RbIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
+  RbIterator<Pair<K, V>> end() const { return this->tree.end(); }
 
-  // The entry with key, or end().
-  BTreeIterator<Pair<K, V>> find(const K& key) const { return this->tree.find(key); }
+  RbIterator<Pair<K, V>> find(const K& key) const { return this->tree.find(key); }
   bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
   int count(const K& key) const { return this->contains(key) ? 1 : 0; }
-  // The first entry whose key is not less than key / greater than key.
-  BTreeIterator<Pair<K, V>> lowerBound(const K& key) const { return this->tree.lowerBound(key); }
-  BTreeIterator<Pair<K, V>> lower_bound(const K& key) const { return this->tree.lowerBound(key); }
-  BTreeIterator<Pair<K, V>> upperBound(const K& key) const { return this->tree.upperBound(key); }
-  BTreeIterator<Pair<K, V>> upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  RbIterator<Pair<K, V>> lowerBound(const K& key) const { return this->tree.lowerBound(key); }
+  RbIterator<Pair<K, V>> lower_bound(const K& key) const { return this->tree.lowerBound(key); }
+  RbIterator<Pair<K, V>> upperBound(const K& key) const { return this->tree.upperBound(key); }
+  RbIterator<Pair<K, V>> upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>> equal_range(const K& key) const
+  {
+    return Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>>(this->tree.lowerBound(key), this->tree.upperBound(key));
+  }
 
   // The value for key, inserted default-constructed when new.
   V& operator[](const K& key)
   {
-    BTreeIterator<Pair<K, V>> at = this->tree.find(key);
-    if (at != this->tree.end())
+    RbIterator<Pair<K, V>> at = this->tree.lowerBound(key);
+    if (at != this->tree.end() && !(key < at->first))
       return at->second;
-    return this->tree.insertNew(Pair<K, V>(key, V()))->second;
+    return this->tree.insertEqual(Pair<K, V>(key, V()))->second;
   }
   V& at(const K& key) { return this->tree.find(key)->second; }
   const V& at(const K& key) const { return this->tree.find(key)->second; }
-  // True when the key was new (an existing value is kept, as std::map::insert keeps it).
-  bool insert(const K& key, const V& value)
+  // std::map::insert: the entry with the key and whether it was added (an existing value is kept).
+  Pair<RbIterator<Pair<K, V>>, bool> insert(const Pair<K, V>& entry)
   {
-    if (this->tree.find(key) != this->tree.end())
-      return false;
-    this->tree.insertNew(Pair<K, V>(key, value));
-    return true;
+    RbIterator<Pair<K, V>> at = this->tree.find(entry.first);
+    if (at != this->tree.end())
+      return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(Pair<K, V>(entry)), true);
   }
-  bool insert(const Pair<K, V>& entry) { return this->insert(entry.first, entry.second); }
-  // The key is copied first: it may be one of this map's, which erasing moves.
-  bool erase(const K& key)
+  Pair<RbIterator<Pair<K, V>>, bool> insert(Pair<K, V>&& entry)
   {
-    K copy(key);
-    return this->tree.erase(copy);
+    RbIterator<Pair<K, V>> at = this->tree.find(entry.first);
+    if (at != this->tree.end())
+      return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(move(entry)), true);
   }
-  // Removes the entry at position; returns the position of the entry after it.
-  BTreeIterator<Pair<K, V>> erase(BTreeIterator<Pair<K, V>> position)
+  // std::map::emplace: the entry built from the arguments, unless its key is there already.
+  template<typename... Args>
+  Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
+  // std::map::try_emplace: builds the value from the arguments only when the key is new.
+  template<typename... Args>
+  Pair<RbIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)
   {
-    K key(position->first);
-    this->tree.erase(key);
-    return this->tree.lowerBound(key);
+    RbIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at != this->tree.end())
+      return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(Pair<K, V>(key, V(forward<Args>(args)...))), true);
   }
+  // Kpp's shorthand: true when the key was new.
+  bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
+  // The number of entries removed (0 or 1).
+  int erase(const K& key)
+  {
+    RbIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at == this->tree.end())
+      return 0;
+    this->tree.erase(at);
+    return 1;
+  }
+  RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> position) { return this->tree.erase(position); }
+  RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> first, RbIterator<Pair<K, V>> last) { return this->tree.erase(first, last); }
   void clear() { this->tree.clear(); }
 };
 
-template<typename T>
-struct SetEntryKey
-{
-  static const T& of(const T& entry) { return entry; }
-};
-
-// An ordered set of values.
+// An ordered set of unique values.
 template<typename T>
 struct Set
 {
-  BTree<T, T, SetEntryKey<T>> tree;
+  RbTree<T, T, SetKey<T>> tree;
 
-  using iterator = BTreeIterator<T>;
-  using const_iterator = BTreeIterator<T>;
+  using iterator = RbIterator<T>;
+  using const_iterator = RbIterator<T>;
   using value_type = T;
 
   Set() {}
@@ -653,36 +670,159 @@ struct Set
 
   int size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
-  BTreeIterator<T> begin() const { return this->tree.begin(); }
-  BTreeIterator<T> end() const { return this->tree.end(); }
+  RbIterator<T> begin() const { return this->tree.begin(); }
+  RbIterator<T> end() const { return this->tree.end(); }
 
-  BTreeIterator<T> find(const T& value) const { return this->tree.find(value); }
+  RbIterator<T> find(const T& value) const { return this->tree.find(value); }
   bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
   int count(const T& value) const { return this->contains(value) ? 1 : 0; }
-  BTreeIterator<T> lowerBound(const T& value) const { return this->tree.lowerBound(value); }
-  BTreeIterator<T> lower_bound(const T& value) const { return this->tree.lowerBound(value); }
-  BTreeIterator<T> upperBound(const T& value) const { return this->tree.upperBound(value); }
-  BTreeIterator<T> upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  RbIterator<T> lowerBound(const T& value) const { return this->tree.lowerBound(value); }
+  RbIterator<T> lower_bound(const T& value) const { return this->tree.lowerBound(value); }
+  RbIterator<T> upperBound(const T& value) const { return this->tree.upperBound(value); }
+  RbIterator<T> upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  Pair<RbIterator<T>, RbIterator<T>> equal_range(const T& value) const
+  {
+    return Pair<RbIterator<T>, RbIterator<T>>(this->tree.lowerBound(value), this->tree.upperBound(value));
+  }
 
-  // True when the value was new.
-  bool insert(const T& value)
+  // std::set::insert: the entry with the value and whether it was added.
+  Pair<RbIterator<T>, bool> insert(const T& value)
   {
-    if (this->tree.find(value) != this->tree.end())
-      return false;
-    this->tree.insertNew(T(value));
-    return true;
+    RbIterator<T> at = this->tree.find(value);
+    if (at != this->tree.end())
+      return Pair<RbIterator<T>, bool>(at, false);
+    return Pair<RbIterator<T>, bool>(this->tree.insertEqual(T(value)), true);
   }
-  // The value is copied first: it may be one of this set's, which erasing moves.
-  bool erase(const T& value)
+  Pair<RbIterator<T>, bool> insert(T&& value)
   {
-    T copy(value);
-    return this->tree.erase(copy);
+    RbIterator<T> at = this->tree.find(value);
+    if (at != this->tree.end())
+      return Pair<RbIterator<T>, bool>(at, false);
+    return Pair<RbIterator<T>, bool>(this->tree.insertEqual(move(value)), true);
   }
-  BTreeIterator<T> erase(BTreeIterator<T> position)
+  template<typename... Args>
+  Pair<RbIterator<T>, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
+  // The number of values removed (0 or 1).
+  int erase(const T& value)
   {
-    T value(*position);
-    this->tree.erase(value);
-    return this->tree.lowerBound(value);
+    RbIterator<T> at = this->tree.find(value);
+    if (at == this->tree.end())
+      return 0;
+    this->tree.erase(at);
+    return 1;
   }
+  RbIterator<T> erase(RbIterator<T> position) { return this->tree.erase(position); }
+  RbIterator<T> erase(RbIterator<T> first, RbIterator<T> last) { return this->tree.erase(first, last); }
+  void clear() { this->tree.clear(); }
+};
+
+// An ordered map that allows equal keys, kept in insertion order among themselves.
+template<typename K, typename V>
+struct MultiMap
+{
+  RbTree<Pair<K, V>, K, MapKey<K, V>> tree;
+
+  using iterator = RbIterator<Pair<K, V>>;
+  using const_iterator = RbIterator<Pair<K, V>>;
+  using value_type = Pair<K, V>;
+
+  MultiMap() {}
+  implicit MultiMap(InitializerList<Pair<K, V>> items)
+  {
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+  }
+
+  int size() const { return this->tree.count; }
+  bool empty() const { return this->tree.count == 0; }
+  RbIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
+  RbIterator<Pair<K, V>> end() const { return this->tree.end(); }
+
+  RbIterator<Pair<K, V>> find(const K& key) const { return this->tree.find(key); }
+  bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
+  int count(const K& key) const { return this->tree.countOf(key); }
+  RbIterator<Pair<K, V>> lowerBound(const K& key) const { return this->tree.lowerBound(key); }
+  RbIterator<Pair<K, V>> lower_bound(const K& key) const { return this->tree.lowerBound(key); }
+  RbIterator<Pair<K, V>> upperBound(const K& key) const { return this->tree.upperBound(key); }
+  RbIterator<Pair<K, V>> upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>> equal_range(const K& key) const
+  {
+    return Pair<RbIterator<Pair<K, V>>, RbIterator<Pair<K, V>>>(this->tree.lowerBound(key), this->tree.upperBound(key));
+  }
+
+  RbIterator<Pair<K, V>> insert(const Pair<K, V>& entry) { return this->tree.insertEqual(Pair<K, V>(entry)); }
+  RbIterator<Pair<K, V>> insert(Pair<K, V>&& entry) { return this->tree.insertEqual(move(entry)); }
+  template<typename... Args>
+  RbIterator<Pair<K, V>> emplace(Args&&... args) { return this->tree.insertEqual(Pair<K, V>(forward<Args>(args)...)); }
+  RbIterator<Pair<K, V>> insert(const K& key, const V& value) { return this->tree.insertEqual(Pair<K, V>(key, value)); }
+  // Removes every entry with key; returns how many.
+  int erase(const K& key)
+  {
+    RbIterator<Pair<K, V>> first = this->tree.lowerBound(key);
+    RbIterator<Pair<K, V>> last = this->tree.upperBound(key);
+    int removed = 0;
+    while (first != last)
+    {
+      first = this->tree.erase(first);
+      ++removed;
+    }
+    return removed;
+  }
+  RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> position) { return this->tree.erase(position); }
+  RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> first, RbIterator<Pair<K, V>> last) { return this->tree.erase(first, last); }
+  void clear() { this->tree.clear(); }
+};
+
+// An ordered set that allows equal values, kept in insertion order among themselves.
+template<typename T>
+struct MultiSet
+{
+  RbTree<T, T, SetKey<T>> tree;
+
+  using iterator = RbIterator<T>;
+  using const_iterator = RbIterator<T>;
+  using value_type = T;
+
+  MultiSet() {}
+  implicit MultiSet(InitializerList<T> items)
+  {
+    for (const T& value : items)
+      this->insert(value);
+  }
+
+  int size() const { return this->tree.count; }
+  bool empty() const { return this->tree.count == 0; }
+  RbIterator<T> begin() const { return this->tree.begin(); }
+  RbIterator<T> end() const { return this->tree.end(); }
+
+  RbIterator<T> find(const T& value) const { return this->tree.find(value); }
+  bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
+  int count(const T& value) const { return this->tree.countOf(value); }
+  RbIterator<T> lowerBound(const T& value) const { return this->tree.lowerBound(value); }
+  RbIterator<T> lower_bound(const T& value) const { return this->tree.lowerBound(value); }
+  RbIterator<T> upperBound(const T& value) const { return this->tree.upperBound(value); }
+  RbIterator<T> upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  Pair<RbIterator<T>, RbIterator<T>> equal_range(const T& value) const
+  {
+    return Pair<RbIterator<T>, RbIterator<T>>(this->tree.lowerBound(value), this->tree.upperBound(value));
+  }
+
+  RbIterator<T> insert(const T& value) { return this->tree.insertEqual(T(value)); }
+  RbIterator<T> insert(T&& value) { return this->tree.insertEqual(move(value)); }
+  // Removes every value equal to value; returns how many.
+  int erase(const T& value)
+  {
+    RbIterator<T> first = this->tree.lowerBound(value);
+    RbIterator<T> last = this->tree.upperBound(value);
+    int removed = 0;
+    while (first != last)
+    {
+      first = this->tree.erase(first);
+      ++removed;
+    }
+    return removed;
+  }
+  RbIterator<T> erase(RbIterator<T> position) { return this->tree.erase(position); }
+  RbIterator<T> erase(RbIterator<T> first, RbIterator<T> last) { return this->tree.erase(first, last); }
   void clear() { this->tree.clear(); }
 };

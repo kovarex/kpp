@@ -1,0 +1,17 @@
+// spec: a brace-list argument is a temporary, so it binds to an rvalue-reference overload: `map.insert({key, makeUnique<T>()})` picks insert(Pair&&)
+// factorio: converted code inserts move-only values this way (AsteroidCollectorNavMesh: Map<ChunkPosition, UniquePtr<...>>)
+// pending: overload resolution picks insert(const Pair&) for the brace list and then cannot copy the UniquePtr
+struct Box
+{
+  int copies = 0;
+  int moves = 0;
+  void take(const Pair<int, UniquePtr<int>>& entry) { ++this->copies; }
+  void take(Pair<int, UniquePtr<int>>&& entry) { ++this->moves; }
+};
+int main()
+{
+  Box box;
+  box.take({1, makeUnique<int>(5)});
+  println("{} {}", box.copies, box.moves);
+  return 0;
+}

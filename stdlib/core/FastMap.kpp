@@ -1,0 +1,710 @@
+// Kpp standard library: FastMap<K, V> and FastSet<T>, ordered by operator< and kept in a
+// B-tree: nodes of up to 15 entries in key order, interior nodes with 16 children around them,
+// every node but the root at least half full. Wide nodes keep lookups cache-friendly (a few nodes
+// per search instead of a pointer per level), inserting and erasing are O(log n), and iterating
+// walks the entries in order. Faster than Map and Set (docs/stdlib-performance.md).
+//
+// The difference to Map/Set (std::map/std::set), and the reason to choose these explicitly:
+// entries move between nodes when others are inserted or erased, so every insert and erase
+// invalidates all iterators, pointers and references into the container, as for Vector.
+// Converted C++ code gets Map and Set, which keep the standard's guarantees.
+
+// A node: the entries in key order. Nodes are malloc'd and their entries constructed one by one,
+// so the node types themselves are never constructed or destroyed.
+template<typename E>
+struct BTreeNode
+{
+  BTreeNode<E>* parent;
+  int count;
+  int parentIndex; // this node's place among its parent's children
+  bool leaf;
+  E entries[15];
+};
+
+// An interior node: children[i] holds the entries ordered before entries[i], children[count]
+// those after the last one.
+template<typename E>
+struct BTreeInterior : BTreeNode<E>
+{
+  BTreeNode<E>* children[16];
+};
+
+const int bTreeMaxEntries = 15;
+const int bTreeMinEntries = 7; // in every node but the root
+
+template<typename E>
+BTreeNode<E>** bTreeChildren(BTreeNode<E>* node) { return ((BTreeInterior<E>*)node)->children; }
+
+// A position in the tree: an entry, or one past the last entry of the last leaf (end()).
+template<typename E>
+struct BTreeIterator
+{
+  BTreeNode<E>* node = nullptr;
+  int index = 0;
+
+  BTreeIterator() {}
+  BTreeIterator(BTreeNode<E>* node, int index) : node(node), index(index) {}
+
+  E& operator*() const { return this->node->entries[this->index]; }
+  E* operator->() const { return &this->node->entries[this->index]; }
+  bool operator==(const BTreeIterator<E>& other) const { return this->node == other.node && this->index == other.index; }
+  bool operator!=(const BTreeIterator<E>& other) const { return !(*this == other); }
+
+  BTreeIterator<E>& operator++()
+  {
+    if (!this->node->leaf)
+    {
+      // The first entry of the subtree after this entry.
+      BTreeNode<E>* next = bTreeChildren(this->node)[this->index + 1];
+      while (!next->leaf)
+        next = bTreeChildren(next)[0];
+      this->node = next;
+      this->index = 0;
+      return *this;
+    }
+    ++this->index;
+    if (this->index < this->node->count)
+      return *this;
+    // The leaf is done: the next entry is in the first ancestor whose subtree this one is left of.
+    BTreeNode<E>* climb = this->node;
+    while (climb->parent && climb->parentIndex == climb->parent->count)
+      climb = climb->parent;
+    if (climb->parent)
+    {
+      this->node = climb->parent;
+      this->index = climb->parentIndex;
+    }
+    // Otherwise that was the last entry, and (last leaf, count) is end().
+    return *this;
+  }
+  BTreeIterator<E> operator++(int)
+  {
+    BTreeIterator<E> before = *this;
+    ++*this;
+    return before;
+  }
+  BTreeIterator<E>& operator--()
+  {
+    if (!this->node->leaf)
+    {
+      // The last entry of the subtree before this entry.
+      BTreeNode<E>* previous = bTreeChildren(this->node)[this->index];
+      while (!previous->leaf)
+        previous = bTreeChildren(previous)[previous->count];
+      this->node = previous;
+      this->index = previous->count - 1;
+      return *this;
+    }
+    if (this->index > 0)
+    {
+      --this->index;
+      return *this;
+    }
+    BTreeNode<E>* climb = this->node;
+    while (climb->parentIndex == 0)
+      climb = climb->parent;
+    this->node = climb->parent;
+    this->index = climb->parentIndex - 1;
+    return *this;
+  }
+  BTreeIterator<E> operator--(int)
+  {
+    BTreeIterator<E> before = *this;
+    --*this;
+    return before;
+  }
+};
+
+// The tree behind FastMap and FastSet: entries E, ordered by their keys KeyOf::of(entry), of type K.
+template<typename E, typename K, typename KeyOf>
+struct BTree
+{
+  BTreeNode<E>* root = nullptr;
+  BTreeNode<E>* rightmost = nullptr; // the last leaf: end() is (rightmost, its count)
+  int count = 0;
+
+  BTree() {}
+  BTree(const BTree<E, K, KeyOf>& other) { this->copyFrom(other); }
+  BTree(BTree<E, K, KeyOf>&& other) : root(other.root), rightmost(other.rightmost), count(other.count)
+  {
+    other.root = nullptr;
+    other.rightmost = nullptr;
+    other.count = 0;
+  }
+  ~BTree() { this->clear(); }
+  BTree<E, K, KeyOf>& operator=(const BTree<E, K, KeyOf>& other)
+  {
+    if (this != &other)
+    {
+      this->clear();
+      this->copyFrom(other);
+    }
+    return *this;
+  }
+  BTree<E, K, KeyOf>& operator=(BTree<E, K, KeyOf>&& other)
+  {
+    if (this == &other)
+      return *this;
+    this->clear();
+    this->root = other.root;
+    this->rightmost = other.rightmost;
+    this->count = other.count;
+    other.root = nullptr;
+    other.rightmost = nullptr;
+    other.count = 0;
+    return *this;
+  }
+
+  BTreeIterator<E> begin() const
+  {
+    if (!this->root)
+      return this->end();
+    BTreeNode<E>* node = this->root;
+    while (!node->leaf)
+      node = bTreeChildren(node)[0];
+    return BTreeIterator<E>(node, 0);
+  }
+  BTreeIterator<E> end() const { return BTreeIterator<E>(this->rightmost, this->rightmost ? this->rightmost->count : 0); }
+
+  BTreeIterator<E> find(const K& key) const
+  {
+    BTreeNode<E>* node = this->root;
+    while (node)
+    {
+      int i = this->lowerIndex(node, key);
+      if (i < node->count && !(key < this->keyAt(node, i)))
+        return BTreeIterator<E>(node, i);
+      if (node->leaf)
+        break;
+      node = bTreeChildren(node)[i];
+    }
+    return this->end();
+  }
+  // The first entry whose key is not less than key. Each node on the way down narrows the range,
+  // so the deepest candidate is the answer.
+  BTreeIterator<E> lowerBound(const K& key) const
+  {
+    BTreeIterator<E> result = this->end();
+    BTreeNode<E>* node = this->root;
+    while (node)
+    {
+      int i = this->lowerIndex(node, key);
+      if (i < node->count)
+        result = BTreeIterator<E>(node, i);
+      if (node->leaf)
+        break;
+      node = bTreeChildren(node)[i];
+    }
+    return result;
+  }
+  // The first entry whose key is greater than key.
+  BTreeIterator<E> upperBound(const K& key) const
+  {
+    BTreeIterator<E> result = this->end();
+    BTreeNode<E>* node = this->root;
+    while (node)
+    {
+      int i = this->upperIndex(node, key);
+      if (i < node->count)
+        result = BTreeIterator<E>(node, i);
+      if (node->leaf)
+        break;
+      node = bTreeChildren(node)[i];
+    }
+    return result;
+  }
+
+  // Adds entry, whose key must not be in the tree yet, and returns where it went. Full nodes on
+  // the way down are split before entering them, so the leaf it ends in has room.
+  BTreeIterator<E> insertNew(E&& entry)
+  {
+    if (!this->root)
+    {
+      this->root = this->newNode(true);
+      this->rightmost = this->root;
+    }
+    if (this->root->count == bTreeMaxEntries)
+    {
+      BTreeNode<E>* oldRoot = this->root;
+      this->root = this->newNode(false);
+      this->setChild(this->root, 0, oldRoot);
+      this->splitChild(this->root, 0);
+    }
+    const K& key = KeyOf::of(entry);
+    BTreeNode<E>* node = this->root;
+    while (!node->leaf)
+    {
+      int i = this->upperIndex(node, key);
+      if (bTreeChildren(node)[i]->count == bTreeMaxEntries)
+      {
+        this->splitChild(node, i);
+        if (this->keyAt(node, i) < key)
+          ++i;
+      }
+      node = bTreeChildren(node)[i];
+    }
+    int i = this->upperIndex(node, key);
+    relocateBackward(node->entries + i + 1, node->entries + i, node->count - i);
+    new (node->entries + i) E(move(entry));
+    ++node->count;
+    ++this->count;
+    return BTreeIterator<E>(node, i);
+  }
+
+  // Removes the entry with key; false when there is none. Nodes on the way down are first given
+  // more than the minimum of entries (from a sibling, or by merging with one), so that taking
+  // one out of them never needs to go back up.
+  bool erase(const K& key)
+  {
+    BTreeNode<E>* node = this->root;
+    if (!node)
+      return false;
+    bool found = false;
+    while (true)
+    {
+      int i = this->lowerIndex(node, key);
+      if (i < node->count && !(key < KeyOf::of(node->entries[i])))
+      {
+        this->eraseAt(node, i);
+        found = true;
+        break;
+      }
+      if (node->leaf)
+        break;
+      node = bTreeChildren(node)[this->fill(node, i)];
+    }
+    this->shrinkRoot();
+    return found;
+  }
+
+  void clear()
+  {
+    if (this->root)
+      this->destroy(this->root);
+    this->root = nullptr;
+    this->rightmost = nullptr;
+    this->count = 0;
+  }
+
+  // Internals.
+  // The key of entry i of node. (Going through this function also keeps `KeyOf::of(a) < b` out of
+  // the comparisons, which kppc does not compile for class types yet: spec
+  // templates/static_call_through_parameter_operator.)
+  static const K& keyAt(const BTreeNode<E>* node, int i) { return KeyOf::of(node->entries[i]); }
+  // Small keys (numbers, pointers, ids) are searched linearly, which beats a binary search's
+  // unpredictable branches over 15 entries (map.lookup 99 -> 57 ms for int keys); other keys
+  // binary, since each comparison costs more.
+  static int lowerIndex(const BTreeNode<E>* node, const K& key)
+  {
+    if constexpr (sizeof(K) <= 8)
+    {
+      int i = 0;
+      while (i < node->count && BTree::keyAt(node, i) < key)
+        ++i;
+      return i;
+    }
+    int low = 0, high = node->count;
+    while (low < high)
+    {
+      int middle = (low + high) / 2;
+      if (BTree::keyAt(node, middle) < key)
+        low = middle + 1;
+      else
+        high = middle;
+    }
+    return low;
+  }
+  static int upperIndex(const BTreeNode<E>* node, const K& key)
+  {
+    if constexpr (sizeof(K) <= 8)
+    {
+      int i = 0;
+      while (i < node->count && !(key < BTree::keyAt(node, i)))
+        ++i;
+      return i;
+    }
+    int low = 0, high = node->count;
+    while (low < high)
+    {
+      int middle = (low + high) / 2;
+      if (key < BTree::keyAt(node, middle))
+        high = middle;
+      else
+        low = middle + 1;
+    }
+    return low;
+  }
+
+  BTreeNode<E>* newNode(bool leaf)
+  {
+    BTreeNode<E>* node = (BTreeNode<E>*)malloc(leaf ? sizeof(BTreeNode<E>) : sizeof(BTreeInterior<E>));
+    node->parent = nullptr;
+    node->count = 0;
+    node->parentIndex = 0;
+    node->leaf = leaf;
+    return node;
+  }
+  void setChild(BTreeNode<E>* node, int index, BTreeNode<E>* child)
+  {
+    bTreeChildren(node)[index] = child;
+    child->parent = node;
+    child->parentIndex = index;
+  }
+  // Moves children [from, from + count) of source to target from index at.
+  void moveChildren(BTreeNode<E>* target, int at, BTreeNode<E>* source, int from, int count)
+  {
+    BTreeNode<E>** children = bTreeChildren(source);
+    if (target == source && at > from)
+      for (int k = count; k-- > 0;)
+        this->setChild(target, at + k, children[from + k]);
+    else
+      for (int k = 0; k < count; ++k)
+        this->setChild(target, at + k, children[from + k]);
+  }
+
+  // Splits the full child i of node: its upper 7 entries go to a new right sibling, the middle
+  // one up into node.
+  void splitChild(BTreeNode<E>* node, int i)
+  {
+    BTreeNode<E>* child = bTreeChildren(node)[i];
+    BTreeNode<E>* right = this->newNode(child->leaf);
+    relocate(right->entries, child->entries + bTreeMinEntries + 1, bTreeMinEntries);
+    right->count = bTreeMinEntries;
+    if (!child->leaf)
+      this->moveChildren(right, 0, child, bTreeMinEntries + 1, bTreeMinEntries + 1);
+    relocateBackward(node->entries + i + 1, node->entries + i, node->count - i);
+    relocate(node->entries + i, child->entries + bTreeMinEntries, 1);
+    child->count = bTreeMinEntries;
+    this->moveChildren(node, i + 2, node, i + 1, node->count - i);
+    this->setChild(node, i + 1, right);
+    ++node->count;
+    if (child == this->rightmost)
+      this->rightmost = right;
+  }
+
+  // Makes sure child i of node has more than the minimum of entries and returns the index of the
+  // child that then holds what child i held (i - 1 after merging into the left sibling).
+  int fill(BTreeNode<E>* node, int i)
+  {
+    BTreeNode<E>** children = bTreeChildren(node);
+    if (children[i]->count > bTreeMinEntries)
+      return i;
+    if (i > 0 && children[i - 1]->count > bTreeMinEntries)
+    {
+      this->rotateRight(node, i - 1);
+      return i;
+    }
+    if (i < node->count && children[i + 1]->count > bTreeMinEntries)
+    {
+      this->rotateLeft(node, i);
+      return i;
+    }
+    if (i < node->count)
+    {
+      this->merge(node, i);
+      return i;
+    }
+    this->merge(node, i - 1);
+    return i - 1;
+  }
+  // Entry k of node moves down to the front of child k + 1; the last entry of child k takes its place.
+  void rotateRight(BTreeNode<E>* node, int k)
+  {
+    BTreeNode<E>* left = bTreeChildren(node)[k];
+    BTreeNode<E>* right = bTreeChildren(node)[k + 1];
+    relocateBackward(right->entries + 1, right->entries, right->count);
+    relocate(right->entries, node->entries + k, 1);
+    relocate(node->entries + k, left->entries + left->count - 1, 1);
+    if (!right->leaf)
+    {
+      this->moveChildren(right, 1, right, 0, right->count + 1);
+      this->setChild(right, 0, bTreeChildren(left)[left->count]);
+    }
+    --left->count;
+    ++right->count;
+  }
+  // Entry k of node moves down to the end of child k; the first entry of child k + 1 takes its place.
+  void rotateLeft(BTreeNode<E>* node, int k)
+  {
+    BTreeNode<E>* left = bTreeChildren(node)[k];
+    BTreeNode<E>* right = bTreeChildren(node)[k + 1];
+    relocate(left->entries + left->count, node->entries + k, 1);
+    relocate(node->entries + k, right->entries, 1);
+    relocate(right->entries, right->entries + 1, right->count - 1);
+    if (!left->leaf)
+    {
+      this->setChild(left, left->count + 1, bTreeChildren(right)[0]);
+      this->moveChildren(right, 0, right, 1, right->count);
+    }
+    ++left->count;
+    --right->count;
+  }
+  // Merges child k + 1 of node and entry k into child k (both children at the minimum).
+  void merge(BTreeNode<E>* node, int k)
+  {
+    BTreeNode<E>* left = bTreeChildren(node)[k];
+    BTreeNode<E>* right = bTreeChildren(node)[k + 1];
+    relocate(left->entries + left->count, node->entries + k, 1);
+    relocate(left->entries + left->count + 1, right->entries, right->count);
+    if (!left->leaf)
+      this->moveChildren(left, left->count + 1, right, 0, right->count + 1);
+    left->count += right->count + 1;
+    relocate(node->entries + k, node->entries + k + 1, node->count - k - 1);
+    this->moveChildren(node, k + 1, node, k + 2, node->count - k - 1);
+    --node->count;
+    if (right == this->rightmost)
+      this->rightmost = left;
+    free(right);
+  }
+
+  // Removes entry i of node, which is the root or has more than the minimum of entries.
+  void eraseAt(BTreeNode<E>* node, int i)
+  {
+    while (!node->leaf)
+    {
+      BTreeNode<E>** children = bTreeChildren(node);
+      if (children[i]->count > bTreeMinEntries)
+      {
+        // Replaced by its predecessor, the last entry of the subtree before it.
+        node->entries[i].~E();
+        this->takeLast(children[i], node->entries + i);
+        --this->count;
+        return;
+      }
+      if (children[i + 1]->count > bTreeMinEntries)
+      {
+        node->entries[i].~E();
+        this->takeFirst(children[i + 1], node->entries + i);
+        --this->count;
+        return;
+      }
+      // Both neighbours at the minimum: merged around the entry, which is then the middle of the
+      // merged child.
+      this->merge(node, i);
+      node = children[i];
+      i = bTreeMinEntries;
+    }
+    node->entries[i].~E();
+    relocate(node->entries + i, node->entries + i + 1, node->count - i - 1);
+    --node->count;
+    --this->count;
+  }
+  // Moves the last entry of the subtree under node (which has more than the minimum) into the
+  // unconstructed target.
+  void takeLast(BTreeNode<E>* node, E* target)
+  {
+    while (!node->leaf)
+      node = bTreeChildren(node)[this->fill(node, node->count)];
+    relocate(target, node->entries + node->count - 1, 1);
+    --node->count;
+  }
+  void takeFirst(BTreeNode<E>* node, E* target)
+  {
+    while (!node->leaf)
+      node = bTreeChildren(node)[this->fill(node, 0)];
+    relocate(target, node->entries, 1);
+    relocate(node->entries, node->entries + 1, node->count - 1);
+    --node->count;
+  }
+  // An emptied root gives way to its only child, or the tree becomes empty.
+  void shrinkRoot()
+  {
+    if (!this->root || this->root->count > 0)
+      return;
+    BTreeNode<E>* old = this->root;
+    if (old->leaf)
+    {
+      this->root = nullptr;
+      this->rightmost = nullptr;
+    }
+    else
+    {
+      this->root = bTreeChildren(old)[0];
+      this->root->parent = nullptr;
+      this->root->parentIndex = 0;
+    }
+    free(old);
+  }
+
+  void destroy(BTreeNode<E>* node)
+  {
+    if (!node->leaf)
+      for (int i = 0; i <= node->count; ++i)
+        this->destroy(bTreeChildren(node)[i]);
+    for (int i = 0; i < node->count; ++i)
+      node->entries[i].~E();
+    free(node);
+  }
+  BTreeNode<E>* clone(const BTreeNode<E>* source)
+  {
+    BTreeNode<E>* node = this->newNode(source->leaf);
+    for (int i = 0; i < source->count; ++i)
+      new (node->entries + i) E(source->entries[i]);
+    node->count = source->count;
+    if (!source->leaf)
+      for (int i = 0; i <= source->count; ++i)
+        this->setChild(node, i, this->clone(bTreeChildren((BTreeNode<E>*)source)[i]));
+    else
+      this->rightmost = node; // leaves are cloned left to right: the last one is the rightmost
+    return node;
+  }
+  void copyFrom(const BTree<E, K, KeyOf>& other)
+  {
+    if (other.root)
+      this->root = this->clone(other.root);
+    this->count = other.count;
+  }
+};
+
+template<typename K, typename V>
+struct FastMapKey
+{
+  static const K& of(const Pair<K, V>& entry) { return entry.first; }
+};
+
+template<typename T>
+struct FastSetKey
+{
+  static const T& of(const T& entry) { return entry; }
+};
+
+// An ordered map with unique keys, with Map's interface (only the invalidation rules differ).
+template<typename K, typename V>
+struct FastMap
+{
+  BTree<Pair<K, V>, K, FastMapKey<K, V>> tree;
+
+  using iterator = BTreeIterator<Pair<K, V>>;
+  using const_iterator = BTreeIterator<Pair<K, V>>;
+  using value_type = Pair<K, V>;
+
+  FastMap() {}
+  implicit FastMap(InitializerList<Pair<K, V>> items)
+  {
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+  }
+
+  int size() const { return this->tree.count; }
+  bool empty() const { return this->tree.count == 0; }
+  BTreeIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
+  BTreeIterator<Pair<K, V>> end() const { return this->tree.end(); }
+
+  BTreeIterator<Pair<K, V>> find(const K& key) const { return this->tree.find(key); }
+  bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
+  int count(const K& key) const { return this->contains(key) ? 1 : 0; }
+  BTreeIterator<Pair<K, V>> lowerBound(const K& key) const { return this->tree.lowerBound(key); }
+  BTreeIterator<Pair<K, V>> lower_bound(const K& key) const { return this->tree.lowerBound(key); }
+  BTreeIterator<Pair<K, V>> upperBound(const K& key) const { return this->tree.upperBound(key); }
+  BTreeIterator<Pair<K, V>> upper_bound(const K& key) const { return this->tree.upperBound(key); }
+  Pair<BTreeIterator<Pair<K, V>>, BTreeIterator<Pair<K, V>>> equal_range(const K& key) const
+  {
+    return Pair<BTreeIterator<Pair<K, V>>, BTreeIterator<Pair<K, V>>>(this->tree.lowerBound(key), this->tree.upperBound(key));
+  }
+
+  // The value for key, inserted default-constructed when new.
+  V& operator[](const K& key)
+  {
+    BTreeIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at != this->tree.end())
+      return at->second;
+    return this->tree.insertNew(Pair<K, V>(key, V()))->second;
+  }
+  V& at(const K& key) { return this->tree.find(key)->second; }
+  const V& at(const K& key) const { return this->tree.find(key)->second; }
+  // The entry with the key and whether it was added (an existing value is kept).
+  Pair<BTreeIterator<Pair<K, V>>, bool> insert(const Pair<K, V>& entry) { return this->insert(Pair<K, V>(entry)); }
+  Pair<BTreeIterator<Pair<K, V>>, bool> insert(Pair<K, V>&& entry)
+  {
+    BTreeIterator<Pair<K, V>> at = this->tree.find(entry.first);
+    if (at != this->tree.end())
+      return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
+    return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(move(entry)), true);
+  }
+  template<typename... Args>
+  Pair<BTreeIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
+  template<typename... Args>
+  Pair<BTreeIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)
+  {
+    BTreeIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at != this->tree.end())
+      return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
+    return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(Pair<K, V>(key, V(forward<Args>(args)...))), true);
+  }
+  bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
+  // The number of entries removed (0 or 1). The key is copied first: it may be one of this
+  // map's, which erasing moves.
+  int erase(const K& key)
+  {
+    K copy(key);
+    return this->tree.erase(copy) ? 1 : 0;
+  }
+  // Removes the entry at position; returns the position of the entry after it.
+  BTreeIterator<Pair<K, V>> erase(BTreeIterator<Pair<K, V>> position)
+  {
+    K key(position->first);
+    this->tree.erase(key);
+    return this->tree.lowerBound(key);
+  }
+  void clear() { this->tree.clear(); }
+};
+
+// An ordered set of unique values, with Set's interface (only the invalidation rules differ).
+template<typename T>
+struct FastSet
+{
+  BTree<T, T, FastSetKey<T>> tree;
+
+  using iterator = BTreeIterator<T>;
+  using const_iterator = BTreeIterator<T>;
+  using value_type = T;
+
+  FastSet() {}
+  implicit FastSet(InitializerList<T> items)
+  {
+    for (const T& value : items)
+      this->insert(value);
+  }
+
+  int size() const { return this->tree.count; }
+  bool empty() const { return this->tree.count == 0; }
+  BTreeIterator<T> begin() const { return this->tree.begin(); }
+  BTreeIterator<T> end() const { return this->tree.end(); }
+
+  BTreeIterator<T> find(const T& value) const { return this->tree.find(value); }
+  bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
+  int count(const T& value) const { return this->contains(value) ? 1 : 0; }
+  BTreeIterator<T> lowerBound(const T& value) const { return this->tree.lowerBound(value); }
+  BTreeIterator<T> lower_bound(const T& value) const { return this->tree.lowerBound(value); }
+  BTreeIterator<T> upperBound(const T& value) const { return this->tree.upperBound(value); }
+  BTreeIterator<T> upper_bound(const T& value) const { return this->tree.upperBound(value); }
+  Pair<BTreeIterator<T>, BTreeIterator<T>> equal_range(const T& value) const
+  {
+    return Pair<BTreeIterator<T>, BTreeIterator<T>>(this->tree.lowerBound(value), this->tree.upperBound(value));
+  }
+
+  // The entry with the value and whether it was added.
+  Pair<BTreeIterator<T>, bool> insert(const T& value) { return this->insert(T(value)); }
+  Pair<BTreeIterator<T>, bool> insert(T&& value)
+  {
+    BTreeIterator<T> at = this->tree.find(value);
+    if (at != this->tree.end())
+      return Pair<BTreeIterator<T>, bool>(at, false);
+    return Pair<BTreeIterator<T>, bool>(this->tree.insertNew(move(value)), true);
+  }
+  template<typename... Args>
+  Pair<BTreeIterator<T>, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
+  // The number of values removed (0 or 1).
+  int erase(const T& value)
+  {
+    T copy(value);
+    return this->tree.erase(copy) ? 1 : 0;
+  }
+  BTreeIterator<T> erase(BTreeIterator<T> position)
+  {
+    T value(*position);
+    this->tree.erase(value);
+    return this->tree.lowerBound(value);
+  }
+  void clear() { this->tree.clear(); }
+};

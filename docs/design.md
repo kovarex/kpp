@@ -62,6 +62,11 @@ builds win less unless machine code is cached per function.
   C++20 hold: a class with `operator<=>` has `<`, `>`, `<=` and `>=`; a defaulted one orders by
   its bases and members in turn and gives `==`; `a != b` is `!(a == b)` for every class.
   (Done 2026-10-25.)
+- Each library type that a std type converts to keeps the guarantees the C++ standard gives that
+  type (iterator, pointer and reference invalidation, complexity, the meaning of return values),
+  since converted code relies on them. A faster type that breaks one is a separate, explicitly
+  named type (FastMap next to Map). docs/stdlib-conformance.md lists where each type stands.
+  (kovarex 2026-10-28.)
 - Containers move elements as the C++ ones do: when Vector grows or shifts, HashMap rehashes or
   stableSort merges, each element is move-constructed at its new place and the old one destroyed
   (`relocate` in Utility.kpp), so a type that keeps its own address can fix it in its move

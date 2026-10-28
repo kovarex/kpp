@@ -139,23 +139,20 @@ compiler/tests/run/containers2.kpp covers these, the small/large switch and the 
 **Ordered maps.** All three C++ libraries implement std::map and std::set as red-black trees:
 one allocation per entry and one pointer to chase per level. Kpp's Map and Set were sorted
 Vectors (fast lookups and iteration, but O(n) inserts: 100k inserts took 179 ms against 12.5 for
-std::map). They are now B-trees (stdlib/core/Map.kpp, the layout of Abseil's btree_map): nodes of
-up to 15 entries, split on the way down when inserting, refilled from a sibling or merged on the
-way down when erasing, so neither ever walks back up. Keys of up to 8 bytes are searched
-linearly within a node, which beat binary search there by 40% (unpredictable branches over 15
-entries cost more than the extra compares); larger keys binary. Unlike std::map, inserting or
-erasing invalidates iterators, since entries move between nodes. Measured with run.cmd
+std::map). Map, Set, MultiMap and MultiSet are now red-black trees too (stdlib/core/Map.kpp), with
+the same guarantees as std's (entries never move; see docs/stdlib-conformance.md). FastMap and
+FastSet (FastMap.kpp) are the explicitly faster alternative: a B-tree in the layout of Abseil's
+btree_map, nodes of up to 15 entries, split on the way down when inserting and refilled from a
+sibling or merged on the way down when erasing. Keys of up to 8 bytes are searched linearly within
+a node, which beat binary search there by 40%; larger keys binary. The price: entries move between
+nodes, so every insert and erase invalidates iterators and references. Measured with run.cmd
 2026-10-28, ms (columns as above):
 
-| benchmark | sorted Vector | B-tree | MSVC STL | libstdc++ | libc++ |
-|---|---:|---:|---:|---:|---:|
-| map.insert | 179.3 | 8.9 | 12.5 | 11.6 | 10.5 |
-| map.lookup | 70.1 | 57.8 | 67.9 | 96.3 | 59.5 |
-| map.iterate | 1.8 | 7.3 | 14.8 | 8.1 | 5.7 |
-
-Iterating got slower than over the sorted Vector (it walks nodes instead of one array) but stays
-2x faster than the MSVC STL. MultiMap and MultiSet (MultiContainers.kpp) are still sorted
-Vectors.
+| benchmark | sorted Vector | Map (red-black) | FastMap (B-tree) | MSVC STL | libstdc++ | libc++ |
+|---|---:|---:|---:|---:|---:|---:|
+| map.insert | 179.3 | 14.2 | 8.9 | 12.8 | 11.4 | 10.8 |
+| map.lookup | 70.1 | 73.1 | 57.8 | 70.3 | 93.6 | 60.7 |
+| map.iterate | 1.8 | 17.6 | 7.3 | 15.5 | 8.0 | 5.6 |
 
 **Prefetching, allocators.** None of the three C++ libraries prefetches explicitly in these
 containers; the hardware prefetcher handles the linear scans. Allocator strategy matters more: the
@@ -169,8 +166,6 @@ library-level item left.
 
 Library design:
 - **Allocator**: see above (string.concat 22.8 ms against 7.2 with glibc's malloc).
-- **MultiMap/MultiSet** are still sorted Vectors (O(n) inserts); the B-tree takes them once it
-  allows equal keys.
 - **vector.insert front**: memmove of the tail, same as MSVC STL; libstdc++/libc++ are faster
   only through glibc's memmove.
 
