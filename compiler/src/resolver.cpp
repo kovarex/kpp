@@ -3544,6 +3544,34 @@ struct GlobalScope::Impl
     return true;
   }
 
+  // `template<> const char* Button<RecipeID>::tooltip() {...}`: an explicit specialisation of a
+  // member of a class template, the body that one instantiation's member has (not a definition
+  // of the template's member).
+  static bool isMemberSpecialization(const FunctionDecl* f)
+  {
+    if (!(f->flags & DF_Specialization) || !f->templateParams.empty() || f->name.parts.size() < 2 || f->name.last().hasTemplateArgs)
+      return false;
+    for (size_t i = 0; i + 1 < f->name.parts.size(); ++i)
+      if (f->name.parts[i].hasTemplateArgs)
+        return true;
+    return false;
+  }
+
+  // The class instantiation an explicit member specialisation is written for (`Button<RecipeID>`
+  // with its defaults), or null.
+  const Ty* specializedClassOf(FunctionDecl* f)
+  {
+    QualifiedName qualifier = f->name;
+    qualifier.parts.count -= 1;
+    NamedType written{};
+    written.kind = NodeKind::NamedType;
+    written.token = f->token;
+    written.name = qualifier;
+    TypeContext ctx{lexicalScopeOf(f), nullptr, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    const Ty* t = convertType(&written, ctx, 0);
+    return t && t->kind == TyKind::Class && !types.isDependent(t) ? t : nullptr;
+  }
+
   const Ty* typeAs(FunctionDecl* candidate, FunctionDecl* f)
   {
     const Ty* t = declaredTypeOf(candidate, nullptr, 0);
@@ -6990,6 +7018,44 @@ Decl* GlobalScope::typeInfoDecl() { return impl->typeInfoDecl(); }
 Decl* GlobalScope::enumFromStrDecl() { return impl->enumFromStrDecl(); }
 Decl* GlobalScope::strongOrderingDecl() { return impl->strongOrderingDecl(); }
 
+Decl* GlobalScope::definitionOf(Decl* d, const TemplateArgs& classArgs)
+{
+  // A member of a class template instantiation: the explicit specialisation written for that
+  // instantiation (`template<> const char* Button<RecipeID>::tooltip()`), when there is one.
+  Decl* cls = d && d->kind == NodeKind::FunctionDecl && !classArgs.empty() ? owningClass(d) : nullptr;
+  if (cls && cls->ownScope && !cls->templateParams.empty())
+  {
+    auto* f = static_cast<FunctionDecl*>(d);
+    uint32_t symbol = impl->functionSymbol(f->name);
+    Subst s;
+    for (auto& [p, t] : classArgs.pairs)
+      s.pairs.push_back({p, t});
+    const Ty* ft = nullptr;
+    for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
+    {
+      if (!Impl::isMemberSpecialization(candidate) || impl->functionSymbol(candidate->name) != symbol)
+        continue;
+      Impl::TokenScope tokenScope(candidate->file ? candidate->file->tokens : nullptr, candidate->file ? candidate->file->text : std::string_view());
+      const Ty* written = impl->specializedClassOf(candidate);
+      if (!written)
+        continue;
+      Subst ws = impl->substFor(written);
+      bool same = true;
+      for (Decl* p : cls->templateParams)
+        same = same && ws.find(p) && ws.find(p) == s.find(p);
+      if (!same)
+        continue;
+      if (!ft)
+        ft = impl->substitute(impl->declaredTypeOf(f, nullptr, 0), s);
+      if (impl->declaredTypeOf(candidate, nullptr, 0) != ft)
+        continue; // another overload's specialisation
+      candidate->flags |= f->flags & (DF_Static | DF_Virtual);
+      return candidate;
+    }
+  }
+  return definitionOf(d);
+}
+
 Decl* GlobalScope::definitionOf(Decl* d)
 {
   if (!d)
@@ -7019,7 +7085,7 @@ Decl* GlobalScope::definitionOf(Decl* d)
       uint32_t symbol = impl->functionSymbol(f->name);
       const Ty* ft = impl->declaredTypeOf(f, nullptr, 0);
       for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
-        if (impl->functionSymbol(candidate->name) == symbol && impl->typeAs(candidate, f) == ft)
+        if (impl->functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) && impl->typeAs(candidate, f) == ft)
         {
           // `static` and `virtual` are written on the declaration only; the definition is emitted
           // (with or without `this`) by what the declaration says.
@@ -7126,7 +7192,9 @@ bool GlobalScope::isTemplateContext(Decl* d)
   for (Decl* p = d; p; p = p->parent)
     if (!p->templateParams.empty())
       return true;
-  return false;
+  // An explicit specialisation of a class template's member: emitted as that instantiation's
+  // member (definitionOf with its arguments), never on its own.
+  return d && d->kind == NodeKind::FunctionDecl && Impl::isMemberSpecialization(static_cast<FunctionDecl*>(d));
 }
 
 namespace

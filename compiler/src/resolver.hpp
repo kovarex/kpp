@@ -165,6 +165,9 @@ public:
   const Ty* typeOfDecl(Decl* d);                 // Declared (or deduced) canonical type.
   const Ty* typeOfAst(Type* t, Decl* context);   // A written type, resolved in the context of a declaration.
   Decl* definitionOf(Decl* d);                   // Class/enum definition, or the out-of-line definition of a member function or a static data member.
+  // The same for a member of a class template instantiation (classArgs: the class's arguments):
+  // the explicit specialisation written for it (`template<> R Button<RecipeID>::f()`), if any.
+  Decl* definitionOf(Decl* d, const TemplateArgs& classArgs);
   Decl* initializerListDecl();                   // The library's InitializerList class, or null.
   Decl* typeInfoDecl();                          // The library's TypeInfo class (what typeid yields), or null.
   Decl* enumFromStrDecl();                       // The library's enumFromStr<E>(const char*) template (E::fromStr lowers to it), or null.

@@ -1,0 +1,41 @@
+// spec: explicit specialisation of a member of a class template, `template<> R Button<RecipeID>::createToolTip() {...}`: that instantiation's member has this body, virtual ones in its vtable included
+// found in the game's Gui (IDButton::createToolTip, ChooseButton::selectFromSignalID, ElemToolTip, CustomTooltipWithGeneratedTooltip...: 64 definitions)
+struct ItemID { int value = 1; };
+struct RecipeID { int value = 2; };
+
+struct Widget
+{
+  virtual ~Widget() {}
+  virtual const char* tooltip() = 0;
+};
+
+template<class IDType, class ElemType = void>
+class Button : public Widget
+{
+public:
+  IDType id;
+  const char* tooltip() override;
+  int describe() const;
+};
+
+template<class IDType, class ElemType>
+const char* Button<IDType, ElemType>::tooltip() { return "generic"; }
+
+template<class IDType, class ElemType>
+int Button<IDType, ElemType>::describe() const { return this->id.value; }
+
+template<>
+const char* Button<RecipeID>::tooltip() { return "recipe"; }
+
+template<>
+int Button<RecipeID, void>::describe() const { return this->id.value * 100; }
+
+int main()
+{
+  Button<ItemID> item;
+  Button<RecipeID> recipe;
+  Widget* widgets[2] = {&item, &recipe};
+  println("{} {}", widgets[0]->tooltip(), widgets[1]->tooltip());
+  println("{} {}", item.describe(), recipe.describe());
+  return 0;
+}

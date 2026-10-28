@@ -2809,7 +2809,7 @@ namespace
         return useFunction(static_cast<FunctionDecl*>(lib), libArgs, nullptr);
       }
       std::string name = functionName(f, args, classTy);
-      Decl* defDecl = global.definitionOf(f);
+      Decl* defDecl = global.definitionOf(f, args);
       FunctionDecl* def = defDecl && defDecl->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defDecl) : f;
       bool templated = !args.empty();
       if (def->file && def->file->isImported)
