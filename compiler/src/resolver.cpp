@@ -1,4 +1,5 @@
 #include "resolver.hpp"
+#include "instance.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
@@ -386,6 +387,36 @@ struct GlobalScope::Impl
       auto [it, inserted] = shard.map.emplace(key, raw);
       return it->second; // If another thread beat us, return theirs.
     }
+  }
+
+  // ---- instantiations' own bodies (GlobalScope::instanceBody) ----
+  struct InstanceRecord
+  {
+    std::atomic<int> state{0}; // 1 being built (by owner), 2 built
+    std::thread::id owner;
+    FunctionDecl* body = nullptr;
+  };
+  struct InstanceShard
+  {
+    std::mutex mutex;
+    std::unordered_map<std::string, std::unique_ptr<InstanceRecord>> map; // key: f, object type, argument pointers
+  };
+  InstanceShard instanceShards[64];
+  std::mutex instanceArenasMutex;
+  std::vector<std::unique_ptr<Arena>> instanceArenas;
+  // The arena this thread copies instantiations' bodies into (one per thread: no locking per node).
+  Arena& instanceArena()
+  {
+    thread_local Arena* mine = nullptr;
+    thread_local const void* owner = nullptr;
+    if (!mine || owner != this)
+    {
+      std::lock_guard lock(instanceArenasMutex);
+      instanceArenas.push_back(std::make_unique<Arena>());
+      mine = instanceArenas.back().get();
+      owner = this;
+    }
+    return *mine;
   }
 
   // ---- template instantiations: each (template, arguments) pair is checked exactly once ----
@@ -8595,35 +8626,89 @@ TemplateArgs GlobalScope::classArgsOf(const Ty* classType)
   return out;
 }
 
-void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
+// f's template parameters bound to args, `this` of objectType.
+void GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType)
 {
+  Impl& impl = *this->impl;
   if (!f->file || !f->file->tokens)
     return;
   Subst subst = toSubst(args);
   ResolveStats scratch;
-  Impl::Walker w(*impl, scratch, *f->file->tokens, f->file->text);
+  Impl::Walker w(impl, scratch, *f->file->tokens, f->file->text);
   for (Decl* p = f; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
   // The qualifier of an out-of-line definition (`ScrollBar<Policy>::ScrollBar`) is looked up
   // from the definition's own namespace, where the class is visible.
-  w.scope = impl->lexicalScopeOf(f);
+  w.scope = impl.lexicalScopeOf(f);
   if (f->name.parts.size() > 1)
     w.scope = w.semanticScopeFor(f->name);
   w.activeSubst = subst.pairs.empty() ? nullptr : &subst; // no arguments: the generic pass again (lambda types keep their identity)
   static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
   if (debugCalls)
   {
-    std::string line = "retype " + impl->debugName(f->name.last().symbol) + ":";
+    std::string line = "retype " + impl.debugName(f->name.last().symbol) + ":";
     for (auto& [d, ty] : subst.pairs)
-      line += " " + impl->debugName(static_cast<TemplateParamDecl*>(d)->name) + "=" + impl->types.toString(ty, &impl->symbols);
+      line += " " + impl.debugName(static_cast<TemplateParamDecl*>(d)->name) + "=" + impl.types.toString(ty, &impl.symbols);
     fprintf(stderr, "%s\n", line.c_str());
   }
   if (objectType)
-    w.thisType = impl->types.pointer(impl->types.unqualified(impl->types.stripRef(objectType)));
+    w.thisType = impl.types.pointer(impl.types.unqualified(impl.types.stripRef(objectType)));
   else if (Decl* cls = Impl::enclosingClassDecl(w.scope))
-    w.thisType = impl->types.pointer(impl->substitute(impl->selfType(cls), subst));
-  w.walkDecl(f);
+    w.thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
+  if (nodes != f && nodes->body)
+    impl.indexLocalTypes(nodes->body, w.scope, nodes); // the copy's local classes and enums: scopes of their own members
+  w.walkDecl(nodes);
+}
+
+void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
+{
+  typeFunctionFor(f, f, args, objectType);
+}
+
+FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
+{
+  if (args.empty() || !f->file || !f->file->tokens)
+    return f;
+  std::string key(reinterpret_cast<const char*>(&f), sizeof f);
+  key.append(reinterpret_cast<const char*>(&objectType), sizeof objectType);
+  for (auto& [d, t] : args.pairs)
+  {
+    key.append(reinterpret_cast<const char*>(&d), sizeof d);
+    key.append(reinterpret_cast<const char*>(&t), sizeof t);
+  }
+  Impl::InstanceShard& shard = impl->instanceShards[std::hash<std::string>()(key) % std::size(impl->instanceShards)];
+  Impl::InstanceRecord* record;
+  bool producer = false;
+  {
+    std::lock_guard lock(shard.mutex);
+    auto& slot = shard.map[key];
+    if (!slot)
+    {
+      slot = std::make_unique<Impl::InstanceRecord>();
+      slot->owner = std::this_thread::get_id();
+      slot->state.store(1, std::memory_order_relaxed);
+      producer = true;
+    }
+    record = slot.get();
+  }
+  if (!producer)
+  {
+    if (record->state.load(std::memory_order_acquire) != 2)
+    {
+      if (record->owner == std::this_thread::get_id())
+        return record->body ? record->body : f; // asked for again while being typed: what exists so far
+      while (record->state.load(std::memory_order_acquire) != 2)
+        std::this_thread::yield();
+    }
+    return record->body;
+  }
+  InstanceCopier copier(impl->instanceArena());
+  FunctionDecl* copy = copier.function(f);
+  record->body = copy;
+  typeFunctionFor(f, copy, args, objectType);
+  record->state.store(2, std::memory_order_release);
+  return copy;
 }
 
 bool GlobalScope::isExplicit(FunctionDecl* f, const TemplateArgs& args)

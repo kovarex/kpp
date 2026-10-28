@@ -33,6 +33,7 @@ public:
 private:
   Arena& arena;
   std::unordered_map<Decl*, Decl*> decls; // declaration inside the copied part -> its copy
+  const Decl* root = nullptr;             // the function being copied
   size_t nodes = 0;
 
   template<typename T>

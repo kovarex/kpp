@@ -206,6 +206,11 @@ public:
   // Re-types the body of f for one instantiation (expression types and resolved callees are
   // rewritten in place). objectType: the instantiated class for members, or null.
   void retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);
+  // The instantiation of f for args (objectType: the instantiated class for members, or null): a
+  // copy of the nodes f owns, typed for these arguments once and kept, so that the template's own
+  // nodes are never written for an instantiation (docs/design.md, "Instantiations own their typed
+  // bodies"). Thread-safe; the same copy for the same arguments.
+  FunctionDecl* instanceBody(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);
   // Re-types the body of a generic lambda (one with template parameters, written or invented for
   // its `auto` parameters) for one set of its own arguments, in the environment the lambda was
   // written in. Returns its call operator's type (parameters and result) or null; fullArgs gets
@@ -240,4 +245,6 @@ public:
 private:
   struct Impl;
   Impl* impl;
+  // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f.
+  void typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType);
 };

@@ -218,7 +218,8 @@ Decl* InstanceCopier::decl(const Decl* d)
     {
       auto* c = raw(static_cast<const FunctionDecl*>(d));
       decls[const_cast<Decl*>(d)] = c;
-      c->templateParams = declList(c->templateParams);
+      if (d != root) // the instantiated function's own parameters are what its arguments bind: kept
+        c->templateParams = declList(c->templateParams);
       c->returnType = type(c->returnType);
       c->name = name(c->name);
       c->params = declList(c->params);
@@ -536,8 +537,14 @@ Expr* InstanceCopier::expr(const Expr* e)
       c->returnType = type(c->returnType);
       c->captures = span(c->captures, [&](LambdaCapture& cap)
       {
-        cap.init = expr(cap.init);
-        cap.decl = decl(cap.decl);
+        Expr* init = cap.init;
+        Decl* var = cap.decl;
+        cap.decl = decl(var);
+        // The parser gives an init-capture's variable the capture's own expression: one node, one copy.
+        if (var && var->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(var)->init == init)
+          cap.init = static_cast<VariableDecl*>(cap.decl)->init;
+        else
+          cap.init = expr(init);
       });
       c->body = stmt(c->body);
       c->closure = decl(c->closure);
@@ -614,6 +621,7 @@ void InstanceCopier::fix(Decl*& d) const
 
 FunctionDecl* InstanceCopier::function(const FunctionDecl* f)
 {
+  root = f;
   auto* copy = static_cast<FunctionDecl*>(decl(f));
   copy->cachedType.store(nullptr, std::memory_order_relaxed);
   copy->parent = f->parent;

@@ -9311,13 +9311,14 @@ namespace
 
     // --- function definitions ---
 
-    void emitFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& nameOverride = "")
+    void emitFunction(FunctionDecl* original, const TemplateArgs& args, const Ty* classTy, const std::string& nameOverride = "")
     {
+      // An instantiation is emitted from its own copy of the template's nodes, typed for args once
+      // (GlobalScope::instanceBody); its IR name is the template's with the arguments.
+      FunctionDecl* f = args.empty() ? original : global.instanceBody(original, args, classTy);
       if (!conditionHolds(f))
         return; // conditional(false): the function does not exist in this build
       currentFile = f->file;
-      if (!args.empty())
-        global.retypeFor(f, args, classTy);
       currentArgs = args.empty() ? nullptr : &args;
       currentClassTy = classTy;
       if (!currentClassTy)
@@ -9338,7 +9339,7 @@ namespace
       if (!currentReturn || !currentReturn->isKnown())
         currentReturn = types.pointer(types.voidType());
       sretAddr.clear();
-      currentFunctionName = nameOverride.empty() ? functionName(f, args, classTy) : nameOverride;
+      currentFunctionName = nameOverride.empty() ? functionName(original, args, classTy) : nameOverride;
       try
       {
         Signature s = signatureOf(f);

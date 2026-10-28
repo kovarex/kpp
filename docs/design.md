@@ -451,7 +451,7 @@ file shorten them again, so the meaning of a short name depends on the file it i
 packages keep the hierarchy those systems give for browsing and drop the part that makes names
 contextual; clashes are prevented by the compiler refusing them instead.
 
-## Instantiations own their typed bodies (proposed 2026-10-28, waiting for kovarex's go)
+## Instantiations own their typed bodies (decided 2026-10-28: a copy per instantiation)
 
 **Today.** A template's body exists once, in the parsed tree. Whatever types it for a set of
 arguments (the checker's instantiation checks in the front end, then codegen through
@@ -517,6 +517,19 @@ re-typing of pack expansions (a pack expansion becomes one more instantiation-li
 element, or is typed per element in the copy). Memory can be won back by dropping an
 instantiation's copy once it is emitted, if a whole-program build ever needs it; the persistent
 compiler keeps them.
+
+**Decided and under way.** kovarex chose 2 on 2026-10-28. Step 1 is done: codegen emits every
+instantiation from its own copy, GlobalScope::instanceBody (built once per template, arguments and
+object type by the first thread that asks, in that thread's arena, and typed there by the walk
+retypeFor did); codegen no longer writes into a template's own nodes. On the headline inputs it is
+at parity with master: 29,615 stderr lines against 29,567 on the same frozen tree, the difference
+being one pre-existing overload bug (templates/lvalue_reference_parameter_takes_no_prvalue) whose
+self-recursion goes deeper now that each copy's lambda is a closure type of its own. Codegen took
+6.3 to 9.1 s against master's 5.9 to 7.8 s in those runs (the copying, until the checker types the
+copies itself; the machine was shared with other builds, so the spread is wide). Next: the
+checker's instantiation checks type the same copies and codegen types nothing; per-instance
+member initializers, default arguments, pack expansions and generic lambdas; then the parallel
+codegen driver.
 
 ## Benchmark target
 
