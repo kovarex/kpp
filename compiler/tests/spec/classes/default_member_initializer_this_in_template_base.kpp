@@ -1,0 +1,29 @@
+// spec: a default member initializer that uses `this` (`Hook* next = this;`) in a nested class of a class template, run by the implicit constructor of a plain class deriving from an instantiation of it
+// factorio: IntrusiveListImplementation<...>::Hook's `Hook* next = this; Hook* previous = this;` (IntrusiveList.kpp:154): 592 lines ask for the layout of the uninstantiated Hook<T, Tag, ConstantTimeSize, ParentAware>
+// pending: the code generator evaluates the initializer with the template's own types (Hook<T, P>*): "a member used outside a method"
+template<class T, bool P>
+class Impl
+{
+public:
+  class Hook
+  {
+  public:
+    Hook* next = this;
+    bool linked() const { return this->next != this; }
+  };
+};
+
+template<class T, bool P = false>
+using H = typename Impl<T, P>::Hook;
+
+struct Item : H<Item, true>
+{
+  int value = 3;
+};
+
+int main()
+{
+  Item item;
+  println("{} {} {}", item.next == &item, item.linked(), item.value);
+  return 0;
+}
