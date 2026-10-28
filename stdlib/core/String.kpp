@@ -491,8 +491,9 @@ struct String
     this->heapCapacity = capacity;
     this->smallChars[String::markIndex] = (char)String::largeMark;
   }
-  // Moves the characters into a heap block with room for newCapacity.
-  void reallocate(int newCapacity)
+  // Moves the characters into a heap block with room for newCapacity. Out of line, like every
+  // growth path, so that the fast paths around it stay small enough to inline.
+  [[noinline]] void reallocate(int newCapacity)
   {
     int length = this->size();
     char* block = (char*)malloc(newCapacity + 1);
@@ -508,7 +509,7 @@ struct String
   }
   // append() when the characters do not fit: bytes may point into this string, so the old block
   // is released only after they are copied.
-  void appendGrowing(const char* bytes, int count)
+  [[noinline]] void appendGrowing(const char* bytes, int count)
   {
     int length = this->size(), capacity = this->capacity();
     int newLength = length + count;

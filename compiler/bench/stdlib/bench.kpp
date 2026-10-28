@@ -1,0 +1,379 @@
+// Micro-benchmarks of the standard library containers. bench.cpp is the same program over the C++
+// standard library; run.cmd builds both and prints the table (docs/stdlib-performance.md).
+// Every benchmark returns a checksum, printed next to its time, so both sides provably did the
+// same work.
+extern "C" int printf(const char* format, ...);
+extern "C" int atoi(const char* text);
+
+uint64_t randomState = 88172645463325252ull;
+uint64_t nextRandom()
+{
+  randomState ^= randomState << 13;
+  randomState ^= randomState >> 7;
+  randomState ^= randomState << 17;
+  return randomState;
+}
+
+// The decimal digits of value with a prefix: the keys and short strings of the string benchmarks.
+int formatKey(char* buffer, const char* prefix, int value)
+{
+  int length = 0;
+  while (prefix[length] != 0)
+  {
+    buffer[length] = prefix[length];
+    ++length;
+  }
+  char digits[16];
+  int count = 0;
+  do
+  {
+    digits[count++] = char('0' + value % 10);
+    value /= 10;
+  } while (value != 0);
+  while (count > 0)
+    buffer[length++] = digits[--count];
+  buffer[length] = 0;
+  return length;
+}
+
+int selected = -1; // when given on the command line, only the benchmark at this position runs
+int position = 0;
+
+template<typename F>
+void run(const char* name, F body)
+{
+  int index = position++;
+  if (selected >= 0 && index != selected)
+    return;
+  double best = 1e30;
+  int64_t checksum = 0;
+  for (int round = 0; round < 7; ++round)
+  {
+    randomState = 88172645463325252ull;
+    TimePoint start = Clock::now();
+    checksum = body();
+    double elapsed = (Clock::now() - start).milliseconds();
+    if (elapsed < best)
+      best = elapsed;
+  }
+  printf("%-22s %9.2f ms  %lld\n", name, best, checksum);
+}
+
+const int bigCount = 10000000;
+const int stringCount = 1000000;
+
+int64_t vectorPushInt()
+{
+  Vector<int> values;
+  for (int i = 0; i < bigCount; ++i)
+    values.push_back(i);
+  return values.size() + values[bigCount / 2];
+}
+
+int64_t vectorPushReserved()
+{
+  Vector<int> values;
+  values.reserve(bigCount);
+  for (int i = 0; i < bigCount; ++i)
+    values.push_back(i);
+  return values.size() + values[bigCount / 2];
+}
+
+Vector<int> resized;
+
+int64_t vectorResize()
+{
+  Vector<int> values;
+  values.push_back(1);
+  values.resize(bigCount);
+  int64_t result = values.size() + values[bigCount - 1];
+  resized = move(values); // escapes, so the optimizer cannot drop the zeroing
+  return result;
+}
+
+Vector<int> sharedInts;
+
+int64_t vectorIterate()
+{
+  int64_t sum = 0;
+  for (int round = 0; round < 10; ++round)
+    for (int value : sharedInts)
+      sum += value;
+  return sum;
+}
+
+int64_t vectorCopy()
+{
+  int64_t sum = 0;
+  for (int round = 0; round < 10; ++round)
+  {
+    Vector<int> copy = sharedInts;
+    sum += copy[round];
+  }
+  return sum;
+}
+
+int64_t vectorInsertFront()
+{
+  Vector<int> values;
+  for (int i = 0; i < 50000; ++i)
+    values.insert(values.begin(), i);
+  return values[0] + values[49999];
+}
+
+int64_t vectorPushString()
+{
+  char buffer[32];
+  Vector<String> values;
+  for (int i = 0; i < stringCount; ++i)
+  {
+    int length = formatKey(buffer, "item", i);
+    values.push_back(String(buffer, length));
+  }
+  return values.size() + values[stringCount / 2].size();
+}
+
+int64_t stringSmall()
+{
+  char buffer[32];
+  int64_t total = 0;
+  for (int i = 0; i < bigCount; ++i)
+  {
+    int length = formatKey(buffer, "k", i);
+    String text(buffer, length);
+    total += text.size() + text[0];
+  }
+  return total;
+}
+
+Vector<String> sharedStrings;
+
+int64_t stringVectorCopy()
+{
+  int64_t total = 0;
+  for (int round = 0; round < 5; ++round)
+  {
+    Vector<String> copy = sharedStrings;
+    total += copy[round].size();
+  }
+  return total;
+}
+
+int64_t stringAppendChar()
+{
+  String text;
+  for (int i = 0; i < bigCount; ++i)
+    text.push_back(char('a' + i % 26));
+  return text.size() + text[12345];
+}
+
+int64_t stringAppendPieces()
+{
+  char buffer[32];
+  String text;
+  for (int i = 0; i < stringCount; ++i)
+  {
+    formatKey(buffer, "piece", i);
+    text += buffer;
+  }
+  return text.size();
+}
+
+int64_t stringConcat()
+{
+  String left("left-hand-side-of-it");
+  String right("right");
+  int64_t total = 0;
+  for (int i = 0; i < stringCount; ++i)
+  {
+    String joined = left + right;
+    total += joined.size();
+  }
+  return total;
+}
+
+String haystack;
+
+int64_t stringFind()
+{
+  int64_t total = 0;
+  for (int round = 0; round < 50; ++round)
+    total += haystack.find("needle-in-the-haystack");
+  return total;
+}
+
+int64_t stringFindChar()
+{
+  int64_t total = 0;
+  for (int round = 0; round < 200; ++round)
+    total += haystack.find('#', 0);
+  return total;
+}
+
+int64_t stringCompare()
+{
+  int64_t equal = 0;
+  for (int round = 0; round < 4; ++round)
+    for (int i = 1; i < stringCount; ++i)
+      if (sharedStrings[i] == sharedStrings[i - 1] || sharedStrings[i] < sharedStrings[i - 1])
+        ++equal;
+  return equal;
+}
+
+int64_t sortInts()
+{
+  Vector<int> values;
+  values.reserve(stringCount);
+  for (int i = 0; i < stringCount; ++i)
+    values.push_back(int(nextRandom() % 1000000000));
+  sort(values.begin(), values.end());
+  return values[0] + values[stringCount / 2];
+}
+
+int64_t sortIntsPredicate()
+{
+  Vector<int> values;
+  values.reserve(stringCount);
+  for (int i = 0; i < stringCount; ++i)
+    values.push_back(int(nextRandom() % 1000000000));
+  sort(values.begin(), values.end(), [](int a, int b) { return a > b; });
+  return values[0] + values[stringCount / 2];
+}
+
+int64_t sortStrings()
+{
+  Vector<String> values = sharedStrings;
+  for (int i = 0; i < values.size(); ++i)
+    swap(values[i], values[int(nextRandom() % (uint64_t)values.size())]);
+  sort(values.begin(), values.end());
+  return values[0].size() + values[stringCount / 2].size();
+}
+
+int64_t hashIntInsert()
+{
+  HashMap<int, int> map;
+  for (int i = 0; i < stringCount; ++i)
+    map[int(nextRandom() % 4000000)] += i;
+  return map.size();
+}
+
+int64_t hashIntLookup()
+{
+  HashMap<int, int> map;
+  for (int i = 0; i < stringCount; ++i)
+    map[i * 7] = i;
+  int64_t found = 0;
+  for (int round = 0; round < 4; ++round)
+    for (int i = 0; i < stringCount; ++i)
+    {
+      int* value = map.find(int(nextRandom() % 7000000));
+      if (value)
+        found += *value;
+    }
+  return found;
+}
+
+int64_t hashStringInsert()
+{
+  HashMap<String, int> map;
+  for (int i = 0; i < stringCount; ++i)
+    map[sharedStrings[i]] = i;
+  return map.size();
+}
+
+int64_t hashStringLookup()
+{
+  HashMap<String, int> map;
+  for (int i = 0; i < stringCount; i += 2)
+    map[sharedStrings[i]] = i;
+  int64_t found = 0;
+  for (int round = 0; round < 2; ++round)
+    for (int i = 0; i < stringCount; ++i)
+    {
+      int* value = map.find(sharedStrings[i]);
+      if (value)
+        found += *value;
+    }
+  return found;
+}
+
+const int mapCount = 100000;
+
+int64_t mapInsert()
+{
+  Map<int, int> map;
+  for (int i = 0; i < mapCount; ++i)
+    map[int(nextRandom() % 1000000)] += i;
+  return map.size();
+}
+
+int64_t mapLookup()
+{
+  Map<int, int> map;
+  for (int i = 0; i < mapCount; ++i)
+    map[i * 7] = i;
+  int64_t found = 0;
+  for (int i = 0; i < stringCount; ++i)
+  {
+    Pair<int, int>* entry = map.find(int(nextRandom() % 700000));
+    if (entry != map.end())
+      found += entry->second;
+  }
+  return found;
+}
+
+int64_t mapIterate()
+{
+  Map<int, int> map;
+  for (int i = 0; i < mapCount; ++i)
+    map[i * 7] = i;
+  int64_t sum = 0;
+  for (int round = 0; round < 20; ++round)
+    for (Pair<int, int>& entry : map)
+      sum += entry.second;
+  return sum;
+}
+
+int main(int argc, char** argv)
+{
+  if (argc > 1)
+    selected = atoi(argv[1]);
+  for (int i = 0; i < bigCount; ++i)
+    sharedInts.push_back(i);
+  char buffer[32];
+  for (int i = 0; i < stringCount; ++i)
+  {
+    int length = formatKey(buffer, "name", int(int64_t(i) * 7919 % stringCount));
+    sharedStrings.push_back(String(buffer, length));
+  }
+  for (int i = 0; i < 1000000; ++i)
+    haystack.push_back(char('a' + i % 23));
+  haystack.append("needle-in-the-haystack#");
+
+  run("vector.push int", vectorPushInt);
+  run("vector.push reserved", vectorPushReserved);
+  run("vector.resize", vectorResize);
+  run("vector.iterate", vectorIterate);
+  run("vector.copy int", vectorCopy);
+  run("vector.insert front", vectorInsertFront);
+  run("vector.push String", vectorPushString);
+  run("string.small", stringSmall);
+  run("string.vector copy", stringVectorCopy);
+  run("string.append char", stringAppendChar);
+  run("string.append pieces", stringAppendPieces);
+  run("string.concat", stringConcat);
+  run("string.find", stringFind);
+  run("string.find char", stringFindChar);
+  run("string.compare", stringCompare);
+  run("sort.int", sortInts);
+  run("sort.int predicate", sortIntsPredicate);
+  run("sort.String", sortStrings);
+  run("hash.int insert", hashIntInsert);
+  run("hash.int lookup", hashIntLookup);
+  run("hash.String insert", hashStringInsert);
+  run("hash.String lookup", hashStringLookup);
+  run("map.insert", mapInsert);
+  run("map.lookup", mapLookup);
+  run("map.iterate", mapIterate);
+  return 0;
+}
