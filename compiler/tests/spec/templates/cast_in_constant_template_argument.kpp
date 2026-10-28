@@ -1,0 +1,24 @@
+// spec: a cast in a constant template argument, `bits.test<static_cast<size_t>(value)>()` with value a constant parameter of enum type, folded in the target type
+// found in the converter's BITFIELD expansion (every Flags::contains<E>(): SmallBitset::test, 46 "template parameter whose value is not known")
+template<size_t BitCount>
+struct Bits
+{
+  unsigned int bits = 0;
+  template<size_t position>
+  bool test() const { return (this->bits & (1u << position)) != 0; }
+};
+struct Flags
+{
+  enum class Enum { OutputClosed, InputClosed, Third };
+  Bits<3> bits;
+  template<Enum value>
+  bool contains() const { return this->bits.test<static_cast<size_t>(value)>(); }
+};
+template<int N> int narrow() { return N; }
+int main()
+{
+  Flags f;
+  f.bits.bits = 2;
+  println("{} {} {}", f.contains<Flags::Enum::OutputClosed>(), f.contains<Flags::Enum::InputClosed>(), narrow<static_cast<unsigned char>(300)>());
+  return 0;
+}

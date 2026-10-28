@@ -2506,6 +2506,26 @@ struct GlobalScope::Impl
     return std::max<int64_t>(1, *s);
   }
 
+  // `static_cast<size_t>(value)` with value an enumerator or a constant parameter (a template
+  // argument `bits.test<static_cast<size_t>(value)>()`): the operand's value in the target type.
+  std::optional<int64_t> constCast(Type* type, Expr* operand, const TypeContext& ctx, int depth)
+  {
+    std::optional<int64_t> v = constEval(operand, ctx, depth + 1);
+    if (!v || !type)
+      return v;
+    const Ty* t = types.unqualified(convertType(type, ctx, depth + 1));
+    if (t->kind == TyKind::Bool)
+      return *v != 0 ? 1 : 0;
+    if ((t->kind == TyKind::Int || t->kind == TyKind::Char) && t->bits > 0 && t->bits < 64)
+    {
+      uint64_t mask = (uint64_t(1) << t->bits) - 1, bits = uint64_t(*v) & mask;
+      if (!t->isUnsigned && (bits >> (t->bits - 1)))
+        return int64_t(bits | ~mask); // a negative value of a narrower signed type
+      return int64_t(bits);
+    }
+    return v;
+  }
+
   std::optional<int64_t> constEval(Expr* e, const TypeContext& ctx, int depth = 0)
   {
     if (!e || depth > 16)
@@ -2613,6 +2633,13 @@ struct GlobalScope::Impl
         }
       }
       case NodeKind::ParenExpr: return constEval(static_cast<ParenExpr*>(e)->inner, ctx, depth + 1);
+      case NodeKind::CastExpr: return constCast(static_cast<CastExpr*>(e)->type, static_cast<CastExpr*>(e)->operand, ctx, depth);
+      case NodeKind::NamedCastExpr: return constCast(static_cast<NamedCastExpr*>(e)->type, static_cast<NamedCastExpr*>(e)->operand, ctx, depth);
+      case NodeKind::FunctionalCastExpr:
+      {
+        auto* f = static_cast<FunctionalCastExpr*>(e);
+        return f->args.size() == 1 ? constCast(f->type, f->args[0], ctx, depth) : std::nullopt;
+      }
       case NodeKind::RequiresExpr: return static_cast<RequiresExpr*>(e)->satisfied ? 1 : 0; // set where the expression was typed
       case NodeKind::UnaryExpr:
       {

@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**226 pass, 5 pending, 0 failing, 0 fixed** (231 snippets, 7.5 s).
+**228 pass, 5 pending, 0 failing, 0 fixed** (233 snippets, 6.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -77,6 +77,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
 | `classes/anonymous_members.kpp` | anonymous struct and union members | pass |  |  |
+| `classes/base_initializer_through_alias.kpp` | a constructor initializes its base through a member alias of the base, `using super = Conditional<...>; Const(const T& v) : super(v) {}` | pass |  |  |
 | `classes/brace_init_assign.kpp` | brace-init on the right of assignment to a class object | pass | *this = {}; this->data = {a, b}; |  |
 | `classes/class_operator_rhs.kpp` | class_operator_rhs | pass |  |  |
 | `classes/conditional_explicit.kpp` | `explicit(condition)` makes a constructor explicit only while the condition holds, so Fixed<int, false> converts from double implicitly and Fixed<int, true> does not | pass |  |  |
@@ -113,8 +114,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-convert\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/empty_pack_class_instantiation.kpp` | a class template whose only parameter is a pack, instantiated with no arguments (`Signal<>`) | pending | Signal<> members (ConfigItemBase::onChanged, GlobalModSettings::onChanged, CraftingQueue::ChangedSignal), 11 layouts | `Sig<>` has an unknown type ("the member ... has an unknown type"); `Sig<int>` works; C:\kpp-convert\compiler\tests\spec\templates\empty_pack_class_instantiation.kpp:18: codegen does not support the layout of Holder: the member changed (`Sig<> changed`) has an unknown type yet (in @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/empty_pack_class_instantiation.kpp` | a class template whose only parameter is a pack, instantiated with no arguments (`Signal<>`) | pending | Signal<> members (ConfigItemBase::onChanged, GlobalModSettings::onChanged, CraftingQueue::ChangedSignal), 11 layouts | `Sig<>` has an unknown type ("the member ... has an unknown type"); `Sig<int>` works; C:\kpp-templates\compiler\tests\spec\templates\empty_pack_class_instantiation.kpp:18: codegen does not support the layout of Holder: the member changed (`Sig<> changed`) has an unknown type yet (in @kpp.main) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -126,6 +127,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/auto_return_templates.kpp` | function templates with a deduced (`auto`, `auto&`) return type | pass |  |  |
 | `templates/brace_list_argument_not_deduced.kpp` | a brace list argument deduces no template parameter: `Text::totalLength({args...})` in a variadic template picks the InitializerList<StringView> overload | pass |  |  |
 | `templates/brace_list_deduction.kpp` | a brace list argument deduces only an InitializerList<P> parameter; for any other parameter it is a non-deduced context | pass |  |  |
+| `templates/cast_in_constant_template_argument.kpp` | a cast in a constant template argument, `bits.test<static_cast<size_t>(value)>()` with value a constant parameter of enum type, folded in the target type | pass |  |  |
 | `templates/class_template_default_arguments.kpp` | default template arguments of class templates, depending on earlier parameters: `template<class K, class C = Less<K>>` | pass |  |  |
 | `templates/class_template_outofline_members.kpp` | members of a class template with a non-type parameter defined out of line | pass |  |  |
 | `templates/class_template_static_members.kpp` | a static data member of a class template is one object per instantiation | pass |  |  |
@@ -192,8 +194,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-convert\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support a conversion from Future<int32> to SharedPtr<SharedState<int32>> yet (in @kpp.main) |
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-convert\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-templates\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support a conversion from Future<int32> to SharedPtr<SharedState<int32>> yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
 | `library/containers_deque_queue.kpp` | Deque and Queue (std::deque, std::queue): push at both ends, pop, front/back | pass | 116 deque uses in 68 files |  |
