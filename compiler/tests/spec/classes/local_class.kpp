@@ -1,0 +1,31 @@
+// spec: classes and enums declared in a function body: their members and methods, their own name inside them (a defaulted `operator<=>(const Key&)`), and a local class as a template argument (`Map<Key, int>`)
+// factorio: InsertPlan::sendChangeNotifications (`class Key { strong_ordering operator<=>(const Key&) const = default; ... }; Map<Key, ItemIDWithCount>`), TimeLimiter, ToVisit, local enums
+// pending: the code generator does not emit the methods of a class declared in a function body (Key::sum is called but never defined)
+int countPairs(int a, int b)
+{
+  class Key
+  {
+  public:
+    strong_ordering operator<=>(const Key&) const = default;
+    int x;
+    int y;
+    int sum() const { return this->x + this->y; }
+  };
+  Map<Key, int> seen;
+  seen[Key{a, b}] = 1;
+  seen[Key{b, a + 1}] = 2;
+  int total = 0;
+  for (const auto& [key, value] : seen)
+    total += key.sum() * value;
+  return total;
+}
+
+int main()
+{
+  enum class Color { Red, Green };
+  struct Point { int x = 1; int y = 2; Color c = Color::Green; };
+  Point p;
+  Point q{5, 6, Color::Red};
+  println("{} {} {} {}", countPairs(2, 3), p.x + p.y, int(p.c), q.x * q.y + int(q.c));
+  return 0;
+}

@@ -304,6 +304,7 @@ struct GlobalScope::Impl
   std::vector<std::pair<Decl*, Scope*>> deferredQualified; // Out-of-line class/enum definitions.
   std::vector<std::pair<FunctionDecl*, Scope*>> deferredFunctions; // Out-of-line member function definitions.
   std::vector<std::pair<VariableDecl*, Scope*>> deferredVariables; // Out-of-line static data member definitions.
+  std::unordered_map<FunctionDecl*, std::vector<Scope*>> localTypesOfOutOfLine; // Scopes of classes and enums declared in their bodies.
   std::unordered_map<Decl*, VariableDecl*> variableDefinitions;    // Static data member -> its `T C::x = ...;` definition.
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
@@ -331,8 +332,8 @@ struct GlobalScope::Impl
         {
           for (Decl* p : e.decl->templateParams)
             templateParamNames.insert(static_cast<TemplateParamDecl*>(p)->name);
-          if (e.scope)
-            collectTemplateParamNames(e.scope);
+          if (e.scope && e.scope != scope)
+            collectTemplateParamNames(e.scope); // not a local class's own name in its scope
         }
   }
 
@@ -688,6 +689,8 @@ struct GlobalScope::Impl
           std::lock_guard lock(deferredMutex);
           deferredFunctions.push_back({f, scope});
         }
+        if (f->body)
+          indexLocalTypes(f->body, scope, f);
         break;
       }
       case NodeKind::VariableDecl:
@@ -747,6 +750,98 @@ struct GlobalScope::Impl
       default:
         break;
     }
+  }
+
+  // Classes and enums declared in a function body get their scopes as nested ones do, but their
+  // names stay out of the enclosing scope: the function's locals carry them (declareLocal). The
+  // scope's parent is the function's, its class for a member function (finishIndex moves an
+  // out-of-line member's ones under its class).
+  void indexLocalTypes(Stmt* s, Scope* scope, FunctionDecl* f)
+  {
+    if (!s)
+      return;
+    switch (s->kind)
+    {
+      case NodeKind::BlockStmt:
+        for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+          indexLocalTypes(inner, scope, f);
+        break;
+      case NodeKind::DeclStmt:
+        for (Decl* d : static_cast<DeclStmt*>(s)->decls)
+          if (Scope* own = (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && !d->ownScope ? indexLocalType(d, scope) : nullptr;
+              own && f->name.parts.size() > 1)
+          {
+            std::lock_guard lock(deferredMutex);
+            localTypesOfOutOfLine[f].push_back(own);
+          }
+        break;
+      case NodeKind::IfStmt:
+      {
+        auto* i = static_cast<IfStmt*>(s);
+        indexLocalTypes(i->init, scope, f);
+        indexLocalTypes(i->then, scope, f);
+        indexLocalTypes(i->else_, scope, f);
+        break;
+      }
+      case NodeKind::ForStmt:
+        indexLocalTypes(static_cast<ForStmt*>(s)->init, scope, f);
+        indexLocalTypes(static_cast<ForStmt*>(s)->body, scope, f);
+        break;
+      case NodeKind::RangeForStmt: indexLocalTypes(static_cast<RangeForStmt*>(s)->body, scope, f); break;
+      case NodeKind::ForConstexprStmt: indexLocalTypes(static_cast<ForConstexprStmt*>(s)->body, scope, f); break;
+      case NodeKind::WhileStmt: indexLocalTypes(static_cast<WhileStmt*>(s)->body, scope, f); break;
+      case NodeKind::DoStmt: indexLocalTypes(static_cast<DoStmt*>(s)->body, scope, f); break;
+      case NodeKind::SwitchStmt:
+        indexLocalTypes(static_cast<SwitchStmt*>(s)->init, scope, f);
+        indexLocalTypes(static_cast<SwitchStmt*>(s)->body, scope, f);
+        break;
+      case NodeKind::TryStmt:
+      {
+        auto* t = static_cast<TryStmt*>(s);
+        indexLocalTypes(t->body, scope, f);
+        for (const TryStmt::Handler& h : t->handlers)
+          indexLocalTypes(h.body, scope, f);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // The scope of a class or enum defined in a function body, its members indexed in it.
+  Scope* indexLocalType(Decl* d, Scope* scope)
+  {
+    Scope* own = nullptr;
+    if (d->kind == NodeKind::ClassDecl)
+    {
+      auto* c = static_cast<ClassDecl*>(d);
+      if (!c->isDefinition || c->name.parts.size() > 1 || (c->flags & DF_Friend))
+        return nullptr;
+      own = new Scope(ScopeKind::Class, scope, c, 1);
+      own->templateParams = c->templateParams;
+      for (const ClassDecl::Base& b : c->bases)
+        own->baseTypes.push_back(b.type);
+      c->ownScope = own;
+      // The class's name inside it (`bool operator<(const Key&) const`): the enclosing scope does
+      // not have it.
+      if (!c->name.empty())
+        own->add(c->name.parts[0].symbol, c, own);
+      indexDecls(c->members, own);
+    }
+    else
+    {
+      auto* e = static_cast<EnumDecl*>(d);
+      if (!e->isDefinition || e->name.parts.size() > 1)
+        return nullptr;
+      own = new Scope(ScopeKind::Enum, scope, e, 1);
+      e->ownScope = own;
+      for (Decl* en : e->enumerators)
+        if (en->kind == NodeKind::EnumeratorDecl)
+          own->add(static_cast<EnumeratorDecl*>(en)->name, en, nullptr);
+      indexDecls(e->members, own);
+    }
+    ++scopes;
+    return own;
   }
 
   // ---------------- phase 2: lookup ----------------
@@ -3613,6 +3708,22 @@ struct GlobalScope::Impl
   {
     for (; t; t = t->inner)
       if (t->kind == TyKind::Auto)
+        return true;
+    return false;
+  }
+
+  // Whether an unknown type or a draft (an unresolved name's placeholder class) is anywhere in t
+  // (`Map<?, int>`: an argument a declaration's context could not resolve).
+  static bool mentionsUnknown(const Ty* t, int depth = 0)
+  {
+    if (!t || depth > 16)
+      return false;
+    if (!t->isKnown() || (t->kind == TyKind::Class && t->decl && (t->decl->attributes & ATTR_Draft)))
+      return true;
+    if (mentionsUnknown(t->inner, depth + 1))
+      return true;
+    for (const Ty* a : t->args)
+      if (mentionsUnknown(a, depth + 1))
         return true;
     return false;
   }
@@ -6821,12 +6932,13 @@ struct GlobalScope::Impl
           // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
           bool isDraft = declared && declared->kind == TyKind::Class && declared->decl && (declared->decl->attributes & ATTR_Draft);
-          if ((!declared || !declared->isKnown() || isDraft) && v->type && !activeSubst)
+          if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !activeSubst)
           {
-            // A type only the function's locals know (`using Match = Pair<int, int>;` in the body):
-            // resolved here, where the locals are, and cached for everyone asking later.
+            // A type only the function's locals know (`using Match = Pair<int, int>;` in the body,
+            // `Map<Key, int>` with a local class Key): resolved here, where the locals are, and
+            // cached for everyone asking later.
             const Ty* local = typeOf(v->type);
-            if (local && local->isKnown())
+            if (local && local->isKnown() && (!declared || !declared->isKnown() || isDraft || !Impl::mentionsUnknown(local)))
             {
               v->cachedType.store(local, std::memory_order_release);
               declared = local;
@@ -7557,6 +7669,10 @@ void GlobalScope::finishIndex()
     for (Decl* p : f->templateParams)
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
     Lookup l = impl->lookupQualified(qualifier, context, &params, 0);
+    if (l.scope && (l.scope->kind == ScopeKind::Class || l.scope->kind == ScopeKind::Namespace))
+      if (auto it = impl->localTypesOfOutOfLine.find(f); it != impl->localTypesOfOutOfLine.end())
+        for (Scope* local : it->second)
+          local->parent = l.scope; // a class declared in `void A::f() {...}` sees A's members
     if (l.scope && l.scope->kind == ScopeKind::Class)
       l.scope->outOfLineMembers.push_back(f);
     else if (l.scope && l.scope->kind == ScopeKind::Namespace)
@@ -7573,6 +7689,7 @@ void GlobalScope::finishIndex()
     }
   }
   impl->deferredFunctions.clear();
+  impl->localTypesOfOutOfLine.clear();
   // Attach out-of-line static data member definitions to the declarations in their classes.
   for (auto& [v, context] : impl->deferredVariables)
   {
