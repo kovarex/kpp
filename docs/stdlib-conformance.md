@@ -23,10 +23,11 @@ average (the result is right).
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
 - `KeyOf::of(a) < b` with a class type emits invalid IR; Map.kpp and FastMap.kpp avoid the form
   (templates/static_call_through_parameter_operator).
+- `b = a++` with a class's postfix ++ assigns the incremented value (language/
+  postfix_increment_assignment): a silent miscompile; List.kpp avoids the form.
 
 ## Missing types and API
 
-- **List**: the converter maps std::list to it, but it does not exist.
 - **Map, Set, MultiMap, MultiSet, FastMap, FastSet**: rbegin/rend, insert with a hint,
   emplace_hint, insert of a range, extract, merge, swap.
 - **Vector**: `capacity` is a field, not `capacity()`; const overloads of operator[], front and
@@ -43,4 +44,4 @@ invalidation, complexity, return values of insert/erase/emplace/try_emplace), Fa
 (as specified, including their weaker invalidation rules), sort and stableSort, lowerBound and
 upperBound, PriorityQueue, HashMap/HashSet (entries in nodes, std's interface) and
 FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
-pops at both ends).
+pops at both ends), List.

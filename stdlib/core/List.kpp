@@ -1,0 +1,308 @@
+// Kpp standard library: List<T>, a doubly linked list (what std::list converts to). Specified in
+// docs/stdlib/list.md: each element in a node of its own, so inserting, erasing and splicing
+// never move or invalidate other elements.
+//
+// The nodes form a ring through a sentinel inside the List object: sentinel.next is the first
+// node, sentinel.prev the last, and the sentinel itself is end().
+struct ListLinks
+{
+  ListLinks* prev = nullptr;
+  ListLinks* next = nullptr;
+};
+
+template<typename T>
+struct ListNode : ListLinks
+{
+  T value;
+};
+
+// Links node in before position.
+void listLinkBefore(ListLinks* position, ListLinks* node)
+{
+  node->prev = position->prev;
+  node->next = position;
+  position->prev->next = node;
+  position->prev = node;
+}
+
+void listUnlink(ListLinks* node)
+{
+  node->prev->next = node->next;
+  node->next->prev = node->prev;
+}
+
+template<typename T>
+struct ListIterator
+{
+  ListLinks* node = nullptr;
+
+  ListIterator() {}
+  explicit ListIterator(ListLinks* node) : node(node) {}
+
+  T& operator*() const { return ((ListNode<T>*)this->node)->value; }
+  T* operator->() const { return &((ListNode<T>*)this->node)->value; }
+  bool operator==(const ListIterator<T>& other) const { return this->node == other.node; }
+  bool operator!=(const ListIterator<T>& other) const { return this->node != other.node; }
+  ListIterator<T>& operator++()
+  {
+    this->node = this->node->next;
+    return *this;
+  }
+  ListIterator<T> operator++(int)
+  {
+    ListIterator<T> before = *this;
+    this->node = this->node->next;
+    return before;
+  }
+  ListIterator<T>& operator--()
+  {
+    this->node = this->node->prev;
+    return *this;
+  }
+  ListIterator<T> operator--(int)
+  {
+    ListIterator<T> before = *this;
+    this->node = this->node->prev;
+    return before;
+  }
+};
+
+template<typename T>
+struct List
+{
+  ListLinks sentinel;
+  int length = 0;
+
+  using iterator = ListIterator<T>;
+  using const_iterator = ListIterator<T>;
+  using value_type = T;
+
+  List() { this->becomeEmpty(); }
+  implicit List(InitializerList<T> items)
+  {
+    this->becomeEmpty();
+    for (const T& item : items)
+      this->push_back(item);
+  }
+  List(const List<T>& other)
+  {
+    this->becomeEmpty();
+    for (const T& value : other)
+      this->push_back(value);
+  }
+  List(List<T>&& other)
+  {
+    this->becomeEmpty();
+    this->take(other);
+  }
+  ~List() { this->clear(); }
+  List<T>& operator=(const List<T>& other)
+  {
+    if (this != &other)
+    {
+      this->clear();
+      for (const T& value : other)
+        this->push_back(value);
+    }
+    return *this;
+  }
+  List<T>& operator=(List<T>&& other)
+  {
+    if (this != &other)
+    {
+      this->clear();
+      this->take(other);
+    }
+    return *this;
+  }
+
+  int size() const { return this->length; }
+  bool empty() const { return this->length == 0; }
+  T& front() const { return ((ListNode<T>*)this->sentinel.next)->value; }
+  T& back() const { return ((ListNode<T>*)this->sentinel.prev)->value; }
+  ListIterator<T> begin() const { return ListIterator<T>(this->sentinel.next); }
+  ListIterator<T> end() const { return ListIterator<T>((ListLinks*)&this->sentinel); }
+
+  void push_back(const T& value) { this->emplace(this->end(), value); }
+  void push_back(T&& value) { this->emplace(this->end(), move(value)); }
+  void push_front(const T& value) { this->emplace(this->begin(), value); }
+  void push_front(T&& value) { this->emplace(this->begin(), move(value)); }
+  template<typename... Args>
+  T& emplace_back(Args&&... args) { return *this->emplace(this->end(), forward<Args>(args)...); }
+  template<typename... Args>
+  T& emplace_front(Args&&... args) { return *this->emplace(this->begin(), forward<Args>(args)...); }
+  void pop_back() { this->erase(ListIterator<T>(this->sentinel.prev)); }
+  void pop_front() { this->erase(this->begin()); }
+
+  // Inserts before position; returns the new element's position.
+  ListIterator<T> insert(ListIterator<T> position, const T& value) { return this->emplace(position, value); }
+  ListIterator<T> insert(ListIterator<T> position, T&& value) { return this->emplace(position, move(value)); }
+  template<typename... Args>
+  ListIterator<T> emplace(ListIterator<T> position, Args&&... args)
+  {
+    ListNode<T>* node = (ListNode<T>*)malloc(sizeof(ListNode<T>));
+    new (&node->value) T(forward<Args>(args)...);
+    listLinkBefore(position.node, node);
+    ++this->length;
+    return ListIterator<T>(node);
+  }
+  // Removes the element at position; returns the position after it.
+  ListIterator<T> erase(ListIterator<T> position)
+  {
+    ListLinks* next = position.node->next;
+    listUnlink(position.node);
+    this->destroyNode(position.node);
+    --this->length;
+    return ListIterator<T>(next);
+  }
+  ListIterator<T> erase(ListIterator<T> first, ListIterator<T> last)
+  {
+    while (first != last)
+      first = this->erase(first);
+    return last;
+  }
+  void clear()
+  {
+    ListLinks* node = this->sentinel.next;
+    while (node != &this->sentinel)
+    {
+      ListLinks* next = node->next;
+      this->destroyNode(node);
+      node = next;
+    }
+    this->becomeEmpty();
+  }
+
+  // Moves all of other's nodes before position, without copying (other ends up empty).
+  void splice(ListIterator<T> position, List<T>& other)
+  {
+    while (!other.empty())
+      this->splice(position, other, other.begin());
+  }
+  // Moves the node at it from other before position.
+  void splice(ListIterator<T> position, List<T>& other, ListIterator<T> it)
+  {
+    if (it.node == position.node || it.node->next == position.node)
+    {
+      if (this == &other)
+        return;
+    }
+    listUnlink(it.node);
+    --other.length;
+    listLinkBefore(position.node, it.node);
+    ++this->length;
+  }
+
+  // Removes every element equal to value / for which predicate is true; returns how many.
+  int remove(const T& value)
+  {
+    T copy(value); // value may be an element of this list
+    return this->removeIf([&](const T& element) { return element == copy; });
+  }
+  template<typename F>
+  int removeIf(F predicate)
+  {
+    int removed = 0;
+    for (ListIterator<T> it = this->begin(); it != this->end();)
+      if (predicate(*it))
+      {
+        it = this->erase(it);
+        ++removed;
+      }
+      else
+        ++it;
+    return removed;
+  }
+  // Removes each element equal to the one before it; returns how many.
+  int unique()
+  {
+    int removed = 0;
+    if (this->length < 2)
+      return 0;
+    ListIterator<T> previous = this->begin();
+    for (ListIterator<T> it = ++this->begin(); it != this->end();)
+      if (*it == *previous)
+      {
+        it = this->erase(it);
+        ++removed;
+      }
+      else
+      {
+        previous = it;
+        ++it;
+      }
+    return removed;
+  }
+  void reverse()
+  {
+    ListLinks* node = &this->sentinel;
+    do
+    {
+      ListLinks* next = node->next;
+      node->next = node->prev;
+      node->prev = next;
+      node = next;
+    } while (node != &this->sentinel);
+  }
+  // Stable sort that relinks the nodes; elements do not move.
+  void sort()
+  {
+    this->sort([](const T& a, const T& b) { return a < b; });
+  }
+  template<typename F>
+  void sort(F less)
+  {
+    if (this->length < 2)
+      return;
+    Vector<ListNode<T>*> nodes;
+    nodes.reserve(this->length);
+    for (ListLinks* node = this->sentinel.next; node != &this->sentinel; node = node->next)
+      nodes.push_back((ListNode<T>*)node);
+    stableSort(nodes.begin(), nodes.end(), [&](ListNode<T>* a, ListNode<T>* b) { return less(a->value, b->value); });
+    int length = this->length;
+    this->becomeEmpty();
+    for (ListNode<T>* node : nodes)
+      listLinkBefore(&this->sentinel, node);
+    this->length = length;
+  }
+  // Moves other's nodes into this list; both sorted ascending, the result too, with this list's
+  // elements first among equivalent ones.
+  void merge(List<T>& other)
+  {
+    if (this == &other)
+      return;
+    ListIterator<T> it = this->begin();
+    while (!other.empty())
+    {
+      ListIterator<T> next = other.begin();
+      while (it != this->end() && !(*next < *it))
+        ++it;
+      this->splice(it, other, next);
+    }
+  }
+
+  // Internals.
+  void becomeEmpty()
+  {
+    this->sentinel.prev = &this->sentinel;
+    this->sentinel.next = &this->sentinel;
+    this->length = 0;
+  }
+  void destroyNode(ListLinks* node)
+  {
+    ((ListNode<T>*)node)->value.~T();
+    free(node);
+  }
+  // Takes other's nodes; they have to link to this sentinel instead.
+  void take(List<T>& other)
+  {
+    if (other.length == 0)
+      return;
+    this->sentinel.next = other.sentinel.next;
+    this->sentinel.prev = other.sentinel.prev;
+    this->sentinel.next->prev = &this->sentinel;
+    this->sentinel.prev->next = &this->sentinel;
+    this->length = other.length;
+    other.becomeEmpty();
+  }
+};

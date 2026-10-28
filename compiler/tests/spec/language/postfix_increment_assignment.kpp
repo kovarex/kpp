@@ -1,0 +1,26 @@
+// spec: assigning the result of a class's postfix ++ (`previous = it++;`): the old value is assigned, then the object is incremented
+// found in the stdlib List (unique() wrote `previous = it++;` and skipped elements; List.kpp now avoids the form)
+// pending: the assignment receives the incremented object (prints 6 6)
+struct Counter
+{
+  int value = 0;
+  Counter& operator++()
+  {
+    ++this->value;
+    return *this;
+  }
+  Counter operator++(int)
+  {
+    Counter before = *this;
+    ++this->value;
+    return before;
+  }
+};
+int main()
+{
+  Counter a, b;
+  a.value = 5;
+  b = a++;
+  println("{} {}", a.value, b.value);
+  return 0;
+}
