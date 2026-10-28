@@ -15,7 +15,7 @@ if not "%~1"=="" set WHOLE=%~1
 %KPPC% --no-std --quiet --convert %WHOLE% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui %SRC% C:\Factorio\tests || exit /b 1
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include
-%KPPC% --no-std --quiet --convert kpp --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui %SRC%\Util %SRC%\Map %SRC%\Surface %SRC%\Entity %SRC%\Force %SRC%\Item %SRC%\Space %SRC%\ID %SRC%\Collision %SRC%\Fluid %SRC%\Recipe %SRC%\Data %SRC%\Equipment %SRC%\Logistics %SRC%\Trigger %SRC%\CircuitNetwork %SRC%\Input %SRC%\Achievement %SRC%\Net %SRC%\Sound %SRC%\Technology %SRC%\AI %SRC%\Noise %SRC%\Blueprint %SRC%\CustomGui %SRC%\Energy %SRC%\Rail %SRC%\Typedefs.hpp %SRC%\Graphics\BitmapFormat.hpp %SRC%\FloatCast.hpp %SRC%\Player.hpp %SRC%\Player.cpp %SRC%\MapTick.hpp %SRC%\MapTick.cpp %SRC%\GameView.hpp %SRC%\GameView.cpp %SRC%\ItemWithQualityID.hpp %SRC%\GlobalContext.hpp %SRC%\GlobalContext.cpp || exit /b 1
+%KPPC% --no-std --quiet --convert kpp --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui %SRC% || exit /b 1
 type kpp\CONVERSION.md | findstr /B "Files -"
 rem Copy stubs for types that are outside the converted subset but needed for codegen.
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
