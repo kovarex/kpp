@@ -1,6 +1,5 @@
 // spec: inside a template, a class template argument computed from the template's parameter (a trait, a constexpr local) selects the explicit specialization it names: `IntegralConstant<bool, isSigned<T>>()` is the TrueType one for int
 // factorio: cxxopts' integer parser (`checked_negate<T>(result, text, std::integral_constant<bool, is_signed>())` choosing the true_type or false_type overload), tag dispatch on traits across Util
-// pending: the library's TrueType and FalseType are structs of their own, not IntegralConstant<bool, true/false> (std::true_type is integral_constant<bool, true>), so `pick(IntegralConstant<bool, isSigned<T>>())` finds no overload; the constexpr local case passes
 template<bool B>
 struct Flag { static constexpr int value = 0; };
 template<>

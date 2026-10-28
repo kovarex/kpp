@@ -1184,6 +1184,16 @@ struct GlobalScope::Impl
   // one (`template<typename T> struct Describe<T*>`) whose patterns deduce from them (its class
   // with the deduced arguments of its own parameters). Null when there is none or an argument is
   // still dependent.
+  // Whether two template arguments are the same: the same type, or constants of the same value
+  // (`IntegralConstant<bool, isSigned<T>>` folds to a bool true, the specialisation's written
+  // `true` is typed by its parameter `T V`: the same argument).
+  static bool sameArgument(const Ty* a, const Ty* b)
+  {
+    if (a == b)
+      return true;
+    return a && b && a->kind == TyKind::Value && b->kind == TyKind::Value && a->value == b->value && a->decl == b->decl;
+  }
+
   const Ty* matchSpecialization(const Lookup& l, const std::vector<const Ty*>& args, int depth)
   {
     if (!l.overloads || args.empty() || depth > 24)
@@ -1214,7 +1224,7 @@ struct GlobalScope::Impl
         {
           Node* a = part.templateArgs[i];
           Decl* param = l.decl && i < l.decl->templateParams.size() ? l.decl->templateParams[i] : nullptr;
-          same = templateArgument(a, param, sctx, depth) == args[i];
+          same = sameArgument(templateArgument(a, param, sctx, depth), args[i]);
         }
         if (same)
           return types.classType(c, {});
@@ -1234,10 +1244,10 @@ struct GlobalScope::Impl
         else if (types.isDependent(pattern))
         {
           deduce(pattern, args[i], s, depth + 1);
-          ok = substitute(pattern, s) == args[i];
+          ok = sameArgument(substitute(pattern, s), args[i]);
         }
         else
-          ok = pattern == args[i];
+          ok = sameArgument(pattern, args[i]);
       }
       std::vector<const Ty*> deduced;
       for (Decl* p : c->templateParams)
