@@ -9,13 +9,6 @@ compile, loudly) last. State of 2026-10-28.
 
 ## Behaviour that differs
 
-**Deque, Queue, Stack** (deque.md):
-- Deque is a Vector with a moving start: push_front is O(n) once the room before the start is
-  used up, push_back invalidates references when it grows, and pop_front now and then slides all
-  elements down. The specification (a deque of fixed-size blocks) keeps references valid for
-  pushes and pops at both ends.
-- Stack is built on Vector instead of Deque, so pushes invalidate references to elements.
-
 **String** (string.md):
 - `substr(start)` and `erase(index)` with start/index past the end return an empty string / do
   nothing instead of throwing OutOfRange.
@@ -39,7 +32,6 @@ average (the result is right).
 - **Vector**: `capacity` is a field, not `capacity()`; const overloads of operator[], front and
   back; shrink_to_fit, swap.
 - **String**: rfind of a string, find_last_of.
-- **Deque**: insert and erase in the middle, emplace_front/emplace_back, at, resize.
 - **ForwardList**: insert_after, erase_after, before_begin.
 - **PriorityQueue**: emplace.
 
@@ -50,4 +42,5 @@ String (storage, terminator, searches, comparison), Map/Set/MultiMap/MultiSet (r
 invalidation, complexity, return values of insert/erase/emplace/try_emplace), FastMap/FastSet
 (as specified, including their weaker invalidation rules), sort and stableSort, lowerBound and
 upperBound, PriorityQueue, HashMap/HashSet (entries in nodes, std's interface) and
-FastHashMap/FastHashSet (as specified).
+FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
+pops at both ends).

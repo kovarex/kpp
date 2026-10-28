@@ -1,0 +1,98 @@
+// Deque (blocks of elements, Deque.kpp) against a Vector as the reference: random pushes and pops
+// at both ends, inserts and erases in the middle; references surviving pushes at both ends; a
+// long-running queue that must not keep growing; Stack and Queue.
+extern "C" int printf(const char* format, ...);
+
+uint64_t state = 4242;
+int nextInt(int range)
+{
+  state ^= state << 13;
+  state ^= state >> 7;
+  state ^= state << 17;
+  return int(state % (uint64_t)range);
+}
+
+int main()
+{
+  Deque<String> deque;
+  Vector<String> reference;
+  int errors = 0;
+  for (int step = 0; step < 30000; ++step)
+  {
+    int action = nextInt(100);
+    String value = toString(step) + String(step % 5 == 0 ? " with a tail long enough for the heap" : "");
+    if (action < 30)
+    {
+      deque.push_back(value);
+      reference.push_back(value);
+    }
+    else if (action < 60)
+    {
+      deque.push_front(value);
+      reference.insert(0, value);
+    }
+    else if (action < 70 && !reference.empty())
+    {
+      deque.pop_back();
+      reference.pop_back();
+    }
+    else if (action < 80 && !reference.empty())
+    {
+      deque.pop_front();
+      reference.erase(0);
+    }
+    else if (action < 90)
+    {
+      int at = nextInt(reference.size() + 1);
+      deque.insert(at, value);
+      reference.insert(at, value);
+    }
+    else if (!reference.empty())
+    {
+      int at = nextInt(reference.size());
+      deque.erase(at);
+      reference.erase(at);
+    }
+    if (step % 1000 == 0 || step == 29999)
+    {
+      if (deque.size() != reference.size())
+        ++errors;
+      int i = 0;
+      for (String& s : deque)
+        errors += s == reference[i++] ? 0 : 1;
+    }
+  }
+
+  // References survive pushes at both ends.
+  Deque<int> numbers;
+  numbers.push_back(42);
+  int* kept = &numbers.front();
+  for (int i = 0; i < 100000; ++i)
+  {
+    numbers.push_back(i);
+    numbers.push_front(-i);
+  }
+  bool stable = *kept == 42 && kept == &numbers[100000];
+
+  // A queue that runs for long keeps only the blocks its current elements need.
+  Queue<int> queue;
+  int64_t sum = 0;
+  for (int i = 0; i < 1000000; ++i)
+  {
+    queue.push(i);
+    if (queue.size() > 100)
+    {
+      sum += queue.front();
+      queue.pop();
+    }
+  }
+  Stack<String> stack;
+  stack.push(String("a"));
+  String& bottom = stack.top();
+  for (int i = 0; i < 1000; ++i)
+    stack.push(toString(i));
+  bool stackStable = &bottom == &stack.values[0];
+  printf("%d %d %d %d %d %lld %d %s\n", errors, deque.size() == reference.size() ? 1 : 0, stable ? 1 : 0, queue.size(),
+         queue.values.mapLength <= 16 ? 1 : 0, sum, stackStable ? 1 : 0, stack.top().c_str());
+  return 0;
+}

@@ -1,5 +1,5 @@
-// Kpp standard library: the small containers. Deque<T> is a Vector that also pops at the front,
-// the simplest thing that has the interface. (Map and Set are in Map.kpp.)
+// Kpp standard library: Array and Span. (Deque, Queue and Stack are in Deque.kpp, Map and Set in
+// Map.kpp.)
 
 // A fixed-size array that knows its size (what std::array converts to).
 template<typename T, int N>
@@ -70,73 +70,4 @@ struct Span
   Span<T> subspan(int offset) const { return Span<T>(this->items + offset, this->length - offset); }
   Span<T> first(int count) const { return Span<T>(this->items, count); }
   Span<T> last(int count) const { return Span<T>(this->items + this->length - count, count); }
-};
-
-template<typename T>
-struct Deque
-{
-  Vector<T> values;
-  int head = 0; // index of the first live value
-
-  int size() const { return this->values.size() - this->head; }
-  bool empty() const { return this->size() == 0; }
-  T& front() { return this->values.items[this->head]; }
-  T& back() { return this->values.back(); }
-  T& operator[](int index) { return this->values.items[this->head + index]; }
-  T* begin() { return this->values.begin() + this->head; }
-  T* end() { return this->values.end(); }
-
-  void push_back(const T& value) { this->values.push_back(value); }
-  void pop_back() { this->values.pop_back(); }
-  void pop_front()
-  {
-    ++this->head;
-    if (this->head > 32 && this->head * 2 > this->values.size())
-    {
-      // Slide the live values down so that the dead prefix does not grow forever.
-      int live = this->values.size() - this->head;
-      for (int i = 0; i < live; ++i)
-        this->values.items[i] = this->values.items[this->head + i];
-      while (this->values.size() > live)
-        this->values.pop_back();
-      this->head = 0;
-    }
-  }
-  void push_front(const T& value)
-  {
-    if (this->head > 0)
-    {
-      --this->head;
-      this->values.items[this->head] = value;
-      return;
-    }
-    this->values.push_back(value);
-    for (int k = this->values.size() - 1; k > 0; --k)
-      this->values.items[k] = this->values.items[k - 1];
-    this->values.items[0] = value;
-  }
-  void clear()
-  {
-    this->values.clear();
-    this->head = 0;
-  }
-};
-
-// A first-in, first-out queue: push at the back, pop at the front (std::queue over a deque).
-template<typename T>
-struct Queue
-{
-  Deque<T> values;
-
-  int size() const { return this->values.size(); }
-  bool empty() const { return this->values.empty(); }
-  T& front() { return this->values.front(); }
-  T& back() { return this->values.back(); }
-  void push(const T& value) { this->values.push_back(value); }
-  void pop() { this->values.pop_front(); }
-  void clear()
-  {
-    while (!this->values.empty())
-      this->values.pop_front();
-  }
 };

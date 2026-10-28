@@ -1,0 +1,361 @@
+// Kpp standard library: Deque<T>, Queue<T> and Stack<T> (what std::deque, std::queue and
+// std::stack convert to). Specified in docs/stdlib/deque.md.
+//
+// A Deque keeps its elements in fixed-size blocks and a map of pointers to them. Element i is at
+// position start + i of the map's space, which is block (start + i) / blockSize at that offset.
+// Adding at either end constructs in place, allocating a block or regrowing the map when needed:
+// existing elements never move, so pointers and references to them stay valid. A block is freed
+// as soon as removals at the ends empty it, so a long-running queue holds only the blocks its
+// current elements need.
+template<typename T>
+struct DequeIterator;
+
+template<typename T>
+struct Deque
+{
+  T** map = nullptr;   // mapLength block pointers; null where no block is allocated
+  int mapLength = 0;
+  int start = 0;       // the position of element 0 in the map's space
+  int length = 0;
+
+  using iterator = DequeIterator<T>;
+  using const_iterator = DequeIterator<T>;
+  using value_type = T;
+
+  Deque() {}
+  implicit Deque(InitializerList<T> items)
+  {
+    for (const T& item : items)
+      this->push_back(item);
+  }
+  Deque(const Deque<T>& other)
+  {
+    for (int i = 0; i < other.length; ++i)
+      this->push_back(other[i]);
+  }
+  Deque(Deque<T>&& other) : map(other.map), mapLength(other.mapLength), start(other.start), length(other.length)
+  {
+    other.map = nullptr;
+    other.mapLength = 0;
+    other.start = 0;
+    other.length = 0;
+  }
+  ~Deque() { this->release(); }
+  Deque<T>& operator=(const Deque<T>& other)
+  {
+    if (this != &other)
+    {
+      this->clear();
+      for (int i = 0; i < other.length; ++i)
+        this->push_back(other[i]);
+    }
+    return *this;
+  }
+  Deque<T>& operator=(Deque<T>&& other)
+  {
+    if (this != &other)
+    {
+      this->release();
+      this->map = other.map;
+      this->mapLength = other.mapLength;
+      this->start = other.start;
+      this->length = other.length;
+      other.map = nullptr;
+      other.mapLength = 0;
+      other.start = 0;
+      other.length = 0;
+    }
+    return *this;
+  }
+
+  // Elements per block: about 512 bytes' worth, a power of two, at least 16.
+  static int blockSize()
+  {
+    int size = 16;
+    while (size * 2 * (int)sizeof(T) <= 512)
+      size *= 2;
+    return size;
+  }
+  static int blockShift()
+  {
+    int shift = 0;
+    while ((1 << shift) < Deque::blockSize())
+      ++shift;
+    return shift;
+  }
+  T* slotAt(int position) const { return this->map[position >> Deque::blockShift()] + (position & (Deque::blockSize() - 1)); }
+
+  int size() const { return this->length; }
+  bool empty() const { return this->length == 0; }
+  T& operator[](int index) const { return *this->slotAt(this->start + index); }
+  T& at(int index) const { return (*this)[index]; }
+  T& front() const { return *this->slotAt(this->start); }
+  T& back() const { return *this->slotAt(this->start + this->length - 1); }
+  DequeIterator<T> begin() const { return DequeIterator<T>((Deque<T>*)this, 0); }
+  DequeIterator<T> end() const { return DequeIterator<T>((Deque<T>*)this, this->length); }
+
+  void push_back(const T& value) { this->emplace_back(value); }
+  void push_back(T&& value) { this->emplace_back(move(value)); }
+  template<typename... Args>
+  T& emplace_back(Args&&... args)
+  {
+    T* slot = this->slotForBack();
+    new (slot) T(forward<Args>(args)...);
+    ++this->length;
+    return *slot;
+  }
+  void push_front(const T& value) { this->emplace_front(value); }
+  void push_front(T&& value) { this->emplace_front(move(value)); }
+  template<typename... Args>
+  T& emplace_front(Args&&... args)
+  {
+    T* slot = this->slotForFront();
+    new (slot) T(forward<Args>(args)...);
+    --this->start;
+    ++this->length;
+    return *slot;
+  }
+  void pop_back()
+  {
+    --this->length;
+    int position = this->start + this->length;
+    this->slotAt(position)->~T();
+    if ((position & (Deque::blockSize() - 1)) == 0)
+      this->freeBlock(position >> Deque::blockShift()); // that was its block's first slot
+  }
+  void pop_front()
+  {
+    int position = this->start;
+    this->slotAt(position)->~T();
+    ++this->start;
+    --this->length;
+    if ((this->start & (Deque::blockSize() - 1)) == 0)
+      this->freeBlock(position >> Deque::blockShift()); // that was its block's last slot
+  }
+
+  // Inserts before index, moving the elements on the shorter side by one (with move assignment);
+  // returns the position of the new element.
+  DequeIterator<T> insert(int index, const T& value)
+  {
+    T copy(value); // value may be an element, which the shifting changes
+    return this->insert(index, move(copy));
+  }
+  DequeIterator<T> insert(int index, T&& value)
+  {
+    if (index == 0)
+      this->emplace_front(move(value));
+    else if (index < this->length / 2)
+    {
+      this->emplace_front(move((*this)[0]));
+      for (int i = 1; i < index; ++i)
+        (*this)[i] = move((*this)[i + 1]);
+      (*this)[index] = move(value);
+    }
+    else
+    {
+      if (index == this->length)
+      {
+        this->emplace_back(move(value));
+        return DequeIterator<T>(this, index);
+      }
+      this->emplace_back(move((*this)[this->length - 1]));
+      for (int i = this->length - 2; i > index; --i)
+        (*this)[i] = move((*this)[i - 1]);
+      (*this)[index] = move(value);
+    }
+    return DequeIterator<T>(this, index);
+  }
+  DequeIterator<T> insert(DequeIterator<T> position, const T& value) { return this->insert(position.index, value); }
+  DequeIterator<T> insert(DequeIterator<T> position, T&& value) { return this->insert(position.index, move(value)); }
+  // Removes the element at index, moving the shorter side by one; returns the position of the
+  // element after it.
+  DequeIterator<T> erase(int index)
+  {
+    if (index < this->length / 2)
+    {
+      for (int i = index; i > 0; --i)
+        (*this)[i] = move((*this)[i - 1]);
+      this->pop_front();
+    }
+    else
+    {
+      for (int i = index; i + 1 < this->length; ++i)
+        (*this)[i] = move((*this)[i + 1]);
+      this->pop_back();
+    }
+    return DequeIterator<T>(this, index);
+  }
+  DequeIterator<T> erase(DequeIterator<T> position) { return this->erase(position.index); }
+
+  void resize(int newLength)
+  {
+    while (this->length > newLength)
+      this->pop_back();
+    while (this->length < newLength)
+      this->emplace_back();
+  }
+  void clear()
+  {
+    while (this->length > 0)
+      this->pop_back();
+  }
+
+  // Internals.
+  // The slot for a new last element; its block is allocated, the map regrown when needed.
+  T* slotForBack()
+  {
+    int block = (this->start + this->length) >> Deque::blockShift();
+    if (block >= this->mapLength)
+      this->remap(this->start >> Deque::blockShift(), block);
+    int position = this->start + this->length;
+    this->ensureBlock(position >> Deque::blockShift());
+    return this->slotAt(position);
+  }
+  T* slotForFront()
+  {
+    if (this->start == 0)
+    {
+      int last = this->length > 0 ? (this->start + this->length - 1) >> Deque::blockShift() : 0;
+      this->remap(-1, last);
+    }
+    this->ensureBlock((this->start - 1) >> Deque::blockShift());
+    return this->slotAt(this->start - 1);
+  }
+  void ensureBlock(int block)
+  {
+    if (!this->map[block])
+      this->map[block] = (T*)malloc((size_t)Deque::blockSize() * sizeof(T));
+  }
+  void freeBlock(int block)
+  {
+    free(this->map[block]);
+    this->map[block] = nullptr;
+  }
+  // Makes the map cover blocks [first, last] of the current numbering (first may be -1 for a
+  // block before the current start) in its middle, with room on both sides, twice as long when
+  // they would fill more than half of it. Block pointers move; blocks and elements do not.
+  void remap(int first, int last)
+  {
+    int needed = last - first + 1;
+    int newLength = this->mapLength < 8 ? 8 : this->mapLength;
+    while (newLength < needed * 2)
+      newLength *= 2;
+    T** newMap = (T**)malloc((size_t)newLength * sizeof(T*));
+    for (int i = 0; i < newLength; ++i)
+      newMap[i] = nullptr;
+    int offset = (newLength - needed) / 2; // where block `first` goes
+    for (int i = 0; i < this->mapLength; ++i)
+      if (this->map[i])
+      {
+        if (i >= first && i <= last)
+          newMap[i - first + offset] = this->map[i];
+        else
+          free(this->map[i]); // unused: no element lives there
+      }
+    if (this->map)
+      free(this->map);
+    this->map = newMap;
+    this->mapLength = newLength;
+    this->start += (offset - first) * Deque::blockSize();
+  }
+  void release()
+  {
+    this->clear();
+    for (int i = 0; i < this->mapLength; ++i)
+      if (this->map[i])
+        free(this->map[i]);
+    if (this->map)
+      free(this->map);
+    this->map = nullptr;
+    this->mapLength = 0;
+    this->start = 0;
+  }
+};
+
+// A position in a Deque: its element index. Random access.
+template<typename T>
+struct DequeIterator
+{
+  Deque<T>* deque = nullptr;
+  int index = 0;
+
+  DequeIterator() {}
+  DequeIterator(Deque<T>* deque, int index) : deque(deque), index(index) {}
+
+  T& operator*() const { return (*this->deque)[this->index]; }
+  T* operator->() const { return &(*this->deque)[this->index]; }
+  T& operator[](int offset) const { return (*this->deque)[this->index + offset]; }
+  bool operator==(const DequeIterator<T>& other) const { return this->index == other.index; }
+  bool operator!=(const DequeIterator<T>& other) const { return this->index != other.index; }
+  bool operator<(const DequeIterator<T>& other) const { return this->index < other.index; }
+  DequeIterator<T>& operator++()
+  {
+    ++this->index;
+    return *this;
+  }
+  DequeIterator<T> operator++(int)
+  {
+    DequeIterator<T> before = *this;
+    ++this->index;
+    return before;
+  }
+  DequeIterator<T>& operator--()
+  {
+    --this->index;
+    return *this;
+  }
+  DequeIterator<T> operator--(int)
+  {
+    DequeIterator<T> before = *this;
+    --this->index;
+    return before;
+  }
+  DequeIterator<T> operator+(int offset) const { return DequeIterator<T>(this->deque, this->index + offset); }
+  DequeIterator<T> operator-(int offset) const { return DequeIterator<T>(this->deque, this->index - offset); }
+  int operator-(const DequeIterator<T>& other) const { return this->index - other.index; }
+  DequeIterator<T>& operator+=(int offset)
+  {
+    this->index += offset;
+    return *this;
+  }
+  DequeIterator<T>& operator-=(int offset)
+  {
+    this->index -= offset;
+    return *this;
+  }
+};
+
+// First in, first out: push at the back, pop at the front.
+template<typename T>
+struct Queue
+{
+  Deque<T> values;
+
+  int size() const { return this->values.size(); }
+  bool empty() const { return this->values.empty(); }
+  T& front() const { return this->values.front(); }
+  T& back() const { return this->values.back(); }
+  void push(const T& value) { this->values.push_back(value); }
+  void push(T&& value) { this->values.push_back(move(value)); }
+  template<typename... Args>
+  T& emplace(Args&&... args) { return this->values.emplace_back(forward<Args>(args)...); }
+  void pop() { this->values.pop_front(); }
+  void clear() { this->values.clear(); }
+};
+
+// Last in, first out: push and pop at the top.
+template<typename T>
+struct Stack
+{
+  Deque<T> values;
+
+  int size() const { return this->values.size(); }
+  bool empty() const { return this->values.empty(); }
+  T& top() const { return this->values.back(); }
+  void push(const T& value) { this->values.push_back(value); }
+  void push(T&& value) { this->values.push_back(move(value)); }
+  template<typename... Args>
+  T& emplace(Args&&... args) { return this->values.emplace_back(forward<Args>(args)...); }
+  void pop() { this->values.pop_back(); }
+  void clear() { this->values.clear(); }
+};
