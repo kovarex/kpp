@@ -4485,13 +4485,15 @@ namespace
     // --- values ---
 
     // The class's `operator T()` converting to `to` (exactly, or any scalar one when none is exact),
-    // its own or inherited (`operator bool` of a BoolConstant base); explicit ones only for bool,
-    // where conditions allow them. foundIn: the class (or base) declaring it.
-    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr)
+    // its own or inherited (`operator bool` of a BoolConstant base); explicit ones for bool, where
+    // conditions allow them, and in an explicit cast when they yield the type itself
+    // (`double(b)`, `static_cast<double>(b)` with `explicit operator const double&()`: direct
+    // initialisation's rule). foundIn: the class (or base) declaring it.
+    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr, bool explicitCast = false)
     {
       return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
       {
-        if (global.isExplicit(f, args) && to->kind != TyKind::Bool)
+        if (global.isExplicit(f, args) && to->kind != TyKind::Bool && (!explicitCast || ret != types.unqualified(to)))
           return 0;
         return ret == types.unqualified(to) ? 2 : isClass(ret) ? 0 : 1;
       });
@@ -4561,7 +4563,9 @@ namespace
       return callRvalue(callFunction(op, global.classArgsOf(owner), owner, self, "", {}, at), at);
     }
 
-    Value convert(Value v, const Ty* to, Node* at)
+    // explicitCast: the conversion an explicit cast asks for, which may use explicit conversion
+    // operators.
+    Value convert(Value v, const Ty* to, Node* at, bool explicitCast = false)
     {
       const Ty* from = v.ty;
       to = types.stripRef(to);
@@ -4589,7 +4593,7 @@ namespace
         if (fk == TyKind::Class)
         {
           const Ty* owner = nullptr;
-          if (FunctionDecl* op = conversionOperator(from, to, at, &owner))
+          if (FunctionDecl* op = conversionOperator(from, to, at, &owner, explicitCast))
             return convert(callConversion(op, from, owner, v.text, at), to, at);
         }
         // (A class without a conversion to bool is no condition: never its address compared with null.)
@@ -4733,7 +4737,7 @@ namespace
           return {pointers ? keepNull(v.text, addr) : addr, pointers ? target : types.unqualified(toCls), false}; // `static_cast<VerticalFlow&>(layout)`
         }
       }
-      return convert(v, to, at);
+      return convert(v, to, at, true);
     }
 
     // A pointer moved to a base or derived subobject: null stays null (C++'s rule for pointer conversions).
@@ -6863,7 +6867,7 @@ namespace
             if (count != 1)
               unsupported(e, "a scalar built from a pack of several elements");
             Value v;
-            forEachPackElement(pattern, e, [&](size_t) { v = convert(rvalue(pattern), t, e); });
+            forEachPackElement(pattern, e, [&](size_t) { v = explicitConvert(rvalue(pattern), t, e); });
             return v;
           }
           if (c->args.size() == 1)
@@ -6872,8 +6876,8 @@ namespace
             if (a->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(a)->args.empty())
               return {t->kind == TyKind::Float ? "0.0" : t->kind == TyKind::Pointer ? "null" : "0", t}; // `mapped_type{}`: zero
             if (a->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(a)->args.size() == 1)
-              a = static_cast<BraceInitExpr*>(a)->args[0];
-            return convert(rvalue(a), t, e);
+              return convert(rvalue(static_cast<BraceInitExpr*>(a)->args[0]), t, e, true); // `T{x}`: direct-list-initialisation, no cast
+            return explicitConvert(rvalue(a), t, e); // `T(x)` is the cast `(T)x`
           }
           if (c->args.empty())
             return {t->kind == TyKind::Float ? "0.0" : t->kind == TyKind::Pointer ? "null" : "0", t};
