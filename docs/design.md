@@ -451,6 +451,69 @@ file shorten them again, so the meaning of a short name depends on the file it i
 packages keep the hierarchy those systems give for browsing and drop the part that makes names
 contextual; clashes are prevented by the compiler refusing them instead.
 
+## Instantiations own their typed bodies (proposed 2026-10-28, waiting for kovarex's go)
+
+**Today.** A template's body exists once, in the parsed tree. Whatever types it for a set of
+arguments (the checker's instantiation checks in the front end, then codegen through
+GlobalScope::retypeFor before it emits each instantiation) writes the result into that one tree:
+Expr::ty, NameExpr/MemberExpr::resolved, CallExpr::templateArgs, IfStmt::constexprKnown, the deduced
+type of a local `auto` in its cachedType. The next instantiation overwrites it. So two threads
+cannot type or emit instantiations of one template at the same time (they read each other's
+types), the parallel front end already races on these writes (the headline moves by a few lines
+between identical runs; `-j 1` gives about 2,000 fewer spurious overload failures than `-j 32`),
+and codegen re-types every instantiation it emits although the checker typed it before.
+
+**Proposal (kovarex, 2026-10-28): an instantiation is a thing of its own, built once.** Each
+(template, arguments) gets its own typed body when it is first instantiated, and keeps it: the
+checker types it, codegen reads it, nothing re-types it, and nothing writes into the template's
+own tree after parsing, which becomes a read-only pattern. A non-template function is the
+instantiation of itself with no arguments. Nested instantiations of the same template (variadic
+recursion, `sum<int, int>` inside `sum<int, int, int>`), one node needed under two substitutions in
+one function (a callee's default arguments for `f<int>()` and `f<float>()`), and a lambda body read
+after its enclosing function was emitted all stop being hazards: each is a different
+instantiation with a body of its own. Any thread can type or emit any instantiation. The output
+no longer depends on which thread typed what last.
+
+Two ways to hold an instantiation's types, measured on the full src (headline inputs, master of
+2026-10-28 night): the front end's instantiation checks visit **6.59 M nodes** and type **3.97 M
+expressions** (1.95 M of them names or member accesses, 0.45 M calls) in 15.4 k class and 46.8 k
+function instantiations; codegen's re-typing visits another 3.58 M nodes and types 2.19 M
+expressions in 102.7 k walks. The parsed tree is 3.58 M nodes in 322 MB (90 bytes a node); the
+process peaks at 1.2 GB today.
+
+1. **A typing table per instantiation**, keyed by node: the template's tree stays shared, the
+   types live beside it. Dense tables (the template's nodes numbered once, one array per
+   instantiation): about 90 MB for everything above; hash maps: about 400 MB. Every place that
+   reads a type (about 60 in the resolver, 120 in codegen) reads it through the instantiation.
+2. **A copy of the body per instantiation, typed in place** (the clang model): the template's
+   tree is copied once per instantiation, the copy is typed and kept as that instantiation's
+   body. At most 6.6 M to 10.2 M nodes copied (the visits above, an upper bound since a walk can
+   visit a node twice), **0.6 to 0.9 GB**, so a peak of about 2 GB on a 128 GB machine. Copying
+   is a memory copy and pointer fix-up, estimated at 0.2 to 0.4 s of CPU spread over the threads
+   (not measured: it needs the copy written). Readers do not change: codegen walks the
+   instantiation's own nodes as it walks a plain function's today.
+
+**What it buys, in time.** The speedup is parallel codegen, which either variant (or the
+per-thread tables proposed first) makes safe; no variant is faster by itself. Codegen is 5.4 s
+single-threaded on the full src; spread over 32 threads it is expected under 1 s (an estimate
+until the parallel driver exists). On top of that, codegen stops re-typing what the checker
+already typed: the re-typing is 17 to 24% of codegen's time in the profiles (2.19 M expressions,
+102.7 k walks). The front end's instantiation checks become race-free, which makes the headline
+reproducible run to run.
+
+**Recommendation: 2**, kovarex's preference, since it fits comfortably. It removes the class of
+bug at its root (there is one tree per instantiation, so nothing can read another's types), it
+leaves the 180 readers alone, and the instantiations it builds are what the persistent compiler
+keeps anyway. What it needs: a deep copy of a function body (every node kind, with references
+inside the body to its own parameters, locals, labels and lambdas re-pointed to the copies); the
+instantiation's identity stays the template's FunctionDecl plus its arguments, so lookups by
+declaration (definitionOf, owningClass, qualified names) are unchanged; the checker types the
+copy instead of the template; codegen emits from the copy and drops retypeFor and the per-element
+re-typing of pack expansions (a pack expansion becomes one more instantiation-like copy per
+element, or is typed per element in the copy). Memory can be won back by dropping an
+instantiation's copy once it is emitted, if a whole-program build ever needs it; the persistent
+compiler keeps them.
+
 ## Benchmark target
 
 Factorio: ~1.3M lines of own C++ in ~8,000 files (~1.6M with tests). The real build, measured

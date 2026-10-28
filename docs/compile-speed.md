@@ -56,9 +56,9 @@ Parallel codegen is not done yet. Codegen re-types each template's body in place
 before emitting an instantiation of it (GlobalScope::retypeFor), and the checker's instantiation
 checks running inside those re-types write into other templates' ASTs too, so two threads cannot
 emit instantiations safely: they would read each other's types and emit wrong code without an
-error. The fix designed with the resolver and template threads is typing frames (the types of one
-instantiation in a per-thread table instead of in the AST, read through accessors by the resolver
-and codegen), followed by a parallel driver with output that does not depend on thread timing. It
+error. The fix is that each instantiation owns its typed body (design.md, "Instantiations own their typed
+bodies": a copy of the template's body per instantiation, typed in place and kept, measured at
+0.6 to 0.9 GB), followed by a parallel driver with output that does not depend on thread timing. It
 waits for kovarex's go, since it changes resolver.cpp. The same writes make the parallel front end
 nondeterministic today: the headline moves by a few lines between identical runs, and `-j 1` gives
 about 2,000 fewer spurious overload failures than `-j 32` (resolver thread's measurement).
