@@ -56,7 +56,15 @@ namespace
     bool isUnion = false;                     // all members at offset 0, storage sized for the largest
     std::vector<std::pair<Decl*, uint32_t>> anonymous; // anonymous struct/union members -> field index
     std::unordered_map<Decl*, std::pair<uint32_t, uint32_t>> bitfields; // member -> (shift, width) inside its storage field
+    bool complete = false;                    // every field is laid out (structFor returned it once)
+    uint64_t size = 0, align = 0;             // computed on first use once complete (align 0: not yet)
   };
+  // The field index of a member, 0 when the layout has no such member.
+  uint32_t fieldIndexOf(const StructInfo& info, Decl* member)
+  {
+    auto it = info.fieldIndex.find(member);
+    return it == info.fieldIndex.end() ? 0 : it->second;
+  }
   struct BitfieldInfo
   {
     uint32_t shift, width;
@@ -142,6 +150,7 @@ namespace
     std::unordered_map<std::string, std::string> instanceGlobals; // static members of class template instantiations, by name
     std::unordered_map<std::string, bool> declaredNames; // IR names with a declare/define line
     std::unordered_map<Decl*, int64_t> enumeratorValues;
+    std::unordered_map<Decl*, std::string> qualifiedNames; // qualifiedName() per declaration
 
     struct Instantiation
     {
@@ -256,6 +265,15 @@ namespace
 
     // --- names and types ---
 
+    // GlobalScope::qualifiedName, computed once per declaration.
+    const std::string& qualifiedName(Decl* d)
+    {
+      auto it = qualifiedNames.find(d);
+      if (it == qualifiedNames.end())
+        it = qualifiedNames.emplace(d, global.qualifiedName(d)).first;
+      return it->second;
+    }
+
     std::string sym(uint32_t s) const { return s == UINT32_MAX ? "?" : std::string(symbols.name(s)); }
     std::string newTemp() { return "%t" + std::to_string(temp++); }
     std::string newLabel(const char* hint) { return std::string(hint) + std::to_string(label++); }
@@ -324,23 +342,30 @@ namespace
         case TyKind::Array: return t->count * sizeOf(t->inner, at);
         case TyKind::Vector: return t->count * sizeOf(t->inner, at);
         case TyKind::Enum: return sizeOf(enumUnderlying(t->decl), at);
-        case TyKind::Class:
-        {
-          StructInfo& info = structFor(t, at);
-          uint64_t size = 0, align = 1;
-          for (const Ty* f : info.fieldTypes)
-          {
-            uint64_t a = alignOf(f, at);
-            size = (size + a - 1) / a * a + sizeOf(f, at);
-            align = std::max(align, a);
-          }
-          align = std::max(align, declaredAlignment(t, at)); // `struct alignas(16) X`
-          size = (size + align - 1) / align * align;
-          return std::max<uint64_t>(size, 1);
-        }
+        case TyKind::Class: return classSizeAndAlign(t, at).first;
         default:
           unsupported(at, "sizeof " + types.toString(t, &symbols));
       }
+    }
+
+    // A class's size and alignment from its fields, remembered once its layout is complete.
+    std::pair<uint64_t, uint64_t> classSizeAndAlign(const Ty* t, Node* at)
+    {
+      StructInfo& info = structFor(t, at);
+      if (info.align)
+        return {info.size, info.align};
+      uint64_t size = 0, align = 1;
+      for (const Ty* f : info.fieldTypes)
+      {
+        uint64_t a = alignOf(f, at);
+        size = (size + a - 1) / a * a + sizeOf(f, at);
+        align = std::max(align, a);
+      }
+      align = std::max(align, declaredAlignment(t, at)); // `struct alignas(16) X`
+      size = std::max<uint64_t>((size + align - 1) / align * align, 1);
+      if (info.complete)
+        info.size = size, info.align = align;
+      return {size, align};
     }
 
     uint64_t alignOf(const Ty* t, Node* at = nullptr)
@@ -349,13 +374,7 @@ namespace
       {
         case TyKind::Array: return alignOf(t->inner, at);
         case TyKind::Vector: return t->count * sizeOf(t->inner, at); // SSE vectors are 16-byte aligned
-        case TyKind::Class:
-        {
-          uint64_t align = 1;
-          for (const Ty* f : structFor(t, at).fieldTypes)
-            align = std::max(align, alignOf(f, at));
-          return std::max(align, declaredAlignment(t, at));
-        }
+        case TyKind::Class: return classSizeAndAlign(t, at).second;
         default: return std::max<uint64_t>(1, sizeOf(t, at));
       }
     }
@@ -377,7 +396,7 @@ namespace
     {
       Decl* def = global.definitionOf(decl);
       if (!def || def->kind != NodeKind::ClassDecl)
-        unsupported(at, "a class without a definition (" + global.qualifiedName(decl) + ")");
+        unsupported(at, "a class without a definition (" + qualifiedName(decl) + ")");
       return static_cast<ClassDecl*>(def);
     }
 
@@ -427,6 +446,7 @@ namespace
         info.fieldTypes.push_back(types.array(types.intType(uint8_t(align * 8)), uint32_t((size + align - 1) / align)));
         decls += info.name + " = type { " + llType(info.fieldTypes[0], c) + " }\n";
         ++result.structs;
+        info.complete = true;
         return structs[key];
       }
       // If the class template doesn't have all its arguments (e.g. default args not resolved),
@@ -573,6 +593,7 @@ namespace
       line += " }\n";
       decls += line;
       ++result.structs;
+      info.complete = true;
       if (structs[key].polymorphic)
       {
         std::string vt = "@\"vtable." + types.toString(key, &symbols) + "\"";
@@ -611,7 +632,7 @@ namespace
     {
       if (f->flags & DF_Destructor)
         return "~";
-      std::string full = global.qualifiedName(f);
+      std::string full = qualifiedName(f);
       size_t pos = full.rfind("::");
       std::string k = pos == std::string::npos ? full : full.substr(pos + 2);
       const Ty* ft = declType(f);
@@ -803,23 +824,37 @@ namespace
       if (listTy->args.empty())
         unsupported(at, "an InitializerList without its element type");
       const Ty* element = listTy->args[0];
-      uint32_t n = uint32_t(b->args.size());
+      // A pack expansion among the elements (`{args...}`) gives one element per element of the pack.
+      uint32_t n = 0;
+      for (Expr* a : b->args)
+        n += isPackExpansion(a) ? uint32_t(packElementCount(static_cast<UnaryExpr*>(a)->operand, at)) : 1;
       const Ty* arrayTy = types.array(element, n);
       std::string array = newObjectSlot(arrayTy, at);
-      for (uint32_t i = 0; i < n; ++i)
+      uint32_t i = 0;
+      auto initializeElement = [&](Expr* value)
       {
         std::string slot = newTemp();
-        fn += "  " + slot + " = getelementptr inbounds " + llType(arrayTy, at) + ", ptr " + array + ", i64 0, i64 " + std::to_string(i) + "\n";
-        initializeFrom(slot, element, b->args[i], at);
+        fn += "  " + slot + " = getelementptr inbounds " + llType(arrayTy, at) + ", ptr " + array + ", i64 0, i64 " + std::to_string(i++) + "\n";
+        initializeFrom(slot, element, value, at);
+      };
+      for (Expr* a : b->args)
+      {
+        if (isPackExpansion(a))
+        {
+          Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
+          forEachPackElement(pattern, at, [&](size_t) { initializeElement(pattern); });
+        }
+        else
+          initializeElement(a);
       }
       if (needsDestruction(arrayTy, at))
         statementTemps.push_back({array, arrayTy});
       std::string list = newObjectSlot(listTy, at);
-      StructInfo info = structFor(listTy, at);
+      const StructInfo& info = structFor(listTy, at);
       if (info.fieldDecls.size() < 2)
         unsupported(at, "an InitializerList class without its two fields");
-      fn += "  store ptr " + array + ", ptr " + gep(info.name, list, info.fieldIndex[info.fieldDecls[0]]) + "\n";
-      fn += "  store i32 " + std::to_string(n) + ", ptr " + gep(info.name, list, info.fieldIndex[info.fieldDecls[1]]) + "\n";
+      fn += "  store ptr " + array + ", ptr " + gep(info.name, list, fieldIndexOf(info, info.fieldDecls[0])) + "\n";
+      fn += "  store i32 " + std::to_string(n) + ", ptr " + gep(info.name, list, fieldIndexOf(info, info.fieldDecls[1])) + "\n";
       return list;
     }
 
@@ -868,7 +903,7 @@ namespace
         return false;
       if (hasUserConstructors(classDef(t->decl, at)))
         return true;
-      StructInfo info = structFor(t, at); // copy: nested calls may add structs
+      const StructInfo& info = structFor(t, at);
       if (info.polymorphic)
         return true;
       for (Decl* m : info.fieldDecls)
@@ -992,7 +1027,7 @@ namespace
       {
         FunctionDecl* ctor = findConstructor(t, {}, at);
         if (!ctor && !inheritedConstructorBase(c))
-          unsupported(at, "default construction of " + global.qualifiedName(c) + ", which has no default constructor");
+          unsupported(at, "default construction of " + qualifiedName(c) + ", which has no default constructor");
         if (ctor && !(ctor->flags & DF_Default))
         {
           // Through callFunction: `Style(const Style* parent = nullptr)` wants its default argument.
@@ -1010,7 +1045,7 @@ namespace
     // default member initializers / default construction when absent).
     void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at)
     {
-      StructInfo info = structFor(t, at); // copy: nested calls may add structs
+      const StructInfo& info = structFor(t, at);
       auto initFor = [&](uint32_t symbol) -> const FunctionDecl::CtorInit*
       {
         for (const FunctionDecl::CtorInit& init : inits)
@@ -1053,8 +1088,8 @@ namespace
         if (d->kind != NodeKind::VariableDecl)
           continue; // anonymous struct member: zero-initialised with the whole object
         auto* v = static_cast<VariableDecl*>(d);
-        const Ty* ft = info.fieldTypes[info.fieldIndex[d]];
-        std::string fieldAddr = gep(info.name, addr, info.fieldIndex[d]);
+        const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
+        std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
         const FunctionDecl::CtorInit* init = v->name.empty() ? nullptr : initFor(v->name.last().symbol);
         if (const Ty* declared = global.typeOfDecl(v); ft->isReference() || (declared && declared->isReference()))
         {
@@ -1183,15 +1218,15 @@ namespace
         }
         if (!hasUserConstructors(c))
         {
-          StructInfo info = structFor(t, at);
+          const StructInfo& info = structFor(t, at);
           fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
           size_t i = 0;
           forEachPackElement(pattern, at, [&](size_t)
           {
             if (i >= info.fieldDecls.size())
-              unsupported(at, "more constructor arguments than " + global.qualifiedName(c) + " has fields");
+              unsupported(at, "more constructor arguments than " + qualifiedName(c) + " has fields");
             Decl* d = info.fieldDecls[i++];
-            initializeFrom(gep(info.name, addr, info.fieldIndex[d]), info.fieldTypes[info.fieldIndex[d]], pattern, at);
+            initializeFrom(gep(info.name, addr, fieldIndexOf(info, d)), info.fieldTypes[fieldIndexOf(info, d)], pattern, at);
           });
           return;
         }
@@ -1257,7 +1292,7 @@ namespace
       {
         // An aggregate: the values fill the fields in order; the fields left over get their
         // default member initializers (or default construction), as in C++.
-        StructInfo info = structFor(t, at);
+        const StructInfo& info = structFor(t, at);
         fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
         if (info.polymorphic)
         {
@@ -1267,12 +1302,12 @@ namespace
         if (info.fieldDecls.size() == 1 && info.bases.empty() && designators.empty() && args.size() > 1)
         {
           // Brace elision: `Array<int, 3> a = {1, 2, 3}` fills the one array field element by element.
-          const Ty* ft = info.fieldTypes[info.fieldIndex[info.fieldDecls[0]]];
+          const Ty* ft = info.fieldTypes[fieldIndexOf(info, info.fieldDecls[0])];
           if (ft->kind == TyKind::Array)
           {
-            std::string fieldAddr = gep(info.name, addr, info.fieldIndex[info.fieldDecls[0]]);
+            std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, info.fieldDecls[0]));
             if (args.size() > ft->count)
-              unsupported(at, "more values than the array of " + global.qualifiedName(c) + " holds");
+              unsupported(at, "more values than the array of " + qualifiedName(c) + " holds");
             for (size_t i = 0; i < args.size(); ++i)
             {
               std::string element = newTemp();
@@ -1309,7 +1344,7 @@ namespace
                   static_cast<VariableDecl*>(info.fieldDecls[j])->name.last().symbol == designator)
                 found = j;
             if (found == info.fieldDecls.size())
-              unsupported(at, "a designator naming no field of " + global.qualifiedName(c) + " (" + sym(designator) + ")");
+              unsupported(at, "a designator naming no field of " + qualifiedName(c) + " (" + sym(designator) + ")");
             valueOf[found] = args[k];
             next = found + 1;
             continue;
@@ -1318,15 +1353,15 @@ namespace
           {
             if (valueOf.empty())
               break; // anonymous/incomplete class with no known fields — already zeroed
-            unsupported(at, "more values than " + global.qualifiedName(c) + " has fields");
+            unsupported(at, "more values than " + qualifiedName(c) + " has fields");
           }
           valueOf[next++] = args[k];
         }
         size_t i = 0;
         for (Decl* d : info.fieldDecls)
         {
-          std::string fieldAddr = gep(info.name, addr, info.fieldIndex[d]);
-          const Ty* ft = info.fieldTypes[info.fieldIndex[d]];
+          std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
+          const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
           if (Expr* value = valueOf[i++])
           {
             initializeFrom(fieldAddr, ft, value, at);
@@ -1344,7 +1379,7 @@ namespace
         }
         return;
       }
-      unsupported(at, "a constructor of " + global.qualifiedName(c) + " taking " + std::to_string(args.size()) + " arguments");
+      unsupported(at, "a constructor of " + qualifiedName(c) + " taking " + std::to_string(args.size()) + " arguments");
     }
 
     // `auto [a, b] = pair;`: e names a binding of the hidden local v; out gets the address of the
@@ -1380,7 +1415,7 @@ namespace
       }
       if (!isClass(object))
         unsupported(e, "a structured binding of something that is neither a class nor an array");
-      StructInfo info = structFor(object, e); // copy: fieldAddress may add structs
+      const StructInfo& info = structFor(object, e);
       if (index >= info.fieldDecls.size() || !fieldAddress(object, info.fieldDecls[index], base, out, e))
         unsupported(e, "a structured binding of a class without that many data members");
       return true;
@@ -1483,7 +1518,7 @@ namespace
         }
         return globalAddress(static_cast<VariableDecl*>(d), e, qualifierClass(e, e));
       }
-      unsupported(e, "taking the address of " + global.qualifiedName(d) + " (" + nodeKindName(d->kind) + (packLocals.count(d) ? ", a parameter pack outside its expansion" : "") + ")");
+      unsupported(e, "taking the address of " + qualifiedName(d) + " (" + nodeKindName(d->kind) + (packLocals.count(d) ? ", a parameter pack outside its expansion" : "") + ")");
     }
 
     // Whether an expression is an xvalue: an rvalue reference to an object that may be moved from
@@ -1555,16 +1590,16 @@ namespace
         }
       }
       if (copy && (copy->flags & DF_Delete))
-        unsupported(at, "copying " + global.qualifiedName(c) + ", whose copy constructor is deleted (move it instead)");
+        unsupported(at, "copying " + qualifiedName(c) + ", whose copy constructor is deleted (move it instead)");
       if (!copy && hasMove)
-        unsupported(at, "copying " + global.qualifiedName(c) + ", which has a move constructor but no copy constructor");
+        unsupported(at, "copying " + qualifiedName(c) + ", which has a move constructor but no copy constructor");
       if (copy)
       {
         emitCall("", "void " + useFunction(copy, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
         return;
       }
       if (findDestructor(c))
-        unsupported(at, "copying " + global.qualifiedName(c) + ", which has a destructor but no copy constructor");
+        unsupported(at, "copying " + qualifiedName(c) + ", which has a destructor but no copy constructor");
       memberwiseConstruct(dst, src, t, at, move);
     }
 
@@ -1580,7 +1615,7 @@ namespace
         return;
       }
       // Memberwise: bases and members in order, each with its own copy semantics.
-      StructInfo info = structFor(t, at);
+      const StructInfo& info = structFor(t, at);
       if (info.polymorphic)
       {
         useVtable(info);
@@ -1595,7 +1630,7 @@ namespace
       }
       for (Decl* d : info.fieldDecls)
       {
-        uint32_t index = info.fieldIndex[d];
+        uint32_t index = fieldIndexOf(info, d);
         const Ty* ft = info.fieldTypes[index];
         std::string to = gep(info.name, dst, index), from = gep(info.name, src, index);
         if (isClass(ft) && move)
@@ -1630,7 +1665,7 @@ namespace
       if (op)
       {
         if (op->flags & DF_Delete)
-          unsupported(at, "assignment to " + global.qualifiedName(t->decl) + " through its deleted operator=");
+          unsupported(at, "assignment to " + qualifiedName(t->decl) + " through its deleted operator=");
         std::string thisArg = dst;
         if (canonicalClass(t, at) != foundIn)
           baseAddress(t, foundIn, dst, thisArg, at);
@@ -1655,19 +1690,19 @@ namespace
         return;
       }
       if (findDestructor(classDef(t->decl, at)))
-        unsupported(at, "assignment to " + global.qualifiedName(t->decl) + ", which has a destructor but no operator=");
+        unsupported(at, "assignment to " + qualifiedName(t->decl) + ", which has a destructor but no operator=");
       memberwiseAssign(dst, src, t, at, move);
     }
 
     // Assigns the object at src to the one at dst base by base and member by member.
     void memberwiseAssign(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move)
     {
-      StructInfo info = structFor(t, at);
+      const StructInfo& info = structFor(t, at);
       for (auto& [baseDef, index] : info.bases)
         assignObject(gep(info.name, dst, index), gep(info.name, src, index), info.fieldTypes[index], at, move);
       for (Decl* d : info.fieldDecls)
       {
-        uint32_t index = info.fieldIndex[d];
+        uint32_t index = fieldIndexOf(info, d);
         const Ty* ft = info.fieldTypes[index];
         std::string to = gep(info.name, dst, index), from = gep(info.name, src, index);
         if (isClass(ft))
@@ -2505,8 +2540,37 @@ namespace
 
     // --- functions ---
 
-    // IR name of a function (for an instantiation: with the class and template arguments).
-    std::string functionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    // IR name of a function (for an instantiation: with the class and template arguments),
+    // computed once per function, class and arguments.
+    struct NameKey
+    {
+      FunctionDecl* f;
+      const Ty* classTy;
+      std::vector<std::pair<Decl*, const Ty*>> args;
+      bool operator==(const NameKey&) const = default;
+    };
+    struct NameKeyHash
+    {
+      size_t operator()(const NameKey& k) const
+      {
+        size_t h = std::hash<const void*>()(k.f) * 31 + std::hash<const void*>()(k.classTy);
+        for (auto& [d, t] : k.args)
+          h = (h * 1000003) ^ (std::hash<const void*>()(d) * 31 + std::hash<const void*>()(t));
+        return h;
+      }
+    };
+    std::unordered_map<NameKey, std::string, NameKeyHash> functionNames;
+
+    const std::string& functionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    {
+      NameKey key{f, classTy, args.pairs};
+      auto it = functionNames.find(key);
+      if (it == functionNames.end())
+        it = functionNames.emplace(std::move(key), computeFunctionName(f, args, classTy)).first;
+      return it->second;
+    }
+
+    std::string computeFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
     {
       if (global.isExternC(f))
         return "@" + sym(f->name.last().symbol);
@@ -2517,15 +2581,15 @@ namespace
       if (classTy && !classTy->args.empty())
       {
         // Class path with the instantiation's arguments, then the member's own name.
-        std::string full = global.qualifiedName(f);
-        std::string cls = global.qualifiedName(classTy->decl);
+        std::string full = qualifiedName(f);
+        std::string cls = qualifiedName(classTy->decl);
         q = types.toString(classTy, &symbols);
         size_t pos = full.rfind("::");
         q += pos == std::string::npos ? "::" + full : full.substr(pos);
       }
       else
       {
-        q = global.qualifiedName(f);
+        q = qualifiedName(f);
         if (f->name.parts.size() > 1 && !global.owningClass(f))
         {
           // `int M::twice(int) {}` outside its namespace: the name the declaration in M has.
@@ -2824,7 +2888,7 @@ namespace
       if (!f->templateParams.empty())
       {
         if (!call || call->templateArgCount != f->templateParams.size())
-          unsupported(at, "a call to " + global.qualifiedName(f) + " whose template arguments could not be deduced");
+          unsupported(at, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
         bool hasUnknown = false;
         for (size_t i = 0; i < f->templateParams.size(); ++i)
         {
@@ -2920,7 +2984,7 @@ namespace
                        const std::string& sret, Span<Expr*> callArgs, Node* at, const std::string& indirect = "")
     {
       if (f->flags & DF_Delete)
-        unsupported(at, "a call to the deleted function " + global.qualifiedName(f));
+        unsupported(at, "a call to the deleted function " + qualifiedName(f));
       if (global.isExternC(f))
         if (std::optional<Value> v = atomicBuiltin(f, callArgs, at))
           return *v;
@@ -2992,7 +3056,7 @@ namespace
           if (pd->isPack)
             break;
           if (!pd->defaultValue)
-            unsupported(at, "a call to " + global.qualifiedName(f) + " without an argument for its parameter " +
+            unsupported(at, "a call to " + qualifiedName(f) + " without an argument for its parameter " +
                               (pd->name != UINT32_MAX ? sym(pd->name) : std::to_string(i + 1)) + " (and the overload resolution let it through)");
           if (!retyped && !args.empty() && f != currentFunction)
           {
@@ -3130,13 +3194,13 @@ namespace
           return orderingObject(memberwiseOrder(thisArg, src, t, at), at);
         }
       }
-      unsupported(at, "the defaulted function " + global.qualifiedName(f));
+      unsupported(at, "the defaulted function " + qualifiedName(f));
     }
 
     // a == b for the objects at those addresses, base by base and member by member.
     Value memberwiseEqual(const std::string& a, const std::string& b, const Ty* t, Node* at)
     {
-      StructInfo info = structFor(t, at);
+      const StructInfo& info = structFor(t, at);
       std::string result = "true";
       auto combine = [&](const std::string& v)
       {
@@ -3153,7 +3217,7 @@ namespace
         combine(objectsEqual(gep(info.name, a, index), gep(info.name, b, index), info.fieldTypes[index], at).text);
       for (Decl* d : info.fieldDecls)
       {
-        uint32_t index = info.fieldIndex[d];
+        uint32_t index = fieldIndexOf(info, d);
         const Ty* ft = info.fieldTypes[index];
         std::string fa = gep(info.name, a, index), fb = gep(info.name, b, index);
         if (isClass(ft))
@@ -3393,13 +3457,13 @@ namespace
         else if (std::optional<int64_t> c = evalConst(static_cast<Expr*>(arg)))
           t = types.valueType(types.intType(), *c);
         if (!t || !t->isKnown())
-          unsupported(at, "an argument of " + global.qualifiedName(v) + " that is not a type or a constant");
+          unsupported(at, "an argument of " + qualifiedName(v) + " that is not a type or a constant");
         if (lastParam && lastParam->isPack && i + 1 >= count)
           packElements.push_back(t);
         else if (i < count)
           args.pairs.push_back({v->templateParams[i], t});
         else
-          unsupported(at, "more arguments than " + global.qualifiedName(v) + " has parameters");
+          unsupported(at, "more arguments than " + qualifiedName(v) + " has parameters");
       }
       if (lastParam && lastParam->isPack)
         args.pairs.push_back({lastParam, types.pack(Span<const Ty*>{packElements.data(), uint32_t(packElements.size())})});
@@ -3420,7 +3484,7 @@ namespace
             continue;
           }
         }
-        unsupported(at, "the variable template " + global.qualifiedName(v) + " used without all its arguments");
+        unsupported(at, "the variable template " + qualifiedName(v) + " used without all its arguments");
       }
       return args;
     }
@@ -3954,7 +4018,7 @@ namespace
       std::string addr = newObjectSlot(t, at);
       uint32_t token = at->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(at)->callee->token : at->token; // the callee's name
       auto [line, column] = lineColumnOf(token);
-      std::string function = currentFunction ? global.qualifiedName(currentFunction) : std::string();
+      std::string function = currentFunction ? qualifiedName(currentFunction) : std::string();
       fn += "  store ptr " + cStringConstant(currentFile->path) + ", ptr " + gep(info.name, addr, 0) + "\n";
       fn += "  store i32 " + std::to_string(line) + ", ptr " + gep(info.name, addr, 1) + "\n";
       fn += "  store i32 " + std::to_string(column) + ", ptr " + gep(info.name, addr, 2) + "\n";
@@ -4900,7 +4964,7 @@ namespace
       const Ty* t = classTy ? global.typeOfDeclIn(v, classArgs) : global.typeOfDecl(v);
       if (!t || !t->isKnown())
         unsupported(at, "a global of unknown type");
-      std::string name = classTy ? instanceName : "@\"" + global.qualifiedName(v) + "\"";
+      std::string name = classTy ? instanceName : "@\"" + qualifiedName(v) + "\"";
       if (classTy)
         instanceGlobals[instanceName] = name;
       else
@@ -5019,7 +5083,8 @@ namespace
           if (m->kind != NodeKind::FunctionDecl || (!templates && !m->templateParams.empty()))
             continue;
           auto* f = static_cast<FunctionDecl*>(m);
-          if (global.qualifiedName(f).ends_with("::" + name))
+          const std::string& q = qualifiedName(f); // ends with "::" + name
+          if (q.size() > name.size() + 1 && q.ends_with(name) && q.compare(q.size() - name.size() - 2, 2, "::") == 0)
             candidates.push_back(f);
         }
         if (!candidates.empty())
@@ -5060,7 +5125,7 @@ namespace
       if (!f)
       {
         if (required)
-          unsupported(at, global.qualifiedName(object.ty->decl) + " has no " + name);
+          unsupported(at, qualifiedName(object.ty->decl) + " has no " + name);
         return {"", nullptr};
       }
       std::string thisArg = object.text;
@@ -6421,10 +6486,10 @@ namespace
             namePtr = cStringConstant(types.toString(types.unqualified(staticTy), &symbols));
           }
           std::string slot = newObjectSlot(infoTy, e);
-          StructInfo info = structFor(infoTy, e);
+          const StructInfo& info = structFor(infoTy, e);
           if (info.fieldDecls.empty())
             unsupported(e, "a TypeInfo class without its name field");
-          fn += "  store ptr " + namePtr + ", ptr " + gep(info.name, slot, info.fieldIndex[info.fieldDecls[0]]) + "\n";
+          fn += "  store ptr " + namePtr + ", ptr " + gep(info.name, slot, fieldIndexOf(info, info.fieldDecls[0])) + "\n";
           return {slot, infoTy, true};
         }
         case NodeKind::NameofExpr:
@@ -6943,7 +7008,7 @@ namespace
           assignObject(l.text, src, l.ty, b, r.isTemporary || isXvalue(b->rhs));
           return l;
         }
-        unsupported(b, global.qualifiedName(l.ty->decl) + " has no " + name);
+        unsupported(b, qualifiedName(l.ty->decl) + " has no " + name);
       }
       if (isAssignment(op))
       {
@@ -7001,7 +7066,7 @@ namespace
           return callRvalue(result, b);
         if (std::optional<Value> rewritten = rewrittenComparison(b, op, l.ty, nullptr))
           return *rewritten;
-        unsupported(b, global.qualifiedName(l.ty->decl) + " has no " + name);
+        unsupported(b, qualifiedName(l.ty->decl) + " has no " + name);
       }
       Value r = rvalue(b->rhs);
       switch (op)
@@ -7063,7 +7128,7 @@ namespace
       std::vector<const Ty*> argTypes{types.lref(types.qualified(t, true, false))};
       FunctionDecl* op = findMemberFunction(t, "operator<=>", argTypes, t, at, &foundIn);
       if (!op)
-        unsupported(at, global.qualifiedName(t->decl) + " has no operator<=> (a defaulted one orders by the members)");
+        unsupported(at, qualifiedName(t->decl) + " has no operator<=> (a defaulted one orders by the members)");
       if (op->flags & DF_Default)
         return memberwiseOrder(a, b, t, at);
       TemplateArgs args = global.classArgsOf(foundIn);
@@ -7093,7 +7158,7 @@ namespace
     // The order of two objects base by base and member by member: the first that differs decides.
     Value memberwiseOrder(const std::string& a, const std::string& b, const Ty* t, Node* at)
     {
-      StructInfo info = structFor(t, at);
+      const StructInfo& info = structFor(t, at);
       std::string slot = "%order" + std::to_string(temp++);
       allocas += "  " + slot + " = alloca i8\n";
       fn += "  store i8 0, ptr " + slot + "\n";
@@ -7111,7 +7176,7 @@ namespace
         part(orderOfObjects(gep(info.name, a, index), gep(info.name, b, index), info.fieldTypes[index], at));
       for (Decl* d : info.fieldDecls)
       {
-        uint32_t index = info.fieldIndex[d];
+        uint32_t index = fieldIndexOf(info, d);
         const Ty* ft = info.fieldTypes[index];
         std::string fa = gep(info.name, a, index), fb = gep(info.name, b, index);
         if (isClass(ft))
@@ -7415,7 +7480,7 @@ namespace
       std::string name, base = "null", offset = "0", display;
       if (isClass(t))
       {
-        StructInfo info = structFor(t, at); // copy: the base's descriptor may add structs
+        const StructInfo& info = structFor(t, at);
         name = "@kpp.ti." + info.name.substr(8);
         display = types.toString(t, &symbols);
         if (!info.bases.empty())
@@ -8773,7 +8838,7 @@ namespace
             if (d->kind == NodeKind::EnumeratorDecl && !covered.count(enumeratorValue(static_cast<EnumeratorDecl*>(d))))
               missing += (missing.empty() ? "" : ", ") + sym(static_cast<EnumeratorDecl*>(d)->name);
           if (!missing.empty())
-            error(sw, "switch on " + global.qualifiedName(e) + " does not handle " + missing);
+            error(sw, "switch on " + qualifiedName(e) + " does not handle " + missing);
           invalidL = newLabel("switch.invalid");
         }
       }
@@ -8784,7 +8849,7 @@ namespace
         startBlock(invalidL);
         auto [line, column] = lineColumnOf(sw->token);
         emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
-                         std::to_string(column) + ", ptr " + cStringConstant("invalid value in switch on " + global.qualifiedName(condTy->decl)) + ")", false);
+                         std::to_string(column) + ", ptr " + cStringConstant("invalid value in switch on " + qualifiedName(condTy->decl)) + ")", false);
         fn += "  unreachable\n";
         usesAssert = true;
         blockTerminated = true;
@@ -9038,7 +9103,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
       c->e->emitFunction(c->f, *c->args, c->classTy, *c->name);
     }, &call))
     {
-      e.error(f, "codegen ran out of stack in " + (e.currentFunctionName.empty() ? global.qualifiedName(f) : e.currentFunctionName) +
+      e.error(f, "codegen ran out of stack in " + (e.currentFunctionName.empty() ? e.qualifiedName(f) : e.currentFunctionName) +
                      (e.currentRequestedBy.empty() ? "" : ", requested by " + e.currentRequestedBy) + " (skipped)");
       e.resetFunctionState();
     }
