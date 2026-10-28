@@ -833,6 +833,11 @@ namespace
     const ConvertInput& in;
     GlobalScope& global;
     const SymbolTable& symbols;
+    bool isHeader() const
+    {
+      std::string ext = in.path.extension().string();
+      return ext != ".cpp" && ext != ".cc";
+    }
     const OverrideKeys* overrides = nullptr; // definitions a hand-written file replaces
     const CarriedDefaults* carriedDefaults = nullptr;
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
@@ -2440,6 +2445,30 @@ namespace
           removeDecl(d); // Kpp deduces class arguments from constructors
           counts.add("deduction guides removed");
           continue;
+        }
+        if (namespaceScope && (d->flags & DF_Static) && (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && isHeader())
+        {
+          // `static` at namespace scope in a header gives every C++ file that includes it a copy
+          // of its own; in Kpp a header and its source are one file and a `static` name stays in
+          // it, so the other files would not find it (EMPTY_CARGO_STATION_ID): the `static` goes.
+          uint32_t start = declStart(d);
+          uint32_t first = d->token;
+          while (first > 0 && toks[first - 1].offset >= start)
+            --first;
+          for (uint32_t k = first; k < toks.size(); ++k)
+          {
+            if (toks[k].is(P::LParen) || toks[k].is(P::Assign) || toks[k].is(P::LBrace) || toks[k].is(P::Semi))
+              break;
+            if (toks[k].is(Kw::static_))
+            {
+              uint32_t end = endOffset(k);
+              while (end < text.size() && (text[end] == ' ' || text[end] == '\t'))
+                ++end;
+              remove(toks[k].offset, end - toks[k].offset);
+              counts.add("static dropped from a header declaration");
+              break;
+            }
+          }
         }
         switch (d->kind)
         {
