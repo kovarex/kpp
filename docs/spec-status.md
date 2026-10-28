@@ -6,12 +6,13 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**219 pass, 3 pending, 0 failing, 0 fixed** (222 snippets, 67.8 s).
+**220 pass, 4 pending, 0 failing, 0 fixed** (224 snippets, 16.5 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `language/alignas_template_member.kpp` | alignas on a class template and alignof of an instantiation (raw storage for a T: what Optional, Variant and small-buffer containers need) | pending | the library's Optional (docs/stdlib-conformance.md), and the game's own aligned buffers | alignas(Align) with a template argument is ignored, and alignof gives the size (prints 3 8, not 16 4); line 1: got `3 8`, expected `16 4` |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
 | `language/array_brace_zero.kpp` | an array zero-filled by `= {0}` and `= {}`, with fewer initializers than elements | pass |  |  |
@@ -112,8 +113,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue); C:\kpp-templates\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue); C:\kpp-convert\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-convert\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |
@@ -186,7 +187,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-convert\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
 | `library/containers_deque_queue.kpp` | Deque and Queue (std::deque, std::queue): push at both ends, pop, front/back | pass | 116 deque uses in 68 files |  |
@@ -202,6 +203,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `library/limits_math.kpp` | Limits (numeric_limits) and math functions (abs, sqrt, floor, ceil, round, pow, isnan) | pass | 631 numeric_limits uses in 279 files |  |
 | `library/memory_c.kpp` | memcpy, memset, memcmp, strlen, malloc/free through the library's C declarations | pass | 164 mem* calls in 84 files, 48 str* calls |  |
 | `library/optional.kpp` | Optional (std::optional): value, hasValue, nullopt, assignment, comparison, valueOr | pass | 1587 uses in 658 files |  |
+| `library/optional_function_errors.kpp` | Optional's value() on empty throws BadOptionalAccess, reset() and emplace() destroy at once, nullopt and < comparisons; calling an empty Function throws BadFunctionCall | pass | 1,675 std::optional uses, 1,576 std::function |  |
 | `library/ordered_map_set.kpp` | ordered Map and Set (std::map/std::set): iteration in key order, lower bound | pass | 827 std::map uses in 422 files, 641 std::set in 293 files |  |
 | `library/pair_tuple.kpp` | Pair (std::pair) and makePair; Tuple | pass | 354 pair uses in 199 files, 51 tuple |  |
 | `library/shared_ptr.kpp` | SharedPtr and WeakPtr (std::shared_ptr/weak_ptr) | pass | 99 shared_ptr uses in 50 files, 8 weak_ptr |  |
