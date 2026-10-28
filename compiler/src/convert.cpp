@@ -66,6 +66,15 @@ namespace
   const std::set<std::string> undefinedSymbols = {"LINUX", "MAC_OSX", "NINTENDO_SWITCH", "NINTENDO_SWITCH1", "NINTENDO_SWITCH2", "__linux__",
                                                   "__APPLE__", "__GNUC__", "__clang__", "NDEBUG", "HEADLESS", "FACTORIO_USE_METAL", "DEMO",
                                                   "CXXOPTS_USE_UNICODE", "CXXOPTS_NO_RTTI"};
+  // Symbols with a value, compared in #if: the Windows version the game's build defines
+  // (`_WIN32_WINNT=0x0601`, Windows 7, in the vs2022 projects and FASTBuild) and the names of the
+  // versions (`#if _WIN32_WINNT >= _WIN32_WINNT_WIN7`).
+  const std::map<std::string, long long> valuedSymbols = {{"_WIN32_WINNT", 0x0601},          {"_WIN32_WINNT_NT4", 0x0400},
+                                                          {"_WIN32_WINNT_WIN2K", 0x0500},    {"_WIN32_WINNT_WINXP", 0x0501},
+                                                          {"_WIN32_WINNT_WS03", 0x0502},     {"_WIN32_WINNT_VISTA", 0x0600},
+                                                          {"_WIN32_WINNT_LONGHORN", 0x0600}, {"_WIN32_WINNT_WIN7", 0x0601},
+                                                          {"_WIN32_WINNT_WIN8", 0x0602},     {"_WIN32_WINNT_WINBLUE", 0x0603},
+                                                          {"_WIN32_WINNT_WINTHRESHOLD", 0x0A00}, {"_WIN32_WINNT_WIN10", 0x0A00}};
 
   // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
@@ -332,7 +341,7 @@ namespace
     {"atomic_bool", "Atomic<bool>"}, {"atomic_size_t", "Atomic<size_t>"},
     {"atomic_uint8_t", "Atomic<u8>"}, {"atomic_uint32_t", "Atomic<u32>"},
     {"atomic_uint64_t", "Atomic<u64>"}, {"atomic_load", "atomicLoad"},
-    {"atomic_store", "atomicStore"},
+    {"atomic_store", "atomicStore"}, {"atomic_exchange", "atomicExchange"}, {"atomic_is_lock_free", "atomicIsLockFree"},
     {"async", "async"}, {"future", "Future"}, {"shared_future", "SharedFuture"},
     {"promise", "Promise"}, {"future_status", "FutureStatus"}, {"launch", "Launch"},
     {"this_thread", "thisThread"},
@@ -1083,6 +1092,8 @@ namespace
       }
       long long symbol(const std::string& name)
       {
+        if (auto v = valuedSymbols.find(name); v != valuedSymbols.end())
+          return v->second;
         if (definedSymbols.count(name))
           return 1;
         if (undefinedSymbols.count(name))
