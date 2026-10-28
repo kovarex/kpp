@@ -12,10 +12,6 @@ compile, loudly) last. State of 2026-10-28.
 **Compiler gaps that break library use** (pending spec snippets in compiler/tests/spec):
 - `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
-- `SharedPtr<T> p = makeUnique<T>();` (copy-initialisation from a returned object of another
-  class) skips the converting constructor and takes the temporary's bytes, so p is wrong
-  (language/copy_init_converting_from_prvalue); direct initialisation `SharedPtr<T> p(...)` and
-  `= move(unique)` are right.
 
 ## Missing types and API
 
@@ -31,4 +27,4 @@ upperBound, PriorityQueue, nthElement (introselect), the checked accessors (`at(
 and `erase` throw OutOfRange), HashMap/HashSet (entries in nodes, std's interface) and
 FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
 pops at both ends), List, SharedPtr/WeakPtr/EnableSharedFromThis (atomic counts, deletion as the
-created type, shared_from_this throwing BadWeakPtr).
+created type, shared_from_this throwing BadWeakPtr), UniquePtr (conversions from UniquePtr<Derived>).

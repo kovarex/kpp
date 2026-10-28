@@ -1,14 +1,22 @@
 // Kpp standard library: UniquePtr<T>, sole ownership of a heap object: deleted when the pointer
 // goes away or is reset, moved but never copied. The shape of std::unique_ptr, without deleters.
+// Specified in docs/stdlib/uniqueptr.md.
 template<typename T>
 struct UniquePtr
 {
+  using element_type = T;
+
   T* pointer = nullptr;
 
   UniquePtr() {}
-  explicit UniquePtr(T* pointer) : pointer(pointer) {}
+  implicit UniquePtr(nullptr_t) {}
+  explicit UniquePtr(T* object) : pointer(object) {}
   UniquePtr(const UniquePtr<T>& other) = delete;
   UniquePtr(UniquePtr<T>&& other) : pointer(other.pointer) { other.pointer = nullptr; }
+  // From a UniquePtr to a type whose pointer converts to T* (a derived class, T const): takes its
+  // object. Deleting it through T* needs T's destructor to be virtual when the types differ.
+  template<typename U> requires (isConvertible<U*, T*> && !isSame<U, T>)
+  implicit UniquePtr(UniquePtr<U>&& other) : pointer(other.release()) {}
   ~UniquePtr()
   {
     if (this->pointer)
@@ -28,6 +36,12 @@ struct UniquePtr
       this->reset(other.pointer);
       other.pointer = nullptr;
     }
+    return *this;
+  }
+  template<typename U> requires (isConvertible<U*, T*> && !isSame<U, T>)
+  UniquePtr<T>& operator=(UniquePtr<U>&& other)
+  {
+    this->reset(other.release());
     return *this;
   }
 
