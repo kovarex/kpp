@@ -1,0 +1,20 @@
+// spec: a range-for over a class that has no begin()/end() members uses the free begin(x) and end(x) found for its type
+// factorio: CommonUtil's reverse(container) wrappers (`auto begin(ReversionWrapperByReference<T> w) { return std::rbegin(w.iterable); }`) behind every reversed range-for
+// pending: codegen reports "a range without begin()/end()"
+template<typename T>
+struct Backwards { T* iterable; };
+template<typename T>
+auto begin(Backwards<T> w) { return w.iterable->rbegin(); }
+template<typename T>
+auto end(Backwards<T> w) { return w.iterable->rend(); }
+template<typename T>
+Backwards<T> backwards(T& iterable) { return Backwards<T>{&iterable}; }
+int main()
+{
+  Vector<int> v = {1, 2, 3};
+  String order;
+  for (int x : backwards(v))
+    order += toString(x);
+  println("{}", order);
+  return 0;
+}
