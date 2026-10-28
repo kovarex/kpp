@@ -1,0 +1,43 @@
+// spec: a type naming a member of a member of a template parameter (`T::Option::BuilderMapping&` with `using Option = Filters::Option<EntityPair>;` in T and `using BuilderMapping = Map<String, D>;` in Option<D>): each step resolved once the one before is known, with that step's arguments
+// factorio: LuaCommonEventFilters::registerEntityFilterBuilderOptions<LuaEntityClonedEventFilters>(result) and the other event filters (24 calls that did not resolve)
+namespace Filters
+{
+  template<class D>
+  struct Option
+  {
+    using DataType = D;
+    using BuilderMapping = Map<String, D>;
+  };
+}
+
+struct EntityPair
+{
+  int first = 1;
+  int second = 2;
+};
+
+class ClonedFilters
+{
+public:
+  using Option = Filters::Option<EntityPair>;
+};
+
+class CommonFilters
+{
+public:
+  template<class T>
+  static void registerOptions(T::Option::BuilderMapping& result)
+  {
+    typename T::Option::DataType pair;
+    pair.second = 7;
+    result["ghost"] = pair;
+  }
+};
+
+int main()
+{
+  ClonedFilters::Option::BuilderMapping result;
+  CommonFilters::registerOptions<ClonedFilters>(result);
+  println("{} {}", result["ghost"].first, result["ghost"].second);
+  return 0;
+}

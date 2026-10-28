@@ -3738,7 +3738,28 @@ struct GlobalScope::Impl
         {
           if (n->name.parts.size() > 1)
           {
-            // T::type: dependent on T; the substituted T could be looked up, but not yet.
+            // `T::Unit`, `T::Option::BuilderMapping`: a member of a member of T, each step resolved
+            // once the one before is a class (substitute), under the instantiation's arguments
+            // right away when T is bound.
+            bool plain = true;
+            for (size_t i = 1; i < n->name.parts.size(); ++i)
+              plain = plain && !n->name.parts[i].hasTemplateArgs && n->name.parts[i].special == 0;
+            if (plain)
+            {
+              const Ty* t = types.param(l.decl);
+              for (size_t i = 1; i < n->name.parts.size(); ++i)
+                t = types.dependentMember(t, n->name.parts[i].symbol);
+              if (const Ty* bound = ctx.subst ? ctx.subst->find(l.decl) : nullptr)
+              {
+                const Ty* sub = substitute(t, *ctx.subst, depth + 1);
+                // A step left unresolved with T known names no member (`T::force_memcpy_save` with
+                // T = int*): no type, which is what makes a detection idiom's argument ill-formed.
+                if (!sub || (sub->kind == TyKind::DependentMember && !types.isDependent(bound)))
+                  return types.unknown();
+                return sub;
+              }
+              return t;
+            }
             if (ctx.subst)
               if (const Ty* sub = ctx.subst->find(l.decl))
               {
@@ -3758,8 +3779,6 @@ struct GlobalScope::Impl
                 }
                 return types.unknown();
               }
-            if (n->name.parts.size() == 2)
-              return types.dependentMember(types.param(l.decl), n->name.parts[1].symbol); // `T::Unit`: resolved when T is known
             return types.param(l.decl);
           }
           if (n->name.parts[0].hasTemplateArgs && !static_cast<TemplateParamDecl*>(l.decl)->innerParams.empty())
@@ -4572,7 +4591,7 @@ struct GlobalScope::Impl
             Lookup inner;
             if (lookupInScope(inside, uint32_t(t->value), inner, depth + 1) && inner.decl)
             {
-              Subst s2 = sub->args.empty() ? Subst{} : substFor(sub);
+              Subst s2 = memberSubst(sub, inner.foundIn, depth + 1); // a member of a base: that base's arguments
               TypeContext c2{inside, nullptr, &s2};
               NamePart part{};
               part.symbol = uint32_t(t->value);
