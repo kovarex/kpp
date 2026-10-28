@@ -1,6 +1,5 @@
 // spec: a function template whose argument deduction fails for one of its parameters is not a candidate: for `d * 2`, `operator*(const S&, const D2<R, P>&)` (S = D2, then D2<R, P> from int fails) leaves only `operator*(const D2<R, P>&, const S&)`
 // factorio: the scalar-first and scalar-second forms of an operator (std::chrono's `2 * d` and `d * 2`), and generic operators across Util
-// pending: the failed template stays a candidate, the call is ambiguous and has no type
 template<typename R, typename P>
 struct D2 { R t; };
 template<typename R, typename P, typename S>

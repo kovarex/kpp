@@ -1,6 +1,5 @@
 // spec: function templates that differ only in a parameter that is not deduced rank by that parameter's conversion: `d * 2` takes `operator*(const D<R, P>&, int)` over the double one, `d * 1.5` the double one
 // factorio: the library's Duration (duration times int or double), and any generic code overloaded on scalar types
-// pending: the call is left without a type (codegen: a local of unknown type)
 template<typename R, typename P>
 struct D4 { R t; };
 template<typename R, typename P>
