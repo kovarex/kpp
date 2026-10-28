@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**252 pass, 8 pending, 0 failing, 0 fixed** (260 snippets, 14.7 s).
+**252 pass, 10 pending, 0 failing, 0 fixed** (262 snippets, 16.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -118,7 +118,9 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `templates/array_reference_parameter.kpp` | a function template parameter that is a reference to an array, its element type and bound deduced: `template<typename T, size_t N> size_t size(const T (&array)[N])` | pending | std::size, std::begin and std::end of built-in arrays (SelectorCombinatorGui's modeOfOperationMapping, lookup tables) | the calls do not resolve: the element type and the bound are not deduced from the array argument; C:\kpp-convert\compiler\tests\spec\templates\array_reference_parameter.kpp:12: codegen does not support a call that did not resolve yet (in @kpp.main) |
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-convert\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/static_constexpr_from_base_template.kpp` | a static constexpr member of a class template initialised from its template arguments, read through a class that derives from an instantiation of it: `Limits<int>::digits` where Limits<int> derives from IntegerLimits<int, true, 32> | pending | the library's numeric limits written once for all integer types; any trait class built on a templated base | the base's template arguments are not known where the member is read (codegen: a template parameter whose value is not known here); C:\kpp-convert\compiler\tests\spec\templates\static_constexpr_from_base_template.kpp:7: codegen does not support a template parameter whose value is not known here yet (in @kpp.main) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -213,7 +215,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-convert\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support a conversion from Future<int32> to SharedPtr<SharedState<int32>> yet (in @kpp.main) |
+| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-convert\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support the layout of Future<F>: the member state (`SharedPtr<SharedState<T>> state`) has an unknown type yet (in @kpp.main) |
 | `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-convert\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |

@@ -1,0 +1,21 @@
+// spec: a static constexpr member of a class template initialised from its template arguments, read through a class that derives from an instantiation of it: `Limits<int>::digits` where Limits<int> derives from IntegerLimits<int, true, 32>
+// factorio: the library's numeric limits written once for all integer types; any trait class built on a templated base
+// pending: the base's template arguments are not known where the member is read (codegen: a template parameter whose value is not known here)
+template<typename T, bool isSigned, int bits>
+struct IntegerLimits
+{
+  static constexpr bool is_signed = isSigned;
+  static constexpr int digits = isSigned ? bits - 1 : bits;
+};
+template<typename T>
+struct MyLimits {};
+template<>
+struct MyLimits<int> : IntegerLimits<int, true, 32> {};
+template<>
+struct MyLimits<unsigned int> : IntegerLimits<unsigned int, false, 32> {};
+int main()
+{
+  static_assert(MyLimits<int>::digits == 31);
+  println("{} {} {} {}", MyLimits<int>::is_signed, MyLimits<int>::digits, MyLimits<unsigned int>::is_signed, MyLimits<unsigned int>::digits);
+  return 0;
+}
