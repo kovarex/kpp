@@ -21,6 +21,7 @@ int main()
   println("{} {} {} {} {}", ns.count(), whole.count(), asSeconds.count(), sum.count(), elapsed >= Nanoseconds::zero());
   println("{} {} {} {} {}", elapsedMs >= 0, ordered, fraction.count(), epochSeconds > 1700000000, back <= now);
   println("{} {} {} {} {}", durationCast<Minutes>(day).count(), Milliseconds(two) / ms, (ms * 2).count(), (ms * 0.5).count(), floor<Seconds>(Milliseconds(-1500)).count());
+  println("{} {}", (3 * ms).count(), (0.5 * two).count());
   thisThread::sleepFor(Milliseconds(1));
   return 0;
 }

@@ -21,9 +21,9 @@ Ratio, `Ratio<1>` unless given). The usual durations count in `long long`: `Nano
   (`Nanoseconds ns = Milliseconds(5);`, `Duration<double> s = Milliseconds(1500);` is 1.5).
   Other conversions go through `durationCast<To>(d)`, which truncates toward zero for an integer
   To; `floor<To>(d)` and `ceil<To>(d)` round down and up instead.
-- `+d`, `-d`; `d1 + d2` and `d1 - d2` for two durations of the same type; `d * n`, `d / n` and
-  `d % n` for an integer n keep the type, `d * x` and `d / x` for a floating-point x give
-  `Duration<double, Period>`; `d1 / d2` of the same type is the number of times d2 fits in d1
+- `+d`, `-d`; `d1 + d2` and `d1 - d2` for two durations of the same type; `d * n`, `n * d`,
+  `d / n` and `d % n` for an integer n keep the type, `d * x`, `x * d` and `d / x` for a
+  floating-point x give `Duration<double, Period>`; `d1 / d2` of the same type is the number of times d2 fits in d1
   (Rep), `d1 % d2` the rest. `+=`, `-=`, `*=`, `/=`, `++`, `--` change the count.
 - `==`, `!=`, `<`, `<=`, `>`, `>=` compare durations of any two types by the time they stand for
   (`Minutes(1) == Seconds(60)`).
@@ -53,7 +53,7 @@ ConditionVariable's `waitFor(lock, d)`; they wait at least d, rounded up to whol
 
 *Differences from C++*: `d1 + d2`, `d1 - d2`, `d1 / d2` and `d1 % d2` need durations of the same
 type (C++ gives the common type of any two; convert one first, the finer type takes the coarser
-without loss); a number times a duration is written `d * n`; the common period of two durations is
+without loss); the common period of two durations is
 the finer one, where C++ takes the greatest common divisor of the two (the same for every pair of
 the standard durations); there are no calendar types, no `file_clock`, `utc_clock` or time zones,
 and no `round` or `abs` of durations.

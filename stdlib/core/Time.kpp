@@ -180,6 +180,14 @@ To ceil(const Duration<Rep, Period>& d)
   return t;
 }
 
+// A number times a duration, as the duration times the number.
+template<typename R, typename P>
+Duration<R, P> operator*(int factor, const Duration<R, P>& d) { return d * factor; }
+template<typename R, typename P>
+Duration<R, P> operator*(long long factor, const Duration<R, P>& d) { return d * factor; }
+template<typename R, typename P>
+Duration<double, P> operator*(double factor, const Duration<R, P>& d) { return d * factor; }
+
 // The ticks of a and b in their common duration, compared.
 template<typename R1, typename P1, typename R2, typename P2>
 int compareDurations(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
