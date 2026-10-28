@@ -24,6 +24,8 @@ KPPC = os.path.join(COMPILER, "build", "kppc.exe")
 # checkout is not on this machine; the snippet then shows as failing to find the header).
 SDL_INCLUDE = r"C:\Factorio\libraries\SDL3\include"
 EXTRA = ["--cinclude", SDL_INCLUDE] if os.path.isdir(SDL_INCLUDE) else []
+# Headers written for the interop snippets themselves (C constructs the system headers lack).
+EXTRA += ["--cinclude", os.path.join(HERE, "interop")]
 OUT = os.path.join(COMPILER, "build", "spec")
 DOC = os.path.join(ROOT, "docs", "spec-status.md")
 

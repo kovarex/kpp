@@ -2820,6 +2820,15 @@ namespace
       pushDecl(e);
       if (!at(P::Semi))
       {
+        bool synthetic = false;
+        if (e->name.empty())
+        {
+          // `enum { ... } x;`: the enum needs a name for x's type to refer to (as for classes).
+          NamePart part;
+          part.symbol = symbols.intern("__anon" + std::to_string(start) + "_" + std::to_string(fileTag()));
+          e->name.parts = makeSpanOf(std::vector<NamePart>{part});
+          synthetic = true;
+        }
         NamedType* selfType = node<NamedType>(start);
         selfType->name = e->name;
         for (;;)
@@ -2829,6 +2838,15 @@ namespace
           parseDeclarator(d, scope);
           if (inRecovery)
             return true;
+          if ((flags & DF_Typedef) && synthetic && d.type == selfType && d.name.parts.size() == 1)
+          {
+            // `typedef enum { ... } Name;` (C headers: curl's CURLcode): the enum itself takes the name.
+            e->name = d.name;
+            selfType->name = d.name;
+            if (!accept(P::Comma))
+              break;
+            continue;
+          }
           VariableDecl* v = decl<VariableDecl>(start);
           v->type = d.type;
           v->name = d.name;
