@@ -7021,6 +7021,16 @@ namespace
       if ((op == P::EqEq || op == P::NotEq) &&
           ((typedUnionOf(lt, b) && rt && rt->kind == TyKind::Enum) || (typedUnionOf(rt, b) && lt && lt->kind == TyKind::Enum)))
         return compareTag(b, op == P::NotEq);
+      // `a | b` on an enum with its own `Flags operator|(Flags, Flags)`: the user's function, as the
+      // resolver typed it (a scoped enum has no built-in one).
+      if (op != P::Assign && !isClass(lt) && !isClass(rt) && ((lt && lt->kind == TyKind::Enum) || (rt && rt->kind == TyKind::Enum)) &&
+          lt && lt->isKnown() && rt && rt->isKnown())
+        if (FunctionDecl* f = global.enumOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types),
+                                                  currentFunction))
+        {
+          Expr* args[2] = {b->lhs, b->rhs};
+          return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
+        }
       if (isClass(lt) || isClass(rt))
       {
         std::string name = operatorName(op);

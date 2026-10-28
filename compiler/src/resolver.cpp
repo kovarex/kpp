@@ -4180,6 +4180,23 @@ struct GlobalScope::Impl
     return pick->f;
   }
 
+  // Whether the free operator f takes the enumeration operands of `lhs op rhs` as they are, so that
+  // it is the user's operator for that enum (`Flags operator|(Flags, Flags)`) rather than one
+  // reached through a conversion to some class; f is a non-template function.
+  bool takesEnumOperands(FunctionDecl* f, const Ty* lhs, const Ty* rhs)
+  {
+    if (!f || !f->templateParams.empty())
+      return false;
+    const Ty* ft = declaredTypeOf(f, nullptr, 0);
+    if (!ft || ft->kind != TyKind::Function || ft->args.size() != 2 || !lhs || !rhs)
+      return false;
+    const Ty* operands[2] = {types.unqualified(types.stripRef(lhs)), types.unqualified(types.stripRef(rhs))};
+    for (int i = 0; i < 2; ++i)
+      if (operands[i]->kind == TyKind::Enum && types.unqualified(types.stripRef(ft->args[i])) != operands[i])
+        return false;
+    return true;
+  }
+
   // ---------------- phase 2: walking ----------------
 
   struct Walker
@@ -5497,16 +5514,19 @@ struct GlobalScope::Impl
           }
         }
       }
-      // Free function: look in the namespaces of both operand classes and the current scope.
+      // Free function: look in the namespaces of both operand classes and enums and the current
+      // scope; members are not candidates here (a class's own operator== hides no free one).
       std::vector<Scope*> places;
       for (const Ty* t : {l, types.stripRef(rhs)})
-        if (t && t->kind == TyKind::Class && t->decl)
+        if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
           places.push_back(impl.lexicalScopeOf(t->decl));
       places.push_back(scope);
       for (Scope* place : places)
       {
         for (Scope* s = place; s; s = s->parent)
         {
+          if (s->kind == ScopeKind::Class)
+            continue;
           Lookup look;
           if (!impl.lookupInScope(s, symbol, look, 0))
             continue;
@@ -5577,6 +5597,20 @@ struct GlobalScope::Impl
       }
     }
 
+    // A user-defined operator on an enumeration operand (`Flags operator|(Flags, Flags)`) beats the
+    // built-in one, which a scoped enum does not even have. Only a free non-template function whose
+    // parameters take the enum operands as they are (not through a conversion to some class).
+    const Ty* enumOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token)
+    {
+      Subst subst;
+      bool isMember;
+      FunctionDecl* f = operatorFunction(op, lhs, rhs, token, 2, subst, isMember);
+      if (!f || isMember || !impl.takesEnumOperands(f, lhs, rhs))
+        return nullptr;
+      Span<Expr*> none;
+      return returnTypeOfCall(f, nullptr, none, nullptr);
+    }
+
     const Ty* typeOfBinary(BinaryExpr* b)
     {
       const Ty* l = walkExpr(b->lhs);
@@ -5627,6 +5661,9 @@ struct GlobalScope::Impl
       }
       if (ls->kind == TyKind::Param || rs->kind == TyKind::Param)
         return ls->kind == TyKind::Param ? ls : rs;
+      if ((ls->kind == TyKind::Enum || rs->kind == TyKind::Enum) && op != P::Assign)
+        if (const Ty* user = enumOperator(op, argumentType(b->lhs, l, types), argumentType(b->rhs, r, types), b->token))
+          return user;
       switch (op)
       {
         case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign:
@@ -6845,7 +6882,7 @@ FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, 
   uint32_t symbol = impl->opSymbols[punctuator];
   std::vector<Scope*> places;
   for (const Ty* t : {impl->types.stripRef(lhs), rhs ? impl->types.stripRef(rhs) : nullptr})
-    if (t && t->kind == TyKind::Class && t->decl)
+    if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
       places.push_back(impl->lexicalScopeOf(t->decl));
   places.push_back(impl->lexicalScopeOf(context));
   std::vector<const Ty*> argTypes{lhs};
@@ -6854,6 +6891,8 @@ FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, 
   for (Scope* place : places)
     for (Scope* s = place; s; s = s->parent)
     {
+      if (s->kind == ScopeKind::Class)
+        continue; // members are not free operators, and do not hide them
       Lookup look;
       if (!impl->lookupInScope(s, symbol, look, 0))
         continue;
@@ -6875,6 +6914,12 @@ FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, 
       break;
     }
   return nullptr;
+}
+
+FunctionDecl* GlobalScope::enumOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context)
+{
+  FunctionDecl* f = findFreeOperator(punctuator, lhs, rhs, context);
+  return impl->takesEnumOperands(f, lhs, rhs) ? f : nullptr;
 }
 
 const Ty* GlobalScope::typeOfDecl(Decl* d) { return impl->declaredTypeOf(d, nullptr, 0); }

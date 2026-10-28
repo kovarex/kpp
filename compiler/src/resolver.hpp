@@ -204,8 +204,12 @@ public:
   FunctionDecl* chooseOverload(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
                                const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous = nullptr);
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
-  // the operand classes and context's own), chosen by overload ranking; null if none.
+  // the operand classes and enums and context's own), chosen by overload ranking; null if none.
   FunctionDecl* findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);
+  // The user's free operator for `lhs op rhs` with an enumeration operand (`Flags operator|(Flags,
+  // Flags)`), which wins over the built-in one; null when the built-in applies. The resolver types
+  // the expression by the same rule.
+  FunctionDecl* enumOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);
   // Adds to args what f's own template parameters deduce to from the argument types (for a
   // constructor template chosen by code generation; args holds the class's arguments).
   void deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argTypes, TemplateArgs& args);
