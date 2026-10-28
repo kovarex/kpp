@@ -28,7 +28,7 @@ struct String
 
   String() { this->becomeEmpty(); }
   implicit String(const char* text) { this->initialize(text, (int)strlen(text)); }
-  implicit String(StringView text) { this->initialize(text.chars, text.length); }
+  implicit String(StringView text) { this->initialize(text.chars, text.byteCount); }
   String(const char* text, int count) { this->initialize(text, count); }
   String(const char* first, const char* last) { this->initialize(first, int(last - first)); }
   String(int count, char c)
@@ -321,7 +321,7 @@ struct String
     const char* chars = this->data();
     int length = this->size();
     for (int i = from; i < length; ++i)
-      for (int k = 0; k < set.length; ++k)
+      for (int k = 0; k < set.byteCount; ++k)
         if (chars[i] == set.chars[k])
           return i;
     return -1;

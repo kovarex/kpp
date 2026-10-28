@@ -3,7 +3,7 @@
 struct StringView
 {
   const char* chars = nullptr;
-  int length = 0;
+  int byteCount = 0;
 
   using iterator = const char*;
   using const_iterator = const char*;
@@ -12,63 +12,64 @@ struct StringView
   static const int npos = -1;
 
   StringView() {}
-  implicit StringView(const char* text) : chars(text), length(text ? (int)strlen(text) : 0) {}
-  StringView(const char* text, int count) : chars(text), length(count) {}
-  implicit StringView(const String& text) : chars(text.data()), length(text.size()) {}
+  implicit StringView(const char* text) : chars(text), byteCount(text ? (int)strlen(text) : 0) {}
+  StringView(const char* text, int count) : chars(text), byteCount(count) {}
+  implicit StringView(const String& text) : chars(text.data()), byteCount(text.size()) {}
 
-  int size() const { return this->length; }
+  int size() const { return this->byteCount; }
+  int length() const { return this->byteCount; }
   const char* data() const { return this->chars; }
-  bool empty() const { return this->length == 0; }
+  bool empty() const { return this->byteCount == 0; }
   char operator[](int index) const { return this->chars[index]; }
   const char* begin() const { return this->chars; }
-  const char* end() const { return this->chars + this->length; }
+  const char* end() const { return this->chars + this->byteCount; }
   char front() const { return this->chars[0]; }
-  char back() const { return this->chars[this->length - 1]; }
+  char back() const { return this->chars[this->byteCount - 1]; }
 
   StringView substr(int start, int count) const
   {
-    if (start > this->length)
-      start = this->length;
-    if (count < 0 || start + count > this->length)
-      count = this->length - start;
+    if (start > this->byteCount)
+      start = this->byteCount;
+    if (count < 0 || start + count > this->byteCount)
+      count = this->byteCount - start;
     return StringView(this->chars + start, count);
   }
   StringView substr(int start) const { return this->substr(start, -1); }
 
   int find(char c) const
   {
-    for (int i = 0; i < this->length; ++i)
+    for (int i = 0; i < this->byteCount; ++i)
       if (this->chars[i] == c)
         return i;
     return -1;
   }
   int find(StringView needle) const
   {
-    if (needle.length == 0)
+    if (needle.byteCount == 0)
       return 0;
-    for (int i = 0; i + needle.length <= this->length; ++i)
-      if (memcmp(this->chars + i, needle.chars, needle.length) == 0)
+    for (int i = 0; i + needle.byteCount <= this->byteCount; ++i)
+      if (memcmp(this->chars + i, needle.chars, needle.byteCount) == 0)
         return i;
     return -1;
   }
   int rfind(char c) const
   {
-    for (int i = this->length; i-- > 0;)
+    for (int i = this->byteCount; i-- > 0;)
       if (this->chars[i] == c)
         return i;
     return -1;
   }
   bool startsWith(StringView prefix) const
   {
-    return prefix.length <= this->length && memcmp(this->chars, prefix.chars, prefix.length) == 0;
+    return prefix.byteCount <= this->byteCount && memcmp(this->chars, prefix.chars, prefix.byteCount) == 0;
   }
   bool endsWith(StringView suffix) const
   {
-    return suffix.length <= this->length && memcmp(this->chars + this->length - suffix.length, suffix.chars, suffix.length) == 0;
+    return suffix.byteCount <= this->byteCount && memcmp(this->chars + this->byteCount - suffix.byteCount, suffix.chars, suffix.byteCount) == 0;
   }
-  void removePrefix(int count) { this->chars += count; this->length -= count; }
+  void removePrefix(int count) { this->chars += count; this->byteCount -= count; }
   void remove_prefix(int count) { this->removePrefix(count); }
-  void remove_suffix(int count) { this->length -= count; }
+  void remove_suffix(int count) { this->byteCount -= count; }
   bool starts_with(StringView prefix) const { return this->startsWith(prefix); }
   bool ends_with(StringView suffix) const { return this->endsWith(suffix); }
   int find_first_of(char c) const { return this->find(c); }
@@ -80,15 +81,15 @@ struct StringView
   }
   int find(char c, int from) const
   {
-    for (int i = from; i < this->length; ++i)
+    for (int i = from; i < this->byteCount; ++i)
       if (this->chars[i] == c)
         return i;
     return -1;
   }
   int find_first_of(StringView set) const
   {
-    for (int i = 0; i < this->length; ++i)
-      for (int k = 0; k < set.length; ++k)
+    for (int i = 0; i < this->byteCount; ++i)
+      for (int k = 0; k < set.byteCount; ++k)
         if (this->chars[i] == set.chars[k])
           return i;
     return -1;
@@ -101,7 +102,7 @@ struct StringView
   }
   int find_first_of(const char* set) const
   {
-    for (int i = 0; i < this->length; ++i)
+    for (int i = 0; i < this->byteCount; ++i)
       for (int k = 0; set[k] != 0; ++k)
         if (this->chars[i] == set[k])
           return i;
@@ -109,7 +110,7 @@ struct StringView
   }
   int find_first_not_of(const char* set) const
   {
-    for (int i = 0; i < this->length; ++i)
+    for (int i = 0; i < this->byteCount; ++i)
     {
       bool inSet = false;
       for (int k = 0; set[k] != 0; ++k)
@@ -120,24 +121,24 @@ struct StringView
     }
     return -1;
   }
-  void removeSuffix(int count) { this->length -= count; }
+  void removeSuffix(int count) { this->byteCount -= count; }
 
   bool operator==(StringView other) const
   {
-    return this->length == other.length && (this->length == 0 || memcmp(this->chars, other.chars, this->length) == 0);
+    return this->byteCount == other.byteCount && (this->byteCount == 0 || memcmp(this->chars, other.chars, this->byteCount) == 0);
   }
   bool operator!=(StringView other) const { return !(*this == other); }
   bool operator<(StringView other) const
   {
-    int common = this->length < other.length ? this->length : other.length;
+    int common = this->byteCount < other.byteCount ? this->byteCount : other.byteCount;
     int c = common == 0 ? 0 : memcmp(this->chars, other.chars, common);
-    return c != 0 ? c < 0 : this->length < other.length;
+    return c != 0 ? c < 0 : this->byteCount < other.byteCount;
   }
 
   String toString() const
   {
     String result;
-    result.append(this->chars, this->length);
+    result.append(this->chars, this->byteCount);
     return result;
   }
 };
@@ -146,7 +147,7 @@ String toString(StringView text) { return text.toString(); }
 size_t hashOf(StringView text)
 {
   size_t h = 14695981039346656037ull;
-  for (int i = 0; i < text.length; ++i)
+  for (int i = 0; i < text.byteCount; ++i)
     h = (h ^ (size_t)(uint8_t)text.chars[i]) * 1099511628211ull;
   return h;
 }

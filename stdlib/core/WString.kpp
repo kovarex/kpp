@@ -3,7 +3,7 @@
 struct WString
 {
   wchar_t* chars = nullptr;
-  int length = 0;
+  int unitCount = 0;
   int capacity = 0;
 
   using iterator = wchar_t*;
@@ -18,11 +18,11 @@ struct WString
       ++n;
     this->append(text, n);
   }
-  WString(const WString& other) { this->append(other.chars, other.length); }
-  WString(WString&& other) : chars(other.chars), length(other.length), capacity(other.capacity)
+  WString(const WString& other) { this->append(other.chars, other.unitCount); }
+  WString(WString&& other) : chars(other.chars), unitCount(other.unitCount), capacity(other.capacity)
   {
     other.chars = nullptr;
-    other.length = 0;
+    other.unitCount = 0;
     other.capacity = 0;
   }
   ~WString()
@@ -34,10 +34,10 @@ struct WString
   {
     if (this == &other)
       return *this;
-    this->length = 0;
-    this->append(other.chars, other.length);
+    this->unitCount = 0;
+    this->append(other.chars, other.unitCount);
     if (this->chars)
-      this->chars[this->length] = 0;
+      this->chars[this->unitCount] = 0;
     return *this;
   }
   WString& operator=(WString&& other)
@@ -47,22 +47,23 @@ struct WString
     if (this->chars)
       free(this->chars);
     this->chars = other.chars;
-    this->length = other.length;
+    this->unitCount = other.unitCount;
     this->capacity = other.capacity;
     other.chars = nullptr;
-    other.length = 0;
+    other.unitCount = 0;
     other.capacity = 0;
     return *this;
   }
 
-  int size() const { return this->length; }
-  bool empty() const { return this->length == 0; }
+  int size() const { return this->unitCount; }
+  int length() const { return this->unitCount; }
+  bool empty() const { return this->unitCount == 0; }
   const wchar_t* c_str() const { return this->chars ? this->chars : L""; }
   wchar_t* data() { return this->chars; }
   const wchar_t* data() const { return this->chars; }
   wchar_t operator[](int index) const { return this->chars[index]; }
   wchar_t* begin() { return this->chars; }
-  wchar_t* end() { return this->chars + this->length; }
+  wchar_t* end() { return this->chars + this->unitCount; }
 
   void reserve(int needed)
   {
@@ -74,7 +75,7 @@ struct WString
     wchar_t* bigger = (wchar_t*)malloc((size_t)newCapacity * 2);
     if (this->chars)
     {
-      memcpy(bigger, this->chars, (size_t)(this->length + 1) * 2);
+      memcpy(bigger, this->chars, (size_t)(this->unitCount + 1) * 2);
       free(this->chars);
     }
     else
@@ -86,21 +87,21 @@ struct WString
   {
     if (count <= 0)
       return;
-    this->reserve(this->length + count);
-    memcpy(this->chars + this->length, units, (size_t)count * 2);
-    this->length += count;
-    this->chars[this->length] = 0;
+    this->reserve(this->unitCount + count);
+    memcpy(this->chars + this->unitCount, units, (size_t)count * 2);
+    this->unitCount += count;
+    this->chars[this->unitCount] = 0;
   }
   void push_back(wchar_t c) { this->append(&c, 1); }
   void clear()
   {
-    this->length = 0;
+    this->unitCount = 0;
     if (this->chars)
       this->chars[0] = 0;
   }
   bool operator==(const WString& other) const
   {
-    return this->length == other.length && (this->length == 0 || memcmp(this->chars, other.chars, (size_t)this->length * 2) == 0);
+    return this->unitCount == other.unitCount && (this->unitCount == 0 || memcmp(this->chars, other.chars, (size_t)this->unitCount * 2) == 0);
   }
   bool operator!=(const WString& other) const { return !(*this == other); }
 };

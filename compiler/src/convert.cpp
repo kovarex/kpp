@@ -1332,13 +1332,16 @@ namespace
             counts.add("function renamed");
             continue;
           }
-        }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "length" && i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)) &&
-            toks[i + 1].is(P::LParen) && toks[i + 2].is(P::RParen))
-        {
-          replace(t.offset, t.length, "size"); // `.length()` on strings: the library spells it size()
-          counts.add("length() to size()");
-          continue;
+          // Members of std types whose library spelling differs and that no game class declares:
+          // std::optional's value_or is Optional's valueOr.
+          static const std::map<std::string_view, std::string> memberRenames = {{"value_or", "valueOr"}};
+          auto mr = memberRenames.find(spelling(i));
+          if (mr != memberRenames.end() && i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)))
+          {
+            replace(t.offset, t.length, mr->second);
+            counts.add("std member renamed");
+            continue;
+          }
         }
         if (t.getKind() == TokenKind::Identifier)
         {
