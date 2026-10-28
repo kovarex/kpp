@@ -6027,6 +6027,19 @@ struct GlobalScope::Impl
       return fnTy->inner;
     }
 
+    // Whether d is the only function of its name there (overloads: the entries found with it)
+    // and no template.
+    static bool onlyPlainCandidate(Decl* d, const std::vector<Entry>* overloads)
+    {
+      if (!d || d->kind != NodeKind::FunctionDecl || !d->templateParams.empty())
+        return false;
+      size_t functions = 0;
+      if (overloads)
+        for (const Entry& e : *overloads)
+          functions += e.decl->kind == NodeKind::FunctionDecl;
+      return functions <= 1;
+    }
+
     const Ty* typeOfCall(CallExpr* c)
     {
       std::vector<const Ty*> walked;
@@ -6080,10 +6093,13 @@ struct GlobalScope::Impl
           FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), classSubst, nullptr, ambiguous, &n->name.last(), c->args);
           if (!f)
           {
-            // No callee: none for the code generator either (not the first overload, nor template
-            // arguments an earlier walk of this call recorded, such as the generic one's).
-            n->resolved = nullptr;
+            // No callee the code generator could trust: not the first of several overloads, nor a
+            // template with the arguments an earlier walk of this call recorded (the generic
+            // one's). A single plain candidate stays: the code generator converts the arguments
+            // itself and says so when it cannot.
             c->templateArgCount = 0;
+            if (!onlyPlainCandidate(d, l.overloads))
+              n->resolved = nullptr;
             record(n, types.unknown());
             return unknown(Why::Overload);
           }
@@ -6176,8 +6192,9 @@ struct GlobalScope::Impl
           if (!f)
           {
             ++stats.membersBound;
-            m->resolved = nullptr; // as for a name: no callee, no stale template arguments
-            c->templateArgCount = 0;
+            c->templateArgCount = 0; // as for a name
+            if (!onlyPlainCandidate(r.decl, r.overloads))
+              m->resolved = nullptr;
             record(m, types.unknown());
             return unknown(Why::Overload);
           }
