@@ -2999,6 +2999,30 @@ struct GlobalScope::Impl
     return substFor(t);
   }
 
+  // A name written unqualified inside a class and found in the scope of one of its base classes
+  // (`const_iterator(*this)` in a member of ParticleSurface : InfiniteRectangle<ParticleChunk*>,
+  // the iterator a nested class of the base template): that base's substitution, so the name has
+  // its arguments; empty when the name was found elsewhere or the base is no template.
+  Subst baseSubstForUnqualified(const Lookup& l, const TypeContext& ctx, int depth)
+  {
+    if (l.found != Found::Member || !l.foundIn || l.foundIn->kind != ScopeKind::Class || depth > 16)
+      return {};
+    Scope* cls = ctx.scope;
+    while (cls && cls->kind != ScopeKind::Class)
+      cls = cls->parent;
+    if (!cls || cls == l.foundIn || !cls->owner || cls->baseTypes.empty())
+      return {};
+    const Ty* self = selfType(cls->owner);
+    if (self && ctx.subst)
+      self = substitute(self, *ctx.subst);
+    if (!self || self->kind != TyKind::Class)
+      return {};
+    const Ty* base = instantiationOfBase(self, cls, l.foundIn, depth + 1);
+    if (!base || base == self || types.isDependent(base))
+      return {};
+    return substFor(base);
+  }
+
   // For `Vector<int>::iterator`: the substitution of the instantiation the qualifier names
   // (its innermost part with template arguments), or of the base the member was found in
   // (foundIn); empty when there is none.
@@ -3649,6 +3673,20 @@ struct GlobalScope::Impl
               for (const Subst::Pair& p : ctx.subst->pairs)
                 qs.pairs.push_back(p);
             TypeContext c2{ctx.scope, ctx.locals, &qs, ctx.tokens, ctx.text};
+            return typeOfTypeDecl(l.decl, l, n->name.last(), c2, depth);
+          }
+        }
+        if (n->name.parts.size() == 1)
+        {
+          // `const_iterator it(*this);` in a member of ParticleSurface : InfiniteRectangle<ParticleChunk*>:
+          // the base's nested class with the base's arguments.
+          Subst bs = baseSubstForUnqualified(l, ctx, depth);
+          if (!bs.empty())
+          {
+            if (ctx.subst)
+              for (const Subst::Pair& p : ctx.subst->pairs)
+                bs.pairs.push_back(p);
+            TypeContext c2{ctx.scope, ctx.locals, &bs, ctx.tokens, ctx.text};
             return typeOfTypeDecl(l.decl, l, n->name.last(), c2, depth);
           }
         }
@@ -5525,6 +5563,18 @@ struct GlobalScope::Impl
         {
           // A type used as an expression: constructor call `Foo(x)`, `Foo{}` or `Enum(x)`.
           TypeContext c = ctx();
+          // `const_iterator(*this)` in a member of ParticleSurface : InfiniteRectangle<ParticleChunk*>:
+          // the base's nested class with the base's arguments.
+          Subst bs;
+          if (e && e->kind == NodeKind::NameExpr && static_cast<NameExpr*>(e)->name.parts.size() == 1)
+            bs = impl.baseSubstForUnqualified(l, c, 0);
+          if (!bs.empty())
+          {
+            if (activeSubst)
+              for (const Subst::Pair& p : activeSubst->pairs)
+                bs.pairs.push_back(p);
+            c.subst = &bs;
+          }
           return impl.typeOfTypeDecl(d, l, lastPart, c, 0);
         }
         case NodeKind::TemplateParamDecl:

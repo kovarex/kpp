@@ -1,0 +1,41 @@
+// spec: a nested class of a class template named unqualified inside a class deriving from an instantiation of it (`const_iterator(*this)` in a member of ParticleSurface : InfiniteRectangle<ParticleChunk*>), as a functional cast and as a declared type: the nested class with the base's arguments
+// factorio: ParticleSurface::~ParticleSurface (`for (auto it = const_iterator(*this); !it.ended(); ++it) delete *it;`), LatencySurface
+template<typename T>
+class Grid
+{
+public:
+  class const_iterator
+  {
+  public:
+    implicit const_iterator(const Grid& grid) : grid(&grid) {}
+    const T& operator*() const { return this->grid->cells[this->index]; }
+    bool ended() const { return this->index >= 3; }
+    const_iterator& operator++() { ++this->index; return *this; }
+    const Grid* grid;
+    int index = 0;
+  };
+  T cells[3];
+};
+
+class Board : public Grid<int>
+{
+public:
+  int sum() const
+  {
+    int total = 0;
+    for (auto it = const_iterator(*this); !it.ended(); ++it)
+      total += *it;
+    const_iterator again(*this);
+    return total + *again;
+  }
+};
+
+int main()
+{
+  Board board;
+  board.cells[0] = 1;
+  board.cells[1] = 2;
+  board.cells[2] = 4;
+  println("{}", board.sum());
+  return 0;
+}
