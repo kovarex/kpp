@@ -1,0 +1,32 @@
+// spec: a constexpr local computed from the template's parameters as a template argument, `constexpr bool sign = isSigned<T>; pick(Flag<sign>())`, selecting the explicit specialisation it names
+// found in cxxopts (`checked_negate<T>(..., integral_constant<bool, is_signed>())` with `constexpr bool is_signed = numeric_limits<T>::is_signed`) and tag dispatch across Util
+template<bool B>
+struct Flag {};
+template<>
+struct Flag<true> { int code() const { return 1; } };
+template<>
+struct Flag<false> { int code() const { return 2; } };
+
+const char* describe(Flag<true>) { return "signed"; }
+const char* describe(Flag<false>) { return "unsigned"; }
+
+template<typename T>
+const char* bySign(T value)
+{
+  constexpr bool sign = isSigned<T>;
+  return describe(Flag<sign>());
+}
+
+template<typename T>
+int byCode(T value)
+{
+  constexpr bool sign = isSigned<T>;
+  Flag<sign> flag;
+  return flag.code();
+}
+
+int main()
+{
+  println("{} {} {} {}", bySign(-1), bySign(1u), byCode(-1), byCode(1u));
+  return 0;
+}

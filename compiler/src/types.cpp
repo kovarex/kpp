@@ -499,8 +499,8 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
           s += (i ? ", " : "") + toString(t->args[i], symbols);
         s += ">";
       }
-      if (t->decl && (t->decl->flags & DF_Specialization) && !t->decl->templateParams.empty())
-        s += "/spec" + std::to_string(t->decl->token); // a partial specialisation's own arguments: not the primary's instantiation
+      if (t->decl && (t->decl->flags & DF_Specialization))
+        s += "/spec" + std::to_string(t->decl->token); // a specialisation (partial: its own arguments; full: Flag<true> beside Flag<false>) is not the primary's instantiation
       break;
     case TyKind::Enum: s += declName(t->decl); break;
     case TyKind::Param: s += declName(t->decl); break;

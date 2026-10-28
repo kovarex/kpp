@@ -2561,6 +2561,10 @@ struct GlobalScope::Impl
       if (!(v->flags & DF_Constexpr) && !(t && t->isConst))
         return std::nullopt;
       // The definition's initializer, read from its file, evaluated where the declaration is (the class).
+      // A constant local to a function body (`constexpr bool sign = isSigned<T>;`): its initializer
+      // under the context it is used in, which has the instantiation's arguments.
+      if (v->parent && v->parent->kind == NodeKind::FunctionDecl && v->name.parts.size() == 1)
+        return constEval(def->init, ctx, depth + 1);
       TypeContext ictx{lexicalScopeOf(v), nullptr, nullptr, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
       return constEval(def->init, ictx, depth + 1);
     }
@@ -3213,6 +3217,9 @@ struct GlobalScope::Impl
       }
       // `Array<char, bufferSize>`: a bare name is a type to the parser; it may be a constant.
       Lookup l = lookupQualified(an, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      if (!l.decl && an.parts.size() == 1)
+        if (Decl* r = static_cast<NamedType*>(arg)->resolved; r && r->kind == NodeKind::VariableDecl && r->parent && r->parent->kind == NodeKind::FunctionDecl)
+          l.decl = r; // `Flag<sign>` with a local constant, where the context has no locals: what the walk found
       if (l.decl && l.decl->kind == NodeKind::FunctionDecl)
         return functionArgument(l, param, depth); // `BinaryOperation<Add, Functions::add>`
       bool constant = l.decl && ((l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & DF_Typedef)) || l.decl->kind == NodeKind::EnumeratorDecl ||
