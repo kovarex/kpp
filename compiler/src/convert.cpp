@@ -28,6 +28,10 @@ namespace
   // A class template's definition -> (parameter index, default text) from its forward declarations
   // (`template<class K, class V, class Comp = std::less<K>> class FlatMap;` in FlatMapForwards.hpp).
   using CarriedTemplateDefaults = std::map<ClassDecl*, std::vector<std::pair<size_t, std::string>>>;
+  // The names each namespace and class of the program declares directly (`NoiseExpressions::` ->
+  // {"String", ...}; a class's own name included, as C++ injects it), by the scope's qualified name
+  // and `::`: a library name written into such a scope has to be `::String`.
+  using ScopeNames = std::map<std::string, std::set<std::string>>;
 
   // The index of the `,` or `)` that ends the parameter (or default argument) starting at token,
   // skipping nested brackets; UINT32_MAX when a `;` or the end comes first.
@@ -431,6 +435,73 @@ namespace
     return s;
   }
 
+  // ScopeNames from a scope's declarations; prefix is the scope's qualified name and `::` ("" at
+  // global scope, which is not recorded: library names are global ones).
+  void collectScopeNames(Span<Decl*> decls, const std::string& prefix, const SymbolTable& symbols, ScopeNames& out)
+  {
+    auto declare = [&](std::string_view name)
+    {
+      if (!prefix.empty() && !name.empty())
+        out[prefix].insert(std::string(name));
+    };
+    for (Decl* d : decls)
+    {
+      switch (d->kind)
+      {
+        case NodeKind::NamespaceDecl:
+        {
+          auto* n = static_cast<NamespaceDecl*>(d);
+          std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
+          collectScopeNames(n->decls, prefix + name + "::", symbols, out);
+          break;
+        }
+        case NodeKind::ClassDecl:
+        {
+          auto* c = static_cast<ClassDecl*>(d);
+          if (c->name.empty() || c->name.last().symbol == UINT32_MAX)
+            break;
+          std::string_view own = symbols.name(c->name.last().symbol);
+          declare(own);
+          if (c->isDefinition)
+          {
+            std::string inner = prefix + nameText(c->name, symbols) + "::";
+            out[inner].insert(std::string(own)); // the injected class name
+            collectScopeNames(c->members, inner, symbols, out);
+          }
+          break;
+        }
+        case NodeKind::EnumDecl:
+        {
+          auto* e = static_cast<EnumDecl*>(d);
+          if (!e->name.empty() && e->name.last().symbol != UINT32_MAX)
+            declare(symbols.name(e->name.last().symbol));
+          if (!e->isClass)
+            for (Decl* v : e->enumerators)
+              declare(symbols.name(static_cast<EnumeratorDecl*>(v)->name));
+          break;
+        }
+        case NodeKind::UsingAliasDecl:
+          declare(symbols.name(static_cast<UsingAliasDecl*>(d)->name));
+          break;
+        case NodeKind::VariableDecl:
+        {
+          auto* v = static_cast<VariableDecl*>(d);
+          if (v->name.parts.size() == 1 && v->name.last().symbol != UINT32_MAX)
+            declare(symbols.name(v->name.last().symbol));
+          break;
+        }
+        case NodeKind::FunctionDecl:
+        {
+          auto* f = static_cast<FunctionDecl*>(d);
+          if (f->name.parts.size() == 1 && f->name.last().special == 0 && f->name.last().symbol != UINT32_MAX)
+            declare(symbols.name(f->name.last().symbol));
+          break;
+        }
+        default: break;
+      }
+    }
+  }
+
   bool isFunctionDefinition(FunctionDecl* f) { return f->body != nullptr || (f->flags & (DF_Default | DF_Delete)); }
 
   void collectOverrideKeys(Span<Decl*> decls, const std::string& prefix, const SymbolTable& symbols, OverrideKeys& out)
@@ -481,6 +552,66 @@ namespace
     const OverrideKeys* overrides = nullptr; // definitions a hand-written file replaces
     const CarriedDefaults* carriedDefaults = nullptr;
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
+    const ScopeNames* scopeNames = nullptr;
+    // This file's namespaces and classes (and the class scope of out-of-line member definitions),
+    // by text range: where a name would find something before the global library name.
+    struct ScopeRange
+    {
+      uint32_t begin, end;
+      std::string key; // as ScopeNames has it
+    };
+    std::vector<ScopeRange> scopeRanges;
+    void collectScopeRanges(Span<Decl*> decls, const std::string& prefix)
+    {
+      for (Decl* d : decls)
+      {
+        if (d->endToken <= d->token || d->endToken > toks.size())
+          continue;
+        uint32_t begin = toks[d->token].offset, end = endOffset(d->endToken - 1);
+        if (d->kind == NodeKind::NamespaceDecl)
+        {
+          auto* n = static_cast<NamespaceDecl*>(d);
+          std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
+          scopeRanges.push_back({begin, end, prefix + name + "::"});
+          collectScopeRanges(n->decls, prefix + name + "::");
+        }
+        else if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->isDefinition && !static_cast<ClassDecl*>(d)->name.empty())
+        {
+          std::string key = prefix + nameText(static_cast<ClassDecl*>(d)->name, symbols) + "::";
+          scopeRanges.push_back({begin, end, key});
+          collectScopeRanges(static_cast<ClassDecl*>(d)->members, key);
+        }
+        else if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->name.parts.size() > 1)
+        {
+          // `void NoiseExpressions::String::f(...) {...}`: the parameters and body see the class.
+          QualifiedName qualifier = static_cast<FunctionDecl*>(d)->name;
+          qualifier.parts.count -= 1;
+          std::string scope = prefix;
+          for (size_t i = 0; i < qualifier.parts.size(); ++i)
+          {
+            if (qualifier.parts[i].symbol == UINT32_MAX)
+              continue; // the leading `::`
+            scope += std::string(symbols.name(qualifier.parts[i].symbol)) + "::";
+            scopeRanges.push_back({begin, end, scope});
+          }
+        }
+      }
+    }
+    // Whether an unqualified `name` written at offset finds a declaration of the program before the
+    // global (library) one.
+    bool shadowedAt(const std::string& name, uint32_t offset) const
+    {
+      if (!scopeNames)
+        return false;
+      for (const ScopeRange& r : scopeRanges)
+        if (r.begin <= offset && offset < r.end)
+        {
+          auto it = scopeNames->find(r.key);
+          if (it != scopeNames->end() && it->second.count(name))
+            return true;
+        }
+      return false;
+    }
     struct LocalMacro
     {
       std::vector<std::string> params;
@@ -1427,6 +1558,11 @@ namespace
             }
           }
           counts.add(it == stdNames.end() ? "std::" + name + " (no mapping)" : "std renamed");
+          if (it != stdNames.end() && to.find("::") == std::string::npos && shadowedAt(to, t.offset))
+          {
+            to = "::" + to; // `std::string` inside a class or namespace with its own String
+            counts.add("std name qualified as global");
+          }
           replace(t.offset, endOffset(i + 2) - t.offset, to);
           i += 2;
           continue;
@@ -2575,6 +2711,7 @@ namespace
 
     std::string run()
     {
+      collectScopeRanges(in.parsed->decls, "");
       convertPreprocessor();
       convertTokens();
       convertDecls(in.parsed->decls, true);
@@ -2892,6 +3029,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       if (in.parsed && !in.parsed->isImported)
         scan(in.parsed->decls);
   }
+  ScopeNames scopeNames;
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && !in.parsed->isImported)
+      collectScopeNames(in.parsed->decls, "", symbols, scopeNames);
   for (const ConvertInput& in : inputs)
   {
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
@@ -2902,6 +3043,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::string rel = relativeTo(in.path, roots);
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
+    fc.scopeNames = &scopeNames;
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
     if (OverrideFile* ov = overrideFor(key))
