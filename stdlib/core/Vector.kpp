@@ -80,6 +80,7 @@ struct Vector
         return false;
     return true;
   }
+  bool operator!=(const Vector& other) const { return !(*this == other); }
   T& back() { return this->items[this->length - 1]; }
   T* begin() { return this->items; }
   T* end() { return this->items + this->length; }
