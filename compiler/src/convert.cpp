@@ -258,8 +258,9 @@ namespace
     {"is_trivially_move_assignable_v", "isTriviallyMoveAssignable"},
     {"is_trivially_move_constructible_v", "isTriviallyMoveConstructible"},
     {"is_invocable_v", "isInvocable"}, {"is_invocable_r_v", "isInvocableR"},
-    {"is_member_function_pointer", "IsMemberFunctionPointer"},
-    {"is_member_object_pointer", "IsMemberObjectPointer"},
+    {"is_copy_constructible_v", "isCopyConstructible"}, {"is_copy_assignable_v", "isCopyAssignable"},
+    {"is_member_pointer_v", "isMemberPointer"}, {"is_member_function_pointer_v", "isMemberFunctionPointer"},
+    {"is_member_object_pointer_v", "isMemberObjectPointer"},
     {"alignment_of_v", "alignmentOf"},
     {"add_const_t", "AddConst"}, {"add_lvalue_reference_t", "AddLvalueReference"},
     {"remove_cv", "RemoveCv"}, {"is_const", "IsConst"}, {"is_same", "IsSame"},
@@ -1242,10 +1243,6 @@ namespace
           std::string name(spelling(i + 2));
           auto it = stdNames.find(name);
           std::string to = it == stdNames.end() ? name : it->second;
-          if (it == stdNames.end())
-            counts.add("std::" + name + " (no mapping)");
-          else
-            counts.add("std renamed");
           if ((name == "unique_ptr" || name == "make_unique") && i + 3 < toks.size() && toks[i + 3].is(P::Less))
           {
             // `unique_ptr<T[]>` and `make_unique<T[]>(n)`: the array form is its own class.
@@ -1273,6 +1270,40 @@ namespace
               counts.add("unique_ptr<T[]> to UniqueArray");
             }
           }
+          auto variable = stdNames.find(name + "_v");
+          if (name.compare(0, 3, "is_") == 0 && variable != stdNames.end() && i + 3 < toks.size() && toks[i + 3].is(P::Less))
+          {
+            // `std::is_member_function_pointer<T>()` and `std::is_const<T>::value`: the trait's
+            // value, which is the compiler's isMemberFunctionPointer<T>; Kpp has no class form.
+            uint32_t j = i + 4;
+            int depth = 0;
+            for (; j < toks.size(); ++j)
+            {
+              if (toks[j].is(P::Less))
+                ++depth;
+              else if (toks[j].is(P::Greater) || toks[j].is(P::Shr))
+              {
+                if (depth == 0)
+                  break;
+                depth -= toks[j].is(P::Shr) ? 2 : 1;
+                if (depth < 0)
+                  break;
+              }
+              else if (toks[j].is(P::Semi) || toks[j].getKind() == TokenKind::End)
+                break;
+            }
+            bool call = j + 2 < toks.size() && ((toks[j + 1].is(P::LParen) && toks[j + 2].is(P::RParen)) ||
+                                                (toks[j + 1].is(P::LBrace) && toks[j + 2].is(P::RBrace)));
+            bool value = j + 2 < toks.size() && toks[j + 1].is(P::ColonColon) && spelling(j + 2) == "value";
+            if (call || value)
+            {
+              to = variable->second;
+              it = variable;
+              remove(toks[j + 1].offset, endOffset(j + 2) - toks[j + 1].offset);
+              counts.add("trait class to its value");
+            }
+          }
+          counts.add(it == stdNames.end() ? "std::" + name + " (no mapping)" : "std renamed");
           replace(t.offset, endOffset(i + 2) - t.offset, to);
           i += 2;
           continue;

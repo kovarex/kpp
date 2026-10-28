@@ -65,25 +65,14 @@ struct IntegralConstant
   constexpr operator T() const { return V; }
 };
 
-// Type predicates: these would be compiler intrinsics in a full implementation. For now they
-// are stubs that return false; the converter maps them from C++ where they were intrinsics too.
-template<typename T> constexpr bool isAbstract = false;
-template<typename T> constexpr bool isFinal = false;
-template<typename T> constexpr bool isPolymorphic = false;
-template<typename T> constexpr bool isClass = true;
-template<typename T> constexpr bool isMoveAssignable = true;
-template<typename T> constexpr bool isMoveConstructible = true;
-template<typename T> constexpr bool isNothrowMoveAssignable = true;
-template<typename T> constexpr bool isNothrowMoveConstructible = true;
-template<typename T> constexpr bool isTriviallyMoveAssignable = false;
-template<typename T> constexpr bool isTriviallyMoveConstructible = false;
-template<typename T, typename... Args> constexpr bool isInvocable = true;
-template<typename R, typename T, typename... Args> constexpr bool isInvocableR = true;
-
-template<typename T>
-struct IsMemberFunctionPointer : FalseType {};
-template<typename T>
-struct IsMemberObjectPointer : FalseType {};
+// The type predicates are the compiler's (resolver.cpp, traitValue), not declared here: a
+// declaration of the same name would hide them. isClass, isAbstract, isPolymorphic, isFinal,
+// isSame, isBaseOf, isConvertible, isConstructible, isMoveConstructible, isCopyConstructible,
+// isMoveAssignable, isCopyAssignable and their Trivially/Nothrow forms, isInvocable, isInvocableR,
+// isMemberPointer, ... take types and are constants as C++'s std::is_*_v are; where a predicate
+// cannot be decided (a class without a definition) it is not a constant, never a guess. C++'s
+// class forms used for their value (`std::is_member_function_pointer<T>()`, `::value`) convert to
+// these.
 
 template<typename T> constexpr size_t alignmentOf = alignof(T);
 

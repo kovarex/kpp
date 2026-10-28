@@ -1,0 +1,11 @@
+class: false true false
+polymorphic: false true true false
+abstract: true false false true false
+final: true false
+move constructible: true false true false false true
+copy constructible: true false
+move assignable: true false false false
+trivially: true false true false
+nothrow: true false false
+invocable: true false true true true false
+invocable r: true false

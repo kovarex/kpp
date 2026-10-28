@@ -1557,6 +1557,60 @@ struct GlobalScope::Impl
       }
       return false;
     }
+    // The traits that need a class's members, answered as C++'s intrinsics answer them; nullopt
+    // where that cannot be decided here (unknown or dependent types, a class without definition).
+    if (name == "isPolymorphic") return one() ? polymorphicClass(one()) : std::nullopt;
+    if (name == "isAbstract") return one() ? abstractClass(one(), {}) : std::nullopt;
+    if (name == "isFinal")
+    {
+      if (!one() || !one()->isKnown() || types.isDependent(one()))
+        return std::nullopt;
+      if (one()->kind != TyKind::Class)
+        return false;
+      ClassDecl* def = classDefinition(one());
+      return def ? std::optional<bool>(def->isFinal) : std::nullopt;
+    }
+    if (name == "isMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Plain) : std::nullopt;
+    if (name == "isCopyConstructible") return one() ? constructibleFromSelf(one(), false, TraitForm::Plain) : std::nullopt;
+    if (name == "isNothrowMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Nothrow) : std::nullopt;
+    if (name == "isTriviallyMoveConstructible") return one() ? constructibleFromSelf(one(), true, TraitForm::Trivially) : std::nullopt;
+    if (name == "isMoveAssignable") return one() ? assignableFromSelf(one(), true, TraitForm::Plain) : std::nullopt;
+    if (name == "isCopyAssignable") return one() ? assignableFromSelf(one(), false, TraitForm::Plain) : std::nullopt;
+    if (name == "isNothrowMoveAssignable") return one() ? assignableFromSelf(one(), true, TraitForm::Nothrow) : std::nullopt;
+    if (name == "isTriviallyMoveAssignable") return one() ? assignableFromSelf(one(), true, TraitForm::Trivially) : std::nullopt;
+    if (name == "isMemberPointer" || name == "isMemberFunctionPointer" || name == "isMemberObjectPointer")
+    {
+      if (!one() || !one()->isKnown() || types.isDependent(one()))
+        return std::nullopt;
+      const Ty* t = types.unqualified(one());
+      if (t->kind != TyKind::MemberPointer)
+        return false;
+      bool function = t->inner && t->inner->kind == TyKind::Function;
+      return name == "isMemberPointer" || function == (name == "isMemberFunctionPointer");
+    }
+    if (name == "isInvocable")
+    {
+      if (a.empty())
+        return std::nullopt;
+      std::vector<const Ty*> args(a.begin() + 1, a.end());
+      return invocable(a[0], args, nullptr);
+    }
+    if (name == "isInvocableR")
+    {
+      // isInvocableR<R, F, Args...>: callable, and the result converts to R (anything to void).
+      if (a.size() < 2)
+        return std::nullopt;
+      std::vector<const Ty*> args(a.begin() + 2, a.end());
+      const Ty* result = nullptr;
+      std::optional<bool> callable = invocable(a[1], args, &result);
+      if (!callable || !*callable)
+        return callable;
+      if (types.unqualified(a[0])->kind == TyKind::Void)
+        return true;
+      if (!result || !result->isKnown() || types.isDependent(result))
+        return std::nullopt;
+      return conversionRank(result, a[0]) < NotViable;
+    }
     return std::nullopt;
   }
 
@@ -1567,7 +1621,475 @@ struct GlobalScope::Impl
            n == "isNullPointer" || n == "isIntegral" || n == "isFloatingPoint" || n == "isArithmetic" || n == "isSigned" ||
            n == "isUnsigned" || n == "isFunction" || n == "isTriviallyCopyable" || n == "isSame" || n == "isBaseOf" || n == "isConvertible" ||
            n == "isConstructible" || n == "isFundamental" || n == "isTriviallyDestructible" || n == "isTriviallyCopyAssignable" ||
-           n == "isTriviallyCopyConstructible" || n == "isTriviallyDefaultConstructible";
+           n == "isTriviallyCopyConstructible" || n == "isTriviallyDefaultConstructible" || n == "isPolymorphic" || n == "isAbstract" ||
+           n == "isFinal" || n == "isMoveConstructible" || n == "isCopyConstructible" || n == "isNothrowMoveConstructible" ||
+           n == "isTriviallyMoveConstructible" || n == "isMoveAssignable" || n == "isCopyAssignable" || n == "isNothrowMoveAssignable" ||
+           n == "isTriviallyMoveAssignable" || n == "isMemberPointer" || n == "isMemberFunctionPointer" || n == "isMemberObjectPointer" ||
+           n == "isInvocable" || n == "isInvocableR";
+  }
+
+  // --- what the class traits read: definitions, bases, members, special members ---
+
+  // The definition of a class type (the declaration it names may be a forward one), or null.
+  ClassDecl* classDefinition(const Ty* t)
+  {
+    if (!t || t->kind != TyKind::Class || !t->decl)
+      return nullptr;
+    Decl* def = t->decl;
+    if (def->kind == NodeKind::ClassDecl && !def->ownScope)
+    {
+      Entry e{def, nullptr};
+      Scope* s = scopeOfEntry(e, 0);
+      def = s ? s->owner : def;
+    }
+    if (!def || def->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(def)->isDefinition)
+      return nullptr;
+    return static_cast<ClassDecl*>(def);
+  }
+
+  // The direct bases of a class type, with its template arguments substituted; false when one
+  // is not known.
+  bool directBases(const Ty* t, ClassDecl* def, std::vector<const Ty*>& out)
+  {
+    DeclContext dc;
+    declContextFor(def, dc);
+    Subst s = substFor(t);
+    TypeContext ctx{dc.scope, &dc.params, s.pairs.empty() ? nullptr : &s, def->file ? def->file->tokens : nullptr,
+                    def->file ? def->file->text : std::string_view()};
+    for (const ClassDecl::Base& b : def->bases)
+    {
+      const Ty* bt = b.isPack ? nullptr : convertType(b.type, ctx, 0);
+      if (!bt || !bt->isKnown() || types.isDependent(bt))
+        return false;
+      out.push_back(bt);
+    }
+    return true;
+  }
+
+  // The types of the non-static data members, with the class's template arguments substituted;
+  // false when one is not known.
+  bool fieldTypes(const Ty* t, ClassDecl* def, std::vector<const Ty*>& out)
+  {
+    Subst s = substFor(t);
+    for (Decl* m : def->members)
+    {
+      if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)))
+        continue;
+      const Ty* ft = declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0);
+      if (!ft || !ft->isKnown() || types.isDependent(ft))
+        return false;
+      out.push_back(ft);
+    }
+    return true;
+  }
+
+  // What an override has to match: the name, the parameter types under the class's template
+  // arguments, const. Every destructor overrides every other.
+  std::string overrideKey(FunctionDecl* f, const Ty* cls)
+  {
+    if (f->flags & DF_Destructor)
+      return "~";
+    const NamePart& n = f->name.last();
+    std::string k = n.special == 2 ? "operator#" + std::to_string(n.opToken) : n.special == 3 ? "conversion" : debugName(n.symbol);
+    Subst s = substFor(cls);
+    const Ty* ft = declaredTypeOf(f, s.pairs.empty() ? nullptr : &s, 0);
+    k += "(";
+    for (size_t i = 0; ft && ft->kind == TyKind::Function && i < ft->args.size(); ++i)
+      k += (i ? ", " : "") + types.toString(ft->args[i], &symbols);
+    k += ")";
+    if (n.special == 3 && ft && ft->kind == TyKind::Function && ft->inner)
+      k += types.toString(ft->inner, &symbols);
+    return (f->flags & DF_Const) ? k + " const" : k;
+  }
+
+  // isPolymorphic: the class or a base declares a virtual function.
+  std::optional<bool> polymorphicClass(const Ty* t, int depth = 0)
+  {
+    if (!t->isKnown() || types.isDependent(t) || depth > 16)
+      return std::nullopt;
+    if (t->kind != TyKind::Class)
+      return false;
+    ClassDecl* def = classDefinition(t);
+    if (!def)
+      return std::nullopt;
+    for (Decl* m : def->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Pure)))
+        return true;
+    std::vector<const Ty*> bases;
+    if (!directBases(t, def, bases))
+      return std::nullopt;
+    for (const Ty* b : bases)
+    {
+      std::optional<bool> p = polymorphicClass(b, depth + 1);
+      if (!p || *p)
+        return p;
+    }
+    return false;
+  }
+
+  // isAbstract: a pure virtual function of the class or a base that no class from the base down
+  // to t overrides. `overridden` holds the keys the classes below (more derived) declare.
+  std::optional<bool> abstractClass(const Ty* t, std::unordered_set<std::string> overridden, int depth = 0)
+  {
+    if (!t->isKnown() || types.isDependent(t) || depth > 16)
+      return std::nullopt;
+    if (t->kind != TyKind::Class)
+      return false;
+    ClassDecl* def = classDefinition(t);
+    if (!def)
+      return std::nullopt;
+    std::vector<FunctionDecl*> pure;
+    for (Decl* m : def->members)
+      if (m->kind == NodeKind::FunctionDecl && !(m->flags & (DF_Static | DF_Constructor)) && m->templateParams.empty())
+      {
+        auto* f = static_cast<FunctionDecl*>(m);
+        if (f->flags & DF_Pure)
+          pure.push_back(f);
+        else
+          overridden.insert(overrideKey(f, t));
+      }
+    for (FunctionDecl* f : pure)
+      if (!overridden.count(overrideKey(f, t)))
+        return true;
+    overridden.insert("~"); // the class's destructor, declared or implicit, overrides a pure one of a base
+    std::vector<const Ty*> bases;
+    if (!directBases(t, def, bases))
+      return std::nullopt;
+    for (const Ty* b : bases)
+    {
+      std::optional<bool> a = abstractClass(b, overridden, depth + 1);
+      if (!a || *a)
+        return a;
+    }
+    return false;
+  }
+
+  // The copy and move constructors and assignment operators a class declares (none of them is a
+  // template), and whether it declares a destructor: what decides its implicit ones.
+  struct SpecialMembers
+  {
+    FunctionDecl* copyCtor = nullptr;         // C(const C&)
+    FunctionDecl* copyCtorNonConst = nullptr; // C(C&)
+    FunctionDecl* moveCtor = nullptr;         // C(C&&)
+    FunctionDecl* copyAssign = nullptr;       // operator=(const C&) or operator=(C)
+    FunctionDecl* copyAssignNonConst = nullptr;
+    FunctionDecl* moveAssign = nullptr;       // operator=(C&&)
+    bool destructor = false;
+  };
+  enum class TraitForm { Plain, Trivially, Nothrow };
+
+  // Whether a parameter's type is the class itself: 1 `const C&`, 2 `C&`, 3 `C&&`, 4 `C`; 0 not.
+  static int selfParameter(Decl* p, ClassDecl* def)
+  {
+    Type* t = static_cast<ParamDecl*>(p)->type;
+    int kind = 4;
+    if (t && t->kind == NodeKind::LRefType)
+    {
+      t = static_cast<LRefType*>(t)->referenced;
+      kind = 2;
+    }
+    else if (t && t->kind == NodeKind::RRefType)
+    {
+      t = static_cast<RRefType*>(t)->referenced;
+      kind = 3;
+    }
+    bool isConst = t && t->kind == NodeKind::ConstType;
+    if (isConst)
+      t = static_cast<ConstType*>(t)->inner;
+    if (!t || t->kind != NodeKind::NamedType || static_cast<NamedType*>(t)->name.empty() || def->name.empty() ||
+        static_cast<NamedType*>(t)->name.last().symbol != def->name.last().symbol)
+      return 0;
+    if (isConst)
+      return kind == 2 ? 1 : kind == 4 ? 4 : 0;
+    return kind;
+  }
+
+  static SpecialMembers specialMembersOf(ClassDecl* def)
+  {
+    SpecialMembers s;
+    for (Decl* m : def->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || !m->templateParams.empty())
+        continue;
+      auto* f = static_cast<FunctionDecl*>(m);
+      if (f->flags & DF_Destructor)
+      {
+        s.destructor = true;
+        continue;
+      }
+      size_t required = 0;
+      for (Decl* p : f->params)
+        required += static_cast<ParamDecl*>(p)->defaultValue ? 0 : 1;
+      if (f->params.empty() || required > 1)
+        continue;
+      int k = selfParameter(f->params[0], def);
+      if (f->flags & DF_Constructor)
+      {
+        if (k == 1)
+          s.copyCtor = f;
+        else if (k == 2)
+          s.copyCtorNonConst = f;
+        else if (k == 3)
+          s.moveCtor = f;
+      }
+      else if (!f->name.empty() && f->name.last().special == 2 && f->name.last().opToken == uint32_t(P::Assign))
+      {
+        if (k == 1 || k == 4)
+          s.copyAssign = f;
+        else if (k == 2)
+          s.copyAssignNonConst = f;
+        else if (k == 3)
+          s.moveAssign = f;
+      }
+    }
+    return s;
+  }
+
+  // A user-declared special member chosen for the trait: deleted is false; a user-provided one
+  // is not trivial, and nothrow as declared; a defaulted one is as the implicit one (nullopt:
+  // decide by the bases and members).
+  static std::optional<bool> declaredSpecial(FunctionDecl* f, TraitForm form)
+  {
+    if (f->flags & DF_Delete)
+      return false;
+    if (f->flags & DF_Default)
+      return std::nullopt;
+    if (form == TraitForm::Trivially)
+      return false;
+    if (form == TraitForm::Nothrow)
+      return (f->flags & DF_Noexcept) != 0;
+    return true;
+  }
+
+  // isMoveConstructible (move) and isCopyConstructible, in their plain, trivial and nothrow
+  // forms: whether T is built from an rvalue (from a const lvalue) of itself by the constructor
+  // C++ chooses, the implicit or defaulted ones by the class's bases and members.
+  std::optional<bool> constructibleFromSelf(const Ty* t, bool move, TraitForm form, int depth = 0)
+  {
+    if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+      return std::nullopt;
+    if (t->isReference())
+      return true;
+    if (t->isConst)
+      move = false; // `const T&&` binds to `const T&`: the copy constructor
+    const Ty* u = types.unqualified(t);
+    switch (u->kind)
+    {
+      case TyKind::Void: case TyKind::Function: case TyKind::Array: return false;
+      case TyKind::Class: break;
+      case TyKind::Lambda:
+      {
+        LambdaExpr* l = lambdaOf(u);
+        if (!l)
+          return std::nullopt;
+        return form != TraitForm::Trivially || l->captures.empty() ? std::optional<bool>(true) : std::nullopt;
+      }
+      case TyKind::Unknown: case TyKind::Param: case TyKind::DependentMember: case TyKind::Auto: case TyKind::Pack: return std::nullopt;
+      default: return true; // scalars, pointers, enums
+    }
+    ClassDecl* def = classDefinition(u);
+    if (!def)
+      return std::nullopt;
+    std::optional<bool> isAbstract = abstractClass(u, {});
+    if (!isAbstract || *isAbstract)
+      return isAbstract ? std::optional<bool>(false) : std::nullopt;
+    SpecialMembers s = specialMembersOf(def);
+    FunctionDecl* chosen = move && s.moveCtor ? s.moveCtor : s.copyCtor;
+    if (chosen)
+    {
+      if (std::optional<bool> d = declaredSpecial(chosen, form))
+        return d;
+    }
+    else
+    {
+      // None declared fits: a declared one that does not (C(C&) given an rvalue, only a move
+      // constructor given a const lvalue) means there is no implicit one either.
+      if (s.copyCtorNonConst || s.moveCtor || s.moveAssign)
+        return false; // a declared move operation deletes the implicit copy constructor
+      move = move && !s.copyAssign && !s.copyAssignNonConst && !s.destructor; // else the implicit copy constructor
+    }
+    return membersAllow(u, def, form, [&](const Ty* m, int d) { return constructibleFromSelf(m, move, form, d); }, false, depth);
+  }
+
+  // isMoveAssignable (move) and isCopyAssignable, likewise.
+  std::optional<bool> assignableFromSelf(const Ty* t, bool move, TraitForm form, int depth = 0)
+  {
+    if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+      return std::nullopt;
+    if (t->isReference())
+    {
+      t = types.stripRef(t); // `T& = T&`: a copy assignment of T
+      move = false;
+    }
+    if (t->isConst)
+      return false;
+    const Ty* u = types.unqualified(t);
+    switch (u->kind)
+    {
+      case TyKind::Void: case TyKind::Function: case TyKind::Array: return false;
+      case TyKind::Class: break;
+      case TyKind::Lambda:
+      {
+        LambdaExpr* l = lambdaOf(u);
+        if (!l)
+          return std::nullopt;
+        return l->captures.empty() && !l->defaultCapture; // a closure with captures has a deleted assignment
+      }
+      case TyKind::Unknown: case TyKind::Param: case TyKind::DependentMember: case TyKind::Auto: case TyKind::Pack: return std::nullopt;
+      default: return true;
+    }
+    ClassDecl* def = classDefinition(u);
+    if (!def)
+      return std::nullopt;
+    SpecialMembers s = specialMembersOf(def);
+    FunctionDecl* chosen = move && s.moveAssign ? s.moveAssign : s.copyAssign;
+    if (chosen)
+    {
+      if (std::optional<bool> d = declaredSpecial(chosen, form))
+        return d;
+    }
+    else
+    {
+      if (s.copyAssignNonConst || s.moveAssign || s.moveCtor)
+        return false; // a declared move operation deletes the implicit copy assignment
+      move = move && !s.copyCtor && !s.copyCtorNonConst && !s.destructor;
+    }
+    return membersAllow(u, def, form, [&](const Ty* m, int d) { return assignableFromSelf(m, move, form, d); }, true, depth);
+  }
+
+  // The implicit (or defaulted) special member of a class exists, is trivial or nothrow, when
+  // every base and member's does; an assignment also needs no reference or const member, and a
+  // trivial one no virtual function or base.
+  std::optional<bool> membersAllow(const Ty* t, ClassDecl* def, TraitForm form, const std::function<std::optional<bool>(const Ty*, int)>& each,
+                                   bool assignment, int depth)
+  {
+    if (form == TraitForm::Trivially)
+    {
+      for (const ClassDecl::Base& b : def->bases)
+        if (b.isVirtual)
+          return false;
+      std::optional<bool> p = polymorphicClass(t);
+      if (!p || *p)
+        return p ? std::optional<bool>(false) : std::nullopt;
+    }
+    std::vector<const Ty*> parts;
+    if (!directBases(t, def, parts) || !fieldTypes(t, def, parts))
+      return std::nullopt;
+    size_t baseCount = def->bases.size();
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+      const Ty* m = parts[i];
+      bool field = i >= baseCount;
+      if (field && assignment && (m->isReference() || types.stripRef(m)->isConst))
+        return false;
+      if (field && m->isReference())
+        continue; // constructing binds it
+      while (m->kind == TyKind::Array)
+        m = m->inner; // arrays as members are copied element by element
+      std::optional<bool> r = each(m, depth + 1);
+      if (!r || !*r)
+        return r;
+    }
+    return true;
+  }
+
+  // isInvocable: whether a value of type f can be called with arguments of these types (each a
+  // reference type for an lvalue, as in C++'s declval). result, when given, is the call's type
+  // where it is known without typing a body.
+  std::optional<bool> invocable(const Ty* f, const std::vector<const Ty*>& args, const Ty** result)
+  {
+    for (const Ty* a : args)
+      if (!a || !a->isKnown() || types.isDependent(a))
+        return std::nullopt;
+    if (!f || !f->isKnown() || types.isDependent(f))
+      return std::nullopt;
+    const Ty* c = types.unqualified(types.stripRef(f));
+    if (c->kind == TyKind::Pointer && c->inner && c->inner->kind == TyKind::Function)
+      c = c->inner;
+    auto accepts = [&](Span<const Ty*> params, bool variadic) -> std::optional<bool>
+    {
+      if (args.size() < params.size() || (!variadic && args.size() > params.size()))
+        return false;
+      for (size_t i = 0; i < params.size(); ++i)
+      {
+        if (!params[i] || !params[i]->isKnown() || types.isDependent(params[i]))
+          return std::nullopt;
+        if (conversionRank(args[i], params[i]) >= NotViable)
+          return false;
+      }
+      return true;
+    };
+    if (c->kind == TyKind::Function)
+    {
+      if (result)
+        *result = c->inner;
+      return accepts(c->args, c->variadic);
+    }
+    if (c->kind == TyKind::Lambda)
+    {
+      LambdaExpr* l = lambdaOf(c);
+      if (!l)
+        return std::nullopt;
+      if (l->templateParams.empty())
+      {
+        if (result)
+          *result = c->inner;
+        return accepts(c->args, false);
+      }
+      // A generic lambda: its `auto` parameters deduce from the arguments; its result needs the
+      // body typed for them, which is left to the call.
+      Subst deduced;
+      deduceParams(l->params, c->args, args, deduced);
+      std::vector<const Ty*> params;
+      bool pack = false;
+      for (const Ty* p : c->args)
+      {
+        const Ty* s = substitute(p, deduced);
+        if (s->kind == TyKind::Pack)
+        {
+          pack = true;
+          for (const Ty* e : s->args)
+            params.push_back(e);
+        }
+        else
+          params.push_back(s);
+      }
+      if (!pack && args.size() != params.size())
+        return false;
+      return accepts(Span<const Ty*>{params.data(), uint32_t(params.size())}, pack);
+    }
+    if (c->kind == TyKind::Class)
+    {
+      // A function object: its call operators, its bases' too, by overload resolution.
+      std::vector<FunctionDecl*> candidates;
+      std::vector<const Ty*> classes{c};
+      for (size_t i = 0; i < classes.size() && i < 32; ++i)
+      {
+        ClassDecl* def = classDefinition(classes[i]);
+        if (!def)
+          return std::nullopt;
+        for (Decl* m : def->members)
+          if (m->kind == NodeKind::FunctionDecl)
+            if (auto* fn = static_cast<FunctionDecl*>(m); !fn->name.empty() && fn->name.last().special == 2 && fn->name.last().opToken == uint32_t(P::LParen))
+              candidates.push_back(fn);
+        if (!directBases(classes[i], def, classes))
+          return std::nullopt;
+      }
+      if (candidates.empty())
+        return false;
+      Subst s = substFor(c);
+      bool ambiguous = false;
+      FunctionDecl* chosen = chooseAmong(candidates, args, s.pairs.empty() ? nullptr : &s, f, ambiguous);
+      if (!chosen || ambiguous)
+        return false;
+      if (result)
+      {
+        const Ty* ft = declaredTypeOf(chosen, s.pairs.empty() ? nullptr : &s, 0);
+        *result = ft && ft->kind == TyKind::Function ? ft->inner : nullptr;
+      }
+      return true;
+    }
+    return std::nullopt; // member pointers and the rest: not decided here
   }
 
   // Walk a class's own members and its bases to find `static constexpr bool value`.
