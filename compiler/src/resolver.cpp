@@ -6075,6 +6075,19 @@ struct GlobalScope::Impl
       if (callee->kind == NodeKind::NameExpr)
       {
         auto* n = static_cast<NameExpr*>(callee);
+        if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && impl.isTypeTraitName(n->name.parts[0].symbol))
+          if (const Ty* trait = impl.typeTrait(n->name.parts[0], ctx(), 0); trait && trait->isKnown())
+          {
+            // `Conditional<isSigned<U>, int64_t, uint64_t>(value)`: a functional cast to the type the
+            // built-in trait gives, as the same name gives in a declaration (not the library's
+            // Conditional struct).
+            n->resolved = nullptr;
+            for (Node* arg : n->name.parts[0].templateArgs)
+              walkNode(arg);
+            ++stats.callsResolved;
+            record(n, trait);
+            return trait;
+          }
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
         n->resolved = l.decl;
         for (const NamePart& part : n->name.parts)
