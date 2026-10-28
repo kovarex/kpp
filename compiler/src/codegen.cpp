@@ -824,13 +824,21 @@ namespace
       {
         if (a && isPackExpansion(a))
         {
-          // `args...`: one argument per element of the pack, under the current instantiation.
+          // `args...`: one argument per element of the pack, under the current instantiation: the
+          // parameter's own element types, or for a longer pattern the elements of its first pack.
+          Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
           Decl* param = packIn(a);
-          Decl* tp = param ? templatePackOf(param) : nullptr;
+          if (param && pattern->kind == NodeKind::NameExpr && static_cast<NameExpr*>(pattern)->resolved == param)
+          {
+            for (const Local& element : packLocals[param])
+              out.push_back(argumentType(pattern, element.ty, types));
+            continue;
+          }
+          std::vector<Decl*> packs = param ? templatePacksOf(param) : std::vector<Decl*>{};
           const Ty* pack = nullptr;
-          if (tp && currentArgs)
+          if (!packs.empty() && currentArgs)
             for (auto& [d, t] : currentArgs->pairs)
-              if (d == tp)
+              if (d == packs[0])
                 pack = t;
           if (pack && pack->kind == TyKind::Pack)
           {
@@ -1934,14 +1942,48 @@ namespace
       }
     }
 
-    // The template parameter pack behind a pack parameter.
-    Decl* templatePackOf(Decl* param)
+    // The template parameter packs a pack parameter's declared type names, in order: `Args&&... args`
+    // names Args; `auto PrototypeT::*... members` names PrototypeT and the pack invented for the
+    // `auto`. An expansion binds each of them to its i-th element together.
+    std::vector<Decl*> templatePacksOf(Decl* param)
     {
-      for (Decl* p = param->parent; p; p = p->parent)
-        for (Decl* tp : p->templateParams)
-          if (static_cast<TemplateParamDecl*>(tp)->isPack)
-            return tp;
-      return nullptr;
+      std::vector<Decl*> packs;
+      collectPacks(global.typeOfDecl(param), packs, 0);
+      return packs;
+    }
+
+    static void collectPacks(const Ty* t, std::vector<Decl*>& packs, int depth)
+    {
+      if (!t || depth > 16)
+        return;
+      if (t->kind == TyKind::Param && t->decl && t->decl->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(t->decl)->isPack)
+      {
+        if (std::find(packs.begin(), packs.end(), t->decl) == packs.end())
+          packs.push_back(t->decl);
+        return;
+      }
+      collectPacks(t->inner, packs, depth + 1);
+      for (const Ty* a : t->args)
+        collectPacks(a, packs, depth + 1);
+    }
+
+    // The element types each pack named by param's type is bound to in the instantiation being
+    // emitted, all of `count` elements; unsupported when one is not bound to such a pack.
+    std::vector<const Ty*> boundPacks(const std::vector<Decl*>& packs, size_t count, Node* at)
+    {
+      std::vector<const Ty*> bound;
+      for (Decl* tp : packs)
+      {
+        const Ty* packTy = nullptr;
+        if (currentArgs)
+          for (auto& [d, t] : currentArgs->pairs)
+            if (d == tp)
+              packTy = t;
+        if (!packTy || packTy->kind != TyKind::Pack || packTy->args.size() != count)
+          unsupported(at, "a pack whose elements are unknown");
+        bound.push_back(packTy);
+      }
+      return bound;
     }
 
     // Runs body(i) for each element of the pack that `pattern` expands over, with the pack
@@ -1976,23 +2018,19 @@ namespace
       Decl* param = packIn(pattern);
       if (!param)
         unsupported(at, "a pack expansion that does not name a parameter pack");
-      Decl* tp = templatePackOf(param);
-      if (!tp || !currentArgs)
+      std::vector<Decl*> packs = templatePacksOf(param);
+      if (packs.empty() || !currentArgs)
         unsupported(at, "a pack expansion outside an instantiation");
       std::vector<Local> elements = packLocals[param];
-      const Ty* packTy = nullptr;
-      for (auto& [d, t] : currentArgs->pairs)
-        if (d == tp)
-          packTy = t;
-      if (!packTy || packTy->kind != TyKind::Pack || packTy->args.size() != elements.size())
-        unsupported(at, "a pack whose elements are unknown");
+      std::vector<const Ty*> bound = boundPacks(packs, elements.size(), at);
       TemplateArgs original = *currentArgs;
       for (size_t i = 0; i < elements.size(); ++i)
       {
         TemplateArgs elementArgs = original;
         for (auto& [d, t] : elementArgs.pairs)
-          if (d == tp)
-            t = packTy->args[i];
+          for (size_t k = 0; k < packs.size(); ++k)
+            if (d == packs[k])
+              t = bound[k]->args[i];
         global.retypeFor(currentFunction, elementArgs, currentClassTy);
         locals[param] = elements[i];
         body(i);
