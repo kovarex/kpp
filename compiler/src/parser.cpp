@@ -2023,6 +2023,14 @@ namespace
       pendingAttributes = 0;
       f->templateParams = templ.params;
       f->isTemplate = templ.present;
+      // `void f(const auto& x)`, `int get(lua_State* L, auto PrototypeT::*... members)`: an
+      // abbreviated function template, its `auto`s invented parameters after the written ones.
+      std::vector<Decl*> invented(templ.params.begin(), templ.params.end());
+      if (inventAutoParams(f->params, invented))
+      {
+        f->templateParams = makeSpanOf(invented);
+        f->isTemplate = true;
+      }
       const NamePart& last = d.name.last();
       if (last.special == 1) f->flags |= DF_Destructor;
       else if (last.special == 2) f->flags |= DF_Operator;
@@ -4185,7 +4193,8 @@ namespace
       return n;
     }
 
-    // `auto` (also under const, references, pointers, a pack) in a lambda's parameter type.
+    // `auto` (also under const, references, pointers, a member pointer's member type, a pack) in
+    // a parameter type.
     static bool mentionsAuto(const Type* t)
     {
       for (;;)
@@ -4200,6 +4209,7 @@ namespace
           case NodeKind::LRefType: t = static_cast<const LRefType*>(t)->referenced; break;
           case NodeKind::RRefType: t = static_cast<const RRefType*>(t)->referenced; break;
           case NodeKind::PackType: t = static_cast<const PackType*>(t)->pattern; break;
+          case NodeKind::MemberPointerType: t = static_cast<const MemberPointerType*>(t)->pointee; break;
           default: return false;
         }
       }
@@ -4218,8 +4228,37 @@ namespace
         case NodeKind::LRefType: { auto* r = static_cast<LRefType*>(t); r->referenced = replaceAuto(r->referenced, with); return t; }
         case NodeKind::RRefType: { auto* r = static_cast<RRefType*>(t); r->referenced = replaceAuto(r->referenced, with); return t; }
         case NodeKind::PackType: { auto* p = static_cast<PackType*>(t); p->pattern = replaceAuto(p->pattern, with); return t; }
+        case NodeKind::MemberPointerType: { auto* m = static_cast<MemberPointerType*>(t); m->pointee = replaceAuto(m->pointee, with); return t; }
         default: return t;
       }
+    }
+
+    // `auto` in a parameter's type (`const auto& x`, `auto C::*... members`): each such
+    // parameter gets an invented type parameter, appended to templateParams, named in place of
+    // the `auto` (a generic lambda's parameters, C++20's abbreviated function templates).
+    // Returns whether any was invented.
+    bool inventAutoParams(Span<Decl*> params, std::vector<Decl*>& templateParams)
+    {
+      bool any = false;
+      for (Decl* pd : params)
+      {
+        auto* p = static_cast<ParamDecl*>(pd);
+        if (!mentionsAuto(p->type))
+          continue;
+        static std::atomic<uint32_t> autoCounter{0};
+        TemplateParamDecl* tp = decl<TemplateParamDecl>(p->type->token);
+        tp->isType = true;
+        tp->isPack = p->isPack;
+        tp->name = symbols.intern("__auto_" + std::to_string(autoCounter++));
+        NamedType* named = node<NamedType>(p->type->token);
+        NamePart part;
+        part.symbol = tp->name;
+        named->name.parts = makeSpanOf(std::vector<NamePart>{part});
+        p->type = replaceAuto(p->type, named);
+        templateParams.push_back(tp);
+        any = true;
+      }
+      return any;
     }
 
     Expr* parseLambda(uint32_t start)
@@ -4335,23 +4374,7 @@ namespace
       // the parameters' types can see them.
       {
         std::vector<Decl*> templateParams(l->templateParams.begin(), l->templateParams.end());
-        for (Decl* pd : l->params)
-        {
-          auto* p = static_cast<ParamDecl*>(pd);
-          if (!mentionsAuto(p->type))
-            continue;
-          static std::atomic<uint32_t> autoCounter{0};
-          TemplateParamDecl* tp = decl<TemplateParamDecl>(p->type->token);
-          tp->isType = true;
-          tp->isPack = p->isPack;
-          tp->name = symbols.intern("__auto_" + std::to_string(autoCounter++));
-          NamedType* named = node<NamedType>(p->type->token);
-          NamePart part;
-          part.symbol = tp->name;
-          named->name.parts = makeSpanOf(std::vector<NamePart>{part});
-          p->type = replaceAuto(p->type, named);
-          templateParams.push_back(tp);
-        }
+        inventAutoParams(l->params, templateParams);
         if (!templateParams.empty())
         {
           if (templateParams.size() != l->templateParams.size())

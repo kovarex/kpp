@@ -1,0 +1,63 @@
+// spec: abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members`
+// found in the game's LuaPrototypeTemplate (get, getPtree, getWithQuality: 366 calls), LogisticGroupLogic (`auto&& isUsedBy`), StatisticsPackager (`const auto& counts`)
+// pending: codegen binds one template pack per expansion (templatePackOf), `auto PrototypeT::*...` names two
+struct Prototype
+{
+  int kind;
+  virtual ~Prototype() {}
+};
+struct Belt : Prototype
+{
+  static constexpr int Kind = 1;
+  int speed = 15;
+  Belt() { this->kind = Kind; }
+};
+struct Inserter : Prototype
+{
+  static constexpr int Kind = 2;
+  int speed = 7;
+  double reach = 1.5;
+  Inserter() { this->kind = Kind; }
+};
+
+struct Reader
+{
+  const Prototype* prototype;
+
+  template<class T, class M>
+  bool maybeGet(M T::* member) const
+  {
+    if (this->prototype->kind != T::Kind)
+      return false;
+    println("{}", static_cast<const T*>(this->prototype)->*member);
+    return true;
+  }
+
+  bool pushNil() const
+  {
+    println("nil");
+    return true;
+  }
+
+  template<typename... PrototypeT>
+  int get(auto PrototypeT::*... members) const
+  {
+    (this->maybeGet(members) || ... || this->pushNil());
+    return int(sizeof...(members));
+  }
+};
+
+int twice(const auto& value) { return value * 2; }
+bool anyOf(int value, auto&& test) { return test(value); }
+
+int main()
+{
+  Belt belt;
+  Inserter inserter;
+  Reader a{&belt}, b{&inserter};
+  println("{}", a.get(&Belt::speed, &Inserter::speed));
+  b.get(&Belt::speed, &Inserter::reach);
+  b.get(&Belt::speed);
+  println("{} {}", twice(21), anyOf(4, [](int v) { return v > 3; }));
+  return 0;
+}

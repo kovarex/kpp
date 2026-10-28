@@ -3492,6 +3492,22 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
+  // The template parameter packs a type names anywhere (`auto C::*...`: C and the invented one).
+  static void packParamsIn(const Ty* t, std::vector<Decl*>& out, int depth = 0)
+  {
+    if (!t || depth > 16)
+      return;
+    if (t->kind == TyKind::Param && t->decl && t->decl->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(t->decl)->isPack)
+    {
+      if (std::find(out.begin(), out.end(), t->decl) == out.end())
+        out.push_back(t->decl);
+      return;
+    }
+    packParamsIn(t->inner, out, depth + 1);
+    for (const Ty* a : t->args)
+      packParamsIn(a, out, depth + 1);
+  }
+
   // Deduces f's template parameters from the argument types of a call, including a trailing
   // parameter pack, which binds to the remaining arguments.
   // The declared type of candidate with its template parameters renamed to those of f: a
@@ -3576,6 +3592,36 @@ struct GlobalScope::Impl
             }
             out.pairs.push_back({packDecl, types.pack(Span<const Ty*>{elems.data(), uint32_t(elems.size())})});
           }
+        }
+        else
+        {
+          // A pattern built around the packs (`auto C::*... members`, `const Vector<Args>&...`):
+          // every remaining argument deduces one element of each, the elements explicit
+          // arguments gave staying as given.
+          std::vector<Decl*> packs;
+          packParamsIn(pattern, packs);
+          std::vector<std::vector<const Ty*>> elems(packs.size());
+          for (size_t j = i; j < argTypes.size() && !packs.empty(); ++j)
+          {
+            const Ty* at = argTypes[j];
+            if (!at || !at->isKnown() || at->isBraceList())
+              return;
+            Subst one;
+            for (Decl* pack : packs)
+              if (const Ty* given = out.find(pack); given && given->kind == TyKind::Pack && j - i < given->args.size())
+                one.pairs.push_back({pack, given->args[j - i]});
+            deduce(pattern, at, one);
+            for (size_t k = 0; k < packs.size(); ++k)
+            {
+              const Ty* e = one.find(packs[k]);
+              if (!e)
+                return;
+              elems[k].push_back(e);
+            }
+          }
+          for (size_t k = 0; k < packs.size(); ++k)
+            if (!out.find(packs[k]))
+              out.pairs.push_back({packs[k], types.pack(Span<const Ty*>{elems[k].data(), uint32_t(elems[k].size())})});
         }
         return;
       }

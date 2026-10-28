@@ -282,6 +282,20 @@ const Ty* TypeTable::lambda(const Ty* result, Span<const Ty*> params, Decl* clos
 
 const Ty* TypeTable::memberPointer(const Ty* member, const Ty* cls)
 {
+  // `auto C::*... members` with C = (A, B) and the member types (int, double): the pack
+  // (int A::*, double B::*), the two packs in step (a pack and a single type: the single one
+  // with each element).
+  bool memberPack = member && member->kind == TyKind::Pack, classPack = cls && cls->kind == TyKind::Pack;
+  if (memberPack || classPack)
+  {
+    size_t n = memberPack ? member->args.size() : cls->args.size();
+    if (memberPack && classPack && cls->args.size() != n)
+      return unknown();
+    std::vector<const Ty*> mapped;
+    for (size_t i = 0; i < n; ++i)
+      mapped.push_back(memberPointer(memberPack ? member->args[i] : member, classPack ? cls->args[i] : cls));
+    return pack(Span<const Ty*>{mapped.data(), uint32_t(mapped.size())});
+  }
   Ty t{TyKind::MemberPointer};
   t.inner = member;
   t.decl = cls && cls->kind == TyKind::Class ? cls->decl : nullptr;
