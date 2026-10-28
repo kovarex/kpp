@@ -201,62 +201,197 @@ T* upperBound(T* first, T* last, const V& value)
   return first;
 }
 
-// Sorts [first, last) by operator< (insertion sort below 16 elements, quicksort above).
-template<typename T>
-void sort(T* first, T* last)
-{
-  long long n = last - first;
-  if (n < 16)
-  {
-    for (long long i = 1; i < n; ++i)
-    {
-      T value = move(first[i]);
-      long long j = i;
-      while (j > 0 && value < first[j - 1])
-      {
-        first[j] = move(first[j - 1]);
-        --j;
-      }
-      first[j] = move(value);
-    }
-    return;
-  }
-  T pivot = first[n / 2];
-  T* left = first;
-  T* right = last - 1;
-  while (left <= right)
-  {
-    while (*left < pivot)
-      ++left;
-    while (pivot < *right)
-      --right;
-    if (left <= right)
-    {
-      swap(*left, *right);
-      ++left;
-      --right;
-    }
-  }
-  sort(first, right + 1);
-  sort(left, last);
-}
-
-// Sorts by a less-than predicate.
+// Sorting. sort is introsort, as in the C++ libraries: quicksort around the median of three,
+// heapsort when the recursion gets deeper than 2 log n (so O(n log n) in the worst case),
+// insertion sort over the short ranges quicksort leaves. Not stable; stableSort is.
 template<typename T, typename F>
 void sort(T* first, T* last, F less)
 {
-  long long n = last - first;
-  for (long long i = 1; i < n; ++i)
+  long long count = last - first;
+  if (count < 2)
+    return;
+  int depthLimit = 0;
+  for (long long k = count; k > 1; k >>= 1)
+    depthLimit += 2;
+  introSortLoop(first, last, depthLimit, less);
+  insertionSort(first, last, less);
+}
+
+// Sorts [first, last) by operator<.
+template<typename T>
+void sort(T* first, T* last)
+{
+  sort(first, last, [](const T& a, const T& b) { return a < b; });
+}
+
+// Quicksorts until every range is at most 16 elements long, each element already in its range.
+template<typename T, typename F>
+void introSortLoop(T* first, T* last, int depthLimit, F& less)
+{
+  while (last - first > 16)
   {
-    T value = move(first[i]);
-    long long j = i;
-    while (j > 0 && less(value, first[j - 1]))
+    if (depthLimit == 0)
     {
-      first[j] = move(first[j - 1]);
-      --j;
+      heapSort(first, last, less);
+      return;
     }
-    first[j] = move(value);
+    --depthLimit;
+    moveMedianToFirst(first, first + 1, first + (last - first) / 2, last - 1, less);
+    T* cut = partitionAroundFirst(first, last, less);
+    introSortLoop(cut, last, depthLimit, less);
+    last = cut;
   }
+}
+
+// Swaps the median of *a, *b and *c into *result.
+template<typename T, typename F>
+void moveMedianToFirst(T* result, T* a, T* b, T* c, F& less)
+{
+  if (less(*a, *b))
+  {
+    if (less(*b, *c))
+      swap(*result, *b);
+    else if (less(*a, *c))
+      swap(*result, *c);
+    else
+      swap(*result, *a);
+  }
+  else if (less(*a, *c))
+    swap(*result, *a);
+  else if (less(*b, *c))
+    swap(*result, *c);
+  else
+    swap(*result, *b);
+}
+
+// Partitions (first, last) around the pivot *first: returns cut with nothing in [first + 1, cut)
+// greater than the pivot and nothing in [cut, last) less. The median of three guarantees an
+// element on each side that stops the scans, so they need no bounds checks.
+template<typename T, typename F>
+T* partitionAroundFirst(T* first, T* last, F& less)
+{
+  T* left = first + 1;
+  T* right = last;
+  while (true)
+  {
+    while (less(*left, *first))
+      ++left;
+    --right;
+    while (less(*first, *right))
+      --right;
+    if (!(left < right))
+      return left;
+    swap(*left, *right);
+    ++left;
+  }
+}
+
+template<typename T, typename F>
+void insertionSort(T* first, T* last, F& less)
+{
+  for (T* next = first + 1; next < last; ++next)
+  {
+    if (!less(*next, *(next - 1)))
+      continue;
+    T value = move(*next);
+    T* hole = next;
+    do
+    {
+      *hole = move(*(hole - 1));
+      --hole;
+    } while (hole > first && less(value, *(hole - 1)));
+    *hole = move(value);
+  }
+}
+
+template<typename T, typename F>
+void heapSort(T* first, T* last, F& less)
+{
+  long long count = last - first;
+  for (long long i = count / 2; i-- > 0;)
+    heapSiftDown(first, i, count, less);
+  for (long long end = count - 1; end > 0; --end)
+  {
+    swap(first[0], first[end]);
+    heapSiftDown(first, 0, end, less);
+  }
+}
+
+// Restores the max-heap property below hole in the heap first[0, count).
+template<typename T, typename F>
+void heapSiftDown(T* first, long long hole, long long count, F& less)
+{
+  T value = move(first[hole]);
+  while (true)
+  {
+    long long child = 2 * hole + 1;
+    if (child >= count)
+      break;
+    if (child + 1 < count && less(first[child], first[child + 1]))
+      ++child;
+    if (!less(value, first[child]))
+      break;
+    first[hole] = move(first[child]);
+    hole = child;
+  }
+  first[hole] = move(value);
+}
+
+// Sorts keeping equal elements in their order: insertion-sorted runs of 32, then merged in
+// passes between the range and a buffer. The merges relocate elements bitwise, which every Kpp
+// type allows, so no constructor runs while they move.
+template<typename T, typename F>
+void stableSort(T* first, T* last, F less)
+{
+  long long count = last - first;
+  const long long run = 32;
+  for (long long start = 0; start < count; start += run)
+    insertionSort(first + start, first + (start + run < count ? start + run : count), less);
+  if (count <= run)
+    return;
+  T* buffer = (T*)malloc((size_t)count * sizeof(T));
+  T* from = first;
+  T* to = buffer;
+  for (long long width = run; width < count; width *= 2)
+  {
+    for (long long start = 0; start < count; start += 2 * width)
+    {
+      long long middle = start + width < count ? start + width : count;
+      long long end = start + 2 * width < count ? start + 2 * width : count;
+      mergeRelocating(from + start, from + middle, from + end, to + start, less);
+    }
+    T* swapped = from;
+    from = to;
+    to = swapped;
+  }
+  if (from != first)
+    memcpy(first, from, (size_t)count * sizeof(T));
+  free(buffer);
+}
+
+template<typename T>
+void stableSort(T* first, T* last)
+{
+  stableSort(first, last, [](const T& a, const T& b) { return a < b; });
+}
+
+// Merges the sorted [a, middle) and [middle, end) into out, bitwise; on ties the first run's
+// element goes first.
+template<typename T, typename F>
+void mergeRelocating(T* a, T* middle, T* end, T* out, F& less)
+{
+  T* b = middle;
+  while (a < middle && b < end)
+  {
+    if (less(*b, *a))
+      memcpy(out++, b++, sizeof(T));
+    else
+      memcpy(out++, a++, sizeof(T));
+  }
+  if (a < middle)
+    memcpy(out, a, (size_t)(middle - a) * sizeof(T));
+  else if (b < end)
+    memcpy(out, b, (size_t)(end - b) * sizeof(T));
 }
 
 // A view of a contiguous range.

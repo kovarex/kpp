@@ -1,22 +1,47 @@
 // Kpp standard library: hashing. HashMap<K, V> calls hashOf(key); add an overload for your own
-// key types.
-size_t hashOf(int value) { return (size_t)(unsigned int)value * 11400714819323198485ull; }
-size_t hashOf(unsigned int value) { return (size_t)value * 11400714819323198485ull; }
-size_t hashOf(long long value) { return (size_t)value * 11400714819323198485ull; }
-size_t hashOf(unsigned long long value) { return value * 11400714819323198485ull; }
+// key types. HashMap indexes by the low bits of the hash, so every bit of the result has to
+// depend on the whole key.
 
-// FNV-1a over the bytes.
-size_t hashOf(const String& text)
+// Multiplies by 2^64 / golden ratio and folds the well-mixed high half into the low half (a
+// plain product leaves the low bits depending only on the low bits of the key: aligned pointers
+// would all land on every 16th slot).
+size_t hashBits(uint64_t value)
 {
-  size_t hash = 14695981039346656037ull;
-  for (int i = 0; i < text.size(); ++i)
-  {
-    hash = hash ^ (size_t)(unsigned char)text[i];
-    hash = hash * 1099511628211ull;
-  }
-  return hash;
+  uint64_t product = value * 11400714819323198485ull;
+  return (size_t)(product ^ (product >> 32));
 }
+
+size_t hashOf(int value) { return hashBits((uint64_t)(unsigned int)value); }
+size_t hashOf(unsigned int value) { return hashBits((uint64_t)value); }
+size_t hashOf(long long value) { return hashBits((uint64_t)value); }
+size_t hashOf(unsigned long long value) { return hashBits(value); }
+
+// Eight bytes per step, each word multiplied in, then the murmur3 finalizer: several times
+// faster than byte-at-a-time FNV-1a on keys longer than a few characters.
+size_t hashBytes(const char* bytes, int count)
+{
+  uint64_t hash = 0x9E3779B97F4A7C15ull ^ (uint64_t)count;
+  while (count >= 8)
+  {
+    uint64_t word;
+    memcpy(&word, bytes, 8);
+    hash = (hash ^ word) * 0xFF51AFD7ED558CCDull;
+    hash = hash ^ (hash >> 32);
+    bytes += 8;
+    count -= 8;
+  }
+  uint64_t tail = 0;
+  for (int i = 0; i < count; ++i)
+    tail = tail | ((uint64_t)(uint8_t)bytes[i] << (8 * i));
+  hash = (hash ^ tail) * 0xFF51AFD7ED558CCDull;
+  hash = hash ^ (hash >> 33);
+  hash = hash * 0xC4CEB9FE1A85EC53ull;
+  hash = hash ^ (hash >> 33);
+  return (size_t)hash;
+}
+
+size_t hashOf(const String& text) { return hashBytes(text.data(), text.size()); }
 
 // Pointers hash by address.
 template<typename T>
-size_t hashOf(T* pointer) { return (size_t)pointer * 11400714819323198485ull; }
+size_t hashOf(T* pointer) { return hashBits((uint64_t)pointer); }

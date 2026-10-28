@@ -1,5 +1,6 @@
 // Kpp standard library: Vector<T>. A growable array; elements are relocated bitwise when the
-// buffer grows, which every Kpp type is expected to allow.
+// buffer grows, which every Kpp type is expected to allow (no move constructor calls: growing a
+// Vector<String> is one memcpy). Appending grows the capacity geometrically, reserve() exactly.
 template<typename T>
 struct Vector
 {
@@ -23,12 +24,7 @@ struct Vector
     for (const T& item : list)
       this->push_back(item);
   }
-  Vector(const Vector<T>& other)
-  {
-    this->reserve(other.length);
-    for (int i = 0; i < other.length; ++i)
-      this->push_back(other.items[i]);
-  }
+  Vector(const Vector<T>& other) { this->appendCopies(other.items, other.length); }
   Vector(Vector<T>&& other) : items(other.items), length(other.length), capacity(other.capacity)
   {
     other.items = nullptr;
@@ -47,9 +43,7 @@ struct Vector
     if (this == &other)
       return *this;
     this->clear();
-    this->reserve(other.length);
-    for (int i = 0; i < other.length; ++i)
-      this->push_back(other.items[i]);
+    this->appendCopies(other.items, other.length);
     return *this;
   }
   Vector<T>& operator=(Vector<T>&& other)
@@ -100,52 +94,68 @@ struct Vector
   ReverseIterator<const T> crbegin() const { return ReverseIterator<const T>(this->items + this->length); }
   ReverseIterator<const T> crend() const { return ReverseIterator<const T>(this->items); }
 
+  // Room for `needed` elements, exactly.
   void reserve(int needed)
   {
-    if (needed <= this->capacity)
-      return;
-    int newCapacity = this->capacity == 0 ? 4 : this->capacity;
-    while (newCapacity < needed)
-      newCapacity *= 2;
-    T* bigger = (T*)malloc(newCapacity * sizeof(T));
-    if (this->items)
+    if (needed > this->capacity)
     {
-      memcpy(bigger, this->items, this->length * sizeof(T));
-      free(this->items);
+      T* retired = this->moveToBlock(needed);
+      if (retired)
+        free(retired);
     }
-    this->items = bigger;
-    this->capacity = newCapacity;
   }
 
+  // The value may be an element of this vector: v.push_back(v[0]) is fine.
   void push_back(const T& value)
   {
-    this->reserve(this->length + 1);
-    new (this->items + this->length) T(value);
-    ++this->length;
+    T* retired;
+    new (this->appendSlot(retired)) T(value);
+    this->finishAppend(retired);
   }
   void push_back(T&& value)
   {
-    this->reserve(this->length + 1);
-    new (this->items + this->length) T(move(value));
-    ++this->length;
+    T* retired;
+    new (this->appendSlot(retired)) T(move(value));
+    this->finishAppend(retired);
   }
   void emplace_back(const T& value) { this->push_back(value); }
   // Builds the new element in place from the arguments.
   template<typename... Args>
   T& emplace_back(Args&&... args)
   {
-    this->reserve(this->length + 1);
-    new (this->items + this->length) T(forward<Args>(args)...);
-    ++this->length;
+    T* retired;
+    T* slot = this->appendSlot(retired);
+    new (slot) T(forward<Args>(args)...);
+    this->finishAppend(retired);
     return this->items[this->length - 1];
   }
   T& front() { return this->items[0]; }
+  // New elements are default-constructed (zero for numbers).
   void resize(int newLength)
   {
-    while (this->length > newLength)
-      this->pop_back();
-    while (this->length < newLength)
-      this->push_back(T());
+    if (newLength <= this->length)
+    {
+      this->truncate(newLength);
+      return;
+    }
+    this->ensureRoom(newLength);
+    for (int i = this->length; i < newLength; ++i)
+      new (this->items + i) T();
+    this->length = newLength;
+  }
+  // New elements are copies of value.
+  void resize(int newLength, const T& value)
+  {
+    if (newLength <= this->length)
+    {
+      this->truncate(newLength);
+      return;
+    }
+    T copy(value); // value may be an element, and the elements may move
+    this->ensureRoom(newLength);
+    for (int i = this->length; i < newLength; ++i)
+      new (this->items + i) T(copy);
+    this->length = newLength;
   }
   T& at(int index) { return this->items[index]; }
   const T& at(int index) const { return this->items[index]; }
@@ -165,30 +175,34 @@ struct Vector
   // `v.emplace(position, args...)`: the element built from args, before position (std::vector::emplace).
   template<typename... Args>
   T* emplace(T* position, Args&&... args) { return this->insert(position, T(forward<Args>(args)...)); }
+  // Inserts copies of [first, last), which must not be elements of this vector; returns the
+  // position of the first one.
   T* insert(T* position, const T* first, const T* last)
   {
-    int index = int(position - this->items);
-    for (const T* it = first; it != last; ++it)
-      this->insert(index++, *it);
+    int index = int(position - this->items), count = int(last - first);
+    this->openSlots(index, count);
+    for (int i = 0; i < count; ++i)
+      new (this->items + index + i) T(first[i]);
     return this->items + index;
   }
   void insert(int index, const T& value)
   {
-    this->openSlot(index);
-    new (this->items + index) T(value);
+    T copy(value); // value may be an element, which the opening moves
+    this->openSlots(index, 1);
+    new (this->items + index) T(move(copy));
   }
   void insert(int index, T&& value)
   {
-    this->openSlot(index);
+    this->openSlots(index, 1);
     new (this->items + index) T(move(value));
   }
-  // Makes room for one element at index: the elements from there on move up one place (bitwise,
-  // as the buffer growth does).
-  void openSlot(int index)
+  // Makes room for count elements at index: the elements from there on move up (bitwise, as the
+  // buffer growth does). The new slots are left unconstructed.
+  void openSlots(int index, int count)
   {
-    this->reserve(this->length + 1);
-    memmove(this->items + index + 1, this->items + index, (this->length - index) * sizeof(T));
-    ++this->length;
+    this->ensureRoom(this->length + count);
+    memmove(this->items + index + count, this->items + index, (size_t)(this->length - index) * sizeof(T));
+    this->length += count;
   }
   bool contains(const T& value) const
   {
@@ -202,12 +216,7 @@ struct Vector
     --this->length;
     this->items[this->length].~T();
   }
-  void clear()
-  {
-    for (int i = 0; i < this->length; ++i)
-      this->items[i].~T();
-    this->length = 0;
-  }
+  void clear() { this->truncate(0); }
   void erase(int index)
   {
     this->items[index].~T();
@@ -226,4 +235,66 @@ struct Vector
     return this->items + index;
   }
   T* erase(T* at) { return this->erase(at, at + 1); }
+
+  // Internals.
+  // Destroys the elements from newLength on.
+  void truncate(int newLength)
+  {
+    for (int i = newLength; i < this->length; ++i)
+      this->items[i].~T();
+    this->length = newLength;
+  }
+  // Moves the elements into a new block for newCapacity elements and returns the old block (or
+  // nullptr), which the caller frees.
+  T* moveToBlock(int newCapacity)
+  {
+    T* block = (T*)malloc((size_t)newCapacity * sizeof(T));
+    T* old = this->items;
+    if (old)
+      memcpy(block, old, (size_t)this->length * sizeof(T));
+    this->items = block;
+    this->capacity = newCapacity;
+    return old;
+  }
+  // Geometric growth (doubling, at least 4): n appends cost O(n) element moves in total.
+  int grownCapacity(int needed) const
+  {
+    int doubled = this->capacity < 2 ? 4 : this->capacity * 2;
+    return needed > doubled ? needed : doubled;
+  }
+  void ensureRoom(int needed)
+  {
+    if (needed > this->capacity)
+    {
+      T* retired = this->moveToBlock(this->grownCapacity(needed));
+      if (retired)
+        free(retired);
+    }
+  }
+  // Where the next appended element goes. When the elements had to move, retired is their old
+  // block: the new element's arguments may point into it, so finishAppend frees it only after
+  // the element is constructed.
+  T* appendSlot(T*& retired)
+  {
+    retired = nullptr;
+    if (this->length == this->capacity)
+      retired = this->moveToBlock(this->grownCapacity(this->length + 1));
+    return this->items + this->length;
+  }
+  void finishAppend(T* retired)
+  {
+    ++this->length;
+    if (retired)
+      free(retired);
+  }
+  // Copy-constructs count elements from source after the last one (exact growth: the copy and
+  // assignment of a whole vector).
+  void appendCopies(const T* source, int count)
+  {
+    this->reserve(this->length + count);
+    T* target = this->items + this->length;
+    for (int i = 0; i < count; ++i)
+      new (target + i) T(source[i]);
+    this->length += count;
+  }
 };

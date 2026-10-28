@@ -1,139 +1,173 @@
 // Kpp standard library: String. A growable sequence of UTF-8 code units, always zero-terminated
 // so that c_str() is free. One plain class: no character traits, no allocator parameter.
 //
+// 24 bytes. Up to 22 characters live in the object itself, so most names, keys and numbers never
+// allocate; longer strings live in a heap block. The last byte tells which: the length of a small
+// string, or largeMark. All-zero bytes are the empty string. Nothing points into the object, so
+// a String can be relocated bitwise like every Kpp type (Vector<String> grows with memcpy).
 struct String
 {
-  char* chars = nullptr; // nullptr while empty
-  int length = 0;
-  int capacity = 0;
+  union
+  {
+    struct
+    {
+      char* heapChars;
+      int heapLength;
+      int heapCapacity; // characters that fit, not counting the terminating zero
+    };
+    char smallChars[24]; // [markIndex] is the length of a small string, or largeMark
+  };
+
+  static const int smallCapacity = 22;
+  static const int markIndex = 23;
+  static const int largeMark = 0x80;
 
   using iterator = char*;
   using const_iterator = const char*;
   using value_type = char;
 
-  String() {}
-  implicit String(const char* text) { this->append(text); }
-  implicit String(StringView text) { this->append(text.chars, text.length); }
-  String(const char* text, int count) { this->append(text, count); }
-  String(const char* first, const char* last) { this->append(first, int(last - first)); }
-  String(int count, char c) { this->append(count, c); }
-  String(const String& other) { this->append(other.chars, other.length); }
-  String(String&& other) : chars(other.chars), length(other.length), capacity(other.capacity)
+  String() { this->becomeEmpty(); }
+  implicit String(const char* text) { this->initialize(text, (int)strlen(text)); }
+  implicit String(StringView text) { this->initialize(text.chars, text.length); }
+  String(const char* text, int count) { this->initialize(text, count); }
+  String(const char* first, const char* last) { this->initialize(first, int(last - first)); }
+  String(int count, char c)
   {
-    other.chars = nullptr;
-    other.length = 0;
-    other.capacity = 0;
+    this->becomeEmpty();
+    this->append(count, c);
+  }
+  String(const String& other)
+  {
+    if (other.isLarge())
+      this->initialize(other.heapChars, other.heapLength);
+    else
+      memcpy(this->smallChars, other.smallChars, sizeof(String));
+  }
+  String(String&& other)
+  {
+    memcpy(this->smallChars, other.smallChars, sizeof(String));
+    other.becomeEmpty();
   }
   ~String()
   {
-    if (this->chars)
-      free(this->chars);
+    if (this->isLarge())
+      free(this->heapChars);
   }
 
   String& operator=(const String& other)
   {
-    if (this == &other)
-      return *this;
-    this->length = 0;
-    this->append(other.chars, other.length);
-    if (this->chars)
-      this->chars[this->length] = 0;
+    if (this != &other)
+      this->assign(other.data(), other.size());
     return *this;
   }
   String& operator=(String&& other)
   {
     if (this == &other)
       return *this;
-    if (this->chars)
-      free(this->chars);
-    this->chars = other.chars;
-    this->length = other.length;
-    this->capacity = other.capacity;
-    other.chars = nullptr;
-    other.length = 0;
-    other.capacity = 0;
+    if (this->isLarge())
+      free(this->heapChars);
+    memcpy(this->smallChars, other.smallChars, sizeof(String));
+    other.becomeEmpty();
     return *this;
   }
 
   static const int npos = -1;
 
-  int size() const { return this->length; }
-  bool empty() const { return this->length == 0; }
-  const char* c_str() const { return this->chars ? this->chars : ""; }
-  char* data() { return this->chars; }
-  const char* data() const { return this->chars; }
-  char operator[](int index) const { return this->chars[index]; }
-  char& operator[](int index) { return this->chars[index]; }
-  char* begin() { return this->chars; }
-  char* end() { return this->chars + this->length; }
-  char& back() { return this->chars[this->length - 1]; }
-  const char& back() const { return this->chars[this->length - 1]; }
-  char& front() { return this->chars[0]; }
-  const char& front() const { return this->chars[0]; }
+  bool isLarge() const { return (uint8_t)this->smallChars[String::markIndex] == String::largeMark; }
+  int size() const { return this->isLarge() ? this->heapLength : (int)this->smallChars[String::markIndex]; }
+  int length() const { return this->size(); }
+  // Characters that fit without allocating.
+  int capacity() const { return this->isLarge() ? this->heapCapacity : String::smallCapacity; }
+  bool empty() const { return this->size() == 0; }
+  const char* c_str() const { return this->data(); }
+  char* data() { return this->isLarge() ? this->heapChars : this->smallChars; }
+  const char* data() const { return this->isLarge() ? this->heapChars : this->smallChars; }
+  char operator[](int index) const { return this->data()[index]; }
+  char& operator[](int index) { return this->data()[index]; }
+  char* begin() { return this->data(); }
+  char* end() { return this->data() + this->size(); }
+  char& back() { return this->data()[this->size() - 1]; }
+  const char& back() const { return this->data()[this->size() - 1]; }
+  char& front() { return this->data()[0]; }
+  const char& front() const { return this->data()[0]; }
 
   void push_back(char c) { this->append(c); }
   void pop_back()
   {
-    if (this->length > 0)
-      this->chars[--this->length] = 0;
+    int length = this->size();
+    if (length > 0)
+      this->setLength(length - 1);
   }
   void resize(int newLength, char fill)
   {
-    if (newLength < this->length)
+    int length = this->size();
+    if (newLength > length)
     {
-      this->length = newLength;
-      this->chars[this->length] = 0;
-      return;
+      this->reserve(newLength);
+      memset(this->data() + length, fill, newLength - length);
     }
-    this->reserve(newLength);
-    while (this->length < newLength)
-      this->chars[this->length++] = fill;
-    this->chars[this->length] = 0;
+    this->setLength(newLength);
   }
   void resize(int newLength) { this->resize(newLength, 0); }
   // Removes count bytes at index (to the end when count is negative).
   void erase(int index, int count)
   {
-    if (index < 0 || index >= this->length)
+    int length = this->size();
+    if (index < 0 || index >= length)
       return;
-    if (count < 0 || index + count > this->length)
-      count = this->length - index;
-    memmove(this->chars + index, this->chars + index + count, this->length - index - count + 1);
-    this->length -= count;
+    if (count < 0 || index + count > length)
+      count = length - index;
+    char* chars = this->data();
+    memmove(chars + index, chars + index + count, length - index - count);
+    this->setLength(length - count);
   }
   void erase(int index) { this->erase(index, -1); }
   // The range [first, last) of this string's characters (begin()/end() and what find functions return).
-  void erase(char* first, char* last) { this->erase(int(first - this->chars), int(last - first)); }
-  void erase(char* at) { this->erase(int(at - this->chars), 1); }
+  void erase(char* first, char* last) { this->erase(int(first - this->data()), int(last - first)); }
+  void erase(char* at) { this->erase(int(at - this->data()), 1); }
   void insert(int index, const char* text, int count)
   {
-    if (index > this->length)
-      index = this->length;
-    this->reserve(this->length + count);
-    memmove(this->chars + index + count, this->chars + index, this->length - index + 1);
-    memcpy(this->chars + index, text, count);
-    this->length += count;
+    if (count <= 0)
+      return;
+    int length = this->size();
+    if (index > length)
+      index = length;
+    const char* chars = this->data();
+    if (text >= chars && text < chars + length)
+    {
+      // Inserting part of this string into itself: copy it out before the characters move.
+      String copy(text, count);
+      this->insert(index, copy.data(), count);
+      return;
+    }
+    this->ensureRoom(length + count);
+    char* target = this->data();
+    memmove(target + index + count, target + index, length - index);
+    memcpy(target + index, text, count);
+    this->setLength(length + count);
   }
   void insert(int index, const char* text) { this->insert(index, text, (int)strlen(text)); }
   // Inserts [first, last) before the character position points at.
   char* insert(char* position, const char* first, const char* last)
   {
-    int index = int(position - this->chars);
+    int index = int(position - this->data());
     this->insert(index, first, int(last - first));
-    return this->chars + index;
+    return this->data() + index;
   }
-  void insert(int index, const String& text) { this->insert(index, text.chars, text.length); }
+  void insert(int index, const String& text) { this->insert(index, text.data(), text.size()); }
   // Inserts count copies of c at index.
   void insert(int index, int count, char c)
   {
     if (count <= 0)
       return;
-    if (index > this->length)
-      index = this->length;
-    this->reserve(this->length + count);
-    memmove(this->chars + index + count, this->chars + index, this->length - index + 1);
-    memset(this->chars + index, c, count);
-    this->length += count;
+    int length = this->size();
+    if (index > length)
+      index = length;
+    this->ensureRoom(length + count);
+    char* chars = this->data();
+    memmove(chars + index + count, chars + index, length - index);
+    memset(chars + index, c, count);
+    this->setLength(length + count);
   }
   // Replaces count bytes at index with text.
   void replace(int index, int count, const char* text)
@@ -146,28 +180,53 @@ struct String
     this->erase(index, count);
     this->insert(index, text);
   }
-  int find(const char* needle, int from) const
-  {
-    int n = (int)strlen(needle);
-    for (int i = from; i + n <= this->length; ++i)
-      if (memcmp(this->chars + i, needle, n) == 0)
-        return i;
-    return -1;
-  }
+
+  // Searching. Every find returns the index of the first match at or after `from`, or npos.
+  int find(const char* needle, int from) const { return this->findBytes(needle, (int)strlen(needle), from); }
   int find(const char* needle) const { return this->find(needle, 0); }
-  int find(const String& needle) const { return this->find(needle.c_str(), 0); }
-  int find(const String& needle, int from) const { return this->find(needle.c_str(), from); }
+  int find(const String& needle) const { return this->findBytes(needle.data(), needle.size(), 0); }
+  int find(const String& needle, int from) const { return this->findBytes(needle.data(), needle.size(), from); }
   int find(char c, int from) const
   {
-    for (int i = from; i < this->length; ++i)
-      if (this->chars[i] == c)
-        return i;
+    int length = this->size();
+    if (from < 0)
+      from = 0;
+    if (from >= length)
+      return -1;
+    const char* chars = this->data();
+    const char* at = (const char*)memchr(chars + from, c, length - from);
+    return at ? int(at - chars) : -1;
+  }
+  int find(char c) const { return this->find(c, 0); }
+  // memchr finds candidates for the first byte, memcmp checks the rest.
+  int findBytes(const char* needle, int count, int from) const
+  {
+    int length = this->size();
+    if (from < 0)
+      from = 0;
+    if (count == 0)
+      return from <= length ? from : -1;
+    if (count > length)
+      return -1;
+    const char* chars = this->data();
+    const char* lastStart = chars + length - count;
+    const char* at = chars + from;
+    while (at <= lastStart)
+    {
+      at = (const char*)memchr(at, needle[0], lastStart - at + 1);
+      if (!at)
+        return -1;
+      if (memcmp(at + 1, needle + 1, count - 1) == 0)
+        return int(at - chars);
+      ++at;
+    }
     return -1;
   }
   int rfind(char c) const
   {
-    for (int i = this->length; i-- > 0;)
-      if (this->chars[i] == c)
+    const char* chars = this->data();
+    for (int i = this->size(); i-- > 0;)
+      if (chars[i] == c)
         return i;
     return -1;
   }
@@ -182,119 +241,163 @@ struct String
   int find_first_of(char c, int from) const { return this->find(c, from); }
   int find_first_of(StringView set, int from) const
   {
-    for (int i = from; i < this->length; ++i)
+    const char* chars = this->data();
+    int length = this->size();
+    for (int i = from; i < length; ++i)
       for (int k = 0; k < set.length; ++k)
-        if (this->chars[i] == set.chars[k])
+        if (chars[i] == set.chars[k])
           return i;
     return -1;
   }
+  int find_first_of(StringView set) const { return this->find_first_of(set, 0); }
   int find_first_of(const String& set) const { return this->find_first_of(set.c_str()); }
-  int find_first_of(StringView set) const
-  {
-    for (int i = 0; i < this->length; ++i)
-      for (int k = 0; k < set.length; ++k)
-        if (this->chars[i] == set.chars[k])
-          return i;
-    return -1;
-  }
   int find_first_not_of(const String& set) const { return this->find_first_not_of(set.c_str()); }
   int find_last_not_of(const String& set) const { return this->find_last_not_of(set.c_str()); }
   int find_first_of(const char* set) const
   {
-    for (int i = 0; i < this->length; ++i)
-      if (String::oneOf(this->chars[i], set))
+    const char* chars = this->data();
+    int length = this->size();
+    for (int i = 0; i < length; ++i)
+      if (String::oneOf(chars[i], set))
         return i;
     return -1;
   }
   int find_first_not_of(const char* set) const
   {
-    for (int i = 0; i < this->length; ++i)
-      if (!String::oneOf(this->chars[i], set))
+    const char* chars = this->data();
+    int length = this->size();
+    for (int i = 0; i < length; ++i)
+      if (!String::oneOf(chars[i], set))
         return i;
     return -1;
   }
   int find_last_not_of(const char* set) const
   {
-    for (int i = this->length; i-- > 0;)
-      if (!String::oneOf(this->chars[i], set))
+    const char* chars = this->data();
+    for (int i = this->size(); i-- > 0;)
+      if (!String::oneOf(chars[i], set))
         return i;
     return -1;
   }
+  bool startsWith(const String& prefix) const
+  {
+    int count = prefix.size();
+    return count <= this->size() && memcmp(this->data(), prefix.data(), count) == 0;
+  }
   bool endsWith(const String& suffix) const
   {
-    return suffix.length <= this->length && memcmp(this->chars + this->length - suffix.length, suffix.chars, suffix.length) == 0;
+    int count = suffix.size(), length = this->size();
+    return count <= length && memcmp(this->data() + length - count, suffix.data(), count) == 0;
   }
-  bool operator==(const char* other) const { return strlen(other) == (size_t)this->length && memcmp(this->c_str(), other, this->length) == 0; }
+
+  bool operator==(const String& other) const
+  {
+    int length = this->size();
+    return length == other.size() && memcmp(this->data(), other.data(), length) == 0;
+  }
+  bool operator!=(const String& other) const { return !(*this == other); }
+  bool operator==(const char* other) const
+  {
+    int length = this->size();
+    return strlen(other) == (size_t)length && memcmp(this->data(), other, length) == 0;
+  }
   bool operator!=(const char* other) const { return !(*this == other); }
   bool operator<(const String& other) const
   {
-    int common = this->length < other.length ? this->length : other.length;
-    int c = common == 0 ? 0 : memcmp(this->chars, other.chars, common);
-    return c != 0 ? c < 0 : this->length < other.length;
-  }
-  String& operator+=(const char* text)
-  {
-    this->append(text);
-    return *this;
+    int length = this->size(), otherLength = other.size();
+    int c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
+    return c != 0 ? c < 0 : length < otherLength;
   }
 
+  // Makes room for `needed` characters (exactly: growth by appending is geometric).
   void reserve(int needed)
   {
-    if (needed + 1 <= this->capacity)
-      return;
-    int newCapacity = this->capacity == 0 ? 16 : this->capacity;
-    while (newCapacity < needed + 1)
-      newCapacity *= 2;
-    char* bigger = (char*)malloc(newCapacity);
-    if (this->chars)
+    if (needed > this->capacity())
+      this->reallocate(needed);
+  }
+
+  // Replaces the contents with count bytes (which may be part of this string).
+  void assign(const char* bytes, int count)
+  {
+    if (count <= this->capacity())
     {
-      memcpy(bigger, this->chars, this->length + 1);
-      free(this->chars);
+      memmove(this->data(), bytes, count);
+      this->setLength(count);
+      return;
     }
-    else
-      bigger[0] = 0;
-    this->chars = bigger;
-    this->capacity = newCapacity;
+    char* block = (char*)malloc(count + 1);
+    memcpy(block, bytes, count);
+    block[count] = 0;
+    this->adopt(block, count, count);
   }
 
   void append(const char* bytes, int count)
   {
     if (count <= 0)
       return;
-    this->reserve(this->length + count);
-    memcpy(this->chars + this->length, bytes, count);
-    this->length += count;
-    this->chars[this->length] = 0;
+    int length = this->size();
+    if (length + count > this->capacity())
+    {
+      this->appendGrowing(bytes, count);
+      return;
+    }
+    memcpy(this->data() + length, bytes, count);
+    this->setLength(length + count);
   }
   void append(const char* text) { this->append(text, (int)strlen(text)); }
-  void append(const String& other) { this->append(other.chars, other.length); }
+  void append(const String& other) { this->append(other.data(), other.size()); }
   // Appends count copies of c.
   void append(int count, char c)
   {
     if (count <= 0)
       return;
-    this->reserve(this->length + count);
-    memset(this->chars + this->length, c, count);
-    this->length += count;
-    this->chars[this->length] = 0;
+    int length = this->size();
+    this->ensureRoom(length + count);
+    memset(this->data() + length, c, count);
+    this->setLength(length + count);
   }
   // Appends count characters of other from index (fewer when other ends before).
   void append(const String& other, int index, int count)
   {
-    if (index >= other.length)
+    int otherLength = other.size();
+    if (index >= otherLength)
       return;
-    if (count > other.length - index)
-      count = other.length - index;
-    this->append(other.chars + index, count);
+    if (count < 0 || count > otherLength - index)
+      count = otherLength - index;
+    this->append(other.data() + index, count);
   }
   void append(char c)
   {
-    this->reserve(this->length + 1);
-    this->chars[this->length] = c;
-    ++this->length;
-    this->chars[this->length] = 0;
+    if (this->isLarge())
+    {
+      int length = this->heapLength;
+      if (length < this->heapCapacity)
+      {
+        this->heapChars[length] = c;
+        this->heapChars[length + 1] = 0;
+        this->heapLength = length + 1;
+        return;
+      }
+    }
+    else
+    {
+      int length = (int)this->smallChars[String::markIndex];
+      if (length < String::smallCapacity)
+      {
+        this->smallChars[length] = c;
+        this->smallChars[length + 1] = 0;
+        this->smallChars[String::markIndex] = (char)(length + 1);
+        return;
+      }
+    }
+    this->appendGrowing(&c, 1);
   }
 
+  String& operator+=(const char* text)
+  {
+    this->append(text);
+    return *this;
+  }
   String& operator+=(const String& other)
   {
     this->append(other);
@@ -307,59 +410,123 @@ struct String
   }
   String operator+(const String& other) const
   {
-    String result(*this);
-    result += other;
+    String result;
+    result.reserve(this->size() + other.size());
+    result.append(*this);
+    result.append(other);
     return result;
   }
   String operator+(char c) const
   {
-    String result(*this);
-    result += c;
+    String result;
+    result.reserve(this->size() + 1);
+    result.append(*this);
+    result.append(c);
     return result;
   }
 
-  bool operator==(const String& other) const
-  {
-    if (this->length != other.length)
-      return false;
-    return memcmp(this->c_str(), other.c_str(), this->length) == 0;
-  }
-  bool operator!=(const String& other) const { return !(*this == other); }
-
-  int find(char c) const
-  {
-    for (int i = 0; i < this->length; ++i)
-      if (this->chars[i] == c)
-        return i;
-    return -1;
-  }
-  bool startsWith(const String& prefix) const
-  {
-    if (prefix.length > this->length)
-      return false;
-    return memcmp(this->c_str(), prefix.c_str(), prefix.length) == 0;
-  }
+  // count characters from start (all the rest when count is negative or runs past the end).
   String substr(int start, int count) const
   {
-    String result;
-    if (start < this->length)
-    {
-      int available = this->length - start;
-      result.append(this->chars + start, count < available ? count : available);
-    }
-    return result;
+    int length = this->size();
+    if (start >= length)
+      return String();
+    int available = length - start;
+    return String(this->data() + start, count >= 0 && count < available ? count : available);
   }
-  void clear()
+  String substr(int start) const { return this->substr(start, -1); }
+  // Empties the string; the capacity stays.
+  void clear() { this->setLength(0); }
+
+  // Internals.
+  void becomeEmpty()
   {
-    this->length = 0;
-    if (this->chars)
-      this->chars[0] = 0;
+    this->smallChars[0] = 0;
+    this->smallChars[String::markIndex] = 0;
+  }
+  // Construction from count bytes.
+  void initialize(const char* bytes, int count)
+  {
+    if (count <= 0)
+    {
+      this->becomeEmpty();
+      return;
+    }
+    if (count <= String::smallCapacity)
+    {
+      memcpy(this->smallChars, bytes, count);
+      this->smallChars[count] = 0;
+      this->smallChars[String::markIndex] = (char)count;
+      return;
+    }
+    char* block = (char*)malloc(count + 1);
+    memcpy(block, bytes, count);
+    block[count] = 0;
+    this->heapChars = block;
+    this->heapLength = count;
+    this->heapCapacity = count;
+    this->smallChars[String::markIndex] = (char)String::largeMark;
+  }
+  // Sets the length and writes the terminating zero after it.
+  void setLength(int length)
+  {
+    if (this->isLarge())
+    {
+      this->heapLength = length;
+      this->heapChars[length] = 0;
+    }
+    else
+    {
+      this->smallChars[length] = 0;
+      this->smallChars[String::markIndex] = (char)length;
+    }
+  }
+  // Takes block (holding length characters and their terminator, room for capacity) as the storage.
+  void adopt(char* block, int length, int capacity)
+  {
+    if (this->isLarge())
+      free(this->heapChars);
+    this->heapChars = block;
+    this->heapLength = length;
+    this->heapCapacity = capacity;
+    this->smallChars[String::markIndex] = (char)String::largeMark;
+  }
+  // Moves the characters into a heap block with room for newCapacity.
+  void reallocate(int newCapacity)
+  {
+    int length = this->size();
+    char* block = (char*)malloc(newCapacity + 1);
+    memcpy(block, this->data(), length + 1);
+    this->adopt(block, length, newCapacity);
+  }
+  // Geometric growth: appending n characters one by one costs O(n) in total.
+  void ensureRoom(int needed)
+  {
+    int capacity = this->capacity();
+    if (needed > capacity)
+      this->reallocate(needed > capacity * 2 ? needed : capacity * 2);
+  }
+  // append() when the characters do not fit: bytes may point into this string, so the old block
+  // is released only after they are copied.
+  void appendGrowing(const char* bytes, int count)
+  {
+    int length = this->size(), capacity = this->capacity();
+    int newLength = length + count;
+    int newCapacity = newLength > capacity * 2 ? newLength : capacity * 2;
+    char* block = (char*)malloc(newCapacity + 1);
+    memcpy(block, this->data(), length);
+    memcpy(block + length, bytes, count);
+    block[newLength] = 0;
+    this->adopt(block, newLength, newCapacity);
   }
 };
 
 String operator+(const char* left, const String& right)
 {
-  String result(left);
+  int leftLength = (int)strlen(left);
+  String result;
+  result.reserve(leftLength + right.size());
+  result.append(left, leftLength);
   result.append(right);
   return result;
 }

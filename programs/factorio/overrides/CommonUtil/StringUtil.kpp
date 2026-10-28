@@ -3,6 +3,11 @@
 // reverse iterators. Every definition here replaces the converted one of the same name.
 extern "C" import "windows.h";
 
+// Global aliases for UTF8 constants that were C macros (used without namespace prefix).
+const char* UTF8_BOM = "\xEF\xBB\xBF";
+const int UTF8_BOM_LENGTH = 3;
+const char* UTF8_BULLET = "\xE2\x80\xA2";
+
 void wstringConvert() = delete; // codecvt is gone: widen and narrow below do the work
 
 // ssprintf: the C runtime's vsnprintf into one static buffer (the original had a thread_local

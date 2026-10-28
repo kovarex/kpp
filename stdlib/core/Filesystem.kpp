@@ -87,6 +87,12 @@ struct Filesystem
     Path operator/(const Path& other) const;
     Path operator/(const char* other) const;
     Path operator/(const String& other) const;
+    Path& operator/=(const Path& other);
+    Path& operator/=(const char* other);
+    Path& operator/=(const String& other);
+    Path& operator+=(const Path& other);
+    Path& operator+=(const char* other);
+    Path& operator+=(const String& other);
     bool operator==(const Path& other) const;
     bool operator!=(const Path& other) const;
     bool operator<(const Path& other) const;

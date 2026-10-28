@@ -1,0 +1,2 @@
+// Color32: enum class from Graphics/Color32.hpp, forward-declared in Color.hpp.
+enum class Color32 : uint32_t { None = 0, Black = 0xFF000000u, White = 0xFFFFFFFFu };

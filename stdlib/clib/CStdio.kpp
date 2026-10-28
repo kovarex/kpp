@@ -20,3 +20,8 @@ extern "C" int puts(const char* str);
 extern "C" int remove(const char* filename);
 extern "C" int rename(const char* oldname, const char* newname);
 extern "C" void* tmpfile();
+
+extern "C" void* __acrt_iob_func(unsigned index);
+void* stdin  = __acrt_iob_func(0);
+void* stdout = __acrt_iob_func(1);
+void* stderr = __acrt_iob_func(2);

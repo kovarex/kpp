@@ -88,6 +88,10 @@ template<typename From, typename To> constexpr bool ConvertibleTo = true;
 template<typename T> constexpr bool EqualityComparable = true;
 
 // Namespace-like stubs for rarely-used sub-namespaces.
-struct Numbers {};
+struct Numbers
+{
+  template<typename T> static constexpr T pi_v = T(3.14159265358979323846);
+  template<typename T> static constexpr T e_v = T(2.71828182845904523536);
+};
 struct Ranges {};
 struct Views {};

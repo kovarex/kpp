@@ -14,7 +14,7 @@ struct StringView
   StringView() {}
   implicit StringView(const char* text) : chars(text), length(text ? (int)strlen(text) : 0) {}
   StringView(const char* text, int count) : chars(text), length(count) {}
-  implicit StringView(const String& text) : chars(text.chars), length(text.length) {}
+  implicit StringView(const String& text) : chars(text.data()), length(text.size()) {}
 
   int size() const { return this->length; }
   const char* data() const { return this->chars; }
