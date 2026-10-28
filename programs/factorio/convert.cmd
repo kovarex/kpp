@@ -17,6 +17,10 @@ type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include
 %KPPC% --no-std --quiet --convert kpp --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui %SRC% || exit /b 1
 type kpp\CONVERSION.md | findstr /B "Files -"
+rem Remove stale top-level directories left by older conversions (the converter now writes src\
+rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).
+rem Keep CommonUtil, Agui, Util (from the libraries) and src itself.
+if exist kpp\src for /d %%d in (kpp\src\*) do if exist "kpp\%%~nxd" if /i not "%%~nxd"=="src" if /i not "%%~nxd"=="CommonUtil" if /i not "%%~nxd"=="Agui" if /i not "%%~nxd"=="Util" rd /s /q "kpp\%%~nxd"
 rem Copy stubs for types that are outside the converted subset but needed for codegen.
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
 echo == kppc on the converted sources

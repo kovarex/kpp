@@ -958,6 +958,27 @@ namespace
           counts.add("Vector renamed to Vector2D");
           continue;
         }
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Map" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        {
+          // The game's `class Map` is GameMap in Kpp, where Map<K,V> is the library's std::map.
+          replace(t.offset, endOffset(i) - t.offset, "GameMap");
+          counts.add("Map renamed to GameMap");
+          continue;
+        }
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Optional" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        {
+          // The game's sentinel-based `Optional<T, empty>` is GameOptional in Kpp, where Optional<T> is the library's std::optional.
+          replace(t.offset, endOffset(i) - t.offset, "GameOptional");
+          counts.add("Optional renamed to GameOptional");
+          continue;
+        }
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Pair" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        {
+          // The game's `Pair<K,V>` is GamePair in Kpp, where Pair<A,B> is the library's std::pair.
+          replace(t.offset, endOffset(i) - t.offset, "GamePair");
+          counts.add("Pair renamed to GamePair");
+          continue;
+        }
         if (t.getKind() == TokenKind::Identifier && i >= 2 && toks[i - 1].is(P::Tilde) && (toks[i - 2].is(P::Dot) || toks[i - 2].is(P::Arrow)) &&
             i + 1 < toks.size() && (toks[i + 1].is(P::LParen) || toks[i + 1].is(P::Less)))
         {
