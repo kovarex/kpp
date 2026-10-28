@@ -141,6 +141,7 @@ namespace
     std::unordered_map<Decl*, Local> locals;
     std::unordered_map<Decl*, std::vector<Local>> packLocals; // one local per element of a parameter pack
     std::unordered_map<const Ty*, StructInfo> structs;
+    std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
     std::unordered_map<Decl*, std::string> globals;
     std::unordered_map<Decl*, BitfieldInfo> bitfieldOf; // bit-field members of every laid-out class
     bool dyncastEmitted = false; // the @kpp.dyncast helper is in `decls`
@@ -235,6 +236,8 @@ namespace
 
     // --- diagnostics ---
 
+    std::unordered_map<const ParsedFile*, std::vector<uint32_t>> lineStarts; // per file: the offset each line starts at
+
     void error(Node* at, const std::string& message)
     {
       std::string where = "?";
@@ -242,10 +245,15 @@ namespace
       {
         const std::vector<Token>& toks = *currentFile->tokens;
         const Token& t = toks[std::min<size_t>(at->token, toks.size() - 1)];
-        uint32_t line = 1;
-        for (uint32_t i = 0; i < t.offset && i < currentFile->text.size(); ++i)
-          if (currentFile->text[i] == '\n')
-            ++line;
+        std::vector<uint32_t>& starts = lineStarts[currentFile];
+        if (starts.empty())
+        {
+          starts.push_back(0);
+          for (uint32_t i = 0; i < currentFile->text.size(); ++i)
+            if (currentFile->text[i] == '\n')
+              starts.push_back(i + 1);
+        }
+        size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), t.offset) - starts.begin()); // lines starting at or before the token
         where = currentFile->path + ":" + std::to_string(line);
       }
       result.errors.push_back(where + ": " + message);
@@ -410,10 +418,15 @@ namespace
 
     StructInfo& structFor(const Ty* classTy, Node* at)
     {
+      if (auto known = structsByType.find(classTy); known != structsByType.end())
+        return *known->second;
       const Ty* key = canonicalClass(classTy, at);
       auto it = structs.find(key);
       if (it != structs.end())
+      {
+        structsByType.emplace(classTy, &it->second);
         return it->second;
+      }
       ClassDecl* c = static_cast<ClassDecl*>(key->decl);
       TemplateArgs args = global.classArgsOf(key);
       if (c->keyword == Kw::union_)
@@ -768,15 +781,40 @@ namespace
 
     // --- class metadata: constructors, destructors ---
 
+    // The constructor overload resolution picks for a class and argument types, chosen once.
+    struct ConstructorKey
+    {
+      const Ty* classTy;
+      std::vector<const Ty*> argTypes;
+      bool operator==(const ConstructorKey&) const = default;
+    };
+    struct ConstructorKeyHash
+    {
+      size_t operator()(const ConstructorKey& k) const
+      {
+        size_t h = std::hash<const void*>()(k.classTy);
+        for (const Ty* a : k.argTypes)
+          h = (h * 1000003) ^ std::hash<const void*>()(a);
+        return h;
+      }
+    };
+    std::unordered_map<ConstructorKey, FunctionDecl*, ConstructorKeyHash> constructors;
+
     FunctionDecl* findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at)
     {
-      ClassDecl* c = classDef(classTy->decl, at);
-      TemplateArgs args = global.classArgsOf(canonicalClass(classTy, at));
+      const Ty* canonical = canonicalClass(classTy, at);
+      ConstructorKey key{canonical, argTypes};
+      if (auto it = constructors.find(key); it != constructors.end())
+        return it->second;
+      auto* c = static_cast<ClassDecl*>(canonical->decl);
+      TemplateArgs args = global.classArgsOf(canonical);
       std::vector<FunctionDecl*> candidates;
       for (Decl* m : c->members)
         if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
           candidates.push_back(static_cast<FunctionDecl*>(m));
-      return global.chooseOverload(candidates, argTypes, args, nullptr);
+      FunctionDecl* chosen = global.chooseOverload(candidates, argTypes, args, nullptr);
+      constructors.emplace(std::move(key), chosen);
+      return chosen;
     }
 
     std::vector<const Ty*> argTypesOf(Span<Expr*> args)
