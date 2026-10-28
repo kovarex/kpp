@@ -74,10 +74,11 @@ inline const Ty* argumentType(const Expr* e, const Ty* t, TypeTable& types)
   return t->isReference() ? t : types.lref(t);
 }
 
-// The type a brace list `{a, b, c}` presents to overload resolution: InitializerList<E> of the
-// first element's type (null when the elements are untyped or there is no such class). Only for
-// ranking and deduction: the expression itself stays untyped, since a brace list also initialises
-// aggregates and calls constructors.
+// The type a brace list `{a, b, c}` presents to overload resolution: the brace list type
+// (TypeTable::braceList) of the first element's type, the first of a pack's for `{args...}` (null
+// when the elements are untyped or there is no such class). Only for ranking and deduction: the
+// expression itself stays untyped, since a brace list also initialises aggregates and calls
+// constructors.
 inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& types)
 {
   if (!e || e->kind != NodeKind::BraceInitExpr || !initializerList)
@@ -85,8 +86,14 @@ inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& 
   auto* b = static_cast<const BraceInitExpr*>(e);
   if (b->args.empty() || !b->args[0] || !b->args[0]->ty || !b->args[0]->ty->isKnown())
     return nullptr;
-  const Ty* element = types.decay(b->args[0]->ty);
-  return types.classType(initializerList, Span<const Ty*>{&element, 1});
+  const Ty* first = b->args[0]->ty;
+  if (first->kind == TyKind::Pack)
+  {
+    if (first->args.empty() || !first->args[0] || !first->args[0]->isKnown())
+      return nullptr;
+    first = first->args[0];
+  }
+  return types.braceList(initializerList, types.decay(first));
 }
 
 struct ResolveStats

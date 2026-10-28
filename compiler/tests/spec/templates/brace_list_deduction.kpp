@@ -1,0 +1,34 @@
+// spec: a brace list argument deduces only an InitializerList<P> parameter; for any other parameter it is a non-deduced context
+// found in CommonUtil StringUtil: concat(const Args&...) calls concat({args...}) beside concat(InitializerList<StringView>), which must win
+template<typename T>
+int pick(const T& value) { return 1; }
+int pick(InitializerList<int> values) { return 2; }
+
+template<typename T>
+T sum(InitializerList<T> values)
+{
+  T total = T();
+  for (const T& v : values)
+    total += v;
+  return total;
+}
+
+// The elements convert to the list's element type: a const char* and a String to StringView.
+int totalLength(InitializerList<StringView> parts)
+{
+  int length = 0;
+  for (StringView part : parts)
+    length += part.size();
+  return length;
+}
+template<typename... Args>
+int totalLength(const Args&... args) { return 100; }
+
+int main()
+{
+  String text = "cde";
+  println("{} {}", pick({1, 2}), pick(5));
+  println("{} {}", sum({1, 2, 3}), sum({0.5, 0.25}));
+  println("{} {}", totalLength({"ab", text}), totalLength("ab", text));
+  return 0;
+}

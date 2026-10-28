@@ -2739,6 +2739,14 @@ struct GlobalScope::Impl
       return;
     if (pattern->kind == TyKind::DependentMember)
       return; // `typename T::Unit` is not a deduced context
+    if (arg->isBraceList())
+    {
+      // `{a, b}` deduces only an InitializerList<P> parameter (its P from the elements); for
+      // any other parameter, `const T&` included, it is a non-deduced context.
+      const Ty* p = types.stripRef(pattern);
+      if (p->kind != TyKind::Class || p->decl != arg->decl)
+        return;
+    }
     if (pattern->kind == TyKind::Param && !pattern->args.empty())
     {
       // `Container<T>` (Container a template template parameter) against `Vector<int>`: the
@@ -2911,6 +2919,8 @@ struct GlobalScope::Impl
             for (size_t j = i; j < argTypes.size(); ++j)
             {
               const Ty* at = argTypes[j];
+              if (at && at->isBraceList())
+                return; // `const Args&...` given `{a, b}`: a non-deduced context, the pack stays unbound
               if (!at)
                 elems.push_back(types.unknown());
               else if (forwarding && at->kind == TyKind::LRef)
@@ -3095,6 +3105,16 @@ struct GlobalScope::Impl
     const Ty* a = types.stripRef(arg);
     if (isInitializerList(a) && !isInitializerList(types.stripRef(param)))
       return 2; // a brace list: it converts to anything else through its elements, which the code generator checks
+    if (a->isBraceList())
+    {
+      // `{"ab", text}` for an InitializerList<StringView>: as its elements convert (the first
+      // one's type stands for them all).
+      const Ty* p = types.unqualified(types.stripRef(param));
+      if (p->args.empty() || a->args.empty())
+        return 2;
+      int r = conversionRank(a->args[0], p->args[0], depth + 1);
+      return r >= NotViable ? NotViable : r;
+    }
     if (param->isReference())
     {
       const Ty* pt = param->inner;

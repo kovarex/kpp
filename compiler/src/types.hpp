@@ -20,7 +20,8 @@ enum class TyKind : uint8_t
   RRef,    // inner
   Array,   // inner, count (0 = unknown bound)
   Function,// inner = result, args = parameters, variadic
-  Class,   // decl = ClassDecl (definition if known), args = template arguments (empty for non-templates)
+  Class,   // decl = ClassDecl (definition if known), args = template arguments (empty for non-templates);
+           // count = 1 marks a brace list argument (TypeTable::braceList)
   Enum,    // decl = EnumDecl
   Param,   // decl = TemplateParamDecl: dependent on a template parameter
   DependentMember, // inner = a dependent type, value = a member's symbol: `T::Unit`, resolved when T is substituted
@@ -53,6 +54,7 @@ struct Ty
   bool isArithmetic() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Float; }
   bool isIntegral() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Enum; }
   bool isKnown() const { return kind != TyKind::Unknown; }
+  bool isBraceList() const { return kind == TyKind::Class && count == 1; }
 };
 
 class TypeTable
@@ -78,6 +80,10 @@ public:
   const Ty* array(const Ty* element, uint32_t count);
   const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic);
   const Ty* classType(Decl* decl, Span<const Ty*> args);
+  // A brace list argument `{a, b}` as overload resolution sees it: InitializerList<element>, but
+  // a type of its own, since it deduces only an InitializerList<P> parameter (C++: any other
+  // parameter is a non-deduced context) where an InitializerList object deduces any.
+  const Ty* braceList(Decl* initializerList, const Ty* element);
   const Ty* enumType(Decl* decl);
   const Ty* param(Decl* decl);
   const Ty* param(Decl* decl, Span<const Ty*> args); // `Container<T>`: a template template parameter applied to arguments

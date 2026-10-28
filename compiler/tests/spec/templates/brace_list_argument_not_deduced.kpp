@@ -1,6 +1,6 @@
 // spec: a brace list argument deduces no template parameter: `Text::totalLength({args...})` in a variadic template picks the InitializerList<StringView> overload
 // found in CommonUtil StringUtil (concat and concatInto, every StringUtil::concat call in the game): kppc deduces Args = {InitializerList<E>} from the brace list, picks the variadic template again and recurses with ever deeper types until the instantiation depth limit
-// pending: a brace list argument deduces InitializerList<E> for a template parameter that is not an InitializerList
+// pending: the overload is right now (templates/brace_list_deduction); codegen builds `{args...}` of a pack of several as one element
 namespace Text
 {
   template<typename... Args>
