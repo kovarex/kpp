@@ -27,4 +27,7 @@ Those of Map and Set without the multi variants: construction, size, empty, begi
 contains, count, lowerBound/lower_bound, upperBound/upper_bound, equal_range, operator[] and at
 (FastMap), insert (returning `Pair<iterator, bool>`), emplace, try_emplace (FastMap), insert(key,
 value) (FastMap), erase(key) (returning the number removed), erase(position) (returning the next
-position), clear. `erase(key)` may be given a key that refers to an entry of this container.
+position), clear, rbegin, rend, insert(hint, entry) and emplace_hint (the hint is not used: O(log n)),
+insert(first, last), merge(other) (moving the entries whose keys are absent here; moving, so
+it invalidates pointers into both), swap. `erase(key)` may be given a key that refers to an entry
+of this container. There are no node handles (extract): entries do not have nodes of their own.

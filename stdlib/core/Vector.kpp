@@ -6,7 +6,7 @@ struct Vector
 {
   T* items = nullptr;
   int length = 0;
-  int capacity = 0;
+  int allocated = 0; // the capacity: elements that fit in the block
 
   using iterator = T*;
   using const_iterator = const T*;
@@ -25,11 +25,15 @@ struct Vector
       this->push_back(item);
   }
   Vector(const Vector<T>& other) { this->appendCopies(other.items, other.length); }
-  Vector(Vector<T>&& other) : items(other.items), length(other.length), capacity(other.capacity)
+  // count copies of value.
+  Vector(int count, const T& value) { this->assign(count, value); }
+  // Copies of [first, last).
+  Vector(const T* first, const T* last) { this->appendCopies(first, int(last - first)); }
+  Vector(Vector<T>&& other) : items(other.items), length(other.length), allocated(other.allocated)
   {
     other.items = nullptr;
     other.length = 0;
-    other.capacity = 0;
+    other.allocated = 0;
   }
   ~Vector()
   {
@@ -55,14 +59,15 @@ struct Vector
       free(this->items);
     this->items = other.items;
     this->length = other.length;
-    this->capacity = other.capacity;
+    this->allocated = other.allocated;
     other.items = nullptr;
     other.length = 0;
-    other.capacity = 0;
+    other.allocated = 0;
     return *this;
   }
 
   int size() const { return this->length; }
+  int capacity() const { return this->allocated; }
   T* data() { return this->items; }
   const T* data() const { return this->items; }
   // A Vector is a Span of its elements (what passing a std::vector to a std::span parameter does).
@@ -70,6 +75,7 @@ struct Vector
   operator Span<const T>() const { return Span<const T>(this->items, this->length); }
   bool empty() const { return this->length == 0; }
   T& operator[](int index) { return this->items[index]; }
+  const T& operator[](int index) const { return this->items[index]; }
   // Equal when of the same length with every element equal.
   bool operator==(const Vector& other) const
   {
@@ -82,6 +88,7 @@ struct Vector
   }
   bool operator!=(const Vector& other) const { return !(*this == other); }
   T& back() { return this->items[this->length - 1]; }
+  const T& back() const { return this->items[this->length - 1]; }
   T* begin() { return this->items; }
   T* end() { return this->items + this->length; }
   const T* begin() const { return this->items; }
@@ -95,10 +102,54 @@ struct Vector
   ReverseIterator<const T> crbegin() const { return ReverseIterator<const T>(this->items + this->length); }
   ReverseIterator<const T> crend() const { return ReverseIterator<const T>(this->items); }
 
+  // Lets go of unused capacity: afterwards capacity() == size().
+  void shrink_to_fit()
+  {
+    if (this->allocated == this->length)
+      return;
+    if (this->length == 0)
+    {
+      free(this->items);
+      this->items = nullptr;
+      this->allocated = 0;
+      return;
+    }
+    this->moveToBlock(this->length);
+  }
+  void swap(Vector<T>& other)
+  {
+    ::swap(this->items, other.items);
+    ::swap(this->length, other.length);
+    ::swap(this->allocated, other.allocated);
+  }
+  // Replaces the contents with count copies of value (which may be an element) / with copies of
+  // [first, last) (which must not be elements).
+  void assign(int count, const T& value)
+  {
+    T copy(value);
+    this->clear();
+    this->reserve(count);
+    for (int i = 0; i < count; ++i)
+      new (this->items + i) T(copy);
+    this->length = count;
+  }
+  void assign(const T* first, const T* last)
+  {
+    this->clear();
+    this->appendCopies(first, int(last - first));
+  }
+  void assign(InitializerList<T> list)
+  {
+    this->clear();
+    this->reserve(list.size());
+    for (const T& item : list)
+      this->push_back(item);
+  }
+
   // Room for `needed` elements, exactly.
   void reserve(int needed)
   {
-    if (needed > this->capacity)
+    if (needed > this->allocated)
       this->moveToBlock(needed);
   }
 
@@ -127,6 +178,7 @@ struct Vector
     return this->items[this->length - 1];
   }
   T& front() { return this->items[0]; }
+  const T& front() const { return this->items[0]; }
   // New elements are default-constructed (zero for numbers).
   void resize(int newLength)
   {
@@ -183,6 +235,17 @@ struct Vector
   // `v.emplace(position, args...)`: the element built from args, before position (std::vector::emplace).
   template<typename... Args>
   T* emplace(T* position, Args&&... args) { return this->insert(position, T(forward<Args>(args)...)); }
+  // Inserts count copies of value (which may be an element) before position; returns the
+  // position of the first one.
+  T* insert(T* position, int count, const T& value)
+  {
+    T copy(value);
+    int index = int(position - this->items);
+    this->openSlots(index, count);
+    for (int i = 0; i < count; ++i)
+      new (this->items + index + i) T(copy);
+    return this->items + index;
+  }
   // Inserts copies of [first, last), which must not be elements of this vector; returns the
   // position of the first one.
   T* insert(T* position, const T* first, const T* last)
@@ -263,17 +326,17 @@ struct Vector
       free(this->items);
     }
     this->items = block;
-    this->capacity = newCapacity;
+    this->allocated = newCapacity;
   }
   // Geometric growth (doubling, at least 4): n appends cost O(n) element moves in total.
   int grownCapacity(int needed) const
   {
-    int doubled = this->capacity < 2 ? 4 : this->capacity * 2;
+    int doubled = this->allocated < 2 ? 4 : this->allocated * 2;
     return needed > doubled ? needed : doubled;
   }
   void ensureRoom(int needed)
   {
-    if (needed > this->capacity)
+    if (needed > this->allocated)
       this->moveToBlock(this->grownCapacity(needed));
   }
   // Where the next appended element goes. When the vector is full that is in grown, a new block:
@@ -281,7 +344,7 @@ struct Vector
   // the new element is constructed.
   T* appendSlot(T*& grown)
   {
-    if (this->length < this->capacity)
+    if (this->length < this->allocated)
     {
       grown = nullptr;
       return this->items + this->length;

@@ -54,14 +54,18 @@ growth; a text argument may point into this String):
 Searching (each returns an index or npos; `from` is where the search starts, clamped to 0):
 - `find(text, from)`, `find(c, from)`: first occurrence at or after from. An empty text is found
   at from when from <= size().
-- `rfind(c)`: last occurrence. `find_first_of(set)`, `find_first_not_of(set)`,
-  `find_last_not_of(set)`: first/last byte that is (not) in set.
+- `rfind(text, from)`, `rfind(c, from)`: the last occurrence starting at or before from (anywhere
+  when from is npos or omitted). `find_first_of(set)`, `find_first_not_of(set)`,
+  `find_last_of(set)`, `find_last_not_of(set)`: first/last byte that is (not) in set.
 - `startsWith(prefix)`, `endsWith(suffix)` (Kpp additions; C++20 spells them starts_with/ends_with).
 
 Producing new strings:
 - `substr(start, count)`: count bytes from start (all the rest when count is negative or runs
   past the end). Throws OutOfRange when start > size(); start == size() gives an empty String.
 - `a + b` for any two of String, `const char*` (at least one String) and char.
+
+`compare(other)`: negative, zero or positive as this string orders before, equal to or after
+other by `<`. `swap(other)`: exchanges the contents.
 
 Comparison: `==`, `!=` byte-wise with the same length; `<` byte-wise lexicographic (as unsigned
 bytes), a proper prefix before the longer string. Comparison with a `const char*` treats it as its

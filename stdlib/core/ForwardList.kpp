@@ -1,24 +1,68 @@
-// A singly-linked list (what std::forward_list converts to).
+// Kpp standard library: ForwardList<T>, a singly linked list (what std::forward_list converts
+// to). Specified in docs/stdlib/list.md: each element in a node of its own, so inserting and
+// erasing never move or invalidate other elements. Operations work after a position, since a node
+// only knows the next one; before_begin() is the position before the first element.
+struct ForwardLinks
+{
+  ForwardLinks* next = nullptr;
+};
+
+template<typename T>
+struct ForwardNode : ForwardLinks
+{
+  T value;
+};
+
+template<typename T>
+struct ForwardIterator
+{
+  using value_type = T;
+
+  ForwardLinks* node = nullptr;
+
+  ForwardIterator() {}
+  explicit ForwardIterator(ForwardLinks* node) : node(node) {}
+
+  T& operator*() const { return ((ForwardNode<T>*)this->node)->value; }
+  T* operator->() const { return &((ForwardNode<T>*)this->node)->value; }
+  bool operator==(const ForwardIterator<T>& other) const { return this->node == other.node; }
+  bool operator!=(const ForwardIterator<T>& other) const { return this->node != other.node; }
+  ForwardIterator<T>& operator++()
+  {
+    this->node = this->node->next;
+    return *this;
+  }
+  ForwardIterator<T> operator++(int)
+  {
+    ForwardIterator<T> before = *this;
+    this->node = this->node->next;
+    return before;
+  }
+};
+
 template<typename T>
 struct ForwardList
 {
-  struct Node
-  {
-    T value;
-    Node* next;
-    Node(const T& v, Node* n) : value(v), next(n) {}
-    Node(T&& v, Node* n) : value(move(v)), next(n) {}
-  };
+  ForwardLinks beforeHead; // its next is the first node; end() is null
 
-  Node* head = nullptr;
-
+  using iterator = ForwardIterator<T>;
+  using const_iterator = ForwardIterator<T>;
   using value_type = T;
 
   ForwardList() {}
+  implicit ForwardList(InitializerList<T> items)
+  {
+    ForwardIterator<T> last = this->before_begin();
+    for (const T& item : items)
+      last = this->insert_after(last, item);
+  }
   ForwardList(const ForwardList<T>& other) { this->copyFrom(other); }
-  ForwardList(ForwardList<T>&& other) : head(other.head) { other.head = nullptr; }
+  ForwardList(ForwardList<T>&& other)
+  {
+    this->beforeHead.next = other.beforeHead.next;
+    other.beforeHead.next = nullptr;
+  }
   ~ForwardList() { this->clear(); }
-
   ForwardList<T>& operator=(const ForwardList<T>& other)
   {
     if (this != &other)
@@ -33,56 +77,107 @@ struct ForwardList
     if (this != &other)
     {
       this->clear();
-      this->head = other.head;
-      other.head = nullptr;
+      this->beforeHead.next = other.beforeHead.next;
+      other.beforeHead.next = nullptr;
     }
     return *this;
   }
 
-  bool empty() const { return this->head == nullptr; }
-  T& front() { return this->head->value; }
-  const T& front() const { return this->head->value; }
+  bool empty() const { return this->beforeHead.next == nullptr; }
+  T& front() const { return ((ForwardNode<T>*)this->beforeHead.next)->value; }
+  ForwardIterator<T> before_begin() const { return ForwardIterator<T>((ForwardLinks*)&this->beforeHead); }
+  ForwardIterator<T> begin() const { return ForwardIterator<T>(this->beforeHead.next); }
+  ForwardIterator<T> end() const { return ForwardIterator<T>(nullptr); }
 
-  void push_front(const T& value) { this->head = new Node(value, this->head); }
-  void push_front(T&& value) { this->head = new Node(move(value), this->head); }
-  void pop_front()
+  void push_front(const T& value) { this->insert_after(this->before_begin(), value); }
+  void push_front(T&& value) { this->insert_after(this->before_begin(), move(value)); }
+  // Builds its element itself (kppc cannot forward a pack into another function template yet: spec templates/forward_pack_to_function_template).
+  template<typename... Args>
+  T& emplace_front(Args&&... args)
   {
-    Node* old = this->head;
-    this->head = old->next;
-    delete old;
+    ForwardNode<T>* node = (ForwardNode<T>*)malloc(sizeof(ForwardNode<T>));
+    new (&node->value) T(forward<Args>(args)...);
+    node->next = this->beforeHead.next;
+    this->beforeHead.next = node;
+    return node->value;
+  }
+  void pop_front() { this->erase_after(this->before_begin()); }
+
+  // Inserts after position; returns the new element's position.
+  ForwardIterator<T> insert_after(ForwardIterator<T> position, const T& value) { return this->emplace_after(position, value); }
+  ForwardIterator<T> insert_after(ForwardIterator<T> position, T&& value) { return this->emplace_after(position, move(value)); }
+  template<typename... Args>
+  ForwardIterator<T> emplace_after(ForwardIterator<T> position, Args&&... args)
+  {
+    ForwardNode<T>* node = (ForwardNode<T>*)malloc(sizeof(ForwardNode<T>));
+    new (&node->value) T(forward<Args>(args)...);
+    node->next = position.node->next;
+    position.node->next = node;
+    return ForwardIterator<T>(node);
+  }
+  // Removes the element after position; returns the position after the removed one.
+  ForwardIterator<T> erase_after(ForwardIterator<T> position)
+  {
+    ForwardLinks* removed = position.node->next;
+    position.node->next = removed->next;
+    this->destroyNode(removed);
+    return ForwardIterator<T>(position.node->next);
+  }
+  // Removes the elements strictly between first and last; returns last.
+  ForwardIterator<T> erase_after(ForwardIterator<T> first, ForwardIterator<T> last)
+  {
+    while (first.node->next != last.node)
+      this->erase_after(first);
+    return last;
   }
 
+  // Removes every element equal to value; returns how many.
+  int remove(const T& value)
+  {
+    T copy(value); // value may be an element
+    int removed = 0;
+    ForwardIterator<T> previous = this->before_begin();
+    while (previous.node->next)
+    {
+      if (((ForwardNode<T>*)previous.node->next)->value == copy)
+      {
+        this->erase_after(previous);
+        ++removed;
+      }
+      else
+        ++previous;
+    }
+    return removed;
+  }
+  void reverse()
+  {
+    ForwardLinks* reversed = nullptr;
+    ForwardLinks* node = this->beforeHead.next;
+    while (node)
+    {
+      ForwardLinks* next = node->next;
+      node->next = reversed;
+      reversed = node;
+      node = next;
+    }
+    this->beforeHead.next = reversed;
+  }
   void clear()
   {
-    while (this->head)
-    {
-      Node* next = this->head->next;
-      delete this->head;
-      this->head = next;
-    }
+    while (this->beforeHead.next)
+      this->erase_after(this->before_begin());
   }
 
-  struct Iterator
+  // Internals.
+  void destroyNode(ForwardLinks* node)
   {
-    Node* node;
-    explicit Iterator(Node* n) : node(n) {}
-    T& operator*() { return this->node->value; }
-    Iterator& operator++() { this->node = this->node->next; return *this; }
-    bool operator==(const Iterator& other) const { return this->node == other.node; }
-    bool operator!=(const Iterator& other) const { return this->node != other.node; }
-  };
-
-  using iterator = Iterator;
-  Iterator begin() { return Iterator(this->head); }
-  Iterator end() { return Iterator(nullptr); }
-
+    ((ForwardNode<T>*)node)->value.~T();
+    free(node);
+  }
   void copyFrom(const ForwardList<T>& other)
   {
-    Node** tail = &this->head;
-    for (Node* n = other.head; n; n = n->next)
-    {
-      *tail = new Node(n->value, nullptr);
-      tail = &(*tail)->next;
-    }
+    ForwardIterator<T> last = this->before_begin();
+    for (const T& value : other)
+      last = this->insert_after(last, value);
   }
 };

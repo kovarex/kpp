@@ -34,6 +34,8 @@ void listUnlink(ListLinks* node)
 template<typename T>
 struct ListIterator
 {
+  using value_type = T;
+
   ListLinks* node = nullptr;
 
   ListIterator() {}
@@ -122,15 +124,34 @@ struct List
   T& back() const { return ((ListNode<T>*)this->sentinel.prev)->value; }
   ListIterator<T> begin() const { return ListIterator<T>(this->sentinel.next); }
   ListIterator<T> end() const { return ListIterator<T>((ListLinks*)&this->sentinel); }
+  ReverseOf<ListIterator<T>> rbegin() const { return ReverseOf<ListIterator<T>>(this->end()); }
+  ReverseOf<ListIterator<T>> rend() const { return ReverseOf<ListIterator<T>>(this->begin()); }
+  void swap(List<T>& other)
+  {
+    List<T> held(move(other));
+    other = move(*this);
+    *this = move(held);
+  }
 
   void push_back(const T& value) { this->emplace(this->end(), value); }
   void push_back(T&& value) { this->emplace(this->end(), move(value)); }
   void push_front(const T& value) { this->emplace(this->begin(), value); }
   void push_front(T&& value) { this->emplace(this->begin(), move(value)); }
+  // Each emplace builds its element itself (kppc cannot forward a pack into another function template yet: spec templates/forward_pack_to_function_template).
   template<typename... Args>
-  T& emplace_back(Args&&... args) { return *this->emplace(this->end(), forward<Args>(args)...); }
+  T& emplace_back(Args&&... args)
+  {
+    ListNode<T>* node = this->allocateNode();
+    new (&node->value) T(forward<Args>(args)...);
+    return *this->linkNode(this->end(), node);
+  }
   template<typename... Args>
-  T& emplace_front(Args&&... args) { return *this->emplace(this->begin(), forward<Args>(args)...); }
+  T& emplace_front(Args&&... args)
+  {
+    ListNode<T>* node = this->allocateNode();
+    new (&node->value) T(forward<Args>(args)...);
+    return *this->linkNode(this->begin(), node);
+  }
   void pop_back() { this->erase(ListIterator<T>(this->sentinel.prev)); }
   void pop_front() { this->erase(this->begin()); }
 
@@ -140,11 +161,9 @@ struct List
   template<typename... Args>
   ListIterator<T> emplace(ListIterator<T> position, Args&&... args)
   {
-    ListNode<T>* node = (ListNode<T>*)malloc(sizeof(ListNode<T>));
+    ListNode<T>* node = this->allocateNode();
     new (&node->value) T(forward<Args>(args)...);
-    listLinkBefore(position.node, node);
-    ++this->length;
-    return ListIterator<T>(node);
+    return this->linkNode(position, node);
   }
   // Removes the element at position; returns the position after it.
   ListIterator<T> erase(ListIterator<T> position)
@@ -282,6 +301,13 @@ struct List
   }
 
   // Internals.
+  ListNode<T>* allocateNode() { return (ListNode<T>*)malloc(sizeof(ListNode<T>)); }
+  ListIterator<T> linkNode(ListIterator<T> position, ListNode<T>* node)
+  {
+    listLinkBefore(position.node, node);
+    ++this->length;
+    return ListIterator<T>(node);
+  }
   void becomeEmpty()
   {
     this->sentinel.prev = &this->sentinel;

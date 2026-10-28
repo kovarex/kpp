@@ -45,6 +45,13 @@ O(n), amortized O(1) per insert.
 - `emplace(args...)`, `try_emplace(key, args...)`: as for Map.
 - `insert_or_assign(key, value)`: inserts, or assigns the value of the existing entry.
 - `erase(key)`: returns the number removed (0 or 1); `erase(position)`: returns the next position.
+- `insert(hint, entry)`, `emplace_hint(hint, args...)`: as insert and emplace, returning the
+  entry's position (the hint is accepted and not needed).
+- `insert(first, last)`: inserts copies of the entries of a range, one by one.
+- `merge(other)`: moves into this map the entries of other whose keys are not present here; in a
+  HashMap/HashSet they move node and all (pointers and references stay valid and now refer into
+  this map), in the fast tables they are moved. The rest stay in other.
+- `swap(other)`: exchanges the contents in O(1).
 - `clear()`, `reserve(n)`.
 - Kpp additions: `insert(key, value)` (inserts when absent, returns whether it did; an existing
   value is kept), `forEach(f)` calling f(key, value) for every entry.

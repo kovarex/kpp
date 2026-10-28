@@ -26,7 +26,8 @@ Iterators are pointers (`T*`), so "iterator" and "pointer" are invalidated toget
 
 Construction and assignment:
 - `Vector()`: empty, capacity 0, no allocation.
-- `Vector(int count)`: `count` default-constructed elements.
+- `Vector(int count)`: `count` default-constructed elements. `Vector(count, value)`: count copies
+  of value. `Vector(first, last)`: copies of the pointer range [first, last).
 - `Vector({a, b, c})`: the listed elements, in order.
 - Copy and move construction and assignment: see common.md. Copy assignment reuses nothing it does
   not need: afterwards the vector holds copies of the source's elements.
@@ -43,7 +44,9 @@ Size and capacity:
   with capacity exactly n and the elements are relocated; otherwise nothing happens. O(size()).
 - `resize(n)`, `resize(n, value)`: removes elements from the end, or appends default-constructed
   elements (or copies of `value`; `value` may be an element of this vector) until `size() == n`.
-- `shrink_to_fit()`: may reduce the capacity to `size()`, relocating the elements.
+- `shrink_to_fit()`: reduces the capacity to `size()`, relocating the elements (invalidates all).
+- `assign(count, value)`, `assign(first, last)`, `assign({...})`: replace the contents (value may be
+  an element; the range must not be).
 
 Adding and removing:
 - `push_back(value)`, `emplace_back(args...)`: append one element (copied, moved, or built from
@@ -55,7 +58,8 @@ Adding and removing:
   returns a pointer to the new element. The elements from position on are relocated one place up.
   O(size() - position + 1). `value` may be an element of this vector.
 - `insert(position, first, last)`: inserts copies of the range [first, last), which must not be
-  elements of this vector; returns a pointer to the first inserted one.
+  elements of this vector; returns a pointer to the first inserted one. `insert(position, count,
+  value)`: count copies of value (which may be an element).
 - `emplace(position, args...)`: like insert, with an element built from the arguments.
 - `erase(position)`, `erase(first, last)`: destroys the element(s) and relocates the following ones
   down; returns a pointer to the element after the removed ones (now at the removed position).

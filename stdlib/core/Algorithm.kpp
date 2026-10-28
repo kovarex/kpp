@@ -460,6 +460,38 @@ struct ReverseIterator
   bool operator!=(ReverseIterator<T> other) const { return this->position != other.position; }
 };
 
+// The reverse of a bidirectional iterator It (rbegin()/rend() of the maps, sets and lists): it
+// refers to the element before its base position, and ++ steps backwards.
+template<typename It>
+struct ReverseOf
+{
+  It position;
+
+  ReverseOf() {}
+  explicit ReverseOf(It position) : position(position) {}
+
+  typename It::value_type& operator*() const
+  {
+    It before = this->position;
+    --before;
+    return *before;
+  }
+  typename It::value_type* operator->() const { return &**this; }
+  It base() const { return this->position; }
+  ReverseOf<It>& operator++()
+  {
+    --this->position;
+    return *this;
+  }
+  ReverseOf<It>& operator--()
+  {
+    ++this->position;
+    return *this;
+  }
+  bool operator==(const ReverseOf<It>& other) const { return this->position == other.position; }
+  bool operator!=(const ReverseOf<It>& other) const { return this->position != other.position; }
+};
+
 // Comparator objects (std::less, std::greater): `Less<T>` compares two T with <, the transparent
 // `Less<>` compares any two operands, so `FlatMap<K, V, Less<>>` can look a String up by a StringView.
 template<typename T = void>

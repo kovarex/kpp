@@ -321,6 +321,8 @@ void rbEraseAndRebalance(RbNodeBase* node, RbNodeBase& header)
 template<typename E>
 struct RbIterator
 {
+  using value_type = E;
+
   RbNodeBase* node = nullptr;
 
   RbIterator() {}
@@ -450,21 +452,76 @@ struct RbTree
   // Adds entry after any entries with an equal key and returns where it went.
   RbIterator<E> insertEqual(E&& entry)
   {
-    const K& key = KeyOf::of(entry);
-    RbNodeBase* parent = &this->header;
+    RbNode<E>* node = this->newNode(move(entry));
+    RbNodeBase* parent;
+    bool asLeft;
+    this->equalPosition(RbTree::keyOf(node), parent, asLeft);
+    return this->link(node, parent, asLeft);
+  }
+
+  // Where insertEqual links a node with key: under parent, on its left or right.
+  void equalPosition(const K& key, RbNodeBase*& parent, bool& asLeft) const
+  {
+    parent = (RbNodeBase*)&this->header;
+    asLeft = true;
     RbNodeBase* node = this->header.parent;
-    bool asLeft = true;
     while (node)
     {
       parent = node;
       asLeft = key < RbTree::keyOf(node);
       node = asLeft ? node->left : node->right;
     }
-    RbNode<E>* fresh = (RbNode<E>*)malloc(sizeof(RbNode<E>));
-    new (&fresh->entry) E(move(entry));
-    rbInsertAndRebalance(asLeft, fresh, parent, this->header);
+  }
+  // Where a node with key goes when it belongs right before hint (any position, end() included):
+  // false when it does not (or, for unique keys, when an equivalent key is a neighbour), and the
+  // caller searches from the root instead. Inserting at a right hint is O(1) amortized.
+  bool hintPosition(RbNodeBase* hint, const K& key, bool unique, RbNodeBase*& parent, bool& asLeft) const
+  {
+    RbNodeBase* header = (RbNodeBase*)&this->header;
+    if (hint != header && (unique ? !(key < RbTree::keyOf(hint)) : RbTree::keyOf(hint) < key))
+      return false;
+    if (hint != header->left)
+    {
+      RbNodeBase* before = rbPrevious(hint);
+      if (unique ? !(RbTree::keyOf(before) < key) : key < RbTree::keyOf(before))
+        return false;
+      if (!before->right)
+      {
+        parent = before;
+        asLeft = false;
+        return true;
+      }
+    }
+    // hint is the first node (or the header of an empty tree), or its predecessor is in its left
+    // subtree, which then has room on the left of hint.
+    parent = hint;
+    asLeft = true;
+    return true;
+  }
+  RbNode<E>* newNode(E&& entry)
+  {
+    RbNode<E>* node = (RbNode<E>*)malloc(sizeof(RbNode<E>));
+    new (&node->entry) E(move(entry));
+    return node;
+  }
+  RbIterator<E> link(RbNode<E>* node, RbNodeBase* parent, bool asLeft)
+  {
+    rbInsertAndRebalance(asLeft, node, parent, this->header);
     ++this->count;
-    return RbIterator<E>(fresh);
+    return RbIterator<E>(node);
+  }
+  // Takes the node at position out of the tree, entry and all.
+  RbNode<E>* unlink(RbIterator<E> position)
+  {
+    rbEraseAndRebalance(position.node, this->header);
+    --this->count;
+    return (RbNode<E>*)position.node;
+  }
+  void swap(RbTree<E, K, KeyOf>& other)
+  {
+    RbTree<E, K, KeyOf> held(move(other));
+    other = move(*this);
+    *this = move(held);
   }
 
   // Removes the entry at position; returns the position after it.
@@ -549,6 +606,92 @@ struct RbTree
     other.becomeEmpty();
     other.count = 0;
   }
+};
+
+// What extract() returns: an entry taken out of a Map or MultiMap together with its node, without
+// copying or moving the entry; insert() puts it into this or another map of the same type.
+// Empty when default-constructed, after being inserted, and after being moved from.
+template<typename E>
+void rbFreeNode(RbNode<E>* node)
+{
+  node->entry.~E();
+  free(node);
+}
+
+template<typename K, typename V>
+struct MapNodeHandle
+{
+  RbNode<Pair<K, V>>* node = nullptr;
+
+  MapNodeHandle() {}
+  explicit MapNodeHandle(RbNode<Pair<K, V>>* node) : node(node) {}
+  MapNodeHandle(MapNodeHandle<K, V>&& other) : node(other.node) { other.node = nullptr; }
+  MapNodeHandle(const MapNodeHandle<K, V>& other) = delete;
+  ~MapNodeHandle() { this->reset(); }
+  MapNodeHandle<K, V>& operator=(MapNodeHandle<K, V>&& other)
+  {
+    if (this != &other)
+    {
+      this->reset();
+      this->node = other.node;
+      other.node = nullptr;
+    }
+    return *this;
+  }
+
+  bool empty() const { return this->node == nullptr; }
+  explicit operator bool() const { return this->node != nullptr; }
+  K& key() const { return this->node->entry.first; }
+  V& mapped() const { return this->node->entry.second; }
+  void reset()
+  {
+    if (this->node)
+      rbFreeNode(this->node);
+    this->node = nullptr;
+  }
+};
+
+// The same for Set and MultiSet.
+template<typename T>
+struct SetNodeHandle
+{
+  RbNode<T>* node = nullptr;
+
+  SetNodeHandle() {}
+  explicit SetNodeHandle(RbNode<T>* node) : node(node) {}
+  SetNodeHandle(SetNodeHandle<T>&& other) : node(other.node) { other.node = nullptr; }
+  SetNodeHandle(const SetNodeHandle<T>& other) = delete;
+  ~SetNodeHandle() { this->reset(); }
+  SetNodeHandle<T>& operator=(SetNodeHandle<T>&& other)
+  {
+    if (this != &other)
+    {
+      this->reset();
+      this->node = other.node;
+      other.node = nullptr;
+    }
+    return *this;
+  }
+
+  bool empty() const { return this->node == nullptr; }
+  explicit operator bool() const { return this->node != nullptr; }
+  T& value() const { return this->node->entry; }
+  void reset()
+  {
+    if (this->node)
+      rbFreeNode(this->node);
+    this->node = nullptr;
+  }
+};
+
+// What inserting a node handle into a unique-key container returns: where the key's entry is,
+// whether the node went in, and the node when it did not (its key was there already).
+template<typename It, typename Handle>
+struct NodeInsertReturn
+{
+  It position;
+  bool inserted = false;
+  Handle node;
 };
 
 template<typename K, typename V>
@@ -661,6 +804,81 @@ struct Map
   }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> position) { return this->tree.erase(position); }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> first, RbIterator<Pair<K, V>> last) { return this->tree.erase(first, last); }
+  ReverseOf<RbIterator<Pair<K, V>>> rbegin() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.end()); }
+  ReverseOf<RbIterator<Pair<K, V>>> rend() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.begin()); }
+  // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
+  // O(1) amortized when the entry goes right before hint.
+  RbIterator<Pair<K, V>> insert(RbIterator<Pair<K, V>> hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
+  RbIterator<Pair<K, V>> insert(RbIterator<Pair<K, V>> hint, Pair<K, V>&& entry)
+  {
+    RbNodeBase* parent;
+    bool asLeft;
+    if (!this->tree.hintPosition(hint.node, entry.first, true, parent, asLeft))
+      return this->insert(move(entry)).first;
+    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+  }
+  template<typename... Args>
+  RbIterator<Pair<K, V>> emplace_hint(RbIterator<Pair<K, V>> hint, Args&&... args) { return this->insert(hint, Pair<K, V>(forward<Args>(args)...)); }
+  // Inserts copies of the entries of [first, last), as insert(entry) does.
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  // Takes the entry at position out, together with its node: no copy, and pointers and references
+  // to it stay valid while it is in the handle and after it is inserted somewhere.
+  MapNodeHandle<K, V> extract(RbIterator<Pair<K, V>> position) { return MapNodeHandle<K, V>(this->tree.unlink(position)); }
+  MapNodeHandle<K, V> extract(const K& key)
+  {
+    RbIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at == this->tree.end())
+      return MapNodeHandle<K, V>();
+    return MapNodeHandle<K, V>(this->tree.unlink(at));
+  }
+  NodeInsertReturn<RbIterator<Pair<K, V>>, MapNodeHandle<K, V>> insert(MapNodeHandle<K, V>&& handle)
+  {
+    NodeInsertReturn<RbIterator<Pair<K, V>>, MapNodeHandle<K, V>> result;
+    if (handle.empty())
+    {
+      result.position = this->tree.end();
+      return result;
+    }
+    RbIterator<Pair<K, V>> at = this->tree.find(handle.key());
+    if (at != this->tree.end())
+    {
+      result.position = at;
+      result.node = move(handle);
+      return result;
+    }
+    RbNodeBase* parent;
+    bool asLeft;
+    this->tree.equalPosition(handle.key(), parent, asLeft);
+    result.position = this->tree.link(handle.node, parent, asLeft);
+    handle.node = nullptr;
+    result.inserted = true;
+    return result;
+  }
+  // Moves the entries of other whose keys are not here into this container, node and all (no
+  // copies; pointers and references to them now refer into this one). The rest stay in other.
+  void merge(Map<K, V>& other)
+  {
+    for (RbIterator<Pair<K, V>> it = other.tree.begin(); it != other.tree.end();)
+    {
+      RbIterator<Pair<K, V>> next = it;
+      ++next;
+      if (!this->contains(it->first))
+      {
+        RbNode<Pair<K, V>>* node = other.tree.unlink(it);
+        RbNodeBase* parent;
+        bool asLeft;
+        this->tree.equalPosition(node->entry.first, parent, asLeft);
+        this->tree.link(node, parent, asLeft);
+      }
+      it = next;
+    }
+  }
+  void swap(Map<K, V>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
 
@@ -726,6 +944,81 @@ struct Set
   }
   RbIterator<T> erase(RbIterator<T> position) { return this->tree.erase(position); }
   RbIterator<T> erase(RbIterator<T> first, RbIterator<T> last) { return this->tree.erase(first, last); }
+  ReverseOf<RbIterator<T>> rbegin() const { return ReverseOf<RbIterator<T>>(this->tree.end()); }
+  ReverseOf<RbIterator<T>> rend() const { return ReverseOf<RbIterator<T>>(this->tree.begin()); }
+  // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
+  // O(1) amortized when the entry goes right before hint.
+  RbIterator<T> insert(RbIterator<T> hint, const T& entry) { return this->insert(hint, T(entry)); }
+  RbIterator<T> insert(RbIterator<T> hint, T&& entry)
+  {
+    RbNodeBase* parent;
+    bool asLeft;
+    if (!this->tree.hintPosition(hint.node, entry, true, parent, asLeft))
+      return this->insert(move(entry)).first;
+    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+  }
+  template<typename... Args>
+  RbIterator<T> emplace_hint(RbIterator<T> hint, Args&&... args) { return this->insert(hint, T(forward<Args>(args)...)); }
+  // Inserts copies of the entries of [first, last), as insert(entry) does.
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  // Takes the entry at position out, together with its node: no copy, and pointers and references
+  // to it stay valid while it is in the handle and after it is inserted somewhere.
+  SetNodeHandle<T> extract(RbIterator<T> position) { return SetNodeHandle<T>(this->tree.unlink(position)); }
+  SetNodeHandle<T> extract(const T& key)
+  {
+    RbIterator<T> at = this->tree.find(key);
+    if (at == this->tree.end())
+      return SetNodeHandle<T>();
+    return SetNodeHandle<T>(this->tree.unlink(at));
+  }
+  NodeInsertReturn<RbIterator<T>, SetNodeHandle<T>> insert(SetNodeHandle<T>&& handle)
+  {
+    NodeInsertReturn<RbIterator<T>, SetNodeHandle<T>> result;
+    if (handle.empty())
+    {
+      result.position = this->tree.end();
+      return result;
+    }
+    RbIterator<T> at = this->tree.find(handle.value());
+    if (at != this->tree.end())
+    {
+      result.position = at;
+      result.node = move(handle);
+      return result;
+    }
+    RbNodeBase* parent;
+    bool asLeft;
+    this->tree.equalPosition(handle.value(), parent, asLeft);
+    result.position = this->tree.link(handle.node, parent, asLeft);
+    handle.node = nullptr;
+    result.inserted = true;
+    return result;
+  }
+  // Moves the entries of other whose keys are not here into this container, node and all (no
+  // copies; pointers and references to them now refer into this one). The rest stay in other.
+  void merge(Set<T>& other)
+  {
+    for (RbIterator<T> it = other.tree.begin(); it != other.tree.end();)
+    {
+      RbIterator<T> next = it;
+      ++next;
+      if (!this->contains(*it))
+      {
+        RbNode<T>* node = other.tree.unlink(it);
+        RbNodeBase* parent;
+        bool asLeft;
+        this->tree.equalPosition(node->entry, parent, asLeft);
+        this->tree.link(node, parent, asLeft);
+      }
+      it = next;
+    }
+  }
+  void swap(Set<T>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
 
@@ -783,6 +1076,64 @@ struct MultiMap
   }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> position) { return this->tree.erase(position); }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> first, RbIterator<Pair<K, V>> last) { return this->tree.erase(first, last); }
+  ReverseOf<RbIterator<Pair<K, V>>> rbegin() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.end()); }
+  ReverseOf<RbIterator<Pair<K, V>>> rend() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.begin()); }
+  // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
+  // O(1) amortized when the entry goes right before hint.
+  RbIterator<Pair<K, V>> insert(RbIterator<Pair<K, V>> hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
+  RbIterator<Pair<K, V>> insert(RbIterator<Pair<K, V>> hint, Pair<K, V>&& entry)
+  {
+    RbNodeBase* parent;
+    bool asLeft;
+    if (!this->tree.hintPosition(hint.node, entry.first, false, parent, asLeft))
+      return this->insert(move(entry));
+    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+  }
+  template<typename... Args>
+  RbIterator<Pair<K, V>> emplace_hint(RbIterator<Pair<K, V>> hint, Args&&... args) { return this->insert(hint, Pair<K, V>(forward<Args>(args)...)); }
+  // Inserts copies of the entries of [first, last), as insert(entry) does.
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  // Takes the entry at position out, together with its node: no copy, and pointers and references
+  // to it stay valid while it is in the handle and after it is inserted somewhere.
+  MapNodeHandle<K, V> extract(RbIterator<Pair<K, V>> position) { return MapNodeHandle<K, V>(this->tree.unlink(position)); }
+  MapNodeHandle<K, V> extract(const K& key)
+  {
+    RbIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at == this->tree.end())
+      return MapNodeHandle<K, V>();
+    return MapNodeHandle<K, V>(this->tree.unlink(at));
+  }
+  // Inserts the handle's node (after equivalent keys); returns its position, or end() for an
+  // empty handle.
+  RbIterator<Pair<K, V>> insert(MapNodeHandle<K, V>&& handle)
+  {
+    if (handle.empty())
+      return this->tree.end();
+    RbNodeBase* parent;
+    bool asLeft;
+    this->tree.equalPosition(handle.key(), parent, asLeft);
+    RbIterator<Pair<K, V>> at = this->tree.link(handle.node, parent, asLeft);
+    handle.node = nullptr;
+    return at;
+  }
+  // Moves all entries of other into this container, node and all.
+  void merge(MultiMap<K, V>& other)
+  {
+    while (!other.empty())
+    {
+      RbNode<Pair<K, V>>* node = other.tree.unlink(other.tree.begin());
+      RbNodeBase* parent;
+      bool asLeft;
+      this->tree.equalPosition(node->entry.first, parent, asLeft);
+      this->tree.link(node, parent, asLeft);
+    }
+  }
+  void swap(MultiMap<K, V>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
 
@@ -837,5 +1188,63 @@ struct MultiSet
   }
   RbIterator<T> erase(RbIterator<T> position) { return this->tree.erase(position); }
   RbIterator<T> erase(RbIterator<T> first, RbIterator<T> last) { return this->tree.erase(first, last); }
+  ReverseOf<RbIterator<T>> rbegin() const { return ReverseOf<RbIterator<T>>(this->tree.end()); }
+  ReverseOf<RbIterator<T>> rend() const { return ReverseOf<RbIterator<T>>(this->tree.begin()); }
+  // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
+  // O(1) amortized when the entry goes right before hint.
+  RbIterator<T> insert(RbIterator<T> hint, const T& entry) { return this->insert(hint, T(entry)); }
+  RbIterator<T> insert(RbIterator<T> hint, T&& entry)
+  {
+    RbNodeBase* parent;
+    bool asLeft;
+    if (!this->tree.hintPosition(hint.node, entry, false, parent, asLeft))
+      return this->insert(move(entry));
+    return this->tree.link(this->tree.newNode(move(entry)), parent, asLeft);
+  }
+  template<typename... Args>
+  RbIterator<T> emplace_hint(RbIterator<T> hint, Args&&... args) { return this->insert(hint, T(forward<Args>(args)...)); }
+  // Inserts copies of the entries of [first, last), as insert(entry) does.
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  // Takes the entry at position out, together with its node: no copy, and pointers and references
+  // to it stay valid while it is in the handle and after it is inserted somewhere.
+  SetNodeHandle<T> extract(RbIterator<T> position) { return SetNodeHandle<T>(this->tree.unlink(position)); }
+  SetNodeHandle<T> extract(const T& key)
+  {
+    RbIterator<T> at = this->tree.find(key);
+    if (at == this->tree.end())
+      return SetNodeHandle<T>();
+    return SetNodeHandle<T>(this->tree.unlink(at));
+  }
+  // Inserts the handle's node (after equivalent keys); returns its position, or end() for an
+  // empty handle.
+  RbIterator<T> insert(SetNodeHandle<T>&& handle)
+  {
+    if (handle.empty())
+      return this->tree.end();
+    RbNodeBase* parent;
+    bool asLeft;
+    this->tree.equalPosition(handle.value(), parent, asLeft);
+    RbIterator<T> at = this->tree.link(handle.node, parent, asLeft);
+    handle.node = nullptr;
+    return at;
+  }
+  // Moves all entries of other into this container, node and all.
+  void merge(MultiSet<T>& other)
+  {
+    while (!other.empty())
+    {
+      RbNode<T>* node = other.tree.unlink(other.tree.begin());
+      RbNodeBase* parent;
+      bool asLeft;
+      this->tree.equalPosition(node->entry, parent, asLeft);
+      this->tree.link(node, parent, asLeft);
+    }
+  }
+  void swap(MultiSet<T>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };

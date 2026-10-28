@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**180 pass, 6 pending, 0 failing, 0 fixed** (186 snippets, 36.3 s).
+**180 pass, 7 pending, 0 failing, 0 fixed** (187 snippets, 6.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -103,7 +103,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/static_call_through_parameter_operator.kpp` | an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)` | pending |  | the comparison is emitted as a primitive compare of the struct values (invalid IR); C:\kpp\compiler\build\spec\templates.static_call_through_parameter_operator.exe.55.ll:205:28: error: '%t3' defined with type 'ptr' but expected '%struct.3 = type { %struct.4 }' |
+| `templates/forward_pack_to_function_template.kpp` | forwarding a parameter pack into another function template: `this->inner.emplace(forward<Args>(args)...)` | pending |  | the inner template is instantiated with one parameter of unknown type ("the type <unknown> of CallExpr"); C:\kpp\compiler\tests\spec\templates\forward_pack_to_function_template.kpp:9: codegen does not support the type <unknown> of CallExpr yet (in @"Inner<String>::emplace<<unknown>>(<unknown>&&)", requested by @"Outer<String>::emplace<int32, char>(int32&&, char&&)") |
+| `templates/static_call_through_parameter_operator.kpp` | an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)` | pending |  | the comparison is emitted as a primitive compare of the struct values (invalid IR); C:\kpp\compiler\build\spec\templates.static_call_through_parameter_operator.exe.55.ll:375:28: error: '%t3' defined with type 'ptr' but expected '%struct.3 = type { %struct.4 }' |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |

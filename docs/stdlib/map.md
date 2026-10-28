@@ -50,6 +50,27 @@ O(n). `count` in a multi container: O(log n + number found).
   returns how many were removed. `key` may refer to an entry of this container.
 - `erase(position)`: removes that entry, returns an iterator to the next one. `erase(first,
   last)`: removes the range, returns last.
+- `rbegin()`, `rend()`: reverse iteration, from the greatest key.
+- `insert(hint, entry)`, `emplace_hint(hint, args...)`: as insert and emplace, returning the
+  entry's position; hint is a position in this container. When the new entry belongs right before
+  hint, the insert costs O(1) amortized instead of O(log n).
+- `insert(first, last)`: inserts copies of the entries of a range of any iterator type, as
+  insert(entry) one by one.
+- `extract(position)`, `extract(key)`: takes the entry out of the container *together with its
+  node* and returns it in a node handle (empty when the key is absent): no copy or move of the
+  entry; pointers and references to it stay valid while it is in the handle and after it is
+  inserted again. The handle (MapNodeHandle for the maps, SetNodeHandle for the sets) is move-only;
+  `empty()`, `key()` and `mapped()` (maps) or `value()` (sets); the key may be changed while the
+  entry is in the handle. Destroying a non-empty handle destroys the entry.
+- `insert(handle)`: puts the handle's node in, as insert(entry). Unique containers return
+  NodeInsertReturn: `position` (the entry with the key), `inserted`, and `node` (the handle back
+  when the key was present); the multi containers return the position. An empty handle inserts
+  nothing.
+- `merge(other)`: moves into this container the entries of other (of the same type) whose keys are
+  not present here (all of them for the multi containers), node and all: pointers and references
+  to them stay valid and now refer into this container. The rest stay in other.
+- `swap(other)`: exchanges the contents in O(1); iterators, pointers and references keep referring
+  to the same entries, now in the other container (end() excepted).
 - `clear()`.
 
 Kpp additions (not in C++): `insert(key, value)` returning whether the key was new (Map), and the

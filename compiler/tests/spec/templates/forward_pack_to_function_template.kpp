@@ -1,0 +1,24 @@
+// spec: forwarding a parameter pack into another function template: `this->inner.emplace(forward<Args>(args)...)`
+// found in the stdlib (Queue::emplace calling Deque::emplace_back, List::emplace_back calling emplace); the library builds the element in the outer function instead
+// pending: the inner template is instantiated with one parameter of unknown type ("the type <unknown> of CallExpr")
+template<typename T>
+struct Inner
+{
+  T value;
+  template<typename... Args>
+  void emplace(Args&&... args) { this->value = T(forward<Args>(args)...); }
+};
+template<typename T>
+struct Outer
+{
+  Inner<T> inner;
+  template<typename... Args>
+  void emplace(Args&&... args) { this->inner.emplace(forward<Args>(args)...); }
+};
+int main()
+{
+  Outer<String> outer;
+  outer.emplace(3, 'x');
+  println("{}", outer.inner.value);
+  return 0;
+}

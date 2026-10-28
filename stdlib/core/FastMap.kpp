@@ -39,6 +39,8 @@ BTreeNode<E>** bTreeChildren(BTreeNode<E>* node) { return ((BTreeInterior<E>*)no
 template<typename E>
 struct BTreeIterator
 {
+  using value_type = E;
+
   BTreeNode<E>* node = nullptr;
   int index = 0;
 
@@ -659,6 +661,39 @@ struct FastMap
     this->tree.erase(key);
     return this->tree.lowerBound(key);
   }
+  ReverseOf<BTreeIterator<Pair<K, V>>> rbegin() const { return ReverseOf<BTreeIterator<Pair<K, V>>>(this->tree.end()); }
+  ReverseOf<BTreeIterator<Pair<K, V>>> rend() const { return ReverseOf<BTreeIterator<Pair<K, V>>>(this->tree.begin()); }
+  // Inserts as insert(entry) does (the hint is not used: O(log n) either way).
+  BTreeIterator<Pair<K, V>> insert(BTreeIterator<Pair<K, V>> hint, const Pair<K, V>& entry) { return this->insert(entry).first; }
+  BTreeIterator<Pair<K, V>> insert(BTreeIterator<Pair<K, V>> hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
+  template<typename... Args>
+  BTreeIterator<Pair<K, V>> emplace_hint(BTreeIterator<Pair<K, V>> hint, Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)).first; }
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  // Moves the entries of other whose keys are not here into this container; the rest stay in
+  // other.
+  void merge(FastMap<K, V>& other)
+  {
+    FastMap<K, V> rest;
+    for (Pair<K, V>& entry : other)
+    {
+      if (this->contains(entry.first))
+        rest.tree.insertNew(move(entry));
+      else
+        this->tree.insertNew(move(entry));
+    }
+    other = move(rest);
+  }
+  void swap(FastMap<K, V>& other)
+  {
+    FastMap<K, V> held(move(other));
+    other = move(*this);
+    *this = move(held);
+  }
   void clear() { this->tree.clear(); }
 };
 
@@ -718,6 +753,39 @@ struct FastSet
     T value(*position);
     this->tree.erase(value);
     return this->tree.lowerBound(value);
+  }
+  ReverseOf<BTreeIterator<T>> rbegin() const { return ReverseOf<BTreeIterator<T>>(this->tree.end()); }
+  ReverseOf<BTreeIterator<T>> rend() const { return ReverseOf<BTreeIterator<T>>(this->tree.begin()); }
+  // Inserts as insert(entry) does (the hint is not used: O(log n) either way).
+  BTreeIterator<T> insert(BTreeIterator<T> hint, const T& entry) { return this->insert(entry).first; }
+  BTreeIterator<T> insert(BTreeIterator<T> hint, T&& entry) { return this->insert(move(entry)).first; }
+  template<typename... Args>
+  BTreeIterator<T> emplace_hint(BTreeIterator<T> hint, Args&&... args) { return this->insert(T(forward<Args>(args)...)).first; }
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  // Moves the entries of other whose keys are not here into this container; the rest stay in
+  // other.
+  void merge(FastSet<T>& other)
+  {
+    FastSet<T> rest;
+    for (T& entry : other)
+    {
+      if (this->contains(entry))
+        rest.tree.insertNew(move(entry));
+      else
+        this->tree.insertNew(move(entry));
+    }
+    other = move(rest);
+  }
+  void swap(FastSet<T>& other)
+  {
+    FastSet<T> held(move(other));
+    other = move(*this);
+    *this = move(held);
   }
   void clear() { this->tree.clear(); }
 };

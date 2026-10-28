@@ -238,13 +238,63 @@ struct String
     }
     return -1;
   }
-  int rfind(char c) const
+  // The last occurrence starting at or before `from` (anywhere when from is npos), or npos.
+  int rfind(char c, int from) const
   {
     const char* chars = this->data();
-    for (int i = this->size(); i-- > 0;)
+    int i = this->size() - 1;
+    if (from >= 0 && from < i)
+      i = from;
+    for (; i >= 0; --i)
       if (chars[i] == c)
         return i;
     return -1;
+  }
+  int rfind(char c) const { return this->rfind(c, -1); }
+  int rfindBytes(const char* needle, int count, int from) const
+  {
+    int i = this->size() - count;
+    if (i < 0)
+      return -1;
+    if (from >= 0 && from < i)
+      i = from;
+    const char* chars = this->data();
+    for (; i >= 0; --i)
+      if (memcmp(chars + i, needle, count) == 0)
+        return i;
+    return -1;
+  }
+  int rfind(const char* needle, int from) const { return this->rfindBytes(needle, (int)strlen(needle), from); }
+  int rfind(const char* needle) const { return this->rfind(needle, -1); }
+  int rfind(const String& needle, int from) const { return this->rfindBytes(needle.data(), needle.size(), from); }
+  int rfind(const String& needle) const { return this->rfindBytes(needle.data(), needle.size(), -1); }
+  // The last byte that is in set, or npos.
+  int find_last_of(const char* set) const
+  {
+    const char* chars = this->data();
+    for (int i = this->size(); i-- > 0;)
+      if (String::oneOf(chars[i], set))
+        return i;
+    return -1;
+  }
+  int find_last_of(const String& set) const { return this->find_last_of(set.c_str()); }
+  int find_last_of(char c) const { return this->rfind(c); }
+  // Negative, zero or positive as this string orders before, equal to or after other (byte-wise,
+  // as operator<).
+  int compare(const String& other) const
+  {
+    int length = this->size(), otherLength = other.size();
+    int c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
+    if (c != 0)
+      return c;
+    return length < otherLength ? -1 : length > otherLength ? 1 : 0;
+  }
+  int compare(const char* other) const { return this->compare(String(other)); }
+  void swap(String& other)
+  {
+    String held(move(other));
+    other = move(*this);
+    *this = move(held);
   }
   static bool oneOf(char c, const char* set)
   {

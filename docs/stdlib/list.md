@@ -12,7 +12,7 @@ iterator, and never moves or invalidates other elements.
 | clear, assignment | all except end |
 
 Members: `List()`, `List({...})`, copy, move; `size()` (O(1)), `empty()`, `front()`, `back()`;
-`begin()`, `end()` (bidirectional); `push_back`, `push_front`, `emplace_back`, `emplace_front`,
+`begin()`, `end()` (bidirectional), `rbegin()`, `rend()`, `swap(other)`; `push_back`, `push_front`, `emplace_back`, `emplace_front`,
 `pop_back`, `pop_front`; `insert(position, value)` (before position, returns the new element's
 position), `emplace(position, args...)`, `erase(position)` (returns the next position),
 `erase(first, last)`; `splice(position, other)` and `splice(position, other, it)` (move nodes
@@ -23,6 +23,9 @@ from other without copying, O(1) for one element); `remove(value)`, `removeIf(pr
 ## ForwardList (singly linked)
 
 As List with one link per node, so only forward iterators and operations at or after a position:
-`push_front`, `emplace_front`, `pop_front`, `front()`, `insert_after(position, value)`,
-`erase_after(position)`, `before_begin()`, `begin()`, `end()`, `empty()`, `clear()`. There is no
+`push_front`, `emplace_front`, `pop_front`, `front()`, `insert_after(position, value)` and
+`emplace_after(position, args...)` (returning the new element's position), `erase_after(position)`
+and `erase_after(first, last)` (removing what is strictly between; returning the position after
+the removed ones), `before_begin()` (the position before the first element, for inserting at the
+front), `begin()`, `end()`, `empty()`, `remove(value)`, `reverse()`, `clear()`. There is no
 `size()` (it would be O(n)). Invalidation as for List.

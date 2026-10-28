@@ -21,6 +21,8 @@ uint8_t hashTagOf(size_t hash) { return (uint8_t)(0x80 | (hash >> 57)); }
 template<typename E, bool stable>
 struct HashIterator
 {
+  using value_type = E;
+
   uint8_t* tags = nullptr;
   char* slots = nullptr;
   int index = 0;
@@ -210,6 +212,61 @@ struct HashTable
     else
       this->tags[slot] = hashSlotDeleted;
     --this->count;
+  }
+
+  // Moves the entries of other whose keys are not here into this table; the rest stay in other.
+  // Nodes move as they are (pointers and references to their entries now refer into this table),
+  // entries of fast tables are moved.
+  void mergeFrom(HashTable<E, K, KeyOf, stable>& other)
+  {
+    for (int i = 0; i < other.capacity; ++i)
+    {
+      if (other.tags[i] < 0x80)
+        continue;
+      const K& key = other.keyAt(i);
+      size_t hash = hashOf(key);
+      bool found;
+      int slot = this->place(key, hash, found);
+      if (found)
+        continue;
+      if (slot < 0)
+      {
+        this->grow();
+        slot = this->place(key, hash, found);
+      }
+      if constexpr (stable)
+      {
+        if (this->tags[slot] == hashSlotEmpty)
+          ++this->used;
+        ((E**)this->slots)[slot] = other.entryAt(i);
+        this->tags[slot] = hashTagOf(hash);
+        ++this->count;
+        other.releaseAt(i);
+      }
+      else
+      {
+        this->emplaceAt(slot, hash, move(*other.entryAt(i)));
+        other.eraseAt(i);
+      }
+    }
+  }
+  // Empties slot without destroying its entry (its node now belongs elsewhere).
+  void releaseAt(int slot)
+  {
+    if (this->tags[(slot + 1) & (this->capacity - 1)] == hashSlotEmpty)
+    {
+      this->tags[slot] = hashSlotEmpty;
+      --this->used;
+    }
+    else
+      this->tags[slot] = hashSlotDeleted;
+    --this->count;
+  }
+  void swap(HashTable<E, K, KeyOf, stable>& other)
+  {
+    HashTable<E, K, KeyOf, stable> held(move(other));
+    other = move(*this);
+    *this = move(held);
   }
 
   // Twice the size, unless deleted slots made up the load: then the same size, cleared.
@@ -452,9 +509,13 @@ struct HashMap
     int slot = this->table.place(key, hash, found);
     if (slot < 0)
     {
+      // Grow, then look for the key's place again (key may be one of a fast table's keys, which
+      // growing moves: copied first).
       K copy(key);
       this->table.grow();
-      return this->try_emplace(copy, forward<Args>(args)...);
+      slot = this->table.place(copy, hash, found);
+      this->table.emplaceAt(slot, hash, copy, V(forward<Args>(args)...));
+      return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), true);
     }
     if (!found)
       this->table.emplaceAt(slot, hash, key, V(forward<Args>(args)...));
@@ -487,6 +548,24 @@ struct HashMap
     ++position;
     return position;
   }
+  // Inserts as insert(entry) does; the hint is accepted for compatibility and not needed.
+  HashIterator<Pair<K, V>, stable> insert(HashIterator<Pair<K, V>, stable> hint, const Pair<K, V>& entry) { return this->insert(entry).first; }
+  HashIterator<Pair<K, V>, stable> insert(HashIterator<Pair<K, V>, stable> hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
+  template<typename... Args>
+  HashIterator<Pair<K, V>, stable> emplace_hint(HashIterator<Pair<K, V>, stable> hint, Args&&... args)
+  {
+    return this->insert(Pair<K, V>(forward<Args>(args)...)).first;
+  }
+  // Inserts copies of the entries of [first, last).
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  // Moves the entries of other whose keys are not here into this map; the rest stay in other.
+  void merge(HashMap<K, V, stable>& other) { this->table.mergeFrom(other.table); }
+  void swap(HashMap<K, V, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(int n) { this->table.reserve(n); }
 
@@ -581,6 +660,18 @@ struct HashSet
     ++position;
     return position;
   }
+  HashIterator<T, stable> insert(HashIterator<T, stable> hint, const T& value) { return this->insert(value).first; }
+  HashIterator<T, stable> insert(HashIterator<T, stable> hint, T&& value) { return this->insert(move(value)).first; }
+  template<typename... Args>
+  HashIterator<T, stable> emplace_hint(HashIterator<T, stable> hint, Args&&... args) { return this->insert(T(forward<Args>(args)...)).first; }
+  template<typename It>
+  void insert(It first, It last)
+  {
+    for (; first != last; ++first)
+      this->insert(*first);
+  }
+  void merge(HashSet<T, stable>& other) { this->table.mergeFrom(other.table); }
+  void swap(HashSet<T, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(int n) { this->table.reserve(n); }
 };
