@@ -154,8 +154,19 @@ struct Vector
       new (this->items + i) T(copy);
     this->length = newLength;
   }
-  T& at(int index) { return this->items[index]; }
-  const T& at(int index) const { return this->items[index]; }
+  // Throws OutOfRange for an index outside [0, size()).
+  T& at(int index)
+  {
+    if (index < 0 || index >= this->length)
+      throwOutOfRange("Vector::at: index out of range");
+    return this->items[index];
+  }
+  const T& at(int index) const
+  {
+    if (index < 0 || index >= this->length)
+      throwOutOfRange("Vector::at: index out of range");
+    return this->items[index];
+  }
   // Inserts before the element position points at (begin()/end() and what find functions return).
   T* insert(T* position, const T& value)
   {

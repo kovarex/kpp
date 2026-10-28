@@ -15,8 +15,19 @@ struct Array
   bool empty() const { return N == 0; }
   T& operator[](int index) { return this->items[index]; }
   const T& operator[](int index) const { return this->items[index]; }
-  T& at(int index) { return this->items[index]; }
-  const T& at(int index) const { return this->items[index]; }
+  // Throws OutOfRange for an index outside [0, N).
+  T& at(int index)
+  {
+    if (index < 0 || index >= N)
+      throwOutOfRange("Array::at: index out of range");
+    return this->items[index];
+  }
+  const T& at(int index) const
+  {
+    if (index < 0 || index >= N)
+      throwOutOfRange("Array::at: index out of range");
+    return this->items[index];
+  }
   T* data() { return this->items; }
   const T* data() const { return this->items; }
   T* begin() { return this->items; }

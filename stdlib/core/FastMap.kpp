@@ -610,8 +610,21 @@ struct FastMap
       return at->second;
     return this->tree.insertNew(Pair<K, V>(key, V()))->second;
   }
-  V& at(const K& key) { return this->tree.find(key)->second; }
-  const V& at(const K& key) const { return this->tree.find(key)->second; }
+  // The value of key's entry; throws OutOfRange when there is none.
+  V& at(const K& key)
+  {
+    BTreeIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at == this->tree.end())
+      throwOutOfRange("FastMap::at: key not found");
+    return at->second;
+  }
+  const V& at(const K& key) const
+  {
+    BTreeIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at == this->tree.end())
+      throwOutOfRange("FastMap::at: key not found");
+    return at->second;
+  }
   // The entry with the key and whether it was added (an existing value is kept).
   Pair<BTreeIterator<Pair<K, V>>, bool> insert(const Pair<K, V>& entry) { return this->insert(Pair<K, V>(entry)); }
   Pair<BTreeIterator<Pair<K, V>>, bool> insert(Pair<K, V>&& entry)

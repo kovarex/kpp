@@ -249,8 +249,27 @@ void hashing()
   printf("%d %d %s %d %d %lld\n", sameAddress ? 1 : 0, inserted.second ? 1 : 0, inserted.first->second.c_str(), visited, fast.size() <= 5000 ? 1 : 0, sum > 0 ? 1LL : 0LL);
 }
 
+// The checked accessors throw OutOfRange.
+void checked()
+{
+  Vector<int> values = {1, 2, 3};
+  String text("abc");
+  Map<int, int> map;
+  map[1] = 10;
+  HashMap<int, int> hash;
+  int caught = 0;
+  try { values.at(3); } catch (const OutOfRange& e) { ++caught; }
+  try { text.substr(4); } catch (const OutOfRange& e) { ++caught; }
+  try { text.erase(5, 1); } catch (const OutOfRange& e) { ++caught; }
+  try { map.at(2); } catch (const OutOfRange& e) { ++caught; }
+  try { hash.at(2); } catch (const OutOfRange& e) { ++caught; }
+  String end = text.substr(3);
+  printf("%d %d [%s] %d %c\n", caught, values.at(2), end.c_str(), map.at(1), text.at(1));
+}
+
 int main()
 {
+  checked();
   strings();
   vectors();
   sorting();

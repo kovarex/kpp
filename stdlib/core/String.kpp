@@ -83,6 +83,19 @@ struct String
   char* data() { return this->isLarge() ? this->heapChars : this->smallChars; }
   const char* data() const { return this->isLarge() ? this->heapChars : this->smallChars; }
   char operator[](int index) const { return this->data()[index]; }
+  // Throws OutOfRange for an index outside [0, size()).
+  char& at(int index)
+  {
+    if (index < 0 || index >= this->size())
+      throwOutOfRange("String::at: index out of range");
+    return this->data()[index];
+  }
+  char at(int index) const
+  {
+    if (index < 0 || index >= this->size())
+      throwOutOfRange("String::at: index out of range");
+    return this->data()[index];
+  }
   char& operator[](int index) { return this->data()[index]; }
   char* begin() { return this->data(); }
   char* end() { return this->data() + this->size(); }
@@ -109,11 +122,14 @@ struct String
     this->setLength(newLength);
   }
   void resize(int newLength) { this->resize(newLength, 0); }
-  // Removes count bytes at index (to the end when count is negative).
+  // Removes count bytes at index (to the end when count is negative or reaches past it); throws
+  // OutOfRange when index is past the end.
   void erase(int index, int count)
   {
     int length = this->size();
-    if (index < 0 || index >= length)
+    if (index < 0 || index > length)
+      throwOutOfRange("String::erase: index out of range");
+    if (index == length)
       return;
     if (count < 0 || index + count > length)
       count = length - index;
@@ -425,11 +441,14 @@ struct String
     return result;
   }
 
-  // count characters from start (all the rest when count is negative or runs past the end).
+  // count characters from start (all the rest when count is negative or runs past the end);
+  // throws OutOfRange when start is past the end.
   String substr(int start, int count) const
   {
     int length = this->size();
-    if (start >= length)
+    if (start < 0 || start > length)
+      throwOutOfRange("String::substr: start out of range");
+    if (start == length)
       return String();
     int available = length - start;
     return String(this->data() + start, count >= 0 && count < available ? count : available);

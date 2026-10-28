@@ -395,8 +395,21 @@ struct HashMap
       return this->table.entryAt(slot)->second;
     return this->table.emplaceAt(slot, hash, key, V())->second;
   }
-  V& at(const K& key) { return this->find(key)->second; }
-  const V& at(const K& key) const { return this->find(key)->second; }
+  // The value of key's entry; throws OutOfRange when there is none.
+  V& at(const K& key)
+  {
+    HashIterator<Pair<K, V>, stable> at = this->find(key);
+    if (at == this->end())
+      throwOutOfRange("HashMap::at: key not found");
+    return at->second;
+  }
+  const V& at(const K& key) const
+  {
+    HashIterator<Pair<K, V>, stable> at = this->find(key);
+    if (at == this->end())
+      throwOutOfRange("HashMap::at: key not found");
+    return at->second;
+  }
 
   // The entry with the key and whether it was inserted (an existing value is kept).
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert(const Pair<K, V>& entry)

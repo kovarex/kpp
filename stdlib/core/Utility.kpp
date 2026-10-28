@@ -279,6 +279,10 @@ struct OutOfRange : LogicError
   OutOfRange() {}
   explicit OutOfRange(const String& message) : LogicError(message) {}
 };
+// What the checked accessors (at(), substr()) throw for an index or key that is not there. Out of
+// line, so that the check costs the callers only a compare and a branch.
+[[noinline]] void throwOutOfRange(const char* what) { throw OutOfRange(String(what)); }
+
 struct InvalidArgument : LogicError
 {
   InvalidArgument() {}

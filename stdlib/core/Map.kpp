@@ -606,8 +606,21 @@ struct Map
       return at->second;
     return this->tree.insertEqual(Pair<K, V>(key, V()))->second;
   }
-  V& at(const K& key) { return this->tree.find(key)->second; }
-  const V& at(const K& key) const { return this->tree.find(key)->second; }
+  // The value of key's entry; throws OutOfRange when there is none.
+  V& at(const K& key)
+  {
+    RbIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at == this->tree.end())
+      throwOutOfRange("Map::at: key not found");
+    return at->second;
+  }
+  const V& at(const K& key) const
+  {
+    RbIterator<Pair<K, V>> at = this->tree.find(key);
+    if (at == this->tree.end())
+      throwOutOfRange("Map::at: key not found");
+    return at->second;
+  }
   // std::map::insert: the entry with the key and whether it was added (an existing value is kept).
   Pair<RbIterator<Pair<K, V>>, bool> insert(const Pair<K, V>& entry)
   {
