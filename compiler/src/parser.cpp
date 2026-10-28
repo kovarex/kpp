@@ -55,6 +55,8 @@ namespace
     }
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwText, kwTag, kwTagField;
+    uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
+    uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint8_t pendingAttributes = 0;   // [[noinline]] and friends seen before the current declaration.
     bool pendingConst = false;       // `const static int x`: the const read among the specifiers, applied to the type that follows.
     Expr* pendingAlignment = nullptr; // alignas(N) seen before the current class.
@@ -4316,11 +4318,10 @@ namespace
         auto* p = static_cast<ParamDecl*>(pd);
         if (!mentionsAuto(p->type))
           continue;
-        static std::atomic<uint32_t> autoCounter{0};
         TemplateParamDecl* tp = decl<TemplateParamDecl>(p->type->token);
         tp->isType = true;
         tp->isPack = p->isPack;
-        tp->name = symbols.intern("__auto_" + std::to_string(autoCounter++));
+        tp->name = symbols.intern("__auto_" + std::to_string(autoCount++));
         NamedType* named = node<NamedType>(p->type->token);
         NamePart part;
         part.symbol = tp->name;
@@ -4407,11 +4408,11 @@ namespace
       expect(P::RBracket, "expected ']' after captures");
       l->captures = makeSpanOf(captures);
       // The closure type: a synthetic class with a unique name, never indexed as a declaration.
-      static std::atomic<uint32_t> lambdaCounter{0};
+      // Named by the file's index and the lambda's number in it, the same in every run.
       ClassDecl* closure = decl<ClassDecl>(start);
       closure->keyword = Kw::struct_;
       NamePart part;
-      part.symbol = symbols.intern("__lambda_" + std::to_string(lambdaCounter++));
+      part.symbol = symbols.intern("__lambda_" + std::to_string(out.index) + "_" + std::to_string(lambdaCount++));
       closure->name.parts = makeSpanOf(std::vector<NamePart>{part});
       closure->isClosure = true;
       closure->lambda = l;

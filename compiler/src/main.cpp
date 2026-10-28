@@ -474,6 +474,7 @@ namespace
     lexed.push_back(lex(files.back().text, symbols));
     parsed.push_back(std::make_unique<ParsedFile>());
     parsed.back()->path = files.back().path.string();
+    parsed.back()->index = uint32_t(parsed.size() - 1);
     parsed.back()->isImported = true;
     parseFile(lexed.back().tokens, files.back().text, symbols, *parsed.back(), true, nullptr);
     for (size_t i = 0; i < parsed.size(); ++i)
@@ -664,6 +665,7 @@ namespace
       {
         parsed[i] = std::make_unique<ParsedFile>();
         parsed[i]->path = files[i].path.string();
+        parsed[i]->index = uint32_t(i);
         std::string library = options.libraryRoot.string();
         parsed[i]->isLibrary = !library.empty() && parsed[i]->path.compare(0, library.size(), library) == 0;
         parseFile(round == 0 ? lexed[i].tokens : tokens[i], files[i].text, symbols, *parsed[i], false, &options.configValues);
@@ -732,8 +734,6 @@ namespace
       }
       begin = end + 1;
     }
-    for (size_t i = 0; i < parsed.size(); ++i)
-      parsed[i]->index = uint32_t(i);
     auto start = Clock::now();
     parallelFor(parsed.size(), options.threads, [&](size_t i) { global.indexFile(*parsed[i]); });
     double indexTime = seconds(Clock::now() - start);
