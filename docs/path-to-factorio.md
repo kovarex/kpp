@@ -604,10 +604,11 @@ find /c /v "" kpp\full-errors.txt
   instantiations (M remaining)`. That line is included in the count; the errors the M remaining
   instantiations would have produced are not. Report the figure together with N and M.
 
-Measured on master 90eab80 (2026-10-28): **13,168** codegen errors, out of memory after 91,746
-instantiations with 5,735 remaining; 12 s on the 9950X. For comparison, the full-program step
+Measured on master f688026 (2026-10-28): **12,750** codegen errors, out of memory after 88,868
+instantiations with 7,758 remaining; 12 s on the 9950X (90eab80, before the SAVING_TAG change:
+13,168, out of memory after 91,746 with 5,735 remaining). For comparison, the full-program step
 inside `convert.cmd` (all of `kpp\`, 4,403 files, without the SDL_Mixer include, so the C import
-fails) gives 16,248 stderr lines on the same master, of which 16,241 are codegen errors.
+fails) gives 15,976 stderr lines on f688026, of which 15,969 are codegen errors.
 
 ### Error breakdown by root cause
 
