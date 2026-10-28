@@ -6,14 +6,13 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**197 pass, 8 pending, 0 failing, 0 fixed** (205 snippets, 5.4 s).
+**200 pass, 6 pending, 0 failing, 0 fixed** (206 snippets, 5.3 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `language/brace_argument_binds_rvalue.kpp` | a brace-list argument is a temporary, so it binds to an rvalue-reference overload: `map.insert({key, makeUnique<T>()})` picks insert(Pair&&) | pending | converted code inserts move-only values this way (AsteroidCollectorNavMesh: Map<ChunkPosition, UniquePtr<...>>) | overload resolution picks insert(const Pair&) for the brace list and then cannot copy the UniquePtr; line 1: got `1 0`, expected `0 1` |
-| `language/enum_class_user_operator.kpp` | a user-defined operator on a scoped enum (`bool operator&(Flags, Flags)`); C++ has no built-in one | pending | NotificationData::Flags (PostTransferNotifiable.hpp) and other flag enums with their own | and & | the built-in integer & is applied instead of the user's function (prints 2, not true); line 1: got `3 2`, expected `3 true` |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
 | `language/array_brace_zero.kpp` | an array zero-filled by `= {0}` and `= {}`, with fewer initializers than elements | pass |  |  |
@@ -32,6 +31,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/default_arguments.kpp` | default arguments | pass | 32235 uses in 4539 files |  |
 | `language/designated_initializers.kpp` | designated initializers | pass | 45 uses in 21 files |  |
 | `language/enum_class_cxx.kpp` | C++-style enum class with underlying type, casts, flags with operators | pass | 961 uses in 701 files |  |
+| `language/enum_class_user_operator.kpp` | a user-defined operator on a scoped enum (`bool operator&(Flags, Flags)`); C++ has no built-in one | pass | NotificationData::Flags (PostTransferNotifiable.hpp) and other flag enums with their own | and & |  |
 | `language/exceptions.kpp` | exceptions: throw, catch by reference and base, rethrow, cleanup of locals | pass | 3118 throw sites in 853 files, 457 try blocks |  |
 | `language/explicit_operator_call.kpp` | an operator function called by name: `operator==(a, b)`, `a.operator[](i)` | pass |  |  |
 | `language/for_init_conditional.kpp` | a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)` | pass |  |  |
@@ -106,10 +106,9 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen binds one template pack per expansion (templatePackOf), `auto PrototypeT::*...` names two; C:\kpp-templates\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support the type int32 Belt::*, int32 Belt::* (a parameter pack) of NameExpr yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pending | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) | free operator templates are not found for operators on class templates ("Opt has no operator=="); C:\kpp-templates\compiler\tests\spec\templates\free_operator_template.kpp:19: codegen does not support an operator with a class on the right that no function defines yet (in @kpp.main) |
-| `templates/range_for_auto_dependent.kpp` | a range-for with an `auto` loop variable over a range whose type depends on a template parameter | pending | most of the ~100 `item.first` codegen errors in the full src (Dialog<T>, MenuGui<T>, generic lambdas) | the loop variable's type is not deduced in the instantiation (`<unknown>` at its first use); C:\kpp-templates\compiler\tests\spec\templates\range_for_auto_dependent.kpp:12: codegen does not support the type <unknown> of NameExpr yet (in @"Dialog<int32>::keys()", requested by @kpp.main) |
+| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen binds one template pack per expansion (templatePackOf), `auto PrototypeT::*...` names two; C:\kpp-resolver\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support the type int32 Belt::*, int32 Belt::* (a parameter pack) of NameExpr yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-resolver\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pending | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) | free operator templates are not found for operators on class templates ("Opt has no operator=="); C:\kpp-resolver\compiler\tests\spec\templates\free_operator_template.kpp:19: codegen does not support an operator with a class on the right that no function defines yet (in @kpp.main) |
 | `templates/trait_in_base_argument.kpp` | a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`) | pending | the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>) | the argument is not evaluated under the instantiation; Conditional's primary template (TrueType) is chosen for every T; line 1: got `true true true`, expected `false true false` |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -150,6 +149,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/overloaded_member_template_explicit.kpp` | overloaded member templates, one called with an explicit argument and an empty pack | pass | MapDeserialiser::load<T>() next to load(T&, Args...) (524 complaints in the full src) |  |
 | `templates/pack_forwarding_into_call.kpp` | pack_forwarding_into_call | pass |  |  |
 | `templates/partial_specialisation.kpp` | partial specialisation of class templates | pass | 8 uses in 5 files |  |
+| `templates/range_for_auto_dependent.kpp` | a range-for with an `auto` loop variable over a range whose type depends on a template parameter | pass | most of the ~100 `item.first` codegen errors in the full src (Dialog<T>, MenuGui<T>, generic lambdas) |  |
+| `templates/range_for_auto_in_instantiation.kpp` | an `auto` range-for variable inside a template instantiation: over a class template's Map member (nested, and with structured bindings) and over a function template's container parameter | pass | Serialiser's TypedCounter<IDType>::saveMappingOfUsedIDs, StringUtil::joinWords<ContainerType> (the loop variable was untyped in every instantiation) |  |
 | `templates/requires_clause_before_body.kpp` | a requires clause between a member function's qualifiers and its body: `bool operator==(const V&) const requires Comparable<T> { ... }` | pass |  |  |
 | `templates/requires_clauses.kpp` | constrained templates (requires clauses) | pass | 1274 requires/concept uses in 609 files |  |
 | `templates/requires_in_if_constexpr.kpp` | a requires-expression is a constant: true when its body is valid for the types at hand, so `if constexpr (requires { t.save(); })` picks the branch | pass |  |  |
@@ -172,7 +173,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-resolver\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
 | `library/containers_deque_queue.kpp` | Deque and Queue (std::deque, std::queue): push at both ends, pop, front/back | pass | 116 deque uses in 68 files |  |
