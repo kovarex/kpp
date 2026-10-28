@@ -3669,6 +3669,13 @@ struct GlobalScope::Impl
         if (a->kind == TyKind::Class && a->decl == pattern->decl)
           for (size_t i = 0; i < pattern->args.size() && i < a->args.size(); ++i)
             deduce(pattern->args[i], a->args[i], out, depth + 1);
+        else if (a->kind == TyKind::Class && a->decl && pattern->decl && pattern->decl->ownScope && !pattern->args.empty())
+        {
+          // `const Opt<T>&` given a class derived from Opt<int>: T from that base, as C++ has it.
+          if (const Ty* base = instantiationOfBase(a, classScopeOf(a), pattern->decl->ownScope, depth + 1); base && base != a)
+            for (size_t i = 0; i < pattern->args.size() && i < base->args.size(); ++i)
+              deduce(pattern->args[i], base->args[i], out, depth + 1);
+        }
         break;
       case TyKind::Function:
         if (a->kind == TyKind::Function || a->kind == TyKind::Lambda)
@@ -4270,6 +4277,53 @@ struct GlobalScope::Impl
     return !v || *v;
   }
 
+  // Whether t names one of f's template parameters that deduction binds (not one the first
+  // `given` pairs of s, the class's and the explicit arguments, already bound; not under `T::x`).
+  bool namesDeducedParam(const Ty* t, FunctionDecl* f, const Subst& s, size_t given, int depth = 0)
+  {
+    if (!t || depth > 16 || t->kind == TyKind::DependentMember)
+      return false;
+    if (t->kind == TyKind::Param)
+    {
+      bool own = std::find(f->templateParams.begin(), f->templateParams.end(), t->decl) != f->templateParams.end();
+      for (size_t i = 0; own && i < given && i < s.pairs.size(); ++i)
+        own = s.pairs[i].param != t->decl;
+      return own;
+    }
+    if (namesDeducedParam(t->inner, f, s, given, depth + 1))
+      return true;
+    for (const Ty* a : t->args)
+      if (namesDeducedParam(a, f, s, given, depth + 1))
+        return true;
+    return false;
+  }
+
+  // A parameter whose type is an instantiation pattern of a class template that deduction reads
+  // (`const GameOptional<B>&`, `Vector<T>*`) accepts as argument that template's instantiation
+  // (the deduced one) or a class derived from it, nothing converted to it. written: the declared
+  // parameter type, substituted: with the deduced arguments, arg: the argument's type.
+  bool deducedClassFits(const Ty* written, const Ty* substituted, const Ty* arg, FunctionDecl* f, const Subst& s, size_t given)
+  {
+    const Ty* w = types.unqualified(types.stripRef(written));
+    const Ty* p = types.unqualified(types.stripRef(substituted));
+    const Ty* a = types.unqualified(types.stripRef(arg));
+    if (w->kind == TyKind::Pointer && p->kind == TyKind::Pointer)
+    {
+      if (a->kind != TyKind::Pointer && a->kind != TyKind::Array)
+        return true; // conversions to a pointer are ranked elsewhere
+      w = types.unqualified(w->inner);
+      p = types.unqualified(p->inner);
+      a = types.unqualified(a->inner);
+    }
+    if (w->kind != TyKind::Class || !w->decl || w->args.empty() || !namesDeducedParam(w, f, s, given))
+      return true;
+    if (a->isBraceList() || a == p)
+      return true;
+    if (a->kind != TyKind::Class || !a->decl || p->kind != TyKind::Class)
+      return false;
+    return a->decl == p->decl || isBaseScope(classScopeOf(p), classScopeOf(a));
+  }
+
   // Picks the best candidate by C++'s rule (better in one argument, not worse in any); on a tie
   // the non-template, then the first one. Null when no candidate is viable. bindExplicit, when
   // given, binds the call's explicit template arguments for a candidate (false: the list does not
@@ -4311,6 +4365,7 @@ struct GlobalScope::Impl
       Subst deduced = classSubst ? *classSubst : Subst{};
       if (bindExplicit && !(*bindExplicit)(f, deduced))
         continue;
+      size_t givenCount = deduced.pairs.size(); // the class's and the explicit arguments: not deduced
       if (!f->templateParams.empty() && ft && ft->kind == TyKind::Function)
       {
         deduceCall(f, ft, argTypes, deduced);
@@ -4337,11 +4392,20 @@ struct GlobalScope::Impl
         }
         if (!f->templateParams.empty())
         {
+          const Ty* written = pt;
           pt = substitute(pt, deduced);
           const Ty* at = argTypes[i];
           if (at && at->isKnown() && !types.isDependent(at) && dependsOn(pt, f->templateParams))
           {
             // Deduction failed (`operator<<(UniquePtr<T>&)` given a Label&): not a candidate.
+            ok = false;
+            break;
+          }
+          if (at && at->isKnown() && !types.isDependent(at) && !deducedClassFits(written, pt, at, f, deduced, givenCount))
+          {
+            // `Direction != Direction` against `operator!=(const B&, const GameOptional<B>&)`: a
+            // parameter deduction reads takes its template's instantiations (and classes derived
+            // from one) only; C++ converts no argument to make it deducible.
             ok = false;
             break;
           }

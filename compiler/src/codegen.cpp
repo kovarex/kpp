@@ -7153,12 +7153,20 @@ namespace
         const Ty* foundIn = nullptr;
         if (isClass(lt) && findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
           return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true), b);
-        // A free `operator+(const char*, const String&)` and the like.
+        // A free `operator+(const char*, const String&)` and the like, templates among them
+        // (`template<class B, class E> bool operator!=(const Opt<B, E>&, const Opt<B, E>&)`).
         if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
-          if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), b->lhs->ty, b->rhs->ty, currentFunction); f && f->templateParams.empty())
+          if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), b->lhs->ty, b->rhs->ty, currentFunction))
           {
+            TemplateArgs fnArgs;
+            if (!f->templateParams.empty())
+            {
+              global.deduceArgs(f, {argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types)}, fnArgs);
+              if (fnArgs.pairs.size() < f->templateParams.size())
+                unsupported(b, "a call to " + qualifiedName(f) + " whose template arguments could not be deduced");
+            }
             Expr* args[2] = {b->lhs, b->rhs};
-            return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
+            return callRvalue(callFunction(f, fnArgs, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
           }
         if (std::optional<Value> rewritten = rewrittenComparison(b, op, lt, rt))
           return *rewritten;

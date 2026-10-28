@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**213 pass, 5 pending, 0 failing, 0 fixed** (218 snippets, 6.2 s).
+**215 pass, 4 pending, 0 failing, 0 fixed** (219 snippets, 5.2 s).
 
 ## Language: statements, expressions, declarations
 
@@ -113,7 +113,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 |---|---|---|---|---|
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue); C:\kpp-templates\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pending | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) | free operator templates are not found for operators on class templates ("Opt has no operator=="); C:\kpp-templates\compiler\tests\spec\templates\free_operator_template.kpp:19: codegen does not support an operator with a class on the right that no function defines yet (in @kpp.main) |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |
@@ -132,6 +131,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/compound_constexpr_trait.kpp` | compound_constexpr_trait | pass |  |  |
 | `templates/ctad.kpp` | class template argument deduction from constructor arguments | pass |  |  |
 | `templates/ctad_in_expression.kpp` | class template argument deduction in an expression, not only a declaration: `Pair(a, b)` as a call argument, `Span(p, n)` in a return | pass |  |  |
+| `templates/deduced_parameter_takes_no_conversion.kpp` | a parameter that deduction reads takes its template's instantiations only: `operator!=(const B&, const Opt<B>&)` is no candidate for `Direction != Direction::Enum` through Opt's converting constructor (C++ converts no argument to make it deducible) | pass |  |  |
 | `templates/dependent_member_typedef.kpp` | a member typedef of a dependent instantiation as a return type (typename Vector<T>::iterator) | pass |  |  |
 | `templates/dependent_names.kpp` | dependent names: T::Type, T::constant, this-> in templates, a dependent return type | pass |  |  |
 | `templates/dependent_return_in_variadic_call.kpp` | a call whose return type is dependent (typename T::Unit) used directly as a variadic argument | pass |  |  |
@@ -140,6 +140,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/explicit_pack_template_arguments.kpp` | explicit template arguments that expand a pack, `load<T, Args...>(value, forward<Args>(args)...)`, also when the pack is empty | pass |  |  |
 | `templates/forward_pack_to_function_template.kpp` | forwarding a parameter pack into another function template: `this->inner.emplace(forward<Args>(args)...)` | pass |  |  |
 | `templates/forwarding_conversions.kpp` | forwarding a string literal through a variadic member template into a String constructor (emplace_back("x")) | pass |  |  |
+| `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pass | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) |  |
 | `templates/function_templates.kpp` | function templates: deduction, explicit arguments, overloading with non-templates, full specialisation | pass | 592 full specialisations in 61 files |  |
 | `templates/is_constructible_trait.kpp` | `isConstructible<T, Args...>` is true when T can be built from Args (what std::is_constructible_v converts to), in `if constexpr` and in variable templates | pass |  |  |
 | `templates/local_alias_in_variable_template_argument.kpp` | a local alias of a dependent member type as a variable template's argument, `using T = VectorType::value_type; if constexpr (is_memcpy_loadable<T>)` | pass |  |  |
