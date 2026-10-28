@@ -1302,8 +1302,8 @@ namespace
                   "  }\n"
                   "\n"
                   "  SmallBitset<value_count> bits;\n"
-                  "}";
-                // Also absorb a trailing semicolon if present.
+                  "};";
+                // The expansion ends the class with its own `;`, so a `;` after the use goes with it.
                 uint32_t end = j;
                 if (end + 1 < toks.size() && toks[end + 1].is(P::Semi))
                   end = j + 1;
@@ -1314,7 +1314,8 @@ namespace
               }
             }
           }
-          // MAKE_OPTIONAL(BaseClass, EmptyExpr) -> using OptionalBaseClass = GameOptional<BaseClass>;
+          // MAKE_OPTIONAL(BaseClass, EmptyExpr) -> what the macro defines: the OptionalEmptyValue<BaseClass>
+          // specialisation returning EmptyExpr, and `using OptionalBaseClass = GameOptional<BaseClass>;`.
           if (name == "MAKE_OPTIONAL" && toks[i + 1].is(P::LParen))
           {
             int depth = 0;
@@ -1339,10 +1340,21 @@ namespace
                 std::string baseClass(text.substr(toks[firstArgStart].offset, toks[firstArgEnd].offset - toks[firstArgStart].offset));
                 while (!baseClass.empty() && isspace((unsigned char)baseClass.back())) baseClass.pop_back();
                 while (!baseClass.empty() && isspace((unsigned char)baseClass.front())) baseClass.erase(baseClass.begin());
-                std::string expanded = "using Optional" + baseClass + " = GameOptional<" + baseClass + ">";
-                replace(t.offset, endOffset(j) - t.offset, expanded);
+                std::string empty(text.substr(toks[firstArgEnd + 1].offset, toks[j].offset - toks[firstArgEnd + 1].offset));
+                while (!empty.empty() && isspace((unsigned char)empty.back())) empty.pop_back();
+                while (!empty.empty() && isspace((unsigned char)empty.front())) empty.erase(empty.begin());
+                std::string expanded = "template<>\n"
+                                       "struct OptionalEmptyValue<" + baseClass + ">\n"
+                                       "{\n"
+                                       "  constexpr static " + baseClass + " value() { return " + empty + "; }\n"
+                                       "};\n"
+                                       "using Optional" + baseClass + " = GameOptional<" + baseClass + ">;";
+                uint32_t end = j;
+                if (end + 1 < toks.size() && toks[end + 1].is(P::Semi))
+                  end = j + 1;
+                replace(t.offset, endOffset(end) - t.offset, expanded);
                 counts.add("MAKE_OPTIONAL expanded");
-                i = j;
+                i = end;
                 continue;
               }
             }
