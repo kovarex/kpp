@@ -14,7 +14,56 @@ for 10 minutes on half-written input), then
 powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tree <the copy>
 ```
 
-## Whole converted src: what runs today
+## Whole converted src, evening of 2026-10-28 (d549f69)
+
+Input: the headline inputs (path-to-factorio.md: CommonUtil, Agui and `src/` with the stdlib,
+4,099 files, 40 MB, 0.98 M lines, 6.3 M tokens), the headline command (`--emit-llvm`), a frozen
+copy of that day's convert.cmd output. Three runs: **8.1 s, 8.8 s** and 12.1 s wall (the last
+while another thread was building), peak working set **1.0 GB**, 31,735 codegen errors. Phase
+split of the first run (when each driver line appears):
+
+| phase | wall | notes |
+|---|---:|---|
+| read + lex | 0.9 s | read 0.81 s (the file cache partly cold after a fresh conversion), lex 0.06 s |
+| C header import | 0.4 s | 50 headers, cached |
+| parse + index | 0.1 s | |
+| resolve + check + template instantiation | 1.5 s | 14.6 k class and 42.2 k function instantiations checked |
+| **front end total** | **2.9 s** | 2.1 s with a warm file cache |
+| codegen | 5.4 s | single-threaded; 120,737 functions, 15,043 structs; errors, so no IR is assembled |
+
+What changed in codegen since the morning's measurement below:
+
+- The "out of memory" stop is gone (69ffce0): it was an out-of-bounds read of a function's
+  parameter list (a garbage string copy asking for 7 exabytes), not memory. Past it, a wrong
+  deduction from a brace list made codegen run forever, which a limit of 64 nested instantiation
+  requests now turns into an error (design.md section 3; the whole game needs 12).
+- Single-threaded codegen got 31% faster (6388d00, ba670ed), profile-guided with a sampling
+  profiler: class sizes and alignments are remembered instead of recomputed from the fields on
+  every use, qualified names and function IR names are cached instead of rebuilt as strings per
+  call site, member lookup no longer builds the qualified name of every member of the class, a
+  layout is found by any spelling of its type, constructor overload choices are cached, and an
+  error's line number comes from a table instead of counting newlines. Same tree, same master,
+  three runs each: **codegen 8.35 to 8.49 s -> 5.71 to 5.83 s**.
+- The occasional run that never ended (400+ s at 1 GB, about one in four) is fixed (4c98ac0): two
+  recursions without end overflowed the stack, and the overflow handler then allocated inside a
+  heap the overflow had interrupted. Both recursions are errors now, codegen runs on a thread with
+  a 1 GB stack, and an overflow that still happens ends the process with the function's name.
+- The function count is not comparable with the morning's: functions that depend on a class
+  whose layout cannot be built correctly now fail early instead of compiling against a wrong
+  layout (96629a6, the headline correction to about 38 k errors).
+
+Parallel codegen is not done yet. Codegen re-types each template's body in place in the shared AST
+before emitting an instantiation of it (GlobalScope::retypeFor), and the checker's instantiation
+checks running inside those re-types write into other templates' ASTs too, so two threads cannot
+emit instantiations safely: they would read each other's types and emit wrong code without an
+error. The fix designed with the resolver and template threads is typing frames (the types of one
+instantiation in a per-thread table instead of in the AST, read through accessors by the resolver
+and codegen), followed by a parallel driver with output that does not depend on thread timing. It
+waits for kovarex's go, since it changes resolver.cpp. The same writes make the parallel front end
+nondeterministic today: the headline moves by a few lines between identical runs, and `-j 1` gives
+about 2,000 fewer spurious overload failures than `-j 32` (resolver thread's measurement).
+
+## Whole converted src, morning of 2026-10-28 (de690f4)
 
 Input: CommonUtil, Agui, all of `src/`, the stubs and the stdlib: 4,412 files, 41 MB, 1.04 M lines,
 6.4 M tokens. `kppc --exe` on it, three runs: **8.3 s, 8.5 s, 9.2 s** wall, peak working set
@@ -119,7 +168,9 @@ modules are recompiled too, so a few seconds.
 
 ## What would move these numbers most
 
-1. Finding the `bad_alloc` and the remaining codegen errors, so that the first real full-game IR
-   replaces the extrapolation above.
-2. Parallel codegen: 6.5 to 9 s down to under 1 s, the single largest item in every debug number.
+1. The remaining codegen errors, so that the first real full-game IR replaces the extrapolation
+   above (the `bad_alloc` is found and fixed; the errors are counted honestly now, about 32 k,
+   most of them behind about 260 classes whose layout cannot be built: path-to-factorio.md).
+2. Parallel codegen: 5.4 s (single-threaded, after the 31% of 2026-10-28) down to under 1 s, the
+   single largest item in every debug number; it needs typing frames first (above).
 3. The persistent compiler process for the edit loop; then the link is what is left.
