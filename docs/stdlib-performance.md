@@ -136,6 +136,27 @@ the new element before moving the old ones, as the C++ libraries do, and HashMap
 that has to survive a rehash.
 compiler/tests/run/containers2.kpp covers these, the small/large switch and the hash table churn.
 
+**Ordered maps.** All three C++ libraries implement std::map and std::set as red-black trees:
+one allocation per entry and one pointer to chase per level. Kpp's Map and Set were sorted
+Vectors (fast lookups and iteration, but O(n) inserts: 100k inserts took 179 ms against 12.5 for
+std::map). They are now B-trees (stdlib/core/Map.kpp, the layout of Abseil's btree_map): nodes of
+up to 15 entries, split on the way down when inserting, refilled from a sibling or merged on the
+way down when erasing, so neither ever walks back up. Keys of up to 8 bytes are searched
+linearly within a node, which beat binary search there by 40% (unpredictable branches over 15
+entries cost more than the extra compares); larger keys binary. Unlike std::map, inserting or
+erasing invalidates iterators, since entries move between nodes. Measured with run.cmd
+2026-10-28, ms (columns as above):
+
+| benchmark | sorted Vector | B-tree | MSVC STL | libstdc++ | libc++ |
+|---|---:|---:|---:|---:|---:|
+| map.insert | 179.3 | 8.9 | 12.5 | 11.6 | 10.5 |
+| map.lookup | 70.1 | 57.8 | 67.9 | 96.3 | 59.5 |
+| map.iterate | 1.8 | 7.3 | 14.8 | 8.1 | 5.7 |
+
+Iterating got slower than over the sorted Vector (it walks nodes instead of one array) but stays
+2x faster than the MSVC STL. MultiMap and MultiSet (MultiContainers.kpp) are still sorted
+Vectors.
+
 **Prefetching, allocators.** None of the three C++ libraries prefetches explicitly in these
 containers; the hardware prefetcher handles the linear scans. Allocator strategy matters more: the
 libstdc++ and libc++ columns are faster on string.concat and string.vector copy mostly because
@@ -147,11 +168,9 @@ library-level item left.
 ## Gaps left
 
 Library design:
-- **Map/Set are sorted vectors**: inserting is O(n), map.insert is 14x slower than std::map at
-  100k entries (and grows linearly worse). Lookup is on par and iteration 3-8x faster. A B-tree
-  (16 or so entries per node) would keep both and make insert O(log n); it changes Map's
-  iterator from `Pair<K, V>*` to a struct.
 - **Allocator**: see above (string.concat 22.8 ms against 7.2 with glibc's malloc).
+- **MultiMap/MultiSet** are still sorted Vectors (O(n) inserts); the B-tree takes them once it
+  allows equal keys.
 - **vector.insert front**: memmove of the tail, same as MSVC STL; libstdc++/libc++ are faster
   only through glibc's memmove.
 
