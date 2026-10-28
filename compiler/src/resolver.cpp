@@ -1038,6 +1038,7 @@ struct GlobalScope::Impl
     if (name.empty() || depth > 24)
       return out;
     Scope* current = name.global ? &root : nullptr;
+    const Ty* currentTy = nullptr; // the class current is the scope of, when its arguments are known
     for (size_t i = 0; i < name.parts.size(); ++i)
     {
       const NamePart& part = name.parts[i];
@@ -1095,11 +1096,13 @@ struct GlobalScope::Impl
             if (Scope* inside = classScopeOf(sub))
             {
               current = inside; // `Policy::getCoordinate` with Policy = VerticalPolicy: the rest inside that class
+              currentTy = sub;
               continue;
             }
           if (sub && sub->kind == TyKind::Enum && sub->decl && sub->decl->ownScope)
           {
             current = sub->decl->ownScope; // `E::values` with E = Direction: the enum's members
+            currentTy = nullptr;
             continue;
           }
         }
@@ -1109,6 +1112,7 @@ struct GlobalScope::Impl
       }
       if (last)
         return step;
+      const Ty* stepTy = nullptr; // the class step names, when its arguments are known
       if (part.hasTemplateArgs && step.decl && step.decl->kind == NodeKind::ClassDecl)
       {
         // `Limits<int>::max`: the specialisation for these arguments, when there is one.
@@ -1124,15 +1128,50 @@ struct GlobalScope::Impl
           step.decl = spec->decl;
           step.scope = spec->decl->ownScope;
         }
+        if (const Ty* t = typeOfTypeDecl(step.decl, step, part, actx, depth + 1); t && t->kind == TyKind::Class && !types.isDependent(t))
+          stepTy = t;
       }
+      else if (step.scope && step.scope->kind == ScopeKind::Class && step.scope->owner && effectiveParams(step.scope->owner).empty())
+        stepTy = types.classType(step.scope->owner, {});
       if (!step.scope && step.decl && step.decl->kind == NodeKind::UsingAliasDecl && step.decl->templateParams.empty())
       {
+        auto* alias = static_cast<UsingAliasDecl*>(step.decl);
+        // An alias a base class template declares, `ItemPrototype::IDType::IndexType` with
+        // `using IDType = IDTypeParameter;` in Prototype<ItemID>: its type under that base's
+        // arguments, then the rest of the name inside it.
+        if (currentTy && step.foundIn && step.foundIn->kind == ScopeKind::Class)
+        {
+          Subst ms = memberSubst(currentTy, step.foundIn, depth);
+          const Ty* at = ms.empty() ? nullptr : declaredTypeOf(alias, &ms, depth + 1);
+          if (at && at->kind == TyKind::Class && at->decl && !types.isDependent(at))
+            if (Scope* inside = classScopeOf(at))
+            {
+              current = inside;
+              currentTy = at;
+              out = step;
+              continue;
+            }
+        }
+        // `using X = T::IDType;` in a template body, then `X::IndexType`: the alias's type under the
+        // instantiation's arguments.
+        if (subst && step.found == Found::Local)
+        {
+          const Ty* at = convertType(alias->type, TypeContext{context, locals, subst}, depth + 1);
+          if (at && at->kind == TyKind::Class && at->decl && !types.isDependent(at))
+            if (Scope* inside = classScopeOf(at))
+            {
+              current = inside;
+              currentTy = at;
+              out = step;
+              continue;
+            }
+        }
         // `using Kind = Token::Special;` (a local alias, say), then `Kind::None`: the rest of the
         // name inside the type the alias stands for.
-        auto* alias = static_cast<UsingAliasDecl*>(step.decl);
         if (Scope* inside = scopeOfType(alias->type, step.found == Found::Local ? context : lexicalScopeOf(alias), locals, depth + 1))
         {
           current = inside;
+          currentTy = nullptr;
           out = step;
           continue;
         }
@@ -1143,6 +1182,7 @@ struct GlobalScope::Impl
         return {};
       }
       current = step.scope;
+      currentTy = stepTy;
       out = step;
     }
     return out;
@@ -2761,7 +2801,18 @@ struct GlobalScope::Impl
     }
     if (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::UsingAliasDecl)
       return s;
-    const Ty* qualifier = typeOfTypeDecl(l.decl, l, prefix.last(), ctx, depth + 1);
+    const Ty* qualifier = nullptr;
+    if (prefix.parts.size() > 1)
+    {
+      // `PrototypeType::IDType::IndexType`: the qualifier converted as the type it names, so that
+      // an alias it ends in has the arguments of the base declaring it (ID<EntityPrototype, uint16>).
+      NamedType written{};
+      written.kind = NodeKind::NamedType;
+      written.name = prefix;
+      qualifier = convertType(&written, ctx, depth + 1);
+    }
+    else
+      qualifier = typeOfTypeDecl(l.decl, l, prefix.last(), ctx, depth + 1);
     if (!qualifier || qualifier->kind != TyKind::Class)
       return s;
     return memberSubst(qualifier, foundIn, depth);

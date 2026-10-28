@@ -1,6 +1,5 @@
-// spec: a qualified name that continues through an alias inherited from a class template instantiation, `ItemPrototype::IDType::IndexType` and `T::IDType::IndexType`
-// found in the game's Gui and GlobalContext (`PrototypeType::IDType::IndexType`, `FilterType::IDType::IteratorType`: 16 uses)
-// pending: lookupQualified follows the alias IDType (= IDTypeParameter) without the base Prototype<ItemID>'s arguments
+// spec: a qualified name that continues through an alias inherited from a class template instantiation, `ItemPrototype::IDType::IndexType`, `T::IDType::IndexType` and through a local alias of `T::IDType`
+// found in the game's Gui and GlobalContext (`PrototypeType::IDType::IndexType`, `FilterType::IDType::IteratorType`: 16 uses; `static_cast<PrototypeType::IDType::IndexType>` in LuaCustomPrototypeTable::luaLen)
 struct ItemID
 {
   using IndexType = unsigned short;
@@ -10,8 +9,26 @@ template<class IDTypeParameter>
 struct Prototype { using IDType = IDTypeParameter; };
 struct ItemPrototype : Prototype<ItemID> {};
 
+// The member reached depends on the arguments of the class the alias stands for.
+template<class PrototypeType, class TemplateParamIndexType = unsigned short>
+struct ID
+{
+  using IndexType = TemplateParamIndexType;
+};
+struct FluidPrototype : Prototype<ID<FluidPrototype, unsigned char>> {};
+
+template<class T>
+int truncated(int value) { return int(static_cast<T::IDType::IndexType>(value)); }
+
 template<class T>
 int viaParameter() { return int(T::IDType::IndexType(7)); }
+
+template<class T>
+int throughLocalAlias()
+{
+  using X = T::IDType;
+  return int(X::IndexType(8));
+}
 
 template<class T>
 int declared()
@@ -22,6 +39,7 @@ int declared()
 
 int main()
 {
-  println("{} {} {}", int(ItemPrototype::IDType::IndexType(6)), viaParameter<ItemPrototype>(), declared<ItemPrototype>());
+  println("{} {} {} {}", int(ItemPrototype::IDType::IndexType(6)), viaParameter<ItemPrototype>(), throughLocalAlias<ItemPrototype>(), declared<ItemPrototype>());
+  println("{} {}", truncated<FluidPrototype>(300), truncated<ItemPrototype>(300));
   return 0;
 }
