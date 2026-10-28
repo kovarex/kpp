@@ -1596,7 +1596,70 @@ namespace
           break;
         result = std::move(next);
       }
-      return result;
+      return this->renameGameClasses(result);
+    }
+
+    // The game's classes whose names the library uses (Vector, Map, Optional, Pair), renamed as
+    // convertTokens renames them, in text that never was tokens: a macro's expansion, whose body and
+    // arguments are the game's C++ (`MACRO(StartWalking,, Vector, vector)` in InputAction's list).
+    // `std::` names in it are mapped later, by the pass over the whole output.
+    std::string renameGameClasses(const std::string& s)
+    {
+      static const std::map<std::string, std::pair<std::string, std::string>> renames = {
+        {"Vector", {"Vector2D", "Vector renamed to Vector2D"}},
+        {"Map", {"GameMap", "Map renamed to GameMap"}},
+        {"Optional", {"GameOptional", "Optional renamed to GameOptional"}},
+        {"Pair", {"GamePair", "Pair renamed to GamePair"}}};
+      std::string out;
+      for (size_t i = 0; i < s.size();)
+      {
+        char c = s[i];
+        if (c == '"' || c == '\'')
+        {
+          size_t j = i + 1;
+          while (j < s.size() && s[j] != c)
+            j += s[j] == '\\' ? 2 : 1;
+          j = std::min(j + 1, s.size());
+          out.append(s, i, j - i);
+          i = j;
+          continue;
+        }
+        if (!(isalpha((unsigned char)c) || c == '_'))
+        {
+          out += c;
+          ++i;
+          continue;
+        }
+        size_t j = i;
+        while (j < s.size() && isIdentChar(s[j]))
+          ++j;
+        std::string word = s.substr(i, j - i);
+        i = j;
+        auto r = renames.find(word);
+        if (r != renames.end())
+        {
+          // Not after `std::`.
+          size_t p = out.size();
+          while (p > 0 && out[p - 1] == ' ')
+            --p;
+          bool qualified = p >= 2 && out[p - 1] == ':' && out[p - 2] == ':';
+          if (qualified)
+          {
+            p -= 2;
+            while (p > 0 && out[p - 1] == ' ')
+              --p;
+          }
+          bool afterStd = qualified && p >= 3 && out.compare(p - 3, 3, "std") == 0 && (p == 3 || !isIdentChar(out[p - 4]));
+          if (!afterStd)
+          {
+            out += r->second.first;
+            counts.add(r->second.second);
+            continue;
+          }
+        }
+        out += word;
+      }
+      return out;
     }
 
     void convertTokens()
