@@ -1,0 +1,18 @@
+// spec: an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)`
+// found in the stdlib B-tree (Map.kpp compares keys this way; it binds the left side to a reference first as a workaround)
+// pending: the comparison is emitted as a primitive compare of the struct values (invalid IR)
+template<typename T>
+struct Identity
+{
+  static const T& of(const T& value) { return value; }
+};
+
+template<typename T, typename KeyOf>
+bool lessVia(const T& a, const T& b) { return KeyOf::of(a) < KeyOf::of(b); }
+
+int main()
+{
+  String a("apple"), b("banana");
+  println("{} {}", lessVia<String, Identity<String>>(a, b) ? 1 : 0, lessVia<String, Identity<String>>(b, a) ? 1 : 0);
+  return 0;
+}

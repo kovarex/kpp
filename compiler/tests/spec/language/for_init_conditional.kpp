@@ -1,0 +1,11 @@
+// spec: a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)`
+// found in the stdlib Map tests (compiler/tests/run/ordered.kpp); C++ code has the same shape
+// pending: the `:` of the conditional is taken for a range-for colon ("a range of unknown type")
+int main()
+{
+  int k = -3, total = 0;
+  for (int j = k < 0 ? 0 : k; j < 4; ++j)
+    total += j;
+  println("{}", total);
+  return 0;
+}

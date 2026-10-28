@@ -315,7 +315,7 @@ int64_t mapLookup()
   int64_t found = 0;
   for (int i = 0; i < stringCount; ++i)
   {
-    Pair<int, int>* entry = map.find(int(nextRandom() % 700000));
+    auto entry = map.find(int(nextRandom() % 700000));
     if (entry != map.end())
       found += entry->second;
   }

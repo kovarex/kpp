@@ -1,0 +1,143 @@
+// Map and Set (the B-tree in stdlib/core/Map.kpp) against a plain array as the reference: random
+// inserts and erases over a small key range, then order, bounds, iteration both ways, copies.
+extern "C" int printf(const char* format, ...);
+
+uint64_t state = 99991;
+int nextInt(int range)
+{
+  state ^= state << 13;
+  state ^= state >> 7;
+  state ^= state << 17;
+  return int(state % (uint64_t)range);
+}
+
+const int keyRange = 3000;
+
+// Checks map against reference (value + 1 per present key, 0 for absent); returns the mismatches.
+int compare(Map<int, int>& map, Vector<int>& reference)
+{
+  int errors = 0, expected = 0;
+  for (int k = 0; k < keyRange; ++k)
+    if (reference[k] != 0)
+      ++expected;
+  if (map.size() != expected)
+    ++errors;
+  // In order, every entry present in the reference.
+  int previous = -1, seen = 0;
+  for (Pair<int, int>& entry : map)
+  {
+    if (entry.first <= previous || reference[entry.first] != entry.second + 1)
+      ++errors;
+    previous = entry.first;
+    ++seen;
+  }
+  if (seen != expected)
+    ++errors;
+  // Backwards from end().
+  int backwards = 0;
+  auto it = map.end();
+  while (it != map.begin())
+  {
+    --it;
+    ++backwards;
+  }
+  if (backwards != expected)
+    ++errors;
+  // Bounds against a scan of the reference.
+  for (int k = -1; k <= keyRange; k += 7)
+  {
+    int lower = -1, upper = -1;
+    for (int j = max(k, 0); j < keyRange && lower < 0; ++j)
+      if (reference[j] != 0)
+        lower = j;
+    for (int j = max(k + 1, 0); j < keyRange && upper < 0; ++j)
+      if (reference[j] != 0)
+        upper = j;
+    auto l = map.lowerBound(k);
+    auto u = map.upperBound(k);
+    if ((lower < 0) != (l == map.end()) || (lower >= 0 && l->first != lower))
+      ++errors;
+    if ((upper < 0) != (u == map.end()) || (upper >= 0 && u->first != upper))
+      ++errors;
+    if (k >= 0 && k < keyRange && map.contains(k) != (reference[k] != 0))
+      ++errors;
+  }
+  return errors;
+}
+
+int main()
+{
+  Map<int, int> map;
+  Vector<int> reference;
+  reference.resize(keyRange);
+  int errors = 0, inserts = 0, erases = 0;
+  for (int round = 0; round < 40; ++round)
+  {
+    // Phases that grow and shrink the tree, so that splits, borrows and merges all happen.
+    int eraseShare = round % 4 == 3 ? 80 : 30;
+    for (int step = 0; step < 2000; ++step)
+    {
+      int key = nextInt(keyRange);
+      if (nextInt(100) < eraseShare)
+      {
+        bool erased = map.erase(key);
+        if (erased != (reference[key] != 0))
+          ++errors;
+        reference[key] = 0;
+        erases += erased ? 1 : 0;
+      }
+      else
+      {
+        int value = nextInt(1000);
+        bool added = map.insert(key, value);
+        if (added != (reference[key] == 0))
+          ++errors;
+        if (added)
+        {
+          reference[key] = value + 1;
+          ++inserts;
+        }
+      }
+    }
+    errors += compare(map, reference);
+  }
+  // Erasing through iterators: every other entry.
+  for (auto it = map.begin(); it != map.end();)
+  {
+    reference[it->first] = 0;
+    it = map.erase(it);
+    if (it != map.end())
+      ++it;
+  }
+  errors += compare(map, reference);
+  Map<int, int> copy = map;
+  map[5] = 41;
+  reference[5] = 42;
+  errors += compare(map, reference);
+  printf("%d %d %d %d %d\n", errors, inserts > 10000 ? 1 : 0, erases > 10000 ? 1 : 0, copy.size() + 1 >= map.size() ? 1 : 0, map[5]);
+
+  // String keys and a Set; copies are independent, moves leave the source empty.
+  Map<String, String> names;
+  for (int i = 0; i < 500; ++i)
+    names[toString(i * 37 % 500)] = String("value number ") + toString(i) + String(" long enough to allocate");
+  Map<String, String> namesCopy = names;
+  for (int i = 0; i < 500; i += 2)
+    names.erase(toString(i));
+  Map<String, String> moved = move(names);
+  Set<String> keys;
+  for (auto& entry : namesCopy)
+    keys.insert(entry.first);
+  for (auto& entry : moved)
+    keys.erase(entry.first);
+  String first = *keys.begin();
+  printf("%d %d %d %d %s %s %d\n", namesCopy.size(), moved.size(), names.size(), keys.size(), first.c_str(),
+         namesCopy.find(String("7"))->second.c_str(), keys.contains(String("9")) ? 1 : 0);
+
+  Set<int> small = {5, 3, 9, 1};
+  small.insert(3);
+  small.erase(9);
+  for (int v : small)
+    printf("%d ", v);
+  printf("%d\n", small.size());
+  return 0;
+}
