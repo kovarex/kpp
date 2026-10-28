@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**231 pass, 6 pending, 1 failing, 0 fixed** (238 snippets, 6.4 s).
+**232 pass, 6 pending, 0 failing, 0 fixed** (238 snippets, 5.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -116,7 +116,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/dependent_member_typedef.kpp` | a member typedef of a dependent instantiation as a return type (typename Vector<T>::iterator) | FAIL |  | the compiler crashed (exit 0xC0000005) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -138,6 +137,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/ctad.kpp` | class template argument deduction from constructor arguments | pass |  |  |
 | `templates/ctad_in_expression.kpp` | class template argument deduction in an expression, not only a declaration: `Pair(a, b)` as a call argument, `Span(p, n)` in a return | pass |  |  |
 | `templates/deduced_parameter_takes_no_conversion.kpp` | a parameter that deduction reads takes its template's instantiations only: `operator!=(const B&, const Opt<B>&)` is no candidate for `Direction != Direction::Enum` through Opt's converting constructor (C++ converts no argument to make it deducible) | pass |  |  |
+| `templates/dependent_member_typedef.kpp` | a member typedef of a dependent instantiation as a return type (typename Vector<T>::iterator) | pass |  |  |
 | `templates/dependent_names.kpp` | dependent names: T::Type, T::constant, this-> in templates, a dependent return type | pass |  |  |
 | `templates/dependent_return_in_variadic_call.kpp` | a call whose return type is dependent (typename T::Unit) used directly as a variadic argument | pass |  |  |
 | `templates/empty_pack_class_instantiation.kpp` | a class template whose only parameter is a pack, instantiated with no arguments (`Signal<>`) | pass | Signal<> members (ConfigItemBase::onChanged, GlobalModSettings::onChanged, CraftingQueue::ChangedSignal), 11 layouts |  |
