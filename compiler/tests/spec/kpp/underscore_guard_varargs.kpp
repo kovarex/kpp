@@ -1,0 +1,36 @@
+// spec: `_` guards of a nested class with a C-variadic constructor (what SAVING_TAG converts to)
+// factorio: 688 uses (SAVING_TAG 647, SAVING_STATISTICS 41)
+extern "C" import "stdio.h";
+struct Serialiser
+{
+  String out;
+  struct TagWriter
+  {
+    TagWriter(Serialiser& serialiser, const char* tag) : tag(tag), serialiser(serialiser) { this->serialiser.out += format("<{}>", tag); }
+    TagWriter(Serialiser& serialiser, const char* tag, const char* fmt, ...) : tag(tag), serialiser(serialiser)
+    {
+      char buffer[64];
+      va_list args;
+      va_start(args, fmt);
+      vsnprintf(buffer, sizeof(buffer), fmt, args);
+      va_end(args);
+      this->serialiser.out += format("<{} {}>", tag, buffer);
+    }
+    ~TagWriter() { this->serialiser.out += format("</{}>", this->tag); }
+    const char* tag;
+    Serialiser& serialiser;
+  };
+};
+void save(Serialiser& output, int id)
+{
+  Serialiser::TagWriter _(output, "entity", "id=%d name=%s", id, "pipe");
+  Serialiser::TagWriter _(output, "body");
+  output.out += "data";
+}
+int main()
+{
+  Serialiser output;
+  save(output, 7);
+  println("{}", output.out);
+  return 0;
+}

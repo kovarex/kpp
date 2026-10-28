@@ -583,7 +583,7 @@ entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the c
 |   SDL | 312 | 1% | `SDL_Rect`, `SDL_CreateWindow`, rendering and input |
 |   other (tracy, imgui) | 6 | <1% | Profiler and debug UI |
 | **(b) Unexpanded macros** | **~1,271** | **~4%** | Macros the converter left as comments |
-|   `SAVING_TAG` / `LOADING_TAG` | ~1,271 | 4% | 527 files; need `for constexpr` + reflection |
+|   `SAVING_TAG` / `SAVING_STATISTICS` | ~1,271 | 4% | 527 files; done 2026-10-28: scoped guards, converted to `_` locals (macro survey F) |
 | **(c) Serialisation system** | **2,032** | **6%** | `MapSerialiser<T>`, `MapDeserialiser<T>`, `SerialiserHelper` chains |
 | **(d) ID system templates** | **341** | **1%** | `ID<T>`, `IDType`, `IDConnector`, `PrototypeList` |
 | **(e) Resolver gaps** | **2,998** | **9%** | Types the resolver did not propagate |
@@ -622,9 +622,9 @@ entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the c
 4. **Missing operators on game types** (1,399): `==`, `<`, `!=` on types like `MapPosition`,
    `Direction`, `ItemID` — the types exist but their comparison operators are not found.
 
-5. **Unexpanded SAVING_TAG macro** (~1,271 in 527 files): the X-macro pattern for serialisation;
-   the converter leaves them as TODO comments. Needs the converter to emit `for constexpr` +
-   `members(T)` (both implemented in the compiler; the converter mapping is the remaining work).
+5. **Unexpanded SAVING_TAG macro** (~1,271 in 527 files). Done 2026-10-28: it is not an X-macro
+   but a guard object with a per-line name, so the converter writes `Serialiser::TagWriter
+   _(output, "item", ...)` (macro survey section F), also where a file's own macro wraps it.
 
 ### Where to focus next
 
@@ -633,7 +633,7 @@ entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the c
 2. **Enum value lookup**: ~1,700 errors (5%). Unscoped enum values need to be found from the
    enclosing scope.
 3. **Operator resolution**: ~1,400 errors (4%). Find `==`/`<`/`!=` on game types.
-4. **SAVING_TAG converter mapping**: ~1,271 uses. Emit `for constexpr` + `members(T)`.
+4. ~~**SAVING_TAG converter mapping**~~: done, `_` guard locals.
 5. **Third-party stubs or exclusion** (Lua): 8,899 errors (27%). C import of Lua headers or
    exclusion of the scripting layer.
 

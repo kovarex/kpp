@@ -81,6 +81,9 @@ namespace
   // stub next to a smoke test) provides.
   const std::map<std::string, std::string> knownFunctionMacros = {{"FORMAT_STRING", "$1"}, {"WHEN_ASSERT", "$1"}, {"FOR_DEVELOPER", "$1"},
                                                                   {"toCStr", "toStr($1).c_str()"},
+                                                                  // Scoped guards that needed a unique name per line are `_` locals.
+                                                                  {"SAVING_TAG", "Serialiser::TagWriter _($1)"},
+                                                                  {"SAVING_STATISTICS", "Serialiser::SavingStatsWriter _($1)"},
                                                                   {"LOG_AND_ABORT", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_AND_ABORT_NEVER_THROW", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_ENUM_AND_ABORT", "Logging::logEnumAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"}};
@@ -890,10 +893,35 @@ namespace
       return out;
     }
 
-    std::string expandMacro(const LocalMacro& m, const std::vector<std::string>& args)
+    // The `)` that closes the `(` at open in macro text, skipping string and character literals;
+    // npos when there is none.
+    static size_t closingParen(const std::string& s, size_t open)
+    {
+      int depth = 0;
+      for (size_t k = open; k < s.size(); ++k)
+      {
+        if (s[k] == '"' || s[k] == '\'')
+        {
+          char quote = s[k];
+          for (++k; k < s.size() && s[k] != quote; ++k)
+            if (s[k] == '\\')
+              ++k;
+        }
+        else if (s[k] == '(')
+          ++depth;
+        else if (s[k] == ')' && --depth == 0)
+          return k;
+      }
+      return std::string::npos;
+    }
+
+    // useOffset is where the macro is used, for __FILE__ and __LINE__ in known macros' replacements.
+    std::string expandMacro(const LocalMacro& m, const std::vector<std::string>& args, uint32_t useOffset)
     {
       std::string result = expandMacroOnce(m, args);
-      // Re-scan for nested local macro calls (X-macro pattern: outer expands to inner(args) calls).
+      // Re-scan for nested local macro calls (X-macro pattern: outer expands to inner(args) calls)
+      // and for the known function macros (a local macro wrapping SAVING_TAG, for example), which
+      // the token-level rewrite does not see inside the expansion's text.
       for (int pass = 0; pass < 4; ++pass)
       {
         bool changed = false;
@@ -950,6 +978,21 @@ namespace
                 i = k + 1;
                 continue;
               }
+            }
+            auto kf = knownFunctionMacros.find(name);
+            size_t close = kf != knownFunctionMacros.end() && j < result.size() && result[j] == '(' ? closingParen(result, j) : std::string::npos;
+            if (close != std::string::npos)
+            {
+              // As in convertTokens: $1 stands for the argument text.
+              size_t dollar = kf->second.find("$1");
+              if (dollar == std::string::npos)
+                next += withFileAndLine(kf->second, useOffset);
+              else
+                next += withFileAndLine(kf->second.substr(0, dollar), useOffset) + result.substr(j + 1, close - j - 1) +
+                        withFileAndLine(kf->second.substr(dollar + 2), useOffset);
+              changed = true;
+              i = close + 1;
+              continue;
             }
             next.append(result, i, j - i);
             i = j;
@@ -1010,7 +1053,7 @@ namespace
                 std::vector<std::string> argText;
                 for (auto [a0, a1] : args)
                   argText.push_back(a1 > a0 ? std::string(text.substr(toks[a0].offset, endOffset(a1 - 1) - toks[a0].offset)) : std::string());
-                replace(t.offset, endOffset(j) - t.offset, expandMacro(lm->second, argText));
+                replace(t.offset, endOffset(j) - t.offset, expandMacro(lm->second, argText, t.offset));
                 counts.add("local macro expanded");
                 i = j;
                 continue;
