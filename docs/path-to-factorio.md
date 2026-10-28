@@ -608,7 +608,21 @@ Measured on master f688026 (2026-10-28): **12,750** codegen errors, out of memor
 instantiations with 7,758 remaining; 12 s on the 9950X (90eab80, before the SAVING_TAG change:
 13,168, out of memory after 91,746 with 5,735 remaining). For comparison, the full-program step
 inside `convert.cmd` (all of `kpp\`, 4,403 files, without the SDL_Mixer include, so the C import
-fails) gives 15,976 stderr lines on f688026, of which 15,969 are codegen errors.
+fails) gives 15,976 stderr lines on f688026, of which 15,969 are codegen errors. Since 0d91626,
+`convert.cmd` runs exactly the headline command and prints the count.
+
+The converter's share, measured with one compiler (master 11dc873) and the converter as of
+d40fb8a against the converter at 11dc873: **14,445 -> 12,352** (-2,093). What changed: BITFIELD
+and MAKE_OPTIONAL expansions end with `;` (17 files failed to parse) and BITFIELD has
+`contains<value>()` and `uint64_t`; SAVING_TAG and SAVING_STATISTICS are `_` guard locals; the
+Log macros call Logging with the use's file and line; ADD_VALUE, SKIP_VALUE and ADD_ENUM expand
+use by use, with `#NAME` as the argument's original spelling; the 31 hidden friend operators
+survive (member operators, or functions at namespace scope). By package, the biggest moves:
+Entity 1,278 -> 782, Graphics 1,175 -> 814, Logistics 316 -> 173, AI 186 -> 76, Fluid 120 -> 28,
+src top level 949 -> 814; Util rises 1,722 -> 1,923 because code that failed to parse or
+resolve before now reaches the code generator. The `.first`/`.second` failures are not a
+missing Pair mapping (std::pair converts to the library's `Pair`): they are range-for loops with
+`auto` over dependent ranges in templates, spec `templates/range_for_auto_dependent` (pending).
 
 ### Error breakdown by root cause
 
