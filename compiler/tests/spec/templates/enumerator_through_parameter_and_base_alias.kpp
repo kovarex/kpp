@@ -1,0 +1,41 @@
+// spec: an enumerator named through a chain of member aliases under an instantiation, `GuiType::ResultType::Nothing` with `using GuiType = T;` in the class template, T = AboutGui deriving from Dialog<AboutGuiResult> and `using ResultType = R;` in Dialog<R>
+// factorio: AppManagerStateWithGuiManualConstruction<T>::process (`this->gui->result != GuiType::ResultType::Nothing`), Dialog<T>'s constructor (`result(ResultType::Nothing)`); 107 lines "an unresolved name (Nothing)"
+enum class AboutResult
+{
+  Nothing,
+  Confirm
+};
+
+template<class R>
+class Dialog
+{
+public:
+  using ResultType = R;
+  Dialog() : result(ResultType::Nothing) {}
+  ResultType result;
+};
+
+class AboutDialog : public Dialog<AboutResult> {};
+
+template<class T>
+class GuiState
+{
+public:
+  using GuiType = T;
+  T* gui = nullptr;
+  bool done() const { return this->gui->result != GuiType::ResultType::Nothing; }
+  void reset() { this->gui->result = GuiType::ResultType::Nothing; }
+};
+
+int main()
+{
+  AboutDialog dialog;
+  GuiState<AboutDialog> state;
+  state.gui = &dialog;
+  bool before = state.done();
+  dialog.result = AboutResult::Confirm;
+  bool after = state.done();
+  state.reset();
+  println("{} {} {}", before, after, state.done());
+  return 0;
+}

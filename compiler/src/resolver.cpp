@@ -1255,21 +1255,37 @@ struct GlobalScope::Impl
       if (!step.scope && step.decl && step.decl->kind == NodeKind::UsingAliasDecl && step.decl->templateParams.empty())
       {
         auto* alias = static_cast<UsingAliasDecl*>(step.decl);
+        // The rest of the name inside the class or enum the alias stands for (`ResultType::Nothing`
+        // with `using ResultType = R;` and R an enum).
+        auto enterAliased = [&](const Ty* at)
+        {
+          if (!at || !at->decl || types.isDependent(at))
+            return false;
+          if (at->kind == TyKind::Class)
+            if (Scope* inside = classScopeOf(at))
+            {
+              current = inside;
+              currentTy = at;
+              out = step;
+              return true;
+            }
+          if (at->kind == TyKind::Enum && at->decl->ownScope)
+          {
+            current = at->decl->ownScope;
+            currentTy = nullptr;
+            out = step;
+            return true;
+          }
+          return false;
+        };
         // An alias a base class template declares, `ItemPrototype::IDType::IndexType` with
         // `using IDType = IDTypeParameter;` in Prototype<ItemID>: its type under that base's
         // arguments, then the rest of the name inside it.
         if (currentTy && step.foundIn && step.foundIn->kind == ScopeKind::Class)
         {
           Subst ms = memberSubst(currentTy, step.foundIn, depth);
-          const Ty* at = ms.empty() ? nullptr : declaredTypeOf(alias, &ms, depth + 1);
-          if (at && at->kind == TyKind::Class && at->decl && !types.isDependent(at))
-            if (Scope* inside = classScopeOf(at))
-            {
-              current = inside;
-              currentTy = at;
-              out = step;
-              continue;
-            }
+          if (enterAliased(ms.empty() ? nullptr : declaredTypeOf(alias, &ms, depth + 1)))
+            continue;
         }
         // `using X = T::IDType;` in a template body, or `using IDType = IDTypeParameter;` in the class
         // being instantiated, then `X::IndexType` / `IDType::PrototypeType`: the alias's type under the
@@ -1277,15 +1293,8 @@ struct GlobalScope::Impl
         if (subst && (step.found == Found::Local || step.found == Found::Member))
         {
           bool local = step.found == Found::Local;
-          const Ty* at = convertType(alias->type, TypeContext{local ? context : lexicalScopeOf(alias), local ? locals : nullptr, subst}, depth + 1);
-          if (at && at->kind == TyKind::Class && at->decl && !types.isDependent(at))
-            if (Scope* inside = classScopeOf(at))
-            {
-              current = inside;
-              currentTy = at;
-              out = step;
-              continue;
-            }
+          if (enterAliased(convertType(alias->type, TypeContext{local ? context : lexicalScopeOf(alias), local ? locals : nullptr, subst}, depth + 1)))
+            continue;
         }
         // `using Kind = Token::Special;` (a local alias, say), then `Kind::None`: the rest of the
         // name inside the type the alias stands for.
