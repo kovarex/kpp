@@ -567,3 +567,78 @@ The compiler-side items are each days to a couple of weeks at the pace of the wo
 long pole is the conversion of 1.3 M lines, mechanical once the converter exists but a long tail
 of constructs and library idioms, so it should start on CommonUtil as soon as exceptions are
 decided rather than after the compiler is "complete".
+
+## Full-src baseline (2026-10-28)
+
+The compiled subset now includes everything: CommonUtil (29 files), Agui (235 files), and the
+entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the code generator,
+86,115 template instantiations before the OOM cap (5,172 remaining), 32,884 codegen errors.
+
+### Error breakdown by root cause
+
+| category | count | % | what it is |
+|---|---:|---:|---|
+| **(a) Third-party references** | **9,217** | **28%** | Code touching libraries kppc does not convert |
+|   Lua | 8,899 | 27% | `lua_pushinteger`, `luaL_checkstring`, the scripting layer |
+|   SDL | 312 | 1% | `SDL_Rect`, `SDL_CreateWindow`, rendering and input |
+|   other (tracy, imgui) | 6 | <1% | Profiler and debug UI |
+| **(b) Unexpanded macros** | **~1,271** | **~4%** | Macros the converter left as comments |
+|   `SAVING_TAG` / `LOADING_TAG` | ~1,271 | 4% | 527 files; need `for constexpr` + reflection |
+| **(c) Serialisation system** | **2,032** | **6%** | `MapSerialiser<T>`, `MapDeserialiser<T>`, `SerialiserHelper` chains |
+| **(d) ID system templates** | **341** | **1%** | `ID<T>`, `IDType`, `IDConnector`, `PrototypeList` |
+| **(e) Resolver gaps** | **2,998** | **9%** | Types the resolver did not propagate |
+|   type left as `?` | 1,777 | 5% | A member or return type the resolver could not follow |
+|   `<unknown>` type | 713 | 2% | An expression whose type is completely unknown |
+|   template parameter not substituted | 377 | 1% | A `T` that stayed `T` after instantiation |
+|   cascade (`?` in template arg) | 131 | <1% | An instantiation whose argument was already `?` |
+| **(f) Codegen gaps** | **16,207** | **49%** | Types present in the subset but code not emitted |
+|   unresolved member access | 4,422 | 13% | `this->commandable->getMap()` — resolver did not chain |
+|   unresolved call | 4,196 | 13% | `entity.getPosition()` — call target not resolved |
+|   unresolved name | 1,729 | 5% | `normalQuality` (411), `Nothing` (152), `Success` (142) — enum values |
+|   missing operator | 1,399 | 4% | `==`, `<`, `!=` on game types |
+|   constructor call | 1,248 | 4% | `MapPosition(x, y)` — constructor not matched |
+|   local of unknown type | 788 | 2% | `auto x = ...` where the initialiser did not resolve |
+|   type conversion/binding | 716 | 2% | Implicit conversions the resolver missed |
+|   range-for | 593 | 2% | `for (auto& e : entities)` — iterator not resolved |
+|   wrong member kind | 582 | 2% | A member found but not as the expected kind (field vs method) |
+|   member on non-class | 486 | 1% | `.x` on something typed as a non-class |
+|   template deduction failure | 48 | <1% | `template<class T> f(T)` — deduction did not run |
+| **(g) Other** | **2,087** | **6%** | Remaining long tail |
+
+### Top 5 concrete patterns
+
+1. **Unresolved member chain** (4,422): the resolver resolves the first access but not the
+   second. Example: `this->commandable->getMap()` in `BuildBaseBehavior::prepareBuilding()` —
+   `commandable` resolves to `Commandable*` but `getMap()` on the result does not propagate.
+
+2. **Unresolved call on a known type** (4,196): a method call on a type that IS in the subset.
+   Example: `entity.getPosition()` where `entity` is typed `Entity&` — the `getPosition` method
+   exists but the resolver did not bind the call.
+
+3. **Enum values as unresolved names** (1,729): enum members like `normalQuality` (411 uses),
+   `Nothing` (152), `Success` (142) — the parent enum is in scope but the unscoped enumerator
+   is not found by name lookup.
+
+4. **Missing operators on game types** (1,399): `==`, `<`, `!=` on types like `MapPosition`,
+   `Direction`, `ItemID` — the types exist but their comparison operators are not found.
+
+5. **Unexpanded SAVING_TAG macro** (~1,271 in 527 files): the X-macro pattern for serialisation;
+   the converter leaves them as TODO comments. Needs the converter to emit `for constexpr` +
+   `members(T)` (both implemented in the compiler; the converter mapping is the remaining work).
+
+### Where to focus next
+
+1. **Resolver chaining** (unresolved-member + unresolved-call): ~8,600 errors (26%). Making the
+   resolver propagate types through `a->b->c()` chains would cut almost a third of all errors.
+2. **Enum value lookup**: ~1,700 errors (5%). Unscoped enum values need to be found from the
+   enclosing scope.
+3. **Operator resolution**: ~1,400 errors (4%). Find `==`/`<`/`!=` on game types.
+4. **SAVING_TAG converter mapping**: ~1,271 uses. Emit `for constexpr` + `members(T)`.
+5. **Third-party stubs or exclusion** (Lua): 8,899 errors (27%). C import of Lua headers or
+   exclusion of the scripting layer.
+
+### Rule
+
+No silent fallbacks. Every one of these 32,884 errors must end up as either compiled correctly
+or a proper diagnostic. The `--errors` / `--unresolved` caps are for iteration; the target is
+zero.
