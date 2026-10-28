@@ -201,6 +201,10 @@ namespace
     {
       uint32_t symbol;
       Decl* decl;
+      // The type this walk deduced for a local whose declared type has no initializer to deduce
+      // from (a range-for variable): per walk, since one template body is typed concurrently for
+      // several instantiations.
+      const Ty* type = nullptr;
     };
     std::vector<Item> items;
     size_t mark() const { return items.size(); }
@@ -215,6 +219,13 @@ namespace
       for (size_t i = items.size(); i-- > 0;)
         if (items[i].symbol == symbol)
           return items[i].decl;
+      return nullptr;
+    }
+    const Ty* deducedTypeOf(const Decl* decl) const
+    {
+      for (size_t i = items.size(); i-- > 0;)
+        if (items[i].decl == decl)
+          return items[i].type;
       return nullptr;
     }
   };
@@ -4520,8 +4531,10 @@ struct GlobalScope::Impl
       {
         if (v->init && v->init->ty)
           t = impl.deduceAuto(t, v->init->ty);
+        else if (const Ty* deduced = locals.deducedTypeOf(v))
+          t = deduced; // a range-for variable: the element type this walk deduced
         else if (const Ty* cached = v->cachedType.load(std::memory_order_acquire); cached && !impl.containsAuto(cached))
-          t = cached; // a range-for variable: the element type the loop deduced (inside an instantiation it is not recomputed)
+          t = cached;
         else
           t = nullptr;
       }
@@ -4531,6 +4544,8 @@ struct GlobalScope::Impl
       const Ty* object = types.unqualified(types.stripRef(t));
       if (object->kind == TyKind::Array)
         return isConst ? types.qualified(object->inner, true, false) : object->inner;
+      if (object->kind == TyKind::Param)
+        return object; // the element of a range that depends on a template parameter
       if (object->kind != TyKind::Class)
         return unknown(Why::Unsupported);
       Scope* cs = impl.classScopeOf(object);
@@ -4571,6 +4586,8 @@ struct GlobalScope::Impl
             auto* v = static_cast<VariableDecl*>(d);
             if (v->init && v->init->ty)
               return impl.deduceAuto(t, v->init->ty);
+            if (const Ty* deduced = locals.deducedTypeOf(v))
+              return deduced; // a range-for variable: the element type this walk deduced
             return unknown(Why::Auto);
           }
           return t;
@@ -6254,16 +6271,26 @@ struct GlobalScope::Impl
           auto* v = static_cast<VariableDecl*>(f->var);
           walkType(v->type);
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
+          const Ty* loopVarType = nullptr;
           if (impl.containsAuto(declared))
           {
             const Ty* element = elementTypeOf(range);
             const Ty* deduced = element->isKnown() ? impl.deduceAuto(declared, element) : types.unknown();
             if (deduced->isKnown())
+            {
               v->cachedType.store(deduced, std::memory_order_release);
+              loopVarType = deduced;
+            }
+            else if (range && range->isKnown() && types.isDependent(range))
+              loopVarType = impl.deduceAuto(declared, types.lref(types.param(nullptr))); // typed per instantiation
             else
               ++stats.unknownAuto;
           }
+          size_t declaredAt = locals.mark();
           declareLocal(v);
+          if (loopVarType)
+            for (size_t i = declaredAt; i < locals.items.size(); ++i)
+              locals.items[i].type = loopVarType;
           walkStmt(f->body);
           locals.pop(mark);
           break;

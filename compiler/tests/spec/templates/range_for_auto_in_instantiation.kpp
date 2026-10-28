@@ -1,0 +1,49 @@
+// spec: an `auto` range-for variable inside a template instantiation: over a class template's Map member (nested, and with structured bindings) and over a function template's container parameter
+// factorio: Serialiser's TypedCounter<IDType>::saveMappingOfUsedIDs, StringUtil::joinWords<ContainerType> (the loop variable was untyped in every instantiation)
+template<typename T>
+struct Holder
+{
+  Map<String, Map<T, String>> mapping;
+
+  int count() const
+  {
+    int n = 0;
+    for (const auto& typeItem : this->mapping)
+    {
+      n += typeItem.second.size();
+      for (const auto& item : typeItem.second)
+        n += item.second.size();
+    }
+    return n;
+  }
+
+  int keys() const
+  {
+    int n = 0;
+    for (const auto& [name, inner] : this->mapping)
+      n += name.size() + inner.size();
+    return n;
+  }
+};
+
+template<typename ContainerType>
+int joinedSize(const ContainerType& container)
+{
+  int size = 0;
+  for (const auto& item : container)
+    size += item.size();
+  return size;
+}
+
+int main()
+{
+  Holder<int> h;
+  h.mapping[String("ab")][1] = String("x");
+  h.mapping[String("ab")][2] = String("yz");
+  h.mapping[String("c")][3] = String("w");
+  Vector<String> words;
+  words.push_back(String("ab"));
+  words.push_back(String("cde"));
+  println("{} {} {}", h.count(), h.keys(), joinedSize(words));
+  return 0;
+}
