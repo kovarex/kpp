@@ -1,0 +1,44 @@
+// spec: a range-for with an `auto` loop variable over a range whose type depends on a template parameter
+// factorio: most of the ~100 `item.first` codegen errors in the full src (Dialog<T>, MenuGui<T>, generic lambdas)
+// pending: the loop variable's type is not deduced in the instantiation (`<unknown>` at its first use)
+template<class T>
+struct Dialog
+{
+  Map<int, T> resultMapping;
+  int keys()
+  {
+    int s = 0;
+    for (auto& item : this->resultMapping)
+      s += item.first;
+    return s;
+  }
+};
+template<class C>
+int sum(const C& values)
+{
+  int s = 0;
+  for (const auto& x : values)
+    s += x;
+  return s;
+}
+template<class T>
+int firsts(const Vector<Pair<int, T>>& values)
+{
+  int s = 0;
+  for (const auto& item : values)
+    s += item.first;
+  return s;
+}
+int main()
+{
+  Dialog<int> d;
+  d.resultMapping[2] = 3;
+  d.resultMapping[5] = 1;
+  Vector<int> v;
+  v.push_back(2);
+  v.push_back(5);
+  Vector<Pair<int, double>> p;
+  p.push_back(Pair<int, double>(4, 0.5));
+  println("{} {} {}", d.keys(), sum(v), firsts(p));
+  return 0;
+}
