@@ -1,6 +1,5 @@
 // spec: a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`)
 // factorio: the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>)
-// pending: the argument is not evaluated under the instantiation; Conditional's primary template (TrueType) is chosen for every T
 template<typename T> struct IsPtr : BoolConstant<isPointer<T>> {};
 template<typename T> struct IsPtr2 : IntegralConstant<bool, isPointer<T>> {};
 int main()

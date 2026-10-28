@@ -4349,51 +4349,81 @@ namespace
 
     // --- values ---
 
-    // The class's `operator T()` converting to `to` (exactly, or any scalar one when none is exact);
-    // explicit ones only for bool, where conditions allow them.
-    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at)
+    // The class's `operator T()` converting to `to` (exactly, or any scalar one when none is exact),
+    // its own or inherited (`operator bool` of a BoolConstant base); explicit ones only for bool,
+    // where conditions allow them. foundIn: the class (or base) declaring it.
+    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr)
     {
-      ClassDecl* c = classDef(from->decl, at);
-      TemplateArgs args = global.classArgsOf(canonicalClass(from, at));
-      ArgsScope scope(*this, &args);
-      FunctionDecl* fallback = nullptr;
-      for (Decl* m : c->members)
+      return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
       {
-        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion))
-          continue;
-        if (global.isExplicit(static_cast<FunctionDecl*>(m), args) && to->kind != TyKind::Bool)
-          continue;
-        const Ty* ft = declType(m);
-        if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown())
-          continue;
-        const Ty* ret = types.unqualified(types.stripRef(ft->inner));
-        if (ret == types.unqualified(to))
-          return static_cast<FunctionDecl*>(m);
-        if (!fallback && !isClass(ret))
-          fallback = static_cast<FunctionDecl*>(m);
-      }
-      return fallback;
+        if (global.isExplicit(f, args) && to->kind != TyKind::Bool)
+          return 0;
+        return ret == types.unqualified(to) ? 2 : isClass(ret) ? 0 : 1;
+      });
     }
 
-    // A class's (non-explicit) conversion operator to an enum or an integer, or null: what a
-    // switch on the object switches on.
-    FunctionDecl* integralConversionOperator(const Ty* from, Node* at)
+    // A class's (non-explicit) conversion operator to an enum or an integer, own or inherited, or
+    // null: what a switch on the object switches on.
+    FunctionDecl* integralConversionOperator(const Ty* from, Node* at, const Ty** foundIn = nullptr)
     {
-      ClassDecl* c = classDef(from->decl, at);
-      TemplateArgs args = global.classArgsOf(canonicalClass(from, at));
-      ArgsScope scope(*this, &args);
-      for (Decl* m : c->members)
+      return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
       {
-        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || global.isExplicit(static_cast<FunctionDecl*>(m), args))
-          continue;
-        const Ty* ft = declType(m);
-        if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown())
-          continue;
-        const Ty* ret = types.unqualified(types.stripRef(ft->inner));
-        if (ret->kind == TyKind::Enum || ret->kind == TyKind::Int || ret->kind == TyKind::Char || ret->kind == TyKind::Bool)
-          return static_cast<FunctionDecl*>(m);
+        if (global.isExplicit(f, args))
+          return 0;
+        return ret->kind == TyKind::Enum || ret->kind == TyKind::Int || ret->kind == TyKind::Char || ret->kind == TyKind::Bool ? 2 : 0;
+      });
+    }
+
+    // The conversion operator of `from` or its bases (the class first, then each base level) that
+    // score rates best: 2 at once, else the first rated 1; 0 is not a candidate.
+    template<typename Score>
+    FunctionDecl* findConversion(const Ty* from, Node* at, const Ty** foundIn, Score&& score)
+    {
+      FunctionDecl* best = nullptr;
+      const Ty* bestIn = nullptr;
+      int bestScore = 0;
+      std::vector<const Ty*> classes{canonicalClass(from, at)};
+      for (size_t i = 0; i < classes.size() && i < 64 && bestScore < 2; ++i)
+      {
+        const Ty* cls = classes[i];
+        ClassDecl* c = classDef(cls->decl, at);
+        TemplateArgs args = global.classArgsOf(cls);
+        ArgsScope scope(*this, &args);
+        for (Decl* m : c->members)
+        {
+          if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion))
+            continue;
+          const Ty* ft = declType(m);
+          if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown())
+            continue;
+          int s = score(static_cast<FunctionDecl*>(m), args, types.unqualified(types.stripRef(ft->inner)));
+          if (s > bestScore)
+          {
+            best = static_cast<FunctionDecl*>(m);
+            bestIn = cls;
+            bestScore = s;
+            if (s >= 2)
+              break;
+          }
+        }
+        for (const ClassDecl::Base& b : c->bases)
+          if (const Ty* bt = global.typeOfAstIn(b.type, c, args); bt && isClass(bt) && !types.isDependent(bt))
+            classes.push_back(canonicalClass(bt, at));
       }
-      return nullptr;
+      if (foundIn)
+        *foundIn = bestIn;
+      return best;
+    }
+
+    // Calls a conversion operator found in `owner` (the object's class or one of its bases) on
+    // the object at addr.
+    Value callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at)
+    {
+      std::string self = addr;
+      if (owner != canonicalClass(objectTy, at) && !baseAddress(objectTy, owner, addr, self, at))
+        unsupported(at, "a conversion operator of the base " + types.toString(owner, &symbols) + ", which the layout of " +
+                            types.toString(objectTy, &symbols) + " does not have");
+      return callRvalue(callFunction(op, global.classArgsOf(owner), owner, self, "", {}, at), at);
     }
 
     Value convert(Value v, const Ty* to, Node* at)
@@ -4438,18 +4468,12 @@ namespace
             return {addr, to, v.isTemporary && addr == v.text};
         }
         if (fk == TyKind::Class)
-          if (FunctionDecl* op = conversionOperator(from, to, at))
-          {
-            TemplateArgs args = global.classArgsOf(canonicalClass(from, at));
-            return convert(callRvalue(callFunction(op, args, canonicalClass(from, at), v.text, "", {}, at), at), to, at);
-          }
-        if (fk == TyKind::Class && tk == TyKind::Bool)
         {
-          // Anonymous/incomplete class to bool: treat as pointer-like (non-null check).
-          std::string r = newTemp();
-          fn += "  " + r + " = icmp ne ptr " + v.text + ", null\n";
-          return {r, to};
+          const Ty* owner = nullptr;
+          if (FunctionDecl* op = conversionOperator(from, to, at, &owner))
+            return convert(callConversion(op, from, owner, v.text, at), to, at);
         }
+        // (A class without a conversion to bool is no condition: never its address compared with null.)
         unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));
       }
       std::string r = newTemp();
@@ -8938,11 +8962,11 @@ namespace
       else if (isClass(cond.ty))
       {
         // `switch (direction)` on an object: its conversion to an enum or integer (Direction's `operator Enum()`).
-        FunctionDecl* op = integralConversionOperator(cond.ty, sw);
+        const Ty* owner = nullptr;
+        FunctionDecl* op = integralConversionOperator(cond.ty, sw, &owner);
         if (!op)
           unsupported(sw, "a switch on a class without a conversion to an enum or an integer");
-        TemplateArgs args = global.classArgsOf(canonicalClass(cond.ty, sw));
-        cond = callRvalue(callFunction(op, args, canonicalClass(cond.ty, sw), cond.text, "", {}, sw), sw);
+        cond = callConversion(op, cond.ty, owner, cond.text, sw);
         switchedTy = cond.ty;
       }
       const Ty* ct = cond.ty->kind == TyKind::Enum ? enumUnderlying(cond.ty->decl) : cond.ty;

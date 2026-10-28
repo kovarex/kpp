@@ -1,0 +1,27 @@
+// spec: a conversion operator inherited from a base class, `operator bool` of BoolConstant<B>, converts the derived object (also in a condition and a switch)
+// found by the resolver thread: codegen looked for conversion operators only among the class's own members, then turned the object into `address != null`, always true
+template<bool B> struct ViaParam : BoolConstant<B> {};
+enum class Mode { Off, On };
+struct ModeHolder
+{
+  Mode mode = Mode::On;
+  operator Mode() const { return this->mode; }
+};
+struct Derived : ModeHolder {};
+int main()
+{
+  bool no = ViaParam<false>();
+  bool yes = ViaParam<true>();
+  println("{} {}", no, yes);
+  if (ViaParam<false>())
+    println("wrong");
+  else
+    println("false is false");
+  Derived d;
+  switch (d)
+  {
+    case Mode::Off: println("off"); break;
+    case Mode::On: println("on"); break;
+  }
+  return 0;
+}
