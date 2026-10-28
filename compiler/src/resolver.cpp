@@ -4048,6 +4048,12 @@ struct GlobalScope::Impl
     if (depth > 4)
       return NotViable;
     const Ty* a = types.stripRef(arg);
+    if (a->isBraceList() && !isInitializerList(types.stripRef(param)) && param->kind == TyKind::LRef)
+    {
+      // `take({1, makeUnique<int>(5)})`: the brace list makes a temporary, which a `T&&` binds
+      // better than a `const T&` (C++'s rvalue-reference rule) and a `T&` not at all.
+      return param->inner->isConst ? 3 : NotViable;
+    }
     if (isInitializerList(a) && !isInitializerList(types.stripRef(param)))
       return 2; // a brace list: it converts to anything else through its elements, which the code generator checks
     if (a->isBraceList())
