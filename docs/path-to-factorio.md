@@ -674,6 +674,45 @@ the 28,000 new lines (one frozen tree, master 4c98ac0's converter output, two ru
   pointer and a few local enums.
 - **5 bases of unknown type.**
 
+### From emitted functions to an executable (2026-10-28, night)
+
+The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in
+compile-speed.md), against the game's own Release builds of its C libraries. What stands between
+"every function emitted" and an executable, beyond the headline's codegen errors:
+
+- **255 functions emitted with IR that LLVM rejects** (codegen bugs the headline does not count;
+  46 of the 64 modules failed until they were taken out, one at a time, by a script):
+  - 164 a pointer where a value is expected or the reverse, mostly a lambda returned by value
+    (`ret %closure.N %o3`: the closure's address returned as if it were the closure), and class
+    values handed on as addresses;
+  - 15 SSE vector values (`<4 x float>`, `<4 x i32>`, `<2 x double>`) used as pointers
+    (float32x4 and its kin);
+  - 30 unsized types allocated or loaded (a class whose layout was never written);
+  - 12 two functions with one IR name: overloads whose parameter types print the same
+    (`NamedBool<?>` for two different unresolved arguments; two classes of one simple name, since
+    types print by their last name only);
+  - 17 calls with the wrong number of arguments, `void` values, an invalid return type;
+  - 5 functions that crash LLVM's instruction selection (BufferedReadStream's constructor and
+    four more).
+- **10,915 unresolved symbols at the link:**
+  - 9,650 functions a codegen error left out (the headline);
+  - 1,079 Kpp functions declared and called but never defined anywhere codegen saw: the
+    InputAction family (314), GuiStyle's style getters (205), EditorAction (136), Filesystem (49,
+    stdlib declarations without definitions), PrototypeInfo and PrototypeMigrationList (42 each),
+    ID (42), Serialiser (28), and the methods of classes declared inside function bodies (the code
+    generator does not look inside bodies for them; spec classes/local_class);
+  - 114 of the functions taken out for invalid IR;
+  - 72 C functions: Windows libraries the driver does not link yet (gdi32, imm32, version,
+    setupapi/cfgmgr32, opengl32, oleaut32, winmm, wldap32 for curl's LDAP), two compiler
+    intrinsics imported as functions (`_BitScanReverse`, `_mm_prefetch`), an inline function of
+    ws2tcpip.h (`gai_strerrorW`), and libpng and stb_image_resize, which none of the linked
+    libraries contains.
+- **No entry point:** the game's entry is `wmain` (UTF-16 arguments), which codegen does not
+  treat as the program's entry the way it treats `main`, and `fmain`, which it calls, is one of
+  the functions with errors.
+- **One duplicate definition**: `Curl_HMAC_MD5`, defined both by curl.lib and by the imported
+  curl header (a C header's data definition emitted as a definition, not a declaration).
+
 ### cxxopts (2026-10-28)
 
 The command-line parser the game uses (`libraries/cxxopts`, one header) converts like game code:

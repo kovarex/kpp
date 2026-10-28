@@ -63,6 +63,42 @@ waits for kovarex's go, since it changes resolver.cpp. The same writes make the 
 nondeterministic today: the headline moves by a few lines between identical runs, and `-j 1` gives
 about 2,000 fewer spurious overload failures than `-j 32` (resolver thread's measurement).
 
+## The full src past IR for the first time: clang and the link (2026-10-28, night)
+
+`kppc --keep-going --exe` (e7d4669) compiles and links what codegen emitted although it reported
+errors: the functions the errors left out are only declared, so the link lists them. Same inputs
+as above, the game's own Release builds of its C libraries (C:\Factorio\vs2022\Releasex64: lua,
+sdl, sdl-mixer, curl, zlib, zstd, minizip, ogg, vorbis, opus, opusfile, re2, crc32fast, stb,
+fontstash, glad, imgui, trio, open-vcdiff, stack-walker) passed with `--lib`.
+
+| step | wall on 32 threads | notes |
+|---|---:|---|
+| codegen, 64 modules | 12.4 s | 128.5 k functions, 379 MB of IR (single module: 5.4 s; the module assembly is still slow, see below) |
+| clang -O0, 64 modules | **6.0 to 6.3 s** | sum of the module times 54 to 56 s; one module takes 5.3 to 5.5 s of it (below) |
+| clang -O2, 64 modules | 228 s | sum 517 s; that one module alone 224 s (measured before the modules were balanced) |
+| link, lld | **1.6 s** | with /FORCE (10,915 unresolved symbols); link.exe: 3.4 s, stops at a duplicate symbol without /FORCE:MULTIPLE |
+
+What the numbers depend on:
+
+- **One function is most of the backend.** `ControlSettings::ControlSettings(const PropertyTree&,
+  KeyboardLayout)`, about 1,400 lines of Kpp (key bindings, one after another), becomes 875 k lines
+  of IR, 70 MB, with 481,672 destructor calls. Every one of its 981 cleanup pads destroys all the
+  objects alive at that point, so the cleanups grow with the square of the number of objects.
+  Cleanups chained scope by scope (each pad destroys what its scope added and unwinds to the
+  enclosing one, as clang's do) make it linear. Without the one outlier, the remaining module time
+  spread over 32 threads would be about 2 to 3 s at -O0 and about 16 s at -O2 (estimates from
+  the measured sums, 54 s and 517 s, not measurements).
+- **Balance.** Instantiations used to land in the module of whoever asked for them first, which
+  piled the library's into a few modules (the slowest -O0 module took 7.7 s before, 5.3 s after);
+  they now go to the module their name hashes to.
+- **Module assembly.** Splitting into 64 modules costs 7 s more than one module: every module
+  carries the whole shared declaration text (all struct types and globals), copied 64 times, and
+  filtered line by line per module. Per-module declarations (only what the module uses) are the
+  fix, and they also make a module's text change only when something it uses changes, which the
+  object cache needs.
+- What the link cannot find is listed in path-to-factorio.md ("From emitted functions to an
+  executable").
+
 ## Whole converted src, morning of 2026-10-28 (de690f4)
 
 Input: CommonUtil, Agui, all of `src/`, the stubs and the stdlib: 4,412 files, 41 MB, 1.04 M lines,
