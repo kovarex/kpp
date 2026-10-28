@@ -1,0 +1,31 @@
+// spec: a class with an (inherited) conversion operator to a scalar as an argument and as an operand of built-in operators: `twice(limit)`, `area < limit`, `count + 4`, `-limit`, `area * limit`, `area += limit`
+// factorio: UtilityConstants' 101 numeric Const<T> (Const<float> : Value<float>, which converts by `operator const T&()`), used as numbers everywhere
+template<class T>
+struct Value
+{
+  Value() {}
+  implicit operator const T&() const { return this->storage; }
+  T storage{};
+};
+
+template<class T>
+struct Const : Conditional<isIntegral<T> || isFloatingPoint<T>, Value<T>, T> {};
+
+double twice(double x) { return 2 * x; }
+
+int main()
+{
+  Const<float> limit;
+  limit.storage = 2.5f;
+  Const<int> count;
+  count.storage = 3;
+  float area = 2.0f;
+  double d = twice(limit);
+  bool small = area < limit;
+  int sum = count + 4;
+  float neg = -limit;
+  float scaled = area * limit;
+  area += limit;
+  println("{} {} {} {} {} {}", d, small, sum, neg, scaled, area);
+  return 0;
+}

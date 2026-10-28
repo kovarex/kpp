@@ -7068,7 +7068,15 @@ namespace
           fn += "  " + r + " = xor i1 " + b.text + ", true\n";
           return {r, types.boolType()};
         }
-        return callRvalue(operatorCall(v, operatorName(op), {}, u, true), u);
+        // No operator function: the built-in operator on the class's conversion to a scalar
+        // (`-limit` with a Const<double>), as the resolver typed it.
+        const Ty* scalar = nullptr;
+        if (!findMemberFunction(v.ty, operatorName(op), {}, v.ty, u, &in) &&
+            !(u->operand->ty && global.findFreeOperator(uint32_t(op), u->operand->ty, nullptr, currentFunction)))
+          scalar = global.scalarConversionOf(v.ty);
+        if (!scalar)
+          return callRvalue(operatorCall(v, operatorName(op), {}, u, true), u);
+        v = convert(v, scalar, u);
       }
       switch (op)
       {
@@ -7145,7 +7153,11 @@ namespace
           Expr* args[2] = {b->lhs, b->rhs};
           return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
         }
-      if (isClass(lt) || isClass(rt))
+      // `area += limit` with a Const<float> and no function for it: the scalar assignment below, on
+      // the right operand's conversion to a scalar.
+      bool scalarAssignment = isAssignment(op) && lt && lt->isKnown() && !isClass(lt) && isClass(rt) && global.scalarConversionOf(rt) &&
+                              !global.findFreeOperator(uint32_t(op), b->lhs->ty, b->rhs->ty, currentFunction);
+      if ((isClass(lt) || isClass(rt)) && !scalarAssignment)
       {
         std::string name = operatorName(op);
         Expr* rhsExpr = b->rhs;
@@ -7170,6 +7182,27 @@ namespace
           }
         if (std::optional<Value> rewritten = rewrittenComparison(b, op, lt, rt))
           return *rewritten;
+        // No operator function: C++'s built-in operator on the operands' conversions to a scalar
+        // (`area < smallBlueprintAreaSize` with a Const<float>), as the resolver typed it.
+        if (!isAssignment(op))
+        {
+          const Ty* lc = isClass(lt) ? global.scalarConversionOf(lt) : lt;
+          const Ty* rc = isClass(rt) ? global.scalarConversionOf(rt) : rt;
+          if (lc && rc && lc->isKnown() && rc->isKnown())
+          {
+            Value l = convert(rvalue(b->lhs), lc, b);
+            Value r = convert(rvalue(b->rhs), rc, b);
+            switch (op)
+            {
+              case P::EqEq: case P::NotEq: case P::Less: case P::LessEq: case P::Greater: case P::GreaterEq:
+                return compare(op, l, r, b);
+              case P::Spaceship:
+                return orderingObject(orderOfScalars(l, r, b), b);
+              default:
+                return arithmetic(op, l, r, b);
+            }
+          }
+        }
         if (!isClass(lt))
           unsupported(b, "an operator with a class on the right that no function defines");
         Value l = rvalue(b->lhs);
@@ -7242,6 +7275,8 @@ namespace
             unsupported(b, "an assignment to an expression of unknown type");
         }
         Value rhs = rvalue(b->rhs);
+        if (scalarAssignment)
+          rhs = convert(rhs, global.scalarConversionOf(rhs.ty), b);
         const BitfieldInfo* bits = nullptr;
         if (b->lhs->kind == NodeKind::MemberExpr)
           if (Decl* d = static_cast<MemberExpr*>(b->lhs)->resolved; d && bitfieldOf.count(d))
