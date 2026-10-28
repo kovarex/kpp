@@ -331,10 +331,33 @@ struct GlobalScope::Impl
         for (const Entry& e : entries)
         {
           for (Decl* p : e.decl->templateParams)
+          {
             templateParamNames.insert(static_cast<TemplateParamDecl*>(p)->name);
+            classifyTemplateParam(static_cast<TemplateParamDecl*>(p), scope);
+          }
           if (e.scope && e.scope != scope)
             collectTemplateParamNames(e.scope); // not a local class's own name in its scope
         }
+    for (FunctionDecl* f : scope->outOfLineMembers)
+      for (Decl* p : f->templateParams)
+        classifyTemplateParam(static_cast<TemplateParamDecl*>(p), lexicalScopeOf(f));
+  }
+
+  // `template<Kind K>`: the parser cannot tell a constant parameter of a named type from a
+  // constrained type parameter (`template<Concept T>`) and takes it for the latter; a name that
+  // turns out to be a type, not a concept, makes it a constant parameter of that type.
+  void classifyTemplateParam(TemplateParamDecl* p, Scope* scope)
+  {
+    if (!p->isType || !p->valueType || p->valueType->kind != NodeKind::NamedType)
+      return;
+    const QualifiedName& name = static_cast<NamedType*>(p->valueType)->name;
+    if (name.empty() || name.last().hasTemplateArgs)
+      return; // `Concept<X> T`
+    Lookup l = lookupQualified(name, scope, nullptr, 0);
+    Decl* d = l.decl;
+    if (d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
+              (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+      p->isType = false;
   }
 
   ClassDecl* getOrCreateDraft(Scope* scope, uint32_t symbol)

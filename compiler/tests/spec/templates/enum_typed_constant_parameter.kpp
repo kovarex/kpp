@@ -1,0 +1,29 @@
+// spec: a constant template parameter of a named type (`template<Kind K>`) is a value of that type: it picks overloads and deduces as one (the parser cannot tell it from a constrained type parameter `template<Concept T>`, the names decide)
+// found in the game's GameNotifications (`template<GameNotificationType NotificationType, ...>` with `typeRequiresEntity(NotificationType)`: 137 overload failures) and every template over an enum constant
+enum class Kind { A, B, C };
+
+template<class T>
+concept Small = sizeof(T) <= 4;
+
+int pick(Kind k) { return 10 + int(k); }
+int pick(double d) { return 99; }
+
+template<class X>
+const char* describe(X) { return "other"; }
+template<>
+const char* describe(Kind) { return "kind"; }
+
+template<Kind K>
+int direct() { return pick(K); }
+
+template<Kind K>
+const char* deduced() { return describe(K); }
+
+template<Small T>
+int constrained(T value) { return int(sizeof(T)); }
+
+int main()
+{
+  println("{} {} {} {}", direct<Kind::B>(), direct<Kind::C>(), deduced<Kind::A>(), constrained(7));
+  return 0;
+}
