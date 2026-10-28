@@ -1,13 +1,20 @@
 // spec: explicit template arguments that expand a pack, `load<T, Args...>(value, forward<Args>(args)...)`, also when the pack is empty
 // found in the game's DeserialiserHelper (loadVector, loadSTDUniquePtr, loadFlatMap: 152 instantiations): an empty Args gives the callee's pack one element, an empty pack, while its function type has none
-// pending: an empty pack in explicit template arguments becomes a pack holding an empty pack
 template<typename T, typename... Args>
 T load(T value, Args&&... args) { return value + T(sizeof...(args)); }
 template<typename T, typename... Args>
 T loadValue(T value, Args&&... args) { return load<T, Args...>(value, forward<Args>(args)...); }
+
+// A constant before the expansion, as in loadVector<Vector<T>, ZeroHandling::KeepZeros, Args...>.
+enum class Zeros { Keep, Discard };
+template<typename T, Zeros Z, typename... Args>
+T loadVector(T value, Args&&... args) { return value * (Z == Zeros::Keep ? 1 : -1) + T(sizeof...(args)); }
+template<typename T, typename... Args>
+T loadWithoutZeros(T value, Args&&... args) { return loadVector<T, Zeros::Discard, Args...>(value, forward<Args>(args)...); }
 int main()
 {
   println("{}", loadValue(40));
   println("{}", loadValue(40, 1, 2));
+  println("{} {}", loadWithoutZeros(40), loadWithoutZeros(40, 7));
   return 0;
 }

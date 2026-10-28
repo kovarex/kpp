@@ -4233,14 +4233,18 @@ struct GlobalScope::Impl
       if (!namePart)
         return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous);
       // The explicit template arguments (`load<bool>()`): a candidate with fewer parameters than
-      // the list names, and no pack to take the rest, is not one.
+      // the list names, and no pack to take the rest, is not one (an expansion `Args...` in the
+      // list may name none, so it does not count).
       std::function<bool(FunctionDecl*, Subst&)> bind = [&](FunctionDecl* f, Subst& s)
       {
-        size_t n = f->templateParams.size(), given = namePart->hasTemplateArgs ? namePart->templateArgs.size() : 0;
+        if (!namePart->hasTemplateArgs || namePart->templateArgs.empty())
+          return true;
+        size_t n = f->templateParams.size(), given = 0;
+        for (Node* written : namePart->templateArgs)
+          given += !written || written->kind != NodeKind::PackType;
         if (given > n && !(n && static_cast<TemplateParamDecl*>(f->templateParams[n - 1])->isPack))
           return false;
-        if (given)
-          bindExplicitArgs(f, *namePart, callArgs, s);
+        bindExplicitArgs(f, *namePart, callArgs, s);
         return true;
       };
       return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind);
@@ -4310,29 +4314,37 @@ struct GlobalScope::Impl
       return out;
     }
 
-    // An explicit template argument of a call (`forward<Args>(args)`): under an instantiation that
-    // binds the pack Args to one element, a non-pack parameter of the callee gets that element,
-    // not a pack of one.
     // The explicit template arguments of a call (`count<int, int, int>()`): one per parameter;
     // a trailing pack takes the rest, and is empty when the list leaves it nothing and there is
-    // no call argument to deduce it from.
+    // no call argument to deduce it from. A pack expansion in the list (`load<V, Z, Args...>`)
+    // gives one argument per element of the pack, none for an empty one.
     void bindExplicitArgs(FunctionDecl* f, const NamePart& namePart, Span<Expr*> args, Subst& s)
     {
       size_t n = f->templateParams.size();
-      for (size_t i = 0; i < namePart.templateArgs.size() && i < n; ++i)
+      if (n == 0)
+        return;
+      std::vector<const Ty*> given;
+      for (Node* written : namePart.templateArgs)
+      {
+        Decl* param = f->templateParams[std::min(given.size(), n - 1)];
+        const Ty* t = explicitArgument(written, param);
+        if (written && written->kind == NodeKind::PackType && t && t->kind == TyKind::Pack)
+          given.insert(given.end(), t->args.begin(), t->args.end());
+        else
+          given.push_back(t);
+      }
+      for (size_t i = 0; i < given.size() && i < n; ++i)
       {
         auto* param = static_cast<TemplateParamDecl*>(f->templateParams[i]);
         if (param->isPack && i + 1 == n)
         {
-          std::vector<const Ty*> rest;
-          for (size_t j = i; j < namePart.templateArgs.size(); ++j)
-            rest.push_back(explicitArgument(namePart.templateArgs[j], param));
+          std::vector<const Ty*> rest(given.begin() + i, given.end());
           s.pairs.push_back({param, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
           return;
         }
-        s.pairs.push_back({param, explicitArgument(namePart.templateArgs[i], param)});
+        s.pairs.push_back({param, given[i]});
       }
-      if (n && namePart.hasTemplateArgs && args.empty())
+      if (namePart.hasTemplateArgs && args.empty())
       {
         auto* last = static_cast<TemplateParamDecl*>(f->templateParams[n - 1]);
         if (last->isPack && !s.find(last))
@@ -4340,6 +4352,9 @@ struct GlobalScope::Impl
       }
     }
 
+    // An explicit template argument of a call (`forward<Args>(args)`): under an instantiation that
+    // binds the pack Args to one element, a non-pack parameter of the callee gets that element,
+    // not a pack of one.
     const Ty* explicitArgument(Node* written, Decl* param)
     {
       const Ty* t = impl.templateArgument(written, param, ctx(), 0);
