@@ -1,0 +1,23 @@
+// spec: an unqualified call of a static member inside a class template instantiation, `listOptions()` with a defaulted `Optional<E>` parameter, in a constructor initializer and in a body
+// found in the game's EnumConfigItem<E> (`StorageConfigItem<E>(..., listOptions())`: the parameter was read without the class's arguments, Optional<E> unlaid)
+template<class E>
+struct Base
+{
+  String text;
+  Base(const String& t) : text(t) {}
+};
+template<class E>
+struct Item : Base<E>
+{
+  Item(E value) : Base<E>(listOptions()) {}
+  Item(E value, E after) : Base<E>(listOptions(after)) {}
+  static String listOptions(Optional<E> endAfter = nullopt) { return endAfter ? String("bounded") : String("all"); }
+};
+enum class Mode { A, B };
+int main()
+{
+  Item<Mode> a(Mode::A);
+  Item<Mode> b(Mode::A, Mode::B);
+  println("{} {}", a.text, b.text);
+  return 0;
+}

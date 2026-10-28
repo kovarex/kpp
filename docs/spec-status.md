@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**228 pass, 5 pending, 0 failing, 0 fixed** (233 snippets, 6.7 s).
+**230 pass, 4 pending, 0 failing, 0 fixed** (234 snippets, 7.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -115,7 +115,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/empty_pack_class_instantiation.kpp` | a class template whose only parameter is a pack, instantiated with no arguments (`Signal<>`) | pending | Signal<> members (ConfigItemBase::onChanged, GlobalModSettings::onChanged, CraftingQueue::ChangedSignal), 11 layouts | `Sig<>` has an unknown type ("the member ... has an unknown type"); `Sig<int>` works; C:\kpp-templates\compiler\tests\spec\templates\empty_pack_class_instantiation.kpp:18: codegen does not support the layout of Holder: the member changed (`Sig<> changed`) has an unknown type yet (in @kpp.main) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -140,6 +139,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/dependent_member_typedef.kpp` | a member typedef of a dependent instantiation as a return type (typename Vector<T>::iterator) | pass |  |  |
 | `templates/dependent_names.kpp` | dependent names: T::Type, T::constant, this-> in templates, a dependent return type | pass |  |  |
 | `templates/dependent_return_in_variadic_call.kpp` | a call whose return type is dependent (typename T::Unit) used directly as a variadic argument | pass |  |  |
+| `templates/empty_pack_class_instantiation.kpp` | a class template whose only parameter is a pack, instantiated with no arguments (`Signal<>`) | pass | Signal<> members (ConfigItemBase::onChanged, GlobalModSettings::onChanged, CraftingQueue::ChangedSignal), 11 layouts |  |
 | `templates/enum_template_argument_values.kpp` | a constant template argument of enum class type whose enumerator is defined by others (`GENERIC = NOTHING`, `BOTH = ONE | TWO`), as an argument and as a parameter's default | pass |  |  |
 | `templates/enum_template_parameters.kpp` | enum values as non-type template arguments | pass |  |  |
 | `templates/enum_through_parameter.kpp` | a Kpp enum reached through a template parameter: E::values, E::count, value.str() | pass |  |  |
@@ -178,6 +178,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/short_circuit_consteval.kpp` | short-circuit evaluation in constant expressions (true || <unknown> is true) | pass | is_memcpy_saveable<T> = isFundamental<T> && !isPointer<T> || force_memcpy_save<T> |  |
 | `templates/static_call_through_parameter_operator.kpp` | an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)` | pass |  |  |
 | `templates/static_constexpr_member_in_instantiation.kpp` | a static constexpr member of a class template is computed with the instantiation's arguments (`T(1) << Bits`) wherever it is used | pass |  |  |
+| `templates/static_member_call_in_class_template.kpp` | an unqualified call of a static member inside a class template instantiation, `listOptions()` with a defaulted `Optional<E>` parameter, in a constructor initializer and in a body | pass |  |  |
 | `templates/static_table_lookup_helper.kpp` | a class's static const table keyed by StringView with a nested value struct, defined out of line from a brace list, read through a helper template with an `auto*` return | pass |  |  |
 | `templates/template_template_parameters.kpp` | template template parameters | pass |  |  |
 | `templates/trait_in_base_argument.kpp` | a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`) | pass | the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>) |  |
@@ -194,7 +195,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-templates\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support a conversion from Future<int32> to SharedPtr<SharedState<int32>> yet (in @kpp.main) |
+| `library/async_launch.kpp` | async with Launch::async (a thread) and Launch::deferred (runs on get), returning Future<R> for the callable's result R | pending | 10 std::async(std::launch::async, ...) in AppManagerStates, 1 deferred in SpotNoiseCache | the result type `Future<decltype(callable())>` comes out as Future<F> (the closure type) for a lambda argument; C:\kpp-templates\compiler\tests\spec\library\async_launch.kpp:6: codegen does not support the layout of Future<F>: the member state (`SharedPtr<SharedState<T>> state`) has an unknown type yet (in @kpp.main) |
 | `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |

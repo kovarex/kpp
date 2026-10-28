@@ -5544,6 +5544,16 @@ namespace
           if (classTy && n->name.parts.size() == 1 && !thisArg.empty())
             if (int slot = slotOf(classTy, f, c); slot >= 0)
               indirect = loadSlot(thisArg, slot);
+          if (!classTy && (f->flags & DF_Static) && n->name.parts.size() == 1 && currentClassTy && isClass(currentClassTy))
+            if (Decl* owner = global.owningClass(f); owner && owner->kind == NodeKind::ClassDecl)
+            {
+              // `listOptions()` inside Item<Mode>: a static member of the class being emitted (or
+              // of a base), with that instantiation's arguments.
+              if (classDef(owner, c) == classDef(currentClassTy->decl, c))
+                classTy = currentClassTy;
+              else if (const Ty* base = baseInstantiation(currentClassTy, owner, c))
+                classTy = base;
+            }
           if (!classTy && (f->flags & DF_Static) && n->name.parts.size() > 1 && global.owningClass(f))
           {
             // `Box<T>::get()`: the instantiation comes from the qualifier.
