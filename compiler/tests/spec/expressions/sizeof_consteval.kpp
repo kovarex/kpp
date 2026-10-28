@@ -1,0 +1,61 @@
+// sizeof in template arguments: constEval must compute sizes at resolution time.
+
+template <size_t N>
+class FixedBuf
+{
+public:
+  char data[N];
+  size_t size() const { return N; }
+};
+
+class MyPod
+{
+public:
+  int first;
+  double second;
+};
+
+class TinyPod
+{
+public:
+  char c;
+};
+
+// sizeof in default template arguments
+template <size_t N = sizeof(MyPod)>
+class SizedContainer
+{
+public:
+  char storage[N];
+  size_t capacity() const { return N; }
+};
+
+// sizeof in a using alias's template argument
+using PodBuf = FixedBuf<sizeof(MyPod)>;
+using PtrBuf = FixedBuf<sizeof(const char*)>;
+using IntPtrBuf = FixedBuf<sizeof(int*)>;
+
+int main()
+{
+  // sizeof(MyPod) = 16 (int 4 + padding 4 + double 8)
+  PodBuf pb;
+  if (pb.size() != 16) return 1;
+
+  // sizeof(const char*) = 8
+  PtrBuf ptb;
+  if (ptb.size() != 8) return 2;
+
+  // sizeof(int*) = 8
+  IntPtrBuf ipb;
+  if (ipb.size() != 8) return 3;
+
+  // sizeof in default template arg: SizedContainer<> uses sizeof(MyPod) = 16
+  SizedContainer<> c;
+  if (c.capacity() != 16) return 4;
+
+  // sizeof(TinyPod) = 1
+  FixedBuf<sizeof(TinyPod)> sb;
+  if (sb.size() != 1) return 5;
+
+  return 0;
+}

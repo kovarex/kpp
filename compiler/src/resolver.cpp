@@ -1485,6 +1485,170 @@ struct GlobalScope::Impl
     return std::nullopt;
   }
 
+  // Compile-time sizeof/alignof for constEval — mirrors the codegen's sizeOf/alignOf but returns
+  // nullopt instead of throwing when a type can't be sized (the codegen may still handle it later).
+  std::optional<int64_t> constSizeOf(const Ty* t, int depth)
+  {
+    if (!t || depth > 24)
+      return std::nullopt;
+    t = types.unqualified(t);
+    switch (t->kind)
+    {
+      case TyKind::Bool: return 1;
+      case TyKind::Char: case TyKind::Int: case TyKind::Float:
+        return t->bits / 8;
+      case TyKind::Nullptr: case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef:
+      case TyKind::Function: case TyKind::MemberPointer:
+        return 8;
+      case TyKind::Array:
+      {
+        auto inner = constSizeOf(t->inner, depth + 1);
+        if (!inner) return std::nullopt;
+        return int64_t(t->count) * *inner;
+      }
+      case TyKind::Enum:
+      {
+        Decl* def = t->decl;
+        if (def && !static_cast<EnumDecl*>(def)->ownScope)
+        {
+          Entry e{def, nullptr};
+          if (Scope* s = scopeOfEntry(e, 0))
+            def = s->owner;
+        }
+        if (def && def->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(def)->underlying)
+        {
+          DeclContext dc;
+          declContextFor(def, dc);
+          TypeContext ctx2{dc.scope, &dc.params, nullptr, def->file ? def->file->tokens : nullptr,
+                          def->file ? def->file->text : std::string_view()};
+          if (const Ty* u = convertType(static_cast<EnumDecl*>(def)->underlying, ctx2, depth + 1))
+            if (u->isKnown())
+              return constSizeOf(u, depth + 1);
+        }
+        return 4; // default: int-sized
+      }
+      case TyKind::Class:
+      {
+        Decl* def = t->decl;
+        if (def && !def->ownScope)
+        {
+          Entry e{def, nullptr};
+          if (Scope* s = scopeOfEntry(e, 0))
+            def = s->owner;
+        }
+        if (!def || def->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(def)->isDefinition)
+          return std::nullopt;
+        auto* cls = static_cast<ClassDecl*>(def);
+        Subst subst = substFor(t);
+        const Subst* sp = subst.empty() ? nullptr : &subst;
+        bool isUnion = cls->keyword == Kw::union_;
+        int64_t size = 0, align = 1;
+        // Base classes contribute their fields before own members.
+        if (!isUnion)
+          for (const ClassDecl::Base& b : cls->bases)
+          {
+            DeclContext dc;
+            declContextFor(cls, dc);
+            TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr,
+                            cls->file ? cls->file->text : std::string_view()};
+            const Ty* bt = convertType(b.type, ctx2, depth + 1);
+            if (!bt || !bt->isKnown() || types.isDependent(bt))
+              return std::nullopt;
+            auto bs = constSizeOf(bt, depth + 1);
+            auto ba = constAlignOf(bt, depth + 1);
+            if (!bs || !ba) return std::nullopt;
+            size = (size + *ba - 1) / *ba * *ba + *bs;
+            align = std::max(align, *ba);
+          }
+        for (Decl* m : cls->members)
+        {
+          const Ty* ft = nullptr;
+          if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+            ft = declaredTypeOf(m, sp, depth + 1);
+          else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() &&
+                   static_cast<ClassDecl*>(m)->isDefinition)
+            ft = types.classType(m, {});
+          else
+            continue;
+          if (!ft || !ft->isKnown() || types.isDependent(ft))
+            return std::nullopt;
+          auto fs = constSizeOf(ft, depth + 1);
+          auto fa = constAlignOf(ft, depth + 1);
+          if (!fs || !fa) return std::nullopt;
+          if (isUnion)
+          {
+            size = std::max(size, *fs);
+            align = std::max(align, *fa);
+          }
+          else
+          {
+            size = (size + *fa - 1) / *fa * *fa + *fs;
+            align = std::max(align, *fa);
+          }
+        }
+        size = (size + align - 1) / align * align;
+        return std::max<int64_t>(size, 1);
+      }
+      default:
+        return std::nullopt;
+    }
+  }
+
+  std::optional<int64_t> constAlignOf(const Ty* t, int depth)
+  {
+    if (!t || depth > 24) return std::nullopt;
+    t = types.unqualified(t);
+    if (t->kind == TyKind::Array)
+      return constAlignOf(t->inner, depth + 1);
+    if (t->kind == TyKind::Class)
+    {
+      Decl* def = t->decl;
+      if (def && !def->ownScope)
+      {
+        Entry e{def, nullptr};
+        if (Scope* s = scopeOfEntry(e, 0))
+          def = s->owner;
+      }
+      if (!def || def->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(def)->isDefinition)
+        return std::nullopt;
+      auto* cls = static_cast<ClassDecl*>(def);
+      Subst subst = substFor(t);
+      const Subst* sp = subst.empty() ? nullptr : &subst;
+      int64_t align = 1;
+      for (const ClassDecl::Base& b : cls->bases)
+      {
+        DeclContext dc;
+        declContextFor(cls, dc);
+        TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr,
+                        cls->file ? cls->file->text : std::string_view()};
+        const Ty* bt = convertType(b.type, ctx2, depth + 1);
+        if (!bt || !bt->isKnown()) return std::nullopt;
+        auto ba = constAlignOf(bt, depth + 1);
+        if (!ba) return std::nullopt;
+        align = std::max(align, *ba);
+      }
+      for (Decl* m : cls->members)
+      {
+        const Ty* ft = nullptr;
+        if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+          ft = declaredTypeOf(m, sp, depth + 1);
+        else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() &&
+                 static_cast<ClassDecl*>(m)->isDefinition)
+          ft = types.classType(m, {});
+        else
+          continue;
+        if (!ft || !ft->isKnown()) return std::nullopt;
+        auto fa = constAlignOf(ft, depth + 1);
+        if (!fa) return std::nullopt;
+        align = std::max(align, *fa);
+      }
+      return align;
+    }
+    auto s = constSizeOf(t, depth);
+    if (!s) return std::nullopt;
+    return std::max<int64_t>(1, *s);
+  }
+
   std::optional<int64_t> constEval(Expr* e, const TypeContext& ctx, int depth = 0)
   {
     if (!e || depth > 16)
@@ -1632,6 +1796,20 @@ struct GlobalScope::Impl
           case P::Shr: return *l >> *r;
           default: return std::nullopt;
         }
+      }
+      case NodeKind::SizeofExpr:
+      {
+        auto* s = static_cast<SizeofExpr*>(e);
+        if (s->isPack)
+          return std::nullopt;
+        const Ty* t = nullptr;
+        if (s->type)
+          t = convertType(s->type, ctx, depth + 1);
+        else if (s->operand && s->operand->ty)
+          t = s->operand->ty;
+        if (!t || !t->isKnown() || types.isDependent(t))
+          return std::nullopt;
+        return constSizeOf(types.stripRef(t), depth + 1);
       }
       default:
         return std::nullopt;

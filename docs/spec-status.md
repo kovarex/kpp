@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**188 pass, 3 pending, 0 failing, 0 fixed** (191 snippets, 4.8 s).
+**189 pass, 3 pending, 0 failing, 0 fixed** (192 snippets, 4.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -228,3 +228,9 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `interop/calling_convention_pointers.kpp` | function pointer types with a Windows calling convention: `BOOL(__stdcall*)(void)`, `VOID(NTAPI*)(DWORD)` (one convention on x64; the word is accepted and ignored) | pass |  |  |
 | `interop/extern_c_declarations.kpp` | hand-written extern "C" declarations, passing Strings and buffers to C | pass |  |  |
 | `interop/sdl_header.kpp` | importing SDL3's header (the game's platform layer) and using its types and constants without linking it | pass |  |  |
+
+## expressions
+
+| Snippet | Construct | Status | Factorio | Note |
+|---|---|---|---|---|
+| `expressions/sizeof_consteval.kpp` | sizeof_consteval | pass |  |  |
