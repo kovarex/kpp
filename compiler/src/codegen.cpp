@@ -2804,6 +2804,45 @@ namespace
       return it->second;
     }
 
+    // q, the qualified name of a member d, with the arguments written for the full specialisation
+    // owning d (`template<> struct Limits<int>`) before the member's own name, so that the members
+    // of two specialisations of one template differ (`Flag<true>::value`, `Flag<false>::value`).
+    // Unchanged for a member of any other class.
+    std::string withSpecialisationArgs(std::string q, Decl* d)
+    {
+      Decl* owner = global.owningClass(d);
+      if (!owner || owner->kind != NodeKind::ClassDecl || !(owner->flags & DF_Specialization))
+        return q;
+      const NamePart& last = static_cast<ClassDecl*>(owner)->name.last();
+      std::string spelled;
+      for (Node* a : last.templateArgs)
+      {
+        const Ty* t = nullptr;
+        switch (a->kind)
+        {
+          case NodeKind::NamedType: case NodeKind::PointerType: case NodeKind::LRefType: case NodeKind::RRefType:
+          case NodeKind::ConstType: case NodeKind::ArrayType: case NodeKind::FunctionType: case NodeKind::BuiltinType:
+          case NodeKind::DecltypeType: case NodeKind::AutoType: case NodeKind::MemberPointerType:
+            t = global.typeOfAst(static_cast<Type*>(a), owner);
+            break;
+          default: break;
+        }
+        std::string one;
+        if (t && t->isKnown())
+          one = types.toString(t, &symbols);
+        else if (owner->file && owner->file->tokens && a->token < owner->file->tokens->size())
+        {
+          const Token& tok = (*owner->file->tokens)[a->token];
+          one = std::string(owner->file->text.substr(tok.offset, tok.length));
+        }
+        spelled += (spelled.empty() ? "" : ", ") + one;
+      }
+      size_t pos = q.rfind("::");
+      if (pos != std::string::npos)
+        q.insert(pos, "<" + spelled + ">");
+      return q;
+    }
+
     std::string computeFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
     {
       if (global.isExternC(f))
@@ -2836,37 +2875,7 @@ namespace
           if (!prefix.empty() && head.find(prefix) == std::string::npos)
             q = head + prefix + tail;
         }
-        if (Decl* owner = global.owningClass(f); owner && owner->kind == NodeKind::ClassDecl && (owner->flags & DF_Specialization))
-        {
-          // Members of `template<> struct Limits<int>`: the arguments tell the specialisations apart.
-          const NamePart& last = static_cast<ClassDecl*>(owner)->name.last();
-          std::string spelled;
-          for (Node* a : last.templateArgs)
-          {
-            const Ty* t = nullptr;
-            switch (a->kind)
-            {
-              case NodeKind::NamedType: case NodeKind::PointerType: case NodeKind::LRefType: case NodeKind::RRefType:
-              case NodeKind::ConstType: case NodeKind::ArrayType: case NodeKind::FunctionType: case NodeKind::BuiltinType:
-              case NodeKind::DecltypeType: case NodeKind::AutoType: case NodeKind::MemberPointerType:
-                t = global.typeOfAst(static_cast<Type*>(a), owner);
-                break;
-              default: break;
-            }
-            std::string one;
-            if (t && t->isKnown())
-              one = types.toString(t, &symbols);
-            else if (owner->file && owner->file->tokens && a->token < owner->file->tokens->size())
-            {
-              const Token& tok = (*owner->file->tokens)[a->token];
-              one = std::string(owner->file->text.substr(tok.offset, tok.length));
-            }
-            spelled += (spelled.empty() ? "" : ", ") + one;
-          }
-          size_t pos = q.rfind("::");
-          if (pos != std::string::npos)
-            q.insert(pos, "<" + spelled + ">");
-        }
+        q = withSpecialisationArgs(q, f);
       }
       if (!f->templateParams.empty())
       {
@@ -5289,7 +5298,7 @@ namespace
       const Ty* t = classTy ? global.typeOfDeclIn(v, classArgs) : global.typeOfDecl(v);
       if (!t || !t->isKnown())
         unsupported(at, "a global of unknown type");
-      std::string name = classTy ? instanceName : "@\"" + qualifiedName(v) + "\"";
+      std::string name = classTy ? instanceName : "@\"" + withSpecialisationArgs(qualifiedName(v), v) + "\"";
       if (classTy)
         instanceGlobals[instanceName] = name;
       else

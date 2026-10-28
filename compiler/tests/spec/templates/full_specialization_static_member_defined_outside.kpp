@@ -1,0 +1,26 @@
+// spec: a static data member of a full specialisation defined outside the class (`int Flag<true>::counter = 100;`, no `template<>` in front, as C++ writes it) takes that definition's initializer
+// pending: the out-of-line definition is not found for the specialisation's member: both counters start at zero
+template<bool B>
+struct Flag
+{
+  static int counter;
+};
+template<>
+struct Flag<true>
+{
+  static int counter;
+};
+template<>
+struct Flag<false>
+{
+  static int counter;
+};
+int Flag<true>::counter = 100;
+int Flag<false>::counter = 200;
+
+int main()
+{
+  Flag<true>::counter += 1;
+  println("{} {}", Flag<true>::counter, Flag<false>::counter);
+  return 0;
+}

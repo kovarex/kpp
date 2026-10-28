@@ -1,0 +1,30 @@
+// spec: the static data members of two full specialisations of one class template are objects of their own (`Flag<true>::counter`, `Flag<false>::counter`), each with its own initializer, as their member functions are functions of their own
+// found by the template thread with `template<> struct Flag<true>` and `Flag<false>`: both statics were one LLVM global ("redefinition of comdat")
+template<bool B>
+struct Flag
+{
+  static constexpr int value = 0;
+};
+template<>
+struct Flag<true>
+{
+  static constexpr int value = 1;
+  static inline int counter = 100;
+  static int get() { return 10; }
+};
+template<>
+struct Flag<false>
+{
+  static constexpr int value = 2;
+  static inline int counter = 200;
+  static int get() { return 20; }
+};
+
+int main()
+{
+  Flag<true>::counter += 1;
+  const int* t = &Flag<true>::value;
+  const int* f = &Flag<false>::value;
+  println("{} {} {} {} {} {}", *t, *f, Flag<true>::counter, Flag<false>::counter, Flag<true>::get(), Flag<false>::get());
+  return 0;
+}
