@@ -77,16 +77,89 @@ namespace
     {"LUA_TSTRING", "4"}, {"LUA_TTABLE", "5"}, {"LUA_TFUNCTION", "6"}, {"LUA_TUSERDATA", "7"},
     {"LUA_TTHREAD", "8"}};
   // `MACRO(arg)` becomes the text with $1 standing for the argument (`toCStr(x)` is `toStr(x).c_str()`).
-  // The game's Log macros become calls of logAndAbort(const String&), which the Log module (or a
-  // stub next to a smoke test) provides.
+  // The game's Log macros become calls of Logging's functions with the use's file and line, as
+  // Log.hpp defines them for this configuration: ENABLE_DEBUG_LOG is defined by no file, so
+  // LOG_DEBUG and its relatives are `((void)0)` (a replacement without $1 keeps the use as a comment).
   const std::map<std::string, std::string> knownFunctionMacros = {{"FORMAT_STRING", "$1"}, {"WHEN_ASSERT", "$1"}, {"FOR_DEVELOPER", "$1"},
                                                                   {"toCStr", "toStr($1).c_str()"},
                                                                   // Scoped guards that needed a unique name per line are `_` locals.
                                                                   {"SAVING_TAG", "Serialiser::TagWriter _($1)"},
                                                                   {"SAVING_STATISTICS", "Serialiser::SavingStatsWriter _($1)"},
+                                                                  {"LOG", "Logging::log(__FILE__, __LINE__, $1)"},
+                                                                  {"LOG_INFO", "Logging::log(__FILE__, __LINE__, LogLevel::Info, $1)"},
+                                                                  {"LOG_NOTICE", "Logging::log(__FILE__, __LINE__, LogLevel::Notice, $1)"},
+                                                                  {"LOG_WARNING", "Logging::log(__FILE__, __LINE__, LogLevel::Warning, $1)"},
+                                                                  {"LOG_ERROR", "Logging::log(__FILE__, __LINE__, LogLevel::Error, $1)"},
+                                                                  {"LOG_DATA", "Logging::log(__FILE__, __LINE__, LogLevel::Data, $1)"},
+                                                                  {"LOG_GRAPHICS", "Logging::log(__FILE__, __LINE__, LogLevel::Graphics, $1)"},
+                                                                  {"LOG_FUTURE", "Logging::log(__FILE__, __LINE__, LogLevel::Future, $1)"},
+                                                                  {"LOG_VERBOSE", "Logging::logVerbose(__FILE__, __LINE__, LogLevel::Verbose, $1)"},
+                                                                  {"LOG_DEBUG", "((void)0)"}, {"EXECUTE_FOR_LOG_DEBUG", "((void)0)"}, {"LOG_DEBUG_VALUE", "((void)0)"},
+                                                                  {"LOG_REQUEST_MINIDUMP_IN_CRASH_REPORT", "Logging::log(__FILE__, __LINE__, LogLevel::Notice, \"Include minidump in crash report.\")"},
+                                                                  {"LOG_STACKTRACE", "Logging::logStackTrace()"}, {"FLUSH_LOG", "Logging::flush()"},
                                                                   {"LOG_AND_ABORT", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_AND_ABORT_NEVER_THROW", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
-                                                                  {"LOG_ENUM_AND_ABORT", "Logging::logEnumAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"}};
+                                                                  {"LOG_ENUM_AND_ABORT", "Logging::logEnumAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
+                                                                  {"SUPPRESS_NEXT", "++result.suppressN"}};
+  // Macros that use an argument more than once or stringize it (`#NAME`): $N is argument N as
+  // converted (with `this->` and the other rewrites), #N its original spelling as a string literal,
+  // which is what the preprocessor's # makes. The prototype explorer's hand-written reflection
+  // (macro survey case C) converts use by use, so the explorer shows what it showed before.
+  const std::map<std::string, std::string> argumentMacros = {
+    {"ADD_VALUE", "Values::addValue($1, PrototypeExplorerWidgets::demangleMemberName(#1), #1, result)"},
+    {"SKIP_VALUE", "if constexpr (isReference<decltype($1)>) Values::recordReference(#1, result); else Values::recordValue($1, #1, result)"},
+    {"ADD_ENUM", "Values::recordValue($1, #1, result); result.add($1, $2, $3)"}};
+
+  // The preprocessor's #: the spelling with each run of whitespace one space, `"` and `\` escaped.
+  std::string stringize(std::string_view spelling)
+  {
+    std::string out = "\"";
+    bool space = false;
+    for (char c : spelling)
+    {
+      if (isspace((unsigned char)c))
+      {
+        space = true;
+        continue;
+      }
+      if (space && out.size() > 1)
+        out += ' ';
+      space = false;
+      if (c == '"' || c == '\\')
+        out += '\\';
+      out += c;
+    }
+    return out + "\"";
+  }
+
+  // How many arguments an argument macro takes: the highest N of its $N and #N.
+  size_t arityOf(const std::string& replacement)
+  {
+    size_t arity = 0;
+    for (size_t i = 0; i + 1 < replacement.size(); ++i)
+      if ((replacement[i] == '$' || replacement[i] == '#') && isdigit((unsigned char)replacement[i + 1]))
+        arity = std::max(arity, size_t(replacement[i + 1] - '0'));
+    return arity;
+  }
+
+  // An argument macro's replacement: $N and #N as argumentMacros describes.
+  std::string expandArguments(const std::string& replacement, const std::vector<std::string>& args, const std::vector<std::string>& spellings)
+  {
+    std::string out;
+    for (size_t i = 0; i < replacement.size(); ++i)
+    {
+      char c = replacement[i];
+      if ((c == '$' || c == '#') && i + 1 < replacement.size() && isdigit((unsigned char)replacement[i + 1]))
+      {
+        size_t n = size_t(replacement[++i] - '1');
+        if (n < args.size())
+          out += c == '$' ? args[n] : stringize(spellings[n]);
+        continue;
+      }
+      out += c;
+    }
+    return out;
+  }
 
   // std:: names and their Kpp library spelling. Names not here keep their name and are counted.
   // C library functions become `::name`: inside a namespace with its own `sqrt`, `std::sqrt` meant the C one.
@@ -331,6 +404,14 @@ namespace
     std::map<std::string, LocalMacro> localMacros; // function-like macros defined in this file, expanded at their uses
     std::set<std::string> replacedFunctions;  // qualified names whose definitions were found and removed
     std::vector<Edit> edits;
+    // A use of an argument macro, expanded in run() once the edits inside its arguments are known.
+    struct ArgumentMacroUse
+    {
+      uint32_t begin, end; // the use, from the name to the closing parenthesis
+      std::vector<std::pair<uint32_t, uint32_t>> args; // offsets
+      const std::string* replacement;
+    };
+    std::vector<ArgumentMacroUse> argumentMacroUses;
     Counts counts;
     bool importedCommon = false;
     bool importedLua = false;    // stdlib.h, string.h and stdio.h added next to the first C import
@@ -994,6 +1075,43 @@ namespace
               i = close + 1;
               continue;
             }
+            auto am = argumentMacros.find(name);
+            close = am != argumentMacros.end() && j < result.size() && result[j] == '(' ? closingParen(result, j) : std::string::npos;
+            if (close != std::string::npos)
+            {
+              // The arguments are text here already: $N and #N both come from it.
+              std::vector<std::string> args;
+              int depth = 0;
+              size_t argStart = j + 1;
+              for (size_t k = j + 1; k <= close; ++k)
+              {
+                char c = result[k];
+                if (c == '"' || c == '\'')
+                  for (++k; k < close && result[k] != c; ++k)
+                    k += result[k] == '\\';
+                else if (c == '(' || c == '[' || c == '{')
+                  ++depth;
+                else if ((c == ')' || c == ']' || c == '}') && depth > 0)
+                  --depth;
+                else if ((c == ',' && depth == 0) || k == close)
+                {
+                  std::string a = result.substr(argStart, k - argStart);
+                  while (!a.empty() && isspace((unsigned char)a.front()))
+                    a.erase(a.begin());
+                  while (!a.empty() && isspace((unsigned char)a.back()))
+                    a.pop_back();
+                  args.push_back(a);
+                  argStart = k + 1;
+                }
+              }
+              if (args.size() == arityOf(am->second))
+              {
+                next += expandArguments(am->second, args, args);
+                changed = true;
+                i = close + 1;
+                continue;
+              }
+            }
             next.append(result, i, j - i);
             i = j;
             continue;
@@ -1404,10 +1522,44 @@ namespace
               }
             }
           }
+          auto am = argumentMacros.find(name);
+          if (am != argumentMacros.end() && toks[i + 1].is(P::LParen))
+          {
+            // Recorded with its arguments' token ranges; the tokens inside stay in the stream for
+            // the other rewrites, and run() replaces the whole use.
+            ArgumentMacroUse use{t.offset, 0, {}, &am->second};
+            uint32_t j = i + 2, argStart = j;
+            int depth = 0;
+            for (; j < toks.size(); ++j)
+            {
+              const Token& tj = toks[j];
+              if (tj.is(P::LParen) || tj.is(P::LBracket) || tj.is(P::LBrace))
+                ++depth;
+              else if ((tj.is(P::RParen) || tj.is(P::RBracket) || tj.is(P::RBrace)) && depth-- == 0)
+                break;
+              else if (tj.is(P::Comma) && depth == 0)
+              {
+                use.args.push_back({toks[argStart].offset, endOffset(j - 1)});
+                argStart = j + 1;
+              }
+            }
+            if (j < toks.size() && toks[j].is(P::RParen) && j > argStart)
+            {
+              use.args.push_back({toks[argStart].offset, endOffset(j - 1)});
+              use.end = endOffset(j);
+            }
+            if (use.end && use.args.size() == arityOf(am->second))
+            {
+              argumentMacroUses.push_back(std::move(use));
+              counts.add("argument macro expanded");
+            }
+            else
+              todo(t.offset, name + " with arguments it does not take: left as written");
+            continue;
+          }
           auto kf = knownFunctionMacros.find(name);
           if (kf != knownFunctionMacros.end() && toks[i + 1].is(P::LParen))
           {
-            // `MACRO(arg)` -> arg (the only pattern in the table).
             int depth = 0;
             uint32_t j = i + 1;
             for (; j < toks.size(); ++j)
@@ -1424,7 +1576,16 @@ namespace
               size_t dollar = kf->second.find("$1");
               std::string before = withFileAndLine(dollar == std::string::npos ? kf->second : kf->second.substr(0, dollar), t.offset);
               std::string after = withFileAndLine(dollar == std::string::npos ? std::string() : kf->second.substr(dollar + 2), t.offset);
-              if (dollar == std::string::npos)
+              if (dollar == std::string::npos && j > i + 2)
+              {
+                // The arguments go with the macro (LOG_DEBUG is `((void)0)` here); the use stays
+                // readable as a comment.
+                std::string use(text.substr(t.offset, endOffset(j) - t.offset));
+                for (size_t p = use.find("*/"); p != std::string::npos; p = use.find("*/", p))
+                  use.replace(p, 2, "* /");
+                replace(t.offset, endOffset(j) - t.offset, before + " /* " + use + " */");
+              }
+              else if (dollar == std::string::npos)
                 replace(t.offset, endOffset(j) - t.offset, before);
               else
               {
@@ -2031,20 +2192,16 @@ namespace
       }
     }
 
-    std::string run()
+    // text[begin, end) with the edits inside it applied; edits must be sorted as run() sorts them.
+    // An insertion at end belongs to what follows, unless end is the end of the file.
+    std::string applyEdits(const std::vector<Edit>& sorted, uint32_t begin, uint32_t end) const
     {
-      convertPreprocessor();
-      convertTokens();
-      convertDecls(in.parsed->decls, true);
-      removeUnparsedDefinitions();
-      // By offset; at the same offset the longest first, so that a removal cancels the edits inside it.
-      std::stable_sort(edits.begin(), edits.end(),
-                       [](const Edit& a, const Edit& b) { return a.offset != b.offset ? a.offset < b.offset : a.length > b.length; });
       std::string out;
-      out.reserve(text.size() + 1024);
-      uint32_t pos = 0;
-      for (const Edit& e : edits)
+      uint32_t pos = begin;
+      for (const Edit& e : sorted)
       {
+        if (e.offset < begin || e.offset + e.length > end || (e.length == 0 && e.offset == end && end < text.size()))
+          continue;
         if (e.offset < pos)
         {
           // Inside an earlier removal or replacement: an insertion is dropped, a longer removal extends.
@@ -2059,7 +2216,36 @@ namespace
         out += e.text;
         pos = e.offset + e.length;
       }
-      out.append(text.substr(std::min<size_t>(pos, text.size())));
+      out.append(text.substr(std::min<size_t>(pos, end), end - std::min<size_t>(pos, end)));
+      return out;
+    }
+
+    std::string run()
+    {
+      convertPreprocessor();
+      convertTokens();
+      convertDecls(in.parsed->decls, true);
+      removeUnparsedDefinitions();
+      // By offset; at the same offset the longest first, so that a removal cancels the edits inside it.
+      auto byOffset = [](const Edit& a, const Edit& b) { return a.offset != b.offset ? a.offset < b.offset : a.length > b.length; };
+      std::stable_sort(edits.begin(), edits.end(), byOffset);
+      // Argument macros, now that their arguments' rewrites (this->, renames) are known: each use
+      // becomes one replacement, which cancels the edits inside it.
+      if (!argumentMacroUses.empty())
+      {
+        for (const ArgumentMacroUse& use : argumentMacroUses)
+        {
+          std::vector<std::string> args, spellings;
+          for (auto [b, e] : use.args)
+          {
+            args.push_back(applyEdits(edits, b, e));
+            spellings.push_back(std::string(text.substr(b, e - b)));
+          }
+          edits.push_back({use.begin, use.end - use.begin, expandArguments(*use.replacement, args, spellings)});
+        }
+        std::stable_sort(edits.begin(), edits.end(), byOffset);
+      }
+      std::string out = applyEdits(edits, 0, uint32_t(text.size()));
       // At most two consecutive blank lines where includes and directives used to be.
       std::string squeezed;
       squeezed.reserve(out.size());
