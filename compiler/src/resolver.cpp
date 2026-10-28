@@ -4341,6 +4341,23 @@ struct GlobalScope::Impl
         return false;
       s.pairs.push_back({d, t});
     }
+    // C++: a trailing pack nothing deduces is empty (`assignIf<Index + 1, Tail...>(widget)` with
+    // Tail empty names `assignIf<Index + 1>`, whose `template<size_t Index, class Head, class...
+    // Tail>` has an empty Tail). One a parameter takes is the call's to deduce.
+    if (!f->templateParams.empty())
+      if (Decl* last = f->templateParams[f->templateParams.size() - 1]; static_cast<TemplateParamDecl*>(last)->isPack && !s.find(last))
+      {
+        bool deducible = false;
+        if (const Ty* ft = declaredTypeOf(f, nullptr, 0); ft && ft->kind == TyKind::Function)
+          for (const Ty* pt : ft->args)
+          {
+            std::vector<Decl*> packs;
+            packParamsIn(pt, packs);
+            deducible = deducible || std::find(packs.begin(), packs.end(), last) != packs.end();
+          }
+        if (!deducible)
+          s.pairs.push_back({last, types.pack({})});
+      }
     return true;
   }
 
@@ -5112,6 +5129,114 @@ struct GlobalScope::Impl
     return !v || *v;
   }
 
+  // The parameter type of f that a call's argument i binds, for partial ordering: a trailing
+  // pack's pattern for each argument it takes (fromPack set); null when there is none, or f has
+  // a pack before its last parameter (not ordered here).
+  const Ty* orderingParam(FunctionDecl* f, const Ty* ft, size_t i, bool& fromPack)
+  {
+    fromPack = false;
+    size_t n = std::min<size_t>(f->params.size(), ft->args.size());
+    for (size_t k = 0; k < n; ++k)
+      if (static_cast<ParamDecl*>(f->params[k])->isPack)
+      {
+        if (k + 1 != f->params.size())
+          return nullptr;
+        if (i >= k)
+        {
+          fromPack = true;
+          return ft->args[k];
+        }
+        break;
+      }
+    return i < n ? ft->args[i] : nullptr;
+  }
+
+  // One step of partial ordering: whether parameter type p of one template deduces from the
+  // other's type a at the same argument, within s, the deduction for the whole call so far.
+  // References and top-level qualifiers are removed and a's template parameters stand in as
+  // unique types. A pack's pattern deduces each argument afresh (its packs bind per element);
+  // a type from a pack deduces only a pack's pattern.
+  bool orderingDeduces(const Ty* p, bool pFromPack, const Ty* a, bool aFromPack, Subst& s)
+  {
+    if (aFromPack && !pFromPack)
+      return false;
+    const Ty* pt = types.unqualified(types.stripRef(p));
+    const Ty* at = types.unqualified(types.stripRef(a));
+    std::vector<Decl*> packs;
+    if (pFromPack)
+      packParamsIn(pt, packs);
+    auto isPack = [&](Decl* d) { return std::find(packs.begin(), packs.end(), d) != packs.end(); };
+    Subst trial;
+    for (const Subst::Pair& q : s.pairs)
+      if (!isPack(q.param))
+        trial.pairs.push_back(q);
+    deduce(pt, at, trial, 1);
+    if (substitute(pt, trial) != at)
+      return false;
+    s.pairs.clear();
+    for (const Subst::Pair& q : trial.pairs)
+      if (!isPack(q.param))
+        s.pairs.push_back(q);
+    return true;
+  }
+
+  // Whether type x is more cv-qualified than y.
+  static bool moreQualified(const Ty* x, const Ty* y)
+  {
+    return (x->isConst || !y->isConst) && (x->isVolatile || !y->isVolatile) && (x->isConst != y->isConst || x->isVolatile != y->isVolatile);
+  }
+
+  // C++'s partial ordering of function templates ([temp.deduct.partial], [temp.func.order]):
+  // whether a is more specialised than b for a call with `count` arguments. a is at least as
+  // specialised as b when b's parameter types deduce from a's (orderingDeduces), and more when
+  // not the other way round. Two references that deduce both ways prefer the lvalue reference
+  // (`reverse(T&)` over `reverse(T&&)`), then the more qualified one (`begin(const C&)` over
+  // `begin(C&)`); equal otherwise, a template with no trailing pack beats one whose pack takes
+  // no argument (`emplace(it, key)` over `emplace(it, key, values...)`).
+  bool moreSpecialized(FunctionDecl* a, FunctionDecl* b, size_t count, const Subst* classSubst)
+  {
+    const Ty* at = declaredTypeOf(a, classSubst, 0);
+    const Ty* bt = declaredTypeOf(b, classSubst, 0);
+    if (!at || !bt || at->kind != TyKind::Function || bt->kind != TyKind::Function)
+      return false;
+    Subst fromA, fromB; // b's parameters deduced from a's types, a's from b's
+    bool aAtLeast = true, bAtLeast = true;
+    for (size_t i = 0; i < count; ++i)
+    {
+      bool aPack = false, bPack = false;
+      const Ty* ta = orderingParam(a, at, i, aPack);
+      const Ty* tb = orderingParam(b, bt, i, bPack);
+      if (!ta || !tb)
+        return false;
+      bool aOk = aAtLeast && orderingDeduces(tb, bPack, ta, aPack, fromA);
+      bool bOk = bAtLeast && orderingDeduces(ta, aPack, tb, bPack, fromB);
+      if (aOk && bOk && ta->isReference() && tb->isReference())
+      {
+        if (ta->kind == TyKind::LRef && tb->kind == TyKind::RRef)
+          bOk = false;
+        else if (tb->kind == TyKind::LRef && ta->kind == TyKind::RRef)
+          aOk = false;
+        else if (moreQualified(ta->inner, tb->inner))
+          bOk = false;
+        else if (moreQualified(tb->inner, ta->inner))
+          aOk = false;
+      }
+      aAtLeast = aOk;
+      bAtLeast = bOk;
+      if (!aAtLeast)
+        return false;
+    }
+    if (aAtLeast && bAtLeast)
+    {
+      // [temp.func.order]/5: b's trailing pack has no parameter of a's to match (it takes no argument here).
+      bool aPack = false, bPack = false;
+      bool aHasPack = !a->params.empty() && static_cast<ParamDecl*>(a->params[a->params.size() - 1])->isPack;
+      bool bHasPack = !b->params.empty() && static_cast<ParamDecl*>(b->params[b->params.size() - 1])->isPack;
+      return !aHasPack && bHasPack && !orderingParam(a, at, count, aPack) && orderingParam(b, bt, count, bPack) && bPack;
+    }
+    return !bAtLeast;
+  }
+
   // Whether t names one of f's template parameters that deduction binds (not one the first
   // `given` pairs of s, the class's and the explicit arguments, already bound; not under `T::x`).
   bool namesDeducedParam(const Ty* t, FunctionDecl* f, const Subst& s, size_t given, int depth = 0)
@@ -5208,7 +5333,7 @@ struct GlobalScope::Impl
         deduceCall(f, ft, argTypes, deduced);
         if (!fillDefaultTemplateArgs(f, deduced))
           continue; // a default template argument that is no type: not a candidate
-        if (bindExplicit && argsConcrete)
+        if (argsConcrete)
         {
           bool complete = true;
           for (Decl* p : f->templateParams)
@@ -5295,6 +5420,9 @@ struct GlobalScope::Impl
         someBetter = true;
       if (!someBetter && a.f->templateParams.empty() && !b.f->templateParams.empty())
         return true;
+      if (!someBetter && !a.f->templateParams.empty() && !b.f->templateParams.empty() &&
+          moreSpecialized(a.f, b.f, argTypes.size(), classSubst))
+        return true; // `f(Vector<T>)` over `f(T&)`: C++'s partial ordering of function templates
       return someBetter;
     };
     for (const Candidate& c : viable)
@@ -6241,18 +6369,20 @@ struct GlobalScope::Impl
       if (!namePart)
         return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous);
       // The explicit template arguments (`load<bool>()`): a candidate with fewer parameters than
-      // the list names, and no pack to take the rest, is not one (an expansion `Args...` in the
-      // list may name none, so it does not count).
+      // the list names (`typeIndex<T, Tail...>` with Tail known), and no pack to take the rest,
+      // is not one, nor one whose parameter is of another kind than its argument.
       std::function<bool(FunctionDecl*, Subst&)> bind = [&](FunctionDecl* f, Subst& s)
       {
         if (!namePart->hasTemplateArgs || namePart->templateArgs.empty())
           return true;
-        size_t n = f->templateParams.size(), given = 0;
-        for (Node* written : namePart->templateArgs)
-          given += !written || written->kind != NodeKind::PackType;
+        size_t n = f->templateParams.size();
+        size_t before = s.pairs.size();
+        size_t given = bindExplicitArgs(f, *namePart, callArgs, s);
         if (given > n && !(n && static_cast<TemplateParamDecl*>(f->templateParams[n - 1])->isPack))
           return false;
-        bindExplicitArgs(f, *namePart, callArgs, s);
+        for (size_t i = before; i < s.pairs.size(); ++i)
+          if (!argumentKindFits(s.pairs[i].type, static_cast<TemplateParamDecl*>(s.pairs[i].param)))
+            return false; // `create<Abs>` names no `template<VoronoiType TYPE> create`
         return true;
       };
       return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind);
@@ -6349,22 +6479,31 @@ struct GlobalScope::Impl
     // The explicit template arguments of a call (`count<int, int, int>()`): one per parameter;
     // a trailing pack takes the rest, and is empty when the list leaves it nothing and there is
     // no call argument to deduce it from. A pack expansion in the list (`load<V, Z, Args...>`)
-    // gives one argument per element of the pack, none for an empty one.
-    void bindExplicitArgs(FunctionDecl* f, const NamePart& namePart, Span<Expr*> args, Subst& s)
+    // gives one argument per element of the pack, none for an empty one. Returns how many
+    // arguments the list names: an expansion still dependent counts as none, since it may name
+    // none.
+    size_t bindExplicitArgs(FunctionDecl* f, const NamePart& namePart, Span<Expr*> args, Subst& s)
     {
-      size_t n = f->templateParams.size();
-      if (n == 0)
-        return;
+      size_t n = f->templateParams.size(), named = 0;
       std::vector<const Ty*> given;
       for (Node* written : namePart.templateArgs)
       {
-        Decl* param = f->templateParams[std::min(given.size(), n - 1)];
+        Decl* param = n ? f->templateParams[std::min(given.size(), n - 1)] : nullptr;
         const Ty* t = explicitArgument(written, param);
-        if (written && written->kind == NodeKind::PackType && t && t->kind == TyKind::Pack)
+        bool expansion = written && written->kind == NodeKind::PackType;
+        if (expansion && t && t->kind == TyKind::Pack)
+        {
           given.insert(given.end(), t->args.begin(), t->args.end());
+          named += t->args.size();
+        }
         else
+        {
           given.push_back(t);
+          named += !expansion;
+        }
       }
+      if (n == 0)
+        return named;
       for (size_t i = 0; i < given.size() && i < n; ++i)
       {
         auto* param = static_cast<TemplateParamDecl*>(f->templateParams[i]);
@@ -6372,7 +6511,7 @@ struct GlobalScope::Impl
         {
           std::vector<const Ty*> rest(given.begin() + i, given.end());
           s.pairs.push_back({param, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
-          return;
+          return named;
         }
         s.pairs.push_back({param, given[i]});
       }
@@ -6382,16 +6521,37 @@ struct GlobalScope::Impl
         if (last->isPack && !s.find(last))
           s.pairs.push_back({last, types.pack({})}); // `count<int>()`: nothing left for Args
       }
+      return named;
+    }
+
+    // Whether an explicit template argument is of its parameter's kind: a type for a type
+    // parameter, a constant for a constant one. One not known yet, or dependent on the
+    // enclosing template in a way that does not tell, fits.
+    bool argumentKindFits(const Ty* t, const TemplateParamDecl* p)
+    {
+      if (!t || !t->isKnown() || !p->innerParams.empty())
+        return true; // template template parameters take templates: not checked here
+      if (t->kind == TyKind::Pack)
+      {
+        for (const Ty* e : t->args)
+          if (!argumentKindFits(e, p))
+            return false;
+        return true;
+      }
+      bool constantParam = t->kind == TyKind::Param && t->decl && !static_cast<TemplateParamDecl*>(t->decl)->isType;
+      if (p->isType)
+        return t->kind != TyKind::Value && !constantParam;
+      return t->kind == TyKind::Value || constantParam || t->kind == TyKind::DependentMember; // `T::value` may be either
     }
 
     // An explicit template argument of a call (`forward<Args>(args)`): under an instantiation that
     // binds the pack Args to one element, a non-pack parameter of the callee gets that element,
-    // not a pack of one.
+    // not a pack of one. An expansion (`typeIndex<T, Tail...>`) stays the pack it expands.
     const Ty* explicitArgument(Node* written, Decl* param)
     {
       const Ty* t = impl.templateArgument(written, param, ctx(), 0);
       bool packParam = param && param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(param)->isPack;
-      if (t && t->kind == TyKind::Pack && t->args.size() == 1 && !packParam)
+      if (t && t->kind == TyKind::Pack && t->args.size() == 1 && !packParam && !(written && written->kind == NodeKind::PackType))
         return t->args[0];
       return t;
     }

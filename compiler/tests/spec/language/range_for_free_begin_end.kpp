@@ -1,6 +1,5 @@
 // spec: a range-for over a class that has no begin()/end() members uses the free begin(x) and end(x) found for its type
 // factorio: CommonUtil's reverse(container) wrappers (`auto begin(ReversionWrapperByReference<T> w) { return std::rbegin(w.iterable); }`) behind every reversed range-for
-// pending: codegen and the checker call free begin/end now; the snippet's begin(Backwards<T>) and the library's begin(C&) tie, since overloads have no partial ordering of templates yet (templates/partial_ordering_of_function_templates)
 template<typename T>
 struct Backwards { T* iterable; };
 template<typename T>

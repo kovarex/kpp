@@ -1,0 +1,27 @@
+// spec: recursion over a pack through explicit template arguments: `typeIndex<T, Tail...>()` names as many arguments as Tail has, so a known Tail rules out an overload with fewer parameters, and a trailing pack nothing deduces is empty (`assignIf<Index + 1, Tail...>(x)` with Tail empty calls the `template<size_t Index, class Head, class... Tail>` overload no more)
+// found in Factorio's RendererContainer::typeIndex and RightContainer::assignIf, which both took the first overload at every step (index 0, nothing assigned)
+struct A {};
+struct B {};
+struct C {};
+
+struct Finder
+{
+  template<class TypeToFind>
+  constexpr static int typeIndex() { return 0; }
+
+  template<class TypeToFind, class Head, class... Tail>
+  constexpr static int typeIndex() { return isSame<TypeToFind, Head> ? int(sizeof...(Tail) + 1) : Finder::typeIndex<TypeToFind, Tail...>(); }
+
+  template<size_t Index>
+  static int assignIf(int x) { return -1; }
+
+  template<size_t Index, class Head, class... Tail>
+  static int assignIf(int x) { return x == int(Index) ? int(Index) : Finder::assignIf<Index + 1, Tail...>(x); }
+};
+
+int main()
+{
+  println("{} {} {} {}", Finder::typeIndex<A, A, B, C>(), Finder::typeIndex<B, A, B, C>(), Finder::typeIndex<C, A, B, C>(), Finder::typeIndex<int, A, B, C>());
+  println("{} {} {}", Finder::assignIf<0, A, B, C>(1), Finder::assignIf<0, A, B, C>(2), Finder::assignIf<0, A, B, C>(7));
+  return 0;
+}
