@@ -1,0 +1,23 @@
+// spec: a requires clause over deduced non-type template parameters removes the overload when it is false: `add(s, ms)` takes the overload whose clause holds
+// factorio: std::chrono-style arithmetic choosing the common period; any overload set constrained on deduced array bounds or values
+// pending: the clause is not checked, and the first overload is taken silently (prints 2 for the second sum)
+template<long long N, long long D = 1>
+struct Rat {};
+template<typename Rep, typename Period>
+struct Dur
+{
+  Rep ticks;
+  Dur() : ticks(0) {}
+  explicit Dur(Rep count) : ticks(count) {}
+};
+template<typename R1, long long N1, long long D1, typename R2, long long N2, long long D2> requires (N1 * D2 <= N2 * D1)
+Dur<long long, Rat<N1, D1>> add(const Dur<R1, Rat<N1, D1>>& a, const Dur<R2, Rat<N2, D2>>& b) { return Dur<long long, Rat<N1, D1>>(a.ticks + b.ticks * (N2 * D1 / (D2 * N1))); }
+template<typename R1, long long N1, long long D1, typename R2, long long N2, long long D2> requires (N1 * D2 > N2 * D1)
+Dur<long long, Rat<N2, D2>> add(const Dur<R1, Rat<N1, D1>>& a, const Dur<R2, Rat<N2, D2>>& b) { return Dur<long long, Rat<N2, D2>>(a.ticks * (N1 * D2 / (D1 * N2)) + b.ticks); }
+int main()
+{
+  Dur<long long, Rat<1, 1000>> ms(1500);
+  Dur<long long, Rat<1>> s(2);
+  println("{} {}", add(ms, s).ticks, add(s, ms).ticks);
+  return 0;
+}

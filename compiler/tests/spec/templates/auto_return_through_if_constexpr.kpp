@@ -1,0 +1,28 @@
+// spec: a function template's auto return type follows the `if constexpr` branch its condition selects, also when the condition reads static constexpr members of the template arguments (`P1::num * P2::den <= P2::num * P1::den`)
+// factorio: std::chrono's sum of two durations, whose type is the finer of the two periods
+// pending: the return type stays unknown (codegen: a local of unknown type)
+template<long long N, long long D = 1>
+struct Rat { static constexpr long long num = N; static constexpr long long den = D; };
+template<typename Rep, typename Period>
+struct Dur
+{
+  Rep ticks;
+  explicit Dur(Rep count) : ticks(count) {}
+};
+template<typename R1, typename P1, typename R2, typename P2>
+auto finer(const Dur<R1, P1>& a, const Dur<R2, P2>& b)
+{
+  if constexpr (P1::num * P2::den <= P2::num * P1::den)
+    return Dur<long long, P1>(a.ticks);
+  else
+    return Dur<long long, P2>(b.ticks);
+}
+int main()
+{
+  Dur<long long, Rat<1, 1000>> ms(1500);
+  Dur<long long, Rat<1>> s(2);
+  auto x = finer(ms, s);
+  auto y = finer(s, ms);
+  println("{} {}", x.ticks, y.ticks);
+  return 0;
+}
