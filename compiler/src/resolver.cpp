@@ -4720,7 +4720,9 @@ struct GlobalScope::Impl
         return lvalueToRvalueRef ? NotViable : 1; // `const int (&)[5]` given an int[5]: the elements made const
       if (param->kind == TyKind::LRef && !pt->isConst)
         return NotViable; // A non-const lvalue reference binds only to the same type.
-      int r = conversionRank(a, pt, depth + 1);
+      // The argument as it is (an lvalue stays one): a converting constructor taking `T&`
+      // binds it (`implicit EntityAndIndex(T& entity)` given a Tower lvalue).
+      int r = conversionRank(arg, pt, depth + 1);
       if (r >= NotViable)
         return NotViable;
       if (r >= 4 && param->kind == TyKind::LRef)
@@ -4818,16 +4820,17 @@ struct GlobalScope::Impl
             Subst d = s;
             if (!f->templateParams.empty())
             {
-              // `template<typename F> Function(F callable)`: F from the argument.
+              // `template<typename F> Function(F callable)`: F from the argument (as it is: an
+              // lvalue for `template<class T> EntityAndIndex(T& entity)`).
               const Ty* ft = declaredTypeOf(f, &s, 0);
-              deduceCall(f, ft, std::vector<const Ty*>{a}, d);
+              deduceCall(f, ft, std::vector<const Ty*>{arg}, d);
               if (isFunctionImpl(p) && !callableWith(a, p, depth))
                 continue; // Function<void(double)> takes no `[]() {}`
             }
             const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
             if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(p))
               continue; // The copy constructor is not a conversion (ReverseIterator<const T> from ReverseIterator<T> is).
-            if (conversionRank(a, pt, depth + 1) < 4)
+            if (conversionRank(arg, pt, depth + 1) < 4)
               return 4;
           }
         }

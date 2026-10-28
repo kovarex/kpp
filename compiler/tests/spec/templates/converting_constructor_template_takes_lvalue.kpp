@@ -1,0 +1,28 @@
+// spec: an implicit converting constructor template taking `T&` (`template<class T> implicit EntityAndIndex(T& entity)`) converts an lvalue argument to the parameter type: `activate(tower)` for `activate(const EntityAndIndex&)`
+// factorio: `this->getSurface().activeEntitiesList->makeActive(*this)` in every updatable entity (ActiveEntitiesList::makeActive(const EntityAndIndex&), 65 calls that did not resolve)
+// pending: the code generator finds no constructor template for the conversion (findConstructor): "binding an unrelated class to a reference"
+struct Entity
+{
+  int index = 2;
+};
+struct Tower : Entity
+{
+  int extra = 5;
+};
+
+struct EntityAndIndex
+{
+  template<class T>
+  implicit EntityAndIndex(T& entity) : entity(entity), index(entity.index) {}
+  Entity& entity;
+  int index;
+};
+
+int activate(const EntityAndIndex& e) { return e.index + e.entity.index; }
+
+int main()
+{
+  Tower tower;
+  println("{}", activate(tower));
+  return 0;
+}
