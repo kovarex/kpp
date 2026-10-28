@@ -6,15 +6,13 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**184 pass, 5 pending, 0 failing, 2 fixed** (191 snippets, 5.4 s).
+**186 pass, 5 pending, 0 failing, 0 fixed** (191 snippets, 5.1 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `language/brace_argument_binds_rvalue.kpp` | a brace-list argument is a temporary, so it binds to an rvalue-reference overload: `map.insert({key, makeUnique<T>()})` picks insert(Pair&&) | pending | converted code inserts move-only values this way (AsteroidCollectorNavMesh: Map<ChunkPosition, UniquePtr<...>>) | overload resolution picks insert(const Pair&) for the brace list and then cannot copy the UniquePtr; line 1: got `1 0`, expected `0 1` |
-| `language/for_init_conditional.kpp` | a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)` | fixed |  | passes now: remove the pending line |
-| `language/postfix_increment_assignment.kpp` | assigning the result of a class's postfix ++ (`previous = it++;`): the old value is assigned, then the object is incremented | fixed |  | passes now: remove the pending line |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
 | `language/array_brace_zero.kpp` | an array zero-filled by `= {0}` and `= {}`, with fewer initializers than elements | pass |  |  |
@@ -35,6 +33,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/enum_class_cxx.kpp` | C++-style enum class with underlying type, casts, flags with operators | pass | 961 uses in 701 files |  |
 | `language/exceptions.kpp` | exceptions: throw, catch by reference and base, rethrow, cleanup of locals | pass | 3118 throw sites in 853 files, 457 try blocks |  |
 | `language/explicit_operator_call.kpp` | an operator function called by name: `operator==(a, b)`, `a.operator[](i)` | pass |  |  |
+| `language/for_init_conditional.kpp` | a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)` | pass |  |  |
 | `language/generic_lambda_predicates.kpp` | a generic lambda called with lambda arguments that capture locals, other lambdas and this | pass |  |  |
 | `language/generic_lambdas.kpp` | generic lambdas (auto parameters) | pass | 330 uses in 168 files |  |
 | `language/goto.kpp` | goto | pass | 8 uses in 6 files |  |
@@ -45,6 +44,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/literals.kpp` | literals: integer suffixes and bases, digit separators, char escapes, raw strings, adjacent literals | pass |  |  |
 | `language/operators_arithmetic.kpp` | arithmetic, bit and compound operators | pass |  |  |
 | `language/pointers_arrays.kpp` | pointers, arrays, pointer arithmetic, arrays of arrays | pass |  |  |
+| `language/postfix_increment_assignment.kpp` | assigning the result of a class's postfix ++ (`previous = it++;`): the old value is assigned, then the object is incremented | pass |  |  |
 | `language/range_for.kpp` | range-based for | pass | 8577 uses in 1333 files |  |
 | `language/references.kpp` | references: lvalue, const binding a temporary, rvalue references and move | pass |  |  |
 | `language/sizeof_array_type.kpp` | sizeof of an array type (sizeof(int[4])) | pass |  |  |

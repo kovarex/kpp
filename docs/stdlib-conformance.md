@@ -14,8 +14,6 @@ compile, loudly) last. State of 2026-10-28.
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
 - `KeyOf::of(a) < b` with a class type emits invalid IR; Map.kpp and FastMap.kpp avoid the form
   (templates/static_call_through_parameter_operator).
-- `b = a++` with a class's postfix ++ assigns the incremented value (language/
-  postfix_increment_assignment): a silent miscompile; List.kpp avoids the form.
 - A parameter pack forwarded into another function template (`inner.emplace(forward<Args>(args)
   ...)`) instantiates it with one parameter of unknown type (templates/
   forward_pack_to_function_template). Queue, Stack and PriorityQueue's emplace therefore build the
