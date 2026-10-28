@@ -1,6 +1,5 @@
 // spec: `Target t = make();` where make() returns another class and Target has a converting constructor from it: the constructor runs
 // factorio: SharedPtr<T> p = makeUnique<T>(...), and every copy-initialisation from a returned object of another class
-// pending: the constructor is skipped and the temporary's bytes become the new object (prints 5 and garbage, a silent miscompile)
 struct Source { int v = 5; };
 Source make() { return Source(); }
 struct Target

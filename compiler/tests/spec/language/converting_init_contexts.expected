@@ -1,0 +1,4 @@
+variable 42 7
+return 42 7
+member 42 7
+cast 42 7

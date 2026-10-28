@@ -1779,7 +1779,15 @@ namespace
       }
       if (isClass(t))
       {
-        if (init->kind == NodeKind::FunctionalCastExpr && isClass(types.stripRef(init->ty)))
+        // `T a = T(x)` and `T a = makeT()` build the object in place; an initializer of another
+        // class (`Target a = make();` returning a Source) goes through the converting constructor below.
+        const Ty* initTy = withCurrentArgs(init->ty);
+        bool initIsClass = initTy && isClass(types.stripRef(initTy));
+        // A template parameter the type checker left in (`shared_from_this()` of a base class
+        // template, typed SharedPtr<T>): the value's own class decides once it is emitted.
+        bool dependent = initIsClass && types.isDependent(initTy);
+        bool sameClass = initIsClass && !dependent && canonicalClass(initTy, at) == canonicalClass(t, at);
+        if (init->kind == NodeKind::FunctionalCastExpr && sameClass)
         {
           constructInto(addr, t, static_cast<FunctionalCastExpr*>(init)->args, at);
           return;
@@ -1790,9 +1798,17 @@ namespace
           constructInto(addr, t, Span<Expr*>{&one, 1}, at);
           return;
         }
-        if (init->kind == NodeKind::CallExpr && isClass(types.stripRef(init->ty)) && !init->ty->isReference())
+        if (init->kind == NodeKind::CallExpr && sameClass && !init->ty->isReference())
         {
           callValue(static_cast<CallExpr*>(init), addr);
+          return;
+        }
+        if (init->kind == NodeKind::CallExpr && dependent && !init->ty->isReference())
+        {
+          Value v = callValue(static_cast<CallExpr*>(init), "");
+          if (!isClass(v.ty) || !v.isTemporary || canonicalClass(v.ty, at) != canonicalClass(t, at))
+            unsupported(at, "initialising a " + types.toString(t, &symbols) + " from a call returning " + (v.ty ? types.toString(v.ty, &symbols) : std::string("?")));
+          moveTemporary(addr, v, t, at);
           return;
         }
         if (init->kind == NodeKind::ParenExpr)
@@ -1822,7 +1838,7 @@ namespace
           constructInto(addr, t, Span<Expr*>{&one, 1}, at);
           return;
         }
-        if (init->ty && isClass(types.stripRef(init->ty)) && classKey(init->ty) != classKey(t))
+        if (initIsClass && !dependent && !sameClass)
         {
           // Another class: through a converting constructor, a base, or its conversion operator
           // (`String text = vec;` with `operator String()`), never by copying it as a t.
@@ -1833,6 +1849,8 @@ namespace
         Value src = rvalue(init);
         if (!isClass(src.ty))
           unsupported(at, "initialising a class from a non-class value");
+        if (canonicalClass(src.ty, at) != canonicalClass(t, at))
+          unsupported(at, "initialising a " + types.toString(t, &symbols) + " from a " + types.toString(src.ty, &symbols) + " whose type the checker left open");
         if (src.isTemporary)
           moveTemporary(addr, src, t, at);
         else if (isXvalue(init))
@@ -1866,6 +1884,33 @@ namespace
         init = bi->args[0];
       }
       store(rvalue(init), addr, t, at);
+    }
+
+    // t with the template parameters of the instantiation being emitted replaced by their
+    // arguments, for an expression the type checker typed with a parameter left in.
+    const Ty* withCurrentArgs(const Ty* t, int depth = 0)
+    {
+      if (!t || !currentArgs || depth > 16 || !t->isKnown() || !types.isDependent(t))
+        return t;
+      switch (t->kind)
+      {
+        case TyKind::Param:
+          for (auto& [d, a] : currentArgs->pairs)
+            if (d == t->decl && a)
+              return types.qualified(a, t->isConst || a->isConst, t->isVolatile || a->isVolatile);
+          return t;
+        case TyKind::Pointer: return types.qualified(types.pointer(withCurrentArgs(t->inner, depth + 1)), t->isConst, t->isVolatile);
+        case TyKind::LRef: return types.lref(withCurrentArgs(t->inner, depth + 1));
+        case TyKind::RRef: return types.rref(withCurrentArgs(t->inner, depth + 1));
+        case TyKind::Class:
+        {
+          std::vector<const Ty*> args;
+          for (const Ty* a : t->args)
+            args.push_back(withCurrentArgs(a, depth + 1));
+          return types.qualified(types.classType(t->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
+        }
+        default: return t;
+      }
     }
 
     // A temporary that is used to initialise an object is moved bitwise and no longer destroyed.
@@ -2564,12 +2609,13 @@ namespace
       std::string argText = "ptr " + closure.text;
       std::string resultAddr = sret;
       bool hasSret = isClass(ret);
+      bool resultTemp = false; // owned by the statement once the call returned it
       if (hasSret)
       {
         if (resultAddr.empty())
         {
           resultAddr = newObjectSlot(ret, at);
-          statementTemps.push_back({resultAddr, ret});
+          resultTemp = true;
         }
         argText += ", ptr " + resultAddr;
       }
@@ -2607,6 +2653,8 @@ namespace
       if (hasSret || ret->kind == TyKind::Void)
       {
         emitCall("", sig + " " + functionName + "(" + argText + ")");
+        if (resultTemp)
+          statementTemps.push_back({resultAddr, ret}); // not before: a call that throws built no result to destroy
         return hasSret ? Value{resultAddr, ret, sret.empty()} : Value{"", types.voidType(), false};
       }
       std::string r = newTemp();
@@ -3086,12 +3134,13 @@ namespace
         ++slot;
       }
       std::string resultAddr = sret;
+      bool resultTemp = false; // a temporary for the result, owned by the statement once the call returned it
       if (s.hasSret)
       {
         if (resultAddr.empty())
         {
           resultAddr = newObjectSlot(ret, at);
-          statementTemps.push_back({resultAddr, ret});
+          resultTemp = true;
         }
         argText += std::string(argText.empty() ? "" : ", ") + "ptr " + resultAddr;
         ++slot;
@@ -3158,6 +3207,8 @@ namespace
       if (s.returnType == "void")
       {
         emitCall("", sig + name + "(" + argText + ")", mayThrow);
+        if (resultTemp)
+          statementTemps.push_back({resultAddr, ret}); // not before: a call that throws built no result to destroy
         if (s.hasSret)
           return {resultAddr, ret, sret.empty()};
         return {"", types.voidType(), false};
@@ -6958,7 +7009,6 @@ namespace
             if (s.hasSret)
             {
               resultAddr = newObjectSlot(ret, u);
-              statementTemps.push_back({resultAddr, ret});
               argText += ", ptr " + resultAddr;
             }
             argText += ", i32 0";
@@ -6966,6 +7016,8 @@ namespace
             if (s.returnType == "void")
             {
               emitCall("", sig + fname + "(" + argText + ")");
+              if (s.hasSret)
+                statementTemps.push_back({resultAddr, ret}); // not before: a call that throws built no result to destroy
               return s.hasSret ? callRvalue({resultAddr, ret, true}, u) : Value{"", types.voidType(), false};
             }
             std::string r = newTemp();

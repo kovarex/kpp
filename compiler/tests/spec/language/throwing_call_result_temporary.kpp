@@ -1,0 +1,28 @@
+// spec: a call that throws built no result: the temporary its class result was to live in is not destroyed by the cleanup
+// found while fixing copy_init_converting_from_prvalue: a call's result temporary was registered for destruction before the call, so a throw destroyed uninitialised memory (enable_shared_from_this crashed)
+struct Tracked
+{
+  int id;
+  Tracked(int id) : id(id) {}
+  ~Tracked() { println("~Tracked {}", this->id); }
+};
+Tracked make(bool fail)
+{
+  if (fail)
+    throw RuntimeError(String("no result"));
+  return Tracked(1);
+}
+int idOf(const Tracked& t) { return t.id; }
+int main()
+{
+  try
+  {
+    println("{}", idOf(make(true)));
+  }
+  catch (const Exception& e)
+  {
+    println("caught {}", e.what());
+  }
+  println("{}", idOf(make(false)));
+  return 0;
+}

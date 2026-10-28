@@ -1,0 +1,31 @@
+// spec: copy-initialising a class from a prvalue of another class goes through the converting constructor in every context: a variable, a return, a default member initializer, a functional cast
+// found by the converter thread (`SharedPtr<T> p = makeUnique<T>()`): codegen built the call's result straight into the destination as if it were of the destination's class, so the constructor never ran
+struct Source
+{
+  int value = 7;
+};
+struct Target
+{
+  int tag = 1;
+  int value = 0;
+  Target() {}
+  Target(Source&& s) : tag(42), value(s.value) {}
+};
+Source make() { return Source(); }
+Target returned() { return make(); }
+struct Holder
+{
+  Target member = make();
+};
+int main()
+{
+  Target a = make();
+  println("variable {} {}", a.tag, a.value);
+  Target r = returned();
+  println("return {} {}", r.tag, r.value);
+  Holder h;
+  println("member {} {}", h.member.tag, h.member.value);
+  Target cast = Source();
+  println("cast {} {}", cast.tag, cast.value);
+  return 0;
+}
