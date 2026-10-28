@@ -401,8 +401,26 @@ namespace
     {
       std::vector<std::string> params;
       std::string body;
+      uint32_t from = 0, to = UINT32_MAX; // the text where this definition holds: from its #define to an #undef or the next #define
     };
-    std::map<std::string, LocalMacro> localMacros; // function-like macros defined in this file, expanded at their uses
+    // Function-like macros defined in this file, expanded at their uses; a name can be defined,
+    // undefined and defined again (`#define INCREMENT(NAME) 1+` then with four parameters).
+    std::map<std::string, std::vector<LocalMacro>> localMacros;
+    const LocalMacro* localMacroAt(const std::string& name, uint32_t offset) const
+    {
+      auto it = localMacros.find(name);
+      if (it != localMacros.end())
+        for (const LocalMacro& m : it->second)
+          if (m.from <= offset && offset < m.to)
+            return &m;
+      return nullptr;
+    }
+    void endLocalMacro(const std::string& name, uint32_t offset)
+    {
+      auto it = localMacros.find(name);
+      if (it != localMacros.end() && !it->second.empty() && it->second.back().to == UINT32_MAX)
+        it->second.back().to = offset;
+    }
     std::set<std::string> replacedFunctions;  // qualified names whose definitions were found and removed
     std::vector<Edit> edits;
     // A use of an argument macro, expanded in run() once the edits inside its arguments are known.
@@ -685,7 +703,9 @@ namespace
             m.body.pop_back();
           if (!m.body.empty())
           {
-            localMacros[name] = m;
+            endLocalMacro(name, offset); // a redefinition without #undef replaces the earlier one
+            m.from = offset;
+            localMacros[name].push_back(m);
             counts.add("local function-like macro");
             return "";
           }
@@ -913,7 +933,16 @@ namespace
           counts.add("includes removed");
         }
         else if (word == "pragma" || word == "undef" || word == "error" || word == "warning")
+        {
+          if (word == "undef")
+          {
+            size_t n = rest.find_first_not_of(" \t");
+            size_t e = n == std::string::npos ? n : rest.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_", n);
+            if (n != std::string::npos)
+              endLocalMacro(rest.substr(n, e == std::string::npos ? std::string::npos : e - n), offset);
+          }
           counts.add("#" + word + " removed");
+        }
         else if (word == "define")
         {
           std::string replacement = macroToKpp(line, offset);
@@ -1027,8 +1056,8 @@ namespace
             while (j < result.size() && isIdentChar(result[j]))
               ++j;
             std::string name = result.substr(i, j - i);
-            auto it = localMacros.find(name);
-            if (it != localMacros.end() && j < result.size() && result[j] == '(')
+            const LocalMacro* inner = localMacroAt(name, useOffset); // the definition in force where the outer macro is used
+            if (inner && j < result.size() && result[j] == '(')
             {
               // Parse arguments from the text.
               size_t k = j + 1;
@@ -1064,9 +1093,9 @@ namespace
                 while (!a.empty() && isspace((unsigned char)a.front())) a.erase(a.begin());
                 while (!a.empty() && isspace((unsigned char)a.back())) a.pop_back();
               }
-              if (closed && innerArgs.size() == it->second.params.size())
+              if (closed && innerArgs.size() == inner->params.size())
               {
-                next += expandMacroOnce(it->second, innerArgs);
+                next += expandMacroOnce(*inner, innerArgs);
                 changed = true;
                 i = k + 1;
                 continue;
@@ -1144,8 +1173,8 @@ namespace
         const Token& t = toks[i];
         if (t.getKind() == TokenKind::Identifier && toks[i + 1].is(P::LParen) && !localMacros.empty())
         {
-          auto lm = localMacros.find(std::string(spelling(i)));
-          if (lm != localMacros.end())
+          const LocalMacro* lm = localMacroAt(std::string(spelling(i)), t.offset);
+          if (lm)
           {
             // The arguments: token ranges between top-level commas, up to the matching ')'.
             std::vector<std::pair<uint32_t, uint32_t>> args;
@@ -1178,12 +1207,12 @@ namespace
             {
               if (j > argStart || !args.empty())
                 args.push_back({argStart, j});
-              if (args.size() == lm->second.params.size())
+              if (args.size() == lm->params.size())
               {
                 std::vector<std::string> argText;
                 for (auto [a0, a1] : args)
                   argText.push_back(a1 > a0 ? std::string(text.substr(toks[a0].offset, endOffset(a1 - 1) - toks[a0].offset)) : std::string());
-                replace(t.offset, endOffset(j) - t.offset, expandMacro(lm->second, argText, t.offset));
+                replace(t.offset, endOffset(j) - t.offset, expandMacro(*lm, argText, t.offset));
                 counts.add("local macro expanded");
                 i = j;
                 continue;
