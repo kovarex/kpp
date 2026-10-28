@@ -187,6 +187,14 @@ const Ty* TypeTable::array(const Ty* element, uint32_t count)
   return intern(t);
 }
 
+const Ty* TypeTable::dependentArray(const Ty* element, Decl* boundParam)
+{
+  Ty t{TyKind::Array};
+  t.inner = element;
+  t.decl = boundParam;
+  return intern(t);
+}
+
 const Ty* TypeTable::vectorType(const Ty* element, uint32_t count)
 {
   Ty t{TyKind::Vector};
@@ -383,7 +391,11 @@ namespace
     {
       case TyKind::Param: return !(bound && bound->contains(t->decl));
       case TyKind::Auto: case TyKind::DependentMember: return true;
-      case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef: case TyKind::Array: case TyKind::Value:
+      case TyKind::Array:
+        if (t->decl && !(bound && bound->contains(t->decl)))
+          return true; // `T[N]` with N a parameter
+        return dependent(t->inner, bound);
+      case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef: case TyKind::Value:
         return dependent(t->inner, bound);
       case TyKind::MemberPointer:
         return dependent(t->inner, bound) || (!t->args.empty() && dependent(t->args[0], bound));
@@ -458,7 +470,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
     case TyKind::Pointer: s += toString(t->inner, symbols) + "*"; break;
     case TyKind::LRef: s += toString(t->inner, symbols) + "&"; break;
     case TyKind::RRef: s += toString(t->inner, symbols) + "&&"; break;
-    case TyKind::Array: s += toString(t->inner, symbols) + "[" + (t->count ? std::to_string(t->count) : "") + "]"; break;
+    case TyKind::Array: s += toString(t->inner, symbols) + "[" + (t->decl ? declName(t->decl) : t->count ? std::to_string(t->count) : "") + "]"; break;
     case TyKind::Lambda:
       if (t->decl)
       {

@@ -1789,6 +1789,13 @@ namespace
             d.type = p;
           }
         }
+        else if (at(P::LBracket) && inner != d.type)
+        {
+          // `const T (&array)[N]`, `int (*rows)[4]`: the bound belongs to the element type, which
+          // the reference or pointer inside the parentheses then wraps (not an array of them).
+          Type* arrayed = parseArraySuffixes(d.type);
+          d.type = rebase(inner, d.type, arrayed);
+        }
         else
           d.type = inner;
         d.type = parseArraySuffixes(d.type);
@@ -4277,6 +4284,22 @@ namespace
         case NodeKind::RRefType: { auto* r = static_cast<RRefType*>(t); r->referenced = replaceAuto(r->referenced, with); return t; }
         case NodeKind::PackType: { auto* p = static_cast<PackType*>(t); p->pattern = replaceAuto(p->pattern, with); return t; }
         case NodeKind::MemberPointerType: { auto* m = static_cast<MemberPointerType*>(t); m->pointee = replaceAuto(m->pointee, with); return t; }
+        default: return t;
+      }
+    }
+
+    // t, the declarator operators of a parenthesised declarator (`&`, `*`, `const`) around base,
+    // with base replaced by newBase (in place).
+    static Type* rebase(Type* t, Type* base, Type* newBase)
+    {
+      if (!t || t == base)
+        return newBase;
+      switch (t->kind)
+      {
+        case NodeKind::PointerType: { auto* p = static_cast<PointerType*>(t); p->pointee = rebase(p->pointee, base, newBase); return t; }
+        case NodeKind::LRefType: { auto* r = static_cast<LRefType*>(t); r->referenced = rebase(r->referenced, base, newBase); return t; }
+        case NodeKind::RRefType: { auto* r = static_cast<RRefType*>(t); r->referenced = rebase(r->referenced, base, newBase); return t; }
+        case NodeKind::ConstType: { auto* c = static_cast<ConstType*>(t); c->inner = rebase(c->inner, base, newBase); return t; }
         default: return t;
       }
     }

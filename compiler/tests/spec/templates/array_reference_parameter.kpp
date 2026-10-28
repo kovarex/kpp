@@ -1,6 +1,5 @@
 // spec: a function template parameter that is a reference to an array, its element type and bound deduced: `template<typename T, size_t N> size_t size(const T (&array)[N])`
 // factorio: std::size, std::begin and std::end of built-in arrays (SelectorCombinatorGui's modeOfOperationMapping, lookup tables)
-// pending: the calls do not resolve: the element type and the bound are not deduced from the array argument
 template<typename T, size_t N>
 constexpr size_t countOf(const T (&array)[N]) { return N; }
 template<typename T, size_t N>

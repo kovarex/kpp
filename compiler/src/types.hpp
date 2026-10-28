@@ -78,6 +78,9 @@ public:
   const Ty* lref(const Ty* t);
   const Ty* rref(const Ty* t);
   const Ty* array(const Ty* element, uint32_t count);
+  // `T (&array)[N]` in a template: an array whose bound is the constant parameter N (decl), until
+  // N is known; dependent.
+  const Ty* dependentArray(const Ty* element, Decl* boundParam);
   const Ty* function(const Ty* result, Span<const Ty*> params, bool variadic);
   const Ty* classType(Decl* decl, Span<const Ty*> args);
   // A brace list argument `{a, b}` as overload resolution sees it: InitializerList<element>, but

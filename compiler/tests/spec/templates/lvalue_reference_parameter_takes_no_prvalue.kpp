@@ -1,6 +1,5 @@
 // spec: a parameter `T&` of a function template takes no prvalue: T deduces from the argument, but a non-const lvalue reference does not bind a temporary, so an overload that takes the argument by value or by const reference (through a conversion if need be) is chosen
 // found in the game's WikiTypeInfoHelper::tryDownloadTypes (`this->tryDownloadTypes([=](...) {...})` inside `template<class T> void tryDownloadTypes(T& gui)`): the template took its own lambda instead of the `Function` overload, instantiating itself 64 levels deep
-// pending: overload resolution lets `T&` bind a prvalue of class type (a temporary, a lambda)
 struct Gui
 {
   int filled = 0;

@@ -365,6 +365,8 @@ struct GlobalScope::Impl
     if (d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
               (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
       p->isType = false;
+    else if (!d && name.parts.size() == 1 && builtinByName(name.parts[0].symbol))
+      p->isType = false; // `template<typename T, size_t N>`: size_t is a type by its name
   }
 
   // The class `class ScaleTag` declares where nothing named ScaleTag is visible: one per namespace
@@ -3797,7 +3799,16 @@ struct GlobalScope::Impl
       {
         auto* a = static_cast<ArrayType*>(t);
         auto n = constEval(a->size, ctx);
-        return types.array(convertType(a->element, ctx, depth + 1), n && *n > 0 ? uint32_t(*n) : 0);
+        const Ty* element = convertType(a->element, ctx, depth + 1);
+        if (!n && a->size && a->size->kind == NodeKind::NameExpr)
+        {
+          // `const T (&array)[N]` with N a constant parameter not yet bound: the bound is N.
+          Lookup l = lookupQualified(static_cast<NameExpr*>(a->size)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+          if (l.decl && l.decl->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(l.decl)->isType &&
+              !(ctx.subst && ctx.subst->find(l.decl)))
+            return types.dependentArray(element, l.decl);
+        }
+        return types.array(element, n && *n > 0 ? uint32_t(*n) : 0);
       }
       case NodeKind::FunctionType:
       {
@@ -4063,7 +4074,13 @@ struct GlobalScope::Impl
           if (p == t->decl)
             return true;
         return false;
-      case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef: case TyKind::Array: case TyKind::MemberPointer:
+      case TyKind::Array:
+        if (t->decl)
+          for (Decl* p : params)
+            if (p == t->decl)
+              return true; // `T[N]`
+        return dependsOn(t->inner, params);
+      case TyKind::Pointer: case TyKind::LRef: case TyKind::RRef: case TyKind::MemberPointer:
       case TyKind::DependentMember:
         return dependsOn(t->inner, params);
       case TyKind::Function: case TyKind::Class: case TyKind::Lambda:
@@ -4150,6 +4167,14 @@ struct GlobalScope::Impl
       case TyKind::Array:
         if (a->kind == TyKind::Array || a->kind == TyKind::Pointer)
           deduce(pattern->inner, a->inner, out, depth + 1);
+        if (pattern->decl && a->kind == TyKind::Array && a->count > 0 && !out.find(pattern->decl))
+        {
+          // `const T (&array)[N]` given an int[5]: N = 5, a constant of N's declared type.
+          auto* p = static_cast<TemplateParamDecl*>(pattern->decl);
+          const Ty* of = p->valueType ? types.unqualified(convertType(p->valueType, TypeContext{lexicalScopeOf(p), nullptr, nullptr}, depth + 1))
+                                      : types.sizeType();
+          out.pairs.push_back({pattern->decl, types.valueType(of && of->isKnown() ? of : types.sizeType(), int64_t(a->count))});
+        }
         break;
       case TyKind::MemberPointer:
         if (a->kind == TyKind::MemberPointer)
@@ -4531,7 +4556,15 @@ struct GlobalScope::Impl
       case TyKind::Pointer: return types.qualified(types.pointer(substitute(t->inner, s, depth + 1)), t->isConst, t->isVolatile);
       case TyKind::LRef: return types.lref(substitute(t->inner, s, depth + 1));
       case TyKind::RRef: return types.rref(substitute(t->inner, s, depth + 1));
-      case TyKind::Array: return types.array(substitute(t->inner, s, depth + 1), t->count);
+      case TyKind::Array:
+        if (t->decl) // `T[N]`: N's value once bound
+        {
+          const Ty* bound = s.find(t->decl);
+          if (bound && bound->kind == TyKind::Value && !bound->decl && bound->value > 0)
+            return types.array(substitute(t->inner, s, depth + 1), uint32_t(bound->value));
+          return types.dependentArray(substitute(t->inner, s, depth + 1), t->decl);
+        }
+        return types.array(substitute(t->inner, s, depth + 1), t->count);
       case TyKind::MemberPointer:
         return types.memberPointer(substitute(t->inner, s, depth + 1), t->args.empty() ? nullptr : substitute(t->args[0], s, depth + 1));
       case TyKind::Member:
@@ -4633,6 +4666,8 @@ struct GlobalScope::Impl
     {
       const Ty* pt = param->inner;
       bool lvalueToRvalueRef = param->kind == TyKind::RRef && arg->kind == TyKind::LRef; // `T&&` takes no lvalue directly
+      if (param->kind == TyKind::LRef && !pt->isConst && !arg->isReference())
+        return NotViable; // `T&` binds no prvalue (a temporary, a lambda): lvalues present themselves as references (argumentType)
       if (types.unqualified(a) == types.unqualified(pt))
       {
         if (lvalueToRvalueRef || (!pt->isConst && a->isConst))
@@ -4641,6 +4676,9 @@ struct GlobalScope::Impl
       }
       if (a->kind == TyKind::Class && pt->kind == TyKind::Class && isBaseClass(pt, a))
         return lvalueToRvalueRef || (!pt->isConst && a->isConst) ? NotViable : 3;
+      if (a->kind == TyKind::Array && pt->kind == TyKind::Array && a->count == pt->count && a->inner && pt->inner &&
+          types.unqualified(a->inner) == types.unqualified(pt->inner) && (pt->inner->isConst || !a->inner->isConst))
+        return lvalueToRvalueRef ? NotViable : 1; // `const int (&)[5]` given an int[5]: the elements made const
       if (param->kind == TyKind::LRef && !pt->isConst)
         return NotViable; // A non-const lvalue reference binds only to the same type.
       int r = conversionRank(a, pt, depth + 1);
