@@ -487,11 +487,15 @@ process peaks at 1.2 GB today.
    reads a type (about 60 in the resolver, 120 in codegen) reads it through the instantiation.
 2. **A copy of the body per instantiation, typed in place** (the clang model): the template's
    tree is copied once per instantiation, the copy is typed and kept as that instantiation's
-   body. At most 6.6 M to 10.2 M nodes copied (the visits above, an upper bound since a walk can
-   visit a node twice), **0.6 to 0.9 GB**, so a peak of about 2 GB on a 128 GB machine. Copying
-   is a memory copy and pointer fix-up, estimated at 0.2 to 0.4 s of CPU spread over the threads
-   (not measured: it needs the copy written). Readers do not change: codegen walks the
-   instantiation's own nodes as it walks a plain function's today.
+   body. Measured with the copier (compiler/src/instance.cpp) copying every body the front end's
+   instantiation checks and codegen walk: **511 k copies (422 k from the front end, 89 k from
+   codegen, mostly the same instantiations again), 12.1 M nodes, 909 MB, 1.6 s of CPU** (copies
+   serialised under one lock for the measurement; spread over the threads it is a small part of a
+   second). The process peaked at 2.0 GB instead of 1.2 GB. Most of the copies are member bodies
+   of class instantiations (350 k, every member of every instantiated class, used or not);
+   copying and typing a member only when it is first used, as C++ instantiates member
+   definitions, would cut that. Readers do not change: codegen walks the instantiation's own nodes
+   as it walks a plain function's today.
 
 **What it buys, in time.** The speedup is parallel codegen, which either variant (or the
 per-thread tables proposed first) makes safe; no variant is faster by itself. Codegen is 5.4 s

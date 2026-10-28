@@ -17,6 +17,7 @@ add_executable(kppc
   src/resolver.cpp
   src/types.cpp
   src/codegen.cpp
+  src/instance.cpp
   src/source.cpp
 )
 target_include_directories(kppc PRIVATE src)
