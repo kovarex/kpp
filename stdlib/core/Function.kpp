@@ -2,9 +2,15 @@
 // object with operator()) behind one type, as std::function. `Function<Signature>` is only a name:
 // the compiler reads the signature and makes `Function<void(int)>` mean FunctionImpl<void, int>,
 // which is what this file defines. The callable is copied to the heap; calls go through one
-// indirection; copying a Function copies the callable.
+// indirection; copying a Function copies the callable. Specified in docs/stdlib/function.md.
 template<typename Signature>
 struct Function;
+
+// What calling an empty Function throws.
+struct BadFunctionCall : Exception
+{
+  BadFunctionCall() : Exception(String("bad function call")) {}
+};
 
 template<typename R, typename... Args>
 struct FunctionImpl
@@ -73,7 +79,12 @@ struct FunctionImpl
   bool operator==(nullptr_t) const { return this->target == nullptr; }
   bool operator!=(nullptr_t) const { return this->target != nullptr; }
 
-  R operator()(Args... args) const { return this->invoke(this->target, forward<Args>(args)...); }
+  R operator()(Args... args) const
+  {
+    if (!this->target)
+      throw BadFunctionCall();
+    return this->invoke(this->target, forward<Args>(args)...);
+  }
 
   void reset()
   {

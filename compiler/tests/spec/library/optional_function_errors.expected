@@ -1,0 +1,6 @@
+-5
+-6
+reset: false
+move-only: 4 false
+value() throws true, order true false
+empty call throws true

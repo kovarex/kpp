@@ -1,7 +1,15 @@
-// Kpp standard library: Optional<T>, a value that may be absent. The value is stored inline and
-// default-constructed while absent (a later version will avoid that with raw storage).
+// Kpp standard library: Optional<T>, a value that may be absent. Specified in
+// docs/stdlib/optional.md. The value is stored inline and default-constructed while absent (raw
+// storage needs alignas on a template's member, which the compiler does not honour yet; see
+// docs/stdlib-conformance.md); giving the value up assigns T() so that it releases what it held.
 struct NullOpt {};
 const NullOpt nullopt;
+
+// What value() throws on an empty Optional.
+struct BadOptionalAccess : Exception
+{
+  BadOptionalAccess() : Exception(String("bad optional access")) {}
+};
 
 template<typename T>
 struct Optional
@@ -12,15 +20,22 @@ struct Optional
   Optional() {}
   implicit Optional(NullOpt) {}
   implicit Optional(const T& v) : stored(v), present(true) {}
+  implicit Optional(T&& v) : stored(move(v)), present(true) {}
 
   Optional<T>& operator=(NullOpt)
   {
-    this->present = false;
+    this->reset();
     return *this;
   }
   Optional<T>& operator=(const T& v)
   {
     this->stored = v;
+    this->present = true;
+    return *this;
+  }
+  Optional<T>& operator=(T&& v)
+  {
+    this->stored = move(v);
     this->present = true;
     return *this;
   }
@@ -35,6 +50,15 @@ struct Optional
     return !this->present || this->stored == other.stored;
   }
   bool operator!=(const Optional<T>& other) const { return !(*this == other); }
+  bool operator==(NullOpt) const { return !this->present; }
+  bool operator!=(NullOpt) const { return this->present; }
+  // An absent optional orders before every present one.
+  bool operator<(const Optional<T>& other) const
+  {
+    if (!other.present)
+      return false;
+    return !this->present || this->stored < other.stored;
+  }
 
   bool hasValue() const { return this->present; }
   bool has_value() const { return this->present; }
@@ -42,8 +66,18 @@ struct Optional
   bool operator!() const { return !this->present; }
   T& get() { return this->stored; }
   const T& get() const { return this->stored; }
-  T& value() { return this->stored; }
-  const T& value() const { return this->stored; }
+  T& value()
+  {
+    if (!this->present)
+      throw BadOptionalAccess();
+    return this->stored;
+  }
+  const T& value() const
+  {
+    if (!this->present)
+      throw BadOptionalAccess();
+    return this->stored;
+  }
   T& operator*() { return this->stored; }
   const T& operator*() const { return this->stored; }
   T* operator->() { return &this->stored; }
@@ -54,11 +88,13 @@ struct Optional
       return this->stored;
     return fallback;
   }
-  // Builds the value in place from the arguments (std::optional's emplace).
+  // Builds the value in place from the arguments (std::optional's emplace): the old value is
+  // destroyed first, and nothing is assigned.
   template<typename... Args>
   T& emplace(Args&&... args)
   {
-    this->stored = T(forward<Args>(args)...);
+    this->stored.~T();
+    new (&this->stored) T(forward<Args>(args)...);
     this->present = true;
     return this->stored;
   }
@@ -67,8 +103,23 @@ struct Optional
     this->stored = v;
     this->present = true;
   }
-  void reset() { this->present = false; }
-  void clear() { this->present = false; }
+  // Gives the value up: it is destroyed at once (and a default T takes its place in the storage).
+  void reset()
+  {
+    if (this->present)
+    {
+      this->stored.~T();
+      new (&this->stored) T();
+    }
+    this->present = false;
+  }
+  void clear() { this->reset(); }
+  void swap(Optional<T>& other)
+  {
+    Optional<T> held = move(*this);
+    *this = move(other);
+    other = move(held);
+  }
 
   // Unchecked access (Factorio's operator~ on Optional).
   T& operator~() { return this->stored; }

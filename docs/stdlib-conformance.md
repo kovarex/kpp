@@ -13,6 +13,14 @@ compile, loudly) last. State of 2026-10-28.
 - `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
 
+**Optional** (docs/stdlib/optional.md): the value is stored as a T member, so an empty Optional
+holds a default-constructed T: T needs a default constructor, its constructor runs for an empty
+Optional and its destructor at the end. reset() and emplace() destroy the value at once as
+specified (and default-construct the storage again). Raw storage needs `alignas(T)` on a member of
+a template (or `alignof` of an instantiation), which the compiler ignores today: the bytes would be
+misaligned for types aligned beyond their size. Not in the specification, kept from the game's own
+Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
+
 ## Missing types and API
 
 None of the members specified in docs/stdlib/ are missing (2026-10-28).
@@ -27,4 +35,5 @@ upperBound, PriorityQueue, nthElement (introselect), the checked accessors (`at(
 and `erase` throw OutOfRange), HashMap/HashSet (entries in nodes, std's interface) and
 FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
 pops at both ends), List, SharedPtr/WeakPtr/EnableSharedFromThis (atomic counts, deletion as the
-created type, shared_from_this throwing BadWeakPtr), UniquePtr (conversions from UniquePtr<Derived>).
+created type, shared_from_this throwing BadWeakPtr), UniquePtr (conversions from UniquePtr<Derived>), Function (heap copy of the callable,
+BadFunctionCall on an empty call).
