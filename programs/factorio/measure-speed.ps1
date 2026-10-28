@@ -12,7 +12,7 @@ $kppc = (Resolve-Path ..\..\compiler\build\kppc.exe).Path
 $clang = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe'
 $out = Join-Path $env:TEMP 'kpp-measure-speed'
 New-Item -ItemType Directory -Force $out | Out-Null
-$cinc = '--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include'
+$cinc = '--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include'
 
 function Run-Timed([string]$arguments, [switch]$Echo)
 {

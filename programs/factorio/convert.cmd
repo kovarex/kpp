@@ -14,7 +14,7 @@ set WHOLE=C:\factorio-in-kpp\kpp
 if not "%~1"=="" set WHOLE=%~1
 %KPPC% --no-std --quiet --convert %WHOLE% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui %SRC% C:\Factorio\tests || exit /b 1
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
-set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include
+set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include
 %KPPC% --no-std --quiet --convert kpp --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui %SRC% || exit /b 1
 type kpp\CONVERSION.md | findstr /B "Files -"
 rem Remove stale top-level directories left by older conversions (the converter now writes src\
@@ -27,12 +27,21 @@ rem Exempt files the smoke tests reference explicitly at kpp\*.kpp (they are not
 rem when they originated from the libraries or stubs).
 if exist kpp\src for %%f in (kpp\src\*.kpp) do if exist "kpp\%%~nxf" del /q "kpp\%%~nxf"
 rem Mirror kpp\src\Util\ to kpp\Util\ so the smoke tests find their files (the converter writes
-rem src files under kpp\src\ but the smoke tests reference kpp\Util\).
-if not exist kpp\Util if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
+rem src files under kpp\src\ but the smoke tests reference kpp\Util\). Fresh every run: a copy
+rem kept from an older conversion would test stale code.
+if exist kpp\Util rd /s /q kpp\Util
+if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
 rem Copy stubs for types that are outside the converted subset but needed for codegen.
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
-echo == kppc on the converted sources
-%KPPC% --std ..\..\stdlib %CINC% --errors 10 --unresolved 20 --emit-llvm kpp\out.ll kpp
+rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
+rem stderr lines of the full build of exactly CommonUtil, Agui and src, not the kpp\Util copy.
+echo == full-src codegen errors: kpp\CommonUtil kpp\Agui kpp\src (all errors in kpp\full-errors.txt)
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\src 2> kpp\full-errors.txt
+set FULLRC=%errorlevel%
+rem System32's find: a Unix find earlier on the PATH (Git's) would walk the disk instead.
+%SystemRoot%\System32\find.exe /c /v "" kpp\full-errors.txt
+if not "%FULLRC%"=="0" if not "%FULLRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %FULLRC%)
+findstr /c:"importing C headers failed" kpp\full-errors.txt >nul && echo NOT A VALID COUNT: importing the C headers failed, see kpp\full-errors.txt
 echo == smoke test: tests\smoke.kpp against the converted CommonUtil (SystemClipboard stubbed: the real one needs SDL)
 setlocal EnableDelayedExpansion
 set FILES=
