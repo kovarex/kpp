@@ -1,0 +1,21 @@
+// spec: a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`)
+// factorio: the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=)
+// pending: free operator templates are not found for operators on class templates ("Opt has no operator==")
+template<typename B, typename E = int>
+struct Opt
+{
+  B base;
+};
+template<typename B>
+constexpr bool operator==(const B& lhs, const Opt<B>& rhs) { return lhs == rhs.base; }
+template<typename B, typename E>
+constexpr bool operator!=(const Opt<B, E>& lhs, const Opt<B, E>& rhs) { return lhs.base != rhs.base; }
+int main()
+{
+  Opt<int> a;
+  a.base = 3;
+  Opt<int> b;
+  b.base = 4;
+  println("{} {} {}", 3 == a, 4 == a, a != b);
+  return 0;
+}
