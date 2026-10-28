@@ -132,6 +132,88 @@ namespace
     return out + "\"";
   }
 
+  // The class body Util/Enums.hpp's ENUM_IMPL_NOSTRING(Name, Type, values...) expands to, and with
+  // strings the part ENUM_IMPL adds (str() and construction from text, with the names as
+  // StringUtil::addDashes spells them).
+  std::string enumClassBody(const std::string& name, const std::string& type, const std::vector<std::string>& values, bool strings)
+  {
+    std::string list, validate;
+    for (const std::string& v : values)
+    {
+      list += (list.empty() ? "      " : ",\n      ") + v;
+      validate += "        case Enum::" + v + ": return true;\n";
+    }
+    std::string out =
+      "  public:\n"
+      "    enum class Enum : " + type + "\n"
+      "    {\n" + list + "\n"
+      "    };\n"
+      "\n"
+      "    using UnderlyingType = " + type + ";\n"
+      "\n"
+      "    " + name + "() = delete;\n"
+      "    implicit constexpr " + name + "(Enum value) : value(value) {}\n"
+      "    constexpr explicit " + name + "(" + type + " value) : value(static_cast<Enum>(value)) { this->validate(); }\n"
+      "\n"
+      "    explicit constexpr operator " + type + "() const { return static_cast<" + type + ">(this->value); }\n"
+      "    implicit constexpr operator Enum() const { return this->value; }\n"
+      "    constexpr " + type + " asType() const { return static_cast<" + type + ">(this->value); }\n"
+      "    constexpr Enum asEnum() const { return this->value; }\n"
+      "    constexpr bool isValid() const\n"
+      "    {\n"
+      "      switch (this->value)\n"
+      "      {\n" + validate +
+      "      }\n"
+      "      return false;\n"
+      "    }\n"
+      "\n"
+      "    constexpr void validate() const\n"
+      "    {\n"
+      "      if (!this->isValid())\n"
+      "        throw RuntimeError(\"Invalid enum value \\\"\" + toString(this->asType()) + \"\\\" of " + name + "\");\n"
+      "    }\n"
+      "\n"
+      "    constexpr bool operator==(Enum other) const { return this->value == other; }\n"
+      "    constexpr bool operator!=(Enum other) const { return this->value != other; }\n"
+      "    constexpr bool operator==(" + name + " other) const { return this->value == other.value; }\n"
+      "    constexpr bool operator!=(" + name + " other) const { return this->value != other.value; }\n"
+      "\n"
+      "    using enum Enum;\n"
+      "    static constexpr size_t value_count = " + std::to_string(values.size()) + ";\n"
+      "    static constexpr EnumItems<" + name + ", 0, value_count> values() { return {}; }\n"
+      "\n"
+      "  protected:\n"
+      "    Enum value;\n";
+    if (strings)
+    {
+      std::string toStr, fromStr;
+      for (const std::string& v : values)
+      {
+        toStr += "        case Enum::" + v + ": return StringUtil::addDashes(\"" + v + "\");\n";
+        fromStr += "      if (StringUtil::compare(val, StringUtil::addDashes(\"" + v + "\").c_str(), true))\n        return Enum::" + v + ";\n";
+      }
+      out +=
+        "  public:\n"
+        "    explicit " + name + "(const String& str) : " + name + "(str.c_str()) {}\n"
+        "    explicit " + name + "(const char* str) : value(" + name + "::findValue(str)) {}\n"
+        "\n"
+        "    String str() const\n"
+        "    {\n"
+        "      switch (this->value)\n"
+        "      {\n" + toStr +
+        "      }\n"
+        "      return \"\";\n"
+        "    }\n"
+        "\n"
+        "  protected:\n"
+        "    static Enum findValue(const char* val)\n"
+        "    {\n" + fromStr +
+        "      throw RuntimeError(\"Invalid value \\\"\" + String(val) + \"\\\" of " + name + "\");\n"
+        "    }\n";
+    }
+    return out + "  private:\n";
+  }
+
   // How many arguments an argument macro takes: the highest N of its $N and #N.
   size_t arityOf(const std::string& replacement)
   {
@@ -1429,6 +1511,46 @@ namespace
               i = j;
               continue;
             }
+          }
+          // Util/Enums.hpp: ENUM(Name, Type, A, B, ...) is a class holding an `enum class Enum` with
+          // conversions, validation, str() and parsing from text; ENUM_IMPL is that class's body and
+          // ENUM_IMPL_NOSTRING the body without the text part. Expanded as the macros expand.
+          if ((name == "ENUM" || name == "ENUM_IMPL" || name == "ENUM_IMPL_NOSTRING") && toks[i + 1].is(P::LParen))
+          {
+            std::vector<std::string> args;
+            uint32_t j = i + 2;
+            int depth = 0;
+            bool simple = true;
+            uint32_t argStart = j;
+            for (; j < toks.size(); ++j)
+            {
+              if (toks[j].is(P::LParen))
+                ++depth;
+              else if (toks[j].is(P::RParen) && depth-- == 0)
+                break;
+              else if (toks[j].is(P::Comma) && depth == 0)
+              {
+                simple = simple && j == argStart + 1;
+                args.push_back(std::string(spelling(argStart)));
+                argStart = j + 1;
+              }
+            }
+            if (j < toks.size() && j > argStart)
+            {
+              simple = simple && j == argStart + 1;
+              args.push_back(std::string(spelling(argStart)));
+            }
+            // Name, Type and the enumerators, each a single name (types such as `uint8_t` are one).
+            if (j < toks.size() && simple && args.size() >= 3)
+            {
+              std::vector<std::string> values(args.begin() + 2, args.end());
+              std::string body = enumClassBody(args[0], args[1], values, name != "ENUM_IMPL_NOSTRING");
+              replace(t.offset, endOffset(j) - t.offset, name == "ENUM" ? "class " + args[0] + "\n{\n" + body + "}" : body);
+              counts.add(name + " expanded");
+              i = j;
+              continue;
+            }
+            todo(t.offset, name + " with arguments that are not single names: left as written");
           }
           // BITFIELD(Name, member1, member2, ...) -> class Name : public BitFieldBase { enum class Enum { members }; using enum Enum; ... }
           if (name == "BITFIELD" && toks[i + 1].is(P::LParen))
