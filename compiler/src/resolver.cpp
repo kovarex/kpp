@@ -5436,6 +5436,25 @@ struct GlobalScope::Impl
       return t;
     }
 
+    // Records f's deduced template arguments on the call for the code generator: built aside and
+    // stored with the count last, since instantiations checked on other threads type the same call
+    // (the count was incremented in place and could pass the 8 slots).
+    static void recordTemplateArgs(CallExpr* call, FunctionDecl* f, const Subst& s)
+    {
+      const Ty* found[8] = {};
+      uint8_t n = 0;
+      for (Decl* p : f->templateParams)
+      {
+        const Ty* t = s.find(p);
+        if (!t || n >= 8)
+          break;
+        found[n++] = t;
+      }
+      for (uint8_t i = 0; i < n; ++i)
+        call->templateArgs[i] = found[i];
+      call->templateArgCount = n;
+    }
+
     // Return type of calling `f` with the given arguments, deducing its template parameters.
     const Ty* returnTypeOfCall(FunctionDecl* f, const Subst* classSubst, const Span<Expr*>& args, const NamePart* namePart,
                                CallExpr* call = nullptr)
@@ -5456,16 +5475,7 @@ struct GlobalScope::Impl
           impl.deduceCall(f, fnTy, argTypesOf(args), s);
           impl.fillDefaultTemplateArgs(f, s);
           if (call)
-          {
-            call->templateArgCount = 0;
-            for (Decl* p : f->templateParams)
-            {
-              const Ty* t = s.find(p);
-              if (!t || call->templateArgCount >= 8)
-                break;
-              call->templateArgs[call->templateArgCount++] = t;
-            }
-          }
+            recordTemplateArgs(call, f, s);
           if (const Ty* r = instantiateFunction(f, s, true, classSubst))
             return r;
           return unknown(Why::AutoReturn);
@@ -5502,16 +5512,7 @@ struct GlobalScope::Impl
         impl.deduceCall(f, fnTy, argTypesOf(args), subst);
         impl.fillDefaultTemplateArgs(f, subst);
         if (call)
-        {
-          call->templateArgCount = 0;
-          for (Decl* p : f->templateParams)
-          {
-            const Ty* t = subst.find(p);
-            if (!t || call->templateArgCount >= 8)
-              break;
-            call->templateArgs[call->templateArgCount++] = t;
-          }
-        }
+          recordTemplateArgs(call, f, subst);
         {
           static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
           if (debugCalls)
@@ -5723,9 +5724,9 @@ struct GlobalScope::Impl
       }
       if (own.pairs.size() > 8)
         return unknown(Why::Deduction);
-      c->templateArgCount = 0;
-      for (const Subst::Pair& p : own.pairs)
-        c->templateArgs[c->templateArgCount++] = p.type;
+      for (size_t i = 0; i < own.pairs.size(); ++i)
+        c->templateArgs[i] = own.pairs[i].type;
+      c->templateArgCount = uint8_t(own.pairs.size()); // the count last: other threads type the same call
       bool producer;
       Impl::Instantiation* inst = impl.claimFunction(l->closure, own, producer, t);
       if (!producer)
