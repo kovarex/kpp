@@ -4020,6 +4020,21 @@ struct GlobalScope::Impl
     return t && t->kind == TyKind::Class && !types.isDependent(t) ? t : nullptr;
   }
 
+  // Whether explicit member specialisation f is written for class instantiation classTy (the
+  // same arguments for the class template's parameters).
+  bool memberSpecializationIsFor(FunctionDecl* f, const Ty* classTy)
+  {
+    TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());
+    const Ty* written = specializedClassOf(f);
+    if (!written || !classTy || !classTy->decl)
+      return false;
+    Subst ws = substFor(written), cs = substFor(classTy);
+    for (Decl* p : effectiveParams(classTy->decl))
+      if (!ws.find(p) || ws.find(p) != cs.find(p))
+        return false;
+    return true;
+  }
+
   // `template<> ForceID parse<ForceID>(lua_State*, int32_t, const char*)`: an explicit
   // specialisation of a function template. It is no candidate of overload resolution (C++
   // chooses among the templates), only the body a call of its template runs with its arguments.
@@ -5132,8 +5147,8 @@ struct GlobalScope::Impl
           if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->body && m->templateParams.empty())
             checkMemberBody(sub, static_cast<FunctionDecl*>(m), subst);
         for (FunctionDecl* f : cls->outOfLineMembers)
-          if (f->body)
-            checkMemberBody(sub, f, subst);
+          if (f->body && (!Impl::isMemberSpecialization(f) || impl.memberSpecializationIsFor(f, classTy)))
+            checkMemberBody(sub, f, subst); // `template<> R Button<RecipeID>::f()`: for its instantiation only
       });
       impl.instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
       inst->state.store(2, std::memory_order_release);
