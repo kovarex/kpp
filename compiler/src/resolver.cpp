@@ -1414,9 +1414,12 @@ struct GlobalScope::Impl
       return false;
     DeclContext dc;
     declContextFor(def, dc);
+    // The bases as the instantiation's arguments make them (`Const<Color> : Conditional<..., Value<T>, T>`
+    // derives from Color, which the class template alone cannot tell).
+    Subst own = derived->args.empty() ? Subst{} : substFor(derived);
     for (const ClassDecl::Base& b : static_cast<ClassDecl*>(def)->bases)
     {
-      const Ty* bt = convertType(b.type, TypeContext{dc.scope, &dc.params, nullptr, def->file ? def->file->tokens : nullptr,
+      const Ty* bt = convertType(b.type, TypeContext{dc.scope, &dc.params, own.pairs.empty() ? nullptr : &own, def->file ? def->file->tokens : nullptr,
                                                      def->file ? def->file->text : std::string_view()}, 0);
       if (bt && derivesFrom(bt, base, depth + 1))
         return true;
@@ -1460,21 +1463,7 @@ struct GlobalScope::Impl
     if (name == "isUnsigned")
       return one() && ((one()->kind == TyKind::Int || one()->kind == TyKind::Char || one()->kind == TyKind::Bool) && (one()->isUnsigned || one()->kind == TyKind::Bool));
     if (name == "isFunction") return one() && one()->kind == TyKind::Function;
-    if (name == "isTriviallyCopyable")
-    {
-      const Ty* t = one();
-      if (!t)
-        return false;
-      if (t->kind != TyKind::Class)
-        return true;
-      Decl* def = t->decl;
-      if (!def || def->kind != NodeKind::ClassDecl)
-        return false;
-      for (Decl* m : static_cast<ClassDecl*>(def)->members)
-        if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Destructor | DF_Virtual)))
-          return false;
-      return true;
-    }
+    if (name == "isTriviallyCopyable") return one() ? triviallyCopyable(one()) : std::nullopt;
     if (name == "isConstructible")
     {
       // isConstructible<T, Args...>: T has a constructor taking Args (a class without constructors
@@ -1505,68 +1494,30 @@ struct GlobalScope::Impl
     }
     if (name == "isFundamental")
       return one() && (isArithmeticKind(one()) || one()->kind == TyKind::Void || one() == types.nullptrType());
-    if (name == "isTriviallyDestructible")
-    {
-      const Ty* t = one();
-      if (!t)
-        return false;
-      if (t->kind != TyKind::Class)
-        return true; // scalars, enums, pointers
-      Decl* def = t->decl;
-      if (!def || def->kind != NodeKind::ClassDecl)
-        return false;
-      for (Decl* m : static_cast<ClassDecl*>(def)->members)
-        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && !(m->flags & DF_Default))
-          return false;
-      return true;
-    }
-    if (name == "isTriviallyCopyAssignable" || name == "isTriviallyCopyConstructible")
-    {
-      const Ty* t = one();
-      if (!t)
-        return false;
-      if (t->kind != TyKind::Class)
-        return true;
-      // Conservative: a class is trivially copyable if isTriviallyCopyable says so
-      return traitValue("isTriviallyCopyable", a);
-    }
-    if (name == "isTriviallyDefaultConstructible")
-    {
-      const Ty* t = one();
-      if (!t)
-        return false;
-      if (t->kind != TyKind::Class)
-        return true;
-      Decl* def = t->decl;
-      if (!def || def->kind != NodeKind::ClassDecl)
-        return false;
-      for (Decl* m : static_cast<ClassDecl*>(def)->members)
-        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && static_cast<FunctionDecl*>(m)->params.empty() &&
-            !(m->flags & DF_Default))
-          return false;
-      return true;
-    }
+    if (name == "isTriviallyDestructible") return one() ? triviallyDestructible(one()) : std::nullopt;
+    if (name == "isTriviallyCopyConstructible") return one() ? constructibleFromSelf(one(), false, TraitForm::Trivially) : std::nullopt;
+    if (name == "isTriviallyCopyAssignable") return one() ? assignableFromSelf(one(), false, TraitForm::Trivially) : std::nullopt;
+    if (name == "isTriviallyDefaultConstructible") return one() ? triviallyDefaultConstructible(one()) : std::nullopt;
     if (name == "isSame") return a.size() == 2 && a[0] == a[1];
     if (name == "isBaseOf") return a.size() == 2 && derivesFrom(a[1], a[0]);
     if (name == "isConvertible")
     {
+      // isConvertible<From, To>: an rvalue of From (an lvalue for a reference From, as declval
+      // gives) converts to To implicitly, by the conversions overload resolution knows: standard
+      // ones, derived to base, converting constructors and conversion operators.
       if (a.size() != 2)
         return false;
-      const Ty* from = types.unqualified(types.stripRef(a[0]));
-      const Ty* to = types.unqualified(types.stripRef(a[1]));
-      if (from == to)
-        return true;
-      if (isArithmeticKind(from) && isArithmeticKind(to) && to->kind != TyKind::Enum)
-        return true;
-      if (from == types.nullptrType() && to->kind == TyKind::Pointer)
-        return true;
-      if (from->kind == TyKind::Pointer && to->kind == TyKind::Pointer)
-      {
-        const Ty* fp = types.unqualified(from->inner);
-        const Ty* tp = types.unqualified(to->inner);
-        return tp->kind == TyKind::Void || fp == tp || derivesFrom(fp, tp);
-      }
-      return false;
+      const Ty* from = a[0];
+      const Ty* to = a[1];
+      if (!from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to))
+        return std::nullopt;
+      if (types.unqualified(types.stripRef(to))->kind == TyKind::Void)
+        return types.unqualified(types.stripRef(from))->kind == TyKind::Void;
+      if (types.unqualified(types.stripRef(from))->kind == TyKind::Void)
+        return false;
+      if (to->kind == TyKind::LRef && !to->inner->isConst && from->kind != TyKind::LRef)
+        return false; // an rvalue binds no non-const lvalue reference
+      return conversionRank(from, to) < NotViable;
     }
     // The traits that need a class's members, answered as C++'s intrinsics answer them; nullopt
     // where that cannot be decided here (unknown or dependent types, a class without definition).
@@ -1998,6 +1949,153 @@ struct GlobalScope::Impl
       while (m->kind == TyKind::Array)
         m = m->inner; // arrays as members are copied element by element
       std::optional<bool> r = each(m, depth + 1);
+      if (!r || !*r)
+        return r;
+    }
+    return true;
+  }
+
+  // The class an object of type t is made of for the triviality traits (arrays by element), or
+  // the answer itself for a type that is no class: nullopt result means "not decided here".
+  struct TrivialSubject
+  {
+    const Ty* cls = nullptr;
+    std::optional<bool> answer;
+  };
+  TrivialSubject trivialSubject(const Ty* t)
+  {
+    const Ty* u = types.unqualified(t);
+    while (u->kind == TyKind::Array)
+      u = types.unqualified(u->inner);
+    switch (u->kind)
+    {
+      case TyKind::Class: return {u, std::nullopt};
+      case TyKind::Void: case TyKind::Function: return {nullptr, false};
+      case TyKind::Lambda:
+      {
+        LambdaExpr* l = lambdaOf(u);
+        return {nullptr, l && l->captures.empty() && !l->defaultCapture ? std::optional<bool>(true) : std::nullopt};
+      }
+      case TyKind::Unknown: case TyKind::Param: case TyKind::DependentMember: case TyKind::Auto: case TyKind::Pack:
+        return {nullptr, std::nullopt};
+      default: return {nullptr, true}; // scalars, pointers, enums, member pointers
+    }
+  }
+
+  // isTriviallyDestructible: no user-provided, deleted or virtual destructor, and every base and
+  // member trivially destructible.
+  std::optional<bool> triviallyDestructible(const Ty* t, int depth = 0)
+  {
+    if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+      return std::nullopt;
+    if (t->isReference())
+      return true;
+    TrivialSubject s = trivialSubject(t);
+    if (!s.cls)
+      return s.answer;
+    ClassDecl* def = classDefinition(s.cls);
+    if (!def)
+      return std::nullopt;
+    for (Decl* m : def->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) &&
+          ((m->flags & DF_Delete) || !(m->flags & DF_Default) || (m->flags & (DF_Virtual | DF_Override))))
+        return false;
+    std::vector<const Ty*> parts;
+    if (!directBases(s.cls, def, parts) || !fieldTypes(s.cls, def, parts))
+      return std::nullopt;
+    for (const Ty* part : parts)
+    {
+      std::optional<bool> r = triviallyDestructible(part, depth + 1);
+      if (!r || !*r)
+        return r;
+    }
+    return true;
+  }
+
+  // isTriviallyCopyable: trivially destructible, and every copy and move constructor and
+  // assignment the class has is trivial, at least one of them existing.
+  std::optional<bool> triviallyCopyable(const Ty* t)
+  {
+    if (!t || !t->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    if (t->isReference())
+      return false;
+    TrivialSubject s = trivialSubject(t);
+    if (!s.cls)
+      return s.answer;
+    std::optional<bool> destructible = triviallyDestructible(s.cls);
+    if (!destructible || !*destructible)
+      return destructible;
+    bool any = false;
+    for (int op = 0; op < 4; ++op)
+    {
+      bool move = op & 1, assign = op & 2;
+      auto test = [&](TraitForm form)
+      {
+        return assign ? assignableFromSelf(s.cls, move, form) : constructibleFromSelf(s.cls, move, form);
+      };
+      std::optional<bool> exists = test(TraitForm::Plain);
+      if (!exists)
+        return std::nullopt;
+      if (!*exists)
+        continue;
+      std::optional<bool> trivial = test(TraitForm::Trivially);
+      if (!trivial || !*trivial)
+        return trivial;
+      any = true;
+    }
+    return any;
+  }
+
+  // isTriviallyDefaultConstructible: a default constructor that is neither user-provided nor
+  // deleted, no virtual function or base, no default member initializer, and every base and member
+  // trivially default constructible.
+  std::optional<bool> triviallyDefaultConstructible(const Ty* t, int depth = 0)
+  {
+    if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+      return std::nullopt;
+    if (t->isReference())
+      return false;
+    TrivialSubject s = trivialSubject(t);
+    if (!s.cls)
+      return s.answer;
+    ClassDecl* def = classDefinition(s.cls);
+    if (!def)
+      return std::nullopt;
+    bool anyConstructor = false, defaultConstructor = false;
+    for (Decl* m : def->members)
+    {
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && static_cast<VariableDecl*>(m)->init)
+        return false; // `int count = 0;`: the implicit constructor runs it
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
+        continue;
+      anyConstructor = true;
+      auto* f = static_cast<FunctionDecl*>(m);
+      bool takesNone = true;
+      for (Decl* p : f->params)
+        takesNone = takesNone && static_cast<ParamDecl*>(p)->defaultValue;
+      if (!takesNone)
+        continue;
+      if ((f->flags & DF_Delete) || !(f->flags & DF_Default))
+        return false;
+      defaultConstructor = true;
+    }
+    if (anyConstructor && !defaultConstructor)
+      return false; // a declared constructor and no default one: none is implicit
+    for (const ClassDecl::Base& b : def->bases)
+      if (b.isVirtual)
+        return false;
+    std::optional<bool> polymorphic = polymorphicClass(s.cls);
+    if (!polymorphic || *polymorphic)
+      return polymorphic ? std::optional<bool>(false) : std::nullopt;
+    std::vector<const Ty*> parts;
+    if (!directBases(s.cls, def, parts) || !fieldTypes(s.cls, def, parts))
+      return std::nullopt;
+    for (const Ty* part : parts)
+    {
+      if (part->isReference())
+        return false; // a reference member has no default
+      std::optional<bool> r = triviallyDefaultConstructible(part, depth + 1);
       if (!r || !*r)
         return r;
     }
@@ -3846,6 +3944,18 @@ struct GlobalScope::Impl
 
   // ---------------- overload resolution ----------------
 
+  // Is class `base` a (transitive) base of class `derived`? By scope, and for an instantiation also
+  // by its arguments: a base they choose (`Const<Color> : Conditional<c, Value<T>, T>`) is not
+  // linked to the class template's scope.
+  bool isBaseClass(const Ty* base, const Ty* derived)
+  {
+    if (isBaseScope(classScopeOf(base), classScopeOf(derived)))
+      return true;
+    derived = types.unqualified(types.stripRef(derived));
+    base = types.unqualified(types.stripRef(base));
+    return !derived->args.empty() && derived->decl != base->decl && derivesFrom(derived, base);
+  }
+
   // Is `base` a (transitive) base class scope of `derived`?
   bool isBaseScope(Scope* base, Scope* derived, int depth = 0)
   {
@@ -3902,7 +4012,7 @@ struct GlobalScope::Impl
           return NotViable;
         return pt->isConst && !a->isConst ? 1 : 0;
       }
-      if (a->kind == TyKind::Class && pt->kind == TyKind::Class && isBaseScope(classScopeOf(pt), classScopeOf(a)))
+      if (a->kind == TyKind::Class && pt->kind == TyKind::Class && isBaseClass(pt, a))
         return lvalueToRvalueRef || (!pt->isConst && a->isConst) ? NotViable : 3;
       if (param->kind == TyKind::LRef && !pt->isConst)
         return NotViable; // A non-const lvalue reference binds only to the same type.
@@ -3968,7 +4078,7 @@ struct GlobalScope::Impl
             return pi->isConst == ai->isConst ? 0 : (pi->isConst ? 1 : NotViable);
           if (pi->kind == TyKind::Void)
             return 3;
-          if (ai->kind == TyKind::Class && pi->kind == TyKind::Class && isBaseScope(classScopeOf(pi), classScopeOf(ai)))
+          if (ai->kind == TyKind::Class && pi->kind == TyKind::Class && isBaseClass(pi, ai))
             return !pi->isConst && ai->isConst ? NotViable : 3;
           return NotViable;
         }
@@ -3987,7 +4097,7 @@ struct GlobalScope::Impl
             if (same)
               return 0;
           }
-          if (isBaseScope(classScopeOf(p), classScopeOf(a)))
+          if (isBaseClass(p, a))
             return 3;
         }
         // User-defined: a non-explicit single-argument constructor of p accepting a.
@@ -4288,6 +4398,7 @@ struct GlobalScope::Impl
     int instantiationDepth = 0;
     const ParsedFile* file = nullptr; // The file the tokens belong to (for --why sites).
     Expr* current = nullptr;          // The expression being typed (for --why sites).
+    int instantiatedBaseDepth = 0;    // memberOfInstantiatedBases nesting
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
 
@@ -4806,6 +4917,35 @@ struct GlobalScope::Impl
       return impl.instantiationOfBase(t, cls, in, depth);
     }
 
+    // `symbol` in the bases of the instantiation t (class scope cls) as its arguments make them.
+    std::optional<MemberResult> memberOfInstantiatedBases(const Ty* t, Scope* cls, uint32_t symbol, uint32_t token)
+    {
+      if (!cls->owner || instantiatedBaseDepth > 16)
+        return std::nullopt;
+      Subst own = impl.substFor(t);
+      LocalStack params;
+      for (Decl* p : cls->templateParams)
+        params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      ParsedFile* file = cls->owner->file;
+      TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+      std::optional<MemberResult> result;
+      ++instantiatedBaseDepth;
+      for (Type* b : cls->baseTypes)
+      {
+        const Ty* bt = impl.convertType(b, ctx, 1);
+        if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
+          continue;
+        MemberResult r = memberOf(bt, symbol, nullptr, token, false);
+        if (r.decl)
+        {
+          result = std::move(r);
+          break;
+        }
+      }
+      --instantiatedBaseDepth;
+      return result;
+    }
+
     MemberResult memberOf(const Ty* objectTy, uint32_t symbol, const QualifiedName* name, uint32_t token, bool countMissing = true)
     {
       MemberResult r;
@@ -4838,12 +4978,33 @@ struct GlobalScope::Impl
         }
       }
       Lookup l;
+      bool found = true;
+      const Ty* foundInBase = nullptr; // the instantiation of the base l was found in, once computed
       if (name && name->parts.size() > 1)
       {
         // `obj.Base::member`
         l = impl.lookupQualified(*name, cls, nullptr, 0);
       }
-      else if (!impl.lookupInScope(cls, symbol, l, 0))
+      else
+      {
+        found = impl.lookupInScope(cls, symbol, l, 0);
+        // A class template's bases are linked to its scope once, without its arguments, so a base
+        // the arguments choose (`struct X : BoolConstant<B>`, `Conditional<c, Value<T>, T>`) is
+        // missing there or is some other class: an instantiation's members come from its own bases.
+        if (!t->args.empty() && !types.isDependent(t) && !cls->baseTypes.empty())
+        {
+          bool viaOtherClass = false;
+          if (found && l.foundIn && l.foundIn != cls && l.foundIn->kind == ScopeKind::Class)
+          {
+            foundInBase = instantiationOfBase(t, cls, l.foundIn, 0);
+            viaOtherClass = !foundInBase;
+          }
+          if (!found || viaOtherClass)
+            if (std::optional<MemberResult> viaBase = memberOfInstantiatedBases(t, cls, symbol, token))
+              return *viaBase;
+        }
+      }
+      if (!found)
       {
         if (types.isDependent(t))
         {
@@ -4892,7 +5053,7 @@ struct GlobalScope::Impl
       r.overloads = l.overloads;
       const Ty* owner = t;
       if (l.foundIn && l.foundIn != cls && l.foundIn->kind == ScopeKind::Class)
-        if (const Ty* base = instantiationOfBase(t, cls, l.foundIn, 0))
+        if (const Ty* base = foundInBase ? foundInBase : instantiationOfBase(t, cls, l.foundIn, 0))
           owner = base; // `v.x` with x declared in the base Vector2<T, V>: that base's instantiation binds T
       r.subst = impl.substFor(owner);
       if (!r.subst.empty())

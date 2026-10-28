@@ -1,0 +1,4 @@
+copyable true true false true false false true false false
+destructible true false false
+default true false false
+convertible true true true false true false

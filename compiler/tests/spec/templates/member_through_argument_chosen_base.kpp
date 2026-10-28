@@ -1,0 +1,36 @@
+// spec: members of a class template instantiation reached through a base its arguments choose (`struct Const : Conditional<c, Value<T>, T>`, `struct X : BoolConstant<B>`), and the conversion of such an instantiation to that base
+// factorio: UtilityConstants' Const<T> (276 constants: Const<Color> used as a Color, Const<double> through Value<double>)
+template<class T>
+struct Value
+{
+  Value() {}
+  const T& value() const { return this->storage; }
+  T storage{};
+};
+
+struct Color
+{
+  float r = 0;
+  float g = 0;
+};
+
+template<class T>
+struct Const : Conditional<isIntegral<T> || isFloatingPoint<T>, Value<T>, T> {};
+
+float redOf(const Color& c) { return c.r; }
+float greenOf(const Color* c) { return c->g; }
+
+template<bool B> struct ViaParam : BoolConstant<B> {};
+
+int main()
+{
+  Const<int> number;
+  number.storage = 7;
+  Const<Color> tint;
+  tint.r = 0.5f;
+  tint.g = 0.25f;
+  ViaParam<false> v;
+  ViaParam<true> w;
+  println("{} {} {} {} {} {}", number.value(), tint.r, redOf(tint), greenOf(&tint), v.value, w.value);
+  return 0;
+}
