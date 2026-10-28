@@ -58,11 +58,29 @@ using VoidT = void;
 template<bool B>
 using BoolConstant = typename Conditional<B, TrueType, FalseType>::Type;
 
+// A value as a type (std::integral_constant). IntegralConstant<bool, true> is a TrueType and
+// IntegralConstant<bool, false> a FalseType, so either passes where the other is expected
+// (`f(x, IntegralConstant<bool, isSigned>())` choosing between `f(T, TrueType)` and
+// `f(T, FalseType)`); in C++ they are the same type.
 template<typename T, T V>
 struct IntegralConstant
 {
+  using value_type = T;
   static constexpr T value = V;
   constexpr operator T() const { return V; }
+  constexpr T operator()() const { return V; }
+};
+template<>
+struct IntegralConstant<bool, true> : TrueType
+{
+  using value_type = bool;
+  constexpr bool operator()() const { return true; }
+};
+template<>
+struct IntegralConstant<bool, false> : FalseType
+{
+  using value_type = bool;
+  constexpr bool operator()() const { return false; }
 };
 
 // The type predicates are the compiler's (resolver.cpp, traitValue), not declared here: a

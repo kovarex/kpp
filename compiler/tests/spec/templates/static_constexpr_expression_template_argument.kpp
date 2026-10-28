@@ -1,0 +1,16 @@
+// spec: a static constexpr member of a class template whose initializer depends on the template argument (sizeof(T), a trait of T), used as a template argument: `Array<ForceID, Limits<uint64_t>::digits + 1>`
+// factorio: Surface/CloneAreaParameters (`std::array<ForceID, std::numeric_limits<uint64_t>::digits + 1>`), any size computed from a type
+// pending: the member's value is not folded where a template argument needs it (codegen: a template parameter whose value is not known here)
+template<typename T>
+struct Bits
+{
+  static constexpr int count = int(sizeof(T)) * 8;
+  static constexpr int valueBits = isSigned<T> ? count - 1 : count;
+};
+int main()
+{
+  Array<int, Bits<uint64_t>::valueBits + 1> forces;
+  Array<int, Bits<int16_t>::valueBits> shorts;
+  println("{} {}", forces.size(), shorts.size());
+  return 0;
+}

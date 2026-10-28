@@ -98,3 +98,37 @@ struct InsertIterator
 
 template<typename Container>
 InsertIterator<Container> inserter(Container& c, typename Container::iterator pos) { return InsertIterator<Container>(c, pos); }
+
+// The free forms of a container's begin(), end(), size() and the rest (std::begin and friends), for
+// generic code that calls them on any range. Built-in arrays wait for the compiler to deduce an
+// array's bound from a `const T (&)[N]` parameter (spec templates/array_reference_parameter).
+template<typename C>
+auto begin(C& c) { return c.begin(); }
+template<typename C>
+auto begin(const C& c) { return c.begin(); }
+template<typename C>
+auto end(C& c) { return c.end(); }
+template<typename C>
+auto end(const C& c) { return c.end(); }
+template<typename C>
+auto cbegin(const C& c) { return c.begin(); }
+template<typename C>
+auto cend(const C& c) { return c.end(); }
+template<typename C>
+auto rbegin(C& c) { return c.rbegin(); }
+template<typename C>
+auto rbegin(const C& c) { return c.rbegin(); }
+template<typename C>
+auto rend(C& c) { return c.rend(); }
+template<typename C>
+auto rend(const C& c) { return c.rend(); }
+template<typename C>
+auto size(const C& c) { return c.size(); }
+template<typename C>
+ptrdiff_t ssize(const C& c) { return (ptrdiff_t)c.size(); }
+template<typename C>
+auto empty(const C& c) { return c.empty(); }
+template<typename C>
+auto data(C& c) { return c.data(); }
+template<typename C>
+auto data(const C& c) { return c.data(); }

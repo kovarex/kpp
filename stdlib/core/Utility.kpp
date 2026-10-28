@@ -178,87 +178,151 @@ struct strong_ordering
 using weak_ordering = strong_ordering;
 using partial_ordering = strong_ordering;
 
-// The range and special values of the arithmetic types.
+// The properties of the arithmetic types (what std::numeric_limits converts to), for every
+// integer and character type, bool, float and double; for any other type (an enum, a class)
+// is_specialized is false and the values are zero. Specified in docs/stdlib/limits.md.
 template<typename T>
 struct Limits
 {
-};
+  static constexpr bool is_specialized = isArithmetic<T>;
+  static constexpr bool is_signed = isSigned<T>;
+  static constexpr bool is_integer = isIntegral<T>;
+  static constexpr bool is_exact = isIntegral<T>;
+  static constexpr bool has_infinity = isFloatingPoint<T>;
+  static constexpr bool has_quiet_NaN = isFloatingPoint<T>;
+  static constexpr bool has_signaling_NaN = isFloatingPoint<T>;
+  static constexpr bool is_iec559 = isFloatingPoint<T>;
+  static constexpr bool is_bounded = isArithmetic<T>;
+  static constexpr bool is_modulo = isIntegral<T> && !isSigned<T> && !isSame<T, bool>;
+  static constexpr int radix = isArithmetic<T> ? 2 : 0;
+  // Bits of the value (integers: without the sign; floating point: of the significand).
+  static constexpr int digits = isSame<T, bool> ? 1 : isIntegral<T> ? int(sizeof(T)) * 8 - (isSigned<T> ? 1 : 0)
+                                : isFloatingPoint<T> ? (sizeof(T) == 4 ? 24 : 53) : 0;
+  // Decimal digits that survive a round trip through T; for floating point, the digits that
+  // print every value of T distinctly.
+  static constexpr int digits10 = isIntegral<T> ? digits * 301 / 1000 : isFloatingPoint<T> ? (sizeof(T) == 4 ? 6 : 15) : 0;
+  static constexpr int max_digits10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 9 : 17) : 0;
+  static constexpr int min_exponent = isFloatingPoint<T> ? (sizeof(T) == 4 ? -125 : -1021) : 0;
+  static constexpr int min_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? -37 : -307) : 0;
+  static constexpr int max_exponent = isFloatingPoint<T> ? (sizeof(T) == 4 ? 128 : 1024) : 0;
+  static constexpr int max_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 38 : 308) : 0;
 
-template<>
-struct Limits<int8_t>
-{
-  static int8_t min() { return (int8_t)-128; }
-  static int8_t max() { return 127; }
-  static int8_t lowest() { return (int8_t)-128; }
-};
-template<>
-struct Limits<uint8_t>
-{
-  static uint8_t min() { return 0; }
-  static uint8_t max() { return 255; }
-  static uint8_t lowest() { return 0; }
-};
-template<>
-struct Limits<int16_t>
-{
-  static int16_t min() { return (int16_t)-32768; }
-  static int16_t max() { return 32767; }
-  static int16_t lowest() { return (int16_t)-32768; }
-};
-template<>
-struct Limits<uint16_t>
-{
-  static uint16_t min() { return 0; }
-  static uint16_t max() { return 65535; }
-  static uint16_t lowest() { return 0; }
-};
-template<>
-struct Limits<int>
-{
-  static int min() { return -2147483647 - 1; }
-  static int max() { return 2147483647; }
-  static int lowest() { return -2147483647 - 1; }
-};
-template<>
-struct Limits<unsigned int>
-{
-  static unsigned int min() { return 0; }
-  static unsigned int max() { return 4294967295u; }
-  static unsigned int lowest() { return 0; }
-};
-template<>
-struct Limits<long long>
-{
-  static long long min() { return -9223372036854775807ll - 1; }
-  static long long max() { return 9223372036854775807ll; }
-  static long long lowest() { return -9223372036854775807ll - 1; }
-};
-template<>
-struct Limits<unsigned long long>
-{
-  static unsigned long long min() { return 0; }
-  static unsigned long long max() { return 18446744073709551615ull; }
-  static unsigned long long lowest() { return 0; }
-};
-template<>
-struct Limits<float>
-{
-  static float min() { return 1.17549435e-38f; }
-  static float max() { return 3.40282347e+38f; }
-  static float lowest() { return -3.40282347e+38f; }
-  static float infinity() { return 1e38f * 1e38f; }
-  static float quiet_NaN() { return 0.0f / 0.0f; }
-  static float epsilon() { return 1.19209290e-07f; }
-};
-template<>
-struct Limits<double>
-{
-  static double min() { return 2.2250738585072014e-308; }
-  static double max() { return 1.7976931348623157e+308; }
-  static double lowest() { return -1.7976931348623157e+308; }
-  static double infinity() { return 1e308 * 1e308; }
-  static double quiet_NaN() { return 0.0 / 0.0; }
-  static double epsilon() { return 2.2204460492503131e-16; }
+  // The greatest value.
+  static constexpr T max()
+  {
+    if constexpr (isSame<T, bool>)
+      return true;
+    else if constexpr (isFloatingPoint<T>)
+    {
+      if constexpr (sizeof(T) == 4)
+        return 3.40282347e+38f;
+      else
+        return 1.7976931348623157e+308;
+    }
+    else if constexpr (isIntegral<T> && isSigned<T>)
+      return (T)(((unsigned long long)1 << (sizeof(T) * 8 - 1)) - 1);
+    else if constexpr (isIntegral<T>)
+      return (T)~(unsigned long long)0;
+    else
+      return T();
+  }
+  // The least value of an integer type; the least positive normal value of a floating-point one.
+  static constexpr T min()
+  {
+    if constexpr (isFloatingPoint<T>)
+    {
+      if constexpr (sizeof(T) == 4)
+        return 1.17549435e-38f;
+      else
+        return 2.2250738585072014e-308;
+    }
+    else if constexpr (isIntegral<T> && isSigned<T>)
+      return (T)(-(long long)(((unsigned long long)1 << (sizeof(T) * 8 - 1)) - 1) - 1);
+    else
+      return T();
+  }
+  // The least value (for floating point, -max()).
+  static constexpr T lowest()
+  {
+    if constexpr (isFloatingPoint<T>)
+      return -Limits::max();
+    else
+      return Limits::min();
+  }
+  // The difference between 1 and the next greater value.
+  static constexpr T epsilon()
+  {
+    if constexpr (isFloatingPoint<T>)
+    {
+      if constexpr (sizeof(T) == 4)
+        return 1.19209290e-07f;
+      else
+        return 2.2204460492503131e-16;
+    }
+    else
+      return T();
+  }
+  static constexpr T round_error()
+  {
+    if constexpr (isFloatingPoint<T>)
+      return (T)0.5;
+    else
+      return T();
+  }
+  // The least positive (subnormal) value.
+  static constexpr T denorm_min()
+  {
+    if constexpr (isFloatingPoint<T>)
+    {
+      if constexpr (sizeof(T) == 4)
+        return 1.40129846e-45f;
+      else
+        return 4.9406564584124654e-324;
+    }
+    else
+      return T();
+  }
+  // Positive infinity and a quiet NaN of a floating-point type (zero for the others). Not usable
+  // in constant expressions.
+  static T infinity()
+  {
+    if constexpr (isFloatingPoint<T>)
+    {
+      T big = Limits::max();
+      return big * (T)2;
+    }
+    else
+      return T();
+  }
+  static T quiet_NaN()
+  {
+    if constexpr (isFloatingPoint<T>)
+    {
+      T zero = T();
+      return zero / zero;
+    }
+    else
+      return T();
+  }
+  static T signaling_NaN()
+  {
+    if constexpr (sizeof(T) == 4 && isFloatingPoint<T>)
+    {
+      uint32_t bits = 0x7FA00000u;
+      T value;
+      memcpy(&value, &bits, 4);
+      return value;
+    }
+    else if constexpr (isFloatingPoint<T>)
+    {
+      uint64_t bits = 0x7FF4000000000000ull;
+      T value;
+      memcpy(&value, &bits, 8);
+      return value;
+    }
+    else
+      return T();
+  }
 };
 
 // Errors carried by exceptions: a message and nothing else.

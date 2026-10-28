@@ -26,8 +26,27 @@ String toString(long long value)
   return result;
 }
 
+String toString(unsigned long long value)
+{
+  char digits[24];
+  int n = 0;
+  do
+  {
+    digits[n] = (char)('0' + value % 10);
+    ++n;
+    value /= 10;
+  } while (value != 0);
+  String result;
+  while (n > 0)
+  {
+    --n;
+    result.append(digits[n]);
+  }
+  return result;
+}
+
 String toString(int value) { return toString((long long)value); }
-String toString(unsigned int value) { return toString((long long)value); }
+String toString(unsigned int value) { return toString((unsigned long long)value); }
 
 String toString(double value)
 {

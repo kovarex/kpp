@@ -1,0 +1,19 @@
+// spec: an aggregate with reference members initialised from a braced list (`Ref r{x};`): the members refer to the objects given, reads and writes go to them, and copying the aggregate copies the references
+// factorio: CommonUtil's ReversionWrapperByReference<T> { T& iterable; } behind every `for (x : reverse(container))`, and small reference holders across the game
+// pending: the program crashes: the brace initialisation does not bind the reference members
+struct IntRef { int& value; };
+template<typename T>
+struct Holder { T& ref; };
+template<typename T>
+int second(Holder<T> h) { return h.ref[1]; }
+int main()
+{
+  int x = 5;
+  IntRef r{x};
+  r.value = 6;
+  Vector<int> v = {1, 2, 3};
+  Holder<Vector<int>> h{v};
+  h.ref.push_back(4);
+  println("{} {} {} {}", x, h.ref[1], second(h), v.size());
+  return 0;
+}

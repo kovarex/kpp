@@ -1,0 +1,18 @@
+// spec: a requires-expression with a parameter list (`requires (T& t) { t.begin(); }`) is true exactly when its requirements are valid for T, and a requires clause using it removes the overload otherwise
+// factorio: the library's free begin/end/size (std::begin...), which must step aside for the game's own free begin(ReversionWrapperByReference<T>) overloads; concept-style checks across Util
+// pending: the expression is false for every T, and the requires clause does not remove the overload
+template<typename T>
+constexpr bool hasBegin = requires (T& t) { t.begin(); };
+template<typename T>
+struct Reversed { T* iterable; };
+template<typename C> requires hasBegin<C>
+int which(C& c) { return 1; }
+template<typename T>
+int which(Reversed<T> w) { return 2; }
+int main()
+{
+  Vector<int> v;
+  Reversed<Vector<int>> r{&v};
+  println("{} {} {} {}", hasBegin<Vector<int>>, hasBegin<int>, which(v), which(r));
+  return 0;
+}

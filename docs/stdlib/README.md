@@ -20,6 +20,7 @@ Files:
 - [UniquePtr, UniqueArray](uniqueptr.md), [SharedPtr, WeakPtr, EnableSharedFromThis](sharedptr.md)
 - [Optional](optional.md), [Function](function.md)
 - [Atomic](atomic.md): values that threads share without locks; Atomic<SharedPtr<T>>.
+- [Limits](limits.md): the properties of the arithmetic types (std::numeric_limits).
 
 Not specified yet: Tuple, Pair beyond what the
 maps use, Span, Array, StringView, formatting, streams, threads and locks, time, and the C library wrappers.
