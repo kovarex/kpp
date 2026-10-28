@@ -21,6 +21,11 @@ rem Remove stale top-level directories left by older conversions (the converter 
 rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).
 rem Keep CommonUtil, Agui, Util (from the libraries and the smoke tests) and src itself.
 if exist kpp\src for /d %%d in (kpp\src\*) do if exist "kpp\%%~nxd" if /i not "%%~nxd"=="src" if /i not "%%~nxd"=="CommonUtil" if /i not "%%~nxd"=="Agui" if /i not "%%~nxd"=="Util" rd /s /q "kpp\%%~nxd"
+rem Remove stale top-level .kpp files that are also in kpp\src\ (from older flat conversions);
+rem the full-src build (kppc ... kpp) would see both copies and hit duplicate definitions.
+rem Exempt files the smoke tests reference explicitly at kpp\*.kpp (they are not in kpp\src\
+rem when they originated from the libraries or stubs).
+if exist kpp\src for %%f in (kpp\src\*.kpp) do if exist "kpp\%%~nxf" del /q "kpp\%%~nxf"
 rem Mirror kpp\src\Util\ to kpp\Util\ so the smoke tests find their files (the converter writes
 rem src files under kpp\src\ but the smoke tests reference kpp\Util\).
 if not exist kpp\Util if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
@@ -42,6 +47,6 @@ fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected > nul && echo agui smoke 
 echo == Util smoke test: tests\util_smoke.kpp against the converted Util subset (containers, sorting, the math expression evaluator; Logging, Util helpers, Math and FloatCast stubbed)
 set UFILES=
 for %%f in (kpp\Util\Container\*.kpp) do if not %%~nf==ExtendedBitBuffer set UFILES=!UFILES! %%f
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\Typedefs.kpp kpp\BitmapFormat.kpp kpp\NoiseRegisterIndex.kpp kpp\FloatCast.kpp tests\util_smoke.kpp || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\BitmapFormat.kpp kpp\NoiseRegisterIndex.kpp tests\util_smoke.kpp || exit /b 1
 kpp\util_smoke.exe > kpp\util_smoke.out.txt
 fc /w kpp\util_smoke.out.txt tests\util_smoke.expected > nul && echo util smoke test: output as expected || (echo util smoke test: OUTPUT DIFFERS & fc /w kpp\util_smoke.out.txt tests\util_smoke.expected & exit /b 1)

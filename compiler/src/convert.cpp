@@ -1195,6 +1195,158 @@ namespace
               continue;
             }
           }
+          // BITFIELD(Name, member1, member2, ...) -> class Name : public BitFieldBase { enum class Enum { members }; using enum Enum; ... }
+          if (name == "BITFIELD" && toks[i + 1].is(P::LParen))
+          {
+            int depth = 0;
+            uint32_t j = i + 1;
+            for (; j < toks.size(); ++j)
+            {
+              if (toks[j].is(P::LParen))
+                ++depth;
+              else if (toks[j].is(P::RParen) && --depth == 0)
+                break;
+            }
+            if (j < toks.size())
+            {
+              // Collect all arguments: first is the Name, rest are enum members.
+              std::vector<std::string> args;
+              uint32_t argStart = i + 2;
+              int d = 0;
+              for (uint32_t k = argStart; k <= j; ++k)
+              {
+                if (toks[k].is(P::LParen) || toks[k].is(P::LBracket) || toks[k].is(P::LBrace))
+                  ++d;
+                else if (toks[k].is(P::RParen) || toks[k].is(P::RBracket) || toks[k].is(P::RBrace))
+                {
+                  if (d > 0) { --d; continue; }
+                  // closing RParen
+                  std::string a(text.substr(toks[argStart].offset, endOffset(k - 1) - toks[argStart].offset));
+                  while (!a.empty() && isspace((unsigned char)a.front())) a.erase(a.begin());
+                  while (!a.empty() && isspace((unsigned char)a.back())) a.pop_back();
+                  if (!a.empty())
+                    args.push_back(a);
+                  break;
+                }
+                else if (toks[k].is(P::Comma) && d == 0)
+                {
+                  std::string a(text.substr(toks[argStart].offset, toks[k].offset - toks[argStart].offset));
+                  while (!a.empty() && isspace((unsigned char)a.front())) a.erase(a.begin());
+                  while (!a.empty() && isspace((unsigned char)a.back())) a.pop_back();
+                  args.push_back(a);
+                  argStart = k + 1;
+                }
+              }
+              if (args.size() >= 2)
+              {
+                std::string bfName = args[0];
+                std::string members;
+                for (size_t m = 1; m < args.size(); ++m)
+                {
+                  if (m > 1) members += ", ";
+                  members += args[m];
+                }
+                std::string expanded =
+                  "class " + bfName + " : public BitFieldBase\n"
+                  "{\n"
+                  "public:\n"
+                  "  enum class Enum\n"
+                  "  {\n"
+                  "    " + members + "\n"
+                  "  };\n"
+                  "  constexpr static size_t value_count = " + std::to_string(args.size() - 1) + ";\n"
+                  "  using UnderlyingType = SmallBitset<value_count>::UnderlyingType;\n"
+                  "\n"
+                  "  constexpr " + bfName + "() = default;\n"
+                  "  constexpr " + bfName + "(InitializerList<Enum> values) : bits(" + bfName + "::toBits(values)) {}\n"
+                  "  constexpr " + bfName + "(Enum value) : bits(static_cast<uint64>(1ULL << static_cast<size_t>(value))) {}\n"
+                  "\n"
+                  "private:\n"
+                  "  constexpr " + bfName + "(SmallBitset<value_count> bits) : bits(bits) {}\n"
+                  "\n"
+                  "public:\n"
+                  "  " + bfName + "& add(Enum value) { this->bits.set(static_cast<size_t>(value)); return *this; }\n"
+                  "  " + bfName + "& remove(Enum value) { this->bits.reset(static_cast<size_t>(value)); return *this; }\n"
+                  "  " + bfName + "& flip(Enum value) { this->bits.flip(static_cast<size_t>(value)); return *this; }\n"
+                  "  " + bfName + "& set(Enum value, bool boolValue) { boolValue ? this->add(value) : this->remove(value); return *this; }\n"
+                  "\n"
+                  "  " + bfName + "& set() { this->bits.set(); return *this; }\n"
+                  "  " + bfName + "& reset() { this->bits.reset(); return *this; }\n"
+                  "  " + bfName + "& flip() { this->bits.flip(); return *this; }\n"
+                  "\n"
+                  "  constexpr bool none() const { return this->bits.none(); }\n"
+                  "  constexpr bool any() const { return this->bits.any(); }\n"
+                  "  constexpr bool all() const { return this->bits.all(); }\n"
+                  "  constexpr bool checkedContains(Enum value) const { return bits.test(static_cast<size_t>(value)); }\n"
+                  "\n"
+                  "  constexpr bool operator==(const " + bfName + " other) const { return this->bits == other.bits; }\n"
+                  "  constexpr bool operator!=(const " + bfName + " other) const { return this->bits != other.bits; }\n"
+                  "  constexpr " + bfName + " operator|(Enum value) const { return (*this) | " + bfName + "(value); }\n"
+                  "  constexpr " + bfName + " operator|(const " + bfName + " other) const { return " + bfName + "(this->bits | other.bits); }\n"
+                  "  constexpr " + bfName + " operator&(Enum value) const { return (*this) & " + bfName + "(value); }\n"
+                  "  constexpr " + bfName + " operator&(const " + bfName + " other) const { return " + bfName + "(this->bits & other.bits); }\n"
+                  "  " + bfName + "& operator&=(const " + bfName + "& other) { this->bits &= other.bits; return *this; }\n"
+                  "  " + bfName + "& operator|=(const " + bfName + "& other) { this->bits |= other.bits; return *this; }\n"
+                  "\n"
+                  "  constexpr SmallBitset<value_count>::UnderlyingType getBits() const { return this->bits.getBits(); }\n"
+                  "  static " + bfName + " fromBits(uint64 bits) { " + bfName + " value; value.bits = SmallBitset<value_count>(bits); return value; }\n"
+                  "\n"
+                  "  using enum Enum;\n"
+                  "private:\n"
+                  "  constexpr static uint64 toBits(InitializerList<Enum> values)\n"
+                  "  {\n"
+                  "    uint64 acc = 0;\n"
+                  "    for (auto value : values)\n"
+                  "      acc |= static_cast<uint64>(1ULL << static_cast<size_t>(value));\n"
+                  "    return acc;\n"
+                  "  }\n"
+                  "\n"
+                  "  SmallBitset<value_count> bits;\n"
+                  "}";
+                // Also absorb a trailing semicolon if present.
+                uint32_t end = j;
+                if (end + 1 < toks.size() && toks[end + 1].is(P::Semi))
+                  end = j + 1;
+                replace(t.offset, endOffset(end) - t.offset, expanded);
+                counts.add("BITFIELD expanded");
+                i = end;
+                continue;
+              }
+            }
+          }
+          // MAKE_OPTIONAL(BaseClass, EmptyExpr) -> using OptionalBaseClass = GameOptional<BaseClass>;
+          if (name == "MAKE_OPTIONAL" && toks[i + 1].is(P::LParen))
+          {
+            int depth = 0;
+            uint32_t j = i + 1;
+            for (; j < toks.size(); ++j)
+            {
+              if (toks[j].is(P::LParen))
+                ++depth;
+              else if (toks[j].is(P::RParen) && --depth == 0)
+                break;
+            }
+            if (j < toks.size())
+            {
+              // First argument is BaseClass name.
+              uint32_t firstArgStart = i + 2;
+              uint32_t firstArgEnd = firstArgStart;
+              for (; firstArgEnd < j; ++firstArgEnd)
+                if (toks[firstArgEnd].is(P::Comma))
+                  break;
+              if (firstArgEnd < j)
+              {
+                std::string baseClass(text.substr(toks[firstArgStart].offset, toks[firstArgEnd].offset - toks[firstArgStart].offset));
+                while (!baseClass.empty() && isspace((unsigned char)baseClass.back())) baseClass.pop_back();
+                while (!baseClass.empty() && isspace((unsigned char)baseClass.front())) baseClass.erase(baseClass.begin());
+                std::string expanded = "using Optional" + baseClass + " = GameOptional<" + baseClass + ">";
+                replace(t.offset, endOffset(j) - t.offset, expanded);
+                counts.add("MAKE_OPTIONAL expanded");
+                i = j;
+                continue;
+              }
+            }
+          }
           auto kf = knownFunctionMacros.find(name);
           if (kf != knownFunctionMacros.end() && toks[i + 1].is(P::LParen))
           {
