@@ -1,0 +1,27 @@
+// spec: a static data member named through an alias of a class template instantiation and a member alias of its parameter, `HorizontalScrollBar::PolicyType::defaultStyle` with `using HorizontalScrollBar = ScrollBar<HorizontalPolicy>;` and `using PolicyType = Policy;` in ScrollBar<Policy>
+// factorio: HorizontalScrollBarStyleSpecification::getRootStyle (`return agui::HorizontalScrollBar::PolicyType::defaultStyle;`), the vertical one the same
+struct HorizontalPolicy { static int defaultStyle; };
+struct VerticalPolicy { static int defaultStyle; };
+int HorizontalPolicy::defaultStyle = 7;
+int VerticalPolicy::defaultStyle = 9;
+
+template<class Policy>
+class ScrollBar
+{
+public:
+  using PolicyType = Policy;
+  int style() const { return PolicyType::defaultStyle; }
+};
+
+using HorizontalScrollBar = ScrollBar<HorizontalPolicy>;
+using VerticalScrollBar = ScrollBar<VerticalPolicy>;
+
+int& horizontalRoot() { return HorizontalScrollBar::PolicyType::defaultStyle; }
+
+int main()
+{
+  horizontalRoot() += 1;
+  VerticalScrollBar vertical;
+  println("{} {} {}", HorizontalScrollBar::PolicyType::defaultStyle, VerticalScrollBar::PolicyType::defaultStyle, vertical.style());
+  return 0;
+}

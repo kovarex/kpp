@@ -1252,6 +1252,18 @@ struct GlobalScope::Impl
       }
       else if (step.scope && step.scope->kind == ScopeKind::Class && step.scope->owner && effectiveParams(step.scope->owner).empty())
         stepTy = types.classType(step.scope->owner, {});
+      else if (step.scope && step.decl && step.decl->kind == NodeKind::UsingAliasDecl && step.decl->templateParams.empty())
+      {
+        // `using HorizontalScrollBar = ScrollBar<HorizontalPolicy>;` then
+        // `HorizontalScrollBar::PolicyType::defaultStyle`: the instantiation the alias names, so
+        // that a member alias of ScrollBar after it has HorizontalPolicy for Policy.
+        auto* alias = static_cast<UsingAliasDecl*>(step.decl);
+        bool local = step.found == Found::Local;
+        const Ty* at = convertType(alias->type, TypeContext{local ? context : lexicalScopeOf(alias), local ? locals : nullptr, subst}, depth + 1);
+        if (at && at->kind == TyKind::Class && at->decl && !at->args.empty() && !(at->decl->attributes & ATTR_Draft) && !types.isDependent(at) &&
+            classScopeOf(at) == step.scope)
+          stepTy = at;
+      }
       if (!step.scope && step.decl && step.decl->kind == NodeKind::UsingAliasDecl && step.decl->templateParams.empty())
       {
         auto* alias = static_cast<UsingAliasDecl*>(step.decl);
@@ -1259,7 +1271,7 @@ struct GlobalScope::Impl
         // with `using ResultType = R;` and R an enum).
         auto enterAliased = [&](const Ty* at)
         {
-          if (!at || !at->decl || types.isDependent(at))
+          if (!at || !at->decl || (at->decl->attributes & ATTR_Draft) || types.isDependent(at))
             return false;
           if (at->kind == TyKind::Class)
             if (Scope* inside = classScopeOf(at))
@@ -1294,6 +1306,15 @@ struct GlobalScope::Impl
         {
           bool local = step.found == Found::Local;
           if (enterAliased(convertType(alias->type, TypeContext{local ? context : lexicalScopeOf(alias), local ? locals : nullptr, subst}, depth + 1)))
+            continue;
+        }
+        // `using HorizontalScrollBar = ScrollBar<HorizontalPolicy>;` then
+        // `HorizontalScrollBar::PolicyType::defaultStyle`: the instantiation the alias names, so
+        // that a member alias of ScrollBar after it has HorizontalPolicy for Policy.
+        if (!subst)
+        {
+          bool local = step.found == Found::Local;
+          if (enterAliased(convertType(alias->type, TypeContext{local ? context : lexicalScopeOf(alias), local ? locals : nullptr, nullptr}, depth + 1)))
             continue;
         }
         // `using Kind = Token::Special;` (a local alias, say), then `Kind::None`: the rest of the
