@@ -1154,6 +1154,125 @@ struct GlobalScope::Impl
     const std::vector<ConstBinding>* env = nullptr; // Parameters bound to values inside a constexpr call.
   };
 
+  // A written template argument that names only types that exist under ctx's substitution,
+  // the arguments of an alias template included: `VoidT<T::force_memcpy_save>` is void for any T
+  // but well-formed only for a T with that member (the detection idiom's substitution failure).
+  bool wellFormedArgument(Node* n, const TypeContext& ctx, int depth = 0)
+  {
+    if (!n || depth > 16)
+      return false;
+    if (uint8_t(n->kind) > uint8_t(NodeKind::PackType))
+      return true; // a constant
+    switch (n->kind)
+    {
+      case NodeKind::NamedType:
+        for (const NamePart& part : static_cast<NamedType*>(n)->name.parts)
+          for (Node* a : part.templateArgs)
+            if (!wellFormedArgument(a, ctx, depth + 1))
+              return false;
+        break;
+      case NodeKind::PointerType: return wellFormedArgument(static_cast<PointerType*>(n)->pointee, ctx, depth + 1);
+      case NodeKind::LRefType: return wellFormedArgument(static_cast<LRefType*>(n)->referenced, ctx, depth + 1);
+      case NodeKind::RRefType: return wellFormedArgument(static_cast<RRefType*>(n)->referenced, ctx, depth + 1);
+      case NodeKind::ConstType: return wellFormedArgument(static_cast<ConstType*>(n)->inner, ctx, depth + 1);
+      case NodeKind::PackType: return wellFormedArgument(static_cast<PackType*>(n)->pattern, ctx, depth + 1);
+      default: break;
+    }
+    const Ty* t = convertType(static_cast<Type*>(n), ctx, depth + 1);
+    return t && t->isKnown();
+  }
+
+  // The specialisation of a variable template a use with these arguments (one per parameter of
+  // the primary) takes its value from, as C++ chooses it: the matching partial and full
+  // specialisations, the most specialised of them (its parameters bound in out); the primary
+  // when none matches. Null when the matches are ambiguous.
+  VariableDecl* variableSpecialization(VariableDecl* primary, const std::vector<const Ty*>& args, Subst& out)
+  {
+    if (primary->name.empty() || args.empty())
+      return primary;
+    for (const Ty* a : args)
+      if (!a || !a->isKnown() || types.isDependent(a))
+        return primary;
+    Lookup l;
+    if (!lookupInScope(lexicalScopeOf(primary), primary->name.last().symbol, l, 0) || !l.overloads)
+      return primary;
+    struct Match { VariableDecl* v; Subst s; std::vector<const Ty*> patterns; };
+    std::vector<Match> matches;
+    for (const Entry& e : *l.overloads)
+    {
+      if (!e.decl || e.decl == primary || e.decl->kind != NodeKind::VariableDecl)
+        continue;
+      auto* v = static_cast<VariableDecl*>(e.decl);
+      if (v->name.empty() || !v->name.last().hasTemplateArgs || v->name.last().templateArgs.size() != args.size())
+        continue;
+      Span<Node*> written = v->name.last().templateArgs;
+      LocalStack own;
+      for (Decl* p : v->templateParams)
+        own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      TypeContext sctx{lexicalScopeOf(v), v->templateParams.empty() ? nullptr : &own, nullptr,
+                       v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
+      Match m{v, {}, {}};
+      bool ok = true;
+      for (size_t i = 0; i < args.size() && ok; ++i)
+      {
+        Decl* param = i < primary->templateParams.size() ? primary->templateParams[i] : nullptr;
+        const Ty* pattern = templateArgument(written[i], param, sctx, 0);
+        m.patterns.push_back(pattern);
+        if (!pattern || !pattern->isKnown())
+          ok = false;
+        else if (types.isDependent(pattern))
+        {
+          deduce(pattern, args[i], m.s);
+          ok = substitute(pattern, m.s) == args[i];
+        }
+        else
+          ok = pattern == args[i];
+      }
+      for (Decl* p : v->templateParams)
+        ok = ok && m.s.find(p);
+      if (!ok)
+        continue;
+      TypeContext dctx{sctx.scope, sctx.locals, &m.s, sctx.tokens, sctx.text};
+      for (Node* w : written)
+        ok = ok && wellFormedArgument(w, dctx);
+      if (ok)
+        matches.push_back(std::move(m));
+    }
+    if (matches.empty())
+      return primary;
+    // a is at least as specialised as b when b's arguments deduce from a's.
+    auto atLeastAs = [&](const Match& a, const Match& b)
+    {
+      Subst t;
+      for (size_t i = 0; i < a.patterns.size(); ++i)
+      {
+        if (!types.isDependent(b.patterns[i]))
+        {
+          if (b.patterns[i] != a.patterns[i])
+            return false;
+          continue;
+        }
+        deduce(b.patterns[i], a.patterns[i], t);
+        if (substitute(b.patterns[i], t) != a.patterns[i])
+          return false;
+      }
+      return true;
+    };
+    for (const Match& m : matches)
+    {
+      bool best = true;
+      for (const Match& o : matches)
+        if (&o != &m && !(atLeastAs(m, o) && !atLeastAs(o, m)))
+          best = false;
+      if (best)
+      {
+        out = m.s;
+        return m.v;
+      }
+    }
+    return nullptr;
+  }
+
   // --- builtin type traits ---
 
   static bool isTypeNode(Node* n)
@@ -6523,6 +6642,31 @@ void GlobalScope::retypeInitializerFor(VariableDecl* v, const TemplateArgs& args
   if (Decl* cls = Impl::enclosingClassDecl(w.scope))
     w.thisType = impl->types.pointer(impl->substitute(impl->selfType(cls), subst));
   w.walkExpr(v->init);
+}
+
+VariableDecl* GlobalScope::variableTemplateFor(VariableDecl* primary, const TemplateArgs& args, TemplateArgs& specArgs)
+{
+  specArgs = args;
+  std::vector<const Ty*> given;
+  for (Decl* p : primary->templateParams)
+  {
+    if (static_cast<TemplateParamDecl*>(p)->isPack)
+      return primary; // specialisations over a pack are not matched (none in the library or the game)
+    const Ty* t = nullptr;
+    for (auto& [d, ty] : args.pairs)
+      if (d == p)
+        t = ty;
+    given.push_back(t);
+  }
+  Subst s;
+  VariableDecl* v = impl->variableSpecialization(primary, given, s);
+  if (v && v != primary)
+  {
+    specArgs.pairs.clear();
+    for (const Subst::Pair& p : s.pairs)
+      specArgs.pairs.push_back({p.param, p.type});
+  }
+  return v;
 }
 
 const Ty* GlobalScope::retypeLambdaFor(const Ty* lambdaTy, const TemplateArgs& own, TemplateArgs* fullArgs)

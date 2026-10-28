@@ -1,0 +1,41 @@
+// spec: variable template specialisations, partial and full, chosen as C++ does: the most specialised match, a VoidT detection argument matching only when its member exists, a variable template used inside another's initializer
+// found in the game's SerialiserHelper (`force_memcpy_save<T, VoidT<T::force_memcpy_save>> = true` inside is_memcpy_saveable: 125 instantiations) and the library's tupleSize
+template<class T, class = void>
+constexpr bool force_memcpy_save = false;
+template<class T>
+constexpr bool force_memcpy_save<T, VoidT<T::force_memcpy_save>> = true;
+
+template<class T>
+inline constexpr bool is_memcpy_saveable = isFundamental<T> && !isPointer<T> && !isNullPointer<T> || force_memcpy_save<T>;
+
+struct Plain { int x; };
+struct Forced { using force_memcpy_save = void; int x; };
+
+template<class T>
+int mode()
+{
+  if constexpr (is_memcpy_saveable<T>)
+    return 1;
+  else
+    return 0;
+}
+
+// The most specialised partial specialisation wins; a full specialisation beats them all.
+template<class A, class B> struct Two {};
+template<class T> constexpr int rank = 0;
+template<class A, class B> constexpr int rank<Two<A, B>> = 1;
+template<class A> constexpr int rank<Two<A, A>> = 2;
+template<class A> constexpr int rank<Two<A, int>> = 3;
+template<> constexpr int rank<Two<int, int>> = 4;
+
+// A constant parameter, and a comparison in an initializer.
+template<class T, int N> constexpr bool fits = sizeof(T) <= N;
+template<class T> constexpr bool fits<T, 0> = false;
+
+int main()
+{
+  println("{} {} {} {}", mode<int>(), mode<Plain>(), mode<Forced>(), mode<int*>());
+  println("{} {} {} {} {}", rank<int>, rank<Two<char, double>>, rank<Two<char, char>>, rank<Two<char, int>>, rank<Two<int, int>>);
+  println("{} {} {}", fits<int, 4>, fits<double, 4>, fits<char, 0>);
+  return 0;
+}

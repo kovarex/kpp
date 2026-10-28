@@ -3439,11 +3439,23 @@ namespace
                    (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)));
     }
 
+    // The type of a constant template parameter's values (`int N`), int when not written.
+    const Ty* valueParamType(Decl* param)
+    {
+      auto* p = param && param->kind == NodeKind::TemplateParamDecl ? static_cast<TemplateParamDecl*>(param) : nullptr;
+      if (p && !p->isType && p->valueType)
+        if (const Ty* t = global.typeOfAst(p->valueType, p); t && t->isKnown() && !types.isDependent(t))
+          return types.unqualified(t);
+      return types.intType();
+    }
+
     // The arguments of a variable template's use (`canBuild<String, const char*>`): the written
-    // ones, a trailing pack taking the rest.
+    // ones, read where the use is written (a function, or another variable template's
+    // initializer), a trailing pack taking the rest; then the defaults, read in the template.
     TemplateArgs variableTemplateArgs(NameExpr* n, VariableDecl* v, Node* at)
     {
       TemplateArgs args, none;
+      Decl* context = constContext ? constContext : currentFunction;
       const NamePart& last = n->name.last();
       std::vector<const Ty*> packElements;
       size_t count = v->templateParams.size();
@@ -3453,9 +3465,9 @@ namespace
         Node* arg = last.templateArgs[i];
         const Ty* t = nullptr;
         if (uint8_t(arg->kind) <= uint8_t(NodeKind::PackType))
-          t = global.typeOfAstIn(static_cast<Type*>(arg), currentFunction, currentArgs ? *currentArgs : none);
+          t = global.typeOfAstIn(static_cast<Type*>(arg), context, currentArgs ? *currentArgs : none);
         else if (std::optional<int64_t> c = evalConst(static_cast<Expr*>(arg)))
-          t = types.valueType(types.intType(), *c);
+          t = types.valueType(valueParamType(i < count ? v->templateParams[i] : nullptr), *c);
         if (!t || !t->isKnown())
           unsupported(at, "an argument of " + qualifiedName(v) + " that is not a type or a constant");
         if (lastParam && lastParam->isPack && i + 1 >= count)
@@ -3475,9 +3487,18 @@ namespace
         {
           const Ty* t = nullptr;
           if (param->isType && uint8_t(param->defaultArg->kind) <= uint8_t(NodeKind::PackType))
-            t = global.typeOfAstIn(static_cast<Type*>(param->defaultArg), currentFunction, currentArgs ? *currentArgs : none);
-          else if (std::optional<int64_t> c = evalConst(static_cast<Expr*>(param->defaultArg)))
-            t = types.valueType(types.intType(), *c);
+            t = global.typeOfAstIn(static_cast<Type*>(param->defaultArg), v, args); // `class U = T`: the parameters before it
+          else
+          {
+            ParsedFile* saved = currentFile;
+            ConstContextScope inTemplate(*this, v);
+            ArgsScope withArgs(*this, &args);
+            currentFile = v->file ? v->file : currentFile;
+            std::optional<int64_t> c = evalConst(static_cast<Expr*>(param->defaultArg));
+            currentFile = saved;
+            if (c)
+              t = types.valueType(valueParamType(param), *c);
+          }
           if (t && t->isKnown())
           {
             args.pairs.push_back({param, t});
@@ -3581,6 +3602,8 @@ namespace
             case P::Caret: return *l ^ *r;
             case P::Less: return *l < *r;
             case P::Greater: return *l > *r;
+            case P::LessEq: return *l <= *r;
+            case P::GreaterEq: return *l >= *r;
             case P::EqEq: return *l == *r;
             case P::NotEq: return *l != *r;
             default: return std::nullopt;
@@ -3690,21 +3713,31 @@ namespace
             VariableDecl* def = locals.count(d) ? v : variableDefinition(v);
             if (t && (t->isConst || (v->flags & DF_Constexpr)) && def->init && !locals.count(d))
             {
+              if (!v->templateParams.empty())
+              {
+                // `bytes<double>`, `canBuild<String, const char*>`: the initializer of the
+                // specialisation these arguments pick (the arguments read where the use is written).
+                TemplateArgs args = variableTemplateArgs(n, v, e), specArgs;
+                VariableDecl* source = global.variableTemplateFor(v, args, specArgs);
+                if (!source)
+                  unsupported(e, "a use of " + qualifiedName(v) + " that two of its specialisations match equally well");
+                if (source == v)
+                  source = def;
+                if (!source->init)
+                  return std::nullopt;
+                ParsedFile* saved = currentFile;
+                ConstContextScope context(*this, source);
+                currentFile = source->file;
+                global.retypeInitializerFor(source, specArgs);
+                ArgsScope scope(*this, &specArgs);
+                std::optional<int64_t> r = evalConst(source->init, depth + 1);
+                currentFile = saved;
+                return r;
+              }
               ParsedFile* saved = currentFile;
               ConstContextScope context(*this, def);
               currentFile = def->file;
-              std::optional<int64_t> r;
-              if (!v->templateParams.empty())
-              {
-                // `bytes<double>`, `canBuild<String, const char*>`: the variable template's
-                // initializer for these arguments.
-                TemplateArgs args = variableTemplateArgs(n, v, e);
-                global.retypeInitializerFor(def, args);
-                ArgsScope scope(*this, &args);
-                r = evalConst(def->init, depth + 1);
-              }
-              else
-                r = evalConst(def->init, depth + 1);
+              std::optional<int64_t> r = evalConst(def->init, depth + 1);
               currentFile = saved;
               return r;
             }

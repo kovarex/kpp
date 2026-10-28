@@ -173,6 +173,13 @@ public:
   // Retypes the initializer of a static data member of a class template for one instantiation
   // (`static constexpr T ValuesPerOne = T(1) << Bits` with T and Bits bound), in place like retypeFor.
   void retypeInitializerFor(VariableDecl* v, const TemplateArgs& args);
+  // The declaration a variable template takes its value from for these arguments (the
+  // primary's parameters bound, defaults included): the most specialised matching partial or
+  // full specialisation, its own parameters bound in specArgs, or the primary (specArgs = args).
+  // A specialisation matches when its written arguments deduce to these and stay well-formed with
+  // them (`force_memcpy_save<T, VoidT<T::force_memcpy_save>>` needs T to have the member). Null
+  // when no match is more specialised than all the others (ambiguous, an error in C++).
+  VariableDecl* variableTemplateFor(VariableDecl* primary, const TemplateArgs& args, TemplateArgs& specArgs);
   Decl* owningClass(Decl* d);                    // The class a member (possibly defined out of line) belongs to.
   // The in-class declaration of an out-of-line member definition (`static` and `virtual` are
   // written there and copied onto the definition); null when there is none.

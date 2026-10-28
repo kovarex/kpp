@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**195 pass, 6 pending, 0 failing, 0 fixed** (201 snippets, 5.1 s).
+**196 pass, 6 pending, 0 failing, 0 fixed** (202 snippets, 5.2 s).
 
 ## Language: statements, expressions, declarations
 
@@ -106,9 +106,9 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-codegen\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pending | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) | free operator templates are not found for operators on class templates ("Opt has no operator=="); C:\kpp-codegen\compiler\tests\spec\templates\free_operator_template.kpp:19: codegen does not support an operator with a class on the right that no function defines yet (in @kpp.main) |
-| `templates/range_for_auto_dependent.kpp` | a range-for with an `auto` loop variable over a range whose type depends on a template parameter | pending | most of the ~100 `item.first` codegen errors in the full src (Dialog<T>, MenuGui<T>, generic lambdas) | the loop variable's type is not deduced in the instantiation (`<unknown>` at its first use); C:\kpp-codegen\compiler\tests\spec\templates\range_for_auto_dependent.kpp:12: codegen does not support the type <unknown> of NameExpr yet (in @"Dialog<int32>::keys()", requested by @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/free_operator_template.kpp` | a free operator template over a class template (`template<typename B> bool operator==(const B&, const Opt<B>&)`) | pending | the hidden friends of the game's Optional whose left operand is the base class (BaseClass == Optional, !=) | free operator templates are not found for operators on class templates ("Opt has no operator=="); C:\kpp-templates\compiler\tests\spec\templates\free_operator_template.kpp:19: codegen does not support an operator with a class on the right that no function defines yet (in @kpp.main) |
+| `templates/range_for_auto_dependent.kpp` | a range-for with an `auto` loop variable over a range whose type depends on a template parameter | pending | most of the ~100 `item.first` codegen errors in the full src (Dialog<T>, MenuGui<T>, generic lambdas) | the loop variable's type is not deduced in the instantiation (`<unknown>` at its first use); C:\kpp-templates\compiler\tests\spec\templates\range_for_auto_dependent.kpp:12: codegen does not support the type <unknown> of NameExpr yet (in @"Dialog<int32>::keys()", requested by @kpp.main) |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |
@@ -160,6 +160,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/traits_as_values.kpp` | type traits used as values (bool isSame<A, B> in an expression, not only in if constexpr) | pass |  |  |
 | `templates/type_traits_fundamental.kpp` | isFundamental, isTriviallyDestructible, isTriviallyCopyAssignable, isTriviallyDefaultConstructible | pass | is_fundamental_v, is_trivially_destructible_v used in Serialiser/Container code |  |
 | `templates/variable_template_default_args.kpp` | variable templates with default template arguments | pass | force_memcpy_save<T, class = void> used with one argument |  |
+| `templates/variable_template_specialisation.kpp` | variable template specialisations, partial and full, chosen as C++ does: the most specialised match, a VoidT detection argument matching only when its member exists, a variable template used inside another's initializer | pass |  |  |
 | `templates/variable_templates.kpp` | a variable template (`template<typename T> inline constexpr int bytes = sizeof(T)`) is a constant per set of arguments, packs and traits included | pass |  |  |
 | `templates/variadic_recursion.kpp` | the recursive variadic pattern: f(T first, Rest... rest) calling f(rest...) down to a non-template base case | pass |  |  |
 | `templates/variadic_templates.kpp` | variadic templates: packs, sizeof..., forwarding, fold expressions | pass | 175 variadic templates in 59 files, 110 fold expressions, 218 std::forward |  |
@@ -168,7 +169,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-codegen\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
 | `library/containers_deque_queue.kpp` | Deque and Queue (std::deque, std::queue): push at both ends, pop, front/back | pass | 116 deque uses in 68 files |  |
