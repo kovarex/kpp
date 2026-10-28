@@ -58,6 +58,7 @@ namespace
     std::string convertDir;        // --convert DIR: write the inputs as Kpp sources there
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
     int repeat = 1;
+    bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
   };
 
   void usage()
@@ -83,6 +84,8 @@ namespace
             "  --config N=V  build configuration constant config::N (bool, integer, enumerator or string)\n"
             "  --release     the same as --config debug=false\n"
             "  --modules N   split the program into N IR modules compiled in parallel (default: two per thread)\n"
+            "  --keep-going  compile and link the IR codegen emitted even when it reported errors (functions with\n"
+            "                errors are left out; the link lists what is missing)\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n");
   }
 
@@ -492,7 +495,7 @@ namespace
     if (!options.emitLLVM.empty())
       modules = 1;
     auto start = Clock::now();
-    CodegenResult cg = generateLLVM(parsed, global, symbols, options.debug, modules);
+    CodegenResult cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing);
     double t = seconds(Clock::now() - start);
     size_t irBytes = cg.ir.size();
     for (const std::string& m : cg.modules)
@@ -521,10 +524,20 @@ namespace
     // Every function in its own section, so that the linker drops the ones nobody calls (and
     // the libraries they would need): a program pays only for what it uses.
     const char* compileFlags = "-ffunction-sections -fdata-sections";
+    // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
+    // linked; the functions errors left out are listed next to the executable for the link's report.
+    bool stop = codegenExit && !options.keepGoing;
+    if (options.keepGoing && !cg.failedFunctions.empty() && !options.exe.empty())
+    {
+      std::string list;
+      for (const std::string& name : cg.failedFunctions)
+        list += name + "\n";
+      writeFile(options.exe + ".failed-functions.txt", list);
+    }
     if (cg.modules.empty())
     {
       std::string llPath = options.emitLLVM.empty() ? options.exe + ".ll" : options.emitLLVM;
-      if (!writeFile(llPath, cg.ir) || options.exe.empty() || codegenExit)
+      if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
         return;
       std::string command = "\"\"" + clang + "\" " + level + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " + linkFlags(options) + "\"";
       start = Clock::now();
@@ -534,7 +547,7 @@ namespace
         codegenExit = 1;
       return;
     }
-    if (codegenExit)
+    if (stop)
       return;
     std::vector<std::string> objects(cg.modules.size());
     std::atomic<int> failures{0}, cached{0};
@@ -573,7 +586,8 @@ namespace
     {
       report("clang:   %.3f s (%s, %zu modules, %d failed)\n", compileTime, level, cg.modules.size(), failures.load());
       codegenExit = 1;
-      return;
+      if (!options.keepGoing)
+        return;
     }
     start = Clock::now();
     // The objects go through a response file: 64 paths do not fit a command line.
@@ -586,7 +600,12 @@ namespace
       return path;
     };
     for (const std::string& o : objects)
+    {
+      std::error_code ec;
+      if (options.keepGoing && !std::filesystem::exists(o, ec))
+        continue; // a module clang rejected (--keep-going): the link reports what it would have defined
       response += "\"" + slashes(o) + "\"\n";
+    }
     response += "-o \"" + slashes(options.exe) + "\"\n";
     for (const std::string& flag : splitFlags(linkFlags(options)))
       response += slashes(flag) + "\n";
@@ -594,6 +613,8 @@ namespace
     if (!writeFile(responsePath, response))
       return;
     std::string link = "\"\"" + clang + "\" @\"" + responsePath + "\"\"";
+    if (options.keepGoing) // the link's complaints (unresolved externals) go to a file next to the executable
+      link = "\"\"" + clang + "\" @\"" + responsePath + "\" > \"" + options.exe + ".link.txt\" 2>&1\"";
     int rc = system(link.c_str());
     report("clang:   %.3f s (%s, %zu modules on %u threads, %d unchanged) + link %.3f s (exit %d)\n", compileTime, level, cg.modules.size(),
            options.threads, cached.load(), seconds(Clock::now() - start), rc);
@@ -863,6 +884,8 @@ int main(int argc, char** argv)
       options.noStd = true;
     else if (arg == "--cinclude" && i + 1 < argc)
       options.cIncludeDirs.push_back(argv[++i]);
+    else if (arg == "--keep-going")
+      options.keepGoing = true;
     else if (arg == "--lib" && i + 1 < argc)
       options.libs.push_back(argv[++i]);
     else if (arg == "--config" && i + 1 < argc)

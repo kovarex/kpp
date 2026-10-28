@@ -605,6 +605,11 @@ namespace
         const Ty* ft = global.typeOfDeclIn(m, args);
         if (!ft || !ft->isKnown() || types.isDependent(ft))
           layoutError("the member " + memberName(m) + " has an unknown type");
+        // A lambda held by value (FunctionImpl<F>'s `F f`): its closure must be laid out, by the
+        // function the lambda is written in, before a class can contain it.
+        for (const Ty* held = types.unqualified(ft); held; held = held->kind == TyKind::Array ? types.unqualified(held->inner) : nullptr)
+          if (isLambda(held) && !(closures.count(held) && closures[held].laidOut))
+            layoutError("the member " + memberName(m) + " holds a lambda whose closure is not built yet (the function it is written in failed or comes later)");
         if (Expr* widthExpr = static_cast<VariableDecl*>(m)->bitfield)
         {
           // `unsigned level : 3;`: consecutive bit fields of one type share a storage unit of that
@@ -2964,7 +2969,11 @@ namespace
                                    shortened(name) + " requested by " + shortened(currentFunctionName));
         throw Unsupported{};
       }
-      worklist.push_back({f, args, classTy, currentModule, currentFunctionName, name, currentDepth + 1});
+      // In the module its name hashes to: spread evenly, and the same module whoever asks first (the
+      // first requester's module piled most of the library's instantiations into one module that
+      // clang then took 7 s at -O0 and 224 s at -O2 on, alone).
+      unsigned module = moduleCount <= 1 ? 0 : unsigned(std::hash<std::string>()(name) % moduleCount);
+      worklist.push_back({f, args, classTy, module, currentFunctionName, name, currentDepth + 1});
     }
 
     // Makes a function usable from the current function: declares external ones, queues
@@ -4385,11 +4394,35 @@ namespace
       return out;
     }
 
+    // The functions a text has `declare` lines for.
+    static void declaredIn(std::string_view text, std::unordered_set<std::string>& out)
+    {
+      for (size_t pos = 0; pos < text.size();)
+      {
+        size_t end = text.find('\n', pos);
+        if (end == std::string_view::npos)
+          end = text.size();
+        std::string_view line = text.substr(pos, end - pos);
+        if (line.rfind("declare ", 0) == 0)
+          if (size_t at = line.find('@'); at != std::string_view::npos)
+          {
+            size_t nameEnd = line[at + 1] == '"' ? line.find('"', at + 2) + 1 : line.find('(', at);
+            if (nameEnd != std::string_view::npos && nameEnd > at)
+              out.insert(std::string(line.substr(at, nameEnd - at)));
+          }
+        pos = end + 1;
+      }
+    }
+    std::unordered_set<std::string> sharedDeclared; // functions with a declare line in `decls`, found once
+
     std::string moduleText(unsigned k, const std::string& prefix)
     {
       std::string text = moduleDecls[k] + bodies[k] + shared;
       std::string decls = declsFor(k);
-      std::string already = decls + moduleDecls[k]; // declarations every module (or this one) carries
+      if (sharedDeclared.empty())
+        declaredIn(this->decls, sharedDeclared);
+      std::unordered_set<std::string> already; // declarations the module carries (shared, or its own)
+      declaredIn(moduleDecls[k], already);
       std::string declares;
       std::unordered_set<std::string> seen;
       for (size_t i = text.find('@'); i != std::string::npos; i = text.find('@', i + 1))
@@ -4407,7 +4440,7 @@ namespace
         if (!seen.insert(name).second)
           continue;
         auto it = definedIn.find(name);
-        if (it != definedIn.end() && it->second != k && already.find(name + "(") == std::string::npos)
+        if (it != definedIn.end() && it->second != k && !sharedDeclared.count(name) && !already.count(name))
           declares += declareLines[name] + "\n"; // not when a declaration is in the module's text already
       }
       return prefix + decls + moduleDecls[k] + ctorsText(k) + "\n" + shared + declares + "\n" + bodies[k];
@@ -9417,6 +9450,7 @@ namespace
       }
       catch (Unsupported&)
       {
+        result.failedFunctions.push_back(currentFunctionName);
       }
       currentArgs = nullptr;
       currentClassTy = nullptr;
@@ -9449,10 +9483,60 @@ namespace
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount);
+                              unsigned moduleCount, bool despiteErrors);
+
+// The global names a module's text uses without a definition or declaration (functions an error
+// left out, with --keep-going), each declared as `declare void @name()`: with opaque pointers a
+// call may name a function of another type, so the module compiles and the link reports the name.
+static std::string declareUndefined(const std::string& text)
+{
+  auto nameAt = [&](size_t i) -> std::string
+  {
+    size_t end;
+    if (i + 1 < text.size() && text[i + 1] == '"')
+    {
+      end = text.find('"', i + 2);
+      end = end == std::string::npos ? text.size() : end + 1;
+    }
+    else
+    {
+      end = i + 1;
+      while (end < text.size() && (isalnum((unsigned char)text[end]) || strchr("-$._", text[end])))
+        ++end;
+    }
+    return text.substr(i, end - i);
+  };
+  std::unordered_set<std::string> known, used;
+  for (size_t line = 0; line < text.size();)
+  {
+    size_t next = text.find('\n', line);
+    next = next == std::string::npos ? text.size() : next + 1;
+    if (text.compare(line, 7, "define ") == 0 || text.compare(line, 8, "declare ") == 0)
+    {
+      size_t at = text.find(" @", line);
+      if (at != std::string::npos && at < next)
+        known.insert(nameAt(at + 1));
+    }
+    else if (text[line] == '@')
+      known.insert(nameAt(line)); // `@name = ... global ...`
+    line = next;
+  }
+  for (size_t i = text.find('@'); i != std::string::npos; i = text.find('@', i + 1))
+  {
+    std::string name = nameAt(i);
+    if (name.size() > 1 && name.rfind("@llvm.", 0) != 0 && !known.count(name))
+      used.insert(name);
+  }
+  std::vector<std::string> sorted(used.begin(), used.end());
+  std::sort(sorted.begin(), sorted.end());
+  std::string out = sorted.empty() ? "" : "\n; left out by codegen errors (--keep-going)\n";
+  for (const std::string& name : sorted)
+    out += "declare void " + name + "()\n";
+  return out;
+}
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                           unsigned moduleCount)
+                           unsigned moduleCount, bool despiteErrors)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -9464,12 +9548,13 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     const SymbolTable* symbols;
     bool debug;
     unsigned moduleCount;
+    bool despiteErrors;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
-    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount);
+    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -9479,11 +9564,11 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors);
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount)
+                              unsigned moduleCount, bool despiteErrors)
 {
   CodegenResult result;
   Emitter e(global, symbols, result);
@@ -9555,8 +9640,9 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   e.finishAssertRuntime();
   e.finishExceptionRuntime();
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
-  // gigabytes of text just to discard it wastes memory and time.
-  if (!result.errors.empty())
+  // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
+  // assembled from what was emitted, and what an error left out is declared (declareUndefined).
+  if (!result.errors.empty() && !despiteErrors)
     return result;
   std::string prefix = "; Kpp v0: generated by kppc\n"
                        "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\n"
@@ -9575,9 +9661,15 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     result.ir.push_back('\n');
     result.ir.append(e.shared);
     result.ir.append(std::move(e.body));
+    if (!result.errors.empty())
+      result.ir += declareUndefined(result.ir);
     return result;
   }
   for (unsigned k = 0; k < e.moduleCount; ++k)
+  {
     result.modules.push_back(e.moduleText(k, prefix));
+    if (!result.errors.empty())
+      result.modules.back() += declareUndefined(result.modules.back());
+  }
   return result;
 }
