@@ -3,6 +3,10 @@
 class MapDeserialiser : public Deserialiser
 {
 public:
+  MapVersion mapVersion;
+  TargetDeserialiser* targetDeserialiser;
+  MapPosition lastLoadedPosition;
+
   template<class T>
   MapDeserialiser& operator>>(T& value)
   {

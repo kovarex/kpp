@@ -281,6 +281,17 @@ struct String
   int find_last_of(char c) const { return this->rfind(c); }
   // Negative, zero or positive as this string orders before, equal to or after other (byte-wise,
   // as operator<).
+  uint64_t copy(char* dest, uint64_t count, uint64_t pos) const
+  {
+    int length = this->size();
+    if (pos > (uint64_t)length)
+      pos = (uint64_t)length;
+    uint64_t available = (uint64_t)length - pos;
+    if (count > available)
+      count = available;
+    memcpy(dest, this->data() + pos, count);
+    return count;
+  }
   int compare(const String& other) const
   {
     int length = this->size(), otherLength = other.size();

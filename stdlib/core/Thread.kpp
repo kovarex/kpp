@@ -208,6 +208,7 @@ struct ConditionVariable
   }
   void notifyOne() { WakeConditionVariable(&this->condition); }
   void notifyAll() { WakeAllConditionVariable(&this->condition); }
+  bool wait_for(UniqueLock<Mutex>& lock, Duration d) { return this->waitFor(lock, d); }
   void notify_one() { this->notifyOne(); }
   void notify_all() { this->notifyAll(); }
 };

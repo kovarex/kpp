@@ -3,6 +3,9 @@
 class MapSerialiser : public Serialiser
 {
 public:
+  TargetSerialiser* targetSerialiser;
+  MapPosition lastSavedPosition;
+
   template<class T>
   MapSerialiser& operator<<(const T& value)
   {

@@ -77,12 +77,19 @@ struct Filesystem
     Path& operator=(Path&& other);
 
     String string() const;
+    String wstring() const;
+    String generic_string() const;
+    const char* c_str() const;
+    const String& native() const;
     Path filename() const;
     Path parent_path() const;
     Path extension() const;
     Path stem() const;
+    Path lexically_normal() const;
     bool is_absolute() const;
+    bool has_filename() const;
     bool empty() const;
+    void clear();
 
     Path operator/(const Path& other) const;
     Path operator/(const char* other) const;
@@ -115,6 +122,7 @@ struct Filesystem
   {
     Path path() const;
     file_status status() const;
+    uint64_t file_size() const;
   };
 
   struct directory_iterator
