@@ -142,6 +142,10 @@ namespace
     };
     std::unordered_map<Decl*, Local> locals;
     std::unordered_map<Decl*, std::vector<Local>> packLocals; // one local per element of a parameter pack
+    // The `__range` of a range-for that calls free begin(__range) and end(__range): a variable of
+    // the compiler's and the name of it passed to the calls (one each per such loop).
+    std::deque<VariableDecl> rangeVariables;
+    std::deque<NameExpr> rangeNames;
     std::unordered_map<const Ty*, StructInfo> structs;
     std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
     std::unordered_map<Decl*, std::string> globals;
@@ -1158,6 +1162,16 @@ namespace
       return nullptr;
     }
 
+    // A reference member bound to what source names: the field holds its address.
+    void bindReferenceMember(const std::string& fieldAddr, Expr* source, Node* at)
+    {
+      withSingleElement(source, at, [&](Expr* one)
+      {
+        std::string target = isClass(types.stripRef(one->ty)) ? rvalue(one).text : lvalue(one);
+        fn += "  store ptr " + target + ", ptr " + fieldAddr + "\n";
+      });
+    }
+
     // Initialises bases and members of the object at addr from constructor initializers (or
     // default member initializers / default construction when absent).
     void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at)
@@ -1216,11 +1230,7 @@ namespace
           Expr* source = init && init->args.size() == 1 ? init->args[0] : init ? nullptr : v->init;
           if (!source)
             unsupported(at, "a reference member without an initializer");
-          withSingleElement(source, at, [&](Expr* one)
-          {
-            std::string target = isClass(types.stripRef(one->ty)) ? rvalue(one).text : lvalue(one);
-            fn += "  store ptr " + target + ", ptr " + fieldAddr + "\n";
-          });
+          bindReferenceMember(fieldAddr, source, at);
           continue;
         }
         if (init)
@@ -1501,15 +1511,22 @@ namespace
         {
           std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
           const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
+          const Ty* declared = d->kind == NodeKind::VariableDecl ? global.typeOfDecl(d) : nullptr;
+          bool reference = ft->isReference() || (declared && declared->isReference());
           if (Expr* value = valueOf[i++])
           {
-            initializeFrom(fieldAddr, ft, value, at);
+            if (reference)
+              bindReferenceMember(fieldAddr, value, at); // `Ref r{x}`: the member refers to x
+            else
+              initializeFrom(fieldAddr, ft, value, at);
             continue;
           }
           if (d->kind != NodeKind::VariableDecl)
             continue;
           auto* v = static_cast<VariableDecl*>(d);
-          if (v->init)
+          if (v->init && reference)
+            bindReferenceMember(fieldAddr, v->init, v);
+          else if (v->init)
             initializeFrom(fieldAddr, ft, v->init, v);
           else if (isClass(ft))
             defaultConstruct(fieldAddr, ft, at);
@@ -9080,10 +9097,49 @@ namespace
         const Ty* in = nullptr;
         FunctionDecl* begin = findMember(range.ty, "begin", f, &in);
         FunctionDecl* end = findMember(range.ty, "end", f, &in);
-        if (!begin || !end)
-          unsupported(f, "a range without begin()/end()");
-        Value b = callFunction(begin, global.classArgsOf(in), in, range.text, "", {}, f);
-        Value e = callFunction(end, global.classArgsOf(in), in, range.text, "", {}, f);
+        Value b, e;
+        if (begin && end)
+        {
+          b = callFunction(begin, global.classArgsOf(in), in, range.text, "", {}, f);
+          e = callFunction(end, global.classArgsOf(in), in, range.text, "", {}, f);
+        }
+        else
+        {
+          // No such members: begin(__range) and end(__range), the free functions found for the
+          // range's class, called with the range evaluated once (C++'s rule).
+          const Ty* rangeRef = types.lref(types.unqualified(range.ty));
+          FunctionDecl* freeBegin = global.findFreeFunction("begin", {rangeRef}, currentFunction);
+          FunctionDecl* freeEnd = global.findFreeFunction("end", {rangeRef}, currentFunction);
+          if (!freeBegin || !freeEnd)
+            unsupported(f, "a range without begin()/end()");
+          VariableDecl& var = rangeVariables.emplace_back();
+          var.kind = NodeKind::VariableDecl;
+          var.token = f->range->token;
+          var.file = currentFile;
+          std::string slot = "%v" + std::to_string(temp++);
+          allocas += "  " + slot + " = alloca ptr\n";
+          fn += "  store ptr " + range.text + ", ptr " + slot + "\n";
+          locals[&var] = {slot, rangeRef, true};
+          NameExpr& name = rangeNames.emplace_back();
+          name.kind = NodeKind::NameExpr;
+          name.token = f->range->token;
+          name.resolved = &var;
+          name.ty = types.unqualified(range.ty);
+          Expr* arg = &name;
+          auto call = [&](FunctionDecl* callee) -> Value
+          {
+            TemplateArgs calleeArgs;
+            if (!callee->templateParams.empty())
+            {
+              global.deduceArgs(callee, {rangeRef}, calleeArgs);
+              if (calleeArgs.pairs.size() < callee->templateParams.size())
+                unsupported(f, "a call to " + qualifiedName(callee) + " whose template arguments could not be deduced");
+            }
+            return callFunction(callee, calleeArgs, nullptr, "", "", Span<Expr*>{&arg, 1}, f);
+          };
+          b = call(freeBegin);
+          e = call(freeEnd);
+        }
         if (b.ty && isClass(b.ty))
         {
           iteratorLoop(f, b, e);

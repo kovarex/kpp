@@ -1,0 +1,40 @@
+// spec: a range-for over a class without begin()/end() members calls the free begin(range) and end(range) for it, the range evaluated once (taken by value or by reference); the loop variable's `auto` is deduced through them
+// factorio: CommonUtil's reverse(container) wrappers behind every reversed range-for (their template form also needs templates/partial_ordering_of_function_templates)
+struct Backwards
+{
+  Vector<int>* iterable;
+};
+auto begin(Backwards w) { return w.iterable->rbegin(); }
+auto end(Backwards w) { return w.iterable->rend(); }
+
+struct Evens
+{
+  int count = 0;
+  int made = 0;
+};
+int evenValues[4] = {0, 2, 4, 6};
+const int* begin(Evens& e) { return evenValues; }
+const int* end(Evens& e) { return evenValues + e.count; }
+
+int evensMade = 0;
+Evens makeEvens(int n)
+{
+  ++evensMade;
+  Evens e;
+  e.count = n;
+  return e;
+}
+
+int main()
+{
+  Vector<int> v = {1, 2, 3};
+  String order;
+  for (int x : Backwards{&v})
+    order += toString(x);
+  for (auto& x : Backwards{&v})
+    x *= 10;
+  for (const auto& x : makeEvens(3))
+    order += " " + toString(x);
+  println("{} {} {} {}", order, v[0], v[2], evensMade);
+  return 0;
+}

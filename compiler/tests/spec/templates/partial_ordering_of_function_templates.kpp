@@ -1,0 +1,26 @@
+// spec: partial ordering of function templates: when two templates take a call's arguments equally well, the more specialised one is chosen (`f(Vector<T>)` over `f(T&)`, `g(T*)` over `g(T)`, `h(const Pair2<A, B>&)` over `h(const T&)`)
+// found in CommonUtil's reverse wrappers: `template<class T> auto begin(ReversionWrapperByReference<T> w)` against the library's `template<typename C> auto begin(C& c)`, which tie behind every reversed range-for (language/range_for_free_begin_end)
+// pending: no partial ordering: the two templates tie and the call is ambiguous
+template<class T> int f(T& x) { return 1; }
+template<class T> int f(Vector<T> x) { return 2; }
+
+template<class T> int g(T x) { return 1; }
+template<class T> int g(T* x) { return 2; }
+
+template<class A, class B>
+struct Pair2
+{
+  A a;
+  B b;
+};
+template<class T> int h(const T& x) { return 1; }
+template<class A, class B> int h(const Pair2<A, B>& x) { return 2; }
+
+int main()
+{
+  Vector<int> v;
+  int i = 0;
+  Pair2<int, float> p;
+  println("{} {} {} {}", f(v), g(i), g(&i), h(p));
+  return 0;
+}

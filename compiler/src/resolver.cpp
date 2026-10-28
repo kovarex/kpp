@@ -7160,7 +7160,32 @@ struct GlobalScope::Impl
 
     // --- element type for range-for ---
 
-    const Ty* elementTypeOf(const Ty* range)
+    // The iterator type of the free begin(range) found for a class without a begin() member (in
+    // the class's namespace or from here), the call a range-for makes then; null if none.
+    const Ty* freeBeginType(const Ty* t, Expr* rangeExpr)
+    {
+      std::vector<const Ty*> argTypes{types.lref(t)};
+      for (Scope* place : {impl.lexicalScopeOf(t->decl), scope})
+        for (Scope* s = place; s; s = s->parent)
+        {
+          if (s->kind == ScopeKind::Class)
+            continue;
+          Lookup look;
+          if (!impl.lookupInScope(s, impl.symBegin, look, 0))
+            continue;
+          if (look.decl && look.decl->kind == NodeKind::FunctionDecl)
+          {
+            bool ambiguous;
+            if (FunctionDecl* f = pickOverload(look.decl, look.overloads, argTypes, nullptr, nullptr, ambiguous))
+              return returnTypeOfCall(f, nullptr, Span<Expr*>{&rangeExpr, 1}, nullptr);
+          }
+          break;
+        }
+      return nullptr;
+    }
+
+    // rangeExpr: the range written, for a free begin(range).
+    const Ty* elementTypeOf(const Ty* range, Expr* rangeExpr)
     {
       const Ty* t = types.stripRef(range);
       if (!t || !t->isKnown())
@@ -7180,6 +7205,8 @@ struct GlobalScope::Impl
           if (FunctionDecl* f = pickOverload(begin.decl, begin.overloads, {}, &begin.subst, t, ambiguous))
             iterator = returnTypeOfCall(f, &begin.subst, none, nullptr);
         }
+        else if (!begin.decl && rangeExpr)
+          iterator = freeBeginType(t, rangeExpr);
         if (!iterator || !iterator->isKnown())
           return types.unknown();
         const Ty* it = types.stripRef(iterator);
@@ -7657,7 +7684,7 @@ struct GlobalScope::Impl
           const Ty* loopVarType = nullptr;
           if (impl.containsAuto(declared))
           {
-            const Ty* element = elementTypeOf(range);
+            const Ty* element = elementTypeOf(range, f->range);
             const Ty* deduced = element->isKnown() ? impl.deduceAuto(declared, element) : types.unknown();
             if (deduced->isKnown())
             {
@@ -8245,15 +8272,24 @@ TypeTable& GlobalScope::types() { return impl->types; }
 
 FunctionDecl* GlobalScope::findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context)
 {
-  uint32_t symbol = impl->opSymbols[punctuator];
-  std::vector<Scope*> places;
-  for (const Ty* t : {impl->types.stripRef(lhs), rhs ? impl->types.stripRef(rhs) : nullptr})
-    if (t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
-      places.push_back(impl->lexicalScopeOf(t->decl));
-  places.push_back(impl->lexicalScopeOf(context));
   std::vector<const Ty*> argTypes{lhs};
   if (rhs)
     argTypes.push_back(rhs);
+  return findFree(impl->opSymbols[punctuator], argTypes, context);
+}
+
+FunctionDecl* GlobalScope::findFreeFunction(std::string_view name, const std::vector<const Ty*>& argTypes, Decl* context)
+{
+  return findFree(impl->symbols.intern(name), argTypes, context);
+}
+
+FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context)
+{
+  std::vector<Scope*> places;
+  for (const Ty* a : argTypes)
+    if (const Ty* t = a ? impl->types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
+      places.push_back(impl->lexicalScopeOf(t->decl));
+  places.push_back(impl->lexicalScopeOf(context));
   for (Scope* place : places)
     for (Scope* s = place; s; s = s->parent)
     {

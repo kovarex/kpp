@@ -224,6 +224,9 @@ public:
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
   // the operand classes and enums and context's own), chosen by overload ranking; null if none.
   FunctionDecl* findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);
+  // The same for a free function by name (`begin(range)` and `end(range)` of a range-for over a
+  // class without those members).
+  FunctionDecl* findFreeFunction(std::string_view name, const std::vector<const Ty*>& argTypes, Decl* context);
   // What a class operand converts to for a built-in operator when no operator function takes it
   // (`area < smallBlueprintAreaSize` with a Const<float>): the result type of its one non-explicit
   // conversion operator to a non-class type, its own or inherited; null when it has none or
@@ -247,4 +250,7 @@ private:
   Impl* impl;
   // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f.
   void typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType);
+  // The free function named symbol for these argument types, looked up from the namespaces of the
+  // argument classes and enums and from context's (findFreeOperator, findFreeFunction).
+  FunctionDecl* findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context);
 };
