@@ -573,6 +573,41 @@ decided rather than after the compiler is "complete".
 The compiled subset now includes everything: CommonUtil (29 files), Agui (235 files), and the
 entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the code generator,
 86,115 template instantiations before the OOM cap (5,172 remaining), 32,884 codegen errors.
+(The command behind this first figure was not recorded; it is superseded by the definition below.)
+
+### The headline number: how it is measured
+
+The one number tracked from here on is **full-src codegen errors**: the error lines the code
+generator writes for the converted CommonUtil, Agui and `src/`. After `convert.cmd` (or just its
+conversion step into `kpp\`), from `programs\factorio`:
+
+```
+..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
+  --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
+  --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include ^
+  --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\src 2> kpp\full-errors.txt
+find /c /v "" kpp\full-errors.txt
+```
+
+- Inputs: exactly `kpp\CommonUtil`, `kpp\Agui` and `kpp\src` (4,099 files with the standard
+  library), not the whole `kpp\`: that directory also holds the `kpp\Util` copy of `kpp\src\Util`
+  the smoke tests use and whatever stubs were copied in.
+- The SDL_Mixer include directory is required: the imported C headers compile as one unit, so a
+  single missing header fails all 50 of them and every Lua, SDL and C library use becomes an error.
+  The run is valid only if its output shows `imports: 50 header(s)` and no `importing C headers
+  failed` line.
+- What it counts: every line on stderr, which is one code generator error per line (`file:line:
+  codegen does not support ...`, `function type unknown, skipped`, ...). Front-end complaints
+  (unresolved names, unknown expression types in the statistics on stdout) are not in it.
+- The instantiation cap: there is no deliberate cap. When the code generator runs out of memory
+  it stops the template worklist and writes one line, `codegen: out of memory after N template
+  instantiations (M remaining)`. That line is included in the count; the errors the M remaining
+  instantiations would have produced are not. Report the figure together with N and M.
+
+Measured on master 90eab80 (2026-10-28): **13,168** codegen errors, out of memory after 91,746
+instantiations with 5,735 remaining; 12 s on the 9950X. For comparison, the full-program step
+inside `convert.cmd` (all of `kpp\`, 4,403 files, without the SDL_Mixer include, so the C import
+fails) gives 16,248 stderr lines on the same master, of which 16,241 are codegen errors.
 
 ### Error breakdown by root cause
 
