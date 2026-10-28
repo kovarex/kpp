@@ -289,9 +289,7 @@ struct BTree
   }
 
   // Internals.
-  // The key of entry i of node. (Going through this function also keeps `KeyOf::of(a) < b` out of
-  // the comparisons, which kppc does not compile for class types yet: spec
-  // templates/static_call_through_parameter_operator.)
+  // The key of entry i of node.
   static const K& keyAt(const BTreeNode<E>* node, int i) { return KeyOf::of(node->entries[i]); }
   // Small keys (numbers, pointers, ids) are searched linearly, which beats a binary search's
   // unpredictable branches over 15 entries (map.lookup 99 -> 57 ms for int keys); other keys

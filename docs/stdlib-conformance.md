@@ -12,12 +12,6 @@ compile, loudly) last. State of 2026-10-28.
 **Compiler gaps that break library use** (pending spec snippets in compiler/tests/spec):
 - `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
-- `KeyOf::of(a) < b` with a class type emits invalid IR; Map.kpp and FastMap.kpp avoid the form
-  (templates/static_call_through_parameter_operator).
-- A parameter pack forwarded into another function template (`inner.emplace(forward<Args>(args)
-  ...)`) instantiates it with one parameter of unknown type (templates/
-  forward_pack_to_function_template). Queue, Stack and PriorityQueue's emplace therefore build the
-  element and move it in (one extra move), and List/ForwardList build theirs in place themselves.
 
 ## Missing types and API
 

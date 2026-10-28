@@ -137,21 +137,10 @@ struct List
   void push_back(T&& value) { this->emplace(this->end(), move(value)); }
   void push_front(const T& value) { this->emplace(this->begin(), value); }
   void push_front(T&& value) { this->emplace(this->begin(), move(value)); }
-  // Each emplace builds its element itself (kppc cannot forward a pack into another function template yet: spec templates/forward_pack_to_function_template).
   template<typename... Args>
-  T& emplace_back(Args&&... args)
-  {
-    ListNode<T>* node = this->allocateNode();
-    new (&node->value) T(forward<Args>(args)...);
-    return *this->linkNode(this->end(), node);
-  }
+  T& emplace_back(Args&&... args) { return *this->emplace(this->end(), forward<Args>(args)...); }
   template<typename... Args>
-  T& emplace_front(Args&&... args)
-  {
-    ListNode<T>* node = this->allocateNode();
-    new (&node->value) T(forward<Args>(args)...);
-    return *this->linkNode(this->begin(), node);
-  }
+  T& emplace_front(Args&&... args) { return *this->emplace(this->begin(), forward<Args>(args)...); }
   void pop_back() { this->erase(ListIterator<T>(this->sentinel.prev)); }
   void pop_front() { this->erase(this->begin()); }
 

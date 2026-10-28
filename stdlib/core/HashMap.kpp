@@ -310,8 +310,6 @@ struct HashTable
   }
 
   // Internals.
-  // (Through these, not KeyOf::of directly: kppc does not type a call through a template
-  // parameter as an argument yet, spec templates/static_call_through_parameter_operator.)
   static const K& keyOf(const E& entry) { return KeyOf::of(entry); }
   const K& keyAt(int slot) const { return KeyOf::of(*this->entryAt(slot)); }
 

@@ -91,16 +91,8 @@ struct ForwardList
 
   void push_front(const T& value) { this->insert_after(this->before_begin(), value); }
   void push_front(T&& value) { this->insert_after(this->before_begin(), move(value)); }
-  // Builds its element itself (kppc cannot forward a pack into another function template yet: spec templates/forward_pack_to_function_template).
   template<typename... Args>
-  T& emplace_front(Args&&... args)
-  {
-    ForwardNode<T>* node = (ForwardNode<T>*)malloc(sizeof(ForwardNode<T>));
-    new (&node->value) T(forward<Args>(args)...);
-    node->next = this->beforeHead.next;
-    this->beforeHead.next = node;
-    return node->value;
-  }
+  T& emplace_front(Args&&... args) { return *this->emplace_after(this->before_begin(), forward<Args>(args)...); }
   void pop_front() { this->erase_after(this->before_begin()); }
 
   // Inserts after position; returns the new element's position.
