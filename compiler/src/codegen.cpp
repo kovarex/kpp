@@ -3531,7 +3531,8 @@ namespace
           {
             if (conversionOperator(argTy, types.unqualified(cls), at))
               return "ptr " + convert(rvalue(arg), types.unqualified(cls), at).text; // `f(lowercase)` through `operator const String&()`
-            if (findConstructor(cls, {arg->ty}, at))
+            // (the argument as overload resolution sees it: an lvalue binds a constructor template's `T&`)
+            if (findConstructor(cls, argTypesOf(Span<Expr*>{&arg, 1}), at))
               return "ptr " + convertedTemporary(cls, arg, at); // `f(view)` with `f(const String&)`
           }
           Value o = rvalue(arg);
@@ -3544,7 +3545,7 @@ namespace
               return "ptr " + addr;
             // Fallback: try implicit constructor of the target class (e.g. Optional(const T&)
             // when passing T where const Optional<T>& is expected).
-            if (findConstructor(cls, {o.ty}, at))
+            if (findConstructor(cls, argTypesOf(Span<Expr*>{&arg, 1}), at))
               return "ptr " + convertedTemporary(cls, arg, at);
             if (conversionOperator(o.ty, types.unqualified(cls), at))
               return "ptr " + convert(o, types.unqualified(cls), at).text;
