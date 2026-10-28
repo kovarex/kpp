@@ -732,6 +732,8 @@ namespace
       }
       begin = end + 1;
     }
+    for (size_t i = 0; i < parsed.size(); ++i)
+      parsed[i]->index = uint32_t(i);
     auto start = Clock::now();
     parallelFor(parsed.size(), options.threads, [&](size_t i) { global.indexFile(*parsed[i]); });
     double indexTime = seconds(Clock::now() - start);

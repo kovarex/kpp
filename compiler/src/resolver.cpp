@@ -942,6 +942,37 @@ struct GlobalScope::Impl
 
   // ---------------- phase 2: lookup ----------------
 
+  // Declaration order across the program: the driver's file order (the library first), then the
+  // position in the file.
+  static bool declaredBefore(const Decl* a, const Decl* b)
+  {
+    uint32_t fa = a && a->file ? a->file->index : 0, fb = b && b->file ? b->file->index : 0;
+    if (fa != fb)
+      return fa < fb;
+    return (a ? a->token : 0) < (b ? b->token : 0);
+  }
+
+  // Puts what the parallel index phase appended in declaration order: the entries of each name
+  // (so that pick() and overload ties do not depend on which thread got there first), the
+  // using-directives, `using enum`s and out-of-line members.
+  void sortEntries(Scope* scope, std::unordered_set<Scope*>& seen)
+  {
+    if (!seen.insert(scope).second)
+      return;
+    for (uint32_t i = 0; i < scope->shardCount; ++i)
+      for (auto& [symbol, entries] : scope->shards[i].map)
+      {
+        if (entries.size() > 1)
+          std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return declaredBefore(a.decl, b.decl); });
+        for (const Entry& e : entries)
+          if (e.scope && e.scope->kind != ScopeKind::Enum)
+            sortEntries(e.scope, seen);
+      }
+    std::stable_sort(scope->usingDirectives.begin(), scope->usingDirectives.end(), declaredBefore);
+    std::stable_sort(scope->usingEnums.begin(), scope->usingEnums.end(), declaredBefore);
+    std::stable_sort(scope->outOfLineMembers.begin(), scope->outOfLineMembers.end(), declaredBefore);
+  }
+
   // Entries that open a scope are preferred (definition over forward declaration, primary
   // template over specialisation).
   static Entry pick(const std::vector<Entry>& entries)
@@ -8214,6 +8245,12 @@ void GlobalScope::indexFile(ParsedFile& file)
 
 void GlobalScope::finishIndex()
 {
+  // The index phase appended to these from several threads: in declaration order, what follows
+  // is the same in every run.
+  auto byDecl = [](const auto& a, const auto& b) { return Impl::declaredBefore(a.first, b.first); };
+  std::stable_sort(impl->deferredQualified.begin(), impl->deferredQualified.end(), byDecl);
+  std::stable_sort(impl->deferredFunctions.begin(), impl->deferredFunctions.end(), byDecl);
+  std::stable_sort(impl->deferredVariables.begin(), impl->deferredVariables.end(), byDecl);
   // `struct A::B { ... }`: resolve A, then index B inside it. Repeat for nested chains.
   for (int round = 0; round < 4 && !impl->deferredQualified.empty(); ++round)
   {
@@ -8304,6 +8341,8 @@ void GlobalScope::finishIndex()
     }
   }
   impl->deferredVariables.clear();
+  std::unordered_set<Scope*> seen;
+  impl->sortEntries(&impl->root, seen);
   impl->collectTemplateParamNames(&impl->root);
   // `using enum E;` in classes and namespaces: resolved here, single-threaded, so that the
   // parallel lookups only read them.

@@ -369,6 +369,7 @@ struct ParsedFile
   std::string path; // Set by the driver, for diagnostics.
   bool isImported = false; // Preprocessed C declarations, not user code.
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
+  uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files.
   std::vector<Diagnostic> diagnostics;
   uint32_t declCount = 0; // All declaration nodes created.
   uint32_t functionBodies = 0;
