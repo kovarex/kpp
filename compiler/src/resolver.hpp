@@ -187,6 +187,9 @@ public:
   // when no match is more specialised than all the others (ambiguous, an error in C++).
   VariableDecl* variableTemplateFor(VariableDecl* primary, const TemplateArgs& args, TemplateArgs& specArgs);
   Decl* owningClass(Decl* d);                    // The class a member (possibly defined out of line) belongs to.
+  // The arguments for the out-of-class definition of a class template's static data member:
+  // classArgs, and the definition's own declarations of the class's parameters bound the same.
+  TemplateArgs definitionArgs(Decl* def, const TemplateArgs& classArgs);
   // The in-class declaration of an out-of-line member definition (`static` and `virtual` are
   // written there and copied onto the definition); null when there is none.
   FunctionDecl* declarationOf(FunctionDecl* def);

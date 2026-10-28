@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**239 pass, 8 pending, 0 failing, 0 fixed** (247 snippets, 29.9 s).
+**240 pass, 7 pending, 0 failing, 0 fixed** (247 snippets, 10.9 s).
 
 ## Language: statements, expressions, declarations
 
@@ -118,7 +118,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/static_member_out_of_class_alias_type.kpp` | an out-of-class definition of a static data member of a class template, its type a member alias of the class and its initializer naming the parameter | pending | HeuristicEntitySearch<SurfaceT>::endIterator, the end() of every heuristic entity search | the initializer is generated without the instantiation's arguments (codegen: the layout of Iter<T>: the member at has an unknown type); C:\kpp-templates\compiler\tests\spec\templates\static_member_out_of_class_alias_type.kpp:17: codegen does not support the layout of Iter<T>: the member at (`T* at = nullptr`) has an unknown type yet (in @"Search<int32>::end()", requested by @kpp.main) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -188,6 +187,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/static_constexpr_member_in_instantiation.kpp` | a static constexpr member of a class template is computed with the instantiation's arguments (`T(1) << Bits`) wherever it is used | pass |  |  |
 | `templates/static_member_call_in_class_template.kpp` | an unqualified call of a static member inside a class template instantiation, `listOptions()` with a defaulted `Optional<E>` parameter, in a constructor initializer and in a body | pass |  |  |
 | `templates/static_member_call_through_alias_qualifier.kpp` | a static member function of a class template called through an alias of one of its instantiations (`DamageTypeID::fromIndex(i)` with `using DamageTypeID = ID<DamageType, uint8_t>`) has that instantiation's parameter types (the non-template overload beats a deleted template one) and returns that instantiation | pass | DamageEstimate's `DamageTypeID::fromIndex(i).getPrototype()->getLocalisedName()` |  |
+| `templates/static_member_out_of_class_alias_type.kpp` | an out-of-class definition of a static data member of a class template, its type a member alias of the class and its initializer naming the parameter | pass | HeuristicEntitySearch<SurfaceT>::endIterator, the end() of every heuristic entity search |  |
 | `templates/static_table_lookup_helper.kpp` | a class's static const table keyed by StringView with a nested value struct, defined out of line from a brace list, read through a helper template with an `auto*` return | pass |  |  |
 | `templates/template_template_parameters.kpp` | template template parameters | pass |  |  |
 | `templates/trait_in_base_argument.kpp` | a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`) | pass | the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>) |  |

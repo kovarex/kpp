@@ -5205,8 +5205,9 @@ namespace
       if (classTy)
       {
         // A static member of a class template: one global per instantiation, its initializer
-        // evaluated under the instantiation's arguments.
-        classArgs = global.classArgsOf(classTy);
+        // evaluated under the instantiation's arguments (also an out-of-class definition's own
+        // declarations of the class's parameters).
+        classArgs = global.definitionArgs(variableDefinition(v), global.classArgsOf(classTy));
         instanceName = "@\"" + types.toString(classTy, &symbols) + "::" + sym(v->name.last().symbol) + "\"";
         auto found = instanceGlobals.find(instanceName);
         if (found != instanceGlobals.end())

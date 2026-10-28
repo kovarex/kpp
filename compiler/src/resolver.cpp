@@ -7920,6 +7920,33 @@ Decl* GlobalScope::owningClass(Decl* d)
   return nullptr;
 }
 
+TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArgs)
+{
+  // `template<typename T> const typename Search<T>::Iterator Search<T>::endIterator = Iter<T>();`:
+  // the out-of-class definition declares the class's parameters anew; they take its arguments.
+  TemplateArgs out = classArgs;
+  if (!def || def->kind != NodeKind::VariableDecl || def->templateParams.empty() || static_cast<VariableDecl*>(def)->name.parts.size() < 2)
+    return out;
+  auto* v = static_cast<VariableDecl*>(def);
+  QualifiedName qualifier = v->name;
+  qualifier.parts.count -= 1;
+  LocalStack params;
+  for (Decl* p : v->templateParams)
+    params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+  Lookup l = impl->lookupQualified(qualifier, impl->lexicalScopeOf(v), &params, 0);
+  Decl* cls = l.scope && l.scope->kind == ScopeKind::Class ? l.scope->owner : nullptr;
+  if (!cls || cls->templateParams.size() > v->templateParams.size())
+    return out;
+  for (size_t i = 0; i < cls->templateParams.size(); ++i)
+    for (auto& [p, t] : classArgs.pairs)
+      if (p == cls->templateParams[i])
+      {
+        out.pairs.push_back({v->templateParams[i], t});
+        break;
+      }
+  return out;
+}
+
 Decl* GlobalScope::initializerListDecl() { return impl->initializerListDecl(); }
 Decl* GlobalScope::typeInfoDecl() { return impl->typeInfoDecl(); }
 Decl* GlobalScope::enumFromStrDecl() { return impl->enumFromStrDecl(); }
