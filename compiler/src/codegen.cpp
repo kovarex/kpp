@@ -151,7 +151,9 @@ namespace
       unsigned module;         // the module of the function that asked for it
       std::string requestedBy; // the name of that function, for diagnostics
       std::string name;        // the LLVM name to define it under (the declaration's), or empty
+      unsigned depth;          // instantiations in the chain that asked for it, itself included
     };
+    unsigned currentDepth = 0;       // of the function being emitted: 0 for one that is not an instantiation
     std::string currentFunctionName; // LLVM name of the function being emitted
     unsigned staticLocals = 0;       // numbers the function-local statics' globals
     std::string currentRequestedBy;  // for an instantiation: the function that first used it
@@ -2672,6 +2674,23 @@ namespace
       return t;
     }
 
+    // An instantiation requested through a longer chain of instantiations is an error: a template
+    // that instantiates itself with ever larger arguments would otherwise never stop, its names
+    // growing with every step. The whole Factorio source needs 12. See docs/design.md.
+    static constexpr unsigned maxInstantiationDepth = 64;
+
+    void queueInstantiation(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& name)
+    {
+      if (currentDepth >= maxInstantiationDepth)
+      {
+        auto shortened = [](const std::string& s) { return s.size() <= 300 ? s : s.substr(0, 300) + "..."; };
+        error(currentFunction, "template instantiations nested more than " + std::to_string(maxInstantiationDepth) + " deep: " +
+                                   shortened(name) + " requested by " + shortened(currentFunctionName));
+        throw Unsupported{};
+      }
+      worklist.push_back({f, args, classTy, currentModule, currentFunctionName, name, currentDepth + 1});
+    }
+
     // Makes a function usable from the current function: declares external ones, queues
     // instantiations. Returns its IR name.
     std::string useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
@@ -2702,7 +2721,7 @@ namespace
         if (!requested[name])
         {
           requested[name] = true;
-          worklist.push_back({f, args, classTy, currentModule, currentFunctionName, name});
+          queueInstantiation(f, args, classTy, name);
         }
         return name;
       }
@@ -2736,7 +2755,7 @@ namespace
                 defArgs.pairs.push_back(p);
             }
           }
-          worklist.push_back({def, defArgs, classTy, currentModule, currentFunctionName, name});
+          queueInstantiation(def, defArgs, classTy, name);
         }
         return name;
       }
@@ -8881,6 +8900,9 @@ namespace
           }
           for (size_t k = 0; k < count; ++k, ++slot)
           {
+            if (slot >= s.paramTys.size())
+              unsupported(f, "parameter " + std::to_string(i + 1) + " (" + types.toString(declType(pd), &symbols) +
+                                 ") beyond the parameters of the function's type " + types.toString(ft, &symbols));
             const Ty* pt = s.paramTys[slot];
             Local local;
             if (isAggregate(pt))
@@ -9016,7 +9038,8 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
       c->e->emitFunction(c->f, *c->args, c->classTy, *c->name);
     }, &call))
     {
-      result.errors.push_back("codegen: stack overflow in function (skipped)");
+      e.error(f, "codegen ran out of stack in " + (e.currentFunctionName.empty() ? global.qualifiedName(f) : e.currentFunctionName) +
+                     (e.currentRequestedBy.empty() ? "" : ", requested by " + e.currentRequestedBy) + " (skipped)");
       e.resetFunctionState();
     }
 #else
@@ -9042,8 +9065,10 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
       e.worklist.pop_front();
       e.currentModule = inst.module;
       e.currentRequestedBy = inst.requestedBy;
+      e.currentDepth = inst.depth;
       safeEmit(inst.f, inst.args, inst.classTy, inst.name);
       e.currentRequestedBy.clear();
+      e.currentDepth = 0;
       ++wlCount;
     }
   }

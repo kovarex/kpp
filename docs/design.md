@@ -58,6 +58,14 @@ builds win less unless machine code is cached per function.
 - Compile-time computation is done with ordinary constexpr code run by an interpreter.
 - Factorio survey: almost no SFINAE (2 `enable_if`, 1 `void_t`), but 593 full
   specializations, plus `if constexpr`, `requires` and variadics, so those stay.
+- Instantiation depth (implementation limit, 2026-10-28, open to change by kovarex): a function
+  instantiation requested through a chain of more than 64 instantiations, each asked for by the
+  previous one's body, is an error naming the last two. Without a limit, a template that
+  instantiates itself with ever larger arguments never stops, and every step costs more because
+  the names grow (the first case, from a wrong deduction, ran for over ten minutes). C++ allows
+  1024 nested instantiations, but counts fewer of them (a function body's calls are instantiated
+  later, not nested); kppc counts every link of the chain, and the whole Factorio source needs 12.
+  Templates as computation are dropped (above), so deep recursion is not expected.
 
 ### 4. Our own standard library
 - No C++ std. A smaller, saner library written in Kpp: one UTF-8 `String` with small-string
