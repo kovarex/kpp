@@ -3453,15 +3453,14 @@ struct GlobalScope::Impl
               while (target->parent && target->kind != ScopeKind::Namespace)
                 target = target->parent;
               ClassDecl* draft = getOrCreateDraft(target, sym);
-              Span<const Ty*> args{};
+              // The arguments live until the type is interned: a span into a vector destroyed
+              // earlier read freed memory, which other threads' allocations overwrote (the
+              // intermittent crash in isDependent on a garbage argument).
+              std::vector<const Ty*> args;
               if (first.hasTemplateArgs)
-              {
-                std::vector<const Ty*> av;
                 for (Node* a : first.templateArgs)
-                  av.push_back(templateArgument(a, nullptr, ctx, depth + 1));
-                args = {av.data(), uint32_t(av.size())};
-              }
-              const Ty* base = types.classType(draft, args);
+                  args.push_back(templateArgument(a, nullptr, ctx, depth + 1));
+              const Ty* base = types.classType(draft, Span<const Ty*>{args.data(), uint32_t(args.size())});
               for (size_t i = 1; i < n->name.parts.size(); ++i)
                 base = types.dependentMember(base, n->name.parts[i].symbol);
               return base;
