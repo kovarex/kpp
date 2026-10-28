@@ -4626,7 +4626,27 @@ struct GlobalScope::Impl
       return true;
     derived = types.unqualified(types.stripRef(derived));
     base = types.unqualified(types.stripRef(base));
-    return !derived->args.empty() && derived->decl != base->decl && derivesFrom(derived, base);
+    if (derived->decl == base->decl)
+      return false;
+    // An instantiation, or a class whose chain of bases, as the scopes link them (without
+    // arguments), loses one (`class UtilitySprite : public UtilitySpriteInstance<Sprite>` with
+    // `template<class T> class UtilitySpriteInstance : public T`): the bases as types.
+    return (!derived->args.empty() || hasUnlinkedBase(classScopeOf(derived))) && derivesFrom(derived, base);
+  }
+
+  // Whether a class's bases, as its scope and its bases' scopes link them (once, without
+  // arguments), leave one out: a base its arguments decide, or one outside the program.
+  bool hasUnlinkedBase(Scope* cls, int depth = 0)
+  {
+    if (!cls || depth > 16 || cls->baseTypes.empty())
+      return false;
+    ensureBases(cls, depth);
+    if (cls->baseScopes.size() < cls->baseTypes.size())
+      return true;
+    for (Scope* b : cls->baseScopes)
+      if (hasUnlinkedBase(b, depth + 1))
+        return true;
+    return false;
   }
 
   // Is `base` a (transitive) base class scope of `derived`?

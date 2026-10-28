@@ -1,0 +1,33 @@
+// spec: a derived-to-base conversion through a class template whose base is its parameter (`class UtilitySprite : public UtilitySpriteInstance<Sprite>` with `template<class T> class UtilitySpriteInstance : public T`): a UtilitySprite binds a `const Sprite&` and its address a `const Sprite*`
+// factorio: every `global->utilitySprites->x` passed as a Sprite (`agui::iconButton(...)`, `setSprite(&...)`, `drawAlert(drawQueue, ...)`, about 150 calls that did not resolve)
+struct Sprite
+{
+  int id = 3;
+};
+
+class UtilitySprites
+{
+public:
+  template<class T>
+  class UtilitySpriteInstance : public T
+  {
+  public:
+    UtilitySpriteInstance() = default;
+  };
+  class UtilitySprite : public UtilitySpriteInstance<Sprite>
+  {
+  public:
+    UtilitySprite() {}
+  };
+  UtilitySprite resetWhite;
+};
+
+int icon(const Sprite& sprite) { return sprite.id; }
+int iconAt(const Sprite* sprite) { return sprite->id + 1; }
+
+int main()
+{
+  UtilitySprites sprites;
+  println("{} {}", icon(sprites.resetWhite), iconAt(&sprites.resetWhite));
+  return 0;
+}
