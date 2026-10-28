@@ -219,7 +219,8 @@ Compiler codegen:
   String's small methods are calls everywhere else; compare the "Kpp" and "Kpp, 1 module"
   columns: string.compare 20.8 vs 14.1 ms, sort.String 164.9 vs 121.6, string.concat 28.7 vs
   22.8, string.append char 13.3 vs 10.5, hash.String 10%. C++ has every std function in headers,
-  so the C++ columns are the "1 module" case. Fixes: emit small functions as
-  `available_externally` copies into the modules that call them, or ThinLTO for `--release`.
+  so the C++ columns are the "1 module" case. Decided 2026-10-28 (design.md section 2), for
+  later: ThinLTO at link time or kppc inlining trivial functions itself when it emits IR;
+  available_externally copies per chunk were rejected (they grow with the number of chunks).
 - Within one module the Kpp code is at or near clang/C++ quality for these loops (vector.iterate,
   sort.int, vector.copy are equal to the MSVC STL).

@@ -560,6 +560,8 @@ expressions 78.0% to 78.5%.
 5. Lua, SDL3 and DirectX through C import; a window with the game loop; then the rest of `src`
    module by module, measuring the typed percentage climbing to 100.
 6. Debug info, then the persistent compiler for the edit-build-run loop.
+7. Release-build code quality: inlining across chunks, by ThinLTO or by kppc inlining trivial
+   functions at IR emission (design.md section 2, decided 2026-10-28).
 
 The compiler-side items are each days to a couple of weeks at the pace of the work so far; the
 long pole is the conversion of 1.3 M lines, mechanical once the converter exists but a long tail

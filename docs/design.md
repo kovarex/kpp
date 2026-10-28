@@ -35,6 +35,15 @@ This file records decisions that have been made. When a decision changes, update
   [macro-survey.md](macro-survey.md)): build configuration is a set of typed `config` constants,
   and every use of macros is covered by the features in section 7.
 
+- **Inlining across chunks** (decided 2026-10-28, to be done later): kppc hands clang the program
+  in chunks (IR modules) compiled in parallel, and a non-template function's body is in one chunk
+  only, so calls from other chunks cannot be inlined (up to 35% on small String methods,
+  docs/stdlib-performance.md). The options were (1) ThinLTO at link time, (2) available_externally
+  copies of small functions in every chunk that calls them, (3) grouping callers with callees into
+  chunks, (4) kppc inlining trivial functions itself when it emits IR. kovarex: (1) or (4); (2)
+  rejected, since the copies grow with the number of chunks. One chunk (`--modules 1`) remains the
+  manual extreme for a release build.
+
 Expected limit: once headers and duplicate instantiations are gone, LLVM optimization
 dominates release builds. The big wins are debug builds and incremental rebuilds; release
 builds win less unless machine code is cached per function.
