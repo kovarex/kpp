@@ -338,8 +338,7 @@ void heapSiftDown(T* first, long long hole, long long count, F& less)
 }
 
 // Sorts keeping equal elements in their order: insertion-sorted runs of 32, then merged in
-// passes between the range and a buffer. The merges relocate elements bitwise, which every Kpp
-// type allows, so no constructor runs while they move.
+// passes between the range and a buffer, moving the elements (relocate in Utility.kpp).
 template<typename T, typename F>
 void stableSort(T* first, T* last, F less)
 {
@@ -365,7 +364,7 @@ void stableSort(T* first, T* last, F less)
     to = swapped;
   }
   if (from != first)
-    memcpy(first, from, (size_t)count * sizeof(T));
+    relocate(first, from, count);
   free(buffer);
 }
 
@@ -375,8 +374,8 @@ void stableSort(T* first, T* last)
   stableSort(first, last, [](const T& a, const T& b) { return a < b; });
 }
 
-// Merges the sorted [a, middle) and [middle, end) into out, bitwise; on ties the first run's
-// element goes first.
+// Moves the sorted [a, middle) and [middle, end) into the unconstructed out, merged; on ties the
+// first run's element goes first.
 template<typename T, typename F>
 void mergeRelocating(T* a, T* middle, T* end, T* out, F& less)
 {
@@ -384,14 +383,12 @@ void mergeRelocating(T* a, T* middle, T* end, T* out, F& less)
   while (a < middle && b < end)
   {
     if (less(*b, *a))
-      memcpy(out++, b++, sizeof(T));
+      relocate(out++, b++, 1);
     else
-      memcpy(out++, a++, sizeof(T));
+      relocate(out++, a++, 1);
   }
-  if (a < middle)
-    memcpy(out, a, (size_t)(middle - a) * sizeof(T));
-  else if (b < end)
-    memcpy(out, b, (size_t)(end - b) * sizeof(T));
+  relocate(out, a, middle - a);
+  relocate(out + (middle - a), b, end - b);
 }
 
 // A view of a contiguous range.

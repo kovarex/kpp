@@ -1,6 +1,6 @@
-// Kpp standard library: Vector<T>. A growable array; elements are relocated bitwise when the
-// buffer grows, which every Kpp type is expected to allow (no move constructor calls: growing a
-// Vector<String> is one memcpy). Appending grows the capacity geometrically, reserve() exactly.
+// Kpp standard library: Vector<T>. A growable array. When the buffer grows, or elements shift
+// for an insert or erase, they are relocated as in std::vector: move constructor, then destructor.
+// Appending grows the capacity geometrically, reserve() exactly.
 template<typename T>
 struct Vector
 {
@@ -99,35 +99,31 @@ struct Vector
   void reserve(int needed)
   {
     if (needed > this->capacity)
-    {
-      T* retired = this->moveToBlock(needed);
-      if (retired)
-        free(retired);
-    }
+      this->moveToBlock(needed);
   }
 
   // The value may be an element of this vector: v.push_back(v[0]) is fine.
   void push_back(const T& value)
   {
-    T* retired;
-    new (this->appendSlot(retired)) T(value);
-    this->finishAppend(retired);
+    T* grown;
+    new (this->appendSlot(grown)) T(value);
+    this->finishAppend(grown);
   }
   void push_back(T&& value)
   {
-    T* retired;
-    new (this->appendSlot(retired)) T(move(value));
-    this->finishAppend(retired);
+    T* grown;
+    new (this->appendSlot(grown)) T(move(value));
+    this->finishAppend(grown);
   }
   void emplace_back(const T& value) { this->push_back(value); }
   // Builds the new element in place from the arguments.
   template<typename... Args>
   T& emplace_back(Args&&... args)
   {
-    T* retired;
-    T* slot = this->appendSlot(retired);
+    T* grown;
+    T* slot = this->appendSlot(grown);
     new (slot) T(forward<Args>(args)...);
-    this->finishAppend(retired);
+    this->finishAppend(grown);
     return this->items[this->length - 1];
   }
   T& front() { return this->items[0]; }
@@ -197,12 +193,12 @@ struct Vector
     this->openSlots(index, 1);
     new (this->items + index) T(move(value));
   }
-  // Makes room for count elements at index: the elements from there on move up (bitwise, as the
-  // buffer growth does). The new slots are left unconstructed.
+  // Makes room for count elements at index: the elements from there on move up. The new slots
+  // are left unconstructed.
   void openSlots(int index, int count)
   {
     this->ensureRoom(this->length + count);
-    memmove(this->items + index + count, this->items + index, (size_t)(this->length - index) * sizeof(T));
+    relocateBackward(this->items + index + count, this->items + index, this->length - index);
     this->length += count;
   }
   bool contains(const T& value) const
@@ -221,7 +217,7 @@ struct Vector
   void erase(int index)
   {
     this->items[index].~T();
-    memmove(this->items + index, this->items + index + 1, (this->length - index - 1) * sizeof(T));
+    relocate(this->items + index, this->items + index + 1, this->length - index - 1);
     --this->length;
   }
   // Removes [first, last), given as pointers into the vector (begin()/end() and what find functions
@@ -231,7 +227,7 @@ struct Vector
     int index = int(first - this->items), count = int(last - first);
     for (int i = 0; i < count; ++i)
       this->items[index + i].~T();
-    memmove(this->items + index, this->items + index + count, (this->length - index - count) * sizeof(T));
+    relocate(this->items + index, this->items + index + count, this->length - index - count);
     this->length -= count;
     return this->items + index;
   }
@@ -245,17 +241,18 @@ struct Vector
       this->items[i].~T();
     this->length = newLength;
   }
-  // Moves the elements into a new block for newCapacity elements and returns the old block (or
-  // nullptr), which the caller frees.
-  T* moveToBlock(int newCapacity)
+  // Moves the elements into a new block for newCapacity elements.
+  void moveToBlock(int newCapacity) { this->adoptBlock((T*)malloc((size_t)newCapacity * sizeof(T)), newCapacity); }
+  // Moves the elements into block, which has room for newCapacity, and frees the old one.
+  void adoptBlock(T* block, int newCapacity)
   {
-    T* block = (T*)malloc((size_t)newCapacity * sizeof(T));
-    T* old = this->items;
-    if (old)
-      memcpy(block, old, (size_t)this->length * sizeof(T));
+    if (this->items)
+    {
+      relocate(block, this->items, this->length);
+      free(this->items);
+    }
     this->items = block;
     this->capacity = newCapacity;
-    return old;
   }
   // Geometric growth (doubling, at least 4): n appends cost O(n) element moves in total.
   int grownCapacity(int needed) const
@@ -266,27 +263,26 @@ struct Vector
   void ensureRoom(int needed)
   {
     if (needed > this->capacity)
+      this->moveToBlock(this->grownCapacity(needed));
+  }
+  // Where the next appended element goes. When the vector is full that is in grown, a new block:
+  // the new element's arguments may be elements, so they move over only in finishAppend, after
+  // the new element is constructed.
+  T* appendSlot(T*& grown)
+  {
+    if (this->length < this->capacity)
     {
-      T* retired = this->moveToBlock(this->grownCapacity(needed));
-      if (retired)
-        free(retired);
+      grown = nullptr;
+      return this->items + this->length;
     }
+    grown = (T*)malloc((size_t)this->grownCapacity(this->length + 1) * sizeof(T));
+    return grown + this->length;
   }
-  // Where the next appended element goes. When the elements had to move, retired is their old
-  // block: the new element's arguments may point into it, so finishAppend frees it only after
-  // the element is constructed.
-  T* appendSlot(T*& retired)
+  void finishAppend(T* grown)
   {
-    retired = nullptr;
-    if (this->length == this->capacity)
-      retired = this->moveToBlock(this->grownCapacity(this->length + 1));
-    return this->items + this->length;
-  }
-  void finishAppend(T* retired)
-  {
+    if (grown)
+      this->adoptBlock(grown, this->grownCapacity(this->length + 1));
     ++this->length;
-    if (retired)
-      free(retired);
   }
   // Copy-constructs count elements from source after the last one (exact growth: the copy and
   // assignment of a whole vector).

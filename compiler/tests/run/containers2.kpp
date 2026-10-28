@@ -1,6 +1,7 @@
 // The container internals behind the performance work (docs/stdlib-performance.md): String's
 // small/large switch, arguments that point into the container being changed, sort and stableSort,
-// HashMap/HashSet rehashing, deleted entries and copies.
+// HashMap/HashSet rehashing, deleted entries and copies, and that elements move through their
+// move constructors (an object that points to itself stays valid).
 extern "C" int printf(const char* format, ...);
 
 uint64_t state = 12345;
@@ -10,6 +11,49 @@ int nextInt(int range)
   state ^= state >> 7;
   state ^= state << 17;
   return int(state % (uint64_t)range);
+}
+
+// Keeps its own address, which only constructors that set it again keep right.
+struct SelfAware
+{
+  SelfAware* self;
+  int value;
+
+  SelfAware() : self(this), value(0) {}
+  SelfAware(int value) : self(this), value(value) {}
+  SelfAware(const SelfAware& other) : self(this), value(other.value) {}
+  SelfAware(SelfAware&& other) : self(this), value(other.value) {}
+  SelfAware& operator=(const SelfAware& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  SelfAware& operator=(SelfAware&& other)
+  {
+    this->value = other.value;
+    return *this;
+  }
+  bool operator<(const SelfAware& other) const { return this->value < other.value; }
+  bool valid() const { return this->self == this; }
+};
+
+void moves()
+{
+  Vector<SelfAware> values;
+  for (int i = 0; i < 100; ++i)
+    values.push_back(SelfAware(nextInt(10)));
+  values.insert(0, SelfAware(5));
+  values.erase(10);
+  values.erase(values.begin() + 20, values.begin() + 30);
+  stableSort(values.begin(), values.end());
+  HashMap<int, SelfAware> map;
+  for (int i = 0; i < 100; ++i)
+    map[i] = SelfAware(i);
+  int valid = 0;
+  for (SelfAware& v : values)
+    valid += v.valid() ? 1 : 0;
+  map.forEach([&](const int& key, SelfAware& v) { valid += v.valid() && v.value == key ? 1 : 0; });
+  printf("%d %d\n", values.size(), valid);
 }
 
 void strings()
@@ -189,5 +233,6 @@ int main()
   vectors();
   sorting();
   hashing();
+  moves();
   return 0;
 }

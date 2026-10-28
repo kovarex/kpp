@@ -1,7 +1,7 @@
 // Kpp standard library: HashSet<T>, open addressing with linear probing (HashMap without the
 // values; what std::unordered_set converts to). Values need hashOf(value) (see Hash.kpp) and
 // operator==. Iteration visits the used slots in table order. The table works as HashMap's does:
-// at most 3/4 full, rehashed by relocating the values bitwise.
+// at most 3/4 full, rehashed by moving the values (move constructor, then destructor).
 template<typename T>
 struct HashSetEntry
 {
@@ -102,8 +102,13 @@ struct HashSet
   // True when the value was not there before.
   bool insert(const T& value)
   {
-    HashSetEntry<T>* retired;
-    int slot = this->slotFor(value, retired); // may move the entries
+    int slot = this->slotFor(value);
+    if (slot < 0)
+    {
+      T copy(value); // value may be one of this set's, which growing moves
+      this->grow();
+      return this->insert(copy);
+    }
     HashSetEntry<T>& e = this->entries[slot];
     bool added = e.state != 1;
     if (added)
@@ -114,8 +119,6 @@ struct HashSet
       e.state = 1;
       ++this->elementCount;
     }
-    if (retired)
-      free(retired);
     return added;
   }
 
@@ -181,28 +184,23 @@ struct HashSet
     }
   }
 
-  // The slot holding value, or the free slot where it goes, after growing the table when taking an
-  // empty slot would fill it over 3/4. When it grew, retired is the old block: value may point
-  // into it, so the caller frees it once value is copied.
-  int slotFor(const T& value, HashSetEntry<T>*& retired)
+  // The slot holding value, or the free slot where it goes; -1 when taking an empty slot would
+  // fill the table over 3/4, so that it has to grow first.
+  int slotFor(const T& value)
   {
-    retired = nullptr;
     if (this->capacity == 0)
-      retired = this->rehash(8);
-    size_t hash = hashOf(value);
-    int slot = this->probe(value, hash);
+      this->rehash(8);
+    int slot = this->probe(value, hashOf(value));
     if (this->entries[slot].state == 0 && (this->usedSlots + 1) * 4 > this->capacity * 3)
-    {
-      // Twice the size, unless deleted entries made up the load: then the same size, cleared.
-      retired = this->rehash((this->elementCount + 1) * 2 > this->capacity ? this->capacity * 2 : this->capacity);
-      slot = this->probe(value, hash);
-    }
+      return -1;
     return slot;
   }
 
-  // Moves the used entries, bitwise, into a new table of newCapacity slots, which drops the
-  // deleted ones. Returns the old block for the caller to free.
-  HashSetEntry<T>* rehash(int newCapacity)
+  // Twice the size, unless deleted entries made up the load: then the same size, cleared.
+  void grow() { this->rehash((this->elementCount + 1) * 2 > this->capacity ? this->capacity * 2 : this->capacity); }
+
+  // Moves the used entries into a new table of newCapacity slots, which drops the deleted ones.
+  void rehash(int newCapacity)
   {
     HashSetEntry<T>* old = this->entries;
     int oldCapacity = this->capacity;
@@ -218,9 +216,12 @@ struct HashSet
         size_t j = hashOf(old[i].value) & mask;
         while (this->entries[j].state != 0)
           j = (j + 1) & mask;
-        memcpy(&this->entries[j], &old[i], sizeof(HashSetEntry<T>));
+        new (&this->entries[j].value) T(move(old[i].value));
+        this->entries[j].state = 1;
+        old[i].value.~T();
       }
-    return old;
+    if (old)
+      free(old);
   }
 
   // Copies other slot by slot: same capacity, same positions, deleted markers kept (the probe

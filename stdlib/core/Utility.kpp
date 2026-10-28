@@ -20,6 +20,30 @@ T&& move(T& value) { return (T&&)value; }
 template<typename T>
 T&& forward(T& value) { return (T&&)value; }
 
+// Relocation: moves count objects from source into the unconstructed memory at destination and
+// destroys the originals (move constructor, then destructor), as containers do when they grow or
+// shift. For types whose moves are plain copies, clang turns these loops into memcpy/memmove.
+// relocate goes front to back, so the destination may overlap the source from below;
+// relocateBackward goes back to front, for a destination above the source.
+template<typename T>
+void relocate(T* destination, T* source, long long count)
+{
+  for (long long i = 0; i < count; ++i)
+  {
+    new (destination + i) T(move(source[i]));
+    source[i].~T();
+  }
+}
+template<typename T>
+void relocateBackward(T* destination, T* source, long long count)
+{
+  for (long long i = count; i-- > 0;)
+  {
+    new (destination + i) T(move(source[i]));
+    source[i].~T();
+  }
+}
+
 template<typename T>
 void swap(T& a, T& b)
 {

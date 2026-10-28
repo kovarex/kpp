@@ -3,8 +3,8 @@
 //
 // 24 bytes. Up to 22 characters live in the object itself, so most names, keys and numbers never
 // allocate; longer strings live in a heap block. The last byte tells which: the length of a small
-// string, or largeMark. All-zero bytes are the empty string. Nothing points into the object, so
-// a String can be relocated bitwise like every Kpp type (Vector<String> grows with memcpy).
+// string, or largeMark. All-zero bytes are the empty string. Nothing points into the object, so a
+// move is a 24-byte copy and two byte stores.
 struct String
 {
   union

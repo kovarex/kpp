@@ -62,13 +62,12 @@ builds win less unless machine code is cached per function.
   C++20 hold: a class with `operator<=>` has `<`, `>`, `<=` and `>=`; a defaulted one orders by
   its bases and members in turn and gives `==`; `a != b` is `!(a == b)` for every class.
   (Done 2026-10-25.)
-- Every type can be relocated bitwise: copying an object's bytes to another address and
-  forgetting the old ones is a valid move. The containers rely on it: Vector grows with one
-  memcpy, HashMap rehashes and stableSort merges without running constructors, and String keeps
-  no pointer into itself (a marker byte tells its in-place characters from a heap block). A type
-  that stores its own address, or hands it out to be kept, cannot live in a container by value.
-  (Vector relied on this from the start; recorded with the container performance work
-  2026-10-28, docs/stdlib-performance.md.)
+- Containers move elements as the C++ ones do: when Vector grows or shifts, HashMap rehashes or
+  stableSort merges, each element is move-constructed at its new place and the old one destroyed
+  (`relocate` in Utility.kpp), so a type that keeps its own address can fix it in its move
+  constructor. For types whose moves are plain copies clang turns this back into memcpy.
+  (kovarex 2026-10-28; Vector used to copy bytes without calling constructors, which cost
+  10-17% on growing a Vector<String>, docs/stdlib-performance.md.)
 - The game's 2D `Vector` class is `Vector2D` in the conversion, since `Vector` is the library's
   std::vector (decided 2026-10-25; the converter renames the identifier).
 

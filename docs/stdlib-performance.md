@@ -75,10 +75,24 @@ allocate). String also got `length()`, `capacity()`, `assign()` and `substr(star
 Out-of-line growth paths: the slow path of String::append is `[[noinline]]`, which let the fast
 path inline into callers (string.append char 17.6 -> 10.5 ms in one module).
 
-**Relocation instead of moves.** Every Kpp type is bitwise relocatable (design.md section 4), so
-Vector grows with one memcpy where std::vector<std::string> moves element by element, and
-HashMap/HashSet now rehash by memcpy-ing entries instead of copy-constructing and destroying
-every key (before: one malloc per String key per rehash). That is most of hash.String's 4x.
+**Moves instead of copies.** HashMap/HashSet rehashed by copy-constructing every key and
+destroying the old one (one malloc per String key per rehash); they now move them, like every
+container (design.md section 4: move constructor, then destructor, as in C++). That is most of
+hash.String's 4x. For a while Vector and the rehash copied bytes without calling constructors at
+all (what the "Kpp" column above measures); kovarex decided containers keep C++'s expectations
+and call the move constructor. Measured with run.cmd against that byte-copying version
+(2026-10-28, ms):
+
+| benchmark | bytes copied | move constructor |
+|---|---:|---:|
+| vector.push int | 13.4 | 15.1 |
+| vector.push String | 16.8 | 19.6 |
+| hash.String insert | 76.7 | 84.2 |
+| map.insert (sorted vector) | 174.1 | 216.1 |
+
+Everything else stayed within noise. For String the move is a 24-byte copy plus clearing the
+source, and the destructor's check of the moved-from string; still faster than the MSVC STL
+(26.2 and 237.6 ms).
 
 **Trivially copyable fast paths.** The C++ libraries dispatch to memcpy/memset for trivially
 copyable types. Kpp does not need a trait for it: copy, resize and insert now construct elements
@@ -117,8 +131,9 @@ murmur2, libc++ murmur2/cityhash); `hashBytes` now takes eight bytes per step wi
 finalizer.
 
 **Aliasing safety.** Fixed on the way: `v.push_back(v[0])` and `s.append(s)` read freed memory
-when they had to grow, and `v.insert(i, v[j])` read a moved element. The growth paths now free
-the old block only after the new element is built, as the C++ libraries do.
+when they had to grow, and `v.insert(i, v[j])` read a moved element. The growth paths now build
+the new element before moving the old ones, as the C++ libraries do, and HashMap copies a key
+that has to survive a rehash.
 compiler/tests/run/containers2.kpp covers these, the small/large switch and the hash table churn.
 
 **Prefetching, allocators.** None of the three C++ libraries prefetches explicitly in these
