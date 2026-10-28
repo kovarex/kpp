@@ -6072,6 +6072,10 @@ struct GlobalScope::Impl
           FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), classSubst, nullptr, ambiguous, &n->name.last(), c->args);
           if (!f)
           {
+            // No callee: none for the code generator either (not the first overload, nor template
+            // arguments an earlier walk of this call recorded, such as the generic one's).
+            n->resolved = nullptr;
+            c->templateArgCount = 0;
             record(n, types.unknown());
             return unknown(Why::Overload);
           }
@@ -6164,6 +6168,8 @@ struct GlobalScope::Impl
           if (!f)
           {
             ++stats.membersBound;
+            m->resolved = nullptr; // as for a name: no callee, no stale template arguments
+            c->templateArgCount = 0;
             record(m, types.unknown());
             return unknown(Why::Overload);
           }
