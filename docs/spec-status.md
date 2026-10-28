@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**215 pass, 4 pending, 0 failing, 0 fixed** (219 snippets, 5.2 s).
+**216 pass, 4 pending, 0 failing, 0 fixed** (220 snippets, 6.9 s).
 
 ## Language: statements, expressions, declarations
 
@@ -111,8 +111,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue); C:\kpp-templates\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pending |  | codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue); C:\kpp-convert\compiler\tests\spec\templates\abbreviated_function_templates.kpp:45: codegen does not support this operator yet (in @"Reader::get<Belt, Inserter, int32, int32>(int32 Belt::*, int32 Inserter::*) const", requested by @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-convert\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
 | `templates/alias_template_nested_args.kpp` | an alias template whose target nests the parameter in another template argument (Vector<Pair<T, T>>) | pass |  |  |
@@ -184,7 +184,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-convert\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
 | `library/containers_deque_queue.kpp` | Deque and Queue (std::deque, std::queue): push at both ends, pop, front/back | pass | 116 deque uses in 68 files |  |
@@ -215,6 +215,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `library/to_string_parse.kpp` | toString and parsing numbers (std::to_string, strtol family) | pass | 302 to_string uses in 123 files |  |
 | `library/tuple_get.kpp` | `get<I>(tuple)` reads element I of a Tuple (what std::get converts to), including as an index or an argument | pass |  |  |
 | `library/unique_ptr.kpp` | UniquePtr (std::unique_ptr): makeUnique, move, release/reset, polymorphic delete, UniqueArray | pass | 3820 uses in 1049 files |  |
+| `library/unique_ptr_conversion.kpp` | UniquePtr<Base> from UniquePtr<Derived> (constructor, assignment, argument), and from nullptr | pass | Agui hands derived widgets over as UniquePtr<Widget> (ValueToWidget::makeCollapsibleValue(move(table)), 335 calls) |  |
 | `library/vector.kpp` | Vector (std::vector): push/emplace, index, erase, insert, iteration, nesting, moves, sort | pass | 5225 uses in 1662 files |  |
 | `library/vector_brace_init.kpp` | Vector from a brace list | pass | common for constant tables (std::vector<T> v = {...}) |  |
 | `library/vector_equality.kpp` | two Vectors are equal when they have the same length and equal elements (`==` and `!=`) | pass |  |  |
