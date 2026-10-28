@@ -68,7 +68,8 @@ struct SharedState
     this->cv.wait(lock, [this]() -> bool { return this->ready; });
   }
 
-  FutureStatus waitFor(Duration d)
+  template<typename Rep, typename Period>
+  FutureStatus waitFor(const Duration<Rep, Period>& d)
   {
     if (this->deferred)
       return FutureStatus::deferred;
@@ -129,7 +130,8 @@ struct SharedState<void>
     this->cv.wait(lock, [this]() -> bool { return this->ready; });
   }
 
-  FutureStatus waitFor(Duration d)
+  template<typename Rep, typename Period>
+  FutureStatus waitFor(const Duration<Rep, Period>& d)
   {
     if (this->deferred)
       return FutureStatus::deferred;
@@ -166,8 +168,10 @@ struct Future
 
   void wait() const { this->state->wait(); }
 
-  FutureStatus wait_for(Duration d) const { return this->state->waitFor(d); }
-  FutureStatus waitFor(Duration d) const { return this->state->waitFor(d); }
+  template<typename Rep, typename Period>
+  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+  template<typename Rep, typename Period>
+  FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
 };
 
 template<>
@@ -189,8 +193,10 @@ struct Future<void>
   bool valid() const { return (bool)this->state; }
   void get() { this->state->get(); }
   void wait() const { this->state->wait(); }
-  FutureStatus wait_for(Duration d) const { return this->state->waitFor(d); }
-  FutureStatus waitFor(Duration d) const { return this->state->waitFor(d); }
+  template<typename Rep, typename Period>
+  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
+  template<typename Rep, typename Period>
+  FutureStatus waitFor(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
 };
 
 template<typename T>
@@ -205,7 +211,8 @@ struct SharedFuture
   bool valid() const { return (bool)this->state; }
   const T& get() const { return this->state->get(); }
   void wait() const { this->state->wait(); }
-  FutureStatus wait_for(Duration d) const { return this->state->waitFor(d); }
+  template<typename Rep, typename Period>
+  FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
 };
 
 template<typename T>
@@ -295,8 +302,10 @@ auto async(F callable) -> Future<decltype(callable())>
 // The calling thread (what std::this_thread converts to): `thisThread::yield()`.
 namespace thisThread
 {
-  void sleepFor(Duration d) { Thread::sleepFor(d); }
-  void sleep_for(Duration d) { Thread::sleepFor(d); }
+  template<typename Rep, typename Period>
+  void sleepFor(const Duration<Rep, Period>& d) { Thread::sleepFor(d); }
+  template<typename Rep, typename Period>
+  void sleep_for(const Duration<Rep, Period>& d) { Thread::sleepFor(d); }
   void yield() { Thread::yield(); }
   unsigned long get_id() { return Thread::currentId(); }
 }

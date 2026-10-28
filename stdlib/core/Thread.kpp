@@ -110,7 +110,9 @@ struct Thread
   }
   unsigned long get_id() const { return this->id; }
   static unsigned long currentId() { return GetCurrentThreadId(); }
-  static void sleepFor(Duration d) { Sleep((unsigned long)(d.milliseconds())); }
+  // Blocks for at least d (rounded up to whole milliseconds; nothing for a negative d).
+  template<typename Rep, typename Period>
+  static void sleepFor(const Duration<Rep, Period>& d) { Sleep(waitMilliseconds(d)); }
   static void yield() { SwitchToThread(); }
 };
 
@@ -213,13 +215,15 @@ struct ConditionVariable
     while (!ready())
       this->wait(lock);
   }
-  bool waitFor(UniqueLock<Mutex>& lock, Duration d)
+  template<typename Rep, typename Period>
+  bool waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d)
   {
-    return SleepConditionVariableSRW(&this->condition, &lock.mutex->lock_, (unsigned long)d.milliseconds(), 0) != 0;
+    return SleepConditionVariableSRW(&this->condition, &lock.mutex->lock_, waitMilliseconds(d), 0) != 0;
   }
   void notifyOne() { WakeConditionVariable(&this->condition); }
   void notifyAll() { WakeAllConditionVariable(&this->condition); }
-  bool wait_for(UniqueLock<Mutex>& lock, Duration d) { return this->waitFor(lock, d); }
+  template<typename Rep, typename Period>
+  bool wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitFor(lock, d); }
   void notify_one() { this->notifyOne(); }
   void notify_all() { this->notifyAll(); }
 };

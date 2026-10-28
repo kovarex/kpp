@@ -1,10 +1,26 @@
-// spec: Duration, TimePoint, Clock (std::chrono)
-// factorio: 394 chrono uses in 97 files
+// spec: the time types (std::chrono): durations of every period with lossless implicit conversions and durationCast, comparisons across periods, arithmetic, SteadyClock and SystemClock time points, time_t conversion, floor
+// factorio: 394 chrono uses in 97 files (nanoseconds 144, steady_clock 91, system_clock 37, duration_cast 31, milliseconds 26, ...), 30 literals like 10ms
 int main()
 {
-  Duration d = milliseconds(1500);
-  TimePoint start = Clock::now();
-  TimePoint later = Clock::now();
-  println("{} {} {}", d.milliseconds(), seconds(2) > d, later >= start);
+  Milliseconds ms(1500);
+  Seconds two(2);
+  Nanoseconds ns = ms;
+  Seconds whole = durationCast<Seconds>(ms);
+  Duration<double> asSeconds = ms;
+  Milliseconds sum = ms + Milliseconds(two);
+  SteadyClock::time_point start = SteadyClock::now();
+  auto later = SteadyClock::now();
+  Nanoseconds elapsed = later - start;
+  long long elapsedMs = durationCast<Milliseconds>(later - start).count();
+  bool ordered = two > ms && ms < two && ms == Microseconds(1500000) && Minutes(1) == Seconds(60);
+  Duration<double, Milli> fraction = Duration<double>(0.25);
+  auto now = SystemClock::now();
+  long long epochSeconds = SystemClock::to_time_t(now);
+  auto back = SystemClock::from_time_t(epochSeconds);
+  Hours day(24);
+  println("{} {} {} {} {}", ns.count(), whole.count(), asSeconds.count(), sum.count(), elapsed >= Nanoseconds::zero());
+  println("{} {} {} {} {}", elapsedMs >= 0, ordered, fraction.count(), epochSeconds > 1700000000, back <= now);
+  println("{} {} {} {} {}", durationCast<Minutes>(day).count(), Milliseconds(two) / ms, (ms * 2).count(), (ms * 0.5).count(), floor<Seconds>(Milliseconds(-1500)).count());
+  thisThread::sleepFor(Milliseconds(1));
   return 0;
 }

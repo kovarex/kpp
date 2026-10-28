@@ -1,0 +1,27 @@
+// spec: an operator expression considers member and non-member operators together: a class with a member unary `operator-` still finds the free binary `operator-(a, b)` for `a - b`
+// factorio: the game's vector and position types (member unary minus, free binary operators), the library's Duration
+// pending: the member operator hides the free one, so `a - b` has no type (codegen: a local of unknown type)
+template<typename T>
+struct V
+{
+  T x;
+  V<T> operator-() const { return V<T>{-this->x}; }
+};
+template<typename T>
+V<T> operator-(const V<T>& a, const V<T>& b) { return V<T>{a.x - b.x}; }
+struct P
+{
+  int x;
+  P operator+() const { return *this; }
+};
+P operator+(const P& a, const P& b) { return P{a.x + b.x}; }
+int main()
+{
+  V<int> a{5}, b{2};
+  P c{3}, d{4};
+  auto diff = a - b;
+  P negated = -a.x < 0 ? P{1} : P{0};
+  P sum = c + d;
+  println("{} {} {} {}", diff.x, (-a).x, negated.x, sum.x);
+  return 0;
+}

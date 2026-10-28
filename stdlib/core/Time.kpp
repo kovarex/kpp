@@ -1,78 +1,319 @@
-// Kpp standard library: a monotonic clock. A Duration counts nanoseconds, a TimePoint is a
-// reading of the clock; both are plain integers underneath. The clock is QueryPerformanceCounter.
+// Kpp standard library: time (what std::chrono converts to). A Duration<Rep, Period> is a count of
+// ticks of Period seconds (a Ratio); Nanoseconds to Hours are the usual ones. A TimePoint<Clock> is
+// a Duration since the clock's epoch. SteadyClock never goes back (QueryPerformanceCounter);
+// SystemClock is the wall clock (UTC, since 1970, in 100 ns ticks). Specified in
+// docs/stdlib/time.md.
 extern "C" int QueryPerformanceCounter(int64_t* count);
 extern "C" int QueryPerformanceFrequency(int64_t* frequency);
+extern "C" void GetSystemTimePreciseAsFileTime(uint64_t* fileTime);
 
+// --- Ratio ---
+
+// A fraction known at compile time (std::ratio), kept in lowest terms.
+long long ratioGcd(long long a, long long b)
+{
+  if (a < 0)
+    a = -a;
+  if (b < 0)
+    b = -b;
+  while (b != 0)
+  {
+    long long t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+template<long long N, long long D = 1>
+struct Ratio
+{
+  static constexpr long long num = N;
+  static constexpr long long den = D;
+};
+using Nano = Ratio<1, 1000000000>;
+using Micro = Ratio<1, 1000000>;
+using Milli = Ratio<1, 1000>;
+using Centi = Ratio<1, 100>;
+using Deci = Ratio<1, 10>;
+using Kilo = Ratio<1000, 1>;
+using Mega = Ratio<1000000, 1>;
+
+// --- Duration ---
+
+template<typename Rep, typename Period = Ratio<1>>
 struct Duration
 {
-  int64_t nanoseconds = 0;
+  using rep = Rep;
+  using period = Period;
 
-  Duration() {}
-  explicit Duration(int64_t nanoseconds) : nanoseconds(nanoseconds) {}
+  Rep ticks;
 
-  int64_t count() const { return this->nanoseconds; }
-  double seconds() const { return (double)this->nanoseconds / 1e9; }
-  double milliseconds() const { return (double)this->nanoseconds / 1e6; }
-  double microseconds() const { return (double)this->nanoseconds / 1e3; }
+  constexpr Duration() : ticks(Rep()) {}
+  // From a count of ticks.
+  constexpr explicit Duration(Rep count) : ticks(count) {}
+  // From another duration, converted to this one's period: implicit when nothing is lost (this Rep
+  // is floating point, or the other period is a whole multiple of this one), durationCast otherwise.
+  template<typename Rep2, typename Period2> requires (isFloatingPoint<Rep> || (!isFloatingPoint<Rep2> && (Period2::num * Period::den) % (Period2::den * Period::num) == 0))
+  implicit Duration(const Duration<Rep2, Period2>& other) : ticks(convertDuration(other, (const Duration<Rep, Period>*)nullptr).ticks) {}
 
-  Duration operator+(Duration other) const { return Duration(this->nanoseconds + other.nanoseconds); }
-  Duration operator-(Duration other) const { return Duration(this->nanoseconds - other.nanoseconds); }
-  Duration& operator+=(Duration other)
+  constexpr Rep count() const { return this->ticks; }
+  static constexpr Duration<Rep, Period> zero() { return Duration<Rep, Period>(Rep()); }
+  static constexpr Duration<Rep, Period> min() { return Duration<Rep, Period>(Limits<Rep>::lowest()); }
+  static constexpr Duration<Rep, Period> max() { return Duration<Rep, Period>(Limits<Rep>::max()); }
+
+  Duration<Rep, Period>& operator++()
   {
-    this->nanoseconds += other.nanoseconds;
+    ++this->ticks;
     return *this;
   }
-  Duration& operator-=(Duration other)
+  Duration<Rep, Period>& operator--()
   {
-    this->nanoseconds -= other.nanoseconds;
+    --this->ticks;
     return *this;
   }
-  bool operator==(Duration other) const { return this->nanoseconds == other.nanoseconds; }
-  bool operator!=(Duration other) const { return this->nanoseconds != other.nanoseconds; }
-  bool operator<(Duration other) const { return this->nanoseconds < other.nanoseconds; }
-  bool operator<=(Duration other) const { return this->nanoseconds <= other.nanoseconds; }
-  bool operator>(Duration other) const { return this->nanoseconds > other.nanoseconds; }
-  bool operator>=(Duration other) const { return this->nanoseconds >= other.nanoseconds; }
+  Duration<Rep, Period>& operator+=(const Duration<Rep, Period>& other)
+  {
+    this->ticks += other.ticks;
+    return *this;
+  }
+  Duration<Rep, Period>& operator-=(const Duration<Rep, Period>& other)
+  {
+    this->ticks -= other.ticks;
+    return *this;
+  }
+  Duration<Rep, Period>& operator*=(const Rep& factor)
+  {
+    this->ticks *= factor;
+    return *this;
+  }
+  Duration<Rep, Period>& operator/=(const Rep& divisor)
+  {
+    this->ticks /= divisor;
+    return *this;
+  }
+
+  // The operators are members (overloads per scalar type rather than templates), which the compiler
+  // ranks today; free templates of the same operator do not overload reliably yet (spec
+  // templates/overload_rank_non_deduced_parameter). Sums and differences take two durations of the
+  // same type (convert one first: the finer type takes the coarser losslessly); C++ adds any two,
+  // in the finer period.
+  Duration<Rep, Period> operator+() const { return *this; }
+  Duration<Rep, Period> operator-() const { return Duration<Rep, Period>(-this->ticks); }
+  Duration<Rep, Period> operator+(const Duration<Rep, Period>& other) const { return Duration<Rep, Period>(this->ticks + other.ticks); }
+  Duration<Rep, Period> operator-(const Duration<Rep, Period>& other) const { return Duration<Rep, Period>(this->ticks - other.ticks); }
+  // Times or divided by an integer keeps the type; by a floating-point number it counts in double.
+  Duration<Rep, Period> operator*(int factor) const { return Duration<Rep, Period>(this->ticks * factor); }
+  Duration<Rep, Period> operator*(long long factor) const { return Duration<Rep, Period>(this->ticks * factor); }
+  Duration<double, Period> operator*(double factor) const { return Duration<double, Period>((double)this->ticks * factor); }
+  Duration<Rep, Period> operator/(int divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
+  Duration<Rep, Period> operator/(long long divisor) const { return Duration<Rep, Period>(this->ticks / divisor); }
+  Duration<double, Period> operator/(double divisor) const { return Duration<double, Period>((double)this->ticks / divisor); }
+  Duration<Rep, Period> operator%(int divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
+  Duration<Rep, Period> operator%(long long divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
+  // Divided by a duration of the same type: how many times it fits.
+  Rep operator/(const Duration<Rep, Period>& other) const { return this->ticks / other.ticks; }
+  Duration<Rep, Period> operator%(const Duration<Rep, Period>& other) const { return Duration<Rep, Period>(this->ticks % other.ticks); }
+  // Comparisons with a duration of any type, in their common period.
+  template<typename Rep2, typename Period2>
+  bool operator==(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) == 0; }
+  template<typename Rep2, typename Period2>
+  bool operator!=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) != 0; }
+  template<typename Rep2, typename Period2>
+  bool operator<(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) < 0; }
+  template<typename Rep2, typename Period2>
+  bool operator<=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) <= 0; }
+  template<typename Rep2, typename Period2>
+  bool operator>(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) > 0; }
+  template<typename Rep2, typename Period2>
+  bool operator>=(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) >= 0; }
 };
 
-Duration nanoseconds(int64_t count) { return Duration(count); }
-Duration microseconds(int64_t count) { return Duration(count * 1000); }
-Duration milliseconds(int64_t count) { return Duration(count * 1000000); }
-Duration seconds(int64_t count) { return Duration(count * 1000000000); }
-Duration seconds(double count) { return Duration((int64_t)(count * 1e9)); }
+// d in the duration type of target (which is only read for its type): exact when that is possible,
+// truncated toward zero for an integer rep otherwise (durationCast's rule).
+template<typename ToRep, typename ToPeriod, typename Rep, typename Period>
+Duration<ToRep, ToPeriod> convertDuration(const Duration<Rep, Period>& d, const Duration<ToRep, ToPeriod>* target)
+{
+  // The factor (Period::num / Period::den) / (ToPeriod::num / ToPeriod::den), reduced.
+  long long multiplier = Period::num * ToPeriod::den;
+  long long divisor = Period::den * ToPeriod::num;
+  long long common = ratioGcd(multiplier, divisor);
+  multiplier /= common;
+  divisor /= common;
+  if constexpr (isFloatingPoint<ToRep> || isFloatingPoint<Rep>)
+    return Duration<ToRep, ToPeriod>((ToRep)((double)d.ticks * (double)multiplier / (double)divisor));
+  else if (divisor == 1)
+    return Duration<ToRep, ToPeriod>((ToRep)((long long)d.ticks * multiplier));
+  else
+    return Duration<ToRep, ToPeriod>((ToRep)((long long)d.ticks * multiplier / divisor));
+}
 
+using Nanoseconds = Duration<long long, Nano>;
+using Microseconds = Duration<long long, Micro>;
+using Milliseconds = Duration<long long, Milli>;
+using Seconds = Duration<long long>;
+using Minutes = Duration<long long, Ratio<60>>;
+using Hours = Duration<long long, Ratio<3600>>;
+using Days = Duration<long long, Ratio<86400>>;
+
+// d in To's period (std::chrono::duration_cast): truncated toward zero for an integer To.
+template<typename To, typename Rep, typename Period>
+To durationCast(const Duration<Rep, Period>& d)
+{
+  return convertDuration(d, (const To*)nullptr);
+}
+// Rounded down, up, and to the nearest (ties to even) instead of toward zero.
+template<typename To, typename Rep, typename Period>
+To floor(const Duration<Rep, Period>& d)
+{
+  To t = durationCast<To>(d);
+  if (Duration<double, Nano>(t) > Duration<double, Nano>(d))
+    t -= To(1);
+  return t;
+}
+template<typename To, typename Rep, typename Period>
+To ceil(const Duration<Rep, Period>& d)
+{
+  To t = durationCast<To>(d);
+  if (Duration<double, Nano>(t) < Duration<double, Nano>(d))
+    t += To(1);
+  return t;
+}
+
+// The ticks of a and b in their common duration, compared.
+template<typename R1, typename P1, typename R2, typename P2>
+int compareDurations(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
+{
+  if constexpr (isFloatingPoint<R1> || isFloatingPoint<R2>)
+  {
+    double x = Duration<double, Nano>(a).ticks;
+    double y = Duration<double, Nano>(b).ticks;
+    return x < y ? -1 : y < x ? 1 : 0;
+  }
+  else if constexpr (P1::num * P2::den <= P2::num * P1::den)
+  {
+    long long x = a.ticks;
+    long long y = Duration<long long, P1>(b).ticks;
+    return x < y ? -1 : y < x ? 1 : 0;
+  }
+  else
+  {
+    long long x = Duration<long long, P2>(a).ticks;
+    long long y = b.ticks;
+    return x < y ? -1 : y < x ? 1 : 0;
+  }
+}
+// --- TimePoint and the clocks ---
+
+// A point in time of Clock: a Duration since the clock's epoch.
+template<typename Clock, typename Dur = typename Clock::duration>
 struct TimePoint
 {
-  int64_t nanoseconds = 0;
+  using clock = Clock;
+  using duration = Dur;
+  using rep = typename Dur::rep;
+  using period = typename Dur::period;
 
-  TimePoint() {}
-  explicit TimePoint(int64_t nanoseconds) : nanoseconds(nanoseconds) {}
+  Dur sinceEpoch;
 
-  Duration time_since_epoch() const { return Duration(this->nanoseconds); }
-  Duration operator-(TimePoint other) const { return Duration(this->nanoseconds - other.nanoseconds); }
-  TimePoint operator+(Duration d) const { return TimePoint(this->nanoseconds + d.nanoseconds); }
-  TimePoint operator-(Duration d) const { return TimePoint(this->nanoseconds - d.nanoseconds); }
-  bool operator==(TimePoint other) const { return this->nanoseconds == other.nanoseconds; }
-  bool operator!=(TimePoint other) const { return this->nanoseconds != other.nanoseconds; }
-  bool operator<(TimePoint other) const { return this->nanoseconds < other.nanoseconds; }
-  bool operator<=(TimePoint other) const { return this->nanoseconds <= other.nanoseconds; }
-  bool operator>(TimePoint other) const { return this->nanoseconds > other.nanoseconds; }
-  bool operator>=(TimePoint other) const { return this->nanoseconds >= other.nanoseconds; }
+  constexpr TimePoint() {}
+  constexpr explicit TimePoint(const Dur& sinceEpoch) : sinceEpoch(sinceEpoch) {}
+  // From a time point of the same clock in another duration, when nothing is lost.
+  template<typename Dur2>
+  implicit TimePoint(const TimePoint<Clock, Dur2>& other) : sinceEpoch(other.sinceEpoch) {}
+
+  constexpr Dur time_since_epoch() const { return this->sinceEpoch; }
+  static constexpr TimePoint<Clock, Dur> min() { return TimePoint<Clock, Dur>(Dur::min()); }
+  static constexpr TimePoint<Clock, Dur> max() { return TimePoint<Clock, Dur>(Dur::max()); }
+
+  TimePoint<Clock, Dur>& operator+=(const Dur& d)
+  {
+    this->sinceEpoch += d;
+    return *this;
+  }
+  TimePoint<Clock, Dur>& operator-=(const Dur& d)
+  {
+    this->sinceEpoch -= d;
+    return *this;
+  }
+  // The operators are members, so that their types come from the class (`durationCast<Milliseconds>(
+  // end - start)` deduces from the difference's type at once).
+  template<typename R, typename P>
+  TimePoint<Clock, Dur> operator+(const Duration<R, P>& d) const { return TimePoint<Clock, Dur>(this->sinceEpoch + Dur(d)); }
+  template<typename R, typename P>
+  TimePoint<Clock, Dur> operator-(const Duration<R, P>& d) const { return TimePoint<Clock, Dur>(this->sinceEpoch - Dur(d)); }
+  Dur operator-(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch - other.sinceEpoch; }
+  bool operator==(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch == other.sinceEpoch; }
+  bool operator!=(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch != other.sinceEpoch; }
+  bool operator<(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch < other.sinceEpoch; }
+  bool operator<=(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch <= other.sinceEpoch; }
+  bool operator>(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch > other.sinceEpoch; }
+  bool operator>=(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch >= other.sinceEpoch; }
 };
 
-int64_t clockFrequency = 0; // counts per second, read once
+// t in another duration of the same clock (std::chrono::time_point_cast).
+template<typename To, typename C, typename D>
+TimePoint<C, To> timePointCast(const TimePoint<C, D>& t) { return TimePoint<C, To>(durationCast<To>(t.sinceEpoch)); }
 
-struct Clock
+int64_t steadyClockFrequency = 0; // QueryPerformanceCounter's counts per second, read once
+
+// A monotonic clock in nanoseconds (std::chrono::steady_clock; also high_resolution_clock).
+struct SteadyClock
 {
-  static TimePoint now()
+  using rep = long long;
+  using period = Nano;
+  using duration = Nanoseconds;
+  using time_point = TimePoint<SteadyClock>;
+  static constexpr bool is_steady = true;
+
+  static TimePoint<SteadyClock> now()
   {
-    if (clockFrequency == 0)
-      QueryPerformanceFrequency(&clockFrequency);
+    if (steadyClockFrequency == 0)
+      QueryPerformanceFrequency(&steadyClockFrequency);
     int64_t counter = 0;
     QueryPerformanceCounter(&counter);
     // Split to keep the multiplication within 64 bits for long uptimes.
-    int64_t whole = counter / clockFrequency;
-    int64_t rest = counter % clockFrequency;
-    return TimePoint(whole * 1000000000 + rest * 1000000000 / clockFrequency);
+    int64_t whole = counter / steadyClockFrequency;
+    int64_t rest = counter % steadyClockFrequency;
+    return TimePoint<SteadyClock>(Nanoseconds(whole * 1000000000 + rest * 1000000000 / steadyClockFrequency));
   }
 };
+using HighResolutionClock = SteadyClock;
+
+// The wall clock (std::chrono::system_clock): UTC since 1970-01-01, in 100 ns ticks; it can jump
+// when the system time is set.
+struct SystemClock
+{
+  using rep = long long;
+  using period = Ratio<1, 10000000>;
+  using duration = Duration<long long, Ratio<1, 10000000>>;
+  using time_point = TimePoint<SystemClock>;
+  static constexpr bool is_steady = false;
+
+  static TimePoint<SystemClock> now()
+  {
+    uint64_t fileTime = 0; // 100 ns ticks since 1601-01-01
+    GetSystemTimePreciseAsFileTime(&fileTime);
+    return TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>((long long)fileTime - 116444736000000000ll));
+  }
+  // Whole seconds since 1970 (time_t), rounded toward negative infinity, and back.
+  static long long to_time_t(const TimePoint<SystemClock>& t)
+  {
+    long long ticks = t.sinceEpoch.ticks;
+    return ticks >= 0 ? ticks / 10000000 : -((-ticks + 9999999) / 10000000);
+  }
+  static TimePoint<SystemClock> from_time_t(long long seconds) { return TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>(seconds * 10000000)); }
+};
+
+// d in whole milliseconds, rounded up, for the Windows waits: 0 for a negative d, and below
+// 0xFFFFFFFF, which would mean forever.
+template<typename Rep, typename Period>
+unsigned long waitMilliseconds(const Duration<Rep, Period>& d)
+{
+  long long ms = ceil<Milliseconds>(d).count();
+  if (ms <= 0)
+    return 0;
+  if (ms >= 0xFFFFFFFEll)
+    return 0xFFFFFFFEul;
+  return (unsigned long)ms;
+}

@@ -1,0 +1,23 @@
+// spec: class template argument deduction from a value of an instantiation of the same template (the copy deduction candidate): `Pairish p = Pairish<int, double>(1, 2.5);` and `static constexpr Duration budget = Milliseconds(5);` are those instantiations
+// factorio: ChartBundleRequest::ONE_STEP_TIME_BUDGET (`static constexpr std::chrono::duration ONE_STEP_TIME_BUDGET = std::chrono::milliseconds(5);`)
+// pending: the template arguments are not deduced (the layout of Duration<Rep, Period> has a member of unknown type)
+template<typename A, typename B>
+struct Pairish
+{
+  A a;
+  B b;
+  Pairish(A a, B b) : a(a), b(b) {}
+  template<typename C, typename D>
+  Pairish(const Pairish<C, D>& other) : a(other.a), b(other.b) {}
+};
+struct Budget
+{
+  static constexpr Milliseconds limit = Milliseconds(5);
+};
+int main()
+{
+  Pairish p = Pairish<int, double>(1, 2.5);
+  Duration budget = Milliseconds(5);
+  println("{} {} {} {}", p.a, p.b, budget.count(), Budget::limit.count());
+  return 0;
+}

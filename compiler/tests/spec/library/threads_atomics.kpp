@@ -9,7 +9,7 @@ int main()
     threads.emplace_back([&]() { thisThread::yield(); LockGuard<Mutex> lock(m); counter += 1; });
   for (Thread& t : threads)
     t.join();
-  thisThread::sleepFor(milliseconds(1));
+  thisThread::sleepFor(Milliseconds(1));
   println("{}", counter.load());
   return 0;
 }

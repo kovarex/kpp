@@ -75,16 +75,14 @@ struct WStringConvert
   }
 };
 
-// Chrono literal tags: namespace stubs for std::chrono_literals etc.
-struct ChronoLiterals {};
-struct Milli {};
-
 // getTime: manipulator for reading time from a stream — stub.
 struct GetTimeResult {};
 GetTimeResult getTime(tm* t, const char* format) { return GetTimeResult(); }
 
-// Concept stubs.
-template<typename From, typename To> constexpr bool ConvertibleTo = true;
+// Concepts (std::convertible_to, std::equality_comparable). EqualityComparable is not checked yet
+// (it needs `requires (const T& a) { a == a; }`: spec templates/requires_expression_parameters);
+// docs/stdlib-conformance.md lists it.
+template<typename From, typename To> constexpr bool ConvertibleTo = isConvertible<From, To>;
 template<typename T> constexpr bool EqualityComparable = true;
 
 // Namespace-like stubs for rarely-used sub-namespaces.

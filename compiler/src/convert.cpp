@@ -406,7 +406,7 @@ namespace
     // misc C++
     {"sig_atomic_t", "::sig_atomic_t"}, {"isupper", "::isupper"},
     {"get_time", "getTime"}, {"locale", "Locale"},
-    {"chrono_literals", "ChronoLiterals"}, {"literals", "literals"},
+    {"ratio", "Ratio"}, {"nano", "Nano"}, {"micro", "Micro"}, {"milli", "Milli"}, {"centi", "Centi"}, {"deci", "Deci"}, {"kilo", "Kilo"}, {"mega", "Mega"},
     {"string_literals", "stringLiterals"},
     {"numbers", "Numbers"}, {"ranges", "Ranges"}, {"views", "Views"},
     {"filesystem", "Filesystem"},
@@ -1816,6 +1816,53 @@ namespace
             }
           }
         }
+        if (t.getKind() == TokenKind::Number)
+        {
+          // A std::chrono literal (`10ms`, `1.5s`): the library's duration of that count, in double
+          // for a fractional one.
+          static const std::tuple<const char*, const char*, const char*> suffixes[] = {
+            {"ns", "Nanoseconds", "Duration<double, Nano>"}, {"us", "Microseconds", "Duration<double, Micro>"},
+            {"ms", "Milliseconds", "Duration<double, Milli>"}, {"min", "Minutes", "Duration<double, Ratio<60>>"},
+            {"s", "Seconds", "Duration<double>"}, {"h", "Hours", "Duration<double, Ratio<3600>>"}};
+          std::string_view number = spelling(i);
+          size_t digits = 0;
+          while (digits < number.size() && (isdigit((unsigned char)number[digits]) || number[digits] == '.' || number[digits] == '\''))
+            ++digits;
+          std::string_view suffix = number.substr(digits);
+          bool replaced = false;
+          for (const auto& [name, integral, floating] : suffixes)
+            if (digits > 0 && suffix == name)
+            {
+              std::string count;
+              for (char c : number.substr(0, digits))
+                if (c != '\'')
+                  count += c;
+              bool fractional = count.find('.') != std::string::npos;
+              replace(t.offset, t.length, std::string(fractional ? floating : integral) + "(" + count + ")");
+              counts.add("chrono literal");
+              replaced = true;
+              break;
+            }
+          if (replaced)
+            continue;
+        }
+        if (t.is(Kw::using_) && toks[i + 1].is(Kw::namespace_) && spelling(i + 2) == "std")
+        {
+          // `using namespace std::chrono_literals;` (or std::chrono, std::literals): the literals
+          // are rewritten where they are written and the library's names are global.
+          uint32_t j = i + 2;
+          std::string path;
+          for (; j < toks.size() && !toks[j].is(P::Semi); ++j)
+            path += std::string(spelling(j));
+          if (j < toks.size() && (path == "std::chrono_literals" || path == "std::chrono" || path == "std::literals" ||
+                                  path == "std::literals::chrono_literals" || path == "std::chrono::literals"))
+          {
+            remove(t.offset, lineEndAfter(endOffset(j)) - t.offset);
+            counts.add("using namespace for chrono removed");
+            i = j;
+            continue;
+          }
+        }
         if (t.getKind() == TokenKind::Identifier && (spelling(i) == "__FILE__" || spelling(i) == "__LINE__"))
         {
           // The preprocessor's file name and line: the literal values, since Kpp has no preprocessor.
@@ -1903,6 +1950,28 @@ namespace
             counts.add("source_location::current() to caller");
             i += 6;
             continue;
+          }
+          if (name == "chrono" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && toks[i + 4].getKind() == TokenKind::Identifier)
+          {
+            // std::chrono's names are the library's time types (Time.kpp, docs/stdlib/time.md).
+            static const std::map<std::string_view, std::string> chronoNames = {
+              {"nanoseconds", "Nanoseconds"}, {"microseconds", "Microseconds"}, {"milliseconds", "Milliseconds"},
+              {"seconds", "Seconds"}, {"minutes", "Minutes"}, {"hours", "Hours"}, {"days", "Days"},
+              {"duration", "Duration"}, {"time_point", "TimePoint"}, {"steady_clock", "SteadyClock"},
+              {"system_clock", "SystemClock"}, {"high_resolution_clock", "HighResolutionClock"},
+              {"duration_cast", "durationCast"}, {"time_point_cast", "timePointCast"}, {"floor", "floor"}, {"ceil", "ceil"}};
+            auto c = chronoNames.find(spelling(i + 4));
+            if (c != chronoNames.end())
+            {
+              std::string chronoTo = c->second;
+              if (shadowedAt(chronoTo, t.offset))
+                chronoTo = "::" + chronoTo;
+              replace(t.offset, endOffset(i + 4) - t.offset, chronoTo);
+              counts.add("std::chrono renamed");
+              i += 4;
+              continue;
+            }
+            counts.add("std::chrono::" + std::string(spelling(i + 4)) + " (no mapping)");
           }
           auto it = stdNames.find(name);
           std::string to = it == stdNames.end() ? name : it->second;
