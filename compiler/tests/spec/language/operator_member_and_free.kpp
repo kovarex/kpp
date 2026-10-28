@@ -1,6 +1,5 @@
-// spec: an operator expression considers member and non-member operators together: a class with a member unary `operator-` still finds the free binary `operator-(a, b)` for `a - b`
+// spec: an operator expression considers member and non-member operators together: a class with a member unary `operator-` still finds the free binary `operator-(a, b)` for `a - b`, and a free operator template deduces its parameters from the operands
 // factorio: the game's vector and position types (member unary minus, free binary operators), the library's Duration
-// pending: the member operator hides the free one, so `a - b` has no type (codegen: a local of unknown type)
 template<typename T>
 struct V
 {

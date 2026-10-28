@@ -5511,11 +5511,21 @@ struct GlobalScope::Impl
         wanted = wanted || (wantLine == line && inFile(want));
       if (!wanted)
         return;
+      // An operator's or a destructor's name part has no symbol of its own (`operator-(a, b)`).
+      auto partName = [&](const NamePart& part)
+      {
+        if (part.special == 2 && part.opToken < uint32_t(P::Count))
+          return std::string(symbols.name(impl.opSymbols[part.opToken]));
+        if (part.special == 3)
+          return std::string("operator <conversion>");
+        std::string name = part.symbol == UINT32_MAX ? "?" : std::string(symbols.name(part.symbol));
+        return part.special == 1 ? "~" + name : name;
+      };
       std::string what = nodeKindName(e->kind);
       if (e->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(e)->name.empty())
-        what += " " + std::string(symbols.name(static_cast<NameExpr*>(e)->name.last().symbol));
+        what += " " + partName(static_cast<NameExpr*>(e)->name.last());
       else if (e->kind == NodeKind::MemberExpr && !static_cast<MemberExpr*>(e)->member.empty())
-        what += " ." + std::string(symbols.name(static_cast<MemberExpr*>(e)->member.last().symbol));
+        what += " ." + partName(static_cast<MemberExpr*>(e)->member.last());
       std::string inst;
       if (activeSubst)
         for (const Subst::Pair& p : activeSubst->pairs)
@@ -6405,10 +6415,12 @@ struct GlobalScope::Impl
       call->templateArgCount = n;
     }
 
-    // Return type of calling `f` with the given arguments, deducing its template parameters.
+    // Return type of calling `f` with the given arguments, deducing its template parameters. An
+    // operator expression has no argument list: its operand types (operands) are deduced from.
     const Ty* returnTypeOfCall(FunctionDecl* f, const Subst* classSubst, const Span<Expr*>& args, const NamePart* namePart,
-                               CallExpr* call = nullptr)
+                               CallExpr* call = nullptr, const std::vector<const Ty*>* operands = nullptr)
     {
+      auto argTypes = [&] { return operands ? *operands : argTypesOf(args); };
       if (f->body == nullptr && f->returnType == nullptr && !(f->flags & (DF_Constructor | DF_Destructor | DF_Conversion)))
         return unknown(Why::Unsupported);
       bool autoReturn = false;
@@ -6422,7 +6434,7 @@ struct GlobalScope::Impl
           const Ty* fnTy = impl.declaredTypeOf(f, classSubst, 0);
           if (namePart)
             bindExplicitArgs(f, *namePart, args, s);
-          impl.deduceCall(f, fnTy, argTypesOf(args), s);
+          impl.deduceCall(f, fnTy, argTypes(), s);
           impl.fillDefaultTemplateArgs(f, s);
           if (call)
             recordTemplateArgs(call, f, s);
@@ -6463,7 +6475,7 @@ struct GlobalScope::Impl
         // Explicit template arguments first, then deduction from the arguments.
         if (namePart)
           bindExplicitArgs(f, *namePart, args, subst);
-        impl.deduceCall(f, fnTy, argTypesOf(args), subst);
+        impl.deduceCall(f, fnTy, argTypes(), subst);
         impl.fillDefaultTemplateArgs(f, subst);
         if (call)
           recordTemplateArgs(call, f, subst);
@@ -6475,7 +6487,7 @@ struct GlobalScope::Impl
             for (size_t i = 0; call && i < call->templateArgCount; ++i)
               line += " " + types.toString(call->templateArgs[i], &impl.symbols);
             line += " | args:";
-            for (const Ty* a : argTypesOf(args))
+            for (const Ty* a : argTypes())
               line += " " + types.toString(a, &impl.symbols);
             line += " | explicit:";
             if (namePart)
@@ -6887,15 +6899,25 @@ struct GlobalScope::Impl
     }
 
     // The type of `lhs op rhs` (or `op lhs`) through an operator function, or for what every class
-    // has; null when there is none (counted as unknown here only when countFailure).
-    const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true)
+    // has; null when there is none (counted as unknown here only when countFailure). lhsOperand:
+    // the left operand as an argument (an lvalue a reference), for a template's deduction.
+    const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true,
+                                 const Ty* lhsOperand = nullptr)
     {
       const Ty* l = types.stripRef(lhs);
       Subst subst;
       bool isMember;
       Span<Expr*> none;
       if (FunctionDecl* f = operatorFunction(op, lhs, rhs, token, arity, subst, isMember))
-        return returnTypeOfCall(f, isMember ? &subst : nullptr, none, nullptr);
+      {
+        // The operands a template deduces from: a member's object is not one of them.
+        std::vector<const Ty*> operands;
+        if (!isMember)
+          operands.push_back(lhsOperand ? lhsOperand : lhs);
+        if (arity == 2)
+          operands.push_back(rhs);
+        return returnTypeOfCall(f, isMember ? &subst : nullptr, none, nullptr, nullptr, &operands);
+      }
       if (arity == 2)
       {
         // The comparisons C++ rewrites when the class defines no operator for them: `a != b` is
@@ -7003,7 +7025,7 @@ struct GlobalScope::Impl
           return types.unknown();
         if (types.isDependent(ls) || types.isDependent(rs))
           return types.param(ls->kind == TyKind::Param ? ls->decl : rs->decl);
-        if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false))
+        if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types)))
           return t;
         // No operator function: the built-in operator on the operands' scalar conversions (an
         // assignment's left operand is the object itself and converts to nothing).
@@ -7131,7 +7153,7 @@ struct GlobalScope::Impl
           return types.pointer(s);
         if (types.isDependent(s))
           return types.unknown();
-        if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false))
+        if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))
           return r;
         // No operator function: the built-in one on the operand's scalar conversion (`-speed`
         // with a Const<double>); ++ and -- change the object itself.
