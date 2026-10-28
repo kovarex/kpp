@@ -1121,6 +1121,32 @@ namespace
       initializeMembers(addr, t, {}, at);
     }
 
+    // The constructor initializer that names base `baseTy` of class t through an alias
+    // (`using super = Conditional<...>; Const(const T& v) : super(v) {}`): its name converted as a
+    // type in the class under the class's arguments; null if none does.
+    const FunctionDecl::CtorInit* initializerNamingBase(const Ty* t, const Ty* baseTy, Span<FunctionDecl::CtorInit> inits, Node* at)
+    {
+      const Ty* cls = canonicalClass(t, at);
+      ClassDecl* c = classDef(cls->decl, at);
+      TemplateArgs args = global.classArgsOf(cls);
+      const Ty* base = canonicalClass(baseTy, at);
+      for (const FunctionDecl::CtorInit& init : inits)
+      {
+        if (init.member.empty())
+          continue;
+        NamedType named{};
+        named.kind = NodeKind::NamedType;
+        named.token = at ? at->token : 0;
+        named.name = init.member;
+        // Looked up from inside the class: from the constructor when it is the one being emitted.
+        Decl* context = currentFunction && global.owningClass(currentFunction) && classDef(global.owningClass(currentFunction), at) == c ? static_cast<Decl*>(currentFunction) : c;
+        const Ty* nt = global.typeOfAstIn(&named, context, args);
+        if (nt && isClass(nt) && !types.isDependent(nt) && canonicalClass(nt, at) == base)
+          return &init;
+      }
+      return nullptr;
+    }
+
     // Initialises bases and members of the object at addr from constructor initializers (or
     // default member initializers / default construction when absent).
     void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at)
@@ -1149,6 +1175,8 @@ namespace
         std::string baseAddr = gep(info.name, addr, index);
         const QualifiedName& bn = static_cast<ClassDecl*>(baseDef)->name;
         const FunctionDecl::CtorInit* init = bn.empty() ? nullptr : initFor(bn.last().symbol);
+        if (!init)
+          init = initializerNamingBase(t, bt, inits, at);
         if (init)
           constructInto(baseAddr, bt, init->args, at);
         else if (hasUserConstructors(static_cast<ClassDecl*>(baseDef)))
