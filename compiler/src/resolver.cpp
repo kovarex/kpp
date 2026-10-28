@@ -480,8 +480,7 @@ struct GlobalScope::Impl
   uint32_t symStd, symValue;
   uint32_t opSymbols[size_t(P::Count)]; // "operator+" etc., so operators can be looked up by name.
   uint32_t symBegin, symFirst, symSecond;
-  std::string whyAtFile; // --why-at: trace the expressions typed on this file's line whyAtLine
-  uint32_t whyAtLine = 0;
+  std::vector<std::pair<std::string, uint32_t>> whyAt; // --why-at: trace the expressions typed on these (file suffix, line)s
   struct BuiltinName
   {
     uint32_t symbol;
@@ -5003,21 +5002,27 @@ struct GlobalScope::Impl
         ++stats.exprsDependent;
       else
         ++stats.exprsTyped;
-      if (!impl.whyAtFile.empty() && file)
+      if (!impl.whyAt.empty() && file)
         traceAt(e, t);
       return t;
     }
 
-    // --why-at FILE:LINE: every expression typed on that line, with its type (innermost first).
+    // --why-at FILE:LINE,...: every expression typed on those lines, with its type (innermost first).
     void traceAt(Expr* e, const Ty* t)
     {
       const std::string& path = file->path;
-      const std::string& want = impl.whyAtFile;
-      if (path.size() < want.size() || path.compare(path.size() - want.size(), want.size(), want) != 0)
+      auto inFile = [&](const std::string& want) { return path.size() >= want.size() && path.compare(path.size() - want.size(), want.size(), want) == 0; };
+      bool anyInFile = false;
+      for (const auto& [want, wantLine] : impl.whyAt)
+        anyInFile = anyInFile || inFile(want);
+      if (!anyInFile)
         return;
       const Token& tk = tokens[std::min<size_t>(e->token, tokens.size() - 1)];
       uint32_t line = 1 + uint32_t(std::count(text.begin(), text.begin() + std::min<size_t>(tk.offset, text.size()), '\n'));
-      if (line != impl.whyAtLine)
+      bool wanted = false;
+      for (const auto& [want, wantLine] : impl.whyAt)
+        wanted = wanted || (wantLine == line && inFile(want));
+      if (!wanted)
         return;
       std::string what = nodeKindName(e->kind);
       if (e->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(e)->name.empty())
@@ -7778,8 +7783,7 @@ const Ty* GlobalScope::scalarConversionOf(const Ty* classType) { return impl->sc
 
 void GlobalScope::traceLine(const std::string& fileSuffix, uint32_t line)
 {
-  impl->whyAtFile = fileSuffix;
-  impl->whyAtLine = line;
+  impl->whyAt.push_back({fileSuffix, line});
 }
 
 FunctionDecl* GlobalScope::enumOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context)
