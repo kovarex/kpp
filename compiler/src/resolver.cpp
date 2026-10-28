@@ -4514,6 +4514,9 @@ struct GlobalScope::Impl
     const ParsedFile* file = nullptr; // The file the tokens belong to (for --why sites).
     Expr* current = nullptr;          // The expression being typed (for --why sites).
     int instantiatedBaseDepth = 0;    // memberOfInstantiatedBases nesting
+    Expr* const* walkedArgs = nullptr; // see WalkedArgs
+    std::vector<const Ty*> walkedArgTypes;
+    const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
 
@@ -4846,10 +4849,10 @@ struct GlobalScope::Impl
       const Ty* t = impl.declaredTypeOf(v, activeSubst, 0);
       if (t && impl.containsAuto(t))
       {
-        if (v->init && v->init->ty)
+        if (const Ty* deduced = locals.deducedTypeOf(v))
+          t = deduced; // the object as this walk deduced it (also a range-for variable's)
+        else if (v->init && v->init->ty)
           t = impl.deduceAuto(t, v->init->ty);
-        else if (const Ty* deduced = locals.deducedTypeOf(v))
-          t = deduced; // a range-for variable: the element type this walk deduced
         else if (const Ty* cached = v->cachedType.load(std::memory_order_acquire); cached && !impl.containsAuto(cached))
           t = cached;
         else
@@ -4901,10 +4904,10 @@ struct GlobalScope::Impl
             // A local whose initializer was typed already has its deduced type cached by the
             // walker; otherwise (members/globals in other files) deduce from the initializer now.
             auto* v = static_cast<VariableDecl*>(d);
+            if (const Ty* deduced = locals.deducedTypeOf(v))
+              return deduced; // a local (or range-for variable) as this walk deduced it
             if (v->init && v->init->ty)
               return impl.deduceAuto(t, v->init->ty);
-            if (const Ty* deduced = locals.deducedTypeOf(v))
-              return deduced; // a range-for variable: the element type this walk deduced
             return unknown(Why::Auto);
           }
           return t;
@@ -5370,21 +5373,45 @@ struct GlobalScope::Impl
 
     std::vector<const Ty*> argTypesOf(const Span<Expr*>& args)
     {
+      bool walked = walkedArgs && args.data == walkedArgs && args.size() == walkedArgTypes.size();
       std::vector<const Ty*> out;
-      for (Expr* a : args)
+      for (size_t i = 0; i < args.size(); ++i)
       {
+        Expr* a = args[i];
         if (isEmptyExpansion(a))
           continue;
-        if (a && a->ty && a->ty->kind == TyKind::Pack)
-          for (const Ty* e : a->ty->args)
+        const Ty* t = walked ? walkedArgTypes[i] : a ? a->ty : nullptr;
+        if (a && t && t->kind == TyKind::Pack)
+          for (const Ty* e : t->args)
             out.push_back(argumentType(a, e, types));
         else if (a && a->kind == NodeKind::BraceInitExpr)
           out.push_back(braceListType(a, impl.initializerListDecl(), types));
         else
-          out.push_back(a ? argumentType(a, a->ty, types) : nullptr);
+          out.push_back(a ? argumentType(a, t, types) : nullptr);
       }
       return out;
     }
+
+    // The argument list of the call being typed and the types this walk gave its expressions, which
+    // argTypesOf uses for it instead of the types on the AST nodes: the AST is shared, and another
+    // thread checking another instantiation of the same body may have rewritten them meanwhile.
+    struct WalkedArgs
+    {
+      Walker& w;
+      Expr* const* savedArgs;
+      std::vector<const Ty*> savedTypes;
+      WalkedArgs(Walker& w, const Span<Expr*>& args, std::vector<const Ty*>&& types)
+        : w(w), savedArgs(w.walkedArgs), savedTypes(std::move(w.walkedArgTypes))
+      {
+        w.walkedArgs = args.data;
+        w.walkedArgTypes = std::move(types);
+      }
+      ~WalkedArgs()
+      {
+        w.walkedArgs = savedArgs;
+        w.walkedArgTypes = std::move(savedTypes);
+      }
+    };
 
     // The explicit template arguments of a call (`count<int, int, int>()`): one per parameter;
     // a trailing pack takes the rest, and is empty when the list leaves it nothing and there is
@@ -5546,8 +5573,11 @@ struct GlobalScope::Impl
 
     const Ty* typeOfCall(CallExpr* c)
     {
+      std::vector<const Ty*> walked;
+      walked.reserve(c->args.size());
       for (Expr* a : c->args)
-        walkExpr(a);
+        walked.push_back(walkExpr(a));
+      WalkedArgs walkedArgsScope(*this, c->args, std::move(walked));
       Expr* callee = c->callee;
       bool ambiguous = false;
       if (callee->kind == NodeKind::NameExpr)
@@ -6459,7 +6489,7 @@ struct GlobalScope::Impl
           Scope* saved = scope;
           if (v->name.parts.size() > 1)
             scope = semanticScopeFor(v->name);
-          walkExpr(v->init);
+          const Ty* initTy = walkExpr(v->init);
           scope = saved;
           // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
@@ -6493,11 +6523,14 @@ struct GlobalScope::Impl
           }
           if (impl.containsAuto(declared))
           {
-            const Ty* deduced = v->init && v->init->ty ? impl.deduceAuto(declared, v->init->ty) : types.unknown();
-            if (deduced->isKnown() && !activeSubst)
-              v->cachedType.store(deduced, std::memory_order_release);
-            else if (deduced->isKnown())
-              locals.push(UINT32_MAX, nullptr); // Keep stack shape; deduced types inside instantiations are not cached.
+            // From the type this walk gave the initializer, not the one on its (shared) node.
+            const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy) : types.unknown();
+            if (deduced->isKnown())
+            {
+              deducedLocal = deduced; // kept with the local by walkLocalDecl, per walk
+              if (!activeSubst)
+                v->cachedType.store(deduced, std::memory_order_release);
+            }
             else
               ++stats.unknownAuto;
           }
@@ -6592,8 +6625,15 @@ struct GlobalScope::Impl
       }
       else
       {
+        deducedLocal = nullptr;
         walkDecl(d);
+        const Ty* deduced = d->kind == NodeKind::VariableDecl ? deducedLocal : nullptr;
+        deducedLocal = nullptr;
+        size_t declaredAt = locals.mark();
         declareLocal(d);
+        if (deduced)
+          for (size_t i = declaredAt; i < locals.items.size(); ++i)
+            locals.items[i].type = deduced; // `auto x = e;`: the type this walk deduced
       }
     }
 
