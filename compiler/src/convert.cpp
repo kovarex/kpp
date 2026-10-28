@@ -1,7 +1,9 @@
 #include "convert.hpp"
 #include "parser.hpp"
+#include "source.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <map>
@@ -936,6 +938,22 @@ namespace
     // Function-like macros defined in this file, expanded at their uses; a name can be defined,
     // undefined and defined again (`#define INCREMENT(NAME) 1+` then with four parameters).
     std::map<std::string, std::vector<LocalMacro>> localMacros;
+    // Function-like macros of the C headers the program imports (Lua's lua_pop and the rest, from the
+    // headers expand-macros.txt in the overrides lists), expanded like this file's own: the imported
+    // headers give Kpp their functions and constants, not their macros.
+    const std::map<std::string, std::pair<std::vector<std::string>, std::string>>* headerMacros = nullptr;
+    void seedHeaderMacros()
+    {
+      if (!headerMacros)
+        return;
+      for (const auto& [name, macro] : *headerMacros)
+      {
+        LocalMacro m;
+        m.params = macro.first;
+        m.body = macro.second;
+        localMacros[name].push_back(m);
+      }
+    }
     const LocalMacro* localMacroAt(const std::string& name, uint32_t offset) const
     {
       auto it = localMacros.find(name);
@@ -1809,7 +1827,7 @@ namespace
                 for (auto [a0, a1] : args)
                   argText.push_back(a1 > a0 ? std::string(text.substr(toks[a0].offset, endOffset(a1 - 1) - toks[a0].offset)) : std::string());
                 replace(t.offset, endOffset(j) - t.offset, expandMacro(*lm, argText, t.offset));
-                counts.add("local macro expanded");
+                counts.add(lm->from == 0 && lm->to == UINT32_MAX && headerMacros && headerMacros->count(std::string(spelling(i))) ? "C header macro expanded" : "local macro expanded");
                 i = j;
                 continue;
               }
@@ -3458,6 +3476,7 @@ namespace
     std::string run()
     {
       collectScopeRanges(in.parsed->decls, "");
+      seedHeaderMacros();
       convertPreprocessor();
       convertTokens();
       convertDecls(in.parsed->decls, true);
@@ -3650,6 +3669,119 @@ namespace
   }
 }
 
+// The function-like macros the C headers at paths define (in the branches their #if lines select, as
+// the converter selects them), by name: parameters and body, the body on one line without comments,
+// and C's NULL as nullptr.
+std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHeaderMacros(const std::vector<std::filesystem::path>& paths)
+{
+  std::map<std::string, std::pair<std::vector<std::string>, std::string>> macros;
+  for (const std::filesystem::path& path : paths)
+  {
+    std::string raw;
+    if (!readFile(path, raw))
+    {
+      fprintf(stderr, "convert: cannot read the macro header %s\n", path.string().c_str());
+      continue;
+    }
+    // Comments out first (they may hold a #define or span lines), then the dropped #if branches.
+    std::string text;
+    for (size_t i = 0; i < raw.size();)
+    {
+      if (raw.compare(i, 2, "/*") == 0)
+      {
+        size_t end = raw.find("*/", i + 2);
+        end = end == std::string::npos ? raw.size() : end + 2;
+        for (size_t k = i; k < end; ++k)
+          text += raw[k] == '\n' ? '\n' : ' ';
+        i = end;
+      }
+      else if (raw.compare(i, 2, "//") == 0)
+      {
+        while (i < raw.size() && raw[i] != '\n')
+          ++i;
+      }
+      else if (raw[i] == '"' || raw[i] == '\'')
+      {
+        char quote = raw[i];
+        text += raw[i++];
+        while (i < raw.size() && raw[i] != quote && raw[i] != '\n')
+        {
+          if (raw[i] == '\\' && i + 1 < raw.size())
+            text += raw[i++];
+          text += raw[i++];
+        }
+        if (i < raw.size() && raw[i] == quote)
+          text += raw[i++];
+      }
+      else
+        text += raw[i++];
+    }
+    text = selectConfiguredBranches(text);
+    for (size_t pos = 0; pos < text.size();)
+    {
+      // A logical line, continuations joined.
+      std::string line;
+      while (pos < text.size())
+      {
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos)
+          end = text.size();
+        std::string part = text.substr(pos, end - pos);
+        pos = end + 1;
+        while (!part.empty() && (part.back() == '\r' || part.back() == ' ' || part.back() == '\t'))
+          part.pop_back();
+        bool continued = !part.empty() && part.back() == '\\';
+        if (continued)
+          part.pop_back();
+        line += part + " ";
+        if (!continued)
+          break;
+      }
+      size_t p = line.find_first_not_of(" \t");
+      if (p == std::string::npos || line[p] != '#')
+        continue;
+      p = line.find_first_not_of(" \t", p + 1);
+      if (p == std::string::npos || line.compare(p, 6, "define") != 0)
+        continue;
+      p = line.find_first_not_of(" \t", p + 6);
+      if (p == std::string::npos)
+        continue;
+      size_t nameEnd = p;
+      while (nameEnd < line.size() && (isalnum((unsigned char)line[nameEnd]) || line[nameEnd] == '_'))
+        ++nameEnd;
+      if (nameEnd == p || nameEnd >= line.size() || line[nameEnd] != '(')
+        continue; // object-like: the import makes the constants
+      size_t close = line.find(')', nameEnd);
+      if (close == std::string::npos)
+        continue;
+      std::vector<std::string> params;
+      std::string paramText = line.substr(nameEnd + 1, close - nameEnd - 1);
+      for (size_t start = 0; start <= paramText.size();)
+      {
+        size_t comma = paramText.find(',', start);
+        std::string param = paramText.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        size_t a = param.find_first_not_of(" \t"), b = param.find_last_not_of(" \t");
+        if (a != std::string::npos)
+          params.push_back(param.substr(a, b - a + 1));
+        if (comma == std::string::npos)
+          break;
+        start = comma + 1;
+      }
+      std::string body = line.substr(close + 1);
+      size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
+      body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
+      // C's NULL is a cast of 0 to void*, not a constant the import makes.
+      for (size_t at = body.find("NULL"); at != std::string::npos; at = body.find("NULL", at + 1))
+        if ((at == 0 || !(isalnum((unsigned char)body[at - 1]) || body[at - 1] == '_')) &&
+            (at + 4 >= body.size() || !(isalnum((unsigned char)body[at + 4]) || body[at + 4] == '_')))
+          body.replace(at, 4, "nullptr");
+      if (!body.empty())
+        macros[line.substr(p, nameEnd - p)] = {params, body};
+    }
+  }
+  return macros;
+}
+
 std::string selectConfiguredBranches(std::string_view text)
 {
   // The same decisions as FileConverter::convertPreprocessor: known symbols decide, an unknown
@@ -3777,6 +3909,29 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   };
   std::map<std::string, std::vector<Piece>> outputs; // output path -> header piece(s) then source piece(s)
   Counts total;
+  // The C headers whose function-like macros the converted code uses (overrides/expand-macros.txt:
+  // one path per line, # starts a comment).
+  std::map<std::string, std::pair<std::vector<std::string>, std::string>> headerMacros;
+  if (!overridesDir.empty())
+  {
+    std::string list;
+    if (readFile(overridesDir / "expand-macros.txt", list))
+    {
+      std::vector<std::filesystem::path> headers;
+      for (size_t pos = 0; pos < list.size();)
+      {
+        size_t end = list.find('\n', pos);
+        if (end == std::string::npos)
+          end = list.size();
+        std::string line = list.substr(pos, end - pos);
+        pos = end + 1;
+        size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
+        if (a != std::string::npos && line[a] != '#')
+          headers.push_back(line.substr(a, b - a + 1));
+      }
+      headerMacros = readHeaderMacros(headers);
+    }
+  }
   // Hand-written override files, parsed once: what they define replaces the converted definitions.
   std::map<std::string, std::unique_ptr<OverrideFile>> overrideFiles;
   auto overrideFor = [&](const std::string& key) -> OverrideFile*
@@ -3985,6 +4140,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     FileConverter fc(in, global, symbols);
     fc.scopeNames = &scopeNames;
     fc.opaqueKept = &opaqueKept;
+    fc.headerMacros = &headerMacros;
     fc.variants = &variants;
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
