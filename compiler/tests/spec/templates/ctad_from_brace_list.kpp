@@ -1,0 +1,27 @@
+// spec: class template argument deduction from a brace list: `Pair{name, value}` in an expression (from Pair's constructors), and `Array table = {a, b, c}` (an aggregate: the array member takes the elements and N is their count, as std::array's deduction guide has it)
+// factorio: GroupAttackAchievementPrototype's `static constexpr Array mapping = { Pair { "autonomous", AttackType::Autonomous }, ... }`, PerformanceLogger's `Array cpuTimeValuePointers = { Pair { "update", &CpuDataRecord::update }, ... }`
+enum class AttackType { Autonomous, Distraction, Scripted };
+
+struct Record { int update = 3; int render = 4; };
+
+int main()
+{
+  static constexpr Array mapping =
+  {
+    Pair { "autonomous", AttackType::Autonomous },
+    Pair { "distraction", AttackType::Distraction },
+    Pair { "scripted", AttackType::Scripted }
+  };
+  String value = "scripted";
+  int found = -1;
+  for (size_t i = 0; i < mapping.size(); ++i)
+    if (value == mapping[i].first)
+      found = int(mapping[i].second);
+  Record r;
+  Array fields = { Pair { "update", &Record::update }, Pair { "render", &Record::render } };
+  int sum = 0;
+  for (size_t i = 0; i < fields.size(); ++i)
+    sum += r.*fields[i].second;
+  println("{} {} {}", mapping.size(), found, sum);
+  return 0;
+}

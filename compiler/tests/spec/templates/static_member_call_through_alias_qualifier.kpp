@@ -1,0 +1,28 @@
+// spec: a static member function of a class template called through an alias of one of its instantiations (`DamageTypeID::fromIndex(i)` with `using DamageTypeID = ID<DamageType, uint8_t>`) has that instantiation's parameter types (the non-template overload beats a deleted template one) and returns that instantiation
+// factorio: DamageEstimate's `DamageTypeID::fromIndex(i).getPrototype()->getLocalisedName()`
+struct Proto { int value = 7; };
+
+template<class P, class I = uint16_t>
+class MyID
+{
+  explicit MyID(I index) : index(index) {}
+public:
+  using IndexType = I;
+  MyID() {}
+  template<class T>
+  static MyID fromIndex(T) = delete;
+  static MyID fromIndex(IndexType index) { return MyID(index); }
+  const P* getPrototype(const P* table) const { return table + this->index; }
+  IndexType index = 0;
+};
+
+using ProtoID = MyID<Proto, uint8_t>;
+
+int main()
+{
+  Proto table[3];
+  table[2].value = 42;
+  uint8_t i = 2;
+  println("{} {}", ProtoID::fromIndex(i).getPrototype(table)->value, int(MyID<Proto, uint8_t>::fromIndex(i).index));
+  return 0;
+}

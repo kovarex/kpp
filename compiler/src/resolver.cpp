@@ -3071,6 +3071,75 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
+  // The arguments of a class template without constructors deduced from a brace list, as C++20
+  // does for an aggregate: the data members take the elements in order. A last member that is an
+  // array with a parameter bound (`T items[N]`) takes all the remaining elements, N their count, as
+  // std::array's deduction guide has it: `Array a = {x, y, z}`, `Pair{name, &Record::field}`.
+  const Ty* deduceAggregateArgs(const Ty* primary, const std::vector<const Ty*>& argTypes)
+  {
+    Scope* s = classScopeOf(primary);
+    if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl || argTypes.empty())
+      return nullptr;
+    auto* cls = static_cast<ClassDecl*>(s->owner);
+    if (!cls->bases.empty())
+      return nullptr;
+    std::vector<VariableDecl*> fields;
+    for (Decl* m : cls->members)
+    {
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+        return nullptr; // not an aggregate: its constructors decide
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
+        fields.push_back(static_cast<VariableDecl*>(m));
+    }
+    Subst d;
+    std::vector<std::pair<const Ty*, const Ty*>> checks; // (argument, the member type it initializes)
+    size_t next = 0;
+    for (size_t i = 0; i < fields.size() && next < argTypes.size(); ++i)
+    {
+      const Ty* fieldTy = declaredTypeOf(fields[i], nullptr, 0);
+      if (!fieldTy || !fieldTy->isKnown())
+        return nullptr;
+      Decl* bound = nullptr;
+      if (i + 1 == fields.size() && fieldTy->kind == TyKind::Array && fields[i]->type && fields[i]->type->kind == NodeKind::ArrayType)
+        if (Expr* size = static_cast<ArrayType*>(fields[i]->type)->size; size && size->kind == NodeKind::NameExpr)
+          if (const QualifiedName& n = static_cast<NameExpr*>(size)->name; n.parts.size() == 1)
+            for (Decl* p : cls->templateParams)
+              if (auto* tp = static_cast<TemplateParamDecl*>(p); !tp->isType && !tp->isPack && tp->name == n.parts[0].symbol)
+                bound = p;
+      if (!bound)
+      {
+        deduce(fieldTy, argTypes[next], d);
+        checks.push_back({argTypes[next++], fieldTy});
+        continue;
+      }
+      // `T items[N]`: the elements go into the array (brace elision).
+      int64_t count = int64_t(argTypes.size() - next);
+      for (; next < argTypes.size(); ++next)
+      {
+        deduce(fieldTy->inner, argTypes[next], d);
+        checks.push_back({argTypes[next], fieldTy->inner});
+      }
+      auto* tp = static_cast<TemplateParamDecl*>(bound);
+      const Ty* of = tp->valueType ? convertType(tp->valueType, TypeContext{lexicalScopeOf(bound), nullptr, nullptr}, 1) : types.intType();
+      if (!d.find(bound))
+        d.pairs.push_back({bound, types.valueType(of, count)});
+    }
+    if (next < argTypes.size())
+      return nullptr; // more elements than members
+    std::vector<const Ty*> args;
+    for (Decl* p : cls->templateParams)
+    {
+      const Ty* t = d.find(p);
+      if (!t || !t->isKnown() || types.isDependent(t))
+        return nullptr;
+      args.push_back(t);
+    }
+    for (const auto& [arg, member] : checks)
+      if (conversionRank(arg, substitute(member, d)) >= NotViable)
+        return nullptr;
+    return types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())});
+  }
+
   // The canonical type a resolved name denotes when used as a type.
   const Ty* typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart& lastPart, const TypeContext& ctx, int depth)
   {
@@ -5275,6 +5344,12 @@ struct GlobalScope::Impl
         r.type = types.param(t->decl);
         return r;
       }
+      if (t->kind == TyKind::DependentMember)
+      {
+        // `typename T::X` object: known once T is.
+        r.type = types.param(nullptr);
+        return r;
+      }
       if (t->kind != TyKind::Class && t->kind != TyKind::Enum)
       {
         r.why = Why::Base;
@@ -5812,7 +5887,13 @@ struct GlobalScope::Impl
         Decl* d = l.decl;
         if (d && d->kind == NodeKind::FunctionDecl)
         {
-          FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), nullptr, nullptr, ambiguous, &n->name.last(), c->args);
+          // `DamageTypeID::fromIndex(i)` with `using DamageTypeID = ID<DamageType, uint8_t>`: a static
+          // member named through an instantiation has that instantiation's arguments.
+          Subst qualifier;
+          if (n->name.parts.size() > 1 && l.foundIn && l.foundIn->kind == ScopeKind::Class)
+            qualifier = impl.qualifierSubst(n->name, ctx(), 0, l.foundIn);
+          const Subst* classSubst = qualifier.empty() ? nullptr : &qualifier;
+          FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), classSubst, nullptr, ambiguous, &n->name.last(), c->args);
           if (!f)
           {
             record(n, types.unknown());
@@ -5822,9 +5903,9 @@ struct GlobalScope::Impl
             ++stats.callsAmbiguousArity;
           ++stats.callsResolved;
           n->resolved = f;
-          const Ty* fnTy = impl.declaredTypeOf(f, nullptr, 0);
+          const Ty* fnTy = impl.declaredTypeOf(f, classSubst, 0);
           record(n, fnTy);
-          return returnTypeOfCall(f, nullptr, c->args, &n->name.last(), c);
+          return returnTypeOfCall(f, classSubst, c->args, &n->name.last(), c);
         }
         // Constructor call, functional cast, callable variable...
         const Ty* t = typeOfResolvedName(l, n->name.last(), n);
@@ -6753,13 +6834,18 @@ struct GlobalScope::Impl
           }
           if (v->init && !activeSubst && impl.isUndeducedClassTemplate(declared))
           {
-            // `ScopedSetter guard(x, true)`: the class's arguments from a constructor (CTAD).
+            // `ScopedSetter guard(x, true)`: the class's arguments from a constructor (CTAD);
+            // `Array names = {a, b}`: from an aggregate's members.
             Span<Expr*> args;
             if (v->init->kind == NodeKind::FunctionalCastExpr)
               args = static_cast<FunctionalCastExpr*>(v->init)->args;
             else if (v->init->kind == NodeKind::BraceInitExpr)
               args = static_cast<BraceInitExpr*>(v->init)->args;
-            if (const Ty* deduced = impl.deduceClassArgs(declared, argTypesOf(args)))
+            std::vector<const Ty*> argTypes = argTypesOf(args);
+            const Ty* deduced = impl.deduceClassArgs(declared, argTypes);
+            if (!deduced && v->init->kind == NodeKind::BraceInitExpr)
+              deduced = impl.deduceAggregateArgs(declared, argTypes);
+            if (deduced)
             {
               v->cachedType.store(deduced, std::memory_order_release);
               if (v->init->kind == NodeKind::FunctionalCastExpr)
@@ -7255,8 +7341,18 @@ struct GlobalScope::Impl
           if (t->kind == TyKind::Auto && c->args.size() == 1 && c->args[0]->ty)
             t = types.decay(c->args[0]->ty); // auto(x)
           if (impl.isUndeducedClassTemplate(t))
-            if (const Ty* deduced = impl.deduceClassArgs(t, argTypesOf(c->args)))
-              t = deduced; // `Pair(a, b)`, `Span(p, n)` in an expression: the class's arguments from a constructor (CTAD)
+          {
+            // `Pair(a, b)`, `Span(p, n)`, `Pair{a, b}` in an expression: the class's arguments from a
+            // constructor, or from an aggregate's members (CTAD).
+            Span<Expr*> args = c->args;
+            if (c->braced && args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
+              args = static_cast<BraceInitExpr*>(args[0])->args;
+            std::vector<const Ty*> argTypes = argTypesOf(args);
+            if (const Ty* deduced = impl.deduceClassArgs(t, argTypes))
+              t = deduced;
+            else if (const Ty* aggregate = c->braced ? impl.deduceAggregateArgs(t, argTypes) : nullptr)
+              t = aggregate;
+          }
           return record(e, t);
         }
         case NodeKind::TypeidExpr:
