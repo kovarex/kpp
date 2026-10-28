@@ -646,6 +646,33 @@ the same rule removed other silent answers without changing the count much: copy
 from another class's prvalue (the result's bytes became the object), an inherited
 `operator bool` never found (the object's address compared with null instead).
 
+**Class layouts (2026-10-28): 9,754 to 9,758 -> 38,014 to 38,022.** The jump is the same kind
+of correction, and the largest: the layout of a class silently dropped what it could not lay
+out, and every function using the class compiled against that wrong layout. Four fallbacks: a
+second polymorphic base was erased from the layout (its fields and vtable gone, its virtual
+calls finding no base); a member of unknown type became 8 placeholder bytes (every later field
+at a wrong offset); a base of unknown type, or a base or anonymous member whose own layout
+failed, was skipped; and after a layout failed once, every later use got the half-built layout.
+All are errors now (`the layout of C: ...` where it first fails, then `the class C, whose layout
+failed where it was first used` in every function that needs it). About 260 root causes carry
+the 28,000 new lines (one frozen tree, master 4c98ac0's converter output, two runs each):
+
+- **140 classes with a second polymorphic base**: multiple inheritance of virtual functions is
+  not implemented (one vtable pointer per object). Among them the core classes, so the cascade is
+  large: `Entity` 2,125 failing functions, `Player` 1,034, `Surface` 671, `EntityPrototype` 541;
+  `TriggerList<X> : ..., TriggerListBase` for every tip trigger. Without this one the count is
+  28,579 to 28,596. Implementing it (secondary vtable pointers, this-adjusting thunks) waits for
+  kovarex's scope decision (full multiple inheritance or one polymorphic base plus interfaces).
+- **107 members of unknown type** (116 lines), by written type: time points and durations
+  (`Chrono::steady_clock::time_point` 13, `TimePoint` 4, `Chrono::system_clock::time_point` 3,
+  `Chrono::nanoseconds` and member pointers to it, `ClockDuration`, `Clock::time_point`, ...,
+  about 35 in all); `UnderlyingType bits` in SmallBitset<N> (11); `Signal<>` members such as
+  `onChanged` (11); a template parameter left in a member type (`T`, `T*`, `A`, `B`, `EntityT*`,
+  `IndexType`, about 15); nested container types (`HashTable<...> table` 5, `RbTree<...> tree` 2);
+  `Variant<...>` (4); one each of CURLcode, cxxopts::ParseResult, Gdiplus Status, a DXGI function
+  pointer and a few local enums.
+- **5 bases of unknown type.**
+
 ### Error breakdown by root cause
 
 | category | count | % | what it is |

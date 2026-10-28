@@ -59,6 +59,7 @@ namespace
     bool complete = false;                    // every field is laid out (structFor returned it once)
     uint64_t size = 0, align = 0;             // computed on first use once complete (align 0: not yet)
     bool sizing = false;                      // its size is being computed (a class that contains itself comes back here)
+    bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
   };
   // The field index of a member, 0 when the layout has no such member.
   uint32_t fieldIndexOf(const StructInfo& info, Decl* member)
@@ -428,15 +429,52 @@ namespace
     StructInfo& structFor(const Ty* classTy, Node* at)
     {
       if (auto known = structsByType.find(classTy); known != structsByType.end())
-        return *known->second;
+        return checkedLayout(*known->second, classTy, at);
       const Ty* key = canonicalClass(classTy, at);
       auto it = structs.find(key);
       if (it != structs.end())
       {
         structsByType.emplace(classTy, &it->second);
-        return it->second;
+        return checkedLayout(it->second, classTy, at);
       }
+      try
+      {
+        return buildStruct(key, at);
+      }
+      catch (Unsupported&)
+      {
+        structs[key].failed = true;
+        throw;
+      }
+    }
+
+    StructInfo& checkedLayout(StructInfo& info, const Ty* classTy, Node* at)
+    {
+      if (info.failed)
+        unsupported(at, "the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed where it was first used");
+      return info;
+    }
+
+    // Lays out a class: bases first, then its data members; every member and base must be known
+    // (a guess would be a wrong layout that compiles).
+    StructInfo& buildStruct(const Ty* key, Node* at)
+    {
       ClassDecl* c = static_cast<ClassDecl*>(key->decl);
+      auto layoutError = [&](const std::string& why) { unsupported(at, "the layout of " + types.toString(key, &symbols) + ": " + why); };
+      // A member as written (`Tick lastCheck`), for the error naming what has no known type.
+      auto memberName = [&](Decl* m)
+      {
+        std::string name = m->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(m)->name.empty() ? sym(static_cast<VariableDecl*>(m)->name.last().symbol) : std::string("?");
+        if (!m->file || !m->file->tokens || m->endToken <= m->token || m->endToken > m->file->tokens->size())
+          return name;
+        const std::vector<Token>& toks = *m->file->tokens;
+        size_t from = toks[m->token].offset, to = toks[m->endToken - 1].offset + toks[m->endToken - 1].length;
+        std::string written;
+        for (char ch : m->file->text.substr(from, std::min<size_t>(to - from, 160)))
+          if (ch != '\n' && ch != '\r' && !(ch == ' ' && !written.empty() && written.back() == ' '))
+            written += ch == '\t' ? ' ' : ch;
+        return name + " (`" + written + "`)";
+      };
       TemplateArgs args = global.classArgsOf(key);
       if (c->keyword == Kw::union_)
       {
@@ -457,13 +495,11 @@ namespace
           info.fieldIndex[m] = 0;
           info.fieldDecls.push_back(m);
           if (!ft || !ft->isKnown() || types.isDependent(ft))
-            continue; // unknown union member: skip its size; known members set a minimum
+            layoutError("the member " + memberName(m) + " has an unknown type");
           if (m->kind == NodeKind::ClassDecl)
             info.anonymous.push_back({m, 0});
-          try {
-            size = std::max(size, sizeOf(ft, c));
-            align = std::max(align, alignOf(ft, c));
-          } catch (Unsupported&) {} // keep going with the size from other members
+          size = std::max(size, sizeOf(ft, at));
+          align = std::max(align, alignOf(ft, at));
         }
         info.fieldTypes.push_back(types.array(types.intType(uint8_t(align * 8)), uint32_t((size + align - 1) / align)));
         decls += info.name + " = type { " + llType(info.fieldTypes[0], c) + " }\n";
@@ -471,8 +507,6 @@ namespace
         info.complete = true;
         return structs[key];
       }
-      // If the class template doesn't have all its arguments (e.g. default args not resolved),
-      // build the struct anyway: fields whose types depend on missing args get 8-byte placeholders.
       StructInfo& info = structs[key];
       info.name = "%struct." + std::to_string(structs.size());
       // Bases first (resolved before deciding on the vtable pointer).
@@ -481,16 +515,17 @@ namespace
       {
         const Ty* bt = global.typeOfAstIn(b.type, c, args);
         if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
-          continue; // skip unresolvable base: the struct loses that base's fields but its own are still indexed
-        const Ty* baseKey = canonicalClass(bt, c);
-        try { structFor(baseKey, c); } catch (Unsupported&) { continue; }
+          layoutError("a base class whose type is unknown (" + (bt ? types.toString(bt, &symbols) : std::string("?")) + ")");
+        const Ty* baseKey = canonicalClass(bt, at);
+        structFor(baseKey, at);
         baseKeys.push_back(baseKey);
       }
       // Virtual methods of this class: declared virtual/override, or matching an inherited slot.
       bool primaryPolymorphic = !baseKeys.empty() && structs[baseKeys[0]].polymorphic;
       for (size_t i = 1; i < baseKeys.size(); ++i)
         if (structs[baseKeys[i]].polymorphic)
-          baseKeys.erase(baseKeys.begin() + i--); // skip secondary polymorphic bases rather than failing
+          layoutError("a second polymorphic base, " + types.toString(baseKeys[i], &symbols) +
+                      " (one vtable pointer per object: multiple inheritance of virtual functions is not implemented)");
       std::vector<std::string> keys;
       std::vector<FunctionDecl*> impls;
       std::vector<const Ty*> owners;
@@ -551,7 +586,7 @@ namespace
         {
           // Anonymous struct/union member: a field whose own members are reachable by name.
           const Ty* ft = types.classType(m, {});
-          try { structFor(ft, c); } catch (Unsupported&) {} // partial inner struct is OK: later fields still get indexed
+          structFor(ft, at);
           info.anonymous.push_back({m, uint32_t(info.fieldTypes.size())});
           info.fieldIndex[m] = uint32_t(info.fieldTypes.size());
           info.fieldDecls.push_back(m);
@@ -563,17 +598,7 @@ namespace
           continue;
         const Ty* ft = global.typeOfDeclIn(m, args);
         if (!ft || !ft->isKnown() || types.isDependent(ft))
-        {
-          // Unknown member type: insert an 8-byte placeholder so subsequent fields keep
-          // correct indices and bitfield runs reset. The layout will be approximate but
-          // functions accessing later fields can still be generated.
-          ft = types.array(types.intType(8), 8);
-          bitUnitIndex = -1;
-          info.fieldIndex[m] = uint32_t(info.fieldTypes.size());
-          info.fieldDecls.push_back(m);
-          info.fieldTypes.push_back(ft);
-          continue;
-        }
+          layoutError("the member " + memberName(m) + " has an unknown type");
         if (Expr* widthExpr = static_cast<VariableDecl*>(m)->bitfield)
         {
           // `unsigned level : 3;`: consecutive bit fields of one type share a storage unit of that
