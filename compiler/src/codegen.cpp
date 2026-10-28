@@ -6807,33 +6807,74 @@ namespace
         case NodeKind::FoldExpr:
         {
           auto* f = static_cast<FoldExpr*>(e);
-          Expr* pattern = f->lhs ? f->lhs : f->rhs;
-          if (!pattern)
-            unsupported(e, "an empty fold");
           P op = P(f->op);
+          // `(args op ...)` and `(args op ... op init)` fold to the right: E1 op (E2 op (... op init));
+          // `(... op args)` and `(init op ... op args)` to the left: ((init op E1) op E2) op ...
+          bool right = f->lhs && packIn(f->lhs);
+          Expr* pattern = right ? f->lhs : f->rhs;
+          Expr* init = right ? f->rhs : f->lhs;
+          if (!pattern || !packIn(pattern))
+            unsupported(e, "a fold expression that expands no parameter pack");
+          // Operands in evaluation order: the elements, with init last (right fold) or first (left).
+          auto eachOperand = [&](auto&& visit)
+          {
+            if (init && !right)
+              visit(init);
+            forEachPackElement(pattern, e, [&](size_t) { visit(pattern); });
+            if (init && right)
+              visit(init);
+          };
           if (op == P::Comma)
           {
-            forEachPackElement(pattern, e, [&](size_t)
+            eachOperand([&](Expr* x)
             {
-              rvalue(pattern);
+              rvalue(x);
               destroyTemps();
             });
             return {"", types.voidType()};
           }
-          std::optional<Value> acc;
-          forEachPackElement(pattern, e, [&](size_t)
+          if (op == P::AndAnd || op == P::OrOr)
           {
-            Value v = rvalue(pattern);
-            if (!acc)
-              acc = v;
-            else if (op == P::EqEq || op == P::NotEq || op == P::Less || op == P::LessEq || op == P::Greater || op == P::GreaterEq)
-              acc = compare(op, *acc, v, e);
-            else
-              acc = arithmetic(op, *acc, v, e);
-          });
-          if (!acc)
-            unsupported(e, "a fold over an empty pack");
-          return *acc;
+            // Short-circuit: each operand that decides the result ends the fold (an empty pack
+            // without init is true for &&, false for ||).
+            bool isAnd = op == P::AndAnd;
+            std::string endL = newLabel(isAnd ? "fold.and.end" : "fold.or.end");
+            std::string phi;
+            eachOperand([&](Expr* x)
+            {
+              size_t temps = statementTemps.size();
+              Value v = convert(rvalue(x), types.boolType(), e);
+              destroyTempsFrom(temps); // an operand runs only when the ones before did not decide
+              std::string next = newLabel("fold.next");
+              fn += "  br i1 " + v.text + ", label %" + (isAnd ? next : endL) + ", label %" + (isAnd ? endL : next) + "\n";
+              phi += std::string(phi.empty() ? "" : ", ") + "[ " + (isAnd ? "false" : "true") + ", %" + currentBlock + " ]";
+              startBlock(next);
+            });
+            phi += std::string(phi.empty() ? "" : ", ") + "[ " + (isAnd ? "true" : "false") + ", %" + currentBlock + " ]";
+            emitBranch(endL);
+            startBlock(endL);
+            std::string r = newTemp();
+            fn += "  " + r + " = phi i1 " + phi + "\n";
+            return {r, types.boolType()};
+          }
+          std::vector<Value> values;
+          eachOperand([&](Expr* x) { values.push_back(rvalue(x)); });
+          if (values.empty())
+            unsupported(e, "a fold over an empty pack without an initial value");
+          auto combine = [&](const Value& a, const Value& b)
+          {
+            if (op == P::EqEq || op == P::NotEq || op == P::Less || op == P::LessEq || op == P::Greater || op == P::GreaterEq)
+              return compare(op, a, b, e);
+            return arithmetic(op, a, b, e);
+          };
+          Value acc = right ? values.back() : values.front();
+          if (right)
+            for (size_t i = values.size() - 1; i-- > 0;)
+              acc = combine(values[i], acc);
+          else
+            for (size_t i = 1; i < values.size(); ++i)
+              acc = combine(acc, values[i]);
+          return acc;
         }
         case NodeKind::UnaryExpr: return unary(static_cast<UnaryExpr*>(e));
         case NodeKind::BinaryExpr: return binary(static_cast<BinaryExpr*>(e));

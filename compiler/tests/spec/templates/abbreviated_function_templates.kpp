@@ -1,6 +1,5 @@
 // spec: abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members`
 // found in the game's LuaPrototypeTemplate (get, getPtree, getWithQuality: 366 calls), LogisticGroupLogic (`auto&& isUsedBy`), StatisticsPackager (`const auto& counts`)
-// pending: codegen folds `(E || ... || init)` without its init and without short-circuiting (FoldExpr in rvalue)
 struct Prototype
 {
   int kind;

@@ -1,0 +1,23 @@
+// spec: fold expressions: the direction (a right fold of `-` is not a left one), an initial value on either side, && and || that stop at the first operand deciding the result, and empty packs
+// found in the game's LuaPrototypeTemplate::get (`(this->maybeGet(members) || ... || this->pushNil())`, 366 calls): the init was dropped and || had no short circuit
+bool note(int i, bool value)
+{
+  println("visit {}", i);
+  return value;
+}
+template<typename... Args> int rightMinus(Args... args) { return (args - ...); }
+template<typename... Args> int leftMinus(Args... args) { return (... - args); }
+template<typename... Args> int rightInit(Args... args) { return (args - ... - 100); }
+template<typename... Args> int leftInit(Args... args) { return (100 - ... - args); }
+template<typename... Args> bool anyTrue(Args... args) { return (note(args, args > 1) || ... || note(9, true)); }
+template<typename... Args> bool allTrue(Args... args) { return (note(args, args > 0) && ...); }
+int main()
+{
+  println("{} {}", rightMinus(10, 3, 2), leftMinus(10, 3, 2));
+  println("{} {}", rightInit(10, 3), leftInit(10, 3));
+  println("{}", anyTrue(1, 2, 3));
+  println("{}", anyTrue(0, 1));
+  println("{}", allTrue(1, 0, 5));
+  println("{}", allTrue());
+  return 0;
+}
