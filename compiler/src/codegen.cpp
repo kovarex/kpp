@@ -58,6 +58,7 @@ namespace
     std::unordered_map<Decl*, std::pair<uint32_t, uint32_t>> bitfields; // member -> (shift, width) inside its storage field
     bool complete = false;                    // every field is laid out (structFor returned it once)
     uint64_t size = 0, align = 0;             // computed on first use once complete (align 0: not yet)
+    bool sizing = false;                      // its size is being computed (a class that contains itself comes back here)
   };
   // The field index of a member, 0 when the layout has no such member.
   uint32_t fieldIndexOf(const StructInfo& info, Decl* member)
@@ -362,6 +363,14 @@ namespace
       StructInfo& info = structFor(t, at);
       if (info.align)
         return {info.size, info.align};
+      if (info.sizing)
+        unsupported(at, "the class " + types.toString(t, &symbols) + ", which contains itself (a member or base of its own type)");
+      struct Sizing
+      {
+        bool& flag;
+        Sizing(bool& flag) : flag(flag) { flag = true; }
+        ~Sizing() { flag = false; }
+      } sizing(info.sizing);
       uint64_t size = 0, align = 1;
       for (const Ty* f : info.fieldTypes)
       {
@@ -1204,6 +1213,16 @@ namespace
     }
 
     // Constructs an object of class type t at addr from constructor arguments.
+    // (class, argument) of the one-argument constructions under way: a constructor whose parameter
+    // needs the same conversion again would otherwise recurse until the stack runs out.
+    std::vector<std::pair<const Ty*, Expr*>> constructing;
+    struct ConstructingScope
+    {
+      std::vector<std::pair<const Ty*, Expr*>>& list;
+      ConstructingScope(std::vector<std::pair<const Ty*, Expr*>>& list, const Ty* t, Expr* arg) : list(list) { list.push_back({t, arg}); }
+      ~ConstructingScope() { list.pop_back(); }
+    };
+
     void constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at)
     {
       ClassDecl* c = classDef(t->decl, at);
@@ -1211,6 +1230,16 @@ namespace
       {
         defaultConstruct(addr, t, at);
         return;
+      }
+      std::optional<ConstructingScope> guard;
+      if (args.size() == 1)
+      {
+        const Ty* key = canonicalClass(t, at);
+        for (auto& [k, a] : constructing)
+          if (k == key && a == args[0])
+            unsupported(at, "converting " + (args[0]->ty ? types.toString(args[0]->ty, &symbols) : std::string("a value")) + " to " +
+                                types.toString(key, &symbols) + ": the constructor chosen needs the same conversion for its own parameter");
+        guard.emplace(constructing, key, args[0]);
       }
       if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
       {
@@ -4434,25 +4463,9 @@ namespace
         unsupported(at, "a conversion to an unknown type");
       if (from == to || types.unqualified(from) == types.unqualified(to))
         return {v.text, to, v.isTemporary};
-      // Unknown source type: treat as opaque pointer for conversions.
+      // A value whose type the checker did not find is no pointer to compare with null or pass on.
       if (!from->isKnown())
-      {
-        if (to->kind == TyKind::Bool)
-        {
-          std::string r = newTemp();
-          fn += "  " + r + " = icmp ne ptr " + v.text + ", null\n";
-          return {r, to};
-        }
-        if (to->kind == TyKind::Pointer || to->kind == TyKind::Nullptr)
-          return {v.text, to};
-        if (to->kind == TyKind::Int || to->kind == TyKind::Char)
-        {
-          std::string r = newTemp();
-          fn += "  " + r + " = ptrtoint ptr " + v.text + " to " + llType(to, at) + "\n";
-          return {r, to};
-        }
-        unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));
-      }
+        unsupported(at, "a conversion from a value of unknown type to " + types.toString(to, &symbols));
       auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? TyKind::Int : t->kind; };
       TyKind fk = kindOf(from), tk = kindOf(to);
       auto bitsOf = [&](const Ty* t) -> uint8_t { return t->kind == TyKind::Enum ? uint8_t(enumUnderlying(t->decl)->bits) : t->bits; };
@@ -9315,8 +9328,42 @@ namespace
   };
 }
 
+static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
+                              unsigned moduleCount);
+
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                            unsigned moduleCount)
+{
+#ifdef _WIN32
+  // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
+  // so it runs on a thread with a 1 GB stack, reserved and committed only as it is used.
+  struct Job
+  {
+    std::vector<std::unique_ptr<ParsedFile>>* files;
+    GlobalScope* global;
+    const SymbolTable* symbols;
+    bool debug;
+    unsigned moduleCount;
+    CodegenResult result;
+  } job{&files, &global, &symbols, debug, moduleCount, {}};
+  HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
+  {
+    auto* j = static_cast<Job*>(p);
+    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount);
+    return 0;
+  }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+  if (thread)
+  {
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    return std::move(job.result);
+  }
+#endif
+  return generate(files, global, symbols, debug, moduleCount);
+}
+
+static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
+                              unsigned moduleCount)
 {
   CodegenResult result;
   Emitter e(global, symbols, result);
@@ -9331,7 +9378,10 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
   std::vector<FunctionDecl*> functions;
   for (auto& file : files)
     e.collectFunctions(file->decls, functions);
-  // Helper: call emitFunction with SEH protection against stack overflow.
+  // emitFunction with the stack overflow caught. With a 1 GB stack an overflow means recursion
+  // without end; the fault may have struck inside the allocator, leaving the heap mid-update (a
+  // later allocation then spins forever), so nothing is allocated after it: the function's name
+  // goes out through a fixed buffer and the process ends.
   struct EmitCall { Emitter* e; FunctionDecl* f; const TemplateArgs* args; const Ty* classTy; const std::string* name; };
   auto safeEmit = [&](FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& name) {
     EmitCall call{&e, f, &args, classTy, &name};
@@ -9341,9 +9391,11 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
       c->e->emitFunction(c->f, *c->args, c->classTy, *c->name);
     }, &call))
     {
-      e.error(f, "codegen ran out of stack in " + (e.currentFunctionName.empty() ? e.qualifiedName(f) : e.currentFunctionName) +
-                     (e.currentRequestedBy.empty() ? "" : ", requested by " + e.currentRequestedBy) + " (skipped)");
-      e.resetFunctionState();
+      static char message[1024];
+      int n = snprintf(message, sizeof message, "codegen: out of stack (recursion without end) in %.900s\n", e.currentFunctionName.c_str());
+      DWORD written = 0;
+      WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, DWORD(n > 0 ? std::min(n, int(sizeof message) - 1) : 0), &written, nullptr);
+      TerminateProcess(GetCurrentProcess(), 3);
     }
 #else
     e.emitFunction(f, args, classTy, name);

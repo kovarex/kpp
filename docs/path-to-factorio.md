@@ -602,7 +602,14 @@ find /c /v "" kpp\full-errors.txt
 - The instantiation cap: there is no deliberate cap. When the code generator runs out of memory
   it stops the template worklist and writes one line, `codegen: out of memory after N template
   instantiations (M remaining)`. That line is included in the count; the errors the M remaining
-  instantiations would have produced are not. Report the figure together with N and M.
+  instantiations would have produced are not. Report the figure together with N and M. (Since
+  69ffce0 it does not happen: the "out of memory" was an out-of-bounds read, not memory.)
+- A run that ends with `codegen: out of stack (recursion without end) in F` stopped there: the
+  code generator recursed without end on F and the process ended (continuing after a stack
+  overflow can leave the heap broken, which is what made some runs spin for 400+ s until the
+  fix of 2026-10-28). The count of such a run is not a headline; report F instead.
+- The count moves by a few lines between identical runs (the parallel front end's instantiation
+  checks race on the AST's type fields): take two runs.
 
 Measured on master f688026 (2026-10-28): **12,750** codegen errors, out of memory after 88,868
 instantiations with 7,758 remaining; 12 s on the 9950X (90eab80, before the SAVING_TAG change:
@@ -623,6 +630,21 @@ src top level 949 -> 814; Util rises 1,722 -> 1,923 because code that failed to 
 resolve before now reaches the code generator. The `.first`/`.second` failures are not a
 missing Pair mapping (std::pair converts to the library's `Pair`): they are range-for loops with
 `auto` over dependent ranges in templates, spec `templates/range_for_auto_dependent` (pending).
+
+Silent fallbacks in the code generator turned into errors (2026-10-28), which raises the count;
+it is a correction, not a regression: those lines were code compiled to something other than
+what it says. On one frozen tree (master 5b17992's converter output), two to three runs each:
+**11,409 to 11,415 -> 11,537 to 11,540** (+125). Of that, 146 lines are `a conversion from a
+value of unknown type to T`: convert() used to treat a value of unknown type as a pointer, so a
+condition on it became `!= null` (always true for anything non-zero), an integer became its bits
+through `ptrtoint`, and a pointer passed it through. The rest of the change is the hang fix: two
+recursions without end that overflowed the stack (10 functions, each `ran out of stack`, and
+some runs then hung) are errors now: `converting A to B: the constructor chosen needs the same
+conversion for its own parameter` (5) and `the class String, which contains itself` (4, in
+NoiseExpressionStorage::getOrCreate; a layout with a member of its own type). Earlier in the day
+the same rule removed other silent answers without changing the count much: copy-initialisation
+from another class's prvalue (the result's bytes became the object), an inherited
+`operator bool` never found (the object's address compared with null instead).
 
 ### Error breakdown by root cause
 
