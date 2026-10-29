@@ -12077,6 +12077,17 @@ struct GlobalScope::Impl
       return f && (f->flags & DF_Default);
     }
 
+    // The `==` a defaulted operator<=> declares implicitly takes the class itself, so `alertType ==
+    // AlertType::ALERTS_COUNT` converts the enumerator to an AlertType (whatever `<=>` the class
+    // also has for it): whether lhs's class has it and rhs converts to the class.
+    bool implicitEquality(const Ty* lhs, const Ty* rhs, uint32_t token)
+    {
+      const Ty* cls = types.unqualified(types.stripRef(lhs));
+      if (!cls || cls->kind != TyKind::Class || !threeWayDefaulted(cls, cls, token))
+        return false;
+      return impl.conversionRank(rhs, types.lref(types.qualified(cls, true, false))) < Impl::NotViable;
+    }
+
     // The type of `lhs op rhs` (or `op lhs`) through an operator function, or for what every class
     // has; null when there is none (counted as unknown here only when countFailure). lhsOperand:
     // the left operand as an argument (an lvalue a reference), for a template's deduction.
@@ -12106,11 +12117,13 @@ struct GlobalScope::Impl
         {
           case P::NotEq:
             if (operatorFunction(P::EqEq, lhs, rhs, token, 2, subst, isMember) || threeWayDefaulted(lhs, rhs, token) ||
-                operatorFunction(P::EqEq, rhs, lhs, token, 2, subst, isMember))
+                operatorFunction(P::EqEq, rhs, lhs, token, 2, subst, isMember) || implicitEquality(lhs, rhs, token) ||
+                implicitEquality(rhs, lhs, token))
               return types.boolType(); // `3 != id` through Id::operator==(int): the operands reversed
             break;
           case P::EqEq:
-            if (threeWayDefaulted(lhs, rhs, token) || operatorFunction(P::EqEq, rhs, lhs, token, 2, subst, isMember))
+            if (threeWayDefaulted(lhs, rhs, token) || operatorFunction(P::EqEq, rhs, lhs, token, 2, subst, isMember) ||
+                implicitEquality(lhs, rhs, token) || implicitEquality(rhs, lhs, token))
               return types.boolType();
             break;
           case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:

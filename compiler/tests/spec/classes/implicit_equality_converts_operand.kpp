@@ -1,0 +1,21 @@
+// spec: the `==` a defaulted operator<=> declares implicitly takes the class itself, so `kind == Kind::COUNT` converts the enumerator to a Kind through its implicit constructor and compares the members, whatever other `<=>` the class has for the enumerator; `!=` and the reversed `Kind::COUNT == kind` likewise
+// factorio: AlertType's `constexpr strong_ordering operator<=>(const AlertType&) const = default;` beside `operator<=>(const Enum&)`, compared as `alertType == AlertType::ALERTS_COUNT` (CommandProcessor, AlertCenter), PipeConnectionType likewise (FluidBox)
+// pending: the resolver types the comparisons as bool; codegen finds no operator== for a Kind and an Enum ("Kind has no operator==")
+class Kind
+{
+public:
+  enum class Enum : uint8_t { A, B, COUNT };
+  using enum Enum;
+  constexpr Kind() : value(COUNT) {}
+  implicit constexpr Kind(Enum value) : value(value) {}
+  constexpr strong_ordering operator<=>(const Kind&) const = default;
+  constexpr strong_ordering operator<=>(const Enum& other) const { return this->value <=> other; }
+  Enum value;
+};
+int main()
+{
+  Kind k;
+  Kind b = Kind::B;
+  println("{} {} {} {} {}", k == Kind::COUNT, b == Kind::A, b != Kind::A, Kind::B == b, b < Kind::COUNT);
+  return 0;
+}
