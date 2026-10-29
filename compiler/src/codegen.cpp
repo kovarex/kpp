@@ -3169,7 +3169,9 @@ namespace
           if (def != f)
           {
             Decl* owner = global.owningClass(f);
-            Span<Decl*> classParams = owner ? owner->templateParams : Span<Decl*>{};
+            Span<Decl*> classParams; // a nested class's are the enclosing template's (`Outer<K, V>::Inner::load`)
+            for (Decl* o = owner; o && (o->kind == NodeKind::ClassDecl || o->kind == NodeKind::EnumDecl) && classParams.empty(); o = o->parent)
+              classParams = o->templateParams;
             size_t classCount = def->templateParams.size() > f->templateParams.size() ? def->templateParams.size() - f->templateParams.size() : 0;
             if (classCount == classParams.size() && classCount + f->templateParams.size() <= def->templateParams.size())
             {

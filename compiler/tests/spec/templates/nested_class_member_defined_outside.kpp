@@ -1,0 +1,34 @@
+// spec: a member of a class nested in a class template, defined outside both (`template<class K, class V> void Outer<K, V>::Inner::set(K key, V value)`), names the enclosing template's parameters anew: they take the instance's arguments, in its signature (matching the declaration) and in its body (`if constexpr (isSame<K, int>)`)
+// factorio: IDIndexedVectorConnector<IDType, ValueType>::Connector::loadFromItem (`if constexpr (isSame<IDType, AirbornePollutantID> || ...)`, 10 instances)
+template<class K, class V>
+struct Outer
+{
+  struct Inner
+  {
+    V stored{};
+    void set(K key, V value);
+    int load() const;
+  };
+  Inner inner;
+};
+template<class K, class V>
+void Outer<K, V>::Inner::set(K key, V value)
+{
+  this->stored = value + V(key);
+}
+template<class K, class V>
+int Outer<K, V>::Inner::load() const
+{
+  if constexpr (isSame<K, int> || isSame<K, char>)
+    return 1;
+  else
+    return 2;
+}
+int main()
+{
+  Outer<int, float> a;
+  Outer<double, float> b;
+  a.inner.set(2, 0.5f);
+  println("{} {} {}", a.inner.load(), b.inner.load(), a.inner.stored);
+  return 0;
+}

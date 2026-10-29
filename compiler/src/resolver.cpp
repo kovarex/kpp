@@ -4692,9 +4692,9 @@ struct GlobalScope::Impl
     // The definition names the class's parameters first (`template<typename T, int N> void
     // Ring<T, N>::push(...)`), then the member's own; the declaration inside the class has only
     // its own, the class's being in scope.
-    Span<Decl*> classParams;
+    Span<Decl*> classParams; // a nested class's are the enclosing template's (`Outer<K, V>::Inner::load`)
     if (f->parent && (f->parent->kind == NodeKind::ClassDecl || f->parent->kind == NodeKind::EnumDecl))
-      classParams = f->parent->templateParams;
+      classParams = effectiveParams(f->parent);
     if (candidate->templateParams.size() != classParams.size() + f->templateParams.size())
       return t;
     Subst s;
