@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**313 pass, 4 pending, 0 failing, 0 fixed** (317 snippets, 88.4 s).
+**314 pass, 4 pending, 0 failing, 0 fixed** (318 snippets, 33.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -113,6 +113,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/inherited_constructors_with_own.kpp` | `using Base::Base;` inherits the base's constructors next to the class's own ones, the default constructor included; the class's own constructors are preferred for the arguments they take | pass |  |  |
 | `classes/inherited_conversion_operator.kpp` | a conversion operator inherited from a base class, `operator bool` of BoolConstant<B>, converts the derived object (also in a condition and a switch) | pass |  |  |
 | `classes/inheriting_constructors_keep_base_name.kpp` | `using Base::Base;` (inheriting the base's constructors) introduces no member named Base: inside the derived class `Base::staticInit<Derived>()` still names the base class, and the inherited constructor builds the object | pass | the Lua control behaviours (`using LuaControlBehavior::LuaControlBehavior;` and `LuaControlBehavior::staticInitBaseControlBehaviorMembers<LuaAccumulatorControlBehavior>()`, 34 calls) |  |
+| `classes/inheriting_constructors_through_alias.kpp` | inheriting constructors through an alias of the base's injected name (`using super = Template; using super::super;` in a class deriving from Template<Proto, int>): super is the base instance, and `new Proto(7, nullptr)` runs the base's constructor | pass | the Lua prototype wrappers (`using super = LuaPrototypeTemplate; using super::super;` in LuaEntityPrototype and its siblings, 197 constructions) |  |
 | `classes/injected_name_of_base_class.kpp` | the injected class name of a base class: in a class deriving from `ui::ToolTip`, `ToolTip::defaultLabelStyle` names the base's static member without the namespace (as C++ makes a base's name a member of the derived class); a base template's name means the instantiation derived from | pass | ChartSearchItemTooltip : public agui::ToolTip (`this->addLabel(string, &ToolTip::defaultLabelStyle);`), FeaturedTechnologyGui, OpenableObjectWrapper |  |
 | `classes/interfaces.kpp` | abstract interfaces implemented by several classes, held through base pointers in containers | pass |  |  |
 | `classes/lambda_member_from_constructor_parameter.kpp` | a constructor that takes a lambda by value and initialises a member from it (`Holder(int base, F f) : base(base), f(f) {}`), then calls it | pass | ScopedCallback's constructor, the library's TransformView (transformView(range, lambda)), Function's constructor from a callable |  |
