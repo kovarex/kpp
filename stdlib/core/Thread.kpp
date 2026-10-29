@@ -520,10 +520,15 @@ struct ConditionVariable
   template<typename Clock, typename Dur>
   CvStatus waitUntil(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t)
   {
-    auto now = Clock::now();
-    if (now < t)
-      SleepConditionVariableSRW(&this->condition, &lock.mutex_->lock_, waitMilliseconds(t - now), 0);
-    return Clock::now() < t ? CvStatus::no_timeout : CvStatus::timeout;
+    for (;;)
+    {
+      auto now = Clock::now();
+      if (!(now < t))
+        return CvStatus::timeout;
+      if (SleepConditionVariableSRW(&this->condition, &lock.mutex_->lock_, waitMilliseconds(t - now), 0))
+        return CvStatus::no_timeout; // woken: by a notify, or spuriously
+      // The system's timer ended the wait, which can be a little before t on t's clock: the rest.
+    }
   }
   // Waits until ready() or until t has passed; returns ready() at the end.
   template<typename Clock, typename Dur, typename Predicate>
