@@ -6438,6 +6438,7 @@ struct GlobalScope::Impl
       const Ty* type = nullptr;
       Decl* decl = nullptr;
       const std::vector<Entry>* overloads = nullptr;
+      std::shared_ptr<std::vector<Entry>> merged; // what overloads points to when built here (a using-declaration's set joined)
       Subst subst;
       Why why = Why::None;
     };
@@ -6496,6 +6497,45 @@ struct GlobalScope::Impl
       }
       --instantiatedBaseDepth;
       return result;
+    }
+
+    // `using Vector2::save;` beside the class's own save overloads (l found in a class scope; t the
+    // class as the object or `this` has it, cls its scope): both sets as candidates, own first,
+    // with the arguments of the base instances the using-declarations reach in baseArgs; null when
+    // l has no such mix.
+    std::shared_ptr<std::vector<Entry>> withUsingOverloads(const Lookup& l, const Ty* t, Scope* cls, Subst& baseArgs)
+    {
+      if (!l.overloads || l.overloads->size() < 2 || !l.foundIn || l.foundIn->kind != ScopeKind::Class)
+        return nullptr;
+      auto isUsing = [](Decl* d) { return d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum; };
+      bool hasUsing = false, hasOwn = false;
+      for (const Entry& e : *l.overloads)
+      {
+        hasUsing = hasUsing || isUsing(e.decl);
+        hasOwn = hasOwn || (e.decl && e.decl->kind == NodeKind::FunctionDecl);
+      }
+      if (!hasUsing || !hasOwn)
+        return nullptr;
+      auto merged = std::make_shared<std::vector<Entry>>();
+      for (const Entry& e : *l.overloads)
+        if (e.decl && e.decl->kind == NodeKind::FunctionDecl)
+          merged->push_back(e);
+      for (const Entry& e : *l.overloads)
+      {
+        if (!isUsing(e.decl))
+          continue;
+        Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(e.decl)->name, l.foundIn, nullptr, 0);
+        if (target.overloads)
+          for (const Entry& te : *target.overloads)
+            if (te.decl && te.decl->kind == NodeKind::FunctionDecl)
+              merged->push_back(te);
+        if (t && cls && target.foundIn && target.foundIn != l.foundIn && target.foundIn->kind == ScopeKind::Class)
+          if (const Ty* base = instantiationOfBase(t, cls, target.foundIn, 0))
+            for (const Subst::Pair& p : impl.substFor(base).pairs)
+              if (!baseArgs.find(p.param))
+                baseArgs.pairs.push_back(p);
+      }
+      return merged;
     }
 
     MemberResult memberOf(const Ty* objectTy, uint32_t symbol, const QualifiedName* name, uint32_t token, bool countMissing = true)
@@ -6622,6 +6662,13 @@ struct GlobalScope::Impl
         }
         return r;
       }
+      Subst usingArgs;
+      std::shared_ptr<std::vector<Entry>> merged = withUsingOverloads(l, t, cls, usingArgs);
+      if (merged)
+      {
+        l.decl = merged->front().decl;
+        l.overloads = merged.get();
+      }
       if (l.decl && l.decl->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(l.decl)->isEnum)
       {
         // `using Base::f;` in the class: f means the base's overloads, as members of that base
@@ -6645,6 +6692,7 @@ struct GlobalScope::Impl
       }
       r.decl = l.decl;
       r.overloads = l.overloads;
+      r.merged = merged;
       const Ty* owner = t;
       if (l.foundIn && l.foundIn != cls && l.foundIn->kind == ScopeKind::Class)
         if (const Ty* base = foundInBase ? foundInBase : instantiationOfBase(t, cls, l.foundIn, 0))
@@ -6652,6 +6700,9 @@ struct GlobalScope::Impl
       r.subst = impl.substFor(owner);
       if (!r.subst.empty())
         instantiateClass(types.unqualified(owner));
+      for (const Subst::Pair& p : usingArgs.pairs)
+        if (!r.subst.find(p.param))
+          r.subst.pairs.push_back(p);
       if (l.found == Found::Dependent)
       {
         r.type = types.param(l.decl);
@@ -7166,12 +7217,24 @@ struct GlobalScope::Impl
             return callResultOfValue(t && t->kind == TyKind::Value && t->inner ? t->inner : t, c); // `func(a, b)`: a call through a constant parameter
           return t;
         }
+        // `save(t)` in a member of a class with `using Vector2::save;` beside its own save overloads.
+        Subst usingArgs;
+        std::shared_ptr<std::vector<Entry>> usingMerged;
+        if (n->name.parts.size() == 1 && l.found == Found::Member && l.foundIn && l.foundIn->kind == ScopeKind::Class)
+        {
+          const Ty* self = thisType && thisType->kind == TyKind::Pointer ? types.unqualified(thisType->inner) : nullptr;
+          if ((usingMerged = withUsingOverloads(l, self, self ? impl.classScopeOf(self) : nullptr, usingArgs)))
+          {
+            l.decl = usingMerged->front().decl;
+            l.overloads = usingMerged.get();
+          }
+        }
         Decl* d = l.decl;
         if (d && d->kind == NodeKind::FunctionDecl)
         {
           // `DamageTypeID::fromIndex(i)` with `using DamageTypeID = ID<DamageType, uint8_t>`: a static
           // member named through an instantiation has that instantiation's arguments.
-          Subst qualifier;
+          Subst qualifier = usingArgs;
           if (n->name.parts.size() > 1 && l.foundIn && l.foundIn->kind == ScopeKind::Class)
             qualifier = impl.qualifierSubst(n->name, ctx(), 0, l.foundIn);
           else if (n->name.parts.size() == 1 && l.found == Found::Member && activeSubst && l.foundIn && l.foundIn->kind == ScopeKind::Class &&
@@ -7179,7 +7242,9 @@ struct GlobalScope::Impl
           {
             // `construct(...)` in a member of UniquePointer<T>: the member of this instantiation (or of
             // the base it was found in), whose parameter types and constraints need T.
-            qualifier = impl.baseSubstForUnqualified(l, ctx(), 0);
+            for (const Subst::Pair& p : impl.baseSubstForUnqualified(l, ctx(), 0).pairs)
+              if (!qualifier.find(p.param))
+                qualifier.pairs.push_back(p);
             // With the enclosing instantiation's arguments, except a candidate's own parameters,
             // which the call deduces afresh (a member template calling itself).
             auto ownOfCandidate = [&](Decl* param)

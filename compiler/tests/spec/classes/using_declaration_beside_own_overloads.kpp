@@ -1,0 +1,44 @@
+// spec: a using-declaration of a base's member functions beside the class's own overloads of the name (`using Vec2::save;` with `save(Tree&)` and `save(Tree&, const String&)`) makes both sets candidates, the base's with the base instance's arguments, for member calls and for unqualified calls inside the class
+// factorio: Vector2D (`using Vector2::save;` beside save(PropertyTree&) and save(PropertyTree&, const String&)), saved by every prototype that holds one (18 calls)
+struct Serialiser { int n = 0; };
+struct Tree { int n = 0; };
+template<typename T, class V>
+struct Vec2
+{
+  T x{};
+  void save(Serialiser& output) const { output.n += 1; }
+};
+struct Vec2D : public Vec2<double, Vec2D>
+{
+  using Vec2::Vec2;
+  using Vec2::save;
+  void save(Tree& output) const { output.n += 10; }
+  void save(Tree& output, const String& key) const { output.n += int(key.size()); }
+  void saveBoth(Tree& t, Serialiser& s) const
+  {
+    save(t);
+    save(s);
+  }
+};
+struct Spec
+{
+  Vec2D center;
+  void save(Tree& tree, Serialiser& s) const
+  {
+    this->center.save(tree, "center");
+    this->center.save(tree);
+    this->center.save(s);
+  }
+};
+int main()
+{
+  Tree t;
+  Serialiser s;
+  Spec spec;
+  spec.save(t, s);
+  Tree t2;
+  Serialiser s2;
+  spec.center.saveBoth(t2, s2);
+  println("{} {} {} {}", t.n, s.n, t2.n, s2.n);
+  return 0;
+}
