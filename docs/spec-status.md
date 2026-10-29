@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**672 pass, 3 pending, 0 failing, 0 fixed** (675 snippets, 20.3 s).
+**674 pass, 3 pending, 0 failing, 0 fixed** (677 snippets, 34.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -599,6 +599,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `library/hash_map_hasher.kpp` | HashMap and HashSet with a hasher and a key equality argument (std::unordered_map<K, V, Hash, KeyEqual>), the default Hash<K> through hashOf for doubles, enums and SharedPtr keys, and FastHashMap with the same parameters | pass | 6 unordered containers with a hasher (RailLocation::Hasher, CoordinateHash, NoiseRegisterIndexHash), keys of type double, enum and shared_ptr |  |
 | `library/hash_map_iterator_after_growth.kpp` | a HashMap or HashSet iterator still reaches its entry after the table grows: `auto [it, created] = memo.try_emplace(n); it->second = compute();` where compute inserts more entries (std::unordered_map's iterators are its nodes, and code relies on it) | pass | NoiseProgramBuilder::compileExpression's `auto [it, created] = this->compiledExpressions.try_emplace(&expression); if (created) it->second = expression.compile(*this);`, whose compile compiles the subexpressions into the same map: once it grew, `it` read the freed slot array, and the compiled constants were garbage ("Unknown enum value: 5" while loading the main menu's map) |  |
 | `library/hash_map_set.kpp` | HashMap and HashSet (std::unordered_map/set): insert, find, operator[], erase, iteration, custom key hash | pass | 47 unordered_map, 19 unordered_set (and 827 std::map, 641 std::set) |  |
+| `library/in_file_stream_ignore.kpp` | InFileStream's ignore(count, delimiter) skips bytes through the first delimiter, or count of them (std::istream::ignore), and getline reads on from there | pass | the tests' ForkLogic.cpp merges the forks' XML reports: `in.ignore(std::numeric_limits<std::streamsize>::max(), '>')` past `<?xml version="1.0"?>`, then `std::getline(in, buffer, '>')` |  |
 | `library/initializer_list.kpp` | InitializerList parameters and brace lists as arguments | pass | 53 std::initializer_list uses in 33 files |  |
 | `library/initializer_list_constructor.kpp` | a constructor taking InitializerList, called with a brace list | pass |  |  |
 | `library/less_comparator.kpp` | Less<T> and the transparent Less<> (std::less<>) as comparator objects; `Name<>` written with empty brackets takes every default | pass |  |  |
@@ -643,6 +644,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `library/unique_array_from_new.kpp` | UniqueArray takes over an array made by `new T[n]` (std::unique_ptr<T[]>(new T[n])) and gives it back to delete[], which destroys every element, the last first: at its end, at reset(new array) (after taking the new one), at `= nullptr`; one it made (makeUniqueArray) is laid out as new T[n] makes it, so after release() delete[] destroys it too | pass | Inventory's `UniqueArray<ItemStack> newData(new ItemStack[newCapacity])`, Noise's `UniqueArray<float> modifiedX(new float[vectorSize])`, MemoryBitmapData's `bitmapData.reset(new uint8_t[size])`, 30 such uses |  |
 | `library/unique_ptr.kpp` | UniquePtr (std::unique_ptr): makeUnique, move, release/reset, polymorphic delete, a custom deleter called on the object (never on null, not on release; moved and swapped with it), UniqueArray, makeUniqueArrayForOverwrite (std::make_unique_for_overwrite<T[]>) | pass | 3820 uses in 1049 files |  |
 | `library/unique_ptr_conversion.kpp` | UniquePtr<Base> from UniquePtr<Derived> (constructor, assignment, argument), and from nullptr | pass | Agui hands derived widgets over as UniquePtr<Widget> (ValueToWidget::makeCollapsibleValue(move(table)), 335 calls) |  |
+| `library/variant_free_functions_by_type.kpp` | holdsAlternative<T>(u), get<T>(u) and getIf<T>(&u) by type on a converted std::variant (a typed union with the converter's holds<T>, get<T> and getIf<T>), beside get<I> of a Tuple and a Pair by index | pass | the tests' TestSegmentedUnit, `CHECK_EQUAL(std::get<SegmentedUnitAI::Attacking>(ai.getState()).target.get(), belt)` and std::holds_alternative on the AI's state, in test bodies the converter does not parse (UnitTest++'s macros make them) |  |
 | `library/vector.kpp` | Vector (std::vector): push/emplace, index, erase, insert, iteration, nesting, moves, sort | pass | 5225 uses in 1662 files |  |
 | `library/vector_brace_init.kpp` | Vector from a brace list | pass | common for constant tables (std::vector<T> v = {...}) |  |
 | `library/vector_equality.kpp` | two Vectors are equal when they have the same length and equal elements (`==` and `!=`) | pass |  |  |
