@@ -8241,6 +8241,37 @@ struct GlobalScope::Impl
       }
   }
 
+  // The class whose own non-static data members `auto [a, b] = e` binds for class type t: t, or
+  // the one base (direct or not) that declares them when t declares none, as C++ has it (Vector2D's
+  // x and y in its base Vector2<double, Vector2D>); null when no class or several do.
+  const Ty* bindingMembersClass(const Ty* t, int depth = 0)
+  {
+    t = types.unqualified(types.stripRef(t));
+    Scope* cs = classScopeOf(t);
+    if (!cs || !cs->owner || cs->owner->kind != NodeKind::ClassDecl || depth > 16)
+      return nullptr;
+    for (Decl* m : static_cast<ClassDecl*>(cs->owner)->members)
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
+        return t;
+    Subst own = substFor(t);
+    LocalStack params;
+    for (Decl* p : cs->templateParams)
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    pushEnclosingTemplateParams(cs->owner->parent, params);
+    ParsedFile* file = cs->owner->file;
+    TypeContext ctx{cs->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+    const Ty* found = nullptr;
+    for (Type* b : cs->baseTypes)
+      for (const Ty* bt : baseInstances(b, ctx, depth + 1))
+        if (const Ty* holder = bt && bt->kind == TyKind::Class ? bindingMembersClass(bt, depth + 1) : nullptr)
+        {
+          if (found)
+            return nullptr; // members in two bases: no binding
+          found = holder;
+        }
+    return found;
+  }
+
   // The classes a base written as b names under ctx: itself, or each element of the pack a base
   // like `Ts...` expands to (`struct Overload : Ts...` with Ts = (F, G) has the bases F and G).
   std::vector<const Ty*> baseInstances(Type* b, const TypeContext& ctx, int depth)
@@ -12637,7 +12668,9 @@ struct GlobalScope::Impl
         return object; // the element of a range that depends on a template parameter
       if (object->kind != TyKind::Class)
         return unknown(Why::Unsupported);
-      Scope* cs = impl.classScopeOf(object);
+      // The class declaring the members: the object's, or the base all of them are in.
+      const Ty* holder = impl.bindingMembersClass(object);
+      Scope* cs = holder ? impl.classScopeOf(holder) : nullptr;
       if (!cs || !cs->owner || cs->owner->kind != NodeKind::ClassDecl)
         return unknown(Why::Unsupported);
       size_t seen = 0;
@@ -12647,8 +12680,8 @@ struct GlobalScope::Impl
           continue;
         if (seen++ == index)
         {
-          Subst s = object->args.empty() ? Subst{} : impl.substFor(object);
-          const Ty* mt = impl.declaredTypeOf(m, object->args.empty() ? activeSubst : &s, 0);
+          Subst s = holder->args.empty() ? Subst{} : impl.substFor(holder);
+          const Ty* mt = impl.declaredTypeOf(m, holder->args.empty() ? activeSubst : &s, 0);
           return mt && isConst ? types.qualified(mt, true, false) : mt;
         }
       }
