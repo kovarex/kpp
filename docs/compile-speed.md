@@ -78,6 +78,13 @@ instance walk, and diffing a `-j 1` run against loaded `-j 32` runs:
   total (11.2 M "expressions inside instantiations" were 4.57 M). Fixed: each instance's counts go
   to one total, once. "First seen at" places and the reports' ties are ordered by place and name
   (symbol ids depend on which thread lexed what).
+- **Uses of a global `auto` constant whose initializer does not type** (Lua's `const auto
+  LUAL_BUFFERSIZE = BUFSIZ;` where BUFSIZ's import failed): a use read the initializer's type when
+  the constant's own file had walked it and deduced on the spot when not, so the use was counted
+  as "unknown because auto" or not by the order (the types were unknown both ways). Fixed: only a
+  known initializer type counts as walked; a declared type is cached only when known and
+  auto-free (an unknown one could come from the depth limit of whoever asked first); a failed
+  deduction is counted once, by the declaration's own file's walk.
 - **Types interned.** The number of distinct types interned still differs by one or two: paths
   that are equivalent but taken in another order intern different intermediate types. It is a
   cache's size, so the determinism check leaves that line out.

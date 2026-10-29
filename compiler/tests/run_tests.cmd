@@ -28,9 +28,11 @@ for %%f in (tests\run\*.kpp) do (
 )
 echo %PASS% passed, %FAIL% failed
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
-rem Reported, not yet failing the run: the converted game's front end still differs in one count.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
-if errorlevel 1 echo WARN determinism: the output depends on the thread count (not counted as a failure yet)
+if errorlevel 1 (
+  echo FAIL determinism: the output depends on the thread count
+  set /a FAIL+=1
+)
 if %FAIL% neq 0 exit /b 1
 rem (Explicitly: the batch file's exit code would otherwise be the determinism check's.)
 exit /b 0

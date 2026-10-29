@@ -10096,7 +10096,10 @@ struct GlobalScope::Impl
       if (const Ty* cached = d->cachedType.load(std::memory_order_acquire))
         return cached;
     const Ty* result = computeDeclaredType(d, subst, depth);
-    if (useCache && result->kind != TyKind::Auto)
+    // Only a known type, auto-free: an unknown one may come from the depth limit of whoever asked
+    // first (or a deduction not possible yet), and kept it would answer every later asker, so
+    // later uses were typed or not by which thread asked first.
+    if (useCache && result->isKnown() && !containsAuto(result))
       d->cachedType.store(result, std::memory_order_release);
     return result;
   }
@@ -10227,7 +10230,9 @@ struct GlobalScope::Impl
             if (const Ty* deduced = deduceAuto(t, init); deduced && deduced->isKnown() && !containsAuto(deduced))
               return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
         }
-        if (containsAuto(t) && v->init && !v->init->ty && v->init->kind != NodeKind::BraceInitExpr &&
+        // (Also when its own file's walk typed the initializer as unknown: that walk came before
+        // some uses and after others, so the uses saw it or this deduction by the threads' order.)
+        if (containsAuto(t) && v->init && (!v->init->ty || !v->init->ty->isKnown()) && v->init->kind != NodeKind::BraceInitExpr &&
             (!subst || subst->empty() || !v->parent || v->parent->kind == NodeKind::NamespaceDecl) && !(v->parent && v->parent->kind == NodeKind::FunctionDecl) && !hasLambda(v->init))
         {
           // `const auto CONTEXT_FULL = (CONTEXT_CONTROL | ...);` naming `const auto` globals the
@@ -13692,7 +13697,9 @@ struct GlobalScope::Impl
             auto* v = static_cast<VariableDecl*>(d);
             if (const Ty* deduced = locals.deducedTypeOf(v))
               return deduced; // a local (or range-for variable) as this walk deduced it
-            if (v->init && v->init->ty && v->init->kind != NodeKind::BraceInitExpr)
+            // (Only a known initializer type: an unknown one is there or not by whether the
+            // variable's own walk came first, and the use was then counted as auto's or not.)
+            if (v->init && v->init->ty && v->init->ty->isKnown() && v->init->kind != NodeKind::BraceInitExpr)
               return impl.deduceAuto(t, v->init->ty);
             return unknown(Why::Auto);
           }
@@ -16199,8 +16206,8 @@ struct GlobalScope::Impl
               if (!probesSharedNodes())
                 v->cachedType.store(deduced, std::memory_order_release);
             }
-            else
-              ++stats.unknownAuto;
+            else if ((activeSubst && !activeSubst->empty()) || !d->file || d->file->index == stats.fileIndex)
+              ++stats.unknownAuto; // once, by its own file's walk (or its instance's): a global walked for another file's statistics may come before or not
           }
           break;
         }

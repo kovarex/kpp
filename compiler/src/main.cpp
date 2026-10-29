@@ -1024,12 +1024,12 @@ namespace
       {
         auto line = [&](const std::string& what, const ResolveStats& s)
         {
-          fprintf(f, "%s types %llu/%llu/%llu names %llu/%llu/%llu/%llu/%llu exprs %llu/%llu/%llu calls %llu/%llu\n", what.c_str(),
+          fprintf(f, "%s types %llu/%llu/%llu names %llu/%llu/%llu/%llu/%llu exprs %llu/%llu/%llu calls %llu/%llu auto %llu\n", what.c_str(),
                   (unsigned long long)s.typesResolved, (unsigned long long)s.typesDependent, (unsigned long long)s.typesUnresolved,
                   (unsigned long long)s.namesLocal, (unsigned long long)s.namesMember, (unsigned long long)s.namesGlobal,
                   (unsigned long long)s.namesDependent, (unsigned long long)s.namesUnresolved, (unsigned long long)s.exprsTyped,
                   (unsigned long long)s.exprsDependent, (unsigned long long)s.exprsUnknown, (unsigned long long)s.callsResolved,
-                  (unsigned long long)s.callsAmbiguousArity);
+                  (unsigned long long)s.callsAmbiguousArity, (unsigned long long)s.unknownAuto);
         };
         for (size_t i = 0; i < stats.size(); ++i)
           line(files[i].path.string(), stats[i]);
