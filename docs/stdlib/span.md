@@ -1,0 +1,30 @@
+# Span<T, Extent>
+
+What `std::span` converts to: a view of contiguous elements, a pointer and a count. A Span does
+not own its elements; they must outlive it, and adding to or removing from the Vector it views
+invalidates it as it invalidates the Vector's pointers. `Span<const T>` views elements it may not
+change.
+
+`Extent` is the count when it is fixed (`std::span<T, 3>` is `Span<T, 3>`), or `dynamicExtent`
+(std::dynamic_extent, the default) for a span whose count is known only when the program runs.
+`Span<T, N>::extent` is N.
+
+Members:
+- `Span()`: views nothing (a fixed extent's count stays its extent).
+- `Span(T* items, int count)`, `Span(T* first, T* last)`: those elements.
+- From a Vector, an Array, a plain array (`T[N]`) or a Subrange of pointers whose elements convert
+  to T as pointers (U to const U, a derived class to a base): implicit for a span of any length;
+  for a fixed extent, explicit from a Vector or a Subrange (whose count must be the extent), and
+  only from an Array or a plain array of that count.
+- From another Span (of U to const U, or of another extent): implicit when the count is sure to
+  fit (to any length, or between the same fixed extent), explicit from a span of any length to a
+  fixed extent.
+- `size()`, `size_bytes()`, `empty()`; `operator[](i)`, `data()`, `begin()`, `end()` (pointers),
+  `front()`, `back()`. Accessing an element out of range is a program error, not checked.
+- `subspan(offset, count)`, `subspan(offset)`, `first(count)`, `last(count)`: Spans of any length
+  over a part.
+- `element_type`, `value_type`: T; `size_type`: int; `iterator`, `pointer`: T*.
+
+*Differences from C++*: the count is an int; a Span of a fixed extent stores its count like any
+other (two words where C++ makes it one); the subspan, first and last that take their counts as
+template arguments are not provided.

@@ -76,9 +76,6 @@ struct Vector
   int capacity() const { return this->allocated; }
   T* data() { return this->items; }
   const T* data() const { return this->items; }
-  // A Vector is a Span of its elements (what passing a std::vector to a std::span parameter does).
-  operator Span<T>() { return Span<T>(this->items, this->length); }
-  operator Span<const T>() const { return Span<const T>(this->items, this->length); }
   bool empty() const { return this->length == 0; }
   T& operator[](int index) { return this->items[index]; }
   const T& operator[](int index) const { return this->items[index]; }

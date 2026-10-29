@@ -42,8 +42,6 @@ struct Array
   const T* end() const { return this->items + N; }
   T& front() { return this->items[0]; }
   T& back() { return this->items[N - 1]; }
-  operator Span<T>() { return Span<T>(this->items, N); }
-  operator Span<const T>() const { return Span<const T>(this->items, N); }
   void fill(const T& value)
   {
     for (int i = 0; i < N; ++i)
@@ -58,14 +56,21 @@ struct Array
   }
 };
 
+// The extent of a Span whose length is known only when the program runs (std::dynamic_extent).
+constexpr int dynamicExtent = -1;
+
 // A view of contiguous elements (what std::span converts to): a pointer and a count, over an
-// array, a Vector, an Array or a String's characters.
-template<typename T>
+// array, a Vector, an Array, a Subrange of pointers or another Span. Extent is the count when it
+// is fixed (std::span<T, N>), dynamicExtent otherwise. Specified in docs/stdlib/span.md.
+template<typename T, int Extent = dynamicExtent>
 struct Span
 {
-  T* items = nullptr;
-  int length = 0;
+  static constexpr int extent = Extent;
 
+  T* items = nullptr;
+  int length = Extent == dynamicExtent ? 0 : Extent;
+
+  using element_type = T;
   using iterator = T*;
   using value_type = T;
   using size_type = int;
@@ -78,11 +83,36 @@ struct Span
   Span() {}
   Span(T* items, int length) : items(items), length(length) {}
   Span(T* first, T* last) : items(first), length(int(last - first)) {}
-  implicit Span(Vector<T>& values) : items(values.items), length(values.length) {}
-  template<int N>
+  // From a Vector or an Array, a plain array, a Subrange of pointers: implicit for a span of any
+  // length, explicit for a fixed extent (std::span's range constructor), whose count the source's
+  // must be (an Array's and a plain array's of a fixed extent only that count).
+  template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
+  implicit Span(Vector<U>& values) : items(values.items), length(values.length) {}
+  template<typename U> requires (Extent == dynamicExtent && isConvertible<const U*, T*>)
+  implicit Span(const Vector<U>& values) : items(values.items), length(values.length) {}
+  template<typename U> requires (Extent != dynamicExtent && isConvertible<U*, T*>)
+  explicit Span(Vector<U>& values) : items(values.items), length(values.length) {}
+  template<typename U> requires (Extent != dynamicExtent && isConvertible<const U*, T*>)
+  explicit Span(const Vector<U>& values) : items(values.items), length(values.length) {}
+  template<typename U, int N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<U*, T*>)
+  implicit Span(Array<U, N>& values) : items(values.items), length(N) {}
+  template<typename U, int N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<const U*, T*>)
+  implicit Span(const Array<U, N>& values) : items(values.items), length(N) {}
+  template<int N> requires (Extent == dynamicExtent || N == Extent)
   implicit Span(T (&a)[N]) : items(a), length(N) {}
+  template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
+  implicit Span(const Subrange<U*>& range) : items(range.first), length(int(range.last - range.first)) {}
+  template<typename U> requires (Extent != dynamicExtent && isConvertible<U*, T*>)
+  explicit Span(const Subrange<U*>& range) : items(range.first), length(int(range.last - range.first)) {}
+  // From a span of other elements (T const) or another extent: implicit when the length is sure
+  // to fit, explicit from a span of any length to a fixed extent.
+  template<typename U, int N> requires (!(isSame<U, T> && N == Extent) && isConvertible<U*, T*> && (Extent == dynamicExtent || N == Extent))
+  implicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
+  template<typename U, int N> requires (Extent != dynamicExtent && N == dynamicExtent && isConvertible<U*, T*>)
+  explicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
 
   int size() const { return this->length; }
+  int size_bytes() const { return this->length * int(sizeof(T)); }
   bool empty() const { return this->length == 0; }
   T& operator[](int index) const { return this->items[index]; }
   T* data() const { return this->items; }
