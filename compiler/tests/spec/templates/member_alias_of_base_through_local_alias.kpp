@@ -1,0 +1,56 @@
+// spec: a member alias declared in a class template base (`using IDType = IDTypeParameter;` in Prototype<IDTypeParameter>) named through a local alias of a dependent type in a generic lambda (`using PrototypeType = ListType::ThePrototypeType; using IDType = PrototypeType::IDType;`): the alias as the base's instance has it, in the lambda's types, its calls' template arguments and the qualifiers it writes
+// factorio: ScopedRemovalMigration::typeToLogicMapping (MigrationHelpers::addLogicFunction<IDType>) and GlobalContext::postPrototypesConstructedSetup (InstanceLoader<IDType>::instance()), over every prototype list
+// pending: the alias is typed without the base's arguments, so the function template is instantiated with the base's own parameter (`addLogicFunction<IDTypeParameter>`, "a local of unknown type"); owner: the templates thread (member types through local aliases)
+template <class IDTypeParameter>
+class Prototype
+{
+public:
+  using IDType = IDTypeParameter;
+};
+struct ItemID
+{
+  int value = 7;
+};
+class ItemPrototype : public Prototype<ItemID>
+{
+};
+template <class P>
+struct PrototypeList
+{
+  using ThePrototypeType = P;
+};
+struct Lists
+{
+  template <class F>
+  static void forEach(F f) { f(PrototypeList<ItemPrototype>()); }
+};
+template <class IDType>
+int describe()
+{
+  IDType id = IDType();
+  return id.value;
+}
+template <class T>
+struct Loader
+{
+  T item;
+  static Loader& instance()
+  {
+    static Loader loader;
+    return loader;
+  }
+};
+int main()
+{
+  int result = 0;
+  Lists::forEach([&result]<class ListType>(ListType)
+  {
+    using PrototypeType = ListType::ThePrototypeType;
+    using IDType = PrototypeType::IDType;
+    IDType local;
+    auto& loader = Loader<IDType>::instance();
+    result = describe<IDType>() * 100 + local.value * 10 + loader.item.value;
+  });
+  println("{}", result);
+  return 0;
+}
