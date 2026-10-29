@@ -510,6 +510,25 @@ struct RbTree
     return this->link(node, parent, asLeft);
   }
 
+  // A unique key's entry constructed in its node from the arguments, std::map::emplace's order:
+  // built first, then linked when no entry has an equivalent key, destroyed again when one has, so
+  // the entry is never copied or moved (BuildingRenderer's nodes, whose base deletes its copy).
+  template<typename... Args>
+  Pair<RbIterator<E>, bool> emplaceUnique(Args&&... args)
+  {
+    RbNode<E>* node = this->newNode(forward<Args>(args)...);
+    RbIterator<E> at = this->find(RbTree::keyOf(node));
+    if (at != this->end())
+    {
+      this->destroyNode(node);
+      return Pair<RbIterator<E>, bool>(at, false);
+    }
+    RbNodeBase* parent;
+    bool asLeft;
+    this->equalPosition(RbTree::keyOf(node), parent, asLeft);
+    return Pair<RbIterator<E>, bool>(this->link(node, parent, asLeft), true);
+  }
+
   // Where insertEqual links a node with key: under parent, on its left or right.
   void equalPosition(const K& key, RbNodeBase*& parent, bool& asLeft) const
   {
@@ -883,7 +902,7 @@ struct Map
   }
   // std::map::emplace: the entry built from the arguments, unless its key is there already.
   template<typename... Args>
-  Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
+  Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
   // std::map::try_emplace: builds the value from the arguments, in its node, only when the key is new.
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)
@@ -1094,7 +1113,7 @@ struct Set
     return Pair<RbIterator<T>, bool>(this->tree.insertEqual(move(value)), true);
   }
   template<typename... Args>
-  Pair<RbIterator<T>, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
+  Pair<RbIterator<T>, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
   // The number of values removed (0 or 1).
   int erase(const T& value)
   {
@@ -1272,7 +1291,7 @@ struct MultiMap
   RbIterator<Pair<K, V>> insert(const Pair<K, V>& entry) { return this->tree.insertEqual(Pair<K, V>(entry)); }
   RbIterator<Pair<K, V>> insert(Pair<K, V>&& entry) { return this->tree.insertEqual(move(entry)); }
   template<typename... Args>
-  RbIterator<Pair<K, V>> emplace(Args&&... args) { return this->tree.insertEqual(Pair<K, V>(forward<Args>(args)...)); }
+  RbIterator<Pair<K, V>> emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
   RbIterator<Pair<K, V>> insert(const K& key, const V& value) { return this->tree.insertEqual(Pair<K, V>(key, value)); }
   // Removes every entry with key; returns how many.
   int erase(const K& key)
@@ -1436,6 +1455,8 @@ struct MultiSet
 
   RbIterator<T> insert(const T& value) { return this->tree.insertEqual(T(value)); }
   RbIterator<T> insert(T&& value) { return this->tree.insertEqual(move(value)); }
+  template<typename... Args>
+  RbIterator<T> emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
   // Removes every value equal to value; returns how many.
   int erase(const T& value)
   {

@@ -1,0 +1,39 @@
+// spec: Map, Set and MultiMap's emplace(args...) build the entry in its node from the arguments, so a value that can be neither copied nor moved is stored; an entry whose key is there already is destroyed again, and the existing one is returned
+// factorio: BuildingRenderer's drawTrainStopHelper, `nodesStorage.emplace(currentLocator, currentLocator)` into a std::map<RailWithDirection, RailNode>, RailNode deriving MinHeap<RailNode>::ItemBase, whose copy constructor is deleted
+int alive = 0;
+class ItemBase
+{
+public:
+  ItemBase() { ++alive; }
+  ItemBase(const ItemBase&) = delete;
+  ItemBase& operator=(const ItemBase&) = delete;
+  ~ItemBase() { --alive; }
+};
+class RailNode : public ItemBase
+{
+public:
+  explicit RailNode(int rail) : rail(rail) {}
+  int rail;
+};
+struct Pinned
+{
+  explicit Pinned(int v) : v(v) {}
+  Pinned(const Pinned&) = delete;
+  bool operator<(const Pinned& other) const { return this->v < other.v; }
+  int v;
+};
+int main()
+{
+  Map<int, RailNode> nodes;
+  auto [first, added] = nodes.emplace(3, 30);
+  auto [again, addedAgain] = nodes.emplace(3, 31);
+  nodes.emplace(1, 10);
+  Set<Pinned> pinned;
+  pinned.emplace(5);
+  bool second = pinned.emplace(5).second;
+  MultiMap<int, RailNode> multi;
+  multi.emplace(2, 20);
+  multi.emplace(2, 21);
+  println("{} {} {} {} {} {} {} {}", first->second.rail, added, again->second.rail, addedAgain, nodes.size(), second, multi.size(), alive);
+  return 0;
+}
