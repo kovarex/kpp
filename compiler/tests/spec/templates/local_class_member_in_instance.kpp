@@ -1,0 +1,29 @@
+// spec: a class declared in a function template's body has member functions per instance (`ToCall::collect`, a static member returning a Vector of the local class), emitted with the instance that calls them
+// factorio: Notifiable::dispatch<Func>, whose local class ToCall collects, sorts and dispatches the targeters' notifiables (9 instances)
+// pending: the code generator emits no ToCall::collect for the instance (clang: use of undefined value '@ToCall::collect(int32)')
+template<typename Func>
+int dispatch(int count, Func fn)
+{
+  struct ToCall
+  {
+    int item;
+    int order;
+    bool operator<(const ToCall& other) const { return this->order < other.order; }
+    static Vector<ToCall> collect(int count)
+    {
+      Vector<ToCall> result;
+      for (int i = 0; i < count; ++i)
+        result.push_back(ToCall{i, count - i});
+      return result;
+    }
+  };
+  int total = 0;
+  for (ToCall& toCall : ToCall::collect(count))
+    total += fn(toCall.item, toCall.order);
+  return total;
+}
+int main()
+{
+  println("{}", dispatch(3, [](int item, int order) { return item * 10 + order; }));
+  return 0;
+}

@@ -1,0 +1,38 @@
+// spec: a range-for variable whose declared type is a class declared in the function itself (`for (ToCall& toCall : calls)`), in a plain function and in a function template's instance
+// factorio: Notifiable::dispatch<Func>, whose local class ToCall is collected, sorted and iterated (its static member function there: templates/local_class_member_in_instance)
+template<typename Func>
+int dispatch(int count, Func fn)
+{
+  struct ToCall
+  {
+    int item;
+    int order;
+  };
+  Vector<ToCall> calls;
+  for (int i = 0; i < count; ++i)
+    calls.push_back(ToCall{i, count - i});
+  int total = 0;
+  for (ToCall& toCall : calls)
+    total += fn(toCall.item, toCall.order);
+  return total;
+}
+int local()
+{
+  struct Factors
+  {
+    int a;
+    int b;
+  };
+  Vector<Factors> pairs;
+  pairs.push_back(Factors{1, 2});
+  pairs.push_back(Factors{3, 4});
+  int sum = 0;
+  for (const Factors& p : pairs)
+    sum += p.a * p.b;
+  return sum;
+}
+int main()
+{
+  println("{} {}", dispatch(3, [](int item, int order) { return item * 10 + order; }), local());
+  return 0;
+}

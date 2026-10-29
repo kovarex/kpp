@@ -3099,11 +3099,14 @@ struct GlobalScope::Impl
     if (ctx.subst)
       for (const Subst::Pair& p : ctx.subst->pairs)
         knownInstance = knownInstance && p.type && !mentionsUnknown(p.type);
+    bool outerExact = exactLayoutOnly, outerNeeded = layoutNeeded; // (an assert met while another is evaluated)
     exactLayoutOnly = true;
     layoutNeeded = false;
     std::optional<int64_t> v = knownInstance ? constEval(s->cond, ctx, 0) : std::nullopt;
-    exactLayoutOnly = false;
-    if (!v && layoutNeeded)
+    bool needed = layoutNeeded;
+    exactLayoutOnly = outerExact;
+    layoutNeeded = outerNeeded;
+    if (!v && needed)
     {
       std::lock_guard lock(checkerErrorsMutex);
       LayoutAssert& a = layoutAsserts.emplace_back();
@@ -3221,6 +3224,23 @@ struct GlobalScope::Impl
   // generator, whose layout is the exact one (bit fields, empty bases), and layoutNeeded says so.
   static thread_local bool exactLayoutOnly;
   static thread_local bool layoutNeeded;
+  // The layout flags hold for a static_assert's own condition only: a walk or a typing nested in
+  // its evaluation (an instance asked for on the way, a call's argument typed) sizes classes as
+  // always, and what it computes is kept.
+  struct OrdinaryLayout
+  {
+    bool exact = exactLayoutOnly, needed = layoutNeeded;
+    OrdinaryLayout()
+    {
+      exactLayoutOnly = false;
+      layoutNeeded = false;
+    }
+    ~OrdinaryLayout()
+    {
+      exactLayoutOnly = exact;
+      layoutNeeded = needed;
+    }
+  };
 
   std::optional<int64_t> constSizeOf(const Ty* t, int depth)
   {
@@ -6356,6 +6376,7 @@ struct GlobalScope::Impl
     ParsedFile* file = owner->file;
     if (!file || !file->tokens)
       return std::nullopt;
+    OrdinaryLayout ordinary;
     ResolveStats scratch;
     Walker probe(*this, scratch, *file->tokens, file->text);
     probe.file = file;
@@ -6394,6 +6415,7 @@ struct GlobalScope::Impl
     std::string_view text = f && f->file ? f->file->text : ctx.tokens ? ctx.text : fallbackText;
     if (!tokens || nesting > 8)
       return nullptr;
+    OrdinaryLayout ordinary;
     ++nesting;
     InstanceCopier copier(instanceArena());
     Expr* copy = copier.expression(e);
@@ -7174,6 +7196,7 @@ struct GlobalScope::Impl
       ParsedFile* file = templ->file;
       if (!file || !file->tokens)
         return;
+      Impl::OrdinaryLayout ordinary;
       ResolveStats local;
       local.fileIndex = stats.fileIndex;
       local.collectWhy = stats.collectWhy;
@@ -7456,6 +7479,9 @@ struct GlobalScope::Impl
               return bt;
           if (lastPart.hasTemplateArgs && Impl::conceptOf(d))
             return types.boolType(); // `has_load<T, Input>` as a value: a concept-id is a bool
+          if (l.found == Found::Local)
+            if (const Ty* walked = locals.deducedTypeOf(d); walked && !impl.containsAuto(walked))
+              return walked; // the type this walk gave the local (a class of the function's own, under an instance's arguments)
           const Ty* t = impl.declaredTypeOf(d, activeSubst, 0);
           if (impl.containsAuto(t))
           {
@@ -9272,13 +9298,17 @@ struct GlobalScope::Impl
     std::string instanceDescription() const
     {
       std::string out;
+      std::vector<std::string> seen; // an out-of-line member's parameters repeat its class's
       if (activeSubst)
         for (const Subst::Pair& p : activeSubst->pairs)
           if (p.param && p.param->kind == NodeKind::TemplateParamDecl)
           {
             uint32_t name = static_cast<TemplateParamDecl*>(p.param)->name;
-            out += (out.empty() ? "" : ", ") + std::string(name == UINT32_MAX ? "?" : impl.symbols.name(name)) + " = " +
-                   types.toString(p.type, &impl.symbols);
+            std::string one = std::string(name == UINT32_MAX ? "?" : impl.symbols.name(name)) + " = " + types.toString(p.type, &impl.symbols);
+            if (std::find(seen.begin(), seen.end(), one) != seen.end())
+              continue;
+            seen.push_back(one);
+            out += (out.empty() ? "" : ", ") + one;
           }
       return out;
     }
@@ -9454,6 +9484,7 @@ struct GlobalScope::Impl
             {
               v->cachedType.store(local, std::memory_order_release);
               declared = local;
+              deducedLocal = local; // kept with the local by walkLocalDecl, for this walk's uses of it
             }
           }
           if (v->init && !probesSharedNodes() && impl.isUndeducedClassTemplate(declared))
@@ -9691,6 +9722,20 @@ struct GlobalScope::Impl
           walkType(v->type);
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
           const Ty* loopVarType = nullptr;
+          bool isDraft = declared && types.unqualified(types.stripRef(declared))->decl &&
+                         (types.unqualified(types.stripRef(declared))->decl->attributes & ATTR_Draft);
+          if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !probesSharedNodes())
+          {
+            // `for (ToCall& toCall : ...)` with ToCall a class of the function's own: the type
+            // where the locals are (as for any local variable).
+            const Ty* local = typeOf(v->type);
+            if (local && local->isKnown() && !Impl::mentionsUnknown(local))
+            {
+              v->cachedType.store(local, std::memory_order_release);
+              declared = local;
+              loopVarType = local;
+            }
+          }
           if (impl.containsAuto(declared))
           {
             const Ty* element = elementTypeOf(range, f->range);
@@ -10917,6 +10962,9 @@ const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
     return typeOfDecl(d);
   Subst s = toSubst(args);
   const Ty* t = impl->declaredTypeOf(d, &s, 0);
+  if (d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::FunctionDecl && Impl::mentionsUnknown(t))
+    if (const Ty* cached = d->cachedType.load(std::memory_order_acquire); cached && !Impl::mentionsUnknown(cached) && !impl->containsAuto(cached))
+      return cached; // `Vector<ToCall> calls;` with ToCall a class of the instance's own body: as its walk typed it
   if (d->kind == NodeKind::FunctionDecl && t && t->kind == TyKind::Function && impl->containsAuto(t->inner))
   {
     // `template<typename T> auto f(T)`: the return type its body deduced for these arguments.
