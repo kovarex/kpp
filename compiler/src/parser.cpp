@@ -1453,8 +1453,14 @@ namespace
           externC = savedExternC;
           return;
         }
+        size_t mark = scratch.size();
         parseDeclarationInner(scope, templ);
         externC = savedExternC;
+        // `extern "C" const IID IID_X;` declares a variable defined elsewhere, as `extern` does
+        // (inside `extern "C" { ... }` one without the word is a definition).
+        for (size_t i = mark; i < scratch.size(); ++i)
+          if (auto* d = static_cast<Decl*>(scratch[i]); d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->init)
+            d->flags |= DF_Extern;
         return;
       }
       if (at(Kw::public_) || at(Kw::private_) || at(Kw::protected_))

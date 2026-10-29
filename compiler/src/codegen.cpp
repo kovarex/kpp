@@ -4161,9 +4161,11 @@ namespace
             text = "ptr " + callerLocation(pt, at);
           else
           {
+            // Emitted from the callee's declaration: its own node (and file) for what it reports,
+            // not the caller's token read in the callee's file.
+            struct FileRestore { ParsedFile*& f; ParsedFile* saved; ~FileRestore() { f = saved; } } fileRestore{currentFile, callerFile};
             currentFile = f->file;
-            text = argumentText(pt, value, at);
-            currentFile = callerFile;
+            text = argumentText(pt, value, value);
           }
           argText += std::string(argText.empty() ? "" : ", ") + text;
           ++position;
@@ -4430,8 +4432,11 @@ namespace
           return "ptr " + initializerListTemporary(pt, static_cast<BraceInitExpr*>(arg), at); // `max({a, b, c})`
         if (arg->kind == NodeKind::BraceInitExpr && isClass(pt))
         {
+          // `f({a, b, c})`; the callee destroys it. The list as a whole, as a variable's: an
+          // InitializerList constructor first (`take({Caps::Color, Caps::Light})`), then the fields.
           std::string copy = newObjectSlot(pt, at);
-          constructInto(copy, pt, static_cast<BraceInitExpr*>(arg)->args, at); // `f({a, b, c})`; the callee destroys it
+          Expr* one = arg;
+          constructInto(copy, pt, Span<Expr*>{&one, 1}, at);
           return "ptr " + copy;
         }
         const Ty* argTy = arg->ty && arg->ty->isKnown() && !types.isDependent(arg->ty) ? types.stripRef(arg->ty) : nullptr;

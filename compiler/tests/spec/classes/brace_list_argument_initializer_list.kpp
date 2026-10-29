@@ -1,0 +1,24 @@
+// spec: a brace list passed for a class parameter, written at the call or as the parameter's default argument, initialises the parameter as a variable's would: through the class's InitializerList constructor when it has one (`take({Caps::Color, Caps::Light})`), else member by member
+// found by the resolver thread: Framebuffer::clear(Color, Capabilities targets = {Capabilities::Color, ..., Stencil}) called without targets from DrawEngine, 21 functions ("a constructor of Framebuffer::Capabilities taking 4 arguments")
+class Caps
+{
+public:
+  enum class Enum { Color, Light, Depth };
+  constexpr Caps() = default;
+  constexpr Caps(InitializerList<Enum> values)
+  {
+    for (auto v : values)
+      this->bits |= 1ULL << size_t(v);
+  }
+  using enum Enum;
+  uint64_t bits = 0;
+};
+struct Point { int x; int y; };
+uint64_t take(Caps c) { return c.bits; }
+uint64_t clear(int color, Caps targets = {Caps::Color, Caps::Depth}) { return uint64_t(color) * 100 + targets.bits; }
+int sum(Point p) { return p.x + p.y; }
+int main()
+{
+  println("{} {} {} {}", take({Caps::Color, Caps::Light}), clear(1), clear(2, {Caps::Light}), sum({3, 4}));
+  return 0;
+}

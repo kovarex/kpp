@@ -645,7 +645,11 @@ namespace
       response += "\"-Wl,/lldltocache:" + slashes(options.exe) + ".ltocache\"\n";
     }
     for (const std::string& flag : splitFlags(linkFlags(options)))
-      response += slashes(flag) + "\n";
+    {
+      // A library under "C:\Program Files (x86)\..." (the Windows SDK's) stays one argument.
+      std::string one = slashes(flag);
+      response += (one.find(' ') != std::string::npos ? "\"" + one + "\"" : one) + "\n";
+    }
     std::string responsePath = options.exe + ".link.rsp";
     if (!writeFile(responsePath, response))
       return;
