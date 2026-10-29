@@ -1,6 +1,5 @@
 // spec: a Function variable initialised by a lambda that calls the variable itself (captured by reference: a recursive lambda)
 // factorio: Gui.kpp's recursiveAppendWidgets, which walks the widget tree
-// pending: the code generator cannot convert the lambda to FunctionImpl<int32, int32> ("the constructor chosen needs the same conversion for its own parameter")
 int main()
 {
   Function<int(int)> fib = [&](int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); };

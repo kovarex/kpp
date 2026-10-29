@@ -1,5 +1,4 @@
 // spec: a lambda returned by value from a function or a function template (with captures by value and by reference, and without any) is a closure the caller holds and calls, stores in a Function and passes on
-// pending: a function template's lambda is laid out by the instance that writes it, which the caller (main, emitted first) does not wait for: `auto scale = makeScaler(2.5)` reports the closure not built yet
 // found linking the converted game: 58 of its 64 IR modules were rejected by LLVM, the closure's address returned as if it were the closure (`ret %closure %o3`) and a returned closure passed where its address was expected
 auto makeAdder(int step)
 {

@@ -3145,28 +3145,64 @@ namespace
 
     // --- lambdas ---
 
-    // Collects the enclosing locals a lambda body refers to (for default captures) and whether
-    // it uses `this`.
-    void scanCaptures(Node* n, std::vector<Decl*>& found, bool& usesThis, int depth = 0)
+    static bool localNamed(Decl* d, uint32_t symbol)
     {
-      if (!n || depth > 64)
+      if (d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
+        return static_cast<VariableDecl*>(d)->name.last().symbol == symbol;
+      return d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->name == symbol;
+    }
+
+    // A variable of a function (a parameter, a local of automatic storage): what a lambda captures.
+    static bool functionLocal(const Decl* d)
+    {
+      return d && (d->kind == NodeKind::ParamDecl ||
+                   (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static) && d->parent && d->parent->kind == NodeKind::FunctionDecl));
+    }
+
+    // What a lambda's body names, from its AST alone: the locals of the functions around it (each
+    // once, in the order first written: `used`) and whether it uses `this`. inner gathers what is
+    // declared inside it (its parameters, its locals, nested lambdas' own), which is no capture;
+    // C++ declares a name before its uses, so it is in inner before a use is reached.
+    // useTypes, when given, gets the type of each used local's first name expression.
+    void captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis,
+                      std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0)
+    {
+      if (!n || depth > 96)
         return;
-      auto visit = [&](Node* c) { scanCaptures(c, found, usesThis, depth + 1); };
+      auto visit = [&](Node* c) { captureNames(c, inner, used, usesThis, useTypes, depth + 1); };
       auto visitExprs = [&](Span<Expr*> es) { for (Expr* e : es) visit(e); };
       switch (n->kind)
       {
         case NodeKind::NameExpr:
         {
-          auto* e = static_cast<NameExpr*>(n);
-          Decl* d = e->resolved;
-          if (d && locals.count(d) && std::find(found.begin(), found.end(), d) == found.end())
-            found.push_back(d);
-          if (d && d->kind == NodeKind::VariableDecl && !locals.count(d) && global.owningClass(d) && !(d->flags & DF_Static))
-            usesThis = true;
-          if (d && d->kind == NodeKind::FunctionDecl && global.owningClass(d) && !(d->flags & DF_Static))
-            usesThis = true;
+          Decl* d = static_cast<NameExpr*>(n)->resolved;
+          if (!d)
+            break;
+          if (functionLocal(d))
+          {
+            if (!inner.count(d) && std::find(used.begin(), used.end(), d) == used.end())
+            {
+              used.push_back(d);
+              if (useTypes)
+                (*useTypes)[d] = static_cast<NameExpr*>(n)->ty;
+            }
+          }
+          else if ((d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && global.owningClass(d) && !(d->flags & DF_Static))
+            usesThis = true; // a member named without `this->`
           break;
         }
+        case NodeKind::VariableDecl: // a condition that declares (`if (auto* p = f())`)
+          inner.insert(static_cast<Decl*>(n));
+          visit(static_cast<VariableDecl*>(n)->init);
+          break;
+        case NodeKind::DeclStmt:
+          for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+            if (d->kind == NodeKind::VariableDecl)
+            {
+              inner.insert(d);
+              visit(static_cast<VariableDecl*>(d)->init);
+            }
+          break;
         case NodeKind::ThisExpr: usesThis = true; break;
         case NodeKind::CallExpr: visit(static_cast<CallExpr*>(n)->callee); visitExprs(static_cast<CallExpr*>(n)->args); break;
         case NodeKind::IndexExpr: visit(static_cast<IndexExpr*>(n)->base); visitExprs(static_cast<IndexExpr*>(n)->args); break;
@@ -3187,21 +3223,23 @@ namespace
         case NodeKind::BraceInitExpr: visitExprs(static_cast<BraceInitExpr*>(n)->args); break;
         case NodeKind::ThrowExpr: visit(static_cast<ThrowExpr*>(n)->operand); break;
         case NodeKind::ParenExpr: visit(static_cast<ParenExpr*>(n)->inner); break;
+        case NodeKind::NameofExpr: visit(static_cast<NameofExpr*>(n)->operand); break;
         case NodeKind::LambdaExpr:
         {
           auto* l = static_cast<LambdaExpr*>(n);
           for (const LambdaCapture& c : l->captures)
+          {
             visit(c.init);
+            if (c.decl)
+              inner.insert(c.decl);
+          }
+          for (Decl* p : l->params)
+            inner.insert(p);
           visit(l->body);
           break;
         }
         case NodeKind::BlockStmt: for (Stmt* s : static_cast<BlockStmt*>(n)->stmts) visit(s); break;
         case NodeKind::ExprStmt: visit(static_cast<ExprStmt*>(n)->expr); break;
-        case NodeKind::DeclStmt:
-          for (Decl* d : static_cast<DeclStmt*>(n)->decls)
-            if (d->kind == NodeKind::VariableDecl)
-              visit(static_cast<VariableDecl*>(d)->init);
-          break;
         case NodeKind::IfStmt:
           visit(static_cast<IfStmt*>(n)->init);
           visit(static_cast<IfStmt*>(n)->cond);
@@ -3214,7 +3252,12 @@ namespace
           visit(static_cast<ForStmt*>(n)->step);
           visit(static_cast<ForStmt*>(n)->body);
           break;
-        case NodeKind::RangeForStmt: visit(static_cast<RangeForStmt*>(n)->range); visit(static_cast<RangeForStmt*>(n)->body); break;
+        case NodeKind::RangeForStmt:
+          visit(static_cast<RangeForStmt*>(n)->range);
+          if (Decl* v = static_cast<RangeForStmt*>(n)->var)
+            inner.insert(v);
+          visit(static_cast<RangeForStmt*>(n)->body);
+          break;
         case NodeKind::ForConstexprStmt: visit(static_cast<ForConstexprStmt*>(n)->body); break;
         case NodeKind::WhileStmt: visit(static_cast<WhileStmt*>(n)->cond); visit(static_cast<WhileStmt*>(n)->body); break;
         case NodeKind::DoStmt: visit(static_cast<DoStmt*>(n)->body); visit(static_cast<DoStmt*>(n)->cond); break;
@@ -3226,42 +3269,138 @@ namespace
         case NodeKind::CaseStmt: visit(static_cast<CaseStmt*>(n)->value); break;
         case NodeKind::ReturnStmt: visit(static_cast<ReturnStmt*>(n)->value); break;
         case NodeKind::AssertStmt: visit(static_cast<AssertStmt*>(n)->cond); break;
-        case NodeKind::NameofExpr: visit(static_cast<NameofExpr*>(n)->operand); break;
+        case NodeKind::TryStmt:
+        {
+          auto* t = static_cast<TryStmt*>(n);
+          visit(t->body);
+          for (const TryStmt::Handler& h : t->handlers)
+          {
+            if (h.param)
+              inner.insert(h.param);
+            visit(h.body);
+          }
+          break;
+        }
         default: break;
       }
     }
 
-    static bool localNamed(Decl* d, uint32_t symbol)
+    // A lambda's captures from its AST alone, in a fixed order: its capture list, then what a
+    // default capture picks up in the order first written, then `this`. The same list wherever the
+    // closure is laid out or built, whichever function is emitted first (the body names the
+    // instantiation's own locals: a capture's position, not its declaration, matches them up).
+    struct CaptureSlot
     {
-      if (d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
-        return static_cast<VariableDecl*>(d)->name.last().symbol == symbol;
-      return d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->name == symbol;
+      Decl* decl = nullptr; // the captured variable (null for `this`)
+      bool byRef = false;
+      Expr* init = nullptr; // an init-capture's initializer
+    };
+    std::vector<CaptureSlot> captureList(LambdaExpr* l, std::unordered_map<Decl*, const Ty*>* useTypes = nullptr)
+    {
+      std::unordered_set<Decl*> inner;
+      for (Decl* p : l->params)
+        inner.insert(p);
+      for (const LambdaCapture& cap : l->captures)
+        if (cap.decl)
+          inner.insert(cap.decl);
+      std::vector<Decl*> used;
+      bool usesThis = false;
+      captureNames(l->body, inner, used, usesThis, useTypes);
+      std::vector<CaptureSlot> out;
+      bool thisCaptured = false;
+      for (const LambdaCapture& cap : l->captures)
+      {
+        if (cap.init)
+        {
+          // `[x = expr]`: a field of the closure, initialised from expr when the closure is made.
+          if (!cap.decl || cap.byRef)
+            unsupported(l, "a by-reference init-capture");
+          out.push_back({cap.decl, false, cap.init});
+          continue;
+        }
+        if (cap.isThis)
+        {
+          thisCaptured = true;
+          continue;
+        }
+        Decl* d = nullptr;
+        for (Decl* u : used)
+          if (localNamed(u, cap.symbol))
+            d = d ? d : u;
+        if (!d)
+          d = unusedCapture(l, cap.symbol);
+        out.push_back({d, cap.byRef, nullptr});
+      }
+      if (l->defaultCapture != 0)
+      {
+        for (Decl* d : used)
+          if (std::none_of(out.begin(), out.end(), [&](const CaptureSlot& s) { return s.decl == d; }))
+            out.push_back({d, l->defaultCapture == 2, nullptr});
+        thisCaptured = thisCaptured || usesThis;
+      }
+      if (thisCaptured)
+        out.push_back({nullptr, true, nullptr});
+      return out;
     }
 
-    // The local a capture by name (`[&list]`) captures: the one of that name the lambda's body names
-    // (resolved where the lambda is written), not another local of the function with that name (of
-    // an earlier block: `locals` keeps every local of the function). A capture the body does not use
-    // takes the only local of that name; with several, which one it is the code generator cannot tell.
-    Decl* capturedLocal(LambdaExpr* l, uint32_t symbol, std::vector<Decl*>& namedInBody, bool& scanned)
+    // An explicit capture the body does not use (`[guard]` kept alive): the one local of that name
+    // declared before the lambda in the function around it; with several, which one is in scope
+    // the code generator cannot tell from the names alone.
+    Decl* unusedCapture(LambdaExpr* l, uint32_t symbol)
     {
-      if (!scanned)
-      {
-        bool usesThis = false;
-        scanCaptures(l->body, namedInBody, usesThis);
-        scanned = true;
-      }
-      for (Decl* d : namedInBody)
-        if (localNamed(d, symbol))
-          return d;
+      Decl* f = l->closure ? l->closure->parent : nullptr;
+      while (f && f->kind != NodeKind::FunctionDecl)
+        f = f->parent;
+      if (!f)
+        unsupported(l, "a capture that is not a local variable (" + sym(symbol) + ")");
+      auto* fn = static_cast<FunctionDecl*>(f);
+      std::unordered_set<Decl*> declared(fn->params.begin(), fn->params.end());
+      std::vector<Decl*> ignored;
+      bool ignoredThis = false;
+      captureNames(fn->body, declared, ignored, ignoredThis);
       Decl* only = nullptr;
-      for (auto& [d, local] : locals)
-        if (localNamed(d, symbol))
+      for (Decl* d : declared)
+        if (localNamed(d, symbol) && d->token < l->token)
         {
           if (only)
             unsupported(l, "a capture of " + sym(symbol) + " that the lambda does not use, with several locals of that name in the function");
           only = d;
         }
+      if (!only)
+        unsupported(l, "a capture that is not a local variable (" + sym(symbol) + ")");
       return only;
+    }
+
+    // The type a captured variable has in the closure (references stripped): the variable's declared
+    // type where the declaration alone gives it, an init-capture's as its initializer deduces it,
+    // else as the lambda's body first names it (useTypes: an instantiation's local of a dependent
+    // type, typed in place).
+    static bool mentionsAuto(const Ty* t, int depth = 0)
+    {
+      if (!t || depth > 16)
+        return false;
+      if (t->kind == TyKind::Auto || mentionsAuto(t->inner, depth + 1))
+        return true;
+      for (const Ty* a : t->args)
+        if (mentionsAuto(a, depth + 1))
+          return true;
+      return false;
+    }
+
+    const Ty* captureType(Decl* d, Expr* init, const std::unordered_map<Decl*, const Ty*>& useTypes, LambdaExpr* l)
+    {
+      auto exact = [&](const Ty* t) { return t && t->isKnown() && !types.isDependent(t) && !mentionsAuto(t); };
+      if (const Ty* cached = d->cachedType.load(std::memory_order_acquire); exact(cached))
+        return types.stripRef(cached); // as the instantiation's walk typed its own copy of the local
+      const Ty* t = global.typeOfDecl(d);
+      if (exact(t))
+        return types.stripRef(t);
+      if (init && init->ty && init->ty->isKnown() && !types.isDependent(init->ty))
+        return types.decay(types.stripRef(init->ty)); // `[x = expr]`: as auto deduces it
+      if (auto it = useTypes.find(d); it != useTypes.end() && it->second && it->second->isKnown() && !types.isDependent(it->second))
+        return types.stripRef(it->second);
+      unsupported(l, "a capture of " + (d->kind == NodeKind::VariableDecl ? sym(static_cast<VariableDecl*>(d)->name.last().symbol) : std::string("a parameter")) +
+                         " whose type the code generator could not work out");
     }
 
     // The closure of a lambda type, created from its capture list in the current function.
@@ -3282,10 +3421,12 @@ namespace
       return info.structName;
     }
 
-    // The closure of a lambda type with its captures laid out. Only the lambda expression itself
-    // (create) may lay it out: the capture list is read from the function the lambda is written in.
+    // The closure of a lambda type with its captures laid out, from the lambda's AST (captureList),
+    // by whichever function needs it first: the function the lambda is written in, or one that
+    // holds or calls a closure it returned (an instance of a template that returns a lambda is
+    // emitted after its caller). The layout is the same either way.
     std::unordered_map<const Ty*, ClosureInfo*> closureCache; // laid-out closures this emitter used
-    ClosureInfo& closureFor(const Ty* t, Node* at, bool create = false)
+    ClosureInfo& closureFor(const Ty* t, Node* at, bool = false)
     {
       t = types.unqualified(t);
       if (auto mine = closureCache.find(t); mine != closureCache.end())
@@ -3297,20 +3438,21 @@ namespace
         closureCache.emplace(t, &it->second);
         return it->second;
       }
-      if (!create)
-      {
-        if (it != closures.end() && !it->second.failure.empty())
-          fail(at, "the closure of " + irString(t) + " could not be built where it is written (" + it->second.failure + ")");
-        unsupported(at, "a lambda used before its closure was built (its captures are read where it is written)");
-      }
+      if (it != closures.end() && !it->second.failure.empty())
+        fail(at, "the closure of " + irString(t) + " could not be laid out (" + it->second.failure + ")");
+      size_t errorsBefore = errors.size();
       try
       {
         return layOutClosure(t, at);
       }
       catch (Unsupported&)
       {
-        closures[t].failure = lastFailure;
-        throw;
+        // Every use, the first one like the others, reports the closure and why: the same lines
+        // whichever function asks first.
+        std::string why = lastFailure;
+        closures[t].failure = why;
+        errors.resize(errorsBefore);
+        fail(at, "the closure of " + irString(t) + " could not be laid out (" + why + ")");
       }
     }
 
@@ -3318,81 +3460,21 @@ namespace
     ClosureInfo& layOutClosure(const Ty* t, Node* at)
     {
       auto* c = static_cast<ClassDecl*>(t->decl);
-      // The lambda being emitted (at): in a private copy of an instantiation it is the copy's, whose
-      // captures name the copy's locals; the closure's own is the instantiation's.
-      LambdaExpr* l = at && at->kind == NodeKind::LambdaExpr ? static_cast<LambdaExpr*>(at) : c->lambda;
+      LambdaExpr* l = c->lambda; // the instantiation's own lambda: the same whoever lays it out
       if (!l)
         unsupported(at, "a lambda without its expression");
       // Laid out aside and published whole: a capture that fails (an unsupported one, a field whose
       // class cannot be laid out) leaves the closure unbuilt for every later use, not half built.
       ClosureInfo info;
       info.structName = closureStructName(t);
-      info.enclosingClass = currentClassTy;
-      info.writtenIn = currentFunctionName;
-      bool usesThis = false;
-      bool thisCaptured = false;
-      std::vector<Decl*> namedInBody;
-      bool bodyScanned = false;
-      for (const LambdaCapture& cap : l->captures)
+      std::unordered_map<Decl*, const Ty*> useTypes;
+      for (const CaptureSlot& s : captureList(l, &useTypes))
       {
-        if (cap.init)
-        {
-          // `[x = expr]`: a field of the closure, initialised from expr when the closure is made.
-          if (!cap.decl || cap.byRef)
-            unsupported(l, "a by-reference init-capture");
-          info.captured.push_back(cap.decl);
-          info.byRef.push_back(false);
-          info.inits.push_back(cap.init);
-          continue;
-        }
-        if (cap.isThis)
-        {
-          thisCaptured = true;
-          continue;
-        }
-        Decl* d = capturedLocal(l, cap.symbol, namedInBody, bodyScanned);
-        if (!d)
-          unsupported(l, "a capture that is not a local variable (" + sym(cap.symbol) + ")");
-        info.captured.push_back(d);
-        info.byRef.push_back(cap.byRef);
-        info.inits.push_back(nullptr);
-      }
-      if (l->defaultCapture != 0)
-      {
-        std::vector<Decl*> found;
-        scanCaptures(l->body, found, usesThis);
-        for (Decl* d : found)
-          if (std::find(info.captured.begin(), info.captured.end(), d) == info.captured.end())
-          {
-            info.captured.push_back(d);
-            info.byRef.push_back(l->defaultCapture == 2);
-            info.inits.push_back(nullptr);
-          }
-        if (usesThis)
-          thisCaptured = true;
-      }
-      for (size_t i = 0; i < info.captured.size(); ++i)
-      {
-        if (info.inits[i])
-        {
-          const Ty* vt = declType(info.captured[i]);
-          if (!vt || !vt->isKnown())
-            unsupported(l, "an init-capture of unknown type");
-          info.fieldTypes.push_back(types.stripRef(vt));
-          continue;
-        }
-        Local& local = locals[info.captured[i]];
-        const Ty* vt = types.stripRef(local.ty);
-        info.fieldTypes.push_back(vt);
-      }
-      if (thisCaptured)
-      {
-        if (!currentClassTy)
-          unsupported(l, "capturing this outside a method");
-        info.captured.push_back(nullptr);
-        info.byRef.push_back(true);
-        info.inits.push_back(nullptr);
-        info.fieldTypes.push_back(currentClassTy);
+        info.captured.push_back(s.decl);
+        info.byRef.push_back(s.byRef);
+        info.inits.push_back(s.init);
+        // `this`: a pointer field; the class it points to is the writer's (enclosingClass).
+        info.fieldTypes.push_back(s.decl ? captureType(s.decl, s.init, useTypes, l) : types.pointer(types.voidType()));
       }
       std::string line = info.structName + " = type { ";
       for (size_t i = 0; i < info.fieldTypes.size(); ++i)
@@ -3406,6 +3488,8 @@ namespace
       info.laidOut = true;
       decls += line;
       ClosureInfo& published = closures[t];
+      info.enclosingClass = published.enclosingClass; // set by the writer (makeClosure), whenever it comes
+      info.writtenIn = published.writtenIn;
       published = std::move(info);
       return published;
     }
@@ -3479,21 +3563,41 @@ namespace
       if (!isLambda(t))
         unsupported(l, "a lambda whose type is unknown");
       ClosureInfo info = closureFor(t, l, true);
+      {
+        // The function the lambda is written in: its class is what `this` in the body points to,
+        // its name the requester the operator's diagnostics give.
+        auto lock = sharedLock();
+        ClosureInfo& shared = closures[types.unqualified(t)];
+        if (shared.writtenIn.empty())
+        {
+          shared.writtenIn = currentFunctionName;
+          shared.enclosingClass = currentClassTy;
+        }
+        info.writtenIn = shared.writtenIn;
+        info.enclosingClass = shared.enclosingClass;
+      }
+      // This lambda's own captures, field by field (in a private copy of an instantiation they name
+      // the copy's locals; the layout was read from the instantiation's).
+      std::vector<CaptureSlot> slots = captureList(l);
+      if (slots.size() != info.captured.size())
+        unsupported(l, "a lambda whose captures differ from its closure's");
       std::string slot = newObjectSlot(t, l);
       for (size_t i = 0; i < info.captured.size(); ++i)
       {
         std::string field = gep(info.structName, slot, uint32_t(i));
-        Decl* d = info.captured[i];
+        Decl* d = slots[i].decl;
         if (!d)
         {
           fn += "  store ptr " + thisPointer(l) + ", ptr " + field + "\n";
           continue;
         }
-        if (info.inits[i])
+        if (slots[i].init)
         {
-          initializeFrom(field, info.fieldTypes[i], info.inits[i], l); // `[x = expr]`
+          initializeFrom(field, info.fieldTypes[i], slots[i].init, l); // `[x = expr]`
           continue;
         }
+        if (!locals.count(d))
+          unsupported(l, "a capture of a variable the function being emitted does not have");
         Local& local = locals[d];
         std::string addr = local.addr;
         if (local.isRef)
@@ -3652,10 +3756,14 @@ namespace
         std::string header = "define " + retType + " " + name + "(" + params + ") {\nentry:\n";
         pushScope();
         // Captures become locals: by-value captures live in the closure, references point out.
+        // The body's own names for them, field by field (captureList of the lambda emitted).
+        std::vector<CaptureSlot> slots = captureList(l);
+        if (slots.size() != info.captured.size())
+          unsupported(l, "a lambda whose captures differ from its closure's");
         for (size_t i = 0; i < info.captured.size(); ++i)
         {
           std::string field = gep(info.structName, "%closure", uint32_t(i));
-          Decl* d = info.captured[i];
+          Decl* d = slots[i].decl;
           if (!d)
           {
             std::string thisSlot = "%v" + std::to_string(temp++);
