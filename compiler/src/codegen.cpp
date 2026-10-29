@@ -10759,10 +10759,19 @@ namespace
             for (size_t i = 0; i < last.templateArgs.size(); ++i)
             {
               Node* arg = last.templateArgs[i];
-              if (uint8_t(arg->kind) > uint8_t(NodeKind::PackType))
-                unsupported(e, "a non-type argument in the address of a function template");
               TemplateArgs none;
-              const Ty* t = global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none);
+              const Ty* t = nullptr;
+              if (uint8_t(arg->kind) > uint8_t(NodeKind::PackType))
+              {
+                // `checkArray<16>`: a constant argument, its parameter's type.
+                Decl* param = i < f->templateParams.size() ? f->templateParams[i] : nullptr;
+                std::optional<int64_t> v = evalConst(static_cast<Expr*>(arg));
+                if (!v)
+                  unsupported(e, "a constant argument the compiler could not evaluate in the address of a function template");
+                t = types.valueType(valueParamType(param), *v);
+              }
+              else
+                t = global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none);
               if (packLast && i + 1 >= f->templateParams.size())
               {
                 if (t && t->kind == TyKind::Pack)
