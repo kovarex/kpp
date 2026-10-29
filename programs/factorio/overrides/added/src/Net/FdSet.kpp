@@ -1,0 +1,18 @@
+// winsock2.h's FD_SET, a statement macro, as a function: TCPSocket and UDPSocket add their sockets to
+// the sets they select on, which the converter writes `kppFdSet(fd, set)`. As the macro does: a
+// socket already in the set is not added again, and none is added to a full set. (FD_ZERO is an
+// expression the converter writes out; FD_ISSET is ws2_32's __WSAFDIsSet.)
+extern "C" import "winsock2.h";
+
+void kppFdSet(SOCKET fd, fd_set* set)
+{
+  u_int i = 0;
+  for (; i < set->fd_count; ++i)
+    if (set->fd_array[i] == fd)
+      break;
+  if (i == set->fd_count && set->fd_count < FD_SETSIZE)
+  {
+    set->fd_array[i] = fd;
+    set->fd_count++;
+  }
+}

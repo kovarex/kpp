@@ -631,6 +631,7 @@ namespace
     // wingdi.h has `(DWORD)(BYTE)(x)`, which Kpp asks to have written out).
     {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
     {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}, {"FD_ISSET", "__WSAFDIsSet((SOCKET)($1), (fd_set*)($2))"},
+    {"FD_SET", "kppFdSet((SOCKET)($1), (fd_set*)($2))"},
     {"ZeroMemory", "memset(($1), 0, ($2))"},
     // d3d11.h's inline function, which it has only for C++ (the import's C has none).
     {"D3D11CalcSubresource", "((UINT)($1) + (UINT)($2) * (UINT)($3))"}};
@@ -4211,6 +4212,25 @@ namespace
       auto it = variants->byDecl.find(static_cast<NamedType*>(t)->resolved);
       return it == variants->byDecl.end() ? nullptr : &variants->all[it->second];
     }
+    // An argument that is a variable of a GUID type (GUID, IID, CLSID, WIC's pixel format GUID), by
+    // name: C++ passes it to a REFGUID-like parameter, a reference, which C's (and so the import's
+    // and the COM classes') is a pointer to it.
+    bool isGuidVariable(Expr* e) const
+    {
+      Decl* d = e && e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved : nullptr;
+      Type* t = !d ? nullptr : d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d)->type
+              : d->kind == NodeKind::ParamDecl                   ? static_cast<ParamDecl*>(d)->type
+                                                                 : nullptr;
+      while (t && t->kind == NodeKind::ConstType)
+        t = static_cast<ConstType*>(t)->inner;
+      if (!t || t->kind != NodeKind::NamedType || static_cast<NamedType*>(t)->name.parts.size() != 1)
+        return false;
+      uint32_t symbol = static_cast<NamedType*>(t)->name.parts[0].symbol;
+      if (symbol == UINT32_MAX)
+        return false;
+      std::string_view name = symbols.name(symbol);
+      return name == "GUID" || name == "IID" || name == "CLSID" || name == "WICPixelFormatGUID";
+    }
     const VariantInfo* variantOfExpr(Expr* e)
     {
       if (!variants || !e)
@@ -4858,6 +4878,14 @@ namespace
                 callVariant[call->callee->token] = info;
             }
           }
+          for (Expr* arg : call->args)
+            if (isGuidVariable(arg))
+            {
+              // `object->SetPrivateData(WKPDID_D3DDebugObjectName, ...)`, `FC->CanConvert(pixelFormat,
+              // convertGUID, ...)`: by address, as the class and interface ids are below.
+              insert(toks[arg->token].offset, "&");
+              counts.add("GUIDs passed by address");
+            }
           walkExpr(call->callee, owner);
           walkExprs(call->args, owner);
           break;
