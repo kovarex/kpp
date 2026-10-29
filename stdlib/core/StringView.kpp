@@ -71,6 +71,31 @@ struct StringView
         return i;
     return -1;
   }
+  // The last occurrence starting at or before `from` (anywhere when from is npos), or npos, as
+  // String's (DebugTools.cpp's `line.rfind("ghostShimmerConfig.tint", 0) == 0`, a prefix test).
+  int rfind(char c, int from) const
+  {
+    int i = this->byteCount - 1;
+    if (from >= 0 && from < i)
+      i = from;
+    for (; i >= 0; --i)
+      if (this->chars[i] == c)
+        return i;
+    return -1;
+  }
+  int rfind(StringView needle, int from) const
+  {
+    int i = this->byteCount - needle.byteCount;
+    if (i < 0)
+      return -1;
+    if (from >= 0 && from < i)
+      i = from;
+    for (; i >= 0; --i)
+      if (needle.byteCount == 0 || memcmp(this->chars + i, needle.chars, needle.byteCount) == 0)
+        return i;
+    return -1;
+  }
+  int rfind(StringView needle) const { return this->rfind(needle, -1); }
   bool startsWith(StringView prefix) const
   {
     return prefix.byteCount <= this->byteCount && memcmp(this->chars, prefix.chars, prefix.byteCount) == 0;
