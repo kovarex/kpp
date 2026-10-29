@@ -1556,26 +1556,28 @@ IDs it gave), a union's own constructor dropping its member initializer, fixed i
 
 In the suites that finish, the tests that fail: `python programs\factorio\failures.py [OUT\logs]`
 lists each failed check (suite, test, file:line, message) and counts the messages. On ded1074 there
-were 185 failed checks. ea83927 took 48 of them: npos was -1, so the game's `Math::min(input.find(separator),
-input.size())` in LocaleStringReplacer was -1, a huge offset, and every localised text came out
-followed by its own suffixes (`0 minutes__inutes__nutes__...`): the Localisation suite, the text
-layout's "Unknown enum value", the GUI's "Expected under mouse ..." misses. On 4f2556b, 137 failed
-checks in 136 tests:
+were 185 failed checks; on 4f2556b 137, after ea83927's npos (the game's `Math::min(input.find(separator),
+input.size())` was -1, a huge offset: every localised text came out followed by its own suffixes).
+Of those 137, three compiler bugs made 88, found by printing each save and load of the converted
+code in a scratch tree, and fixed since: InventoryHighlights' `static Type const types[];` came out
+empty, so its save wrote no entry and the multiplayer harness's map download misread the controllers
+(44, 4833a45); an explicit instantiation never initialized its static members, the Lua template
+bindings' metamethod registration (30, f44fad6); `\u` and octal escapes, Lua's `"\033Lua"` signature among them
+(14, f366a3d).
+
+The tally on bb197ad: of 554 suites, 532 get to their summary line, with 7688 tests of which 7603 pass
+and 85 fail (95 failed checks); 22 stop (7 in Targeters, 3 in String::initialize's memcpy, 3 at
+stubs). The build has 5 stubs and 5 error lines. The failed checks:
 
 | Checks | What fails | Cause | Kind, owner |
 |---|---|---|---|
-| 44 | a map saved and loaded through the multiplayer harness: `unknown Source value: 255` (RelativeItemStackLocation::source, 26 suites) | InventoryHighlights' `static Type const types[];` gets its three entries at its definition; the array came out empty, so the save went over no type and wrote only their count, and the load read the controller's next fields from the wrong place (found by printing each save and load of the converted code in a scratch tree) | compiler: pending spec language/static_array_member_bound_from_definition, the resolver thread |
-| 30 | Lua: `game.map_settings`, a force's flow statistics: "attempt to index field 'map_settings' (a userdata value)", a LuaObject's userdata without an indexing metatable | the bindings that are class templates (LuaStruct<T>, LuaFlowStatistics<T>) register their metamethods in `template<class T> bool X<T>::loaded = X<T>::staticInit();` with `template class X<MapSettings>;`: an explicit instantiation's static members are never initialized | compiler: pending spec templates/explicit_instantiation_initializes_static_members, the templates thread with codegen |
-| 11 | Lua: a precompiled chunk loaded back is "a text chunk" | Lua's LUA_SIGNATURE is `"\033Lua"`, and codegen reads only \0 of an octal escape: the signature's first byte was 0 | compiler: pending spec language/universal_character_names_in_literals, the codegen thread |
-| 8 | signals on elevated rails (RailBridges, RailSignalBaseControlBehavior) | not looked at | |
-| 4 | blueprints of rolling stock: `myRollingStocks.count(*locomotive)` | not looked at | |
-| 3 | StringUtil's AnsiTextToUTF8 and NonEnglishCaseCasting, LuaHelpersObject's MultilingualToLower | `\u` escapes in literals: codegen keeps `L"\u0054"` as the five characters u0054 | compiler: pending spec language/universal_character_names_in_literals, the codegen thread |
-| 2 | FloatingPoint's fmodFloat and ClampCast | the library had no float fmod and nextafter: computed in double, saved as doubles | library: fixed (math_float_overloads) |
-| 3 | RichText's `[img=...]` tags | not looked at | |
-| 3 | ManualMining's tiles (water, landfill) | not looked at | |
-| 3 | an empty prototype name (`Unknown entity name: `) | not looked at | |
-| 2 | a control behavior's `isSetup` | not looked at | |
-| 24 | one each: LuaRendering's "Unknown type", two TestSelector searches, two ItemOwnership and a Targeter address, RichText's caret over images (4), MapDeserialiser's map and FlatMap, PropertyTree's shared strings, ... | not looked at | |
+| 23 | RailBuilder's `RailSignalBase& s = builder...;` (RailSignalWithTrain, RailSignal, TrainStopLimit, RailSignalBaseControlBehavior) | `operator RailChainSignal&()` taken where `operator RailSignalBase&()` is exact | compiler: pending spec classes/conversion_function_reference_prefers_exact_type, the templates thread |
+| 13 | `Unknown entity name: ` / `Unknown item name: ` with an empty name | `for (std::string name : {"stone-wall", ...})`: the loop variable is the element's bytes, not a String made from it | compiler: pending spec language/range_for_converts_element_to_class_loop_variable, the codegen thread |
+| ~20 | the rich text's `[img=item/copper-plate]` and the caret over it, sprite buttons, is_valid_sprite_path, LuaRendering's sprites, the scenario packs' GUIs | SpriteBank::getSprite finds the prototype types with icons through `requires(...) { value.getIconSprite(); }` in a generic lambda, which is always false: "item" was an unknown type | compiler: pending spec templates/requires_expression_in_generic_lambda, the templates thread |
+| 8 | InsertPlan: item requests read back empty (`{<null>, <null>} x 0`) | not looked at | |
+| 5 | tile mining and deconstruction (water and landfill) | not looked at | |
+| 3 | ConstructionRobots' timeouts | not looked at | |
+| 23 | one or two each: TestSelector, MapDeserialiser, PropertyTree, LatencyInput, Multiplayer, CircuitNetwork, ... | not looked at | |
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
