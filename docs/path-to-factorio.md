@@ -1596,19 +1596,28 @@ empty, so its save wrote no entry and the multiplayer harness's map download mis
 bindings' metamethod registration (30, f44fad6); `\u` and octal escapes, Lua's `"\033Lua"` signature among them
 (14, f366a3d).
 
-The tally on bb197ad: of 554 suites, 532 get to their summary line, with 7688 tests of which 7603 pass
-and 85 fail (95 failed checks); 22 stop (7 in Targeters, 3 in String::initialize's memcpy, 3 at
-stubs). The build has 5 stubs and 5 error lines. The failed checks:
+On bb197ad 95 failed checks were left; their causes, each a pending spec when found, were: a reference
+bound through the wrong conversion function (RailBuilder's signals, 23), a range-for's class-type
+loop variable left the element's bytes (`for (std::string name : {"stone-wall", ...})`, 13, and the
+TestSelector, CircleIterator and Ghost ones), a requires-expression in a generic lambda always false
+(SpriteBank's icon types, about 20), the const operator[] taken on a reference member in a const
+member function (MapGenerator's hidden tiles, 9), `super::operator==` over a defaulted <=> (InsertPlan,
+8). All fixed by 327e0dd.
+
+The tally on 327e0dd: of 554 suites, 538 get to their summary line, with 8101 tests of which 8088 pass
+and 13 fail; 16 stop: 7 in Targeters (4 in Targeters::clear from Targetable::clearTargetingMe, one
+calling a bad address from it, one in notifyUndoActionsOfEntityDestroyed, one in TargeterBase::save),
+3 faults with no frames of the program, 2 at stubs (CallerExpr in TestGui and TestMigrations), and one
+each in an RbTree of GameNotifications, LuaBlueprint's abort, agui::Widget's destructor (SpaceMap) and
+Rail::RailConnection::getRails (TrainPriorities). The build has 3 stubs and 3 error lines. The
+failed checks:
 
 | Checks | What fails | Cause | Kind, owner |
 |---|---|---|---|
-| 23 | RailBuilder's `RailSignalBase& s = builder...;` (RailSignalWithTrain, RailSignal, TrainStopLimit, RailSignalBaseControlBehavior) | `operator RailChainSignal&()` taken where `operator RailSignalBase&()` is exact | compiler: pending spec classes/conversion_function_reference_prefers_exact_type, the templates thread |
-| 13 | `Unknown entity name: ` / `Unknown item name: ` with an empty name | `for (std::string name : {"stone-wall", ...})`: the loop variable is the element's bytes, not a String made from it | compiler: pending spec language/range_for_converts_element_to_class_loop_variable, the codegen thread |
-| ~20 | the rich text's `[img=item/copper-plate]` and the caret over it, sprite buttons, is_valid_sprite_path, LuaRendering's sprites, the scenario packs' GUIs | SpriteBank::getSprite finds the prototype types with icons through `requires(...) { value.getIconSprite(); }` in a generic lambda, which is always false: "item" was an unknown type | compiler: pending spec templates/requires_expression_in_generic_lambda, the templates thread |
-| 8 | InsertPlan: item requests read back empty (`{<null>, <null>} x 0`) | not looked at | |
-| 5 | tile mining and deconstruction (water and landfill) | not looked at | |
-| 3 | ConstructionRobots' timeouts | not looked at | |
-| 23 | one or two each: TestSelector, MapDeserialiser, PropertyTree, LatencyInput, Multiplayer, CircuitNetwork, ... | not looked at | |
+| 3 | RemoveCables (CircuitNetwork, LatencyInput, UndoRedo) | `handlers.add(type, &InputActionHandler::removeCables)`, two functions of the name: the first add (a controller action) is taken, so the handler gets the player's Controller for its GameAdapter | compiler: pending spec language/overload_set_address_chooses_among_overloads, the templates thread |
+| 1 | PropertyTree SharedStringLogic | ImmutableStringTemplate's forwarding constructor loses to its explicit copy constructor: a move is a copy | compiler: pending spec templates/forwarding_constructor_beside_explicit_copy, the templates thread |
+| 1 | LuaForce LuaUnlockTravelToSpacePlatforms (`0` for false) | LuaHelper::push of a class with operator bool takes push(uint64_t), not push(const bool&) | compiler: pending spec classes/conversion_function_then_standard_conversion_ranks, the templates thread |
+| 8 | Tree, LuaEntity, LuaInventory, MapDeserialiser 2, Multiplayer 2, TrainGui | not looked at | |
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
