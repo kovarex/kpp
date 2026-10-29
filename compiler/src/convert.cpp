@@ -1650,6 +1650,61 @@ namespace
     std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
     // Which lines the configuration keeps (null: the file's own lines decide, without its includes).
     const Preprocessed* preprocessed = nullptr;
+    // `#pragma pack(push, 1)` to its `#pragma pack(pop)`: the classes defined there are [[packed]]
+    // (Tile, ImmutableStringTemplate, PropertyTree). A pack of 8, the largest alignment there is,
+    // changes nothing; another value gets a TODO.
+    std::vector<std::pair<uint32_t, uint32_t>> packedRanges;
+    std::vector<int> packStack;
+    int pack = 0; // 0: the default
+    uint32_t packedSince = 0;
+    void notePack(const std::string& rest, uint32_t offset)
+    {
+      size_t p = rest.find("pack");
+      if (p == std::string::npos || rest.find('(', p) == std::string::npos)
+        return;
+      std::string args = rest.substr(rest.find('(', p) + 1);
+      args = args.substr(0, args.find(')'));
+      std::vector<std::string> parts;
+      for (size_t start = 0; start <= args.size();)
+      {
+        size_t comma = args.find(',', start);
+        std::string part = args.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        size_t a = part.find_first_not_of(" \t"), b = part.find_last_not_of(" \t");
+        if (a != std::string::npos)
+          parts.push_back(part.substr(a, b - a + 1));
+        if (comma == std::string::npos)
+          break;
+        start = comma + 1;
+      }
+      int before = pack;
+      if (!parts.empty() && parts[0] == "push")
+      {
+        packStack.push_back(pack);
+        if (parts.size() > 1)
+          pack = atoi(parts[1].c_str());
+      }
+      else if (!parts.empty() && parts[0] == "pop")
+      {
+        pack = packStack.empty() ? 0 : packStack.back();
+        if (!packStack.empty())
+          packStack.pop_back();
+      }
+      else
+        pack = parts.empty() ? 0 : atoi(parts[0].c_str());
+      if (pack != 0 && pack != 1 && pack != 8 && pack != 16)
+        todo(offset, "#pragma pack(" + args + "): only a pack of 1 ([[packed]]) is written out");
+      if (before != 1 && pack == 1)
+        packedSince = offset;
+      else if (before == 1 && pack != 1)
+        packedRanges.push_back({packedSince, offset});
+    }
+    bool packedAt(uint32_t offset) const
+    {
+      for (auto [from, to] : packedRanges)
+        if (from <= offset && offset < to)
+          return true;
+      return pack == 1 && packedSince <= offset; // an unclosed push lasts to the end of the file
+    }
     void seedHeaderMacros()
     {
       if (headerMacros)
@@ -2022,6 +2077,8 @@ namespace
         }
         else if (word == "pragma" || word == "undef" || word == "error" || word == "warning")
         {
+          if (word == "pragma")
+            notePack(rest, offset);
           if (word == "undef")
           {
             size_t n = rest.find_first_not_of(" \t");
@@ -3193,6 +3250,29 @@ namespace
           case NodeKind::ClassDecl:
           {
             auto* c = static_cast<ClassDecl*>(d);
+            if (c->isDefinition && packedAt(toks[c->token].offset))
+            {
+              // The class keyword, after any `template<...>`.
+              uint32_t k = c->token;
+              if (toks[k].is(Kw::template_) && k + 1 < toks.size() && toks[k + 1].is(P::Less))
+              {
+                for (int depth = 0; ++k < toks.size();)
+                {
+                  if (toks[k].is(P::Less))
+                    ++depth;
+                  else if (toks[k].is(P::Greater) && --depth == 0)
+                    break;
+                  else if (toks[k].is(P::Shr) && (depth -= 2) <= 0)
+                    break;
+                }
+                ++k;
+              }
+              if (k < toks.size() && (toks[k].is(Kw::class_) || toks[k].is(Kw::struct_) || toks[k].is(Kw::union_)))
+              {
+                insert(endOffset(k), " [[packed]]");
+                counts.add("#pragma pack(push, 1) classes [[packed]]");
+              }
+            }
             if (!c->isDefinition)
             {
               Decl* def = global.definitionOf(c);
@@ -4672,12 +4752,12 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
     for (size_t at = t.find("define"); at != std::string_view::npos; at = t.find("define", at + 6))
     {
       size_t hash = at;
-      while (hash > 0 && (t[hash - 1] == ' ' || t[hash - 1] == '	'))
+      while (hash > 0 && (t[hash - 1] == ' ' || t[hash - 1] == '\t'))
         --hash;
       if (hash == 0 || t[hash - 1] != '#')
         continue;
       size_t n = at + 6, e;
-      while (n < t.size() && (t[n] == ' ' || t[n] == '	'))
+      while (n < t.size() && (t[n] == ' ' || t[n] == '\t'))
         ++n;
       for (e = n; e < t.size() && isIdentChar(t[e]); ++e)
       {
