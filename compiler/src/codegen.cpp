@@ -4875,6 +4875,8 @@ namespace
       if (!op)
         if (const Ty* operand = types.lref(types.qualified(t, true, false)); global.findFreeOperator(uint32_t(P::EqEq), operand, operand, currentFunction))
           return convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at); // SHA1Digest's `operator==(const SHA1Digest&, const SHA1Digest&)`
+      if (ClassDecl* u = typedUnionOf(t, at))
+        return typedUnionEqual(u, a, b, t, at); // the alternative held, then its values (design.md 8.5)
       return memberwiseEqual(a, b, t, at);
     }
 
@@ -9790,6 +9792,41 @@ namespace
           Expr* args[2] = {b->lhs, b->rhs};
           return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
         }
+      // `a == b`, `a < b` of two typed unions of one type with no operator of their own: as
+      // std::variant's, by the alternative held, then its values (design.md 8.5).
+      if (ClassDecl* u = lt && rt ? typedUnionOf(lt, b) : nullptr;
+          u && typedUnionOf(rt, b) && canonicalClass(lt, b) == canonicalClass(rt, b) &&
+          (op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq || op == P::Spaceship))
+      {
+        Expr* rhsExpr = b->rhs;
+        Span<Expr*> one{&rhsExpr, 1};
+        auto own = [&](P which) {
+          const Ty* foundIn = nullptr;
+          return findMemberFunction(types.unqualified(lt), operatorName(which), argTypesOf(one), types.unqualified(lt), b, &foundIn, true) ||
+                 global.findFreeOperator(uint32_t(which), b->lhs->ty, b->rhs->ty, currentFunction);
+        };
+        bool equality = op == P::EqEq || op == P::NotEq;
+        if (!own(op) && !(equality ? own(P::EqEq) : own(P::Spaceship)))
+        {
+          Value l = rvalue(b->lhs), r = rvalue(b->rhs);
+          if (equality)
+          {
+            Value eq = typedUnionEqual(u, l.text, r.text, lt, b);
+            if (op == P::EqEq)
+              return eq;
+            std::string ne = newTemp();
+            fn += "  " + ne + " = xor i1 " + eq.text + ", true\n";
+            return {ne, types.boolType(), false};
+          }
+          Value order = typedUnionOrder(u, l.text, r.text, lt, b);
+          if (op == P::Spaceship)
+            return orderingObject(order, b);
+          const char* predicate = op == P::Less ? "slt" : op == P::Greater ? "sgt" : op == P::LessEq ? "sle" : "sge";
+          std::string res = newTemp();
+          fn += "  " + res + " = icmp " + predicate + " i8 " + order.text + ", 0\n";
+          return {res, types.boolType(), false};
+        }
+      }
       // `area += limit` with a Const<float> and no function for it: the scalar assignment below, on
       // the right operand's conversion to a scalar.
       bool scalarAssignment = isAssignment(op) && lt && lt->isKnown() && !isClass(lt) && isClass(rt) && global.scalarConversionOf(rt) &&
@@ -10002,6 +10039,8 @@ namespace
       const Ty* foundIn = nullptr;
       std::vector<const Ty*> argTypes{types.lref(types.qualified(t, true, false))};
       FunctionDecl* op = findMemberFunction(t, "operator<=>", argTypes, t, at, &foundIn);
+      if (ClassDecl* u = typedUnionOf(t, at); u && (!op || (op->flags & DF_Default)))
+        return typedUnionOrder(u, a, b, t, at); // the alternative held, then its values (design.md 8.5)
       if (!op)
       {
         const Ty* operand = types.lref(types.qualified(t, true, false));
@@ -11491,6 +11530,95 @@ namespace
       std::string addr = alternativeAddress(c, base.ty, base.text, index, at);
       return isClass(altTy) ? Value{addr, altTy, false} : load(addr, altTy, at);
     }
+    // The tag values of a typed union's alternatives, in declaration order (the cases of a switch).
+    std::vector<int64_t> alternativeTags(ClassDecl* c)
+    {
+      std::vector<int64_t> tags;
+      if (auto* e = static_cast<EnumDecl*>(c->tagEnum))
+        for (Decl* d : e->enumerators)
+          if (d->kind == NodeKind::EnumeratorDecl)
+            tags.push_back(enumeratorValue(static_cast<EnumeratorDecl*>(d)));
+      return tags;
+    }
+
+    // Runs part(k) in a block of its own for the alternative k both typed unions at a and b hold,
+    // their tags known equal; the blocks go on to done.
+    template<typename F>
+    void forEachHeldAlternative(ClassDecl* c, const Ty* t, const Value& tag, const std::string& done, Node* at, F&& part)
+    {
+      std::vector<int64_t> tags = alternativeTags(c);
+      if (tags.size() != c->alternatives.size())
+        unsupported(at, "a typed union whose tags are not its alternatives'");
+      const Ty* underlying = enumUnderlying(c->tagEnum);
+      std::string type = llType(underlying, at);
+      std::vector<std::string> labels;
+      std::string sw = "  switch " + type + " " + tag.text + ", label %" + done + " [";
+      for (size_t k = 0; k < tags.size(); ++k)
+      {
+        labels.push_back(newLabel("union.alternative"));
+        sw += " " + type + " " + std::to_string(tags[k]) + ", label %" + labels.back();
+      }
+      fn += sw + " ]\n";
+      blockTerminated = true;
+      for (size_t k = 0; k < labels.size(); ++k)
+      {
+        startBlock(labels[k]);
+        part(k);
+        emitBranch(done);
+      }
+    }
+
+    // a == b of two typed unions at those addresses (design.md 8.5, as std::variant's): the same
+    // alternative held, and equal values of it.
+    Value typedUnionEqual(ClassDecl* c, const std::string& a, const std::string& b, const Ty* t, Node* at)
+    {
+      const Ty* underlying = enumUnderlying(c->tagEnum);
+      Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at);
+      Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at);
+      std::string slot = "%equal" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca i1\n";
+      fn += "  store i1 false, ptr " + slot + "\n";
+      std::string same = newTemp(), held = newLabel("unionequal.held"), done = newLabel("unionequal.done");
+      fn += "  " + same + " = icmp eq " + llType(underlying, at) + " " + ta.text + ", " + tb.text + "\n";
+      fn += "  br i1 " + same + ", label %" + held + ", label %" + done + "\n";
+      blockTerminated = true;
+      startBlock(held);
+      forEachHeldAlternative(c, t, ta, done, at, [&](size_t k) {
+        Value e = partsEqual(alternativeAddress(c, t, a, k, at), alternativeAddress(c, t, b, k, at), alternativeType(c, t, k, at), at);
+        fn += "  store i1 " + e.text + ", ptr " + slot + "\n";
+      });
+      startBlock(done);
+      return load(slot, types.boolType(), at);
+    }
+
+    // The order (i8) of two typed unions at those addresses (design.md 8.5, as std::variant's): by
+    // the alternative held, in declaration order, then by the values of it.
+    Value typedUnionOrder(ClassDecl* c, const std::string& a, const std::string& b, const Ty* t, Node* at)
+    {
+      const Ty* underlying = enumUnderlying(c->tagEnum);
+      Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at);
+      Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at);
+      std::string slot = "%order" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca i8\n";
+      std::string type = llType(underlying, at);
+      std::string less = newTemp(), byTag = newTemp(), same = newTemp();
+      fn += "  " + less + " = icmp ult " + type + " " + ta.text + ", " + tb.text + "\n";
+      fn += "  " + byTag + " = select i1 " + less + ", i8 -1, i8 1\n";
+      fn += "  store i8 " + byTag + ", ptr " + slot + "\n";
+      std::string held = newLabel("unionorder.held"), done = newLabel("unionorder.done");
+      fn += "  " + same + " = icmp eq " + type + " " + ta.text + ", " + tb.text + "\n";
+      fn += "  br i1 " + same + ", label %" + held + ", label %" + done + "\n";
+      blockTerminated = true;
+      startBlock(held);
+      fn += "  store i8 0, ptr " + slot + "\n";
+      forEachHeldAlternative(c, t, ta, done, at, [&](size_t k) {
+        Value o = orderOfParts(alternativeAddress(c, t, a, k, at), alternativeAddress(c, t, b, k, at), alternativeType(c, t, k, at), at);
+        fn += "  store i8 " + o.text + ", ptr " + slot + "\n";
+      });
+      startBlock(done);
+      return load(slot, types.intType(8), at);
+    }
+
     // `p == Property::Integer`: the tag against the enumerator.
     Value compareTag(BinaryExpr* b, bool negate)
     {

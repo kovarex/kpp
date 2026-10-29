@@ -291,6 +291,15 @@ and Comment both have that type". Overload resolution ranks the conversion from 
 converting constructor's.
 Spec snippets: kpp/typed_union_from_value, kpp/typed_union_alternatives.
 
+Decided 2026-10-29 (the converter's std::variant ordering, asked by the coordinator): *comparisons*
+are std::variant's. `a == b` holds when both hold the same alternative and its values are equal
+(`!=` is its negation); `a < b`, `>`, `<=`, `>=` and `<=>` order by the alternative held, in
+declaration order, then by the values of it (their `<=>`, or their `==` and `<`). A union's own
+operator takes precedence; a class whose defaulted `==` or `<=>` has a typed union member compares
+it so. `VariantAlternative<I, U>` is the type of the I-th alternative (a built-in of the
+compiler's, as std::variant_alternative_t). Spec snippets: kpp/typed_union_comparisons,
+kpp/typed_union_variant_alternative.
+
 **8.6 Tests in the compiler.**
 ```
 test "Direction::isVertical"

@@ -13724,6 +13724,18 @@ struct GlobalScope::Impl
           return types.param(ls->kind == TyKind::Param ? ls->decl : rs->decl);
         if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types)))
           return t;
+        // Two typed unions of one type with no operator of their own compare as std::variant's
+        // (design.md 8.5): by the alternative held, then by its values.
+        if (typedUnionOf(ls) && types.unqualified(ls) == types.unqualified(rs))
+          switch (op)
+          {
+            case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
+              return types.boolType();
+            case P::Spaceship:
+              return impl.orderingType();
+            default:
+              break;
+          }
         // No operator function: the built-in operator on the operands' scalar conversions (an
         // assignment's left operand is the object itself and converts to nothing).
         const Ty* lc = isAssignmentOp(op) ? (ls->kind == TyKind::Class ? nullptr : l) : builtinOperand(l);
