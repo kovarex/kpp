@@ -1,6 +1,5 @@
 // spec: a function passed by name to a forwarding reference: `F&&` binds to the function itself (F is its function type), `forward<F>(f)(args...)` calls it, and `Decay<F>` is its pointer type
 // factorio: std::thread's constructor with a function (ParallelScenarioLoader's `std::thread(ParallelScenarioLoader::doLoad, mapInterface, loader, ...)`), std::invoke, the game's own `F&&` wrappers
-// pending: the argument `add` is taken as a value of function type, which codegen cannot address ("taking the address of add")
 static int add(int a, int b) { return a + b; }
 template<typename F, typename... Args>
 decltype(auto) call(F&& f, Args&&... args) { return forward<F>(f)(forward<Args>(args)...); }

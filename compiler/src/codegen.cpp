@@ -5893,6 +5893,8 @@ namespace
         fn += "  " + r + " = getelementptr inbounds " + llType(ty, at) + ", ptr " + addr + ", i64 0, i64 0\n";
         return {r, types.pointer(ty->inner)};
       }
+      if (ty->kind == TyKind::Function)
+        return {addr, types.pointer(ty)}; // a function (through a reference, `F&& f`): its address, nothing to load
       if (isAggregate(ty))
         return {addr, types.unqualified(ty)};
       std::string r = newTemp();
@@ -5986,6 +5988,15 @@ namespace
             break; // an enumerator bound to a reference: its value goes to a temporary (below)
           if (d->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(d)->isType)
             break; // a constant template parameter bound to a reference (`take(K)`): the same
+          if (d->kind == NodeKind::FunctionDecl && !(global.owningClass(d) && !(d->flags & DF_Static)))
+          {
+            // A function bound to a reference (`call(add, 2, 3)` with `F&& f`): the function itself,
+            // whose address the reference holds, as `&add` gives it.
+            auto* f = static_cast<FunctionDecl*>(d);
+            if (!f->templateParams.empty() || global.isTemplateContext(f))
+              unsupported(e, "a function template bound to a reference (" + sym(n->name.last().symbol) + ")");
+            return useFunction(f, {}, nullptr);
+          }
           unsupported(e, "taking the address of " + sym(n->name.last().symbol));
         }
         case NodeKind::MemberExpr:
