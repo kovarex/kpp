@@ -1189,6 +1189,19 @@ namespace
             entry.bases.push_back(nameText(static_cast<NamedType*>(b.type)->name, symbols));
         collectClassBases(c->members, key, symbols, out);
       }
+      else if (d->kind == NodeKind::UsingAliasDecl)
+      {
+        // An alias of a class (`template<class T> using IntrusiveListHook = typename
+        // IntrusiveListImplementation<T, ...>::Hook;`) is an entry whose one base is that class, so
+        // a class deriving from the alias sees the class's names (UpdatableEntity's `next`).
+        auto* a = static_cast<UsingAliasDecl*>(d);
+        if (a->type && a->type->kind == NodeKind::NamedType && !static_cast<NamedType*>(a->type)->name.empty())
+        {
+          ClassBases& entry = out[prefix + std::string(symbols.name(a->name)) + "::"];
+          entry.enclosing = prefix;
+          entry.bases.push_back(nameText(static_cast<NamedType*>(a->type)->name, symbols));
+        }
+      }
     }
   }
   // Adds to every class's names the names its bases declare (transitively), which an unqualified
@@ -1203,7 +1216,7 @@ namespace
       while (true)
       {
         std::string key = scope + written + "::";
-        if (names.count(key))
+        if (names.count(key) || bases.count(key))
           return key;
         if (scope.empty())
           return "";
@@ -3384,9 +3397,11 @@ namespace
             }
           }
           counts.add(it == stdNames.end() ? "std::" + name + " (no mapping)" : "std renamed");
-          if (it != stdNames.end() && to.find("::") == std::string::npos && shadowedAt(to, t.offset))
+          if (to.find("::") == std::string::npos && shadowedAt(to, t.offset))
           {
-            to = "::" + to; // `std::string` inside a class or namespace with its own String
+            // `std::string` inside a class or namespace with its own String, `std::next(source)` in
+            // a class whose base has a `next` member (Loader through UpdatableEntity's list hook).
+            to = "::" + to;
             counts.add("std name qualified as global");
           }
           replace(t.offset, endOffset(i + 2) - t.offset, to);
