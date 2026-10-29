@@ -459,9 +459,13 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
   if (!t)
     return "<null>";
   std::string s;
-  if (t->isConst)
+  // A const pointer has its qualifiers after the `*` (`Widget* const`): before it they read as the
+  // pointee's, and `const Widget**` and `Widget* const*` printed alike, one IR name for two
+  // classes (ReverseIterator's methods were emitted for whichever of the two came first).
+  bool qualifiersAfter = t->kind == TyKind::Pointer || t->kind == TyKind::MemberPointer;
+  if (t->isConst && !qualifiersAfter)
     s += "const ";
-  if (t->isVolatile)
+  if (t->isVolatile && !qualifiersAfter)
     s += "volatile ";
   auto ownName = [&](Decl* d) -> std::string
   {
@@ -596,5 +600,9 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
     case TyKind::Vector: s += "__m128" + std::string(t->inner && t->inner->kind == TyKind::Float && t->inner->bits == 64 ? "d" : t->inner && t->inner->kind == TyKind::Int ? "i" : ""); break;
     case TyKind::Unknown: s += "<unknown>"; break;
   }
+  if (t->isConst && qualifiersAfter)
+    s += " const";
+  if (t->isVolatile && qualifiersAfter)
+    s += " volatile";
   return s;
 }

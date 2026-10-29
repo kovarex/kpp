@@ -1,0 +1,23 @@
+// spec: instances of one template whose arguments differ only in which level of a pointer is const (`const int**`, `int* const*`, `int** const`) are different classes with their own member functions
+// factorio: ReverseIterator<const agui::Widget**> and ReverseIterator<agui::Widget* const*> printed alike ("const agui::Widget**"), so their methods had one IR name and whichever instance was emitted first was both: the module's IR depended on the threads' timing (about one no-change rebuild in five recompiled it)
+template<typename T>
+struct Which
+{
+  int value() const
+  {
+    if constexpr (isConst<T>)
+      return 3;
+    else if constexpr (isConst<RemovePointer<T>>)
+      return 2;
+    else
+      return 1;
+  }
+};
+int main()
+{
+  Which<const int**> a;
+  Which<int* const*> b;
+  Which<int** const> c;
+  println("{} {} {}", a.value(), b.value(), c.value());
+  return 0;
+}
