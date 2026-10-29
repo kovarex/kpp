@@ -10289,6 +10289,15 @@ struct GlobalScope::Impl
                  static_cast<LiteralExpr*>(v->init)->literalKind == TokenKind::String)
           if (std::optional<ConstValue> s = constString(static_cast<LiteralExpr*>(v->init), ctx))
             t = types.array(t->inner, uint32_t(s->parts->size())); // `char s[] = "abc"`: its four chars
+        // A static data member declared without its bound (`static Type const types[];`) has the
+        // bound of its out-of-line definition (`Highlights::types[] = {...}`), as in C++.
+        if (t && t->kind == TyKind::Array && t->count == 0 && !v->init)
+        {
+          auto it = variableDefinitions.find(v);
+          if (it != variableDefinitions.end() && it->second != v)
+            if (const Ty* defined = declaredTypeOf(it->second, subst, depth + 1); defined && defined->kind == TyKind::Array && defined->count != 0)
+              t = types.array(t->inner, defined->count);
+        }
         // `static constexpr Array accessors = {&S::a, &S::b};` used before the walk reaches the
         // initializer (by a member function written above it): the class's arguments from the
         // initializer (CTAD), as the walk deduces a local's.
