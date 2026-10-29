@@ -2431,6 +2431,183 @@ namespace
     // Every function-like macro's name (callsFunction): an object-like macro that calls something else
     // is written out at its uses.
     const std::set<std::string>* functionMacroNames = nullptr;
+    // The converted files' classes and aliases by their own name (convertToKpp), for the fixture of a
+    // fixture test.
+    const std::map<std::string, std::vector<Decl*>>* classesByName = nullptr;
+    // A fixture test's body (UnitTest++'s TEST_FIXTURE, whose expansion ends with the
+    // `Fixture##Name##Helper::Run()` of a class deriving from the fixture): the parse does not see it
+    // (a macro's use with a block), so the names it uses of the fixture's members get their `this->`
+    // here, which Kpp requires (TestArithmeticCombinator's `combinator->setParameters(params);`). From
+    // its `{` token to its `}`, the fixture's member names, and the locals declared in it (a name, the
+    // token declaring it, the end of its block), which hide members of their names.
+    struct FixtureBody
+    {
+      uint32_t open = 0, close = 0;
+      std::set<std::string> members;
+      std::vector<std::tuple<std::string, uint32_t, uint32_t>> locals;
+    };
+    std::vector<FixtureBody> fixtureBodies;
+    const FixtureBody* fixtureBodyAt(uint32_t token) const
+    {
+      for (const FixtureBody& b : fixtureBodies)
+        if (b.open < token && token < b.close)
+          return &b;
+      return nullptr;
+    }
+    static bool isFixtureLocal(const FixtureBody& b, const std::string& name, uint32_t token)
+    {
+      for (const auto& [local, declared, end] : b.locals)
+        if (local == name && declared <= token && token < end)
+          return true;
+      return false;
+    }
+    // The body of the fixture test whose expansion is text and whose body begins at token open:
+    // its fixture's members (through an alias, and the bases'), and its locals by their declarations.
+    void noteFixtureBody(const std::string& expansion, uint32_t open)
+    {
+      std::string text = expansion;
+      while (!text.empty() && isspace((unsigned char)text.back()))
+        text.pop_back();
+      if (!classesByName || open >= toks.size() || !toks[open].is(P::LBrace) || text.size() < 8 || text.compare(text.size() - 7, 7, "::Run()") != 0)
+        return;
+      size_t nameEnd = text.size() - 7, nameStart = nameEnd;
+      while (nameStart > 0 && isIdentChar(text[nameStart - 1]))
+        --nameStart;
+      std::string helper = text.substr(nameStart, nameEnd - nameStart);
+      size_t at = text.find("class " + helper + " : public ");
+      if (helper.empty() || at == std::string::npos)
+        return;
+      size_t baseStart = at + helper.size() + 16, baseEnd = baseStart;
+      while (baseEnd < text.size() && text[baseEnd] != ',' && text[baseEnd] != '{')
+        ++baseEnd;
+      std::string base = text.substr(baseStart, baseEnd - baseStart);
+      while (!base.empty() && isspace((unsigned char)base.back()))
+        base.pop_back();
+      size_t last = base.rfind(':');
+      std::string fixture = last == std::string::npos ? base : base.substr(last + 1);
+      while (!fixture.empty() && isspace((unsigned char)fixture.front()))
+        fixture.erase(fixture.begin());
+      auto found = classesByName->find(fixture);
+      if (found == classesByName->end() || found->second.empty())
+        return;
+      Decl* cls = found->second.front();
+      if (cls->kind == NodeKind::UsingAliasDecl)
+      {
+        const Ty* aliased = global.typeOfAst(static_cast<UsingAliasDecl*>(cls)->type, cls);
+        if (!aliased || !aliased->decl)
+          return;
+        cls = aliased->decl;
+      }
+      FixtureBody body;
+      body.open = open;
+      int depth = 0;
+      for (uint32_t k = open; k < toks.size(); ++k)
+        if (toks[k].is(P::LBrace))
+          ++depth;
+        else if (toks[k].is(P::RBrace) && --depth == 0)
+        {
+          body.close = k;
+          break;
+        }
+      if (body.close == 0)
+        return;
+      for (uint32_t symbol : memberNames(cls))
+        body.members.insert(std::string(symbols.name(symbol)));
+      // The locals: a name after a type's last token (a name, `>`, `*`, `&`, `&&`, a type word) and
+      // before what a declarator ends with, or the names of a structured binding; each until the end
+      // of the block it is declared in.
+      static const std::set<std::string_view> typeWords = {"auto", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "void", "const", "volatile"};
+      std::vector<uint32_t> blocks; // the `{` of the blocks open at k
+      auto blockEnd = [&](uint32_t from)
+      {
+        int d = 0;
+        for (uint32_t k = from; k <= body.close; ++k)
+          if (toks[k].is(P::LBrace))
+            ++d;
+          else if (toks[k].is(P::RBrace) && --d == 0)
+            return k;
+        return body.close;
+      };
+      for (uint32_t k = open; k < body.close; ++k)
+      {
+        if (toks[k].is(P::LBrace))
+          blocks.push_back(k);
+        else if (toks[k].is(P::RBrace) && !blocks.empty())
+          blocks.pop_back();
+        uint32_t end = blocks.empty() ? body.close : blockEnd(blocks.back());
+        if (toks[k].is(Kw::auto_) || (toks[k].getKind() == TokenKind::Keyword && spelling(k) == "auto"))
+        {
+          uint32_t b = k + 1;
+          while (b < body.close && (toks[b].is(P::Amp) || toks[b].is(P::AndAnd)))
+            ++b;
+          if (b < body.close && toks[b].is(P::LBracket))
+            for (++b; b < body.close && !toks[b].is(P::RBracket); ++b)
+              if (toks[b].getKind() == TokenKind::Identifier)
+                body.locals.emplace_back(std::string(spelling(b)), b, end);
+        }
+        if (toks[k].getKind() != TokenKind::Identifier || k == 0)
+          continue;
+        const Token& before = toks[k - 1];
+        const Token& after = toks[k + 1];
+        bool typeBefore = before.getKind() == TokenKind::Identifier || before.is(P::Greater) || before.is(P::Star) || before.is(P::Amp) ||
+                          before.is(P::AndAnd) || (before.getKind() == TokenKind::Keyword && typeWords.count(spelling(k - 1)));
+        bool declaratorAfter = after.is(P::Assign) || after.is(P::Semi) || after.is(P::LParen) || after.is(P::LBrace) || after.is(P::LBracket) ||
+                               after.is(P::Comma) || after.is(P::RParen) || after.is(P::Colon);
+        bool qualified = k >= 2 && (toks[k - 2].is(P::Dot) || toks[k - 2].is(P::Arrow) || toks[k - 2].is(P::ColonColon));
+        if (typeBefore && declaratorAfter && !(before.getKind() == TokenKind::Identifier && qualified))
+          body.locals.emplace_back(std::string(spelling(k)), k, end);
+      }
+      counts.add("fixture test bodies");
+      fixtureBodies.push_back(std::move(body));
+    }
+    // text (a macro's argument in a fixture test's body, at token use) with the fixture's members it
+    // names unqualified given their `this->`.
+    std::string qualifyFixtureMembers(const std::string& text, const FixtureBody& b, uint32_t use)
+    {
+      std::string out;
+      for (size_t i = 0; i < text.size();)
+      {
+        if (size_t raw = rawStringEnd(text, i); raw != std::string_view::npos)
+        {
+          out.append(text, i, raw - i);
+          i = raw;
+        }
+        else if (text[i] == '"' || (text[i] == '\'' && !isDigitSeparator(text, i)))
+        {
+          size_t k = i + 1;
+          while (k < text.size() && text[k] != text[i])
+            k += text[k] == '\\' ? 2 : 1;
+          k = std::min(k + 1, text.size());
+          out.append(text, i, k - i);
+          i = k;
+        }
+        else if (isalpha((unsigned char)text[i]) || text[i] == '_')
+        {
+          size_t k = i;
+          while (k < text.size() && isIdentChar(text[k]))
+            ++k;
+          std::string name = text.substr(i, k - i);
+          size_t p = out.size();
+          while (p > 0 && isspace((unsigned char)out[p - 1]))
+            --p;
+          bool qualified = p > 0 && (out[p - 1] == '.' || out[p - 1] == ':' || (out[p - 1] == '>' && p > 1 && out[p - 2] == '-'));
+          size_t n = k;
+          while (n < text.size() && isspace((unsigned char)text[n]))
+            ++n;
+          bool scoped = n + 1 < text.size() && text[n] == ':' && text[n + 1] == ':';
+          if (!qualified && !scoped && b.members.count(name) && !isFixtureLocal(b, name, use) && !isdigit((unsigned char)name[0]))
+          {
+            out += "this->";
+            counts.add("this-> added in fixture test bodies");
+          }
+          out += name;
+          i = k;
+        }
+        else
+          out += text[i++];
+      }
+      return out;
+    }
     // The C libraries this file's library keeps calling, by include path prefix, imported where it
     // includes them (Lua's override_printf.h includes trio.h; the game's own calls of trio are the
     // C runtime's, and its includes of trio.h go).
@@ -3485,6 +3662,17 @@ namespace
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        if (t.getKind() == TokenKind::Identifier && !fixtureBodies.empty())
+          if (const FixtureBody* body = fixtureBodyAt(i))
+          {
+            std::string name(spelling(i));
+            bool qualified = i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon));
+            if (!qualified && !toks[i + 1].is(P::ColonColon) && body->members.count(name) && !isFixtureLocal(*body, name, i))
+            {
+              insert(t.offset, "this->");
+              counts.add("this-> added in fixture test bodies");
+            }
+          }
         // C's parenthesized declarator name, lua.h's `LUA_API int (lua_gettop) (lua_State *L);`
         // (written so that a function-like macro of the same name does not expand): the name alone,
         // in a declaration outside any function body. `(f)(x)` in an expression is a call and stays.
@@ -3656,7 +3844,13 @@ namespace
                 std::vector<std::string> argText;
                 for (auto [a0, a1] : args)
                   argText.push_back(a1 > a0 ? std::string(text.substr(toks[a0].offset, endOffset(a1 - 1) - toks[a0].offset)) : std::string());
-                replace(t.offset, endOffset(j) - t.offset, expandMacro(*lm, argText, t.offset));
+                if (const FixtureBody* body = fixtureBodies.empty() ? nullptr : fixtureBodyAt(i))
+                  for (std::string& a : argText)
+                    a = qualifyFixtureMembers(a, *body, i);
+                std::string expansion = expandMacro(*lm, argText, t.offset);
+                if (j + 1 < toks.size() && toks[j + 1].is(P::LBrace))
+                  noteFixtureBody(expansion, j + 1);
+                replace(t.offset, endOffset(j) - t.offset, expansion);
                 counts.add(lm->from == 0 && lm->to == UINT32_MAX && headerMacros && headerMacros->count(std::string(spelling(i))) ? "C header macro expanded" : "local macro expanded");
                 i = j;
                 continue;
@@ -7024,6 +7218,27 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         fileAliasRenames[&in][name] = name + "Of" + stem;
       }
   }
+  // The converted files' class definitions and aliases by their own name (FileConverter::classesByName).
+  std::map<std::string, std::vector<Decl*>> classesByName;
+  {
+    std::function<void(Span<Decl*>)> collect = [&](Span<Decl*> decls)
+    {
+      for (Decl* d : decls)
+        if (d->kind == NodeKind::NamespaceDecl)
+          collect(static_cast<NamespaceDecl*>(d)->decls);
+        else if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->isDefinition && !static_cast<ClassDecl*>(d)->name.empty() &&
+                 static_cast<ClassDecl*>(d)->name.last().symbol != UINT32_MAX)
+        {
+          classesByName[std::string(symbols.name(static_cast<ClassDecl*>(d)->name.last().symbol))].push_back(d);
+          collect(static_cast<ClassDecl*>(d)->members);
+        }
+        else if (d->kind == NodeKind::UsingAliasDecl)
+          classesByName[std::string(symbols.name(static_cast<UsingAliasDecl*>(d)->name))].push_back(d);
+    };
+    for (const ConvertInput& in : inputs)
+      if (in.parsed && !in.parsed->isImported)
+        collect(in.parsed->decls);
+  }
   // The files left out below, for the classes defined only there (FileConverter::leftOutFiles).
   std::set<const ParsedFile*> leftOutFiles;
   for (const ConvertInput& in : inputs)
@@ -7061,6 +7276,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     FileConverter fc(in, global, symbols);
     fc.leftOutFiles = &leftOutFiles;
     fc.functionMacroNames = &functionMacroNames;
+    fc.classesByName = &classesByName;
     if (auto kept = keptCLibraries.find(in.path.parent_path().filename().string()); kept != keptCLibraries.end())
       fc.keptCLibraries = &kept->second;
     fc.scopeNames = &scopeNames;
