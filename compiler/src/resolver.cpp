@@ -2137,7 +2137,17 @@ struct GlobalScope::Impl
         Decl* primary = step.overloads ? primaryOf(*step.overloads) : step.decl;
         for (size_t i = 0; i < part.templateArgs.size(); ++i)
           args.push_back(templateArgument(part.templateArgs[i], parameterFor(primary, i), actx, depth + 1)); // types, and constants for value parameters
-        if (const Ty* spec = matchSpecialization(step, args, depth))
+        // `typename Nest<I - 1, T*>::Type` in a member of Nest's primary: the injected class name,
+        // written with arguments, names the template, whose specialisations they may pick.
+        Lookup entries = step;
+        if (!entries.overloads && primary && (primary->attributes & ATTR_Specialized))
+          if (Lookup home; lookupInScope(lexicalScopeOf(primary), part.symbol, home, depth + 1, false) && home.overloads)
+          {
+            entries = home;
+            if (primary->kind == NodeKind::ClassDecl)
+              normalizeValueArgs(primary->templateParams, args, primary, depth + 1);
+          }
+        if (const Ty* spec = matchSpecialization(entries, args, depth))
         {
           step.decl = spec->decl;
           step.scope = spec->decl->ownScope;
@@ -8946,8 +8956,16 @@ struct GlobalScope::Impl
             args.push_back(types.param(p));
         normalizeValueArgs(params, args, def, depth);
         if (!params.empty() || noPrimary)
-          if (const Ty* spec = matchSpecialization(l, args, depth))
+        {
+          // `Nest<I - 1, T*>` in a member of Nest's primary: the injected class name, written with
+          // arguments, names the template, whose specialisations they may pick (where it is declared).
+          Lookup entries = l;
+          if (!entries.overloads && lastPart.hasTemplateArgs && (def->attributes & ATTR_Specialized) && lastPart.symbol != UINT32_MAX)
+            if (Lookup home; lookupInScope(lexicalScopeOf(def), lastPart.symbol, home, depth + 1, false) && home.overloads)
+              entries = home;
+          if (const Ty* spec = matchSpecialization(entries, args, depth))
             return spec; // a full specialisation is its own class; a partial one keeps its own parameters' arguments
+        }
         if (noPrimary && !argsDependent(args))
           return types.unknown(); // specialisations only, none for these arguments: no class
         return types.classType(def, Span<const Ty*>{args.data(), uint32_t(args.size())});

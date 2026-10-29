@@ -1,6 +1,5 @@
 // spec: a member of a class template's primary definition may name another instance of the template with arguments computed from its own (`typename Nest<I - 1, T*>::Type`), recursing until a specialization ends it, as for a partial specialization
 // found with the library's variadic Tuple: the type at index I of a pack written as `PackElement<I, H, T...> { using Type = typename PackElement<I - 1, T...>::Type; }` with `PackElement<0, H, T...>` specialized (the same recursion through a partial specialization works: TupleElement<I, Tuple<H, T...>>)
-// pending: the member's type is unknown ("static assertion whose condition the compiler cannot evaluate yet")
 template<int I, typename T>
 struct Nest { using Type = typename Nest<I - 1, T*>::Type; };
 template<typename T>
