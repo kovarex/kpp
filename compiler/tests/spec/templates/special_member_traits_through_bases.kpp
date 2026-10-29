@@ -1,0 +1,35 @@
+// spec: the special-member traits of a class deriving an abstract class are decided by the base's constructors (an abstract class makes no object of its own, but is a base all the same), and a constructor taking a class of the same name from another namespace is a converting constructor, not the copy constructor
+// factorio: static_assert(isMoveConstructible<...>, "Not movable.") on the network messages (abstract NetworkMessage) and synchronizer actions; uses_memcpy<Color> with Color(const agui::Color&)
+namespace agui { class Color { public: float r = 0; }; }
+class Message
+{
+public:
+  virtual ~Message() = default;
+  virtual int type() const = 0;
+};
+struct Heartbeat { int tick = 0; };
+class HeartbeatMessage : public Message
+{
+public:
+  HeartbeatMessage() = default;
+  implicit HeartbeatMessage(Heartbeat&& heartbeat) noexcept : heartbeat(heartbeat) {}
+  Heartbeat heartbeat;
+  Vector<uint32_t> requests;
+  int type() const override { return 1; }
+};
+class Color
+{
+public:
+  constexpr Color() noexcept : r(0) {}
+  Color(const agui::Color& color) : r(color.r) {}
+  float r;
+};
+static_assert(isMoveConstructible<HeartbeatMessage>, "Not movable.");
+static_assert(isMoveAssignable<HeartbeatMessage>, "Not movable.");
+static_assert(!isMoveConstructible<Message>);
+static_assert(isTriviallyCopyConstructible<Color> && isTriviallyMoveAssignable<Color>);
+int main()
+{
+  println("{} {} {} {}", isMoveConstructible<HeartbeatMessage>, isMoveConstructible<Message>, isTriviallyCopyConstructible<Color>, isTriviallyCopyAssignable<Color>);
+  return 0;
+}

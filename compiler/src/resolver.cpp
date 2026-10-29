@@ -18,6 +18,10 @@
 #include <tuple>
 #include <unordered_set>
 
+#if defined(_WIN32)
+extern "C" __declspec(dllimport) void __stdcall GetCurrentThreadStackLimits(unsigned long long* lowLimit, unsigned long long* highLimit);
+#endif
+
 void ResolveStats::add(const ResolveStats& o)
 {
   typesResolved += o.typesResolved;
@@ -2426,7 +2430,7 @@ struct GlobalScope::Impl
   enum class TraitForm { Plain, Trivially, Nothrow };
 
   // Whether a parameter's type is the class itself: 1 `const C&`, 2 `C&`, 3 `C&&`, 4 `C`; 0 not.
-  static int selfParameter(Decl* p, ClassDecl* def)
+  int selfParameter(Decl* p, ClassDecl* def)
   {
     Type* t = static_cast<ParamDecl*>(p)->type;
     int kind = 4;
@@ -2446,12 +2450,19 @@ struct GlobalScope::Impl
     if (!t || t->kind != NodeKind::NamedType || static_cast<NamedType*>(t)->name.empty() || def->name.empty() ||
         static_cast<NamedType*>(t)->name.last().symbol != def->name.last().symbol)
       return 0;
+    if (const QualifiedName& n = static_cast<NamedType*>(t)->name; (n.parts.size() > 1 || n.global) && def->ownScope)
+    {
+      // `Color(const agui::Color&)`: a class of the same name elsewhere, a converting constructor.
+      Lookup l = lookupQualified(n, def->ownScope, nullptr, 0);
+      if (l.scope != def->ownScope)
+        return 0;
+    }
     if (isConst)
       return kind == 2 ? 1 : kind == 4 ? 4 : 0;
     return kind;
   }
 
-  static SpecialMembers specialMembersOf(ClassDecl* def)
+  SpecialMembers specialMembersOf(ClassDecl* def)
   {
     SpecialMembers s;
     for (Decl* m : def->members)
@@ -2537,9 +2548,14 @@ struct GlobalScope::Impl
     ClassDecl* def = classDefinition(u);
     if (!def)
       return std::nullopt;
-    std::optional<bool> isAbstract = abstractClass(u, {});
-    if (!isAbstract || *isAbstract)
-      return isAbstract ? std::optional<bool>(false) : std::nullopt;
+    if (depth == 0)
+    {
+      // An abstract class makes no object of its own; as a base (deeper) its constructors serve
+      // its derived classes' all the same.
+      std::optional<bool> isAbstract = abstractClass(u, {});
+      if (!isAbstract || *isAbstract)
+        return isAbstract ? std::optional<bool>(false) : std::nullopt;
+    }
     SpecialMembers s = specialMembersOf(def);
     FunctionDecl* chosen = move && s.moveCtor ? s.moveCtor : s.copyCtor;
     if (chosen)
@@ -3281,6 +3297,65 @@ struct GlobalScope::Impl
     return v;
   }
 
+  // Whether this thread's stack has room for more nested evaluation (a megabyte kept spare).
+  static bool stackRoomLeft()
+  {
+#if defined(_WIN32)
+    static thread_local uintptr_t low = 0;
+    if (!low)
+    {
+      unsigned long long l = 0, h = 0;
+      GetCurrentThreadStackLimits(&l, &h);
+      low = uintptr_t(l);
+    }
+    char here;
+    return uintptr_t(&here) - low > (uintptr_t(1) << 20);
+#else
+    return true;
+#endif
+  }
+
+  // A name's value can need another constant evaluated, which can need another: a template
+  // recursion (`1 + IndexInTemplateList<T, R...>::value` in a base's argument, once per type of
+  // an 80-type list) nests evaluations once per level. Each name's evaluation starts its calls'
+  // depth afresh; how many nest is bounded here, and by the stack left.
+  static thread_local int nameEvaluations;
+  struct NameEvaluation
+  {
+    bool ok;
+    NameEvaluation() : ok(++nameEvaluations <= 1024 && stackRoomLeft()) {}
+    ~NameEvaluation() { --nameEvaluations; }
+  };
+
+  // A static member's value for a class instance's arguments, kept: a template recursion asks for
+  // the same ones over and over. Not while a static_assert is checked (its class layouts are the
+  // code generator's, see exactLayoutOnly), and only values that were found.
+  std::mutex memberConstantsMutex;
+  std::map<std::vector<const void*>, int64_t> memberConstants;
+  std::optional<int64_t> memberConstant(Decl* d, const TypeContext& ctx, const Subst& classSubst)
+  {
+    if (exactLayoutOnly)
+      return constOfDecl(d, ctx, 0, &classSubst);
+    std::vector<const void*> key{d};
+    for (const Subst::Pair& p : classSubst.pairs)
+    {
+      key.push_back(p.param);
+      key.push_back(p.type);
+    }
+    {
+      std::lock_guard lock(memberConstantsMutex);
+      if (auto it = memberConstants.find(key); it != memberConstants.end())
+        return it->second;
+    }
+    std::optional<int64_t> v = constOfDecl(d, ctx, 0, &classSubst);
+    if (v)
+    {
+      std::lock_guard lock(memberConstantsMutex);
+      memberConstants.emplace(std::move(key), *v);
+    }
+    return v;
+  }
+
   // depth: nesting of the evaluation, calls included (`ratioGcd(b, a % b)` recursing a few times
   // inside a static member's initializer inside a requires clause).
   std::optional<int64_t> constEval(Expr* e, const TypeContext& ctx, int depth = 0)
@@ -3296,12 +3371,15 @@ struct GlobalScope::Impl
           for (const ConstBinding& b : *ctx.env)
             if (b.symbol == n->name.parts[0].symbol)
               return b.value; // a parameter of the constexpr function being evaluated
-        Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        NameEvaluation nested; // the calls below start at depth 0 (see nameEvaluations)
+        if (!nested.ok)
+          return std::nullopt;
+        Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst);
         if (l.found == Found::No && !n->resolved && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs &&
             isBoolTraitName(n->name.parts[0].symbol))
         {
           // `isSame<T, int>` as a constant (an if constexpr condition under the substitution).
-          std::vector<const Ty*> a = traitArgs(n->name.parts[0], ctx, depth + 1);
+          std::vector<const Ty*> a = traitArgs(n->name.parts[0], ctx, 1);
           if (a.empty())
             return std::nullopt;
           std::optional<bool> v = traitValue(symbols.name(n->name.parts[0].symbol), a);
@@ -3312,22 +3390,22 @@ struct GlobalScope::Impl
         if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs)
           if (VariableDecl* concept_ = conceptOf(l.decl))
           {
-            std::optional<bool> v = conceptValue(concept_, n->name.parts[0], ctx, depth + 1);
+            std::optional<bool> v = conceptValue(concept_, n->name.parts[0], ctx, 1);
             return v ? std::optional<int64_t>(*v ? 1 : 0) : std::nullopt;
           }
         // `hasBegin<Vector<int>>`, `bytes<T>` under an instantiation: a variable template for these
         // arguments, not its initializer as written.
         if (n->name.last().hasTemplateArgs)
           if (VariableDecl* primary = primaryVariableTemplate(l))
-            return variableTemplateValue(primary, n->name.last(), ctx, depth + 1);
+            return variableTemplateValue(primary, n->name.last(), ctx, 1);
         // `Bits<uint64_t>::count`: a static member of a class template, under that instantiation's
         // arguments.
         if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
-          if (Subst qs = qualifierSubst(n->name, ctx, depth + 1, l.foundIn); !qs.pairs.empty())
-            return constOfDecl(l.decl, ctx, depth, &qs);
+          if (Subst qs = qualifierSubst(n->name, ctx, 1, l.foundIn); !qs.pairs.empty())
+            return memberConstant(l.decl, ctx, qs);
         // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`): the
         // declaration the type checker bound where the name is written.
-        return constOfDecl(l.decl ? l.decl : n->resolved, ctx, depth);
+        return constOfDecl(l.decl ? l.decl : n->resolved, ctx, 0);
       }
       case NodeKind::MemberExpr:
       {
@@ -10191,6 +10269,7 @@ const Ty* GlobalScope::typeOfDecl(Decl* d) { return impl->declaredTypeOf(d, null
 thread_local const std::vector<Token>* GlobalScope::Impl::fallbackTokens = nullptr;
 thread_local bool GlobalScope::Impl::exactLayoutOnly = false;
 thread_local bool GlobalScope::Impl::layoutNeeded = false;
+thread_local int GlobalScope::Impl::nameEvaluations = 0;
 thread_local std::string_view GlobalScope::Impl::fallbackText;
 
 const Ty* GlobalScope::typeOfAst(Type* t, Decl* context)

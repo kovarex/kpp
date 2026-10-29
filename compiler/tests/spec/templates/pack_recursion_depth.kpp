@@ -1,0 +1,41 @@
+// spec: a template recursion through constants as deep as the game's: the index of a type in an 85-type list, counted by partial specialisations whose base's argument is `1 + IndexInTemplateList<T, R...>::value`, one level per type
+// factorio: PrototypeListList::getTypeIndex over the 85 prototype lists (MplVector), behind AreCreatedInOrder's static_asserts and the indexes the game reads at run time
+template <typename...> struct IndexInTemplateList;
+template <typename T, typename... R>
+struct IndexInTemplateList<T, T, R...> : IntegralConstant<size_t, 0> {};
+template <typename T, typename F, typename... R>
+struct IndexInTemplateList<T, F, R...> : IntegralConstant<size_t, 1 + IndexInTemplateList<T, R...>::value> {};
+template <class... Args>
+struct TypeList
+{
+  template<class T>
+  static constexpr size_t indexOf() { return IndexInTemplateList<T, Args...>::value; }
+};
+struct List0 {}; struct List1 {}; struct List2 {}; struct List3 {}; struct List4 {}; struct List5 {}; struct List6 {}; struct List7 {}; struct List8 {}; struct List9 {};
+struct List10 {}; struct List11 {}; struct List12 {}; struct List13 {}; struct List14 {}; struct List15 {}; struct List16 {}; struct List17 {}; struct List18 {}; struct List19 {};
+struct List20 {}; struct List21 {}; struct List22 {}; struct List23 {}; struct List24 {}; struct List25 {}; struct List26 {}; struct List27 {}; struct List28 {}; struct List29 {};
+struct List30 {}; struct List31 {}; struct List32 {}; struct List33 {}; struct List34 {}; struct List35 {}; struct List36 {}; struct List37 {}; struct List38 {}; struct List39 {};
+struct List40 {}; struct List41 {}; struct List42 {}; struct List43 {}; struct List44 {}; struct List45 {}; struct List46 {}; struct List47 {}; struct List48 {}; struct List49 {};
+struct List50 {}; struct List51 {}; struct List52 {}; struct List53 {}; struct List54 {}; struct List55 {}; struct List56 {}; struct List57 {}; struct List58 {}; struct List59 {};
+struct List60 {}; struct List61 {}; struct List62 {}; struct List63 {}; struct List64 {}; struct List65 {}; struct List66 {}; struct List67 {}; struct List68 {}; struct List69 {};
+struct List70 {}; struct List71 {}; struct List72 {}; struct List73 {}; struct List74 {}; struct List75 {}; struct List76 {}; struct List77 {}; struct List78 {}; struct List79 {};
+struct List80 {}; struct List81 {}; struct List82 {}; struct List83 {}; struct List84 {};
+using Lists = TypeList<
+  List0, List1, List2, List3, List4, List5, List6, List7, List8, List9,
+  List10, List11, List12, List13, List14, List15, List16, List17, List18, List19,
+  List20, List21, List22, List23, List24, List25, List26, List27, List28, List29,
+  List30, List31, List32, List33, List34, List35, List36, List37, List38, List39,
+  List40, List41, List42, List43, List44, List45, List46, List47, List48, List49,
+  List50, List51, List52, List53, List54, List55, List56, List57, List58, List59,
+  List60, List61, List62, List63, List64, List65, List66, List67, List68, List69,
+  List70, List71, List72, List73, List74, List75, List76, List77, List78, List79,
+  List80, List81, List82, List83, List84>;
+template<class Before, class After>
+constexpr bool areInOrder() { return Lists::indexOf<Before>() < Lists::indexOf<After>(); }
+static_assert(areInOrder<List8, List25>());
+static_assert(Lists::indexOf<List84>() == 84);
+int main()
+{
+  println("{} {} {}", Lists::indexOf<List8>(), Lists::indexOf<List84>(), areInOrder<List25, List8>());
+  return 0;
+}
