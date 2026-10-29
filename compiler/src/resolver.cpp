@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -2753,8 +2754,39 @@ struct GlobalScope::Impl
     return !v || *v != 0; // unknown: explicit, the safe side
   }
 
+  // Trait answers by (name, argument types): a trait of known types is a fact about them, asked
+  // again and again (isTriviallyCopyable of a class walks its special members and bases each time,
+  // about a fifth of the front end before this cache). Only definite answers are kept.
+  struct TraitShard
+  {
+    std::shared_mutex mutex;
+    std::unordered_map<std::string, bool, PointerKeyHash> answers;
+  };
+  TraitShard traitShards[64];
+
   // isArray<T>, isSame<A, B>, ... ; nullopt when `name` is not a trait.
   std::optional<bool> traitValue(std::string_view name, const std::vector<const Ty*>& a)
+  {
+    std::string key(name);
+    key.push_back('\0');
+    for (const Ty* t : a)
+      key.append(reinterpret_cast<const char*>(&t), sizeof t);
+    TraitShard& shard = traitShards[(PointerKeyHash()(key) >> 58) % std::size(traitShards)];
+    {
+      std::shared_lock lock(shard.mutex);
+      if (auto it = shard.answers.find(key); it != shard.answers.end())
+        return it->second;
+    }
+    std::optional<bool> answer = traitValueUncached(name, a);
+    if (answer)
+    {
+      std::unique_lock lock(shard.mutex);
+      shard.answers.emplace(std::move(key), *answer);
+    }
+    return answer;
+  }
+
+  std::optional<bool> traitValueUncached(std::string_view name, const std::vector<const Ty*>& a)
   {
     auto one = [&]() { return a.size() == 1 ? a[0] : nullptr; };
     if (name == "isArray") return one() && one()->kind == TyKind::Array;
