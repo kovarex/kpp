@@ -1,0 +1,13 @@
+// spec: fmod and nextafter of two floats are floats, computed by the C runtime's float functions as MSVC's std::fmod(float, float) is fmodf; of two different arithmetic types, or of integers, they are doubles
+// factorio: the tests' TestFloatingPoint: fmodFloat saves 10000 `std::fmod(a, b)` of floats for a checksum (as doubles the checksum differed), and ClampCast takes `std::nextafter(2147483520.0f, FLT_MAX)` as 2147483648.0f (computed in double it stayed 2147483520)
+int main()
+{
+  float a = 5.5f;
+  float b = 2.0f;
+  auto r = fmod(a, b);
+  auto mixed = fmod(a, 2);
+  auto both = fmod(5.5, 2.0);
+  float next = nextafter(2147483520.0f, 3.0e38f);
+  println("{} {} {} {} {} {}", sizeof(r), r, sizeof(mixed), sizeof(both), next == 2147483648.0f, sizeof(nextafter(1.0, 2.0)));
+  return 0;
+}

@@ -21,6 +21,21 @@ float sqrt(float value) { return (float)sqrt((double)value); }
 float floor(float value) { return (float)floor((double)value); }
 float ceil(float value) { return (float)ceil((double)value); }
 float round(float value) { return (float)round((double)value); }
+// fmod and nextafter of two floats are the C runtime's float ones, as MSVC's std::fmod(float, float)
+// is fmodf: a float result (TestFloatingPoint's fmodFloat saves 10000 of them for a checksum) and
+// a float's next value (its ClampCast test: nextafter(2147483520.0f, FLT_MAX) is 2147483648.0f).
+// Arguments of two different arithmetic types, or integers, are taken as doubles, as C++'s
+// templates for them do.
+extern "C" float fmodf(float value, float divisor);
+extern "C" float nextafterf(float from, float to);
+float fmod(float value, float divisor) { return fmodf(value, divisor); }
+float nextafter(float from, float to) { return nextafterf(from, to); }
+template<typename A, typename B>
+  requires isArithmetic<A> && isArithmetic<B> && (!isSame<A, B> || isIntegral<A>)
+double fmod(A value, B divisor) { return fmod(double(value), double(divisor)); }
+template<typename A, typename B>
+  requires isArithmetic<A> && isArithmetic<B> && (!isSame<A, B> || isIntegral<A>)
+double nextafter(A from, B to) { return nextafter(double(from), double(to)); }
 
 bool isnan(double value) { return value != value; }
 bool isnan(float value) { return value != value; }

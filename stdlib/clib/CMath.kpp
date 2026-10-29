@@ -1,6 +1,6 @@
 // C math functions beyond what core/Math.kpp declares (sqrt, floor, ceil, round, trunc, pow,
-// fmod, exp, log, sin, cos, atan2, fabs, lround, nextafter, isnan, isinf, isfinite, signbit,
-// abs are already there).
+// fmod, exp, log, sin, cos, atan2, fabs, lround, nextafter and nextafterf, isnan, isinf, isfinite,
+// signbit, abs are already there).
 extern "C" double acos(double x);
 extern "C" double asin(double x);
 extern "C" double atan(double x);
@@ -17,7 +17,6 @@ extern "C" double remainder(double x, double y);
 extern "C" double ldexp(double x, int exp);
 extern "C" double frexp(double x, int* exp);
 extern "C" double cbrt(double x);
-extern "C" float nextafterf(float from, float to);
 
 bool isnormal(double value) { return isfinite(value) && value != 0.0; }
 bool isnormal(float value) { return isfinite(value) && value != 0.0f; }
