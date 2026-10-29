@@ -353,6 +353,10 @@ namespace
 
     static bool isLambda(const Ty* t) { return t && t->kind == TyKind::Lambda && t->decl; }
     static bool isAggregate(const Ty* t) { return isClass(t) || isLambda(t); }
+    // A result that comes back through the caller's hidden result slot: a class, and a closure (a
+    // lambda returned by value lives in memory like every closure; returned as an LLVM value, its
+    // address and its bytes were confused: `ret %closure %o3`).
+    static bool returnsInMemory(const Ty* t) { return isAggregate(t); }
     static LambdaExpr* lambdaOf(const Ty* t) { return isLambda(t) && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl)->lambda : nullptr; }
     static bool isGenericLambda(const Ty* t) { LambdaExpr* l = lambdaOf(t); return l && !l->templateParams.empty(); }
 
@@ -3319,7 +3323,7 @@ namespace
       try
       {
         std::string params = "ptr %closure";
-        bool hasSret = isClass(currentReturn);
+        bool hasSret = returnsInMemory(currentReturn);
         if (hasSret)
         {
           params += ", ptr %sret";
@@ -3421,7 +3425,7 @@ namespace
         if (!lambdaInstances.insert(name).second)
           return name;
       }
-      bool hasSret = isClass(ret);
+      bool hasSret = returnsInMemory(ret);
       std::string retType = hasSret ? "void" : (!ret || !ret->isKnown()) ? "ptr" : ret->isReference() ? "ptr" : llType(ret, at);
       std::string params, args = "ptr null";
       if (hasSret)
@@ -3480,7 +3484,7 @@ namespace
       const Ty* ret = callTy->inner ? callTy->inner : types.voidType();
       std::string argText = "ptr " + closure.text;
       std::string resultAddr = sret;
-      bool hasSret = isClass(ret);
+      bool hasSret = returnsInMemory(ret);
       bool resultTemp = false; // owned by the statement once the call returned it
       if (hasSret)
       {
@@ -3716,7 +3720,7 @@ namespace
       Signature s;
       bool method = global.owningClass(f) && !(f->flags & DF_Static) && !global.isExternC(f);
       const Ty* ret = ft->inner;
-      if (isClass(ret))
+      if (returnsInMemory(ret))
       {
         s.hasSret = true;
         s.returnType = "void";
@@ -6734,7 +6738,7 @@ namespace
     {
       Signature s;
       const Ty* ret = ft->inner;
-      if (isClass(ret))
+      if (returnsInMemory(ret))
       {
         s.hasSret = true;
         s.returnType = "void";
@@ -9405,7 +9409,7 @@ namespace
             if (r->value)
               rvalue(r->value);
           }
-          else if (isClass(currentReturn))
+          else if (returnsInMemory(currentReturn))
           {
             if (!r->value)
               unsupported(s, "return without a value");
@@ -9436,7 +9440,7 @@ namespace
             retText = convert(rvalue(r->value), currentReturn, s).text;
           }
           destroyTemps();
-          std::string retLl = currentReturn->kind == TyKind::Void || isClass(currentReturn) ? std::string()
+          std::string retLl = currentReturn->kind == TyKind::Void || returnsInMemory(currentReturn) ? std::string()
                               : currentReturn->isReference()                                ? std::string("ptr")
                                                                                              : llType(currentReturn, s);
           if (!retLl.empty() && !currentFunclet().empty())
@@ -10609,7 +10613,7 @@ namespace
           if (f->flags & DF_Destructor)
             destroyMembers(thisPointer(f), currentClassTy, f);
           popScope();
-          if (currentReturn->kind == TyKind::Void || isClass(currentReturn))
+          if (currentReturn->kind == TyKind::Void || returnsInMemory(currentReturn))
             fn += "  ret void\n";
           else if (name == "@kpp.main")
             fn += "  ret i32 0\n";
