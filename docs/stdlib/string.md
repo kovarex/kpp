@@ -51,7 +51,8 @@ forms that take a position return a position:
 - `replace(index, count, text)`: erase then insert.
 - `resize(n)`, `resize(n, c)`: cut to n bytes, or append zero bytes / copies of c.
 - `reserve(n)`: afterwards `capacity() >= n`; `clear()`: empty, capacity stays; `pop_back()`.
-- `assign(text, count)`: replaces the contents (text may point into this String).
+- `assign(text, count)`, `assign(first, last)` (the bytes of a pointer range), `assign(text)`,
+  `assign(other)`, `assign(count, c)`: replace the contents (text may point into this String).
 
 Searching (each returns an index or npos; `from` is where the search starts, clamped to 0):
 - `find(text, from)`, `find(c, from)`: first occurrence at or after from. An empty text is found

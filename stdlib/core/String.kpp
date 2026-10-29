@@ -435,6 +435,17 @@ struct String
     this->adopt(block, count, count);
     return *this;
   }
+  // The other forms of std::string's assign: the bytes of [first, last) (TCPSocket's
+  // `result.assign(buffer, buffer + received)`), a C string, another String, count copies of c.
+  String& assign(const char* first, const char* last) { return this->assign(first, int(last - first)); }
+  String& assign(const char* text) { return this->assign(text, int(strlen(text))); }
+  String& assign(const String& other) { return this->assign(other.data(), other.size()); }
+  String& assign(int count, char c)
+  {
+    this->clear();
+    this->append(count, c);
+    return *this;
+  }
 
   // The appends return the string.
   String& append(const char* bytes, int count)
