@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**344 pass, 5 pending, 0 failing, 0 fixed** (349 snippets, 9.0 s).
+**347 pass, 5 pending, 0 failing, 0 fixed** (352 snippets, 8.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -69,6 +69,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/static_assert.kpp` | static_assert | pass | 470 uses in 237 files |  |
 | `language/static_assert_failures.kpp` | a static_assert whose condition is false is a compile error, as is one whose condition is no constant the compiler can evaluate (never a silent pass): at namespace scope, in a class, in a function, in a class template instance and in a function template instance's taken branch, each with its message and the instance | pass | 470 uses in 237 files |  |
 | `language/static_assert_in_instances.kpp` | static_asserts are checked where their condition is known: at namespace scope, in classes and functions once, in templates per instance (class template instances the program names, function template instances it calls), not in the discarded branch of an instance's `if constexpr` (`static_assert(sizeof(T) == 0, ...)` there is the idiom for "no other T") | pass | 470 uses in 237 files |  |
+| `language/static_assert_on_layout.kpp` | a static_assert on a class's size or alignment is decided by the layout the code generator gives the class (padding and bit fields included): a true one compiles, a false one is a compile error with its message, and with its instance in a class template | pass | 470 uses in 237 files |  |
 | `language/static_locals.kpp` | function-local statics | pass | static declarations inside functions: part of 7783 static uses in 1983 files |  |
 | `language/structured_bindings.kpp` | structured bindings | pass | 459 uses in 204 files |  |
 | `language/structured_bindings_range_for.kpp` | structured bindings as the loop variable of a range for: `for (auto& [key, value] : pairs)`, over a Vector and over an InitializerList of a class template's own alias | pass |  |  |
@@ -80,6 +81,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/ternary_in_for_init.kpp` | ternary_in_for_init | pass |  |  |
 | `language/thread_local.kpp` | thread_local variables | pass | 15 uses in 13 files |  |
 | `language/throwing_call_result_temporary.kpp` | a call that throws built no result: the temporary its class result was to live in is not destroyed by the cleanup | pass |  |  |
+| `language/undeclared_type_name.kpp` | a type name declared nowhere is a compile error where the program needs the type's layout (a member, a base, a local, a sizeof), never an empty class that compiles | pass |  |  |
 | `language/unions.kpp` | unions | pass | 47 uses in 39 files |  |
 | `language/using_enum_in_namespace.kpp` | `using enum Enum;` in a namespace makes the enumerators names of that namespace, qualified (`TileRenderLayer::GROUND_NATURAL`) and unqualified inside it | pass | TileRenderLayer (`namespace TileRenderLayer { enum class Enum : LayerType {...}; using enum Enum; }`), Character.kpp, TileDrawQueue.kpp |  |
 | `language/using_namespace_in_function.kpp` | a `using namespace` inside a function body makes the namespace's names visible to the rest of that block, as if declared in the nearest enclosing namespace: its functions join that namespace's functions of the same name in one overload set, and it ends with its block | pass | LuaCommonEventFilters (`using namespace LuaEventFilterHelpers;` then make_name_builder<T>), about a hundred converted files use one in a body |  |
@@ -257,6 +259,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/several_instantiations_in_one_call.kpp` | three instantiations of one function template as arguments of a single variadic call | pass |  |  |
 | `templates/sfinae_enable_if.kpp` | enable_if-style overload selection | pass | 1 use (Factorio uses requires clauses instead) |  |
 | `templates/short_circuit_consteval.kpp` | short-circuit evaluation in constant expressions (true || <unknown> is true) | pass | is_memcpy_saveable<T> = isFundamental<T> && !isPointer<T> || force_memcpy_save<T> |  |
+| `templates/sizeof_pack_in_static_member.kpp` | `sizeof...(Ts)` in a class template's static member initializer and in a variable template is the number of the pack's elements, also inside a larger expression | pass |  |  |
 | `templates/sizeof_pack_template_argument.kpp` | `sizeof...(Pack)` as a constant template argument, of a type pack and of a function parameter pack, also in an expression and in a member alias | pass |  |  |
 | `templates/special_member_traits_through_bases.kpp` | the special-member traits of a class deriving an abstract class are decided by the base's constructors (an abstract class makes no object of its own, but is a base all the same), and a constructor taking a class of the same name from another namespace is a converting constructor, not the copy constructor | pass | static_assert(isMoveConstructible<...>, "Not movable.") on the network messages (abstract NetworkMessage) and synchronizer actions; uses_memcpy<Color> with Color(const agui::Color&) |  |
 | `templates/specialization_by_dependent_value.kpp` | inside a template, a class template argument computed from the template's parameter (a trait, a constexpr local) selects the explicit specialization it names: `IntegralConstant<bool, isSigned<T>>()` is the TrueType one for int | pass | cxxopts' integer parser (`checked_negate<T>(result, text, std::integral_constant<bool, is_signed>())` choosing the true_type or false_type overload), tag dispatch on traits across Util |  |
@@ -292,7 +295,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:6: error: the type 'Variant' is not declared (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/algorithms_iterators.kpp` | the algorithms over iterators of every category: sort, removeIf, stableSort on a Deque (random access, not pointers); find, count, reverse, rotate, merge on a List (bidirectional); lowerBound, upperBound, accumulate, setDifference on a Set; transform from a Map into a backInserter; upperBound over reverse iterators with Greater; unique, nextPermutation, isSorted, equal, maxElement with a comparator | pass | 108 sort, 74 find, 49 distance, 47 find_if, 37 stable_sort, 32 remove_if, 29 lower_bound, 22 is_sorted, ...; BlueprintLibrary's remove_if over a deque, GameSpeed's upper_bound over rbegin/rend with greater<double>, cxxopts' transform over a map |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T, Extent> (std::array, std::span): spans of any length and of a fixed extent, from an Array, a Vector (const or not), a plain array, a Subrange of pointers and each other | pass | 372 std::array uses in 193 files, 147 std::span (8 of a fixed extent: the noise operations' `std::span<const NoiseExpressionConstant, CONSTANT_COUNT>`) |  |
