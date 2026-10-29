@@ -1,6 +1,5 @@
 // spec: a requires clause over deduced non-type template parameters removes the overload when it is false: `add(s, ms)` takes the overload whose clause holds
 // factorio: std::chrono-style arithmetic choosing the common period; any overload set constrained on deduced array bounds or values
-// pending: the clause is not checked, and the first overload is taken silently (prints 2 for the second sum)
 template<long long N, long long D = 1>
 struct Rat {};
 template<typename Rep, typename Period>

@@ -3879,7 +3879,13 @@ namespace
           return std::nullopt;
         }
         case NodeKind::ParenExpr: return evalConst(static_cast<ParenExpr*>(e)->inner, depth + 1);
-        case NodeKind::RequiresExpr: return static_cast<RequiresExpr*>(e)->satisfied ? 1 : 0; // typed for this instantiation
+        case NodeKind::RequiresExpr:
+          // In a variable template's initializer (`hasBegin<Vector<int>>`): for these arguments,
+          // asked of the resolver, since the node is shared by every use of the template.
+          if (constContext && constContext->kind == NodeKind::VariableDecl && !constContext->templateParams.empty() && currentArgs)
+            if (std::optional<bool> b = global.requirementsHold(static_cast<RequiresExpr*>(e), constContext, *currentArgs))
+              return *b ? 1 : 0;
+          return static_cast<RequiresExpr*>(e)->satisfied ? 1 : 0; // typed for this instantiation
         case NodeKind::UnaryExpr:
         {
           auto* u = static_cast<UnaryExpr*>(e);

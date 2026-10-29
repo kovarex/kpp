@@ -1599,7 +1599,13 @@ namespace
         v->structuredBindings = d.structuredBindings;
         v->templateParams = templ.params;
         v->isTemplate = templ.present;
+        // A variable template's initializer belongs to it, as a concept's does: the parameters of
+        // a requires-expression in it (`requires (T& t) { t.begin(); }`) name its parameters.
+        Decl* savedParent = currentParent;
+        if (templ.present && !templ.params.empty())
+          currentParent = v;
         parseInitializer(v);
+        currentParent = savedParent;
         pushDecl(v);
         if (accept(P::Comma))
           continue;
@@ -2078,6 +2084,7 @@ namespace
       f->flags |= flags | d.flags;
       f->trailingReturn = d.trailingReturn;
       f->requiresClause = d.requiresClause ? d.requiresClause : templ.requiresClause;
+      adoptRequiresParams(f->requiresClause, f);
       f->condition = pendingCondition;
       pendingCondition = nullptr;
       f->explicitCondition = pendingExplicitCondition;
@@ -3759,6 +3766,29 @@ namespace
       Expr* e = parseLogicalOr();
       inRequires = saved;
       return e;
+    }
+
+    // The parameters of the requires-expressions in a requires clause (`requires requires (const
+    // T& value) { value.save(); }`) belong to the declaration it constrains, which is parsed
+    // after the clause: their types name its template parameters.
+    static void adoptRequiresParams(Expr* e, Decl* owner, int depth = 0)
+    {
+      if (!e || depth > 32)
+        return;
+      switch (e->kind)
+      {
+        case NodeKind::ParenExpr: adoptRequiresParams(static_cast<ParenExpr*>(e)->inner, owner, depth + 1); break;
+        case NodeKind::UnaryExpr: adoptRequiresParams(static_cast<UnaryExpr*>(e)->operand, owner, depth + 1); break;
+        case NodeKind::BinaryExpr:
+          adoptRequiresParams(static_cast<BinaryExpr*>(e)->lhs, owner, depth + 1);
+          adoptRequiresParams(static_cast<BinaryExpr*>(e)->rhs, owner, depth + 1);
+          break;
+        case NodeKind::RequiresExpr:
+          for (Decl* p : static_cast<RequiresExpr*>(e)->params)
+            p->parent = owner;
+          break;
+        default: break;
+      }
     }
 
     Expr* parseBinary(int minPrec)

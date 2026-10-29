@@ -1611,6 +1611,9 @@ struct GlobalScope::Impl
     std::string_view text;
     const std::vector<ConstBinding>* env = nullptr; // Parameters bound to values inside a constexpr call.
     FunctionDecl* function = nullptr; // Whose parameters a trailing return type names (`-> decltype(callable())`).
+    // The variable template whose initializer is evaluated under subst (`hasBegin<Vector<int>>`):
+    // a requires-expression in it holds or not for these arguments, whatever its last typing left.
+    Decl* variableTemplate = nullptr;
   };
 
   // A written template argument that names only types that exist under ctx's substitution,
@@ -2959,6 +2962,11 @@ struct GlobalScope::Impl
             std::optional<bool> v = conceptValue(concept_, n->name.parts[0], ctx, depth + 1);
             return v ? std::optional<int64_t>(*v ? 1 : 0) : std::nullopt;
           }
+        // `hasBegin<Vector<int>>`, `bytes<T>` under an instantiation: a variable template for these
+        // arguments, not its initializer as written.
+        if (n->name.last().hasTemplateArgs)
+          if (VariableDecl* primary = primaryVariableTemplate(l))
+            return variableTemplateValue(primary, n->name.last(), ctx, depth + 1);
         // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`): the
         // declaration the type checker bound where the name is written.
         return constOfDecl(l.decl ? l.decl : n->resolved, ctx, depth);
@@ -3049,7 +3057,14 @@ struct GlobalScope::Impl
         auto* f = static_cast<FunctionalCastExpr*>(e);
         return f->args.size() == 1 ? constCast(f->type, f->args[0], ctx, depth) : std::nullopt;
       }
-      case NodeKind::RequiresExpr: return static_cast<RequiresExpr*>(e)->satisfied ? 1 : 0; // set where the expression was typed
+      case NodeKind::RequiresExpr:
+        if (ctx.variableTemplate && ctx.subst)
+        {
+          // In `hasBegin<Vector<int>>`'s initializer: the requirements for these arguments.
+          std::optional<bool> b = requirementsHold(static_cast<RequiresExpr*>(e), ctx.variableTemplate, *ctx.subst);
+          return b ? std::optional<int64_t>(*b ? 1 : 0) : std::nullopt;
+        }
+        return static_cast<RequiresExpr*>(e)->satisfied ? 1 : 0; // set where the expression was typed
       case NodeKind::UnaryExpr:
       {
         auto* u = static_cast<UnaryExpr*>(e);
@@ -5163,10 +5178,21 @@ struct GlobalScope::Impl
     std::vector<bool> refs; // per rank: the parameter is a reference
   };
 
-  // The value of a requires clause under the deduced arguments: boolean traits (`isIntegral<T>`),
-  // concepts (their definitions for the arguments: `requires (...) { ... }` probed, or another
-  // constraint), `!`, `&&`, `||`, parentheses, true/false. A clause this cannot evaluate holds.
-  // f is the function (or the concept) whose template parameters s binds.
+  // The template parameters of d and of the templates around it, as locals of a context in d.
+  static void pushEnclosingTemplateParams(Decl* d, LocalStack& own)
+  {
+    for (Decl* p = d; p; p = p->parent)
+      for (Decl* tp : p->templateParams)
+        own.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+  }
+
+  // The value of a requires clause under the deduced arguments: `!`, `&&`, `||` and parentheses
+  // over its parts, each a requires-expression (its requirements probed for the arguments), a
+  // concept (its definition for them), a boolean trait (`isIntegral<T>`), or any other constant
+  // expression: a boolean variable template (`hasBegin<C>`), a comparison of deduced constants
+  // (`N1 * D2 <= N2 * D1`). nullopt when it cannot be told (an argument still dependent, an
+  // expression the constant evaluation does not know). f is the function (or the concept) whose
+  // template parameters s binds.
   std::optional<bool> constraintValue(Expr* e, Decl* f, const Subst& s, int depth = 0)
   {
     if (!e || depth > 16)
@@ -5174,20 +5200,15 @@ struct GlobalScope::Impl
     switch (e->kind)
     {
       case NodeKind::ParenExpr: return constraintValue(static_cast<ParenExpr*>(e)->inner, f, s, depth + 1);
-      case NodeKind::LiteralExpr:
-      {
-        auto* l = static_cast<LiteralExpr*>(e);
-        if (l->literalKind == TokenKind::Keyword && (l->keyword == Kw::true_ || l->keyword == Kw::false_))
-          return l->keyword == Kw::true_;
-        return std::nullopt;
-      }
       case NodeKind::UnaryExpr:
       {
         auto* u = static_cast<UnaryExpr*>(e);
         if (u->isKeyword ? Kw(u->op) == Kw::not_ : P(u->op) == P::Bang)
-          if (std::optional<bool> v = constraintValue(u->operand, f, s, depth + 1))
-            return !*v;
-        return std::nullopt;
+        {
+          std::optional<bool> v = constraintValue(u->operand, f, s, depth + 1);
+          return v ? std::optional<bool>(!*v) : std::nullopt;
+        }
+        break;
       }
       case NodeKind::BinaryExpr:
       {
@@ -5195,35 +5216,117 @@ struct GlobalScope::Impl
         bool andOp = b->isKeyword ? Kw(b->op) == Kw::and_ : P(b->op) == P::AndAnd;
         bool orOp = b->isKeyword ? Kw(b->op) == Kw::or_ : P(b->op) == P::OrOr;
         if (!andOp && !orOp)
-          return std::nullopt;
+          break;
         std::optional<bool> l = constraintValue(b->lhs, f, s, depth + 1), r = constraintValue(b->rhs, f, s, depth + 1);
         if (andOp)
           return (l && !*l) || (r && !*r) ? std::optional<bool>(false) : (l && r ? std::optional<bool>(true) : std::nullopt);
         return (l && *l) || (r && *r) ? std::optional<bool>(true) : (l && r ? std::optional<bool>(false) : std::nullopt);
       }
-      case NodeKind::NameExpr:
-      {
-        auto* n = static_cast<NameExpr*>(e);
-        if (n->name.parts.size() != 1 || !n->name.parts[0].hasTemplateArgs)
-          return std::nullopt;
-        LocalStack own;
-        for (Decl* p : f->templateParams)
-          own.push(static_cast<TemplateParamDecl*>(p)->name, p);
-        TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-        if (isBoolTraitName(n->name.parts[0].symbol))
-        {
-          std::vector<const Ty*> args = traitArgs(n->name.parts[0], ctx, depth + 1);
-          if (args.empty())
-            return std::nullopt;
-          return traitValue(symbols.name(n->name.parts[0].symbol), args);
-        }
-        // `has_str<T>` with `template<class T> concept has_str = requires(const T& value) { value.str(); };`.
-        Lookup l = lookupQualified(n->name, lexicalScopeOf(f), &own, depth + 1);
-        return conceptValue(conceptOf(l.decl), n->name.parts[0], ctx, depth + 1);
-      }
+      case NodeKind::RequiresExpr:
+        // `requires requires (const T& value, PropertyTree& ptree) { value.save(ptree); }`
+        return requirementsHold(static_cast<RequiresExpr*>(e), f, s);
       default:
-        return std::nullopt;
+        break;
     }
+    LocalStack own;
+    pushEnclosingTemplateParams(f, own);
+    TypeContext ctx{lexicalScopeOf(f), &own, &s, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    if (e->kind == NodeKind::NameExpr)
+    {
+      auto* n = static_cast<NameExpr*>(e);
+      if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && isBoolTraitName(n->name.parts[0].symbol))
+      {
+        std::vector<const Ty*> args = traitArgs(n->name.parts[0], ctx, depth + 1);
+        if (args.empty())
+          return std::nullopt;
+        return traitValue(symbols.name(n->name.parts[0].symbol), args);
+      }
+      // `has_str<T>` with `template<class T> concept has_str = requires(const T& value) { value.str(); };`.
+      if (n->name.last().hasTemplateArgs)
+        if (VariableDecl* concept_ = conceptOf(lookupQualified(n->name, ctx.scope, &own, depth + 1).decl))
+          return conceptValue(concept_, n->name.last(), ctx, depth + 1);
+    }
+    std::optional<int64_t> v = constEval(e, ctx, depth + 1);
+    return v ? std::optional<bool>(*v != 0) : std::nullopt;
+  }
+
+  // The primary of the variable template a lookup found (its declaration without written
+  // arguments), or null when the name is no variable template.
+  static VariableDecl* primaryVariableTemplate(const Lookup& l)
+  {
+    auto isPrimary = [](Decl* d) {
+      return d && d->kind == NodeKind::VariableDecl && !d->templateParams.empty() && static_cast<VariableDecl*>(d)->init &&
+             !static_cast<VariableDecl*>(d)->name.empty() && !static_cast<VariableDecl*>(d)->name.last().hasTemplateArgs;
+    };
+    if (isPrimary(l.decl))
+      return static_cast<VariableDecl*>(l.decl);
+    if (l.decl && l.decl->kind == NodeKind::VariableDecl && l.overloads)
+      for (const Entry& e : *l.overloads)
+        if (isPrimary(e.decl))
+          return static_cast<VariableDecl*>(e.decl);
+    return nullptr;
+  }
+
+  // The value of variable template v for the arguments part writes, read under ctx: the
+  // initializer of the specialisation they pick (variableSpecialization), evaluated with them
+  // bound; a trailing pack takes the rest, defaults fill the end. nullopt while an argument is
+  // dependent or unknown, or two specialisations match equally well.
+  std::optional<int64_t> variableTemplateValue(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth)
+  {
+    size_t n = v->templateParams.size();
+    if (n == 0 || depth > 16)
+      return std::nullopt;
+    auto* lastParam = static_cast<TemplateParamDecl*>(v->templateParams[n - 1]);
+    std::vector<const Ty*> given, packElements;
+    for (Node* written : part.templateArgs)
+    {
+      size_t i = given.size() + packElements.size();
+      Decl* param = v->templateParams[std::min(i, n - 1)];
+      const Ty* a = templateArgument(written, param, ctx, depth + 1);
+      if (!a || !a->isKnown() || types.isDependent(a))
+        return std::nullopt;
+      std::vector<const Ty*> elements;
+      if (written && written->kind == NodeKind::PackType && a->kind == TyKind::Pack)
+        elements.assign(a->args.begin(), a->args.end());
+      else
+        elements.push_back(a);
+      for (const Ty* t : elements)
+        (lastParam->isPack && given.size() + 1 >= n ? packElements : given).push_back(t);
+    }
+    if (given.size() > n || (!lastParam->isPack && !packElements.empty()))
+      return std::nullopt;
+    Subst bound;
+    for (size_t i = 0; i < given.size(); ++i)
+      bound.pairs.push_back({v->templateParams[i], given[i]});
+    if (lastParam->isPack)
+      bound.pairs.push_back({lastParam, types.pack(Span<const Ty*>{packElements.data(), uint32_t(packElements.size())})});
+    LocalStack own;
+    pushEnclosingTemplateParams(v, own);
+    for (size_t i = bound.pairs.size(); i < n; ++i)
+    {
+      auto* p = static_cast<TemplateParamDecl*>(v->templateParams[i]);
+      TypeContext dctx{lexicalScopeOf(v), &own, &bound, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
+      const Ty* t = p->defaultArg ? templateArgument(p->defaultArg, p, dctx, depth + 1) : nullptr;
+      if (!t || !t->isKnown() || types.isDependent(t))
+        return std::nullopt; // `isX<A>` naming fewer arguments than the template has, and no default
+      bound.pairs.push_back({p, t});
+    }
+    std::vector<const Ty*> args;
+    for (const Subst::Pair& q : bound.pairs)
+      args.push_back(q.type);
+    Subst specialised;
+    VariableDecl* source = lastParam->isPack ? v : variableSpecialization(v, args, specialised);
+    if (!source)
+      return std::nullopt;
+    const Subst& sourceSubst = source == v ? bound : specialised;
+    if (!source->init)
+      return std::nullopt;
+    LocalStack sourceOwn;
+    pushEnclosingTemplateParams(source, sourceOwn);
+    TypeContext vctx{lexicalScopeOf(source), &sourceOwn, &sourceSubst, source->file ? source->file->tokens : nullptr,
+                     source->file ? source->file->text : std::string_view()};
+    vctx.variableTemplate = source;
+    return constEval(source->init, vctx, depth + 1);
   }
 
   // The concept d declares (`template<class T> concept C = ...;`, a variable template with no
@@ -5255,10 +5358,28 @@ struct GlobalScope::Impl
     return constraintValue(concept_->init, concept_, cs, depth + 1);
   }
 
-  // Whether every requirement of `requires (params) { ... }` in owner (a concept) is well-typed
-  // under s, probed on a scratch walker; nullopt while one still depends on a parameter.
+  // Whether every requirement of `requires (params) { ... }` in owner (a concept, a variable
+  // template, a constrained function) is well-typed under s, probed on a scratch walker; nullopt
+  // while one still depends on a parameter.
   std::optional<bool> requirementsHold(RequiresExpr* r, Decl* owner, const Subst& s)
   {
+    // Not for arguments that are not known: the requirements would be probed on unknown types,
+    // and `requires (const T::value_type& v) { toPtree(v); }` would ask the same of toPtree again.
+    for (const Subst::Pair& q : s.pairs)
+      if (mentionsUnknown(q.type))
+        return std::nullopt;
+    // A constraint whose satisfaction depends on itself (ill-formed in C++), or a chain of
+    // probes too deep to follow: not satisfied.
+    struct InProgress { RequiresExpr* r; std::vector<Subst::Pair> pairs; };
+    static thread_local std::vector<InProgress> inProgress;
+    for (const InProgress& p : inProgress)
+      if (p.r == r && p.pairs.size() == s.pairs.size() &&
+          std::equal(p.pairs.begin(), p.pairs.end(), s.pairs.begin(), [](const Subst::Pair& x, const Subst::Pair& y) { return x.param == y.param && x.type == y.type; }))
+        return false;
+    if (inProgress.size() >= 16)
+      return false;
+    inProgress.push_back({r, s.pairs});
+    struct Pop { ~Pop() { inProgress.pop_back(); } } pop;
     ParsedFile* file = owner->file;
     if (!file || !file->tokens)
       return std::nullopt;
@@ -5267,8 +5388,7 @@ struct GlobalScope::Impl
     probe.file = file;
     probe.scope = lexicalScopeOf(owner);
     probe.activeSubst = &s;
-    for (Decl* p : owner->templateParams)
-      probe.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    pushEnclosingTemplateParams(owner, probe.locals);
     for (Decl* p : r->params)
       probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
     bool dependent = false;
@@ -9358,6 +9478,12 @@ void GlobalScope::retypeInitializerFor(VariableDecl* v, const TemplateArgs& args
   if (Decl* cls = Impl::enclosingClassDecl(w.scope))
     w.thisType = impl->types.pointer(impl->substitute(impl->selfType(cls), subst));
   w.walkExpr(v->init);
+}
+
+std::optional<bool> GlobalScope::requirementsHold(RequiresExpr* r, Decl* owner, const TemplateArgs& args)
+{
+  Subst s = toSubst(args);
+  return impl->requirementsHold(r, owner, s);
 }
 
 VariableDecl* GlobalScope::variableTemplateFor(VariableDecl* primary, const TemplateArgs& args, TemplateArgs& specArgs)

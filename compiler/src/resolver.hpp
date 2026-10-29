@@ -190,6 +190,10 @@ public:
   // them (`force_memcpy_save<T, VoidT<T::force_memcpy_save>>` needs T to have the member). Null
   // when no match is more specialised than all the others (ambiguous, an error in C++).
   VariableDecl* variableTemplateFor(VariableDecl* primary, const TemplateArgs& args, TemplateArgs& specArgs);
+  // Whether requires-expression r, written in owner (a variable template's initializer:
+  // `hasBegin<T> = requires (T& t) { t.begin(); }`), holds for args: its requirements probed for
+  // them, not the value its last typing left on the shared node. nullopt when it cannot be told.
+  std::optional<bool> requirementsHold(RequiresExpr* r, Decl* owner, const TemplateArgs& args);
   Decl* owningClass(Decl* d);                    // The class a member (possibly defined out of line) belongs to.
   // The arguments for the out-of-class definition of a class template's static data member:
   // classArgs, and the definition's own declarations of the class's parameters bound the same.
