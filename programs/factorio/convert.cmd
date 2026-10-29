@@ -1,5 +1,6 @@
 @echo off
-rem Converts the whole Factorio source (CommonUtil, Agui, src, tests) to Kpp into the factorio-in-kpp
+rem Converts the whole Factorio source (CommonUtil, Agui, src, and the tests with UnitTest++, the
+rem unit-test library they are written in) to Kpp into the factorio-in-kpp
 rem checkout (C:\factorio-in-kpp\kpp, or the directory given as the first argument; commit there by
 rem hand). Then converts the CommonUtil and Agui libraries and the game's Util module again on their
 rem own (into kpp\, with the hand-written files kept there), checks that kppc compiles them, and runs
@@ -21,7 +22,7 @@ rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-fact
 rem Lua"). No other input has .c files.
 set LUA=C:\Factorio\libraries\Lua
 set EXT=--ext .cpp,.hpp,.h,.kpp,.c
-%KPPC% --no-std --quiet --convert %WHOLE% %EXT% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUA% %SRC% C:\Factorio\tests || exit /b 1
+%KPPC% --no-std --quiet --convert %WHOLE% %EXT% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUA% %SRC% C:\Factorio\libraries\UnitTest++ C:\Factorio\tests || exit /b 1
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude C:\Factorio\libraries\trio --cinclude native\include
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes

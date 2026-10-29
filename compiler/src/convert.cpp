@@ -85,13 +85,21 @@ namespace
     return text;
   }
 
-  // Whether text leaves a block comment open: a `/*` without its `*/`, outside literals and line
-  // comments.
-  bool opensBlockComment(std::string_view text)
+  // Whether a block comment is open at the end of text, given whether one was at its start: a `/*`
+  // without its `*/`, outside literals and line comments.
+  bool blockCommentOpenAfter(std::string_view text, bool open)
   {
     for (size_t i = 0; i < text.size(); ++i)
     {
-      if (text[i] == '"' || text[i] == '\'')
+      if (open)
+      {
+        size_t close = text.find("*/", i);
+        if (close == std::string_view::npos)
+          return true;
+        open = false;
+        i = close + 1;
+      }
+      else if (text[i] == '"' || text[i] == '\'')
       {
         char quote = text[i];
         for (++i; i < text.size() && text[i] != quote && text[i] != '\n'; ++i)
@@ -102,14 +110,13 @@ namespace
         return false;
       else if (text.compare(i, 2, "/*") == 0)
       {
-        size_t close = text.find("*/", i + 2);
-        if (close == std::string_view::npos)
-          return true;
-        i = close + 1;
+        open = true;
+        ++i;
       }
     }
-    return false;
+    return open;
   }
+  bool opensBlockComment(std::string_view text) { return blockCommentOpenAfter(text, false); }
 
   // --- the preprocessor configuration ---
 
@@ -170,8 +177,10 @@ namespace
     "NVIDIA_G7X_HARDWARE_BUG_FIX", "NVIDIA_7X_HARDWARE_BUG_FIX", "DISABLE_LOG_TIME", "SUPPRESS_FLOAT_CAST", "WINDOWS"};
   // The game's sources that its Windows build does not compile (fastbuild/fbuild.bff,
   // .factorioFilesForOtherPlatforms): PngLoad.cpp is Linux's image loader (`#error Only for
-  // linux`), StacktraceToStream.cpp the stack trace printer of the other platforms. Not converted.
-  const std::set<std::string> filesForOtherPlatforms = {"src/Graphics/PngLoad.cpp", "src/Util/StacktraceToStream.cpp"};
+  // linux`), StacktraceToStream.cpp the stack trace printer of the other platforms, and UnitTest++'s
+  // Posix directory, which the unit-test library's Windows build excludes. Not converted.
+  const std::set<std::string> filesForOtherPlatforms = {"src/Graphics/PngLoad.cpp", "src/Util/StacktraceToStream.cpp",
+                                                        "UnitTest++/Posix/SignalTranslator.cpp"};
   // The library files the game's build leaves out (fbuild.bff's .CompilerInputExcludedFiles): Lua's
   // standalone interpreter and compiler, by their directory and name.
   const std::set<std::string> filesNotBuilt = {"Lua/lua.c", "Lua/luac.c"};
@@ -527,6 +536,10 @@ namespace
       return value;
     };
     size_t pos = 0;
+    // Whether a block comment is open where the line starts: its `#` lines are comment, as C removes
+    // comments before it reads directives (TestSpellcheck.cpp comments out a test body with its
+    // #ifdef WIN32 ... `#endif*/`).
+    bool inComment = false;
     while (pos < text.size())
     {
       // A logical line: continuations joined.
@@ -545,10 +558,12 @@ namespace
           end = text.size();
       }
       pos = end + 1;
+      bool commentAtStart = inComment;
+      inComment = blockCommentOpenAfter(text.substr(start, end - start), inComment);
       size_t p = start == 0 ? byteOrderMarkLength(text) : start;
       while (p < end && (text[p] == ' ' || text[p] == '\t'))
         ++p;
-      if (p >= end || text[p] != '#')
+      if (commentAtStart || p >= end || text[p] != '#')
       {
         if (!active)
           blank(start, end);
@@ -759,6 +774,10 @@ namespace
                                                                   {"LOG_DEBUG", "((void)0)"}, {"EXECUTE_FOR_LOG_DEBUG", "((void)0)"}, {"LOG_DEBUG_VALUE", "((void)0)"},
                                                                   {"LOG_REQUEST_MINIDUMP_IN_CRASH_REPORT", "Logging::log(__FILE__, __LINE__, LogLevel::Notice, \"Include minidump in crash report.\")"},
                                                                   {"LOG_STACKTRACE", "Logging::logStackTrace()"}, {"FLUSH_LOG", "Logging::flush()"},
+                                                                  // The debug C runtime's report settings (the tests' Main.cpp sends assertion
+                                                                  // reports to stderr), as crtdbg.h has them without _DEBUG: nothing to set,
+                                                                  // Kpp's asserts report themselves.
+                                                                  {"_CrtSetReportMode", "((int)0)"}, {"_CrtSetReportFile", "((void*)0)"},
                                                                   {"LOG_AND_ABORT", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_AND_ABORT_NEVER_THROW", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_ENUM_AND_ABORT", "Logging::logEnumAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
@@ -2329,6 +2348,9 @@ namespace
     std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
     // The includes of this file that name a converted file beside it (siblingIncludes): removed.
     const std::set<std::string>* siblingIncludes = nullptr;
+    // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
+    // std::ostream;`), by their Kpp names: its later unqualified uses are the library's.
+    std::map<std::string, std::string> stdUsingNames;
     // The C libraries this file's library keeps calling, by include path prefix, imported where it
     // includes them (Lua's override_printf.h includes trio.h; the game's own calls of trio are the
     // C runtime's, and its includes of trio.h go).
@@ -2825,6 +2847,7 @@ namespace
         own = preprocessText(text, nullptr);
       const Preprocessed& decided = preprocessed ? *preprocessed : own;
       size_t nextDrop = 0, nextNote = 0;
+      bool inComment = false; // as in preprocessText: a line starting inside a block comment is no directive
       for (auto [offset, length] : lines)
       {
         while (nextDrop < decided.dropped.size() && decided.dropped[nextDrop].second <= offset)
@@ -2835,10 +2858,12 @@ namespace
         for (; nextNote < decided.notes.size() && decided.notes[nextNote].first == offset; ++nextNote)
           todo(offset, decided.notes[nextNote].second);
         std::string line(text.substr(offset, length));
+        bool commentAtStart = inComment;
+        inComment = blockCommentOpenAfter(line, inComment);
         size_t p = offset == 0 ? byteOrderMarkLength(text) : 0;
         while (p < line.size() && isspace((unsigned char)line[p]))
           ++p;
-        bool directive = p < line.size() && line[p] == '#';
+        bool directive = !commentAtStart && p < line.size() && line[p] == '#';
         uint32_t removeLength = length + (offset + length < text.size() ? 1 : 0); // with its newline
         if (!directive)
         {
@@ -3593,6 +3618,30 @@ namespace
             continue;
           }
         }
+        if (t.is(Kw::using_) && i + 4 < toks.size() && spelling(i + 1) == "std" && toks[i + 2].is(P::ColonColon) &&
+            toks[i + 3].getKind() == TokenKind::Identifier && toks[i + 4].is(P::Semi))
+        {
+          // `using std::ostream;`: the library's names are global, so the declaration goes and the
+          // file's later uses of the name are the library's (OutStream).
+          std::string name(spelling(i + 3));
+          if (auto known = stdNames.find(name); known != stdNames.end())
+          {
+            stdUsingNames[name] = known->second;
+            remove(t.offset, lineEndAfter(endOffset(i + 4)) - t.offset);
+            counts.add("using-declarations of std names removed");
+            i += 4;
+            continue;
+          }
+          todo(t.offset, "using std::" + name + ": a std name the converter has no Kpp name for");
+        }
+        if (t.getKind() == TokenKind::Identifier && !stdUsingNames.empty() &&
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
+          if (auto used = stdUsingNames.find(std::string(spelling(i))); used != stdUsingNames.end())
+          {
+            replace(t.offset, t.length, used->second);
+            counts.add("std names of using-declarations renamed");
+            continue;
+          }
         if (t.getKind() == TokenKind::Identifier &&
             (spelling(i) == "__FILE__" || spelling(i) == "__LINE__" || ((spelling(i) == "__FUNCTION__" || spelling(i) == "__func__") && functionNameAt(t.offset))))
         {
