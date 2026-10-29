@@ -556,6 +556,7 @@ namespace
     {"LoadLibrary", "LoadLibraryA"}, {"GetModuleHandle", "GetModuleHandleA"}, {"GetModuleHandleEx", "GetModuleHandleExA"},
     {"MapVirtualKey", "MapVirtualKeyA"}, {"GetModuleFileName", "GetModuleFileNameA"}, {"GetFileAttributes", "GetFileAttributesA"},
     {"GetEnvironmentVariable", "GetEnvironmentVariableA"}, {"WriteConsoleInput", "WriteConsoleInputA"},
+    {"GetMonitorInfo", "GetMonitorInfoA"}, {"EnumDisplayDevices", "EnumDisplayDevicesA"}, {"EnumDisplaySettings", "EnumDisplaySettingsA"},
     // stb_dxt's static internals, which DXTCompression calls: native/header_only.c gives them C names
     // (native/include/kpp_stb_dxt.h).
     {"stb__InitDXT", "kpp_stb__InitDXT"}, {"stb__EvalColors", "kpp_stb__EvalColors"}, {"stb__DitherBlock", "kpp_stb__DitherBlock"},
