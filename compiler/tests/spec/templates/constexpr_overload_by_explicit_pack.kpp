@@ -1,0 +1,32 @@
+// spec: a constant initialized by a call whose explicit template arguments expand a pack (`constexpr TypeID typeID = RendererContainer::typeIndex<T, Renderers...>();`), the overloads told apart by how many template arguments they take (`typeIndex<TypeToFind>()` ends the recursion of `typeIndex<TypeToFind, Head, Tail...>()`): the compile-time interpreter expands the list and picks the overload it fills, so a static_assert on the constant holds
+// factorio: RendererContainer<Renderers...>::add and ::get (Graphics/RendererContainer.hpp: static_assert(typeID > 0, "Adding unknown renderer"))
+// pending: the interpreter binds the written arguments one by one to the overload the walk chose ("static assertion whose condition the compiler cannot evaluate yet"); owner: the templates thread (compile-time interpreter)
+struct A {};
+struct B {};
+struct C {};
+template <class... Renderers>
+class Container
+{
+  using TypeID = int8_t;
+
+  template <class TypeToFind>
+  constexpr static TypeID typeIndex() { return 0; }
+
+  template <class TypeToFind, class Head, class... Tail>
+  constexpr static TypeID typeIndex() { return isSame<TypeToFind, Head> ? TypeID(sizeof...(Tail) + 1) : Container::typeIndex<TypeToFind, Tail...>(); }
+
+public:
+  template <class T>
+  int get()
+  {
+    constexpr TypeID typeID = Container::typeIndex<T, Renderers...>();
+    static_assert(typeID > 0, "Getting unknown renderer");
+    return typeID;
+  }
+};
+int main()
+{
+  Container<A, B, C> c;
+  println("{} {} {}", c.get<A>(), c.get<B>(), c.get<C>());
+  return 0;
+}
