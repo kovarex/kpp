@@ -1,0 +1,33 @@
+// spec: an unqualified call also finds the functions of its name in the namespaces of its arguments' classes and enumerations, and of a class instance's type arguments (C++'s argument-dependent lookup), unless ordinary lookup finds a class member or a local; the functions found both ways are one overload set
+// factorio: TimeUtil's `shortNumberFormat(time, StringUtil::Compactness::Loose, StringUtil::UseDecimal::Always)`, and the other unqualified calls the converter keeps as the game writes them
+namespace StringUtil
+{
+  enum class Compactness { Compact, Loose };
+  struct Piece
+  {
+    int size = 3;
+  };
+  int shortNumberFormat(double number, Compactness compactness) { return int(number) * (compactness == Compactness::Loose ? 10 : 1); }
+  int measure(const Piece& piece) { return piece.size; }
+  int measure(const Vector<Piece>& pieces) { return int(pieces.size()) * 100; }
+}
+namespace TimeUtil
+{
+  int format(double time) { return shortNumberFormat(time, StringUtil::Compactness::Loose); }
+}
+int measure(int x) { return -x; }
+struct Holder
+{
+  int measure(int x) const { return x + 1000; }
+  int use(const StringUtil::Piece& piece) const { return measure(7); } // a member: no argument-dependent lookup
+};
+int main()
+{
+  StringUtil::Piece piece;
+  Vector<StringUtil::Piece> pieces;
+  pieces.push_back(piece);
+  pieces.push_back(piece);
+  Holder holder;
+  println("{} {} {} {} {}", TimeUtil::format(4.5), measure(piece), measure(pieces), measure(5), holder.use(piece));
+  return 0;
+}

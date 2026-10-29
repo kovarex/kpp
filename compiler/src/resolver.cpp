@@ -1430,6 +1430,29 @@ struct GlobalScope::Impl
     return lookupUnqualified(symbol, s->parent, nullptr, depth + 1);
   }
 
+  // The namespaces argument-dependent lookup searches for an argument of type t: a class's or an
+  // enumeration's innermost enclosing namespace (not the global one, which ordinary lookup
+  // searches anyway), and those of a class instance's type arguments.
+  void associatedNamespaces(const Ty* t, std::vector<Scope*>& out, int depth = 0)
+  {
+    if (!t || depth > 4)
+      return;
+    t = types.unqualified(types.stripRef(t));
+    while (t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array))
+      t = t->inner ? types.unqualified(t->inner) : nullptr;
+    if (!t || !t->decl || (t->kind != TyKind::Class && t->kind != TyKind::Enum))
+      return;
+    Scope* own = t->kind == TyKind::Class ? classScopeOf(t) : t->decl->ownScope;
+    Scope* s = own ? own->parent : lexicalScopeOf(t->decl);
+    while (s && s->kind != ScopeKind::Namespace)
+      s = s->parent;
+    if (s && s != &root && std::find(out.begin(), out.end(), s) == out.end())
+      out.push_back(s);
+    if (t->kind == TyKind::Class)
+      for (const Ty* a : t->args)
+        associatedNamespaces(a, out, depth + 1);
+  }
+
   // Two lookups' function overloads as one set (kept for the run: a lookup's overloads outlive it);
   // `a` alone when either found something other than functions.
   std::mutex mergedOverloadsMutex;
@@ -8425,6 +8448,24 @@ struct GlobalScope::Impl
       return fnTy->inner;
     }
 
+    // l, an unqualified call's lookup, with the functions of the name that the namespaces
+    // associated with the argument types declare (Impl::associatedNamespaces) added.
+    void addArgumentDependentCandidates(Lookup& l, uint32_t symbol, const std::vector<const Ty*>& argTypes)
+    {
+      std::vector<Scope*> namespaces;
+      for (const Ty* a : argTypes)
+        impl.associatedNamespaces(a, namespaces);
+      for (Scope* ns : namespaces)
+      {
+        if (ns == l.foundIn)
+          continue;
+        Lookup found;
+        if (!impl.lookupInScope(ns, symbol, found, 0, false) || !found.decl || found.decl->kind != NodeKind::FunctionDecl || found.foundIn != ns)
+          continue;
+        l = l.found == Found::No ? found : impl.mergeOverloads(l, found);
+      }
+    }
+
     // Whether d is the only function of its name there (overloads: the entries found with it)
     // and no template.
     static bool onlyPlainCandidate(Decl* d, const std::vector<Entry>* overloads)
@@ -8464,6 +8505,13 @@ struct GlobalScope::Impl
             return trait;
           }
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+        // Argument-dependent lookup, as C++ has it: an unqualified call also finds the functions of
+        // its name in the namespaces of its arguments' classes and enumerations
+        // (`shortNumberFormat(time, StringUtil::Compactness::Loose)` from namespace TimeUtil),
+        // unless ordinary lookup found something else than namespace functions (a member, a local).
+        if (n->name.parts.size() == 1 && !c->args.empty() && (l.found == Found::No || (l.found == Found::Global && l.decl && l.decl->kind == NodeKind::FunctionDecl)) &&
+            !(l.found == Found::No && impl.builtinByName(n->name.parts[0].symbol)))
+          addArgumentDependentCandidates(l, n->name.parts[0].symbol, argTypesOf(c->args));
         n->resolved = l.decl;
         for (const NamePart& part : n->name.parts)
           for (Node* arg : part.templateArgs)

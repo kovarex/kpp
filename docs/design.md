@@ -714,6 +714,17 @@ The smallest language that is still Kpp, as the target of the first code generat
 
 - **Files and scope.** No `#include`; the project is the set of files given to the compiler.
   Every top-level declaration is visible in every file, in any order. Namespaces as in C++.
+- **Argument-dependent lookup, as in C++** (resolver thread, 2026-10-29, for kovarex's review).
+  An unqualified call `f(args)` also finds the functions named `f` that the namespaces
+  associated with its arguments declare: the innermost enclosing namespace of each argument's
+  class or enumeration (through pointers, references and arrays) and of a class instance's type
+  arguments. The functions found both ways are one overload set. It does not apply when
+  ordinary lookup finds a class member, a local or something other than a function. Why: the
+  converter keeps the game's unqualified calls as written (`shortNumberFormat(time,
+  StringUtil::Compactness::Loose)` from namespace TimeUtil), so without the rule it would have to
+  invent a qualification for each such call, a language rule hidden in the converter. Not yet:
+  functions declared only as friends inside a class, associated classes, operators found
+  through argument types. Spec: language/argument_dependent_lookup.
 - **Grammar parseable without name lookup.** Three rules replace C++'s dependence on knowing
   what a name is:
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
