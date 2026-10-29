@@ -1,32 +1,87 @@
-// String-to-number conversions: the Kpp equivalents of std::stoi, std::stod, etc.
-// These call through to the C runtime's strto* family.
+// String-to-number conversions: std::stoi, std::stod and the rest, with std's parameters and
+// errors. Each calls the C runtime's strto* function; idx, when not null, gets the index of the
+// first character not converted. No conversion throws InvalidArgument, a value the type cannot hold
+// (the C runtime's ERANGE; long is int's size) OutOfRange, with the C++ runtime's messages.
 
-int stoi(const String& str, int base = 10)
+// The checks after a strto* call (errno cleared before it), std's way: name is the function's.
+void checkStringConversion(const String& str, const char* end, const char* name, size_t* idx)
 {
-  return (int)strtol(str.c_str(), nullptr, base);
+  if (end == str.c_str())
+    throw InvalidArgument(String("invalid ") + name + " argument");
+  if (*_errno() == 34) // ERANGE
+    throw OutOfRange(String(name) + " argument out of range");
+  if (idx)
+    *idx = size_t(end - str.c_str());
 }
 
-long long stoll(const String& str, int base = 10)
+int stoi(const String& str, size_t* idx = nullptr, int base = 10)
 {
-  return strtoll(str.c_str(), nullptr, base);
+  char* end = nullptr;
+  *_errno() = 0;
+  long value = strtol(str.c_str(), &end, base);
+  checkStringConversion(str, end, "stoi", idx);
+  return int(value);
 }
 
-unsigned long stoul(const String& str, int base = 10)
+long stol(const String& str, size_t* idx = nullptr, int base = 10)
 {
-  return strtoul(str.c_str(), nullptr, base);
+  char* end = nullptr;
+  *_errno() = 0;
+  long value = strtol(str.c_str(), &end, base);
+  checkStringConversion(str, end, "stol", idx);
+  return value;
 }
 
-unsigned long long stoull(const String& str, int base = 10)
+unsigned long stoul(const String& str, size_t* idx = nullptr, int base = 10)
 {
-  return strtoull(str.c_str(), nullptr, base);
+  char* end = nullptr;
+  *_errno() = 0;
+  unsigned long value = strtoul(str.c_str(), &end, base);
+  checkStringConversion(str, end, "stoul", idx);
+  return value;
 }
 
-float stof(const String& str)
+long long stoll(const String& str, size_t* idx = nullptr, int base = 10)
 {
-  return strtof(str.c_str(), nullptr);
+  char* end = nullptr;
+  *_errno() = 0;
+  long long value = strtoll(str.c_str(), &end, base);
+  checkStringConversion(str, end, "stoll", idx);
+  return value;
 }
 
-double stod(const String& str)
+unsigned long long stoull(const String& str, size_t* idx = nullptr, int base = 10)
 {
-  return strtod(str.c_str(), nullptr);
+  char* end = nullptr;
+  *_errno() = 0;
+  unsigned long long value = strtoull(str.c_str(), &end, base);
+  checkStringConversion(str, end, "stoull", idx);
+  return value;
+}
+
+float stof(const String& str, size_t* idx = nullptr)
+{
+  char* end = nullptr;
+  *_errno() = 0;
+  float value = strtof(str.c_str(), &end);
+  checkStringConversion(str, end, "stof", idx);
+  return value;
+}
+
+double stod(const String& str, size_t* idx = nullptr)
+{
+  char* end = nullptr;
+  *_errno() = 0;
+  double value = strtod(str.c_str(), &end);
+  checkStringConversion(str, end, "stod", idx);
+  return value;
+}
+
+long double stold(const String& str, size_t* idx = nullptr)
+{
+  char* end = nullptr;
+  *_errno() = 0;
+  long double value = strtold(str.c_str(), &end);
+  checkStringConversion(str, end, "stold", idx);
+  return value;
 }

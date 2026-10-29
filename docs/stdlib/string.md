@@ -79,6 +79,15 @@ either side. A StringView compares the same way.
 
 Hashing: `hashOf(string)` depends on every byte.
 
+Numbers from strings (core/StringConvert.kpp), std's functions with std's parameters:
+`stoi`, `stol`, `stoul`, `stoll`, `stoull` take `(str, size_t* idx = nullptr, int base = 10)`,
+`stof`, `stod`, `stold` take `(str, size_t* idx = nullptr)`. Each converts as the C runtime's
+strto* function does (leading whitespace skipped, a sign, `0x` for base 16 or 0); idx, when not
+null, gets the index of the first byte not converted. No conversion throws InvalidArgument
+("invalid stoi argument"), a value the type cannot hold (the C runtime's ERANGE) throws OutOfRange
+("stoi argument out of range"), the C++ runtime's messages; idx is then left as it was. long is
+int's size, as MSVC's.
+
 # WString
 
 A sequence of `wchar_t` (UTF-16 code units on Windows, not checked), what `std::wstring` converts

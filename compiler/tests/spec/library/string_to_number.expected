@@ -1,0 +1,11 @@
+42 2
+-17 4
+255 -16 511
+4000000000 10
+76561198000000000 17
+-9000000000 12
+2.5 1000 3
+0.125
+InvalidArgument: invalid stoi argument (pos still 3)
+OutOfRange: stoi argument out of range
+OutOfRange: stod argument out of range
