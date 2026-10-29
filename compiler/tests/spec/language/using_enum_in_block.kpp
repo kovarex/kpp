@@ -1,0 +1,17 @@
+// spec: a using-enum-declaration in a block (`using enum Desc::Type;`, C++20) brings the enumeration's enumerators into the block: `{ Build, Rotate }` as a range, `Desc::Type one = Remove;`
+// factorio: tests/TestLocalisation.cpp's `using enum UndoActionDescription::Type; for (UndoActionDescription::Type type : { BUILD_ENTITY, REMOVE_ENTITY, ... })`
+// pending: the declaration brought in nothing, so the names did not resolve ("a range of unknown type"); owner: the templates thread (the tests package)
+struct Desc
+{
+  enum class Type { Build, Remove, Rotate };
+};
+int main()
+{
+  using enum Desc::Type;
+  int sum = 0;
+  for (Desc::Type t : { Build, Rotate })
+    sum = sum * 10 + int(t);
+  Desc::Type one = Remove;
+  println("{} {}", sum, int(one));
+  return 0;
+}
