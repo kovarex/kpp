@@ -1,0 +1,44 @@
+// spec: a defaulted <=> over members that have no <=> of their own orders as C++'s synthesized three-way comparison: a member converting to an enumeration by the conversion, a class with only == and < (a member operator taking its operand by value, or free ones) by them, an array member element by element; the == it implies compares the same members
+// factorio: Less<ConnectionData> (Direction), IDWithQualityFilter (QualityCondition), UpgradeMapping (UpgradeIDBase), SpriteID (SHA1Digest's free operators), CollisionLayers and PathfindingCollisionMask (array members)
+// pending: "Dir has no operator<=> (a defaulted one orders by the members)", "a defaulted comparison of an array member"
+struct Dir
+{
+  enum class Enum : uint8_t { North, East, South };
+  implicit constexpr Dir(Enum v) : value(uint8_t(v)) {}
+  constexpr bool operator==(const Dir& other) const = default;
+  implicit operator Enum() const { return Enum(this->value); }
+  uint8_t value = 0;
+};
+struct Index
+{
+  uint32_t index = 0;
+  bool operator<(Index b) const { return this->index < b.index; }
+  bool operator==(Index b) const { return this->index == b.index; }
+};
+struct Digest
+{
+  int bytes[2] = {};
+};
+bool operator<(const Digest& a, const Digest& b) { return a.bytes[0] < b.bytes[0] || (a.bytes[0] == b.bytes[0] && a.bytes[1] < b.bytes[1]); }
+bool operator==(const Digest& a, const Digest& b) { return a.bytes[0] == b.bytes[0] && a.bytes[1] == b.bytes[1]; }
+struct Key
+{
+  Dir dir = Dir::Enum::North;
+  Index index;
+  Digest digest;
+  uint64_t mask[2] = {};
+  strong_ordering operator<=>(const Key&) const = default;
+};
+int main()
+{
+  Key a, b;
+  b.mask[1] = 1;
+  Key c = a;
+  c.dir = Dir::Enum::East;
+  Key d = a;
+  d.digest.bytes[0] = 5;
+  Key e = a;
+  e.index.index = 9;
+  println("{} {} {} {} {} {}", a < b, b < a, a == a, a == b, c > b, d < e);
+  return 0;
+}
