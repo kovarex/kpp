@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**351 pass, 6 pending, 0 failing, 0 fixed** (357 snippets, 9.5 s).
+**352 pass, 5 pending, 0 failing, 0 fixed** (357 snippets, 17.4 s).
 
 ## Language: statements, expressions, declarations
 
@@ -149,7 +149,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
-| `templates/trait_of_deduced_type_in_return_type.kpp` | a return type made by a type trait of a deduced parameter (std::move's `remove_reference_t<T>&&`), as the call's type | pending | std::move and std::forward, and the helpers declared through remove_reference_t or decay_t | the call's type substitutes T as if the trait were T itself (`T&&` with T = int& collapses to int&); line 1: got `false`, expected `true` |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -282,6 +281,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/too_many_template_arguments.kpp` | more template arguments than a class template has parameters (and no pack to take the rest) is a compile error, not an argument dropped silently | pass |  |  |
 | `templates/trait_call_through_integral_constant_base.kpp` | a trait read by constructing it, `HasSize<T>()` or `HasSize<T>{}` (its conversion to bool), is a constant when the trait's value comes from a base that is an instance of a class template (`struct HasSize : Constant<bool, false>`, `static constexpr T value = V; constexpr operator T() const`), directly or through an alias, so that `if constexpr` discards the other branch | pass | `is_std_variant<T>()`, `is_optional<T>()` and the game's other traits written as `trait<T>()` in DeserialiserHelper's if constexpr chains, once TrueType/FalseType are IntegralConstant<bool, ...> as in C++ (std::true_type): with them the discarded branches are compiled (+550 lines) |  |
 | `templates/trait_in_base_argument.kpp` | a trait's value as a template argument of a base class (`struct IsPtr : BoolConstant<isPointer<T>> {}`) | pass | the class-form traits C++ builds this way (std::is_same<A, B> : bool_constant<...>) |  |
+| `templates/trait_of_deduced_type_in_return_type.kpp` | a return type made by a type trait of a deduced parameter (std::move's `remove_reference_t<T>&&`), as the call's type | pass | std::move and std::forward, and the helpers declared through remove_reference_t or decay_t |  |
 | `templates/traits_as_values.kpp` | type traits used as values (bool isSame<A, B> in an expression, not only in if constexpr) | pass |  |  |
 | `templates/triviality_and_convertible_traits.kpp` | isTriviallyCopyable, isTriviallyDestructible, isTriviallyDefaultConstructible through members and bases, and isConvertible through converting constructors and conversion operators | pass | is_memcpy_saveable and the serialiser's memcpy paths ask isTriviallyCopyable of every saved type; requires-clauses and enable-ifs ask isConvertible |  |
 | `templates/type_trait_functional_cast.kpp` | a type trait used as a functional cast in an expression, `Conditional<isSigned<UnderlyingType<T>>, int64_t, uint64_t>(value)`: the built-in trait's type (as in a declaration), not the library's Conditional struct | pass | ValueToWidget's str for enums (`ItemToString::enumToString(typeid(T), Conditional<isSigned<UnderlyingType<T>>, int64_t, uint64_t>(value))`), 31 lines, and PrototypeExplorerWidgets.kpp:42 |  |
