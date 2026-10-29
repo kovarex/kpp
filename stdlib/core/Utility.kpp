@@ -1,15 +1,9 @@
 // Kpp standard library: the small utilities everything uses. (TrueType and FalseType, the trait
 // bases, are IntegralConstant's bool instances in TypeTraits.kpp.)
 
-// value as an rvalue (std::move): from an lvalue or an rvalue alike. std's is one function,
-// `RemoveReference<T>&& move(T&& value)`, but a call's type does not apply a trait of a deduced
-// parameter yet (templates/trait_of_deduced_type_in_return_type, pending: moving an lvalue would
-// give an lvalue), so two overloads give its results: an lvalue takes the first, an rvalue the
-// second, and T is the value's type in both.
+// value as an rvalue (std::move): from an lvalue or an rvalue alike.
 template<typename T>
-T&& move(T& value) { return (T&&)value; }
-template<typename T>
-T&& move(T&& value) { return (T&&)value; }
+RemoveReference<T>&& move(T&& value) { return (RemoveReference<T>&&)value; }
 
 // value with the value category T says (std::forward<T>): an lvalue reference T keeps it an
 // lvalue, any other T makes it an rvalue.
