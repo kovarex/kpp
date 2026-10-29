@@ -3518,6 +3518,11 @@ struct GlobalScope::Impl
     if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
       return nullptr;
     auto* cls = static_cast<ClassDecl*>(s->owner);
+    // `Pairish p = Pairish<int, double>(1, 2.5);`, `Duration budget = Milliseconds(5);`: a value of
+    // an instantiation of the same template gives its arguments (C++'s copy deduction candidate).
+    if (argTypes.size() == 1 && argTypes[0])
+      if (const Ty* a = types.unqualified(types.stripRef(argTypes[0])); a && a->kind == TyKind::Class && a->decl == cls && !a->args.empty())
+        return a;
     for (Decl* m : cls->members)
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
@@ -7964,13 +7969,17 @@ struct GlobalScope::Impl
           if (v->init && !activeSubst && impl.isUndeducedClassTemplate(declared))
           {
             // `ScopedSetter guard(x, true)`: the class's arguments from a constructor (CTAD);
-            // `Array names = {a, b}`: from an aggregate's members.
+            // `Array names = {a, b}`: from an aggregate's members; `Duration budget =
+            // Milliseconds(5)`: from the initializer's value, one argument.
             Span<Expr*> args;
-            if (v->init->kind == NodeKind::FunctionalCastExpr)
-              args = static_cast<FunctionalCastExpr*>(v->init)->args;
+            bool copyInit = false;
+            if (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type)
+              args = static_cast<FunctionalCastExpr*>(v->init)->args; // the parser's `T x(args)`
             else if (v->init->kind == NodeKind::BraceInitExpr)
               args = static_cast<BraceInitExpr*>(v->init)->args;
-            std::vector<const Ty*> argTypes = argTypesOf(args);
+            else
+              copyInit = initTy && initTy->isKnown();
+            std::vector<const Ty*> argTypes = copyInit ? std::vector<const Ty*>{argumentType(v->init, initTy, types)} : argTypesOf(args);
             const Ty* deduced = impl.deduceClassArgs(declared, argTypes);
             if (!deduced && v->init->kind == NodeKind::BraceInitExpr)
               deduced = impl.deduceAggregateArgs(declared, argTypes);
