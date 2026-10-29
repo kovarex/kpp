@@ -1,0 +1,33 @@
+// spec: an explicit specialisation of a class template's static data member (`template<> const uint32_t Electric::smoothingTicks = 0;`) defines that instance's member only; every other instance keeps the template's definition (150), read directly, qualified inside a nested class, unqualified inside a member function, and folded into a constant expression
+// factorio: FlowStatistics<...>::smoothingTicks is 150 with `template<> const uint32_t ElectricNetworkStatistics::smoothingTicks = 0;`: the item and fluid statistics took 0 as well, so their histories were 300 long where the save has 450, and saving any map after loading it failed in ElementUsageStatistics::save ("history size (460) exceeds max_size (300)", every menu map's benchmark exited 3)
+template<class T, typename Tag>
+class Stats
+{
+public:
+  static const uint32_t smoothingTicks;
+  uint32_t ticks() const { return smoothingTicks; }
+  class Precision
+  {
+  public:
+    uint32_t historySize(uint32_t interval) const
+    {
+      return uint32_t(300 + Stats<T, Tag>::smoothingTicks / sqrt(double(interval)));
+    }
+  };
+};
+class ElectricTag;
+using Electric = Stats<int, ElectricTag>;
+using Items = Stats<short, void>;
+template<class T, typename Tag>
+const uint32_t Stats<T, Tag>::smoothingTicks = 150;
+template<> const uint32_t Electric::smoothingTicks = 0;
+constexpr uint32_t twice = Items::smoothingTicks * 2;
+int main()
+{
+  Items::Precision items;
+  Electric::Precision electric;
+  Items i;
+  Electric e;
+  println("{} {} {} {} | {} {} | {}", Items::smoothingTicks, Electric::smoothingTicks, items.historySize(1), electric.historySize(1), i.ticks(), e.ticks(), twice);
+  return 0;
+}

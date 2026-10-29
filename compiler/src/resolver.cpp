@@ -469,6 +469,9 @@ struct GlobalScope::Impl
   std::unordered_map<FunctionDecl*, std::vector<Scope*>> localTypesOfOutOfLine; // Scopes of classes and enums declared in their bodies.
   std::vector<Scope*> scopesWithUsingEnums; // `using enum E;` in them: resolved once by finishIndex, before parallel lookups
   std::unordered_map<Decl*, VariableDecl*> variableDefinitions;    // Static data member -> its `T C::x = ...;` definition.
+  // A class template's static data member -> its explicit specialisations for single instances
+  // (`template<> const uint32_t ElectricNetworkStatistics::smoothingTicks = 0;`, variableDefinitionFor).
+  std::unordered_map<Decl*, std::vector<VariableDecl*>> variableSpecializations;
   std::unordered_map<Decl*, Scope*> specializationMembers;         // `int Flag<true>::value() {...}` -> Flag<true>'s scope (finishIndex).
   std::mutex checkerErrorsMutex;
   std::unordered_set<std::string> checkerErrorSet;                 // `path:line: error: ...`, each once (a failed static_assert)
@@ -3781,13 +3784,10 @@ struct GlobalScope::Impl
     if (!s || !lookupInScope(s, symValue, l, depth + 1) || !l.decl || l.decl->kind != NodeKind::VariableDecl || !(l.decl->flags & DF_Static))
       return std::nullopt;
     auto* v = static_cast<VariableDecl*>(l.decl);
-    VariableDecl* def = v;
-    if (!v->init)
-      if (auto it = variableDefinitions.find(v); it != variableDefinitions.end())
-        def = it->second;
+    Subst sub = memberSubst(cls, l.foundIn, depth + 1);
+    VariableDecl* def = v->init ? v : variableDefinitionFor(v, &sub);
     if (!def->init)
       return std::nullopt;
-    Subst sub = memberSubst(cls, l.foundIn, depth + 1);
     LocalStack own;
     pushEnclosingTemplateParams(v, own);
     TypeContext vctx{lexicalScopeOf(v), &own, sub.pairs.empty() ? nullptr : &sub, def->file ? def->file->tokens : nullptr,
@@ -4013,10 +4013,22 @@ struct GlobalScope::Impl
         return ConstValue::integer(int64_t(enumeratorCount(v->parent)), types.intType()); // a Kpp enum's count
       if (v->parent && v->parent->kind == NodeKind::ClassDecl && !(v->flags & DF_Static))
         return std::nullopt; // a data member: its value is an object's, not its initializer
-      VariableDecl* def = v; // `static const int LIMIT;` in the class, `const int Gui::LIMIT = 21;` outside
-      if (!v->init)
-        if (auto it = variableDefinitions.find(v); it != variableDefinitions.end())
-          def = it->second;
+      // A member of a class template: under the instantiation's arguments, the ones it was named
+      // through or the context's when they bind the class's parameters (`count` read in another
+      // member's initializer).
+      bool member = v->parent && v->parent->kind == NodeKind::ClassDecl;
+      Span<Decl*> classParams = member ? effectiveParams(v->parent) : Span<Decl*>{};
+      const Subst* memberArgs = classSubst;
+      if (!memberArgs && ctx.subst)
+        for (Decl* p : classParams)
+          if (ctx.subst->find(p))
+          {
+            memberArgs = ctx.subst;
+            break;
+          }
+      // `static const int LIMIT;` in the class, `const int Gui::LIMIT = 21;` outside; of an instance
+      // with an explicit specialisation of the member, that one.
+      VariableDecl* def = v->init ? v : variableDefinitionFor(v, member ? memberArgs : nullptr);
       if (!def->init || !v->type)
         return std::nullopt;
       TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
@@ -4028,18 +4040,6 @@ struct GlobalScope::Impl
       // under the context it is used in, which has the instantiation's arguments.
       if (v->parent && v->parent->kind == NodeKind::FunctionDecl && v->name.parts.size() == 1)
         return constInitialize(constDeducedType(v, convertType(v->type, ctx, depth + 1)), def->init, ctx, depth + 1);
-      // A member of a class template: under the instantiation's arguments, the ones it was named
-      // through or the context's when they bind the class's parameters (`count` read in another
-      // member's initializer).
-      Span<Decl*> classParams = v->parent ? effectiveParams(v->parent) : Span<Decl*>{};
-      const Subst* memberArgs = classSubst;
-      if (!memberArgs && ctx.subst)
-        for (Decl* p : classParams)
-          if (ctx.subst->find(p))
-          {
-            memberArgs = ctx.subst;
-            break;
-          }
       LocalStack params;
       for (Decl* p : classParams)
         params.push(static_cast<TemplateParamDecl*>(p)->name, p);
@@ -11134,17 +11134,43 @@ struct GlobalScope::Impl
 
   // The class instantiation an explicit member specialisation is written for (`Button<RecipeID>`
   // with its defaults), or null.
-  const Ty* specializedClassOf(FunctionDecl* f)
+  const Ty* specializedClassOf(FunctionDecl* f) { return specializedClassOf(f, f->name); }
+  const Ty* specializedClassOf(Decl* d, const QualifiedName& name)
   {
-    QualifiedName qualifier = f->name;
+    QualifiedName qualifier = name;
     qualifier.parts.count -= 1;
     NamedType written{};
     written.kind = NodeKind::NamedType;
-    written.token = f->token;
+    written.token = d->token;
     written.name = qualifier;
-    TypeContext ctx{lexicalScopeOf(f), nullptr, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    TypeContext ctx{lexicalScopeOf(d), nullptr, nullptr, d->file ? d->file->tokens : nullptr, d->file ? d->file->text : std::string_view()};
     const Ty* t = convertType(&written, ctx, 0);
     return t && t->kind == TyKind::Class && !types.isDependent(t) ? t : nullptr;
+  }
+
+  // The definition of static data member v for the instance of its class with arguments s: the
+  // explicit specialisation written for that instance (`template<> const uint32_t
+  // ElectricNetworkStatistics::smoothingTicks = 0;`), or the template's definition (v itself when
+  // it has none out of the class).
+  VariableDecl* variableDefinitionFor(VariableDecl* v, const Subst* s)
+  {
+    if (s && !s->pairs.empty() && v->parent && v->parent->kind == NodeKind::ClassDecl)
+      if (auto it = variableSpecializations.find(v); it != variableSpecializations.end())
+        for (VariableDecl* candidate : it->second)
+        {
+          TokenScope tokenScope(candidate->file ? candidate->file->tokens : nullptr, candidate->file ? candidate->file->text : std::string_view());
+          const Ty* written = specializedClassOf(candidate, candidate->name);
+          if (!written)
+            continue;
+          Subst ws = substFor(written);
+          bool same = true;
+          for (Decl* p : effectiveParams(v->parent))
+            same = same && ws.find(p) && ws.find(p) == s->find(p);
+          if (same)
+            return candidate;
+        }
+    auto it = variableDefinitions.find(v);
+    return it != variableDefinitions.end() ? it->second : v;
   }
 
   // `int Flag<true>::counter = 100;`, `int Flag<true>::value() {...}`: the scope of the full
@@ -17748,11 +17774,24 @@ void GlobalScope::finishIndex()
         l.scope = special; // `int Flag<true>::counter = 100;`: the specialisation's member
     if (l.scope && l.scope->kind == ScopeKind::Class)
     {
+      // `template<> const uint32_t ElectricNetworkStatistics::smoothingTicks = 0;` (an instance of
+      // a class template, through an alias or with its arguments): that instance's definition
+      // only, not the template's, which every other instance keeps (variableDefinitionFor).
+      bool instanceOnly = false;
+      if ((v->flags & DF_Specialization) && v->templateParams.empty() && l.scope->owner && !Impl::effectiveParams(l.scope->owner).empty())
+      {
+        Impl::TokenScope tokenScope(v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view());
+        const Ty* written = impl->specializedClassOf(v, v->name);
+        instanceOnly = written && !written->args.empty();
+      }
       if (const std::vector<Entry>* entries = l.scope->find(v->name.last().symbol))
         for (const Entry& e : *entries)
           if (e.decl && e.decl->kind == NodeKind::VariableDecl)
           {
-            impl->variableDefinitions[e.decl] = v;
+            if (instanceOnly)
+              impl->variableSpecializations[e.decl].push_back(v);
+            else
+              impl->variableDefinitions[e.decl] = v;
             break;
           }
     }
@@ -18271,6 +18310,15 @@ Decl* GlobalScope::strongOrderingDecl() { return impl->strongOrderingDecl(); }
 
 Decl* GlobalScope::definitionOf(Decl* d, const TemplateArgs& classArgs)
 {
+  // A static data member of a class template instance: the explicit specialisation written for
+  // that instance (`template<> const uint32_t ElectricNetworkStatistics::smoothingTicks = 0;`), if any.
+  if (d && d->kind == NodeKind::VariableDecl && !classArgs.empty())
+  {
+    Subst s;
+    for (auto& [p, t] : classArgs.pairs)
+      s.pairs.push_back({p, t});
+    return impl->variableDefinitionFor(static_cast<VariableDecl*>(d), &s);
+  }
   // A function template with its arguments: the explicit specialisation written for them
   // (`template<> ForceID parse<ForceID>(...)`), when there is one.
   if (d && d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->templateParams.empty() && !classArgs.empty())

@@ -8313,7 +8313,8 @@ namespace
     // perThread: a thread_local global, built by each thread at its first use, not at startup: the
     // function checks a thread_local guard, and globalFor calls it before every use (C++'s
     // thread_local wrapper). Destroyed at no thread's exit yet.
-    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread = false)
+    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread = false,
+                               VariableDecl* definition = nullptr)
     {
       FunctionState saved = saveState();
       std::string savedOverride = funcletOverride;
@@ -8323,7 +8324,7 @@ namespace
       funcletOverride.clear();
       resetFunctionState();
       currentFunction = nullptr;
-      VariableDecl* def = variableDefinition(v);
+      VariableDecl* def = definition ? definition : variableDefinition(v);
       currentFile = def->file;
       // Names in the initializer are typed from the declaration it belongs to (a member alias of
       // the class: `Limits<IDType::IndexType>::max()`), not from the root scope.
@@ -8422,6 +8423,17 @@ namespace
     VariableDecl* variableDefinition(VariableDecl* v)
     {
       Decl* d = global.definitionOf(v);
+      return d && d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : v;
+    }
+
+    // The definition of static member v in the class instance classTy: the explicit specialisation
+    // written for that instance (`template<> const uint32_t ElectricNetworkStatistics::smoothingTicks
+    // = 0;`), or the template's definition; v's own definition without an instance.
+    VariableDecl* variableDefinition(VariableDecl* v, const Ty* classTy)
+    {
+      if (!classTy)
+        return variableDefinition(v);
+      Decl* d = global.definitionOf(v, global.classArgsOf(classTy));
       return d && d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : v;
     }
 
@@ -8895,7 +8907,7 @@ namespace
         // A static member of a class template: one global per instantiation, its initializer
         // evaluated under the instantiation's arguments (also an out-of-class definition's own
         // declarations of the class's parameters).
-        classArgs = global.definitionArgs(variableDefinition(v), global.classArgsOf(classTy));
+        classArgs = global.definitionArgs(variableDefinition(v, classTy), global.classArgsOf(classTy));
         instanceName = "@\"" + irString(classTy) + "::" + sym(v->name.last().symbol) + "\"";
         auto found = instanceGlobals.find(instanceName);
         if (found != instanceGlobals.end())
@@ -8941,7 +8953,7 @@ namespace
       std::string init = "zeroinitializer";
       bool constructed = false;
       const Ty* st = types.stripRef(t);
-      VariableDecl* def = variableDefinition(v); // `static double scale;` in the class, `double Gui::scale = 1.0;` outside
+      VariableDecl* def = variableDefinition(v, classTy); // `static double scale;` in the class, `double Gui::scale = 1.0;` outside
       if (def == v && (v->flags & DF_Extern) && !v->init && !classTy && !t->isReference())
       {
         // `extern int counter;` that no Kpp source defines: a C library's variable (its header
@@ -8967,7 +8979,7 @@ namespace
           unsupported(at, "a thread_local reference");
         decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr global ptr null, comdat\n";
         if (value)
-          emitGlobalConstructor(v, name, t, value, at);
+          emitGlobalConstructor(v, name, t, value, at, false, def);
         return name;
       }
       if (value)
@@ -9007,7 +9019,7 @@ namespace
                (t->isConst && !constructed && !hasMutableMember(st, at) ? "constant " : "global ") + llType(st, at) + " " + init + ", comdat" +
                alignSuffix(st, variableAlignment(def, def, at), at) + "\n";
       if (constructed)
-        emitGlobalConstructor(v, name, st, value, at, threadLocal);
+        emitGlobalConstructor(v, name, st, value, at, threadLocal, def);
       return name;
     }
 
