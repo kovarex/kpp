@@ -8159,6 +8159,23 @@ namespace
             unsupported(e, "a member access that did not resolve to a field");
           if (d->flags & DF_Static)
             return globalAddress(static_cast<VariableDecl*>(d), e, baseTy);
+          if (const Ty* qualifier = memberQualifier(m, e))
+          {
+            // `this->Hook<Robot, TagB>::id`: the field of the instance of its class that the
+            // qualifier is or derives from (the first base holding a field of that declaration was
+            // another instance of Hook). The field's own class, not the qualifier: `b.Left::id`
+            // with id in a virtual base is the one shared subobject's.
+            Decl* owner = global.owningClass(d);
+            const Ty* instance = owner ? instantiationIn(qualifier, owner, e) : nullptr;
+            if (instance && instance != canonicalClass(baseTy, e))
+            {
+              std::string addr;
+              if (!baseAddress(baseTy, instance, object, addr, e))
+                unsupported(e, "a member of " + types.toString(instance, &symbols) + ", which is no base of " + types.toString(baseTy, &symbols));
+              object = addr;
+              baseTy = instance;
+            }
+          }
           return memberObject(baseTy, d, object, e);
         }
         case NodeKind::UnaryExpr:
@@ -8433,6 +8450,22 @@ namespace
             type && type->isKnown() && !types.isDependent(type))
           return type;
       return nullptr;
+    }
+
+    // The class a member's name is qualified with (`Hook<Robot, TagB>` of `r.Hook<Robot, TagB>::getId()`),
+    // canonical; null for an unqualified member.
+    const Ty* memberQualifier(MemberExpr* m, Node* at)
+    {
+      if (m->member.parts.size() < 2)
+        return nullptr;
+      NamedType written{};
+      written.kind = NodeKind::NamedType;
+      written.token = m->token;
+      written.name = m->member;
+      written.name.parts.count -= 1;
+      TemplateArgs none;
+      const Ty* q = global.typeOfAstIn(&written, typingContext(), currentArgs ? *currentArgs : none);
+      return q && isClass(types.stripRef(q)) ? canonicalClass(types.unqualified(types.stripRef(q)), at) : nullptr;
     }
 
     // `Counted<int>::instances`: the instantiation a qualified static member belongs to (null for
@@ -9459,17 +9492,8 @@ namespace
           if (!isClass(objectTy))
             unsupported(c, "operator= on a non-class object");
           const Ty* target = objectTy;
-          if (m->member.parts.size() > 1)
-          {
-            NamedType written{};
-            written.kind = NodeKind::NamedType;
-            written.token = m->token;
-            written.name = m->member;
-            written.name.parts.count -= 1;
-            TemplateArgs none;
-            if (const Ty* q = global.typeOfAstIn(&written, typingContext(), currentArgs ? *currentArgs : none); q && isClass(types.stripRef(q)))
-              target = canonicalClass(types.unqualified(types.stripRef(q)), c);
-          }
+          if (const Ty* q = memberQualifier(m, c))
+            target = q;
           std::string dst = addr;
           if (canonicalClass(target, c) != canonicalClass(objectTy, c) && !baseAddress(objectTy, target, addr, dst, c))
             unsupported(c, "operator= of " + types.toString(target, &symbols) + ", which is no base of " + types.toString(objectTy, &symbols));
@@ -9525,7 +9549,12 @@ namespace
               Decl* owner = global.owningClass(f);
               if (owner && classDef(owner, c) != static_cast<ClassDecl*>(objectTy->decl))
               {
-                const Ty* base = baseInstantiation(objectTy, owner, c);
+                // `r.Hook<Robot, TagB>::getId()`: the instance of the method's class template that
+                // the qualifier is or derives from, not the first instance among the bases.
+                const Ty* qualifier = memberQualifier(m, c);
+                const Ty* base = qualifier ? instantiationIn(qualifier, owner, c) : nullptr;
+                if (!base)
+                  base = baseInstantiation(objectTy, owner, c);
                 std::string addr;
                 if (base && baseAddress(objectTy, base, thisArg, addr, c))
                 {

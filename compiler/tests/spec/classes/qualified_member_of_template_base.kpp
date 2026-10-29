@@ -1,0 +1,37 @@
+// spec: a member named with its base class (`r.Hook<Robot, TagB>::getId()`, `this->Hook<Robot, TagB>::id`) is that base's, when the class has two bases of one class template: the instance written, not the first instance of the template among the bases; also through an alias of the base and through a class derived from it
+// factorio: found with RobotWithLogisticInterface's two IntrusiveSet hooks (PendingRobotsSetHook and RequestingRobotsSetHook, one template with two tags): a call qualified with the second hook ran on the first
+template<class T, class Tag>
+class Hook
+{
+public:
+  void* parent = nullptr;
+  int id = 0;
+  int getId() const { return this->id; }
+};
+class TagA;
+class TagB;
+class Robot;
+using HookB = Hook<Robot, TagB>;
+class Middle : public Hook<Robot, TagB>
+{
+};
+class Polymorphic
+{
+public:
+  virtual ~Polymorphic() {}
+  int x = 1;
+};
+class Robot : public Polymorphic, public Hook<Robot, TagA>, public Middle
+{
+public:
+  int idOfB() const { return this->Hook<Robot, TagB>::id; }
+  int callB() const { return this->HookB::getId(); }
+};
+int main()
+{
+  Robot r;
+  static_cast<Hook<Robot, TagA>&>(r).id = 10;
+  static_cast<Hook<Robot, TagB>&>(r).id = 20;
+  println("{} {} {} {} | {} {}", r.Hook<Robot, TagA>::getId(), r.Hook<Robot, TagB>::getId(), r.HookB::getId(), r.Middle::getId(), r.idOfB(), r.callB());
+  return 0;
+}
