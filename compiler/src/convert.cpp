@@ -1759,6 +1759,10 @@ namespace
     // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
     // include order.
     std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
+    // The object-like macros of this file and the headers it reaches whose body is string literals
+    // (UTF8_BULLET): constants in the conversion, written out where C++ concatenates them with a
+    // literal (`"\n" UTF8_BULLET " "`), since only literals concatenate.
+    std::map<std::string, std::string> literalMacros;
     // Which lines the configuration keeps (null: the file's own lines decide, without its includes).
     const Preprocessed* preprocessed = nullptr;
     // `#pragma pack(push, 1)` to its `#pragma pack(pop)`: the classes defined there are [[packed]]
@@ -2561,6 +2565,16 @@ namespace
     // The game's classes whose names the library uses, renamed in text that never was tokens.
     std::string renameGameClasses(const std::string& s) { return renameGameClassNames(s, &counts); }
 
+    // Whether token j is a string literal, or a name of a string macro (literalMacros) where it is
+    // no member: a piece of a literal concatenation.
+    bool literalLike(uint32_t j) const
+    {
+      if (toks[j].getKind() == TokenKind::String)
+        return true;
+      return toks[j].getKind() == TokenKind::Identifier && literalMacros.count(std::string(spelling(j))) &&
+             !(j > 0 && (toks[j - 1].is(P::Dot) || toks[j - 1].is(P::Arrow) || toks[j - 1].is(P::ColonColon)));
+    }
+
     void convertTokens()
     {
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
@@ -2582,6 +2596,16 @@ namespace
           {
             replace(t.offset, t.length, rename->second);
             counts.add("file-local aliases renamed");
+            continue;
+          }
+        // A string macro beside a string literal (apart from it: `"x"sv` is a suffix), or beside
+        // another string macro (`" " UTF8_A UTF8_NBSP`), is part of a concatenation: its text.
+        if (t.getKind() == TokenKind::Identifier && !literalMacros.empty() &&
+            ((i > 0 && literalLike(i - 1) && endOffset(i - 1) < t.offset) || (literalLike(i + 1) && endOffset(i) < toks[i + 1].offset)))
+          if (auto literal = literalMacros.find(std::string(spelling(i))); literal != literalMacros.end())
+          {
+            replace(t.offset, t.length, literal->second);
+            counts.add("string macros written out in concatenations");
             continue;
           }
         if (t.getKind() == TokenKind::Identifier && headerAliases && !headerAliases->empty() &&
@@ -4919,12 +4943,43 @@ struct SourceConfiguration::Impl
   }
 };
 
+// Whether text is one or more string literals and nothing else (`"a" "b"`, `u8"x"`).
+static bool isStringLiterals(const std::string& text)
+{
+  size_t i = 0;
+  bool any = false;
+  for (;;)
+  {
+    while (i < text.size() && (text[i] == ' ' || text[i] == '\t'))
+      ++i;
+    if (i == text.size())
+      return any;
+    if (text.compare(i, 2, "u8") == 0)
+      i += 2;
+    else if (text[i] == 'u' || text[i] == 'U' || text[i] == 'L')
+      ++i;
+    if (i == text.size() || text[i] != '"')
+      return false;
+    for (++i; i < text.size() && text[i] != '"'; ++i)
+      if (text[i] == '\\')
+        ++i;
+    if (i >= text.size())
+      return false;
+    ++i;
+    any = true;
+  }
+}
+
 // The function-like macros the C headers at paths define (in the branches their #if lines select, as
 // the converter selects them), by name: parameters and body, the body on one line without comments,
-// and C's NULL as nullptr.
+// and C's NULL as nullptr. aliases, when given, gets the object-like macros that are another name,
+// literals those that are string literals and that the headers leave defined, definedLiterals every
+// string literal macro they define (one a file #undefs at its end still holds before that).
 std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHeaderMacros(const std::vector<std::filesystem::path>& paths,
                                                                                        const SourceConfiguration* configuration,
-                                                                                       std::map<std::string, std::string>* aliases)
+                                                                                       std::map<std::string, std::string>* aliases,
+                                                                                       std::map<std::string, std::string>* literals = nullptr,
+                                                                                       std::map<std::string, std::string>* definedLiterals = nullptr)
 {
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> macros;
   for (const std::filesystem::path& path : paths)
@@ -5004,7 +5059,11 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
         while (e < line.size() && (isalnum((unsigned char)line[e]) || line[e] == '_'))
           ++e;
         if (n != std::string::npos)
+        {
           macros.erase(line.substr(n, e - n));
+          if (literals)
+            literals->erase(line.substr(n, e - n));
+        }
         continue;
       }
       if (p == std::string::npos || line.compare(p, 6, "define") != 0)
@@ -5032,6 +5091,21 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
             identifier = identifier && (isalnum((unsigned char)c) || c == '_');
           if (identifier && !keywords.count(body))
             (*aliases)[line.substr(p, nameEnd - p)] = body;
+        }
+        // One whose body is string literals (`#define UTF8_BULLET "\xE2\x80\xA2"`): the conversion
+        // makes it a constant, and a use inside a literal concatenation gets its text.
+        if ((literals || definedLiterals) && nameEnd > p)
+        {
+          std::string body = line.substr(nameEnd);
+          size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
+          body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
+          if (isStringLiterals(body))
+          {
+            if (literals)
+              (*literals)[line.substr(p, nameEnd - p)] = body;
+            if (definedLiterals)
+              (*definedLiterals)[line.substr(p, nameEnd - p)] = body;
+          }
         }
         continue;
       }
@@ -5180,12 +5254,34 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     }
   }
   std::map<size_t, MacroMap> ownMacros; // a header's macros it leaves defined, read once
+  std::map<size_t, std::map<std::string, std::string>> ownLiterals; // and those that are string literals
+  std::map<size_t, std::map<std::string, std::string>> definedLiterals; // every string literal one it defines
   auto macrosOf = [&](size_t k) -> const MacroMap&
   {
     auto it = ownMacros.find(k);
     if (it == ownMacros.end())
-      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration, nullptr)).first;
+      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration, nullptr, &ownLiterals[k], &definedLiterals[k])).first;
     return it->second;
+  };
+  // The string literal macros an input sees: all of its own (TestLuaTerritory.cpp #undefs its
+  // NINE_CHUNKS at the end) and those the headers it reaches leave defined (the first to define a
+  // name gives its text).
+  auto visibleLiterals = [&](size_t k)
+  {
+    std::map<std::string, std::string> out;
+    std::set<size_t> seen;
+    std::function<void(size_t)> visit = [&](size_t h)
+    {
+      if (!seen.insert(h).second)
+        return;
+      macrosOf(h);
+      for (const auto& [name, literal] : h == k ? definedLiterals[h] : ownLiterals[h])
+        out.emplace(name, literal);
+      for (size_t inc : includedInputs[h])
+        visit(inc);
+    };
+    visit(k);
+    return out;
   };
   auto visibleMacros = [&](size_t k)
   {
@@ -5477,7 +5573,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (configuration)
       fc.preprocessed = configuration->impl->find(in.path);
     if (auto ip = inputByPath.find(pathKey(in.path)); ip != inputByPath.end())
+    {
       fc.includedMacros = visibleMacros(ip->second);
+      fc.literalMacros = visibleLiterals(ip->second);
+    }
     fc.variants = &variants;
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
