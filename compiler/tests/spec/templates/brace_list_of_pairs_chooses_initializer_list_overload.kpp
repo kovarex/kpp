@@ -1,0 +1,12 @@
+// spec: a call with a brace list of brace lists, `map.insert({{"y", 2}, {"z", 3}})`, chooses insert(InitializerList<Pair<K, V>>): insert(const Pair<K, V>&) is not viable, as {"z", 3} is no int
+// found writing Set's and Map's insert({...}) for the tests' TestPlanetGeneration (`missing.insert({"small-demolisher", ...})` on a std::set, which passes); std::map's insert({{k, v}, ...}) is the same call on a map
+// pending: the Pair overload is taken, its first from {"y", 2} and its second from {"z", 3}: "a constructor of Pair taking 2 arguments"; owner: the templates thread (overload resolution)
+int main()
+{
+  Map<String, int> map;
+  map.insert({{"y", 2}, {"z", 3}});
+  MultiMap<int, int> multi;
+  multi.insert({{1, 10}, {1, 11}});
+  println("{} {} {}", map.size(), map["z"], multi.count(1));
+  return 0;
+}
