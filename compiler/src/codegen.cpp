@@ -5355,7 +5355,14 @@ namespace
       if (!owner || owner->templateParams.empty())
         return nullptr;
       if (classTy)
-        return canonicalClass(classTy, at);
+      {
+        // `IsPointerLike<int*>::value` with value declared in IsPointerLike<T*>'s base Yes
+        // (Constant<bool, true>): the base's instantiation.
+        const Ty* c = canonicalClass(classTy, at);
+        if (const Ty* found = instantiationIn(c, owner, at))
+          return found;
+        return c;
+      }
       if (const Ty* q = qualifierType(e, at))
         if (const Ty* found = instantiationIn(q, owner, at))
           return found;
