@@ -1,0 +1,31 @@
+// spec: a member alias a class inherits from a base class template's instance, named unqualified in the derived class (no template): `IDType::IndexType` in `class Layer : public Prototype<LayerID>` is LayerID's IndexType, LayerID itself an alias of an ID<Layer, uint8_t> whose IndexType is its parameter; in a static's declared type, a data member's and a function's return type
+// factorio: CollisionLayerPrototype's `static constexpr IDType::IndexType IDLimit = CollisionLayersCountLimit;`, IDType from Prototype<CollisionLayerID> (`using IDType = IDTypeParameter;`), CollisionLayerID = ID<CollisionLayerPrototype, uint8_t>
+template<class PrototypeType, class TemplateParamIndexType>
+struct ID
+{
+  using IndexType = TemplateParamIndexType;
+};
+class Layer;
+using LayerID = ID<Layer, uint8_t>;
+template<class IDTypeParameter>
+class Prototype
+{
+public:
+  using IDType = IDTypeParameter;
+  static constexpr IDType::IndexType IDLimit = Limits<IDType::IndexType>::max();
+};
+class Layer : public Prototype<LayerID>
+{
+public:
+  static constexpr IDType::IndexType IDLimit = 64;
+  IDType::IndexType index = 7;
+  IDType::IndexType next() const { return IDType::IndexType(this->index + 1); }
+};
+template<class P>
+int limitOf() { return int(P::IDLimit); }
+int main()
+{
+  Layer l;
+  println("{} {} {} {} {} {}", int(Layer::IDLimit), limitOf<Layer>(), int(l.index), int(l.next()), sizeof(Layer::IDLimit), int(Prototype<LayerID>::IDLimit));
+  return 0;
+}

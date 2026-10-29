@@ -2018,6 +2018,15 @@ struct GlobalScope::Impl
           if (enterAliased(ms.empty() ? nullptr : declaredTypeOf(alias, &ms, depth + 1)))
             continue;
         }
+        // The same alias inherited and named unqualified, `IDType::IndexType` in CollisionLayerPrototype
+        // (no template) deriving from Prototype<CollisionLayerID>: under the arguments of the base it
+        // was found in.
+        if (!currentTy && i == 0 && step.found == Found::Member)
+        {
+          Subst bs = baseSubstForUnqualified(step, TypeContext{context, locals, subst}, depth);
+          if (enterAliased(bs.empty() ? nullptr : declaredTypeOf(alias, &bs, depth + 1)))
+            continue;
+        }
         // `using X = T::IDType;` in a template body, or `using IDType = IDTypeParameter;` in the class
         // being instantiated, then `X::IndexType` / `IDType::PrototypeType`: the alias's type under the
         // instantiation's arguments (a member alias in its own class's scope).
@@ -4727,10 +4736,11 @@ struct GlobalScope::Impl
     if (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::UsingAliasDecl)
       return s;
     const Ty* qualifier = nullptr;
-    if (prefix.parts.size() > 1)
+    if (prefix.parts.size() > 1 || l.found == Found::Member)
     {
       // `PrototypeType::IDType::IndexType`: the qualifier converted as the type it names, so that
-      // an alias it ends in has the arguments of the base declaring it (ID<EntityPrototype, uint16>).
+      // an alias it ends in has the arguments of the base declaring it (ID<EntityPrototype, uint16>);
+      // `IDType::IndexType` inside a class deriving from Prototype<CollisionLayerID> likewise.
       NamedType written{};
       written.kind = NodeKind::NamedType;
       written.name = prefix;
