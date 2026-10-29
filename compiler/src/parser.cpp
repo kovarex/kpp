@@ -4315,6 +4315,7 @@ namespace
       mark = scratch.size();
       if (accept(P::LParen))
       {
+        n->parenthesized = true;
         parseExpressionList(P::RParen);
         n->args = makeSpan<Expr*>(mark);
         expect(P::RParen, "expected ')' after new arguments");

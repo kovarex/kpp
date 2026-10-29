@@ -330,7 +330,8 @@ struct NamedCastExpr : Expr { Kw castKind; Type* type; Expr* operand; };
 struct SizeofExpr : Expr { Kw sizeofKind; Type* type = nullptr; Expr* operand = nullptr; bool isPack = false; };
 struct CallerExpr : Expr {}; // `caller` as a default argument: the compiler fills in the call site.
 struct NameofExpr : Expr { Expr* operand; }; // nameof(x): the last name of x as a string literal.
-struct NewExpr : Expr { Type* type; Span<Expr*> placement; Span<Expr*> args; bool braced = false; bool global = false; };
+// parenthesized: `new T[n]()`, value-initialized (scalars zero), unlike `new T[n]`.
+struct NewExpr : Expr { Type* type; Span<Expr*> placement; Span<Expr*> args; bool braced = false; bool global = false; bool parenthesized = false; };
 struct DeleteExpr : Expr { Expr* operand; bool isArray; bool global; };
 struct LambdaCapture
 {

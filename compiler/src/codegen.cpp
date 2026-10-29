@@ -8049,6 +8049,12 @@ namespace
           const Ty* t = e->ty && e->ty->kind == TyKind::Pointer ? e->ty->inner : nullptr;
           if (!t)
             unsupported(e, "new of an unknown type");
+          if (n->type && n->type->kind == NodeKind::ArrayType && static_cast<ArrayType*>(n->type)->size)
+          {
+            if (!n->placement.empty())
+              unsupported(e, "placement new of an array");
+            return {arrayNew(n, t, static_cast<ArrayType*>(n->type)->size), e->ty};
+          }
           std::string r;
           if (n->placement.size() == 1)
             r = convert(rvalue(n->placement[0]), types.pointer(types.voidType()), e).text;
@@ -8098,6 +8104,11 @@ namespace
           if (p.ty->kind != TyKind::Pointer)
             unsupported(e, "delete of a non-pointer");
           ensureMalloc();
+          if (d->isArray)
+          {
+            arrayDelete(p.text, p.ty->inner, e);
+            return {"", types.voidType()};
+          }
           if (isClass(p.ty->inner) && (needsDestruction(p.ty->inner, e) || structFor(p.ty->inner, e).polymorphic))
           {
             // `delete p` with p null does nothing (C++): no destructor runs on address 0.
@@ -8145,6 +8156,145 @@ namespace
         decls += "declare ptr @malloc(i64)\n";
       if (declaredNames.claim("@free"))
         decls += "declare void @free(ptr)\n";
+    }
+
+    // The bytes before the elements of `new T[n]`: a cookie whose last 8 hold n, when T needs
+    // destroying (as MSVC's runtime lays it out), so that delete[] destroys all n; 16 for an element
+    // aligned to 16, malloc's alignment. A type that needs no destroying has none (delete[] frees).
+    uint64_t arrayCookie(const Ty* t, Node* at)
+    {
+      if (!needsDestruction(t, at))
+        return 0;
+      const Ty* inner = t;
+      while (inner->kind == TyKind::Array)
+        inner = inner->inner;
+      uint64_t align = isClass(inner) ? classSizeAndAlign(inner, at).second : sizeOf(inner, at);
+      if (align > 16)
+        unsupported(at, "new[] of " + types.toString(t, &symbols) + ", aligned to " + std::to_string(align) + " bytes (more than malloc's 16)");
+      return align > 8 ? 16 : 8;
+    }
+
+    // A loop over the elements of type t at base with an index in an i64 slot: from first up to
+    // count, or from count down to 0 (backwards: the last element first).
+    template<typename F>
+    void forEachElement(const std::string& base, const Ty* t, const std::string& first, const std::string& count, bool backwards, Node* at, F&& body)
+    {
+      std::string slot = "%v" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca i64\n";
+      fn += "  store i64 " + (backwards ? count : first) + ", ptr " + slot + "\n";
+      std::string loopL = newLabel("array.loop"), bodyL = newLabel("array.body"), endL = newLabel("array.end");
+      emitBranch(loopL);
+      startBlock(loopL);
+      std::string index = newTemp(), done = newTemp();
+      fn += "  " + index + " = load i64, ptr " + slot + "\n";
+      fn += "  " + done + " = icmp " + (backwards ? "eq i64 " + index + ", 0" : "uge i64 " + index + ", " + count) + "\n";
+      fn += "  br i1 " + done + ", label %" + endL + ", label %" + bodyL + "\n";
+      startBlock(bodyL);
+      std::string i = index;
+      if (backwards)
+      {
+        i = newTemp();
+        fn += "  " + i + " = sub i64 " + index + ", 1\n";
+        fn += "  store i64 " + i + ", ptr " + slot + "\n";
+      }
+      std::string element = newTemp();
+      fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + base + ", i64 " + i + "\n";
+      body(element);
+      if (!backwards)
+      {
+        std::string next = newTemp();
+        fn += "  " + next + " = add i64 " + index + ", 1\n";
+        fn += "  store i64 " + next + ", ptr " + slot + "\n";
+      }
+      emitBranch(loopL);
+      startBlock(endL);
+    }
+
+    // `new T[n]`: n elements of T, each built by its default constructor in order (a scalar left as
+    // it is, zero with `new T[n]()`); `new T[n]{a, b}` builds the first ones from the list and
+    // value-initializes the rest. Returns the address of the first element.
+    std::string arrayNew(NewExpr* n, const Ty* t, Expr* sizeExpr)
+    {
+      std::string count = convert(rvalue(sizeExpr), types.sizeType(), n).text;
+      std::string stride = "ptrtoint (ptr getelementptr (" + llType(t, n) + ", ptr null, i32 1) to i64)"; // LLVM's own element size
+      uint64_t cookie = arrayCookie(t, n);
+      ensureMalloc();
+      std::string bytes = newTemp();
+      fn += "  " + bytes + " = mul i64 " + count + ", " + stride + "\n";
+      std::string total = bytes;
+      if (cookie)
+      {
+        total = newTemp();
+        fn += "  " + total + " = add i64 " + bytes + ", " + std::to_string(cookie) + "\n";
+      }
+      std::string block = newTemp();
+      emitCall(block + " = ", "ptr @malloc(i64 " + total + ")", false);
+      std::string base = block;
+      if (cookie)
+      {
+        base = newTemp();
+        fn += "  " + base + " = getelementptr inbounds i8, ptr " + block + ", i64 " + std::to_string(cookie) + "\n";
+        std::string countAddr = newTemp();
+        fn += "  " + countAddr + " = getelementptr inbounds i8, ptr " + base + ", i64 -8\n";
+        fn += "  store i64 " + count + ", ptr " + countAddr + "\n";
+      }
+      Span<Expr*> list;
+      bool valueInit = n->parenthesized;
+      if (n->braced)
+      {
+        list = static_cast<BraceInitExpr*>(n->args[0])->args;
+        valueInit = true;
+      }
+      else if (!n->args.empty())
+        unsupported(n, "new[] with constructor arguments");
+      bool scalar = !isClass(t) && t->kind != TyKind::Array;
+      if (scalar && valueInit)
+      {
+        if (declaredNames.claim("@llvm.memset.p0.i64"))
+          decls += "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n";
+        fn += "  call void @llvm.memset.p0.i64(ptr " + base + ", i8 0, i64 " + bytes + ", i1 false)\n";
+      }
+      for (size_t i = 0; i < list.size(); ++i)
+      {
+        std::string element = newTemp();
+        fn += "  " + element + " = getelementptr inbounds " + llType(t, n) + ", ptr " + base + ", i64 " + std::to_string(i) + "\n";
+        initializeFrom(element, t, list[i], n);
+      }
+      if (!scalar && (valueInit || needsConstruction(t, n)))
+        forEachElement(base, t, std::to_string(list.size()), count, false, n, [&](const std::string& element)
+        {
+          if (isClass(t))
+            defaultConstruct(element, t, n);
+          else
+            constructArray(element, t, n);
+        });
+      return base;
+    }
+
+    // `delete[] p`: with a cookie (arrayCookie), the n elements destroyed, the last first, then the
+    // block freed; nothing for null. Without one, the block freed.
+    void arrayDelete(const std::string& p, const Ty* t, Node* at)
+    {
+      uint64_t cookie = arrayCookie(t, at);
+      if (!cookie)
+      {
+        emitCall("", "void @free(ptr " + p + ")", false); // free(null) does nothing
+        return;
+      }
+      std::string isNull = newTemp(), arrayL = newLabel("delete.array"), endL = newLabel("delete.end");
+      fn += "  " + isNull + " = icmp eq ptr " + p + ", null\n";
+      fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + arrayL + "\n";
+      blockTerminated = true;
+      startBlock(arrayL);
+      std::string countAddr = newTemp(), count = newTemp();
+      fn += "  " + countAddr + " = getelementptr inbounds i8, ptr " + p + ", i64 -8\n";
+      fn += "  " + count + " = load i64, ptr " + countAddr + "\n";
+      forEachElement(p, t, "0", count, true, at, [&](const std::string& element) { destroy(element, t, at); });
+      std::string block = newTemp();
+      fn += "  " + block + " = getelementptr inbounds i8, ptr " + p + ", i64 -" + std::to_string(cookie) + "\n";
+      emitCall("", "void @free(ptr " + block + ")", false);
+      emitBranch(endL);
+      startBlock(endL);
     }
 
     Value unary(UnaryExpr* u)

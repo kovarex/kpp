@@ -335,6 +335,16 @@ the switch they cost nothing. Fixtures are ordinary classes constructed in the t
   plain calls); an exception cannot pass through a C callback frame that was not compiled for
   unwinding; `catch` by pointer matches the pointee type's spelling only (no base conversion);
   `new T(args)` leaks the memory when the constructor throws (to fix with the allocator work).
+- `new T[n]` (2026-10-29) allocates n elements with malloc and builds each in order (a class by its
+  default constructor; a scalar is left as it is, or zeroed by `new T[n]()`; `new T[n]{a, b}` builds
+  the first ones from the list and value-initializes the rest). When T needs destroying, the block
+  starts with a cookie holding n in its last 8 bytes, right before the elements, as MSVC's runtime
+  lays it out (16 bytes for a T aligned to 16, malloc's alignment; more alignment is an error), and
+  `delete[] p` reads n back, destroys the elements the last first, and frees the block; for a T
+  that needs no destroying there is no cookie and `delete[]` only frees. The elements' destructors
+  are T's own: `delete[]` through a pointer to a base of the elements' class is undefined, as in
+  C++. A constructor that throws partway leaks the block and the elements built so far, as
+  `new T(args)` does.
 
 ### 10. Draft types for forward references (decided 2026-10-26)
 

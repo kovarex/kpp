@@ -1,6 +1,5 @@
 // spec: `new T[n]` makes n elements (a class's each by its default constructor, in order; a scalar uninitialized, zero with `new T[n]()`), `delete[] p` destroys all of them, the last first, then frees the block; delete[] of null does nothing
 // factorio: 37 `new T[n]` and 10 `delete[]` (UniqueArray<T>(new T[n]) for std::unique_ptr<T[]>: Inventory's `new ItemStack[newCapacity]`, Noise, PropertyTree, ZipPackage, MemoryBitmapData; ImmutableString's `new char[len + 1]`, InfiniteVector)
-// pending: the count is ignored: `new T[n]` allocates and constructs one element (writing the others overruns the block, silently) and `delete[]` destroys only the first
 struct Item
 {
   int value = 7;
