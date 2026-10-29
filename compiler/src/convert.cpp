@@ -29,7 +29,7 @@ namespace
   using CarriedDefaults = std::map<FunctionDecl*, std::vector<std::pair<size_t, std::string>>>;
   // A class template's definition -> (parameter index, default text) from its forward declarations
   // (`template<class K, class V, class Comp = std::less<K>> class FlatMap;` in FlatMapForwards.hpp).
-  using CarriedTemplateDefaults = std::map<ClassDecl*, std::vector<std::pair<size_t, std::string>>>;
+  using CarriedTemplateDefaults = std::map<Decl*, std::vector<std::pair<size_t, std::string>>>;
   // The names each namespace and class of the program declares directly (`NoiseExpressions::` ->
   // {"String", ...}; a class's own name included, as C++ injects it), by the scope's qualified name
   // and `::`: a library name written into such a scope has to be `::String`.
@@ -852,6 +852,72 @@ namespace
     {"codecvt_utf8", "CodecvtUtf8"}, {"wstring_convert", "WStringConvert"},
     {"milli", "Milli"}, {"rotr", "rotr"}, {"lcm", "lcm"}};
 
+  // The game's classes whose names the library uses (Vector, Map, Optional, Pair, RuntimeError),
+  // renamed as convertTokens renames them, in text that never was tokens: a macro's expansion, whose body and
+  // arguments are the game's C++ (`MACRO(StartWalking,, Vector, vector)` in InputAction's list).
+  // `std::` names in it are mapped later, by the pass over the whole output. `counts`, when given,
+  // counts the renames.
+  std::string renameGameClassNames(const std::string& s, Counts* counts)
+  {
+    static const std::map<std::string, std::pair<std::string, std::string>> renames = {
+      {"Vector", {"Vector2D", "Vector renamed to Vector2D"}},
+      {"Map", {"GameMap", "Map renamed to GameMap"}},
+      {"Optional", {"GameOptional", "Optional renamed to GameOptional"}},
+      {"Pair", {"GamePair", "Pair renamed to GamePair"}},
+      {"RuntimeError", {"GameRuntimeError", "RuntimeError renamed to GameRuntimeError"}}};
+    std::string out;
+    for (size_t i = 0; i < s.size();)
+    {
+      char c = s[i];
+      if (c == '"' || c == '\'')
+      {
+        size_t j = i + 1;
+        while (j < s.size() && s[j] != c)
+          j += s[j] == '\\' ? 2 : 1;
+        j = std::min(j + 1, s.size());
+        out.append(s, i, j - i);
+        i = j;
+        continue;
+      }
+      if (!(isalpha((unsigned char)c) || c == '_'))
+      {
+        out += c;
+        ++i;
+        continue;
+      }
+      size_t j = i;
+      while (j < s.size() && isIdentChar(s[j]))
+        ++j;
+      std::string word = s.substr(i, j - i);
+      i = j;
+      auto r = renames.find(word);
+      if (r != renames.end())
+      {
+        // Not after `std::`.
+        size_t p = out.size();
+        while (p > 0 && out[p - 1] == ' ')
+          --p;
+        bool qualified = p >= 2 && out[p - 1] == ':' && out[p - 2] == ':';
+        if (qualified)
+        {
+          p -= 2;
+          while (p > 0 && out[p - 1] == ' ')
+            --p;
+        }
+        bool afterStd = qualified && p >= 3 && out.compare(p - 3, 3, "std") == 0 && (p == 3 || !isIdentChar(out[p - 4]));
+        if (!afterStd)
+        {
+          out += r->second.first;
+          if (counts)
+            counts->add(r->second.second);
+          continue;
+        }
+      }
+      out += word;
+    }
+    return out;
+  }
+
   // --- hand-written overrides ---
 
   // What an override file defines, by qualified name: those definitions of the converted file
@@ -1421,9 +1487,15 @@ namespace
       }
     }
     // Whether an unqualified `name` written at offset finds a declaration of the program before the
-    // global (library) one.
+    // global (library) one: a namespace's or class's member, or a local or parameter of the
+    // function around it declared before (`Layer::const_iterator next = std::next(current);`, whose
+    // initializer sees the variable being declared).
     bool shadowedAt(const std::string& name, uint32_t offset) const
     {
+      if (auto l = localNames.find(name); l != localNames.end())
+        for (auto [declared, end] : l->second)
+          if (declared <= offset && offset < end)
+            return true;
       if (!scopeNames)
         return false;
       for (const ScopeRange& r : scopeRanges)
@@ -1434,6 +1506,130 @@ namespace
             return true;
         }
       return false;
+    }
+    // The locals and parameters of the file's functions by name: where each declaration starts and
+    // where its function ends (the block it is in ends there or sooner: a `::` too many is harmless).
+    std::map<std::string, std::vector<std::pair<uint32_t, uint32_t>>> localNames;
+    void collectLocals(Span<Decl*> decls)
+    {
+      for (Decl* d : decls)
+        if (d->kind == NodeKind::NamespaceDecl)
+          collectLocals(static_cast<NamespaceDecl*>(d)->decls);
+        else if (d->kind == NodeKind::ClassDecl)
+          collectLocals(static_cast<ClassDecl*>(d)->members);
+        else if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && d->endToken > 0 && d->endToken <= toks.size())
+        {
+          auto* f = static_cast<FunctionDecl*>(d);
+          uint32_t end = endOffset(d->endToken - 1);
+          for (Decl* p : f->params)
+            if (auto* pd = static_cast<ParamDecl*>(p); pd->name != UINT32_MAX)
+              localNames[std::string(symbols.name(pd->name))].push_back({toks[p->token].offset, end});
+          collectLocalsIn(f->body, end);
+        }
+    }
+    // A declaration among a statement's parts (`if (auto* x = ...)`, a range-for's variable).
+    void collectLocal(Node* n, uint32_t end)
+    {
+      if (n && n->kind == NodeKind::VariableDecl)
+      {
+        auto* v = static_cast<VariableDecl*>(n);
+        if (v->name.parts.size() == 1 && v->name.parts[0].symbol != UINT32_MAX)
+          localNames[std::string(symbols.name(v->name.parts[0].symbol))].push_back({toks[v->token].offset, end});
+        // A local named `_`, which the parser makes unnamed (`_<offset>`), as Kpp does.
+        for (uint32_t k = v->token; k < v->endToken && k < toks.size() && !toks[k].is(P::Semi); ++k)
+          if (toks[k].getKind() == TokenKind::Identifier && spelling(k) == "_")
+          {
+            underscoreLocals.push_back({toks[v->token].offset, end, k});
+            break;
+          }
+      }
+    }
+    // The locals named `_` (where each declaration starts, where its function ends, its name's
+    // token): in Kpp `_` is an unnamed variable, so one the code reads after all gets a name.
+    struct UnderscoreLocal
+    {
+      uint32_t declared, end, nameToken;
+    };
+    std::vector<UnderscoreLocal> underscoreLocals;
+    std::set<uint32_t> namedUnderscores;
+    // `Filesystem::ErrorCode _; Filesystem::RemoveAll(path, _);` (WriteFileGuard): the `_` the call
+    // reads is the latest `_` declared before it in the function; both become `ignored`.
+    bool nameUnderscoreUse(uint32_t token)
+    {
+      uint32_t at = toks[token].offset;
+      const UnderscoreLocal* found = nullptr;
+      for (const UnderscoreLocal& u : underscoreLocals)
+        if (u.declared < at && at < u.end && toks[u.nameToken].offset < at && (!found || u.declared > found->declared))
+          found = &u;
+      if (!found)
+        return false;
+      replace(at, toks[token].length, "ignored");
+      if (namedUnderscores.insert(found->nameToken).second)
+        replace(toks[found->nameToken].offset, toks[found->nameToken].length, "ignored");
+      counts.add("read `_` locals named");
+      return true;
+    }
+    void collectLocalsIn(Stmt* s, uint32_t end)
+    {
+      if (!s)
+        return;
+      switch (s->kind)
+      {
+        case NodeKind::BlockStmt:
+          for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+            collectLocalsIn(inner, end);
+          break;
+        case NodeKind::DeclStmt:
+          for (Decl* d : static_cast<DeclStmt*>(s)->decls)
+            collectLocal(d, end);
+          break;
+        case NodeKind::IfStmt:
+        {
+          auto* i = static_cast<IfStmt*>(s);
+          collectLocalsIn(i->init, end);
+          collectLocal(i->cond, end);
+          collectLocalsIn(i->then, end);
+          collectLocalsIn(i->else_, end);
+          break;
+        }
+        case NodeKind::ForStmt:
+        {
+          auto* f = static_cast<ForStmt*>(s);
+          collectLocalsIn(f->init, end);
+          collectLocal(f->cond, end);
+          collectLocalsIn(f->body, end);
+          break;
+        }
+        case NodeKind::RangeForStmt:
+        {
+          auto* f = static_cast<RangeForStmt*>(s);
+          collectLocal(f->var, end);
+          collectLocalsIn(f->body, end);
+          break;
+        }
+        case NodeKind::WhileStmt:
+          collectLocal(static_cast<WhileStmt*>(s)->cond, end);
+          collectLocalsIn(static_cast<WhileStmt*>(s)->body, end);
+          break;
+        case NodeKind::DoStmt: collectLocalsIn(static_cast<DoStmt*>(s)->body, end); break;
+        case NodeKind::SwitchStmt:
+        {
+          auto* sw = static_cast<SwitchStmt*>(s);
+          collectLocalsIn(sw->init, end);
+          collectLocal(sw->cond, end);
+          collectLocalsIn(sw->body, end);
+          break;
+        }
+        case NodeKind::TryStmt:
+        {
+          auto* t = static_cast<TryStmt*>(s);
+          collectLocalsIn(t->body, end);
+          for (const TryStmt::Handler& h : t->handlers)
+            collectLocalsIn(h.body, end);
+          break;
+        }
+        default: break;
+      }
     }
     struct LocalMacro
     {
@@ -2060,69 +2256,8 @@ namespace
       return this->renameGameClasses(withFileAndLine(result, useOffset));
     }
 
-    // The game's classes whose names the library uses (Vector, Map, Optional, Pair, RuntimeError),
-    // renamed as convertTokens renames them, in text that never was tokens: a macro's expansion, whose body and
-    // arguments are the game's C++ (`MACRO(StartWalking,, Vector, vector)` in InputAction's list).
-    // `std::` names in it are mapped later, by the pass over the whole output.
-    std::string renameGameClasses(const std::string& s)
-    {
-      static const std::map<std::string, std::pair<std::string, std::string>> renames = {
-        {"Vector", {"Vector2D", "Vector renamed to Vector2D"}},
-        {"Map", {"GameMap", "Map renamed to GameMap"}},
-        {"Optional", {"GameOptional", "Optional renamed to GameOptional"}},
-        {"Pair", {"GamePair", "Pair renamed to GamePair"}},
-        {"RuntimeError", {"GameRuntimeError", "RuntimeError renamed to GameRuntimeError"}}};
-      std::string out;
-      for (size_t i = 0; i < s.size();)
-      {
-        char c = s[i];
-        if (c == '"' || c == '\'')
-        {
-          size_t j = i + 1;
-          while (j < s.size() && s[j] != c)
-            j += s[j] == '\\' ? 2 : 1;
-          j = std::min(j + 1, s.size());
-          out.append(s, i, j - i);
-          i = j;
-          continue;
-        }
-        if (!(isalpha((unsigned char)c) || c == '_'))
-        {
-          out += c;
-          ++i;
-          continue;
-        }
-        size_t j = i;
-        while (j < s.size() && isIdentChar(s[j]))
-          ++j;
-        std::string word = s.substr(i, j - i);
-        i = j;
-        auto r = renames.find(word);
-        if (r != renames.end())
-        {
-          // Not after `std::`.
-          size_t p = out.size();
-          while (p > 0 && out[p - 1] == ' ')
-            --p;
-          bool qualified = p >= 2 && out[p - 1] == ':' && out[p - 2] == ':';
-          if (qualified)
-          {
-            p -= 2;
-            while (p > 0 && out[p - 1] == ' ')
-              --p;
-          }
-          bool afterStd = qualified && p >= 3 && out.compare(p - 3, 3, "std") == 0 && (p == 3 || !isIdentChar(out[p - 4]));
-          if (!afterStd)
-          {
-            out += r->second.first;
-            counts.add(r->second.second);
-            continue;
-          }
-        }
-        out += word;
-      }
-      return out;
-    }
+    // The game's classes whose names the library uses, renamed in text that never was tokens.
+    std::string renameGameClasses(const std::string& s) { return renameGameClassNames(s, &counts); }
 
     void convertTokens()
     {
@@ -3148,6 +3283,15 @@ namespace
                 break;
               }
             }
+            if (f->body && carriedTemplateDefaults)
+              if (auto cd = carriedTemplateDefaults->find(f); cd != carriedTemplateDefaults->end())
+                for (auto& [index, value] : cd->second)
+                  if (index < f->templateParams.size())
+                    if (uint32_t end = templateParameterEnd(f->templateParams[index]->token); end != UINT32_MAX)
+                    {
+                      insert(endOffset(end - 1), " = " + value);
+                      counts.add("default template arguments carried from forward declarations");
+                    }
             if (f->body && carriedDefaults)
               if (auto cd = carriedDefaults->find(f); cd != carriedDefaults->end())
                 for (auto& [index, value] : cd->second)
@@ -3948,6 +4092,9 @@ namespace
         {
           auto* n = static_cast<NameExpr*>(e);
           Decl* r = n->resolved;
+          if (!r && n->name.parts.size() == 1 && !n->name.global && n->name.parts[0].symbol != UINT32_MAX &&
+              symbols.name(n->name.parts[0].symbol) == "_" && nameUnderscoreUse(n->token))
+            break;
           if (owner && n->name.parts.size() == 1 && !n->name.global && n->name.parts[0].special == 0)
           {
             bool member = false;
@@ -4114,6 +4261,7 @@ namespace
     std::string run()
     {
       collectScopeRanges(in.parsed->decls, "");
+      collectLocals(in.parsed->decls);
       seedHeaderMacros();
       convertPreprocessor();
       convertTokens();
@@ -4704,9 +4852,11 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     for (const ConvertInput& in : inputs)
       if (in.parsed)
         inputOf[in.parsed] = &in;
-    // std:: names in carried text, mapped as the token pass maps them.
+    // std:: names in carried text, mapped as the token pass maps them, after the game's classes
+    // whose names the library uses are renamed (`template<class V = Vector>` is Vector2D).
     auto mapStd = [&](std::string value)
     {
+      value = renameGameClassNames(value, nullptr);
       for (size_t at = value.find("std::"); at != std::string::npos; at = value.find("std::", at))
       {
         size_t nameEnd = at + 5;
@@ -4719,6 +4869,58 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         at += to.size();
       }
       return value;
+    };
+    // The defaults of a template's parameters on a declaration that goes, for the definition's
+    // parameters that have none.
+    auto carryTemplateDefaults = [&](Decl* declaration, Decl* def)
+    {
+      if (def->templateParams.size() != declaration->templateParams.size())
+        return;
+      auto it = inputOf.find(declaration->file);
+      if (it == inputOf.end() || !it->second->tokens)
+        return;
+      const ConvertInput& in = *it->second;
+      const std::vector<Token>& tk = *in.tokens;
+      for (size_t i = 0; i < declaration->templateParams.size(); ++i)
+      {
+        auto* p = static_cast<TemplateParamDecl*>(declaration->templateParams[i]);
+        if (!p->defaultArg || static_cast<TemplateParamDecl*>(def->templateParams[i])->defaultArg)
+          continue;
+        uint32_t from = p->defaultArg->token, k = from;
+        int depth = 0;
+        bool splitShr = false;
+        for (; k < tk.size(); ++k)
+        {
+          if (tk[k].is(P::Less) || tk[k].is(P::LParen) || tk[k].is(P::LBracket))
+            ++depth;
+          else if (tk[k].is(P::RParen) || tk[k].is(P::RBracket))
+            --depth;
+          else if (tk[k].is(P::Greater))
+          {
+            if (depth == 0)
+              break;
+            --depth;
+          }
+          else if (tk[k].is(P::Shr))
+          {
+            if (depth <= 1)
+            {
+              splitShr = depth == 1; // `std::less<K>>`: the first > closes the default
+              break;
+            }
+            depth -= 2;
+          }
+          else if (tk[k].is(P::Comma) && depth == 0)
+            break;
+          else if (tk[k].is(P::Semi))
+            break;
+        }
+        if (k >= tk.size() || k <= from)
+          continue;
+        uint32_t a = tk[from].offset;
+        uint32_t b = splitShr ? tk[k].offset + 1 : tk[k - 1].offset + tk[k - 1].length;
+        carriedTemplateDefaults[def].push_back({i, mapStd(std::string(in.text.substr(a, b - a)))});
+      }
     };
     std::function<void(Span<Decl*>)> scan = [&](Span<Decl*> decls)
     {
@@ -4737,56 +4939,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           if (c->isDefinition || c->templateParams.empty())
             continue;
           Decl* defDecl = global.definitionOf(c);
-          if (!defDecl || defDecl == c || defDecl->kind != NodeKind::ClassDecl)
-            continue;
-          auto* def = static_cast<ClassDecl*>(defDecl);
-          if (def->templateParams.size() != c->templateParams.size())
-            continue;
-          auto it = inputOf.find(c->file);
-          if (it == inputOf.end() || !it->second->tokens)
-            continue;
-          const ConvertInput& in = *it->second;
-          const std::vector<Token>& tk = *in.tokens;
-          for (size_t i = 0; i < c->templateParams.size(); ++i)
-          {
-            auto* p = static_cast<TemplateParamDecl*>(c->templateParams[i]);
-            if (!p->defaultArg || static_cast<TemplateParamDecl*>(def->templateParams[i])->defaultArg)
-              continue;
-            uint32_t from = p->defaultArg->token, k = from;
-            int depth = 0;
-            bool splitShr = false;
-            for (; k < tk.size(); ++k)
-            {
-              if (tk[k].is(P::Less) || tk[k].is(P::LParen) || tk[k].is(P::LBracket))
-                ++depth;
-              else if (tk[k].is(P::RParen) || tk[k].is(P::RBracket))
-                --depth;
-              else if (tk[k].is(P::Greater))
-              {
-                if (depth == 0)
-                  break;
-                --depth;
-              }
-              else if (tk[k].is(P::Shr))
-              {
-                if (depth <= 1)
-                {
-                  splitShr = depth == 1; // `std::less<K>>`: the first > closes the default
-                  break;
-                }
-                depth -= 2;
-              }
-              else if (tk[k].is(P::Comma) && depth == 0)
-                break;
-              else if (tk[k].is(P::Semi))
-                break;
-            }
-            if (k >= tk.size() || k <= from)
-              continue;
-            uint32_t a = tk[from].offset;
-            uint32_t b = splitShr ? tk[k].offset + 1 : tk[k - 1].offset + tk[k - 1].length;
-            carriedTemplateDefaults[def].push_back({i, mapStd(std::string(in.text.substr(a, b - a)))});
-          }
+          if (defDecl && defDecl != c && defDecl->kind == NodeKind::ClassDecl)
+            carryTemplateDefaults(c, defDecl);
           continue;
         }
         if (d->kind != NodeKind::FunctionDecl)
@@ -4794,6 +4948,14 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         auto* f = static_cast<FunctionDecl*>(d);
         if (f->body || (f->flags & (DF_Default | DF_Delete)))
           continue;
+        if (!f->templateParams.empty())
+        {
+          // `template<class V = Vector> ... intersection(std::pair<V, V>, std::pair<V, V>);` in
+          // the header, defined in the .cpp without the default: the definition takes it.
+          Decl* defDecl = global.definitionOf(f);
+          if (defDecl && defDecl != f && defDecl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(defDecl)->body)
+            carryTemplateDefaults(f, defDecl);
+        }
         bool any = false;
         for (Decl* p : f->params)
           any = any || static_cast<ParamDecl*>(p)->defaultValue;
