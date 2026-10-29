@@ -22,13 +22,28 @@ struct ConvertInput
 
 // Writes one .kpp file per input (a header and its source of the same stem merged into one)
 // under outDir, mirroring the paths below `roots`. A file of the same relative path under
+// The preprocessor configuration of a conversion: which #if branches of each C++ file stay, as
+// the game's FastDebug build selects them (convert.cpp, "the preprocessor configuration"), with the
+// object-like macros a file defines and those the configured headers it includes leave defined.
+// Built once from all the C++ inputs; the front end lexes the configured texts and the converter
+// writes out the same branches.
+class SourceConfiguration
+{
+public:
+  SourceConfiguration(const std::vector<std::filesystem::path>& paths, const std::vector<std::string_view>& texts,
+                      const std::vector<std::filesystem::path>& roots);
+  ~SourceConfiguration();
+  // File i's text with the #if branches the configuration drops, and every conditional directive
+  // line, blanked (newlines and offsets kept), so that the front end parses the branches that are
+  // written out.
+  const std::string& configuredText(size_t i) const;
+
+  struct Impl;
+  std::unique_ptr<Impl> impl;
+};
+
 // overridesDir replaces the generated one: the hand-written conversion of what the tool cannot
-// do. Returns the conversion report.
+// do. `configuration` is the one the front end lexed the inputs with. Returns the conversion report.
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
-                         const std::filesystem::path& overridesDir = {});
-
-// The C++ text with the #if branches the converter drops, and every conditional directive line,
-// blanked (newlines and offsets kept), so that the front end parses the branches that are written
-// out instead of the first branch of each #if.
-std::string selectConfiguredBranches(std::string_view text);
+                         const std::filesystem::path& overridesDir = {}, const SourceConfiguration* configuration = nullptr);

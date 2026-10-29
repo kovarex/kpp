@@ -61,22 +61,457 @@ namespace
     return UINT32_MAX;
   }
 
-  // Preprocessor symbols the converter treats as defined (Windows, MSVC, debug) and as undefined.
-  const std::set<std::string> definedSymbols = {"WIN32", "_WIN32", "_WIN64", "_MSC_VER", "DEBUG", "__cplusplus", "FACTORIO_PACKAGE",
-                                                "__cpp_lib_optional"};
-  // The cxxopts library as the game builds it: without ICU, with RTTI.
-  const std::set<std::string> undefinedSymbols = {"LINUX", "MAC_OSX", "NINTENDO_SWITCH", "NINTENDO_SWITCH1", "NINTENDO_SWITCH2", "__linux__",
-                                                  "__APPLE__", "__GNUC__", "__clang__", "NDEBUG", "HEADLESS", "FACTORIO_USE_METAL", "DEMO",
-                                                  "CXXOPTS_USE_UNICODE", "CXXOPTS_NO_RTTI"};
-  // Symbols with a value, compared in #if: the Windows version the game's build defines
-  // (`_WIN32_WINNT=0x0601`, Windows 7, in the vs2022 projects and FASTBuild) and the names of the
-  // versions (`#if _WIN32_WINNT >= _WIN32_WINNT_WIN7`).
-  const std::map<std::string, long long> valuedSymbols = {{"_WIN32_WINNT", 0x0601},          {"_WIN32_WINNT_NT4", 0x0400},
-                                                          {"_WIN32_WINNT_WIN2K", 0x0500},    {"_WIN32_WINNT_WINXP", 0x0501},
-                                                          {"_WIN32_WINNT_WS03", 0x0502},     {"_WIN32_WINNT_VISTA", 0x0600},
-                                                          {"_WIN32_WINNT_LONGHORN", 0x0600}, {"_WIN32_WINNT_WIN7", 0x0601},
-                                                          {"_WIN32_WINNT_WIN8", 0x0602},     {"_WIN32_WINNT_WINBLUE", 0x0603},
-                                                          {"_WIN32_WINNT_WINTHRESHOLD", 0x0A00}, {"_WIN32_WINNT_WIN10", 0x0A00}};
+  bool isIdentChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
+
+  // --- the preprocessor configuration ---
+
+  // The build the converter preprocesses the game as: Factorio's FastDebug configuration for
+  // Windows x64 with Visual Studio 2022, from fastbuild/fbuild.bff (the Windows `.defines`, the x64
+  // `.architectureSpecificDefines`, vs2022's `.solutionSpecificDefines`, FastDebug's
+  // `.buildTypeSpecificDefines` and the factorio project's `.librarySpecificDefines` with
+  // `.sdlDefines`), then what MSVC itself predefines for x64 and C++, and the Windows SDK names the
+  // game tests (sdkddkver.h's version numbers; ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+  // DISABLE_NEWLINE_AUTO_RETURN and GUID_DEFINED, which consoleapi.h and guiddef.h define). Name ->
+  // body. docs/path-to-factorio.md, "The configuration".
+  const std::map<std::string, std::string> buildDefines = {
+    // .defines (Windows)
+    {"WIN32_LEAN_AND_MEAN", ""}, {"CRT_NONSTDC_NO_DEPRECATE", ""}, {"_CRT_SECURE_NO_WARNINGS", ""}, {"_SCL_SECURE_NO_WARNINGS", ""},
+    {"_WINDOWS", ""}, {"_USE_MATH_DEFINES", ""}, {"USE_THREADS", ""}, {"WIN32", ""}, {"_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", ""},
+    {"LUA_USE_LONGLONG", ""}, {"FACTORIO_USE_D3D", ""},
+    // .architectureSpecificDefines (x64), .solutionSpecificDefines (vs2022)
+    {"WIN64", ""}, {"_WIN32_WINNT", "0x0601"},
+    // FastDebug's .buildTypeSpecificDefines
+    {"_DEBUG", ""}, {"DEBUG", ""}, {"USE_COMMON_HPP", ""}, {"LUA_USE_APICHECK", ""}, {"DISABLE_EXPRESSION_ID", ""}, {"SPACE_AGE", ""},
+    // the factorio project's .librarySpecificDefines and .sdlDefines
+    {"NOMINMAX", ""}, {"BUILDING_WARNLESS_C", ""}, {"CURL_STATICLIB", ""}, {"SDL_MAIN_HANDLED", ""}, {"SDL_SENSOR_DISABLED", ""},
+    // MSVC for x64, C++ with the standard library (<optional> defines __cpp_lib_optional)
+    {"_WIN32", "1"}, {"_WIN64", "1"}, {"_MSC_VER", "1944"}, {"_M_X64", "100"}, {"_M_AMD64", "100"}, {"__cplusplus", "199711L"},
+    {"__cpp_lib_optional", "202110L"},
+    // the Windows SDK
+    {"_WIN32_WINNT_NT4", "0x0400"}, {"_WIN32_WINNT_WIN2K", "0x0500"}, {"_WIN32_WINNT_WINXP", "0x0501"}, {"_WIN32_WINNT_WS03", "0x0502"},
+    {"_WIN32_WINNT_VISTA", "0x0600"}, {"_WIN32_WINNT_LONGHORN", "0x0600"}, {"_WIN32_WINNT_WIN7", "0x0601"}, {"_WIN32_WINNT_WIN8", "0x0602"},
+    {"_WIN32_WINNT_WINBLUE", "0x0603"}, {"_WIN32_WINNT_WINTHRESHOLD", "0x0A00"}, {"_WIN32_WINNT_WIN10", "0x0A00"},
+    {"ENABLE_VIRTUAL_TERMINAL_PROCESSING", "0x0004"}, {"DISABLE_NEWLINE_AUTO_RETURN", "0x0008"}, {"GUID_DEFINED", ""}};
+  // What the game tests that this build leaves undefined, known to be: other platforms, compilers
+  // and architectures; the flags of other build types (Steam, demo, headless, packaged, the
+  // all-in-one and unity builds, sanitizers, Tracy, the packager tool); cxxopts as the game builds
+  // it (without ICU, with RTTI); and the debug switches the sources keep commented out
+  // (`// #define ENABLE_DEBUG_LOG`). Every other symbol that no build flag and no converted file
+  // defines is undefined too, as in C, and its #if gets a TODO.
+  const std::set<std::string> undefinedOnPurpose = {
+    "LINUX", "MAC_OSX", "MACOSX", "__APPLE__", "__linux__", "NINTENDO_SWITCH", "NINTENDO_SWITCH1", "NINTENDO_SWITCH2",
+    "NINTENDO_SWITCH_PROFILER", "FACTORIO_USE_METAL", "__GNUC__", "__clang__", "_GLIBCXX_RELEASE", "__ARM_ARCH", "_LP64", "__SSE2__",
+    "_M_IX86_FP", "ARCH_X86_64", "ARCH_ARM64", "_AddressOfReturnAddress", "NDEBUG", "STEAM", "DEMO", "DISABLE_UPDATER", "HEADLESS",
+    "FACTORIO_PACKAGE", "WEGAME", "STEM", "ALL_IN_ONE", "UNITY_BUILD", "PACKAGER", "TRACY_ENABLE", "__SANITIZE_ADDRESS__", "ASAN",
+    "TSAN", "UBSAN", "GLAD_DEBUG", "CXXOPTS_USE_UNICODE", "CXXOPTS_NO_RTTI", "ENABLE_DEBUG_LOG", "NOISE_DEBUG_ENABLED",
+    "DEBUG_SPRITE_POOL", "TILE_RENDER_BLUR_POLLUTION", "SCALAR_VECTOR_ORIENTATION", "LOADING_TIMER_ENABLED", "LOAD_TIME_PROFILER",
+    "PRINT_SIZES", "CHECK_DATA_CONSISTENCY", "FEEDBACK_ENABLED", "FORCE_STATIC_INIT_ENABLED", "GPU_IHV_API_ENABLED",
+    "DEBUG_INVALID_REPAIR_ORDERS", "DEBUG_MAP_DESERIALIZATION", "DEBUG_DANGLING_TRAIN_STOP_POINTERS", "DEBUG_PLATFORM_BOUNDS",
+    "NVIDIA_G7X_HARDWARE_BUG_FIX", "NVIDIA_7X_HARDWARE_BUG_FIX", "DISABLE_LOG_TIME", "SUPPRESS_FLOAT_CAST", "WINDOWS"};
+  // The standard headers `__has_include(<...>)` finds: the ones the game asks about, all in MSVC's
+  // library (the experimental one is deprecated there, still present).
+  const std::set<std::string> availableHeaders = {"filesystem", "experimental/filesystem", "optional", "variant", "string_view"};
+
+  // Object-like macros by name, with their bodies (empty for `#define NAME`).
+  using MacroTable = std::map<std::string, std::string>;
+
+  // Evaluates an #if expression: defined(X), X (its body, evaluated in turn), __has_include,
+  // numbers, ! (or `not`), the comparisons, && and || (`and`, `or`), with parentheses. A name the
+  // table does not have is 0; those neither in undefinedOnPurpose nor in `known` (the names some
+  // converted file defines, in a branch this build drops) are collected in `undefined`.
+  struct IfEval
+  {
+    std::string s;
+    const MacroTable& table;
+    std::set<std::string>* undefined = nullptr;
+    const std::set<std::string>* known = nullptr;
+    int depth = 0;
+    size_t p = 0;
+    bool unexpected(const std::string& name) const { return !undefinedOnPurpose.count(name) && !(known && known->count(name)); }
+    void skipSpace()
+    {
+      while (p < s.size() && isspace((unsigned char)s[p]))
+        ++p;
+    }
+    long long symbol(const std::string& name)
+    {
+      auto it = table.find(name);
+      if (it == table.end())
+      {
+        if (undefined && unexpected(name))
+          undefined->insert(name);
+        return 0;
+      }
+      if (it->second.empty())
+        return 1;
+      if (depth > 8)
+        return 0;
+      IfEval body{it->second, table, undefined, known, depth + 1};
+      return body.orExpr();
+    }
+    bool isDefined(const std::string& name)
+    {
+      if (table.count(name))
+        return true;
+      if (undefined && unexpected(name))
+        undefined->insert(name);
+      return false;
+    }
+    std::string word()
+    {
+      size_t start = p;
+      while (p < s.size() && isIdentChar(s[p]))
+        ++p;
+      return s.substr(start, p - start);
+    }
+    long long primary()
+    {
+      skipSpace();
+      if (p < s.size() && s[p] == '!')
+      {
+        ++p;
+        return !primary();
+      }
+      if (p < s.size() && s[p] == '(')
+      {
+        ++p;
+        long long v = orExpr();
+        skipSpace();
+        if (p < s.size() && s[p] == ')')
+          ++p;
+        return v;
+      }
+      if (p < s.size() && isdigit((unsigned char)s[p]))
+      {
+        long long v = strtoll(s.c_str() + p, nullptr, 0);
+        while (p < s.size() && isIdentChar(s[p]))
+          ++p;
+        return v;
+      }
+      std::string name = word();
+      if (name == "not")
+        return !primary();
+      if (name == "defined")
+      {
+        skipSpace();
+        bool paren = p < s.size() && s[p] == '(';
+        if (paren)
+          ++p;
+        skipSpace();
+        std::string sym = word();
+        skipSpace();
+        if (paren && p < s.size() && s[p] == ')')
+          ++p;
+        return isDefined(sym);
+      }
+      if (name == "__has_include")
+      {
+        size_t open = s.find_first_of("<\"", p);
+        size_t close = open == std::string::npos ? open : s.find_first_of(">\"", open + 1);
+        size_t paren = close == std::string::npos ? close : s.find(')', close);
+        if (paren == std::string::npos)
+          return 0;
+        std::string header = s.substr(open + 1, close - open - 1);
+        p = paren + 1;
+        return availableHeaders.count(header) != 0;
+      }
+      if (name.empty())
+      {
+        ++p;
+        return 0;
+      }
+      return symbol(name);
+    }
+    long long cmpExpr()
+    {
+      long long l = primary();
+      skipSpace();
+      if (s.compare(p, 2, "==") == 0)
+      {
+        p += 2;
+        return l == primary();
+      }
+      if (s.compare(p, 2, "!=") == 0)
+      {
+        p += 2;
+        return l != primary();
+      }
+      if (s.compare(p, 2, ">=") == 0)
+      {
+        p += 2;
+        return l >= primary();
+      }
+      if (s.compare(p, 2, "<=") == 0)
+      {
+        p += 2;
+        return l <= primary();
+      }
+      if (p < s.size() && s[p] == '>')
+      {
+        ++p;
+        return l > primary();
+      }
+      if (p < s.size() && s[p] == '<')
+      {
+        ++p;
+        return l < primary();
+      }
+      return l;
+    }
+    long long andExpr()
+    {
+      long long l = cmpExpr();
+      for (;;)
+      {
+        skipSpace();
+        if (s.compare(p, 2, "&&") == 0)
+          p += 2;
+        else if (s.compare(p, 3, "and") == 0 && (p + 3 >= s.size() || !isIdentChar(s[p + 3])))
+          p += 3;
+        else
+          return l;
+        long long r = cmpExpr();
+        l = l && r;
+      }
+    }
+    long long orExpr()
+    {
+      long long l = andExpr();
+      for (;;)
+      {
+        skipSpace();
+        if (s.compare(p, 2, "||") == 0)
+          p += 2;
+        else if (s.compare(p, 2, "or") == 0 && (p + 2 >= s.size() || !isIdentChar(s[p + 2])))
+          p += 2;
+        else
+          return l;
+        long long r = andExpr();
+        l = l || r;
+      }
+    }
+  };
+
+  // A file as the configuration preprocesses it.
+  struct Preprocessed
+  {
+    std::string configured;                              // the text, the dropped lines and every conditional directive blanked
+    std::vector<std::pair<uint32_t, uint32_t>> dropped;  // the [begin, end) offsets of the lines the configuration drops
+    std::vector<std::pair<uint32_t, std::string>> notes; // the #if lines that test a symbol nothing defines, with a TODO text
+    MacroTable defined;                                  // the object-like macros it leaves defined beyond the build's (its includes' too)
+    std::set<std::string> undefined;                     // the build's or its includes' macros it #undefs
+  };
+
+  // Walks a file's preprocessor lines under the configuration: `#if` and its relatives choose the
+  // lines that stay, an active `#define` or `#undef` changes what later lines see, and an active
+  // `#include` of a converted file adds what that file leaves defined (`included` gives it, or null
+  // for any other header). A `#ifndef X` followed by `#define X` is an include guard, not a test.
+  // `known`: the names the converted files define anywhere, which no TODO calls unexpected.
+  Preprocessed preprocessText(std::string_view text, const std::function<const Preprocessed*(const std::string&)>& included,
+                              const std::set<std::string>* known = nullptr)
+  {
+    Preprocessed out;
+    out.configured = std::string(text);
+    MacroTable table = buildDefines;
+    auto blank = [&](size_t from, size_t to)
+    {
+      for (size_t i = from; i < to && i < out.configured.size(); ++i)
+        if (out.configured[i] != '\n' && out.configured[i] != '\r')
+          out.configured[i] = ' ';
+    };
+    struct Level
+    {
+      bool parentActive, taken;
+    };
+    std::vector<Level> stack;
+    bool active = true;
+    size_t dropStart = SIZE_MAX;
+    std::string guard; // the symbol of a #ifndef that the next directive may define, as a guard
+    size_t guardNote = SIZE_MAX;
+    auto setActive = [&](bool now, size_t at)
+    {
+      if (active && !now)
+        dropStart = at;
+      else if (!active && now && dropStart != SIZE_MAX)
+      {
+        out.dropped.push_back({uint32_t(dropStart), uint32_t(at)});
+        dropStart = SIZE_MAX;
+      }
+      active = now;
+    };
+    auto evaluate = [&](const std::string& expr, uint32_t at, const std::string& line)
+    {
+      std::set<std::string> undefined;
+      IfEval e{expr, table, &undefined, known};
+      bool value = e.orExpr() != 0;
+      if (!undefined.empty())
+      {
+        std::string names;
+        for (const std::string& name : undefined)
+          names += (names.empty() ? "" : ", ") + name;
+        out.notes.push_back({at, line + ": " + names + " defined by no build flag and no converted file it includes, so undefined"});
+      }
+      return value;
+    };
+    size_t pos = 0;
+    while (pos < text.size())
+    {
+      // A logical line: continuations joined.
+      size_t start = pos, end = text.find('\n', pos);
+      if (end == std::string_view::npos)
+        end = text.size();
+      while (end < text.size())
+      {
+        size_t last = end;
+        while (last > start && (text[last - 1] == '\r' || text[last - 1] == ' '))
+          --last;
+        if (last <= start || text[last - 1] != '\\')
+          break;
+        end = text.find('\n', end + 1);
+        if (end == std::string_view::npos)
+          end = text.size();
+      }
+      pos = end + 1;
+      size_t p = start;
+      while (p < end && (text[p] == ' ' || text[p] == '\t'))
+        ++p;
+      if (p >= end || text[p] != '#')
+      {
+        if (!active)
+          blank(start, end);
+        continue;
+      }
+      ++p;
+      while (p < end && (text[p] == ' ' || text[p] == '\t'))
+        ++p;
+      size_t ws = p;
+      while (p < end && isalpha((unsigned char)text[p]))
+        ++p;
+      std::string word(text.substr(ws, p - ws));
+      std::string rest(text.substr(p, end - p));
+      if (size_t c = rest.find("//"); c != std::string::npos)
+        rest = rest.substr(0, c);
+      if (size_t c = rest.find("/*"); c != std::string::npos)
+        rest = rest.substr(0, c);
+      for (char& ch : rest)
+        if (ch == '\\' || ch == '\r')
+          ch = ' ';
+      auto firstWord = [](const std::string& r)
+      {
+        std::string sym;
+        for (char ch : r)
+          if (isIdentChar(ch))
+            sym += ch;
+          else if (!sym.empty())
+            break;
+        return sym;
+      };
+      std::string directive = "#" + word + rest;
+      while (!directive.empty() && directive.back() == ' ')
+        directive.pop_back();
+      std::string pendingGuard = std::move(guard);
+      size_t pendingNote = guardNote;
+      guard.clear();
+      guardNote = SIZE_MAX;
+      if (word == "if" || word == "ifdef" || word == "ifndef")
+      {
+        bool value = false;
+        if (active)
+        {
+          if (word == "if")
+            value = evaluate(rest, uint32_t(start), directive);
+          else
+          {
+            std::string sym = firstWord(rest);
+            size_t notesBefore = out.notes.size();
+            value = evaluate("defined(" + sym + ")", uint32_t(start), directive);
+            if (word == "ifndef")
+            {
+              value = !value;
+              guard = sym;
+              guardNote = out.notes.size() > notesBefore ? notesBefore : SIZE_MAX;
+            }
+          }
+        }
+        stack.push_back({active, value});
+        setActive(active && value, start);
+        blank(start, end);
+      }
+      else if (word == "elif" || word == "else")
+      {
+        if (!stack.empty())
+        {
+          Level& l = stack.back();
+          bool value = word == "else" || (l.parentActive && !l.taken && evaluate(rest, uint32_t(start), directive));
+          bool now = l.parentActive && !l.taken && value;
+          l.taken = l.taken || now;
+          setActive(now, start);
+        }
+        blank(start, end);
+      }
+      else if (word == "endif")
+      {
+        if (!stack.empty())
+        {
+          setActive(stack.back().parentActive, start);
+          stack.pop_back();
+        }
+        blank(start, end);
+      }
+      else if (!active)
+        blank(start, end);
+      else if (word == "define")
+      {
+        size_t n = rest.find_first_not_of(" \t");
+        size_t e = n;
+        while (e < rest.size() && isIdentChar(rest[e]))
+          ++e;
+        if (n != std::string::npos && e > n)
+        {
+          std::string name = rest.substr(n, e - n);
+          std::string body;
+          if (e >= rest.size() || rest[e] != '(')
+          {
+            size_t a = rest.find_first_not_of(" \t", e), b = rest.find_last_not_of(" \t");
+            body = a == std::string::npos ? std::string() : rest.substr(a, b - a + 1);
+          }
+          // A function-like macro is defined for `defined()` too; its body is no #if value.
+          table[name] = body;
+          out.undefined.erase(name);
+          if (name == pendingGuard && pendingNote != SIZE_MAX && pendingNote < out.notes.size())
+            out.notes.erase(out.notes.begin() + pendingNote);
+        }
+      }
+      else if (word == "undef")
+      {
+        std::string sym = firstWord(rest);
+        if (table.erase(sym))
+          out.undefined.insert(sym);
+      }
+      else if (word == "include" && included)
+      {
+        size_t open = rest.find_first_of("<\"");
+        size_t close = open == std::string::npos ? open : rest.find_first_of(">\"", open + 1);
+        if (close != std::string::npos)
+          if (const Preprocessed* header = included(rest.substr(open + 1, close - open - 1)))
+          {
+            for (const auto& [name, body] : header->defined)
+              table[name] = body;
+            for (const std::string& name : header->undefined)
+              table.erase(name);
+          }
+      }
+    }
+    if (!active && dropStart != SIZE_MAX)
+      out.dropped.push_back({uint32_t(dropStart), uint32_t(text.size())});
+    for (const auto& [name, body] : table)
+      if (auto b = buildDefines.find(name); b == buildDefines.end() || b->second != body)
+        out.defined[name] = body;
+    for (const auto& [name, body] : buildDefines)
+      if (!table.count(name))
+        out.undefined.insert(name);
+    return out;
+  }
 
   // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
@@ -416,8 +851,6 @@ namespace
     {"length_error", "LengthError"},
     {"codecvt_utf8", "CodecvtUtf8"}, {"wstring_convert", "WStringConvert"},
     {"milli", "Milli"}, {"rotr", "rotr"}, {"lcm", "lcm"}};
-
-  bool isIdentChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
 
   // --- hand-written overrides ---
 
@@ -1019,6 +1452,8 @@ namespace
     // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
     // include order.
     std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
+    // Which lines the configuration keeps (null: the file's own lines decide, without its includes).
+    const Preprocessed* preprocessed = nullptr;
     void seedHeaderMacros()
     {
       if (headerMacros)
@@ -1142,144 +1577,6 @@ namespace
     struct Lines
     {
       std::vector<std::pair<uint32_t, uint32_t>> lines; // offset, length (without the newline)
-    };
-
-    // Evaluates an #if expression over the known symbols: defined(X), X, !, &&, ||, numbers, ==.
-    // `known` becomes false when a symbol outside the two lists appears.
-    struct IfEval
-    {
-      std::string s;
-      size_t p = 0;
-      bool known = true;
-      void skipSpace()
-      {
-        while (p < s.size() && isspace((unsigned char)s[p]))
-          ++p;
-      }
-      long long primary()
-      {
-        skipSpace();
-        if (p < s.size() && s[p] == '!')
-        {
-          ++p;
-          return !primary();
-        }
-        if (p < s.size() && s[p] == '(')
-        {
-          ++p;
-          long long v = orExpr();
-          skipSpace();
-          if (p < s.size() && s[p] == ')')
-            ++p;
-          return v;
-        }
-        if (p < s.size() && isdigit((unsigned char)s[p]))
-        {
-          long long v = strtoll(s.c_str() + p, nullptr, 0);
-          while (p < s.size() && isIdentChar(s[p]))
-            ++p;
-          return v;
-        }
-        size_t start = p;
-        while (p < s.size() && isIdentChar(s[p]))
-          ++p;
-        std::string name = s.substr(start, p - start);
-        if (name == "defined")
-        {
-          skipSpace();
-          bool paren = p < s.size() && s[p] == '(';
-          if (paren)
-            ++p;
-          skipSpace();
-          size_t ns = p;
-          while (p < s.size() && isIdentChar(s[p]))
-            ++p;
-          std::string sym = s.substr(ns, p - ns);
-          skipSpace();
-          if (paren && p < s.size() && s[p] == ')')
-            ++p;
-          return symbol(sym);
-        }
-        if (name.empty())
-        {
-          ++p;
-          return 0;
-        }
-        return symbol(name);
-      }
-      long long symbol(const std::string& name)
-      {
-        if (auto v = valuedSymbols.find(name); v != valuedSymbols.end())
-          return v->second;
-        if (definedSymbols.count(name))
-          return 1;
-        if (undefinedSymbols.count(name))
-          return 0;
-        known = false;
-        return 0;
-      }
-      long long cmpExpr()
-      {
-        long long l = primary();
-        skipSpace();
-        if (s.compare(p, 2, "==") == 0)
-        {
-          p += 2;
-          return l == primary();
-        }
-        if (s.compare(p, 2, "!=") == 0)
-        {
-          p += 2;
-          return l != primary();
-        }
-        if (s.compare(p, 2, ">=") == 0)
-        {
-          p += 2;
-          return l >= primary();
-        }
-        if (s.compare(p, 2, "<=") == 0)
-        {
-          p += 2;
-          return l <= primary();
-        }
-        if (p < s.size() && s[p] == '>')
-        {
-          ++p;
-          return l > primary();
-        }
-        if (p < s.size() && s[p] == '<')
-        {
-          ++p;
-          return l < primary();
-        }
-        return l;
-      }
-      long long andExpr()
-      {
-        long long l = cmpExpr();
-        for (;;)
-        {
-          skipSpace();
-          if (s.compare(p, 2, "&&") != 0)
-            return l;
-          p += 2;
-          long long r = cmpExpr();
-          l = l && r;
-        }
-      }
-      long long orExpr()
-      {
-        long long l = andExpr();
-        for (;;)
-        {
-          skipSpace();
-          if (s.compare(p, 2, "||") != 0)
-            return l;
-          p += 2;
-          long long r = andExpr();
-          l = l || r;
-        }
-      }
     };
 
     // Turns `#define NAME body` into a constant where the body is one, else a TODO comment.
@@ -1414,17 +1711,21 @@ namespace
         lines.push_back({uint32_t(start), uint32_t(end - start)});
         pos = end + 1;
       }
-      struct Level
-      {
-        bool parentActive;
-        bool taken;  // some branch was taken
-        bool active; // this branch is active
-        bool known;
-      };
-      std::vector<Level> stack;
-      bool active = true;
+      // The configuration decided which lines stay (preprocessText, shared with the front end).
+      Preprocessed own;
+      if (!preprocessed)
+        own = preprocessText(text, nullptr);
+      const Preprocessed& decided = preprocessed ? *preprocessed : own;
+      size_t nextDrop = 0, nextNote = 0;
       for (auto [offset, length] : lines)
       {
+        while (nextDrop < decided.dropped.size() && decided.dropped[nextDrop].second <= offset)
+          ++nextDrop;
+        bool active = !(nextDrop < decided.dropped.size() && decided.dropped[nextDrop].first <= offset);
+        while (nextNote < decided.notes.size() && decided.notes[nextNote].first < offset)
+          ++nextNote;
+        for (; nextNote < decided.notes.size() && decided.notes[nextNote].first == offset; ++nextNote)
+          todo(offset, decided.notes[nextNote].second);
         std::string line(text.substr(offset, length));
         size_t p = 0;
         while (p < line.size() && isspace((unsigned char)line[p]))
@@ -1454,66 +1755,10 @@ namespace
         for (char& ch : rest)
           if (ch == '\\' || ch == '\r')
             ch = ' ';
-        auto evaluate = [&](const std::string& expr, bool& known)
-        {
-          IfEval e{expr};
-          bool v = e.orExpr() != 0;
-          known = e.known;
-          return v;
-        };
         if (word == "if" || word == "ifdef" || word == "ifndef")
-        {
-          bool known = true, value = false;
-          if (word == "if")
-            value = evaluate(rest, known);
-          else
-          {
-            IfEval e{""};
-            std::string sym;
-            for (char ch : rest)
-              if (isIdentChar(ch))
-                sym += ch;
-              else if (!sym.empty())
-                break;
-            value = e.symbol(sym) != 0;
-            known = e.known;
-            if (word == "ifndef")
-              value = !value;
-          }
-          if (!known)
-          {
-            todo(offset, "#" + word + rest + " uses an unknown symbol; the first branch was kept");
-            value = true;
-          }
-          stack.push_back({active, value, active && value, known});
-          active = active && value;
           counts.add("#if");
-        }
-        else if (word == "elif" || word == "else")
+        else if (word == "elif" || word == "else" || word == "endif")
         {
-          if (stack.empty())
-            continue;
-          Level& l = stack.back();
-          bool value = word == "else";
-          if (word == "elif")
-          {
-            bool known = true;
-            value = evaluate(rest, known);
-            if (!known)
-              value = false;
-          }
-          l.active = l.parentActive && !l.taken && value;
-          if (l.active)
-            l.taken = true;
-          active = l.active;
-        }
-        else if (word == "endif")
-        {
-          if (!stack.empty())
-          {
-            active = stack.back().parentActive;
-            stack.pop_back();
-          }
         }
         else if (!active)
         {
@@ -4075,21 +4320,87 @@ namespace
   }
 }
 
+// A path as a key: absolute, normalised, lower case (Windows paths ignore case).
+static std::string pathKeyOf(const std::filesystem::path& p)
+{
+  std::error_code ec;
+  std::string s = std::filesystem::absolute(p, ec).lexically_normal().generic_string();
+  for (char& c : s)
+    c = (char)tolower((unsigned char)c);
+  return s;
+}
+
+struct SourceConfiguration::Impl
+{
+  std::vector<std::filesystem::path> paths;
+  std::vector<std::string_view> texts;
+  std::vector<std::filesystem::path> roots;
+  std::map<std::string, size_t> byPath; // pathKeyOf -> index
+  std::vector<std::unique_ptr<Preprocessed>> results;
+  std::vector<char> state; // 0: not yet, 1: being preprocessed (an include cycle stops there), 2: done
+  std::set<std::string> defines; // every name a `#define` of some file names, in any branch
+
+  // The file a `#include` in file i names, among the configured ones: next to file i, or under a
+  // root or the directory above it (`<Util/X.hpp>` under src, `<CommonUtil/X.hpp>` under libraries).
+  size_t resolve(size_t i, const std::string& name) const
+  {
+    std::filesystem::path spelled(name);
+    std::vector<std::filesystem::path> candidates = {paths[i].parent_path() / spelled};
+    for (const auto& root : roots)
+    {
+      candidates.push_back(root / spelled);
+      candidates.push_back(root.parent_path() / spelled);
+    }
+    for (const auto& c : candidates)
+      if (auto it = byPath.find(pathKeyOf(c)); it != byPath.end() && it->second != i)
+        return it->second;
+    return SIZE_MAX;
+  }
+
+  const Preprocessed* of(size_t i)
+  {
+    if (state[i] == 2)
+      return results[i].get();
+    if (state[i] == 1)
+      return nullptr;
+    state[i] = 1;
+    auto result = std::make_unique<Preprocessed>(preprocessText(texts[i], [&](const std::string& name) -> const Preprocessed*
+    {
+      size_t j = resolve(i, name);
+      return j == SIZE_MAX ? nullptr : of(j);
+    }, &defines));
+    results[i] = std::move(result);
+    state[i] = 2;
+    return results[i].get();
+  }
+
+  const Preprocessed* find(const std::filesystem::path& p) const
+  {
+    auto it = byPath.find(pathKeyOf(p));
+    return it == byPath.end() ? nullptr : results[it->second].get();
+  }
+};
+
 // The function-like macros the C headers at paths define (in the branches their #if lines select, as
 // the converter selects them), by name: parameters and body, the body on one line without comments,
 // and C's NULL as nullptr.
-std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHeaderMacros(const std::vector<std::filesystem::path>& paths)
+std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHeaderMacros(const std::vector<std::filesystem::path>& paths,
+                                                                                       const SourceConfiguration* configuration)
 {
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> macros;
   for (const std::filesystem::path& path : paths)
   {
     std::string raw;
-    if (!readFile(path, raw))
+    if (const Preprocessed* decided = configuration ? configuration->impl->find(path) : nullptr)
+      raw = decided->configured; // a converted header: its branches as the configuration selects them with its includes
+    else if (readFile(path, raw))
+      raw = preprocessText(raw, nullptr).configured;
+    else
     {
       fprintf(stderr, "convert: cannot read the macro header %s\n", path.string().c_str());
       continue;
     }
-    // Comments out first (they may hold a #define or span lines), then the dropped #if branches.
+    // The dropped #if branches are blank; comments out (they may hold a #define or span lines).
     std::string text;
     for (size_t i = 0; i < raw.size();)
     {
@@ -4122,7 +4433,6 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
       else
         text += raw[i++];
     }
-    text = selectConfiguredBranches(text);
     for (size_t pos = 0; pos < text.size();)
     {
       // A logical line, continuations joined.
@@ -4198,122 +4508,47 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
   return macros;
 }
 
-std::string selectConfiguredBranches(std::string_view text)
+SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path>& paths, const std::vector<std::string_view>& texts,
+                                         const std::vector<std::filesystem::path>& roots)
+  : impl(std::make_unique<Impl>())
 {
-  // The same decisions as FileConverter::convertPreprocessor: known symbols decide, an unknown
-  // #if keeps its first branch, an unknown #elif is false.
-  std::string out(text);
-  auto blank = [&](size_t from, size_t to)
+  impl->paths = paths;
+  impl->texts = texts;
+  impl->roots = roots;
+  impl->results.resize(paths.size());
+  impl->state.assign(paths.size(), 0);
+  for (size_t i = 0; i < paths.size(); ++i)
   {
-    for (size_t i = from; i < to && i < out.size(); ++i)
-      if (out[i] != '\n' && out[i] != '\r')
-        out[i] = ' ';
-  };
-  struct Level
-  {
-    bool parentActive, taken;
-  };
-  std::vector<Level> stack;
-  bool active = true;
-  size_t pos = 0;
-  while (pos < text.size())
-  {
-    // A logical line: continuations joined.
-    size_t start = pos, end = text.find('\n', pos);
-    if (end == std::string_view::npos)
-      end = text.size();
-    while (end < text.size())
+    impl->byPath[pathKeyOf(paths[i])] = i;
+    std::string_view t = texts[i];
+    for (size_t at = t.find("define"); at != std::string_view::npos; at = t.find("define", at + 6))
     {
-      size_t last = end;
-      while (last > start && (text[last - 1] == '\r' || text[last - 1] == ' '))
-        --last;
-      if (last <= start || text[last - 1] != '\\')
-        break;
-      end = text.find('\n', end + 1);
-      if (end == std::string_view::npos)
-        end = text.size();
-    }
-    pos = end + 1;
-    size_t p = start;
-    while (p < end && (text[p] == ' ' || text[p] == '\t'))
-      ++p;
-    if (p >= end || text[p] != '#')
-    {
-      if (!active)
-        blank(start, end);
-      continue;
-    }
-    ++p;
-    while (p < end && (text[p] == ' ' || text[p] == '\t'))
-      ++p;
-    size_t ws = p;
-    while (p < end && isalpha((unsigned char)text[p]))
-      ++p;
-    std::string word(text.substr(ws, p - ws));
-    std::string rest(text.substr(p, end - p));
-    if (size_t c = rest.find("//"); c != std::string::npos)
-      rest = rest.substr(0, c);
-    for (char& ch : rest)
-      if (ch == '\\' || ch == '\r')
-        ch = ' ';
-    if (word == "if" || word == "ifdef" || word == "ifndef")
-    {
-      FileConverter::IfEval e{word == "if" ? rest : std::string()};
-      bool value;
-      if (word == "if")
-        value = e.orExpr() != 0;
-      else
+      size_t hash = at;
+      while (hash > 0 && (t[hash - 1] == ' ' || t[hash - 1] == '	'))
+        --hash;
+      if (hash == 0 || t[hash - 1] != '#')
+        continue;
+      size_t n = at + 6, e;
+      while (n < t.size() && (t[n] == ' ' || t[n] == '	'))
+        ++n;
+      for (e = n; e < t.size() && isIdentChar(t[e]); ++e)
       {
-        std::string symbol;
-        for (char ch : rest)
-          if (isIdentChar(ch))
-            symbol += ch;
-          else if (!symbol.empty())
-            break;
-        value = e.symbol(symbol) != 0;
-        if (word == "ifndef")
-          value = !value;
       }
-      if (!e.known)
-        value = true;
-      stack.push_back({active, value});
-      active = active && value;
-      blank(start, end);
+      if (e > n && n > at + 6)
+        impl->defines.insert(std::string(t.substr(n, e - n)));
     }
-    else if (word == "elif" || word == "else")
-    {
-      if (!stack.empty())
-      {
-        Level& l = stack.back();
-        bool value = word == "else";
-        if (word == "elif")
-        {
-          FileConverter::IfEval e{rest};
-          value = e.orExpr() != 0 && e.known;
-        }
-        active = l.parentActive && !l.taken && value;
-        l.taken = l.taken || active;
-      }
-      blank(start, end);
-    }
-    else if (word == "endif")
-    {
-      if (!stack.empty())
-      {
-        active = stack.back().parentActive;
-        stack.pop_back();
-      }
-      blank(start, end);
-    }
-    else if (!active)
-      blank(start, end);
   }
-  return out;
+  for (size_t i = 0; i < paths.size(); ++i)
+    impl->of(i);
 }
+
+SourceConfiguration::~SourceConfiguration() = default;
+
+const std::string& SourceConfiguration::configuredText(size_t i) const { return impl->results[i]->configured; }
 
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
-                         const std::filesystem::path& overridesDir)
+                         const std::filesystem::path& overridesDir, const SourceConfiguration* configuration)
 {
   struct Piece
   {
@@ -4345,7 +4580,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         if (a != std::string::npos && line[a] != '#')
           headers.push_back(line.substr(a, b - a + 1));
       }
-      headerMacros = readHeaderMacros(headers);
+      headerMacros = readHeaderMacros(headers, nullptr);
     }
   }
   // The game's own headers each input includes (the includes resolved against the including file's
@@ -4353,14 +4588,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   // function-like macros each header leaves defined: an input sees those of every header it
   // reaches, as C++ does, so that a .cpp expands the X-macro lists its header defines.
   using MacroMap = std::map<std::string, std::pair<std::vector<std::string>, std::string>>;
-  auto pathKey = [](const std::filesystem::path& p)
-  {
-    std::error_code ec;
-    std::string s = std::filesystem::absolute(p, ec).lexically_normal().generic_string();
-    for (char& c : s)
-      c = (char)tolower((unsigned char)c);
-    return s;
-  };
+  auto pathKey = pathKeyOf;
   std::map<std::string, size_t> inputByPath;
   for (size_t k = 0; k < inputs.size(); ++k)
     if (inputs[k].parsed && !inputs[k].parsed->isImported && inputs[k].path.string().rfind("<", 0) != 0)
@@ -4397,7 +4625,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   {
     auto it = ownMacros.find(k);
     if (it == ownMacros.end())
-      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path})).first;
+      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration)).first;
     return it->second;
   };
   auto visibleMacros = [&](size_t k)
@@ -4641,6 +4869,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.scopeNames = &scopeNames;
     fc.opaqueKept = &opaqueKept;
     fc.headerMacros = &headerMacros;
+    if (configuration)
+      fc.preprocessed = configuration->impl->find(in.path);
     if (auto ip = inputByPath.find(pathKey(in.path)); ip != inputByPath.end())
       fc.includedMacros = visibleMacros(ip->second);
     fc.variants = &variants;

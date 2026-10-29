@@ -58,6 +58,7 @@ namespace
     unsigned modules = 0;          // --modules N: IR modules compiled in parallel (0: 2 per thread, 1: one module)
     unsigned codegenThreads = 0;   // --codegen-threads N: threads emitting IR (0: --threads)
     std::string convertDir;        // --convert DIR: write the inputs as Kpp sources there
+    const SourceConfiguration* configuration = nullptr; // converting: the #if branches the front end and the converter keep
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
     int repeat = 1;
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
@@ -852,7 +853,7 @@ namespace
       for (size_t i = 0; i < parsed.size(); ++i)
         inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get()});
       std::vector<std::filesystem::path> roots(options.roots.begin(), options.roots.end());
-      std::string summary = convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir);
+      std::string summary = convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration);
       report("convert: %s\n%s", options.convertDir.c_str(), summary.c_str());
     }
     for (size_t i = 0; i < top.size() && int(i) < options.showUnresolved; ++i)
@@ -1022,12 +1023,25 @@ int main(int argc, char** argv)
   // blanked, so that its rewrites reach the branches that are written out (offsets are unchanged:
   // tokens still index files[i].text).
   std::vector<std::string> configured(paths.size());
+  std::unique_ptr<SourceConfiguration> configuration;
   if (!options.convertDir.empty())
-    parallelFor(paths.size(), options.threads, [&](size_t i)
-    {
+  {
+    std::vector<std::filesystem::path> cppPaths;
+    std::vector<std::string_view> cppTexts;
+    std::vector<size_t> cppFiles;
+    for (size_t i = 0; i < paths.size(); ++i)
       if (files[i].path.extension() != ".kpp")
-        configured[i] = selectConfiguredBranches(files[i].text);
-    });
+      {
+        cppPaths.push_back(files[i].path);
+        cppTexts.push_back(files[i].text);
+        cppFiles.push_back(i);
+      }
+    configuration = std::make_unique<SourceConfiguration>(cppPaths, cppTexts,
+                                                          std::vector<std::filesystem::path>(options.roots.begin(), options.roots.end()));
+    for (size_t k = 0; k < cppFiles.size(); ++k)
+      configured[cppFiles[k]] = configuration->configuredText(k);
+    options.configuration = configuration.get();
+  }
   double collectTime = seconds(Clock::now() - startCollect);
 
   // Phase 1: lex everything in parallel.

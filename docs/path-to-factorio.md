@@ -717,6 +717,50 @@ lines, nearly all from four gaps of the checker's constant evaluator, for the in
 About 740 lines of other errors went, from functions that now fail first at such a layout. One
 tree (the converter output of master b2e6053), master 9909b71's compiler against this one.
 
+### The configuration (2026-10-29)
+
+The converter preprocesses the game as one real build of it: **FastDebug for Windows x64 with
+Visual Studio 2022**, the configuration the clang comparison in prototype-results.md used. Its
+defines come from `fastbuild/fbuild.bff`: the Windows `.defines` (WIN32_LEAN_AND_MEAN,
+CRT_NONSTDC_NO_DEPRECATE, _CRT_SECURE_NO_WARNINGS, _SCL_SECURE_NO_WARNINGS, _WINDOWS,
+_USE_MATH_DEFINES, USE_THREADS, WIN32, _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS, LUA_USE_LONGLONG,
+FACTORIO_USE_D3D), the x64 WIN64, vs2022's `_WIN32_WINNT=0x0601`, FastDebug's own (_DEBUG, DEBUG,
+USE_COMMON_HPP, LUA_USE_APICHECK, DISABLE_EXPRESSION_ID, SPACE_AGE) and the factorio project's
+(NOMINMAX, BUILDING_WARNLESS_C, CURL_STATICLIB, SDL_MAIN_HANDLED, SDL_SENSOR_DISABLED); then what
+MSVC predefines for x64 (_WIN32, _WIN64, _MSC_VER, _M_X64, _M_AMD64, `__cplusplus` as 199711L,
+since the game does not pass /Zc:__cplusplus) and the Windows SDK names the game tests
+(sdkddkver.h's versions, ENABLE_VIRTUAL_TERMINAL_PROCESSING, DISABLE_NEWLINE_AUTO_RETURN,
+GUID_DEFINED). The table is `buildDefines` in convert.cpp.
+
+Every other name is undefined, as in C, but a file's own `#define` and `#undef` lines count from
+where they stand, and an `#include` of a converted header brings what that header leaves defined
+(HAS_SSE2 from CpuIntrinsincs.hpp, DEBUG_NAVMESH_STATS, DEV_ONLY_DEBUG_TOOL and IMGUI_ENABLED from
+the debug headers, CXXOPTS_HAS_OPTIONAL inside cxxopts.hpp). A header is preprocessed once, on its
+own, so it does not see what its includer defined before including it (no game header depends on
+that). An `#if` on a name that no build flag and no converted file defines, outside the list of
+names undefined on purpose (`undefinedOnPurpose`: other platforms, compilers and build types, and
+the debug switches the sources keep commented out), gets a TODO saying it was taken as undefined;
+on this tree there is none. The front end lexes each file with the same branches
+(`SourceConfiguration`, built once from all the inputs), so the two never disagree.
+
+Before, a name outside two short lists was "unknown" and the converter kept the first branch of
+its `#if`, so `#ifdef STEAM` counted as defined while `#ifndef STEAM` counted as undefined, and
+`#if defined(NINTENDO_SWITCH2) && !defined(SPACE_AGE)` (GlobalContext::isSpaceAge) took the
+Switch branch. The Steam integration is now out, as in every non-Steam build: SteamID.hpp's
+`#else` stub replaces the class over CSteamID, and the Steam API needs no interop for this build
+(a Steam build would need a port of SteamContext and SteamSocket over steam_api_flat.h).
+
+FACTORIO_PACKAGE, which the converter defined since its first commit with no reason recorded, is
+the packaged (shipping) builds' flag; FastDebug does not define it, so the conversion no longer
+does. Without it the developer tools are in: DEV_ONLY_DEBUG_TOOL and IMGUI_ENABLED become defined
+(DebugTools and its imgui windows, the debug renderers, DrawQueue's debug drawing), the entity
+leak counter and the developer-only commands and options. Paired on the same tree, headline as
+defined above: FastDebug with FACTORIO_PACKAGE 22,968, exact FastDebug 23,720; the 752 lines are
+that developer code, much of it calls of imgui, a C++ library without an interop yet (design.md's
+route: a thin C wrapper; cimgui is one). Against the old configuration (24,458 on b77b5ff): 958
+lines fewer (the Steam code: CSteamID, HAuthTicket, CCallResult in 800 functions) and 220 more
+(functions now reaching their next error, and the developer code).
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in
