@@ -3577,6 +3577,21 @@ struct GlobalScope::Impl
     }
   };
 
+  // An alignas(N) written in class cls (on it, or on one of its data members), N under the class's
+  // arguments; 1 when there is none, nothing when N is no constant.
+  std::optional<int64_t> constDeclaredAlign(ClassDecl* cls, Expr* alignment, const Subst* sp, int depth)
+  {
+    if (!alignment)
+      return 1;
+    DeclContext dc;
+    declContextFor(cls, dc);
+    TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
+    std::optional<ConstValue> v = constValue(alignment, ctx2, depth + 1);
+    if (!v || v->kind != ConstValue::Kind::Int || v->i <= 0)
+      return std::nullopt;
+    return v->i;
+  }
+
   std::optional<int64_t> constSizeOf(const Ty* t, int depth)
   {
     if (!t || depth > 24)
@@ -3672,6 +3687,12 @@ struct GlobalScope::Impl
           auto fs = constSizeOf(ft, depth + 1);
           auto fa = constAlignOf(ft, depth + 1);
           if (!fs || !fa) return std::nullopt;
+          if (m->kind == NodeKind::VariableDecl) // `alignas(8) unsigned char raw[4];`
+          {
+            auto own = constDeclaredAlign(cls, static_cast<VariableDecl*>(m)->alignment, sp, depth);
+            if (!own) return std::nullopt;
+            fa = std::max(*fa, *own);
+          }
           if (isUnion)
           {
             size = std::max(size, *fs);
@@ -3683,8 +3704,17 @@ struct GlobalScope::Impl
             align = std::max(align, *fa);
           }
         }
+        auto declared = constDeclaredAlign(cls, cls->alignment, sp, depth); // `struct alignas(16) Wide`
+        if (!declared) return std::nullopt;
+        align = std::max(align, *declared);
         size = (size + align - 1) / align * align;
         return std::max<int64_t>(size, 1);
+      }
+      case TyKind::Vector:
+      {
+        auto inner = constSizeOf(t->inner, depth + 1);
+        if (!inner) return std::nullopt;
+        return int64_t(t->count) * *inner;
       }
       default:
         return std::nullopt;
@@ -3745,8 +3775,16 @@ struct GlobalScope::Impl
         auto fa = constAlignOf(ft, depth + 1);
         if (!fa) return std::nullopt;
         align = std::max(align, *fa);
+        if (m->kind == NodeKind::VariableDecl)
+        {
+          auto own = constDeclaredAlign(cls, static_cast<VariableDecl*>(m)->alignment, sp, depth);
+          if (!own) return std::nullopt;
+          align = std::max(align, *own);
+        }
       }
-      return align;
+      auto declared = constDeclaredAlign(cls, cls->alignment, sp, depth);
+      if (!declared) return std::nullopt;
+      return std::max(align, *declared);
     }
     auto s = constSizeOf(t, depth);
     if (!s) return std::nullopt;

@@ -1094,6 +1094,11 @@ namespace
           if (d->flags & DF_Typedef)
             return;
       }
+      // `alignas(16) float a[4], b[4];`: every variable of the declaration (it is cleared when the
+      // next declaration starts).
+      if constexpr (std::is_same_v<T, VariableDecl>)
+        if (pendingAlignment && !(d->flags & DF_Typedef))
+          d->alignment = pendingAlignment;
       scratch.push_back(d);
       // C declares a type before using it: the typedef names seen so far make `(HANDLE)(LONG_PTR)-1`
       // two casts (windows.h's INVALID_HANDLE_VALUE), not a call.
@@ -1360,6 +1365,7 @@ namespace
       }
       size_t mark = scratch.size();
       uint32_t start = pos;
+      pendingAlignment = nullptr; // an alignas belongs to the declaration it is written in, never the next one
       parseDeclarationInner(scope, {});
       if (inRecovery)
       {
@@ -3138,6 +3144,7 @@ namespace
     Stmt* parseStatementInner()
     {
       pendingAttributes = 0;
+      pendingAlignment = nullptr;
       skipAttributes();
       uint32_t start = pos;
       if (at(TokenKind::End))

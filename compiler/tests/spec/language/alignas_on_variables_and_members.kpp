@@ -1,6 +1,5 @@
 // spec: alignas on a variable or a data member: a global, a static and a local start at a multiple of the alignment, and a member does within its class, whose alignment it raises; a class's raw storage `AlignedBytes<sizeof(T), alignof(T)>` for an over-aligned T has T's alignment
 // factorio: Atlas.cpp's `alignas(16) uint32_t b[4]` (read with _mm_load_si128, which faults when misaligned), YCoCgDXTCompression's 15 `alignas(16) static dword SIMD_SSE2_...[4]` constants, the library's raw storage for Optional<T>
-// pending: alignas is ignored on variables and data members (they get their natural alignment), the alignas of a global lands on the next class declared instead (here Plain becomes 64-aligned, silently), and `AlignedBytes<sizeof(T), alignof(T)>` laid out for a variable before an alignof of its class takes T's natural alignment (4 for Wide)
 alignas(64) static unsigned short table[8] = {1, 2, 3, 4, 5, 6, 7, 8};
 struct Plain
 {

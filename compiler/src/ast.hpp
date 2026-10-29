@@ -258,6 +258,7 @@ struct VariableDecl : Decl
   bool bracedInit = false;
   Expr* bitfield = nullptr;
   Span<Expr*> structuredBindings; // NameExpr* for `auto [a, b] = ...`
+  Expr* alignment = nullptr; // alignas(N) on the variable or data member
 };
 struct UsingAliasDecl : Decl { uint32_t name; Type* type; };
 struct UsingDirectiveDecl : Decl { QualifiedName name; };

@@ -677,6 +677,16 @@ as the emitted code does, and never takes the erroring path.
   type in a file of their own, owned by the code generator thread, which derives its IR struct
   types from it. The checker runs before any code is generated, so the interpreter and the checker
   call that layout, not the code generator.
+- alignas (2026-10-29): on a class, a data member, a global, a static or a local, as C++. LLVM
+  aligns a struct field only to its type's ABI alignment, so where alignas asks for more (on the
+  class, on a member, or a member's class has it) the padding C++ puts before such a member, and at
+  the end of the class, is written out as `[n x i8]` fields, and the class keeps the size and the
+  alignment sizeof and alignof give; an object of such a class, and a variable with its own alignas,
+  gets an explicit `align` (its alloca, its global). A union's storage is integers of its alignment
+  up to i128, so a member aligned to more makes the union over-aligned the same way. The heap is
+  malloc's 16 bytes: `new` of a type aligned to more is not handled yet. Until the layout file
+  exists the checker's sizes (resolver.cpp, constSizeOf and constAlignOf, for template arguments
+  like `AlignedBytes<sizeof(T), alignof(T)>`) mirror these rules.
 - Constant data: a constexpr global or static member whose value evaluates is emitted as constant
   data (its value lowered to an LLVM constant) instead of by a startup function.
 - A cache of (declaration, arguments) to value, thread-safe like the instantiation records, so

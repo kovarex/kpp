@@ -69,6 +69,10 @@ namespace
     std::unordered_map<Decl*, std::pair<uint32_t, uint32_t>> bitfields; // member -> (shift, width) inside its storage field
     bool complete = false;                    // every field is laid out (structFor returned it once)
     uint64_t size = 0, align = 0;             // computed on first use once complete (align 0: not yet)
+    // The alignment LLVM gives the struct type (its fields' largest); alignas raises the class's own
+    // (align) above it: then its padding is written out as fields, and its objects get `align`.
+    uint64_t llvmAlign = 1;
+    bool overAligned = false;                 // align > llvmAlign
     bool sizing = false;                      // its size is being computed (a class that contains itself comes back here)
     bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
     std::string failedWhy;                    // what made it fail, which every use reports
@@ -547,12 +551,20 @@ namespace
           return 8;
         case TyKind::Lambda:
         {
+          // The closure struct's own size: its fields where LLVM puts them (a reference capture is
+          // a pointer; fieldTypes holds what it points to), rounded to the largest alignment; an
+          // empty closure is one byte.
           if (!t->decl)
             return 8;
-          uint64_t size = 0;
-          for (const Ty* f : closureFor(t, at).fieldTypes)
-            size += 8 > sizeOf(f, at) ? 8 : sizeOf(f, at); // generous: fields aligned to 8
-          return std::max<uint64_t>(size, 1);
+          const ClosureInfo& info = closureFor(t, at);
+          uint64_t size = 0, align = 1;
+          for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+          {
+            uint64_t s = info.byRef[i] ? 8 : sizeOf(info.fieldTypes[i], at), a = info.byRef[i] ? 8 : llvmAlignOf(info.fieldTypes[i], at);
+            size = (size + a - 1) / a * a + s;
+            align = std::max(align, a);
+          }
+          return std::max<uint64_t>((size + align - 1) / align * align, 1);
         }
         case TyKind::Array: return t->count * sizeOf(t->inner, at);
         case TyKind::Vector: return t->count * sizeOf(t->inner, at);
@@ -608,6 +620,16 @@ namespace
         case TyKind::Array: return alignOf(t->inner, at);
         case TyKind::Vector: return t->count * sizeOf(t->inner, at); // SSE vectors are 16-byte aligned
         case TyKind::Class: return classSizeAndAlign(t, at).second;
+        case TyKind::Lambda:
+        {
+          if (!t->decl)
+            return 8;
+          const ClosureInfo& info = closureFor(t, at);
+          uint64_t align = 1;
+          for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+            align = std::max(align, info.byRef[i] ? uint64_t(8) : alignOf(info.fieldTypes[i], at));
+          return align;
+        }
         default: return std::max<uint64_t>(1, sizeOf(t, at));
       }
     }
@@ -620,15 +642,132 @@ namespace
       if (!c->alignment)
         return 1;
       TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+      return alignmentValue(c->alignment, c, args, types.toString(t, &symbols), at);
+    }
+
+    // An alignas(N) written in owner (a class, a function), N under args: a power of two.
+    uint64_t alignmentValue(Expr* alignment, Decl* owner, const TemplateArgs& args, const std::string& what, Node* at)
+    {
       ArgsScope scope(*this, &args);
-      ConstContextScope context(*this, c);
+      ConstContextScope context(*this, owner);
       ParsedFile* saved = currentFile;
-      currentFile = c->file ? c->file : currentFile;
-      std::optional<int64_t> v = evalConst(c->alignment);
+      currentFile = owner && owner->file ? owner->file : currentFile;
+      std::optional<int64_t> v = evalConst(alignment);
       currentFile = saved;
       if (!v || *v <= 0 || (*v & (*v - 1)))
-        unsupported(at, "the alignment of " + types.toString(t, &symbols) + ", which is not a constant power of two");
+        unsupported(at, "the alignment of " + what + ", which is not a constant power of two");
       return uint64_t(*v);
+    }
+
+    // The alignment LLVM gives a value of type t from the type alone (its ABI alignment): what a
+    // class's alignas adds on top of its fields' it only gets from padding fields and `align`.
+    uint64_t llvmAlignOf(const Ty* t, Node* at)
+    {
+      switch (t->kind)
+      {
+        case TyKind::Array: return llvmAlignOf(t->inner, at);
+        case TyKind::Class: return structFor(t, at).llvmAlign;
+        default: return alignOf(t, at);
+      }
+    }
+
+    // `, align N` for an object of type t (and an alignas(N) of the variable itself, or 0) whose
+    // alignment is more than LLVM gives its type: an alloca's, a global's.
+    std::string alignSuffix(const Ty* t, uint64_t declared, Node* at)
+    {
+      t = types.unqualified(types.stripRef(t));
+      if (!declared && !overAlignedType(t, at))
+        return "";
+      uint64_t want = std::max(declared, alignOf(t, at));
+      return want > llvmAlignOf(t, at) ? ", align " + std::to_string(want) : std::string();
+    }
+
+    // Whether an object of type t needs more alignment than LLVM gives its type (a class with
+    // alignas, or holding a member that has it).
+    bool overAlignedType(const Ty* t, Node* at)
+    {
+      t = types.unqualified(t);
+      while (t->kind == TyKind::Array)
+        t = types.unqualified(t->inner);
+      return t->kind == TyKind::Class && structFor(t, at).overAligned;
+    }
+
+    // The alignment of a class (info, laid out but for its LLVM text) and of each field: LLVM aligns
+    // a field to its type's ABI alignment only, so where alignas asks for more (on the class, on a
+    // member, or a member's class has it) the bytes C++ puts before a field become a `[n x i8]` field
+    // of their own, and the class gets the size and alignment sizeof and alignof give. Returns the
+    // padding to write at the end of the struct (after its byte of its own, when empty).
+    uint64_t alignPadding(StructInfo& info, ClassDecl* c, const Ty* key, const TemplateArgs& args, Node* at)
+    {
+      uint64_t natural = 1;
+      for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+        if (!info.zeroSize[i] && !info.packed)
+          natural = std::max(natural, llvmAlignOf(info.fieldTypes[i], at));
+      info.llvmAlign = natural;
+      if (info.packed)
+        return 0;
+      std::vector<uint64_t> declaredAt(info.fieldTypes.size(), 0); // a member's own alignas
+      bool needed = false;
+      for (Decl* m : c->members)
+        if (m->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(m)->alignment && info.fieldIndex.count(m))
+        {
+          uint32_t i = info.fieldIndex[m];
+          declaredAt[i] = std::max(declaredAt[i], alignmentValue(static_cast<VariableDecl*>(m)->alignment, c, args,
+                                                                 "the member " + sym(static_cast<VariableDecl*>(m)->name.last().symbol), at));
+          needed = needed || declaredAt[i] > llvmAlignOf(info.fieldTypes[i], at);
+        }
+      for (size_t i = 0; i < info.fieldTypes.size() && !needed; ++i)
+        needed = !info.zeroSize[i] && overAlignedType(info.fieldTypes[i], at);
+      uint64_t declaredClass = c->alignment ? declaredAlignment(key, at) : 1;
+      if (!needed && declaredClass <= natural)
+        return 0;
+      std::vector<const Ty*> fields;
+      std::vector<bool> zero;
+      std::vector<uint32_t> newIndex(info.fieldTypes.size());
+      uint64_t offset = 0, align = 1;
+      for (size_t i = 0; i < info.fieldTypes.size(); ++i)
+      {
+        bool none = info.zeroSize[i];
+        uint64_t want = none ? 1 : std::max(alignOf(info.fieldTypes[i], at), declaredAt[i]);
+        uint64_t llvmWant = none ? 1 : llvmAlignOf(info.fieldTypes[i], at);
+        uint64_t place = (offset + want - 1) / want * want;
+        if (place != (offset + llvmWant - 1) / llvmWant * llvmWant)
+        {
+          fields.push_back(types.array(types.intType(8), uint32_t(place - offset)));
+          zero.push_back(false);
+        }
+        newIndex[i] = uint32_t(fields.size());
+        fields.push_back(info.fieldTypes[i]);
+        zero.push_back(none);
+        offset = place + (none ? 0 : sizeOf(info.fieldTypes[i], at));
+        align = std::max(align, want);
+      }
+      if (info.empty)
+        offset = std::max<uint64_t>(offset, 1); // its byte of its own
+      align = std::max(align, declaredClass);
+      uint64_t size = std::max<uint64_t>((offset + align - 1) / align * align, 1);
+      info.fieldTypes = std::move(fields);
+      info.zeroSize = std::move(zero);
+      for (auto& [d, index] : info.fieldIndex)
+        index = newIndex[index];
+      for (auto& [d, index] : info.bases)
+        index = newIndex[index];
+      for (auto& [d, index] : info.anonymous)
+        index = newIndex[index];
+      info.size = size;
+      info.align = align;
+      info.overAligned = align > natural;
+      uint64_t llvmSize = (offset + natural - 1) / natural * natural;
+      return size > llvmSize ? size - offset : 0;
+    }
+
+    // A local's or a global's own alignas(N), or 0: N in the context it is written in (the function
+    // being emitted for a local, the variable itself for a global), under the current arguments.
+    uint64_t variableAlignment(VariableDecl* v, Decl* context, Node* at)
+    {
+      if (!v || !v->alignment)
+        return 0;
+      return alignmentValue(v->alignment, context, currentArgs ? *currentArgs : TemplateArgs{}, sym(v->name.last().symbol), at);
     }
 
     ClassDecl* classDef(Decl* decl, Node* at)
@@ -779,8 +918,21 @@ namespace
             info.anonymous.push_back({m, 0});
           size = std::max(size, sizeOf(ft, at));
           align = std::max(align, alignOf(ft, at));
+          if (m->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(m)->alignment)
+            align = std::max(align, alignmentValue(static_cast<VariableDecl*>(m)->alignment, c, args, "the member " + memberName(m), at));
         }
-        info.fieldTypes.push_back(types.array(types.intType(uint8_t(align * 8)), uint32_t((size + align - 1) / align)));
+        // The storage: integers of the union's alignment, up to i128 (LLVM's most aligned integer);
+        // a member aligned to more (OptionalOwningStorage of an alignas(64) class) makes the union
+        // over-aligned, its objects then aligned with `align`.
+        uint64_t unit = std::min<uint64_t>(align, 16), total = (size + align - 1) / align * align;
+        info.llvmAlign = unit;
+        info.fieldTypes.push_back(types.array(types.intType(uint8_t(unit * 8)), uint32_t(total / unit)));
+        if (align > unit)
+        {
+          info.size = total;
+          info.align = align;
+          info.overAligned = true;
+        }
         decls += info.name + " = type { " + llType(info.fieldTypes[0], c) + " }\n";
         ++result.structs;
         info.complete = true;
@@ -950,11 +1102,14 @@ namespace
       }
       info.empty = !info.polymorphic && info.fieldDecls.empty() && allBasesEmpty;
       info.packed = (c->attributes & ATTR_Packed) != 0;
+      uint64_t tailPadding = alignPadding(info, c, key, args, at);
       std::string line = info.name + " = type " + (info.packed ? "<{ " : "{ ");
       for (size_t i = 0; i < info.fieldTypes.size(); ++i)
         line += (i ? ", " : "") + (info.zeroSize[i] ? std::string("[0 x i8]") : llType(info.fieldTypes[i], c));
       if (info.empty)
         line += info.fieldTypes.empty() ? "i8" : ", i8"; // one byte of its own as an object
+      if (tailPadding)
+        line += ", [" + std::to_string(tailPadding) + " x i8]";
       line += info.packed ? " }>\n" : " }\n";
       decls += line;
       ++result.structs;
@@ -2638,7 +2793,7 @@ namespace
     std::string newObjectSlot(const Ty* t, Node* at)
     {
       std::string slot = "%o" + std::to_string(temp++);
-      allocas += "  " + slot + " = alloca " + llType(t, at) + "\n";
+      allocas += "  " + slot + " = alloca " + llType(t, at) + alignSuffix(t, 0, at) + "\n";
       return slot;
     }
 
@@ -6289,7 +6444,7 @@ namespace
       currentFile = saved;
       // Defined in every module, merged by the linker (one instance per program).
       decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr " + (t->isConst && !constructed ? "constant " : "global ") +
-               llType(st, at) + " " + init + ", comdat\n";
+               llType(st, at) + " " + init + ", comdat" + alignSuffix(st, variableAlignment(def, def, at), at) + "\n";
       if (constructed)
         emitGlobalConstructor(v, name, st, value, at);
       return name;
@@ -9487,7 +9642,7 @@ namespace
       // Numbered by where the variable is written (its token): the same name in every run.
       std::string name = "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(v->token) + "\"";
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
-      moduleDecls[currentModule] += name + " = internal global " + llType(t, v) + " zeroinitializer\n";
+      moduleDecls[currentModule] += name + " = internal global " + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n";
       moduleDecls[currentModule] += guard + " = internal global i1 false\n";
       {
         auto lock = sharedLock();
@@ -9536,7 +9691,7 @@ namespace
       }
       bool isRef = t->isReference();
       std::string slot = "%v" + std::to_string(temp++);
-      allocas += "  " + slot + " = alloca " + (isRef ? std::string("ptr") : llType(t, v)) + "\n";
+      allocas += "  " + slot + " = alloca " + (isRef ? std::string("ptr") : llType(t, v) + alignSuffix(t, variableAlignment(v, typingContext(), v), v)) + "\n";
       locals[v] = {slot, t, isRef};
       if (isRef)
       {
