@@ -9349,6 +9349,13 @@ struct GlobalScope::Impl
     for (size_t i = chain.size(); i-- > 0;)
       for (Decl* tp : chain[i]->templateParams)
         out.params.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+    // Inside function bodies (a member of a class declared in one, `RailWithDirection
+    // railWithDirection;` with `using RailWithDirection = ...;` before the class): the aliases,
+    // classes and enums the bodies declare before it, outermost first.
+    for (size_t i = chain.size(); i-- > 1;)
+      if (chain[i]->kind == NodeKind::FunctionDecl)
+        if (Stmt* body = static_cast<FunctionDecl*>(chain[i])->body; body && body->token < d->token)
+          collectVisibleLocalAliases(body, d->token, out.params);
   }
 
   // Declared type of a declaration, seen through an optional substitution (for members of

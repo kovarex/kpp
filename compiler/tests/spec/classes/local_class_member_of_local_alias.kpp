@@ -1,0 +1,25 @@
+// spec: a class declared in a function body has members typed with the body's aliases declared before it, also where a template instance outside the function (Heap<Node>::compare) uses them
+// factorio: BuildingRenderer's `using RailWithDirection = GamePair<const Rail*, RailDirection>;` then `class RailNode : public MinHeap<RailNode>::ItemBase { ... RailWithDirection railWithDirection; }`, compared by MinHeap<RailNode>::compare
+template<typename T>
+struct Heap
+{
+  struct ItemBase { int heapIndex = 0; };
+  static bool compare(const T& a, const T& b) { return a < b; }
+};
+static bool check(int x, int y)
+{
+  using Pairish = Pair<int, int>;
+  class Node : public Heap<Node>::ItemBase
+  {
+  public:
+    explicit Node(Pairish value) : value(value) {}
+    bool operator<(const Node& other) const { return this->value < other.value; }
+    Pairish value;
+  };
+  return Heap<Node>::compare(Node(makePair(x, 1)), Node(makePair(y, 1)));
+}
+int main()
+{
+  println("{} {}", check(1, 2), check(3, 2));
+  return 0;
+}
