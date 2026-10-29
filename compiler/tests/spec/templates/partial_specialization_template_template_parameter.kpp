@@ -1,0 +1,33 @@
+// spec: a partial specialization whose pattern applies a template template parameter to a pack, `IsSpec<Spec<Args...>, Spec>`, matches `IsSpec<Box<char>, Box>` (Spec deduced from both arguments), also read through a variable template in a constexpr local
+// factorio: is_specialization<T, ID> (IsSpecialization.hpp) behind is_id_like<T>, which DeserialiserHelper's map loading and the ID helpers consult; with TrueType/FalseType as IntegralConstant aliases the variable template is not even a constant (+56 lines)
+// pending: the specialization never matches, silently: IsSpec<Box<char>, Box>::value is false and classify<Box<int>>() returns 2 (with Constant<bool, ...> instance bases instead of plain structs: "a variable template whose value is not a constant")
+struct Yes
+{
+  static constexpr bool value = true;
+};
+struct No
+{
+  static constexpr bool value = false;
+};
+template<typename Test, template<typename...> class Spec>
+struct IsSpec : No {};
+template<template<typename...> class Spec, typename... Args>
+struct IsSpec<Spec<Args...>, Spec> : Yes {};
+template<typename T>
+struct Box
+{
+  T v;
+};
+template<typename T>
+constexpr bool isBox = IsSpec<T, Box>::value;
+template<typename T>
+int classify()
+{
+  constexpr bool box = isBox<T>;
+  return box ? 1 : 2;
+}
+int main()
+{
+  println("{} {} {} {}", classify<Box<int>>(), classify<int>(), IsSpec<Box<char>, Box>::value, IsSpec<Vector<int>, Box>::value);
+  return 0;
+}
