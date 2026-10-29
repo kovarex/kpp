@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**685 pass, 3 pending, 0 failing, 0 fixed** (688 snippets, 31.5 s).
+**686 pass, 4 pending, 0 failing, 0 fixed** (690 snippets, 48.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -219,6 +219,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `classes/assignment_overloads_from_scalar_prvalue.kpp` | an assignment from a scalar prvalue picks `operator=(char&&)` over `operator=(const char&)` and binds a temporary of the value to it: from a function's result, from a dereferenced iterator's char, and in a function template (std::copy's `*out = *first`); an lvalue takes the `const char&` one | pending | the tests' ForkLogic.cpp `std::copy(std::istreambuf_iterator<char>(in), {}, std::back_inserter(buffer))`: copy's `*out = *first` assigns the iterator's char to BackInsertIterator<String>, whose operator=(value_type&&) was passed the char's value where its address belongs; clang rejects that module, which fails the whole build (blocks making IstreambufIterator a template as std's is) | the call passes the value, not a temporary's address, and clang rejects the IR (`'%t0' defined with type 'i8' but expected 'ptr'`); a lone operator=(char&&) and member functions with both overloads are right; owner: the codegen thread; C:\kpp-templates\compiler\build\spec\classes.assignment_overloads_from_scalar_prvalue.exe.3.ll:587:58: error: '%t0' defined with type 'i8' but expected 'ptr' |
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregate_reference_member.kpp` | an aggregate with reference members initialised from a braced list (`Ref r{x};`): the members refer to the objects given, reads and writes go to them, and copying the aggregate copies the references | pass | CommonUtil's ReversionWrapperByReference<T> { T& iterable; } behind every `for (x : reverse(container))`, and small reference holders across the game |  |
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
@@ -613,6 +614,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `library/in_file_stream_ignore.kpp` | InFileStream's ignore(count, delimiter) skips bytes through the first delimiter, or count of them (std::istream::ignore), and getline reads on from there | pass | the tests' ForkLogic.cpp merges the forks' XML reports: `in.ignore(std::numeric_limits<std::streamsize>::max(), '>')` past `<?xml version="1.0"?>`, then `std::getline(in, buffer, '>')` |  |
 | `library/initializer_list.kpp` | InitializerList parameters and brace lists as arguments | pass | 53 std::initializer_list uses in 33 files |  |
 | `library/initializer_list_constructor.kpp` | a constructor taking InitializerList, called with a brace list | pass |  |  |
+| `library/iterator_traits.kpp` | IteratorTraits<It> gives an iterator type's member types as std::iterator_traits does: a pointer's (a Vector's iterator) from the pointer, its value_type without const and its category RandomAccessIteratorTag; a class iterator's from its own members, also one that declares value_type alone | pass | CreatableEntityTypeIterator's `using value_type = ListIterator::value_type;` (ListIterator a std::vector's const_iterator, a pointer here: converted to IteratorTraits<ListIterator>::value_type), and std::iterator_traits in the game's algorithms |  |
 | `library/less_comparator.kpp` | Less<T> and the transparent Less<> (std::less<>) as comparator objects; `Name<>` written with empty brackets takes every default | pass |  |  |
 | `library/limits_math.kpp` | Limits (numeric_limits) and math functions (abs, sqrt, floor, ceil, round, pow, isnan) | pass | 631 numeric_limits uses in 279 files |  |
 | `library/make_pair.kpp` | makePair (std::make_pair) makes a Pair of its arguments' types without reference and const (a string literal as a pointer), moving rvalues in (a move-only value) and copying lvalues; for a ReferenceWrapper argument (ref(x)) the member is a reference (the type is checked here; writing through such a member is templates/reference_type_argument_member) | pass | ProcessionGraphicCatalogue's animationCatalogue.emplace(std::make_pair(index, Animation(...))) and spriteCatalogue.emplace(std::make_pair(index, UniquePointer<Sprite>(new Sprite(...)))), whose values can only be moved |  |
