@@ -1375,6 +1375,21 @@ namespace
       }
       Span<uint32_t> designators = pendingDesignators;
       pendingDesignators = {};
+      if (c->isTypedUnion && args.size() == 1 && args[0]->ty && args[0]->ty->isKnown() && !isPackExpansion(args[0])) // an expansion: its element, below
+      {
+        // `Shape a(s)`, `Shape(7)`, a member initializer `shape(s)`, `new (slot) Shape(x)`: as
+        // copy-initialization, a value of the union itself copies or moves it, any other the
+        // alternative of its type (design.md 8.5).
+        const Ty* argTy = types.stripRef(args[0]->ty);
+        if (!(isClass(argTy) && classKey(argTy) == classKey(t)))
+        {
+          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+          constructAlternative(c, t, addr, alternativeForValue(c, t, args[0]->ty, at), args[0], at);
+          return;
+        }
+        initializeFrom(addr, t, args[0], at);
+        return;
+      }
       // `using Base::Base;`: the base's constructors, when none of the class's own takes the
       // arguments (a copy stays a copy).
       bool copyLike = args.size() == 1 && args[0]->ty && isClass(types.stripRef(args[0]->ty)) && classKey(types.stripRef(args[0]->ty)) == classKey(t);

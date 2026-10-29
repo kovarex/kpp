@@ -1,6 +1,5 @@
 // spec: a trait read by constructing it, `HasSize<T>()` or `HasSize<T>{}` (its conversion to bool), is a constant when the trait's value comes from a base that is an instance of a class template (`struct HasSize : Constant<bool, false>`, `static constexpr T value = V; constexpr operator T() const`), directly or through an alias, so that `if constexpr` discards the other branch
 // factorio: `is_std_variant<T>()`, `is_optional<T>()` and the game's other traits written as `trait<T>()` in DeserialiserHelper's if constexpr chains, once TrueType/FalseType are IntegralConstant<bool, ...> as in C++ (std::true_type): with them the discarded branches are compiled (+550 lines)
-// pending: only `HasSize<T>::value` and a trait whose base is a plain struct fold; the constructed forms are not constants, so the false branch is compiled for double (codegen: a call that did not resolve, or a member access on a non-class object)
 template<typename T, T V>
 struct Constant
 {

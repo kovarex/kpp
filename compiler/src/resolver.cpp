@@ -2753,13 +2753,42 @@ struct GlobalScope::Impl
       }
       return true;
     }
-    return std::nullopt; // member pointers and the rest: not decided here
+    if (c->kind == TyKind::MemberPointer)
+      return std::nullopt; // invoked on an object: not decided here
+    return false; // a pointer to data, a number, an enumeration: nothing to call
   }
 
   // Walk a class's own members and its bases to find `static constexpr bool value`.
   // Returns the VariableDecl if found, nullptr otherwise.  Used by constEval to fold
   // `SomeTrait<T>()` (a zero-arg constructor of a TrueType/FalseType–derived struct)
   // and `SomeTrait<T>::value` (a qualified access to the inherited static member).
+  // A trait object converted to bool (`HasSize<T>()`, `HasSize<T>{}`): the class's static
+  // constexpr `value`, its own or a base's, read for the instance its arguments make, a base's
+  // with that base's arguments (`HasSize<double> : Constant<bool, false>`: V is false).
+  std::optional<int64_t> traitObjectValue(const Ty* cls, int depth)
+  {
+    cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+    if (!cls || cls->kind != TyKind::Class || !cls->decl || types.isDependent(cls) || depth > 64)
+      return std::nullopt;
+    Scope* s = classScopeOf(cls);
+    Lookup l;
+    if (!s || !lookupInScope(s, symValue, l, depth + 1) || !l.decl || l.decl->kind != NodeKind::VariableDecl || !(l.decl->flags & DF_Static))
+      return std::nullopt;
+    auto* v = static_cast<VariableDecl*>(l.decl);
+    VariableDecl* def = v;
+    if (!v->init)
+      if (auto it = variableDefinitions.find(v); it != variableDefinitions.end())
+        def = it->second;
+    if (!def->init)
+      return std::nullopt;
+    Subst sub = memberSubst(cls, l.foundIn, depth + 1);
+    LocalStack own;
+    pushEnclosingTemplateParams(v, own);
+    TypeContext vctx{lexicalScopeOf(v), &own, sub.pairs.empty() ? nullptr : &sub, def->file ? def->file->tokens : nullptr,
+                     def->file ? def->file->text : std::string_view()};
+    return constEval(def->init, vctx, depth + 1);
+  }
+
   VariableDecl* findStaticBoolValue(ClassDecl* c, int depth)
   {
     if (!c || depth > 8)
@@ -3197,7 +3226,14 @@ struct GlobalScope::Impl
         if (d->kind == NodeKind::ClassDecl && c->args.empty())
         {
           // `is_optional<T>()`: a zero-arg constructor of a type-trait struct used as bool.
-          // Return its static constexpr `value` member (inherited from TrueType/FalseType).
+          // Return its static constexpr `value` member (inherited from TrueType/FalseType), read
+          // for the instance the arguments make (`HasSize<double> : Constant<bool, false>`).
+          NamedType named{};
+          named.kind = NodeKind::NamedType;
+          named.token = callee->token;
+          named.name = callee->name;
+          if (std::optional<int64_t> v = traitObjectValue(convertType(&named, ctx, depth + 1), depth + 1))
+            return v;
           if (VariableDecl* v = findStaticBoolValue(static_cast<ClassDecl*>(d), depth + 1))
           {
             TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
@@ -3289,6 +3325,11 @@ struct GlobalScope::Impl
       case NodeKind::FunctionalCastExpr:
       {
         auto* f = static_cast<FunctionalCastExpr*>(e);
+        bool noValue = f->args.empty() || (f->args.size() == 1 && f->args[0] && f->args[0]->kind == NodeKind::BraceInitExpr &&
+                                           static_cast<BraceInitExpr*>(f->args[0])->args.empty());
+        if (noValue && f->type)
+          if (const Ty* t = convertType(f->type, ctx, depth + 1); t && t->kind == TyKind::Class)
+            return traitObjectValue(t, depth + 1); // `HasSize<T>{}`: a trait object as bool
         return f->args.size() == 1 ? constCast(f->type, f->args[0], ctx, depth) : std::nullopt;
       }
       case NodeKind::RequiresExpr:
@@ -5644,7 +5685,15 @@ struct GlobalScope::Impl
       {
         std::vector<const Ty*> args = traitArgs(n->name.parts[0], ctx, depth + 1);
         if (args.empty())
-          return std::nullopt;
+        {
+          // Arguments that do not form for known parameters (`decltype(declval<T>().str())` for
+          // a T without str()): a substitution failure, so not satisfied, as C++ has it.
+          for (Decl* p = f; p; p = p->parent)
+            for (Decl* tp : p->templateParams)
+              if (const Ty* t = s.find(tp); !t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+                return std::nullopt;
+          return false;
+        }
         return traitValue(symbols.name(n->name.parts[0].symbol), args);
       }
       // `has_str<T>` with `template<class T> concept has_str = requires(const T& value) { value.str(); };`.
@@ -5897,9 +5946,17 @@ struct GlobalScope::Impl
     LocalStack own;
     pushEnclosingTemplateParams(f, own);
     std::string undeclared = undeclaredNameIn(f->requiresClause, f, own);
-    if (undeclared.empty())
-      return true;
     std::string name = f->name.empty() ? std::string("?") : debugName(f->name.last().symbol);
+    if (undeclared.empty())
+    {
+      std::string args;
+      for (Decl* p = f; p; p = p->parent)
+        for (Decl* tp : p->templateParams)
+          args += (args.empty() ? "" : ", ") + std::string(symbols.name(static_cast<TemplateParamDecl*>(tp)->name)) + " = " +
+                  types.toString(deduced.find(tp), &symbols);
+      reportCheckerError(f->file, f->requiresClause->token, "the requires clause of " + name + " cannot be evaluated for " + args);
+      return false;
+    }
     reportCheckerError(f->file, f->requiresClause->token, "the requires clause of " + name + " names '" + undeclared + "', which is not declared");
     return false;
   }
@@ -6388,6 +6445,24 @@ struct GlobalScope::Impl
         return nullptr;
       std::string_view which = symbols.name(name.parts[0].symbol);
       return which == "members" || which == "alternatives" ? c->args[0] : nullptr;
+    }
+
+    // The enumerator of union u's tag that an index written as a bare name names, when the name
+    // means nothing where it is written (`p[Integer]` outside the union: design.md 8.5).
+    EnumeratorDecl* alternativeNamed(ClassDecl* u, Expr* index)
+    {
+      if (!index || index->kind != NodeKind::NameExpr || !u->tagEnum)
+        return nullptr;
+      auto* n = static_cast<NameExpr*>(index);
+      if (n->name.parts.size() != 1 || n->name.parts[0].hasTemplateArgs ||
+          (n->resolved && n->resolved->kind != NodeKind::EnumeratorDecl))
+        return nullptr;
+      if (n->resolved)
+        return nullptr; // already an enumerator: the qualified spelling, or one in scope
+      for (Decl* d : static_cast<EnumDecl*>(u->tagEnum)->enumerators)
+        if (d->kind == NodeKind::EnumeratorDecl && static_cast<EnumeratorDecl*>(d)->name == n->name.parts[0].symbol)
+          return static_cast<EnumeratorDecl*>(d);
+      return nullptr;
     }
 
     // The typed union whose alternative a descriptor names (`for constexpr (auto a :
@@ -9203,6 +9278,14 @@ struct GlobalScope::Impl
               }
               else if (firstIndex && types.isDependent(firstIndex))
                 return record(e, types.unknown()); // `u[a]` before the loop binds a
+              else if (EnumeratorDecl* en = alternativeNamed(u, i->args[0]))
+              {
+                // `p[Integer]`: an alternative's name as written in the union (design.md 8.5).
+                auto* n = static_cast<NameExpr*>(i->args[0]);
+                n->resolved = en;
+                record(n, types.enumType(u->tagEnum));
+                v = impl.constOfDecl(en, ctx(), 0);
+              }
               else
                 v = impl.constEval(i->args[0], ctx());
               if (!v || *v < 0 || size_t(*v) >= u->alternatives.size())

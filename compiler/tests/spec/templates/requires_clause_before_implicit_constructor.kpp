@@ -1,0 +1,31 @@
+// spec: a requires clause in parentheses ends at its closing parenthesis when the declaration follows (`requires (isConvertible<U*, T*>) implicit Box(U* other)`): the next name is the declaration's, not the operand of a cast, so the constructor stays implicit and its constraint is the trait
+// found in the library's SharedPtr(UniquePtr<U>&&), `requires (isConvertible<U*, T*>) implicit SharedPtr(...)`, read as the cast `(isConvertible<U*, T*>) implicit` (a constraint nothing could evaluate, so it held for every U)
+struct Base
+{
+  int v = 1;
+};
+struct Derived : Base {};
+struct Other
+{
+  int v = 5;
+};
+
+template<typename T>
+struct Box
+{
+  T* p = nullptr;
+  Box() = default;
+  template<typename U> requires (isConvertible<U*, T*>)
+  implicit Box(U* other) : p(other) {}
+};
+
+int use(Box<Base> b) { return b.p->v; }
+int use(Other* o) { return o->v * 10; }
+
+int main()
+{
+  Derived d;
+  Other o;
+  println("{} {}", use(&d), use(&o));
+  return 0;
+}

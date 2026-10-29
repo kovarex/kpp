@@ -4054,6 +4054,11 @@ namespace
             // requires(params) { expr; typename T::x; { expr } -> Constraint; requires expr; }
             advance();
             RequiresExpr* r = node<RequiresExpr>(start);
+            // Its parameters and requirements are ordinary declarations and expressions, also
+            // inside a requires clause (`requires requires (T t) { (int)t; }`).
+            bool savedRequires = inRequires;
+            inRequires = false;
+            struct RestoreRequires { bool& flag; bool saved; ~RestoreRequires() { flag = saved; } } restoreRequires{inRequires, savedRequires};
             if (accept(P::LParen))
             {
               size_t mark = scratch.size();
@@ -4112,8 +4117,9 @@ namespace
             break;
         }
       }
-      // C-style cast `(Type)expr`.
-      if (at(P::LParen))
+      // C-style cast `(Type)expr`; never in a requires clause, whose `(isConvertible<U*, T*>)` may be
+      // followed by the declaration's `implicit` or name (C++ allows no cast there).
+      if (at(P::LParen) && !inRequires)
       {
         uint32_t save = pos;
         size_t mark = scratch.size();
