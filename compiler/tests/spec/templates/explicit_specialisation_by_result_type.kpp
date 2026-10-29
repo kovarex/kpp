@@ -1,0 +1,31 @@
+// spec: an explicit specialisation of a member function template whose parameter appears only in its result type (`template<> inline B* Provider::allocate()` for `template<class T> T* allocate();`) is found for that argument: `p.allocate<B>()` runs it, and the primary's body (with its static_assert) is not the one checked for B
+// factorio: DrawOrderProvider::allocate<T>() and its specialisations for SpriteDrawOrder and TextDrawOrder (`static_assert(isBaseOf<DrawOrder, T>)` in the primary)
+struct Base {};
+struct A : Base { int x = 1; };
+struct B { int y = 2; };
+struct Provider
+{
+  template<class T>
+  T* allocate();
+  A a;
+  B b;
+};
+template<class T>
+T* Provider::allocate()
+{
+  static_assert(isBaseOf<Base, T>, "only Bases");
+  return nullptr;
+}
+template<>
+inline B* Provider::allocate()
+{
+  return &this->b;
+}
+int main()
+{
+  Provider p;
+  B* b = p.allocate<B>();
+  A* a = p.allocate<A>();
+  println("{} {}", b->y, a == nullptr);
+  return 0;
+}

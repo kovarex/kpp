@@ -4928,6 +4928,12 @@ struct GlobalScope::Impl
       for (size_t i = 0; i < last.templateArgs.size() && i < f->templateParams.size(); ++i)
         written.pairs.push_back({f->templateParams[i], templateArgument(last.templateArgs[i], f->templateParams[i], ctx, 0)});
       deduceCall(f, primary, std::vector<const Ty*>(st->args.begin(), st->args.end()), written);
+      // `template<> SpriteDrawOrder* DrawOrderProvider::allocate()`: T only in the result type.
+      bool allBound = true;
+      for (Decl* p : f->templateParams)
+        allBound = allBound && written.find(p);
+      if (!allBound && primary->inner && st->inner)
+        deduce(primary->inner, st->inner, written, 0);
       bool same = true;
       for (Decl* p : f->templateParams)
         same = same && written.find(p) && written.find(p) == args.find(p);
@@ -8511,6 +8517,22 @@ struct GlobalScope::Impl
       return false;
     }
 
+    // Whether d is in an instance of a function template that an explicit specialisation replaces
+    // for these arguments (`template<> SpriteDrawOrder* DrawOrderProvider::allocate()`): that body
+    // is not the one the program runs.
+    bool replacedBySpecialization(Decl* d)
+    {
+      if (!activeSubst)
+        return false;
+      for (Decl* p = d->parent; p; p = p->parent)
+        if (p->kind == NodeKind::FunctionDecl)
+        {
+          auto* f = static_cast<FunctionDecl*>(p);
+          return !f->templateParams.empty() && impl.functionSpecializationFor(f, *activeSubst);
+        }
+      return false;
+    }
+
     // The instance this walk types, for messages: `T = int32, N = 3`; empty outside templates.
     std::string instanceDescription() const
     {
@@ -8773,7 +8795,7 @@ struct GlobalScope::Impl
           // Checked where its condition is known: not in a template's own walk (its instances
           // are), nor in a branch of an instance's `if constexpr` left undecided (it may be the
           // discarded one).
-          if (undecidedBranches == 0 && !inGenericTemplate())
+          if (undecidedBranches == 0 && !inGenericTemplate() && !replacedBySpecialization(s))
             impl.checkStaticAssert(s, ctx(), instanceDescription());
           break;
         }
