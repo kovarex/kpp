@@ -44,6 +44,7 @@ if not exist kpp\run\factorio.exe (
 if not exist %GAME%\bin\x64 mkdir %GAME%\bin\x64
 copy /y kpp\run\factorio.exe %GAME%\bin\x64\factorio.exe >nul || exit /b 1
 if exist kpp\run\factorio.pdb copy /y kpp\run\factorio.pdb %GAME%\bin\x64\factorio.pdb >nul
+:run
 rem The config file the game looks for next to its root: the config, and from it the write
 rem directory, in run\ (use-system-read-write-data-directories=false: never %APPDATA%).
 if not exist %GAME%\config-path.cfg (
@@ -51,15 +52,23 @@ if not exist %GAME%\config-path.cfg (
   echo use-system-read-write-data-directories=false
 ) > %GAME%\config-path.cfg
 if not exist %GAME%\run\config mkdir %GAME%\run\config
+rem Its first line is the version comment the game writes (GlobalContext's configVersion, read by
+rem PropertyTreeIni::readIni): without it the game takes the file for an old one and asks to reset
+rem it before the main menu. check-updates=false as in the C++ build's config: no login prompt for
+rem the updater (and no call to the update server). One written before without them is written again.
+if exist %GAME%\run\config\config.ini %SystemRoot%\System32\findstr.exe /b /c:"; version=" %GAME%\run\config\config.ini >nul || del %GAME%\run\config\config.ini
+if exist %GAME%\run\config\config.ini %SystemRoot%\System32\findstr.exe /b /c:"check-updates=false" %GAME%\run\config\config.ini >nul || del %GAME%\run\config\config.ini
 if not exist %GAME%\run\config\config.ini (
+  echo ; version=13
   echo [path]
   echo read-data=__PATH__executable__/../../data
   echo write-data=__PATH__executable__/../../run
+  echo [other]
+  echo check-updates=false
 ) > %GAME%\run\config\config.ini
 rem The C++ log loads the game's test_mod, so this run does too, from a copy (a mod the game finds
 rem new is enabled): then its checksums, the prototype list's 486241314 among them, are comparable.
 if not exist %GAME%\run\mods\test_mod_1.0.0 xcopy /e /i /q C:\Factorio\tests\mods\test_mod_1.0.0 %GAME%\run\mods\test_mod_1.0.0 >nul
-:run
 echo == running %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%
 %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%
 echo == factorio exit %errorlevel%; the log: %GAME%\run\factorio-current.log
