@@ -1,0 +1,30 @@
+// spec: a fold expression over a class template's type pack, the pack named in a type of the pattern: `(func(Args()), ...)` calls func with a value of each type, `(... || isSame<T, Args>)` asks a trait of each, `(sizeof(Args) + ...)` adds their sizes
+// found in the game's MplVector (forEach over the prototype list types, hasType): "a fold expression that expands no parameter pack", 98 lines
+template<class... Args>
+class TypeList
+{
+public:
+  template<class Functor>
+  static void forEach(Functor&& func)
+  {
+    (func(Args()), ...);
+  }
+  template<class T>
+  static bool hasType()
+  {
+    return (... || isSame<T, Args>);
+  }
+  static size_t totalSize()
+  {
+    return (sizeof(Args) + ... + 0);
+  }
+};
+struct Small { int8_t a = 1; };
+struct Large { int64_t b = 2; int64_t c = 3; };
+int main()
+{
+  int calls = 0;
+  TypeList<int, Small, Large>::forEach([&](auto value) { calls += int(sizeof(value)); });
+  println("{} {} {} {}", calls, TypeList<int, Small, Large>::hasType<Small>(), TypeList<int, Small, Large>::hasType<double>(), TypeList<int, Small, Large>::totalSize());
+  return 0;
+}

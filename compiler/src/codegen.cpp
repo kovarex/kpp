@@ -2567,6 +2567,105 @@ namespace
       global.retypeFor(currentFunction, original, currentClassTy);
     }
 
+    // A template type pack that a pattern names in a type (`(func(Args()), ...)`,
+    // `(... || isSame<T, Args>)`, `sizeof(Args)`) and the instantiation binds to a pack, or null.
+    Decl* typePackIn(Node* n, int depth = 0)
+    {
+      if (!n || depth > 32 || !currentArgs)
+        return nullptr;
+      auto inName = [&](const QualifiedName& name) -> Decl*
+      {
+        for (const NamePart& part : name.parts)
+          for (Node* a : part.templateArgs)
+            if (Decl* d = typePackIn(a, depth + 1))
+              return d;
+        return nullptr;
+      };
+      auto either = [&](Node* a, Node* b) -> Decl* { Decl* d = typePackIn(a, depth + 1); return d ? d : typePackIn(b, depth + 1); };
+      switch (n->kind)
+      {
+        case NodeKind::NamedType:
+        {
+          auto* t = static_cast<NamedType*>(n);
+          if (Decl* d = t->resolved; d && d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isPack)
+            for (auto& [p, a] : currentArgs->pairs)
+              if (p == d && a && a->kind == TyKind::Pack)
+                return d;
+          return inName(t->name);
+        }
+        case NodeKind::PointerType: return typePackIn(static_cast<PointerType*>(n)->pointee, depth + 1);
+        case NodeKind::LRefType: return typePackIn(static_cast<LRefType*>(n)->referenced, depth + 1);
+        case NodeKind::RRefType: return typePackIn(static_cast<RRefType*>(n)->referenced, depth + 1);
+        case NodeKind::ConstType: return typePackIn(static_cast<ConstType*>(n)->inner, depth + 1);
+        case NodeKind::NameExpr:
+        {
+          // `Args()` parsed as a call of the name Args.
+          if (Decl* d = static_cast<NameExpr*>(n)->resolved; d && d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isPack)
+            for (auto& [p, a] : currentArgs->pairs)
+              if (p == d && a && a->kind == TyKind::Pack)
+                return d;
+          return inName(static_cast<NameExpr*>(n)->name);
+        }
+        case NodeKind::ParenExpr: return typePackIn(static_cast<ParenExpr*>(n)->inner, depth + 1);
+        case NodeKind::UnaryExpr: return typePackIn(static_cast<UnaryExpr*>(n)->operand, depth + 1);
+        case NodeKind::MemberExpr: return typePackIn(static_cast<MemberExpr*>(n)->base, depth + 1);
+        case NodeKind::CastExpr: return either(static_cast<CastExpr*>(n)->type, static_cast<CastExpr*>(n)->operand);
+        case NodeKind::NamedCastExpr: return either(static_cast<NamedCastExpr*>(n)->type, static_cast<NamedCastExpr*>(n)->operand);
+        case NodeKind::BinaryExpr: return either(static_cast<BinaryExpr*>(n)->lhs, static_cast<BinaryExpr*>(n)->rhs);
+        case NodeKind::SizeofExpr:
+        {
+          auto* s = static_cast<SizeofExpr*>(n);
+          return s->isPack ? nullptr : either(s->type, s->operand); // `sizeof...(Args)` counts the pack, it expands nothing
+        }
+        case NodeKind::FunctionalCastExpr:
+        {
+          auto* c = static_cast<FunctionalCastExpr*>(n);
+          if (Decl* d = typePackIn(c->type, depth + 1))
+            return d;
+          for (Expr* a : c->args)
+            if (Decl* d = typePackIn(a, depth + 1))
+              return d;
+          return nullptr;
+        }
+        case NodeKind::CallExpr:
+        {
+          auto* c = static_cast<CallExpr*>(n);
+          if (Decl* d = typePackIn(c->callee, depth + 1))
+            return d;
+          for (Expr* a : c->args)
+            if (Decl* d = typePackIn(a, depth + 1))
+              return d;
+          return nullptr;
+        }
+        default:
+          return nullptr;
+      }
+    }
+
+    // Runs body once per element of the type pack `pack` (typePackIn), the function re-typed with
+    // the pack bound to that element (a private copy: retypedPerElement), and the element's
+    // arguments in effect.
+    template<class F>
+    void forEachTypePackElement(Decl* pack, F&& body)
+    {
+      TemplateArgs original = *currentArgs;
+      const Ty* bound = nullptr;
+      for (auto& [d, t] : original.pairs)
+        if (d == pack)
+          bound = t;
+      for (size_t i = 0; bound && i < bound->args.size(); ++i)
+      {
+        TemplateArgs elementArgs = original;
+        for (auto& [d, t] : elementArgs.pairs)
+          if (d == pack)
+            t = bound->args[i];
+        global.retypeFor(currentFunction, elementArgs, currentClassTy);
+        ArgsScope scope(*this, &elementArgs);
+        body(i);
+      }
+      global.retypeFor(currentFunction, original, currentClassTy);
+    }
+
     bool isPackExpansion(Expr* e)
     {
       return e && e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->isKeyword &&
@@ -7677,17 +7776,23 @@ namespace
           P op = P(f->op);
           // `(args op ...)` and `(args op ... op init)` fold to the right: E1 op (E2 op (... op init));
           // `(... op args)` and `(init op ... op args)` to the left: ((init op E1) op E2) op ...
-          bool right = f->lhs && packIn(f->lhs);
+          bool right = f->lhs && (packIn(f->lhs) || typePackIn(f->lhs));
           Expr* pattern = right ? f->lhs : f->rhs;
           Expr* init = right ? f->rhs : f->lhs;
-          if (!pattern || !packIn(pattern))
+          // A function parameter pack (`(args + ...)`), or a type pack the pattern names in a type
+          // (`(func(Args()), ...)`, `(... || isSame<T, Args>)`).
+          Decl* typePack = pattern && !packIn(pattern) ? typePackIn(pattern) : nullptr;
+          if (!pattern || (!packIn(pattern) && !typePack))
             unsupported(e, "a fold expression that expands no parameter pack");
           // Operands in evaluation order: the elements, with init last (right fold) or first (left).
           auto eachOperand = [&](auto&& visit)
           {
             if (init && !right)
               visit(init);
-            forEachPackElement(pattern, e, [&](size_t) { visit(pattern); });
+            if (typePack)
+              forEachTypePackElement(typePack, [&](size_t) { visit(pattern); });
+            else
+              forEachPackElement(pattern, e, [&](size_t) { visit(pattern); });
             if (init && right)
               visit(init);
           };
