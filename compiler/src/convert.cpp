@@ -3816,6 +3816,8 @@ namespace
     for (const auto& root : roots)
     {
       std::filesystem::path r = std::filesystem::absolute(root, ec).lexically_normal();
+      if (abs == r && r.has_parent_path())
+        return (r.parent_path().filename() / r.filename()).generic_string(); // a file given alone keeps its directory (Lua/LuaCPPUtilities.hpp)
       std::filesystem::path rel = abs.lexically_relative(r);
       if (!rel.empty() && rel.native()[0] != '.')
         return (r.filename() / rel).generic_string();

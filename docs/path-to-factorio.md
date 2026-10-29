@@ -578,21 +578,24 @@ entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the c
 ### The headline number: how it is measured
 
 The one number tracked from here on is **full-src codegen errors**: the error lines the code
-generator writes for the converted CommonUtil, Agui, cxxopts and `src/`. After `convert.cmd` (or
-just its conversion step into `kpp\`), from `programs\factorio`:
+generator writes for the converted CommonUtil, Agui, cxxopts, Lua and `src/`. After `convert.cmd`
+(or just its conversion step into `kpp\`), from `programs\factorio`:
 
 ```
 ..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
   --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
   --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include ^
-  --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\src 2> kpp\full-errors.txt
+  --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\Lua kpp\src 2> kpp\full-errors.txt
 find /c /v "" kpp\full-errors.txt
 ```
 
-- Inputs: exactly `kpp\CommonUtil`, `kpp\Agui`, `kpp\cxxopts` and `kpp\src`, not the whole
-  `kpp\`: that directory also holds the `kpp\Util` copy of `kpp\src\Util` the smoke tests use and
-  whatever stubs were copied in. `kpp\cxxopts` is in since 2026-10-28 (see "cxxopts" below); a
-  count from before that leaves out its errors (13 when it came in).
+- Inputs: exactly `kpp\CommonUtil`, `kpp\Agui`, `kpp\cxxopts`, `kpp\Lua` and `kpp\src`, not the
+  whole `kpp\`: that directory also holds the `kpp\Util` copy of `kpp\src\Util` the smoke tests
+  use and whatever stubs were copied in. `kpp\cxxopts` is in since 2026-10-28 (see "cxxopts"
+  below); a count from before that leaves out its errors (13 when it came in). `kpp\Lua` is in
+  since 2026-10-29: it holds only `LuaCPPUtilities.kpp`, the game's C++ overloads of Lua's API
+  (`lua_pushstring` of a String, ...), converted from `libraries\Lua\LuaCPPUtilities.hpp` while Lua
+  itself is imported as C.
 - The SDL_Mixer include directory is required: the imported C headers compile as one unit, so a
   single missing header fails all 50 of them and every Lua, SDL and C library use becomes an error.
   The run is valid only if its output shows `imports: 50 header(s)` and no `importing C headers
