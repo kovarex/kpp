@@ -6,7 +6,8 @@ rem own (into kpp\, with the hand-written files kept there), checks that kppc co
 rem the smoke tests against that result: the stubs in tests\stubs\ stand in for the modules a whole
 rem conversion pulls in (FloatCast.cpp merged into FloatCast.kpp needs global and Logging, for example).
 rem Then imgui frames through the generated imgui interface (native\generate_imgui.py), the glm port
-rem against glm, and the Lua internals the game reaches into against the C++ build's layout.
+rem against glm, the Lua internals the game reaches into against the C++ build's layout, and the GDI+
+rem classes (overrides\added\src\Graphics\GdiplusClasses.kpp) against the SDK's gdiplus.h.
 rem Hand-written parts are in overrides\.
 setlocal
 cd /d "%~dp0"
@@ -77,3 +78,7 @@ echo == Lua internals smoke test: tests\lua_internals_smoke.kpp through native\i
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_internals_smoke.exe tests\lua_internals_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\lua.lib --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
 kpp\lua_internals_smoke.exe > kpp\lua_internals_smoke.out.txt
 fc /w kpp\lua_internals_smoke.out.txt tests\lua_internals_smoke.expected > nul && echo Lua internals smoke test: output as expected || (echo Lua internals smoke test: OUTPUT DIFFERS & fc /w kpp\lua_internals_smoke.out.txt tests\lua_internals_smoke.expected & exit /b 1)
+echo == GDI+ smoke test: tests\gdiplus_smoke.kpp through kpp\src\Graphics\GdiplusClasses.kpp and gdiplus.dll (the layouts and results of tests\gdiplus_smoke.cpp, the same against the SDK's gdiplus.h)
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\gdiplus_smoke.exe kpp\src\Graphics\GdiplusClasses.kpp kpp\src\Graphics\DX11\ComInterfaces.kpp tests\gdiplus_smoke.kpp --lib -lgdiplus --lib -lshlwapi || exit /b 1
+kpp\gdiplus_smoke.exe > kpp\gdiplus_smoke.out.txt
+fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected > nul && echo GDI+ smoke test: output as expected || (echo GDI+ smoke test: OUTPUT DIFFERS & fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected & exit /b 1)

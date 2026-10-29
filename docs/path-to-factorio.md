@@ -812,8 +812,10 @@ from their C++ ones, and writes:
 - `native/include/kpp_directx.h`, the one import the converter writes for any of the DirectX, DXGI,
   WIC and COM headers: it marks those interfaces defined (`__IFoo_INTERFACE_DEFINED__`) before
   including the SDK headers, so the import keeps their types, functions and constants but not the
-  interfaces' C structs, and then declares their IIDs. The headline command passes
-  `--cinclude native\include` (relative to programs\factorio).
+  interfaces' C structs, and then declares their IIDs. What else those guards hold it declares
+  again after the SDK's headers: IUnknown's `typedef IUnknown *LPUNKNOWN;` (CoCreateInstance's
+  parameter) and IStream's LPSTREAM, STATSTG and its enums (STREAM_SEEK_SET, ...). The headline
+  command passes `--cinclude native\include` (relative to programs\factorio).
 
 `overrides/added/` is new: hand-written files with no C++ counterpart, written into the output at
 their path (CComPtr is `overrides/added/src/Graphics/DX11/ComPtr.kpp`, ATL's semantics). The
@@ -1002,6 +1004,34 @@ InterruptibleStdioStream::read, the dedicated server's console, `std::getline(st
 fgets on stdin instead, piece by piece up to its line break (left out, as getline leaves it); a
 partial line at the end of the input counts, an empty one does not, as with getline. unblock()
 still ends a pending read by putting an Enter key press into the console's input.
+
+### GDI+ through a port of its classes (2026-10-29)
+
+The game uses GDI+ in two places on Windows: GDIPlus.cpp saves screenshots (startup, the image
+encoders, a Bitmap filled through LockBits and saved to a stream with an encoder's parameters) and
+GDIPLoaderData.cpp loads a sprite (Bitmap::FromStream, LockBits) when the build does not use WIC.
+gdiplus.h is C++: classes whose inline methods call GDI+'s flat interface, the C functions
+gdiplus.dll exports. So, as glm, the part the game uses is ported:
+`overrides/added/src/Graphics/GdiplusClasses.kpp` has gdiplus.h's Status, Rect, GdiplusStartupInput,
+the pixel formats, BitmapData, ImageCodecInfo, the encoder parameters, EncoderQuality, Image and
+Bitmap with their names, values and behaviour (an Image owns its GDI+ image and keeps the last
+status that was not Ok), each method calling its flat function, declared there `extern "C"`
+(gdiplus.lib is on link.cmd's line). The game includes GdiPlus.h inside its own namespace GDIPlus,
+so the classes are GDIPlus::Gdiplus, where the game names them; the include itself is dropped as
+any other. (The file is not Gdiplus.kpp: the conversion of GDIPlus.cpp is GDIPlus.kpp in the same
+directory, the same name to Windows.)
+
+The game's IStream implementation (WindowsWriteStream, which GDI+ writes the encoded image to)
+compares the interface id it is asked for with `iid == __uuidof(IUnknown)`. C++ compares the ids'
+values there (guiddef.h's operator==); in Kpp a REFIID is a pointer, as in C and the COM classes,
+so the converter writes `(memcmp(iid, &IID_IUnknown, sizeof(IID)) == 0)`, C's IsEqualIID, for an
+id compared with `__uuidof`, and REFIID itself as `const IID*`.
+
+convert.cmd's seventh smoke test checks the port: `tests/gdiplus_smoke.kpp` prints the structs'
+layouts, starts GDI+, lists the encoders, writes a 3x2 bitmap through LockBits, saves it as PNG and
+JPEG (with EncoderQuality) into memory streams, reads both back (the PNG's pixels), and loads a
+stream that holds no image; its output equals `tests/gdiplus_smoke.cpp`'s, the same steps against
+the SDK's gdiplus.h.
 
 ### From emitted functions to an executable (2026-10-28, night)
 

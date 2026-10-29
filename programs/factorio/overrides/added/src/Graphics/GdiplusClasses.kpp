@@ -1,0 +1,272 @@
+// GDI+ for Kpp: the part of GDI+'s C++ interface (gdiplus.h) the game uses, written over GDI+'s flat
+// interface, the C functions gdiplus.dll exports (gdiplus.lib is on link.cmd's line). gdiplus.h is C++
+// (classes whose inline methods call that flat interface), so the C import cannot take it; these are
+// its classes, enums and constants with its names, values and behaviour for what the game calls:
+// GDIPlus.cpp (startup, the image encoders, saving a screenshot) and GDIPLoaderData.cpp (loading a
+// sprite). The game includes GdiPlus.h inside its own namespace GDIPlus, so they are
+// GDIPlus::Gdiplus here, where the game names them. The structs GDI+ reads and writes have its
+// layouts: the static_asserts below, and tests/gdiplus_smoke.kpp prints them beside what
+// tests/gdiplus_smoke.cpp prints compiled against the SDK (programs/factorio/convert.cmd).
+// GDIPVER is gdiplus.h's default, 0x0100, as the game compiles it.
+extern "C" import "kpp_directx.h";
+
+namespace GDIPlus
+{
+namespace Gdiplus
+{
+  // gdiplustypes.h
+  enum Status
+  {
+    Ok = 0,
+    GenericError = 1,
+    InvalidParameter = 2,
+    OutOfMemory = 3,
+    ObjectBusy = 4,
+    InsufficientBuffer = 5,
+    NotImplemented = 6,
+    Win32Error = 7,
+    WrongState = 8,
+    Aborted = 9,
+    FileNotFound = 10,
+    ValueOverflow = 11,
+    AccessDenied = 12,
+    UnknownImageFormat = 13,
+    FontFamilyNotFound = 14,
+    FontStyleNotFound = 15,
+    NotTrueTypeFont = 16,
+    UnsupportedGdiplusVersion = 17,
+    GdiplusNotInitialized = 18,
+    PropertyNotFound = 19,
+    PropertyNotSupported = 20
+  };
+
+  class Rect
+  {
+  public:
+    Rect() {}
+    Rect(INT x, INT y, INT width, INT height) : X(x), Y(y), Width(width), Height(height) {}
+
+    INT X = 0;
+    INT Y = 0;
+    INT Width = 0;
+    INT Height = 0;
+  };
+
+  // gdiplusinit.h
+  enum DebugEventLevel
+  {
+    DebugEventLevelFatal,
+    DebugEventLevelWarning
+  };
+  typedef void (*DebugEventProc)(DebugEventLevel level, CHAR* message);
+  typedef Status (*NotificationHookProc)(ULONG_PTR* token);
+  typedef void (*NotificationUnhookProc)(ULONG_PTR token);
+
+  struct GdiplusStartupInput
+  {
+    GdiplusStartupInput(DebugEventProc debugEventCallback = nullptr, BOOL suppressBackgroundThread = FALSE, BOOL suppressExternalCodecs = FALSE)
+      : GdiplusVersion(1)
+      , DebugEventCallback(debugEventCallback)
+      , SuppressBackgroundThread(suppressBackgroundThread)
+      , SuppressExternalCodecs(suppressExternalCodecs)
+    {}
+
+    UINT32 GdiplusVersion;
+    DebugEventProc DebugEventCallback;
+    BOOL SuppressBackgroundThread;
+    BOOL SuppressExternalCodecs;
+  };
+
+  struct GdiplusStartupOutput
+  {
+    NotificationHookProc NotificationHook;
+    NotificationUnhookProc NotificationUnhook;
+  };
+
+  extern "C" Status GdiplusStartup(ULONG_PTR* token, const GdiplusStartupInput* input, GdiplusStartupOutput* output);
+  extern "C" void GdiplusShutdown(ULONG_PTR token);
+
+  // gdipluspixelformats.h (its constants are macros there).
+  typedef INT PixelFormat;
+  constexpr PixelFormat PixelFormatIndexed = 0x00010000;
+  constexpr PixelFormat PixelFormatGDI = 0x00020000;
+  constexpr PixelFormat PixelFormatAlpha = 0x00040000;
+  constexpr PixelFormat PixelFormatPAlpha = 0x00080000;
+  constexpr PixelFormat PixelFormatExtended = 0x00100000;
+  constexpr PixelFormat PixelFormatCanonical = 0x00200000;
+  constexpr PixelFormat PixelFormat24bppRGB = 8 | (24 << 8) | PixelFormatGDI;
+  constexpr PixelFormat PixelFormat32bppARGB = 10 | (32 << 8) | PixelFormatAlpha | PixelFormatGDI | PixelFormatCanonical;
+
+  inline UINT GetPixelFormatSize(PixelFormat pixfmt) { return (pixfmt >> 8) & 0xff; }
+
+  // gdiplusimaging.h
+  enum ImageLockMode
+  {
+    ImageLockModeRead = 0x0001,
+    ImageLockModeWrite = 0x0002,
+    ImageLockModeUserInputBuf = 0x0004
+  };
+
+  // The member PixelFormat is gdiplus.h's `PixelFormat PixelFormat;`, which is an INT.
+  class BitmapData
+  {
+  public:
+    UINT Width = 0;
+    UINT Height = 0;
+    INT Stride = 0;
+    INT PixelFormat = 0;
+    void* Scan0 = nullptr;
+    UINT_PTR Reserved = 0;
+  };
+
+  class ImageCodecInfo
+  {
+  public:
+    CLSID Clsid;
+    GUID FormatID;
+    const WCHAR* CodecName;
+    const WCHAR* DllName;
+    const WCHAR* FormatDescription;
+    const WCHAR* FilenameExtension;
+    const WCHAR* MimeType;
+    DWORD Flags;
+    DWORD Version;
+    DWORD SigCount;
+    DWORD SigSize;
+    const BYTE* SigPattern;
+    const BYTE* SigMask;
+  };
+
+  enum EncoderParameterValueType
+  {
+    EncoderParameterValueTypeByte = 1,
+    EncoderParameterValueTypeASCII = 2,
+    EncoderParameterValueTypeShort = 3,
+    EncoderParameterValueTypeLong = 4,
+    EncoderParameterValueTypeRational = 5,
+    EncoderParameterValueTypeLongRange = 6,
+    EncoderParameterValueTypeUndefined = 7,
+    EncoderParameterValueTypeRationalRange = 8
+  };
+
+  class EncoderParameter
+  {
+  public:
+    GUID Guid;
+    ULONG NumberOfValues;
+    ULONG Type;
+    void* Value;
+  };
+
+  class EncoderParameters
+  {
+  public:
+    UINT Count;
+    EncoderParameter Parameter[1];
+  };
+
+  // gdiplusimaging.h's DEFINE_GUID(EncoderQuality, ...), here with its value.
+  const GUID EncoderQuality = {0x1d5be4b5, 0xfa4a, 0x452d, {0x9c, 0xdd, 0x5d, 0xb3, 0x51, 0x05, 0xe7, 0xeb}};
+
+  static_assert(sizeof(Rect) == 16);
+  static_assert(sizeof(GdiplusStartupInput) == 24);
+  static_assert(sizeof(BitmapData) == 32);
+  static_assert(sizeof(ImageCodecInfo) == 104);
+  static_assert(sizeof(EncoderParameter) == 32);
+  static_assert(sizeof(EncoderParameters) == 40);
+
+  // GDI+'s flat interface (gdiplusflat.h, namespace Gdiplus::DllExports there): what the classes
+  // below call. Its GpBitmap is a GpImage, one opaque type here.
+  struct GpImage;
+  extern "C" Status GdipCreateBitmapFromScan0(INT width, INT height, INT stride, PixelFormat format, BYTE* scan0, GpImage** bitmap);
+  extern "C" Status GdipCreateBitmapFromStream(IStream* stream, GpImage** bitmap);
+  extern "C" Status GdipCreateBitmapFromStreamICM(IStream* stream, GpImage** bitmap);
+  extern "C" Status GdipDisposeImage(GpImage* image);
+  extern "C" Status GdipGetImageWidth(GpImage* image, UINT* width);
+  extern "C" Status GdipGetImageHeight(GpImage* image, UINT* height);
+  extern "C" Status GdipBitmapLockBits(GpImage* bitmap, const Rect* rect, UINT flags, PixelFormat format, BitmapData* lockedBitmapData);
+  extern "C" Status GdipBitmapUnlockBits(GpImage* bitmap, BitmapData* lockedBitmapData);
+  extern "C" Status GdipSaveImageToStream(GpImage* image, IStream* stream, const CLSID* clsidEncoder, const EncoderParameters* encoderParams);
+  extern "C" Status GdipGetImageEncodersSize(UINT* numEncoders, UINT* size);
+  extern "C" Status GdipGetImageEncoders(UINT numEncoders, UINT size, ImageCodecInfo* encoders);
+
+  // gdiplusimagecodec.h
+  inline Status GetImageEncodersSize(UINT* numEncoders, UINT* size) { return GdipGetImageEncodersSize(numEncoders, size); }
+  inline Status GetImageEncoders(UINT numEncoders, UINT size, ImageCodecInfo* encoders) { return GdipGetImageEncoders(numEncoders, size, encoders); }
+
+  // gdiplusheaders.h's Image and Bitmap (their inline code in gdiplusbitmap.h): an object owns its
+  // GDI+ image, and remembers the last status that was not Ok.
+  class Image
+  {
+  public:
+    Image(const Image&) = delete;
+    Image& operator=(const Image&) = delete;
+    virtual ~Image() { GdipDisposeImage(this->nativeImage); }
+
+    UINT GetWidth()
+    {
+      UINT width = 0;
+      this->SetStatus(GdipGetImageWidth(this->nativeImage, &width));
+      return width;
+    }
+    UINT GetHeight()
+    {
+      UINT height = 0;
+      this->SetStatus(GdipGetImageHeight(this->nativeImage, &height));
+      return height;
+    }
+    Status Save(IStream* stream, const CLSID* clsidEncoder, const EncoderParameters* encoderParams = nullptr)
+    {
+      return this->SetStatus(GdipSaveImageToStream(this->nativeImage, stream, clsidEncoder, encoderParams));
+    }
+    Status GetLastStatus() const
+    {
+      Status lastStatus = this->lastResult;
+      this->lastResult = Ok;
+      return lastStatus;
+    }
+
+  protected:
+    Image() {}
+    void SetNativeImage(GpImage* image) { this->nativeImage = image; }
+    Status SetStatus(Status status) const
+    {
+      if (status != Ok)
+        this->lastResult = status;
+      return status;
+    }
+
+    GpImage* nativeImage = nullptr;
+    mutable Status lastResult = Ok;
+  };
+
+  class Bitmap : public Image
+  {
+  public:
+    Bitmap(INT width, INT height, PixelFormat format = PixelFormat32bppARGB)
+    {
+      GpImage* bitmap = nullptr;
+      this->lastResult = GdipCreateBitmapFromScan0(width, height, 0, format, nullptr, &bitmap);
+      this->SetNativeImage(bitmap);
+    }
+    Bitmap(IStream* stream, BOOL useEmbeddedColorManagement = FALSE)
+    {
+      GpImage* bitmap = nullptr;
+      if (useEmbeddedColorManagement)
+        this->lastResult = GdipCreateBitmapFromStreamICM(stream, &bitmap);
+      else
+        this->lastResult = GdipCreateBitmapFromStream(stream, &bitmap);
+      this->SetNativeImage(bitmap);
+    }
+
+    // A new Bitmap, also when the stream holds no image (its status says so).
+    static Bitmap* FromStream(IStream* stream, BOOL useEmbeddedColorManagement = FALSE) { return new Bitmap(stream, useEmbeddedColorManagement); }
+
+    Status LockBits(const Rect* rect, UINT flags, PixelFormat format, BitmapData* lockedBitmapData)
+    {
+      return this->SetStatus(GdipBitmapLockBits(this->nativeImage, rect, flags, format, lockedBitmapData));
+    }
+    Status UnlockBits(BitmapData* lockedBitmapData) { return this->SetStatus(GdipBitmapUnlockBits(this->nativeImage, lockedBitmapData)); }
+  };
+}
+}

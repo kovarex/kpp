@@ -35,7 +35,7 @@ and the bundled clang: `compiler\build\kppc.exe --exe out.exe program.kpp`. Run 
 tests with `compiler\tests\run_tests.cmd` and the specification suite `compiler\tests\spec.cmd`
 (one snippet per construct, pass/pending, writes docs/spec-status.md) after every compiler
 change, and `programs\factorio\convert.cmd`, which converts the whole game into C:\factorio-in-kpp\kpp,
-then CommonUtil, Agui and Util on their own into programs\factorio\kpp and runs their three smoke tests (the one check that runs converted game code) and the imgui, glm and Lua internals ones (imgui frames through the generated C interface, the glm port against glm, the Lua internals bridge against the C++ build's layout); the Factorio benchmark command in docs/prototype-results.md is the regression check for the
+then CommonUtil, Agui and Util on their own into programs\factorio\kpp and runs their three smoke tests (the one check that runs converted game code) and the imgui, glm, Lua internals and GDI+ ones (imgui frames through the generated C interface, the glm port against glm, the Lua internals bridge against the C++ build's layout, the GDI+ classes against the SDK's gdiplus.h); the Factorio benchmark command in docs/prototype-results.md is the regression check for the
 front end. A new gap found in converted code gets a pending snippet in `compiler/tests/spec/`
 before it is fixed. Measure, don't guess: every speed claim comes with the benchmark command and
 numbers.

@@ -546,6 +546,9 @@ namespace
     {"EXCEPTION_ACCESS_VIOLATION", "((DWORD)0xC0000005L)"}, {"EXCEPTION_STACK_OVERFLOW", "((DWORD)0xC00000FDL)"},
     {"EXCEPTION_ILLEGAL_INSTRUCTION", "((DWORD)0xC000001DL)"}, {"E_NOT_VALID_STATE", "((HRESULT)0x8007139FL)"},
     {"INIT_ONCE_STATIC_INIT", "{}"}, {"CURLOPT_XFERINFODATA", "CURLOPT_PROGRESSDATA"},
+    // guiddef.h's reference to an interface id, which C (and so the import and the COM classes,
+    // native/generate_com.py) has as a pointer (GDIPlus's IStream::QueryInterface).
+    {"REFIID", "const IID*"},
     // Windows' functions with an A and a W form, as the game's narrow build has them.
     {"LoadLibrary", "LoadLibraryA"}, {"GetModuleHandle", "GetModuleHandleA"}, {"GetModuleHandleEx", "GetModuleHandleExA"},
     {"MapVirtualKey", "MapVirtualKeyA"},
@@ -2772,6 +2775,20 @@ namespace
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "__uuidof" && i + 3 < toks.size() && toks[i + 1].is(P::LParen) &&
+            toks[i + 2].getKind() == TokenKind::Identifier && toks[i + 3].is(P::RParen) && i > 2 && (toks[i - 1].is(P::EqEq) || toks[i - 1].is(P::NotEq)) &&
+            toks[i - 2].getKind() == TokenKind::Identifier &&
+            !(toks[i - 3].is(P::Dot) || toks[i - 3].is(P::Arrow) || toks[i - 3].is(P::ColonColon)))
+        {
+          // `iid == __uuidof(IUnknown)` with iid a REFIID (a pointer, above): C++ compares the ids'
+          // values (guiddef.h's operator==, a memcmp), as C's IsEqualIID does.
+          insert(toks[i - 2].offset, "(memcmp(");
+          replace(toks[i - 1].offset, endOffset(i + 3) - toks[i - 1].offset,
+                  ", &IID_" + std::string(spelling(i + 2)) + ", sizeof(IID)) " + std::string(spelling(i - 1)) + " 0)");
+          counts.add("interface ids compared by value");
+          i += 3;
+          continue;
+        }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "__uuidof" && i + 3 < toks.size() && toks[i + 1].is(P::LParen) &&
             toks[i + 2].getKind() == TokenKind::Identifier && toks[i + 3].is(P::RParen))
         {

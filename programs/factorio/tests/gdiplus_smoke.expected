@@ -1,0 +1,27 @@
+GdiplusStartupInput 24 version 1 callback 8 suppress 16 20
+Rect 16 BitmapData 32 scan0 16 reserved 24
+ImageCodecInfo 104 mime 64 flags 72 pattern 88
+EncoderParameter 32 value 24 EncoderParameters 40 parameter 8
+formats 26200a 21808 size 32 24
+quality 1d5be4b5-fa4a
+startup 0
+encoders 0
+  image/bmp
+  image/jpeg
+  image/gif
+  image/tiff
+  image/png
+png 1 jpeg 1
+bitmap 0: 3x2
+write lock 0 stride 12
+write unlock 0
+png save 0
+png load 0: 3x2
+read lock 0: 3x2 stride 12 format 26200a
+ ff0a1405 c332140c 875a1413
+ ff0a780c c3327813 875a781a
+read unlock 0
+jpeg save 0
+jpeg load 0: 3x2
+garbage load 2 width 0 then 2
+done
