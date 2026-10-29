@@ -90,7 +90,9 @@ public:
   // a type of its own, since it deduces only an InitializerList<P> parameter (C++: any other
   // parameter is a non-deduced context) where an InitializerList object deduces any.
   const Ty* braceList(Decl* initializerList, const Ty* element);
-  const Ty* enumType(Decl* decl);
+  // args: for an enum declared in a class template, the enclosing instance's arguments
+  // (`Flag<A>::Enum` is not `Flag<B>::Enum`); none otherwise.
+  const Ty* enumType(Decl* decl, Span<const Ty*> args = {});
   const Ty* param(Decl* decl);
   const Ty* param(Decl* decl, Span<const Ty*> args); // `Container<T>`: a template template parameter applied to arguments
   const Ty* dependentMember(const Ty* of, uint32_t symbol); // `T::Unit`

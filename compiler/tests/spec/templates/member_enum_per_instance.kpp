@@ -1,6 +1,5 @@
 // spec: an enum declared in a class template is a type of each instance (`Flag<A>::Enum` is not `Flag<B>::Enum`), so overloads on two instances tell their enumerators apart, also through a fold over a forwarded pack
 // factorio: NamedBool<Tag>'s `enum class Enum`: ActionData::BuildParameters's `(this->loadArg(args), ...)` with `loadArg(BeltPowerReplace)`, `loadArg(SkipFogOfWar)`, ... called with `BeltPowerReplace::False`
-// pending: one enum type serves every instance: the static_asserts fail, and without them `pick(Loud::False)` silently takes the first overload (prints 1 1 false false)
 template<class Tag>
 class Flag
 {

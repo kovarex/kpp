@@ -244,10 +244,11 @@ const Ty* TypeTable::braceList(Decl* initializerList, const Ty* element)
   return intern(t);
 }
 
-const Ty* TypeTable::enumType(Decl* decl)
+const Ty* TypeTable::enumType(Decl* decl, Span<const Ty*> args)
 {
   Ty t{TyKind::Enum};
   t.decl = decl;
+  t.args = args;
   return intern(t);
 }
 
@@ -426,7 +427,7 @@ namespace
             return true;
         return false;
       }
-      case TyKind::Function: case TyKind::Class: case TyKind::Pack: case TyKind::Member:
+      case TyKind::Function: case TyKind::Class: case TyKind::Enum: case TyKind::Pack: case TyKind::Member:
         if (dependent(t->inner, bound))
           return true;
         for (const Ty* a : t->args)
@@ -532,6 +533,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       s += t->variadic ? ", ...)" : ")";
       break;
     case TyKind::Class:
+    case TyKind::Enum:
       s += declName(t->decl);
       if (!t->args.empty())
       {
@@ -543,7 +545,6 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       if (t->decl && (t->decl->flags & DF_Specialization))
         s += "/spec" + std::to_string(t->decl->token); // a specialisation (partial: its own arguments; full: Flag<true> beside Flag<false>) is not the primary's instantiation
       break;
-    case TyKind::Enum: s += declName(t->decl); break;
     case TyKind::Param: s += declName(t->decl); break;
     case TyKind::DependentMember: s += toString(t->inner, symbols, qualified) + "::" + (symbols ? std::string(symbols->name(uint32_t(t->value))) : std::string("?")); break;
     case TyKind::Value:

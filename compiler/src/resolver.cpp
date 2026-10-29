@@ -3522,7 +3522,10 @@ struct GlobalScope::Impl
       // In the enum's own scope: `GENERIC = NOTHING` names an earlier enumerator of an enum class.
       TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
                        e->file ? e->file->text : std::string_view()};
-      const Ty* enumType = types.enumType(e);
+      // Of the instance it is named through (`Flag<A>::Enum`); the enum alone where none is bound.
+      const Ty* enumType = enumTypeIn(e, classSubst ? classSubst : ctx.subst);
+      if (types.isDependent(enumType))
+        enumType = types.enumType(e);
       ConstValue next = ConstValue::integer(0, enumType);
       for (Decl* m : e->enumerators)
       {
@@ -6484,10 +6487,38 @@ struct GlobalScope::Impl
     return {};
   }
 
+  // The type of an enum declaration. One declared in a class template is a type of each instance
+  // (`Flag<A>::Enum` is not `Flag<B>::Enum`), so it carries the enclosing template's arguments as
+  // `subst` binds them (its parameters where it binds none: the enum as the template writes it).
+  const Ty* enumTypeIn(Decl* e, const Subst* subst)
+  {
+    Span<Decl*> params = effectiveParams(e);
+    if (params.empty())
+      return types.enumType(e);
+    std::vector<const Ty*> args;
+    for (Decl* p : params)
+    {
+      const Ty* a = subst ? subst->find(p) : nullptr;
+      if (a && a->kind == TyKind::Pack)
+        args.insert(args.end(), a->args.begin(), a->args.end()); // a pack's elements, as a class's arguments
+      else
+        args.push_back(a ? a : types.param(p));
+    }
+    return types.enumType(e, Span<const Ty*>{args.data(), uint32_t(args.size())});
+  }
+
+  // A typed union's tag type (`Property::Tag`) for the union type `of`: with that instance's
+  // arguments when the union is declared in a class template.
+  const Ty* tagTypeOf(ClassDecl* u, const Ty* of)
+  {
+    Subst s = of ? substFor(types.unqualified(types.stripRef(of))) : Subst{};
+    return enumTypeIn(u->tagEnum, s.empty() ? nullptr : &s);
+  }
+
   const Ty* selfType(Decl* d)
   {
     if (d->kind == NodeKind::EnumDecl)
-      return types.enumType(d);
+      return enumTypeIn(d, nullptr);
     std::vector<const Ty*> args;
     for (Decl* p : effectiveParams(d))
       args.push_back(types.param(p));
@@ -6498,7 +6529,8 @@ struct GlobalScope::Impl
   Subst substFor(const Ty* classTy)
   {
     Subst s;
-    if (!classTy || classTy->kind != TyKind::Class || !classTy->decl)
+    // (An enum of a class template's instance has the instance's arguments: `Flag<A>::Enum::True`.)
+    if (!classTy || !classTy->decl || (classTy->kind != TyKind::Class && !(classTy->kind == TyKind::Enum && !classTy->args.empty())))
       return s;
     Span<Decl*> params = effectiveParams(classTy->decl);
     for (size_t i = 0; i < params.size() && i < classTy->args.size(); ++i)
@@ -6676,6 +6708,8 @@ struct GlobalScope::Impl
       // `decltype(this->inventories)::mapped_type`: under the arguments of the class decltype gives.
       const Ty* q = convertType(name.typeQualifier, ctx, depth + 1);
       q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+      if (q && q->kind == TyKind::Enum && !types.isDependent(q))
+        return substFor(q);
       return q && q->kind == TyKind::Class && !types.isDependent(q) ? memberSubst(q, foundIn, depth) : s;
     }
     if (name.parts.size() < 2 || depth > 96) // (called with constEval's depth, which nests calls)
@@ -6694,9 +6728,11 @@ struct GlobalScope::Impl
       const Ty* sub = ctx.subst->find(l.decl);
       if (sub && sub->kind == TyKind::Class)
         return memberSubst(sub, foundIn, depth);
+      if (sub && sub->kind == TyKind::Enum)
+        return substFor(sub); // `E::values` with E = Flag<A>::Enum
       return s;
     }
-    if (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::UsingAliasDecl)
+    if (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::UsingAliasDecl && l.decl->kind != NodeKind::EnumDecl)
       return s;
     const Ty* qualifier = nullptr;
     if (prefix.parts.size() > 1 || l.found == Found::Member)
@@ -6711,6 +6747,8 @@ struct GlobalScope::Impl
     }
     else
       qualifier = typeOfTypeDecl(l.decl, l, prefix.last(), ctx, depth + 1);
+    if (qualifier && qualifier->kind == TyKind::Enum)
+      return substFor(qualifier); // `Fast::Enum::True`: the instance's enumerator
     if (!qualifier || qualifier->kind != TyKind::Class)
       return s;
     return memberSubst(qualifier, foundIn, depth);
@@ -7268,7 +7306,7 @@ struct GlobalScope::Impl
       case NodeKind::EnumDecl:
       {
         Decl* def = l.scope && l.scope->owner && l.scope->kind == ScopeKind::Enum ? l.scope->owner : d;
-        return types.enumType(def);
+        return enumTypeIn(def, ctx.subst);
       }
       case NodeKind::TemplateParamDecl:
         if (ctx.subst)
@@ -7511,11 +7549,12 @@ struct GlobalScope::Impl
           return types.unknown();
         if ((n->name.parts.size() > 1 || n->name.typeQualifier) &&
             (l.decl->kind == NodeKind::UsingAliasDecl || (l.decl->kind == NodeKind::VariableDecl && (l.decl->flags & DF_Typedef)) ||
-             (l.decl->kind == NodeKind::ClassDecl && l.decl->templateParams.empty() && !effectiveParams(l.decl).empty())))
+             ((l.decl->kind == NodeKind::ClassDecl || l.decl->kind == NodeKind::EnumDecl) && l.decl->templateParams.empty() &&
+              !effectiveParams(l.decl).empty())))
         {
           // `Vector<int>::iterator`: the alias as the instantiation named by the qualifier has it;
-          // `Holder<int>::Node`: the nested class with the enclosing instantiation's arguments;
-          // `ItemPrototype::IDType`: the alias as the base it is declared in has it.
+          // `Holder<int>::Node`, `Flag<A>::Enum`: the nested class or enum with the enclosing
+          // instantiation's arguments; `ItemPrototype::IDType`: the alias as the base it is declared in has it.
           Subst qs = qualifierSubst(n->name, ctx, depth, l.foundIn);
           if (!qs.empty())
           {
@@ -7741,7 +7780,7 @@ struct GlobalScope::Impl
       {
         auto* v = static_cast<VariableDecl*>(d);
         if (v->builtin == BUILTIN_EnumValues && v->parent && v->parent->kind == NodeKind::EnumDecl)
-          return types.array(types.enumType(v->parent), uint32_t(enumeratorCount(v->parent))); // E::values
+          return types.array(enumTypeIn(v->parent, subst), uint32_t(enumeratorCount(v->parent))); // E::values
         const Ty* t = convertType(v->type, ctx, depth + 1);
         if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::BraceInitExpr)
           t = types.array(t->inner, uint32_t(static_cast<BraceInitExpr*>(v->init)->args.size())); // `double a[] = {1, 2}`
@@ -7764,7 +7803,7 @@ struct GlobalScope::Impl
         return t && t->kind == TyKind::Array ? types.decay(t) : t; // `double m[3][3]` is a pointer parameter
       }
       case NodeKind::EnumeratorDecl:
-        return d->parent && d->parent->kind == NodeKind::EnumDecl ? types.enumType(d->parent) : types.intType();
+        return d->parent && d->parent->kind == NodeKind::EnumDecl ? enumTypeIn(d->parent, subst) : types.intType();
       case NodeKind::FunctionDecl:
       {
         auto* f = static_cast<FunctionDecl*>(d);
@@ -8636,6 +8675,16 @@ struct GlobalScope::Impl
         return types.memberPointer(substitute(t->inner, s, depth + 1), t->args.empty() ? nullptr : substitute(t->args[0], s, depth + 1));
       case TyKind::Member:
         return types.member(substitute(t->inner, s, depth + 1), t->decl, t->args.empty() ? nullptr : substitute(t->args[0], s, depth + 1));
+      case TyKind::Enum:
+      {
+        if (t->args.empty())
+          return t;
+        std::vector<const Ty*> args; // `Flag<Tag>::Enum` with Tag bound: that instance's enum
+        for (const Ty* a : t->args)
+          if (const Ty* sub = substitute(a, s, depth + 1); !spliceIfPack(sub, args))
+            args.push_back(sub);
+        return types.qualified(types.enumType(t->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), t->isConst, t->isVolatile);
+      }
       case TyKind::Function:
       case TyKind::Class:
       case TyKind::Lambda:
@@ -8831,7 +8880,9 @@ struct GlobalScope::Impl
           return 3;
         break;
       case TyKind::Enum:
-        if (a->kind == TyKind::Enum && a->decl == p->decl)
+        // (One enum is `a == p` above: `Flag<A>::Enum` is not `Flag<B>::Enum`.) The declaration's,
+        // its instance unknown on one side (no arguments).
+        if (a->kind == TyKind::Enum && a->decl == p->decl && (a->args.empty() || p->args.empty()))
           return 0;
         break;
       case TyKind::MemberPointer:
@@ -10402,7 +10453,7 @@ struct GlobalScope::Impl
           return impl.containsAuto(t) ? unknown(Why::Auto) : t;
         }
         case NodeKind::EnumeratorDecl:
-          return impl.declaredTypeOf(d, nullptr, 0);
+          return impl.declaredTypeOf(d, activeSubst, 0); // (of this instance's enum in a class template)
         case NodeKind::FunctionDecl:
           return impl.declaredTypeOf(d, activeSubst, 0);
         case NodeKind::ClassDecl:
@@ -10476,7 +10527,8 @@ struct GlobalScope::Impl
       // Members of the current class template keep their dependent types; members reached
       // through a qualified name on an instantiation get substituted.
       if (e->name.parts.size() > 1 && l.found == Found::Member && l.foundIn && l.foundIn->owner &&
-          !l.foundIn->owner->templateParams.empty())
+          (!l.foundIn->owner->templateParams.empty() ||
+           (l.foundIn->owner->kind == NodeKind::EnumDecl && !Impl::effectiveParams(l.foundIn->owner).empty())))
       {
         // Qualifier like `Vector<int>::npos`: substitute from the qualifier type when it is an instantiation.
         QualifiedName qualifier = e->name;
@@ -10489,6 +10541,10 @@ struct GlobalScope::Impl
         // base takes that base instantiation's arguments.
         if (q->kind == TyKind::Class && (!q->args.empty() || (q->decl && q->decl->ownScope != l.foundIn)))
           if (Subst s = impl.memberSubst(q, l.foundIn, 0); !s.pairs.empty())
+            return impl.declaredTypeOf(l.decl, &s, 0);
+        // `Fast::Enum::True` with an enum declared in a class template: that instance's enumerator.
+        if (q->kind == TyKind::Enum)
+          if (Subst s = impl.substFor(q); !s.pairs.empty())
             return impl.declaredTypeOf(l.decl, &s, 0);
       }
       return typeOfResolvedName(l, e->name.last(), e);
@@ -10866,7 +10922,7 @@ struct GlobalScope::Impl
           return descriptor->inner ? descriptor->inner : types.unknown();
         size_t index = 0;
         if (ClassDecl* u = alternativeOf(descriptor, index))
-          return which == "tag" && u->tagEnum ? types.enumType(u->tagEnum) : unknown(Why::Member);
+          return which == "tag" && u->tagEnum ? impl.tagTypeOf(u, descriptor->args.empty() ? nullptr : descriptor->args[0]) : unknown(Why::Member);
         if (which == "offset")
           return types.sizeType();
         return unknown(Why::Member);
@@ -12369,7 +12425,7 @@ struct GlobalScope::Impl
       if (!cls)
         return nullptr;
       if (cls->kind == NodeKind::EnumDecl)
-        return types.lref(types.enumType(cls)); // in an enum's methods, `this` is the value
+        return types.lref(impl.enumTypeIn(cls, activeSubst)); // in an enum's methods, `this` is the value
       return types.pointer(impl.selfType(cls));
     }
 
@@ -12994,7 +13050,7 @@ struct GlobalScope::Impl
                 // `p[Integer]`: an alternative's name as written in the union (design.md 8.5).
                 auto* n = static_cast<NameExpr*>(i->args[0]);
                 n->resolved = en;
-                record(n, types.enumType(u->tagEnum));
+                record(n, impl.tagTypeOf(u, b));
                 v = impl.constOfDecl(en, ctx(), 0);
               }
               else
