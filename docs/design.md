@@ -708,7 +708,7 @@ runs the same statements, on the callee's own instantiation (`Limits<uint16_t>::
 static_assert on a layout); its lookup of names (variables, enumerators, parameters) is still its
 own, which the GlobalScope::evaluate entry replaces next. Limits as proposed: a million steps, 512
 nested calls, the stack left. Measured on the converted game: static_asserts the compiler cannot
-evaluate 42 -> 27; the headline 23,819 -> 23,511 paired on e1b268e (path-to-factorio.md). Specs:
+evaluate 39 -> 22; the headline 22,776 -> 22,562 paired on 9a5ce8d (path-to-factorio.md). Specs:
 language/consteval_*.
 
 Left, in the order above: assignments, `++`, loops and `switch` (step 2, the gcd and lcm loops

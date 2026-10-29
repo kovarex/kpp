@@ -718,23 +718,23 @@ lines, nearly all from four gaps of the checker's constant evaluator, for the in
 About 740 lines of other errors went, from functions that now fail first at such a layout. One
 tree (the converter output of master b2e6053), master 9909b71's compiler against this one.
 
-**The interpreter's first step (2026-10-29): 23,819 -> 23,511.** The checker and the code
+**The interpreter's first step (2026-10-29): 22,776 -> 22,562.** The checker and the code
 generator compute constants with one typed arithmetic (design.md, "Compile-time evaluation",
-step 1). What went: the code generator's folds over packs (`a fold expression that expands no
-parameter pack`, 84 lines) and the PipetteID and FactoriopediaID constructors behind them (65);
-the last unknown constant arguments in layouts (`Array<Deque<MapGenerationRequest>,
-generationTaskStates.size()>` 28, `Bitset<Limits<DamageTypeID::IndexType>::max() + 1>` and the
-other Bitset<?> 14, five Array<?> 5); InputAction::inputActionCount read at run time (6); the
-static_asserts the compiler cannot evaluate, 42 -> 27 (floats, enumerators converted to integers,
-`sizeof` of a local array). With it, bit fields with a default member initializer (`bool reserved
-: 1 = false;`, AsteroidChunk): the parser read the width as the assignment `1 = false` (92 lines,
-and the initializer was lost); with the width read right, the code generator wrote each bit
-field's initializer over the whole storage unit it shares, and an aggregate's values went to the
-units instead of the members, silent wrong values both, now stored into each bit field's own bits
-(spec classes/bitfield_default_initializer). The lines that came in are code that gets further:
-multiple inheritance in Surface's and Entity's layouts (+11), `Bitset<256>::reference` and
-Pair's constructors (library gaps). One tree (the converter output of e1b268e), e1b268e's
-compiler against this one.
+step 1). What went: the PipetteID and FactoriopediaID constructors (65 lines, behind constants
+the code generator's folds compute now); the last unknown constant arguments in layouts
+(`Array<Deque<MapGenerationRequest>, generationTaskStates.size()>` 28,
+`Bitset<Limits<DamageTypeID::IndexType>::max() + 1>` and the other Bitset<?> 14, six other
+Array<?> 6); InputAction::inputActionCount read at run time (6); the static_asserts the compiler
+cannot evaluate, 39 -> 22 (floats, enumerators converted to integers, `sizeof` of a local array,
+folds over packs). With it, bit fields with a default member initializer (`bool reserved : 1 =
+false;`, AsteroidChunk): the parser read the width as the assignment `1 = false` (92 lines, and
+the initializer was lost); with the width read right, the code generator wrote each bit field's
+initializer over the whole storage unit it shares, and an aggregate's values went to the units
+instead of the members, silent wrong values both, now stored into each bit field's own bits (spec
+classes/bitfield_default_initializer). The lines that came in are code that gets further:
+multiple inheritance in Surface's and Entity's layouts (+12), `Bitset<256>::reference` and
+Pair's constructors (library gaps). One tree (the converter output of 9a5ce8d, with the glad
+include), 9a5ce8d's compiler against this one.
 
 ### The configuration (2026-10-29)
 
