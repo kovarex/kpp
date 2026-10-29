@@ -12836,6 +12836,43 @@ struct GlobalScope::Impl
           return false;
         if (a.ranks[i] < b.ranks[i])
           someBetter = true;
+        // Two standard conversions of one rank to pointers (or to references) of related types, C++'s
+        // tie-breakers: `pick(spider)` with a Spider* takes pick(Entity*) over pick(const Entity*)
+        // (the same conversion and a qualification more), and pick(Unit*) over pick(Entity*) for
+        // Unit deriving from Entity (the conversion to the nearer base).
+        if (a.ranks[i] == b.ranks[i] && (a.ranks[i] == 2 || a.ranks[i] == 3) && i < a.params.size() && i < b.params.size() &&
+            a.params[i] && b.params[i])
+        {
+          const Ty* pa = types.unqualified(types.stripRef(a.params[i]));
+          const Ty* pb = types.unqualified(types.stripRef(b.params[i]));
+          const Ty* ta = nullptr;
+          const Ty* tb = nullptr;
+          if (pa->kind == TyKind::Pointer && pb->kind == TyKind::Pointer)
+            ta = pa->inner, tb = pb->inner;
+          else if (a.params[i]->isReference() && b.params[i]->isReference() && a.params[i]->kind == b.params[i]->kind)
+            ta = types.stripRef(a.params[i]), tb = types.stripRef(b.params[i]);
+          if (ta && tb && ta != tb)
+          {
+            bool aWeaker = (!ta->isConst || tb->isConst) && (!ta->isVolatile || tb->isVolatile); // a's target no more qualified
+            bool bWeaker = (!tb->isConst || ta->isConst) && (!tb->isVolatile || ta->isVolatile);
+            const Ty* ua = types.unqualified(ta);
+            const Ty* ub = types.unqualified(tb);
+            if (ua == ub)
+            {
+              if (aWeaker && !bWeaker)
+                someBetter = true;
+              else if (bWeaker && !aWeaker)
+                return false;
+            }
+            else if (ua->kind == TyKind::Class && ub->kind == TyKind::Class && aWeaker && bWeaker)
+            {
+              if (isBaseClass(ub, ua))
+                someBetter = true;
+              else if (isBaseClass(ua, ub))
+                return false;
+            }
+          }
+        }
         // Two derived-to-base bindings of one rank: an rvalue binds a `T&&` better than a
         // `const T&` (C++'s rvalue-reference rule; `Holder(Holder&& other) :
         // UniquePtr<Entity>(move(other))` takes UniquePtr's move constructor, not its deleted copy).
