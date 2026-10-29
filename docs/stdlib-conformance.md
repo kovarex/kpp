@@ -9,18 +9,10 @@ compile, loudly) last. State of 2026-10-29.
 
 ## Behaviour that differs
 
-**Compiler gaps that break library use** (pending spec snippets in compiler/tests/spec):
-- `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
-  cannot copy the move-only value (language/brace_argument_binds_rvalue).
-- A function passed by its name to a forwarding reference (`invoke(add, 1, 2)`) does not compile
-  (templates/forwarding_reference_to_function); a pointer to it does. Thread takes its function
-  and arguments by value, which decays the name to a pointer, so it is not affected.
-- `new T[n]` makes one element and `delete[]` destroys one (language/array_new_and_delete): an
-  array UniqueArray takes over from `new T[n]` (std::unique_ptr<T[]>(new T[n]), 30 uses in the
-  game) is overrun and freed wrongly, silently (library/unique_array_from_new).
-- A reference parameter bound through a conversion operator binds to a copy
-  (classes/reference_bound_through_conversion_operator): a `ref(x)` argument of a Thread for an
-  `int&` parameter reaches a copy of x, silently.
+**Compiler gaps that break library use**: none open. The four listed until 2026-10-29 pass now
+(language/brace_argument_binds_rvalue, templates/forwarding_reference_to_function,
+language/array_new_and_delete with library/unique_array_from_new,
+classes/reference_bound_through_conversion_operator).
 
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
@@ -47,7 +39,9 @@ upperBound, PriorityQueue, nthElement (introselect), the checked accessors (`at(
 and `erase` throw OutOfRange), HashMap/HashSet (entries in nodes, std's interface, hasher and key equality parameters) and
 FastHashMap/FastHashSet (as specified), Deque/Queue/Stack (blocks; references survive pushes and
 pops at both ends), List, SharedPtr/WeakPtr/EnableSharedFromThis (atomic counts, deletion as the
-created type, shared_from_this throwing BadWeakPtr, atomic access), UniquePtr (conversions from UniquePtr<Derived>), Function (heap copy of the callable,
+created type, shared_from_this throwing BadWeakPtr, atomic access), UniquePtr (conversions from UniquePtr<Derived>), UniqueArray (one pointer, its arrays laid out as
+`new T[n]` makes them; until 2026-10-29 it was 16 bytes, a pointer and its own count, where
+std::unique_ptr<T[]> is 8, which broke the game's size static_asserts), Function (heap copy of the callable,
 BadFunctionCall on an empty call), Atomic (every size from 1 to 8 bytes moved as bits, so bool,
 float, double and enums are exact; Atomic<SharedPtr<T>>). Until 2026-10-28 Atomic of a 1- or 2-byte
 type wrote 4 bytes (overwriting the fields after it) and Atomic<float>/<double> converted the value

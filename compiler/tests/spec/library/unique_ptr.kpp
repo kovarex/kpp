@@ -29,7 +29,7 @@ int main()
   UniqueArray<char> buffer = makeUniqueArrayForOverwrite<char>(16);
   buffer[15] = 'z';
   UniqueArray<String> names = makeUniqueArrayForOverwrite<String>(2);
-  println("{} {} {}", buffer.size(), buffer[15], names[1].size());
+  println("{} {} {}", int(sizeof(UniqueArray<char>)), buffer[15], names[1].size());
   {
     UniquePtr<Res, Closer> d(new Res(1));
     UniquePtr<Res, Closer> e = ::move(d);

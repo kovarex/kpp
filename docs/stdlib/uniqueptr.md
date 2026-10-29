@@ -44,18 +44,25 @@ What `std::unique_ptr<T[]>` converts to: sole ownership of an array of T on the 
 with its elements (each destroyed, the last first) when the UniqueArray goes, is reset or is
 assigned another array or nullptr. Moved, never copied; a moved-from UniqueArray is empty.
 
+One pointer, as std's (8 bytes: a class with one keeps the size it has in C++, which the game's
+size static_asserts check, `sizeof(Inventory) <= 40`). Every array it holds is laid out as
+`new T[n]` makes it, the ones it makes included: for a T that needs destroying, a cookie before
+the elements holds n (8 bytes, 16 for a T aligned to 16), for any other T the block is the
+elements. So `delete[]` destroys and frees any of them, and an array can go from `new T[n]` to a
+UniqueArray and back through release().
+
 - `UniqueArray()`, `UniqueArray(nullptr)`: empty.
-- `explicit UniqueArray(n)`: makes n default-constructed elements. `makeUniqueArray<T>(n)` makes
-  the same. `makeUniqueArrayForOverwrite<T>(n)` (std::make_unique_for_overwrite<T[]>) makes n
-  elements to be overwritten: default-initialized, so a type that needs no construction (numbers,
+- `explicit UniqueArray(n)`: makes n value-initialized elements (numbers are zero), as
+  `new T[n]()`; empty for n <= 0. `makeUniqueArray<T>(n)` makes the same.
+  `makeUniqueArrayForOverwrite<T>(n)` (std::make_unique_for_overwrite<T[]>) makes n elements to be
+  overwritten, as `new T[n]`: default-initialized, so a type that needs no construction (numbers,
   chars) is left uninitialized rather than zeroed.
 - `explicit UniqueArray(array)`: takes over an array made by `new T[n]` (or nothing for null), and
   gives it back to `delete[]`.
 - `reset()`, `= nullptr`: delete the array. `reset(array)`: takes over array (made by `new T[n]`),
   then deletes the old one; resetting to the array it holds does nothing.
+- `release()`: the array, now the caller's to give to `delete[]`; the UniqueArray is empty.
 - `operator[](i)`, `get()`, `explicit operator bool`, `!`, `== nullptr`, `!= nullptr`, `swap(other)`.
-- `size()`: the count of an array it made (`UniqueArray(n)`, makeUniqueArray); for an array it took
-  over from `new T[n]` the count is not known, and asking ends the program.
 
-*Difference from C++*: no `release()` (no use in the converted code yet), and `size()`, which C++
-does not have.
+*Difference from C++*: none in what the converted code uses. Like std's it has no size: `new T[n]`
+keeps no count for a T that needs no destroying.
