@@ -1,0 +1,10 @@
+// spec: a char array initialised by a string literal: the literal's characters and its terminating zero, the rest of the array zero; without a length the array takes the literal's (`char s[] = "abc"` has four elements)
+// factorio: Crypto.cpp's `static const char alphanum[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";`
+// pending: with a length the array takes nothing from the literal (it stays zero, silently empty); without one it is an error (the length is no constant the compiler could evaluate)
+int main()
+{
+  char text[16] = "edit me";
+  static const char alphanum[] = "0123456789ABCDEF";
+  println("[{}] {} {} [{}] {} {}", (const char*)text, (int)text[6], (int)text[15], (const char*)alphanum, sizeof(alphanum), (int)alphanum[10]);
+  return 0;
+}
