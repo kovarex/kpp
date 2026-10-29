@@ -1,0 +1,35 @@
+// spec: assigning a brace list to a class whose assignment operators are defaulted (`Icons& operator=(Icons&&) = default;`) makes the temporary the list initializes (through `implicit Icons(InitializerList<Signal>)`, or value-initialized for `{}`) and assigns it, as `x = T{...}` would
+// factorio: tests/TestBlueprint.cpp's `setupData.previewIcons = {SignalID(ItemWithQualityID("iron-plate"))};` (PreviewIcons with defaulted copy and move assignment), TestEntityTags.cpp's `ghost.entityTagsAfterRevived = {};`, TestExchangeString.cpp's `mapGenSettings.areaToGenerateAtStart = {-420, -69, 420, 69};`
+// pending: the defaulted operator took the list as a value ("the expression kind BraceInitExpr"); owner: the templates thread (the tests package)
+struct Signal
+{
+  int id = 0;
+  Signal() = default;
+  explicit Signal(int id) : id(id) {}
+};
+class Icons
+{
+public:
+  Icons() = default;
+  Icons(const Icons& other) : icons(other.icons) {}
+  explicit Icons(Icons&& other) : icons(::move(other.icons)) {}
+  implicit Icons(const Vector<Signal>& icons) : icons(icons) {}
+  implicit Icons(InitializerList<Signal> icons) : icons(icons) {}
+  Icons& operator=(const Icons& other) = default;
+  Icons& operator=(Icons&& other) = default;
+  Vector<Signal> icons;
+};
+struct Data
+{
+  Icons previewIcons;
+  Icons cleared;
+};
+int main()
+{
+  Data data;
+  data.previewIcons = {Signal(4), Signal(5)};
+  data.cleared = {Signal(1)};
+  data.cleared = {};
+  println("{} {}", int(data.previewIcons.icons.size()), int(data.cleared.icons.size()));
+  return 0;
+}
