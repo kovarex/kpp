@@ -1,0 +1,20 @@
+// spec: empty braces for a class with a default constructor value-initialise it (C++ [dcl.init.list] 3.5), also where the class has an InitializerList constructor: `Vector<Reference> items = {}` of a move-only Reference, as a declaration and as a default argument
+// factorio: CommandProcessor's `Vector<SavedSpecialItemReference> specialItemsInMessage = {}` default argument chose Vector's InitializerList constructor, whose body copies the elements: "copying SavedSpecialItemReference, whose copy constructor is deleted"
+class Reference
+{
+public:
+  explicit Reference(int id) : id(id) {}
+  Reference(const Reference&) = delete;
+  Reference(Reference&&) = default;
+  Reference& operator=(Reference&&) = default;
+  int id;
+};
+int count(Vector<Reference> items = {}) { return int(items.size()); }
+int main()
+{
+  Vector<Reference> one;
+  one.push_back(Reference(4));
+  Vector<Reference> none = {};
+  println("{} {} {}", count(), count(::move(one)), int(none.size()));
+  return 0;
+}

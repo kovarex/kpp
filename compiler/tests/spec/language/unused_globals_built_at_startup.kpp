@@ -1,0 +1,34 @@
+// spec: a global built at startup is built even when nothing reads it, in definition order: static members whose initializers register something, out of the class and in it, and a namespace variable (C++ initialises every global of the program)
+// factorio: `bool FontBank::loaderRegistered = PrototypeLoader::registerPlainLoader(FontBank::type, &FontBank::loadFontStatic);` and the other prototype loaders' registrations: nothing reads them, the code generator never built them, and defines.prototypes had no item types (data-updates.lua: "bad argument #1 of 2 to 'pairs' (table expected, got nil)")
+class Registry
+{
+public:
+  static Vector<String>& names()
+  {
+    static Vector<String> all;
+    return all;
+  }
+  static bool add(const char* name)
+  {
+    Registry::names().push_back(String(name));
+    return true;
+  }
+};
+class Font
+{
+public:
+  static bool registered;
+};
+bool Font::registered = Registry::add("font");
+class Item
+{
+public:
+  static inline bool registered = Registry::add("item");
+};
+bool fluidRegistered = Registry::add("fluid");
+int main()
+{
+  for (const String& name : Registry::names())
+    println("{}", name);
+  return 0;
+}

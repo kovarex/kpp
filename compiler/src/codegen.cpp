@@ -228,6 +228,7 @@ namespace
     // defined (ctorsText runs them in that order).
     struct Startup { uint32_t file; uint32_t token; std::string function; };
     std::vector<Startup> startups;
+    std::unordered_map<std::string, std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
     std::vector<std::unordered_set<std::string>> vtablesIn; // per module: the vtables it already has
     std::unordered_map<ParsedFile*, unsigned> fileModule;   // file -> module
     std::unordered_map<std::string, unsigned> definedIn;    // function name -> module
@@ -292,6 +293,7 @@ namespace
     std::vector<SharedText>& bodies = sh.bodies;
     std::vector<SharedText>& moduleDecls = sh.moduleDecls;
     std::vector<Shared::Startup>& startups = sh.startups;
+    std::unordered_map<std::string, std::string>& threadLocalInits = sh.threadLocalInits;
     std::vector<std::unordered_set<std::string>>& vtablesIn = sh.vtablesIn;
     std::unordered_map<ParsedFile*, unsigned>& fileModule = sh.fileModule;
     std::unordered_map<std::string, unsigned>& definedIn = sh.definedIn;
@@ -2130,8 +2132,17 @@ namespace
       std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
       for (Decl* d : info.fieldDecls)
       {
+        if (d->kind == NodeKind::ClassDecl)
+        {
+          // An anonymous struct or union member (`union { SharedString sharedStr; LongStr longStr;
+          // ... }` with `: longStr{nullptr, 0}`): its members are initialised as the class's own,
+          // by the same constructor initializers.
+          initializeAnonymous(gep(info.name, addr, fieldIndexOf(info, d)), info.fieldTypes[fieldIndexOf(info, d)], static_cast<ClassDecl*>(d),
+                              inits, at);
+          continue;
+        }
         if (d->kind != NodeKind::VariableDecl)
-          continue; // anonymous struct member: zero-initialised with the whole object
+          continue;
         auto* v = static_cast<VariableDecl*>(d);
         const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
         std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
@@ -2188,6 +2199,88 @@ namespace
         else
           storeZero(ft, fieldAddr, at);
       }
+    }
+
+    // Whether a constructor initializer names a data member of the anonymous struct or union c (or
+    // of one nested in it).
+    static bool namesMemberOf(ClassDecl* c, Span<FunctionDecl::CtorInit> inits)
+    {
+      for (Decl* m : c->members)
+      {
+        if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
+        {
+          if (namesMemberOf(static_cast<ClassDecl*>(m), inits))
+            return true;
+          continue;
+        }
+        if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)) || static_cast<VariableDecl*>(m)->name.empty())
+          continue;
+        for (const FunctionDecl::CtorInit& init : inits)
+          if (!init.member.empty() && init.member.last().symbol == static_cast<VariableDecl*>(m)->name.last().symbol)
+            return true;
+      }
+      return false;
+    }
+
+    // An anonymous struct or union member of a class being constructed, at addr, of type t (c its
+    // declaration). A struct: its members as the class's own (initializeMembers). A union: zeroed
+    // (members are zero-initialised in Kpp), then the member a constructor initializer names, or
+    // else the one with a default member initializer, is initialised: C++ initialises one member.
+    void initializeAnonymous(const std::string& addr, const Ty* t, ClassDecl* c, Span<FunctionDecl::CtorInit> inits, Node* at)
+    {
+      if (!structFor(t, at).isUnion)
+      {
+        initializeMembers(addr, t, inits, at);
+        return;
+      }
+      storeZero(t, addr, at);
+      Decl* chosen = nullptr;
+      for (Decl* m : c->members)
+        if (((m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef))) ||
+             (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)) &&
+            !chosen)
+        {
+          if (m->kind == NodeKind::ClassDecl ? namesMemberOf(static_cast<ClassDecl*>(m), inits) : false)
+            chosen = m;
+          else if (m->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(m)->name.empty())
+            for (const FunctionDecl::CtorInit& init : inits)
+              if (!init.member.empty() && init.member.last().symbol == static_cast<VariableDecl*>(m)->name.last().symbol)
+                chosen = m;
+        }
+      if (!chosen)
+        for (Decl* m : c->members)
+          if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && static_cast<VariableDecl*>(m)->init && !chosen)
+            chosen = m;
+      if (!chosen)
+        return;
+      const Ty* mt = unionMemberType(t, chosen, at);
+      if (chosen->kind == NodeKind::ClassDecl)
+      {
+        initializeAnonymous(addr, mt, static_cast<ClassDecl*>(chosen), inits, at); // a struct inside the union, at its start
+        return;
+      }
+      auto* v = static_cast<VariableDecl*>(chosen);
+      if (bitfieldFor(v))
+        unsupported(at, "a bit field of an anonymous union initialised by a constructor");
+      const FunctionDecl::CtorInit* init = nullptr;
+      for (const FunctionDecl::CtorInit& i : inits)
+        if (!i.member.empty() && i.member.last().symbol == v->name.last().symbol)
+          init = &i;
+      if (const Ty* declared = global.typeOfDecl(v); mt->isReference() || (declared && declared->isReference()))
+        unsupported(at, "a reference member of an anonymous union");
+      if (!init)
+      {
+        withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(addr, mt, value, v); });
+        return;
+      }
+      if (isClass(mt))
+        constructInto(addr, mt, init->args, at);
+      else if (size_t values = expandedCount(init->args, at); values == 0)
+        storeZero(mt, addr, at);
+      else if (values == 1)
+        forEachExpanded(init->args, at, [&](Expr* one) { initializeFrom(addr, mt, one, at); });
+      else
+        unsupported(at, "this member initializer");
     }
 
     // The type of member m of union t (every member at the union's start, field 0 standing for none
@@ -2330,7 +2423,11 @@ namespace
             return;
           }
         }
-        if (FunctionDecl* ctor = initializerListConstructor(c, t, at); ctor && listConvertsTo(ctor, list, t, at))
+        // `Vector<Item> items = {}` of a class with a default constructor: value-initialisation (C++
+        // [dcl.init.list] 3.5), not the InitializerList constructor, whose body copies elements (a
+        // Vector of a move-only class: CommandProcessor's `Vector<SavedSpecialItemReference> ... = {}`).
+        bool valueInitialised = list->args.empty() && findConstructor(t, {}, at);
+        if (FunctionDecl* ctor = valueInitialised ? nullptr : initializerListConstructor(c, t, at); ctor && listConvertsTo(ctor, list, t, at))
         {
           // `Vector<int> v = {1, 2, 3}`, `Poly p({1, 2, 3, 4})`: the list as one InitializerList argument.
           TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
@@ -2505,6 +2602,23 @@ namespace
         // An aggregate: the values fill the fields in order; the fields left over get their
         // default member initializers (or default construction), as in C++.
         const StructInfo& info = structFor(t, at);
+        // `Item {load, ifNoPrototype, ::forward<Args>(args)...}` with Args empty: the expansion of an
+        // empty pack is no value (InstanceLoader::registerLoader).
+        std::vector<Expr*> values;
+        bool expanded = false;
+        for (Expr* a : args)
+        {
+          if (!isPackExpansion(a))
+          {
+            values.push_back(a);
+            continue;
+          }
+          expanded = true;
+          if (expandedCount(Span<Expr*>{&a, 1}, at) != 0)
+            unsupported(at, "a pack expanded into the values of an aggregate");
+        }
+        if (expanded)
+          args = Span<Expr*>{values.data(), uint32_t(values.size())};
         storeZero(t, addr, at);
         storeVptrs(addr, info);
         if (info.fieldDecls.size() == 1 && info.bases.empty() && designators.empty() && args.size() > 1)
@@ -4469,21 +4583,60 @@ namespace
       t = types.unqualified(t);
       LambdaExpr* l = lambdaOf(t);
       ClosureInfo info = closureFor(t, at);
-      if (!info.captured.empty() || (l && !l->templateParams.empty()))
-        unsupported(at, "a lambda with captures (or a generic one) used as a pointer to function");
+      if (!info.captured.empty())
+        unsupported(at, "a lambda with captures used as a pointer to function");
+      // The operator the pointer calls: the lambda's, or for a generic one (`[](const auto&
+      // parameters, MapDeserialiser& input) -> ElemType*` as InstanceLoader's LoadFunction) the
+      // instance whose parameters the pointer's give, each `auto` the pointer's type there.
+      const Ty* callTy = types.function(t->inner ? t->inner : types.voidType(), t->args, false);
+      std::string functionName = info.functionName;
+      std::string suffix;
+      if (l && !l->templateParams.empty())
+      {
+        if (fnTy->args.size() != t->args.size())
+          unsupported(at, "a lambda used as a pointer to a function of another signature");
+        TemplateArgs own;
+        for (Decl* p : l->templateParams)
+        {
+          const Ty* found = nullptr;
+          for (size_t i = 0; i < t->args.size() && !found; ++i)
+            if (const Ty* pt = types.unqualified(types.stripRef(t->args[i])); pt->kind == TyKind::Param && pt->decl == p)
+              found = types.unqualified(types.stripRef(fnTy->args[i]));
+          if (!found)
+            unsupported(at, "a generic lambda used as a pointer to function, its parameters not deduced from the pointer's");
+          own.pairs.push_back({p, found});
+        }
+        TemplateArgs instanceArgs;
+        LambdaExpr* genericBody = nullptr;
+        callTy = global.lambdaInstance(t, own, &instanceArgs, &genericBody);
+        if (!callTy || !genericBody)
+          unsupported(at, "a generic lambda whose body could not be typed for the pointer's parameters");
+        std::string params;
+        for (size_t i = 0; i < callTy->args.size(); ++i)
+          params += (i ? ", " : "") + irString(callTy->args[i]);
+        functionName = "@\"" + irString(t) + "::operator()(" + params + ")\"";
+        suffix = "(" + params + ")";
+        bool firstUse;
+        {
+          auto lock = sharedLock();
+          firstUse = lambdaInstances.insert(functionName).second;
+        }
+        if (firstUse)
+          emitLambda(genericBody, t, callTy, functionName, &instanceArgs);
+      }
       const Ty* ret = fnTy->inner;
-      const Ty* lambdaRet = t->inner ? t->inner : types.voidType();
-      if (types.unqualified(types.stripRef(ret)) != types.unqualified(types.stripRef(lambdaRet)) || fnTy->args.size() != t->args.size())
+      const Ty* lambdaRet = callTy->inner ? callTy->inner : types.voidType();
+      if (types.unqualified(types.stripRef(ret)) != types.unqualified(types.stripRef(lambdaRet)) || fnTy->args.size() != callTy->args.size())
         unsupported(at, "a lambda used as a pointer to a function of another signature");
       for (size_t i = 0; i < fnTy->args.size(); ++i)
       {
         const Ty* pt = fnTy->args[i];
-        if (types.unqualified(types.stripRef(pt)) != types.unqualified(types.stripRef(t->args[i])))
+        if (types.unqualified(types.stripRef(pt)) != types.unqualified(types.stripRef(callTy->args[i])))
           unsupported(at, "a lambda used as a pointer to a function of another signature");
         if (isClass(pt) && needsDestruction(pt, at))
           unsupported(at, "a lambda used as a pointer to function taking an object with a destructor by value");
       }
-      std::string name = "@\"" + irString(t) + "::thunk\"";
+      std::string name = "@\"" + irString(t) + "::thunk" + suffix + "\"";
       {
         auto lock = sharedLock();
         if (!lambdaInstances.insert(name).second)
@@ -4506,9 +4659,9 @@ namespace
       }
       std::string text = "define " + retType + " " + name + "(" + params + ") {\nentry:\n";
       if (hasSret || ret->kind == TyKind::Void)
-        text += "  call void " + info.functionName + "(" + args + ")\n  ret void\n";
+        text += "  call void " + functionName + "(" + args + ")\n  ret void\n";
       else
-        text += "  %r = call " + retType + " " + info.functionName + "(" + args + ")\n  ret " + retType + " %r\n";
+        text += "  %r = call " + retType + " " + functionName + "(" + args + ")\n  ret " + retType + " %r\n";
       text += "}\n\n";
       addDefinition(name, text);
       countFunction();
@@ -5779,6 +5932,25 @@ namespace
           const Ty* ret = types.unqualified(types.stripRef(ft->inner));
           a = convert(a, ret, at);
         }
+      }
+      if (isAggregate(a.ty) && !pt && isClass(a.ty))
+      {
+        // A class through C's `...` with no conversion to a scalar, as MSVC passes one: a copy, of 1,
+        // 2, 4 or 8 bytes as an integer of its size, of any other size by its address
+        // (PlatformBackdropCloud's `ssprintf("\"%s\" is unknown ...", input)` with a StringView:
+        // a wrong argument on the game's error path, which MSVC compiles).
+        std::string copy = newObjectSlot(a.ty, at);
+        copyConstruct(copy, a.text, a.ty, at);
+        if (needsDestruction(a.ty, at))
+          statementTemps.push_back({copy, a.ty});
+        uint64_t size = sizeOf(a.ty, at);
+        if (size == 1 || size == 2 || size == 4 || size == 8)
+        {
+          std::string bits = newTemp(), ty = "i" + std::to_string(size * 8);
+          fn += "  " + bits + " = load " + ty + ", ptr " + copy + "\n";
+          return ty + " " + bits;
+        }
+        return "ptr " + copy;
       }
       if (isAggregate(a.ty))
         unsupported(at, "passing a class (" + types.toString(a.ty, &symbols) + ") where a scalar is expected");
@@ -7362,7 +7534,10 @@ namespace
     // ctorsText); destructors at exit do not run yet.
     // init: the global's initializer (for a static member of a class template, its instantiation's
     // copy), or null.
-    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at)
+    // perThread: a thread_local global, built by each thread at its first use, not at startup: the
+    // function checks a thread_local guard, and globalFor calls it before every use (C++'s
+    // thread_local wrapper). Destroyed at no thread's exit yet.
+    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at, bool perThread = false)
     {
       FunctionState saved = saveState();
       std::string savedOverride = funcletOverride;
@@ -7379,7 +7554,8 @@ namespace
       struct InitializerRestore { Decl*& d; Decl* saved; ~InitializerRestore() { d = saved; } } initializerRestore{initializerOf, initializerOf};
       initializerOf = def;
       emittingShared = false;
-      std::string fnName = "@\"kpp.init." + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
+      std::string fnName = std::string(perThread ? "@\"kpp.tlsinit." : "@\"kpp.init.") + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
+      std::string guard = name.substr(0, name.size() - 1) + ".tlsguard\"";
       // In the module its name hashes to, whoever uses the global first (the same in every run),
       // and its errors are its own, not of the function that happened to use it first.
       struct ModuleRestore { unsigned& m; unsigned saved; ~ModuleRestore() { m = saved; } } moduleRestore{currentModule, currentModule};
@@ -7395,6 +7571,16 @@ namespace
       currentRequestedBy.clear();
       try
       {
+        if (perThread)
+        {
+          {
+            auto lock = sharedLock();
+            if (declaredNames.claim(guard))
+              decls += "$" + guard.substr(1) + " = comdat any\n" + guard + " = linkonce_odr thread_local global i1 false, comdat\n";
+          }
+          fn += "  %tls.built = load i1, ptr " + guard + "\n  br i1 %tls.built, label %tls.done, label %tls.build\ntls.build:\n";
+          fn += "  store i1 true, ptr " + guard + "\n";
+        }
         pushScope();
         if (t->isReference() && init)
         {
@@ -7410,10 +7596,15 @@ namespace
           constructArray(name, t, at); // `static Style styles[3];`
         destroyTemps();
         popScope();
+        if (perThread)
+          fn += "  br label %tls.done\ntls.done:\n";
         fn += "  ret void\n";
         addDefinition(fnName, functionText("define void " + fnName + "() {\nentry:\n"));
         auto lock = sharedLock();
-        startups.push_back({def->file ? def->file->index : 0, def->token, fnName});
+        if (perThread)
+          threadLocalInits[name] = fnName;
+        else
+          startups.push_back({def->file ? def->file->index : 0, def->token, fnName});
       }
       catch (Unsupported&)
       {
@@ -7851,7 +8042,10 @@ namespace
       if (!classTy && (v->flags & DF_Extern))
         v = variableDefinition(v); // `extern T x;` names the variable its namespace defines, if it does
       if (auto mine = globalCache.find({v, classTy}); mine != globalCache.end())
+      {
+        buildThreadLocal(mine->second);
         return mine->second;
+      }
       std::string name;
       {
         auto lock = sharedLock(); // a global is defined (and its startup function emitted) once
@@ -7874,7 +8068,22 @@ namespace
         }
       }
       globalCache.emplace(std::pair<Decl*, const Ty*>{v, classTy}, name);
+      buildThreadLocal(name);
       return name;
+    }
+
+    // A thread_local global built per thread: its function, called before the use being emitted
+    // (it returns at once once this thread has built it).
+    void buildThreadLocal(const std::string& name)
+    {
+      std::string init;
+      {
+        auto lock = sharedLock();
+        if (auto it = threadLocalInits.find(name); it != threadLocalInits.end())
+          init = it->second;
+      }
+      if (!init.empty() && !currentFunctionName.empty() && currentFunctionName != init)
+        fn += "  call void " + init + "()\n";
     }
 
     std::string globalForOnce(VariableDecl* v, Node* at, const Ty* classTy)
@@ -7947,10 +8156,15 @@ namespace
       Expr* value = classTy ? global.instanceInitializer(def, classArgs) : def->init;
       ParsedFile* saved = currentFile;
       currentFile = def->file;
+      // `thread_local IntrusiveList<CrashHookBase> CrashHooks::hooks;`: one per thread (TLS), built by
+      // each thread at its first use (emitGlobalConstructor's perThread).
+      bool threadLocal = ((v->flags | def->flags) & DF_ThreadLocal) != 0;
       if (t->isReference())
       {
         // `static const Style& defaultWidgetStyle = getStyleStatic();`: a pointer, bound at startup.
         currentFile = saved;
+        if (threadLocal)
+          unsupported(at, "a thread_local reference");
         decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr global ptr null, comdat\n";
         if (value)
           emitGlobalConstructor(v, name, t, value, at);
@@ -7989,10 +8203,11 @@ namespace
       // shared text is sorted, and the definition (an `@` line) has to come after the struct types
       // (`%` lines) a constant initializer names; the comdat line (`$`) would sort first.
       decls += "$" + name.substr(1) + " = comdat any\n";
-      decls += name + " = linkonce_odr " + (t->isConst && !constructed && !hasMutableMember(st, at) ? "constant " : "global ") +
-               llType(st, at) + " " + init + ", comdat" + alignSuffix(st, variableAlignment(def, def, at), at) + "\n";
+      decls += name + " = linkonce_odr " + (threadLocal ? "thread_local " : "") +
+               (t->isConst && !constructed && !hasMutableMember(st, at) ? "constant " : "global ") + llType(st, at) + " " + init + ", comdat" +
+               alignSuffix(st, variableAlignment(def, def, at), at) + "\n";
       if (constructed)
-        emitGlobalConstructor(v, name, st, value, at);
+        emitGlobalConstructor(v, name, st, value, at, threadLocal);
       return name;
     }
 
@@ -12034,6 +12249,8 @@ namespace
 
     // `static T x = ...;` inside a function: a global of the program (in the module of the function),
     // constructed on the first pass through the declaration, never destroyed. Not thread-safe yet.
+    // `thread_local T x;` (static or not): one per thread, the guard too, so each thread builds its
+    // own on its first pass (destroyed at no thread's exit yet).
     void staticLocal(VariableDecl* v, const Ty* t)
     {
       if (t->isReference())
@@ -12046,8 +12263,9 @@ namespace
       // Numbered by where the variable is written (its token): the same name in every run.
       std::string name = "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(v->token) + "\"";
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
-      moduleDecls[currentModule] += name + " = internal global " + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n";
-      moduleDecls[currentModule] += guard + " = internal global i1 false\n";
+      std::string storage = (v->flags & DF_ThreadLocal) ? " = internal thread_local global " : " = internal global ";
+      moduleDecls[currentModule] += name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n";
+      moduleDecls[currentModule] += guard + storage + "i1 false\n";
       {
         auto lock = sharedLock();
         globals[v] = name;
@@ -12100,7 +12318,8 @@ namespace
         if (a->count == 0)
           fail(v, "error: the local " + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) +
                       " is an array whose length is no constant the compiler could evaluate");
-      if ((v->flags & DF_Static) && !(v->flags & DF_Typedef))
+      // (`thread_local SignalsVector signals;` is static too: the function returns a reference to it.)
+      if ((v->flags & (DF_Static | DF_ThreadLocal)) && !(v->flags & DF_Typedef))
       {
         staticLocal(v, t);
         return;
@@ -13712,7 +13931,105 @@ namespace
         FunctionDecl* declaration = global.declarationOf(def);
         if (declaration && (def->flags & DF_Default) && !def->body && !(declaration->flags & DF_Default))
           declaration->flags |= DF_Default;
+        // `template<> void LuaDefines::setKey<const String&>(lua_State*, ...) {...}`: an explicit
+        // specialisation of a member function template is static when the template is (`static` is
+        // written in the class only, and the declaration lookup matches no template). Without it the
+        // definition took a `this` its callers never pass, and read every argument one off.
+        if (!declaration && def->isTemplate && def->templateParams.empty() && !(def->flags & DF_Static))
+          if (Decl* owner = global.owningClass(def); owner && owner->kind == NodeKind::ClassDecl)
+            if (ClassDecl* cls = classDef(owner, def))
+            {
+              const NamePart& name = def->name.last();
+              bool anyTemplate = false, allStatic = true;
+              for (Decl* m : cls->members)
+                if (m->kind == NodeKind::FunctionDecl && !m->templateParams.empty() && !static_cast<FunctionDecl*>(m)->name.empty())
+                  if (const NamePart& mn = static_cast<FunctionDecl*>(m)->name.last(); mn.symbol == name.symbol && mn.special == name.special &&
+                                                                                       mn.opToken == name.opToken)
+                  {
+                    anyTemplate = true;
+                    allStatic = allStatic && (m->flags & DF_Static);
+                  }
+              if (anyTemplate && allStatic)
+                def->flags |= DF_Static;
+            }
       }
+    }
+
+    // The program's globals that C++ builds at startup whether anything reads them or not: a static
+    // member whose initializer registers something (`bool FontBank::loaderRegistered =
+    // PrototypeLoader::registerPlainLoader(...)`, read by nobody: the game's prototype loaders were
+    // never registered). Variables of namespaces and static data members of classes that are no
+    // templates, with an initializer that is no literal, or of a class type without one; for an
+    // out-of-line definition, the declaration in the class (the one uses name).
+    void collectStartupGlobals(Span<Decl*> decls, std::vector<VariableDecl*>& out)
+    {
+      for (Decl* d : decls)
+      {
+        if (d->kind == NodeKind::NamespaceDecl)
+          collectStartupGlobals(static_cast<NamespaceDecl*>(d)->decls, out);
+        else if (d->kind == NodeKind::ClassDecl)
+        {
+          auto* c = static_cast<ClassDecl*>(d);
+          if (!c->templateParams.empty() || !c->isDefinition || c->isClosure || global.isTemplateContext(c))
+            continue;
+          for (Decl* m : c->members)
+          {
+            // `static inline T x = ...;` in the class, or `static bool registered;` defined outside
+            // (`bool FontBank::loaderRegistered = ...;`, whose initializer considerStartupGlobal reads).
+            if (m->kind == NodeKind::VariableDecl && (m->flags & DF_Static))
+              considerStartupGlobal(static_cast<VariableDecl*>(m), out);
+            else if (m->kind == NodeKind::ClassDecl)
+              collectStartupGlobals(Span<Decl*>{&m, 1}, out); // a nested class
+          }
+        }
+        else if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->name.parts.size() == 1)
+          considerStartupGlobal(static_cast<VariableDecl*>(d), out); // (an out-of-line static member: through its class)
+      }
+    }
+
+    void considerStartupGlobal(VariableDecl* v, std::vector<VariableDecl*>& out)
+    {
+      VariableDecl* def = variableDefinition(v);
+      if ((v->flags & (DF_Typedef | DF_Constexpr | DF_ThreadLocal)) || (def->flags & (DF_Constexpr | DF_ThreadLocal)) || v->isTemplate ||
+          !v->structuredBindings.empty() || (v->file && v->file->isImported) || global.isTemplateContext(v))
+        return;
+      if ((v->flags & DF_Extern) && !def->init && def == v)
+        return; // a C library's variable
+      if (def->init)
+      {
+        if (def->init->kind == NodeKind::LiteralExpr)
+          return; // a constant: built by nobody
+      }
+      else
+      {
+        const Ty* t = global.typeOfDecl(v);
+        const Ty* element = t;
+        while (element && element->kind == TyKind::Array)
+          element = element->inner;
+        if (!element || !isClass(element))
+          return; // zero
+      }
+      out.push_back(v);
+    }
+
+    // A global collectStartupGlobals found: defined, and its startup function registered, as if a
+    // function had read it. Its errors are its own (globalFor reports them).
+    void emitStartupGlobal(VariableDecl* v)
+    {
+      auto it = fileModule.find(v->file);
+      currentModule = it == fileModule.end() ? 0 : it->second;
+      currentFunctionName = "@\"kpp.init." + qualifiedName(v) + "\"";
+      currentRequestedBy.clear();
+      currentFile = v->file; // its errors point at its declaration
+      try
+      {
+        globalFor(v, v);
+      }
+      catch (Unsupported&)
+      {
+      }
+      currentFunctionName.clear();
+      currentFile = nullptr;
     }
 
     void collectFunctions(Span<Decl*> decls, std::vector<FunctionDecl*>& out)
@@ -13939,11 +14256,18 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     emitters.push_back(std::make_unique<Emitter>(global, symbols, sh));
   Emitter& e = *emitters[0];
   std::vector<FunctionDecl*> functions;
+  std::vector<VariableDecl*> startupGlobals;
   for (auto& file : files)
   {
     e.settleDefinitionFlags(file->decls);
     e.collectFunctions(file->decls, functions);
+    if (!file->isImported)
+      e.collectStartupGlobals(file->decls, startupGlobals);
   }
+  // Every global built at startup is defined and built, read or not (C++ initialises them all);
+  // what their initializers ask for joins the first level's requests.
+  for (VariableDecl* v : startupGlobals)
+    e.emitStartupGlobal(v);
   // Level 0: the functions the program writes. Each later level: the instantiations the previous
   // one asked for. The functions of a level are emitted on all threads at once.
   std::vector<Instantiation> level;

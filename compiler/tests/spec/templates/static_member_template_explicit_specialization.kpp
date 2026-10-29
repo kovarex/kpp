@@ -1,0 +1,26 @@
+// spec: an explicit specialization of a static member function template, defined outside the class (`template<> void Defines::setKey<const String&>(...)`), is static like the template: called with the arguments as written, no object
+// factorio: LuaDefines::setKey<const String&>, which pushRelativeGuiTypes calls for each GUI type name: the definition took a `this` its callers never pass, read the lua_State one argument off, and Lua aborted with "invalid index" in --dump-data (silent until then)
+class Defines
+{
+public:
+  template<typename T>
+  static void setKey(int* stack, const char* key, T value);
+};
+template<typename T>
+void Defines::setKey(int* stack, const char* key, T value)
+{
+  println("{} {} {}", *stack, key, int(value));
+}
+template<>
+void Defines::setKey<const String&>(int* stack, const char* key, const String& value)
+{
+  println("{} {} {}", *stack, key, value);
+}
+int main()
+{
+  int depth = 2;
+  String name = "spidertron";
+  Defines::setKey(&depth, "count", 7);
+  Defines::setKey<const String&>(&depth, "name", name);
+  return 0;
+}

@@ -24,7 +24,12 @@ This file records decisions that have been made. When a decision changes, update
   Globals built at startup are built in definition order within a file (a global's
   initializer may read, directly or through functions, the globals defined before it in its
   file); files go in the driver's order, the library first, and a program must not depend on
-  that order across files (as C++ across translation units).
+  that order across files (as C++ across translation units). Every one is built, whether
+  anything reads it or not (an initializer that registers something, as C++ runs it): globals
+  of namespaces and static data members of classes that are no templates; a static member of
+  a class template is built when an instance of it is used. A `thread_local` (a global, a
+  static member or a local) is one object per thread, built by each thread at its first use
+  (a local at its first pass), not at startup; none is destroyed at a thread's exit yet.
 - **One multithreaded compiler process** sharing one symbol table, instead of independent
   per-file processes:
   1. Index: parse all files in parallel, build the global symbol tree, record unresolved

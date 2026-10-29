@@ -1,6 +1,5 @@
 // spec: an empty brace list for a class with a default constructor value-initializes it (C++'s list-initialization rule for `{}`), also when the class has an InitializerList constructor: `Vector<Reference> references = {}` as a default argument and `Cache dummy({}, {})` for const Vector& parameters make empty vectors without the InitializerList constructor, which copies, so move-only elements are fine
 // factorio: CommandProcessor's `std::vector<SavedSpecialItemReference> specialItemsInMessage = {}` (a default argument) and LightningGenerator's dummy constructor, `priorityCache({}, {})` for LightningPriorityCache(const std::vector<LightningPriorityRule>&, const std::vector<LightningRuleBase>&): both element types delete their copy constructors
-// pending: the InitializerList constructor is chosen and instantiated ("constructing Reference with a deleted constructor (copying a move-only object?)" in Vector<Reference>::push_back, requested by Vector(InitializerList<Reference>)); owner: the resolver (list-initialization)
 struct Reference
 {
   explicit Reference(int id) : id(id) {}

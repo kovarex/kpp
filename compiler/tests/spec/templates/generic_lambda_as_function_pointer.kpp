@@ -1,0 +1,38 @@
+// spec: a captureless generic lambda converts to a pointer to function, its `auto` parameters deduced from the pointer's (`[](const auto& parameters, int input) -> Base* {...}` as a `Base*(*)(const Params&, int)`); and the expansion of an empty pack among an aggregate's values is no value (`Item{load, flag, forward<Args>(args)...}` with Args empty)
+// factorio: InstanceLoader::registerLoader<InstanceType>, which every prototype loader's registration calls at startup: "a lambda with captures (or a generic one) used as a pointer to function" (191 of them once every startup global was built) and "more values than InstanceLoaderItem has fields" (6)
+struct Params
+{
+  int scale = 3;
+};
+class Base
+{
+public:
+  virtual ~Base() {}
+  virtual int value() const = 0;
+};
+class Thing : public Base
+{
+public:
+  Thing(const Params& p, int input) : v(p.scale * input) {}
+  int value() const override { return this->v; }
+  int v;
+};
+using LoadFunction = Base*(*)(const Params&, int);
+struct Item
+{
+  LoadFunction load;
+  bool flag;
+};
+template<class... Args>
+Item makeItem(LoadFunction load, bool flag, Args&&... args) { return Item{load, flag, forward<Args>(args)...}; }
+template<class T>
+Item registerLoader() { return makeItem([](const auto& parameters, int input) -> Base* { return new T(parameters, input); }, true); }
+int main()
+{
+  Item item = registerLoader<Thing>();
+  Params p;
+  Base* b = item.load(p, 5);
+  println("{} {}", b->value(), int(item.flag));
+  delete b;
+  return 0;
+}

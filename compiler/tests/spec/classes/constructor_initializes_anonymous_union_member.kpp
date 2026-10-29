@@ -1,0 +1,48 @@
+// spec: a constructor initializer naming a member of an anonymous union or struct initialises that member (`: longStr{nullptr, 0}` in a packed class or a plain one); an anonymous union nobody names takes its member with a default member initializer, or zeroes; members of an anonymous struct inside are named the same way
+// factorio: ImmutableStringTemplate's `ImmutableStringTemplate() : longStr{nullptr, 0}, flag(ImmutableStringFlag::Borrowed) {}`: the initializer was dropped without a word, so a default PropertyTree's key had a garbage pointer and length, and DataCheckers::checkModString crashed reading it (`--dump-data`, after "Loading mod core")
+struct LongStr
+{
+  char* ptr;
+  uint32_t len;
+};
+class [[packed]] Small
+{
+public:
+  explicit Small() : longStr{nullptr, 0}, flag(4) {}
+  union [[packed]]
+  {
+    LongStr longStr;
+    char shortStr[16];
+  };
+  uint8_t flag;
+};
+class Plain
+{
+public:
+  Plain() : flag(4) {}
+  explicit Plain(uint32_t a, uint32_t b) : low(a), high(b), flag(2) {}
+  union
+  {
+    uint64_t raw = 7;
+    struct
+    {
+      uint32_t low;
+      uint32_t high;
+    };
+  };
+  uint8_t flag;
+};
+int main()
+{
+  char buffer[64];
+  memset(buffer, 0xAB, sizeof(buffer));
+  Small* s = new (buffer) Small();
+  println("{} {} {}", s->longStr.ptr == nullptr ? 1 : 0, s->longStr.len, int(s->flag));
+  memset(buffer, 0xAB, sizeof(buffer));
+  Plain* p = new (buffer) Plain();
+  println("{} {}", p->raw, int(p->flag));
+  memset(buffer, 0xAB, sizeof(buffer));
+  Plain* q = new (buffer) Plain(3, 5);
+  println("{} {} {}", q->low, q->high, int(q->flag));
+  return 0;
+}

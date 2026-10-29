@@ -1,0 +1,32 @@
+// spec: a thread_local global, of a namespace or a static member, with a constructor or a constant initializer, is one object per thread, built at the thread's first use (C++: before its first use in the thread), not at startup
+// factorio: PropertyTree::numberConversionString, CrashHooks::hooks and AssertRenderThread's guardInstanceCount were one object shared by every thread (and built on the main thread only)
+struct Counter
+{
+  int value;
+  Counter() : value(100) {}
+};
+thread_local Counter counter;
+class Holder
+{
+public:
+  thread_local static Counter shared;
+  thread_local static inline int plain = 7;
+};
+thread_local Counter Holder::shared;
+int bump()
+{
+  counter.value += 1;
+  Holder::shared.value += 10;
+  Holder::plain += 1;
+  return counter.value + Holder::shared.value + Holder::plain;
+}
+int main()
+{
+  bump();
+  int mine = bump();
+  int other = 0;
+  Thread worker([&]() { other = bump(); });
+  worker.join();
+  println("{} {} {}", mine, other, bump());
+  return 0;
+}

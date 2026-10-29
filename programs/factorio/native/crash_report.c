@@ -1,11 +1,13 @@
 /* Bring-up only: run.cmd links it in (/INCLUDE:kpp_crash_report_install), link.cmd does not. An
-   unhandled exception prints its code, address and the stack, named from the PDB the link writes,
-   on stderr, and the process ends with the exception's code. The game's own crash handler hung in
-   the converted game (2026-10-29: "Generating symbolized stacktrace, please wait ..." forever), so
-   run.cmd turns it off with --no-crash-handler, which leaves this filter in place. */
+   unhandled exception, and abort() (a failed assertion, a stub of --stub-missing, the game's own
+   aborts), print the stack, named from the PDB the link writes, on stderr, and end the process.
+   The game's own crash handler hung in the converted game (2026-10-29: "Generating symbolized
+   stacktrace, please wait ..." forever), so run.cmd turns it off with --no-crash-handler, which
+   leaves these handlers in place. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dbghelp.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -38,19 +40,9 @@ static void frame(HANDLE process, DWORD64 address, int index)
   say(text);
 }
 
-static LONG WINAPI report(EXCEPTION_POINTERS* e)
+/* The stack from context, one frame per line, then the process ends with code. */
+static void walk(CONTEXT context, DWORD code)
 {
-  EXCEPTION_RECORD* r = e->ExceptionRecord;
-  char text[256];
-  snprintf(text, sizeof text, "kpp crash report: exception 0x%08lx at %p", r->ExceptionCode, r->ExceptionAddress);
-  say(text);
-  if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
-  {
-    const char* what = r->ExceptionInformation[0] == 0 ? "reading" : r->ExceptionInformation[0] == 1 ? "writing" : "executing";
-    snprintf(text, sizeof text, " (%s 0x%llx)", what, (unsigned long long)r->ExceptionInformation[1]);
-    say(text);
-  }
-  say("\n");
   HANDLE process = GetCurrentProcess();
   char directory[MAX_PATH];
   GetModuleFileNameA(NULL, directory, MAX_PATH);
@@ -59,7 +51,6 @@ static LONG WINAPI report(EXCEPTION_POINTERS* e)
     *slash = 0;
   SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_FAIL_CRITICAL_ERRORS);
   SymInitialize(process, directory, TRUE); /* the executable's directory: no symbol server */
-  CONTEXT context = *e->ContextRecord;
   for (int i = 0; i < 48 && context.Rip; ++i)
   {
     frame(process, context.Rip, i);
@@ -76,13 +67,44 @@ static LONG WINAPI report(EXCEPTION_POINTERS* e)
     DWORD64 establisher = 0;
     RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, context.Rip, function, &context, &handlerData, &establisher, NULL);
   }
-  TerminateProcess(process, r->ExceptionCode);
+  TerminateProcess(process, code);
+}
+
+static LONG WINAPI report(EXCEPTION_POINTERS* e)
+{
+  EXCEPTION_RECORD* r = e->ExceptionRecord;
+  char text[256];
+  snprintf(text, sizeof text, "kpp crash report: exception 0x%08lx at %p", r->ExceptionCode, r->ExceptionAddress);
+  say(text);
+  if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
+  {
+    const char* what = r->ExceptionInformation[0] == 0 ? "reading" : r->ExceptionInformation[0] == 1 ? "writing" : "executing";
+    snprintf(text, sizeof text, " (%s 0x%llx)", what, (unsigned long long)r->ExceptionInformation[1]);
+    say(text);
+  }
+  say("\n");
+  const CONTEXT* c = e->ContextRecord;
+  snprintf(text, sizeof text, "  rax %llx rbx %llx rcx %llx rdx %llx rsi %llx rdi %llx\n", c->Rax, c->Rbx, c->Rcx, c->Rdx, c->Rsi, c->Rdi);
+  say(text);
+  snprintf(text, sizeof text, "  r8 %llx r9 %llx r10 %llx r11 %llx rsp %llx rbp %llx\n", c->R8, c->R9, c->R10, c->R11, c->Rsp, c->Rbp);
+  say(text);
+  walk(*e->ContextRecord, r->ExceptionCode);
   return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static void aborted(int signal)
+{
+  (void)signal;
+  say("kpp crash report: abort() (a failed assertion, a stub, or the game's own abort):\n");
+  CONTEXT context;
+  RtlCaptureContext(&context);
+  walk(context, 3);
 }
 
 static void install(void)
 {
   SetUnhandledExceptionFilter(report);
+  signal(SIGABRT, aborted);
 }
 
 #pragma section(".CRT$XCU", read)

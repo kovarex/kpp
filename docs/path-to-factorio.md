@@ -1021,8 +1021,49 @@ UniqueArray one pointer).
    PrototypesHistoryTemplate's const lookup `operator[](StringView) const`, which aborts with "No
    history for the given key: font", instead of the inserting `T& operator[](const String&)` that
    C++ chooses for the non-const object (the arguments rank the same, the implicit object parameter
-   decides; language/non_const_member_overload_for_non_const_object, pending, for the resolver).
-   The next stop of `--dump-data`.
+   decides; language/non_const_member_overload_for_non_const_object; fixed by the templates
+   thread's fa49d08).
+10. Then the mod manager starts (its FeatureFlag lines are the C++ build's, word for word), and Lua
+    aborted with "invalid index" in `LuaDefines::setKey<const String&>`: an explicit
+    specialization of a static member function template, defined outside the class, was compiled
+    with a `this` its callers never pass, so it read every argument one off (it is static now,
+    like its template; templates/static_member_template_explicit_specialization). The crash
+    report also catches abort() now (failed assertions, stubs, Lua's API checks) and prints the
+    registers.
+11. Then "Loading mod core 0.0.0 (data.lua)", and a crash in DataCheckers::checkModString reading
+    a PropertyTree key: a constructor initializer naming a member of an anonymous union,
+    ImmutableStringTemplate's `: longStr{nullptr, 0}`, was dropped without a word, and anonymous
+    members were never initialised at all (classes/constructor_initializes_anonymous_union_member).
+    Also: empty braces value-initialise a class with a default constructor instead of choosing its
+    InitializerList constructor (`Vector<SavedSpecialItemReference> ... = {}` of a move-only
+    class; language/empty_braces_value_initialise).
+12. Then the data stage of every mod runs, core, base, elevated-rails, recycler, quality and
+    space-age, at about the C++ build's pace (base's data.lua 1.3 s, space-age's 3.3 s), and
+    base's data-updates.lua stops: `defines.prototypes.item` is nil. The game registers its
+    prototype loaders from static members nothing reads (`bool FontBank::loaderRegistered =
+    PrototypeLoader::registerPlainLoader(...)`), and the code generator defined a global only when
+    some function used it. Every global built at startup is built now, read or not (design.md
+    section 2; language/unused_globals_built_at_startup). Building them all reached initializers no
+    function had used: InstanceLoader::registerLoader converts a captureless generic lambda to a
+    function pointer (its `auto` parameters from the pointer's; templates/generic_lambda_as_function_pointer)
+    and expands an empty pack among an aggregate's values.
+13. **The data stage completes, and its checksums are the C++ build's**: core 1707682591, base
+    2202500136, elevated-rails 1071712039, recycler 1024036986, quality 2731133133, space-age
+    1163425580, the same lines as C:\Factorio\factorio-current.log. Prototype loading starts and
+    stopped on CollisionMaskConnector's copy assertion: Map::emplace built a temporary pair and
+    copied it into the node (the converter thread's 598d189 builds it in the node).
+14. Then a crash in UtilityConstants' MathExpressions::Evaluator::verifyExpression:
+    `thread_local EvaluatorParameters cache;` in getVariablesCache, a thread_local local without
+    `static`, was an automatic local, and the reference the function returns dangled. It has thread
+    storage now, one object and one guard per thread (language/thread_local_locals). A thread_local
+    of a namespace or a class was one object shared by all threads, built on the main thread: it is
+    thread-local storage now, built by each thread at its first use through a function every use
+    calls first (C++'s thread_local wrapper; language/thread_local_globals). Neither is destroyed at
+    a thread's exit yet.
+15. Then the stub of PlatformBackdropCloud::parseCloudProjectionStyle, which passes a StringView to
+    ssprintf's `...` on its error path (a game bug MSVC compiles): a class through C's `...` is
+    passed as MSVC does, a copy, as an integer when it has 1, 2, 4 or 8 bytes, else by its address
+    (interop/c_class_through_varargs).
 
 ### dear imgui through a generated C interface (2026-10-29)
 
