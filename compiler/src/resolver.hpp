@@ -97,9 +97,12 @@ inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& 
   if (!e || e->kind != NodeKind::BraceInitExpr || !initializerList)
     return nullptr;
   auto* b = static_cast<const BraceInitExpr*>(e);
-  if (b->args.empty() || !b->args[0] || !b->args[0]->ty || !b->args[0]->ty->isKnown())
+  if (b->args.empty() || !b->args[0])
     return nullptr;
-  const Ty* first = b->args[0]->ty;
+  // (A nested list, `{{a, b}}`, is a brace list itself.)
+  const Ty* first = b->args[0]->kind == NodeKind::BraceInitExpr ? braceListType(b->args[0], initializerList, types) : b->args[0]->ty;
+  if (!first || !first->isKnown())
+    return nullptr;
   if (first->kind == TyKind::Pack)
   {
     if (first->args.empty() || !first->args[0] || !first->args[0]->isKnown())
@@ -109,7 +112,21 @@ inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& 
   bool lvalues = types.stripRef(first)->kind != TyKind::Array;
   for (const Expr* a : b->args)
     lvalues = lvalues && a && a->ty && a->ty->kind != TyKind::Pack && isLvalueExpression(a);
-  return types.braceList(initializerList, lvalues ? argumentType(b->args[0], first, types) : types.decay(first));
+  // Each element as an argument presents it; none when one is not known or is a pack's expansion.
+  std::vector<const Ty*> elements;
+  for (const Expr* a : b->args)
+  {
+    const Ty* t = a && a->kind == NodeKind::BraceInitExpr ? braceListType(a, initializerList, types)
+                  : a && a->ty && a->ty->isKnown() && a->ty->kind != TyKind::Pack ? argumentType(a, a->ty, types) : nullptr;
+    if (!t)
+    {
+      elements.clear();
+      break;
+    }
+    elements.push_back(t);
+  }
+  return types.braceList(initializerList, lvalues ? argumentType(b->args[0], first, types) : types.decay(first),
+                         Span<const Ty*>{elements.data(), uint32_t(elements.size())});
 }
 
 struct ResolveStats

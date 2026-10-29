@@ -88,8 +88,10 @@ public:
   const Ty* classType(Decl* decl, Span<const Ty*> args);
   // A brace list argument `{a, b}` as overload resolution sees it: InitializerList<element>, but
   // a type of its own, since it deduces only an InitializerList<P> parameter (C++: any other
-  // parameter is a non-deduced context) where an InitializerList object deduces any.
-  const Ty* braceList(Decl* initializerList, const Ty* element);
+  // parameter is a non-deduced context) where an InitializerList object deduces any. inner: a
+  // pack of each element's type (a class the list initializes takes them one by one), or null
+  // when one is not known.
+  const Ty* braceList(Decl* initializerList, const Ty* element, Span<const Ty*> elements = {});
   // args: for an enum declared in a class template, the enclosing instance's arguments
   // (`Flag<A>::Enum` is not `Flag<B>::Enum`); none otherwise.
   const Ty* enumType(Decl* decl, Span<const Ty*> args = {});

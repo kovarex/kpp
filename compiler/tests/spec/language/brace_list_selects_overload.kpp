@@ -1,0 +1,22 @@
+// spec: a brace list argument converts to a class it can list-initialize (a constructor taking its elements, an aggregate whose members take them, an InitializerList constructor taking each) and to nothing else, so it selects among overloads by its elements; never to a scalar from two elements; a `T&&` parameter takes the temporary over a `const T&`
+// factorio: Optional assignments from lists (ChartTagsInputState's `this->tagBeingCreated = {::move(text), icon};`): Optional's operator=(T&&) beside its implicit move assignment from another Optional
+struct Pos { int x, y; };
+struct Named
+{
+  Named(String name, int count) : name(move(name)), count(count) {}
+  String name;
+  int count;
+};
+static int pick(Pos) { return 1; }
+static int pick(Named) { return 2; }
+static int pick(Vector<String>) { return 3; }
+static int take(const Pos&) { return 4; }
+static int take(Pos&&) { return 5; }
+static int scalar(int value) { return value; }
+static int scalar(Named) { return -1; }
+int main()
+{
+  println("{} {} {} {}", pick({1, 2}), pick({String("a"), 2}), pick({"a", 2}), pick({String("a"), String("b"), String("c")}));
+  println("{} {}", take({3, 4}), scalar({"n", 1}));
+  return 0;
+}

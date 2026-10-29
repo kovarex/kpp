@@ -8789,6 +8789,108 @@ struct GlobalScope::Impl
 
   static constexpr int NotViable = 1000;
 
+  // Rank of list-initializing an object of type p from a brace list's elements (C++'s
+  // [over.ics.list]): a scalar from its one element (from none: value-initialized); a class from
+  // one element of its own type (or of a derived one), else by a constructor taking the elements
+  // (an InitializerList one taking each of them), else as an aggregate whose bases and data
+  // members take them in order, a user-defined conversion. 2 when the elements or the class are
+  // not known; an aggregate that brace elision may fill is not followed and taken as viable.
+  int listInitRank(const Ty* list, const Ty* p, int depth)
+  {
+    if (!list->inner || list->inner->kind != TyKind::Pack || depth > 4 || !p->isKnown() || types.isDependent(p))
+      return 2;
+    std::vector<const Ty*> elems(list->inner->args.begin(), list->inner->args.end());
+    for (const Ty* e : elems)
+      if (!e || !e->isKnown() || types.isDependent(e))
+        return 2;
+    if (p->kind != TyKind::Class)
+    {
+      if (elems.empty())
+        return 0;
+      return elems.size() == 1 ? conversionRank(elems[0], p, depth + 1) : NotViable;
+    }
+    if (elems.size() == 1)
+    {
+      const Ty* e = types.unqualified(types.stripRef(elems[0]));
+      if (e == p)
+        return 0;
+      if (e->kind == TyKind::Class && !e->isBraceList() && isBaseClass(p, e))
+        return 3;
+    }
+    ClassDecl* def = classDefinition(p);
+    if (!def || (def->attributes & ATTR_Draft) || def->isTypedUnion || isFunctionImpl(p) || isInitializerList(p))
+      return 2;
+    Subst s = substFor(p);
+    bool constructors = false;
+    for (Decl* m : def->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
+        continue;
+      constructors = true;
+      auto* f = static_cast<FunctionDecl*>(m);
+      if ((f->flags & DF_Delete) || f->params.empty())
+        continue;
+      // An InitializerList constructor takes the whole list; another, the elements as arguments.
+      const Ty* first = declaredTypeOf(f->params[0], &s, 0);
+      if (first && isInitializerList(types.unqualified(types.stripRef(first))) && takesArgumentCount(f, 1))
+      {
+        if (conversionRank(list, first, depth + 1) < NotViable)
+          return 4;
+        continue;
+      }
+      if (constructorTakes(f, elems, s, depth))
+        return 4;
+    }
+    if (constructors)
+      return NotViable;
+    // An aggregate: its bases, then its data members, each from the next element.
+    std::vector<const Ty*> members;
+    if (!directBases(p, def, members))
+      return 2;
+    for (Decl* m : def->members)
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
+        members.push_back(declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0));
+    auto elisionMayFill = [&](const Ty* member)
+    {
+      member = member ? types.unqualified(types.stripRef(member)) : nullptr;
+      return !member || !member->isKnown() || member->kind == TyKind::Array || (member->kind == TyKind::Class && !member->isBraceList());
+    };
+    for (size_t i = 0; i < elems.size(); ++i)
+    {
+      if (i >= members.size())
+        return std::any_of(members.begin(), members.end(), elisionMayFill) ? 4 : NotViable;
+      if (conversionRank(elems[i], members[i], depth + 1) >= NotViable && !elisionMayFill(members[i]))
+        return NotViable;
+    }
+    return 4;
+  }
+
+  // Whether constructor f (of a class whose arguments s binds) takes these arguments: their count,
+  // and each converts to its parameter (one not known, or not deduced, is taken as converting).
+  bool constructorTakes(FunctionDecl* f, const std::vector<const Ty*>& argTypes, const Subst& s, int depth)
+  {
+    if (!takesArgumentCount(f, argTypes.size()))
+      return false;
+    const Ty* ft = declaredTypeOf(f, s.pairs.empty() ? nullptr : &s, 0);
+    if (!f->templateParams.empty() && ft)
+    {
+      Subst d = s;
+      deduceCall(f, ft, argTypes, d);
+      ft = substitute(ft, d);
+    }
+    if (!ft || ft->kind != TyKind::Function)
+      return true;
+    for (size_t i = 0; i < argTypes.size() && i < ft->args.size(); ++i)
+    {
+      const Ty* pt = ft->args[i];
+      if (!pt || !pt->isKnown() || types.isDependent(pt) || pt->kind == TyKind::Pack)
+        continue;
+      if (conversionRank(argTypes[i], pt, depth + 1) >= NotViable)
+        return false;
+    }
+    return true;
+  }
+
   // Rank of converting an argument of type `arg` to a parameter of type `param`: 0 exact,
   // 1 qualification, 2 promotion, 3 standard conversion, 4 user-defined, NotViable.
   int conversionRank(const Ty* arg, const Ty* param, int depth = 0)
@@ -8802,23 +8904,39 @@ struct GlobalScope::Impl
     if (!arg->isReference() && arg->isConst && arg->kind != TyKind::Class && arg->kind != TyKind::Array)
       arg = types.unqualified(arg);
     const Ty* a = types.stripRef(arg);
-    if (a->isBraceList() && !isInitializerList(types.stripRef(param)) && param->kind == TyKind::LRef)
+    if (a->isBraceList() && !isInitializerList(types.stripRef(param)))
     {
-      // `take({1, makeUnique<int>(5)})`: the brace list makes a temporary, which a `T&&` binds
-      // better than a `const T&` (C++'s rvalue-reference rule) and a `T&` not at all.
-      return param->inner->isConst ? 3 : NotViable;
+      // `{a, b}` for anything but an InitializerList: the object it list-initializes, whose
+      // temporary binds a `T&&` better than a `const T&` (C++'s rvalue-reference rule) and a `T&`
+      // not at all (`take({1, makeUnique<int>(5)})`).
+      if (param->kind == TyKind::LRef && !param->inner->isConst)
+        return NotViable;
+      int r = listInitRank(a, types.unqualified(types.stripRef(param)), depth);
+      if (r >= NotViable)
+        return NotViable;
+      return param->kind == TyKind::LRef ? (r >= 4 ? 5 : std::max(r, 3)) : r;
     }
     if (isInitializerList(a) && !isInitializerList(types.stripRef(param)))
-      return 2; // a brace list: it converts to anything else through its elements, which the code generator checks
+      return 2; // an InitializerList object converts to anything else through its elements, which the code generator checks
     if (a->isBraceList())
     {
-      // `{"ab", text}` for an InitializerList<StringView>: as its elements convert (the first
-      // one's type stands for them all).
+      // `{"ab", text}` for an InitializerList<StringView>: as its elements convert, the worst of
+      // them (the first one's type stands for them all when they are not known).
       const Ty* p = types.unqualified(types.stripRef(param));
       if (p->args.empty() || a->args.empty())
         return 2;
-      int r = conversionRank(a->args[0], p->args[0], depth + 1);
-      return r >= NotViable ? NotViable : r;
+      if (!a->inner || a->inner->kind != TyKind::Pack)
+      {
+        int r = conversionRank(a->args[0], p->args[0], depth + 1);
+        return r >= NotViable ? NotViable : r;
+      }
+      int worst = 0;
+      for (const Ty* e : a->inner->args)
+        if (int r = conversionRank(e, p->args[0], depth + 1); r >= NotViable)
+          return NotViable;
+        else
+          worst = std::max(worst, r);
+      return worst;
     }
     if (param->isReference())
     {

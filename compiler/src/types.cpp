@@ -235,12 +235,13 @@ const Ty* TypeTable::classType(Decl* decl, Span<const Ty*> args)
   return intern(t);
 }
 
-const Ty* TypeTable::braceList(Decl* initializerList, const Ty* element)
+const Ty* TypeTable::braceList(Decl* initializerList, const Ty* element, Span<const Ty*> elements)
 {
   Ty t{TyKind::Class};
   t.decl = initializerList;
   t.args = Span<const Ty*>{&element, 1};
   t.count = 1;
+  t.inner = elements.empty() ? nullptr : pack(elements);
   return intern(t);
 }
 

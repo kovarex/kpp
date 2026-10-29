@@ -1708,7 +1708,8 @@ namespace
       ~ConstructingScope() { list.pop_back(); }
     };
 
-    void constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at)
+    // listElements: args are a brace list's elements (the list taken apart once already).
+    void constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at, bool listElements = false)
     {
       ClassDecl* c = classDef(t->decl, at);
       if (args.empty())
@@ -1726,7 +1727,9 @@ namespace
                                 types.toString(key, &symbols) + ": the constructor chosen needs the same conversion for its own parameter");
         guard.emplace(constructing, key, args[0]);
       }
-      if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
+      // (`return {{a, b}};` for an Optional<Pair<int, int>>: the inner list, one element of the
+      // outer one, is an argument of a constructor, not the class's own list again.)
+      if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !(listElements && hasUserConstructors(c)))
       {
         // `T x{y}` with y a T, or of a class derived from T: a copy or a move of y, before any
         // initializer-list constructor (C++ DR 1467): `[names{::move(names)}]` moves the Vector.
@@ -1750,7 +1753,7 @@ namespace
           return;
         }
         pendingDesignators = static_cast<BraceInitExpr*>(args[0])->designators;
-        constructInto(addr, t, static_cast<BraceInitExpr*>(args[0])->args, at);
+        constructInto(addr, t, static_cast<BraceInitExpr*>(args[0])->args, at, true);
         return;
       }
       Span<uint32_t> designators = pendingDesignators;
