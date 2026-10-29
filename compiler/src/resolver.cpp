@@ -1562,13 +1562,14 @@ struct GlobalScope::Impl
             bases.push_back(s);
       cls->baseScopes = std::move(bases);
       cls->baseState.store(2, std::memory_order_release);
+      cls->baseState.notify_all();
       return;
     }
     // Another thread is resolving; if it is us (a cycle through aliases), give up on bases.
     if (cls->baseResolver == std::this_thread::get_id())
       return;
-    while (cls->baseState.load(std::memory_order_acquire) != 2)
-      std::this_thread::yield();
+    for (int seen = cls->baseState.load(std::memory_order_acquire); seen != 2; seen = cls->baseState.load(std::memory_order_acquire))
+      cls->baseState.wait(seen, std::memory_order_acquire); // blocks (C++20 atomic wait) instead of spinning on yield
   }
 
   void ensureUsing(Scope* ns, int depth)
@@ -13091,6 +13092,7 @@ struct GlobalScope::Impl
       sub.activeSubst = &classSubst;
       ++impl.instBodies;
       inst->state.store(2, std::memory_order_release);
+      inst->state.notify_all();
     }
 
     // Checks every member function body of a class template for one instantiation, once.
@@ -13119,6 +13121,7 @@ struct GlobalScope::Impl
       });
       impl.instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
       inst->state.store(2, std::memory_order_release);
+      inst->state.notify_all();
     }
 
     // Checks a function template body for one set of deduced arguments, once. Returns the
@@ -13191,8 +13194,8 @@ struct GlobalScope::Impl
           if (inst->owner == std::this_thread::get_id())
             return nullptr; // Recursive auto function.
           ++impl.instWaits;
-          while (inst->state.load(std::memory_order_acquire) != 2)
-            std::this_thread::yield();
+          for (int seen = inst->state.load(std::memory_order_acquire); seen != 2; seen = inst->state.load(std::memory_order_acquire))
+            inst->state.wait(seen, std::memory_order_acquire); // blocks (C++20 atomic wait) instead of spinning on yield
         }
         return inst->deducedReturn;
       }
@@ -13219,6 +13222,7 @@ struct GlobalScope::Impl
       inst->deducedReturn = deduced ? impl.deducedShape(pattern, deduced) : nullptr;
       impl.instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
       inst->state.store(2, std::memory_order_release);
+      inst->state.notify_all();
       return inst->deducedReturn;
     }
 
@@ -16732,8 +16736,8 @@ struct GlobalScope::Impl
         if (inst->owner == std::this_thread::get_id())
           return nullptr; // the lambda calling itself through a capture
         ++instWaits;
-        while (inst->state.load(std::memory_order_acquire) != 2)
-          std::this_thread::yield();
+        for (int seen = inst->state.load(std::memory_order_acquire); seen != 2; seen = inst->state.load(std::memory_order_acquire))
+          inst->state.wait(seen, std::memory_order_acquire); // blocks (C++20 atomic wait) instead of spinning on yield
       }
       if (body)
         *body = inst->lambda;
@@ -16792,6 +16796,7 @@ struct GlobalScope::Impl
       callTy = types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, false);
     inst->deducedReturn = callTy;
     inst->state.store(2, std::memory_order_release);
+    inst->state.notify_all();
     if (body)
       *body = l;
     return callTy;
@@ -17869,8 +17874,8 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
     {
       if (record->owner == std::this_thread::get_id())
         return record->body ? record->body : f; // asked for again while being typed: what exists so far
-      while (record->state.load(std::memory_order_acquire) != 2)
-        std::this_thread::yield();
+      for (int seen = record->state.load(std::memory_order_acquire); seen != 2; seen = record->state.load(std::memory_order_acquire))
+        record->state.wait(seen, std::memory_order_acquire); // blocks (C++20 atomic wait) instead of spinning on yield
     }
     return record->body ? record->body : f;
   }
@@ -17880,6 +17885,7 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
   record->body = copy;
   record->deducedReturn = typeFunctionFor(f, copy, args, objectType);
   record->state.store(2, std::memory_order_release);
+  record->state.notify_all();
   return copy;
 }
 
@@ -17918,8 +17924,8 @@ Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args
   if (!producer)
   {
     if (record->state.load(std::memory_order_acquire) != 2 && record->owner != std::this_thread::get_id())
-      while (record->state.load(std::memory_order_acquire) != 2)
-        std::this_thread::yield();
+      for (int seen = record->state.load(std::memory_order_acquire); seen != 2; seen = record->state.load(std::memory_order_acquire))
+        record->state.wait(seen, std::memory_order_acquire); // blocks (C++20 atomic wait) instead of spinning on yield
     return record->init ? record->init : v->init; // (on the producing thread while it types: the copy so far)
   }
   InstanceCopier copier(impl.instanceArena());
@@ -17938,6 +17944,7 @@ Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args
     w.thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
   w.walkExpr(copy);
   record->state.store(2, std::memory_order_release);
+  record->state.notify_all();
   return copy;
 }
 
