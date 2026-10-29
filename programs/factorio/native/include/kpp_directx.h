@@ -111,6 +111,46 @@
 #include <d3d9.h>
 #include <d3dcompiler.h>
 #include <wincodec.h>
+// What the guard of IUnknown also holds (Unknwn.h).
+typedef IUnknown *LPUNKNOWN;
+// What the guard of IStream also holds (ObjIdl.h).
+typedef __RPC_unique_pointer IStream *LPSTREAM;
+typedef struct tagSTATSTG
+{
+LPOLESTR pwcsName;
+DWORD type;
+ULARGE_INTEGER cbSize;
+FILETIME mtime;
+FILETIME ctime;
+FILETIME atime;
+DWORD grfMode;
+DWORD grfLocksSupported;
+CLSID clsid;
+DWORD grfStateBits;
+DWORD reserved;
+} STATSTG;
+typedef
+enum tagSTGTY
+{
+STGTY_STORAGE = 1,
+STGTY_STREAM = 2,
+STGTY_LOCKBYTES = 3,
+STGTY_PROPERTY = 4
+} STGTY;
+typedef
+enum tagSTREAM_SEEK
+{
+STREAM_SEEK_SET = 0,
+STREAM_SEEK_CUR = 1,
+STREAM_SEEK_END = 2
+} STREAM_SEEK;
+typedef
+enum tagLOCKTYPE
+{
+LOCK_WRITE = 1,
+LOCK_EXCLUSIVE = 2,
+LOCK_ONLYONCE = 4
+} LOCKTYPE;
 extern const IID IID_IUnknown;
 extern const IID IID_ID3D10Blob;
 extern const IID IID_ID3D11DeviceChild;

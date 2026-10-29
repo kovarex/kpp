@@ -12,7 +12,8 @@ C++ definitions (`MIDL_INTERFACE("...") IFoo : public IBar`), and writes:
 - native/include/kpp_directx.h: the header the converter imports for the DirectX includes; it
   defines each generated interface's __IFoo_INTERFACE_DEFINED__ guard first, so that the import
   keeps the SDK's types, functions and constants but not the C structs of these interfaces (their
-  forward declarations stay, and name the Kpp classes), then declares the interfaces' IIDs, which
+  forward declarations stay, and name the Kpp classes), then the other declarations those guards
+  hold (IUnknown's LPUNKNOWN, IStream's LPSTREAM and STATSTG, ...), and the interfaces' IIDs, which
   the guards also left out, for `__uuidof(IFoo)` (dxguid.lib and uuid.lib define them). (In C:
   an `extern "C"` variable a Kpp source declares is defined by codegen yet,
   interop/extern_variable_declaration.)
@@ -131,6 +132,20 @@ def interfaces_of(path, wanted=None):
     return found
 
 
+def guarded_declarations(path, names):
+    """The C declarations an interface's guard holds besides the interface (`typedef IUnknown
+    *LPUNKNOWN;`, IStream's STATSTG and enums): the text between `#define __IFoo_INTERFACE_DEFINED__`
+    and the first preprocessor line or the IID's declaration. Defining the guard leaves them out of
+    the import, so kpp_directx.h declares them again after the SDK's headers."""
+    text = strip_comments(open(path, encoding='utf-8', errors='replace').read())
+    out = []
+    for m in re.finditer(r'#define\s+__(\w+)_INTERFACE_DEFINED__[ \t]*\n(.*?)(?=^\s*#|EXTERN_C\s+const\s+IID\s+IID_\1\s*;)', text, flags=re.S | re.M):
+        if m.group(1) in names and m.group(2).strip():
+            body = [' '.join(line.split()) for line in m.group(2).strip().split('\n') if line.strip()]
+            out.append((m.group(1), '\n'.join(body)))
+    return out
+
+
 def main():
     interfaces = {}
     for header in WHOLE:
@@ -194,6 +209,10 @@ def main():
               '#pragma once']
     header += [f'#define __{name}_INTERFACE_DEFINED__' for name in order]
     header += [f'#include <{h}>' for h in IMPORTED]
+    for path in [os.path.join(SDK, h) for h in WHOLE + list(SINGLE)]:
+        for name, declarations in guarded_declarations(path, set(order)):
+            header.append(f'// What the guard of {name} also holds ({os.path.basename(path)}).')
+            header.append(declarations)
     header += [f'extern const IID IID_{name};' for name in order + EXTRA_IIDS]
     hpath = os.path.join(HERE, 'include', 'kpp_directx.h')
     os.makedirs(os.path.dirname(hpath), exist_ok=True)
