@@ -1,5 +1,4 @@
 // spec: a static data member of a base class template, named through a derived class (`Derived::limit`, `T::limit` with T the derived class), is the base instance's member: its type and initializer use the base's arguments, also through a member alias of the template's parameter (`using IDType = IDTypeParameter;`)
-// pending: in an instance's copy of an initializer (a static's or a default member initializer), a member alias of the class used in a template argument or a sizeof (`Limits<IDType::IndexType>::max()`, `sizeof(typename IDType::IndexType)`) resolves to an undeclared placeholder (`Limits<?::IndexType>`); written with IDTypeParameter it works
 // found in the game's Prototype (`static constexpr IDType::IndexType IDLimit = Limits<IDType::IndexType>::max();`), read through PrototypeList's `PrototypeType::IDLimit`, 41 lines
 template<class IDTypeParameter>
 class Prototype

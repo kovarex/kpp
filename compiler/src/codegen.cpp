@@ -452,6 +452,13 @@ namespace
     // for both). Messages print types short (types.toString).
     std::string irString(const Ty* t) const { return types.toString(t, &symbols, true); }
 
+    // The variable whose initializer is being emitted (a global's or static member's in its
+    // startup function, a default member initializer in a constructor), or null: names written
+    // in it are typed from its declaration (the class's member aliases are in scope there), not
+    // from the function that happens to be emitted (none, for a startup function).
+    Decl* initializerOf = nullptr;
+    Decl* typingContext() const { return initializerOf ? initializerOf : static_cast<Decl*>(currentFunction); }
+
     // A class declared in a function body, or a member of one: the main pass does not reach its
     // member functions (they are emitted when used), and its name alone is not unique.
     static bool declaredInFunction(const Decl* d)
@@ -1482,6 +1489,7 @@ namespace
         const Ty* classTy;
         const TemplateArgs* args;
         ParsedFile* file;
+        Decl* initializer;
         ~Restore()
         {
           if (self)
@@ -1491,12 +1499,14 @@ namespace
           e.currentClassTy = classTy;
           e.currentArgs = args;
           e.currentFile = file;
+          e.initializerOf = initializer;
         }
-      } restore{*this, locals.count(nullptr) ? std::optional<Local>(locals[nullptr]) : std::nullopt, currentClassTy, currentArgs, currentFile};
+      } restore{*this, locals.count(nullptr) ? std::optional<Local>(locals[nullptr]) : std::nullopt, currentClassTy, currentArgs, currentFile, initializerOf};
       locals[nullptr] = {slot, nullptr, false};
       currentClassTy = cls;
       currentArgs = &classArgs;
       currentFile = v->file;
+      initializerOf = v;
       emit(init);
     }
 
@@ -4391,7 +4401,7 @@ namespace
     TemplateArgs variableTemplateArgs(NameExpr* n, VariableDecl* v, Node* at)
     {
       TemplateArgs args, none;
-      Decl* context = constContext ? constContext : currentFunction;
+      Decl* context = constContext ? constContext : typingContext();
       const NamePart& last = n->name.last();
       std::vector<const Ty*> packElements;
       size_t count = v->templateParams.size();
@@ -4640,7 +4650,7 @@ namespace
           {
             // A builtin type trait, evaluated under the current instantiation.
             TemplateArgs none;
-            if (std::optional<bool> trait = global.typeTraitValue(n, constContext ? constContext : currentFunction, currentArgs ? *currentArgs : none))
+            if (std::optional<bool> trait = global.typeTraitValue(n, constContext ? constContext : typingContext(), currentArgs ? *currentArgs : none))
               return *trait ? 1 : 0;
             return std::nullopt;
           }
@@ -4733,8 +4743,8 @@ namespace
                static_cast<NamedType*>(s->type)->resolved->kind == NodeKind::ParamDecl))
             t = declType(static_cast<NamedType*>(s->type)->resolved);
           else if (s->type)
-            t = currentArgs ? global.typeOfAstIn(s->type, constContext ? constContext : currentFunction, *currentArgs)
-                              : global.typeOfAst(s->type, constContext ? constContext : currentFunction); // `sizeof(T)` in a variable template's initializer
+            t = currentArgs ? global.typeOfAstIn(s->type, constContext ? constContext : typingContext(), *currentArgs)
+                              : global.typeOfAst(s->type, constContext ? constContext : typingContext()); // `sizeof(T)` in a variable template's initializer
           else
             t = s->operand ? s->operand->ty : nullptr;
           if (!t || !t->isKnown() || types.isDependent(t))
@@ -5924,6 +5934,10 @@ namespace
       currentFunction = nullptr;
       VariableDecl* def = variableDefinition(v);
       currentFile = def->file;
+      // Names in the initializer are typed from the declaration it belongs to (a member alias of
+      // the class: `Limits<IDType::IndexType>::max()`), not from the root scope.
+      struct InitializerRestore { Decl*& d; Decl* saved; ~InitializerRestore() { d = saved; } } initializerRestore{initializerOf, initializerOf};
+      initializerOf = def;
       emittingShared = false;
       std::string fnName = "@\"kpp.init." + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
       // In the module its name hashes to, whoever uses the global first (the same in every run),
@@ -6011,7 +6025,7 @@ namespace
       tmp.token = n->token;
       tmp.name = qualifier;
       TemplateArgs none;
-      const Ty* q = global.typeOfAstIn(&tmp, currentFunction, currentArgs ? *currentArgs : none);
+      const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
       return q && isClass(q) && !q->args.empty() ? canonicalClass(q, at) : nullptr;
     }
 
@@ -6057,7 +6071,7 @@ namespace
       tmp.name = n->name;
       tmp.name.parts.count -= 1;
       TemplateArgs none;
-      const Ty* q = global.typeOfAstIn(&tmp, currentFunction, currentArgs ? *currentArgs : none);
+      const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
       return q && isClass(q) && !types.isDependent(q) ? canonicalClass(q, at) : nullptr;
     }
 
@@ -6524,7 +6538,7 @@ namespace
             tmp.token = n->token;
             tmp.name = qualifier;
             TemplateArgs none;
-            const Ty* q = global.typeOfAstIn(&tmp, currentFunction, currentArgs ? *currentArgs : none);
+            const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
             if (q && isClass(q) && !q->args.empty())
               classTy = canonicalClass(q, c);
           }
@@ -6564,7 +6578,7 @@ namespace
               tmp.kind = NodeKind::NamedType;
               tmp.name = n->name;
               TemplateArgs none;
-              t = global.typeOfAstIn(&tmp, currentFunction, currentArgs ? *currentArgs : none);
+              t = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
               if (t) t = types.unqualified(types.stripRef(t));
               if (!t || !t->isKnown())
                 t = types.classType(static_cast<ClassDecl*>(d), {});
@@ -7559,7 +7573,7 @@ namespace
                 qualifier.name = n->name;
                 qualifier.name.parts.count -= 1;
                 TemplateArgs none;
-                const Ty* q = global.typeOfAstIn(&qualifier, currentFunction, currentArgs ? *currentArgs : none);
+                const Ty* q = global.typeOfAstIn(&qualifier, typingContext(), currentArgs ? *currentArgs : none);
                 if (q && isClass(q))
                   classTy = canonicalClass(q, e);
               }
@@ -7577,7 +7591,7 @@ namespace
               if (uint8_t(arg->kind) > uint8_t(NodeKind::PackType))
                 unsupported(e, "a non-type argument in the address of a function template");
               TemplateArgs none;
-              fargs.pairs.push_back({f->templateParams[i], global.typeOfAstIn(static_cast<Type*>(arg), currentFunction, currentArgs ? *currentArgs : none)});
+              fargs.pairs.push_back({f->templateParams[i], global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none)});
               ++given;
             }
             if (given < f->templateParams.size())
