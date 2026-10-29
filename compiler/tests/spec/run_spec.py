@@ -14,6 +14,9 @@ Statuses: pass, FAIL (a regression), pending (a known gap, still failing), fixed
 snippet that passes: remove its pending line). The run writes docs/spec-status.md, the
 specification of what kppc can and cannot do yet, with the first compiler complaint of every gap.
 
+A <name>.c next to a snippet is a C library of its own: compiled with clang and linked into the
+snippet's executable (`--lib`), for what only a real C object shows (the variables it defines).
+
     python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc]
 """
 import argparse, os, re, subprocess, sys, concurrent.futures, time
@@ -30,6 +33,8 @@ EXTRA = ["--cinclude", SDL_INCLUDE] if os.path.isdir(SDL_INCLUDE) else []
 EXTRA += ["--cinclude", os.path.join(HERE, "interop")]
 OUT = os.path.join(COMPILER, "build", "spec")
 DOC = os.path.join(ROOT, "docs", "spec-status.md")
+# The clang kppc itself uses (main.cpp's clangPath), for the snippets' own C sources.
+CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe")
 
 AREA_TITLES = {
   "language": "Language: statements, expressions, declarations",
@@ -76,8 +81,16 @@ def run_one(path):
     exe = os.path.join(OUT, f"{area}.{name}.exe")
     expected_path = os.path.splitext(path)[0] + ".expected"
     result = {"area": area, "name": name, "info": info, "note": ""}
+    libs = []
+    c_source = os.path.splitext(path)[0] + ".c"
+    if os.path.exists(c_source):
+        obj = os.path.join(OUT, f"{area}.{name}.c.obj")
+        cc = subprocess.run([CLANG, "-c", "-O1", "-o", obj, c_source], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if cc.returncode != 0:
+            result["status"] = "FAIL"; result["note"] = f"its C source did not compile: {first_complaint(cc.stderr)}"; return finish(result)
+        libs = ["--lib", obj]
     try:
-        c = subprocess.run([KPPC, "--quiet", *EXTRA, "--exe", exe, path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        c = subprocess.run([KPPC, "--quiet", *EXTRA, *libs, "--exe", exe, path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
     if info["errors"]:

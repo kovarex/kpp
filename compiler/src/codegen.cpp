@@ -5809,6 +5809,8 @@ namespace
     std::map<std::pair<Decl*, const Ty*>, std::string> globalCache; // globalFor's answers this emitter had
     std::string globalFor(VariableDecl* v, Node* at, const Ty* classTy = nullptr)
     {
+      if (!classTy && (v->flags & DF_Extern))
+        v = variableDefinition(v); // `extern T x;` names the variable its namespace defines, if it does
       if (auto mine = globalCache.find({v, classTy}); mine != globalCache.end())
         return mine->second;
       std::string name;
@@ -5892,6 +5894,16 @@ namespace
       bool constructed = false;
       const Ty* st = types.stripRef(t);
       VariableDecl* def = variableDefinition(v); // `static double scale;` in the class, `double Gui::scale = 1.0;` outside
+      if (def == v && (v->flags & DF_Extern) && !v->init && !classTy && !t->isReference())
+      {
+        // `extern int counter;` that no Kpp source defines: a C library's variable (its header
+        // declares it), defined and initialised there. A definition here would be a second one
+        // (a duplicate in the link) or, where the library's is not linked, a zero read as its value.
+        // Declared once, however many declarations name it.
+        if (declaredNames.claim(name))
+          decls += name + " = external global " + llType(st, at) + "\n";
+        return name;
+      }
       // `static constexpr T ValuesPerOne = T(1) << Bits`: the initializer typed for this instantiation.
       Expr* value = classTy ? global.instanceInitializer(def, classArgs) : def->init;
       ParsedFile* saved = currentFile;

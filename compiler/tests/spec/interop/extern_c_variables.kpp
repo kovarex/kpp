@@ -1,0 +1,10 @@
+// spec: a variable that an imported C header declares extern is the C library's variable: Kpp reads the library's values (an array of structs, an int, a const int) and its writes are seen by the library's own code
+// found by the converter thread: an extern variable was emitted as a zero-initialised definition of its own (curl.lib's Curl_HMAC_MD5 was defined twice; a C variable defined nowhere else would silently read as zero)
+extern "C" import "extern_c_variables.h";
+int main()
+{
+  println("{} {} {} {}", specTable[0].a + specTable[0].b, specTable[1].b, specCounter, specScalar);
+  specCounter = 100;
+  println("{} {}", specBump(), specCounter);
+  return 0;
+}

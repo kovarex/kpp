@@ -1111,6 +1111,20 @@ struct GlobalScope::Impl
       {
         if (entries.size() > 1)
           std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return declaredBefore(a.decl, b.decl); });
+        if (entries.size() > 1 && scope->kind == ScopeKind::Namespace)
+        {
+          // `extern T name;` and `T name;` in one namespace are one variable: the declaration's
+          // definition is the other (definitionOf), so that both name one global and the
+          // declaration is not taken for a C library's variable.
+          VariableDecl* definition = nullptr;
+          for (const Entry& e : entries)
+            if (!definition && e.decl && e.decl->kind == NodeKind::VariableDecl && !(e.decl->flags & DF_Extern))
+              definition = static_cast<VariableDecl*>(e.decl);
+          if (definition)
+            for (const Entry& e : entries)
+              if (e.decl && e.decl->kind == NodeKind::VariableDecl && (e.decl->flags & DF_Extern) && !static_cast<VariableDecl*>(e.decl)->init)
+                variableDefinitions[e.decl] = definition;
+        }
         bool specialized = false; // a class template's specialisations among them: its instances may be one (resolveSpecialization)
         for (const Entry& e : entries)
         {

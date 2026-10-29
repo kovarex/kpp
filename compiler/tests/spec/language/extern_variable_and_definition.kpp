@@ -1,0 +1,19 @@
+// spec: `extern T name;` and the definition `T name;` (or one with an initializer) in one namespace are one variable, whichever of the two a use names; a class-type definition is constructed once, with its initializer
+// found in CommonUtil's Util.kpp (getchMock: declared extern at the top, defined further down): the declaration alone was taken for a C library's variable, an unresolved external
+namespace Store
+{
+  extern int counter;
+  extern String label;
+  int bump() { return ++counter; }
+  String describe() { return label + "!"; }
+  int counter = 40;
+  String label = "set";
+}
+int main()
+{
+  Store::bump();
+  int now = Store::counter;
+  int next = Store::bump();
+  println("{} {} {} {}", now, next, Store::label, Store::describe());
+  return 0;
+}
