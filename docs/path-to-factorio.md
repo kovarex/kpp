@@ -716,6 +716,24 @@ compile-speed.md), against the game's own Release builds of its C libraries. Wha
 - **One duplicate definition**: `Curl_HMAC_MD5`, defined both by curl.lib and by the imported
   curl header (a C header's data definition emitted as a definition, not a declaration).
 
+**The functions defined nowhere (2026-10-29).** Counted over the 64 emitted modules (`kppc
+--keep-going --exe`; with most modules rejected by clang the link lists nothing, so a script
+compares the modules' `declare`s with their `define`s and leaves out the functions a codegen error
+names): on master d1ccfb8, 1,345 Kpp functions are called and defined nowhere. Most of them were
+X-macro expansions: InputAction's 316 constructors, GuiStyle's 312 style getters, EditorAction's
+136, PrototypeMigrationList's and PrototypeInfo's, Serialiser's counters. Their .cpp writes
+`CALL_ON_EVERY_INPUT_ACTION_DATA_TYPE(CREATE_INPUT_ACTION_CONSTRUCTOR)`, but the list macro is
+defined in the header, which the converter handled as a file of its own, so the use stayed
+unexpanded text. The converter now gives every file the function-like macros of the game headers
+it includes, directly or not, that those leave defined (except the ones it rewrites by name), with
+`__FILE__`/`__LINE__` in an expansion taken at the use and `std:: string` (an X-macro's `PREFIX
+TYPE`) renamed like `std::string`. Local macro expansions go from 2,701 to 7,149. Together with
+the stdlib's makeOptional<T>(args...) and the array form of make_unique_for_overwrite: defined
+nowhere 1,345 -> 530, unresolved at the link 9,052 -> 8,570, headline 23,422 -> 23,252. Of the 530
+left, the largest groups are ID<> and Prototype<> (42 each), FunctionImpl<> (28),
+LuaCommonEventFilters (24) and the stdlib's Filesystem (53: declarations without definitions,
+to be replaced by a real std::filesystem subset).
+
 ### cxxopts (2026-10-28)
 
 The command-line parser the game uses (`libraries/cxxopts`, one header) converts like game code:

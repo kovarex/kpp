@@ -997,17 +997,32 @@ namespace
     // headers expand-macros.txt in the overrides lists), expanded like this file's own: the imported
     // headers give Kpp their functions and constants, not their macros.
     const std::map<std::string, std::pair<std::vector<std::string>, std::string>>* headerMacros = nullptr;
+    // The function-like macros of the game's headers this file includes, directly or through other
+    // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
+    // include order.
+    std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
     void seedHeaderMacros()
     {
-      if (!headerMacros)
-        return;
-      for (const auto& [name, macro] : *headerMacros)
-      {
-        LocalMacro m;
-        m.params = macro.first;
-        m.body = macro.second;
-        localMacros[name].push_back(m);
-      }
+      if (headerMacros)
+        for (const auto& [name, macro] : *headerMacros)
+        {
+          LocalMacro m;
+          m.params = macro.first;
+          m.body = macro.second;
+          localMacros[name].push_back(m);
+        }
+      for (const auto* macros : includedMacros)
+        for (const auto& [name, macro] : *macros)
+        {
+          // The macros the converter rewrites by name keep their rewrite; the first header to define
+          // a name gives its definition.
+          if (knownMacros.count(name) || knownFunctionMacros.count(name) || localMacros.count(name))
+            continue;
+          LocalMacro m;
+          m.params = macro.first;
+          m.body = macro.second;
+          localMacros[name].push_back(m);
+        }
     }
     const LocalMacro* localMacroAt(const std::string& name, uint32_t offset) const
     {
@@ -1508,8 +1523,10 @@ namespace
           if (cxx != cxxToC.end())
             base = cxx->second;
           // C libraries the game uses, by their include path prefix.
+          // (stb_rect_pack, jc_voronoi and sdf are header-only C libraries whose implementations the
+          // game compiles in its own .cpp files.)
           static const char* cLibraries[] = {"SDL3/", "SDL2/", "SDL", "lua", "zlib", "zconf", "curl/", "png", "jpeg", "zstd", "opus", "ogg",
-                                             "vorbis", "minizip", "stb_image", "fontstash"};
+                                             "vorbis", "minizip", "stb_image", "fontstash", "imgui/stb_rect_pack", "jc_voronoi/", "sdf/"};
           bool cLibrary = false;
           for (const char* prefix : cLibraries)
             if (header.rfind(prefix, 0) == 0)
@@ -1775,7 +1792,9 @@ namespace
           break;
         result = std::move(next);
       }
-      return this->renameGameClasses(result);
+      // The preprocessor's file and line in the body are the use's (`__FILE__` in a header's
+      // release_assert-like macro).
+      return this->renameGameClasses(withFileAndLine(result, useOffset));
     }
 
     // The game's classes whose names the library uses (Vector, Map, Optional, Pair, RuntimeError),
@@ -2186,9 +2205,10 @@ namespace
               }
             }
           }
-          if ((name == "unique_ptr" || name == "make_unique") && i + 3 < toks.size() && toks[i + 3].is(P::Less))
+          if ((name == "unique_ptr" || name == "make_unique" || name == "make_unique_for_overwrite") && i + 3 < toks.size() && toks[i + 3].is(P::Less))
           {
-            // `unique_ptr<T[]>` and `make_unique<T[]>(n)`: the array form is its own class.
+            // `unique_ptr<T[]>`, `make_unique<T[]>(n)` and `make_unique_for_overwrite<T[]>(n)`: the
+            // array form is its own class.
             uint32_t j = i + 4;
             int depth = 0;
             for (; j < toks.size(); ++j)
@@ -2208,7 +2228,7 @@ namespace
             }
             if (j < toks.size() && j >= i + 6 && toks[j - 1].is(P::RBracket) && toks[j - 2].is(P::LBracket))
             {
-              to = name == "unique_ptr" ? "UniqueArray" : "makeUniqueArray";
+              to = name == "unique_ptr" ? "UniqueArray" : name == "make_unique" ? "makeUniqueArray" : "makeUniqueArrayForOverwrite";
               remove(toks[j - 2].offset, endOffset(j - 1) - toks[j - 2].offset);
               counts.add("unique_ptr<T[]> to UniqueArray");
             }
@@ -2778,12 +2798,13 @@ namespace
             if (!c->isDefinition)
             {
               Decl* def = global.definitionOf(c);
-              if (namespaceScope && !prefix.empty() && opaqueKept && (!def || def == c) && opaqueKept->insert(global.qualifiedName(c)).second)
+              if (namespaceScope && opaqueKept && (!def || def == c) && opaqueKept->insert(global.qualifiedName(c)).second)
               {
                 // No definition anywhere (`namespace TaskBar { class Interface; }`, used only through
-                // pointers): the declaration is the class, an opaque type; kept once in the program.
-                // Only inside a namespace: at global scope such a name is a C library's type (the C
-                // import defines it) or a class a macro defines (BITFIELD), which the resolver did not see.
+                // pointers; the tags only template arguments name, `class ElectricityTag;`): the
+                // declaration is the class, an opaque type; kept once in the program. At global scope
+                // the name may also be a C library's type (SDL_Cursor, which the C import defines too)
+                // or a class a macro defines (BITFIELD): a declaration next to a definition is fine.
                 counts.add("declarations of classes defined nowhere kept");
               }
               else if (namespaceScope)
@@ -3982,16 +4003,20 @@ namespace
           lineStart = i + 1;
         }
       }
-      // `std::name` in text the parser never tokenized (the other branch of an #if): the same
-      // renames by text.
+      // `std::name` in text the parser never tokenized (the other branch of an #if, a macro's
+      // expansion, where an X-macro list's `PREFIX TYPE` makes `std:: string`): the same renames
+      // by text.
       for (size_t p = squeezed.find("std::"); p != std::string::npos; p = squeezed.find("std::", p + 1))
       {
         if (p > 0 && (isalnum((unsigned char)squeezed[p - 1]) || squeezed[p - 1] == '_'))
           continue;
-        size_t e = p + 5;
+        size_t s = p + 5;
+        while (s < squeezed.size() && (squeezed[s] == ' ' || squeezed[s] == '\t'))
+          ++s;
+        size_t e = s;
         while (e < squeezed.size() && (isalnum((unsigned char)squeezed[e]) || squeezed[e] == '_'))
           ++e;
-        auto it = stdNames.find(squeezed.substr(p + 5, e - p - 5));
+        auto it = stdNames.find(squeezed.substr(s, e - s));
         if (it != stdNames.end())
         {
           squeezed.replace(p, e - p, it->second);
@@ -4091,6 +4116,16 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
       if (p == std::string::npos || line[p] != '#')
         continue;
       p = line.find_first_not_of(" \t", p + 1);
+      if (p != std::string::npos && line.compare(p, 5, "undef") == 0)
+      {
+        // What the header leaves defined is what its includers see.
+        size_t n = line.find_first_not_of(" \t", p + 5), e = n;
+        while (e < line.size() && (isalnum((unsigned char)line[e]) || line[e] == '_'))
+          ++e;
+        if (n != std::string::npos)
+          macros.erase(line.substr(n, e - n));
+        continue;
+      }
       if (p == std::string::npos || line.compare(p, 6, "define") != 0)
         continue;
       p = line.find_first_not_of(" \t", p + 6);
@@ -4282,6 +4317,76 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       headerMacros = readHeaderMacros(headers);
     }
   }
+  // The game's own headers each input includes (the includes resolved against the including file's
+  // directory, each root and each root's parent, as the game's include paths do), and the
+  // function-like macros each header leaves defined: an input sees those of every header it
+  // reaches, as C++ does, so that a .cpp expands the X-macro lists its header defines.
+  using MacroMap = std::map<std::string, std::pair<std::vector<std::string>, std::string>>;
+  auto pathKey = [](const std::filesystem::path& p)
+  {
+    std::error_code ec;
+    std::string s = std::filesystem::absolute(p, ec).lexically_normal().generic_string();
+    for (char& c : s)
+      c = (char)tolower((unsigned char)c);
+    return s;
+  };
+  std::map<std::string, size_t> inputByPath;
+  for (size_t k = 0; k < inputs.size(); ++k)
+    if (inputs[k].parsed && !inputs[k].parsed->isImported && inputs[k].path.string().rfind("<", 0) != 0)
+      inputByPath[pathKey(inputs[k].path)] = k;
+  std::vector<std::vector<size_t>> includedInputs(inputs.size());
+  for (const auto& [key, k] : inputByPath)
+  {
+    std::string_view t = inputs[k].text;
+    for (size_t at = t.find("#include"); at != std::string_view::npos; at = t.find("#include", at + 8))
+    {
+      size_t open = t.find_first_of("<\"\n", at + 8);
+      if (open == std::string_view::npos || t[open] == '\n')
+        continue;
+      size_t close = t.find(t[open] == '<' ? '>' : '"', open + 1);
+      if (close == std::string_view::npos || t.substr(open, close - open).find('\n') != std::string_view::npos)
+        continue;
+      std::filesystem::path name(std::string(t.substr(open + 1, close - open - 1)));
+      std::vector<std::filesystem::path> candidates = {inputs[k].path.parent_path() / name};
+      for (const auto& root : roots)
+      {
+        candidates.push_back(root / name);
+        candidates.push_back(root.parent_path() / name);
+      }
+      for (const auto& c : candidates)
+        if (auto it = inputByPath.find(pathKey(c)); it != inputByPath.end() && it->second != k)
+        {
+          includedInputs[k].push_back(it->second);
+          break;
+        }
+    }
+  }
+  std::map<size_t, MacroMap> ownMacros; // a header's macros it leaves defined, read once
+  auto macrosOf = [&](size_t k) -> const MacroMap&
+  {
+    auto it = ownMacros.find(k);
+    if (it == ownMacros.end())
+      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path})).first;
+    return it->second;
+  };
+  auto visibleMacros = [&](size_t k)
+  {
+    // Depth first in include order, each header once.
+    std::vector<const MacroMap*> out;
+    std::set<size_t> seen = {k};
+    std::function<void(size_t)> visit = [&](size_t h)
+    {
+      for (size_t inc : includedInputs[h])
+        if (seen.insert(inc).second)
+        {
+          visit(inc);
+          if (const MacroMap& m = macrosOf(inc); !m.empty())
+            out.push_back(&m);
+        }
+    };
+    visit(k);
+    return out;
+  };
   // Hand-written override files, parsed once: what they define replaces the converted definitions.
   std::map<std::string, std::unique_ptr<OverrideFile>> overrideFiles;
   auto overrideFor = [&](const std::string& key) -> OverrideFile*
@@ -4505,6 +4610,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.scopeNames = &scopeNames;
     fc.opaqueKept = &opaqueKept;
     fc.headerMacros = &headerMacros;
+    if (auto ip = inputByPath.find(pathKey(in.path)); ip != inputByPath.end())
+      fc.includedMacros = visibleMacros(ip->second);
     fc.variants = &variants;
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
