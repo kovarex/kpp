@@ -3099,6 +3099,32 @@ namespace
       return convert(Value{addr, types.unqualified(types.stripRef(elementTy)), false}, types.unqualified(types.stripRef(vt)), at).text;
     }
 
+    // Whether a loop variable of type vt (or referring to one) is of a class and the element is no
+    // object (`for (String name : {"stone-wall", "transport-belt"})`): the variable is made from it.
+    bool elementMadeInto(const Ty* elementTy, const Ty* vt)
+    {
+      return isClass(types.unqualified(types.stripRef(vt))) && elementTy && !isAggregate(types.unqualified(types.stripRef(elementTy)));
+    }
+
+    // Builds the loop variable's object of class cls at slot from the element at elementAddr as
+    // `String name = element;` would (a converting constructor), never from the element's bytes:
+    // TestDragBuilding's `for (std::string blockingEntity : {"stone-wall", ...})` read each
+    // `const char*` as a String, and every name came out empty.
+    void makeFromElement(const std::string& slot, const Ty* cls, const std::string& elementAddr, const Ty* elementTy, Node* at)
+    {
+      VariableDecl element{};
+      element.kind = NodeKind::VariableDecl;
+      element.token = at->token;
+      NameExpr name{};
+      name.kind = NodeKind::NameExpr;
+      name.token = at->token;
+      name.resolved = &element;
+      name.ty = types.stripRef(elementTy);
+      locals[&element] = {elementAddr, types.stripRef(elementTy), false};
+      struct Forget { std::unordered_map<Decl*, Local>& locals; Decl* d; ~Forget() { locals.erase(d); } } forget{locals, &element};
+      initializeFrom(slot, cls, &name, at);
+    }
+
     // The class of the local object (not a reference) e names, when it is not the function's
     // result class (whose own `return obj;` is a move: returnedLocalObject); null otherwise.
     const Ty* localObjectOfOtherClass(Expr* e)
@@ -13738,7 +13764,19 @@ namespace
           addr = newObjectSlot(element.ty, v);
           fn += "  store " + llType(element.ty, v) + " " + element.text + ", ptr " + addr + "\n";
         }
-        addr = elementAs(addr, element.ty, vt, v);
+        if (elementMadeInto(element.ty, vt))
+        {
+          // `for (const String& name : names)` over a Vector<const char*>: a String made from the
+          // element, the reference's (it lives for the iteration).
+          const Ty* cls = types.unqualified(types.stripRef(vt));
+          std::string made = newObjectSlot(cls, v);
+          makeFromElement(made, cls, addr, element.ty, v);
+          if (needsDestruction(cls, v))
+            scopes.back().push_back({made, cls});
+          addr = made;
+        }
+        else
+          addr = elementAs(addr, element.ty, vt, v);
         allocas += "  " + slot + " = alloca ptr\n";
         fn += "  store ptr " + addr + ", ptr " + slot + "\n";
         locals[v] = {slot, vt, true};
@@ -13746,7 +13784,13 @@ namespace
       else
       {
         allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
-        if (isClass(vt) && elementOfOtherClass(element.ty, vt, v))
+        if (elementMadeInto(element.ty, vt))
+        {
+          // `for (String name : names)` over a Vector<const char*>: made from the element.
+          std::string addr = resultAddress(element, v);
+          makeFromElement(slot, vt, addr, element.ty, v);
+        }
+        else if (isClass(vt) && elementOfOtherClass(element.ty, vt, v))
           copyConstruct(slot, elementAs(element.text, element.ty, vt, v), vt, v); // an element of another class, converted
         else if (isClass(vt))
         {
@@ -14393,14 +14437,27 @@ namespace
       std::string slot = "%v" + std::to_string(temp++);
       if (vt->isReference())
       {
+        std::string target = elementAs(element, elementTy, vt, v);
+        if (elementMadeInto(elementTy, vt))
+        {
+          // `for (const String& name : {"ref"})`: a String made from the element, the reference's
+          // (it lives for the iteration).
+          const Ty* cls = types.unqualified(types.stripRef(vt));
+          target = newObjectSlot(cls, v);
+          makeFromElement(target, cls, element, elementTy, v);
+          if (needsDestruction(cls, v))
+            scopes.back().push_back({target, cls});
+        }
         allocas += "  " + slot + " = alloca ptr\n";
-        fn += "  store ptr " + elementAs(element, elementTy, vt, v) + ", ptr " + slot + "\n";
+        fn += "  store ptr " + target + ", ptr " + slot + "\n";
         locals[v] = {slot, vt, true};
       }
       else
       {
         allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
-        if (isClass(vt))
+        if (elementMadeInto(elementTy, vt))
+          makeFromElement(slot, vt, element, elementTy, v);
+        else if (isClass(vt))
           copyConstruct(slot, elementAs(element, elementTy, vt, v), vt, v);
         else
           store(load(element, elementTy, v), slot, vt, v);
