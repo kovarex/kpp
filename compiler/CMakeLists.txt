@@ -20,6 +20,7 @@ add_executable(kppc
   src/consteval.cpp
   src/instance.cpp
   src/source.cpp
+  src/server.cpp
 )
 target_include_directories(kppc PRIVATE src)
 if (MSVC)

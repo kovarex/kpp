@@ -4,6 +4,7 @@
 #include "convert.hpp"
 #include "parser.hpp"
 #include "resolver.hpp"
+#include "server.hpp"
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
@@ -101,7 +102,10 @@ namespace
             "                program links; the errors are still reported and the exit code is still 1\n"
             "  --clang-flags F  more flags clang compiles the modules with (`-fsanitize=address`; link with\n"
             "                `--lib -fsanitize=address`); they are part of each module's cache key\n"
-            "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n");
+            "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
+            "  --server      build through a compile server for these arguments, started if none runs\n"
+            "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
+            "  --stop-server stop the compile server of the other arguments\n");
   }
 
   struct FileStats
@@ -1169,13 +1173,9 @@ namespace
     // Done: end the process without freeing what it built. The destructors of the syntax trees,
     // the types, the instances and the IR text cost about 5 s on the full game (docs/compile-speed.md,
     // "End to end"), and the operating system takes the memory back at once. Everything the run
-    // writes is closed by now.
+    // writes is closed by now. A compile server answers its client here and frees afterwards.
     if (!options.dumpTokens)
-    {
-      fflush(stdout);
-      fflush(stderr);
-      _exit(codegenExit);
-    }
+      buildDone(codegenExit);
   }
 
   double seconds(std::chrono::steady_clock::duration d)
@@ -1183,6 +1183,8 @@ namespace
     return std::chrono::duration<double>(d).count();
   }
 }
+
+int compile(int argc, char** argv);
 
 int main(int argc, char** argv)
 {
@@ -1198,6 +1200,26 @@ int main(int argc, char** argv)
     catch (...) { fprintf(stderr, "fatal: unknown exception\n"); }
     abort();
   });
+  // The compile server (server.hpp): `--server` anywhere makes this a client, `--stop-server`
+  // stops the server of the same arguments, `--serve KEY` is the server a client started.
+  if (argc == 3 && std::string(argv[1]) == "--serve")
+    return runServer(argv[2], compile);
+  for (int i = 1; i < argc; ++i)
+    if (std::string(argv[i]) == "--server" || std::string(argv[i]) == "--stop-server")
+    {
+      bool stop = std::string(argv[i]) == "--stop-server";
+      std::vector<char*> rest(argv, argv + argc);
+      rest.erase(rest.begin() + i);
+      rest.push_back(nullptr);
+      return stop ? stopServer(argc - 1, rest.data()) : runClient(argc - 1, rest.data(), compile);
+    }
+  return compile(argc, argv);
+}
+
+int compile(int argc, char** argv)
+{
+  codegenExit = 0;
+  quietOutput = false;
   Options options;
   for (int i = 1; i < argc; ++i)
   {

@@ -33,6 +33,12 @@ if errorlevel 1 (
   echo FAIL determinism: the output depends on the thread count
   set /a FAIL+=1
 )
+rem The compile server must build what a new process builds, edit after edit (tests\incremental.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\incremental.ps1 -Kppc %KPPC%
+if errorlevel 1 (
+  echo FAIL incremental: the compile server's build differs from a new process's
+  set /a FAIL+=1
+)
 if %FAIL% neq 0 exit /b 1
 rem (Explicitly: the batch file's exit code would otherwise be the determinism check's.)
 exit /b 0

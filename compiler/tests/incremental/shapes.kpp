@@ -1,0 +1,12 @@
+// The program tests\incremental.ps1 edits between builds: a function body, a signature, a class's
+// layout, and a file added and removed.
+struct Shape
+{
+  int width = 2;
+  int height = 3;
+  int area() const { return width * height; }
+};
+
+int scale(int v) { return v * 10; }
+
+int combine(int a, int b) { return a + b; }

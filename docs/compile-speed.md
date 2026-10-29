@@ -80,7 +80,7 @@ one-line edit) needs both of them to stop being proportional to the program:
 Memory: the front end peaks at 1.6 GB of working set, front end and one-module codegen at 2.0 GB,
 so a process that keeps all of it between builds fits easily.
 
-## Design: the persistent compiler (for review)
+## Design: the persistent compiler (approved 2026-10-29; step 1 landed)
 
 Goal: a one-line edit costs what the edit touches, not what the program is, with output
 byte-identical to a clean build of the same sources. Today's edit costs 13 to 17 s of front end
@@ -169,10 +169,59 @@ that is expected, and the target there is a clean build's speed, not the fast pa
    (a new overload, a changed signature), the rest still a full rebuild in the server.
 5. Parallel module assembly and smaller modules (with codegen), and an incremental link.
 
-**Open questions for review.** Whether the server should be on by default from step 3 (with
-`--no-server` as the way out), or opt-in (`--server`) until the incremental test has run for a
-while; I would make it opt-in until step 4. And whether the client may start a server on its own
-or the user starts it (a long-lived process left running by a build command surprises people).
+**Decided (review, 2026-10-29).** The server is opt-in (`--server`) until interface edits work
+(step 4); the client starts a server itself, which exits after an idle hour. Anything the server
+cannot prove local is a full rebuild inside it, `--verify-incremental` must be byte-identical to
+a clean build, the incremental test covers at least a body, a signature and a layout edit and a
+new file, and a server never builds with state from another kppc binary, stdlib, flags or input
+set (they are in its key, or hashed and checked per build).
+
+### The compile server: protocol (step 1, as built)
+
+- `kppc --server ARGS` is a client; `kppc ARGS` without it builds in its own process as before.
+  `kppc --stop-server ARGS` stops the server of ARGS.
+- **Key:** FNV-1a of the kppc binary's path, size and write time, the working directory
+  (lowercased) and the arguments. One server per key, on the named pipe
+  `\\.\pipe\kppc-server-KEY` (one instance, local clients only). Another binary, directory or
+  argument list is another server, so a server never serves a build it did not start for; the
+  files' contents and the stdlib are read again on every build at step 1, and from step 3 on are
+  checked by hash on every build.
+- **Starting:** a client that finds no pipe copies kppc to `%TEMP%\kppc-server\KEY.exe` (Windows
+  locks a running executable, and kppc must stay rebuildable) and starts the copy as
+  `KEY.exe --serve KEY`, detached, in the client's directory, inheriting no handles; it then waits
+  up to 20 s for the pipe. A second server for a key fails to create the pipe
+  (FILE_FLAG_FIRST_PIPE_INSTANCE) and exits, so racing clients share one. A client that reaches no
+  server, or loses it before the answer, says so on stderr and builds in its own process.
+- **Request:** `KPS1`, a u32 kind (1 build, 2 stop); for a build the kppc path the client ran
+  (argv[0]: the stdlib is found next to it, not next to the copy), the working directory, the
+  arguments (u32 count, then each) and the environment block (UTF-16, as
+  GetEnvironmentStringsW returns it). A string is a u32 byte count and the bytes. The server sets
+  the directory and replaces its environment with the client's (TMP holds the C import cache, LIB
+  and INCLUDE are clang's link's, KPP_CLANG...).
+- **Answer:** frames of a u8 type (1 stdout, 2 stderr, 3 exit code), a u32 count and the bytes,
+  ending with the exit code's frame. The build's stdout and stderr (the CRT streams, descriptors
+  1 and 2, and the standard handles clang inherits through system()) are pipes that two threads
+  forward as frames, so clang's own messages reach the client too.
+- **One build at a time,** on a new thread with the executable's 8 MB stack, so that thread-local
+  state (the resolver's, the evaluator's) starts as in a new process. When the build is done
+  (where a process now exits without freeing), the server sends the exit code and lets the client
+  go, then frees what the build made; a client arriving meanwhile waits for the pipe.
+- **Lifetime:** the server exits after an hour without a request, on a stop request, or when it
+  crashes (the client then builds in its own process). A tool that waits for the client's whole
+  process tree (PowerShell's `Start-Process -Wait`, a job object without breakaway) waits for the
+  server too; the client asks for breakaway from its job and falls back to staying in it.
+- **Checked by** tests/incremental.ps1 (in run_tests): a copy of tests/incremental is built through
+  one server and by a new process after each edit (a body, a signature, a class's layout, a new
+  file, the file removed); stdout, stderr (timings masked) and the IR must be identical and the
+  server's program must print what the step expects.
+
+Step 1's numbers (full game as run.cmd builds it, frozen tree, no-change rebuild, three
+alternating pairs on the shared machine): fresh process 19.4, 23.1, 19.2 s; through the server
+20.4, 24.4, 18.9 s. The same, as expected: the server still builds everything. stdout and stderr
+equal a fresh process's apart from timings. Two of the six runs, fresh and through the server
+alike, compiled one or two modules again: a temporary's number in one function differs from run
+to run (`Vector<...ChunkSet...>::emplace_back`, reported to the codegen thread); the object cache
+recompiles those modules, the output is unaffected otherwise.
 
 ## Parallel front end: contention, not work (2026-10-29, evening)
 
