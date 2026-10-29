@@ -1,0 +1,28 @@
+// spec: a class with a destructor of its own and no copy constructor or assignment copies member by member, as C++'s implicit copy members (which a destructor only deprecates) do: a clone `new Named(*this)`, a copy of a holder, an assignment
+// factorio: Achievement::clone (`new Achievement(*this)`), InputAction's ActionData::GuiGenericChangedData and the other ActionData copies: ~127 headline lines "which has a destructor but no copy constructor"
+// pending: "copying Named, which has a destructor but no copy constructor"
+struct Named
+{
+  String name;
+  int count = 0;
+  Named(const char* n, int c) : name(n), count(c) {}
+  virtual ~Named() {}
+  Named* clone() const { return new Named(*this); }
+};
+struct Holder
+{
+  Named named = Named("x", 1);
+  ~Holder() { }
+};
+int main()
+{
+  Named a("first", 2);
+  Named* b = a.clone();
+  Holder h;
+  Holder g = h;
+  g.named.count = 5;
+  h = g;
+  println("{} {} {} {}", b->name, b->count, h.named.count, g.named.name);
+  delete b;
+  return 0;
+}
