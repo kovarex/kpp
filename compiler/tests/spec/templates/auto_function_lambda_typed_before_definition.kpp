@@ -1,6 +1,5 @@
 // spec: a function that is no template, returning `auto` with a lambda in it (`iotaView(...) | transformView([leftTop, width](const auto& index) {...})`), called before the walk reaches its definition (symbols are order-independent): its return type is typed then, and its lambda is the same type the definition's own walk gives it, so a template deduced from the call takes the object the function returns
 // factorio: chunkLineByLineScan (Map/ChunkLineByLineScan.hpp) passed to Util::anyOf in SegmentedUnitController::computeActivityMode
-// pending: the return type typed early has a copy of the closure, another type than the one the body returns ("binding an unrelated class to a reference (TransformView<IotaView<int32>, __lambda> to const TransformView<IotaView<int32>, __lambda>&)"); owner: the templates thread (instances of auto functions)
 struct Pos
 {
   int x = 0;

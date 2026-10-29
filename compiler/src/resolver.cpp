@@ -648,10 +648,11 @@ struct GlobalScope::Impl
   // A copy of f's own nodes for one instantiation, its local classes and enums given scopes of
   // their own under scope (the copy is typed next). An out-of-line definition takes `static` and
   // `virtual` from its declaration first, so that the copy has them.
-  FunctionDecl* copyInstance(FunctionDecl* f, Scope* scope)
+  FunctionDecl* copyInstance(FunctionDecl* f, Scope* scope, bool keepClosures = false)
   {
     declarationOfDefinition(f);
     InstanceCopier copier(instanceArena());
+    copier.keepClosures = keepClosures;
     FunctionDecl* copy = copier.function(f);
     if (copy->body)
       indexLocalTypes(copy->body, scope, copy);
@@ -12976,7 +12977,10 @@ struct GlobalScope::Impl
       ++impl.instFunctions;
       auto start = std::chrono::steady_clock::now();
       // The instantiation's own copy of f's nodes (its definition's), typed here and kept as its body.
-      FunctionDecl* copy = impl.copyInstance(def, bodyScope);
+      // One with no arguments at all is a function that is no template, typed before the walk of
+      // its file reached it (for its `auto` return): its lambdas are the types that walk gives
+      // them, which the code generator emits (`chunkLineByLineScan(...)`'s TransformView).
+      FunctionDecl* copy = impl.copyInstance(def, bodyScope, full.pairs.empty());
       inst->body = copy;
       const Ty* deduced = nullptr;
       const Ty* pattern = nullptr; // the written `auto&`, `const auto*`...: the deduced type takes its shape
@@ -16303,9 +16307,11 @@ struct GlobalScope::Impl
           // In a template, the lambda is a different type in each instantiation (its body differs).
           // The mark telling them apart is a hash of the arguments as printed (with their classes'
           // full paths: two classes named LineInfo are two arguments), in parameter-name order, so
-          // that it (and every name printed with it) is the same in every run.
+          // that it (and every name printed with it) is the same in every run. A body typed again
+          // with no arguments at all (a function's `auto` return deduced on demand) is no
+          // instantiation: its lambda is the one of the plain walk.
           int64_t instance = 0;
-          if (activeSubst)
+          if (activeSubst && !activeSubst->pairs.empty())
           {
             std::vector<std::string> printed;
             for (auto& [d, ty] : activeSubst->pairs)

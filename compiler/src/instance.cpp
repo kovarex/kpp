@@ -532,9 +532,12 @@ Expr* InstanceCopier::expr(const Expr* e)
     }
     case NodeKind::LambdaExpr:
     {
-      // The closure class is part of the lambda: one closure type per instantiation.
+      // The closure class is part of the lambda: one closure type per instantiation. A copy that
+      // keeps the closures keeps a generic lambda's template parameters too (the parameters'
+      // types name them), so that its lambda type is the original's.
       auto* c = raw(static_cast<const LambdaExpr*>(e));
-      c->templateParams = declList(c->templateParams);
+      if (!keepClosures)
+        c->templateParams = declList(c->templateParams);
       c->params = declList(c->params);
       c->returnType = type(c->returnType);
       c->captures = span(c->captures, [&](LambdaCapture& cap)

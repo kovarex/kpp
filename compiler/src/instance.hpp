@@ -41,8 +41,10 @@ public:
 
   size_t nodesCopied() const { return nodes; }
 
-  // The copy's lambdas keep the closures of the nodes copied (a private copy of an instantiation
-  // made for re-typing it in place: its lambdas are the same types as the instantiation's).
+  // The copy's lambdas keep the closures (and generic lambdas their template parameters) of the
+  // nodes copied: a private copy of an instantiation made for re-typing it in place, or the copy
+  // of a function that is no template typed for its `auto` return; its lambdas are the same types
+  // as the nodes copied.
   bool keepClosures = false;
 
 private:
