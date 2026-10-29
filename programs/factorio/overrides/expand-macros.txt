@@ -10,6 +10,12 @@ C:\Factorio\libraries\Lua\lua.h
 C:\Factorio\libraries\Lua\lauxlib.h
 C:\Factorio\libraries\glad\include\glad\glad.h
 C:\Factorio\libraries\imgui\imgui.h
+# SDL3's function-like macros the game uses (SDL_BUTTON_MASK, SDL_WINDOWPOS_CENTERED_DISPLAY,
+# SDL_INIT_INTERFACE, SDL_AUDIO_FRAMESIZE) and the ones they use; all are SDL_-prefixed.
+C:\Factorio\libraries\SDL3\include\SDL3\SDL_stdinc.h
+C:\Factorio\libraries\SDL3\include\SDL3\SDL_audio.h
+C:\Factorio\libraries\SDL3\include\SDL3\SDL_mouse.h
+C:\Factorio\libraries\SDL3\include\SDL3\SDL_video.h
 # Lua's internals, which the game's C++ reaches into (LuaTableIterator, LuaValueSaver, LuaBinder, ...)
 # through native/include/kpp_lua_internals.h: their function-like macros (hvalue, uvalue, ttisnil,
 # setobj2s, gkey, gval, ...) are expanded only in the files that include one of them, directly or

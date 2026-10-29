@@ -571,7 +571,16 @@ namespace
                                                                   {"LOG_AND_ABORT", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_AND_ABORT_NEVER_THROW", "Logging::logAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
                                                                   {"LOG_ENUM_AND_ABORT", "Logging::logEnumAndAbortOrThrow(__FILE__, __LINE__, LogLevel::Error, $1)"},
-                                                                  {"SUPPRESS_NEXT", "++result.suppressN"}};
+                                                                  {"SUPPRESS_NEXT", "++result.suppressN"},
+                                                                  // The Windows headers' function-like macros the game uses, as
+                                                                  // winerror.h, minwindef.h, winsock2.h and winnt.h (narrow build)
+                                                                  // define them: the C import brings no function-like macros, and
+                                                                  // the headers are too large to expand wholesale (minwindef.h's
+                                                                  // min and max).
+                                                                  {"FAILED", "(((HRESULT)($1)) < 0)"}, {"SUCCEEDED", "(((HRESULT)($1)) >= 0)"},
+                                                                  {"LOBYTE", "((BYTE)(((DWORD_PTR)($1)) & 0xff))"},
+                                                                  {"HIBYTE", "((BYTE)((((DWORD_PTR)($1)) >> 8) & 0xff))"},
+                                                                  {"FD_ZERO", "(((fd_set*)($1))->fd_count = 0)"}, {"TEXT", "$1"}};
   // Macros that use an argument more than once or stringize it (`#NAME`): $N is argument N as
   // converted (with `this->` and the other rewrites), #N its original spelling as a string literal,
   // which is what the preprocessor's # makes. The prototype explorer's hand-written reflection
@@ -579,7 +588,11 @@ namespace
   const std::map<std::string, std::string> argumentMacros = {
     {"ADD_VALUE", "Values::addValue($1, PrototypeExplorerWidgets::demangleMemberName(#1), #1, result)"},
     {"SKIP_VALUE", "if constexpr (isReference<decltype($1)>) Values::recordReference(#1, result); else Values::recordValue($1, #1, result)"},
-    {"ADD_ENUM", "Values::recordValue($1, #1, result); result.add($1, $2, $3)"}};
+    {"ADD_ENUM", "Values::recordValue($1, #1, result); result.add($1, $2, $3)"},
+    // Windows' wingdi.h and winnt.h, as knownFunctionMacros above (with `(DWORD)((BYTE)(x))` where
+    // wingdi.h has `(DWORD)(BYTE)(x)`, which Kpp asks to have written out).
+    {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
+    {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}};
 
   // The preprocessor's #: the spelling with each run of whitespace one space, `"` and `\` escaped.
   std::string stringize(std::string_view spelling)
