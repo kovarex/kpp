@@ -1,0 +1,21 @@
+// spec: a static member function of a class template called through a class deriving from an instance of it (`T::computeHash(seed)` with T = WithOperation<Basis>, and a plain class deriving from that) runs with that base instance's arguments, its static constants (N = OFFSET + constantCount) included
+// found in the converted game: NoiseExpressionStorage's `T::computeHash(args...)` for ComplexExpressionWithOperation<NoiseOperations::...> (7 instances: "a template parameter whose value is not known here" for ComplexExpression's N)
+// pending: the function runs with the derived class's arguments (the base's parameters unbound), or names no function at all
+template<class E, int variableCount, int constantCount, int expressionCount = 0>
+struct Complex
+{
+  static constexpr int OFFSET = variableCount + expressionCount;
+  static constexpr int N = OFFSET + constantCount;
+  static int computeHash(int seed) { return seed * 100 + N; }
+};
+struct Basis { static constexpr int V = 2; static constexpr int C = 6; };
+template<class Op, int variableCount = Op::V, int constantCount = Op::C>
+struct WithOperation : Complex<Op, variableCount, constantCount> {};
+struct Quick : WithOperation<Quick, 2, 10> {};
+template<class T>
+int hashOf(int seed) { return T::computeHash(seed); }
+int main()
+{
+  println("{} {} {}", hashOf<WithOperation<Basis>>(1), hashOf<Quick>(2), WithOperation<Basis>::computeHash(3));
+  return 0;
+}
