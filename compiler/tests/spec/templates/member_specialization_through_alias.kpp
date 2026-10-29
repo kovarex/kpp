@@ -1,6 +1,5 @@
-// spec: an explicit specialization of a class template's member function written through an alias of the instance (`template<> Vector<int> UpdateBuffer::generate()` with `using UpdateBuffer = Buffer<Update>;`) defines that instance's member, which a static member's initializer calls
+// spec: an explicit specialization of a class template's member function written through an alias of the instance (`template<> Vector<int> UpdateBuffer::generate()` with `using UpdateBuffer = Buffer<Update>;`) defines that instance's member, which a static member's initializer and a direct call run
 // found in src/Info/TimeStatistics.kpp: TimeStatisticsBuffer<T>::generateProperties and generateMappingProperty, specialized through `using UpdateBuffer = ...` and `using FrameBuffer = ...` ("is used, but no definition of it was found", 4 instances)
-// pending: SILENT, every instance calls the first specialization written through an alias (`10 1 0`); in the game the instances find none (only declared)
 struct Update { int a = 1; };
 struct Frame { int b = 2; };
 template<class T>
@@ -30,6 +29,7 @@ Vector<int> FrameBuffer::generate()
 }
 int main()
 {
-  println("{} {} {}", UpdateBuffer::values[0], FrameBuffer::values.size(), FrameBuffer::values[1]);
+  println("{} {} {} {} {}", UpdateBuffer::values[0], FrameBuffer::values.size(), FrameBuffer::values[1], UpdateBuffer::generate().size(),
+          FrameBuffer::generate().size());
   return 0;
 }

@@ -10318,6 +10318,8 @@ struct GlobalScope::Impl
   {
     if (!(f->flags & DF_Specialization) || !f->templateParams.empty() || f->name.parts.size() < 2 || f->name.last().hasTemplateArgs)
       return false;
+    if (f->attributes & ATTR_MemberSpecialization)
+      return true; // the instance named through an alias (finishIndex)
     for (size_t i = 0; i + 1 < f->name.parts.size(); ++i)
       if (f->name.parts[i].hasTemplateArgs)
         return true;
@@ -16000,6 +16002,16 @@ void GlobalScope::finishIndex()
         l.scope = partial; // `template<typename T> int Holder<T, true>::load(int)`: of the partial specialisation
         impl->specializationMembers[f] = partial;
       }
+      else if ((f->flags & DF_Specialization) && f->isTemplate && f->templateParams.empty() && !Impl::isMemberSpecialization(f) &&
+               l.scope->owner && !Impl::effectiveParams(l.scope->owner).empty())
+      {
+        // `template<> Vector<int> UpdateBuffer::generate()` with `using UpdateBuffer =
+        // Buffer<Update>;`: that instance's member, as `Buffer<Update>::generate` writes it (not
+        // a definition of the template's member, which every instance would run).
+        Impl::TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());
+        if (const Ty* written = impl->specializedClassOf(f); written && !written->args.empty())
+          f->attributes |= ATTR_MemberSpecialization;
+      }
     }
     if (l.scope && (l.scope->kind == ScopeKind::Class || l.scope->kind == ScopeKind::Namespace))
       if (auto it = impl->localTypesOfOutOfLine.find(f); it != impl->localTypesOfOutOfLine.end())
@@ -16482,6 +16494,7 @@ Decl* GlobalScope::definitionOf(Decl* d, const TemplateArgs& classArgs)
     for (auto& [p, t] : classArgs.pairs)
       s.pairs.push_back({p, t});
     const Ty* ft = nullptr;
+    FunctionDecl* declared = nullptr; // a specialisation declared without its body (`template<> void Buffer<Update>::f();`)
     for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
     {
       if (!Impl::isMemberSpecialization(candidate) || impl->functionSymbol(candidate->name) != symbol)
@@ -16498,11 +16511,23 @@ Decl* GlobalScope::definitionOf(Decl* d, const TemplateArgs& classArgs)
         continue;
       if (!ft)
         ft = impl->substitute(impl->declaredTypeOf(f, nullptr, 0), s);
-      if (impl->declaredTypeOf(candidate, nullptr, 0) != ft)
+      // Its type read for the instance it specialises (`Nanoseconds Item::*` with the class's
+      // `using Item = T;`), as the template's member's is.
+      if (impl->declaredTypeOf(candidate, &ws, 0) != ft && impl->declaredTypeOf(candidate, nullptr, 0) != ft)
         continue; // another overload's specialisation
       candidate->flags |= f->flags & (DF_Static | DF_Virtual);
+      if (!candidate->body)
+      {
+        // Declared first, defined later (through an alias of the instance, `template<> void
+        // UpdateBuffer::TimeChecker::addTime(...) {...}`): the definition is the one with the body.
+        if (!declared)
+          declared = candidate;
+        continue;
+      }
       return candidate;
     }
+    if (declared)
+      return declared;
   }
   return definitionOf(d);
 }

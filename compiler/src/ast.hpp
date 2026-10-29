@@ -185,6 +185,7 @@ constexpr uint8_t ATTR_NoInline = 1, ATTR_ForceInline = 2, ATTR_VectorCall = 4, 
 constexpr uint8_t ATTR_Specialized = 16; // a class template that has specialisations (the resolver's finishIndex)
 constexpr uint8_t ATTR_InstanceCopy = 32; // an instantiation's own copy of a function (InstanceCopier::function)
 constexpr uint8_t ATTR_Packed = 64; // [[packed]] on a class: its members without padding, alignment 1 (C++'s #pragma pack(push, 1))
+constexpr uint8_t ATTR_MemberSpecialization = 128; // `template<> R UpdateBuffer::f()` through an alias of a class template's instance (finishIndex)
 constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4; // Decl::builtin: generated enum members
 
 struct Decl : Node

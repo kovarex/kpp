@@ -1,6 +1,5 @@
 // spec: explicit specializations of a member of a class nested in a class template, declared with the instance's arguments and defined through an alias of the instance (`template<> int FrameBuffer::Checker::add(int Item::* member, const Item& item) {...}`, Item the class's `using Item = T;`), each define that instance's member: the parameter types read for the instance they specialize
 // found in src/Info/TimeStatistics.kpp: TimeStatisticsBuffer<T>::TimeChecker::addTime and subtractTime, declared as `template<> void TimeStatisticsBuffer<UpdateTimeStatistics::Item>::TimeChecker::addTime(Nanoseconds Item::* value, Nanoseconds time);` and defined through `UpdateBuffer::TimeChecker::addTime` and `FrameBuffer::...`
-// pending: SILENT, both instances run the first definition (`101 102`): the frame statistics' times were added to the update statistics
 struct Update { int a = 1; };
 struct Frame { int a = 2; };
 template<class T>
