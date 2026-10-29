@@ -1,0 +1,24 @@
+// spec: a variable of an unnamed struct type, declared with the struct: `const struct { ... } passes[] { {...}, {...} };` inside a function
+// factorio: ChunkComponents' and Surface's `const struct { TileCoordinates start; Util::Coordinates nextStep; Util::Coordinates innerScanStep; } sidePasses[] { ... };`
+// pending: the parser expects a declaration at `const struct` in a function body ("expected declaration (at 'const')"), and the brace list after the declarator then breaks the statement
+struct Coord
+{
+  int x = 0, y = 0;
+};
+int main()
+{
+  const struct
+  {
+    Coord start;
+    int step;
+  } passes[]
+  {
+    { Coord{0, 0}, 1 },
+    { Coord{2, 3}, -1 },
+  };
+  int total = 0;
+  for (const auto& pass : passes)
+    total += pass.start.y + pass.step;
+  println("{} {}", sizeof(passes) / sizeof(passes[0]), total);
+  return 0;
+}
