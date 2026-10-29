@@ -1,0 +1,25 @@
+// spec: a switch whose condition declares a variable (`switch (const int type = table.get<uint32_t>("type"))`): the variable is in scope in the cases and holds the value switched on
+// found in the converted game: LuaSegmentedUnit's parseAIState and SegmentedUnitPrototype::shouldCreateAsFullyExtended ("a switch on a declaration")
+enum class Extended : uint8_t { No, Yes, Default };
+int kindOf(int value)
+{
+  switch (const int doubled = value * 2)
+  {
+    case 4: return doubled + 100;
+    default: return doubled;
+  }
+}
+int extended(int raw)
+{
+  switch (const Extended e = Extended(raw))
+  {
+    case Extended::No: return 0;
+    case Extended::Yes: return 1;
+    default: return int(e) * 10;
+  }
+}
+int main()
+{
+  println("{} {} {} {}", kindOf(2), kindOf(5), extended(1), extended(2));
+  return 0;
+}

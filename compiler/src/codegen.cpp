@@ -6058,7 +6058,20 @@ namespace
       }
       std::string r = newTemp();
       fn += "  " + r + " = call ptr @kpp.dyncast(ptr " + o.text + ", ptr " + descriptor + ")\n";
-      return Value{r, e->ty, false};
+      if (pointer)
+        return Value{r, e->ty, false};
+      // `dynamic_cast<const T&>(x)`: the T object itself (its members are called on it); an x that
+      // is no T is a wrong program (C++ throws bad_cast), stopped here rather than read through null.
+      if (declaredNames.claim("@llvm.trap"))
+        decls += "declare void @llvm.trap()\n";
+      std::string bad = newTemp(), okL = newLabel("dyncast.ok"), badL = newLabel("dyncast.bad");
+      fn += "  " + bad + " = icmp eq ptr " + r + ", null\n";
+      fn += "  br i1 " + bad + ", label %" + badL + ", label %" + okL + "\n";
+      startBlock(badL);
+      fn += "  call void @llvm.trap()\n  unreachable\n";
+      blockTerminated = true;
+      startBlock(okL);
+      return Value{r, target, false};
     }
 
     // The offset of the class whose descriptor is %target within one whose descriptor is %d (both
@@ -6938,6 +6951,11 @@ namespace
             Value p = rvalue(u->operand);
             if (isClass(p.ty))
             {
+              // No operator* of its own: the class's conversion to a pointer (`&*context.undoFiller`).
+              const Ty* foundIn = nullptr;
+              if (!findMemberFunction(p.ty, operatorName(P::Star), {}, p.ty, e, &foundIn, true))
+                if (std::optional<Value> pointer = toPointer(p, e))
+                  return pointer->text;
               Value v = operatorCall(p, operatorName(P::Star), {}, e, true);
               return v.text;
             }
@@ -11314,9 +11332,25 @@ namespace
         for (size_t i = ehFrames.size(); i-- > 0 && !handler;)
           if (ehFrames[i].isHandler)
             handler = &ehFrames[i];
-        if (!handler)
-          unsupported(t, "`throw;` outside a catch handler");
-        std::string slot = handler->exceptionSlot;
+        std::string slot;
+        if (handler)
+          slot = handler->exceptionSlot;
+        else
+        {
+          // In a function a handler calls (an exception dispatcher's `try { throw; } catch ...`):
+          // the exception that handler holds, kpp.eh.current; with none, a wrong program, stopped.
+          slot = newTemp();
+          fn += "  " + slot + " = load ptr, ptr @kpp.eh.current\n";
+          if (declaredNames.claim("@llvm.trap"))
+            decls += "declare void @llvm.trap()\n";
+          std::string none = newTemp(), okL = newLabel("rethrow"), noneL = newLabel("rethrow.none");
+          fn += "  " + none + " = icmp eq ptr " + slot + ", null\n";
+          fn += "  br i1 " + none + ", label %" + noneL + ", label %" + okL + "\n";
+          startBlock(noneL);
+          fn += "  call void @llvm.trap()\n  unreachable\n";
+          blockTerminated = true;
+          startBlock(okL);
+        }
         destroyTemps();
         emitCall("", "void @kpp_eh_rethrow(ptr " + slot + ")");
       }
@@ -11399,7 +11433,7 @@ namespace
       startBlock(handlerL);
       fn += "  " + pad + " = catchpad within " + cs + " [ptr " + filter + "]\n";
       std::string slot = "%v" + std::to_string(temp++);
-      allocas += "  " + slot + " = alloca [5 x i64]\n"; // object, typeinfo, destructor, handler, adjusted object
+      allocas += "  " + slot + " = alloca [6 x i64]\n"; // object, typeinfo, destructor, handler, adjusted object, the handler around this one (kpp.eh.current)
       ehFrames.push_back({true, "", frame.parentFunclet, pad, slot, scopes.size()});
       fn += "  call void @kpp_eh_begin(ptr " + slot + ")" + bundle() + "\n";
       std::vector<std::string> handlerLabels;
@@ -11502,13 +11536,19 @@ namespace
                   "  %s3 = getelementptr inbounds i64, ptr %slot, i64 3\n  %s4 = getelementptr inbounds i64, ptr %slot, i64 4\n"
                   "  store i64 %obj, ptr %slot\n  store i64 %ti, ptr %s1\n  store i64 %dtor, ptr %s2\n  store i64 %h, ptr %s3\n  store i64 %adj, ptr %s4\n"
                   "  %d1 = add i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n  ret void\n}\n";
+        // A handler's record is the current exception while it runs (kpp.eh.current, the record of
+        // the handler around it kept in its sixth word): what `throw;` in a function it calls raises.
+        shared += sharedComdat("@kpp.eh.current") + "@kpp.eh.current = linkonce_odr thread_local global ptr null, comdat\n";
         shared += sharedComdat("@kpp_eh_begin") +
                   "define linkonce_odr void @kpp_eh_begin(ptr %out) comdat {\nentry:\n"
                   "  %d = load i64, ptr @kpp.eh.depth\n  %d1 = sub i64 %d, 1\n  store i64 %d1, ptr @kpp.eh.depth\n"
                   "  %i = mul i64 %d1, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
-                  "  call void @llvm.memcpy.p0.p0.i64(ptr %out, ptr %slot, i64 40, i1 false)\n  ret void\n}\n";
+                  "  call void @llvm.memcpy.p0.p0.i64(ptr %out, ptr %slot, i64 40, i1 false)\n"
+                  "  %outer = load ptr, ptr @kpp.eh.current\n  %op = getelementptr inbounds i8, ptr %out, i64 40\n  store ptr %outer, ptr %op\n"
+                  "  store ptr %out, ptr @kpp.eh.current\n  ret void\n}\n";
         shared += sharedComdat("@kpp_eh_end") +
                   "define linkonce_odr void @kpp_eh_end(ptr %out) comdat {\nentry:\n"
+                  "  %op = getelementptr inbounds i8, ptr %out, i64 40\n  %outer = load ptr, ptr %op\n  store ptr %outer, ptr @kpp.eh.current\n"
                   "  %obj = load ptr, ptr %out\n  %null = icmp eq ptr %obj, null\n  br i1 %null, label %done, label %live\n"
                   "live:\n  %dp = getelementptr inbounds i8, ptr %out, i64 16\n  %dtor = load ptr, ptr %dp\n"
                   "  %nodtor = icmp eq ptr %dtor, null\n  br i1 %nodtor, label %release, label %destroy\n"
@@ -11564,7 +11604,7 @@ namespace
       if (!usesExceptions)
         text += "  %r = call " + call + "\n  ret i32 %r\n}\n\n";
       else
-        text += "  %out = alloca [5 x i64]\n  %r = invoke " + call + " to label %done unwind label %dispatch\n"
+        text += "  %out = alloca [6 x i64]\n  %r = invoke " + call + " to label %done unwind label %dispatch\n"
                 "done:\n  ret i32 %r\n"
                 "dispatch:\n  %cs = catchswitch within none [label %handler] unwind to caller\n"
                 "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.any]\n"
@@ -12820,10 +12860,28 @@ namespace
       pushScope();
       if (sw->init)
         statement(sw->init);
-      if (!sw->cond || sw->cond->kind == NodeKind::DeclStmt)
-        unsupported(sw, "a switch on a declaration");
-      Value cond = rvalue(static_cast<Expr*>(sw->cond));
-      const Ty* switchedTy = types.stripRef(static_cast<Expr*>(sw->cond)->ty); // the written type: a Kpp enum's switch names every value
+      if (!sw->cond)
+        unsupported(sw, "a switch without a condition");
+      Value cond;
+      const Ty* switchedTy = nullptr;
+      if (sw->cond->kind == NodeKind::DeclStmt)
+      {
+        // `switch (const int type = table.get<uint32_t>("type"))`: the variable, in the switch's
+        // scope, and its value switched on.
+        auto* d = static_cast<DeclStmt*>(sw->cond);
+        if (d->decls.size() != 1 || d->decls[0]->kind != NodeKind::VariableDecl)
+          unsupported(sw, "this switch declaration");
+        auto* v = static_cast<VariableDecl*>(d->decls[0]);
+        declareLocal(v);
+        Local& l = locals[v];
+        cond = load(l.addr, l.ty, sw);
+        switchedTy = types.stripRef(l.ty);
+      }
+      else
+      {
+        cond = rvalue(static_cast<Expr*>(sw->cond));
+        switchedTy = types.stripRef(static_cast<Expr*>(sw->cond)->ty); // the written type: a Kpp enum's switch names every value
+      }
       if (ClassDecl* c = typedUnionOf(cond.ty, sw))
       {
         // `switch (p)` on a typed union: its tag.
