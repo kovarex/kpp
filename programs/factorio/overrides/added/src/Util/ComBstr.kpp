@@ -1,0 +1,59 @@
+// comutil.h's _bstr_t, which the game has through comdef.h: a BSTR the object owns, made from a
+// wide or a narrow string (the narrow one converted with the ANSI code page, as _bstr_t converts it),
+// freed with the object, and passed to COM methods as the BSTR it holds. SystemUtil's WMI query
+// passes `_bstr_t(L"ROOT\\CIMV2")` and `bstr_t("WQL")` (comutil.h's `#define bstr_t _bstr_t`).
+// Copies copy the string, where MSVC's share one reference-counted BSTR; nothing observes the
+// difference but the count of allocations.
+extern "C" import "windows.h";
+extern "C" import "oleauto.h";
+
+class _bstr_t
+{
+public:
+  _bstr_t() {}
+  implicit _bstr_t(const wchar_t* text) : value(text ? SysAllocString(text) : nullptr) {}
+  implicit _bstr_t(const char* text)
+  {
+    if (!text)
+      return;
+    int length = MultiByteToWideChar(CP_ACP, 0, text, -1, nullptr, 0);
+    if (length <= 0)
+      return;
+    this->value = SysAllocStringLen(nullptr, UINT(length - 1));
+    if (this->value)
+      MultiByteToWideChar(CP_ACP, 0, text, -1, this->value, length);
+  }
+  _bstr_t(const _bstr_t& other) : value(other.value ? SysAllocStringLen(other.value, SysStringLen(other.value)) : nullptr) {}
+  _bstr_t(_bstr_t&& other) : value(other.value) { other.value = nullptr; }
+  ~_bstr_t() { SysFreeString(this->value); }
+
+  _bstr_t& operator=(const _bstr_t& other)
+  {
+    if (this != &other)
+    {
+      SysFreeString(this->value);
+      this->value = other.value ? SysAllocStringLen(other.value, SysStringLen(other.value)) : nullptr;
+    }
+    return *this;
+  }
+  _bstr_t& operator=(_bstr_t&& other)
+  {
+    if (this != &other)
+    {
+      SysFreeString(this->value);
+      this->value = other.value;
+      other.value = nullptr;
+    }
+    return *this;
+  }
+
+  // The BSTR, for a COM method's parameter; it stays the object's.
+  implicit operator BSTR() const { return this->value; }
+  // The string's length in characters (0 for none).
+  unsigned int length() const { return SysStringLen(this->value); }
+
+private:
+  BSTR value = nullptr;
+};
+
+using bstr_t = _bstr_t;

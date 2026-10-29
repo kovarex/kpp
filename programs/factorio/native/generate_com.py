@@ -31,11 +31,14 @@ SDK = sys.argv[1] if len(sys.argv) > 1 else r'C:\Program Files (x86)\Windows Kit
 # Headers whose interfaces are all generated, and single interfaces from the bigger ones.
 WHOLE = [r'um\d3dcommon.h', r'shared\dxgi.h', r'shared\dxgi1_2.h', r'shared\dxgi1_3.h', r'shared\dxgi1_4.h', r'shared\dxgi1_5.h',
          r'um\d3d11.h', r'um\d3d11_1.h', r'um\d3d11sdklayers.h']
-SINGLE = {r'um\Unknwn.h': ['IUnknown'], r'um\ObjIdl.h': ['ISequentialStream', 'IStream'], r'um\wincodec.h': ['IWICImagingFactory']}
+SINGLE = {r'um\Unknwn.h': ['IUnknown'], r'um\ObjIdl.h': ['ISequentialStream', 'IStream'],
+          r'um\wincodec.h': ['IWICImagingFactory', 'IWICBitmapSource', 'IWICBitmapDecoder', 'IWICBitmapFrameDecode', 'IWICFormatConverter',
+                             'IWICStream'],
+          r'um\WbemCli.h': ['IWbemLocator', 'IWbemServices', 'IWbemClassObject', 'IEnumWbemClassObject']}
 # IIDs the game names with __uuidof without calling the interface.
 EXTRA_IIDS = ['ID3D10Device']
 # What the import must include, in order (the SDK's own includes bring the rest).
-IMPORTED = ['d3d11.h', 'd3d11_1.h', 'd3d11sdklayers.h', 'dxgi1_5.h', 'd3d9.h', 'd3dcompiler.h', 'wincodec.h']
+IMPORTED = ['d3d11.h', 'd3d11_1.h', 'd3d11sdklayers.h', 'dxgi1_5.h', 'd3d9.h', 'd3dcompiler.h', 'wincodec.h', 'wbemidl.h']
 
 
 def strip_comments(text):

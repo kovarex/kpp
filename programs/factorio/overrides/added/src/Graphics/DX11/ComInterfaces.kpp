@@ -1019,6 +1019,16 @@ public:
   virtual HRESULT CheckPresentDurationSupport(UINT DesiredPresentDuration, UINT* pClosestSmallerPresentDuration, UINT* pClosestLargerPresentDuration) = 0;
 };
 
+class IEnumWbemClassObject : public IUnknown
+{
+public:
+  virtual HRESULT Reset() = 0;
+  virtual HRESULT Next(long lTimeout, ULONG uCount, IWbemClassObject** apObjects, ULONG* puReturned) = 0;
+  virtual HRESULT NextAsync(ULONG uCount, IWbemObjectSink* pSink) = 0;
+  virtual HRESULT Clone(IEnumWbemClassObject** ppEnum) = 0;
+  virtual HRESULT Skip(long lTimeout, ULONG nCount) = 0;
+};
+
 class ISequentialStream : public IUnknown
 {
 public:
@@ -1038,6 +1048,47 @@ public:
   virtual HRESULT UnlockRegion(ULARGE_INTEGER libOffset, ULARGE_INTEGER cb, DWORD dwLockType) = 0;
   virtual HRESULT Stat(STATSTG* pstatstg, DWORD grfStatFlag) = 0;
   virtual HRESULT Clone(IStream** ppstm) = 0;
+};
+
+class IWICBitmapDecoder : public IUnknown
+{
+public:
+  virtual HRESULT QueryCapability(IStream* pIStream, DWORD* pdwCapability) = 0;
+  virtual HRESULT Initialize(IStream* pIStream, WICDecodeOptions cacheOptions) = 0;
+  virtual HRESULT GetContainerFormat(GUID* pguidContainerFormat) = 0;
+  virtual HRESULT GetDecoderInfo(IWICBitmapDecoderInfo** ppIDecoderInfo) = 0;
+  virtual HRESULT CopyPalette(IWICPalette* pIPalette) = 0;
+  virtual HRESULT GetMetadataQueryReader(IWICMetadataQueryReader** ppIMetadataQueryReader) = 0;
+  virtual HRESULT GetPreview(IWICBitmapSource** ppIBitmapSource) = 0;
+  virtual HRESULT GetColorContexts(UINT cCount, IWICColorContext** ppIColorContexts, UINT* pcActualCount) = 0;
+  virtual HRESULT GetThumbnail(IWICBitmapSource** ppIThumbnail) = 0;
+  virtual HRESULT GetFrameCount(UINT* pCount) = 0;
+  virtual HRESULT GetFrame(UINT index, IWICBitmapFrameDecode** ppIBitmapFrame) = 0;
+};
+
+class IWICBitmapSource : public IUnknown
+{
+public:
+  virtual HRESULT GetSize(UINT* puiWidth, UINT* puiHeight) = 0;
+  virtual HRESULT GetPixelFormat(WICPixelFormatGUID* pPixelFormat) = 0;
+  virtual HRESULT GetResolution(double* pDpiX, double* pDpiY) = 0;
+  virtual HRESULT CopyPalette(IWICPalette* pIPalette) = 0;
+  virtual HRESULT CopyPixels(const WICRect* prc, UINT cbStride, UINT cbBufferSize, BYTE* pbBuffer) = 0;
+};
+
+class IWICBitmapFrameDecode : public IWICBitmapSource
+{
+public:
+  virtual HRESULT GetMetadataQueryReader(IWICMetadataQueryReader** ppIMetadataQueryReader) = 0;
+  virtual HRESULT GetColorContexts(UINT cCount, IWICColorContext** ppIColorContexts, UINT* pcActualCount) = 0;
+  virtual HRESULT GetThumbnail(IWICBitmapSource** ppIThumbnail) = 0;
+};
+
+class IWICFormatConverter : public IWICBitmapSource
+{
+public:
+  virtual HRESULT Initialize(IWICBitmapSource* pISource, REFWICPixelFormatGUID dstFormat, WICBitmapDitherType dither, IWICPalette* pIPalette, double alphaThresholdPercent, WICBitmapPaletteType paletteTranslate) = 0;
+  virtual HRESULT CanConvert(REFWICPixelFormatGUID srcPixelFormat, REFWICPixelFormatGUID dstPixelFormat, BOOL* pfCanConvert) = 0;
 };
 
 class IWICImagingFactory : public IUnknown
@@ -1068,4 +1119,76 @@ public:
   virtual HRESULT CreateFastMetadataEncoderFromFrameDecode(IWICBitmapFrameDecode* pIFrameDecoder, IWICFastMetadataEncoder** ppIFastEncoder) = 0;
   virtual HRESULT CreateQueryWriter(const GUID* guidMetadataFormat, const GUID* pguidVendor, IWICMetadataQueryWriter** ppIQueryWriter) = 0;
   virtual HRESULT CreateQueryWriterFromReader(IWICMetadataQueryReader* pIQueryReader, const GUID* pguidVendor, IWICMetadataQueryWriter** ppIQueryWriter) = 0;
+};
+
+class IWICStream : public IStream
+{
+public:
+  virtual HRESULT InitializeFromIStream(IStream* pIStream) = 0;
+  virtual HRESULT InitializeFromFilename(LPCWSTR wzFileName, DWORD dwDesiredAccess) = 0;
+  virtual HRESULT InitializeFromMemory(WICInProcPointer pbBuffer, DWORD cbBufferSize) = 0;
+  virtual HRESULT InitializeFromIStreamRegion(IStream* pIStream, ULARGE_INTEGER ulOffset, ULARGE_INTEGER ulMaxSize) = 0;
+};
+
+class IWbemClassObject : public IUnknown
+{
+public:
+  virtual HRESULT GetQualifierSet(IWbemQualifierSet** ppQualSet) = 0;
+  virtual HRESULT Get(LPCWSTR wszName, long lFlags, VARIANT* pVal, CIMTYPE* pType, long* plFlavor) = 0;
+  virtual HRESULT Put(LPCWSTR wszName, long lFlags, VARIANT* pVal, CIMTYPE Type) = 0;
+  virtual HRESULT Delete(LPCWSTR wszName) = 0;
+  virtual HRESULT GetNames(LPCWSTR wszQualifierName, long lFlags, VARIANT* pQualifierVal, SAFEARRAY** pNames) = 0;
+  virtual HRESULT BeginEnumeration(long lEnumFlags) = 0;
+  virtual HRESULT Next(long lFlags, BSTR* strName, VARIANT* pVal, CIMTYPE* pType, long* plFlavor) = 0;
+  virtual HRESULT EndEnumeration() = 0;
+  virtual HRESULT GetPropertyQualifierSet(LPCWSTR wszProperty, IWbemQualifierSet** ppQualSet) = 0;
+  virtual HRESULT Clone(IWbemClassObject** ppCopy) = 0;
+  virtual HRESULT GetObjectText(long lFlags, BSTR* pstrObjectText) = 0;
+  virtual HRESULT SpawnDerivedClass(long lFlags, IWbemClassObject** ppNewClass) = 0;
+  virtual HRESULT SpawnInstance(long lFlags, IWbemClassObject** ppNewInstance) = 0;
+  virtual HRESULT CompareTo(long lFlags, IWbemClassObject* pCompareTo) = 0;
+  virtual HRESULT GetPropertyOrigin(LPCWSTR wszName, BSTR* pstrClassName) = 0;
+  virtual HRESULT InheritsFrom(LPCWSTR strAncestor) = 0;
+  virtual HRESULT GetMethod(LPCWSTR wszName, long lFlags, IWbemClassObject** ppInSignature, IWbemClassObject** ppOutSignature) = 0;
+  virtual HRESULT PutMethod(LPCWSTR wszName, long lFlags, IWbemClassObject* pInSignature, IWbemClassObject* pOutSignature) = 0;
+  virtual HRESULT DeleteMethod(LPCWSTR wszName) = 0;
+  virtual HRESULT BeginMethodEnumeration(long lEnumFlags) = 0;
+  virtual HRESULT NextMethod(long lFlags, BSTR* pstrName, IWbemClassObject** ppInSignature, IWbemClassObject** ppOutSignature) = 0;
+  virtual HRESULT EndMethodEnumeration() = 0;
+  virtual HRESULT GetMethodQualifierSet(LPCWSTR wszMethod, IWbemQualifierSet** ppQualSet) = 0;
+  virtual HRESULT GetMethodOrigin(LPCWSTR wszMethodName, BSTR* pstrClassName) = 0;
+};
+
+class IWbemLocator : public IUnknown
+{
+public:
+  virtual HRESULT ConnectServer(const BSTR strNetworkResource, const BSTR strUser, const BSTR strPassword, const BSTR strLocale, long lSecurityFlags, const BSTR strAuthority, IWbemContext* pCtx, IWbemServices** ppNamespace) = 0;
+};
+
+class IWbemServices : public IUnknown
+{
+public:
+  virtual HRESULT OpenNamespace(const BSTR strNamespace, long lFlags, IWbemContext* pCtx, IWbemServices** ppWorkingNamespace, IWbemCallResult** ppResult) = 0;
+  virtual HRESULT CancelAsyncCall(IWbemObjectSink* pSink) = 0;
+  virtual HRESULT QueryObjectSink(long lFlags, IWbemObjectSink** ppResponseHandler) = 0;
+  virtual HRESULT GetObject(const BSTR strObjectPath, long lFlags, IWbemContext* pCtx, IWbemClassObject** ppObject, IWbemCallResult** ppCallResult) = 0;
+  virtual HRESULT GetObjectAsync(const BSTR strObjectPath, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT PutClass(IWbemClassObject* pObject, long lFlags, IWbemContext* pCtx, IWbemCallResult** ppCallResult) = 0;
+  virtual HRESULT PutClassAsync(IWbemClassObject* pObject, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT DeleteClass(const BSTR strClass, long lFlags, IWbemContext* pCtx, IWbemCallResult** ppCallResult) = 0;
+  virtual HRESULT DeleteClassAsync(const BSTR strClass, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT CreateClassEnum(const BSTR strSuperclass, long lFlags, IWbemContext* pCtx, IEnumWbemClassObject** ppEnum) = 0;
+  virtual HRESULT CreateClassEnumAsync(const BSTR strSuperclass, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT PutInstance(IWbemClassObject* pInst, long lFlags, IWbemContext* pCtx, IWbemCallResult** ppCallResult) = 0;
+  virtual HRESULT PutInstanceAsync(IWbemClassObject* pInst, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT DeleteInstance(const BSTR strObjectPath, long lFlags, IWbemContext* pCtx, IWbemCallResult** ppCallResult) = 0;
+  virtual HRESULT DeleteInstanceAsync(const BSTR strObjectPath, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT CreateInstanceEnum(const BSTR strFilter, long lFlags, IWbemContext* pCtx, IEnumWbemClassObject** ppEnum) = 0;
+  virtual HRESULT CreateInstanceEnumAsync(const BSTR strFilter, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT ExecQuery(const BSTR strQueryLanguage, const BSTR strQuery, long lFlags, IWbemContext* pCtx, IEnumWbemClassObject** ppEnum) = 0;
+  virtual HRESULT ExecQueryAsync(const BSTR strQueryLanguage, const BSTR strQuery, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT ExecNotificationQuery(const BSTR strQueryLanguage, const BSTR strQuery, long lFlags, IWbemContext* pCtx, IEnumWbemClassObject** ppEnum) = 0;
+  virtual HRESULT ExecNotificationQueryAsync(const BSTR strQueryLanguage, const BSTR strQuery, long lFlags, IWbemContext* pCtx, IWbemObjectSink* pResponseHandler) = 0;
+  virtual HRESULT ExecMethod(const BSTR strObjectPath, const BSTR strMethodName, long lFlags, IWbemContext* pCtx, IWbemClassObject* pInParams, IWbemClassObject** ppOutParams, IWbemCallResult** ppCallResult) = 0;
+  virtual HRESULT ExecMethodAsync(const BSTR strObjectPath, const BSTR strMethodName, long lFlags, IWbemContext* pCtx, IWbemClassObject* pInParams, IWbemObjectSink* pResponseHandler) = 0;
 };

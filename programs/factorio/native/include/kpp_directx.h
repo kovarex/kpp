@@ -101,9 +101,18 @@
 #define __IDXGISwapChain3_INTERFACE_DEFINED__
 #define __IDXGISwapChain4_INTERFACE_DEFINED__
 #define __IDXGISwapChainMedia_INTERFACE_DEFINED__
+#define __IEnumWbemClassObject_INTERFACE_DEFINED__
 #define __ISequentialStream_INTERFACE_DEFINED__
 #define __IStream_INTERFACE_DEFINED__
+#define __IWICBitmapDecoder_INTERFACE_DEFINED__
+#define __IWICBitmapSource_INTERFACE_DEFINED__
+#define __IWICBitmapFrameDecode_INTERFACE_DEFINED__
+#define __IWICFormatConverter_INTERFACE_DEFINED__
 #define __IWICImagingFactory_INTERFACE_DEFINED__
+#define __IWICStream_INTERFACE_DEFINED__
+#define __IWbemClassObject_INTERFACE_DEFINED__
+#define __IWbemLocator_INTERFACE_DEFINED__
+#define __IWbemServices_INTERFACE_DEFINED__
 #include <d3d11.h>
 #include <d3d11_1.h>
 #include <d3d11sdklayers.h>
@@ -111,6 +120,7 @@
 #include <d3d9.h>
 #include <d3dcompiler.h>
 #include <wincodec.h>
+#include <wbemidl.h>
 // What the guard of IUnknown also holds (Unknwn.h).
 typedef IUnknown *LPUNKNOWN;
 // What the guard of IStream also holds (ObjIdl.h).
@@ -249,7 +259,16 @@ extern const IID IID_IDXGISwapChain2;
 extern const IID IID_IDXGISwapChain3;
 extern const IID IID_IDXGISwapChain4;
 extern const IID IID_IDXGISwapChainMedia;
+extern const IID IID_IEnumWbemClassObject;
 extern const IID IID_ISequentialStream;
 extern const IID IID_IStream;
+extern const IID IID_IWICBitmapDecoder;
+extern const IID IID_IWICBitmapSource;
+extern const IID IID_IWICBitmapFrameDecode;
+extern const IID IID_IWICFormatConverter;
 extern const IID IID_IWICImagingFactory;
+extern const IID IID_IWICStream;
+extern const IID IID_IWbemClassObject;
+extern const IID IID_IWbemLocator;
+extern const IID IID_IWbemServices;
 extern const IID IID_ID3D10Device;
