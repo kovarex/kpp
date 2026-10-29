@@ -2108,7 +2108,25 @@ namespace
       }
       storeVptrs(addr, info);
       if (info.isUnion)
+      {
+        // A union with no member named by a constructor initializer: its member with a default
+        // member initializer is the one initialized, as in C++ (`union { int64_t raw = 0; ... }`).
+        bool named = false;
+        for (Decl* d : info.fieldDecls)
+          if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
+            named = named || initFor(static_cast<VariableDecl*>(d)->name.last().symbol);
+        if (!named)
+          for (Decl* d : info.fieldDecls)
+            if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->init && !bitfieldFor(d))
+            {
+              auto* v = static_cast<VariableDecl*>(d);
+              const Ty* ft = unionMemberType(t, d, at);
+              if (const Ty* declared = global.typeOfDecl(v); !ft->isReference() && !(declared && declared->isReference()))
+                withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(addr, ft, value, v); });
+              break;
+            }
         return;
+      }
       std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
       for (Decl* d : info.fieldDecls)
       {
@@ -2172,6 +2190,42 @@ namespace
       }
     }
 
+    // The type of member m of union t (every member at the union's start, field 0 standing for none
+    // of them): a data member's, or an anonymous struct's with the union's arguments.
+    const Ty* unionMemberType(const Ty* t, Decl* m, Node* at)
+    {
+      const Ty* key = canonicalClass(t, at);
+      if (m->kind == NodeKind::VariableDecl)
+        return global.typeOfDeclIn(m, global.classArgsOf(key));
+      return types.classType(m, key->args);
+    }
+
+    // Whether every element of the brace list converts to the element type of the InitializerList
+    // constructor ctor of class t: only then is ctor the one, otherwise the other constructors take
+    // the elements (C++'s two phases: `Vector<int*> v{set.begin(), set.end()}` is the range). An
+    // element of unknown type, or a list itself, counts as converting.
+    bool listConvertsTo(FunctionDecl* ctor, BraceInitExpr* list, const Ty* t, Node* at)
+    {
+      TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
+      ArgsScope scope(*this, &classArgs);
+      const Ty* pt = declType(ctor->params[0]);
+      pt = pt ? types.unqualified(types.stripRef(pt)) : nullptr;
+      if (!pt || pt->args.empty())
+        return true;
+      const Ty* element = pt->args[0];
+      for (Expr* a : list->args)
+      {
+        if (!a || a->kind == NodeKind::BraceInitExpr || isPackExpansion(a) || !a->ty || !a->ty->isKnown())
+          continue;
+        const Ty* at = withCurrentArgs(a->ty);
+        if (types.isDependent(at) || types.isDependent(element))
+          continue;
+        if (!global.converts(argumentType(a, at, types), element))
+          return false;
+      }
+      return true;
+    }
+
     // The constructor of class t that takes an InitializerList (the rest defaulted), or null.
     FunctionDecl* initializerListConstructor(ClassDecl* c, const Ty* t, Node* at)
     {
@@ -2227,8 +2281,10 @@ namespace
         guard.emplace(constructing, key, args[0]);
       }
       // (`return {{a, b}};` for an Optional<Pair<int, int>>: the inner list, one element of the
-      // outer one, is an argument of a constructor, not the class's own list again.)
-      if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !(listElements && hasUserConstructors(c)))
+      // outer one, is an argument of a constructor, not the class's own list again; nor is the
+      // one value of `{.effectTexture = {bitmap}}`, which is the designated member's.)
+      if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !(listElements && hasUserConstructors(c)) &&
+          !(listElements && !pendingDesignators.empty()))
       {
         // `T x{y}` with y a T, or of a class derived from T: a copy or a move of y, before any
         // initializer-list constructor (C++ DR 1467): `[names{::move(names)}]` moves the Vector.
@@ -2244,7 +2300,7 @@ namespace
             return;
           }
         }
-        if (FunctionDecl* ctor = initializerListConstructor(c, t, at))
+        if (FunctionDecl* ctor = initializerListConstructor(c, t, at); ctor && listConvertsTo(ctor, list, t, at))
         {
           // `Vector<int> v = {1, 2, 3}`, `Poly p({1, 2, 3, 4})`: the list as one InitializerList argument.
           TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
@@ -2507,8 +2563,28 @@ namespace
         }
         size_t i = 0;
         std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
+        // A union holds one member: the one a value is for (`{.effectTexture = {bitmap}}`), else
+        // the one with a default member initializer, else its first (C++'s rule), each at the
+        // union's start with its own type.
+        Decl* unionMember = nullptr;
+        if (info.isUnion)
+        {
+          for (size_t j = 0; j < members.size() && !unionMember; ++j)
+            if (valueOf[j] || !elided[j].empty())
+              unionMember = members[j];
+          for (size_t j = 0; j < members.size() && !unionMember; ++j)
+            if (members[j]->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(members[j])->init)
+              unionMember = members[j];
+          if (!unionMember && !members.empty())
+            unionMember = members[0];
+        }
         for (Decl* d : members)
         {
+          if (info.isUnion && d != unionMember)
+          {
+            ++i;
+            continue;
+          }
           if (!elided[i].empty())
           {
             const Ty* ft = types.unqualified(info.fieldTypes[fieldIndexOf(info, d)]);
@@ -2529,8 +2605,8 @@ namespace
               initializeBitfield(addr, t, info, static_cast<VariableDecl*>(d), *bits, value != nullptr, value, zeroedUnits, at);
               continue;
             }
-          std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
-          const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
+          std::string fieldAddr = info.isUnion ? addr : gep(info.name, addr, fieldIndexOf(info, d));
+          const Ty* ft = info.isUnion ? unionMemberType(t, d, at) : info.fieldTypes[fieldIndexOf(info, d)];
           const Ty* declared = d->kind == NodeKind::VariableDecl ? global.typeOfDecl(d) : nullptr;
           bool reference = ft->isReference() || (declared && declared->isReference());
           if (value)

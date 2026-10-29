@@ -311,6 +311,8 @@ public:
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
   // the operand classes and enums and context's own), chosen by overload ranking; null if none.
   FunctionDecl* findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);
+  // Whether a value of type from (an lvalue as a reference to its type) converts implicitly to to.
+  bool converts(const Ty* from, const Ty* to);
   // The same for a free function by name (`begin(range)` and `end(range)` of a range-for over a
   // class without those members).
   FunctionDecl* findFreeFunction(std::string_view name, const std::vector<const Ty*>& argTypes, Decl* context);

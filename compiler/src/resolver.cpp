@@ -17017,6 +17017,11 @@ FunctionDecl* GlobalScope::privateInstance(FunctionDecl* f, const TemplateArgs& 
   return copy;
 }
 
+bool GlobalScope::converts(const Ty* from, const Ty* to)
+{
+  return from && to && impl->conversionRank(from, to) < Impl::NotViable;
+}
+
 bool GlobalScope::isExplicit(FunctionDecl* f, const TemplateArgs& args)
 {
   Subst s = toSubst(args);

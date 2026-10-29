@@ -1,6 +1,5 @@
 // spec: a designated initializer names the member of a union it initializes, `{.effectTexture = {bitmap}}`: that member (here a struct of one pointer) takes the braced value, not the union's first member
 // factorio: DrawCommandBatch::drawShadowMaskedByFramebuffer's `SpriteEffectData data = {.effectTexture = {bufferMask.bitmap}};` with SpriteEffectData a union of an int64_t raw and structs
-// pending: the value initializes the first member ("a pointer (VideoBitmap*) does not convert to int64 without a cast")
 struct VideoBitmap
 {
   int id = 0;
