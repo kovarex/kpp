@@ -14253,7 +14253,9 @@ struct GlobalScope::Impl
       Subst subst;
       bool isMember;
       Span<Expr*> none;
-      if (FunctionDecl* f = operatorFunction(op, lhs, rhs, token, arity, subst, isMember))
+      // The left operand as an argument (an lvalue a reference): a free `Stream& operator<<(Stream&,
+      // const char*)` binds the stream lvalue.
+      if (FunctionDecl* f = operatorFunction(op, lhsOperand ? lhsOperand : lhs, rhs, token, arity, subst, isMember))
       {
         // The operands a template deduces from: a member's object is not one of them.
         std::vector<const Ty*> operands;

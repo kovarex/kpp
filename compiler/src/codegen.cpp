@@ -10558,7 +10558,7 @@ namespace
         // (`-limit` with a Const<double>), as the resolver typed it.
         const Ty* scalar = nullptr;
         if (!findMemberFunction(v.ty, operatorName(op), {}, v.ty, u, &in) &&
-            !(u->operand->ty && global.findFreeOperator(uint32_t(op), u->operand->ty, nullptr, currentFunction)))
+            !(u->operand->ty && global.findFreeOperator(uint32_t(op), argumentType(u->operand, u->operand->ty, types), nullptr, currentFunction)))
           scalar = global.scalarConversionOf(v.ty);
         if (!scalar)
           return callRvalue(operatorCall(v, operatorName(op), {}, u, true), u);
@@ -10660,7 +10660,7 @@ namespace
         auto own = [&](P which) {
           const Ty* foundIn = nullptr;
           return findMemberFunction(types.unqualified(lt), operatorName(which), argTypesOf(one), types.unqualified(lt), b, &foundIn, true) ||
-                 global.findFreeOperator(uint32_t(which), b->lhs->ty, b->rhs->ty, currentFunction);
+                 global.findFreeOperator(uint32_t(which), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction);
         };
         bool equality = op == P::EqEq || op == P::NotEq;
         if (!own(op) && !(equality ? own(P::EqEq) : own(P::Spaceship)))
@@ -10687,7 +10687,7 @@ namespace
       // `area += limit` with a Const<float> and no function for it: the scalar assignment below, on
       // the right operand's conversion to a scalar.
       bool scalarAssignment = isAssignment(op) && lt && lt->isKnown() && !isClass(lt) && isClass(rt) && global.scalarConversionOf(rt) &&
-                              !global.findFreeOperator(uint32_t(op), b->lhs->ty, b->rhs->ty, currentFunction);
+                              !global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction);
       if ((isClass(lt) || isClass(rt)) && !scalarAssignment)
       {
         std::string name = operatorName(op);
@@ -10702,7 +10702,7 @@ namespace
         // A free `operator+(const char*, const String&)` and the like, templates among them
         // (`template<class B, class E> bool operator!=(const Opt<B, E>&, const Opt<B, E>&)`).
         if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
-          if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), b->lhs->ty, b->rhs->ty, currentFunction))
+          if (FunctionDecl* f = global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction))
           {
             TemplateArgs fnArgs;
             if (!f->templateParams.empty())
@@ -11045,7 +11045,7 @@ namespace
         if (isClass(lt) && findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
           return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true), b);
         if (b->lhs->ty && b->rhs && b->rhs->ty && b->lhs->ty->isKnown() && b->rhs->ty->isKnown())
-          if (FunctionDecl* f = global.findFreeOperator(uint32_t(which), b->lhs->ty, b->rhs->ty, currentFunction); f && f->templateParams.empty())
+          if (FunctionDecl* f = global.findFreeOperator(uint32_t(which), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction); f && f->templateParams.empty())
           {
             Expr* args[2] = {b->lhs, b->rhs};
             return callRvalue(callFunction(f, {}, nullptr, "", "", Span<Expr*>{args, 2}, b), b);
