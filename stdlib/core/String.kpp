@@ -105,6 +105,11 @@ struct String
   char& operator[](int index) { return this->data()[index]; }
   char* begin() { return this->data(); }
   char* end() { return this->data() + this->size(); }
+  // The bytes from the last to the first (ZipPackage's `*path.string().rbegin() == '/'`).
+  ReverseIterator<char*> rbegin() { return ReverseIterator<char*>(this->end()); }
+  ReverseIterator<char*> rend() { return ReverseIterator<char*>(this->begin()); }
+  ReverseIterator<const char*> rbegin() const { return ReverseIterator<const char*>(this->end()); }
+  ReverseIterator<const char*> rend() const { return ReverseIterator<const char*>(this->begin()); }
   const char* begin() const { return this->data(); }
   const char* end() const { return this->data() + this->size(); }
   const char* cbegin() const { return this->data(); }
@@ -371,6 +376,24 @@ struct String
         return i;
     return -1;
   }
+  // The first (last) byte other than c (LocaleStringReplacer's `find_first_not_of('0')`).
+  int find_first_not_of(char c) const
+  {
+    const char* chars = this->data();
+    int length = this->size();
+    for (int i = 0; i < length; ++i)
+      if (chars[i] != c)
+        return i;
+    return -1;
+  }
+  int find_last_not_of(char c) const
+  {
+    const char* chars = this->data();
+    for (int i = this->size(); i-- > 0;)
+      if (chars[i] != c)
+        return i;
+    return -1;
+  }
   int find_last_not_of(const char* set) const
   {
     const char* chars = this->data();
@@ -463,6 +486,8 @@ struct String
     return *this;
   }
   String& append(const char* text) { return this->append(text, (int)strlen(text)); }
+  // The bytes of [first, last) (cxxopts' `s.append(begin, end)`).
+  String& append(const char* first, const char* last) { return this->append(first, int(last - first)); }
   String& append(const String& other) { return this->append(other.data(), other.size()); }
   // Appends count copies of c.
   String& append(int count, char c)

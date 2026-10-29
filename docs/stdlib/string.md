@@ -35,14 +35,15 @@ Access:
   anything else is undefined). `at(i)`: throws OutOfRange when i is not in [0, size()).
 - `front()`, `back()` (not empty), `data()`, `c_str()`: the bytes, zero-terminated, valid also
   for an empty String.
-- `begin()`, `end()`.
+- `begin()`, `end()`; `rbegin()`, `rend()`: the bytes from the last to the first.
 
 Changing (each keeps the zero terminator; appending is amortized O(added bytes) through geometric
 growth; a text argument may point into this String). append, insert at an index, erase at an
 index, replace and assign return the String (`return s.append(x);`, `s.append(a).append(b)`); the
 forms that take a position return a position:
-- `append(text)`, `append(text, count)`, `append(count, c)`, `append(other, index, count)` (count
-  bytes of other from index, fewer when other ends first), `push_back(c)`, `+=`.
+- `append(text)`, `append(text, count)`, `append(first, last)` (the bytes of a pointer range),
+  `append(count, c)`, `append(other, index, count)` (count bytes of other from index, fewer when
+  other ends first), `push_back(c)`, `+=`.
 - `insert(index, text)`, `insert(index, count, c)`, `insert(position, first, last)`: index past
   the end inserts at the end. O(size() + inserted).
 - `erase(index, count)`: removes count bytes from index (to the end when count is negative or
@@ -59,7 +60,8 @@ Searching (each returns an index or npos; `from` is where the search starts, cla
   at from when from <= size().
 - `rfind(text, from)`, `rfind(c, from)`: the last occurrence starting at or before from (anywhere
   when from is npos or omitted). `find_first_of(set)`, `find_first_not_of(set)`,
-  `find_last_of(set)`, `find_last_not_of(set)`: first/last byte that is (not) in set.
+  `find_last_of(set)`, `find_last_not_of(set)`: first/last byte that is (not) in set;
+  `find_first_not_of(c)`, `find_last_not_of(c)`: first/last byte other than c.
 - `startsWith(prefix)`, `endsWith(suffix)` (Kpp additions; C++20 spells them starts_with/ends_with).
 
 Producing new strings:
