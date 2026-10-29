@@ -1,0 +1,40 @@
+// spec: a pointer to a member of a base class converts to a pointer to the same member of a derived class: `&T::read` taken in a template with T = Derived, where read is declared in Base, is an `int32 (Base::*)(lua_State*)` passed for a `PtFunc` (`int32 (T::*)(lua_State*)`), and calls the member on the derived object
+// factorio: LuaBinder<T>::registerRead("type", &T::luaReadControlBehaviorType) with the reader declared in LuaControlBehavior (every Lua control behaviour)
+struct lua_State;
+template<class T>
+struct Binder
+{
+  using PtFunc = int32_t (T::*)(lua_State*);
+  static PtFunc reader;
+  static int registerRead(String&& name, PtFunc f)
+  {
+    reader = f;
+    return int(name.size());
+  }
+};
+template<class T>
+typename Binder<T>::PtFunc Binder<T>::reader = nullptr;
+struct Base
+{
+  int x = 4;
+  int32_t read(lua_State* L) { return this->x * 10; }
+protected:
+  template<class T>
+  static int setUp()
+  {
+    auto registered = Binder<T>::registerRead("type", &T::read);
+    return registered;
+  }
+};
+struct Derived : public Base
+{
+  int y = 2;
+  static int init() { return Base::setUp<Derived>(); }
+};
+int main()
+{
+  int registered = Derived::init();
+  Derived d;
+  println("{} {}", (d.*Binder<Derived>::reader)(nullptr), registered);
+  return 0;
+}

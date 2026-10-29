@@ -1,0 +1,17 @@
+// spec: an unqualified call to a member inside a class template's member (`kind()` in Holder<T>::describe) is the member of that instantiation: its constraints (`requires isIntegral<T>`) and parameter types are read with the instantiation's arguments
+// factorio: UniquePointer<T>'s construct(...) (`requires (!isArray<T>)`), called unqualified from its constructors and emplace (120 calls)
+template<class T>
+struct Holder
+{
+  T value{};
+  int kind() const requires isIntegral<T> { return 1; }
+  int kind() const requires (!isIntegral<T>) { return 2; }
+  int describe() const { return kind() * 10; }
+};
+int main()
+{
+  Holder<int> i;
+  Holder<double> d;
+  println("{} {}", i.describe(), d.describe());
+  return 0;
+}

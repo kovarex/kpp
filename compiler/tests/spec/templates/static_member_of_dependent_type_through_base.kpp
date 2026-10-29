@@ -1,6 +1,5 @@
 // spec: a static constexpr member whose type is a template parameter of a templated base (`static constexpr T value = V;` in IntegralConstant<T, V>), read through a class that derives from an instantiation of it: `IsSmall::value` with `struct IsSmall : IntegralConstant<bool, true> {}`
 // factorio: std::true_type and std::false_type as aliases of std::integral_constant<bool, ...> (the library's TrueType/FalseType), and the game's 20 traits deriving from them
-// pending: the member's type stays the base's parameter T (codegen: the type T (a template parameter))
 template<typename T, T V>
 struct Constant
 {

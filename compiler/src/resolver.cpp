@@ -935,8 +935,11 @@ struct GlobalScope::Impl
           std::lock_guard lock(deferredMutex);
           scopesWithUsingEnums.push_back(scope); // resolved by finishIndex
         }
-        else if (!u->name.empty() && u->name.last().special == 0)
+        else if (!u->name.empty() && u->name.last().special == 0 &&
+                 !(u->name.parts.size() >= 2 && u->name.last().symbol == u->name.parts[u->name.parts.size() - 2].symbol))
         {
+          // (`using Base::Base;` inherits Base's constructors and names no member: `Base::` inside
+          // the class still reaches the base class.)
           scope->add(u->name.last().symbol, u, nullptr);
           ++entries;
         }
@@ -5069,6 +5072,12 @@ struct GlobalScope::Impl
       case TyKind::MemberPointer:
         if (a->kind == TyKind::MemberPointer && types.unqualified(a->inner) == types.unqualified(p->inner) && a->decl == p->decl)
           return 0;
+        // `&LuaControlBehavior::luaReadEntity` for an `int32 (T::*)(lua_State*)` with T derived from
+        // it: a pointer to a member of a base converts to one of the derived class.
+        if (a->kind == TyKind::MemberPointer && types.unqualified(a->inner) == types.unqualified(p->inner) && !a->args.empty() &&
+            !p->args.empty() && a->args[0] && p->args[0] && a->args[0]->kind == TyKind::Class && p->args[0]->kind == TyKind::Class &&
+            isBaseClass(a->args[0], p->args[0]))
+          return 3;
         if (a->kind == TyKind::Nullptr)
           return 3;
         break;
@@ -6412,11 +6421,11 @@ struct GlobalScope::Impl
         tmp.kind = NodeKind::NamedType;
         tmp.name = qualifier;
         const Ty* q = typeOf(&tmp);
-        if (q->kind == TyKind::Class && !q->args.empty())
-        {
-          Subst s = impl.substFor(q);
-          return impl.declaredTypeOf(l.decl, &s, 0);
-        }
+        // `IsSmall::value` with `struct IsSmall : Constant<bool, true> {}`: a member of a template
+        // base takes that base instantiation's arguments.
+        if (q->kind == TyKind::Class && (!q->args.empty() || (q->decl && q->decl->ownScope != l.foundIn)))
+          if (Subst s = impl.memberSubst(q, l.foundIn, 0); !s.pairs.empty())
+            return impl.declaredTypeOf(l.decl, &s, 0);
       }
       return typeOfResolvedName(l, e->name.last(), e);
     }
@@ -7164,6 +7173,28 @@ struct GlobalScope::Impl
           Subst qualifier;
           if (n->name.parts.size() > 1 && l.foundIn && l.foundIn->kind == ScopeKind::Class)
             qualifier = impl.qualifierSubst(n->name, ctx(), 0, l.foundIn);
+          else if (n->name.parts.size() == 1 && l.found == Found::Member && activeSubst && l.foundIn && l.foundIn->kind == ScopeKind::Class &&
+                   l.foundIn->owner)
+          {
+            // `construct(...)` in a member of UniquePointer<T>: the member of this instantiation (or of
+            // the base it was found in), whose parameter types and constraints need T.
+            qualifier = impl.baseSubstForUnqualified(l, ctx(), 0);
+            // With the enclosing instantiation's arguments, except a candidate's own parameters,
+            // which the call deduces afresh (a member template calling itself).
+            auto ownOfCandidate = [&](Decl* param)
+            {
+              auto owns = [&](Decl* f) { return std::find(f->templateParams.begin(), f->templateParams.end(), param) != f->templateParams.end(); };
+              if (!l.overloads)
+                return owns(d);
+              for (const Entry& e : *l.overloads)
+                if (e.decl && e.decl->kind == NodeKind::FunctionDecl && owns(e.decl))
+                  return true;
+              return false;
+            };
+            for (const Subst::Pair& p : activeSubst->pairs)
+              if (!qualifier.find(p.param) && !ownOfCandidate(p.param))
+                qualifier.pairs.push_back(p);
+          }
           const Subst* classSubst = qualifier.empty() ? nullptr : &qualifier;
           FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), classSubst, nullptr, ambiguous, &n->name.last(), c->args);
           if (!f)
