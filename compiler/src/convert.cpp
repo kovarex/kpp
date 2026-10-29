@@ -2511,8 +2511,11 @@ namespace
         }
       if (body.close == 0)
         return;
+      // (A class's constructors are among its members by the class's name, which names a type here:
+      // TestAchievements' `AchievementFixture fixture("look-at-my-shiny-rare-armor");`.)
       for (uint32_t symbol : memberNames(cls))
-        body.members.insert(std::string(symbols.name(symbol)));
+        if (std::string name(symbols.name(symbol)); !classesByName->count(name))
+          body.members.insert(name);
       // The locals: a name after a type's last token (a name, `>`, `*`, `&`, `&&`, a type word) and
       // before what a declarator ends with, or the names of a structured binding; each until the end
       // of the block it is declared in.
@@ -2594,7 +2597,8 @@ namespace
           size_t n = k;
           while (n < text.size() && isspace((unsigned char)text[n]))
             ++n;
-          bool scoped = n + 1 < text.size() && text[n] == ':' && text[n + 1] == ':';
+          bool scoped = (n + 1 < text.size() && text[n] == ':' && text[n + 1] == ':') ||
+                        (n > k && n < text.size() && (isalpha((unsigned char)text[n]) || text[n] == '_')); // or a declaration's type
           if (!qualified && !scoped && b.members.count(name) && !isFixtureLocal(b, name, use) && !isdigit((unsigned char)name[0]))
           {
             out += "this->";
@@ -3667,7 +3671,9 @@ namespace
           {
             std::string name(spelling(i));
             bool qualified = i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon));
-            if (!qualified && !toks[i + 1].is(P::ColonColon) && body->members.count(name) && !isFixtureLocal(*body, name, i))
+            // (A name before a name is a declaration's type.)
+            if (!qualified && !toks[i + 1].is(P::ColonColon) && toks[i + 1].getKind() != TokenKind::Identifier && body->members.count(name) &&
+                !isFixtureLocal(*body, name, i))
             {
               insert(t.offset, "this->");
               counts.add("this-> added in fixture test bodies");
