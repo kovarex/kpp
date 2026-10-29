@@ -216,7 +216,7 @@ struct ClassDecl : Decl
   // members below; the compiler adds the tag-aware operations.
   bool isTypedUnion = false;
   Decl* tagEnum = nullptr;        // the nested Kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
-  Decl* tagField = nullptr;       // the `tag` data member
+  Decl* tagField = nullptr;       // the tag data member (`__tag`; the generated `tag()` returns it)
   Span<Decl*> alternatives;       // the storage member of each alternative, in tag order (inside an anonymous union)
 };
 struct EnumeratorDecl : Decl { uint32_t name; Expr* value = nullptr; };

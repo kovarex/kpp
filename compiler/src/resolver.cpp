@@ -5115,6 +5115,18 @@ struct GlobalScope::Impl
           if (isBaseClass(p, a))
             return 3;
         }
+        // A typed union from a value of an alternative's type, references and const removed
+        // (design.md 8.5): a user-defined conversion, as through a converting constructor. Two
+        // alternatives of that type make it ambiguous, which the code generator reports.
+        if (p->decl && p->decl->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(p->decl)->isTypedUnion)
+        {
+          auto* u = static_cast<ClassDecl*>(p->decl);
+          Subst s = substFor(p);
+          for (Decl* alt : u->alternatives)
+            if (types.unqualified(declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0)) == types.unqualified(a))
+              return 4;
+          return NotViable; // no other conversion makes a union
+        }
         // User-defined: a non-explicit single-argument constructor of p accepting a.
         if (Decl* def = p->decl && p->decl->ownScope ? p->decl : (classScopeOf(p) ? classScopeOf(p)->owner : nullptr))
         {
@@ -5895,7 +5907,8 @@ struct GlobalScope::Impl
       return n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && symbols.name(n->name.parts[0].symbol) == "types";
     }
 
-    // `members(T)` (design.md 8.3): the type reflected on, or null when the node is no such list.
+    // `members(T)` (design.md 8.3), `alternatives(U)` (8.5): the type reflected on, or null when
+    // the node is no such list.
     Expr* reflectionSubject(Node* list) const
     {
       if (!list || list->kind != NodeKind::CallExpr)
@@ -5904,9 +5917,26 @@ struct GlobalScope::Impl
       if (!c->callee || c->callee->kind != NodeKind::NameExpr || c->args.size() != 1)
         return nullptr;
       const QualifiedName& name = static_cast<NameExpr*>(c->callee)->name;
-      if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs || symbols.name(name.parts[0].symbol) != "members")
+      if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs)
         return nullptr;
-      return c->args[0];
+      std::string_view which = symbols.name(name.parts[0].symbol);
+      return which == "members" || which == "alternatives" ? c->args[0] : nullptr;
+    }
+
+    // The typed union whose alternative a descriptor names (`for constexpr (auto a :
+    // alternatives(U))`), with the alternative's index; null for a member descriptor.
+    static ClassDecl* alternativeOf(const Ty* descriptor, size_t& index)
+    {
+      if (!descriptor || descriptor->kind != TyKind::Member || descriptor->args.empty())
+        return nullptr;
+      ClassDecl* u = typedUnionOf(descriptor->args[0]);
+      for (size_t i = 0; u && i < u->alternatives.size(); ++i)
+        if (u->alternatives[i] == descriptor->decl)
+        {
+          index = i;
+          return u;
+        }
+      return nullptr;
     }
 
     TokenScope tokenScope; // this walker's file is where literals are read from, lookups included
@@ -6786,12 +6816,19 @@ struct GlobalScope::Impl
       }
       if (const Ty* descriptor = types.stripRef(object); descriptor->kind == TyKind::Member)
       {
-        // A reflection descriptor (`for constexpr (auto m : members(T))`): m.name, m.offset.
+        // A reflection descriptor (`for constexpr (auto m : members(T))`): m.name, m.offset, m.type
+        // (written as a type: `a.type value;`, read as decltype(a.type)); an alternative's
+        // (`alternatives(U)`) also a.tag, its U::Tag value.
         m->resolved = nullptr;
         ++stats.membersBound;
         std::string_view which = symbols.name(symbol);
         if (which == "name")
           return types.pointer(types.qualified(types.charType(), true, false));
+        if (which == "type")
+          return descriptor->inner ? descriptor->inner : types.unknown();
+        size_t index = 0;
+        if (ClassDecl* u = alternativeOf(descriptor, index))
+          return which == "tag" && u->tagEnum ? types.enumType(u->tagEnum) : unknown(Why::Member);
         if (which == "offset")
           return types.sizeType();
         return unknown(Why::Member);
@@ -8585,7 +8622,13 @@ struct GlobalScope::Impl
         {
           auto* i = static_cast<IndexExpr*>(e);
           const Ty* base = walkExpr(i->base);
-          walkExprs(i->args);
+          const Ty* firstIndex = nullptr;
+          for (Expr* a : i->args)
+          {
+            const Ty* at = walkExpr(a);
+            if (a == i->args[0])
+              firstIndex = at;
+          }
           const Ty* b = types.stripRef(base);
           if (!b || !b->isKnown())
             return record(e, types.unknown());
@@ -8597,8 +8640,20 @@ struct GlobalScope::Impl
           {
             if (ClassDecl* u = typedUnionOf(b); u && i->args.size() == 1)
             {
-              // `p[Property::Integer]`: the alternative the enumerator names (design.md 8.5).
-              std::optional<int64_t> v = impl.constEval(i->args[0], ctx());
+              // `p[Property::Integer]`: the alternative the enumerator names (design.md 8.5); `p[a]`
+              // with a descriptor of alternatives(U): the one it describes.
+              std::optional<int64_t> v;
+              size_t index = 0;
+              if (const Ty* it = firstIndex ? types.stripRef(firstIndex) : nullptr; it && it->kind == TyKind::Member)
+              {
+                if (alternativeOf(it, index) != u)
+                  return record(e, unknown(Why::Operator)); // a descriptor of another union, or of a member
+                v = int64_t(index);
+              }
+              else if (firstIndex && types.isDependent(firstIndex))
+                return record(e, types.unknown()); // `u[a]` before the loop binds a
+              else
+                v = impl.constEval(i->args[0], ctx());
               if (!v || *v < 0 || size_t(*v) >= u->alternatives.size())
                 return record(e, unknown(Why::Operator));
               Subst s = b->args.empty() ? Subst{} : impl.substFor(b);

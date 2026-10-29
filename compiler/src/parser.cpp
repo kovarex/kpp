@@ -46,7 +46,9 @@ namespace
       kwOptional = symbols.intern("Optional");
       kwText = symbols.intern("text");
       kwTag = symbols.intern("Tag");
-      kwTagField = symbols.intern("tag");
+      kwTagField = symbols.intern("__tag");
+      kwTagMethod = symbols.intern("tag");
+      kwTypeMember = symbols.intern("type");
       kwImplicit = symbols.intern("implicit");
       kwFallthrough = symbols.intern("fallthrough");
       kwBothConst = symbols.intern("both_const");
@@ -54,7 +56,8 @@ namespace
       kwAccumulate = symbols.intern("accumulate");
     }
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwText, kwTag, kwTagField;
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwText, kwTag, kwTagField,
+             kwTagMethod, kwTypeMember;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint8_t pendingAttributes = 0;   // [[noinline]] and friends seen before the current declaration.
@@ -765,6 +768,27 @@ namespace
         }
         type = b;
       }
+      else if (atDescriptorType())
+      {
+        // `a.type` for a for constexpr descriptor a: read as `decltype(a.type)`, the type checker
+        // giving a descriptor's `type` member the alternative's (or member's) type.
+        DecltypeType* d = node<DecltypeType>(typeToken);
+        NameExpr* base = node<NameExpr>(pos);
+        NamePart basePart;
+        basePart.symbol = tok().id;
+        base->name.parts = makeSpanOf(std::vector<NamePart>{basePart});
+        advance();
+        MemberExpr* m = node<MemberExpr>(pos);
+        m->base = base;
+        m->op = P::Dot;
+        advance();
+        NamePart typePart;
+        typePart.symbol = kwTypeMember;
+        m->member.parts = makeSpanOf(std::vector<NamePart>{typePart});
+        advance();
+        d->expr = m;
+        type = d;
+      }
       else if (atBuiltinTypeIdent())
       {
         NamedType* n = node<NamedType>(pos);
@@ -1290,6 +1314,15 @@ namespace
       Expr* requiresClause = nullptr;
     };
     std::vector<uint32_t> templateTypeNames; // type parameters of the templates being parsed: known type names
+    // The value variables of the for constexpr loops being parsed (`for constexpr (auto a :
+    // alternatives(U))`): `a.type` names a type (design.md 8.5).
+    std::vector<uint32_t> descriptorNames;
+
+    bool atDescriptorType()
+    {
+      return atIdent() && at(P::Dot, 1) && atIdent(kwTypeMember, 2) &&
+             std::find(descriptorNames.begin(), descriptorNames.end(), tok().id) != descriptorNames.end();
+    }
 
     bool isTemplateTypeName(Type* t) const
     {
@@ -2622,6 +2655,25 @@ namespace
       c->tagField = tagField;
       pushDecl(tagField);
       pushDecl(storage);
+      {
+        // `Tag tag() const { return __tag; }`: the alternative held (design.md 8.5).
+        FunctionDecl* f = decl<FunctionDecl>(start);
+        NamedType* result = node<NamedType>(start);
+        result->name.parts = makeSpanOf(std::vector<NamePart>{tagPart});
+        f->returnType = result;
+        NamePart methodPart;
+        methodPart.symbol = kwTagMethod;
+        f->name.parts = makeSpanOf(std::vector<NamePart>{methodPart});
+        f->flags |= DF_Const;
+        NameExpr* field = node<NameExpr>(start);
+        field->name.parts = makeSpanOf(std::vector<NamePart>{tagFieldPart});
+        ReturnStmt* ret = node<ReturnStmt>(start);
+        ret->value = field;
+        BlockStmt* body = node<BlockStmt>(start);
+        body->stmts = makeSpanOf(std::vector<Stmt*>{ret});
+        f->body = body;
+        pushDecl(f);
+      }
       while (!at(P::RBrace) && !at(TokenKind::End))
       {
         if (accept(P::Semi))
@@ -3417,6 +3469,8 @@ namespace
       else
         s->list = parseExpression();
       expect(P::RParen, "expected ')' after for constexpr");
+      if (!v->isType && v->name != UINT32_MAX)
+        descriptorNames.push_back(v->name);
       s->body = parseStatement();
       if (s->body && (s->body->kind == NodeKind::CaseStmt || s->body->kind == NodeKind::DefaultStmt))
       {
@@ -3430,6 +3484,8 @@ namespace
         block->stmts = makeSpanOf(stmts);
         s->body = block;
       }
+      if (!v->isType && v->name != UINT32_MAX)
+        descriptorNames.pop_back();
       return s;
     }
 
@@ -4148,6 +4204,8 @@ namespace
     Expr* parsePrimary()
     {
       uint32_t start = pos;
+      if (atDescriptorType() && (at(P::LParen, 3) || at(P::LBrace, 3)))
+        return parseTypeAsExpr(start); // `a.type()`: a value of the descriptor's type
       if (atIdent(kwNameof) && at(P::LParen, 1))
       {
         NameofExpr* n = node<NameofExpr>(start);

@@ -1,6 +1,5 @@
 // spec: a typed union constructed and assigned from a value of exactly one alternative's type: `AIState s = Patrolling{1}`, `return Attacking{n}`, `s = Attacking{7}`
 // design.md 8.5 (constructing a union from a value); the converter's std::variant mapping: SegmentedUnitAI's computeNextState returning AIState from its visit lambdas
-// pending: a union is not constructed from an alternative's value ("conversion from Patrolling to Tag")
 struct Patrolling { int steps; };
 struct Attacking { int target; };
 

@@ -1,6 +1,5 @@
 // spec: `alternatives(U)` reflection over a typed union: `a.name`, `a.type`, `a.tag`, `u[a]`, `u == a.tag`, and `u.tag()`, enough to save the alternative held and load one by its index
-// design.md 8.5 (proposal of 2026-10-28, waiting for review); the converter's std::variant mapping: SerialiserHelper/DeserialiserHelper save and load of variants (index, variant_size, variant_alternative_t)
-// pending: alternatives(U) and u.tag() are not implemented
+// design.md 8.5 (decided 2026-10-28); the converter's std::variant mapping: SerialiserHelper/DeserialiserHelper save and load of variants (index, variant_size, variant_alternative_t)
 union enum Value : uint8_t
 {
   { {int, Number}, {double, Ratio}, {String, Text} }

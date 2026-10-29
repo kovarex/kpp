@@ -1,0 +1,55 @@
+// spec: the other forms of a typed union from a value: passed for a by-value parameter, chosen by overload resolution over an unrelated overload, alternatives that are no classes (an int, a double, a String from an lvalue or a const reference), a union template; and `a.type` of alternatives(U) as a template argument and `a.type(args)`, `m.type` of members(T)
+// design.md 8.5 (decided 2026-10-28); the converter's std::variant mapping
+struct Patrolling { int steps; };
+struct Attacking { int target; };
+union enum AIState : uint8_t
+{
+  { {Patrolling, Patrol}, {Attacking, Attack} }
+};
+union enum Value : uint8_t
+{
+  { {int, Number}, {double, Ratio}, {String, Text} }
+};
+template<class T>
+union enum Maybe : uint8_t
+{
+  { {int, None}, {T, Some} }
+};
+struct S { int x = 1; double y = 2.5; };
+
+int take(AIState s) { return s == AIState::Attack ? s[AIState::Attack].target : -1; }
+int pick(const AIState& s) { return 1; }
+int pick(int x) { return 2; }
+
+int main()
+{
+  println("{} {}", take(Attacking{2}), take(Patrolling{1}));
+  println("{} {}", pick(Attacking{2}), pick(3));
+  Value v = 5;
+  println("{} {}", v == Value::Number, v[Value::Number]);
+  v = 2.5;
+  println("{} {}", v == Value::Ratio, v[Value::Ratio]);
+  v = String("text");
+  println("{} {}", v == Value::Text, v[Value::Text]);
+  String s = "lvalue";
+  v = s;
+  const String& cs = s;
+  Value w = cs;
+  println("{} {} {}", v[Value::Text], w == Value::Text, int(w.tag()));
+  Maybe<float> m = 2.5f;
+  Maybe<float> n = 3;
+  println("{} {} {}", m == Maybe<float>::Some, m[Maybe<float>::Some], n == Maybe<float>::None);
+  for constexpr (auto a : alternatives(Maybe<float>))
+  {
+    Vector<a.type> list;
+    list.push_back(a.type(3));
+    println("{} {} {}", a.name, list.size(), list[0]);
+  }
+  S st;
+  for constexpr (auto f : members(S))
+  {
+    f.type copy = st.[f];
+    println("{} {}", f.name, copy);
+  }
+  return 0;
+}

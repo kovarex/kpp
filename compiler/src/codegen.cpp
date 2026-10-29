@@ -1940,6 +1940,15 @@ namespace
         // template, typed SharedPtr<T>): the value's own class decides once it is emitted.
         bool dependent = initIsClass && types.isDependent(initTy);
         bool sameClass = initIsClass && !dependent && canonicalClass(initTy, at) == canonicalClass(t, at);
+        if (ClassDecl* u = typedUnionOf(t, at); u && !sameClass && !dependent && init->kind != NodeKind::BraceInitExpr && initTy && initTy->isKnown())
+        {
+          // `AIState s = Patrolling{1};`, `return Attacking{n};`: the alternative of the value's
+          // type, constructed from it (design.md 8.5).
+          size_t index = alternativeForValue(u, t, initTy, at);
+          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+          constructAlternative(u, t, addr, index, init, at);
+          return;
+        }
         if (init->kind == NodeKind::FunctionalCastExpr && sameClass)
         {
           constructInto(addr, t, static_cast<FunctionalCastExpr*>(init)->args, at);
@@ -3639,6 +3648,8 @@ namespace
             return "ptr " + convertedTemporary(cls, arg, at); // `f("text")` with `f(const String&)`, a lambda with `f(const Function<void()>&)`
           if (argTy && isClass(cls) && isClass(argTy) && classKey(argTy) != classKey(cls) && !baseInstantiation(argTy, classDef(cls->decl, at), at))
           {
+            if (typedUnionOf(cls, at))
+              return "ptr " + convertedTemporary(cls, arg, at); // `report(Patrolling{3})` with `report(const AIState&)`
             if (conversionOperator(argTy, types.unqualified(cls), at))
               return "ptr " + convert(rvalue(arg), types.unqualified(cls), at).text; // `f(lowercase)` through `operator const String&()`
             // (the argument as overload resolution sees it: an lvalue binds a constructor template's `T&`)
@@ -3692,10 +3703,14 @@ namespace
                                                          !baseInstantiation(argTy, classDef(pt->decl, at), at) &&
                                                          !conversionOperator(argTy, types.unqualified(pt), at))))
         {
-          // Through a converting constructor; the callee destroys the parameter.
+          // Through a converting constructor (a typed union: from an alternative's value); the
+          // callee destroys the parameter.
           std::string copy = newObjectSlot(pt, at);
           Expr* one = arg;
-          constructInto(copy, pt, Span<Expr*>{&one, 1}, at);
+          if (typedUnionOf(pt, at))
+            initializeFrom(copy, pt, arg, at);
+          else
+            constructInto(copy, pt, Span<Expr*>{&one, 1}, at);
           return "ptr " + copy;
         }
         Value v = rvalue(arg);
@@ -3777,7 +3792,10 @@ namespace
       Expr* one = arg;
       // The resolver already enforces explicit-ness during overload resolution; codegen trusts it.
       std::string tmp = newObjectSlot(cls, at);
-      constructInto(tmp, cls, Span<Expr*>{&one, 1}, at);
+      if (typedUnionOf(cls, at) && arg->kind != NodeKind::BraceInitExpr)
+        initializeFrom(tmp, cls, arg, at); // a typed union from an alternative's value (design.md 8.5)
+      else
+        constructInto(tmp, cls, Span<Expr*>{&one, 1}, at);
       if (needsDestruction(cls, at))
         statementTemps.push_back({tmp, cls});
       return tmp;
@@ -6915,9 +6933,20 @@ namespace
             return {std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(m->resolved))), e->ty};
           if (const Ty* bt = m->base->ty ? types.stripRef(m->base->ty) : nullptr; bt && bt->kind == TyKind::Member && !m->dynamicMember)
           {
-            // A reflection descriptor: m.name is the member's name, m.offset its offset in the class.
+            // A reflection descriptor: m.name is the member's name, m.offset its offset in the class;
+            // an alternative's (alternatives(U)) a.name is the alternative's, a.tag its tag value.
             auto* field = static_cast<VariableDecl*>(bt->decl);
             std::string which = m->member.empty() ? std::string() : sym(m->member.last().symbol);
+            if (ClassDecl* u = bt->args.empty() ? nullptr : typedUnionOf(bt->args[0], e))
+              if (int64_t index = descriptorAlternative(u, bt); index >= 0)
+              {
+                auto* en = static_cast<EnumeratorDecl*>(static_cast<EnumDecl*>(u->tagEnum)->enumerators[size_t(index)]);
+                if (which == "name")
+                  return {cStringConstant(sym(en->name)), e->ty};
+                if (which == "tag")
+                  return {std::to_string(enumeratorValue(en)), tagType(u)};
+                unsupported(e, "an alternative descriptor has name, type and tag only");
+              }
             if (which == "name")
               return {cStringConstant(field->name.empty() ? std::string() : sym(field->name.last().symbol)), e->ty};
             if (which == "offset")
@@ -7528,6 +7557,16 @@ namespace
       if ((op == P::EqEq || op == P::NotEq) &&
           ((typedUnionOf(lt, b) && rt && rt->kind == TyKind::Enum) || (typedUnionOf(rt, b) && lt && lt->kind == TyKind::Enum)))
         return compareTag(b, op == P::NotEq);
+      if (op == P::Assign && rt && rt->isKnown() && !types.isDependent(rt))
+        if (ClassDecl* u = typedUnionOf(lt, b); u && !(isClass(rt) && canonicalClass(rt, b) == canonicalClass(lt, b)))
+        {
+          // `s = Attacking{7};`: the alternative held goes, the value's comes (design.md 8.5).
+          std::string obj = lvalue(b->lhs);
+          size_t index = alternativeForValue(u, lt, rt, b);
+          destroyAlternative(u, lt, obj, b);
+          constructAlternative(u, lt, obj, index, b->rhs, b);
+          return {obj, lt, false};
+        }
       // `a | b` on an enum with its own `Flags operator|(Flags, Flags)`: the user's function, as the
       // resolver typed it (a scoped enum has no built-in one).
       if (op != P::Assign && !isClass(lt) && !isClass(rt) && ((lt && lt->kind == TyKind::Enum) || (rt && rt->kind == TyKind::Enum)) &&
@@ -8950,12 +8989,49 @@ namespace
         unsupported(at, "a typed union without its storage");
       return addr;
     }
-    // The alternative an index names: `p[Property::Integer]`, a constant enumerator of the tag.
+    // The alternative of typed union c (of type t) a value of type valueTy sets (design.md 8.5):
+    // the one whose type is valueTy without references and const. None, or two of that type, is
+    // a compile error (two: set it by name, `u[Text] = x`).
+    size_t alternativeForValue(ClassDecl* c, const Ty* t, const Ty* valueTy, Node* at)
+    {
+      const Ty* v = types.unqualified(types.stripRef(valueTy));
+      std::vector<size_t> found;
+      for (size_t i = 0; i < c->alternatives.size(); ++i)
+        if (types.unqualified(alternativeType(c, t, i, at)) == v)
+          found.push_back(i);
+      auto name = [&](size_t i) { return sym(static_cast<EnumeratorDecl*>(static_cast<EnumDecl*>(c->tagEnum)->enumerators[i])->name); };
+      std::string where = currentFunctionName.empty() ? std::string() : " (in " + currentFunctionName + ")";
+      if (found.empty())
+      {
+        error(at, "the typed union " + qualifiedName(c) + " has no alternative of type " + types.toString(v, &symbols) + where);
+        throw Unsupported{};
+      }
+      if (found.size() > 1)
+      {
+        error(at, "a " + types.toString(v, &symbols) + " is ambiguous for the typed union " + qualifiedName(c) + ": its alternatives " +
+                  name(found[0]) + " and " + name(found[1]) + " both have that type (set one by name: u[" + name(found[0]) + "] = value)" + where);
+        throw Unsupported{};
+      }
+      return found[0];
+    }
+    // The index among c's alternatives of the one a descriptor of `alternatives(U)` names, or -1.
+    static int64_t descriptorAlternative(ClassDecl* c, const Ty* descriptor)
+    {
+      if (!descriptor || descriptor->kind != TyKind::Member)
+        return -1;
+      for (size_t i = 0; i < c->alternatives.size(); ++i)
+        if (c->alternatives[i] == descriptor->decl)
+          return int64_t(i);
+      return -1;
+    }
+    // The alternative an index names: `p[Property::Integer]`, a constant enumerator of the tag, or
+    // `p[a]` with a descriptor of alternatives(U).
     size_t alternativeIndex(ClassDecl* c, IndexExpr* i, Node* at)
     {
       if (i->args.size() != 1)
         unsupported(at, "a typed union indexed with more than one alternative");
-      std::optional<int64_t> v = evalConst(i->args[0]);
+      const Ty* indexTy = i->args[0]->ty ? types.stripRef(i->args[0]->ty) : nullptr;
+      std::optional<int64_t> v = indexTy && indexTy->kind == TyKind::Member ? descriptorAlternative(c, indexTy) : evalConst(i->args[0]);
       if (!v || *v < 0 || size_t(*v) >= c->alternatives.size())
         unsupported(at, "a typed union indexed with something other than one of its alternatives");
       return size_t(*v);
@@ -9095,8 +9171,9 @@ namespace
       return n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && sym(n->name.parts[0].symbol) == "types";
     }
 
-    // `members(T)` (design.md 8.3): the type reflected on, or null when the node is no such list.
-    Expr* reflectionSubject(Node* list)
+    // `members(T)` (design.md 8.3), `alternatives(U)` (8.5): the type reflected on, or null when
+    // the node is no such list; alternatives set when it is the latter.
+    Expr* reflectionSubject(Node* list, bool* alternatives = nullptr)
     {
       if (!list || list->kind != NodeKind::CallExpr)
         return nullptr;
@@ -9104,8 +9181,13 @@ namespace
       if (!c->callee || c->callee->kind != NodeKind::NameExpr || c->args.size() != 1)
         return nullptr;
       const QualifiedName& name = static_cast<NameExpr*>(c->callee)->name;
-      if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs || sym(name.parts[0].symbol) != "members")
+      if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs)
         return nullptr;
+      std::string which = sym(name.parts[0].symbol);
+      if (which != "members" && which != "alternatives")
+        return nullptr;
+      if (alternatives)
+        *alternatives = which == "alternatives";
       return c->args[0];
     }
 
@@ -9204,11 +9286,12 @@ namespace
           elements.push_back(types.valueType(elementTy, *v));
         }
       }
-      else if (Expr* subject = reflectionSubject(list))
+      else if (bool alternatives = false; Expr* subject = reflectionSubject(list, &alternatives))
       {
-        // `members(T)`: T's non-static data members, bases first, in declaration order.
+        // `members(T)`: T's non-static data members, bases first, in declaration order;
+        // `alternatives(U)`: a typed union's alternatives, in declaration order.
         if (var->isType)
-          unsupported(f, "members(T) for a for constexpr type variable");
+          unsupported(f, "members(T) or alternatives(U) for a for constexpr type variable");
         const Ty* cls = nullptr;
         if (subject->kind == NodeKind::NameExpr)
         {
@@ -9219,11 +9302,21 @@ namespace
         }
         cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
         if (!isClass(cls))
-          unsupported(f, "members(T) where T is not a class");
-        collectMembers(canonicalClass(cls, f), elements, f, 0);
+          unsupported(f, alternatives ? "alternatives(U) where U is not a class" : "members(T) where T is not a class");
+        cls = canonicalClass(cls, f);
+        if (alternatives)
+        {
+          ClassDecl* u = typedUnionOf(cls, f);
+          if (!u)
+            unsupported(f, "alternatives(U) where U is not a typed union");
+          for (size_t i = 0; i < u->alternatives.size(); ++i)
+            elements.push_back(types.member(alternativeType(u, cls, i, f), u->alternatives[i], cls));
+        }
+        else
+          collectMembers(cls, elements, f, 0);
       }
       else
-        unsupported(f, "a for constexpr list that is neither types<...>, members(T) nor a brace list of constants");
+        unsupported(f, "a for constexpr list that is neither types<...>, members(T), alternatives(U) nor a brace list of constants");
       const TemplateArgs* savedArgs = currentArgs;
       for (size_t index = 0; index < elements.size(); ++index)
       {

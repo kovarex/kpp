@@ -254,11 +254,11 @@ tag. Decided on the way: a default-constructed union holds its first alternative
 default-constructed; the tag type is the nested Kpp enum `Property::Tag` (so `tag.str()` and
 `Property::Tag::count` exist), and the alternatives' names are in the union's scope, as unscoped
 enumerators. The parser desugars the union to a class with the tag member and an anonymous union
-of the alternatives; the compiler adds the tag-aware operations. Not yet: `alternatives(U)`, a
-generated `str()`, constructing a union from a value in one expression.
+of the alternatives; the compiler adds the tag-aware operations. Not yet: a generated `str()`.
 
-Proposed 2026-10-28, for review (the converter maps `std::variant` to named typed unions, and
-the game constructs them from values and saves and loads them generically):
+Decided 2026-10-28 (proposed for the converter's mapping of `std::variant` to named typed unions:
+the game constructs them from values and saves and loads them generically; approved as written),
+done 2026-10-29:
 - *From a value.* `U u = x;`, `u = x;`, `return x;` in a function returning U, and x passed for
   a `U` (or `const U&`) parameter set the alternative whose type is x's type without references
   and `const`, when exactly one alternative has that type: `AIState next() { return
@@ -273,7 +273,14 @@ the game constructs them from values and saves and loads them generically):
 - Setting by index needs nothing more: `for constexpr (auto a : alternatives(U)) if (index ==
   int(a.tag)) { a.type value; load(value); u[a] = move(value); }`. The variants' save and load in
   SerialiserHelper/DeserialiserHelper become one override each, written this way.
-Spec snippets: kpp/typed_union_from_value, kpp/typed_union_alternatives (pending).
+Decided on the way: the tag data member is internal (`__tag`), so that `tag()` is the method. In
+a `for constexpr` body over a value variable `a`, `a.type` is read as a type wherever one may be
+written (`a.type value;`, `a.type()` constructs one, `Vector<a.type>`); a member descriptor of
+`members(T)` has `m.type` too. The two errors are compile errors: "the typed union D has no
+alternative of type int32", "a String is ambiguous for the typed union D: its alternatives Text
+and Comment both have that type". Overload resolution ranks the conversion from a value like a
+converting constructor's.
+Spec snippets: kpp/typed_union_from_value, kpp/typed_union_alternatives.
 
 **8.6 Tests in the compiler.**
 ```
