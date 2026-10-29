@@ -1175,6 +1175,37 @@ UniqueArray one pointer).
     update of the menu simulation stops at the stub of EntityOrderHelpers::EntityOrderList::update
     (ActiveEntitiesOrder.kpp:75), the one function the headline still leaves out with an error
     (templates/fold_over_pack_with_pack_sized_parameter, the templates thread's).
+28. **The menu maps, headless.** The main menu picks one of 19 menu simulations at random, so each
+    is loaded on its own with the game's benchmark mode: `factorio.exe --no-crash-handler
+    --benchmark data\base\menu-simulations\<map>.zip --benchmark-ticks 10` from
+    C:\factorio-in-kpp\bin\x64 (seconds each). On the way to the first ones: a lambda's default
+    arguments (language/lambda_default_argument), an implicit copy constructor that calls a base's
+    own (classes/implicit_copy_calls_base_copy_constructor), closures copied and destroyed capture
+    by capture (language/closure_copies_and_destroys_captures), and the IR made byte-identical
+    across thread counts (tests/determinism.ps1 compares the headline's whole IR). 12 of 19 ran
+    their ten updates on master c088f0d.
+29. RailSegment's "found rail ... already connected to segment 3372" (train-junction, artillery,
+    oil-refinery, uranium-processing): TrainManager::setup files every rail signal in railPlaceMap
+    with `this->railPlaceMap[*connection.rail].add(railSignal)`, Targeter's `T* operator*() const`
+    returns the rail by value, and Map's `operator[](const K&)` was passed that pointer as the key's
+    address, so all signals went to one bogus entry and no saved segment ended at its signal
+    (expressions/reference_bound_to_operator_prvalue). 17 of 19 ran.
+30. A crash walking IntrusiveSet's tree in LogisticNetwork::updateLogisticRobot (big-defense,
+    logistic-robots; also the 59 unit-test suites under RobotWithLogisticInterface::setup):
+    `PendingRobotsSetHook& asPendingRobotsHook() { return *this; }` returned the robot's start, not
+    the hook base at its offset, and unlinking it read the vtable as tree nodes
+    (classes/base_reference_returned_from_this). Next to it, a member qualified with one of the two
+    hook bases (one template, two tags) ran on the first (classes/qualified_member_of_template_base).
+    All 19 ran their ten updates (master f366a3d).
+31. After the ten updates the benchmark saves the map for its CRC, and 17 maps stopped at
+    ElementUsageStatistics::save's "history size (460) exceeds max_size (300)": FlowStatistics'
+    `smoothingTicks` is 150 with `template<> const uint32_t ElectricNetworkStatistics::smoothingTicks
+    = 0;`, and that specialisation was every instance's definition, so the item statistics'
+    histories were sized without smoothing (templates/static_member_explicit_specialization).
+    **All 19 menu maps load, run their ten updates and save, exit 0** (master eb50c84). The build
+    is the same from run to run since: 24 no-change rebuilds under load all leave every module
+    unchanged, after `Widget* const*` and `const Widget**` stopped printing alike
+    (templates/instances_differing_in_pointer_constness).
 
 ### dear imgui through a generated C interface (2026-10-29)
 
