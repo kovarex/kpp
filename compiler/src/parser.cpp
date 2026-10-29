@@ -119,6 +119,7 @@ namespace
   public:
     bool externC = false; // Inside extern "C".
     bool cMode = false;   // Preprocessed C text (imported headers): no macro heuristics.
+    bool kppSource = false; // A .kpp file: no C macro idioms (the converter's C++ input has them).
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
   private:
     std::unordered_set<uint32_t> cTypedefNames; // in cMode: the typedef names declared so far (what `(Name)` casts to)
@@ -4411,9 +4412,9 @@ namespace
           l->keyword = Kw::Count;
           while (at(TokenKind::String) || (atMacroName() && !at(P::LParen, 1) && !at(P::ColonColon, 1)))
           {
-            // Only literals concatenate: `"a" NAME "b"` with NAME a string constant is C's macro
-            // pasting, whose pieces the literal would lose.
-            if (!at(TokenKind::String))
+            // In Kpp only literals concatenate: `"a" NAME "b"` with NAME a string constant is C's
+            // macro pasting (valid in the C++ the converter reads), whose pieces the literal would lose.
+            if (!at(TokenKind::String) && kppSource)
               error("a name next to a string literal (only string literals concatenate)");
             advance();
           }
@@ -4543,7 +4544,8 @@ namespace
       }
       if (at(TokenKind::String) && n->name.parts.size() == 1 && isAllCaps(spelling(toks[start])))
       {
-        error("a name next to a string literal (only string literals concatenate)"); // `NAME "b"`, as above
+        if (kppSource)
+          error("a name next to a string literal (only string literals concatenate)"); // `NAME "b"`, as above
         LiteralExpr* l = node<LiteralExpr>(start);
         l->literalKind = TokenKind::String;
         l->keyword = Kw::Count;
@@ -5087,6 +5089,7 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
   Parser parser(tokens, text, symbols, out);
   parser.externC = cMode;
   parser.cMode = cMode;
+  parser.kppSource = !cMode && out.path.ends_with(".kpp"); // (the driver sets the path; the converter parses C++ without one)
   parser.config = config;
   parser.parseTranslationUnit();
 }
