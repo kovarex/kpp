@@ -634,7 +634,7 @@ struct GlobalScope::Impl
         auto* decl = static_cast<FunctionDecl*>(e.decl);
         if (decl->body)
           continue;
-        if (typeAs(def, decl) == declaredTypeOf(decl, nullptr, 0))
+        if (typeAs(def, decl) == matchedType(decl))
         {
           uint32_t taken = decl->flags & (DF_Static | DF_Virtual);
           if ((def->flags & taken) != taken)
@@ -5440,7 +5440,7 @@ struct GlobalScope::Impl
     if (!cls || !cls->ownScope || f->name.empty())
       return nullptr;
     uint32_t symbol = functionSymbol(f->name);
-    const Ty* ft = declaredTypeOf(f, nullptr, 0);
+    const Ty* ft = matchedType(f);
     for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
       if (candidate->body && functionSymbol(candidate->name) == symbol && !isMemberSpecialization(candidate) && typeAs(candidate, f) == ft)
         return candidate;
@@ -10485,6 +10485,21 @@ struct GlobalScope::Impl
       s.pairs.push_back({candidate->templateParams[i], types.param(classParams[i])});
     for (size_t i = 0; i < f->templateParams.size(); ++i)
       s.pairs.push_back({candidate->templateParams[classParams.size() + i], types.param(f->templateParams[i])});
+    return s.pairs.empty() ? t : substitute(t, s);
+  }
+
+  // f's declared type as typeAs gives a definition's, for comparing the two: through the same
+  // substitution (its parameters as themselves), so that a member of a dependent instance
+  // (`Vector<VertexT*>::iterator`) is resolved alike on both sides.
+  const Ty* matchedType(FunctionDecl* f)
+  {
+    const Ty* t = declaredTypeOf(f, nullptr, 0);
+    Subst s;
+    if (f->parent && (f->parent->kind == NodeKind::ClassDecl || f->parent->kind == NodeKind::EnumDecl))
+      for (Decl* p : effectiveParams(f->parent))
+        s.pairs.push_back({p, types.param(p)});
+    for (Decl* p : f->templateParams)
+      s.pairs.push_back({p, types.param(p)});
     return s.pairs.empty() ? t : substitute(t, s);
   }
 
@@ -16099,7 +16114,7 @@ void GlobalScope::finishIndex()
         if (!declared && m->kind == NodeKind::FunctionDecl && m != f && (m->flags & special) == (f->flags & special) &&
             !static_cast<FunctionDecl*>(m)->body)
           declared = (f->flags & DF_Destructor) ||
-                     impl->typeAs(f, static_cast<FunctionDecl*>(m)) == impl->declaredTypeOf(static_cast<FunctionDecl*>(m), nullptr, 0);
+                     impl->typeAs(f, static_cast<FunctionDecl*>(m)) == impl->matchedType(static_cast<FunctionDecl*>(m));
     if (!declared)
       impl->reportCheckerError(f->file, f->token,
                                "the out-of-line definition of " + qualifiedName(f) + " matches no declaration in " + qualifiedName(cls));
@@ -16503,7 +16518,7 @@ Decl* GlobalScope::definitionOf(Decl* d)
     if (cls && cls->ownScope)
     {
       uint32_t symbol = impl->functionSymbol(f->name);
-      const Ty* ft = impl->declaredTypeOf(f, nullptr, 0);
+      const Ty* ft = impl->matchedType(f);
       for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
         if (impl->functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) && impl->typeAs(candidate, f) == ft)
         {
@@ -16528,7 +16543,7 @@ Decl* GlobalScope::definitionOf(Decl* d)
       // A free function declared and defined separately: find the entry with a body.
       Scope* s = impl->lexicalScopeOf(f);
       uint32_t symbol = impl->functionSymbol(f->name);
-      const Ty* ft = impl->declaredTypeOf(f, nullptr, 0);
+      const Ty* ft = impl->matchedType(f);
       if (const std::vector<Entry>* entries = s->find(symbol))
         for (const Entry& e : *entries)
           if (e.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(e.decl)->body &&

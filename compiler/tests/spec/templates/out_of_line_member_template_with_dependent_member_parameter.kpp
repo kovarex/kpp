@@ -1,0 +1,21 @@
+// spec: an out-of-line member template whose parameter names a member of a dependent instance, `Vector<VertexT*>::iterator&`, defines the member declared with the same parameter (both sides resolve the member alike)
+// factorio: TechnologyGraphGui::topologicalSortVisit (`Vector<VertexT*>::reverse_iterator&`), CategorySpecification<CategoryID>::getPrototypes and LuaEventFilters::parseFilters
+struct Graph
+{
+  template<typename VertexT>
+  int visit(VertexT* vertex, Vector<VertexT*>::iterator& output) const;
+};
+template<typename VertexT>
+int Graph::visit(VertexT* vertex, Vector<VertexT*>::iterator& output) const
+{
+  return *vertex + int(output == output);
+}
+int main()
+{
+  Graph g;
+  Vector<int*> v;
+  int x = 5;
+  auto it = v.begin();
+  println("{}", g.visit(&x, it));
+  return 0;
+}
