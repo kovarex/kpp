@@ -4262,6 +4262,25 @@ namespace
 
     // --- bodies: this-> and fallthrough ---
 
+    // Whether variable v, whose parent is a class, is one of the class's data members. A local of
+    // a lambda in a constructor's member initializers has the class as its parent too (the
+    // initializers are parsed in class scope) and is no member: `: ScopedTypeMigration([&] {
+    // PropertyTree result; ...; return result; }(), ...)` keeps `result` as it is.
+    std::map<Decl*, std::set<Decl*>> dataMemberCache;
+    bool isDataMember(Decl* v)
+    {
+      auto it = dataMemberCache.find(v->parent);
+      if (it == dataMemberCache.end())
+      {
+        std::set<Decl*> members;
+        for (Decl* m : static_cast<ClassDecl*>(v->parent)->members)
+          if (m->kind == NodeKind::VariableDecl)
+            members.insert(m);
+        it = dataMemberCache.emplace(v->parent, std::move(members)).first;
+      }
+      return it->second.count(v) != 0;
+    }
+
     // Non-static data members and methods of a class and its bases, by name.
     std::map<Decl*, std::set<uint32_t>> memberNameCache;
     const std::set<uint32_t>& memberNames(Decl* cls)
@@ -4470,7 +4489,8 @@ namespace
             bool member = false;
             if (r)
               member = r->parent && r->parent->kind == NodeKind::ClassDecl &&
-                       (r->kind == NodeKind::VariableDecl || r->kind == NodeKind::FunctionDecl) && !(r->flags & DF_Static);
+                       (r->kind == NodeKind::FunctionDecl || (r->kind == NodeKind::VariableDecl && isDataMember(r))) &&
+                       !(r->flags & DF_Static);
             else
               member = memberNames(owner).count(n->name.parts[0].symbol) != 0; // unresolved, but spelled like a member
             if (member)
