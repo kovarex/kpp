@@ -3090,6 +3090,31 @@ namespace
             counts.add("std renamed");
           }
         }
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "std" && i + 5 < toks.size() && toks[i + 1].is(P::ColonColon) &&
+            spelling(i + 2) == "pair" && toks[i + 3].is(P::Less) && toks[i + 4].is(Kw::const_))
+        {
+          // `std::pair<const K, V>`, a map's entry as C++ spells it (AsteroidCollectorNavmesh's
+          // `for (const std::pair<const ChunkPosition, std::unique_ptr<...>>& entry : records)`): a
+          // Kpp Map's entries are Pair<K, V> (docs/stdlib/map.md), so the key's const goes. A const
+          // that belongs to a pointer's or a reference's target (`std::pair<const T*, float>`) stays.
+          uint32_t k = i + 5;
+          for (int depth = 0; k < toks.size(); ++k)
+          {
+            if (toks[k].is(P::Less) || toks[k].is(P::LParen))
+              ++depth;
+            else if (toks[k].is(P::Greater) || toks[k].is(P::RParen))
+              --depth;
+            else if (toks[k].is(P::Shr))
+              depth -= 2;
+            if (depth < 0 || (depth == 0 && (toks[k].is(P::Comma) || toks[k].is(P::Semi))))
+              break;
+          }
+          if (k < toks.size() && toks[k].is(P::Comma) && !(toks[k - 1].is(P::Star) || toks[k - 1].is(P::Amp) || toks[k - 1].is(P::AndAnd)))
+          {
+            remove(toks[i + 4].offset, toks[i + 5].offset - toks[i + 4].offset);
+            counts.add("const keys of map entries dropped");
+          }
+        }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "std" && toks[i + 1].is(P::ColonColon) &&
             toks[i + 2].getKind() == TokenKind::Identifier)
         {
