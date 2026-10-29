@@ -2261,6 +2261,36 @@ namespace
       ~ConstructingScope() { list.pop_back(); }
     };
 
+    // `T(x)` of class type t into addr: the constructors take the arguments; and, as
+    // direct-initialization lets the copy or move constructor take what an explicit conversion
+    // operator gives (C++'s rule for a constructor's first parameter), `Constant(parsed)` with
+    // Parsed's `explicit operator const Constant&()` and `AchievementId(id)` with `explicit operator
+    // AchievementId()` when no constructor takes the object itself.
+    void directInitialize(const std::string& addr, const Ty* t, Span<Expr*> args, bool braced, Node* at, bool listElements)
+    {
+      Expr* arg = args.size() == 1 && !braced ? args[0] : nullptr;
+      const Ty* argTy = arg && arg->ty && arg->ty->isKnown() ? withCurrentArgs(types.unqualified(types.stripRef(arg->ty))) : nullptr;
+      if (argTy && isClass(argTy) && !types.isDependent(argTy) && classKey(argTy) != classKey(t) && !baseInstantiation(argTy, classDef(t->decl, at), at) &&
+          !findConstructor(t, argTypesOf(args), at) && !global.converts(argumentType(arg, arg->ty, types), types.unqualified(t)))
+      {
+        // The operator gives the class (`operator AchievementId()`) or a reference to it (`operator
+        // const Constant&()`): either way the copy or move constructor's argument.
+        const Ty* value = types.unqualified(t);
+        const Ty* reference = types.lref(types.qualified(value, true, false));
+        const Ty* target = conversionOperator(argTy, value, at, nullptr, true) ? value : conversionOperator(argTy, reference, at, nullptr, true) ? reference : nullptr;
+        if (target)
+        {
+          Value converted = convert(rvalue(arg), target, at, true);
+          if (converted.isTemporary)
+            moveTemporary(addr, converted, value, at);
+          else
+            copyConstruct(addr, converted.text, value, at);
+          return;
+        }
+      }
+      constructInto(addr, t, args, at, listElements);
+    }
+
     // listElements: args are a brace list's elements (the list taken apart once already).
     void constructInto(const std::string& addr, const Ty* t, Span<Expr*> args, Node* at, bool listElements = false)
     {
@@ -3212,7 +3242,8 @@ namespace
         if (init->kind == NodeKind::FunctionalCastExpr && sameClass)
         {
           // `T(list)`: the list is a constructor's argument; `T{...}` has its list as the one argument.
-          constructInto(addr, t, static_cast<FunctionalCastExpr*>(init)->args, at, !static_cast<FunctionalCastExpr*>(init)->braced);
+          directInitialize(addr, t, static_cast<FunctionalCastExpr*>(init)->args, static_cast<FunctionalCastExpr*>(init)->braced, at,
+                           !static_cast<FunctionalCastExpr*>(init)->braced);
           return;
         }
         if (init->kind == NodeKind::BraceInitExpr)
@@ -8360,7 +8391,7 @@ namespace
           if (isClass(t))
           {
             std::string addr = sret.empty() ? newObjectSlot(t, c) : sret;
-            constructInto(addr, t, c->args, c, true); // `Widths({{120, 0}})`: the list is the constructor's argument
+            directInitialize(addr, t, c->args, false, c, true); // `Widths({{120, 0}})`: the list is the constructor's argument
             if (sret.empty())
               statementTemps.push_back({addr, t});
             return {addr, t, sret.empty()};
@@ -10127,7 +10158,7 @@ namespace
           if (isClass(t))
           {
             std::string addr = newObjectSlot(t, e);
-            constructInto(addr, t, c->args, e, !c->braced); // `T(list)`: the list is a constructor's argument
+            directInitialize(addr, t, c->args, c->braced, e, !c->braced); // `T(list)`: the list is a constructor's argument
             statementTemps.push_back({addr, t});
             return {addr, t, true};
           }

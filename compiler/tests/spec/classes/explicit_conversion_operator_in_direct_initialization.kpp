@@ -1,6 +1,5 @@
 // spec: direct-initialization of a class from an object with an explicit conversion operator to that class, `Constant(parsed)` with `explicit operator const Constant&() const`, `AchievementId(id)` with `explicit operator AchievementId() const`: the class's copy or move constructor takes what the operator gives (C++'s rule for a constructor's first parameter in direct-initialization), also as a template's `Value(x)` and in an if's declaration
 // factorio: NoiseExpressionParser::processNamedFunction<NoiseExpressionConstant>'s `storage[i] = Value((*parameters)[i].defaultValue);` (ParsedNoiseExpression's `explicit operator const NoiseExpressionConstant&() const`), CustomGuiToolTipCreator::createToolTip's `if (AchievementID achievementID = AchievementID(this->id))` and its 20 siblings (ChooseElemID's `explicit operator AchievementID() const`)
-// pending: `static_cast<const Constant&>(parsed)` converts, the functional casts do not ("a constructor of Constant taking 1 arguments", "a constructor of Id taking 1 arguments"); owner: the resolver (overload resolution of the constructors)
 class Constant
 {
 public:

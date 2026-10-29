@@ -1076,3 +1076,12 @@ qualified Kpp names with parameter types, quoted, so there is no mangling scheme
    of clang.exe when the textual round trip shows up in the numbers.
 6. Persistent compiler + IDE integration: the one-line-change rebuild (16 s in Factorio today).
 7. Converter from Factorio-style C++ to Kpp (needs 4).
+8. Precise const typing (scheduled 2026-10-29 for after the converted game's first run reaches
+   the main menu): a const value is never assigned, as in C++ (spec language/const_value_assigned,
+   pending; Kpp accepts and stores `r = 5` through a `const int&` today). A checker error at every
+   built-in assignment to a const value flagged about 60 valid lines of the game and the library,
+   which is how imprecise the walk's constness is: Array<const char, N>::fill (instantiated,
+   where C++ instantiates only the members used), DrawCommandBatch's and SpriteDrawOrder's vertex
+   writes (about 50 lines), AsteroidDrawCommandBatch, EntityUsageBitMask's BitMaskStorage, and the
+   imported C headers' ReadAcquire/WriteRelease bodies (`const volatile`). Those are to be typed
+   right first, then the error turned on.
