@@ -1249,20 +1249,44 @@ namespace
       return list;
     }
 
-    // Default-constructs every element of an array of objects at addr.
+    // Default-constructs every element of an array of objects at addr: one after the other for a
+    // few, in a loop for more (an array of a thousand would otherwise be a thousand copies).
     void constructArray(const std::string& addr, const Ty* t, Node* at)
     {
-      for (uint32_t i = 0; i < t->count; ++i)
+      auto constructAt = [&](const std::string& index)
       {
         std::string element = newTemp();
-        fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(i) + "\n";
+        fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + index + "\n";
         if (isClass(t->inner))
           defaultConstruct(element, t->inner, at);
         else if (t->inner->kind == TyKind::Array)
           constructArray(element, t->inner, at);
         else
           fn += "  store " + llType(t->inner, at) + " zeroinitializer, ptr " + element + "\n";
+      };
+      if (t->count <= 8)
+      {
+        for (uint32_t i = 0; i < t->count; ++i)
+          constructAt(std::to_string(i));
+        return;
       }
+      std::string slot = "%v" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca i64\n";
+      fn += "  store i64 0, ptr " + slot + "\n";
+      std::string loopL = newLabel("array.loop"), bodyL = newLabel("array.body"), endL = newLabel("array.end");
+      emitBranch(loopL);
+      startBlock(loopL);
+      std::string index = newTemp(), done = newTemp();
+      fn += "  " + index + " = load i64, ptr " + slot + "\n";
+      fn += "  " + done + " = icmp eq i64 " + index + ", " + std::to_string(t->count) + "\n";
+      fn += "  br i1 " + done + ", label %" + endL + ", label %" + bodyL + "\n";
+      startBlock(bodyL);
+      constructAt(index);
+      std::string next = newTemp();
+      fn += "  " + next + " = add i64 " + index + ", 1\n";
+      fn += "  store i64 " + next + ", ptr " + slot + "\n";
+      emitBranch(loopL);
+      startBlock(endL);
     }
 
     // A destructor written by the user; `~T() = default` is the compiler's memberwise one.
@@ -1623,7 +1647,7 @@ namespace
           defaultConstruct(fieldAddr, ft, at);
         else if (isClass(ft))
           initializeMembers(fieldAddr, ft, {}, at);
-        else if (ft->kind == TyKind::Array && needsDestruction(ft, at))
+        else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
           constructArray(fieldAddr, ft, at);
         else
           fn += "  store " + llType(ft, at) + " zeroinitializer, ptr " + fieldAddr + "\n";
@@ -1974,7 +1998,7 @@ namespace
             withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
           else if (isClass(ft))
             defaultConstruct(fieldAddr, ft, at);
-          else if (ft->kind == TyKind::Array && needsDestruction(ft, at))
+          else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
             constructArray(fieldAddr, ft, at);
         }
         return;
@@ -2023,6 +2047,25 @@ namespace
 
     // `return result;` naming a local object or a by-value parameter of the returned class: it is
     // moved into the result, not copied (C++'s implicit move on return).
+    // Whether a loop variable of type vt, given an element of elementTy, is of another class than
+    // the element (`for (const Label& l : wrappers)`), which the element converts to.
+    bool elementOfOtherClass(const Ty* elementTy, const Ty* vt, Node* at)
+    {
+      const Ty* target = types.unqualified(types.stripRef(vt));
+      const Ty* et = elementTy ? types.unqualified(types.stripRef(elementTy)) : nullptr;
+      return et && isClass(target) && isClass(et) && !types.isDependent(et) && canonicalClass(et, at) != canonicalClass(target, at);
+    }
+
+    // What a loop variable of type vt refers to or copies, from the element at addr: the element,
+    // or the element converted to vt's class (to its base, or through its conversion operator:
+    // a Vector of reference_wrapper read as references), never the element read as that class.
+    std::string elementAs(const std::string& addr, const Ty* elementTy, const Ty* vt, Node* at)
+    {
+      if (!elementOfOtherClass(elementTy, vt, at))
+        return addr;
+      return convert(Value{addr, types.unqualified(types.stripRef(elementTy)), false}, types.unqualified(types.stripRef(vt)), at).text;
+    }
+
     // The class of the local object (not a reference) e names, when it is not the function's
     // result class (whose own `return obj;` is a move: returnedLocalObject); null otherwise.
     const Ty* localObjectOfOtherClass(Expr* e)
@@ -6208,7 +6251,7 @@ namespace
           auto* i = static_cast<IndexExpr*>(e);
           if (i->args.size() != 1)
             unsupported(e, "multi-argument indexing");
-          Value base = rvalue(i->base);
+          Value base = withCheckedConst(rvalue(i->base), i->base);
           if (ClassDecl* c = typedUnionOf(base.ty, e))
             return alternativeLvalue(c, base, i, e, true); // p[Integer]: the alternative, if held
           if (isClass(base.ty))
@@ -6300,8 +6343,8 @@ namespace
           break;
       }
       Value v = rvalue(e);
-      if (isClass(v.ty))
-        return v.text;
+      if (isClass(v.ty) || isLambda(v.ty))
+        return v.text; // an object in memory already (a closure too: `auto&& add = [&](int x) {...};`)
       std::string slot = newObjectSlot(v.ty, e);
       fn += "  store " + llType(v.ty, e) + " " + v.text + ", ptr " + slot + "\n";
       return slot;
@@ -6739,6 +6782,40 @@ namespace
     // Calls an operator member on an object. The result of a reference-returning operator is
     // the referenced address (ty keeps the reference). sret: where a class result is built (the
     // variable `Chunk c = maker(5)` initialises), or empty for a temporary.
+    // An object's value with the const the checker gave its expression (`this->byChunk` in a
+    // const member function is const even where the field's own type is not), so that an
+    // operator chosen on it is the one a const object calls (`T* operator[](int) const`).
+    Value withCheckedConst(Value v, Expr* e)
+    {
+      if (v.ty && !v.ty->isConst && isClass(v.ty) && constObject(e))
+        v.ty = types.qualified(v.ty, true, v.ty->isVolatile);
+      return v;
+    }
+
+    // Whether e names a const object: as the checker types it, or as its path makes it (a data
+    // member of a const object is const unless mutable: `this->byChunk` in a const member
+    // function, `p->field` with p a pointer to const).
+    bool constObject(Expr* e, int depth = 0)
+    {
+      if (!e || depth > 16)
+        return false;
+      if (e->ty && types.stripRef(e->ty)->isConst)
+        return true;
+      if (e->kind == NodeKind::ParenExpr)
+        return constObject(static_cast<ParenExpr*>(e)->inner, depth + 1);
+      if (e->kind != NodeKind::MemberExpr)
+        return false;
+      auto* m = static_cast<MemberExpr*>(e);
+      if (!m->resolved || m->resolved->kind != NodeKind::VariableDecl || (m->resolved->flags & (DF_Mutable | DF_Static)))
+        return false;
+      if (m->op != P::Arrow)
+        return constObject(m->base, depth + 1);
+      if (m->base && m->base->kind == NodeKind::ThisExpr && currentFunction && (currentFunction->flags & DF_Const))
+        return true;
+      const Ty* bt = m->base && m->base->ty ? types.stripRef(m->base->ty) : nullptr;
+      return bt && bt->kind == TyKind::Pointer && bt->inner && bt->inner->isConst;
+    }
+
     Value operatorCall(Value object, const std::string& name, Span<Expr*> args, Node* at, bool required, const std::string& sret = "")
     {
       const Ty* foundIn = nullptr;
@@ -8071,7 +8148,7 @@ namespace
         case NodeKind::IndexExpr:
         {
           auto* i = static_cast<IndexExpr*>(e);
-          Value base = rvalue(i->base);
+          Value base = withCheckedConst(rvalue(i->base), i->base);
           if (ClassDecl* c = typedUnionOf(base.ty, e))
           {
             std::string addr = alternativeLvalue(c, base, i, e, true);
@@ -9631,7 +9708,7 @@ namespace
         initializeFrom(name, t, v->init, v);
       else if (isClass(t))
         defaultConstruct(name, t, v);
-      else if (t->kind == TyKind::Array && isClass(t->inner) && hasUserConstructors(classDef(t->inner->decl, v)))
+      else if (t->kind == TyKind::Array && needsConstruction(t, v))
         constructArray(name, t, v);
       destroyTemps();
       emitBranch(done);
@@ -9669,10 +9746,25 @@ namespace
       {
         if (!v->init)
           unsupported(v, "a reference without an initializer");
+        // `const Sprite& s(expr);`, `T& r{expr};`: a reference initialised directly binds to the one
+        // value, as `= expr` does (a copy into a temporary needs a copy constructor, Sprite's is
+        // deleted).
+        Expr* init = v->init;
+        if (init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(init)->type == v->type &&
+            static_cast<FunctionalCastExpr*>(init)->args.size() == 1)
+          init = static_cast<FunctionalCastExpr*>(init)->args[0];
+        if (init->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(init)->args.size() == 1 &&
+            static_cast<BraceInitExpr*>(init)->designators.empty())
+          init = static_cast<BraceInitExpr*>(init)->args[0];
         std::string addr;
         if (isClass(types.stripRef(t)))
         {
-          Value o = rvalue(v->init);
+          Value o = rvalue(init);
+          // `const Label& l = wrapper;`: an object of another class is converted, to its base or
+          // through its conversion operator (reference_wrapper's `operator T&()`), never bound as
+          // if it were the referenced class.
+          if (const Ty* target = types.unqualified(types.stripRef(t)); isClass(o.ty) && !types.isDependent(o.ty) && canonicalClass(o.ty, v) != canonicalClass(target, v))
+            o = convert(o, target, v);
           addr = o.text;
           if (o.isTemporary)
           {
@@ -9683,7 +9775,7 @@ namespace
           }
         }
         else
-          addr = lvalue(v->init);
+          addr = lvalue(init);
         fn += "  store ptr " + addr + ", ptr " + slot + "\n";
         return;
       }
@@ -9691,7 +9783,7 @@ namespace
         initializeFrom(slot, t, v->init, v);
       else if (isClass(t))
         defaultConstruct(slot, t, v);
-      else if (t->kind == TyKind::Array && isClass(t->inner) && hasUserConstructors(classDef(t->inner->decl, v)))
+      else if (t->kind == TyKind::Array && needsConstruction(t, v))
         constructArray(slot, t, v); // `StringView text[2];`
       else
         fn += "  store " + llType(t, v) + " zeroinitializer, ptr " + slot + "\n";
@@ -10063,6 +10155,7 @@ namespace
           addr = newObjectSlot(element.ty, v);
           fn += "  store " + llType(element.ty, v) + " " + element.text + ", ptr " + addr + "\n";
         }
+        addr = elementAs(addr, element.ty, vt, v);
         allocas += "  " + slot + " = alloca ptr\n";
         fn += "  store ptr " + addr + ", ptr " + slot + "\n";
         locals[v] = {slot, vt, true};
@@ -10070,7 +10163,9 @@ namespace
       else
       {
         allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
-        if (isClass(vt))
+        if (isClass(vt) && elementOfOtherClass(element.ty, vt, v))
+          copyConstruct(slot, elementAs(element.text, element.ty, vt, v), vt, v); // an element of another class, converted
+        else if (isClass(vt))
         {
           if (element.ty->isReference() || !element.isTemporary)
             copyConstruct(slot, element.text, vt, v);
@@ -10599,14 +10694,14 @@ namespace
       if (vt->isReference())
       {
         allocas += "  " + slot + " = alloca ptr\n";
-        fn += "  store ptr " + element + ", ptr " + slot + "\n";
+        fn += "  store ptr " + elementAs(element, elementTy, vt, v) + ", ptr " + slot + "\n";
         locals[v] = {slot, vt, true};
       }
       else
       {
         allocas += "  " + slot + " = alloca " + llType(vt, v) + "\n";
         if (isClass(vt))
-          copyConstruct(slot, element, vt, v);
+          copyConstruct(slot, elementAs(element, elementTy, vt, v), vt, v);
         else
           store(load(element, elementTy, v), slot, vt, v);
         locals[v] = {slot, vt, false};

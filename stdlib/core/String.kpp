@@ -88,7 +88,7 @@ struct String
   const char* c_str() const { return this->data(); }
   char* data() { return this->isLarge() ? this->heapChars : this->smallChars; }
   const char* data() const { return this->isLarge() ? this->heapChars : this->smallChars; }
-  char operator[](int index) const { return this->data()[index]; }
+  const char& operator[](int index) const { return this->data()[index]; } // a reference, as std::string's: `&s[i]` of a const String
   // Throws OutOfRange for an index outside [0, size()).
   char& at(int index)
   {
@@ -96,7 +96,7 @@ struct String
       throwOutOfRange("String::at: index out of range");
     return this->data()[index];
   }
-  char at(int index) const
+  const char& at(int index) const
   {
     if (index < 0 || index >= this->size())
       throwOutOfRange("String::at: index out of range");

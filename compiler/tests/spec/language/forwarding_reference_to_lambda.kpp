@@ -1,6 +1,5 @@
 // spec: a local `auto&&` bound to a lambda (a temporary whose lifetime the reference extends), then called
 // factorio: the std::visit rewrite and generic code that holds a callable as `auto&& f = ...`
-// pending: the IR treats the reference as the closure itself (clang: '%o4' defined with type 'ptr' but expected the closure type)
 int main()
 {
   int base = 40;

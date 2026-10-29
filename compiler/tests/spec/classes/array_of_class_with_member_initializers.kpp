@@ -1,0 +1,16 @@
+// spec: an array of a class whose members have default initializers (no constructor written) gets them in every element: a local array, a member array, small and large
+// found writing classes/const_object_member_choice: `Territory data[4]` with `int id = 9;` held zeros, a silent wrong value (only classes with constructors had their elements constructed)
+struct Territory { int id = 9; double weight = 0.5; };
+struct Grid
+{
+  Territory cells[3];
+  Territory many[64];
+};
+int main()
+{
+  Territory local[2];
+  Territory big[200];
+  Grid g;
+  println("{} {} {} {} {} {}", local[1].id, big[199].id, big[0].weight, g.cells[2].id, g.many[63].id, g.many[10].weight);
+  return 0;
+}

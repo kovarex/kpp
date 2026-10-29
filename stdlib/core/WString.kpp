@@ -81,7 +81,7 @@ struct WString
   wchar_t* data() { return this->chars; }
   const wchar_t* data() const { return this->c_str(); }
   wchar_t& operator[](int index) { return this->chars[index]; }
-  wchar_t operator[](int index) const { return this->c_str()[index]; }
+  const wchar_t& operator[](int index) const { return this->c_str()[index]; }
   wchar_t& at(int index)
   {
     if (index < 0 || index >= this->unitCount)
