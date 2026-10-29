@@ -1,0 +1,7 @@
+0 10 20
+make
+make
+make
+drop 3
+drop 7
+drop 1
