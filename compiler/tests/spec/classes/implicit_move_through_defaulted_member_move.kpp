@@ -1,0 +1,47 @@
+// spec: a class's implicit move constructor moves a member through the member's defaulted move constructor, also when that member has members of its own to move and a deleted copy constructor; and it is chosen over a converting constructor that could take the class through another conversion
+// factorio: AnimationElement { Animation animation; ... } with Animation's `explicit Animation(const Animation&) = delete; explicit Animation(Animation&&) = default; // needed for std::vector of this type`, relocated by Vector<AnimationElement>; also Sound, TriggerEffect, ProductPrototype, IngredientPrototype, AnimationVariations (about 20 lines in relocate and Vector), and AnimationElement's `AnimationElement(const PropertyTree& input, uint32_t index = 0)` beside PropertyTree's converting constructor templates
+// pending: the member's defaulted move is passed over and the member copied ("copying Animation, whose copy constructor is deleted"); with the converting constructor present it is chosen instead and the moved element is rebuilt from a converted default, silently
+struct Tree
+{
+  int x = 0;
+  Tree() {}
+  template<typename T>
+  implicit Tree(const T& value) : x(-1) {}
+};
+struct Animation
+{
+  Animation() {}
+  explicit Animation(const Animation&) = delete;
+  explicit Animation(Animation&&) = default;
+  explicit Animation(const Tree& input) : speed(float(input.x)) {}
+  Vector<int> frames;
+  float speed = 1;
+};
+struct Element
+{
+  Animation animation;
+  int layer = 0;
+};
+struct ConvertingElement
+{
+  ConvertingElement() = default;
+  implicit ConvertingElement(const Tree& input, uint32_t index = 0) : animation(input) {}
+  Animation animation;
+};
+int main()
+{
+  Vector<Element> v;
+  Vector<ConvertingElement> w;
+  for (int i = 0; i < 5; ++i)
+  {
+    Element e;
+    e.animation.frames.push_back(i);
+    e.animation.speed = float(i);
+    v.push_back(move(e));
+    ConvertingElement c;
+    c.animation.speed = float(i);
+    w.push_back(move(c));
+  }
+  println("{} {} {} {}", v.size(), v[3].animation.speed, v[4].animation.frames.size(), w[3].animation.speed);
+  return 0;
+}
