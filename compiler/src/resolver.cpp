@@ -11351,6 +11351,11 @@ void GlobalScope::deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argT
   }
 }
 
+bool GlobalScope::constraintsHold(FunctionDecl* f, const TemplateArgs& args)
+{
+  return !f->requiresClause || impl->requiresHolds(f, toSubst(args));
+}
+
 FunctionDecl* GlobalScope::chooseOverload(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
                                           const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous)
 {

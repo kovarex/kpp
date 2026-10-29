@@ -280,6 +280,9 @@ public:
   // Adds to args what f's own template parameters deduce to from the argument types (for a
   // constructor template chosen by code generation; args holds the class's arguments).
   void deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argTypes, TemplateArgs& args);
+  // Whether f's requires clause holds for args (true when it has none): for a template the code
+  // generator picks itself (a conversion operator template for the type converted to).
+  bool constraintsHold(FunctionDecl* f, const TemplateArgs& args);
   // The value of a builtin boolean type trait (`isArray<T>`, `isSame<A, B>`...) written as a
   // name with template arguments, under the instantiation args; nullopt if it is not one or
   // its arguments are still dependent.

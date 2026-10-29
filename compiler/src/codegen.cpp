@@ -1795,6 +1795,18 @@ namespace
         callFunction(ctor, ctorArgs, canonicalClass(t, at), addr, "", args, at);
         return;
       }
+      if (args.size() == 1 && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) != classKey(t) &&
+          conversionOperator(types.stripRef(firstTy), t, at))
+      {
+        // No constructor of t takes the value, its class converts to t: `ProtoID copy = connector;`
+        // and `h.chosen = connector;` through IDConnector's `implicit operator IDType()`.
+        Value src = convert(rvalue(args[0]), types.unqualified(t), at);
+        if (src.isTemporary)
+          moveTemporary(addr, src, t, at);
+        else
+          copyConstruct(addr, src.text, t, at);
+        return;
+      }
       if (args.size() == 1 && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t))
       {
         Value src = rvalue(args[0]);
@@ -5259,14 +5271,17 @@ namespace
     // conditions allow them, and in an explicit cast when they yield the type itself
     // (`double(b)`, `static_cast<double>(b)` with `explicit operator const double&()`: direct
     // initialisation's rule). foundIn: the class (or base) declaring it.
-    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr, bool explicitCast = false)
+    // opArgs: the arguments to call it with (the class's, and for an operator template the one its
+    // result is deduced to: `template<class T> operator T()` converting to double has T = double).
+    FunctionDecl* conversionOperator(const Ty* from, const Ty* to, Node* at, const Ty** foundIn = nullptr, bool explicitCast = false,
+                                     TemplateArgs* opArgs = nullptr)
     {
       return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
       {
         if (global.isExplicit(f, args) && to->kind != TyKind::Bool && (!explicitCast || ret != types.unqualified(to)))
           return 0;
         return ret == types.unqualified(to) ? 2 : isClass(ret) ? 0 : 1;
-      });
+      }, to, opArgs);
     }
 
     // A class's (non-explicit) conversion operator to an enum or an integer, own or inherited, or
@@ -5283,11 +5298,14 @@ namespace
 
     // The conversion operator of `from` or its bases (the class first, then each base level) that
     // score rates best: 2 at once, else the first rated 1; 0 is not a candidate.
+    // to: the type converted to, when known, which a conversion operator template deduces its
+    // result from; opArgs: the arguments the one found is called with.
     template<typename Score>
-    FunctionDecl* findConversion(const Ty* from, Node* at, const Ty** foundIn, Score&& score)
+    FunctionDecl* findConversion(const Ty* from, Node* at, const Ty** foundIn, Score&& score, const Ty* to = nullptr, TemplateArgs* opArgs = nullptr)
     {
       FunctionDecl* best = nullptr;
       const Ty* bestIn = nullptr;
+      TemplateArgs bestArgs;
       int bestScore = 0;
       std::vector<const Ty*> classes{canonicalClass(from, at)};
       for (size_t i = 0; i < classes.size() && i < 64 && bestScore < 2; ++i)
@@ -5300,14 +5318,30 @@ namespace
         {
           if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion))
             continue;
+          auto* f = static_cast<FunctionDecl*>(m);
           const Ty* ft = declType(m);
           if (!ft || ft->kind != TyKind::Function || !ft->inner || !ft->inner->isKnown())
             continue;
-          int s = score(static_cast<FunctionDecl*>(m), args, types.unqualified(types.stripRef(ft->inner)));
+          TemplateArgs fargs = args;
+          const Ty* ret = types.unqualified(types.stripRef(ft->inner));
+          if (!f->templateParams.empty())
+          {
+            // `template<class T> operator T()` (or `operator const T&()`): T is the type converted
+            // to, and the operator a candidate only when its constraints hold for it.
+            if (!to || ret->kind != TyKind::Param || std::find(f->templateParams.begin(), f->templateParams.end(), ret->decl) == f->templateParams.end())
+              continue;
+            Decl* param = ret->decl;
+            ret = types.unqualified(types.stripRef(to));
+            fargs.pairs.push_back({param, ret});
+            if (!global.constraintsHold(f, fargs))
+              continue;
+          }
+          int s = score(f, fargs, ret);
           if (s > bestScore)
           {
-            best = static_cast<FunctionDecl*>(m);
+            best = f;
             bestIn = cls;
+            bestArgs = fargs;
             bestScore = s;
             if (s >= 2)
               break;
@@ -5319,18 +5353,20 @@ namespace
       }
       if (foundIn)
         *foundIn = bestIn;
+      if (opArgs)
+        *opArgs = bestArgs;
       return best;
     }
 
     // Calls a conversion operator found in `owner` (the object's class or one of its bases) on
     // the object at addr.
-    Value callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at)
+    Value callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs = nullptr)
     {
       std::string self = addr;
       if (owner != canonicalClass(objectTy, at) && !baseAddress(objectTy, owner, addr, self, at))
         unsupported(at, "a conversion operator of the base " + types.toString(owner, &symbols) + ", which the layout of " +
                             types.toString(objectTy, &symbols) + " does not have");
-      return callRvalue(callFunction(op, global.classArgsOf(owner), owner, self, "", {}, at), at);
+      return callRvalue(callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, "", {}, at), at);
     }
 
     // explicitCast: the conversion an explicit cast asks for, which may use explicit conversion
@@ -5363,8 +5399,9 @@ namespace
         if (fk == TyKind::Class)
         {
           const Ty* owner = nullptr;
-          if (FunctionDecl* op = conversionOperator(from, to, at, &owner, explicitCast))
-            return convert(callConversion(op, from, owner, v.text, at), to, at);
+          TemplateArgs opArgs;
+          if (FunctionDecl* op = conversionOperator(from, to, at, &owner, explicitCast, &opArgs))
+            return convert(callConversion(op, from, owner, v.text, at, &opArgs), to, at);
         }
         // (A class without a conversion to bool is no condition: never its address compared with null.)
         unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));

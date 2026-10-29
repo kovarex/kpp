@@ -1,6 +1,5 @@
 // spec: a conversion operator template (`template<class T> requires (...) implicit operator T() const`) converts to each target type it is asked for, with T deduced from that type
 // factorio: UtilityConstants::Get's `implicit operator T() const` behind `as<T>()`, max and clamp (7 lines)
-// pending: the code generator calls the template without deducing T from the target type ("the type T (a template parameter) of FunctionDecl")
 struct Value
 {
   double stored = 2.5;
