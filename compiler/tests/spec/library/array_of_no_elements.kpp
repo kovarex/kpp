@@ -1,0 +1,31 @@
+// spec: Array<T, 0> (std::array<T, 0>) holds nothing: size() 0, empty(), begin() == end(), at() throws OutOfRange, two of them are equal, and T needs no constructor
+// factorio: the noise expressions' CompiledConstantArguments, std::array<NoiseExpressionConstant, constantCount>, for operations without constants (ComplexExpressionWithOperation<Clamp, 3, 0>, <Ridge, 3, 0>)
+struct NoDefault
+{
+  int v;
+  NoDefault(int v) : v(v) {}
+};
+template<int C>
+struct Expression
+{
+  Array<NoDefault, C> constants;
+};
+int main()
+{
+  Expression<0> e;
+  Array<int, 0> a, b;
+  int visited = 0;
+  for (NoDefault& c : e.constants)
+    visited += c.v;
+  bool threw = false;
+  try
+  {
+    a.at(0);
+  }
+  catch (const OutOfRange&)
+  {
+    threw = true;
+  }
+  println("{} {} {} {} {} {}", e.constants.size(), a.empty(), a.begin() == a.end(), visited, threw, a == b);
+  return 0;
+}

@@ -60,6 +60,51 @@ struct Array
   strong_ordering operator<=>(const Array<T, N>& other) const { return lexicographicalCompareThreeWay(this->items, this->items + N, other.items, other.items + N); }
 };
 
+// An Array of no elements (std::array<T, 0>, as the noise expressions' constant arrays of
+// operations without constants): no storage, so T needs no constructor; begin() == end(), at()
+// always throws, and operator[], front() and back() must not be called.
+template<typename T>
+struct Array<T, 0>
+{
+  using iterator = T*;
+  using const_iterator = const T*;
+  using value_type = T;
+  using size_type = int;
+  using difference_type = ptrdiff_t;
+  using reference = T&;
+  using const_reference = const T&;
+  using pointer = T*;
+  using const_pointer = const T*;
+
+  int size() const { return 0; }
+  bool empty() const { return true; }
+  T& operator[](int index) { return *this->data(); }
+  const T& operator[](int index) const { return *this->data(); }
+  T& at(int index)
+  {
+    throwOutOfRange("Array::at: index out of range");
+    return *this->data();
+  }
+  const T& at(int index) const
+  {
+    throwOutOfRange("Array::at: index out of range");
+    return *this->data();
+  }
+  T* data() { return nullptr; }
+  const T* data() const { return nullptr; }
+  T* begin() { return nullptr; }
+  T* end() { return nullptr; }
+  const T* begin() const { return nullptr; }
+  const T* end() const { return nullptr; }
+  const T* cbegin() const { return nullptr; }
+  const T* cend() const { return nullptr; }
+  T& front() { return *this->data(); }
+  T& back() { return *this->data(); }
+  void fill(const T& value) {}
+  bool operator==(const Array<T, 0>& other) const { return true; }
+  strong_ordering operator<=>(const Array<T, 0>& other) const { return strong_ordering::equal; }
+};
+
 // The extent of a Span whose length is known only when the program runs (std::dynamic_extent).
 constexpr int dynamicExtent = -1;
 
@@ -99,9 +144,9 @@ struct Span
   template<typename U> requires (Extent != dynamicExtent && isConvertible<const U*, T*>)
   explicit Span(const Vector<U>& values) : items(values.items), length(values.length) {}
   template<typename U, int N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<U*, T*>)
-  implicit Span(Array<U, N>& values) : items(values.items), length(N) {}
+  implicit Span(Array<U, N>& values) : items(values.data()), length(N) {}
   template<typename U, int N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<const U*, T*>)
-  implicit Span(const Array<U, N>& values) : items(values.items), length(N) {}
+  implicit Span(const Array<U, N>& values) : items(values.data()), length(N) {}
   template<int N> requires (Extent == dynamicExtent || N == Extent)
   implicit Span(T (&a)[N]) : items(a), length(N) {}
   template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
