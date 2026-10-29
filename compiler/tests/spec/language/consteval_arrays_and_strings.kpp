@@ -1,0 +1,45 @@
+// spec: constant arrays at compile time: of numbers (a C array and the library's Array by brace elision, elements by index and through a pointer), of objects, string literals and the library's StringView over them (its length counted with strlen)
+// factorio: static_assert(!variantNames[size_t(TileTransitionVariant::Count) - 1].empty()) with `constexpr static inline Array<StringView, 6> variantNames = {"inner_corner", ...}`
+// pending: the interpreter held no arrays
+enum class Variant { Inner, Outer, Side, Count };
+struct Names
+{
+  constexpr static inline Array<StringView, size_t(Variant::Count)> names = {"inner", "outer", "side"};
+  static_assert(!names[size_t(Variant::Count) - 1].empty());
+};
+constexpr int primes[] = {2, 3, 5, 7, 11};
+constexpr Array<int, 4> squares = {1, 4, 9, 16};
+struct Pair2
+{
+  int a;
+  int b;
+};
+constexpr Pair2 pairs[] = {{1, 2}, {3, 4}};
+constexpr int sumOf(const int* p, int n)
+{
+  int total = 0;
+  for (int i = 0; i < n; ++i)
+    total += p[i];
+  return total;
+}
+constexpr int totalLength()
+{
+  int total = 0;
+  for (int i = 0; i < Names::names.size(); ++i)
+    total += Names::names[i].size();
+  return total;
+}
+template<int N>
+struct Show
+{
+  static constexpr int value = N;
+};
+static_assert(primes[4] == 11 && squares[2] == 9 && pairs[1].b == 4);
+static_assert(sumOf(primes, 5) == 28);
+static_assert(StringView("hello").size() == 5 && StringView("").empty());
+static_assert(Names::names[1].size() == 5 && totalLength() == 14);
+int main()
+{
+  println("{} {} {}", Show<primes[3]>::value, Show<squares[3] + pairs[0].a>::value, Show<totalLength()>::value);
+  return 0;
+}

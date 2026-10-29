@@ -1,0 +1,53 @@
+// spec: objects at compile time: aggregates and their members, constructors with member initializers and bodies, default member initializers, member functions on an object (const ones and ones that change it), a static function returning an object, a member function called on a temporary
+// factorio: BoundingBox::emptyValue().isZeroSize(); about 300 constexpr constructors
+// pending: the interpreter held no objects
+struct Vec
+{
+  int x = 0;
+  int y = 0;
+};
+struct Box
+{
+  Vec low, high;
+  constexpr Box(int x0, int y0, int x1, int y1) : low{x0, y0}, high{x1, y1} {}
+  static constexpr Box empty() { return Box(0, 0, 0, 0); }
+  constexpr int width() const { return this->high.x - this->low.x; }
+  constexpr bool isZeroSize() const { return width() == 0 && high.y == low.y; }
+};
+class Counter
+{
+public:
+  constexpr Counter(int start) : count(start) { count += 1; }
+  constexpr void add(int n) { count += n; }
+  constexpr int get() const { return count; }
+private:
+  int count;
+};
+constexpr int counted()
+{
+  Counter c(10);
+  c.add(5);
+  c.add(-3);
+  return c.get();
+}
+constexpr Vec moved(Vec v)
+{
+  v.x += 1;
+  return v;
+}
+template<int N>
+struct Show
+{
+  static constexpr int value = N;
+};
+static_assert(Box::empty().isZeroSize());
+static_assert(Box(1, 2, 4, 2).width() == 3 && !Box(1, 2, 4, 2).isZeroSize());
+static_assert(counted() == 13);
+static_assert(moved(Vec{1, 2}).x == 2 && Vec{}.y == 0);
+int main()
+{
+  constexpr Box b(2, 3, 10, 3);
+  constexpr Vec v = moved(Vec{5, 6});
+  println("{} {} {}", Show<b.width()>::value, Show<counted()>::value, Show<v.x + v.y>::value);
+  return 0;
+}
