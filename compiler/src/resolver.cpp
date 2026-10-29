@@ -322,6 +322,7 @@ struct GlobalScope::Impl
   std::vector<std::pair<DeductionGuideDecl*, Scope*>> deferredGuides; // Deduction guides, attached to their class templates by finishIndex.
   std::vector<std::pair<FunctionDecl*, Scope*>> objectCandidates; // `T five(a, m);`: an object when a and m are variables (finishIndex).
   std::vector<ParsedFile*> castFiles; // files with `(name) op x` candidates (ParsedFile::castCandidates), for finishIndex
+  std::vector<std::pair<FunctionDecl*, FunctionDecl*>> externCRedeclarations; // (extern "C" declaration, a later one): sortEntries, decided by finishIndex
 
   // `(HANDLE) -1` (also `(T) +x`, `(T) *p`, `(T) &x`), which the parser read as `(HANDLE) - 1`:
   // when the name is a type where it is written, the cast of the unary expression it reads as in
@@ -1410,6 +1411,16 @@ struct GlobalScope::Impl
             for (const Entry& e : entries)
               if (e.decl && e.decl->kind == NodeKind::VariableDecl && (e.decl->flags & DF_Extern) && !static_cast<VariableDecl*>(e.decl)->init)
                 variableDefinitions[e.decl] = definition;
+          // `extern "C" TValue* index2addr(lua_State*, int);` then `TValue* index2addr(...) {...}`:
+          // a later declaration of a function declared extern "C" with the same parameter types
+          // (finishIndex compares them) is that function, with its C linkage (as C++ has it).
+          for (const Entry& c : entries)
+            if (c.decl && c.decl->kind == NodeKind::FunctionDecl && (c.decl->flags & DF_ExternC))
+              for (const Entry& e : entries)
+                if (e.decl && e.decl != c.decl && e.decl->kind == NodeKind::FunctionDecl && !(e.decl->flags & DF_ExternC) &&
+                    declaredBefore(c.decl, e.decl) && e.decl->templateParams.empty() &&
+                    static_cast<FunctionDecl*>(e.decl)->params.size() == static_cast<FunctionDecl*>(c.decl)->params.size())
+                  externCRedeclarations.push_back({static_cast<FunctionDecl*>(c.decl), static_cast<FunctionDecl*>(e.decl)});
         }
         bool specialized = false; // a class template's specialisations among them: its instances may be one (resolveSpecialization)
         for (const Entry& e : entries)
@@ -16771,6 +16782,22 @@ void GlobalScope::finishIndex()
     for (auto& [b, where] : file->castCandidates)
       impl->castFromBinary(b, where);
   impl->castFiles.clear();
+  // A later declaration of an extern "C" function with its parameter types is that function, with
+  // C linkage; an overload (`float sqrtf2(float)` beside C's `double sqrtf2(double)`) is not.
+  for (auto& [c, e] : impl->externCRedeclarations)
+  {
+    const Ty* ct = impl->declaredTypeOf(c, nullptr, 0);
+    const Ty* et = impl->declaredTypeOf(e, nullptr, 0);
+    if (ct && et && ct->isKnown() && ct->kind == TyKind::Function && et->kind == TyKind::Function && ct->args.size() == et->args.size())
+    {
+      bool same = true;
+      for (size_t i = 0; i < ct->args.size(); ++i)
+        same = same && impl->types.unqualified(ct->args[i]) == impl->types.unqualified(et->args[i]);
+      if (same)
+        e->flags |= DF_ExternC;
+    }
+  }
+  impl->externCRedeclarations.clear();
   // An out-of-line member definition that matches no declaration of its class is an error, as in
   // C++: never a definition silently dropped (its calls would fail only at link time).
   for (FunctionDecl* f : attached)

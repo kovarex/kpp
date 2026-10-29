@@ -1,0 +1,7 @@
+// spec: a function declared extern "C" and later defined without it has C linkage throughout (the first declaration's linkage, as in C++): the definition is the symbol the calls name
+// factorio: Lua's lapi.c (converted): `extern "C" TValue *index2addr (lua_State *L, int idx);` then its definition; the Lua compatibility build failed with "use of undefined value @index2addr"
+struct S { int v = 3; };
+extern "C" int peek(S* s, int idx);
+int caller(S* s) { return peek(s, 1); }
+int peek(S* s, int idx) { return s->v + idx; }
+int main() { S s; println("{}", caller(&s)); return 0; }
