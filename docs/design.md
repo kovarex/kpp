@@ -555,6 +555,30 @@ reach), peak memory 1.94 GB against 1.34 (the copies of every member of every in
 as measured above). Next: per-instance member initializers and statics, pack expansions and
 generic lambdas (codegen still re-types those in place), then the parallel codegen driver.
 
+**The shape it has now (2026-10-29).** Everything typed for an instantiation is a copy owned by
+it, built once under a claim-once record keyed by (declaration, arguments in any order, `this`
+type), by whichever thread asks first:
+
+- GlobalScope::instanceBody: a function's body, parameters and default arguments (the checker's
+  instantiation checks build most of them; codegen builds the rest).
+- GlobalScope::instanceInitializer: a data member's default initializer, a class template's
+  static member's initializer, a variable template's initializer. A default member initializer is
+  emitted with `this` the object it initialises.
+- GlobalScope::lambdaInstance: a generic lambda's call operator per set of its own arguments (its
+  parameters and body copied, its captures and closure the lambda's).
+- GlobalScope::privateInstance: for the one emitter that re-types a function once per pack element
+  (or `for constexpr` element), a copy of the instantiation nobody else reads; its lambdas keep the
+  instantiation's closure types.
+
+retypeFor survives only for that per-element re-typing of a private copy; nothing writes into a
+template's own nodes after the generic pass. With that, codegen emits on all threads (level by
+level: the program's functions, then each round of the instantiations they asked for), the
+emitters sharing layouts, closures, globals and the output under one lock and keeping their own
+caches. Its output does not depend on the threads or on timing: struct, closure and constant names
+are hashes of their contents, a lambda's mark in an instantiation is a hash of the arguments as
+printed, filters and function-local statics are named by where they are written, module texts
+are sorted, and every use of a failed layout or global reports the same error.
+
 ## Compile-time evaluation: one interpreter (proposed 2026-10-29, for review)
 
 **Today.** Two evaluators compute constants: the checker's (constEval, for template arguments,
