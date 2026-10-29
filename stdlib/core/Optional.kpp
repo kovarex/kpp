@@ -14,68 +14,152 @@ struct BadOptionalAccess : Exception
   BadOptionalAccess() : Exception(String("bad optional access")) {}
 };
 
-// Storage for a T with T's size and alignment, which constructs and destroys nothing itself (a
-// union's member is not constructed with the union): Optional builds its value in it and destroys
-// it there.
+// Storage for a T with T's size and alignment, which constructs nothing itself (a union's member
+// is not constructed with the union): Optional builds its value in it and destroys it there.
+// OptionalStorage is for a trivially destructible T (its destructor stays trivial),
+// OptionalOwningStorage for the others.
 template<typename T>
 union OptionalStorage
 {
   T value;
   OptionalStorage() {}
-  ~OptionalStorage() {}
+};
+template<typename T>
+union OptionalOwningStorage
+{
+  T value;
+  OptionalOwningStorage() {}
+  ~OptionalOwningStorage() {}
 };
 
+// An Optional's value and whether it is there, with their copies, moves and destruction as
+// std::optional has them: trivial when T's are (an Optional of a trivially copyable T is
+// trivially copyable; of a trivially destructible T, trivially destructible). Otherwise a copy or
+// a move constructs the value when the source holds one, and an assignment assigns it when both
+// hold one, constructs it when only the source does and destroys it when only the target does.
+// (Three class templates chosen by OptionalValue, not one with partial specializations: a class
+// derived from a partial specialization gets the primary template's copies and moves,
+// templates/partial_specialization_special_members.)
 template<typename T>
-struct Optional
+struct OptionalTrivialValue
+{
+  OptionalStorage<T> storage;
+  bool present = false;
+};
+template<typename T>
+struct OptionalCopiedValue
 {
   OptionalStorage<T> storage;
   bool present = false;
 
+  OptionalCopiedValue() {}
+  OptionalCopiedValue(const OptionalCopiedValue<T>& other) : present(other.present)
+  {
+    if (other.present)
+      new (&this->storage.value) T(other.storage.value);
+  }
+  // The value moved over; the source keeps its state (present, with a moved-from value).
+  OptionalCopiedValue(OptionalCopiedValue<T>&& other) : present(other.present)
+  {
+    if (other.present)
+      new (&this->storage.value) T(move(other.storage.value));
+  }
+  OptionalCopiedValue<T>& operator=(const OptionalCopiedValue<T>& other)
+  {
+    optionalAssign<T>(*this, other.present, other.storage.value);
+    return *this;
+  }
+  OptionalCopiedValue<T>& operator=(OptionalCopiedValue<T>&& other)
+  {
+    optionalAssign<T>(*this, other.present, move(other.storage.value));
+    return *this;
+  }
+};
+template<typename T>
+struct OptionalOwnedValue
+{
+  OptionalOwningStorage<T> storage;
+  bool present = false;
+
+  OptionalOwnedValue() {}
+  OptionalOwnedValue(const OptionalOwnedValue<T>& other) : present(other.present)
+  {
+    if (other.present)
+      new (&this->storage.value) T(other.storage.value);
+  }
+  OptionalOwnedValue(OptionalOwnedValue<T>&& other) : present(other.present)
+  {
+    if (other.present)
+      new (&this->storage.value) T(move(other.storage.value));
+  }
+  ~OptionalOwnedValue()
+  {
+    if (this->present)
+      this->storage.value.~T();
+  }
+  OptionalOwnedValue<T>& operator=(const OptionalOwnedValue<T>& other)
+  {
+    optionalAssign<T>(*this, other.present, other.storage.value);
+    return *this;
+  }
+  OptionalOwnedValue<T>& operator=(OptionalOwnedValue<T>&& other)
+  {
+    optionalAssign<T>(*this, other.present, move(other.storage.value));
+    return *this;
+  }
+};
+template<typename T>
+using OptionalValue = Conditional<isTriviallyCopyable<T>, OptionalTrivialValue<T>,
+                                  Conditional<isTriviallyDestructible<T>, OptionalCopiedValue<T>, OptionalOwnedValue<T>>>;
+
+// Gives target the source's state: a source value (when present) is assigned over target's or
+// constructed in it; no source value destroys target's.
+template<typename T, typename O, typename V>
+void optionalAssign(O& target, bool present, V&& value)
+{
+  if (present)
+  {
+    if (target.present)
+      target.storage.value = forward<V>(value);
+    else
+    {
+      new (&target.storage.value) T(forward<V>(value));
+      target.present = true;
+    }
+  }
+  else if (target.present)
+  {
+    target.present = false;
+    target.storage.value.~T();
+  }
+}
+
+template<typename T>
+struct Optional : OptionalValue<T>
+{
   T* slot() { return &this->storage.value; }
   const T* slot() const { return &this->storage.value; }
 
   Optional() {}
   implicit Optional(NullOpt) {}
-  implicit Optional(const T& v) : present(true) { new (this->slot()) T(v); }
-  implicit Optional(T&& v) : present(true) { new (this->slot()) T(move(v)); }
+  implicit Optional(const T& v)
+  {
+    new (this->slot()) T(v);
+    this->present = true;
+  }
+  implicit Optional(T&& v)
+  {
+    new (this->slot()) T(move(v));
+    this->present = true;
+  }
   // The value built from the arguments, in place (std::optional's in_place_t constructor).
   template<typename... Args>
-  explicit Optional(InPlaceTag, Args&&... args) : present(true) { new (this->slot()) T(forward<Args>(args)...); }
-  Optional(const Optional<T>& other) : present(other.present)
+  explicit Optional(InPlaceTag, Args&&... args)
   {
-    if (other.present)
-      new (this->slot()) T(*other.slot());
-  }
-  // The value moved over; the source keeps its state (present, with a moved-from value).
-  Optional(Optional<T>&& other) : present(other.present)
-  {
-    if (other.present)
-      new (this->slot()) T(move(*other.slot()));
-  }
-  ~Optional()
-  {
-    if (this->present)
-      this->slot()->~T();
+    new (this->slot()) T(forward<Args>(args)...);
+    this->present = true;
   }
 
-  // Copies and moves assign the value when both hold one, construct it when only the source
-  // does, and destroy it when only this one does.
-  Optional<T>& operator=(const Optional<T>& other)
-  {
-    if (other.present)
-      *this = *other.slot();
-    else
-      this->reset();
-    return *this;
-  }
-  Optional<T>& operator=(Optional<T>&& other)
-  {
-    if (other.present)
-      *this = move(*other.slot());
-    else
-      this->reset();
-    return *this;
-  }
   Optional<T>& operator=(NullOpt)
   {
     this->reset();

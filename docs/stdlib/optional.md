@@ -8,6 +8,9 @@ allocation).
   that moment.
 - A copy or move of an Optional is empty when the source is, and otherwise copies or moves the
   value; a moved-from Optional keeps its state (present, with a moved-from value).
+- An Optional of a trivially copyable T is trivially copyable, and one of a trivially destructible
+  T is trivially destructible, so a class of such members keeps those properties.
+- The value has T's alignment within the Optional.
 - Nothing is thread-safe beyond what T is.
 
 Members:

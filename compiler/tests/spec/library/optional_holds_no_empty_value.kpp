@@ -1,5 +1,5 @@
-// spec: an empty Optional holds no T: no constructor has run for it (T needs no default constructor) and no destructor will; giving the value up destroys it at once; copies and moves construct, assign or destroy as the two Optionals hold values; emplace destroys the old value first; an over-aligned T keeps its alignment
-// factorio: PrototypeMigrationListDefinition's Optional<ParsedMigrations<ID<...>>> (ParsedMigrations has no default constructor; 42 instances)
+// spec: an empty Optional holds no T: no constructor has run for it (T needs no default constructor) and no destructor will; giving the value up destroys it at once; copies and moves construct, assign or destroy as the two Optionals hold values; emplace destroys the old value first; an over-aligned T keeps its alignment; an Optional is trivially copyable or destructible when T is
+// factorio: PrototypeMigrationListDefinition's Optional<ParsedMigrations<ID<...>>> (ParsedMigrations has no default constructor; 42 instances); GameViewAction's `static_assert(std::is_trivially_destructible_v<PlaySoundSpecification>)` over its std::optional members
 struct alignas(16) Wide { float v[4]; };
 static int alive = 0;
 struct Counted
@@ -38,5 +38,7 @@ int main()
   Optional<Wide> wide;
   wide = Wide{{1, 2, 3, 4}};
   println("{} {} {}", alive, alignof(Optional<Wide>), ((size_t)&*wide) % 16);
+  println("{} {} {} {}", isTriviallyCopyable<Optional<float>>, isTriviallyDestructible<Optional<float>>, isTriviallyCopyable<Optional<Counted>>,
+          isTriviallyDestructible<Optional<Counted>>);
   return 0;
 }
