@@ -129,28 +129,40 @@ struct String
   }
   void resize(int newLength) { this->resize(newLength, 0); }
   // Removes count bytes at index (to the end when count is negative or reaches past it); throws
-  // OutOfRange when index is past the end.
-  void erase(int index, int count)
+  // OutOfRange when index is past the end. Returns the string.
+  String& erase(int index, int count)
   {
     int length = this->size();
     if (index < 0 || index > length)
       throwOutOfRange("String::erase: index out of range");
     if (index == length)
-      return;
+      return *this;
     if (count < 0 || index + count > length)
       count = length - index;
     char* chars = this->data();
     memmove(chars + index, chars + index + count, length - index - count);
     this->setLength(length - count);
+    return *this;
   }
-  void erase(int index) { this->erase(index, -1); }
-  // The range [first, last) of this string's characters (begin()/end() and what find functions return).
-  void erase(char* first, char* last) { this->erase(int(first - this->data()), int(last - first)); }
-  void erase(char* at) { this->erase(int(at - this->data()), 1); }
-  void insert(int index, const char* text, int count)
+  String& erase(int index) { return this->erase(index, -1); }
+  // The range [first, last) of this string's characters (begin()/end() and what find functions
+  // return); returns where the character after them is now.
+  char* erase(char* first, char* last)
+  {
+    int index = int(first - this->data());
+    this->erase(index, int(last - first));
+    return this->data() + index;
+  }
+  char* erase(char* at)
+  {
+    int index = int(at - this->data());
+    this->erase(index, 1);
+    return this->data() + index;
+  }
+  String& insert(int index, const char* text, int count)
   {
     if (count <= 0)
-      return;
+      return *this;
     int length = this->size();
     if (index > length)
       index = length;
@@ -159,16 +171,16 @@ struct String
     {
       // Inserting part of this string into itself: copy it out before the characters move.
       String copy(text, count);
-      this->insert(index, copy.data(), count);
-      return;
+      return this->insert(index, copy.data(), count);
     }
     this->ensureRoom(length + count);
     char* target = this->data();
     memmove(target + index + count, target + index, length - index);
     memcpy(target + index, text, count);
     this->setLength(length + count);
+    return *this;
   }
-  void insert(int index, const char* text) { this->insert(index, text, (int)strlen(text)); }
+  String& insert(int index, const char* text) { return this->insert(index, text, (int)strlen(text)); }
   // Inserts [first, last) before the character position points at.
   char* insert(char* position, const char* first, const char* last)
   {
@@ -176,12 +188,12 @@ struct String
     this->insert(index, first, int(last - first));
     return this->data() + index;
   }
-  void insert(int index, const String& text) { this->insert(index, text.data(), text.size()); }
+  String& insert(int index, const String& text) { return this->insert(index, text.data(), text.size()); }
   // Inserts count copies of c at index.
-  void insert(int index, int count, char c)
+  String& insert(int index, int count, char c)
   {
     if (count <= 0)
-      return;
+      return *this;
     int length = this->size();
     if (index > length)
       index = length;
@@ -190,17 +202,18 @@ struct String
     memmove(chars + index + count, chars + index, length - index);
     memset(chars + index, c, count);
     this->setLength(length + count);
+    return *this;
   }
-  // Replaces count bytes at index with text.
-  void replace(int index, int count, const char* text)
+  // Replaces count bytes at index with text; returns the string.
+  String& replace(int index, int count, const char* text)
   {
     this->erase(index, count);
-    this->insert(index, text);
+    return this->insert(index, text);
   }
-  void replace(int index, int count, const String& text)
+  String& replace(int index, int count, const String& text)
   {
     this->erase(index, count);
-    this->insert(index, text);
+    return this->insert(index, text);
   }
 
   // Searching. Every find returns the index of the first match at or after `from`, or npos.
@@ -399,57 +412,61 @@ struct String
       this->reallocate(needed);
   }
 
-  // Replaces the contents with count bytes (which may be part of this string).
-  void assign(const char* bytes, int count)
+  // Replaces the contents with count bytes (which may be part of this string); returns the string.
+  String& assign(const char* bytes, int count)
   {
     if (count <= this->capacity())
     {
       memmove(this->data(), bytes, count);
       this->setLength(count);
-      return;
+      return *this;
     }
     char* block = (char*)malloc(count + 1);
     memcpy(block, bytes, count);
     block[count] = 0;
     this->adopt(block, count, count);
+    return *this;
   }
 
-  void append(const char* bytes, int count)
+  // The appends return the string.
+  String& append(const char* bytes, int count)
   {
     if (count <= 0)
-      return;
+      return *this;
     int length = this->size();
     if (length + count > this->capacity())
     {
       this->appendGrowing(bytes, count);
-      return;
+      return *this;
     }
     memcpy(this->data() + length, bytes, count);
     this->setLength(length + count);
+    return *this;
   }
-  void append(const char* text) { this->append(text, (int)strlen(text)); }
-  void append(const String& other) { this->append(other.data(), other.size()); }
+  String& append(const char* text) { return this->append(text, (int)strlen(text)); }
+  String& append(const String& other) { return this->append(other.data(), other.size()); }
   // Appends count copies of c.
-  void append(int count, char c)
+  String& append(int count, char c)
   {
     if (count <= 0)
-      return;
+      return *this;
     int length = this->size();
     this->ensureRoom(length + count);
     memset(this->data() + length, c, count);
     this->setLength(length + count);
+    return *this;
   }
   // Appends count characters of other from index (fewer when other ends before).
-  void append(const String& other, int index, int count)
+  String& append(const String& other, int index, int count)
   {
     int otherLength = other.size();
     if (index >= otherLength)
-      return;
+      return *this;
     if (count < 0 || count > otherLength - index)
       count = otherLength - index;
-    this->append(other.data() + index, count);
+    return this->append(other.data() + index, count);
   }
-  void append(char c)
+  String& append(char c)
   {
     if (this->isLarge())
     {
@@ -459,7 +476,7 @@ struct String
         this->heapChars[length] = c;
         this->heapChars[length + 1] = 0;
         this->heapLength = length + 1;
-        return;
+        return *this;
       }
     }
     else
@@ -470,10 +487,11 @@ struct String
         this->smallChars[length] = c;
         this->smallChars[length + 1] = 0;
         this->smallChars[String::markIndex] = (char)(length + 1);
-        return;
+        return *this;
       }
     }
     this->appendGrowing(&c, 1);
+    return *this;
   }
 
   String& operator+=(const char* text)

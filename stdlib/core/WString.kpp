@@ -115,33 +115,34 @@ struct WString
     this->chars = bigger;
     this->capacity = newCapacity;
   }
-  // count units at units appended; units may point into this WString.
-  void append(const wchar_t* units, int count)
+  // count units at units appended; units may point into this WString. The appends return the string.
+  WString& append(const wchar_t* units, int count)
   {
     if (count <= 0)
-      return;
+      return *this;
     if (this->chars && units >= this->chars && units < this->chars + this->capacity)
     {
       WString copy(units, count);
-      this->append(copy.chars, count);
-      return;
+      return this->append(copy.chars, count);
     }
     this->reserve(this->unitCount + count);
     memcpy(this->chars + this->unitCount, units, (size_t)count * sizeof(wchar_t));
     this->unitCount += count;
     this->chars[this->unitCount] = 0;
+    return *this;
   }
-  void append(const wchar_t* text) { this->append(text, WString::lengthOf(text)); }
-  void append(const WString& other) { this->append(other.chars, other.unitCount); }
-  void append(int count, wchar_t c)
+  WString& append(const wchar_t* text) { return this->append(text, WString::lengthOf(text)); }
+  WString& append(const WString& other) { return this->append(other.chars, other.unitCount); }
+  WString& append(int count, wchar_t c)
   {
     if (count <= 0)
-      return;
+      return *this;
     this->reserve(this->unitCount + count);
     for (int i = 0; i < count; ++i)
       this->chars[this->unitCount + i] = c;
     this->unitCount += count;
     this->chars[this->unitCount] = 0;
+    return *this;
   }
   void push_back(wchar_t c) { this->append(&c, 1); }
   void pop_back()
