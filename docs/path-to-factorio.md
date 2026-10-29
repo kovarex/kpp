@@ -1531,20 +1531,26 @@ Besides, an iterator type's `X::value_type` (and `reference`, `pointer`, `differ
 `iterator_category`) is converted to `IteratorTraits<X>::value_type`, since a Vector's iterator is a
 pointer (CreatableEntityTypeIterator's `ListIterator::value_type`).
 
-The tally on 5eb7aeb (convert.cmd's whole conversion, tests.cmd, suites.py, crashes.py): of 554
-suites, 321 get to their summary line, with 2180 tests of which 2095 pass and 85 fail; 233 stop.
-The first tally, before dbd1c9b's signed shift, had 291 suites stop at one assertion
-(BoundingBox.kpp:719); none do now. What stops the 233:
+The tally on ded1074 (convert.cmd's whole conversion, tests.cmd, suites.py, crashes.py): of 554
+suites, 428 get to their summary line, with 3742 tests of which 3557 pass and 185 fail; 126 stop.
+The build has 35 stubs and 33 error lines. What stops the 126:
 
 | Suites | What | Cause |
 |---|---|---|
-| 90 | assertion GenericTargetable.kpp:90 `this->first->target == this`, in a widget's destructor in the GUI's teardown (TestScenarioGui) or, in 20, ManualCrafter's | not found yet: 619cc61 (an implicit copy calls the bases' copy constructors) ended the menu maps' instance of this assertion, not these |
-| 52 | a fault under UpgradableEntity::getUpgradeTargetWithFallback | a union's own constructor dropped its member initializer (UpgradableEntity's WrappedValue): fixed since in 3f280db (spec classes/union_constructor_initializes_member) |
-| 28 | a fault in Targeters (addTargeter, clear, hasTargeterWithType) | not found yet |
-| 25 | a fault in IntrusiveSet's Hook::unlink, under RobotWithLogisticInterface::setup | not found yet |
-| 17 | a stub, each a different one (one of them SaveLoadStdVariant's, left out since) | functions the code generator leaves out |
-| 10 | assertion PrototypeList.kpp:89 `id.getIndex() < ...indexToPrototype.size()` | probably the union's too: 5 take the ID from UpgradableEntity::getUpgradeTargetWithFallback (BlueprintEntities::addEntity), 5 from upgrade data, Splitter::saveForBlueprint and getMaxHealth |
-| 11 | other faults, one to three suites each | not looked at |
+| 59 | a fault in IntrusiveSet's Hook::unlink, under RobotWithLogisticInterface::setup (a construction robot spawned) | not found yet |
+| 32 | a fault in Targeters (addTargeter, clear, hasTargeterWithType, notifyUndoActionsOfEntityDestroyed) | not found yet |
+| 14 | a stub, each a different one | functions the code generator leaves out |
+| 1 | assertion PumpRailConnector.kpp:526 `targetsBySearch[i] == targets[i]` | not looked at |
+| 20 | other faults, aborts and timeouts, one to six suites each | not looked at |
+
+The tallies before: the first, before dbd1c9b's signed shift, had 291 suites stop at one assertion
+(BoundingBox.kpp:719). The one on 5eb7aeb had 321 suites finish (2095 of 2180 tests passing); of
+the 233 that stopped, 90 did at GenericTargetable.kpp:90 (`this->first->target == this`, a widget's
+or ManualCrafter's destructor finding a dead targeter in its list), gone since, most likely with
+9f904ce (closures copy, move and destroy their captures; a targeter captured by value was moved
+into a Function bit by bit, its old place left in the list), and 62 under
+UpgradableEntity::getUpgradeTargetWithFallback (52 faults, 10 at PrototypeList.kpp:89 with the
+IDs it gave), a union's own constructor dropping its member initializer, fixed in 3f280db.
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
