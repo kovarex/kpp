@@ -755,6 +755,13 @@ By package from 28,992 to 27,411: Script 2,881 -> 2,545, src top level 2,456 -> 
 HashMap hashers (-104), Atomic and SharedPtr atomics with `_WIN32_WINNT=0x0601` (-370), container
 member types and PriorityQueue (-209).
 
+On 2026-10-29, master at 25e7d74 (the other threads' fixes since 27,411) measures 24,111. The
+converter now drops a std container's allocator argument (`std::vector<T, Allocate>` becomes
+`Vector<T>`: the library's containers have no allocator parameter) and the template parameter
+that only it used, so CommonUtil's `Util::eraseIf` and `eraseEmpty` overloads match again: 24,097
+(the unresolved calls in the 21 functions that call them are gone; 8 of those functions now stop
+at a later, unrelated class layout error).
+
 ### Error breakdown by root cause
 
 | category | count | % | what it is |

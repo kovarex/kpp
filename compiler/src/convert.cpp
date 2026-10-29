@@ -989,6 +989,9 @@ namespace
     };
     std::vector<MovedFriend> movedFriends;
     std::vector<ClassDecl*> classStack; // the classes whose members convertDecls is in, outermost first
+    // The identifiers of allocator arguments dropped from std container types (convertTokens), by
+    // offset: a template parameter used only there goes from its header too (dropAllocatorParameters).
+    std::map<uint32_t, std::string> droppedAllocators;
     Counts counts;
     bool importedCommon = false;
     bool importedLua = false;    // stdlib.h, string.h and stdio.h added next to the first C import
@@ -2019,6 +2022,66 @@ namespace
           }
           auto it = stdNames.find(name);
           std::string to = it == stdNames.end() ? name : it->second;
+          static const std::map<std::string, size_t> containerArguments = {
+            {"vector", 1}, {"deque", 1}, {"list", 1}, {"forward_list", 1}, {"set", 2}, {"multiset", 2}, {"map", 3}, {"multimap", 3},
+            {"unordered_set", 3}, {"unordered_multiset", 3}, {"unordered_map", 4}, {"unordered_multimap", 4}};
+          auto ca = containerArguments.find(name);
+          if (ca != containerArguments.end() && i + 3 < toks.size() && toks[i + 3].is(P::Less))
+          {
+            // `std::vector<T, Allocate>`: the library's containers have no allocator parameter, so the
+            // argument goes (CommonUtil's eraseIf overloads); a template parameter used only there
+            // goes from its template header too (dropAllocatorParameters).
+            std::vector<std::pair<uint32_t, uint32_t>> args; // token ranges of the arguments
+            uint32_t j = i + 4, argStart = j;
+            uint32_t close = UINT32_MAX; // offset of the `>` that closes the container's arguments
+            int angle = 0, paren = 0;
+            for (; j < toks.size(); ++j)
+            {
+              if (toks[j].is(P::LParen))
+                ++paren;
+              else if (toks[j].is(P::RParen))
+              {
+                if (--paren < 0)
+                  break;
+              }
+              else if (paren > 0)
+                continue;
+              else if (toks[j].is(P::Less))
+                ++angle;
+              else if (toks[j].is(P::Greater) || toks[j].is(P::Shr))
+              {
+                // `>>` one level in closes the last argument's own arguments and then the container's.
+                if (angle == 0 || (angle == 1 && toks[j].is(P::Shr)))
+                {
+                  close = toks[j].offset + angle;
+                  break;
+                }
+                angle -= toks[j].is(P::Shr) ? 2 : 1;
+              }
+              else if (toks[j].is(P::Comma) && angle == 0)
+              {
+                args.push_back({argStart, j});
+                argStart = j + 1;
+              }
+              else if (toks[j].is(P::Semi) || toks[j].is(P::LBrace) || toks[j].getKind() == TokenKind::End)
+                break;
+            }
+            if (close != UINT32_MAX)
+            {
+              args.push_back({argStart, j});
+              if (args.size() > ca->second)
+              {
+                // From the end of the last argument kept to the closing `>` (the first of a `>>`).
+                uint32_t from = endOffset(args[ca->second - 1].second - 1);
+                remove(from, close - from);
+                for (size_t a = ca->second; a < args.size(); ++a)
+                  for (uint32_t k = args[a].first; k < args[a].second; ++k)
+                    if (toks[k].getKind() == TokenKind::Identifier)
+                      droppedAllocators[toks[k].offset] = std::string(spelling(k));
+                counts.add("allocator arguments dropped");
+              }
+            }
+          }
           if ((name == "unique_ptr" || name == "make_unique") && i + 3 < toks.size() && toks[i + 3].is(P::Less))
           {
             // `unique_ptr<T[]>` and `make_unique<T[]>(n)`: the array form is its own class.
@@ -2586,6 +2649,7 @@ namespace
             }
           }
         }
+        dropAllocatorParameters(d);
         switch (d->kind)
         {
           case NodeKind::NamespaceDecl:
@@ -3085,6 +3149,59 @@ namespace
           return UINT32_MAX;
       }
       return UINT32_MAX;
+    }
+
+    // A template parameter that the declaration used only in allocator arguments, which convertTokens
+    // dropped (`template<typename T, typename Allocate> void eraseIf(std::vector<T, Allocate>& v,
+    // Pred pred)`), goes from the header too: nothing could deduce it any more.
+    void dropAllocatorParameters(Decl* d)
+    {
+      size_t n = d->templateParams.size();
+      if (droppedAllocators.empty() || n == 0 || d->endToken <= d->token || d->endToken > toks.size())
+        return;
+      uint32_t headerEnd = templateParameterEnd(d->templateParams[n - 1]->token); // the header's `>`
+      if (headerEnd == UINT32_MAX)
+        return;
+      auto first = droppedAllocators.lower_bound(toks[headerEnd].offset);
+      if (first == droppedAllocators.end() || first->first >= endOffset(d->endToken - 1))
+        return;
+      std::vector<bool> drop(n, false);
+      size_t dropped = 0;
+      for (size_t p = 0; p < n; ++p)
+      {
+        auto* tp = static_cast<TemplateParamDecl*>(d->templateParams[p]);
+        if (tp->name == UINT32_MAX)
+          continue;
+        std::string_view name = symbols.name(tp->name);
+        bool inAllocator = false, elsewhere = false;
+        for (uint32_t k = headerEnd + 1; k < d->endToken && !elsewhere; ++k)
+          if (toks[k].getKind() == TokenKind::Identifier && spelling(k) == name)
+            (droppedAllocators.count(toks[k].offset) ? inAllocator : elsewhere) = true;
+        if (inAllocator && !elsewhere)
+        {
+          drop[p] = true;
+          ++dropped;
+        }
+      }
+      if (dropped == 0)
+        return;
+      if (dropped == n)
+      {
+        todo(toks[d->token].offset, "every template parameter was used only in dropped allocator arguments");
+        return;
+      }
+      // A parameter goes with the comma after it; the ones after the last kept go with the comma
+      // before them, from the end of the last kept one.
+      size_t lastKept = n - 1;
+      while (drop[lastKept])
+        --lastKept;
+      auto paramEnd = [&](size_t p) { return endOffset(templateParameterEnd(d->templateParams[p]->token) - 1); };
+      for (size_t p = 0; p < lastKept; ++p)
+        if (drop[p])
+          remove(toks[d->templateParams[p]->token].offset, toks[d->templateParams[p + 1]->token].offset - toks[d->templateParams[p]->token].offset);
+      if (lastKept + 1 < n)
+        remove(paramEnd(lastKept), paramEnd(n - 1) - paramEnd(lastKept));
+      counts.add("allocator template parameters dropped", (int)dropped);
     }
 
     void removeDecl(Decl* d)
