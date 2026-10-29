@@ -1,0 +1,19 @@
+// spec: a class template's data member whose type is a template parameter is a reference when the argument is a reference type: Holder<int&> refers to the int it was constructed with, and assigning to the member, or through a reference bound to it, writes that int
+// factorio: std::tie(this->movementSpeed, this->stretchForce) = SpiderTorso::calculateNewMovementSpeedAndStretchForce(...) (SpiderUnit, SpiderVehicle, ManualBuilder, ServerRouter: tie's tuple of references); the library's makePair(ref(x), y)
+// pending: the member holds an address (Holder<int&> is 8 bytes) but writing to it leaves the int as it was, silently
+template<typename A>
+struct Holder
+{
+  A value;
+  Holder(int& x) : value(x) {}
+};
+int main()
+{
+  int a = 1;
+  Holder<int&> h(a);
+  h.value = 5;
+  int& r = h.value;
+  r += 1;
+  println("{} {}", a, sizeof(Holder<int&>));
+  return 0;
+}
