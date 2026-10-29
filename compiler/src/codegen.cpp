@@ -6376,7 +6376,56 @@ namespace
           return std::nullopt;
         }
       };
+      hooks.offset = [this, at, &layoutFailed](const Ty* t, Decl* m) -> std::optional<int64_t>
+      {
+        try
+        {
+          std::optional<uint64_t> o = memberOffset(t, m, at);
+          return o ? std::optional<int64_t>(int64_t(*o)) : std::nullopt;
+        }
+        catch (Unsupported&)
+        {
+          layoutFailed = true;
+          return std::nullopt;
+        }
+      };
       return hooks;
+    }
+
+    // The byte offset of data member m in an object of class t as laid out (offsetof), m declared
+    // in t or in one of its bases; nullopt when it is in neither.
+    std::optional<uint64_t> memberOffset(const Ty* t, Decl* m, Node* at, int depth = 0)
+    {
+      t = types.unqualified(types.stripRef(t));
+      if (!isClass(t) || depth > 16)
+        return std::nullopt;
+      classSizeAndAlign(t, at); // laid out, the fields' sizes known
+      auto lock = sharedLock();
+      StructInfo& info = structFor(t, at);
+      auto start = [&](uint32_t index)
+      {
+        uint64_t offset = 0;
+        for (uint32_t i = 0; i < index && i < info.fieldTypes.size(); ++i)
+        {
+          if (i < info.zeroSize.size() && info.zeroSize[i])
+            continue; // an empty base: no storage
+          uint64_t a = info.packed ? 1 : alignOf(info.fieldTypes[i], at);
+          offset = (offset + a - 1) / a * a + sizeOf(info.fieldTypes[i], at);
+        }
+        if (index < info.fieldTypes.size() && !(index < info.zeroSize.size() && info.zeroSize[index]))
+        {
+          uint64_t a = info.packed ? 1 : alignOf(info.fieldTypes[index], at);
+          offset = (offset + a - 1) / a * a;
+        }
+        return offset;
+      };
+      if (auto it = info.fieldIndex.find(m); it != info.fieldIndex.end())
+        return info.isUnion ? 0 : start(it->second);
+      for (const auto& [base, index] : info.bases)
+        if (index < info.fieldTypes.size())
+          if (std::optional<uint64_t> inner = memberOffset(info.fieldTypes[index], m, at, depth + 1))
+            return start(index) + *inner;
+      return std::nullopt;
     }
 
     std::optional<int64_t> evalConst(Expr* e, int = 0)

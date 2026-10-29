@@ -4096,8 +4096,153 @@ struct GlobalScope::Impl
   // `static_cast<size_t>(value)` with value an enumerator or a constant parameter (a template
   // argument `bits.test<static_cast<size_t>(value)>()`), `(uint8_t)x`: the operand's value
   // converted to the written type.
+  // The byte offset of data member m in an object of class t, in a base of it included: the code
+  // generator's layout when it lends it (exact), else, where only that one decides (a
+  // static_assert), none yet (layoutNeeded), else the ordinary one sizeof computes with.
+  std::optional<int64_t> constFieldOffset(const Ty* t, Decl* m, int depth)
+  {
+    if (!t || !m || depth > 24)
+      return std::nullopt;
+    t = types.unqualified(types.stripRef(t));
+    if (t->kind != TyKind::Class)
+      return std::nullopt;
+    if (const ConstHooks* h = constHooks(); h && h->offset)
+      return h->offset(t, m);
+    if (exactLayoutOnly)
+    {
+      layoutNeeded = true;
+      return std::nullopt;
+    }
+    Decl* def = t->decl;
+    if (def && !def->ownScope)
+    {
+      Entry e{def, nullptr};
+      if (Scope* s = scopeOfEntry(e, 0))
+        def = s->owner;
+    }
+    if (!def || def->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(def)->isDefinition)
+      return std::nullopt;
+    auto* cls = static_cast<ClassDecl*>(def);
+    Subst subst = substFor(t);
+    const Subst* sp = subst.empty() ? nullptr : &subst;
+    bool isUnion = cls->keyword == Kw::union_;
+    int64_t offset = 0;
+    if (!isUnion)
+      for (const ClassDecl::Base& b : cls->bases)
+      {
+        DeclContext dc;
+        declContextFor(cls, dc);
+        TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
+        const Ty* bt = convertType(b.type, ctx2, depth + 1);
+        if (!bt || !bt->isKnown() || types.isDependent(bt))
+          return std::nullopt;
+        auto bs = constSizeOf(bt, depth + 1);
+        auto ba = constAlignOf(bt, depth + 1);
+        if (!bs || !ba)
+          return std::nullopt;
+        offset = (offset + *ba - 1) / *ba * *ba;
+        if (std::optional<int64_t> inner = constFieldOffset(bt, m, depth + 1))
+          return offset + *inner;
+        offset += *bs;
+      }
+    for (Decl* f : cls->members)
+    {
+      if (f->kind != NodeKind::VariableDecl || (f->flags & (DF_Static | DF_Typedef | DF_Friend)))
+        continue; // (an anonymous struct or union member: not walked into here)
+      const Ty* ft = declaredTypeOf(f, sp, depth + 1);
+      if (!ft || !ft->isKnown() || types.isDependent(ft))
+        return std::nullopt;
+      auto fs = constSizeOf(ft, depth + 1);
+      auto fa = constAlignOf(ft, depth + 1);
+      auto own = constDeclaredAlign(cls, static_cast<VariableDecl*>(f)->alignment, sp, depth);
+      if (!fs || !fa || !own)
+        return std::nullopt;
+      int64_t a = std::max(*fa, *own);
+      if (isUnion)
+      {
+        if (f == m)
+          return 0;
+        continue;
+      }
+      offset = (offset + a - 1) / a * a;
+      if (f == m)
+        return offset;
+      offset += *fs;
+    }
+    return std::nullopt;
+  }
+
+  // `&((T*)nullptr)->a.b[2]`, what the parser reads offsetof(T, a.b[2]) as: the member's offset in
+  // a T, a number; nullopt for any other operand of `&`.
+  std::optional<int64_t> constMemberOffset(Expr* e, const TypeContext& ctx, int depth)
+  {
+    std::vector<Expr*> steps; // the members and subscripts, outermost first
+    Expr* p = e;
+    while (p && (p->kind == NodeKind::MemberExpr || p->kind == NodeKind::IndexExpr) && steps.size() < 32)
+    {
+      steps.push_back(p);
+      p = p->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(p)->base : static_cast<IndexExpr*>(p)->base;
+    }
+    if (steps.empty() || !p || p->kind != NodeKind::CastExpr)
+      return std::nullopt;
+    auto* root = static_cast<CastExpr*>(p);
+    if (!root->operand || root->operand->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(root->operand)->keyword != Kw::nullptr_)
+      return std::nullopt;
+    const Ty* pt = types.unqualified(convertType(root->type, ctx, depth + 1));
+    if (!pt || pt->kind != TyKind::Pointer || !pt->inner)
+      return std::nullopt;
+    const Ty* current = types.unqualified(pt->inner);
+    int64_t offset = 0;
+    for (size_t i = steps.size(); i-- > 0;)
+    {
+      if (steps[i]->kind == NodeKind::IndexExpr)
+      {
+        auto* index = static_cast<IndexExpr*>(steps[i]);
+        if (current->kind != TyKind::Array || index->args.size() != 1)
+          return std::nullopt;
+        std::optional<int64_t> k = constEval(index->args[0], ctx, depth + 1);
+        std::optional<int64_t> size = constSizeOf(current->inner, depth + 1);
+        if (!k || !size)
+          return std::nullopt;
+        offset += *k * *size;
+        current = types.unqualified(current->inner);
+        continue;
+      }
+      auto* m = static_cast<MemberExpr*>(steps[i]);
+      if (current->kind != TyKind::Class || m->member.parts.size() != 1)
+        return std::nullopt;
+      Decl* field = m->resolved;
+      if (!field || field->kind != NodeKind::VariableDecl)
+      {
+        Lookup l;
+        Scope* s = classScopeOf(current);
+        if (!s || !lookupInScope(s, m->member.parts[0].symbol, l, depth + 1) || !l.decl || l.decl->kind != NodeKind::VariableDecl)
+          return std::nullopt;
+        field = l.decl;
+      }
+      if (field->flags & (DF_Static | DF_Typedef))
+        return std::nullopt;
+      std::optional<int64_t> at = constFieldOffset(current, field, depth + 1);
+      if (!at)
+        return std::nullopt;
+      offset += *at;
+      Scope* in = field->parent && field->parent->kind == NodeKind::ClassDecl ? field->parent->ownScope : nullptr;
+      Subst s = memberSubst(current, in, depth + 1); // a base's member: that base's arguments
+      const Ty* ft = declaredTypeOf(field, s.empty() ? nullptr : &s, depth + 1);
+      if (!ft || !ft->isKnown())
+        return std::nullopt;
+      current = types.unqualified(types.stripRef(ft));
+    }
+    return offset;
+  }
+
   std::optional<ConstValue> constCastValue(Type* type, Expr* operand, const TypeContext& ctx, int depth)
   {
+    if (operand && operand->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(operand)->isKeyword && !static_cast<UnaryExpr*>(operand)->postfix &&
+        P(static_cast<UnaryExpr*>(operand)->op) == P::Amp && type)
+      if (const Ty* t = convertType(type, ctx, depth + 1); t && types.unqualified(t)->kind == TyKind::Int)
+        if (std::optional<int64_t> offset = constMemberOffset(static_cast<UnaryExpr*>(operand)->operand, ctx, depth + 1))
+          return constConverted(ConstValue::integer(*offset, types.intType(64, true)), t); // offsetof(T, member)
     std::optional<ConstValue> v = constValue(operand, ctx, depth + 1);
     if (!v || !type)
       return v;

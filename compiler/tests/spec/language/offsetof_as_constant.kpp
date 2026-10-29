@@ -1,6 +1,19 @@
-// spec: offsetof(T, member) is a constant: a constexpr variable's initializer, a static_assert's operand, an array's length
-// pending: offsetof reads as `size_t(&((T*)nullptr)->member)`, which runs but is no constant: the constant evaluation has no member offsets (its layout hook gives sizes and alignments only); owner: consteval / codegen (a member offset hook)
+// spec: offsetof(T, member) is a constant: a constexpr variable's initializer, a static_assert's operand, an array's length; a member of a base, a path with a subscript and a polymorphic class's member (after its vtable pointer) have the offsets C++ lays them out at (clang's for these: 16, 32, 0, 8, 20)
 struct LX { char extra[8]; double l; };
 constexpr size_t OFF = offsetof(LX, l);
 static_assert(OFF == 8);
-int main() { char buf[offsetof(LX, l)]; println("{} {}", OFF, int(sizeof(buf))); return 0; }
+struct Inner { char c; int values[4]; };
+struct Base { double d; char tag; };
+struct Derived : Base { short s; Inner inner; };
+struct Poly { virtual ~Poly() = default; int x; };
+constexpr size_t A = offsetof(Derived, s);
+constexpr size_t B = offsetof(Derived, inner.values[2]);
+static_assert(A == 16);
+static_assert(B == 32);
+int main()
+{
+  char buf[offsetof(LX, l)];
+  char upToInner[offsetof(Derived, inner)];
+  println("{} {} {} {} {} {} {}", OFF, int(sizeof(buf)), A, B, offsetof(Derived, d), offsetof(Poly, x), int(sizeof(upToInner)));
+  return 0;
+}
