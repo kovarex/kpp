@@ -528,7 +528,7 @@ namespace
   // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"VCALL", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
-    {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"EXTERNC", "extern \"C\""},
+    {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"EXTERNC", "extern \"C\""}, {"FAR", ""}, {"NEAR", ""},
     {"DEV_TOOL_VARIABLE", ""}, {"BEGIN_SUPPRESS_CONVERSIONS", ""}, {"END_SUPPRESS_CONVERSIONS", ""}, {"BEGIN_FORCE_OPTIMIZE", ""},
     {"END_FORCE_OPTIMIZE", ""}, {"SUPPRESS_UBSAN", ""}, {"PADDING_WARNING", ""}, {"errno", "(*_errno())"},
     // math.h constants
@@ -1398,10 +1398,18 @@ namespace
       auto* c = d->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(d) : nullptr;
       if (!c || !c->isDefinition || c->name.empty() || c->endToken <= c->token || c->endToken > tk.size())
         continue;
-      // The head: from the `template` keyword (or the class keyword) to the body's `{`.
-      uint32_t head = c->templateParams.empty() ? c->token : c->templateParams[0]->token;
-      while (head > 0 && !tk[head].is(Kw::template_) && !tk[head].is(Kw::class_) && !tk[head].is(Kw::struct_) && !tk[head].is(P::Semi) && !tk[head].is(P::RBrace))
-        --head;
+      // The head: from the `template` keyword (or the class keyword) to the body's `{`. (For a
+      // template, the keyword before its parameters: a parameter's own `class` is no head.)
+      uint32_t head = c->token;
+      if (!c->templateParams.empty())
+      {
+        head = c->templateParams[0]->token;
+        while (head > 0 && !tk[head].is(Kw::template_))
+          --head;
+      }
+      else
+        while (head > 0 && !tk[head].is(Kw::class_) && !tk[head].is(Kw::struct_) && !tk[head].is(P::Semi) && !tk[head].is(P::RBrace))
+          --head;
       uint32_t open = head;
       while (open < c->endToken && !tk[open].is(P::LBrace))
         ++open;
@@ -2038,13 +2046,48 @@ namespace
       if (!functionLike && !body.empty())
       {
         bool constant = true;
-        int quotes = 0;
+        int quotes = 0, depth = 0;
         for (char c : body)
         {
           if (c == '"')
             ++quotes;
           else if (!(isIdentChar(c) || strchr(" .+-*/()<>|&~!^,'\\xX", c)))
             constant = false;
+          else if (quotes % 2 == 0)
+          {
+            depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+            if (c == ',' && depth == 0)
+              constant = false; // a list (`2,1,0` for a resource script), not a value
+          }
+        }
+        // A body of declaration words (`#define STBDDEF static`) is no value either.
+        static const std::set<std::string> declarationWords = {"static", "inline", "extern", "const", "volatile", "register", "thread_local",
+                                                              "constexpr", "virtual", "explicit", "friend", "typedef", "struct", "class",
+                                                              "union", "enum", "template", "typename", "using", "namespace", "__forceinline",
+                                                              "__inline", "__declspec", "__cdecl", "__stdcall", "__fastcall"};
+        for (size_t k = 0; k < body.size() && constant;)
+        {
+          if (body[k] == '"')
+          {
+            size_t e = body.find('"', k + 1);
+            k = e == std::string::npos ? body.size() : e + 1;
+          }
+          else if (isalpha((unsigned char)body[k]) || body[k] == '_')
+          {
+            size_t e = k;
+            while (e < body.size() && isIdentChar(body[e]))
+              ++e;
+            if (declarationWords.count(body.substr(k, e - k)))
+              constant = false;
+            k = e;
+          }
+          else if (isdigit((unsigned char)body[k]))
+          {
+            while (k < body.size() && isIdentChar(body[k]))
+              ++k;
+          }
+          else
+            ++k;
         }
         if (constant && (quotes == 0 || quotes == 2))
         {
