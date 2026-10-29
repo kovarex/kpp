@@ -5821,7 +5821,10 @@ namespace
         std::vector<std::pair<std::string, uint32_t>> path;
         bool related = argTy && isClass(argTy) && !types.isDependent(argTy) &&
                        (canonicalClass(argTy, at) == canonicalClass(t, at) || basePath(argTy, t, path, at));
-        if (argTy && argTy->isKnown() && !related && !(f->flags & (DF_Constructor | DF_Destructor)) && isClass(t))
+        // (`data.previewIcons = {Signal(4), Signal(5)}` through a defaulted `operator=(Icons&&)`:
+        // the list makes the temporary, as list-initialization of t.)
+        bool list = args[0]->kind == NodeKind::BraceInitExpr;
+        if (((argTy && argTy->isKnown() && !related) || list) && !(f->flags & (DF_Constructor | DF_Destructor)) && isClass(t))
         {
           std::string tmp = newObjectSlot(t, at);
           Expr* one = args[0];

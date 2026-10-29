@@ -1,6 +1,5 @@
 // spec: assigning a brace list to a class whose assignment operators are defaulted (`Icons& operator=(Icons&&) = default;`) makes the temporary the list initializes (through `implicit Icons(InitializerList<Signal>)`, or value-initialized for `{}`) and assigns it, as `x = T{...}` would
 // factorio: tests/TestBlueprint.cpp's `setupData.previewIcons = {SignalID(ItemWithQualityID("iron-plate"))};` (PreviewIcons with defaulted copy and move assignment), TestEntityTags.cpp's `ghost.entityTagsAfterRevived = {};`, TestExchangeString.cpp's `mapGenSettings.areaToGenerateAtStart = {-420, -69, 420, 69};`
-// pending: the defaulted operator took the list as a value ("the expression kind BraceInitExpr"); owner: the templates thread (the tests package)
 struct Signal
 {
   int id = 0;
