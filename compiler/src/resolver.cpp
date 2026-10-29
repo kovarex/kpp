@@ -15002,8 +15002,10 @@ Decl* GlobalScope::definitionOf(Decl* d, const TemplateArgs& classArgs)
   }
   // A member of a class template instantiation: the explicit specialisation written for that
   // instantiation (`template<> const char* Button<RecipeID>::tooltip()`), when there is one.
+  // (A member of a class nested in one, `template<> int Outer<int>::Inner::f()`, too: the
+  // nested class has the enclosing template's parameters.)
   Decl* cls = d && d->kind == NodeKind::FunctionDecl && !classArgs.empty() ? owningClass(d) : nullptr;
-  if (cls && cls->ownScope && !cls->templateParams.empty())
+  if (cls && cls->ownScope && !Impl::effectiveParams(cls).empty())
   {
     auto* f = static_cast<FunctionDecl*>(d);
     uint32_t symbol = impl->functionSymbol(f->name);
@@ -15021,7 +15023,7 @@ Decl* GlobalScope::definitionOf(Decl* d, const TemplateArgs& classArgs)
         continue;
       Subst ws = impl->substFor(written);
       bool same = true;
-      for (Decl* p : cls->templateParams)
+      for (Decl* p : Impl::effectiveParams(cls))
         same = same && ws.find(p) && ws.find(p) == s.find(p);
       if (!same)
         continue;

@@ -1,0 +1,26 @@
+// spec: an explicit specialisation of a member of a class nested in a class template (`template<> int Outer<int>::Inner::f()`) is that instance's member: Outer<int>::Inner::f runs it, other instances the template's definition (whose body need not even be valid for the specialised arguments)
+// factorio: FlowStatistics' `template<> void FlowStatistics<EntityWithQualityID, double, ElectricityTag>::Precision::loadOldItem(...)` beside the template's loadOldItem, whose getMigrations<TemplateIDType>() has no specialisation for IDWithQuality
+template<class T>
+struct Outer
+{
+  struct Inner
+  {
+    int f();
+    T value{};
+  };
+  int g();
+};
+template<class T> int Outer<T>::Inner::f() { return this->value.size(); } // no int has a size()
+template<> int Outer<int>::Inner::f() { return 2; }
+template<class T> int Outer<T>::g() { return 10; }
+template<> int Outer<int>::g() { return 20; }
+int main()
+{
+  Outer<int>::Inner a;
+  Outer<String>::Inner b;
+  b.value = String("abc");
+  Outer<int> c;
+  Outer<char> d;
+  println("{} {} {} {}", a.f(), b.f(), c.g(), d.g());
+  return 0;
+}
