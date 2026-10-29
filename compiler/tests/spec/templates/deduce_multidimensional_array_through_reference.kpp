@@ -1,6 +1,5 @@
 // spec: a template's `const T&` parameter given a multidimensional built-in array deduces T as the whole array type (`Point[16][2]`, `Vector<int>[4][3][2]`), as for a one-dimensional one, so sizeof(T) is the array's size
 // factorio: the prototype explorer's SKIP_VALUE(connectionPoints) in RailPrototype::addValues (`RailConnectionPoint connectionPoints[Direction::COUNT][2]`) and SKIP_VALUE(extensions) in RailPlannerPrototype::addValues (`std::vector<CandidateExtension> extensions[Direction::COUNT][RailLayer::LAYERS_COUNT][ALIGN_N]`), through Values::recordValue(const T& value, ...)
-// pending: one dimension deduces, two and three do not ("a call that did not resolve"); owner: the templates thread (deduction)
 struct Point
 {
   int x = 0;

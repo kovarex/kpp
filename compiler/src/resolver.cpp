@@ -11079,9 +11079,20 @@ struct GlobalScope::Impl
       }
       if (a->kind == TyKind::Class && pt->kind == TyKind::Class && isBaseClass(pt, a))
         return lvalueToRvalueRef || (!pt->isConst && a->isConst) ? NotViable : 3;
-      if (a->kind == TyKind::Array && pt->kind == TyKind::Array && a->count == pt->count && a->inner && pt->inner &&
-          types.unqualified(a->inner) == types.unqualified(pt->inner) && (pt->inner->isConst || !a->inner->isConst))
-        return lvalueToRvalueRef ? NotViable : 1; // `const int (&)[5]` given an int[5]: the elements made const
+      if (a->kind == TyKind::Array && pt->kind == TyKind::Array)
+      {
+        // `const int (&)[5]` given an int[5], `const Point (&)[16][2]` given a Point[16][2]: the
+        // same lengths at every level, the innermost elements the same type, made const or not.
+        const Ty* x = a;
+        const Ty* y = pt;
+        while (x && y && x->kind == TyKind::Array && y->kind == TyKind::Array && x->count == y->count && x->inner && y->inner)
+        {
+          x = x->inner;
+          y = y->inner;
+        }
+        if (x && y && x->kind != TyKind::Array && y->kind != TyKind::Array && types.unqualified(x) == types.unqualified(y) && (y->isConst || !x->isConst))
+          return lvalueToRvalueRef ? NotViable : (a == pt ? 0 : 1);
+      }
       if (param->kind == TyKind::LRef && !pt->isConst)
         return NotViable; // A non-const lvalue reference binds only to the same type.
       // The argument as it is (an lvalue stays one): a converting constructor taking `T&`
