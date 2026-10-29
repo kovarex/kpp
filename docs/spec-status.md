@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**675 pass, 3 pending, 0 failing, 0 fixed** (678 snippets, 20.6 s).
+**676 pass, 3 pending, 0 failing, 0 fixed** (679 snippets, 20.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -127,6 +127,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/lambda_by_reference_init_capture.kpp` | a by-reference init-capture (`[&shown = this->shown]`, `[&n = counter]`) refers to what its initializer names: the lambda sees later changes and its writes reach the original | pass |  |  |
 | `language/lambda_capture_of_reused_name.kpp` | a lambda's capture by name (`[&list]`, `[list]`) is the local of that name in scope where the lambda is written, not another local of the function with the same name (one of an earlier block) | pass |  |  |
 | `language/lambda_capture_of_structured_binding.kpp` | a lambda captures structured bindings, by name and by a default capture, by value and by reference (C++20) | pass |  |  |
+| `language/lambda_default_argument.kpp` | a lambda's parameter with a default argument takes it when a call leaves it out, in a generic lambda as in a plain one | pass | GuiTargetItemBase(MapDeserialiser&)'s `auto loadTargeter = [&](auto& value, OpenGuiType initIfType, bool load = true)` called with two arguments: the call passed two, the operator read its third from whatever the register held, no targeter was read, and loading the main menu's 1.1 maps lost its place ("Invalid bool loaded from input file", "Unknown undo action type") |  |
 | `language/lambda_parameter_with_enclosing_alias.kpp` | a lambda's parameter typed with an alias of a function around it (`const Layers::value_type&` with `using Layers = ...;` in the function, the lambda inside another lambda) has the alias's type, in the lambda's body and where the lambda is called (sort's comparator) | pass | DebugTools' addRenderLayer: `using LayersVector = Vector<Pair<String, RenderLayer::Enum>>;` then `::sort(vec.begin(), vec.end(), [](const LayersVector::value_type& a, const LayersVector::value_type& b) { ... })` inside a lambda initializing a static |  |
 | `language/lambda_returned_by_auto_member_function.kpp` | a lambda an `auto` member function returns (init-captures of the object's state) is called by other functions, also ones emitted before the function that writes it: its call operator is emitted from the lambda by whichever needs it first | pass |  |  |
 | `language/lambda_returned_by_value.kpp` | a lambda returned by value from a function or a function template (with captures by value and by reference, and without any) is a closure the caller holds and calls, stores in a Function and passes on | pass |  |  |
