@@ -2191,6 +2191,7 @@ struct GlobalScope::Impl
     const std::vector<Token>* tokens = nullptr; // For evaluating array bounds written as literals.
     std::string_view text;
     std::vector<ConstBinding>* env = nullptr; // The parameters and locals of a function running at compile time.
+    const Ty* returnType = nullptr;          // That function's declared result type (`return {a, b};`).
     FunctionDecl* function = nullptr; // Whose parameters a trailing return type names (`-> decltype(callable())`).
     // The variable template whose initializer is evaluated under subst (`hasBegin<Vector<int>>`):
     // a requires-expression in it holds or not for these arguments, whatever its last typing left.
@@ -3465,7 +3466,7 @@ struct GlobalScope::Impl
       // A constant local to a function body (`constexpr bool sign = isSigned<T>;`): its initializer
       // under the context it is used in, which has the instantiation's arguments.
       if (v->parent && v->parent->kind == NodeKind::FunctionDecl && v->name.parts.size() == 1)
-        return constAsDeclared(constInitValue(def->init, ctx, depth + 1), convertType(v->type, ctx, depth + 1));
+        return constInitialize(convertType(v->type, ctx, depth + 1), def->init, ctx, depth + 1);
       // A member of a class template: under the instantiation's arguments, the ones it was named
       // through or the context's when they bind the class's parameters (`count` read in another
       // member's initializer).
@@ -3483,7 +3484,7 @@ struct GlobalScope::Impl
         params.push(static_cast<TemplateParamDecl*>(p)->name, p);
       TypeContext ictx{lexicalScopeOf(v), classParams.empty() ? nullptr : &params, memberArgs, def->file ? def->file->tokens : nullptr,
                        def->file ? def->file->text : std::string_view()};
-      return constAsDeclared(constInitValue(def->init, ictx, depth + 1), convertType(v->type, ictx, depth + 1));
+      return constInitialize(convertType(v->type, ictx, depth + 1), def->init, ictx, depth + 1);
     }
     if (d->kind == NodeKind::EnumeratorDecl)
     {
@@ -3858,8 +3859,8 @@ struct GlobalScope::Impl
   std::optional<int64_t> constEval(Expr* e, const TypeContext& ctx, int depth = 0)
   {
     std::optional<ConstValue> v = constValue(e, ctx, depth);
-    if (!v || v->isFloat())
-      return std::nullopt; // a floating value is no integer constant (a bound, a template argument)
+    if (!v || v->kind != ConstValue::Kind::Int)
+      return std::nullopt; // a floating value, an object, a pointer: no integer constant (a bound, a template argument)
     return v->i;
   }
 
@@ -3868,7 +3869,7 @@ struct GlobalScope::Impl
   std::optional<bool> constCondition(Expr* e, const TypeContext& ctx, int depth = 0)
   {
     std::optional<ConstValue> v = constValue(e, ctx, depth);
-    return v ? std::optional<bool>(v->truthy()) : std::nullopt;
+    return v && (v->isScalar() || v->isPointer()) ? std::optional<bool>(v->truthy()) : std::nullopt;
   }
 
   // A value converted to type t as a cast converts it (consteval.hpp): to an arithmetic or
@@ -3880,9 +3881,29 @@ struct GlobalScope::Impl
       return std::nullopt;
     t = types.unqualified(types.stripRef(t));
     if (t->isArithmetic() || t->kind == TyKind::Enum)
-      return constArith().convert(*v, t);
-    if ((t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr) && !v->isFloat() && v->i == 0)
+      return v->isScalar() || (v->isPointer() && t->kind == TyKind::Bool) ? constArith().convert(*v, t) : std::nullopt;
+    if (t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr)
+      return constPointerTo(*v, t);
+    if (t->kind == TyKind::Class && v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == t)
       return v;
+    return std::nullopt;
+  }
+
+  // A value as a pointer of type t: the null pointer constant stays one; a pointer, or an array
+  // (decayed: its first element), of t's element type, ignoring const (a cast between unrelated
+  // types would read an element as what it is not).
+  std::optional<ConstValue> constPointerTo(const ConstValue& v, const Ty* t)
+  {
+    if (v.kind == ConstValue::Kind::Int && v.i == 0)
+      return v;
+    if (t->kind != TyKind::Pointer || !t->inner)
+      return std::nullopt;
+    const Ty* want = types.unqualified(t->inner);
+    const Ty* vt = v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
+    if (v.isPointer() && vt && vt->kind == TyKind::Pointer && vt->inner && types.unqualified(vt->inner) == want)
+      return ConstValue::pointer(t, v.parts, v.i);
+    if (v.isObject() && vt && vt->kind == TyKind::Array && vt->inner && types.unqualified(vt->inner) == want)
+      return ConstValue::pointer(t, v.parts, 0);
     return std::nullopt;
   }
 
@@ -3897,13 +3918,24 @@ struct GlobalScope::Impl
     const Ty* u = types.unqualified(types.stripRef(t));
     switch (u->kind)
     {
-      case TyKind::Class: case TyKind::Array: case TyKind::Function: case TyKind::Lambda: case TyKind::MemberPointer:
-      case TyKind::Void: case TyKind::Vector:
+      case TyKind::Class:
+        return v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == u ? v : std::nullopt;
+      case TyKind::Array:
+      {
+        // An array of the element type, of the declared length (none written: any).
+        const Ty* vt = v->isObject() && v->type ? types.unqualified(v->type) : nullptr;
+        if (!vt || vt->kind != TyKind::Array || types.unqualified(vt->inner) != types.unqualified(u->inner) || (u->count && u->count != vt->count))
+          return std::nullopt;
+        return v;
+      }
+      case TyKind::Function: case TyKind::Lambda: case TyKind::MemberPointer: case TyKind::Void: case TyKind::Vector:
         return std::nullopt;
       case TyKind::Pointer: case TyKind::Nullptr:
-        return !v->isFloat() && v->i == 0 ? v : std::nullopt;
+        return constPointerTo(*v, u);
       default:
-        return u->isArithmetic() || u->kind == TyKind::Enum ? constArith().convert(*v, u) : v;
+        if (u->isArithmetic() || u->kind == TyKind::Enum)
+          return v->isScalar() ? constArith().convert(*v, u) : std::nullopt;
+        return v;
     }
   }
 
@@ -3983,6 +4015,8 @@ struct GlobalScope::Impl
         if (m->dynamicMember || m->member.parts.size() != 1)
           return std::nullopt;
         Decl* d = m->resolved;
+        if (d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static))
+          return constMemberRead(m, ctx, depth); // `point.x`, `this->count`
         auto isConstant = [](Decl* x) {
           return x && ((x->kind == NodeKind::VariableDecl && (x->flags & DF_Static)) || x->kind == NodeKind::EnumeratorDecl);
         };
@@ -4019,6 +4053,8 @@ struct GlobalScope::Impl
             return ConstValue::integer(0, types.nullptrType());
           return std::nullopt;
         }
+        if (l->literalKind == TokenKind::String)
+          return constString(l, ctx); // an array of chars
         const std::vector<Token>* toks = ctx.tokens ? ctx.tokens : fallbackTokens;
         std::string_view text = ctx.tokens ? ctx.text : fallbackText;
         if ((l->literalKind != TokenKind::Number && l->literalKind != TokenKind::Char) || !toks || toks->empty())
@@ -4036,7 +4072,32 @@ struct GlobalScope::Impl
                                            static_cast<BraceInitExpr*>(f->args[0])->args.empty());
         const Ty* t = f->type ? convertType(f->type, ctx, depth + 1) : nullptr;
         if (noValue && t && t->kind == TyKind::Class)
-          return traitObjectValue(t, depth + 1); // `HasSize<T>{}`: a trait object as bool
+        {
+          if (std::optional<ConstValue> b = traitObjectValue(t, depth + 1))
+            return b; // `HasSize<T>{}`: a trait object as bool
+          return constEmpty(t, true, depth + 1);
+        }
+        if (t && t->kind == TyKind::Class)
+        {
+          // `Point(1, 2)`, `Point{1, 2}`: the constructor's object, or an aggregate's.
+          if (f->braced || (f->args.size() == 1 && f->args[0] && f->args[0]->kind == NodeKind::BraceInitExpr))
+          {
+            BraceInitExpr list{};
+            list.kind = NodeKind::BraceInitExpr;
+            list.token = f->token;
+            list.args = f->args.size() == 1 && f->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(f->args[0])->args : f->args;
+            return constBraceInit(types.unqualified(t), &list, ctx, depth + 1);
+          }
+          std::vector<ConstValue> values;
+          for (Expr* a : f->args)
+          {
+            std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+            if (!v)
+              return std::nullopt;
+            values.push_back(*v);
+          }
+          return constConstruct(types.unqualified(t), values, false, depth + 1);
+        }
         if (noValue)
           return constConverted(ConstValue::integer(0), t); // `int()`, `T{}`: zero
         Expr* arg = f->args.size() == 1 ? f->args[0] : nullptr;
@@ -4078,8 +4139,18 @@ struct GlobalScope::Impl
         std::optional<P> op = constOperator(u->op, u->isKeyword);
         if (op && (*op == P::PlusPlus || *op == P::MinusMinus))
           return constIncrement(u, *op == P::PlusPlus, ctx, depth);
+        if (op && *op == P::Star && !u->postfix)
+        {
+          if (u->operand && u->operand->kind == NodeKind::ThisExpr)
+          {
+            ConstBinding* self = constThis(ctx);
+            return self && !self->value.isUnset() ? std::optional<ConstValue>(self->value) : std::nullopt; // `*this`
+          }
+          std::optional<ConstValue> p = constValue(u->operand, ctx, depth + 1);
+          return p ? constDeref(*p) : std::nullopt;
+        }
         if (!op || u->postfix || (*op != P::Bang && *op != P::Minus && *op != P::Plus && *op != P::Tilde))
-          return std::nullopt; // `&x`, `*p`: no values of the interpreter's yet
+          return std::nullopt; // `&x`: no addresses of the interpreter's locals yet
         std::optional<ConstValue> v = constValue(u->operand, ctx, depth + 1);
         return v ? constArith().unary(*op, *v) : std::nullopt;
       }
@@ -4133,7 +4204,8 @@ struct GlobalScope::Impl
         {
           std::optional<P> op = constOperator(chain[i]->op, chain[i]->isKeyword);
           // Short-circuit: `true || <unknown>` is true, `false && <unknown>` is false.
-          if (!failed && op && (*op == P::OrOr || *op == P::AndAnd) && value->truthy() == (*op == P::OrOr))
+          if (!failed && op && (*op == P::OrOr || *op == P::AndAnd) && (value->isScalar() || value->isPointer()) &&
+              value->truthy() == (*op == P::OrOr))
           {
             value = ConstValue::integer(*op == P::OrOr, types.boolType());
             continue;
@@ -4149,7 +4221,14 @@ struct GlobalScope::Impl
             failed = true;
             continue;
           }
-          value = *op == P::Comma ? r : constArith().binary(*op, *value, *r);
+          if (*op == P::Comma)
+            value = r;
+          else if (value->isPointer() || r->isPointer())
+            value = constPointerArith(*op, *value, *r);
+          else if (value->isObject() || r->isObject() || value->isUnset() || r->isUnset())
+            value = std::nullopt; // a class's operator: not run yet
+          else
+            value = constArith().binary(*op, *value, *r);
           failed = !value;
         }
         return failed ? std::nullopt : value;
@@ -4194,6 +4273,7 @@ struct GlobalScope::Impl
         return n ? std::optional<ConstValue>(ConstValue::integer(*n, types.sizeType())) : std::nullopt;
       }
       case NodeKind::FoldExpr: return constFold(static_cast<FoldExpr*>(e), ctx, depth);
+      case NodeKind::IndexExpr: return constIndex(static_cast<IndexExpr*>(e), ctx, depth);
       default:
         return std::nullopt;
     }
@@ -4223,10 +4303,20 @@ struct GlobalScope::Impl
           return d;
       return nullptr;
     };
+    // `values` of `Ts&&... values` (`(sizeof(values) + ...)`): the pack its type expands.
+    auto parameterPack = [&](Decl* d) -> Decl* {
+      return d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack ? packNamedIn(static_cast<ParamDecl*>(d)->type, s, depth + 1) : nullptr;
+    };
     switch (n->kind)
     {
-      case NodeKind::NamedType: return named(static_cast<NamedType*>(n)->name);
-      case NodeKind::NameExpr: return named(static_cast<NameExpr*>(n)->name);
+      case NodeKind::NamedType:
+        if (Decl* d = named(static_cast<NamedType*>(n)->name))
+          return d;
+        return parameterPack(static_cast<NamedType*>(n)->resolved);
+      case NodeKind::NameExpr:
+        if (Decl* d = named(static_cast<NameExpr*>(n)->name))
+          return d;
+        return parameterPack(static_cast<NameExpr*>(n)->resolved);
       case NodeKind::PointerType: return first({static_cast<PointerType*>(n)->pointee});
       case NodeKind::LRefType: return first({static_cast<LRefType*>(n)->referenced});
       case NodeKind::RRefType: return first({static_cast<RRefType*>(n)->referenced});
@@ -4345,7 +4435,17 @@ struct GlobalScope::Impl
     if (ctx.env && n->name.parts.size() == 1 && !n->name.global)
       for (size_t i = ctx.env->size(); i-- > 0;)
         if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
-          return (*ctx.env)[i].value; // a parameter or a local of the function being run
+        {
+          const ConstValue& v = (*ctx.env)[i].value; // a parameter or a local of the function being run
+          return v.isUnset() ? std::nullopt : std::optional<ConstValue>(v);
+        }
+    // `count` alone in a member function: the member of the object it runs on.
+    if (Decl* d = n->resolved; d && d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::ClassDecl &&
+                               !(d->flags & DF_Static) && constThis(ctx))
+    {
+      std::optional<ConstPlace> place = constPlaceOf(n, ctx, 0);
+      return place ? constRead(*place) : std::nullopt;
+    }
     NameEvaluation nested; // the calls below start at depth 0 (see nameEvaluations)
     if (!nested.ok)
       return std::nullopt;
@@ -4455,11 +4555,40 @@ struct GlobalScope::Impl
         TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
         return constAsDeclared(constInitValue(v->init, vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
       }
+      if (const Ty* t = convertType(&named, ctx, depth + 1); t && t->kind == TyKind::Class)
+        return constEmpty(t, true, depth + 1); // `Point()`: value-initialized
       return std::nullopt;
+    }
+    if (d->kind == NodeKind::ClassDecl || (d->kind == NodeKind::UsingAliasDecl && !callee->name.last().hasTemplateArgs))
+    {
+      // `BoundingBox(a, b)`: the object the constructor the arguments choose makes.
+      NamedType named{};
+      named.kind = NodeKind::NamedType;
+      named.token = callee->token;
+      named.name = callee->name;
+      const Ty* t = types.unqualified(convertType(&named, ctx, depth + 1));
+      if (!t || t->kind != TyKind::Class)
+        return std::nullopt;
+      std::vector<ConstValue> values;
+      for (Expr* a : c->args)
+      {
+        std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+        if (!v)
+          return std::nullopt;
+        values.push_back(*v);
+      }
+      return constConstruct(t, values, false, depth + 1);
     }
     if (d->kind != NodeKind::FunctionDecl)
       return std::nullopt;
     auto* f = static_cast<FunctionDecl*>(d);
+    if (!f->body && c->args.size() == 1 && f->params.size() == 1 && !f->name.empty() && symbols.name(f->name.last().symbol) == "strlen")
+    {
+      std::optional<ConstValue> text = constValue(c->args[0], ctx, depth + 1);
+      if (text && text->isObject())
+        text = constPointerTo(*text, types.pointer(types.qualified(types.charType(8, false), true, false)));
+      return text ? constStrlen(*text) : std::nullopt;
+    }
     if (!f->body || f->body->kind != NodeKind::BlockStmt || c->args.size() > f->params.size())
       return std::nullopt;
     std::vector<ConstValue> values;
@@ -4513,7 +4642,15 @@ struct GlobalScope::Impl
         return std::nullopt; // a member of a class template named with no instance
     TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                      f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-    return constRun(f, values, fctx, depth);
+    // `size()` called in a member function: on the same object, whose changes stay.
+    ConstBinding* self = f->parent && f->parent->kind == NodeKind::ClassDecl && !(f->flags & (DF_Static | DF_Constructor)) ? constThis(ctx) : nullptr;
+    if (!self)
+      return constRun(f, values, fctx, depth);
+    std::optional<ConstValue> object = self->value;
+    std::optional<ConstValue> r = constRun(f, values, fctx, depth, &object);
+    if (r && object && self->writable)
+      self->value = *object;
+    return r;
   }
 
   // `layers.size()`: a member function called on an object, run with the arguments of the
@@ -4570,13 +4707,868 @@ struct GlobalScope::Impl
         return std::nullopt;
     TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                      f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-    return constRun(f, values, fctx, depth);
+    // The object, when the evaluation holds it (a local, a constant, a temporary): the function
+    // runs on it as `this`, and what it changes in a local stays.
+    std::optional<ConstPlace> place;
+    std::optional<ConstValue> held;
+    if (m->base->kind == NodeKind::ThisExpr && m->op == P::Arrow)
+    {
+      if (ConstBinding* self = constThis(ctx))
+        place = ConstPlace{self, {}, self->type};
+    }
+    else if (m->op == P::Dot)
+      place = constPlaceOf(m->base, ctx, depth + 1);
+    if (place)
+      held = constRead(*place);
+    else
+    {
+      held = constValue(m->base, ctx, depth + 1);
+      if (held && m->op == P::Arrow)
+        held = held->isPointer() ? constDeref(*held) : std::nullopt;
+    }
+    if (held && !held->isObject())
+      held.reset();
+    if (!held)
+      return constRun(f, values, fctx, depth); // what the object's type decides (Array::size of a run-time array)
+    std::optional<ConstValue> r = constRun(f, values, fctx, depth, &held);
+    if (r && held && place && place->binding->writable && !(f->flags & DF_Const))
+      constSetPart(place->binding->value, place->path, 0, *held);
+    return r;
   }
 
   // Function f's body run at compile time, its parameters bound to the arguments' values (and the
   // missing ones to their defaults) converted to the parameters' types; what it returns converted
   // to f's declared result type. A function returning void gives a value of type void.
-  std::optional<ConstValue> constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth)
+  // ---- step 3: objects, arrays and pointers into them (design.md, "Compile-time evaluation") ----
+
+  // The binding a member function or constructor runs with as `this`: the object it works on.
+  static constexpr uint32_t constThisSymbol = 0xFFFFFFFEu;
+
+  // Values made by one evaluation (objects' parts, arrays' elements): bounded like its steps.
+  static uint64_t& constValuesMade()
+  {
+    static thread_local uint64_t made = 0;
+    return made;
+  }
+  bool constMayMake(size_t n)
+  {
+    if ((constValuesMade() += n) <= 4000000)
+      return true;
+    if (constWhy().empty())
+      constWhy() = "an evaluation of more than four million values";
+    return false;
+  }
+
+  // The parts of a class's objects as the interpreter holds them: its bases, then its non-static
+  // data members in declaration order (a bit field one of its own), with their types under the
+  // class's arguments.
+  struct ConstClassLayout
+  {
+    ClassDecl* decl = nullptr;
+    Subst subst;
+    std::vector<const Ty*> bases;
+    std::vector<VariableDecl*> fields;
+    std::vector<const Ty*> fieldTypes;
+    std::vector<FunctionDecl*> constructors;
+    bool ok = false;
+  };
+  std::mutex constLayoutsMutex;
+  std::unordered_map<const Ty*, std::shared_ptr<ConstClassLayout>> constLayouts;
+  const ConstClassLayout* constLayoutOf(const Ty* t, int depth)
+  {
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!t || t->kind != TyKind::Class || types.isDependent(t) || mentionsUnknown(t) || depth > 32)
+      return nullptr;
+    {
+      std::lock_guard lock(constLayoutsMutex);
+      if (auto it = constLayouts.find(t); it != constLayouts.end())
+        return it->second->ok ? it->second.get() : nullptr;
+    }
+    auto layout = std::make_shared<ConstClassLayout>();
+    Scope* s = classScopeOf(t);
+    if (s && s->owner && s->owner->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(s->owner)->isDefinition &&
+        static_cast<ClassDecl*>(s->owner)->keyword != Kw::union_)
+    {
+      auto* cls = static_cast<ClassDecl*>(s->owner);
+      layout->decl = cls;
+      layout->subst = substFor(t);
+      const Subst* sp = layout->subst.empty() ? nullptr : &layout->subst;
+      layout->ok = true;
+      DeclContext dc;
+      declContextFor(cls, dc);
+      TypeContext bctx{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
+      for (const ClassDecl::Base& b : cls->bases)
+      {
+        const Ty* bt = convertType(b.type, bctx, depth + 1);
+        bt = bt ? types.unqualified(bt) : nullptr;
+        if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
+          layout->ok = false;
+        layout->bases.push_back(bt);
+      }
+      for (Decl* m : cls->members)
+      {
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+          layout->constructors.push_back(static_cast<FunctionDecl*>(m));
+        if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
+          layout->ok = false; // an anonymous struct or union member: not laid out here yet
+        if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+          continue;
+        const Ty* ft = declaredTypeOf(m, sp, depth + 1);
+        if (!ft || !ft->isKnown() || types.isDependent(ft))
+          layout->ok = false;
+        layout->fields.push_back(static_cast<VariableDecl*>(m));
+        layout->fieldTypes.push_back(ft);
+      }
+    }
+    std::lock_guard lock(constLayoutsMutex);
+    auto it = constLayouts.emplace(t, layout).first;
+    return it->second->ok ? it->second.get() : nullptr;
+  }
+
+  // The parts to follow from an object of class t to its data member field (through the bases it
+  // is declared in), or nullopt.
+  std::optional<std::vector<size_t>> constFieldPath(const Ty* t, Decl* field, int depth)
+  {
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout || depth > 16)
+      return std::nullopt;
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+      if (layout->fields[i] == field)
+        return std::vector<size_t>{layout->bases.size() + i};
+    for (size_t b = 0; b < layout->bases.size(); ++b)
+      if (std::optional<std::vector<size_t>> inner = constFieldPath(layout->bases[b], field, depth + 1))
+      {
+        inner->insert(inner->begin(), b);
+        return inner;
+      }
+    return std::nullopt;
+  }
+
+  // The value at path inside v, or nullopt when a part on the way is no object or is unset.
+  static std::optional<ConstValue> constPart(const ConstValue& v, const std::vector<size_t>& path)
+  {
+    const ConstValue* at = &v;
+    for (size_t index : path)
+    {
+      if (!at->isObject() || index >= at->parts->size())
+        return std::nullopt;
+      at = &(*at->parts)[index];
+    }
+    if (at->isUnset())
+      return std::nullopt;
+    return *at;
+  }
+
+  // v with the part at path replaced by part: new parts along the path, the rest shared.
+  static bool constSetPart(ConstValue& v, const std::vector<size_t>& path, size_t from, const ConstValue& part)
+  {
+    if (from == path.size())
+    {
+      v = part;
+      return true;
+    }
+    if (!v.isObject() || path[from] >= v.parts->size())
+      return false;
+    std::vector<ConstValue> parts = *v.parts;
+    if (!constSetPart(parts[path[from]], path, from + 1, part))
+      return false;
+    v.parts = std::make_shared<const std::vector<ConstValue>>(std::move(parts));
+    return true;
+  }
+
+  // The type an argument of this value has, for choosing a constructor or an operator.
+  const Ty* constTypeOfValue(const ConstValue& v)
+  {
+    if (v.type)
+      return v.type;
+    return v.isFloat() ? types.floatType(64) : types.intType(64, false);
+  }
+
+  // A string literal (adjacent ones joined) as an array of its chars and a terminating zero.
+  std::optional<ConstValue> constString(LiteralExpr* l, const TypeContext& ctx)
+  {
+    const std::vector<Token>* toks = ctx.tokens ? ctx.tokens : fallbackTokens;
+    std::string_view text = ctx.tokens ? ctx.text : fallbackText;
+    if (!toks || l->token >= toks->size())
+      return std::nullopt;
+    std::string bytes;
+    for (size_t i = l->token; i < toks->size() && (*toks)[i].getKind() == TokenKind::String; ++i)
+      if (!decodeNarrowString(text.substr((*toks)[i].offset, (*toks)[i].length), bytes))
+        return std::nullopt;
+    if (!constMayMake(bytes.size() + 1))
+      return std::nullopt;
+    const Ty* ch = types.charType(8, false);
+    std::vector<ConstValue> chars;
+    chars.reserve(bytes.size() + 1);
+    for (char c : bytes)
+      chars.push_back(ConstValue::integer(int64_t(static_cast<signed char>(c)), ch));
+    chars.push_back(ConstValue::integer(0, ch));
+    return ConstValue::object(types.array(types.qualified(ch, true, false), uint32_t(chars.size())), std::move(chars));
+  }
+
+  // An object of type t, initialized empty: value-initialization (zero: scalars zero, `T{}`, an
+  // aggregate's missing elements) or default-initialization (a scalar unset, `T x;`), a class's
+  // members from their default member initializers either way, and its default constructor
+  // run when it has a user-provided one.
+  std::optional<ConstValue> constEmpty(const Ty* t, bool zero, int depth)
+  {
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!t || depth > 64)
+      return std::nullopt;
+    if (t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer)
+      return zero ? constConverted(ConstValue::integer(0), t) : std::optional<ConstValue>(ConstValue::unset(t));
+    if (t->kind == TyKind::Array)
+    {
+      if (t->count == 0 || !constMayMake(t->count))
+        return std::nullopt;
+      std::optional<ConstValue> element = constEmpty(t->inner, zero, depth + 1);
+      if (!element)
+        return std::nullopt;
+      return ConstValue::object(t, std::vector<ConstValue>(t->count, *element));
+    }
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout)
+      return std::nullopt;
+    for (FunctionDecl* c : layout->constructors)
+      if (c->params.empty() && !(c->flags & DF_Default) && c->body)
+        return constRunConstructor(c, t, {}, depth + 1); // a user-provided default constructor
+    std::vector<ConstValue> parts;
+    if (!constMayMake(layout->bases.size() + layout->fields.size()))
+      return std::nullopt;
+    for (const Ty* b : layout->bases)
+    {
+      std::optional<ConstValue> part = constEmpty(b, zero, depth + 1);
+      if (!part)
+        return std::nullopt;
+      parts.push_back(*part);
+    }
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+    {
+      std::optional<ConstValue> part = constFieldDefault(*layout, i, zero, depth);
+      if (!part)
+        return std::nullopt;
+      parts.push_back(*part);
+    }
+    return ConstValue::object(t, std::move(parts));
+  }
+
+  // A field's value where no initializer of the object's names it: its default member
+  // initializer, under the class's arguments, else empty.
+  std::optional<ConstValue> constFieldDefault(const ConstClassLayout& layout, size_t i, bool zero, int depth)
+  {
+    VariableDecl* f = layout.fields[i];
+    if (!f->init)
+      return constEmpty(layout.fieldTypes[i], zero, depth + 1);
+    LocalStack params;
+    for (Decl* p : effectiveParams(layout.decl))
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    TypeContext fctx{layout.decl->ownScope ? layout.decl->ownScope : lexicalScopeOf(f), &params, layout.subst.empty() ? nullptr : &layout.subst,
+                     f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    return constInitialize(layout.fieldTypes[i], f->init, fctx, depth + 1);
+  }
+
+  // The value an initializer gives an object of type t: a brace list (an aggregate's elements, a
+  // constructor's arguments), an expression converted to t (a converting constructor for a
+  // class, the array of a string literal for a char array, a scalar's conversions).
+  std::optional<ConstValue> constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth)
+  {
+    const Ty* u = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!init || depth > 512)
+      return std::nullopt;
+    if (u && (u->kind == TyKind::Class || u->kind == TyKind::Array))
+    {
+      if (init->kind == NodeKind::BraceInitExpr)
+      {
+        auto* b = static_cast<BraceInitExpr*>(init);
+        return u->kind == TyKind::Array ? constArrayInit(u, b->args, ctx, depth) : constBraceInit(u, b, ctx, depth);
+      }
+      return constConvertTo(constValue(init, ctx, depth + 1), u, depth);
+    }
+    return constAsDeclared(constInitValue(init, ctx, depth), t);
+  }
+
+  // `{1, 2, 3}` for an array: its elements in order, the rest value-initialized; brace elision
+  // lets an element that is itself an array or aggregate take several values.
+  std::optional<ConstValue> constArrayInit(const Ty* t, Span<Expr*> values, const TypeContext& ctx, int depth)
+  {
+    size_t next = 0;
+    std::optional<ConstValue> v = constElided(t, values, next, ctx, depth);
+    if (v && next < values.size())
+      return std::nullopt; // more values than the array holds
+    return v;
+  }
+
+  // The object of type t (an array or an aggregate class) that values from next on initialize,
+  // as many as it takes (brace elision), next moved past them.
+  std::optional<ConstValue> constElided(const Ty* t, Span<Expr*> values, size_t& next, const TypeContext& ctx, int depth)
+  {
+    t = types.unqualified(types.stripRef(t));
+    if (depth > 64)
+      return std::nullopt;
+    auto element = [&](const Ty* et) -> std::optional<ConstValue> {
+      const Ty* eu = types.unqualified(types.stripRef(et));
+      if (next >= values.size())
+        return constEmpty(eu, true, depth + 1);
+      Expr* x = values[next];
+      bool charArray = eu->kind == TyKind::Array && eu->inner && types.unqualified(eu->inner)->kind == TyKind::Char;
+      bool nested = (eu->kind == TyKind::Array || (eu->kind == TyKind::Class && constIsAggregate(eu, depth))) && x->kind != NodeKind::BraceInitExpr &&
+                    !(charArray && x->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(x)->literalKind == TokenKind::String) &&
+                    !(x->ty && types.unqualified(types.stripRef(x->ty)) == eu);
+      if (nested)
+        return constElided(eu, values, next, ctx, depth + 1); // `Array<int, 3> a = {1, 2, 3}`: the braces of items elided
+      ++next;
+      return constInitialize(eu, x, ctx, depth + 1);
+    };
+    if (t->kind == TyKind::Array)
+    {
+      size_t count = t->count ? t->count : values.size() - std::min(next, values.size());
+      if (!constMayMake(count))
+        return std::nullopt;
+      std::vector<ConstValue> elements;
+      for (size_t i = 0; i < count; ++i)
+      {
+        std::optional<ConstValue> e = element(t->inner);
+        if (!e)
+          return std::nullopt;
+        elements.push_back(*e);
+      }
+      const Ty* at = t->count ? t : types.array(t->inner, uint32_t(count));
+      return ConstValue::object(at, std::move(elements));
+    }
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout || !constIsAggregate(t, depth) || !constMayMake(layout->bases.size() + layout->fields.size()))
+      return std::nullopt;
+    std::vector<ConstValue> parts;
+    for (const Ty* b : layout->bases)
+    {
+      std::optional<ConstValue> part = element(b);
+      if (!part)
+        return std::nullopt;
+      parts.push_back(*part);
+    }
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+    {
+      std::optional<ConstValue> part = next < values.size() ? element(layout->fieldTypes[i]) : constFieldDefault(*layout, i, true, depth);
+      if (!part)
+        return std::nullopt;
+      parts.push_back(*part);
+    }
+    return ConstValue::object(t, std::move(parts));
+  }
+
+  // An aggregate (C++20): a class without user-declared constructors, virtual functions or
+  // virtual bases (its bases aggregates too, as far as the interpreter needs).
+  bool constIsAggregate(const Ty* t, int depth)
+  {
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout || !layout->constructors.empty())
+      return false;
+    for (Decl* m : layout->decl->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Virtual))
+        return false;
+    return true;
+  }
+
+  // `T{...}` and `T x = {...}` for a class: an aggregate's members in order (designators
+  // naming them), or the arguments of the constructor they choose.
+  std::optional<ConstValue> constBraceInit(const Ty* t, BraceInitExpr* b, const TypeContext& ctx, int depth)
+  {
+    if (constIsAggregate(t, depth))
+    {
+      if (b->designators.empty())
+        return constArrayInit(t, b->args, ctx, depth);
+      // `{.x = 1, .z = 3}`: each member its designator names, the rest from their defaults.
+      const ConstClassLayout* layout = constLayoutOf(t, depth);
+      if (!layout || !layout->bases.empty())
+        return std::nullopt;
+      std::vector<ConstValue> parts;
+      for (size_t i = 0; i < layout->fields.size(); ++i)
+      {
+        Expr* given = nullptr;
+        for (size_t k = 0; k < b->args.size() && k < b->designators.size(); ++k)
+          if (!layout->fields[i]->name.empty() && b->designators[k] == layout->fields[i]->name.last().symbol)
+            given = b->args[k];
+        std::optional<ConstValue> part = given ? constInitialize(layout->fieldTypes[i], given, ctx, depth + 1) : constFieldDefault(*layout, i, true, depth);
+        if (!part)
+          return std::nullopt;
+        parts.push_back(*part);
+      }
+      return ConstValue::object(t, std::move(parts));
+    }
+    std::vector<ConstValue> args;
+    for (Expr* a : b->args)
+    {
+      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      args.push_back(*v);
+    }
+    return constConstruct(t, args, false, depth);
+  }
+
+  // A value given type t where an initialization converts implicitly: an object of t as it is; to
+  // a class, by a constructor marked implicit taking the value; else the scalar conversions.
+  std::optional<ConstValue> constConvertTo(std::optional<ConstValue> v, const Ty* t, int depth)
+  {
+    if (!v || !t)
+      return v;
+    const Ty* u = types.unqualified(types.stripRef(t));
+    if (u->kind != TyKind::Class)
+      return constAsDeclared(v, t);
+    if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == u)
+      return v;
+    return constConstruct(u, {*v}, true, depth);
+  }
+
+  // `T(args)`: the object the constructor the arguments choose makes (only one marked implicit
+  // when the construction is an implicit conversion); an object of T given alone is copied; an
+  // aggregate takes the arguments as its members (C++20).
+  std::optional<ConstValue> constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth)
+  {
+    t = types.unqualified(types.stripRef(t));
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout || depth > 512)
+      return std::nullopt;
+    if (args.size() == 1 && args[0].isObject() && args[0].type && types.unqualified(types.stripRef(args[0].type)) == t)
+      return args[0]; // a copy (the interpreter's values are copied by value)
+    if (layout->constructors.empty())
+    {
+      if (implicitOnly && !args.empty())
+        return std::nullopt;
+      if (args.empty())
+        return constEmpty(t, true, depth + 1);
+      std::vector<ConstValue> parts;
+      size_t next = 0;
+      for (const Ty* b : layout->bases)
+      {
+        std::optional<ConstValue> part = next < args.size() ? constConvertTo(args[next++], b, depth + 1) : constEmpty(b, true, depth + 1);
+        if (!part)
+          return std::nullopt;
+        parts.push_back(*part);
+      }
+      for (size_t i = 0; i < layout->fields.size(); ++i)
+      {
+        std::optional<ConstValue> part = next < args.size() ? constConvertTo(args[next++], layout->fieldTypes[i], depth + 1)
+                                                            : constFieldDefault(*layout, i, true, depth);
+        if (!part)
+          return std::nullopt;
+        parts.push_back(*part);
+      }
+      if (next < args.size())
+        return std::nullopt;
+      return ConstValue::object(t, std::move(parts));
+    }
+    std::vector<FunctionDecl*> candidates;
+    for (FunctionDecl* c : layout->constructors)
+      if (!(c->flags & DF_Delete) && c->templateParams.empty() && (!implicitOnly || (c->flags & DF_Implicit)))
+        candidates.push_back(c);
+    std::vector<const Ty*> argTypes;
+    for (const ConstValue& a : args)
+      argTypes.push_back(constTypeOfValue(a));
+    bool ambiguous = false;
+    FunctionDecl* ctor = chooseAmong(candidates, argTypes, layout->subst.empty() ? nullptr : &layout->subst, nullptr, ambiguous);
+    if (!ctor || ambiguous)
+      return std::nullopt;
+    return constRunConstructor(ctor, t, args, depth + 1);
+  }
+
+  // Constructor ctor of class t run at compile time: the bases and members its initializers name
+  // from them (a delegating one makes the whole object), the others from their defaults, then
+  // its body with `this` the object.
+  std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth)
+  {
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout || depth > 512)
+      return std::nullopt;
+    if (!ctor->body)
+    {
+      // `= default`: the default constructor's members from their defaults; a copy's the source.
+      if (args.empty())
+        return constEmpty(t, false, depth + 1);
+      if (args.size() == 1 && args[0].isObject())
+        return args[0];
+      return std::nullopt;
+    }
+    LocalStack params;
+    for (const Subst::Pair& p : layout->subst.pairs)
+      params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+    TypeContext fctx{lexicalScopeOf(ctor), params.items.empty() ? nullptr : &params, layout->subst.empty() ? nullptr : &layout->subst,
+                     ctor->file ? ctor->file->tokens : nullptr, ctor->file ? ctor->file->text : std::string_view()};
+    struct Call
+    {
+      bool ok = ++constCalls() <= 512 && stackRoomLeft();
+      ~Call() { --constCalls(); }
+    } call;
+    if (!call.ok)
+      return std::nullopt;
+    std::vector<ConstBinding> env;
+    fctx.env = &env;
+    for (size_t i = 0; i < ctor->params.size(); ++i)
+    {
+      auto* p = static_cast<ParamDecl*>(ctor->params[i]);
+      if (p->isPack)
+        return std::nullopt;
+      const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+      std::optional<ConstValue> v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
+                                  : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, depth + 1) : std::nullopt;
+      if (!v)
+        return std::nullopt;
+      env.push_back(constBinding(p->name, *v, type));
+    }
+    // The members' initial values: unset, filled below in declaration order.
+    size_t nb = layout->bases.size(), nf = layout->fields.size();
+    std::vector<std::optional<ConstValue>> parts(nb + nf);
+    for (const FunctionDecl::CtorInit& init : ctor->ctorInits)
+    {
+      if (init.member.empty() || init.isPack)
+        return std::nullopt;
+      uint32_t symbol = init.member.last().symbol;
+      // The values the initializer gives: one expression, a brace list, none (value-initialized).
+      auto initialize = [&](const Ty* target) -> std::optional<ConstValue> {
+        if (init.args.empty())
+          return constEmpty(target, true, depth + 1);
+        if (init.args.size() == 1)
+        {
+          const Ty* tu = types.unqualified(types.stripRef(target));
+          if (init.braced && tu->kind == TyKind::Class && init.args[0]->kind != NodeKind::BraceInitExpr)
+          {
+            BraceInitExpr list{};
+            list.kind = NodeKind::BraceInitExpr;
+            list.token = init.args[0]->token;
+            list.args = init.args;
+            return constBraceInit(tu, &list, fctx, depth + 1);
+          }
+          return constInitialize(target, init.args[0], fctx, depth + 1);
+        }
+        std::vector<ConstValue> values;
+        for (Expr* a : init.args)
+        {
+          std::optional<ConstValue> v = constValue(a, fctx, depth + 1);
+          if (!v)
+            return std::nullopt;
+          values.push_back(*v);
+        }
+        return constConstruct(target, values, false, depth + 1);
+      };
+      bool found = false;
+      for (size_t i = 0; i < nf && !found; ++i)
+        if (!layout->fields[i]->name.empty() && layout->fields[i]->name.last().symbol == symbol)
+        {
+          parts[nb + i] = initialize(layout->fieldTypes[i]);
+          if (!parts[nb + i])
+            return std::nullopt;
+          found = true;
+        }
+      for (size_t b = 0; b < nb && !found; ++b)
+        if (layout->bases[b]->decl && !static_cast<ClassDecl*>(layout->bases[b]->decl)->name.empty() &&
+            static_cast<ClassDecl*>(layout->bases[b]->decl)->name.last().symbol == symbol)
+        {
+          parts[b] = initialize(layout->bases[b]);
+          if (!parts[b])
+            return std::nullopt;
+          found = true;
+        }
+      if (!found && !layout->decl->name.empty() && symbol == layout->decl->name.last().symbol && ctor->ctorInits.size() == 1)
+      {
+        // `Frame(int x) : Frame(x, 0) {}`: the delegated-to constructor makes the object.
+        std::optional<ConstValue> whole = initialize(t);
+        if (!whole)
+          return std::nullopt;
+        return constRunBody(ctor, t, *whole, fctx, env, depth);
+      }
+      if (!found)
+        return std::nullopt; // a base named through an alias, a member the layout does not hold
+    }
+    std::vector<ConstValue> object;
+    if (!constMayMake(nb + nf))
+      return std::nullopt;
+    for (size_t b = 0; b < nb; ++b)
+    {
+      std::optional<ConstValue> part = parts[b] ? parts[b] : constEmpty(layout->bases[b], false, depth + 1);
+      if (!part)
+        return std::nullopt;
+      object.push_back(*part);
+    }
+    for (size_t i = 0; i < nf; ++i)
+    {
+      std::optional<ConstValue> part = parts[nb + i] ? parts[nb + i] : constFieldDefault(*layout, i, false, depth);
+      if (!part)
+        return std::nullopt;
+      object.push_back(*part);
+    }
+    return constRunBody(ctor, t, ConstValue::object(t, std::move(object)), fctx, env, depth);
+  }
+
+  // A constructor's body run with `this` the object its initializers made: the object as the
+  // body leaves it.
+  std::optional<ConstValue> constRunBody(FunctionDecl* ctor, const Ty* t, const ConstValue& object, TypeContext& fctx,
+                                         std::vector<ConstBinding>& env, int depth)
+  {
+    env.push_back(constBinding(constThisSymbol, object, t));
+    size_t self = env.size() - 1;
+    std::optional<ConstValue> result;
+    ConstFlow flow = constStatement(ctor->body, fctx, env, result, depth + 1);
+    if (flow != ConstFlow::Next && flow != ConstFlow::Returned)
+      return std::nullopt;
+    if (self >= env.size() || env[self].symbol != constThisSymbol)
+      return std::nullopt;
+    return env[self].value;
+  }
+
+  // The `this` binding of the member function being run, or null.
+  static ConstBinding* constThis(const TypeContext& ctx)
+  {
+    if (!ctx.env)
+      return nullptr;
+    for (size_t i = ctx.env->size(); i-- > 0;)
+      if ((*ctx.env)[i].symbol == constThisSymbol)
+        return &(*ctx.env)[i];
+    return nullptr;
+  }
+
+  // Where an assignment stores: a local (or parameter) of the function being run, or a part of
+  // one (`point.x`, `items[i]`, `this->count`, a member named alone in a member function).
+  struct ConstPlace
+  {
+    ConstBinding* binding = nullptr;
+    std::vector<size_t> path;
+    const Ty* type = nullptr; // the part's type, which a stored value is converted to
+  };
+  std::optional<ConstPlace> constPlaceOf(Expr* e, const TypeContext& ctx, int depth)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (!e || depth > 64)
+      return std::nullopt;
+    if (e->kind == NodeKind::NameExpr)
+    {
+      if (ConstBinding* b = constLocal(e, ctx))
+        return ConstPlace{b, {}, b->type};
+      Decl* d = static_cast<NameExpr*>(e)->resolved;
+      ConstBinding* self = constThis(ctx);
+      if (self && d && d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::ClassDecl && !(d->flags & DF_Static))
+        if (std::optional<std::vector<size_t>> path = constFieldPath(self->value.type, d, 0))
+          return ConstPlace{self, *path, declaredTypeOf(d, constLayoutOf(self->value.type, 0) ? &constLayoutOf(self->value.type, 0)->subst : nullptr, 0)};
+      return std::nullopt;
+    }
+    if (e->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(e)->op) == P::Star && !static_cast<UnaryExpr*>(e)->isKeyword &&
+        static_cast<UnaryExpr*>(e)->operand && static_cast<UnaryExpr*>(e)->operand->kind == NodeKind::ThisExpr)
+      if (ConstBinding* self = constThis(ctx))
+        return ConstPlace{self, {}, self->type}; // `*this`
+    if (e->kind == NodeKind::MemberExpr)
+    {
+      auto* m = static_cast<MemberExpr*>(e);
+      Decl* d = m->resolved;
+      if (!d || d->kind != NodeKind::VariableDecl || (d->flags & DF_Static) || m->dynamicMember)
+        return std::nullopt;
+      std::optional<ConstPlace> base;
+      if (m->base && m->base->kind == NodeKind::ThisExpr && m->op == P::Arrow)
+      {
+        if (ConstBinding* self = constThis(ctx))
+          base = ConstPlace{self, {}, self->type};
+      }
+      else if (m->op == P::Dot)
+        base = constPlaceOf(m->base, ctx, depth + 1);
+      if (!base)
+        return std::nullopt;
+      std::optional<ConstValue> object = base->path.empty() ? std::optional<ConstValue>(base->binding->value) : constPart(base->binding->value, base->path);
+      if (!object || !object->isObject())
+        return std::nullopt;
+      std::optional<std::vector<size_t>> path = constFieldPath(object->type, d, 0);
+      if (!path)
+        return std::nullopt;
+      base->path.insert(base->path.end(), path->begin(), path->end());
+      const ConstClassLayout* layout = constLayoutOf(object->type, 0);
+      base->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+      return base;
+    }
+    if (e->kind == NodeKind::IndexExpr)
+    {
+      auto* x = static_cast<IndexExpr*>(e);
+      if (x->args.size() != 1)
+        return std::nullopt;
+      std::optional<ConstPlace> base = constPlaceOf(x->base, ctx, depth + 1);
+      std::optional<ConstValue> index = base ? constValue(x->args[0], ctx, depth + 1) : std::nullopt;
+      if (!base || !index || index->kind != ConstValue::Kind::Int)
+        return std::nullopt;
+      std::optional<ConstValue> array = base->path.empty() ? std::optional<ConstValue>(base->binding->value) : constPart(base->binding->value, base->path);
+      const Ty* at = array && array->type ? types.unqualified(array->type) : nullptr;
+      if (!array || !array->isObject() || !at || at->kind != TyKind::Array || index->i < 0 || uint64_t(index->i) >= array->parts->size())
+        return std::nullopt;
+      base->path.push_back(size_t(index->i));
+      base->type = at->inner;
+      return base;
+    }
+    return std::nullopt;
+  }
+
+  // The value at a place, nullopt while unset.
+  static std::optional<ConstValue> constRead(const ConstPlace& p)
+  {
+    if (p.path.empty())
+      return p.binding->value.isUnset() ? std::nullopt : std::optional<ConstValue>(p.binding->value);
+    return constPart(p.binding->value, p.path);
+  }
+
+  // The element a pointer into an array points at (nullopt one past the end).
+  static std::optional<ConstValue> constDeref(const ConstValue& p)
+  {
+    if (!p.isPointer() || !p.parts || p.i < 0 || uint64_t(p.i) >= p.parts->size())
+      return std::nullopt;
+    const ConstValue& e = (*p.parts)[size_t(p.i)];
+    return e.isUnset() ? std::nullopt : std::optional<ConstValue>(e);
+  }
+
+  // `p + n`, `p - n`, `p - q`, `p == q`, `p < q` with p and q pointers into one array (one past its
+  // end included), `p == nullptr` (never: a pointer into an array is not null).
+  std::optional<ConstValue> constPointerArith(P op, const ConstValue& l, const ConstValue& r)
+  {
+    auto into = [](const ConstValue& v) { return v.isPointer() && v.parts; };
+    auto isNull = [](const ConstValue& v) { return v.kind == ConstValue::Kind::Int && v.i == 0; };
+    if (into(l) && r.kind == ConstValue::Kind::Int && (op == P::Plus || op == P::Minus) && !(op == P::Minus && into(r)))
+    {
+      int64_t index = op == P::Plus ? l.i + r.i : l.i - r.i;
+      if (index < 0 || uint64_t(index) > l.parts->size())
+        return std::nullopt; // outside the array: undefined
+      return ConstValue::pointer(l.type, l.parts, index);
+    }
+    if (into(r) && l.kind == ConstValue::Kind::Int && op == P::Plus)
+      return constPointerArith(P::Plus, r, l);
+    if (into(l) && into(r))
+    {
+      if (l.parts != r.parts)
+        return std::nullopt; // pointers into different arrays: no order, no difference
+      switch (op)
+      {
+        case P::Minus: return ConstValue::integer(l.i - r.i, types.ptrdiffType());
+        case P::EqEq: return ConstValue::integer(l.i == r.i, types.boolType());
+        case P::NotEq: return ConstValue::integer(l.i != r.i, types.boolType());
+        case P::Less: return ConstValue::integer(l.i < r.i, types.boolType());
+        case P::Greater: return ConstValue::integer(l.i > r.i, types.boolType());
+        case P::LessEq: return ConstValue::integer(l.i <= r.i, types.boolType());
+        case P::GreaterEq: return ConstValue::integer(l.i >= r.i, types.boolType());
+        default: return std::nullopt;
+      }
+    }
+    if ((into(l) && isNull(r)) || (isNull(l) && into(r)))
+    {
+      if (op == P::EqEq || op == P::NotEq)
+        return ConstValue::integer(op == P::NotEq, types.boolType());
+    }
+    return std::nullopt;
+  }
+
+  // `strlen(text)` on a pointer into a char array (a string literal's): the chars before the
+  // first zero. The interpreter's one function of the C library so far: the library's
+  // StringView(const char*) counts with it.
+  std::optional<ConstValue> constStrlen(const ConstValue& p)
+  {
+    if (!p.isPointer() || !p.parts)
+      return std::nullopt;
+    for (size_t i = size_t(p.i); i < p.parts->size(); ++i)
+    {
+      const ConstValue& c = (*p.parts)[i];
+      if (c.kind != ConstValue::Kind::Int)
+        return std::nullopt;
+      if (c.i == 0)
+        return ConstValue::integer(int64_t(i - size_t(p.i)), types.sizeType());
+    }
+    return std::nullopt; // no terminating zero: reading past the array
+  }
+
+  // `point.x`, `this->count`, `items[i].size`: the data member of an object the evaluation holds
+  // (a local, `this`, a constant's value, a temporary).
+  std::optional<ConstValue> constMemberRead(MemberExpr* m, const TypeContext& ctx, int depth)
+  {
+    if (std::optional<ConstPlace> place = constPlaceOf(m, ctx, depth + 1))
+      return constRead(*place);
+    if (!m->base || m->op == P::Arrow || m->base->kind == NodeKind::ThisExpr)
+      return std::nullopt;
+    std::optional<ConstValue> object = constValue(m->base, ctx, depth + 1);
+    if (!object || !object->isObject())
+      return std::nullopt;
+    std::optional<std::vector<size_t>> path = constFieldPath(object->type, m->resolved, 0);
+    return path ? constPart(*object, *path) : std::nullopt;
+  }
+
+  // `items[i]` of an array the evaluation holds, `text[i]` through a pointer into one, `names[i]`
+  // of a class by its operator[]: the element, its index checked.
+  std::optional<ConstValue> constIndex(IndexExpr* x, const TypeContext& ctx, int depth)
+  {
+    if (x->args.size() != 1)
+      return std::nullopt;
+    if (std::optional<ConstPlace> place = constPlaceOf(x, ctx, depth + 1))
+      return constRead(*place);
+    std::optional<ConstValue> base = constValue(x->base, ctx, depth + 1);
+    if (!base)
+      return std::nullopt;
+    if (base->isObject() && base->type && types.unqualified(base->type)->kind == TyKind::Class)
+      return constOperatorCall(*base, opSymbols[uint32_t(P::LBracket)], x->args, ctx, depth);
+    std::optional<ConstValue> index = constValue(x->args[0], ctx, depth + 1);
+    if (!index || index->kind != ConstValue::Kind::Int)
+      return std::nullopt;
+    if (base->isPointer())
+      return constPointerArith(P::Plus, *base, *index) ? constDeref(*constPointerArith(P::Plus, *base, *index)) : std::nullopt;
+    if (!base->isObject() || index->i < 0 || uint64_t(index->i) >= base->parts->size())
+    {
+      if (base->isObject() && constWhy().empty())
+        constWhy() = "an index of " + std::to_string(index->i) + " into an array of " + std::to_string(base->parts->size());
+      return std::nullopt;
+    }
+    const ConstValue& e = (*base->parts)[size_t(index->i)];
+    return e.isUnset() ? std::nullopt : std::optional<ConstValue>(e);
+  }
+
+  // A member operator of a class (`names[i]`: operator[]) run on an object the evaluation holds.
+  std::optional<ConstValue> constOperatorCall(const ConstValue& object, uint32_t name, Span<Expr*> args, const TypeContext& ctx, int depth)
+  {
+    Scope* s = classScopeOf(object.type);
+    Lookup l;
+    if (!s || !lookupInScope(s, name, l, depth + 1))
+      return std::nullopt;
+    std::vector<ConstValue> values;
+    std::vector<const Ty*> argTypes;
+    for (Expr* a : args)
+    {
+      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      values.push_back(*v);
+      argTypes.push_back(constTypeOfValue(*v));
+    }
+    std::vector<FunctionDecl*> candidates;
+    if (l.overloads)
+    {
+      for (const Entry& entry : *l.overloads)
+        if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->body)
+          candidates.push_back(static_cast<FunctionDecl*>(entry.decl));
+    }
+    else if (l.decl && l.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(l.decl)->body)
+      candidates.push_back(static_cast<FunctionDecl*>(l.decl));
+    // Of a const and a non-const overload alike (`operator[]`), the const one: the object is a value.
+    std::vector<FunctionDecl*> consts;
+    for (FunctionDecl* f : candidates)
+      if (f->flags & DF_Const)
+        consts.push_back(f);
+    if (!consts.empty())
+      candidates = consts;
+    Subst subst = memberSubst(types.unqualified(object.type), l.foundIn, depth + 1);
+    bool ambiguous = false;
+    FunctionDecl* f = chooseAmong(candidates, argTypes, subst.empty() ? nullptr : &subst, types.unqualified(object.type), ambiguous);
+    if (!f || ambiguous || !f->templateParams.empty())
+      return std::nullopt;
+    LocalStack params;
+    for (const Subst::Pair& p : subst.pairs)
+      params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+    TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
+                     f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    std::optional<ConstValue> self = object;
+    return constRun(f, values, fctx, depth, &self);
+  }
+
+  // self: the object a member function runs on (`this`), the object it leaves after.
+  std::optional<ConstValue> constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth,
+                                     std::optional<ConstValue>* self = nullptr)
   {
     struct Call
     {
@@ -4597,22 +5589,30 @@ struct GlobalScope::Impl
       if (p->isPack)
         return std::nullopt;
       const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
-      std::optional<ConstValue> v = i < args.size() ? std::optional<ConstValue>(args[i])
-                                  : p->defaultValue ? constValue(p->defaultValue, fctx, depth + 1) : std::nullopt;
-      v = constAsDeclared(v, type);
+      std::optional<ConstValue> v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
+                                  : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, depth + 1) : std::nullopt;
       if (!v)
         return std::nullopt;
       env.push_back(constBinding(p->name, *v, type));
     }
+    size_t selfAt = env.size();
+    if (self && *self)
+    {
+      env.push_back(constBinding(constThisSymbol, **self, (*self)->type));
+      env.back().writable = !(f->flags & DF_Const);
+    }
     const Ty* returns = f->returnType ? convertType(f->returnType, fctx, depth + 1) : nullptr;
+    fctx.returnType = returns;
     bool isVoid = returns && types.unqualified(returns)->kind == TyKind::Void;
     std::optional<ConstValue> result;
     ConstFlow flow = constStatement(f->body, fctx, env, result, depth + 1);
+    if (self && *self && selfAt < env.size() && env[selfAt].symbol == constThisSymbol)
+      *self = env[selfAt].value;
     if (isVoid && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
       return ConstValue::integer(0, types.voidType()); // a helper run for what it checks (asserts)
     if (flow != ConstFlow::Returned || !result)
       return std::nullopt;
-    return returns ? constAsDeclared(result, returns) : result;
+    return returns ? constConvertTo(result, returns, depth + 1) : result;
   }
 
   // A parameter's or a local's binding: its declared type (the value's own for auto), and whether
@@ -4650,8 +5650,11 @@ struct GlobalScope::Impl
   std::optional<ConstValue> constAssign(BinaryExpr* b, const TypeContext& ctx, int depth)
   {
     std::optional<ConstValue> r = constValue(b->rhs, ctx, depth + 1); // the right operand first, as C++17 orders it
-    ConstBinding* target = r ? constLocal(b->lhs, ctx) : nullptr;
-    if (!target || !target->writable)
+    std::optional<ConstPlace> place = r ? constPlaceOf(b->lhs, ctx, depth + 1) : std::nullopt;
+    if (!place || !place->binding->writable)
+      return std::nullopt;
+    std::optional<ConstValue> old = P(b->op) == P::Assign ? std::optional<ConstValue>(ConstValue{}) : constRead(*place);
+    if (!old)
       return std::nullopt;
     P op = P(b->op);
     std::optional<ConstValue> v = r;
@@ -4667,12 +5670,11 @@ struct GlobalScope::Impl
           base = plain;
       if (!base)
         return std::nullopt;
-      v = constArith().binary(*base, target->value, *r);
+      v = old->isPointer() ? constPointerArith(*base, *old, *r) : constArith().binary(*base, *old, *r);
     }
-    v = v ? constAsDeclared(v, target->type) : std::nullopt;
-    if (!v)
+    v = v ? constConvertTo(v, place->type, depth + 1) : std::nullopt;
+    if (!v || !constSetPart(place->binding->value, place->path, 0, *v))
       return std::nullopt;
-    target->value = *v;
     return v;
   }
 
@@ -4680,17 +5682,19 @@ struct GlobalScope::Impl
   // postfix forms.
   std::optional<ConstValue> constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth)
   {
-    (void)depth;
-    ConstBinding* target = constLocal(u->operand, ctx);
-    if (!target || !target->writable)
+    std::optional<ConstPlace> place = constPlaceOf(u->operand, ctx, depth + 1);
+    if (!place || !place->binding->writable)
       return std::nullopt;
-    ConstValue old = target->value;
-    std::optional<ConstValue> v = constArith().binary(increment ? P::Plus : P::Minus, old, ConstValue::integer(1, types.intType()));
-    v = v ? constAsDeclared(v, target->type) : std::nullopt;
-    if (!v)
+    std::optional<ConstValue> old = constRead(*place);
+    if (!old)
       return std::nullopt;
-    target->value = *v;
-    return u->postfix ? old : *v;
+    ConstValue one = ConstValue::integer(1, types.intType());
+    std::optional<ConstValue> v = old->isPointer() ? constPointerArith(increment ? P::Plus : P::Minus, *old, one)
+                                                   : constArith().binary(increment ? P::Plus : P::Minus, *old, one);
+    v = v ? constConvertTo(v, place->type, depth + 1) : std::nullopt;
+    if (!v || !constSetPart(place->binding->value, place->path, 0, *v))
+      return std::nullopt;
+    return u->postfix ? *old : *v;
   }
 
   static bool isAssignmentOperator(P op)
@@ -4776,7 +5780,8 @@ struct GlobalScope::Impl
           result = ConstValue::integer(0, types.voidType()); // `return;` from a void function
           return ConstFlow::Returned;
         }
-        result = constValue(static_cast<ReturnStmt*>(s)->value, ctx, depth + 1);
+        result = ctx.returnType ? constInitialize(ctx.returnType, static_cast<ReturnStmt*>(s)->value, ctx, depth + 1)
+                                : constValue(static_cast<ReturnStmt*>(s)->value, ctx, depth + 1);
         return result ? ConstFlow::Returned : ConstFlow::Failed;
       case NodeKind::ExprStmt:
       {
@@ -4906,12 +5911,15 @@ struct GlobalScope::Impl
           if (d->kind != NodeKind::VariableDecl)
             return ConstFlow::Failed;
           auto* v = static_cast<VariableDecl*>(d);
-          if (!v->init || v->name.parts.size() != 1 || (v->flags & (DF_Static | DF_Typedef)) || !v->structuredBindings.empty())
+          if (v->name.parts.size() != 1 || (v->flags & (DF_Static | DF_Typedef)) || !v->structuredBindings.empty())
             return ConstFlow::Failed;
           const Ty* type = v->type ? convertType(v->type, ctx, depth + 1) : nullptr;
           if (type && type->isReference())
-            return ConstFlow::Failed; // a local reference: an object of the run's own, not a value (step 3)
-          std::optional<ConstValue> value = constAsDeclared(constInitValue(v->init, ctx, depth + 1), type);
+            return ConstFlow::Failed; // a local reference: the interpreter's locals have no addresses yet
+          if (type && types.unqualified(type)->kind == TyKind::Array && !types.unqualified(type)->count && !v->init)
+            return ConstFlow::Failed;
+          // `T x;`: default-initialized (a scalar unset until assigned, a class from its defaults).
+          std::optional<ConstValue> value = v->init ? constInitialize(type, v->init, ctx, depth + 1) : type ? constEmpty(type, false, depth + 1) : std::nullopt;
           if (!value)
             return ConstFlow::Failed;
           env.push_back(constBinding(v->name.parts[0].symbol, *value, type));

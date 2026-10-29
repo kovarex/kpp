@@ -4670,8 +4670,8 @@ namespace
     std::optional<int64_t> evalConst(Expr* e, int = 0)
     {
       std::optional<ConstValue> v = foldConst(e);
-      if (!v || v->isFloat())
-        return std::nullopt; // a floating value is no integer constant
+      if (!v || v->kind != ConstValue::Kind::Int)
+        return std::nullopt; // a floating value, an object, a pointer: no integer constant
       return v->i;
     }
 
@@ -4680,14 +4680,14 @@ namespace
     std::optional<bool> evalCondition(Expr* e)
     {
       std::optional<ConstValue> v = foldConst(e);
-      return v ? std::optional<bool>(v->truthy()) : std::nullopt;
+      return v && (v->isScalar() || v->isPointer()) ? std::optional<bool>(v->truthy()) : std::nullopt;
     }
 
     // A folded value given type t (a declaration's): converted when t is an arithmetic or
     // enumeration type; kept for any other type, and for one not known here.
     std::optional<ConstValue> foldAs(std::optional<ConstValue> v, const Ty* t)
     {
-      if (!v || !t || !t->isKnown() || types.isDependent(t))
+      if (!v || !t || !t->isKnown() || types.isDependent(t) || !v->isScalar())
         return v;
       t = types.unqualified(types.stripRef(t));
       return t->isArithmetic() || t->kind == TyKind::Enum ? foldArith().convert(*v, t) : v;
@@ -6200,6 +6200,8 @@ namespace
         {
           ConstContextScope context(*this, def); // traits in the initializer resolve their names in the declaration's context
           c = foldAs(foldConst(value), st);       // the value the emitted initialization would store
+          if (c && !c->isScalar())
+            c.reset(); // an object or a pointer: built at startup (constant data comes later)
         }
         if (c && (st->kind == TyKind::Int || st->kind == TyKind::Char || st->kind == TyKind::Enum) && !c->isFloat())
           init = std::to_string(c->i);
@@ -7594,7 +7596,7 @@ namespace
               // of the type the evaluator gave the value, the declared one for these arguments.
               auto usable = [this](const Ty* x) { return x && x->isKnown() && !types.isDependent(x) ? types.unqualified(types.stripRef(x)) : nullptr; };
               const Ty* vt = usable(e->ty) ? usable(e->ty) : usable(t);
-              if (std::optional<ConstValue> c = foldAs(foldConst(e), vt))
+              if (std::optional<ConstValue> c = foldAs(foldConst(e), vt); c && c->isScalar())
               {
                 const Ty* ct = vt ? vt : usable(c->type);
                 if (c->isFloat() || (ct && ct->kind == TyKind::Float))

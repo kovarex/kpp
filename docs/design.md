@@ -723,10 +723,30 @@ constant until step 3 has objects (spec language/consteval_reference_parameter):
 copy's value. The step limit counts statements as well as expressions. Specs
 language/consteval_loops_and_assignments, language/consteval_float_variable_templates.
 
-Left, in the order above: objects and constructors (step 3: `BoundingBox::emptyValue().isZeroSize()`,
-`BranchVersion(0)`, references); constant arrays and strings and constant data (step 4:
-`variantNames[i]`, range-for over them); `sqrt` (the library's has no Kpp body yet); float template
-arguments. The library's gcd and lcm can go back to loops.
+*Step 3, objects and constant arrays, done 2026-10-29.* A value is also an object (a class's
+parts, its bases then its data members in declaration order, or an array's elements; shared, and
+copied when written, so no value changes under another), a pointer into an array (a string
+literal's chars, a constant array; arithmetic and comparison within it, one past the end
+included), or unset (a member or local no initializer set; reading it is no constant). Objects
+come from aggregate initialization (brace elision: `Array<StringView, 6> names = {"a", ...}`,
+designators), constructors (their member and base initializers, delegation, default member
+initializers, then the body with `this` the object), implicit conversions by a constructor marked
+`implicit`, and value- and default-initialization; member functions run on an object as `this`
+(a const one, or one whose changes stay in the local it was called on), member operators
+(`names[i]`) too; members and elements are read and assigned through places (`point.x`,
+`items[i]`, `this->count`). A string literal is an array of chars, and the interpreter knows one
+function of the C library: `strlen` of a pointer into a char array, which the library's
+`StringView(const char*)` counts with (decided 2026-10-29: no other C function has a body to
+run). Folds also expand a function parameter pack (`(sizeof(values) + ...)`). Not yet: class
+operators other than member ones (`a == b` for a class), virtual calls, addresses of locals and
+references to them, objects as template arguments, and objects as the code generator's constant
+data (it builds them at startup). Specs language/consteval_objects,
+language/consteval_arrays_and_strings. Measured paired on ec5bcb1: 22,160 -> 22,156, the
+static_asserts on `variantNames[i]` and `layerNames[i]` evaluating.
+
+Left: class operators, virtual calls, addresses and references (the rest of step 3); objects and
+arrays as constant data and range-for over them (step 4); `sqrt` (the library's has no Kpp body
+yet); float template arguments. The library's gcd and lcm can go back to loops.
 
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`

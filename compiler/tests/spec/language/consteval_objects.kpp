@@ -1,6 +1,5 @@
 // spec: objects at compile time: aggregates and their members, constructors with member initializers and bodies, default member initializers, member functions on an object (const ones and ones that change it), a static function returning an object, a member function called on a temporary
 // factorio: BoundingBox::emptyValue().isZeroSize(); about 300 constexpr constructors
-// pending: the interpreter held no objects
 struct Vec
 {
   int x = 0;

@@ -1,6 +1,5 @@
 // spec: constant arrays at compile time: of numbers (a C array and the library's Array by brace elision, elements by index and through a pointer), of objects, string literals and the library's StringView over them (its length counted with strlen)
 // factorio: static_assert(!variantNames[size_t(TileTransitionVariant::Count) - 1].empty()) with `constexpr static inline Array<StringView, 6> variantNames = {"inner_corner", ...}`
-// pending: the interpreter held no arrays
 enum class Variant { Inner, Outer, Side, Count };
 struct Names
 {

@@ -5,6 +5,105 @@
 #include <limits>
 #include <vector>
 
+bool decodeNarrowString(std::string_view s, std::string& out)
+{
+  size_t q = s.find('"');
+  if (q == std::string_view::npos || s.size() < q + 2 || s.back() != '"')
+    return false;
+  std::string_view prefix = s.substr(0, q);
+  bool raw = !prefix.empty() && prefix.back() == 'R';
+  if (raw)
+    prefix.remove_suffix(1);
+  if (!prefix.empty() && prefix != "u8")
+    return false; // L"", u"", U"": wide characters
+  if (raw)
+  {
+    // R"delim(text)delim"
+    size_t open = s.find('(', q);
+    if (open == std::string_view::npos)
+      return false;
+    size_t delim = open - q - 1, closing = 1 + delim + 1;
+    if (s.size() < open + 1 + closing)
+      return false;
+    out.append(s.substr(open + 1, s.size() - open - 1 - closing));
+    return true;
+  }
+  auto utf8 = [&](uint32_t c) {
+    if (c < 0x80)
+      out += char(c);
+    else if (c < 0x800)
+      out += char(0xC0 | (c >> 6)), out += char(0x80 | (c & 0x3F));
+    else if (c < 0x10000)
+      out += char(0xE0 | (c >> 12)), out += char(0x80 | ((c >> 6) & 0x3F)), out += char(0x80 | (c & 0x3F));
+    else
+      out += char(0xF0 | (c >> 18)), out += char(0x80 | ((c >> 12) & 0x3F)), out += char(0x80 | ((c >> 6) & 0x3F)), out += char(0x80 | (c & 0x3F));
+  };
+  auto digit = [](char c, int base) {
+    int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : 99;
+    return d < base ? d : -1;
+  };
+  size_t end = s.size() - 1; // the closing quote
+  for (size_t i = q + 1; i < end; ++i)
+  {
+    char c = s[i];
+    if (c != '\\')
+    {
+      out += c;
+      continue;
+    }
+    if (++i >= end)
+      return false;
+    char e = s[i];
+    switch (e)
+    {
+      case 'n': out += '\n'; break;
+      case 't': out += '\t'; break;
+      case 'r': out += '\r'; break;
+      case 'a': out += '\a'; break;
+      case 'b': out += '\b'; break;
+      case 'f': out += '\f'; break;
+      case 'v': out += '\v'; break;
+      case '\\': case '\'': case '"': case '?': out += e; break;
+      case 'x':
+      {
+        uint32_t v = 0;
+        int n = 0;
+        for (; i + 1 < end && digit(s[i + 1], 16) >= 0; ++n)
+          v = v * 16 + uint32_t(digit(s[++i], 16));
+        if (n == 0)
+          return false;
+        out += char(v & 0xFF);
+        break;
+      }
+      case 'u':
+      case 'U':
+      {
+        int want = e == 'u' ? 4 : 8;
+        uint32_t v = 0;
+        for (int n = 0; n < want; ++n)
+        {
+          if (i + 1 >= end || digit(s[i + 1], 16) < 0)
+            return false;
+          v = v * 16 + uint32_t(digit(s[++i], 16));
+        }
+        utf8(v);
+        break;
+      }
+      default:
+      {
+        if (digit(e, 8) < 0)
+          return false;
+        uint32_t v = uint32_t(digit(e, 8));
+        for (int n = 1; n < 3 && i + 1 < end && digit(s[i + 1], 8) >= 0; ++n)
+          v = v * 8 + uint32_t(digit(s[++i], 8));
+        out += char(v & 0xFF);
+        break;
+      }
+    }
+  }
+  return true;
+}
+
 std::optional<P> constOperator(uint32_t op, bool isKeyword)
 {
   if (!isKeyword)
@@ -285,8 +384,10 @@ std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view s
 
 std::optional<ConstValue> ConstArith::unary(P op, const ConstValue& v)
 {
-  if (op == P::Bang)
+  if (op == P::Bang && (v.isScalar() || v.isPointer()))
     return ConstValue::integer(!v.truthy(), types.boolType());
+  if (!v.isScalar())
+    return fail("an operator on an object or a pointer"); // the evaluator's own (pointer arithmetic, class operators)
   if (v.isFloat())
   {
     if (op == P::Minus)
@@ -309,6 +410,10 @@ std::optional<ConstValue> ConstArith::unary(P op, const ConstValue& v)
 std::optional<ConstValue> ConstArith::binary(P op, const ConstValue& l, const ConstValue& r)
 {
   bool comparison = op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq || op == P::EqEq || op == P::NotEq;
+  if ((op == P::AndAnd || op == P::OrOr) && (l.isScalar() || l.isPointer()) && (r.isScalar() || r.isPointer()))
+    return ConstValue::integer(op == P::AndAnd ? l.truthy() && r.truthy() : l.truthy() || r.truthy(), types.boolType());
+  if (!l.isScalar() || !r.isScalar())
+    return fail("an operator on an object or a pointer");
   if (op == P::AndAnd || op == P::OrOr)
     return ConstValue::integer(op == P::AndAnd ? l.truthy() && r.truthy() : l.truthy() || r.truthy(), types.boolType());
   if (l.isFloat() || r.isFloat())
@@ -401,6 +506,10 @@ std::optional<ConstValue> ConstArith::convert(const ConstValue& v, const Ty* to)
   if (!to)
     return std::nullopt;
   const Ty* t = types.unqualified(types.stripRef(to));
+  if (v.isPointer() && t->kind == TyKind::Bool)
+    return ConstValue::integer(1, types.boolType()); // a pointer into an array is never null
+  if (!v.isScalar())
+    return fail("a conversion of an object or a pointer to a number");
   switch (t->kind)
   {
     case TyKind::Bool: return ConstValue::integer(v.truthy(), types.boolType());

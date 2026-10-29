@@ -6,20 +6,28 @@
 #include "types.hpp"
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct ConstValue
 {
-  enum class Kind : uint8_t { Int, Float };
+  enum class Kind : uint8_t { Int, Float, Object, Pointer, Unset };
   Kind kind = Kind::Int;
   // Int: an integer, char, bool or enumeration type, the value normalised to its width and
-  // signedness; null for a value of no known type, read as a 64-bit signed integer. Float: float
-  // or double.
+  // signedness; null for a value of no known type, read as a 64-bit signed integer (a null
+  // pointer is the Int 0 of a pointer type). Float: float or double. Object: a class or array
+  // type. Pointer: a pointer type. Unset: a field's or element's type that no initializer set
+  // (reading it is no constant).
   const Ty* type = nullptr;
-  int64_t i = 0;
+  int64_t i = 0; // Int; Pointer: the element it points at (the parts' size is one past the end)
   double f = 0.0;
+  // Object: a class object's parts (its bases, then its non-static data members, in declaration
+  // order) or an array's elements. Pointer: the array it points into. A copy shares them and a
+  // write makes new ones, so that no value changes under another's feet.
+  std::shared_ptr<const std::vector<ConstValue>> parts;
 
   static ConstValue integer(int64_t v, const Ty* type = nullptr)
   {
@@ -36,9 +44,42 @@ struct ConstValue
     c.type = type;
     return c;
   }
+  static ConstValue object(const Ty* type, std::vector<ConstValue> parts)
+  {
+    ConstValue c;
+    c.kind = Kind::Object;
+    c.type = type;
+    c.parts = std::make_shared<const std::vector<ConstValue>>(std::move(parts));
+    return c;
+  }
+  static ConstValue pointer(const Ty* type, std::shared_ptr<const std::vector<ConstValue>> into, int64_t index)
+  {
+    ConstValue c;
+    c.kind = Kind::Pointer;
+    c.type = type;
+    c.parts = std::move(into);
+    c.i = index;
+    return c;
+  }
+  static ConstValue unset(const Ty* type)
+  {
+    ConstValue c;
+    c.kind = Kind::Unset;
+    c.type = type;
+    return c;
+  }
   bool isFloat() const { return kind == Kind::Float; }
-  bool truthy() const { return isFloat() ? f != 0.0 : i != 0; }
+  bool isScalar() const { return kind == Kind::Int || kind == Kind::Float; }
+  bool isObject() const { return kind == Kind::Object; }
+  bool isPointer() const { return kind == Kind::Pointer; }
+  bool isUnset() const { return kind == Kind::Unset; }
+  // A condition's value: a scalar's, or a pointer's (into an array: never null).
+  bool truthy() const { return isFloat() ? f != 0.0 : isPointer() || i != 0; }
 };
+
+// The bytes a narrow string literal token stands for (escapes, raw strings, u8), its prefix
+// and quotes left out; false for a wide one (L, u, U) or one it cannot read.
+bool decodeNarrowString(std::string_view spelling, std::string& out);
 
 enum class ConstMode : uint8_t
 {
