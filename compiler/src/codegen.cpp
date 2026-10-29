@@ -2570,9 +2570,33 @@ namespace
         emitCall("", "void " + useFunction(copy, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
         return;
       }
-      if (findDestructor(c) && !defaultedCopy)
-        unsupported(at, "copying " + qualifiedName(c) + ", which has a destructor but no copy constructor");
+      // A destructor of its own leaves the class its implicit copy constructor (C++ only deprecates
+      // it): the members copied (Achievement's `new Achievement(*this)`, InputAction's ActionData).
+      // A declared move assignment deletes it.
+      if (!defaultedCopy && declaresMoveMember(c, t, true, at))
+        unsupported(at, "copying " + qualifiedName(c) + ", which declares a move assignment but no copy constructor");
       memberwiseConstruct(dst, src, t, at, move);
+    }
+
+    // Whether class c (of type t) declares a move assignment (assignment) or a move constructor
+    // (`= default` and `= delete` ones included): what deletes C++'s implicit copy members.
+    bool declaresMoveMember(ClassDecl* c, const Ty* t, bool assignment, Node* at)
+    {
+      TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+      ArgsScope scope(*this, &args);
+      for (Decl* m : c->members)
+      {
+        if (m->kind != NodeKind::FunctionDecl)
+          continue;
+        auto* f = static_cast<FunctionDecl*>(m);
+        bool isAssignment = !f->name.empty() && f->name.last().special == 2 && P(f->name.last().opToken) == P::Assign;
+        if ((assignment ? !isAssignment : !(f->flags & DF_Constructor)) || f->params.size() != 1)
+          continue;
+        const Ty* pt = declType(f->params[0]);
+        if (pt && pt->kind == TyKind::RRef && isClass(pt->inner) && classKey(pt->inner) == classKey(t))
+          return true;
+      }
+      return false;
     }
 
     // Constructs the object at dst from the one at src base by base and member by member
@@ -2664,8 +2688,11 @@ namespace
         restoreVptrs(dst, vptrs);
         return;
       }
-      if (findDestructor(classDef(t->decl, at)) && !defaulted) // a defaulted one is memberwise, destructor or not (Trigger)
-        unsupported(at, "assignment to " + qualifiedName(t->decl) + ", which has a destructor but no operator=");
+      // A destructor of its own leaves the class its implicit copy assignment (C++ only deprecates
+      // it), a defaulted one is memberwise anyway (Trigger); a declared move constructor deletes the
+      // implicit copy assignment.
+      if (!defaulted && !move && declaresMoveMember(classDef(t->decl, at), t, false, at))
+        unsupported(at, "assignment to " + qualifiedName(t->decl) + ", which declares a move constructor but no operator=");
       memberwiseAssign(dst, src, t, at, move);
     }
 
