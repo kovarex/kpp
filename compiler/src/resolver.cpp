@@ -6203,17 +6203,17 @@ struct GlobalScope::Impl
     }
   }
 
-  // The template parameter a parameter pack's type is built from (`const Args&...` -> Args).
+  // The template parameter a parameter pack's type is, under references (`const Args&...` -> Args).
   static Decl* packParamOf(const Ty* t)
   {
     for (int i = 0; t && i < 8; ++i)
     {
       if (t->kind == TyKind::Param)
         return t->decl && t->decl->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(t->decl)->isPack ? t->decl : nullptr;
-      if (t->kind == TyKind::Pointer || t->isReference())
+      if (t->isReference())
         t = t->inner;
       else
-        return nullptr;
+        return nullptr; // `Args*...`: each element from its argument's pointee (deduceCall's general case)
     }
     return nullptr;
   }
