@@ -1,6 +1,5 @@
 // spec: a converting constructor inherited through two levels of `using Base::Base;` (CompressionState from MipmapState from Handle) converts an assigned value, as one inherited through one level does: `compression = create(5);` constructs a CompressionState from the UniquePtr
 // factorio: PipelineStateManager::setupSpriteLoadingStates' `this->ycocgDXTCompressionState = this->graphics.createPipelineStateObject(spec);`, CompressionPipelineState inheriting MipmapGeneratorPipelineState's constructors, which inherits PipelineStateHandle's
-// pending: one level works (classes/inherited_converting_constructor_for_argument), two do not ("assigning an unrelated class"); owner: the resolver (implicit conversions)
 struct PipelineStateObject
 {
   int id = 0;

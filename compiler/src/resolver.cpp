@@ -9043,6 +9043,23 @@ struct GlobalScope::Impl
         }
         std::vector<const Ty*> args;
         Span<Decl*> params = noPrimary ? Span<Decl*>{} : effectiveParams(def);
+        if (!lastPart.hasTemplateArgs && !params.empty() && l.found == Found::Member && l.foundIn && l.foundIn == def->ownScope &&
+            depth < 32)
+        {
+          // `using super = TargeterWithOwner;` in a class deriving from TargeterWithOwner<Entity,
+          // Robot, 7>: the base's injected class name, found in the base, names that instance.
+          Scope* cls = ctx.scope;
+          while (cls && cls->kind != ScopeKind::Class)
+            cls = cls->parent;
+          if (cls && cls != l.foundIn && cls->owner)
+          {
+            const Ty* self = selfType(cls->owner);
+            if (self && ctx.subst)
+              self = substitute(self, *ctx.subst);
+            if (const Ty* base = self ? instantiationOfBase(self, cls, l.foundIn, depth + 1) : nullptr; base && base != self)
+              return base;
+          }
+        }
         if (lastPart.templateArgs.size() == 1 && lastPart.symbol == functionSymbolId())
         {
           // The library's `Function<R(Args...)>`: the compiler takes the signature apart, the
@@ -11370,11 +11387,16 @@ struct GlobalScope::Impl
           }
           return false;
           };
+          // `using super::super;` (SignalFilter from IDWithQualityFilter<SignalIDBase>): the base's
+          // constructors, with that base's arguments, and those it inherits in turn (CompressionState
+          // from MipmapState from Handle).
+          std::function<bool(Decl*, const Ty*, int)> inherits = [&](Decl* def, const Ty* p, int level) -> bool
+          {
           Subst s = substFor(p);
           if (converts(static_cast<ClassDecl*>(def), p, s))
-            return 4;
-          // `using super::super;` (SignalFilter from IDWithQualityFilter<SignalIDBase>): the base's
-          // constructors, with that base's arguments.
+            return true;
+          if (level > 8)
+            return false;
           for (Decl* m : static_cast<ClassDecl*>(def)->members)
           {
             if (m->kind != NodeKind::UsingNameDecl)
@@ -11398,9 +11420,13 @@ struct GlobalScope::Impl
             if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
               continue;
             Scope* bs = classScopeOf(bt);
-            if (bs && bs->owner && bs->owner->kind == NodeKind::ClassDecl && converts(static_cast<ClassDecl*>(bs->owner), bt, substFor(bt)))
-              return 4;
+            if (bs && bs->owner && bs->owner->kind == NodeKind::ClassDecl && inherits(bs->owner, bt, level + 1))
+              return true;
           }
+          return false;
+          };
+          if (inherits(def, p, 0))
+            return 4;
         }
         break;
       }
@@ -11478,6 +11504,37 @@ struct GlobalScope::Impl
         if (b->kind == TyKind::Class && convertsByOperator(b, param, depth, baseDepth + 1, allowExplicit))
           return true;
     return false;
+  }
+
+  // The conversion function of class a (or of a base, whose arguments subst gets) to exactly the
+  // type target, as a conversion-function-id names it: `commands.operator AllowedCommands::Enum()`.
+  FunctionDecl* conversionFunctionTo(const Ty* a, const Ty* target, Subst& subst, int baseDepth = 0)
+  {
+    if (baseDepth > 8 || !target)
+      return nullptr;
+    Scope* s = classScopeOf(a);
+    if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+      return nullptr;
+    Subst own = substFor(a);
+    for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !m->templateParams.empty())
+        continue;
+      const Ty* ft = declaredTypeOf(m, own.pairs.empty() ? nullptr : &own, 0);
+      if (ft && ft->kind == TyKind::Function && types.unqualified(ft->inner) == types.unqualified(target))
+      {
+        subst = own;
+        return static_cast<FunctionDecl*>(m);
+      }
+    }
+    ClassDecl* def = classDefinition(a);
+    std::vector<const Ty*> bases;
+    if (def && directBases(a, def, bases))
+      for (const Ty* b : bases)
+        if (b->kind == TyKind::Class)
+          if (FunctionDecl* f = conversionFunctionTo(b, target, subst, baseDepth + 1))
+            return f;
+    return nullptr;
   }
 
   struct Candidate
@@ -13118,6 +13175,20 @@ struct GlobalScope::Impl
       if (t->kind == TyKind::Class)
       {
         MemberResult arrow = memberOf(t, impl.opSymbols[uint32_t(P::Arrow)], nullptr, 0, false);
+        if (arrow.overloads && arrow.overloads->size() > 1)
+        {
+          // `const T* operator->() const` and `T* operator->()`: the one the object's constness picks.
+          Decl* pick = nullptr;
+          for (const Entry& entry : *arrow.overloads)
+            if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->params.empty() &&
+                (!pick || ((entry.decl->flags & DF_Const) != 0) == t->isConst))
+              pick = entry.decl;
+          if (pick)
+          {
+            arrow.decl = pick;
+            arrow.type = impl.declaredTypeOf(pick, arrow.subst.pairs.empty() ? nullptr : &arrow.subst, 0);
+          }
+        }
         // `auto operator->() { return this->idIterator.operator->(); }`: what the body returns.
         if (arrow.decl && arrow.decl->kind == NodeKind::FunctionDecl &&
             (arrow.why == Why::Auto || (arrow.type && arrow.type->kind == TyKind::Function && impl.containsAuto(arrow.type->inner))))
@@ -13995,8 +14066,24 @@ struct GlobalScope::Impl
           constructors.push_back(static_cast<FunctionDecl*>(m));
       Subst subst = impl.substFor(t);
       bool ambiguous = false;
-      if (FunctionDecl* ctor = impl.chooseAmong(constructors, argTypesOf(args), subst.empty() ? nullptr : &subst, nullptr, ambiguous); ctor && !ambiguous)
+      std::vector<const Ty*> argTypes = argTypesOf(args);
+      for (const OverloadSetArgument& set : sets)
+        if (set.index < argTypes.size())
+          argTypes[set.index] = types.unknown(); // the overload set decides nothing until the constructor is chosen
+      if (FunctionDecl* ctor = impl.chooseAmong(constructors, argTypes, subst.empty() ? nullptr : &subst, nullptr, ambiguous); ctor && !ambiguous)
         bindOverloadSets(sets, impl.declaredTypeOf(ctor, subst.empty() ? nullptr : &subst, 0));
+    }
+
+    // `EditForceGui gui(0, &EditorAction::SetForceFriend, ...)`, `new EditForceGui(...)`: the
+    // overload sets among a construction's arguments, bound once the constructor is chosen.
+    void bindOverloadSetsOfConstruction(const Ty* t, Span<Expr*> args)
+    {
+      std::vector<OverloadSetArgument> sets;
+      for (size_t i = 0; i < args.size(); ++i)
+        if (OverloadSetArgument s; overloadSetArgument(args[i], i, s))
+          sets.push_back(s);
+      if (!sets.empty())
+        bindOverloadSetsToConstructor(sets, t, args);
     }
 
     // `(ImU32)(255)`: a parenthesised name of a type before a parenthesised operand, which the
@@ -14068,9 +14155,57 @@ struct GlobalScope::Impl
             record(n, trait);
             return trait;
           }
+        if (n->name.parts.size() > 1 && n->name.last().special == 3 && n->name.last().convType)
+        {
+          // `super::operator bool()`: the conversion function of the class the qualifier names.
+          NamedType written{};
+          written.kind = NodeKind::NamedType;
+          written.token = n->token;
+          written.name = n->name;
+          written.name.parts.count -= 1;
+          const Ty* q = typeOf(&written);
+          walkType(n->name.last().convType);
+          Subst cs;
+          if (FunctionDecl* conv = q && q->isKnown() && !types.isDependent(q)
+                                       ? impl.conversionFunctionTo(types.unqualified(types.stripRef(q)), typeOf(n->name.last().convType), cs)
+                                       : nullptr)
+          {
+            const Ty* ft = impl.declaredTypeOf(conv, cs.pairs.empty() ? nullptr : &cs, 0);
+            n->resolved = conv;
+            ++stats.callsResolved;
+            record(n, ft);
+            return ft->inner;
+          }
+        }
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
         if (l.found == Found::Global)
           l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
+        MemberResult viaInstance; // keeps a merged overload set alive
+        if (l.found == Found::No && n->name.parts.size() > 1 && !n->name.last().hasTemplateArgs)
+        {
+          // `super::paintBackgroundGlow(...)` with super a DragPaneWidget<agui::VerticalFlow, 1>
+          // deriving from its parameter: the member of the instance, found in the base its
+          // arguments make, which the class template's own scope does not have.
+          NamedType written{};
+          written.kind = NodeKind::NamedType;
+          written.token = n->token;
+          written.name = n->name;
+          written.name.parts.count -= 1;
+          const Ty* q = typeOf(&written);
+          q = q && q->isKnown() && !types.isDependent(q) ? types.unqualified(types.stripRef(q)) : nullptr;
+          if (q && q->kind == TyKind::Class)
+          {
+            viaInstance = memberOf(q, n->name.last().symbol, nullptr, n->token, false);
+            if (viaInstance.decl && viaInstance.decl->kind == NodeKind::FunctionDecl && viaInstance.decl->parent &&
+                viaInstance.decl->parent->ownScope)
+            {
+              l.decl = viaInstance.decl;
+              l.overloads = viaInstance.overloads;
+              l.found = Found::Member;
+              l.foundIn = viaInstance.decl->parent->ownScope;
+            }
+          }
+        }
         // Argument-dependent lookup, as C++ has it: an unqualified call also finds the functions of
         // its name in the namespaces of its arguments' classes and enumerations
         // (`shortNumberFormat(time, StringUtil::Compactness::Loose)` from namespace TimeUtil),
@@ -14259,6 +14394,20 @@ struct GlobalScope::Impl
           ++stats.membersBound;
           record(m, types.function(types.voidType(), {}, false));
           return types.voidType();
+        }
+        if (last.special == 3 && last.convType)
+        {
+          // `commands.operator AllowedCommands::Enum()`: the class's conversion function to that type.
+          walkType(last.convType);
+          Subst cs;
+          if (FunctionDecl* conv = impl.conversionFunctionTo(types.unqualified(types.stripRef(object)), typeOf(last.convType), cs))
+          {
+            const Ty* ft = impl.declaredTypeOf(conv, cs.pairs.empty() ? nullptr : &cs, 0);
+            m->resolved = conv;
+            ++stats.membersBound;
+            record(m, ft);
+            return ft->inner;
+          }
         }
         uint32_t symbol = last.special == 2 && last.opToken < uint32_t(P::Count) ? impl.opSymbols[last.opToken] : last.symbol;
         if (symbol == UINT32_MAX)
@@ -15955,6 +16104,8 @@ struct GlobalScope::Impl
           else if (impl.isUndeducedClassTemplate(t))
             if (const Ty* deduced = impl.deduceClassArgs(t, argTypesOf(n->args)))
               t = deduced; // `new DeleteHelper(old.release())`: the class's arguments from a constructor (CTAD)
+          if (!n->braced && !n->args.empty())
+            bindOverloadSetsOfConstruction(t, n->args);
           return record(e, t->isKnown() ? types.pointer(t) : t);
         }
         case NodeKind::DeleteExpr:
@@ -16078,6 +16229,8 @@ struct GlobalScope::Impl
             else if (const Ty* aggregate = c->braced ? impl.deduceAggregateArgs(t, argTypes) : nullptr)
               t = aggregate;
           }
+          if (!c->braced && !c->args.empty())
+            bindOverloadSetsOfConstruction(t, c->args);
           return record(e, t);
         }
         case NodeKind::TypeidExpr:

@@ -1,6 +1,5 @@
 // spec: a conversion function called by its name: `commands.operator AllowedCommands::Enum()` (the type qualified), and a base's `super::operator bool()` from the derived class's own explicit operator bool (the base named through an alias of its template's injected name)
 // factorio: ServerMultiplayerManager::hostGame's `uint8_t(scenario->requestedValueOfAllowedCommands.operator AllowedCommands::Enum())`, PortTargeter's `explicit operator bool() const { return super::operator bool(); }` (super = TargeterWithOwner, whose base Targeter has the operator)
-// pending: the member access does not resolve ("a member access that did not resolve to a field"), and the qualified call is typed as the base class itself, its arguments unsubstituted ("the layout of TargeterWithOwner<TargetType, Owner, type>: a base class whose type is unknown"); converting the object instead works; owner: the resolver (lookup of conversion-function-ids)
 class AllowedCommands
 {
 public:

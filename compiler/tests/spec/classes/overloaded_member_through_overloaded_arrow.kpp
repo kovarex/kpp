@@ -1,6 +1,5 @@
 // spec: a member function with overloads called through a class's `operator->` that is itself overloaded on const (`const T* operator->() const`, `T* operator->()`), `w->set(4)`, `w->set(3, true)`, `w->reset()`: the non-const object takes the non-const operator->, then the call resolves among T's overloads; in a class template too (OnHeap<Bitset<N>>)
 // factorio: GameMap::loadData's `input.tilesNeedCorrection->reset();`, MapDeserialiser's `OnHeap<std::bitset<MaxTileIDCount>> tilesNeedCorrection` (OnHeap has both operator->, Bitset's reset and set are overloaded)
-// pending: with one operator-> or one overload of the member it works; with both overloaded the member access does not resolve ("a member access that did not resolve to a field"); owner: the resolver
 struct Counter
 {
   int count = 0;
