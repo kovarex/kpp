@@ -1,15 +1,14 @@
-// spec: a call to a constexpr function as a template argument, with arguments that depend on the template's parameters (`Frac<gcd(P1::num, P2::num), ...>`), is a constant expression, not a function type
+// spec: a call to a constexpr function as a template argument, with arguments that depend on the template's parameters (`Frac<gcdOf(P1::num, P2::num), ...>`; named gcdOf, since the library has a gcd of its own), is a constant expression, not a function type
 // factorio: std::ratio arithmetic (the common period of two durations, Ratio<gcd(N1, N2), lcm(D1, D2)>) and sizes computed by constexpr functions
-// pending: the argument is read as a function type (`Frac<<unknown>(<unknown>, <unknown>), 15>`), so it has no value; written in parentheses, `Frac<(gcd(...)), ...>`, it folds
 template<long long N, long long D = 1>
 struct Frac
 {
   static constexpr long long num = N;
   static constexpr long long den = D;
 };
-constexpr long long gcd(long long a, long long b) { return b == 0 ? a : gcd(b, a % b); }
+constexpr long long gcdOf(long long a, long long b) { return b == 0 ? a : gcdOf(b, a % b); }
 template<typename P1, typename P2>
-Frac<gcd(P1::num, P2::num), P1::den / gcd(P1::den, P2::den) * P2::den> common(P1, P2) { return {}; }
+Frac<gcdOf(P1::num, P2::num), P1::den / gcdOf(P1::den, P2::den) * P2::den> common(P1, P2) { return {}; }
 int main()
 {
   auto c = common(Frac<4, 3>(), Frac<6, 5>());

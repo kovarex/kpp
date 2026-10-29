@@ -655,6 +655,18 @@ namespace
             f->params = d.params;
             f->isConst = (d.flags & DF_Const) != 0;
             f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+            // `Frac<gcd(P1::num, P2::num)>`: also read as a call, which the resolver takes when the
+            // parameter is a constant (the parser cannot tell a function from a type).
+            uint32_t after = pos;
+            size_t savedDiagnostics = out.diagnostics.size();
+            restore(save);
+            bool logical = false;
+            Expr* call = parseExpressionNoGreater(logical);
+            if (!inRecovery && pos == after && call && call->kind == NodeKind::CallExpr)
+              f->asCall = call;
+            inRecovery = false;
+            out.diagnostics.resize(savedDiagnostics);
+            restore(after);
             return f;
           }
           inRecovery = false;

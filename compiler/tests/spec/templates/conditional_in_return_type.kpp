@@ -1,6 +1,5 @@
 // spec: a function template's return type chosen by a specialization on a value computed from the template's parameters: `typename Conditional<(sizeof(A) < sizeof(B)), B, A>::Type`, directly or through an alias template, is the false alternative when the condition is false
 // factorio: std::conditional_t in signatures and in the library's computed types (a common type of two reps, a common period of two durations)
-// pending: the signature takes Conditional's primary (the true alternative) whatever the condition, silently: wider(2.0, 1) returns int and prints 2; the same alias in the function body picks right
 template<typename T>
 struct Outer
 {

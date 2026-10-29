@@ -1,6 +1,5 @@
 // spec: decltype of an expression over a template's parameters, in an alias template (`using Sum = decltype(A() + B());`) and as a function template's return type (`decltype(A() + B()) add(A, B)`), is that expression's type for the arguments
 // factorio: std::common_type and decltype-computed types (the rep of the common duration of two durations, `decltype(std::declval<T>() + ...)` in Util)
-// pending: the type stays the template parameter A (codegen: the type A (a template parameter)); a decltype written inside a class template's argument list in a return type works
 template<typename A, typename B>
 using Sum = decltype(A() + B());
 template<typename A, typename B>

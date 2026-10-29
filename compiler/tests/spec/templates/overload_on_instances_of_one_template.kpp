@@ -1,6 +1,5 @@
 // spec: overloads whose parameters are two instances of one class template (`pick(Constant<bool, true>)` and `pick(Constant<bool, false>)`) are told apart by their arguments: an argument of either instance, or of a class deriving from one, picks that overload, also inside a template (`pick(Constant<bool, isSigned<T>>())`)
 // factorio: std::true_type and std::false_type are std::integral_constant<bool, ...>; with the library's TrueType/FalseType as aliases of IntegralConstant<bool, ...>, tag dispatch such as cxxopts' checked_negate(..., std::integral_constant<bool, is_signed>()) and the traits deriving from them
-// pending: an argument whose class template derives from one instance (IsPtr<int> : No) takes pick(Yes) through operator bool (codegen: a conversion from bool to Constant<bool, 1>), and inside a template `pick(Constant<bool, isSigned<T>>())` does not resolve (exact instances and IsSmall pick right)
 template<typename T, T V>
 struct Constant
 {

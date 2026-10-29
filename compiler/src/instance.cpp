@@ -114,6 +114,7 @@ Type* InstanceCopier::type(const Type* t)
       auto* c = raw(static_cast<const FunctionType*>(t));
       c->result = type(c->result);
       c->params = declList(c->params);
+      c->asCall = expr(c->asCall);
       return c;
     }
     case NodeKind::DecltypeType:

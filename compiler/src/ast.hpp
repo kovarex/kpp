@@ -152,7 +152,9 @@ struct LRefType : Type { Type* referenced; };
 struct RRefType : Type { Type* referenced; };
 struct ConstType : Type { Type* inner; bool isVolatile = false; };
 struct ArrayType : Type { Type* element; Expr* size; };
-struct FunctionType : Type { Type* result; Span<Decl*> params; bool isConst = false, isNoexcept = false; };
+// asCall: in a template argument list, the same tokens read as a call (`Frac<gcd(N, M)>`), for
+// the resolver to take when the parameter is a constant.
+struct FunctionType : Type { Type* result; Span<Decl*> params; bool isConst = false, isNoexcept = false; Expr* asCall = nullptr; };
 struct DecltypeType : Type { Expr* expr; bool isAuto = false; };
 struct AutoType : Type { bool isDecltypeAuto = false; };
 struct MemberPointerType : Type { Type* classType; Type* pointee; };

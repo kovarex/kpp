@@ -341,26 +341,39 @@ struct GlobalScope::Impl
           for (Decl* p : e.decl->templateParams)
           {
             templateParamNames.insert(static_cast<TemplateParamDecl*>(p)->name);
-            classifyTemplateParam(static_cast<TemplateParamDecl*>(p), scope);
+            classifyTemplateParam(static_cast<TemplateParamDecl*>(p), scope, e.decl->templateParams);
           }
           if (e.scope && e.scope != scope)
             collectTemplateParamNames(e.scope); // not a local class's own name in its scope
         }
     for (FunctionDecl* f : scope->outOfLineMembers)
       for (Decl* p : f->templateParams)
-        classifyTemplateParam(static_cast<TemplateParamDecl*>(p), lexicalScopeOf(f));
+        classifyTemplateParam(static_cast<TemplateParamDecl*>(p), lexicalScopeOf(f), f->templateParams);
   }
 
   // `template<Kind K>`: the parser cannot tell a constant parameter of a named type from a
   // constrained type parameter (`template<Concept T>`) and takes it for the latter; a name that
   // turns out to be a type, not a concept, makes it a constant parameter of that type.
-  void classifyTemplateParam(TemplateParamDecl* p, Scope* scope)
+  void classifyTemplateParam(TemplateParamDecl* p, Scope* scope, Span<Decl*> siblings)
   {
     if (!p->isType || !p->valueType || p->valueType->kind != NodeKind::NamedType)
       return;
     const QualifiedName& name = static_cast<NamedType*>(p->valueType)->name;
     if (name.empty() || name.last().hasTemplateArgs)
       return; // `Concept<X> T`
+    // `template<typename T, T V>`: an earlier type parameter of the same list.
+    if (name.parts.size() == 1)
+      for (Decl* sibling : siblings)
+      {
+        if (sibling == p)
+          break;
+        auto* s = static_cast<TemplateParamDecl*>(sibling);
+        if (s->isType && s->name == name.parts[0].symbol)
+        {
+          p->isType = false;
+          return;
+        }
+      }
     Lookup l = lookupQualified(name, scope, nullptr, 0);
     Decl* d = l.decl;
     if (d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
@@ -3294,6 +3307,65 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
+  // A constant argument has its parameter's type, read with the arguments before it (`template<
+  // class T, T V>`: V's type is the first argument), so that `Constant<bool, true>` and
+  // `Constant<bool, isSigned<T>>` with a signed T are one class whichever way the constant was
+  // computed (a literal is typed by the parameter's type unbound, a trait as bool).
+  void normalizeValueArgs(Span<Decl*> params, std::vector<const Ty*>& args, Decl* def, int depth)
+  {
+    for (size_t i = 0; i < args.size() && i < params.size(); ++i)
+    {
+      auto* p = static_cast<TemplateParamDecl*>(params[i]);
+      const Ty* a = args[i];
+      if (p->isType || p->isPack || !p->valueType || !a || a->kind != TyKind::Value || a->decl)
+        continue; // a function as a constant keeps its own type
+      LocalStack own;
+      Subst s;
+      for (size_t k = 0; k < params.size(); ++k)
+        own.push(static_cast<TemplateParamDecl*>(params[k])->name, params[k]);
+      for (size_t k = 0; k < i; ++k)
+        s.pairs.push_back({params[k], args[k]});
+      TypeContext vctx{lexicalScopeOf(def), &own, s.pairs.empty() ? nullptr : &s, def->file ? def->file->tokens : nullptr,
+                       def->file ? def->file->text : std::string_view()};
+      const Ty* of = types.unqualified(convertType(p->valueType, vctx, depth + 1));
+      if (of && of->isKnown() && !types.isDependent(of) && of != a->inner)
+        args[i] = types.valueType(of, of->kind == TyKind::Bool ? int64_t(a->value != 0) : a->value);
+    }
+  }
+
+  // Whether class type t (scope cls) is, or derives from, the class instance `base` exactly,
+  // through any of its bases as their arguments make them.
+  bool derivesFromInstance(const Ty* t, Scope* cls, const Ty* base, int depth)
+  {
+    if (!t || !cls || depth > 16)
+      return false;
+    if (types.unqualified(t) == base)
+      return true;
+    if (cls->baseTypes.empty() || !cls->owner)
+      return false;
+    Subst own = substFor(t);
+    LocalStack params;
+    for (Decl* p : cls->templateParams)
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    ParsedFile* file = cls->owner->file;
+    TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+    for (Type* b : cls->baseTypes)
+    {
+      const Ty* bt = convertType(b, ctx, depth + 1);
+      if (!bt || bt->kind != TyKind::Class || !bt->decl)
+        continue;
+      Scope* bs = bt->decl->ownScope;
+      if (!bs)
+      {
+        Entry e{bt->decl, nullptr};
+        bs = scopeOfEntry(e, 0);
+      }
+      if (derivesFromInstance(bt, bs, base, depth + 1))
+        return true;
+    }
+    return false;
+  }
+
   // The substitution a member found in scope foundIn sees through class type t: that of the
   // base instantiation the member is declared in (`ItemPrototype::IDType` with `using IDType =
   // IDTypeParameter;` in the base Prototype<ItemID>), else t's own.
@@ -3404,6 +3476,9 @@ struct GlobalScope::Impl
   {
     if (!arg)
       return types.unknown();
+    if (arg->kind == NodeKind::FunctionType && static_cast<FunctionType*>(arg)->asCall && param && param->kind == NodeKind::TemplateParamDecl &&
+        !static_cast<TemplateParamDecl*>(param)->isType)
+      arg = static_cast<FunctionType*>(arg)->asCall; // `Frac<gcd(N, M)>`: a call, for a constant parameter
     std::optional<int64_t> v;
     if (arg->kind == NodeKind::NamedType)
     {
@@ -3776,6 +3851,7 @@ struct GlobalScope::Impl
         else if (args.empty() && !params.empty() && !emptyPack)
           for (Decl* p : params)
             args.push_back(types.param(p));
+        normalizeValueArgs(params, args, def, depth);
         if (!params.empty())
           if (const Ty* spec = matchSpecialization(l, args, depth))
             return spec; // a full specialisation is its own class; a partial one keeps its own parameters' arguments
@@ -4079,7 +4155,7 @@ struct GlobalScope::Impl
         // `-> Future<decltype(callable())>` under an instantiation's arguments: the generic type of
         // a dependent expression (F) stands in for no call's result, so the expression is typed
         // anew with them.
-        if (ctx.function && ctx.subst && !ctx.subst->empty() && d->expr && (!generic->isKnown() || types.isDependent(generic)))
+        if ((ctx.function || ctx.tokens) && ctx.subst && !ctx.subst->empty() && d->expr && (!generic->isKnown() || types.isDependent(generic)))
           if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown() && !types.isDependent(typed))
             return typed;
         return generic;
@@ -4184,14 +4260,12 @@ struct GlobalScope::Impl
           result = types.voidType();
         else if (f->flags & DF_Conversion)
           result = convertType(f->name.last().convType, ctx, depth + 1);
-        else if (f->trailingReturn)
+        else
         {
           TypeContext rctx = ctx;
-          rctx.function = f;
-          result = convertType(f->trailingReturn, rctx, depth + 1);
+          rctx.function = f; // a decltype in the return type is typed anew under an instantiation's arguments
+          result = convertType(f->trailingReturn ? f->trailingReturn : f->returnType, rctx, depth + 1);
         }
-        else
-          result = convertType(f->returnType, ctx, depth + 1);
         std::vector<const Ty*> params;
         bool variadic = (f->flags & DF_Variadic) != 0;
         for (Decl* p : f->params)
@@ -4341,6 +4415,59 @@ struct GlobalScope::Impl
             if (astMentionsDecltype(arg, depth + 1))
               return true;
         return false;
+      default: return false;
+    }
+  }
+
+  // Whether a written type names something its generic conversion cannot keep for the
+  // substitution to fill in later: a decltype, a template argument computed from the
+  // parameters (`Conditional<(sizeof(A) < sizeof(B)), B, A>::Type`, `Frac<gcd(N, M)>`), or an
+  // alias template defined with one (`Wider<A, B>`). A signature written so is converted again
+  // with a call's deduced arguments. scope and locals: where t is written.
+  bool astNeedsArguments(Node* n, Scope* scope, const LocalStack* locals, int depth = 0)
+  {
+    if (!n || depth > 12)
+      return false;
+    switch (n->kind)
+    {
+      case NodeKind::DecltypeType: return !static_cast<DecltypeType*>(n)->isAuto;
+      case NodeKind::ConstType: return astNeedsArguments(static_cast<ConstType*>(n)->inner, scope, locals, depth + 1);
+      case NodeKind::PointerType: return astNeedsArguments(static_cast<PointerType*>(n)->pointee, scope, locals, depth + 1);
+      case NodeKind::LRefType: return astNeedsArguments(static_cast<LRefType*>(n)->referenced, scope, locals, depth + 1);
+      case NodeKind::RRefType: return astNeedsArguments(static_cast<RRefType*>(n)->referenced, scope, locals, depth + 1);
+      case NodeKind::NamedType:
+      {
+        auto* named = static_cast<NamedType*>(n);
+        bool hasArgs = false;
+        for (const NamePart& part : named->name.parts)
+          for (Node* arg : part.templateArgs)
+          {
+            hasArgs = true;
+            if (!arg)
+              continue;
+            if (isTypeNode(arg))
+            {
+              if (astNeedsArguments(arg, scope, locals, depth + 1))
+                return true;
+            }
+            else if (arg->kind != NodeKind::LiteralExpr &&
+                     !(arg->kind == NodeKind::NameExpr && static_cast<NameExpr*>(arg)->name.parts.size() == 1 &&
+                       !static_cast<NameExpr*>(arg)->name.parts[0].hasTemplateArgs))
+              return true; // a value computed from the parameters
+          }
+        if (!hasArgs)
+          return false;
+        Lookup l = lookupQualified(named->name, scope, locals, depth + 1);
+        if (l.decl && l.decl->kind == NodeKind::UsingAliasDecl && !l.decl->templateParams.empty())
+        {
+          auto* alias = static_cast<UsingAliasDecl*>(l.decl);
+          LocalStack own;
+          for (Decl* p : alias->templateParams)
+            own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+          return astNeedsArguments(alias->type, lexicalScopeOf(alias), &own, depth + 1);
+        }
+        return false;
+      }
       default: return false;
     }
   }
@@ -4926,7 +5053,19 @@ struct GlobalScope::Impl
   bool isBaseClass(const Ty* base, const Ty* derived)
   {
     if (isBaseScope(classScopeOf(base), classScopeOf(derived)))
-      return true;
+    {
+      // The scopes link a class template's instances as one: `IsPtr<int> : Constant<bool, false>`
+      // derives from no Constant<bool, true>. An instance is a base only as one the bases make
+      // (when they can be told).
+      const Ty* b = types.unqualified(types.stripRef(base));
+      const Ty* d = types.unqualified(types.stripRef(derived));
+      if (b->kind != TyKind::Class || b->args.empty() || !b->decl || !b->decl->ownScope || types.isDependent(b) || types.isDependent(d))
+        return true;
+      if (derivesFromInstance(d, classScopeOf(d), b, 0))
+        return true;
+      const Ty* actual = instantiationOfBase(d, classScopeOf(d), b->decl->ownScope, 0);
+      return !actual || !actual->isKnown() || types.isDependent(actual) || mentionsUnknown(actual);
+    }
     derived = types.unqualified(types.stripRef(derived));
     base = types.unqualified(types.stripRef(base));
     if (derived->decl == base->decl)
@@ -5480,20 +5619,23 @@ struct GlobalScope::Impl
   {
     static thread_local int nesting = 0;
     FunctionDecl* f = ctx.function;
-    if (!f || !f->file || !f->file->tokens || nesting > 8)
+    const std::vector<Token>* tokens = f && f->file ? f->file->tokens : ctx.tokens; // an alias template's: its own
+    std::string_view text = f && f->file ? f->file->text : ctx.text;
+    if (!tokens || nesting > 8)
       return nullptr;
     ++nesting;
     InstanceCopier copier(instanceArena());
     Expr* copy = copier.expression(e);
     ResolveStats scratch;
-    Walker probe(*this, scratch, *f->file->tokens, f->file->text);
-    probe.file = f->file;
+    Walker probe(*this, scratch, *tokens, text);
+    probe.file = f ? f->file : nullptr;
     probe.scope = ctx.scope;
     probe.activeSubst = ctx.subst;
     if (ctx.locals)
       probe.locals = *ctx.locals;
-    for (Decl* p : f->params)
-      probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
+    if (f)
+      for (Decl* p : f->params)
+        probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
     const Ty* t = probe.walkExpr(copy);
     --nesting;
     return t;
@@ -7231,10 +7373,14 @@ struct GlobalScope::Impl
           }
         }
         const Ty* result = impl.substitute(fnTy->inner, subst);
-        if (f->trailingReturn && Impl::astMentionsDecltype(f->trailingReturn))
+        Type* written = f->trailingReturn ? f->trailingReturn : f->returnType;
+        LocalStack own;
+        Impl::pushEnclosingTemplateParams(f, own);
+        if ((f->trailingReturn && Impl::astMentionsDecltype(f->trailingReturn)) || impl.astNeedsArguments(written, impl.lexicalScopeOf(f), &own))
         {
-          // `-> Future<decltype(callable())>`: typed again with the deduced arguments, since the
-          // generic type of the call (F) substituted is the closure, not what calling it gives.
+          // `-> Future<decltype(callable())>`, `typename Conditional<(sizeof(A) < sizeof(B)), B,
+          // A>::Type`: typed again with the deduced arguments, since the generic type substituted
+          // keeps neither what calling the closure gives nor which specialisation the condition picks.
           Subst all = subst;
           if (forType)
             for (const Subst::Pair& p : forType->pairs)
