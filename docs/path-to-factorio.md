@@ -1099,6 +1099,58 @@ against the game's Lua headers compiled as C++.
 All of this goes when Lua itself is converted: the game's code then uses Lua's types and macros as
 Kpp code, and kpp_lua_internals.h, lua_internals.c and the `included` lines are deleted.
 
+### Converting Lua: the plan (2026-10-29, not started)
+
+**What.** `libraries/Lua`: 59 files, 21,449 lines (lua.c and luac.c, the standalone interpreter
+and compiler, left out as the game's build leaves them out). fbuild.bff compiles it as C++ (`/TP`)
+with LUA_COMPAT_ALL and `override_printf.h` force-included, which sends the printf family to trio
+so that numbers format the same on every platform.
+
+**The game's changes** (C:\Factorio's history: 136 commits since the import of Lua 5.2.1 in 2012,
++2,902/-855 lines in 47 files):
+- *Determinism.* lmathlib.c computes the math functions itself instead of calling libc (+738
+  lines, for the same results on every platform; atan2 of NaN), float to int conversions without
+  undefined behaviour, the bit library's tricks replaced, string.format of 64-bit integers, printf
+  through trio.
+- *Tables.* Iteration in insertion order (ltable.c), a flag field for recursion detection, integer
+  keys looked up without a rehash, table constructors and SETLIST that size the array part right,
+  large sequential tables saved and loaded correctly; userdata and tables point at the game object
+  they bind (LuaBindableObject) instead of a `__self` field.
+- *Mods kept in their sandbox.* load() takes no binary chunks and lundump.c checks bytecode
+  (+298); the VM rejects manufactured SETLIST and FORLOOP uses; the debug library cannot mutate
+  (debug.setupvalue not on C functions), debug.getinfo has an option 'p'; external libraries
+  cannot be loaded and the unused io, os and coroutine parts are not exported.
+- *Additions.* string.pack, packsize and unpack from Lua 5.4.6 (lstrlib.c, +473); API in lapi.c
+  (+280) for the binder and its error messages ("bad argument #4 of 4", stack traces that stop at
+  pCallWithStackTrace's frame); the collector stays blocked during __gc calls; 5.2.3's ephemeron fix.
+
+**How.**
+1. The converter reads `.cpp`/`.hpp`: it takes Lua's `.c` files as the C++ they are compiled as,
+   with the library's define and force-included header, into `kpp\Lua\` beside LuaCPPUtilities.kpp
+   (convert.cmd and the headline command already build kpp\Lua).
+2. Converter work, from the trial below: macros that are member lists (`CommonHeader`,
+   `TValuefields`, `ClosureHeader`) expanded in class bodies; macros that name types (`LUA_NUMBER`
+   behind lua_Number, `l_noret`); string macros joined to literals (`LUA_QS`).
+3. Until the converted Lua compiles almost clean on its own, the game keeps the import. Then the
+   switch: `#include <Lua/...>` stops being an import (the converter's Lua rules go), the game's
+   code calls the converted lua_*, luaH_* and TValue directly, and lua_internals.c,
+   kpp_lua_internals.h, the `included` lines of expand-macros.txt and lua.lib in link.cmd are
+   deleted. The Lua smoke test stays as a check of the converted layout against the C++ build's.
+4. Lua's own formatting keeps trio (trio.lib stays linked): the converter's trio-to-CRT renames are
+   for the game's code, and Lua's tostring and string.format must format as the C++ build does
+   (saves, and multiplayer between the two builds).
+5. Checks: a Lua script run by both builds with the same output (number formatting, pairs order,
+   the math functions to the bit, string.pack), then the game's own Lua tests.
+
+**What it costs, measured.** The trial (Lua's `.c` copied as `.cpp`, converted with today's
+converter, built alone the headline's way): 564 error lines, with parse errors in 15 files. The
+largest causes are the converter's: the member-list macros (about 200 lines: lua_State 115,
+lua_TValue 17, the other GC objects) and the type macros (about 150: SemInfo's `lua_Number r` 81,
+`nval` 35, conversions of what they leave unknown). So the switch in step 3 would add about 560 to
+the headline today; after step 2, an estimated 100 to 150, compiler gaps in C-style code (unions
+of GC objects, casts between them, exceptions as Lua's error mechanism). The game's side should not
+change: it compiles against the import now.
+
 ### What the parse of the C++ does not see (2026-10-29)
 
 The front end parses the game's C++ to convert it, with the #if branches the configuration drops
