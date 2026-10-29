@@ -198,8 +198,8 @@ set (they are in its key, or hashed and checked per build).
   GetEnvironmentStringsW returns it). A string is a u32 byte count and the bytes. The server sets
   the directory and replaces its environment with the client's (TMP holds the C import cache, LIB
   and INCLUDE are clang's link's, KPP_CLANG...).
-- **Answer:** frames of a u8 type (1 stdout, 2 stderr, 3 exit code), a u32 count and the bytes,
-  ending with the exit code's frame. The build's stdout and stderr (the CRT streams, descriptors
+- **Answer:** frames of a u8 type (1 stdout, 2 stderr, 3 exit code, 4 the server's process id,
+  sent first), a u32 count and the bytes, ending with the exit code's frame. The build's stdout and stderr (the CRT streams, descriptors
   1 and 2, and the standard handles clang inherits through system()) are pipes that two threads
   forward as frames, so clang's own messages reach the client too.
 - **One build at a time,** on a new thread with the executable's 8 MB stack, so that thread-local
@@ -207,7 +207,15 @@ set (they are in its key, or hashed and checked per build).
   (where a process now exits without freeing), the server sends the exit code and lets the client
   go, then frees what the build made; a client arriving meanwhile waits for the pipe.
 - **Lifetime:** the server exits after an hour without a request, on a stop request, or when it
-  crashes (the client then builds in its own process). A tool that waits for the client's whole
+  crashes. It logs each of these, and each build's start and exit code, to
+  `%TEMP%\kppc-server\KEY.log` (a crash's exception code and address from its crash handler).
+  The processes a build starts are in a job that ends with the server (kill on close), so nothing
+  of a dead server's build goes on writing. A client that loses its server before the exit code
+  waits for the server's process to end (ending it after 30 s), says so on stderr with the read
+  error and the log's last line, and builds in its own process. (A run_tests flake of the first
+  version: the fallback's link found the executable still locked, LNK1104, by the server's link;
+  checked since by killing a server in the middle of a full-game build: the client waited, said
+  why, and built the game itself.) A tool that waits for the client's whole
   process tree (PowerShell's `Start-Process -Wait`, a job object without breakaway) waits for the
   server too; the client asks for breakaway from its job and falls back to staying in it.
 - **Checked by** tests/incremental.ps1 (in run_tests): a copy of tests/incremental is built through

@@ -5,6 +5,8 @@
 #include <io.h>
 #include <atomic>
 #include <chrono>
+#include <csignal>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -17,14 +19,66 @@
 // one client at a time. A request: "KPS1", a u32 kind (1 build, 2 stop), then for a build the
 // kppc path the client ran, its working directory, its arguments (a u32 count, then each) and its
 // environment (UTF-16, as GetEnvironmentStringsW gives it); a string is a u32 byte count and the
-// bytes. The answer: frames of a u8 type (1 stdout, 2 stderr, 3 exit code), a u32 byte count and
-// the bytes, ending with the exit code's frame.
+// bytes. The answer: frames of a u8 type (1 stdout, 2 stderr, 3 exit code, 4 the server's process
+// id, sent first), a u32 byte count and the bytes, ending with the exit code's frame. The server
+// logs what it does to %TEMP%\kppc-server\KEY.log: a client that loses its server says why.
 
 namespace
 {
   const uint32_t buildRequest = 1, stopRequest = 2;
-  const uint8_t stdoutFrame = 1, stderrFrame = 2, exitFrame = 3;
+  const uint8_t stdoutFrame = 1, stderrFrame = 2, exitFrame = 3, processFrame = 4;
   const int64_t idleSeconds = 3600;
+
+  std::string serverDirectory()
+  {
+    char temp[MAX_PATH * 4];
+    DWORD n = GetTempPathA(DWORD(sizeof temp), temp);
+    return std::string(temp, n) + "kppc-server\\";
+  }
+
+  std::string logPath(const std::string& key) { return serverDirectory() + key + ".log"; }
+
+  // The server's log: a line per event, with the time. Opened and closed per line, so that a crash
+  // loses nothing (and the line about the crash is written from the crash handler).
+  std::string serverLog;
+  void logLine(const char* format, ...)
+  {
+    if (serverLog.empty())
+      return;
+    char text[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(text, sizeof text, format, args);
+    va_end(args);
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    if (FILE* f = fopen(serverLog.c_str(), "ab"))
+    {
+      fprintf(f, "%04d-%02d-%02d %02d:%02d:%02d.%03d [%lu] %s\n", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds,
+              GetCurrentProcessId(), text);
+      fclose(f);
+    }
+  }
+
+  // The last line of a log, for a client whose server ended.
+  std::string lastLogLine(const std::string& path)
+  {
+    std::string text;
+    if (FILE* f = fopen(path.c_str(), "rb"))
+    {
+      char buffer[1 << 16];
+      fseek(f, 0, SEEK_END);
+      long size = ftell(f);
+      fseek(f, std::max(0L, size - long(sizeof buffer)), SEEK_SET);
+      size_t n = fread(buffer, 1, sizeof buffer, f);
+      fclose(f);
+      text.assign(buffer, n);
+    }
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+      text.pop_back();
+    size_t start = text.rfind('\n');
+    return start == std::string::npos ? text : text.substr(start + 1);
+  }
 
   bool writeAll(HANDLE h, const void* data, size_t size)
   {
@@ -132,9 +186,7 @@ namespace
   // itself can be rebuilt while a server runs (Windows keeps a running executable locked).
   bool startServer(const std::string& exe, const std::string& key, const std::string& cwd)
   {
-    char temp[MAX_PATH * 4];
-    DWORD n = GetTempPathA(DWORD(sizeof temp), temp);
-    std::string dir = std::string(temp, n) + "kppc-server\\";
+    std::string dir = serverDirectory();
     CreateDirectoryA(dir.c_str(), nullptr);
     std::string copy = dir + key + ".exe";
     if (GetFileAttributesA(copy.c_str()) == INVALID_FILE_ATTRIBUTES)
@@ -176,8 +228,10 @@ namespace
     HANDLE outRead = nullptr, errRead = nullptr;
     std::thread outForward, errForward;
     bool answered = false;
+    bool clientLost = false; // a write to the client failed: it went away (the build goes on, unseen)
   };
   Session* session = nullptr;
+  size_t builds = 0;
   std::atomic<bool> busy{false};
   std::atomic<int64_t> lastActivity{0};
 
@@ -189,10 +243,16 @@ namespace
   bool sendFrame(Session& s, uint8_t type, const void* data, uint32_t size)
   {
     std::lock_guard lock(s.writeLock);
+    if (s.clientLost)
+      return false;
     char head[5];
     head[0] = char(type);
     memcpy(head + 1, &size, 4);
-    return writeAll(s.client, head, 5) && (size == 0 || writeAll(s.client, data, size));
+    if (writeAll(s.client, head, 5) && (size == 0 || writeAll(s.client, data, size)))
+      return true;
+    s.clientLost = true;
+    logLine("build %zu: the client went away (write failed, error %lu)", builds, GetLastError());
+    return false;
   }
 
   void forward(Session& s, HANDLE from, uint8_t type)
@@ -349,9 +409,15 @@ namespace
     char magic[4];
     uint32_t kind = 0;
     if (!readAll(client, magic, 4) || memcmp(magic, "KPS1", 4) != 0 || !readU32(client, kind))
+    {
+      logLine("a client sent no request");
       return true;
+    }
+    DWORD self = GetCurrentProcessId();
+    sendFrame(s, processFrame, &self, 4); // so that a client that loses the server can wait for it to end
     if (kind == stopRequest)
     {
+      logLine("stopped by a client");
       int zero = 0;
       sendFrame(s, exitFrame, &zero, 4);
       FlushFileBuffers(client);
@@ -370,7 +436,11 @@ namespace
       args.push_back(std::move(a));
     }
     if (!readString(client, environment))
+    {
+      logLine("a client's request was cut short");
       return true;
+    }
+    logLine("build %zu: %u arguments, in %s", ++builds, argc, cwd.c_str());
     applyEnvironment(environment);
     SetCurrentDirectoryA(cwd.c_str());
     if (!redirectOutput(s))
@@ -385,6 +455,7 @@ namespace
     int result = runBuild(compile, std::move(args));
     answer(s, result); // if the build did not answer itself (usage errors, --dump)
     session = nullptr;
+    logLine("build %zu done, exit %d%s", builds, result, s.clientLost ? " (its client went away before the answer)" : "");
     return true;
   }
 
@@ -440,6 +511,7 @@ int runClient(int argc, char** argv, CompileFunction compile)
     FreeEnvironmentStringsW(block);
   }
   putString(request, environment);
+  DWORD serverProcess = 0;
   if (writeAll(pipe, request.data(), request.size()))
   {
     std::string data;
@@ -460,13 +532,34 @@ int runClient(int argc, char** argv, CompileFunction compile)
         CloseHandle(pipe);
         return code;
       }
+      if (head[0] == processFrame && size == 4)
+      {
+        memcpy(&serverProcess, data.data(), 4);
+        continue;
+      }
       FILE* to = head[0] == stderrFrame ? stderr : stdout;
       fwrite(data.data(), 1, size, to);
       fflush(to);
     }
   }
+  DWORD readError = GetLastError();
   CloseHandle(pipe);
-  fprintf(stderr, "kppc: the compile server ended without finishing the build; building in this process\n");
+  // The server is gone or going: before building here, wait until it has ended (its job ends
+  // the clang and link it started with it), so that nothing of its build still writes the outputs;
+  // one that does not end is ended.
+  if (serverProcess)
+    if (HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, FALSE, serverProcess))
+    {
+      if (WaitForSingleObject(process, 30000) != WAIT_OBJECT_0)
+      {
+        TerminateProcess(process, 1);
+        WaitForSingleObject(process, 30000);
+      }
+      CloseHandle(process);
+    }
+  std::string why = lastLogLine(logPath(key));
+  fprintf(stderr, "kppc: the compile server ended without finishing the build (read error %lu; its log, %s, ends: %s); building in this process\n",
+          readError, logPath(key).c_str(), why.empty() ? "(nothing)" : why.c_str());
   return compile(argc, argv);
 }
 
@@ -477,24 +570,51 @@ int runServer(const char* key, CompileFunction compile)
                                  PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 1 << 16, 1 << 16, 0, nullptr);
   if (pipe == INVALID_HANDLE_VALUE)
     return 1; // another server has the key
+  serverLog = logPath(key);
+  logLine("started");
+  // The processes a build starts (clang, its link) end with the server, whatever ends it: a client
+  // that lost its server must not find the server's link still writing the executable.
+  if (HANDLE job = CreateJobObjectA(nullptr, nullptr))
+  {
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof limits);
+    if (!AssignProcessToJobObject(job, GetCurrentProcess()))
+      logLine("cannot put itself in a job (error %lu): a crash may leave a build's clang running", GetLastError());
+  }
+  // Why it ended, for the client that loses it.
+  SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* e) -> LONG
+  {
+    logLine("crashed in build %zu: exception 0x%08lX at %p", builds, e->ExceptionRecord->ExceptionCode, e->ExceptionRecord->ExceptionAddress);
+    return EXCEPTION_EXECUTE_HANDLER;
+  });
+  signal(SIGABRT, [](int) { logLine("aborted in build %zu", builds); });
   // A detached process has no console, so its streams have no descriptors: give them some.
   freopen("NUL", "wb", stdout);
   freopen("NUL", "wb", stderr);
   setvbuf(stdout, nullptr, _IONBF, 0);
   lastActivity = nowSeconds();
+  static std::mutex idleMutex; // the idle check and the start of a client's service exclude each other
   std::thread([]
   {
     for (;;)
     {
       Sleep(60 * 1000);
+      std::lock_guard lock(idleMutex);
       if (!busy && nowSeconds() - lastActivity > idleSeconds)
+      {
+        logLine("idle for an hour: exiting");
         ExitProcess(0);
+      }
     }
   }).detach();
   for (;;)
   {
     bool connected = ConnectNamedPipe(pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
-    busy = true;
+    {
+      std::lock_guard lock(idleMutex);
+      busy = true;
+    }
     bool goOn = !connected || serveClient(pipe, compile);
     DisconnectNamedPipe(pipe);
     lastActivity = nowSeconds();
@@ -516,8 +636,10 @@ int stopServer(int argc, char** argv)
   }
   std::string request = requestHeader(stopRequest);
   writeAll(pipe, request.data(), request.size());
-  char head[9];
-  readAll(pipe, head, 9);
+  // Its process id, then the exit code: read up to the exit code, so that the server's last write
+  // finds the client still there.
+  for (char frame[9]; readAll(pipe, frame, 9) && frame[0] != char(exitFrame);)
+    ;
   CloseHandle(pipe);
   printf("compile server stopped\n");
   return 0;
