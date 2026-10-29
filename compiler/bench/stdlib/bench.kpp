@@ -50,9 +50,9 @@ void run(const char* name, F body)
   for (int round = 0; round < 7; ++round)
   {
     randomState = 88172645463325252ull;
-    TimePoint start = Clock::now();
+    auto start = SteadyClock::now();
     checksum = body();
-    double elapsed = (Clock::now() - start).milliseconds();
+    double elapsed = Duration<double, Milli>(SteadyClock::now() - start).count();
     if (elapsed < best)
       best = elapsed;
   }
