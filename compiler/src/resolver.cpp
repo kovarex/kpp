@@ -2777,7 +2777,7 @@ struct GlobalScope::Impl
   // through (`Bits<uint64_t>::count`).
   std::optional<int64_t> constOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr)
   {
-    if (!d || depth > 16)
+    if (!d || depth > 96)
       return std::nullopt;
     if (d->kind == NodeKind::TemplateParamDecl)
     {
@@ -3052,9 +3052,11 @@ struct GlobalScope::Impl
     return v;
   }
 
+  // depth: nesting of the evaluation, calls included (`ratioGcd(b, a % b)` recursing a few times
+  // inside a static member's initializer inside a requires clause).
   std::optional<int64_t> constEval(Expr* e, const TypeContext& ctx, int depth = 0)
   {
-    if (!e || depth > 16)
+    if (!e || depth > 96)
       return std::nullopt;
     switch (e->kind)
     {
@@ -3528,7 +3530,7 @@ struct GlobalScope::Impl
   Subst qualifierSubst(const QualifiedName& name, const TypeContext& ctx, int depth, Scope* foundIn = nullptr)
   {
     Subst s;
-    if (name.parts.size() < 2 || depth > 20)
+    if (name.parts.size() < 2 || depth > 96) // (called with constEval's depth, which nests calls)
       return s;
     // The qualifier as a type: `Vector<int>::`, or `VT::` with `using VT = Vector<int>`.
     QualifiedName prefix = name;
