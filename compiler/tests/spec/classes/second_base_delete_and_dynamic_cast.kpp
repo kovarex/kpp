@@ -1,0 +1,40 @@
+// spec: through a second polymorphic base: delete runs the whole object's destructors and frees it from its start, dynamic_cast goes down and across (the pointer moved by the bases' offsets), typeid names the whole object's class
+// factorio: dynamic_cast from a second base (PostTransferNotifiable, Targetable) to the entity classes; unique pointers to an interface that is a second base
+class Shape
+{
+public:
+  int sides = 0;
+  virtual ~Shape() { println("~Shape"); }
+};
+class Printable
+{
+public:
+  int copies = 1;
+  virtual ~Printable() { println("~Printable"); }
+  virtual int print() const { return 0; }
+};
+class Square : public Shape, public Printable
+{
+public:
+  int side = 3;
+  Square() { this->sides = 4; }
+  ~Square() override { println("~Square"); }
+  int print() const override { return this->side * this->side; }
+};
+class Circle : public Shape
+{
+public:
+  int radius = 2;
+};
+int main()
+{
+  Square* sq = new Square();
+  Printable* p = sq;
+  Shape* s = dynamic_cast<Shape*>(p);
+  Square* back = dynamic_cast<Square*>(p);
+  Circle* none = dynamic_cast<Circle*>(p);
+  Printable* across = dynamic_cast<Printable*>(s);
+  printf("%d %d %d %d %d %s\n", p->print(), s->sides, back == sq ? 1 : 0, none == nullptr ? 1 : 0, across == p ? 1 : 0, typeid(*p).name());
+  delete p;
+  return 0;
+}

@@ -39,6 +39,25 @@ static int callWithStackGuard(void(*fn)(void*), void* arg)
 //   arguments of the instantiation being emitted (or of the class whose metadata is inspected).
 namespace
 {
+  // One slot of a vtable: the function it calls (the final overrider), the class that function is
+  // a member of, and the base fields from the vtable's class down to that class's subobject, where
+  // `this` has to point (a thunk moves it there from the subobject whose vtable pointer was used).
+  struct VtableSlot
+  {
+    std::string key;                  // name(param types) [const], "~" for the destructor
+    FunctionDecl* function = nullptr; // null: pure virtual, or (key "~") the owner's implicit destructor
+    const Ty* owner = nullptr;
+    std::vector<uint32_t> ownerPath;
+  };
+  // One vtable pointer in the objects of a class, and the table it points at (design.md section 9).
+  struct Vtable
+  {
+    std::vector<uint32_t> path;       // base fields from the class down to the subobject holding the pointer (empty: offset 0)
+    std::vector<VtableSlot> slots;
+    std::string name;                 // @"vtable.C" for the primary, @"vtable.C.1" and on for the others
+    std::string vptrValue;            // what the pointer holds: the address of the first function's slot
+  };
+
   struct StructInfo
   {
     std::string name;                        // %struct.N
@@ -53,17 +72,17 @@ namespace
     std::vector<bool> zeroSize;              // per field: an empty base laid out without storage
     bool packed = false;                     // [[packed]]: `<{ ... }>`, every member at alignment 1
     std::optional<bool> needsDestruction;
-    // Virtual functions: a polymorphic class has a vtable pointer at offset 0 (its own, or the
-    // one of its first base). Slots are shared with the base and extended in declaration order.
+    // Virtual functions: a polymorphic class has a vtable pointer at offset 0 (its own, or its
+    // primary base's: the first polymorphic one), whose slots extend the primary base's in
+    // declaration order, and one in each other polymorphic base's subobject (vtables[1] and on).
     bool polymorphic = false;
-    std::vector<std::string> vtableKeys;      // name(param types) [const], "~" for the destructor
-    std::vector<FunctionDecl*> vtable;        // implementation per slot (null for pure virtual)
-    std::vector<const Ty*> vtableOwners;      // class type each implementation belongs to
-    std::string vtableName;                   // @"vtable.Class"
-    std::string vtableText;                   // its definition, emitted into every module that stores it
-    std::string vptrValue;                    // what an object's vtable pointer holds: the address of the first function's slot
-    std::string typeInfoName;                 // @"typeinfo.Class": { ptr name, ptr base descriptor }, what slot -1 points to
-    const Ty* primaryBase = nullptr;          // the polymorphic first base, whose descriptor the chain continues with
+    std::vector<Vtable> vtables;              // the primary first
+    std::string vtableName;                   // @"vtable.Class", the primary's: which modules have the vtables
+    std::string vtableText;                   // the vtables and their thunks, emitted into every module that stores them
+    std::string vptrValue;                    // what the primary vtable pointer holds
+    std::string typeInfoName;                 // @"typeinfo.Class", the descriptor slot -1 points to (descriptorFor)
+    std::string descriptorText;               // its definition, emitted into every module that uses it
+    const Ty* primaryBase = nullptr;          // the polymorphic base at offset 0
     bool isUnion = false;                     // all members at offset 0, storage sized for the largest
     std::vector<std::pair<Decl*, uint32_t>> anonymous; // anonymous struct/union members -> field index
     std::unordered_map<Decl*, std::pair<uint32_t, uint32_t>> bitfields; // member -> (shift, width) inside its storage field
@@ -959,63 +978,34 @@ namespace
         structFor(baseKey, at);
         baseKeys.push_back(baseKey);
       }
-      // Virtual methods of this class: declared virtual/override, or matching an inherited slot.
-      bool primaryPolymorphic = !baseKeys.empty() && structs[baseKeys[0]].polymorphic;
-      for (size_t i = 1; i < baseKeys.size(); ++i)
+      // The primary base is the first polymorphic one: at offset 0, its vtable pointer the class's
+      // own. A polymorphic class without a polymorphic base has a vtable pointer of its own there.
+      // The polymorphic bases are laid out first, then the others (MSVC's layout, design.md section
+      // 9); info.bases keeps declaration order, the order bases are built in.
+      int primary = -1;
+      for (size_t i = 0; i < baseKeys.size() && primary < 0; ++i)
         if (structs[baseKeys[i]].polymorphic)
-          layoutError("a second polymorphic base, " + types.toString(baseKeys[i], &symbols) +
-                      " (one vtable pointer per object: multiple inheritance of virtual functions is not implemented)");
-      std::vector<std::string> keys;
-      std::vector<FunctionDecl*> impls;
-      std::vector<const Ty*> owners;
-      if (primaryPolymorphic)
-      {
-        keys = structs[baseKeys[0]].vtableKeys;
-        impls = structs[baseKeys[0]].vtable;
-        owners = structs[baseKeys[0]].vtableOwners;
-      }
-      {
-        ArgsScope scope(*this, &args);
+          primary = int(i);
+      bool ownVptr = false;
+      if (primary < 0)
         for (Decl* m : c->members)
-        {
-          if (m->kind != NodeKind::FunctionDecl || (m->flags & (DF_Static | DF_Constructor)) || !m->templateParams.empty())
-            continue;
-          auto* f = static_cast<FunctionDecl*>(m);
-          std::string k = methodKey(f);
-          size_t slot = keys.size();
-          for (size_t i = 0; i < keys.size(); ++i)
-            if (keys[i] == k)
-              slot = i;
-          bool isVirtual = (f->flags & (DF_Virtual | DF_Override)) || slot < keys.size();
-          if (!isVirtual)
-            continue;
-          if (slot == keys.size())
+          if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override)) && !(m->flags & (DF_Static | DF_Constructor)) &&
+              m->templateParams.empty())
+            ownVptr = true;
+      info.polymorphic = primary >= 0 || ownVptr;
+      info.primaryBase = primary >= 0 ? baseKeys[primary] : nullptr;
+      if (ownVptr)
+        info.fieldTypes.push_back(types.pointer(types.voidType()));
+      std::vector<uint32_t> baseIndex(baseKeys.size());
+      for (bool polymorphicPass : {true, false})
+        for (size_t i = 0; i < baseKeys.size(); ++i)
+          if (structs[baseKeys[i]].polymorphic == polymorphicPass)
           {
-            keys.push_back(k);
-            impls.push_back(f);
-            owners.push_back(key);
+            baseIndex[i] = uint32_t(info.fieldTypes.size());
+            info.fieldTypes.push_back(baseKeys[i]);
           }
-          else
-          {
-            impls[slot] = f;
-            owners[slot] = key;
-          }
-        }
-      }
-      if (!keys.empty())
-      {
-        info.polymorphic = true;
-        if (!primaryPolymorphic)
-          info.fieldTypes.push_back(types.pointer(types.voidType())); // own vtable pointer at offset 0
-      }
-      for (const Ty* baseKey : baseKeys)
-      {
-        info.bases.push_back({baseKey->decl, uint32_t(info.fieldTypes.size())});
-        info.fieldTypes.push_back(baseKey);
-      }
-      info.vtableKeys = keys;
-      info.vtable = impls;
-      info.vtableOwners = owners;
+      for (size_t i = 0; i < baseKeys.size(); ++i)
+        info.bases.push_back({baseKeys[i]->decl, baseIndex[i]});
       int bitUnitIndex = -1;    // the storage field the current run of bit fields shares
       const Ty* bitUnitType = nullptr;
       uint32_t bitUsed = 0;
@@ -1123,49 +1113,242 @@ namespace
       info.complete = true;
       if (structs[key].polymorphic)
       {
-        std::string vt = "@\"vtable." + irString(key) + "\"";
-        structs[key].vtableName = vt;
-        std::vector<FunctionDecl*> impls2 = structs[key].vtable;
-        std::vector<const Ty*> owners2 = structs[key].vtableOwners;
-        std::vector<std::string> keys2 = structs[key].vtableKeys;
-        // The vtable pointer points at the first function's slot, the functions following in
-        // declaration order (MSVC's layout and COM's: a C object's table of functions is called as
-        // a Kpp class's, and the reverse). Just before it, slot -1, is the class's descriptor (where
-        // MSVC keeps its RTTI locator): its name (typeid) and the primary base's descriptor, which
-        // dynamic_cast walks.
-        std::string ti = "@\"typeinfo." + irString(key) + "\"";
-        structs[key].typeInfoName = ti;
-        structs[key].primaryBase = primaryPolymorphic ? baseKeys[0] : nullptr;
-        bool savedShared = emittingShared;
-        emittingShared = true; // the vtable text goes into every module that uses it
-        std::string nameConstant = cStringConstant(types.toString(key, &symbols));
-        emittingShared = savedShared;
-        std::string baseDescriptor = primaryPolymorphic ? structs[baseKeys[0]].typeInfoName : std::string("null");
-        std::string descriptor = "$" + ti.substr(1) + " = comdat any\n" + ti + " = linkonce_odr constant { ptr, ptr } { ptr " + nameConstant +
-                                 ", ptr " + baseDescriptor + " }, comdat\n";
-        std::string entries = "ptr " + ti;
-        {
-          // The vtable asks for its functions, not whichever function happened to need the layout
-          // first (the requester the diagnostics name, the same in every run).
-          struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = std::move(saved); } } restore{currentFunctionName, currentFunctionName};
-          currentFunctionName = "the vtable of " + types.toString(key, &symbols);
-          for (size_t i = 0; i < impls2.size(); ++i)
-          {
-            FunctionDecl* f = impls2[i];
-            std::string entry = "ptr null";
-            if (keys2[i] == "~" && owners2[i] != key)
-              entry = "ptr " + implicitDestructor(key, at); // a class declaring none still destroys its own members
-            else if (f && !(f->flags & DF_Pure))
-              entry = "ptr " + useFunction(f, global.classArgsOf(owners2[i]), owners2[i]);
-            entries += ", " + entry;
-          }
-        }
-        std::string tableType = "[" + std::to_string(impls2.size() + 1) + " x ptr]";
-        structs[key].vtableText = descriptor + "$" + vt.substr(1) + " = comdat any\n" + vt + " = linkonce_odr constant " + tableType + " [" +
-                                  entries + "], comdat\n";
-        structs[key].vptrValue = "getelementptr inbounds (" + tableType + ", ptr " + vt + ", i64 0, i64 1)";
+        // The base fields are final now (alignPadding may have moved them).
+        std::vector<uint32_t> finalIndex;
+        for (auto& [baseDef, index] : structs[key].bases)
+          finalIndex.push_back(index);
+        structs[key].vtables = collectVtables(key, c, args, baseKeys, finalIndex, primary);
+        emitVtables(key, at);
       }
       return structs[key];
+    }
+
+    // The vtables of class key (design.md section 9): the primary one extends the primary base's
+    // (or starts empty, the class's own); then every vtable of the other polymorphic bases, and those
+    // of the primary base after its first, as the bases have them, at the bases' places. The class's
+    // virtual functions take the slots they override in all of them; one that overrides no slot of
+    // the primary vtable also gets a slot there, so that a call through the class needs no thunk.
+    std::vector<Vtable> collectVtables(const Ty* key, ClassDecl* c, const TemplateArgs& args, const std::vector<const Ty*>& baseKeys,
+                                       const std::vector<uint32_t>& baseIndex, int primary)
+    {
+      std::vector<Vtable> tables(1);
+      for (size_t i = 0; i < baseKeys.size(); ++i)
+      {
+        std::vector<Vtable> inherited = structs[baseKeys[i]].vtables;
+        for (size_t j = 0; j < inherited.size(); ++j)
+        {
+          Vtable& t = inherited[j];
+          for (VtableSlot& s : t.slots)
+            s.ownerPath.insert(s.ownerPath.begin(), baseIndex[i]);
+          if (int(i) == primary && j == 0)
+          {
+            tables[0].slots = std::move(t.slots);
+            continue;
+          }
+          t.path.insert(t.path.begin(), baseIndex[i]);
+          t.name.clear();
+          t.vptrValue.clear();
+          tables.push_back(std::move(t));
+        }
+      }
+      auto addToPrimary = [&](const VtableSlot& slot)
+      {
+        for (const VtableSlot& s : tables[0].slots)
+          if (s.key == slot.key)
+            return;
+        tables[0].slots.push_back(slot);
+      };
+      bool declaresDestructor = false;
+      {
+        ArgsScope scope(*this, &args);
+        for (Decl* m : c->members)
+        {
+          if (m->kind != NodeKind::FunctionDecl || (m->flags & (DF_Static | DF_Constructor)) || !m->templateParams.empty())
+            continue;
+          auto* f = static_cast<FunctionDecl*>(m);
+          declaresDestructor = declaresDestructor || (f->flags & DF_Destructor);
+          VtableSlot own{methodKey(f), f, key, {}};
+          bool overrides = false;
+          for (Vtable& t : tables)
+            for (VtableSlot& s : t.slots)
+              if (s.key == own.key)
+              {
+                s = own;
+                overrides = true;
+              }
+          if (overrides || (f->flags & (DF_Virtual | DF_Override)))
+            addToPrimary(own);
+        }
+      }
+      if (!declaresDestructor)
+      {
+        // A class that declares no destructor has an implicit one, virtual when a base's is: it
+        // destroys this class's members too, so it takes the destructor slots.
+        VtableSlot implicit{"~", nullptr, key, {}};
+        bool virtualDestructor = false;
+        for (Vtable& t : tables)
+          for (VtableSlot& s : t.slots)
+            if (s.key == "~")
+            {
+              s = implicit;
+              virtualDestructor = true;
+            }
+        if (virtualDestructor)
+          addToPrimary(implicit);
+      }
+      return tables;
+    }
+
+    // The address an object's subobject at path (base fields down from class cls) has in an object
+    // placed at address 0, which is its offset: a constant expression, "null" for the object itself.
+    std::string subobjectAtNull(const Ty* cls, const std::vector<uint32_t>& path, Node* at)
+    {
+      std::string p = "null";
+      const Ty* t = cls;
+      for (uint32_t index : path)
+      {
+        StructInfo& info = structFor(t, at);
+        p = "getelementptr (" + info.name + ", ptr " + p + ", i32 0, i32 " + std::to_string(index) + ")";
+        t = info.fieldTypes[index];
+      }
+      return p;
+    }
+
+    // Whether two subobjects at these paths start at the same address: a field 0 is at its
+    // object's start, so trailing zeros go (the primary base's subobject, and its primary base's).
+    static bool samePlace(std::vector<uint32_t> a, std::vector<uint32_t> b)
+    {
+      while (!a.empty() && a.back() == 0)
+        a.pop_back();
+      while (!b.empty() && b.back() == 0)
+        b.pop_back();
+      return a == b;
+    }
+
+    // The definitions of class key's vtables, with a thunk for each slot whose function belongs to a
+    // class at another place than the subobject whose vtable pointer leads to the slot. A vtable
+    // pointer points at the first function's slot, the functions following in declaration order
+    // (MSVC's layout and COM's: a C object's table of functions is called as a Kpp class's, and the
+    // reverse). Slot -1 is the class's descriptor (typeid, dynamic_cast), slot -2 the offset of the
+    // subobject holding the pointer within the whole object (delete and dynamic_cast find the whole
+    // object with it).
+    void emitVtables(const Ty* key, Node* at)
+    {
+      StructInfo& info = structs[key];
+      std::string ti = descriptorFor(key, at);
+      std::vector<Vtable> tables = info.vtables;
+      std::string text, thunks;
+      // The vtable asks for its functions, not whichever function happened to need the layout first
+      // (the requester the diagnostics name, the same in every run).
+      struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = std::move(saved); } } restore{currentFunctionName, currentFunctionName};
+      currentFunctionName = "the vtable of " + types.toString(key, &symbols);
+      for (size_t t = 0; t < tables.size(); ++t)
+      {
+        Vtable& table = tables[t];
+        table.name = "@\"vtable." + irString(key) + (t ? "." + std::to_string(t) : std::string()) + "\"";
+        std::string entries = "ptr " + subobjectAtNull(key, table.path, at) + ", ptr " + ti;
+        for (size_t s = 0; s < table.slots.size(); ++s)
+        {
+          const VtableSlot& slot = table.slots[s];
+          if (slot.function && (slot.function->flags & DF_Pure))
+          {
+            entries += ", ptr null";
+            continue;
+          }
+          std::string target = slot.function ? useFunction(slot.function, global.classArgsOf(slot.owner), slot.owner)
+                                             : implicitDestructor(slot.owner, at); // a class declaring none still destroys its own members
+          if (!samePlace(slot.ownerPath, table.path))
+          {
+            std::string thunk = "@\"thunk." + irString(key) + "." + std::to_string(t) + "." + std::to_string(s) + "\"";
+            thunks += adjustingThunk(thunk, target, slot, subobjectAtNull(key, table.path, at), subobjectAtNull(key, slot.ownerPath, at), at);
+            target = thunk;
+          }
+          entries += ", ptr " + target;
+        }
+        std::string tableType = "[" + std::to_string(table.slots.size() + 2) + " x ptr]";
+        text += "$" + table.name.substr(1) + " = comdat any\n" + table.name + " = linkonce_odr constant " + tableType + " [" + entries + "], comdat\n";
+        table.vptrValue = "getelementptr inbounds (" + tableType + ", ptr " + table.name + ", i64 0, i64 2)";
+      }
+      StructInfo& done = structs[key];
+      done.vtables = std::move(tables);
+      done.vtableName = done.vtables[0].name;
+      done.vptrValue = done.vtables[0].vptrValue;
+      done.vtableText = text + thunks;
+    }
+
+    // A function that moves `this` from the subobject at `from` to the one at `to` (offsets as
+    // subobjectAtNull gives them) and calls target with the arguments it was given.
+    std::string adjustingThunk(const std::string& name, const std::string& target, const VtableSlot& slot, const std::string& from, const std::string& to, Node* at)
+    {
+      Signature s;
+      if (slot.function)
+      {
+        TemplateArgs args = global.classArgsOf(slot.owner);
+        ArgsScope scope(*this, &args);
+        s = signatureOf(slot.function);
+      }
+      else
+      {
+        s.returnType = "void";
+        s.paramTypes = {"ptr"};
+        s.hasThis = true;
+      }
+      if (s.variadic)
+        unsupported(at, "the variadic virtual function " + qualifiedName(slot.function) + " reached through another base of " +
+                            types.toString(slot.owner, &symbols) + " (its thunk cannot pass the arguments on)");
+      std::string params, args;
+      for (size_t i = 1; i < s.paramTypes.size(); ++i)
+      {
+        params += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
+        args += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
+      }
+      std::string body = "  %to = ptrtoint ptr " + to + " to i64\n  %from = ptrtoint ptr " + from + " to i64\n  %d = sub i64 %to, %from\n"
+                         "  %this1 = getelementptr i8, ptr %this, i64 %d\n";
+      if (s.returnType == "void")
+        body += "  tail call void " + target + "(ptr %this1" + args + ")\n  ret void\n";
+      else
+        body += "  %r = tail call " + s.returnType + " " + target + "(ptr %this1" + args + ")\n  ret " + s.returnType + " %r\n";
+      return "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr " + s.returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
+    }
+
+    // The descriptor of a class (what slot -1 of its vtables points at, what dynamic_cast searches):
+    // { name, number of direct bases, [{ base's descriptor, base's offset }] }, for any class (a
+    // polymorphic class's bases need not be polymorphic). Built once, used per module (useDescriptor).
+    std::string descriptorFor(const Ty* cls, Node* at)
+    {
+      auto lock = sharedLock();
+      StructInfo& info = structFor(cls, at);
+      if (!info.typeInfoName.empty())
+        return info.typeInfoName;
+      const Ty* key = canonicalClass(cls, at);
+      std::string name = "@\"typeinfo." + irString(key) + "\"";
+      info.typeInfoName = name;
+      bool savedShared = emittingShared;
+      emittingShared = true; // the descriptor goes into every module that uses it
+      std::string nameConstant = cStringConstant(types.toString(key, &symbols));
+      emittingShared = savedShared;
+      std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
+      std::vector<const Ty*> fieldTypes = info.fieldTypes;
+      std::string structName = info.name, list;
+      for (auto& [baseDef, index] : bases)
+        list += (list.empty() ? "" : ", ") + std::string("{ ptr, i64 } { ptr ") + descriptorFor(fieldTypes[index], at) +
+                ", i64 ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64) }";
+      std::string arrayType = "[" + std::to_string(bases.size()) + " x { ptr, i64 }]";
+      structFor(cls, at).descriptorText = "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant { ptr, i64, " + arrayType + " } { ptr " +
+                                          nameConstant + ", i64 " + std::to_string(bases.size()) + ", " + arrayType + " " +
+                                          (bases.empty() ? std::string("zeroinitializer") : "[" + list + "]") + " }, comdat\n";
+      return name;
+    }
+
+    // A class's descriptor and its bases' in the module being emitted (each once).
+    void useDescriptor(const StructInfo& info)
+    {
+      auto lock = sharedLock();
+      if (info.descriptorText.empty() || !vtablesIn[currentModule].insert(info.typeInfoName).second)
+        return;
+      moduleDecls[currentModule] += info.descriptorText;
+      for (auto& [baseDef, index] : std::vector<std::pair<Decl*, uint32_t>>(info.bases))
+        useDescriptor(structFor(info.fieldTypes[index], nullptr));
     }
 
     // Identity of a method for override matching: name, parameter types and constness.
@@ -1186,7 +1369,9 @@ namespace
       return k;
     }
 
-    // Slot of f in the vtable of classTy, or -1 if f is not virtual there.
+    // Slot of f in the primary vtable of classTy, or -1 if f is not virtual there. A call goes
+    // through the vtable pointer of the class that declares f (every virtual function of a class has
+    // a slot in its primary vtable), with `this` moved to that class's subobject.
     int slotOf(const Ty* classTy, FunctionDecl* f, Node* at)
     {
       StructInfo& info = structFor(classTy, at);
@@ -1194,9 +1379,14 @@ namespace
         return -1;
       TemplateArgs args = global.classArgsOf(canonicalClass(classTy, at));
       ArgsScope scope(*this, &args);
-      std::string k = methodKey(f);
-      for (size_t i = 0; i < info.vtableKeys.size(); ++i)
-        if (info.vtableKeys[i] == k)
+      return slotKeyed(structFor(classTy, at), methodKey(f));
+    }
+    static int slotKeyed(const StructInfo& info, const std::string& key)
+    {
+      if (info.vtables.empty())
+        return -1;
+      for (size_t i = 0; i < info.vtables[0].slots.size(); ++i)
+        if (info.vtables[0].slots[i].key == key)
           return int(i);
       return -1;
     }
@@ -1596,14 +1786,12 @@ namespace
       {
         // A virtual destructor: the dynamic class's, also when this class has nothing to destroy
         // (`virtual ~Shape() = default`) and the derived one does.
-        StructInfo& info = structFor(t, at);
-        for (size_t i = 0; i < info.vtableKeys.size(); ++i)
-          if (info.vtableKeys[i] == "~")
-          {
-            std::string fp = loadSlot(addr, int(i));
-            emitCall("", "void " + fp + "(ptr " + addr + ")", false);
-            return;
-          }
+        if (int slot = slotKeyed(structFor(t, at), "~"); slot >= 0)
+        {
+          std::string fp = loadSlot(addr, slot);
+          emitCall("", "void " + fp + "(ptr " + addr + ")", false);
+          return;
+        }
       }
       if (!needsDestruction(t, at))
         return;
@@ -1762,25 +1950,49 @@ namespace
       if (!info.polymorphic)
         return;
       useVtable(info);
-      fn += "  store ptr " + info.vptrValue + ", ptr " + addr + "\n";
+      std::vector<std::string> where = vptrAddresses(addr, info);
+      for (size_t i = 0; i < where.size(); ++i)
+        fn += "  store ptr " + info.vtables[i].vptrValue + ", ptr " + where[i] + "\n";
     }
 
     // The vtable pointers of the object at addr, loaded before an assignment copies its bytes and
-    // stored back after it: an object keeps its own class's vtable (it may be of a class derived
+    // stored back after it: an object keeps its own class's vtables (it may be of a class derived
     // from the one assigned).
     std::vector<std::string> loadVptrs(const std::string& addr, const StructInfo& info)
     {
-      std::vector<std::string> saved;
+      std::vector<std::string> saved; // pairs: the value, then where it goes back
       if (!info.polymorphic)
         return saved;
-      saved.push_back(newTemp());
-      fn += "  " + saved.back() + " = load ptr, ptr " + addr + "\n";
+      for (const std::string& at : vptrAddresses(addr, info))
+      {
+        saved.push_back(newTemp());
+        fn += "  " + saved.back() + " = load ptr, ptr " + at + "\n";
+        saved.push_back(at);
+      }
       return saved;
     }
-    void restoreVptrs(const std::string& addr, const std::vector<std::string>& saved)
+    void restoreVptrs(const std::vector<std::string>& saved)
     {
-      if (!saved.empty())
-        fn += "  store ptr " + saved[0] + ", ptr " + addr + "\n";
+      for (size_t i = 0; i + 1 < saved.size(); i += 2)
+        fn += "  store ptr " + saved[i] + ", ptr " + saved[i + 1] + "\n";
+    }
+
+    // Where the vtable pointers of the object at addr are, in the order of its class's vtables.
+    std::vector<std::string> vptrAddresses(const std::string& addr, const StructInfo& info)
+    {
+      std::vector<std::string> out;
+      for (const Vtable& t : info.vtables)
+      {
+        std::string a = addr;
+        const StructInfo* s = &info;
+        for (uint32_t index : t.path)
+        {
+          a = gep(s->name, a, index);
+          s = &structFor(s->fieldTypes[index], nullptr);
+        }
+        out.push_back(a);
+      }
+      return out;
     }
 
     // Initialises bases and members of the object at addr from constructor initializers (or
@@ -2688,7 +2900,7 @@ namespace
         std::string v = newTemp();
         fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
         fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
-        restoreVptrs(dst, vptrs);
+        restoreVptrs(vptrs);
         return;
       }
       // A destructor of its own leaves the class its implicit copy assignment (C++ only deprecates
@@ -5571,15 +5783,15 @@ namespace
       return name;
     }
 
-    // The vtable of a class is defined in every module that stores it (linkonce_odr).
+    // The vtables of a class are defined in every module that stores them (linkonce_odr), with the
+    // descriptors they point at.
     void useVtable(const StructInfo& info)
     {
       auto lock = sharedLock();
       if (info.vtableText.empty() || !vtablesIn[currentModule].insert(info.vtableName).second)
         return;
       moduleDecls[currentModule] += info.vtableText;
-      if (info.primaryBase)
-        useVtable(structFor(info.primaryBase, nullptr)); // the descriptor chain refers to the base's descriptor
+      useDescriptor(info);
     }
 
     // The name a class descriptor (slot -1 of a vtable) starts with.
@@ -5590,9 +5802,12 @@ namespace
       return n;
     }
 
-    // dynamic_cast<T*>(p) / dynamic_cast<T&>(x) between polymorphic classes: the object's
-    // descriptor chain is searched for T's; null (for a pointer) when T is not among them.
-    // Upcasts and non-polymorphic operands fall back to the static conversion (nullopt).
+    // dynamic_cast<T*>(p) / dynamic_cast<T&>(x) from a polymorphic class: the whole object (found
+    // with the offset in slot -2 of the vtable p's pointer leads to) has its class's descriptor in
+    // slot -1, which is searched, bases and their bases, for T's: the result is the whole object
+    // moved by the offset T's subobject has in it (a downcast, or a cross-cast to another base), or
+    // null for a pointer when T is none of them. Upcasts and non-polymorphic operands fall back to
+    // the static conversion (nullopt).
     std::optional<Value> dynamicCast(NamedCastExpr* c, Expr* e)
     {
       const Ty* target = types.stripRef(e->ty);
@@ -5604,13 +5819,13 @@ namespace
         return std::nullopt;
       Value o = rvalue(c->operand);
       const Ty* scls = o.ty && o.ty->kind == TyKind::Pointer ? o.ty->inner : types.stripRef(o.ty);
-      if (!isClass(scls) || !structFor(scls, e).polymorphic || !structFor(tcls, e).polymorphic)
+      if (!isClass(scls) || !structFor(scls, e).polymorphic)
         return std::nullopt;
       std::vector<std::pair<std::string, uint32_t>> path;
       if (classKey(scls) == classKey(tcls) || basePath(scls, tcls, path, e))
         return std::nullopt; // the same class or a base of it: the static conversion
-      StructInfo& ti = structFor(tcls, e);
-      useVtable(ti);
+      std::string descriptor = descriptorFor(tcls, e);
+      useDescriptor(structFor(tcls, e));
       auto lock = sharedLock();
       if (!dyncastEmitted)
       {
@@ -5618,16 +5833,33 @@ namespace
         decls += "$kpp.dyncast = comdat any\n"
                  "define linkonce_odr ptr @kpp.dyncast(ptr %obj, ptr %target) comdat {\n"
                  "entry:\n  %isnull = icmp eq ptr %obj, null\n  br i1 %isnull, label %fail, label %start\n"
-                 "start:\n  %vt = load ptr, ptr %obj\n  %dp = getelementptr inbounds ptr, ptr %vt, i64 -1\n  %d0 = load ptr, ptr %dp\n  br label %loop\n"
-                 "loop:\n  %d = phi ptr [ %d0, %start ], [ %next, %step ]\n  %hit = icmp eq ptr %d, %target\n  br i1 %hit, label %ok, label %step\n"
-                 "step:\n  %bp = getelementptr inbounds { ptr, ptr }, ptr %d, i32 0, i32 1\n  %next = load ptr, ptr %bp\n"
-                 "  %end = icmp eq ptr %next, null\n  br i1 %end, label %fail, label %loop\n"
-                 "ok:\n  ret ptr %obj\n"
-                 "fail:\n  ret ptr null\n}\n";
+                 "start:\n  %vt = load ptr, ptr %obj\n  %tp = getelementptr inbounds ptr, ptr %vt, i64 -2\n  %top = load ptr, ptr %tp\n"
+                 "  %topi = ptrtoint ptr %top to i64\n  %dp = getelementptr inbounds ptr, ptr %vt, i64 -1\n  %d = load ptr, ptr %dp\n"
+                 "  %off = call i64 @kpp.basesearch(ptr %d, ptr %target)\n  %found = icmp sge i64 %off, 0\n  br i1 %found, label %ok, label %fail\n"
+                 "ok:\n  %delta = sub i64 %off, %topi\n  %r = getelementptr i8, ptr %obj, i64 %delta\n  ret ptr %r\n"
+                 "fail:\n  ret ptr null\n}\n" +
+                 baseSearchFunction("@kpp.basesearch");
       }
       std::string r = newTemp();
-      fn += "  " + r + " = call ptr @kpp.dyncast(ptr " + o.text + ", ptr " + ti.typeInfoName + ")\n";
+      fn += "  " + r + " = call ptr @kpp.dyncast(ptr " + o.text + ", ptr " + descriptor + ")\n";
       return Value{r, e->ty, false};
+    }
+
+    // The offset of the class whose descriptor is %target within one whose descriptor is %d (both
+    // { name, n, [n x { base descriptor, offset }] }), searching the bases and theirs in order, or -1.
+    static std::string baseSearchFunction(const std::string& name)
+    {
+      return "$" + name.substr(1) + " = comdat any\n"
+             "define linkonce_odr i64 " + name + "(ptr %d, ptr %target) comdat {\n"
+             "entry:\n  %same = icmp eq ptr %d, %target\n  br i1 %same, label %yes, label %scan\n"
+             "scan:\n  %np = getelementptr inbounds i8, ptr %d, i64 8\n  %n = load i64, ptr %np\n  br label %loop\n"
+             "loop:\n  %i = phi i64 [ 0, %scan ], [ %i1, %next ]\n  %more = icmp slt i64 %i, %n\n  br i1 %more, label %body, label %no\n"
+             "body:\n  %at = mul i64 %i, 16\n  %at1 = add i64 %at, 16\n  %e = getelementptr inbounds i8, ptr %d, i64 %at1\n  %b = load ptr, ptr %e\n"
+             "  %op = getelementptr inbounds i8, ptr %e, i64 8\n  %o = load i64, ptr %op\n  %r = call i64 " + name + "(ptr %b, ptr %target)\n"
+             "  %hit = icmp sge i64 %r, 0\n  br i1 %hit, label %found, label %next\n"
+             "found:\n  %sum = add i64 %r, %o\n  ret i64 %sum\n"
+             "next:\n  %i1 = add i64 %i, 1\n  br label %loop\n"
+             "yes:\n  ret i64 0\nno:\n  ret i64 -1\n}\n";
     }
 
     // A floating-point constant in IR: the exact bits, rounded through float for 32-bit values.
@@ -7284,9 +7516,9 @@ namespace
       if (!f->templateParams.empty())
         global.deduceArgs(f, argTypesOf(args), fnArgs); // `template<typename U> bool operator==(const U*) const`
       std::string indirect;
-      if ((f->flags & DF_Virtual) && isClass(object.ty))
-        if (int slot = slotOf(object.ty, f, at); slot >= 0)
-          indirect = loadSlot(object.text, slot); // `*a == *b` on images: the dynamic type's operator==
+      if (isClass(foundIn) && f->templateParams.empty() && structFor(foundIn, at).polymorphic)
+        if (int slot = slotOf(foundIn, f, at); slot >= 0)
+          indirect = loadSlot(thisArg, slot); // `*a == *b` on images: the dynamic type's operator==, through the declaring class's vtable pointer
       return callFunction(f, fnArgs, foundIn, thisArg, sret, args, at, indirect);
     }
 
@@ -9489,8 +9721,23 @@ namespace
             fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + objectL + "\n";
             blockTerminated = true;
             startBlock(objectL);
+            // Through a base with a virtual destructor the object may be of a class that has this
+            // base at an offset (a second base): the block starts at the whole object, which slot -2
+            // of the vtable gives (read before the destructor runs).
+            std::string block = p.text;
+            if (slotKeyed(structFor(p.ty->inner, e), "~") >= 0)
+            {
+              std::string vptr = newTemp(), slot = newTemp(), offset = newTemp(), bytes = newTemp(), back = newTemp();
+              block = newTemp();
+              fn += "  " + vptr + " = load ptr, ptr " + p.text + "\n";
+              fn += "  " + slot + " = getelementptr inbounds ptr, ptr " + vptr + ", i64 -2\n";
+              fn += "  " + offset + " = load ptr, ptr " + slot + "\n";
+              fn += "  " + bytes + " = ptrtoint ptr " + offset + " to i64\n";
+              fn += "  " + back + " = sub i64 0, " + bytes + "\n";
+              fn += "  " + block + " = getelementptr i8, ptr " + p.text + ", i64 " + back + "\n";
+            }
             destroy(p.text, p.ty->inner, e, true);
-            emitCall("", "void @free(ptr " + p.text + ")", false);
+            emitCall("", "void @free(ptr " + block + ")", false);
             emitBranch(endL);
             startBlock(endL);
             return {"", types.voidType()};
@@ -10544,22 +10791,26 @@ namespace
 
     std::string sharedComdat(const std::string& name) { return "$" + name.substr(1) + " = comdat any\n"; }
 
-    // The type descriptor matched against catch clauses: { base descriptor, name, base offset }.
+    // The type descriptor matched against catch clauses, as a class descriptor is (descriptorFor):
+    // { name, number of direct bases, [{ base's descriptor, base's offset }] }, so that a handler
+    // takes any base of the thrown class, with that base's offset.
     std::string typeinfoFor(const Ty* t, Node* at)
     {
       t = types.unqualified(types.stripRef(t));
       auto lock = sharedLock(); // the descriptors emitted, the library's Exception's
-      std::string name, base = "null", offset = "0", display;
+      std::string name, display, list;
+      size_t count = 0;
       if (isClass(t))
       {
         const StructInfo& info = structFor(t, at);
         name = "@kpp.ti." + info.name.substr(8);
         display = types.toString(t, &symbols);
-        if (!info.bases.empty())
-        {
-          base = typeinfoFor(info.fieldTypes[info.bases[0].second], at);
-          offset = "ptrtoint (ptr getelementptr (" + info.name + ", ptr null, i32 0, i32 " + std::to_string(info.bases[0].second) + ") to i64)";
-        }
+        std::string structName = info.name;
+        std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
+        std::vector<const Ty*> fieldTypes = info.fieldTypes;
+        for (auto& [baseDef, index] : bases)
+          list += (count++ ? ", " : "") + std::string("{ ptr, i64 } { ptr ") + typeinfoFor(fieldTypes[index], at) +
+                  ", i64 ptrtoint (ptr getelementptr (" + structName + ", ptr null, i32 0, i32 " + std::to_string(index) + ") to i64) }";
         if (display == "Exception" && exceptionTypeinfo.empty())
           exceptionTypeinfo = name;
       }
@@ -10575,8 +10826,9 @@ namespace
       emittingShared = true;
       std::string str = cStringConstant(display);
       emittingShared = was;
-      shared += sharedComdat(name) + name + " = linkonce_odr constant { ptr, ptr, i64 } { ptr " + base + ", ptr " + str + ", i64 " +
-                offset + " }, comdat\n";
+      std::string arrayType = "[" + std::to_string(count) + " x { ptr, i64 }]";
+      shared += sharedComdat(name) + name + " = linkonce_odr constant { ptr, i64, " + arrayType + " } { ptr " + str + ", i64 " +
+                std::to_string(count) + ", " + arrayType + " " + (count ? "[" + list + "]" : std::string("zeroinitializer")) + " }, comdat\n";
       return name;
     }
 
@@ -10815,14 +11067,7 @@ namespace
                   "  %args = alloca [3 x i64]\n  %a1 = getelementptr inbounds i64, ptr %args, i64 1\n  %a2 = getelementptr inbounds i64, ptr %args, i64 2\n"
                   "  store ptr %object, ptr %args\n  store ptr %typeinfo, ptr %a1\n  store ptr %dtor, ptr %a2\n"
                   "  call void @RaiseException(i32 -536870911, i32 1, i32 3, ptr %args)\n  ret void\n}\n";
-        shared += sharedComdat("@kpp_eh_offset") +
-                  "define linkonce_odr i64 @kpp_eh_offset(ptr %typeinfo, ptr %target) comdat {\nentry:\n  br label %loop\n"
-                  "loop:\n  %ti = phi ptr [ %typeinfo, %entry ], [ %base, %next ]\n  %off = phi i64 [ 0, %entry ], [ %off1, %next ]\n"
-                  "  %null = icmp eq ptr %ti, null\n  br i1 %null, label %no, label %check\n"
-                  "check:\n  %same = icmp eq ptr %ti, %target\n  br i1 %same, label %yes, label %next\n"
-                  "next:\n  %base = load ptr, ptr %ti\n  %op = getelementptr inbounds i8, ptr %ti, i64 16\n  %bo = load i64, ptr %op\n"
-                  "  %off1 = add i64 %off, %bo\n  br label %loop\n"
-                  "yes:\n  ret i64 %off\nno:\n  ret i64 -1\n}\n";
+        shared += baseSearchFunction("@kpp_eh_offset");
         shared += sharedComdat("@kpp_eh_push") +
                   "define linkonce_odr void @kpp_eh_push(ptr %record, i32 %handler, i64 %offset) comdat {\nentry:\n"
                   "  %d = load i64, ptr @kpp.eh.depth\n  %i = mul i64 %d, 5\n  %slot = getelementptr inbounds i64, ptr @kpp.eh.stack, i64 %i\n"
@@ -10867,7 +11112,7 @@ namespace
           message = "  br label %end\n";
         shared += sharedComdat("@kpp_eh_unhandled") +
                   "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {\nentry:\n"
-                  "  %err = call ptr @__acrt_iob_func(i32 2)\n  %np = getelementptr inbounds i8, ptr %typeinfo, i64 8\n  %name = load ptr, ptr %np\n"
+                  "  %err = call ptr @__acrt_iob_func(i32 2)\n  %name = load ptr, ptr %typeinfo\n"
                   "  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
         declareOnce("@llvm.memcpy.p0.p0.i64", "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)");
@@ -12426,6 +12671,8 @@ namespace
           initializeMembers(thisPointer(f), currentClassTy, f->ctorInits, f);
           destroyTemps();
         }
+        if ((f->flags & DF_Destructor) && isClass(currentClassTy))
+          storeVptrs(thisPointer(f), structFor(currentClassTy, f)); // virtual calls while it is destroyed reach this class's functions, as in C++
         statement(f->body);
         if (!blockTerminated)
         {

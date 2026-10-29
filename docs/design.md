@@ -318,23 +318,44 @@ the switch they cost nothing. Fixtures are ordinary classes constructed in the t
 - Kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
   unwinding (the Windows personality); the non-throwing path costs nothing. Factorio's 3,198
   `throw` sites convert as they are.
-- `dynamic_cast` and `typeid` exist for single-inheritance hierarchies: a type descriptor behind
-  the vtable, with the chain of bases, which is what Factorio's 647 casts need. No
-  cross-casts or virtual bases.
-- The vtable is MSVC's and COM's for single inheritance (2026-10-29): the object's first word
-  points at the first virtual function's slot, the slots follow in declaration order (an
-  override takes its base's slot), `this` is the first argument and a class result goes through
-  a hidden pointer after it. The type descriptor is the slot just before the first function
-  (where MSVC keeps its RTTI locator). So a COM interface (ID3D11Device) can be declared as a Kpp
-  class with its virtual functions in the header's order, and a C table of functions called
-  through one (spec interop/c_object_with_vtable). Not MSVC's: a virtual destructor's slot is a
-  plain destructor (MSVC's takes a flag; COM interfaces declare none), overloaded virtual
+- `dynamic_cast` and `typeid` work for the whole hierarchy (Factorio's 647 casts): a type
+  descriptor behind the vtable names the class and lists its direct bases with their offsets, so a
+  downcast or a cross-cast through any base finds its target. No virtual bases.
+- The vtable is MSVC's and COM's (2026-10-29): the object's first word points at the first
+  virtual function's slot, the slots follow in declaration order (an override takes its base's
+  slot), `this` is the first argument and a class result goes through a hidden pointer after it.
+  The type descriptor is the slot just before the first function (where MSVC keeps its RTTI
+  locator), and the slot before it holds the offset of the subobject whose vtable pointer it is
+  within the whole object (0 for the first one). So a COM interface (ID3D11Device) can be declared
+  as a Kpp class with its virtual functions in the header's order, and a C table of functions
+  called through one (spec interop/c_object_with_vtable). Not MSVC's: a virtual destructor's slot
+  is a plain destructor (MSVC's takes a flag; COM interfaces declare none), overloaded virtual
   functions keep declaration order (MSVC groups them; COM has no overloads), and a class argument
   is passed as a pointer to a copy where MSVC passes 1, 2, 4 and 8-byte structs in a register.
+- Multiple inheritance (kovarex, 2026-10-28: full C++ multiple inheritance, without virtual bases;
+  implemented 2026-10-29) is laid out as MSVC does: the polymorphic bases first, in declaration
+  order, then the other bases, then the members (bases are still built in declaration order and
+  destroyed in reverse). The first polymorphic base is the primary base: at offset 0, its vtable
+  pointer is the class's own, and the class's new virtual functions extend its vtable. A
+  polymorphic class without a polymorphic base has its own vtable pointer at offset 0, before its
+  bases. Every other polymorphic base keeps its vtable pointer in its subobject, pointing at a
+  vtable the class has for that subobject: the base's slots in the base's order, each holding the
+  final overrider, or a thunk that moves `this` from the subobject to the overrider's class and
+  jumps to it. A virtual function that overrides only a secondary base's function also gets a slot
+  in the class's primary vtable (the Itanium ABI's choice; MSVC adjusts `this` in the overrider
+  instead), so a call through the class itself needs no thunk. A call moves `this` to the subobject
+  of the class that declares the function and calls through that subobject's vtable pointer.
+  Constructors point every vtable pointer at the class's vtables once the bases are built, and a
+  destructor points them back at its class's on entry, so virtual calls during construction and
+  destruction reach the class being built or destroyed, as in C++. A copy gets its own class's
+  vtable pointers and an assignment keeps the target's. `delete` through a base frees the whole
+  object (found with the offset in slot -2), and `catch` takes any base of the thrown class. Until
+  the layout file exists (the compile-time evaluation section), the code generator lays classes out
+  under its shared lock.
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`
-  gets a filter function that walks the descriptor's base chain against the handlers in order
+  gets a filter function that searches the descriptor's bases for each handler's type in order
   (so `catch (const Base&)` works, with the base-subobject offset applied); destructors between
   the throw and the handler run in cleanup funclets; a handler owns the object and destroys it on
   exit unless it rethrows. Calls that may throw become `invoke`s only where something has to

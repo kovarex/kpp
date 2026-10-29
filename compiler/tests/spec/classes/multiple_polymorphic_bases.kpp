@@ -1,0 +1,65 @@
+// spec: a class with several polymorphic bases: virtual calls through any base reach the class's overriders (a second base's through a thunk that moves `this` back), calls through the class itself, bases of bases, conversions both ways, and copies, which keep every vtable pointer their class's
+// factorio: Entity : Targetable, PostTransferNotifiable, and 35 more classes with a second polymorphic base (14,676 of the headline's errors before)
+class A
+{
+public:
+  int a = 1;
+  virtual int fa() const { return this->a; }
+};
+class B
+{
+public:
+  int b = 2;
+  virtual int fb() const { return this->b; }
+};
+class C
+{
+public:
+  int c = 3;
+  virtual int fc() const { return this->c; }
+};
+class BC : public B, public C
+{
+public:
+  int fc() const override { return this->c + 100; }
+};
+class All : public A, public BC
+{
+public:
+  int own = 9;
+  int fb() const override { return this->b + 1000 + this->own; }
+};
+class Plain
+{
+public:
+  int p = 5;
+};
+class Mixed : public Plain, public A
+{
+public:
+  int fa() const override { return this->a + this->p * 10; }
+};
+int callB(const B& x) { return x.fb(); }
+int callC(const C& x) { return x.fc(); }
+int main()
+{
+  All x;
+  C* pc = &x;
+  B* pb = &x;
+  A* pa = &x;
+  BC* pbc = &x;
+  println("{} {} {} {} {}", pc->fc(), pb->fb(), pa->fa(), pbc->fb(), pbc->fc());
+  println("{} {} {} {}", x.fa(), x.fb(), x.fc(), callB(x) + callC(x));
+  All* back = static_cast<All*>(pbc);
+  BC* fromC = static_cast<BC*>(pc);
+  println("{} {} {}", back == &x, fromC == pbc, (void*)pc != (void*)&x);
+  All y = x;
+  y.c = 4;
+  const C& rc = y;
+  println("{} {}", rc.fc(), callB(y));
+  Mixed m;
+  Plain* asPlain = &m;
+  A* asA = &m;
+  println("{} {} {}", asA->fa(), asPlain->p, (void*)asA == (void*)&m);
+  return 0;
+}
