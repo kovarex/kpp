@@ -4380,7 +4380,7 @@ struct GlobalScope::Impl
           Subst subst;
           FunctionDecl* f = v->type ? constClassOperator(v->type, *op, {}, subst, depth) : nullptr; // `-vector`
           std::optional<ConstValue> self = v;
-          return f && f->body ? constCallOn(f, subst, {}, &self, depth + 1) : std::nullopt;
+          return f && constDefinition(f) ? constCallOn(f, subst, {}, &self, depth + 1) : std::nullopt;
         }
         return v ? constArith().unary(*op, *v) : std::nullopt;
       }
@@ -5001,7 +5001,7 @@ struct GlobalScope::Impl
         text = constPointerTo(*text, types.pointer(types.qualified(types.charType(8, false), true, false)));
       return text ? constStrlen(*text) : std::nullopt;
     }
-    if (!f->body || f->body->kind != NodeKind::BlockStmt)
+    if (FunctionDecl* def = constDefinition(f); !def || def->body->kind != NodeKind::BlockStmt)
       return std::nullopt;
     std::vector<ConstValue> values;
     std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
@@ -5106,7 +5106,7 @@ struct GlobalScope::Impl
     // Of the functions of the name, the one the call's arguments fill.
     FunctionDecl* f = nullptr;
     auto fills = [&](Decl* d) {
-      return d && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && static_cast<FunctionDecl*>(d)->templateParams.empty() &&
+      return d && d->kind == NodeKind::FunctionDecl && constDefinition(static_cast<FunctionDecl*>(d)) && static_cast<FunctionDecl*>(d)->templateParams.empty() &&
              static_cast<FunctionDecl*>(d)->params.size() == c->args.size();
     };
     if (m->resolved && m->resolved->kind == NodeKind::FunctionDecl)
@@ -5125,7 +5125,7 @@ struct GlobalScope::Impl
     }
     else if (fills(l.decl))
       f = static_cast<FunctionDecl*>(l.decl);
-    if (!f || f->body->kind != NodeKind::BlockStmt)
+    if (!f || constDefinition(f)->body->kind != NodeKind::BlockStmt)
       return std::nullopt;
     std::vector<ConstValue> values;
     std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
@@ -5254,7 +5254,8 @@ struct GlobalScope::Impl
   // is no part of it.
   std::optional<ConstPlace> constCallPlace(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, const ConstPlace& self, int depth)
   {
-    if (!f->body || f->body->kind != NodeKind::BlockStmt || args.size() > f->params.size() || depth > 512)
+    FunctionDecl* def = constDefinition(f);
+    if (!def || def->body->kind != NodeKind::BlockStmt || args.size() > f->params.size() || def->params.size() != f->params.size() || depth > 512)
       return std::nullopt;
     struct Call
     {
@@ -5273,14 +5274,15 @@ struct GlobalScope::Impl
       return std::nullopt;
     std::vector<ConstBinding> env;
     fctx.env = &env;
-    for (size_t i = 0; i < f->params.size(); ++i)
+    for (size_t i = 0; i < def->params.size(); ++i)
     {
-      auto* p = static_cast<ParamDecl*>(f->params[i]);
+      auto* p = static_cast<ParamDecl*>(def->params[i]);
       if (p->isPack)
         return std::nullopt;
+      Expr* defaultValue = p->defaultValue ? p->defaultValue : static_cast<ParamDecl*>(f->params[i])->defaultValue;
       const Ty* type = p->type ? convertType(p->type, fctx, 1) : nullptr;
       std::optional<ConstValue> v = i < args.size() ? constConvertTo(args[i], type, 1)
-                                  : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, 1) : std::nullopt;
+                                  : defaultValue ? constInitialize(type, defaultValue, fctx, 1) : std::nullopt;
       if (!v)
         return std::nullopt;
       env.push_back(constBinding(p->name, *v, type));
@@ -5296,7 +5298,7 @@ struct GlobalScope::Impl
     fctx.returnPlace = &out;
     fctx.returnType = returns;
     std::optional<ConstValue> result;
-    if (constStatement(f->body, fctx, env, result, 1) != ConstFlow::Returned || !out)
+    if (constStatement(def->body, fctx, env, result, 1) != ConstFlow::Returned || !out)
       return std::nullopt;
     out->type = returns->inner;
     out->readOnly = out->readOnly || self.readOnly || returns->inner->isConst;
@@ -5309,15 +5311,33 @@ struct GlobalScope::Impl
   {
     FunctionDecl* found = nullptr;
     for (FunctionDecl* c : constMembersNamed(t, symbol, subst, depth))
-      if (c->params.size() == args && c->body && !(c->flags & DF_Static) && (!found || bool(c->flags & DF_Const) != writable))
+      if (c->params.size() == args && constDefinition(c) && !(c->flags & DF_Static) && (!found || bool(c->flags & DF_Const) != writable))
         found = c;
     return found;
+  }
+
+  // The declaration whose body a call of f runs: f, or its definition outside the class
+  // (`Rectangle::Rectangle(int x, ...)` after the class: the game's .cpp half); null when none
+  // has a body the evaluator sees (a C function, a declaration defined in no Kpp source).
+  FunctionDecl* constDefinition(FunctionDecl* f)
+  {
+    if (!f || f->body)
+      return f;
+    Decl* cls = f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : nullptr;
+    if (!cls || !cls->ownScope || f->name.empty())
+      return nullptr;
+    uint32_t symbol = functionSymbol(f->name);
+    const Ty* ft = declaredTypeOf(f, nullptr, 0);
+    for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
+      if (candidate->body && functionSymbol(candidate->name) == symbol && !isMemberSpecialization(candidate) && typeAs(candidate, f) == ft)
+        return candidate;
+    return nullptr;
   }
 
   // A function chosen for an object (or for none): run with these arguments, `this` the object.
   std::optional<ConstValue> constCallOn(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, std::optional<ConstValue>* self, int depth)
   {
-    if (!f->body)
+    if (!constDefinition(f))
       return std::nullopt;
     LocalStack params;
     for (const Subst::Pair& p : subst.pairs)
@@ -5344,7 +5364,7 @@ struct GlobalScope::Impl
       Subst subst = substFor(cls);
       for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
       {
-        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !static_cast<FunctionDecl*>(m)->body)
+        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !constDefinition(static_cast<FunctionDecl*>(m)))
           continue;
         const Ty* ft = declaredTypeOf(m, subst.empty() ? nullptr : &subst, 0);
         const Ty* to = ft && ft->kind == TyKind::Function && ft->inner ? types.unqualified(types.stripRef(ft->inner)) : nullptr;
@@ -5831,8 +5851,8 @@ struct GlobalScope::Impl
     if (!layout)
       return std::nullopt;
     for (FunctionDecl* c : layout->constructors)
-      if (c->params.empty() && !(c->flags & DF_Default) && c->body)
-        return constRunConstructor(c, t, {}, depth + 1); // a user-provided default constructor
+      if (c->params.empty() && !(c->flags & (DF_Default | DF_Delete)) && !c->builtin)
+        return constRunConstructor(c, t, {}, depth + 1); // a user-provided default constructor (none visible: no constant)
     std::vector<ConstValue> parts;
     if (!constMayMake(layout->bases.size() + layout->fields.size()))
       return std::nullopt;
@@ -6698,7 +6718,7 @@ struct GlobalScope::Impl
     if (!fn.isAddress() || !fn.target->decl || fn.target->decl->kind != NodeKind::FunctionDecl)
       return std::nullopt;
     auto* f = static_cast<FunctionDecl*>(fn.target->decl);
-    if (!f->body || f->body->kind != NodeKind::BlockStmt || c->args.size() > f->params.size())
+    if (!constDefinition(f) || constDefinition(f)->body->kind != NodeKind::BlockStmt || c->args.size() > f->params.size())
       return std::nullopt;
     std::vector<ConstValue> values;
     std::vector<std::optional<ConstPlace>> places;
@@ -6753,8 +6773,10 @@ struct GlobalScope::Impl
   // from them (a delegating one makes the whole object), the others from their defaults, then
   // its body with `this` the object.
   // own: a constructor template's arguments (with the class's), when ctor is one.
+  // declared: the declaration in the class when ctor is its definition after the class (its
+  // default arguments, its scope).
   std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth,
-                                                const Subst* own = nullptr)
+                                                const Subst* own = nullptr, FunctionDecl* declared = nullptr)
   {
     struct Call
     {
@@ -6771,6 +6793,15 @@ struct GlobalScope::Impl
     const ConstClassLayout* layout = constLayoutOf(t, depth);
     if (!layout)
       return std::nullopt;
+    if (!ctor->body && !(ctor->flags & DF_Default) && !ctor->builtin)
+    {
+      // Declared in the class, defined after it (`Rectangle::Rectangle(int x, ...)`): that body;
+      // defined nowhere the evaluator sees, no constant (never the members' defaults).
+      FunctionDecl* def = constDefinition(ctor);
+      if (!def || def->params.size() != ctor->params.size())
+        return std::nullopt;
+      return constRunConstructor(def, t, args, depth, own, ctor);
+    }
     if (!ctor->body)
     {
       // `= default`: the default constructor's members from their defaults; a copy's the source.
@@ -6784,13 +6815,14 @@ struct GlobalScope::Impl
     LocalStack params;
     for (const Subst::Pair& p : subst.pairs)
       params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
-    TypeContext fctx{lexicalScopeOf(ctor), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
+    TypeContext fctx{lexicalScopeOf(declared ? declared : ctor), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
                      ctor->file ? ctor->file->tokens : nullptr, ctor->file ? ctor->file->text : std::string_view()};
     std::vector<ConstBinding> env;
     fctx.env = &env;
     for (size_t i = 0; i < ctor->params.size(); ++i)
     {
       auto* p = static_cast<ParamDecl*>(ctor->params[i]);
+      Expr* defaultValue = p->defaultValue ? p->defaultValue : declared ? static_cast<ParamDecl*>(declared->params[i])->defaultValue : nullptr;
       if (p->isPack)
       {
         // `Holder(int, Args&&... args)`: the arguments from here on, as constRun binds them.
@@ -6814,7 +6846,7 @@ struct GlobalScope::Impl
       }
       const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
       std::optional<ConstValue> v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
-                                  : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, depth + 1) : std::nullopt;
+                                  : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
       if (!v)
         return std::nullopt;
       env.push_back(constBinding(p->name, *v, type));
@@ -7140,7 +7172,7 @@ struct GlobalScope::Impl
       Subst subst;
       FunctionDecl* f = constPlaceMember(object->type, m->member.parts[0].symbol, c->args.size(), base->writable(), subst, depth + 1);
       if (f && (f->flags & DF_Virtual))
-        if (FunctionDecl* g = constOverrider(f, object->type, 0); g != f && g->body)
+        if (FunctionDecl* g = constOverrider(f, object->type, 0); g != f && constDefinition(g))
         {
           f = g;
           subst = memberSubst(types.unqualified(object->type), g->parent ? g->parent->ownScope : nullptr, 0);
@@ -7329,10 +7361,10 @@ struct GlobalScope::Impl
     if (l.overloads)
     {
       for (const Entry& entry : *l.overloads)
-        if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->body)
+        if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && constDefinition(static_cast<FunctionDecl*>(entry.decl)))
           candidates.push_back(static_cast<FunctionDecl*>(entry.decl));
     }
-    else if (l.decl && l.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(l.decl)->body)
+    else if (l.decl && l.decl->kind == NodeKind::FunctionDecl && constDefinition(static_cast<FunctionDecl*>(l.decl)))
       candidates.push_back(static_cast<FunctionDecl*>(l.decl));
     // Of a const and a non-const overload alike (`operator[]`), the const one: the object is a value.
     std::vector<FunctionDecl*> consts;
@@ -7363,7 +7395,7 @@ struct GlobalScope::Impl
   {
     // A virtual function runs as the object's own class overrides it.
     if (self && *self)
-      if (FunctionDecl* g = constOverrider(f, (*self)->type, 0); g != f && g->body)
+      if (FunctionDecl* g = constOverrider(f, (*self)->type, 0); g != f && constDefinition(g))
       {
         Subst subst = memberSubst(types.unqualified((*self)->type), g->parent ? g->parent->ownScope : nullptr, 0);
         return constCallOn(g, subst, args, self, depth + 1);
@@ -7383,15 +7415,21 @@ struct GlobalScope::Impl
     // bound, and a type written in it converts as deep as it is written, not as deep as the chain
     // (`sizeof(T)` in Limits<T>::max(), six calls into BoundingBox::emptyValue()).
     depth = 0;
+    // A member function declared in the class and defined after it: the definition's body and
+    // parameters, the declaration's default arguments.
+    FunctionDecl* def = constDefinition(f);
+    if (!def || def->params.size() != f->params.size())
+      return std::nullopt;
     std::vector<ConstBinding> env;
     fctx.env = &env;
-    for (size_t i = 0; i < f->params.size(); ++i)
+    for (size_t i = 0; i < def->params.size(); ++i)
     {
-      auto* p = static_cast<ParamDecl*>(f->params[i]);
+      auto* p = static_cast<ParamDecl*>(def->params[i]);
+      Expr* defaultValue = p->defaultValue ? p->defaultValue : static_cast<ParamDecl*>(f->params[i])->defaultValue;
       if (p->isPack)
       {
         // `Args&&... args`: the arguments from here on, each converted to its element's type.
-        const Ty* packTy = i + 1 == f->params.size() ? declaredTypeOf(p, fctx.subst, depth + 1) : nullptr;
+        const Ty* packTy = i + 1 == def->params.size() ? declaredTypeOf(p, fctx.subst, depth + 1) : nullptr;
         if (!packTy || packTy->kind != TyKind::Pack || packTy->args.size() != (args.size() > i ? args.size() - i : 0))
           return std::nullopt;
         std::vector<ConstValue> elements;
@@ -7424,7 +7462,7 @@ struct GlobalScope::Impl
         continue;
       }
       std::optional<ConstValue> v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
-                                  : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, depth + 1) : std::nullopt;
+                                  : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
       if (!v)
         return std::nullopt;
       env.push_back(constBinding(p->name, *v, type));
@@ -7439,7 +7477,7 @@ struct GlobalScope::Impl
     fctx.returnType = returns;
     bool isVoid = returns && types.unqualified(returns)->kind == TyKind::Void;
     std::optional<ConstValue> result;
-    ConstFlow flow = constStatement(f->body, fctx, env, result, depth + 1);
+    ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
     if (self && *self && selfAt < env.size() && env[selfAt].symbol == constThisSymbol)
       *self = env[selfAt].value;
     if (isVoid && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
@@ -7481,7 +7519,7 @@ struct GlobalScope::Impl
     {
       Subst subst;
       FunctionDecl* f = constClassOperator(target, op, {constTypeOfValue(*r)}, subst, depth);
-      if (f && !constDefaulted(f) && f->body)
+      if (f && !constDefaulted(f) && constDefinition(f))
       {
         std::optional<ConstValue> self = constRead(*place);
         if (!self)

@@ -1,6 +1,5 @@
 // spec: a constructor or member function declared in its class and defined after it runs at compile time with the definition's body (the game's .cpp half, merged after the class) and the declaration's default arguments; a default constructor defined so runs, never skipped for the members' defaults
 // factorio: agui::Graphics::FULL_SCREEN_RECTANGLE = Rectangle(-1, 0, 0, 0) (Rectangle::Rectangle defined after the class), and every constant made through such a constructor
-// pending: the interpreter ran only bodies written in the class, and took a declared default constructor for the members' defaults (fresh.width read 0: a wrong constant)
 struct Rect
 {
   Rect();
