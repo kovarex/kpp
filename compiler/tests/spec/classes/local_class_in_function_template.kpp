@@ -1,0 +1,29 @@
+// spec: a class declared in a function template's body, made from the template's parameters (a base and a member), as a static local's type
+// factorio: RichTextHoverManager::handleIdHover (`class TooltipProvider : public ElemProvider<ElemType> { ... IDType id; }; static TooltipProvider provider;`)
+// pending: an instance of the template does not declare the class (error: the type 'Provider' is not declared)
+template<typename T>
+struct Holder
+{
+  virtual ~Holder() {}
+  virtual int get() const = 0;
+};
+
+template<typename T>
+int describe(T value)
+{
+  class Provider : public Holder<T>
+  {
+  public:
+    int get() const override { return int(this->value) * 2; }
+    T value;
+  };
+  static Provider provider;
+  provider.value = value;
+  return provider.get();
+}
+
+int main()
+{
+  println("{} {}", describe(21), describe(short(4)));
+  return 0;
+}
