@@ -707,15 +707,35 @@ struct GlobalScope::Impl
   // A copy of f's own nodes for one instantiation, its local classes and enums given scopes of
   // their own under scope (the copy is typed next). An out-of-line definition takes `static` and
   // `virtual` from its declaration first, so that the copy has them.
-  FunctionDecl* copyInstance(FunctionDecl* f, Scope* scope, bool keepClosures = false)
+  FunctionDecl* copyInstance(FunctionDecl* f, Scope* scope, const Subst& subst, bool keepClosures = false)
   {
     declarationOfDefinition(f);
     InstanceCopier copier(instanceArena());
     copier.keepClosures = keepClosures;
     FunctionDecl* copy = copier.function(f);
+    copy->instanceMark = instanceMarkOf(subst);
     if (copy->body)
       indexLocalTypes(copy->body, scope, copy);
     return copy;
+  }
+
+  // An instantiation's mark: a hash of its arguments as printed (with their classes' full paths), in
+  // parameter-name order, the same in every run; 0 for none. A lambda type in it carries the same
+  // (its instance), and the names of its local classes too (FunctionDecl::instanceMark).
+  uint64_t instanceMarkOf(const Subst& subst)
+  {
+    if (subst.pairs.empty())
+      return 0;
+    std::vector<std::string> printed;
+    for (auto& [d, ty] : subst.pairs)
+      if (d && d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->name != UINT32_MAX)
+        printed.push_back(std::string(symbols.name(static_cast<TemplateParamDecl*>(d)->name)) + "=" + (ty ? types.toString(ty, &symbols, true) : std::string("?")));
+    std::sort(printed.begin(), printed.end());
+    uint64_t h = 1469598103934665603ull;
+    for (const std::string& p : printed)
+      for (unsigned char c : p + ";")
+        h = (h ^ c) * 1099511628211ull;
+    return h ? h : 1;
   }
 
   // The class a member (possibly defined out of line) belongs to (GlobalScope::owningClass).
@@ -13449,7 +13469,7 @@ struct GlobalScope::Impl
       Impl::InstanceRecord* inst = impl.claimInstance(f, merged, sub.thisType, producer);
       if (!producer)
         return;
-      FunctionDecl* copy = impl.copyInstance(f, sub.scope);
+      FunctionDecl* copy = impl.copyInstance(f, sub.scope, merged);
       inst->body = copy;
       sub.activeSubst = &merged;
       size_t mark = sub.locals.mark();
@@ -13618,7 +13638,7 @@ struct GlobalScope::Impl
       // One with no arguments at all is a function that is no template, typed before the walk of
       // its file reached it (for its `auto` return): its lambdas are the types that walk gives
       // them, which the code generator emits (`chunkLineByLineScan(...)`'s TransformView).
-      FunctionDecl* copy = impl.copyInstance(t.def, t.bodyScope, t.full.pairs.empty());
+      FunctionDecl* copy = impl.copyInstance(t.def, t.bodyScope, t.full, t.full.pairs.empty());
       inst->body = copy;
       const Ty* deduced = nullptr;
       const Ty* pattern = nullptr; // the written `auto&`, `const auto*`...: the deduced type takes its shape
@@ -18658,6 +18678,7 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
   impl.declarationOfDefinition(f); // `static` and `virtual` onto an out-of-line definition before it is copied
   InstanceCopier copier(impl.instanceArena());
   FunctionDecl* copy = copier.function(f);
+  copy->instanceMark = impl.instanceMarkOf(subst);
   record->body = copy;
   record->deducedReturn = typeFunctionFor(f, copy, args, objectType);
   record->state.store(2, std::memory_order_release);
@@ -18674,6 +18695,7 @@ FunctionDecl* GlobalScope::privateInstance(FunctionDecl* f, const TemplateArgs& 
   InstanceCopier copier(impl->instanceArena());
   copier.keepClosures = true; // its lambdas are the instantiation's types
   FunctionDecl* copy = copier.function(shared);
+  copy->instanceMark = shared->instanceMark;
   typeFunctionFor(f, copy, args, objectType);
   return copy;
 }

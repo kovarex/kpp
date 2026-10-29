@@ -487,7 +487,14 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
         name = ownName(p) + "::" + name;
       else if (p->kind == NodeKind::FunctionDecl)
       {
-        name = ownName(p) + "::" + name;
+        std::string function = ownName(p);
+        if (uint64_t mark = static_cast<FunctionDecl*>(p)->instanceMark)
+        {
+          char buf[24];
+          snprintf(buf, sizeof buf, "#%llx", (unsigned long long)mark); // the instantiation it is local to
+          function += buf;
+        }
+        name = function + "::" + name;
         local = true;
       }
     if (local)

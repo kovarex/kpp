@@ -1,7 +1,8 @@
 # The compiler's output must not depend on the thread count or on timing (docs/compile-speed.md,
 # "Parallel front end"). Builds a few test programs at -j 1, -j 8 and -j 32 and compares the IR
 # byte for byte and the report (timings masked); then, when programs\factorio\kpp exists (after
-# convert.cmd), the headline tree's front end at -j 1, -j 8 and twice at -j 32. run_tests.cmd runs it.
+# convert.cmd), the headline tree at -j 1, -j 8 and twice at -j 32: its report and its whole IR.
+# run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe")
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\determinism'
@@ -75,14 +76,20 @@ if (Test-Path (Join-Path $tree 'src'))
     '--cinclude', 'C:\Factorio\libraries\Lua', '--cinclude', 'C:\Factorio\libraries', '--cinclude', 'C:\Factorio\libraries\curl\include',
     '--cinclude', 'C:\Factorio\libraries\glad\include', '--cinclude', 'C:\Factorio\libraries\trio', '--cinclude', "$factorio\native\include",
     '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\StackWalker", "$tree\Lua", "$tree\src")
+  # The whole IR too (--emit-llvm), byte for byte: a name the code generator gives one of two
+  # classes that print alike must not depend on which thread reached it first.
   $runs = @()
+  $irs = @()
   $n = 0
   foreach ($j in @('1', '8', '32', '32'))
   {
     $n++
-    $runs += Run (@('-j', $j) + $common) "headline -j $j (run $n)"
+    $ir = Join-Path $work "headline.run$n.ll"
+    $runs += Run (@('-j', $j, '--emit-llvm', $ir) + $common) "headline -j $j (run $n)"
+    $irs += $ir
   }
-  if (Compare-Runs $runs "headline front end" $null) { "ok   determinism headline front end" } else { $failed++ }
+  if (Compare-Runs $runs "headline" $irs) { "ok   determinism headline (front end and IR)" } else { $failed++ }
+  $irs | ForEach-Object { Remove-Item $_ -ErrorAction SilentlyContinue }
 }
 else { "skip determinism headline front end: programs\factorio\kpp missing (run convert.cmd)" }
 

@@ -257,6 +257,10 @@ struct FunctionDecl : Decl
   // `Pair<int, Mode> five(a, m);` at namespace scope: the names as expressions. The resolver makes
   // the declaration an object constructed from them when they are variables (design.md rule 2).
   Span<Expr*> objectArgs;
+  // An instantiation's own copy (ATTR_InstanceCopy): a hash of its arguments as printed, as a lambda
+  // type's instance mark is, which the names of its local classes carry (types.cpp), so that two
+  // instances' InnerSetupHelper are two names in every run.
+  uint64_t instanceMark = 0;
 };
 struct VariableDecl : Decl
 {
