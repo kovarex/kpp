@@ -1,6 +1,5 @@
 // spec: offsetof(T, member), the byte offset of a member in its class (C's and C++'s, from <cstddef>), a constant: of a struct member after an array, and of an unnamed union member in a struct named with `struct`
 // factorio: Lua's lstate.c (`(LX *)((lu_byte *)(L) - offsetof(LX, l))`, the thread's block from its state, three uses) and lstrlib.c's `offsetof(struct cD, u)` (string.pack's maximum alignment); the game's PropertyTree logs three offsets
-// pending: there is no offsetof ("a call that did not resolve"); owner: the resolver (a built-in, as sizeof)
 struct State
 {
   int status = 0;

@@ -1,6 +1,5 @@
 // spec: sizeof of a string literal is the size of its array, the terminating null included (a string literal is an array of chars), and a constant made of such sizes is an array's length
 // factorio: Lua's lundump.h (`#define LUAC_HEADERSIZE (sizeof(LUA_SIGNATURE)-sizeof(char)+2+6+sizeof(LUAC_TAIL)-sizeof(char))`), the bytecode header that ldump.c writes and lundump.c checks
-// pending: a string literal is typed `const char*`, so its sizeof is a pointer's (8, and 22 for the header); owner: the resolver (the literal's type)
 const auto HEADERSIZE = (sizeof("\033Lua") - sizeof(char) + 2 + 6 + sizeof("\x19\x93\r\n\x1a\n") - sizeof(char));
 int main()
 {

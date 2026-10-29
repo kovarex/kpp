@@ -4678,7 +4678,22 @@ struct GlobalScope::Impl
           t = declaredTypeOf(named, ctx.subst, depth + 1);
         else if (s->type)
           t = convertType(s->type, ctx, depth + 1);
-        else if (s->operand && s->operand->ty)
+        Expr* operand = s->operand;
+        while (operand && operand->kind == NodeKind::ParenExpr)
+          operand = static_cast<ParenExpr*>(operand)->inner;
+        if (!t && operand && operand->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(operand)->literalKind == TokenKind::String &&
+            s->sizeofKind != Kw::alignof_)
+        {
+          // `sizeof("\033Lua")`: the literal is an array of its characters and the terminating null
+          // (typed as a pointer to them elsewhere), so the array's size, not a pointer's.
+          std::optional<ConstValue> chars = constString(static_cast<LiteralExpr*>(operand), ctx);
+          const Ty* element = operand->ty ? types.stripRef(operand->ty) : nullptr;
+          element = element && (element->kind == TyKind::Pointer || element->kind == TyKind::Array) ? element->inner : nullptr;
+          std::optional<int64_t> each = element ? constSizeOf(types.unqualified(element), depth + 1) : std::optional<int64_t>(1);
+          if (chars && chars->parts && each)
+            return ConstValue::integer(int64_t(chars->parts->size()) * *each, types.sizeType());
+        }
+        if (!t && s->operand && s->operand->ty)
           t = s->operand->ty;
         if (!t || !t->isKnown() || types.isDependent(t))
           return std::nullopt;

@@ -1,0 +1,6 @@
+// spec: offsetof(T, member) is a constant: a constexpr variable's initializer, a static_assert's operand, an array's length
+// pending: offsetof reads as `size_t(&((T*)nullptr)->member)`, which runs but is no constant: the constant evaluation has no member offsets (its layout hook gives sizes and alignments only); owner: consteval / codegen (a member offset hook)
+struct LX { char extra[8]; double l; };
+constexpr size_t OFF = offsetof(LX, l);
+static_assert(OFF == 8);
+int main() { char buf[offsetof(LX, l)]; println("{} {}", OFF, int(sizeof(buf))); return 0; }

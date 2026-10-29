@@ -3923,6 +3923,7 @@ namespace
     // Pushes comma-separated assignment expressions (or brace-inits) onto scratch until `close`.
     void parseExpressionList(P close)
     {
+      GreaterAllowed greater(noGreater);
       if (at(close))
         return;
       for (;;)
@@ -4086,6 +4087,15 @@ namespace
 
     // Expression inside template arguments: no top-level '>' so relational operators are off.
     bool noGreater = false;
+    // Inside parentheses, brackets or an argument list `>` and `>>` are operators again, whatever
+    // encloses them: `b < ((i >> 8) & 3)` read as a trial template argument list.
+    struct GreaterAllowed
+    {
+      bool& flag;
+      bool saved;
+      explicit GreaterAllowed(bool& flag) : flag(flag), saved(flag) { flag = false; }
+      ~GreaterAllowed() { flag = saved; }
+    };
     Expr* parseExpressionNoGreater(bool& sawLogical)
     {
       bool saved = noGreater;
@@ -4511,6 +4521,77 @@ namespace
              at(Kw::const_cast_) || at(Kw::dynamic_cast_);
     }
 
+    // `offsetof(T, member)` (C's macro, from <cstddef>): read as what it expands to, the address of
+    // the member in a T at address 0 as a size_t, `size_t(&((T*)nullptr)->member)`. The member may
+    // be a path, `a.b[2]`. A union member of an unnamed type, `offsetof(struct cD, u)`, works too.
+    Expr* parseOffsetof(uint32_t start)
+    {
+      advance(); // offsetof
+      expect(P::LParen, "expected '('");
+      Type* t = parseType();
+      if (!t)
+      {
+        error("expected a type in offsetof");
+        return node<ErrorExpr>(start);
+      }
+      expect(P::Comma, "expected ',' in offsetof");
+      PointerType* pointer = node<PointerType>(t->token);
+      pointer->pointee = t;
+      LiteralExpr* null = node<LiteralExpr>(start);
+      null->literalKind = TokenKind::Keyword;
+      null->keyword = Kw::nullptr_;
+      CastExpr* object = node<CastExpr>(start);
+      object->type = pointer;
+      object->operand = null;
+      Expr* path = object;
+      P op = P::Arrow;
+      for (;;)
+      {
+        if (!atIdent())
+        {
+          error("expected a member name in offsetof");
+          return node<ErrorExpr>(start);
+        }
+        MemberExpr* m = node<MemberExpr>(pos);
+        m->base = path;
+        m->op = op;
+        NamePart part;
+        part.symbol = tok().id;
+        std::vector<NamePart> parts{part};
+        m->member.parts = makeSpanOf(parts);
+        advance();
+        path = m;
+        while (at(P::LBracket))
+        {
+          IndexExpr* index = node<IndexExpr>(pos);
+          advance();
+          index->base = path;
+          size_t mark = scratch.size();
+          scratch.push_back(parseExpression());
+          index->args = makeSpan<Expr*>(mark);
+          expect(P::RBracket, "expected ']'");
+          path = index;
+        }
+        if (!accept(P::Dot))
+          break;
+        op = P::Dot;
+      }
+      expect(P::RParen, "expected ')' after offsetof");
+      UnaryExpr* address = node<UnaryExpr>(start);
+      address->op = uint32_t(P::Amp);
+      address->isKeyword = false;
+      address->postfix = false;
+      address->operand = path;
+      BuiltinType* size = node<BuiltinType>(start);
+      size->keyword = Kw::int_;
+      size->longCount = 2;
+      size->isUnsigned = true;
+      CastExpr* result = node<CastExpr>(start);
+      result->type = size;
+      result->operand = address;
+      return result;
+    }
+
     Expr* parseNew(uint32_t start)
     {
       advance();
@@ -4653,12 +4734,15 @@ namespace
               return node<ErrorExpr>(start);
           }
         case TokenKind::Identifier:
+          if (at(P::LParen, 1) && !cMode && spelling() == "offsetof")
+            return parseOffsetof(start);
           return parseNameExpr(start);
         case TokenKind::Punctuator:
           if (at(P::LParen))
           {
             advance();
             ParenExpr* p = node<ParenExpr>(start);
+            GreaterAllowed greater(noGreater);
             p->inner = parseExpression();
             expect(P::RParen, "expected ')'");
             return p;
