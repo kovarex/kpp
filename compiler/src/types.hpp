@@ -113,7 +113,11 @@ public:
   const Ty* stripRef(const Ty* t) const { return t && t->isReference() ? t->inner : t; }
 
   bool isDependent(const Ty* t) const;
-  std::string toString(const Ty* t, const SymbolTable* symbols) const;
+  // qualified: classes and enums with the namespaces and classes they are declared in, and a
+  // local class with the place it is declared at (DebugInfoRenderer::LineInfo and
+  // DebugVisualizationRenderer::LineInfo are two classes): what the code generator's IR names
+  // are made of, which must tell every two types apart.
+  std::string toString(const Ty* t, const SymbolTable* symbols, bool qualified = false) const;
   size_t size() const;
   std::vector<const Ty*> classInstances(); // every class type with template arguments made so far
 

@@ -441,7 +441,7 @@ namespace
 
 bool TypeTable::isDependent(const Ty* t) const { return dependent(t, nullptr); }
 
-std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
+std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qualified) const
 {
   if (!t)
     return "<null>";
@@ -450,7 +450,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
     s += "const ";
   if (t->isVolatile)
     s += "volatile ";
-  auto declName = [&](Decl* d) -> std::string
+  auto ownName = [&](Decl* d) -> std::string
   {
     if (!d || !symbols)
       return "?";
@@ -470,6 +470,32 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
       return "?";
     return std::string(symbols->name(name->last().symbol));
   };
+  // A class or enum with the namespaces and classes around it (qualified), and a class declared
+  // in a function with where it is declared, since its path alone may not be unique.
+  auto declName = [&](Decl* d) -> std::string
+  {
+    std::string name = ownName(d);
+    if (!qualified || !d || (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl))
+      return name;
+    bool local = name == "?"; // an anonymous class is told apart by where it is declared too
+    for (Decl* p = d->parent; p; p = p->parent)
+      if (p->kind == NodeKind::NamespaceDecl && symbols && static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
+        name = std::string(symbols->name(static_cast<NamespaceDecl*>(p)->name)) + "::" + name;
+      else if (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl)
+        name = ownName(p) + "::" + name;
+      else if (p->kind == NodeKind::FunctionDecl)
+      {
+        name = ownName(p) + "::" + name;
+        local = true;
+      }
+    if (local)
+    {
+      char at[32];
+      snprintf(at, sizeof at, "@%u", d->token); // the token it is declared at
+      name += at;
+    }
+    return name;
+  };
   switch (t->kind)
   {
     case TyKind::Void: s += "void"; break;
@@ -482,10 +508,10 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
       break;
     case TyKind::Float: s += t->bits == 32 ? "float" : "double"; break;
     case TyKind::Nullptr: s += "nullptr_t"; break;
-    case TyKind::Pointer: s += toString(t->inner, symbols) + "*"; break;
-    case TyKind::LRef: s += toString(t->inner, symbols) + "&"; break;
-    case TyKind::RRef: s += toString(t->inner, symbols) + "&&"; break;
-    case TyKind::Array: s += toString(t->inner, symbols) + "[" + (t->decl ? declName(t->decl) : t->count ? std::to_string(t->count) : "") + "]"; break;
+    case TyKind::Pointer: s += toString(t->inner, symbols, qualified) + "*"; break;
+    case TyKind::LRef: s += toString(t->inner, symbols, qualified) + "&"; break;
+    case TyKind::RRef: s += toString(t->inner, symbols, qualified) + "&&"; break;
+    case TyKind::Array: s += toString(t->inner, symbols, qualified) + "[" + (t->decl ? declName(t->decl) : t->count ? std::to_string(t->count) : "") + "]"; break;
     case TyKind::Lambda:
       if (t->decl)
       {
@@ -500,9 +526,9 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
       }
       [[fallthrough]];
     case TyKind::Function:
-      s += (t->kind == TyKind::Lambda ? "lambda " : "") + toString(t->inner, symbols) + "(";
+      s += (t->kind == TyKind::Lambda ? "lambda " : "") + toString(t->inner, symbols, qualified) + "(";
       for (size_t i = 0; i < t->args.size(); ++i)
-        s += (i ? ", " : "") + toString(t->args[i], symbols);
+        s += (i ? ", " : "") + toString(t->args[i], symbols, qualified);
       s += t->variadic ? ", ...)" : ")";
       break;
     case TyKind::Class:
@@ -511,7 +537,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
       {
         s += "<";
         for (size_t i = 0; i < t->args.size(); ++i)
-          s += (i ? ", " : "") + toString(t->args[i], symbols);
+          s += (i ? ", " : "") + toString(t->args[i], symbols, qualified);
         s += ">";
       }
       if (t->decl && (t->decl->flags & DF_Specialization))
@@ -519,19 +545,19 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
       break;
     case TyKind::Enum: s += declName(t->decl); break;
     case TyKind::Param: s += declName(t->decl); break;
-    case TyKind::DependentMember: s += toString(t->inner, symbols) + "::" + (symbols ? std::string(symbols->name(uint32_t(t->value))) : std::string("?")); break;
+    case TyKind::DependentMember: s += toString(t->inner, symbols, qualified) + "::" + (symbols ? std::string(symbols->name(uint32_t(t->value))) : std::string("?")); break;
     case TyKind::Value:
       if (t->decl)
       {
         // A function as the argument, named with its namespaces and classes: `Functions::add` and
         // `Folding::add` are different arguments (and instantiation names).
-        std::string qualified = declName(t->decl);
+        std::string path = ownName(t->decl);
         for (Decl* p = t->decl->parent; p; p = p->parent)
           if (p->kind == NodeKind::NamespaceDecl && symbols && static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
-            qualified = std::string(symbols->name(static_cast<NamespaceDecl*>(p)->name)) + "::" + qualified;
+            path = std::string(symbols->name(static_cast<NamespaceDecl*>(p)->name)) + "::" + path;
           else if (p->kind == NodeKind::ClassDecl)
-            qualified = declName(p) + "::" + qualified;
-        s += "&" + qualified;
+            path = ownName(p) + "::" + path;
+        s += "&" + path;
       }
       else
         s += t->inner && t->inner->kind == TyKind::Bool ? (t->value ? "true" : "false") : std::to_string(t->value);
@@ -540,12 +566,12 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
       s += "member " + (t->decl ? declName(t->decl) : std::string("?"));
       break;
     case TyKind::MemberPointer:
-      s += toString(t->inner, symbols) + " " + (t->args.empty() ? declName(t->decl) : toString(t->args[0], symbols)) + "::*";
+      s += toString(t->inner, symbols, qualified) + " " + (t->args.empty() ? declName(t->decl) : toString(t->args[0], symbols, qualified)) + "::*";
       break;
     case TyKind::Auto: s += t->count == 1 ? "decltype(auto)" : "auto"; break;
     case TyKind::Pack:
       for (size_t i = 0; i < t->args.size(); ++i)
-        s += (i ? ", " : "") + toString(t->args[i], symbols);
+        s += (i ? ", " : "") + toString(t->args[i], symbols, qualified);
       break;
     case TyKind::Vector: s += "__m128" + std::string(t->inner && t->inner->kind == TyKind::Float && t->inner->bits == 64 ? "d" : t->inner && t->inner->kind == TyKind::Int ? "i" : ""); break;
     case TyKind::Unknown: s += "<unknown>"; break;

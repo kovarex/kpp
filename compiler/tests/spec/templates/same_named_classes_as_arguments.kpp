@@ -1,0 +1,57 @@
+// spec: two classes with one name (nested in different classes, in different namespaces, local to different functions, local to two instances of one function template) are different template arguments: the instances of Vector and Map made with them are separate code, each with its own element's layout
+// found by the resolver thread: DebugInfoRenderer::LineInfo (144 bytes) and DebugVisualizationRenderer::LineInfo (doubles and an enum) both made `RbTree<Pair<String, LineInfo>, ...>::newNode`, and whichever came first was used for both maps
+struct OuterA
+{
+  struct LineInfo { int a = 1; double b = 2; };
+  Vector<LineInfo> lines;
+  Map<String, LineInfo> byName;
+};
+struct OuterB
+{
+  struct LineInfo { char tag[40]; int z = 3; };
+  Vector<LineInfo> lines;
+  Map<String, LineInfo> byName;
+};
+namespace One { struct Item { int x = 10; }; }
+namespace Two { struct Item { double y = 20; int w = 30; }; }
+int first()
+{
+  struct Local { int f() { return 100; } };
+  Vector<Local> v;
+  v.push_back(Local());
+  return v[0].f();
+}
+int second()
+{
+  struct Local { int g = 7; int f() { return 200 + g; } };
+  Vector<Local> v;
+  v.push_back(Local());
+  return v[0].f();
+}
+template<typename T>
+T sumTwice(T a)
+{
+  struct Doubler
+  {
+    T value;
+    T twice() const { return this->value + this->value; }
+  };
+  Doubler d{a};
+  return d.twice();
+}
+int main()
+{
+  OuterA a;
+  a.lines.push_back(OuterA::LineInfo());
+  a.byName["x"].b = 5;
+  OuterB b;
+  b.lines.push_back(OuterB::LineInfo());
+  b.byName["x"].z = 6;
+  Vector<One::Item> ones;
+  ones.push_back(One::Item());
+  Vector<Two::Item> twos;
+  twos.push_back(Two::Item());
+  println("{} {} {} {} {} {}", a.lines[0].b, b.lines[0].z, a.byName["x"].b, b.byName["x"].z, ones[0].x, twos[0].w);
+  println("{} {} {} {}", first(), second(), sumTwice(21), sumTwice(1.25));
+  return 0;
+}

@@ -446,6 +446,21 @@ namespace
     }
 
     std::string sym(uint32_t s) const { return s == UINT32_MAX ? "?" : std::string(symbols.name(s)); }
+    // A type as IR names print it: every class and enum with its full path (and a local class with
+    // where it is declared), so that two types never give one name (DebugInfoRenderer::LineInfo
+    // and DebugVisualizationRenderer::LineInfo as template arguments made one RbTree<...>::newNode
+    // for both). Messages print types short (types.toString).
+    std::string irString(const Ty* t) const { return types.toString(t, &symbols, true); }
+
+    // A class declared in a function body, or a member of one: the main pass does not reach its
+    // member functions (they are emitted when used), and its name alone is not unique.
+    static bool declaredInFunction(const Decl* d)
+    {
+      for (const Decl* p = d ? d->parent : nullptr; p; p = p->parent)
+        if (p->kind == NodeKind::FunctionDecl)
+          return true;
+      return false;
+    }
     std::string newTemp() { return "%t" + std::to_string(temp++); }
     std::string newLabel(const char* hint) { return std::string(hint) + std::to_string(label++); }
 
@@ -917,7 +932,7 @@ namespace
       info.complete = true;
       if (structs[key].polymorphic)
       {
-        std::string vt = "@\"vtable." + types.toString(key, &symbols) + "\"";
+        std::string vt = "@\"vtable." + irString(key) + "\"";
         structs[key].vtableName = vt;
         std::vector<FunctionDecl*> impls2 = structs[key].vtable;
         std::vector<const Ty*> owners2 = structs[key].vtableOwners;
@@ -926,7 +941,7 @@ namespace
         // a Kpp class's, and the reverse). Just before it, slot -1, is the class's descriptor (where
         // MSVC keeps its RTTI locator): its name (typeid) and the primary base's descriptor, which
         // dynamic_cast walks.
-        std::string ti = "@\"typeinfo." + types.toString(key, &symbols) + "\"";
+        std::string ti = "@\"typeinfo." + irString(key) + "\"";
         structs[key].typeInfoName = ti;
         structs[key].primaryBase = primaryPolymorphic ? baseKeys[0] : nullptr;
         bool savedShared = emittingShared;
@@ -2779,8 +2794,8 @@ namespace
       const Ty* ft = t;
       std::string params;
       for (size_t i = 0; i < ft->args.size(); ++i)
-        params += (i ? ", " : "") + types.toString(ft->args[i], &symbols);
-      info.functionName = "@\"" + types.toString(t, &symbols) + "::operator()(" + params + ")\"";
+        params += (i ? ", " : "") + irString(ft->args[i]);
+      info.functionName = "@\"" + irString(t) + "::operator()(" + params + ")\"";
       return closures[t];
     }
 
@@ -3102,7 +3117,7 @@ namespace
         if (isClass(pt) && needsDestruction(pt, at))
           unsupported(at, "a lambda used as a pointer to function taking an object with a destructor by value");
       }
-      std::string name = "@\"" + types.toString(t, &symbols) + "::thunk\"";
+      std::string name = "@\"" + irString(t) + "::thunk\"";
       {
         auto lock = sharedLock();
         if (!lambdaInstances.insert(name).second)
@@ -3161,8 +3176,8 @@ namespace
           unsupported(at, "a generic lambda whose body could not be typed for this call");
         std::string params;
         for (size_t i = 0; i < callTy->args.size(); ++i)
-          params += (i ? ", " : "") + types.toString(callTy->args[i], &symbols);
-        functionName = "@\"" + types.toString(t, &symbols) + "::operator()(" + params + ")\"";
+          params += (i ? ", " : "") + irString(callTy->args[i]);
+        functionName = "@\"" + irString(t) + "::operator()(" + params + ")\"";
       }
       const Ty* ret = callTy->inner ? callTy->inner : types.voidType();
       std::string argText = "ptr " + closure.text;
@@ -3284,7 +3299,7 @@ namespace
         }
         std::string one;
         if (t && t->isKnown())
-          one = types.toString(t, &symbols);
+          one = irString(t);
         else if (owner->file && owner->file->tokens && a->token < owner->file->tokens->size())
         {
           const Token& tok = (*owner->file->tokens)[a->token];
@@ -3311,7 +3326,7 @@ namespace
         // Class path with the instantiation's arguments, then the member's own name.
         std::string full = qualifiedName(f);
         std::string cls = qualifiedName(classTy->decl);
-        q = types.toString(classTy, &symbols);
+        q = irString(classTy);
         size_t pos = full.rfind("::");
         q += pos == std::string::npos ? "::" + full : full.substr(pos);
       }
@@ -3331,6 +3346,24 @@ namespace
             q = head + prefix + tail;
         }
         q = withSpecialisationArgs(q, f);
+        if (Decl* owner = global.owningClass(f); owner && owner->kind == NodeKind::ClassDecl && declaredInFunction(owner))
+        {
+          // A local class's member: the class as types print it (its function and place), with
+          // the arguments of the function template instance it is in, then the member's own name;
+          // two local classes named Visitor are two classes, and so is one in two instances.
+          std::string instance;
+          std::vector<std::string> printed;
+          for (auto& [d, ty] : args.pairs)
+            if (d && d->kind == NodeKind::TemplateParamDecl)
+              printed.push_back(sym(static_cast<TemplateParamDecl*>(d)->name) + "=" + (ty ? irString(ty) : std::string("?")));
+          std::sort(printed.begin(), printed.end());
+          for (const std::string& p : printed)
+            instance += (instance.empty() ? "<" : ", ") + p;
+          if (!instance.empty())
+            instance += ">";
+          size_t pos = q.rfind("::");
+          q = irString(classTy ? classTy : types.classType(owner, {})) + instance + (pos == std::string::npos ? "::" + q : q.substr(pos));
+        }
       }
       if (!f->templateParams.empty())
       {
@@ -3341,7 +3374,7 @@ namespace
           for (auto& [d, ty] : args.pairs)
             if (d == f->templateParams[i])
               t = ty;
-          q += (i ? ", " : "") + (t ? types.toString(t, &symbols) : std::string("?"));
+          q += (i ? ", " : "") + (t ? irString(t) : std::string("?"));
         }
         q += ">";
       }
@@ -3353,17 +3386,17 @@ namespace
         for (Node* a : f->name.last().templateArgs)
         {
           const Ty* t = uint8_t(a->kind) <= uint8_t(NodeKind::PackType) ? global.typeOfAst(static_cast<Type*>(a), f) : nullptr;
-          spelled += (spelled.empty() ? "" : ", ") + (t && t->isKnown() ? types.toString(t, &symbols) : std::string("?"));
+          spelled += (spelled.empty() ? "" : ", ") + (t && t->isKnown() ? irString(t) : std::string("?"));
         }
         if (spelled.empty())
           if (const Ty* ft = declType(f); ft && ft->kind == TyKind::Function && ft->inner)
-            spelled = types.toString(ft->inner, &symbols);
+            spelled = irString(ft->inner);
         q += "<" + spelled + ">";
       }
       const Ty* ft = declType(f);
       std::string params;
       for (size_t i = 0; ft && i < ft->args.size(); ++i)
-        params += (i ? ", " : "") + types.toString(ft->args[i], &symbols);
+        params += (i ? ", " : "") + irString(ft->args[i]);
       // A const method is a different function from its non-const overload.
       return "@\"" + q + "(" + params + ")" + ((f->flags & DF_Const) && !(f->flags & DF_Static) ? " const" : "") + "\"";
     }
@@ -3572,7 +3605,12 @@ namespace
         return name;
       }
       if (def->body && !(def->file && def->file->isImported))
-        return name; // Defined by the main pass.
+      {
+        // Defined by the main pass, except a local class's member, which is emitted when used.
+        if (Decl* owner = global.owningClass(def); owner && declaredInFunction(owner) && claimInstantiation(name))
+          queueInstantiation(def, args, classTy, name);
+        return name;
+      }
       if (!declaredNames.claim(name))
         return name;
       {
@@ -4761,7 +4799,7 @@ namespace
     std::string irTypeName(const char* prefix, const Ty* t)
     {
       auto lock = sharedLock();
-      std::string printed = types.toString(t, &symbols);
+      std::string printed = irString(t);
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : printed)
         h = (h ^ c) * 1099511628211ull;
@@ -5956,7 +5994,7 @@ namespace
         // evaluated under the instantiation's arguments (also an out-of-class definition's own
         // declarations of the class's parameters).
         classArgs = global.definitionArgs(variableDefinition(v), global.classArgsOf(classTy));
-        instanceName = "@\"" + types.toString(classTy, &symbols) + "::" + sym(v->name.last().symbol) + "\"";
+        instanceName = "@\"" + irString(classTy) + "::" + sym(v->name.last().symbol) + "\"";
         auto found = instanceGlobals.find(instanceName);
         if (found != instanceGlobals.end())
           return found->second;

@@ -10259,14 +10259,15 @@ struct GlobalScope::Impl
             result = nullptr; // deduced per call
           locals.pop(mark);
           // In a template, the lambda is a different type in each instantiation (its body differs).
-          // The mark telling them apart is a hash of the arguments as printed, in parameter-name
-          // order, so that it (and every name printed with it) is the same in every run.
+          // The mark telling them apart is a hash of the arguments as printed (with their classes'
+          // full paths: two classes named LineInfo are two arguments), in parameter-name order, so
+          // that it (and every name printed with it) is the same in every run.
           int64_t instance = 0;
           if (activeSubst)
           {
             std::vector<std::string> printed;
             for (auto& [d, ty] : activeSubst->pairs)
-              printed.push_back(std::string(symbols.name(static_cast<TemplateParamDecl*>(d)->name)) + "=" + types.toString(ty, &symbols));
+              printed.push_back(std::string(symbols.name(static_cast<TemplateParamDecl*>(d)->name)) + "=" + types.toString(ty, &symbols, true));
             std::sort(printed.begin(), printed.end());
             uint64_t h = 1469598103934665603ull;
             for (const std::string& p : printed)
