@@ -1,0 +1,27 @@
+// spec: a reference to a class bound to an object of another class through its conversion operator to a reference (`implicit operator T&()`, std::reference_wrapper's): `const Label& l = wrapper;` and `for (const Label& l : wrappers)`
+// factorio: std::reference_wrapper elements read as references (PrototypeExplorerGuiLine::searchLabels over `initializer_list<reference_wrapper<Label>>`, the fonts of WrappedFont)
+// pending: the reference is bound to the wrapper object itself, read as a Label (no conversion is called; prints [] instead of [x])
+struct Label
+{
+  String text;
+};
+
+struct LabelRef
+{
+  Label* pointer;
+  implicit LabelRef(Label& label) : pointer(&label) {}
+  implicit operator Label&() const { return *this->pointer; }
+};
+
+int main()
+{
+  Label x{"x"};
+  LabelRef w = x;
+  const Label& direct = w;
+  println("[{}]", direct.text);
+  Vector<LabelRef> all;
+  all.push_back(w);
+  for (const Label& l : all)
+    println("[{}]", l.text);
+  return 0;
+}

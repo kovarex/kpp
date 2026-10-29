@@ -104,3 +104,34 @@ struct FunctionImpl
   template<typename F>
   static void* cloneAs(void* target) { return new F(*(F*)target); }
 };
+
+// A reference that is a value (std::reference_wrapper): it can be stored in containers, copied and
+// assigned (assigning rebinds it), and it converts to the T& it refers to. Specified in
+// docs/stdlib/function.md.
+template<typename T>
+struct ReferenceWrapper
+{
+  using type = T;
+
+  T* pointer;
+
+  // std also deletes the constructor from T&&, so that a ReferenceWrapper<const T> never refers to
+  // a temporary; with that declared, codegen copies the wrapper through it
+  // (classes/deleted_constructor_beside_implicit_copy, pending), so it waits for that fix.
+  implicit ReferenceWrapper(T& value) : pointer(&value) {}
+
+  T& get() const { return *this->pointer; }
+  implicit operator T&() const { return *this->pointer; }
+
+  template<typename... CallArgs>
+  decltype(auto) operator()(CallArgs&&... args) const
+  {
+    return (*this->pointer)(forward<CallArgs>(args)...);
+  }
+};
+
+// A ReferenceWrapper to value (std::ref, std::cref).
+template<typename T>
+ReferenceWrapper<T> ref(T& value) { return ReferenceWrapper<T>(value); }
+template<typename T>
+ReferenceWrapper<const T> cref(const T& value) { return ReferenceWrapper<const T>(value); }

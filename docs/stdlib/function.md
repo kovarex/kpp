@@ -21,3 +21,22 @@ When two Function overloads of a function could take the same lambda (`f(Functio
 `f(Function<void(double)>)`), the one whose parameters the lambda takes is chosen.
 
 `BadFunctionCall`: an Exception, what calling an empty Function throws.
+
+# ReferenceWrapper<T>
+
+A reference that is a value (what `std::reference_wrapper` converts to): it refers to a T that
+must outlive it, and unlike a `T&` it can be stored in a Vector or an InitializerList, copied, and
+assigned, where assigning makes it refer to the other's T (the T itself is not touched).
+
+Members:
+- `ReferenceWrapper(T& value)` (implicit): refers to value. A non-const T& takes no rvalue, so a
+  `ReferenceWrapper<T>` never refers to a temporary.
+- `get()`, `operator T&()` (implicit): the T it refers to.
+- `operator()(args...)`: calls the T it refers to, when that is callable.
+- `type`: T.
+
+`ref(value)` and `cref(value)` make a `ReferenceWrapper<T>` and a `ReferenceWrapper<const T>`.
+
+*Differences from C++*: T is an object type (no ReferenceWrapper to a function); a
+`ReferenceWrapper<const T>` can still be made from a temporary T, which C++ refuses (the deleted
+constructor waits for a compiler fix), and then refers to it only while the temporary lives.
