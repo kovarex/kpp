@@ -51,6 +51,17 @@ enum class ConstMode : uint8_t
   Fold,
 };
 
+// What the code generator lends the checker's evaluator when it asks for a constant
+// (GlobalScope::evaluate): its arithmetic mode (Fold: signed arithmetic wraps, as the emitted code
+// does), the integer type it stores an enumeration in, and its layouts (exact: bit fields, empty
+// bases), which are what `sizeof` and `alignof` are there.
+struct ConstHooks
+{
+  ConstMode mode = ConstMode::Fold;
+  std::function<const Ty*(const Ty*)> underlying;
+  std::function<std::optional<int64_t>(const Ty*, bool alignment)> layout;
+};
+
 // The operator of a unary or binary expression (its op and isKeyword), `and`, `not` and `bitor`
 // written as words included.
 std::optional<P> constOperator(uint32_t op, bool isKeyword);

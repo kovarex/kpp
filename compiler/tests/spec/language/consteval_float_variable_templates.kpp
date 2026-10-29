@@ -1,6 +1,5 @@
 // spec: a variable template whose value is floating (`Numbers::pi_v<double>`, `T(0.5)` for a float T) used at run time: the value for these arguments, of their type
 // factorio: Numbers::pi_v<double> (2 headline lines)
-// pending: the code generator took only integer values of a variable template
 template<typename T>
 constexpr T half_v = T(0.5);
 template<typename T>

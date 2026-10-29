@@ -3476,15 +3476,18 @@ struct GlobalScope::Impl
   struct OrdinaryLayout
   {
     bool exact = exactLayoutOnly, needed = layoutNeeded;
+    const ConstHooks* hooks = constHooks(); // and the code generator's hooks are not its
     OrdinaryLayout()
     {
       exactLayoutOnly = false;
       layoutNeeded = false;
+      constHooks() = nullptr;
     }
     ~OrdinaryLayout()
     {
       exactLayoutOnly = exact;
       layoutNeeded = needed;
+      constHooks() = hooks;
     }
   };
 
@@ -3492,6 +3495,8 @@ struct GlobalScope::Impl
   {
     if (!t || depth > 24)
       return std::nullopt;
+    if (const ConstHooks* h = constHooks(); h && h->layout)
+      return h->layout(t, false); // the code generator's layout, the exact one
     t = types.unqualified(t);
     if (t->kind == TyKind::Class && exactLayoutOnly)
     {
@@ -3603,6 +3608,8 @@ struct GlobalScope::Impl
   std::optional<int64_t> constAlignOf(const Ty* t, int depth)
   {
     if (!t || depth > 24) return std::nullopt;
+    if (const ConstHooks* h = constHooks(); h && h->layout)
+      return h->layout(t, true);
     t = types.unqualified(t);
     if (t->kind == TyKind::Array)
       return constAlignOf(t->inner, depth + 1);
@@ -3744,8 +3751,18 @@ struct GlobalScope::Impl
     return why;
   }
 
+  // The code generator's hooks while it has a constant evaluated (GlobalScope::evaluate), else
+  // null: the checker's own evaluations are Required, with its own layouts.
+  static const ConstHooks*& constHooks()
+  {
+    static thread_local const ConstHooks* hooks = nullptr;
+    return hooks;
+  }
+
   ConstArith constArith()
   {
+    if (const ConstHooks* h = constHooks())
+      return ConstArith{types, h->mode, &constWhy(), h->underlying ? h->underlying : [this](const Ty* e) { return declaredUnderlying(e); }};
     return ConstArith{types, ConstMode::Required, &constWhy(), [this](const Ty* e) { return declaredUnderlying(e); }};
   }
 
@@ -4019,7 +4036,33 @@ struct GlobalScope::Impl
         Expr* first = e;
         for (; first && first->kind == NodeKind::BinaryExpr; first = static_cast<BinaryExpr*>(first)->lhs)
           chain.push_back(static_cast<BinaryExpr*>(first));
-        std::optional<ConstValue> value = constValue(first, ctx, depth + 1);
+        // `(DWORD)-11` from a C header, parsed as a subtraction from a parenthesized type name:
+        // the cast of the negated value.
+        const Ty* castTo = nullptr;
+        if (first && first->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(first)->inner &&
+            static_cast<ParenExpr*>(first)->inner->kind == NodeKind::NameExpr && !chain.back()->isKeyword &&
+            (P(chain.back()->op) == P::Minus || P(chain.back()->op) == P::Plus))
+        {
+          auto* name = static_cast<NameExpr*>(static_cast<ParenExpr*>(first)->inner);
+          Decl* d = name->resolved ? name->resolved : lookupQualified(name->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+          if (d && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EnumDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+          {
+            NamedType named{};
+            named.kind = NodeKind::NamedType;
+            named.token = name->token;
+            named.name = name->name;
+            castTo = convertType(&named, ctx, depth + 1);
+          }
+        }
+        std::optional<ConstValue> value;
+        if (castTo)
+        {
+          std::optional<ConstValue> r = constValue(chain.back()->rhs, ctx, depth + 1);
+          value = r ? constConverted(constArith().unary(P(chain.back()->op), *r), castTo) : std::nullopt;
+          chain.pop_back();
+        }
+        else
+          value = constValue(first, ctx, depth + 1);
         bool failed = !value;
         for (size_t i = chain.size(); i-- > 0;)
         {
@@ -4267,8 +4310,13 @@ struct GlobalScope::Impl
     if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
       if (Subst qs = qualifierSubst(n->name, ctx, 1, l.foundIn); !qs.pairs.empty())
         return memberConstant(l.decl, ctx, qs);
-    // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`): the
-    // declaration the type checker bound where the name is written.
+    // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`, a function's
+    // local where the code generator asks without the function's locals): the declaration the
+    // type checker bound where the name is written.
+    Decl* local = n->resolved && n->resolved->kind == NodeKind::VariableDecl && n->resolved->parent &&
+                  n->resolved->parent->kind == NodeKind::FunctionDecl ? n->resolved : nullptr;
+    if (local && l.found != Found::Local)
+      return constValueOfDecl(local, ctx, 0);
     return constValueOfDecl(l.decl ? l.decl : n->resolved, ctx, 0);
   }
 
@@ -11944,6 +11992,37 @@ const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
       return cached; // a range-for variable: the element type the loop deduced
   }
   return t;
+}
+
+std::optional<ConstValue> GlobalScope::evaluate(Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args, const ConstHooks& hooks)
+{
+  if (!e)
+    return std::nullopt;
+  // The context as typeOfAstIn makes it for a type written there.
+  Impl::DeclContext dc;
+  impl->declContextFor(context, dc);
+  if (context && (context->kind == NodeKind::ClassDecl || context->kind == NodeKind::EnumDecl) && context->ownScope)
+    dc.scope = context->ownScope;
+  Subst s = toSubst(args);
+  if (impl->instanceSubstOf(context))
+    s = impl->withInstanceSubst(context, &s);
+  for (const Subst::Pair& p : s.pairs)
+    if (p.param && p.param->kind == NodeKind::TemplateParamDecl && !dc.params.find(static_cast<TemplateParamDecl*>(p.param)->name))
+      dc.params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+  if (!file)
+    file = context ? context->file : nullptr;
+  if (context && context->kind == NodeKind::FunctionDecl && file == context->file)
+    if (Stmt* body = static_cast<FunctionDecl*>(context)->body; body && body->token < e->token && (!context->endToken || e->token < context->endToken))
+      impl->collectVisibleLocalAliases(body, e->token, dc.params);
+  Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
+  Impl::TypeContext ctx{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+  struct Lent
+  {
+    const ConstHooks* saved = Impl::constHooks();
+    explicit Lent(const ConstHooks& h) { Impl::constHooks() = &h; }
+    ~Lent() { Impl::constHooks() = saved; }
+  } lent(hooks);
+  return impl->constValue(e, ctx, 0);
 }
 
 const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args)

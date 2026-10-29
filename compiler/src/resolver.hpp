@@ -4,6 +4,7 @@
 // declarations and function bodies against that tree and computes the type of every expression
 // (in parallel; the tree is read-only, canonical types are interned in a shared table).
 #include "ast.hpp"
+#include "consteval.hpp"
 #include "types.hpp"
 #include <cstdint>
 #include <optional>
@@ -242,6 +243,11 @@ public:
   // Instantiation queries, single-threaded (code generation):
   const Ty* typeOfDeclIn(Decl* d, const TemplateArgs& args);
   const Ty* typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args);
+  // The value of the constant expression e (read from file, written in context: a function, the
+  // variable whose initializer it is, a class) under args: the checker's compile-time evaluator,
+  // with the code generator's arithmetic mode, enumeration storage and layouts (hooks). Null when
+  // e is no constant.
+  std::optional<ConstValue> evaluate(Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args, const ConstHooks& hooks);
   // Re-types the body of f for one instantiation (expression types and resolved callees are
   // rewritten in place). objectType: the instantiated class for members, or null.
   void retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);

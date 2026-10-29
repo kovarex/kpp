@@ -344,9 +344,6 @@ namespace
     std::deque<NameExpr> rangeNames;
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     Span<uint32_t> pendingDesignators;                        // of the brace list constructInto is about to consume
-    std::vector<std::pair<Decl*, ConstValue>> constEnv;       // parameters and locals bound while foldConst runs a call
-    int foldCalls = 0, foldActive = 0;                        // calls nested in the running fold, folds nested in each other
-    uint64_t foldSteps = 0;                                   // steps of the outermost running fold
     std::unordered_map<Decl*, int64_t> enumeratorValues;
     std::unordered_map<Decl*, std::string> qualifiedNames; // qualifiedName() per declaration
 
@@ -4635,17 +4632,40 @@ namespace
       return args;
     }
 
-    // The code generator's folding (consteval.hpp, design.md "Compile-time evaluation"): the type
-    // checker's arithmetic in its wrap-around mode, signed arithmetic wrapping as the emitted
-    // code's does and what the emitted code leaves undefined (a division by zero) no constant.
+    // The code generator's constants (design.md, "Compile-time evaluation"): the checker's
+    // evaluator (GlobalScope::evaluate) with this code generator's hooks: signed arithmetic wraps,
+    // as the emitted code does, an enumeration is the integer type it is stored as here, and
+    // sizeof and alignof are these layouts.
     ConstArith foldArith()
     {
       return ConstArith{types, ConstMode::Fold, nullptr, [this](const Ty* e) { return e->decl ? enumUnderlying(e->decl) : nullptr; }};
     }
 
-    std::optional<int64_t> evalConst(Expr* e, int depth = 0)
+    // layoutFailed: set when a layout the evaluation needs fails (it has reported itself).
+    ConstHooks foldHooks(Node* at, bool& layoutFailed)
     {
-      std::optional<ConstValue> v = foldConst(e, depth);
+      ConstHooks hooks;
+      hooks.mode = ConstMode::Fold;
+      hooks.underlying = [this](const Ty* e) { return e->decl ? enumUnderlying(e->decl) : nullptr; };
+      hooks.layout = [this, at, &layoutFailed](const Ty* t, bool alignment) -> std::optional<int64_t>
+      {
+        try
+        {
+          t = types.stripRef(t);
+          return int64_t(alignment ? alignOf(t, at) : sizeOf(t, at));
+        }
+        catch (Unsupported&)
+        {
+          layoutFailed = true; // not thrown through the checker's evaluator
+          return std::nullopt;
+        }
+      };
+      return hooks;
+    }
+
+    std::optional<int64_t> evalConst(Expr* e, int = 0)
+    {
+      std::optional<ConstValue> v = foldConst(e);
       if (!v || v->isFloat())
         return std::nullopt; // a floating value is no integer constant
       return v->i;
@@ -4655,12 +4675,12 @@ namespace
     // floating one included.
     std::optional<bool> evalCondition(Expr* e)
     {
-      std::optional<ConstValue> v = foldConst(e, 0);
+      std::optional<ConstValue> v = foldConst(e);
       return v ? std::optional<bool>(v->truthy()) : std::nullopt;
     }
 
-    // A folded value given type t (a cast's, a declaration's, a call's result): converted when t is
-    // an arithmetic or enumeration type; kept for any other type, and for one not known here.
+    // A folded value given type t (a declaration's): converted when t is an arithmetic or
+    // enumeration type; kept for any other type, and for one not known here.
     std::optional<ConstValue> foldAs(std::optional<ConstValue> v, const Ty* t)
     {
       if (!v || !t || !t->isKnown() || types.isDependent(t))
@@ -4669,532 +4689,26 @@ namespace
       return t->isArithmetic() || t->kind == TyKind::Enum ? foldArith().convert(*v, t) : v;
     }
 
-    bool isScalar(const Ty* t)
+    // A constant expression written in the declaration being folded (constContext) or the function
+    // being emitted, read from currentFile, under the current arguments. A number or character
+    // literal, the commonest, needs no context.
+    std::optional<ConstValue> foldConst(Expr* e)
     {
-      t = t ? types.unqualified(types.stripRef(t)) : nullptr;
-      return t && (t->isArithmetic() || t->kind == TyKind::Enum) && !types.isDependent(t);
-    }
-
-    // The type a cast converts to, as the type checker typed it for this instantiation, else the
-    // written type resolved under the current arguments.
-    const Ty* foldType(Expr* e, Type* written)
-    {
-      if (e->ty && e->ty->isKnown() && !types.isDependent(e->ty))
-        return e->ty;
-      if (!written)
-        return nullptr;
-      Decl* context = constContext ? constContext : typingContext();
-      const Ty* t = currentArgs ? global.typeOfAstIn(written, context, *currentArgs) : global.typeOfAst(written, context);
-      return t && t->isKnown() && !types.isDependent(t) ? t : nullptr;
-    }
-
-    std::optional<ConstValue> foldConst(Expr* e, int depth = 0)
-    {
-      if (!e || depth > 256)
+      if (!e)
         return std::nullopt;
-      // One fold takes at most a million steps (a recursion that never ends, or takes too long).
-      struct Active
+      if (e->kind == NodeKind::LiteralExpr)
       {
-        Emitter& emitter;
-        explicit Active(Emitter& emitter) : emitter(emitter)
-        {
-          if (emitter.foldActive++ == 0)
-            emitter.foldSteps = 0;
-        }
-        ~Active() { --emitter.foldActive; }
-      } active(*this);
-      if (++foldSteps > 1000000)
-        return std::nullopt;
-      switch (e->kind)
-      {
-        case NodeKind::LiteralExpr:
-        {
-          auto* l = static_cast<LiteralExpr*>(e);
-          if (l->literalKind == TokenKind::Keyword)
-          {
-            if (l->keyword == Kw::true_ || l->keyword == Kw::false_)
-              return ConstValue::integer(l->keyword == Kw::true_, types.boolType());
-            return l->keyword == Kw::nullptr_ ? std::optional<ConstValue>(ConstValue::integer(0, types.nullptrType())) : std::nullopt;
-          }
-          if (l->literalKind == TokenKind::Number || l->literalKind == TokenKind::Char)
-            return foldArith().literal(l->literalKind, spelling(l->token));
-          return std::nullopt;
-        }
-        case NodeKind::ParenExpr: return foldConst(static_cast<ParenExpr*>(e)->inner, depth + 1);
-        case NodeKind::RequiresExpr:
-          // In a variable template's initializer (`hasBegin<Vector<int>>`): for these arguments,
-          // asked of the resolver, since the node is shared by every use of the template.
-          if (constContext && constContext->kind == NodeKind::VariableDecl && !constContext->templateParams.empty() && currentArgs)
-            if (std::optional<bool> b = global.requirementsHold(static_cast<RequiresExpr*>(e), constContext, *currentArgs))
-              return ConstValue::integer(*b, types.boolType());
-          return ConstValue::integer(static_cast<RequiresExpr*>(e)->satisfied, types.boolType()); // typed for this instantiation
-        case NodeKind::UnaryExpr:
-        {
-          auto* u = static_cast<UnaryExpr*>(e);
-          std::optional<P> op = constOperator(u->op, u->isKeyword);
-          if (!op || u->postfix || (*op != P::Bang && *op != P::Minus && *op != P::Plus && *op != P::Tilde))
-            return std::nullopt;
-          std::optional<ConstValue> v = foldConst(u->operand, depth + 1);
-          return v ? foldArith().unary(*op, *v) : std::nullopt;
-        }
-        case NodeKind::BinaryExpr:
-        {
-          // `1 + 1 + ... + 0` (InputAction::inputActionCount, a term per action): the chain down the
-          // left operands is folded in a loop, not nested once per term.
-          std::vector<BinaryExpr*> chain;
-          Expr* first = e;
-          for (; first && first->kind == NodeKind::BinaryExpr; first = static_cast<BinaryExpr*>(first)->lhs)
-            chain.push_back(static_cast<BinaryExpr*>(first));
-          std::optional<ConstValue> value = foldConst(first, depth + 1);
-          for (size_t i = chain.size(); i-- > 0;)
-          {
-            std::optional<P> op = constOperator(chain[i]->op, chain[i]->isKeyword);
-            // Short-circuit: `true || <unknown>` is true, `false && <unknown>` is false.
-            if (value && op && (*op == P::OrOr || *op == P::AndAnd) && value->truthy() == (*op == P::OrOr))
-            {
-              value = ConstValue::integer(*op == P::OrOr, types.boolType());
-              continue;
-            }
-            if (!op || !isConstBinaryOperator(*op))
-              return std::nullopt;
-            std::optional<ConstValue> r = foldConst(chain[i]->rhs, depth + 1);
-            if (!r)
-              return std::nullopt;
-            if (!value && i + 1 == chain.size() && !chain[i]->isKeyword && (*op == P::Minus || *op == P::Plus) && isParenthesizedTypeName(first))
-            {
-              value = foldArith().unary(*op, *r); // `(DWORD)-11` from a C header, parsed as a subtraction
-              continue;
-            }
-            if (!value)
-              return std::nullopt;
-            value = *op == P::Comma ? r : foldArith().binary(*op, *value, *r);
-          }
-          return value;
-        }
-        case NodeKind::CallExpr:
-        {
-          auto* c = static_cast<CallExpr*>(e);
-          if (!c->callee || c->callee->kind != NodeKind::NameExpr)
-            return std::nullopt;
-          auto* n = static_cast<NameExpr*>(c->callee);
-          Decl* d = n->resolved;
-          if (!d)
-            return std::nullopt;
-          if (d->kind == NodeKind::ClassDecl && c->args.empty())
-          {
-            // `is_optional<T>()`: a zero-arg constructor of a type-trait struct used as bool.
-            // Walk the class and its bases (through AST base list) for `static constexpr bool value`.
-            auto findValue = [this](ClassDecl* cls, auto&& self, int d) -> VariableDecl* {
-              if (!cls || d > 8) return nullptr;
-              for (Decl* m : cls->members)
-                if (m->kind == NodeKind::VariableDecl && (m->flags & DF_Static) && (m->flags & DF_Constexpr) &&
-                    static_cast<VariableDecl*>(m)->init && !static_cast<VariableDecl*>(m)->name.empty())
-                {
-                  auto& last = static_cast<VariableDecl*>(m)->name.last();
-                  if (std::string_view sv = symbols.name(last.symbol); sv == "value")
-                    return static_cast<VariableDecl*>(m);
-                }
-              // Walk base classes via the AST base list (Scope is incomplete in codegen)
-              for (auto& base : cls->bases)
-                if (base.type && base.type->kind == NodeKind::NamedType)
-                {
-                  Decl* bd = static_cast<NamedType*>(base.type)->resolved;
-                  if (bd && bd->kind == NodeKind::ClassDecl)
-                    if (auto* v = self(static_cast<ClassDecl*>(bd), self, d + 1))
-                      return v;
-                }
-              return nullptr;
-            };
-            if (VariableDecl* v = findValue(static_cast<ClassDecl*>(d), findValue, 0))
-              return foldConst(v->init, depth + 1);
-            return std::nullopt;
-          }
-          // `size_t(5)`, `Tag(0)`: a type's name called with one value converts it.
-          if ((d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EnumDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))) &&
-              c->args.size() == 1)
-            return foldAs(foldConst(c->args[0], depth + 1), c->ty);
-          if (d->kind != NodeKind::FunctionDecl)
-            return std::nullopt;
-          return foldCall(static_cast<FunctionDecl*>(d), c, n, depth);
-        }
-        case NodeKind::NameExpr:
-        {
-          auto* n = static_cast<NameExpr*>(e);
-          Decl* d = n->resolved;
-          if (d)
-            for (size_t i = constEnv.size(); i-- > 0;)
-              if (constEnv[i].first == d)
-                return constEnv[i].second; // a parameter or a local of the function being folded
-          if (d && d->kind == NodeKind::ParamDecl)
-            return std::nullopt;
-          if (!d && n->name.parts.size() == 1 && constContext && currentArgs)
-          {
-            // A template parameter of the declaration being folded, in a place the resolver does
-            // not walk (`template<size_t Align> struct alignas(Align) AlignedBytes`).
-            for (Decl* p = constContext; p && !d; p = p->parent)
-              for (Decl* tp : p->templateParams)
-                if (static_cast<TemplateParamDecl*>(tp)->name == n->name.parts[0].symbol)
-                  d = tp;
-          }
-          if (!d)
-          {
-            // A builtin type trait, evaluated under the current instantiation.
-            TemplateArgs none;
-            if (std::optional<bool> trait = global.typeTraitValue(n, constContext ? constContext : typingContext(), currentArgs ? *currentArgs : none))
-              return ConstValue::integer(*trait, types.boolType());
-            return std::nullopt;
-          }
-          if (d->kind == NodeKind::EnumeratorDecl)
-            return ConstValue::integer(enumeratorValue(static_cast<EnumeratorDecl*>(d)), d->parent ? types.enumType(d->parent) : nullptr);
-          if (d->kind == NodeKind::TemplateParamDecl)
-          {
-            // A non-type template parameter: its value in the instantiation being emitted.
-            if (currentArgs)
-              for (auto& [p, t] : currentArgs->pairs)
-                if (p == d && t && t->kind == TyKind::Value)
-                  return ConstValue::integer(t->value, t->inner);
-            return std::nullopt;
-          }
-          if (d->kind == NodeKind::VariableDecl)
-          {
-            auto* v = static_cast<VariableDecl*>(d);
-            if (v->builtin == BUILTIN_EnumCount && v->parent)
-              return ConstValue::integer(int64_t(enumeratorCount(v->parent)), types.intType());
-            const Ty* t = declType(v);
-            VariableDecl* def = locals.count(d) ? v : variableDefinition(v);
-            if (t && (t->isConst || (v->flags & DF_Constexpr)) && def->init && !locals.count(d))
-            {
-              if (!v->templateParams.empty())
-              {
-                // `bytes<double>`, `canBuild<String, const char*>`: the initializer of the
-                // specialisation these arguments pick (the arguments read where the use is written).
-                TemplateArgs args = variableTemplateArgs(n, v, e), specArgs;
-                VariableDecl* source = global.variableTemplateFor(v, args, specArgs);
-                if (!source)
-                  unsupported(e, "a use of " + qualifiedName(v) + " that two of its specialisations match equally well");
-                if (source == v)
-                  source = def;
-                if (!source->init)
-                  return std::nullopt;
-                ParsedFile* saved = currentFile;
-                ConstContextScope context(*this, source);
-                currentFile = source->file;
-                ArgsScope scope(*this, &specArgs);
-                std::optional<ConstValue> r = foldConst(global.instanceInitializer(source, specArgs), depth + 1);
-                currentFile = saved;
-                return foldAs(r, e->ty);
-              }
-              ParsedFile* saved = currentFile;
-              ConstContextScope context(*this, def);
-              currentFile = def->file;
-              // A static member of a class template: its initializer under the arguments of the
-              // instantiation the use names (`MyLimits<int>::digits`, declared in the base
-              // IntegerLimits<int, true, 32>); without one in sight, under the current ones.
-              TemplateArgs classArgs;
-              const Ty* cls = locals.count(d) ? nullptr : staticMemberClass(v, e, e, nullptr);
-              if (cls)
-                classArgs = global.definitionArgs(def, global.classArgsOf(cls));
-              ArgsScope scope(*this, cls ? &classArgs : currentArgs);
-              std::optional<ConstValue> r = foldConst(cls ? global.instanceInitializer(def, classArgs) : def->init, depth + 1);
-              currentFile = saved;
-              return foldAs(r, cls ? declType(v) : t);
-            }
-          }
-          return std::nullopt;
-        }
-        case NodeKind::MemberExpr:
-        {
-          Decl* d = static_cast<MemberExpr*>(e)->resolved;
-          if (d && d->kind == NodeKind::EnumeratorDecl)
-            return ConstValue::integer(enumeratorValue(static_cast<EnumeratorDecl*>(d)), d->parent ? types.enumType(d->parent) : nullptr);
-          return std::nullopt;
-        }
-        case NodeKind::SizeofExpr:
-        {
-          auto* s = static_cast<SizeofExpr*>(e);
-          if (s->isPack)
-          {
-            // `sizeof...(Ts)`: how many elements the pack has (a static member's initializer, a
-            // variable template's), not a size.
-            Decl* param = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved : nullptr;
-            if (!param && s->operand)
-              param = packIn(s->operand);
-            if (param && param->kind == NodeKind::TemplateParamDecl && currentArgs)
-              for (auto& [p, t] : currentArgs->pairs)
-                if (p == param && t && t->kind == TyKind::Pack)
-                  return ConstValue::integer(int64_t(t->args.size()), types.sizeType());
-            if (param && packLocals.count(param))
-              return ConstValue::integer(int64_t(packLocals[param].size()), types.sizeType());
-            return std::nullopt;
-          }
-          const Ty* t = nullptr;
-          if (s->type && s->type->kind == NodeKind::NamedType && static_cast<NamedType*>(s->type)->resolved &&
-              (static_cast<NamedType*>(s->type)->resolved->kind == NodeKind::VariableDecl ||
-               static_cast<NamedType*>(s->type)->resolved->kind == NodeKind::ParamDecl))
-            t = declType(static_cast<NamedType*>(s->type)->resolved);
-          else if (s->type)
-            t = currentArgs ? global.typeOfAstIn(s->type, constContext ? constContext : typingContext(), *currentArgs)
-                              : global.typeOfAst(s->type, constContext ? constContext : typingContext()); // `sizeof(T)` in a variable template's initializer
-          else
-            t = s->operand ? s->operand->ty : nullptr;
-          if (!t || !t->isKnown() || types.isDependent(t))
-            return std::nullopt;
-          return ConstValue::integer(int64_t(s->sizeofKind == Kw::alignof_ ? alignOf(types.stripRef(t), e) : sizeOf(types.stripRef(t), e)), types.sizeType());
-        }
-        case NodeKind::CastExpr:
-          return foldAs(foldConst(static_cast<CastExpr*>(e)->operand, depth + 1), foldType(e, static_cast<CastExpr*>(e)->type));
-        case NodeKind::NamedCastExpr:
-          return foldAs(foldConst(static_cast<NamedCastExpr*>(e)->operand, depth + 1), foldType(e, static_cast<NamedCastExpr*>(e)->type));
-        case NodeKind::FunctionalCastExpr:
-        {
-          auto* c = static_cast<FunctionalCastExpr*>(e);
-          const Ty* t = foldType(e, c->type);
-          if (c->args.empty())
-            return isScalar(t) ? foldAs(ConstValue::integer(0), t) : std::nullopt; // `int()`: zero
-          return c->args.size() == 1 ? foldAs(foldConst(c->args[0], depth + 1), t) : std::nullopt;
-        }
-        case NodeKind::ConditionalExpr:
-        {
-          // Only the branch taken has to be a constant; its value takes the whole expression's
-          // type when both branches are scalars (`flag ? -1 : 0u` is unsigned).
-          auto* c = static_cast<ConditionalExpr*>(e);
-          std::optional<ConstValue> cond = foldConst(c->cond, depth + 1);
-          if (!cond || !c->then)
-            return std::nullopt;
-          std::optional<ConstValue> v = foldConst(cond->truthy() ? c->then : c->else_, depth + 1);
-          if (v && c->else_ && isScalar(c->then->ty) && isScalar(c->else_->ty))
-            return foldAs(v, c->ty);
-          return v;
-        }
-        case NodeKind::FoldExpr: return foldPack(static_cast<FoldExpr*>(e), depth);
-        default:
-          return std::nullopt;
+        auto* l = static_cast<LiteralExpr*>(e);
+        if (l->literalKind == TokenKind::Number || l->literalKind == TokenKind::Char)
+          return foldArith().literal(l->literalKind, spelling(l->token));
       }
-    }
-
-    // `(Ns + ... + 0)`, `(0 + ... + Ns)`, `(isFundamental<Ts> && ...)`: the pattern, the side that
-    // names a pack the current arguments bind (typePackIn; the two binary folds parse alike),
-    // folded once per element with the pack bound to it (resolver.cpp's constFold: the same order
-    // and stops). A pattern naming a second pack is no constant here.
-    std::optional<ConstValue> foldPack(FoldExpr* f, int depth)
-    {
-      std::optional<P> op = constOperator(f->op, false);
-      if (!op || !currentArgs || !isConstBinaryOperator(*op))
-        return std::nullopt;
-      bool right = f->lhs && typePackIn(f->lhs);
-      Expr* pattern = right ? f->lhs : f->rhs;
-      Expr* init = right ? f->rhs : f->lhs;
-      Decl* pack = pattern ? typePackIn(pattern) : nullptr;
-      const Ty* bound = nullptr;
-      for (auto& [p, t] : currentArgs->pairs)
-        if (p == pack)
-          bound = t;
-      if (!pack || !bound || bound->kind != TyKind::Pack)
-        return std::nullopt;
-      const TemplateArgs* all = currentArgs;
-      auto element = [&](size_t i) -> std::optional<ConstValue> {
-        TemplateArgs one = *all;
-        for (auto& [p, t] : one.pairs)
-          if (p == pack)
-            t = bound->args[i];
-        ArgsScope scope(*this, &one);
-        if (typePackIn(pattern))
-          return std::nullopt; // a second pack in the pattern
-        return foldConst(pattern, depth + 1);
-      };
-      // The operands in the order C++ evaluates them: the elements, with init last (a right fold)
-      // or first (a left fold); -1 stands for init.
-      std::vector<int> order;
-      if (init && !right)
-        order.push_back(-1);
-      for (size_t i = 0; i < bound->args.size(); ++i)
-        order.push_back(int(i));
-      if (init && right)
-        order.push_back(-1);
-      auto operand = [&](int k) { return k < 0 ? foldConst(init, depth + 1) : element(size_t(k)); };
-      if (*op == P::AndAnd || *op == P::OrOr)
-      {
-        for (int k : order)
-        {
-          std::optional<ConstValue> v = operand(k);
-          if (!v)
-            return std::nullopt;
-          if (v->truthy() == (*op == P::OrOr))
-            return ConstValue::integer(*op == P::OrOr, types.boolType());
-        }
-        return ConstValue::integer(*op == P::AndAnd, types.boolType()); // an empty `&&` fold is true, `||` false
-      }
-      if (order.empty())
-        return std::nullopt;
-      std::vector<ConstValue> values;
-      for (int k : order)
-      {
-        std::optional<ConstValue> v = operand(k);
-        if (!v)
-          return std::nullopt;
-        values.push_back(*v);
-      }
-      // A right fold is E1 op (E2 op (... op En)), a left fold ((E1 op E2) op ...) op En.
-      std::optional<ConstValue> value = right ? values.back() : values.front();
-      if (right)
-        for (size_t i = values.size() - 1; i-- > 0 && value;)
-          value = *op == P::Comma ? value : foldArith().binary(*op, values[i], *value);
-      else
-        for (size_t i = 1; i < values.size() && value; ++i)
-          value = *op == P::Comma ? std::optional<ConstValue>(values[i]) : foldArith().binary(*op, *value, values[i]);
-      return value;
-    }
-
-    // A call folded at compile time: the body of f's instantiation for the call (a function
-    // template's deduced arguments, a static member's class from the qualifier) run with the
-    // arguments bound, as the type checker runs it (resolver.cpp, constRun): returns, if, if
-    // constexpr and locals initialized once.
-    std::optional<ConstValue> foldCall(FunctionDecl* f, CallExpr* c, NameExpr* n, int depth)
-    {
-      if (!f->body || f->body->kind != NodeKind::BlockStmt || c->args.size() > f->params.size() || foldCalls >= 512)
-        return std::nullopt;
-      std::vector<ConstValue> values;
-      for (Expr* a : c->args)
-      {
-        std::optional<ConstValue> v = foldConst(a, depth + 1);
-        if (!v)
-          return std::nullopt;
-        values.push_back(*v);
-      }
-      TemplateArgs args;
-      FunctionDecl* body = f;
-      try
-      {
-        const Ty* classTy = nullptr;
-        if ((f->flags & DF_Static) && n->name.parts.size() > 1 && global.owningClass(f))
-        {
-          // `Limits<uint8_t>::max()`: the instantiation comes from the qualifier.
-          QualifiedName qualifier = n->name;
-          qualifier.parts.count -= 1;
-          NamedType tmp{};
-          tmp.kind = NodeKind::NamedType;
-          tmp.token = n->token;
-          tmp.name = qualifier;
-          TemplateArgs none;
-          const Ty* q = global.typeOfAstIn(&tmp, constContext ? constContext : typingContext(), currentArgs ? *currentArgs : none);
-          if (q && isClass(q) && !q->args.empty())
-            classTy = canonicalClass(q, c);
-        }
-        if (classTy || !f->templateParams.empty())
-          args = calleeArgs(f, classTy, c, c);
-        if (!args.empty())
-          body = global.instanceBody(f, args, classTy);
-      }
-      catch (Unsupported&)
-      {
-        return std::nullopt; // an instantiation the fold cannot name: no constant, the call is emitted
-      }
-      if (!body || !body->body || body->body->kind != NodeKind::BlockStmt || body->params.size() != f->params.size())
-        return std::nullopt;
-      struct Frame
-      {
-        Emitter& emitter;
-        size_t mark;
-        ParsedFile* file;
-        Frame(Emitter& emitter, ParsedFile* to) : emitter(emitter), mark(emitter.constEnv.size()), file(emitter.currentFile)
-        {
-          ++emitter.foldCalls;
-          if (to)
-            emitter.currentFile = to;
-        }
-        ~Frame()
-        {
-          --emitter.foldCalls;
-          emitter.constEnv.resize(mark);
-          emitter.currentFile = file;
-        }
-      } frame(*this, f->file);
-      ArgsScope scope(*this, args.empty() ? currentArgs : &args);
-      ConstContextScope context(*this, f); // the traits and types in the body resolve their names in f
-      for (size_t i = 0; i < body->params.size(); ++i)
-      {
-        auto* p = static_cast<ParamDecl*>(body->params[i]);
-        if (p->isPack)
-          return std::nullopt;
-        std::optional<ConstValue> v = i < values.size() ? std::optional<ConstValue>(values[i])
-                                    : p->defaultValue ? foldConst(p->defaultValue, depth + 1) : std::nullopt;
-        v = foldAs(v, declType(p));
-        if (!v)
-          return std::nullopt;
-        constEnv.push_back({p, *v});
-      }
-      std::optional<ConstValue> result;
-      if (foldStatement(body->body, result, depth + 1) != FoldFlow::Returned)
-        return std::nullopt;
-      return foldAs(result, c->ty);
-    }
-
-    enum class FoldFlow : uint8_t { Next, Returned, Failed };
-
-    // One statement of a body folded at compile time (resolver.cpp's constStatement: the same
-    // statements).
-    FoldFlow foldStatement(Stmt* s, std::optional<ConstValue>& result, int depth)
-    {
-      if (!s)
-        return FoldFlow::Next;
-      if (depth > 256)
-        return FoldFlow::Failed;
-      struct LocalsEnd
-      {
-        std::vector<std::pair<Decl*, ConstValue>>& env;
-        size_t mark;
-        ~LocalsEnd() { env.resize(mark); }
-      };
-      switch (s->kind)
-      {
-        case NodeKind::BlockStmt:
-        {
-          LocalsEnd end{constEnv, constEnv.size()};
-          for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
-            if (FoldFlow flow = foldStatement(inner, result, depth + 1); flow != FoldFlow::Next)
-              return flow;
-          return FoldFlow::Next;
-        }
-        case NodeKind::ReturnStmt:
-          result = foldConst(static_cast<ReturnStmt*>(s)->value, depth + 1);
-          return result ? FoldFlow::Returned : FoldFlow::Failed;
-        case NodeKind::IfStmt:
-        {
-          auto* i = static_cast<IfStmt*>(s);
-          if (i->init || !i->cond || uint8_t(i->cond->kind) < uint8_t(NodeKind::NameExpr))
-            return FoldFlow::Failed;
-          std::optional<ConstValue> cond = foldConst(static_cast<Expr*>(i->cond), depth + 1);
-          if (!cond)
-            return FoldFlow::Failed;
-          LocalsEnd end{constEnv, constEnv.size()};
-          return foldStatement(cond->truthy() ? i->then : i->else_, result, depth + 1);
-        }
-        case NodeKind::DeclStmt:
-          for (Decl* d : static_cast<DeclStmt*>(s)->decls)
-          {
-            if (d->kind == NodeKind::StaticAssertDecl || d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EmptyDecl)
-              continue;
-            if (d->kind != NodeKind::VariableDecl)
-              return FoldFlow::Failed;
-            auto* v = static_cast<VariableDecl*>(d);
-            if (!v->init || (v->flags & (DF_Static | DF_Typedef)) || !v->structuredBindings.empty() || v->init->kind == NodeKind::BraceInitExpr)
-              return FoldFlow::Failed;
-            std::optional<ConstValue> value = foldAs(foldConst(v->init, depth + 1), declType(v));
-            if (!value)
-              return FoldFlow::Failed;
-            constEnv.push_back({v, *value});
-          }
-          return FoldFlow::Next;
-        case NodeKind::AssertStmt:
-        {
-          std::optional<ConstValue> cond = foldConst(static_cast<AssertStmt*>(s)->cond, depth + 1);
-          return cond && cond->truthy() ? FoldFlow::Next : FoldFlow::Failed;
-        }
-        case NodeKind::EmptyStmt:
-          return FoldFlow::Next;
-        default:
-          return FoldFlow::Failed;
-      }
+      TemplateArgs none;
+      bool layoutFailed = false;
+      std::optional<ConstValue> v =
+        global.evaluate(e, currentFile, constContext ? constContext : typingContext(), currentArgs ? *currentArgs : none, foldHooks(e, layoutFailed));
+      if (!v && layoutFailed)
+        throw Unsupported{}; // the failed layout reported itself; what needs the constant fails with it
+      return v;
     }
 
     int64_t enumeratorValue(EnumeratorDecl* en)
@@ -5207,6 +4721,7 @@ namespace
       ParsedFile* saved = currentFile;
       if (e && e->file)
         currentFile = e->file;
+      ConstContextScope context(*this, e); // `B = A + 1` names the enumeration's own A
       if (e)
         for (Decl* d : e->enumerators)
         {
@@ -5530,6 +5045,7 @@ namespace
         return true;
       ParsedFile* saved = currentFile;
       currentFile = f->file;
+      ConstContextScope context(*this, f);
       std::optional<int64_t> v = evalConst(f->condition);
       currentFile = saved;
       if (!v)
@@ -8069,9 +7585,25 @@ namespace
             const Ty* t = types.stripRef(declType(d));
             if (!d->templateParams.empty())
             {
-              // A variable template: its value for these arguments, a constant.
-              if (auto c = evalConst(e))
-                return {t && t->kind == TyKind::Bool ? (*c ? "true" : "false") : std::to_string(*c), t ? types.unqualified(t) : types.intType()};
+              // A variable template: its value for these arguments, a constant (`pi_v<double>` a
+              // floating one), of the type the use has; while that is still the template's (`T`),
+              // of the type the evaluator gave the value, the declared one for these arguments.
+              auto usable = [this](const Ty* x) { return x && x->isKnown() && !types.isDependent(x) ? types.unqualified(types.stripRef(x)) : nullptr; };
+              const Ty* vt = usable(e->ty) ? usable(e->ty) : usable(t);
+              if (std::optional<ConstValue> c = foldAs(foldConst(e), vt))
+              {
+                const Ty* ct = vt ? vt : usable(c->type);
+                if (c->isFloat() || (ct && ct->kind == TyKind::Float))
+                {
+                  const Ty* ft = ct && ct->kind == TyKind::Float ? ct : types.floatType(64);
+                  return {floatConstant(c->isFloat() ? c->f : double(c->i), ft->bits), ft};
+                }
+                return {ct && ct->kind == TyKind::Bool ? (c->i ? "true" : "false") : std::to_string(c->i), ct ? ct : types.intType()};
+              }
+              if (getenv("KPP_DEBUG_VT"))
+                fprintf(stderr, "DEBUG vt file=%s ctx=%s args=%d constContext=%s\n", currentFile ? currentFile->path.c_str() : "null",
+                        typingContext() ? nodeKindName(typingContext()->kind) : "null", currentArgs ? int(currentArgs->pairs.size()) : -1,
+                        constContext ? nodeKindName(constContext->kind) : "null");
               unsupported(e, "a variable template whose value is not a constant");
             }
             if (t && t->isConst && (t->kind == TyKind::Int || t->kind == TyKind::Enum || t->kind == TyKind::Char || t->kind == TyKind::Bool))
