@@ -537,6 +537,11 @@ namespace
     {"END_FORCE_OPTIMIZE", ""}, {"SUPPRESS_UBSAN", ""}, {"PADDING_WARNING", ""}, {"errno", "(*_errno())"},
     // SDL_stdinc.h's format for an Sint64, which SDLWindow concatenates with a literal (Windows').
     {"SDL_PRIs64", "\"I64d\""},
+    // C headers' constants that are casts, which the C import does not take for constants (winsock2.h,
+    // signal.h, SDL_audio.h, SDL_touch.h).
+    {"INVALID_SOCKET", "((SOCKET)(~0))"}, {"SIG_DFL", "((_crt_signal_t)0)"},
+    {"SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK", "((SDL_AudioDeviceID)0xFFFFFFFFu)"}, {"SDL_AUDIO_DEVICE_DEFAULT_RECORDING", "((SDL_AudioDeviceID)0xFFFFFFFEu)"},
+    {"SDL_TOUCH_MOUSEID", "((SDL_MouseID)-1)"}, {"SDL_MOUSE_TOUCHID", "((SDL_TouchID)-1)"},
     // math.h constants
     {"M_PI", "3.14159265358979323846"}, {"M_PI_2", "1.57079632679489661923"}, {"M_PI_4", "0.78539816339744830962"},
     {"M_1_PI", "0.31830988618379067154"}, {"M_2_PI", "0.63661977236758134308"}, {"M_SQRT2", "1.41421356237309504880"},
@@ -580,6 +585,8 @@ namespace
                                                                   {"FAILED", "(((HRESULT)($1)) < 0)"}, {"SUCCEEDED", "(((HRESULT)($1)) >= 0)"},
                                                                   {"LOBYTE", "((BYTE)(((DWORD_PTR)($1)) & 0xff))"},
                                                                   {"HIBYTE", "((BYTE)((((DWORD_PTR)($1)) >> 8) & 0xff))"},
+                                                                  {"LOWORD", "((WORD)(((DWORD_PTR)($1)) & 0xffff))"},
+                                                                  {"HIWORD", "((WORD)((((DWORD_PTR)($1)) >> 16) & 0xffff))"},
                                                                   {"FD_ZERO", "(((fd_set*)($1))->fd_count = 0)"}, {"TEXT", "$1"}};
   // Macros that use an argument more than once or stringize it (`#NAME`): $N is argument N as
   // converted (with `this->` and the other rewrites), #N its original spelling as a string literal,
@@ -592,7 +599,7 @@ namespace
     // Windows' wingdi.h and winnt.h, as knownFunctionMacros above (with `(DWORD)((BYTE)(x))` where
     // wingdi.h has `(DWORD)(BYTE)(x)`, which Kpp asks to have written out).
     {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
-    {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}};
+    {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}, {"FD_ISSET", "__WSAFDIsSet((SOCKET)($1), (fd_set*)($2))"}};
 
   // The preprocessor's #: the spelling with each run of whitespace one space, `"` and `\` escaped.
   std::string stringize(std::string_view spelling)
@@ -2721,17 +2728,6 @@ namespace
     // The game's classes whose names the library uses, renamed in text that never was tokens.
     std::string renameGameClasses(const std::string& s) { return renameGameClassNames(s, &counts); }
 
-    // Whether token j is a string literal, or a name of a string macro (objectMacros) where it is
-    // no member: a piece of a literal concatenation.
-    bool literalLike(uint32_t j) const
-    {
-      if (toks[j].getKind() == TokenKind::String)
-        return true;
-      if (toks[j].getKind() != TokenKind::Identifier || (j > 0 && (toks[j - 1].is(P::Dot) || toks[j - 1].is(P::Arrow) || toks[j - 1].is(P::ColonColon))))
-        return false;
-      auto macro = objectMacros.find(std::string(spelling(j)));
-      return macro != objectMacros.end() && isStringLiterals(macro->second) && macroHoldsAt(macro->first, toks[j].offset);
-    }
     bool macroHoldsAt(const std::string& name, uint32_t offset) const
     {
       auto range = ownMacroRanges.find(name);
@@ -2761,25 +2757,16 @@ namespace
             counts.add("file-local aliases renamed");
             continue;
           }
-        // A string macro beside a string literal (apart from it: `"x"sv` is a suffix), or beside
-        // another string macro (`" " UTF8_A UTF8_NBSP`), is part of a concatenation: its text. A
-        // macro that is a qualified name is that name wherever it is used.
+        // A string macro or a macro that is a qualified name is its text wherever it is used: macros
+        // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
+        // namespace), and only literals concatenate (`"\n" UTF8_BULLET " "`).
         if (t.getKind() == TokenKind::Identifier && !objectMacros.empty() &&
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
           if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset))
           {
-            if (!isStringLiterals(macro->second))
-            {
-              replace(t.offset, t.length, macro->second);
-              counts.add("name macros written out");
-              continue;
-            }
-            if ((i > 0 && literalLike(i - 1) && endOffset(i - 1) < t.offset) || (literalLike(i + 1) && endOffset(i) < toks[i + 1].offset))
-            {
-              replace(t.offset, t.length, macro->second);
-              counts.add("string macros written out in concatenations");
-              continue;
-            }
+            replace(t.offset, t.length, macro->second);
+            counts.add(isStringLiterals(macro->second) ? "string macros written out" : "name macros written out");
+            continue;
           }
         if (t.getKind() == TokenKind::Identifier && headerAliases && !headerAliases->empty() &&
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
@@ -5529,6 +5516,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   // converted header, as only those see them in C++ (Lua's internals: lobject.h's hvalue, ...).
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> headerMacros;
   std::map<std::string, std::string> headerAliases; // their object-like macros that name another identifier
+  std::map<std::string, std::string> headerObjects; // and those that are string literals or a qualified name (LUA_NUMBER_FMT)
   std::map<std::string, std::vector<std::filesystem::path>> includedHeaders; // by directory
   if (!overridesDir.empty())
   {
@@ -5555,7 +5543,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         else
           headers.push_back(entry);
       }
-      headerMacros = readHeaderMacros(headers, nullptr, &headerAliases);
+      headerMacros = readHeaderMacros(headers, nullptr, &headerAliases, &headerObjects);
     }
   }
   // The game's own headers each input includes (the includes resolved against the including file's
@@ -5939,6 +5927,9 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     {
       fc.includedMacros = visibleMacros(ip->second);
       fc.objectMacros = visibleObjectMacros(ip->second);
+      for (const auto& [name, body] : headerObjects)
+        if (!knownMacros.count(name)) // the converter's own rewrite (SDL_PRIs64) stands
+          fc.objectMacros.emplace(name, body);
     }
     fc.variants = &variants;
     fc.carriedDefaults = &carriedDefaults;
