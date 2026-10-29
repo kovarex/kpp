@@ -25,14 +25,20 @@ struct FunctionImpl
   // From a callable, never from what cannot be called (a number, a pointer to an object such as a
   // string literal), so that another overload takes those, as std::function's constructor needs a
   // callable: `use("text")` with use(const String&) and use(Function<void()>) takes the String one.
+  // A null function pointer makes an empty Function, as std::function's constructor does
+  // (SimulationWidget's `hasGradient ? GameViewWidgetLogic::drawGradient : nullptr`).
   template<typename F>
   implicit FunctionImpl(F callable)
     requires(!isArithmetic<F> && !(isPointer<F> && !isFunction<RemovePointer<F>>))
-    : target(new F(move(callable))),
-      invoke(&FunctionImpl<R, Args...>::call<F>),
-      destroy(&FunctionImpl<R, Args...>::destroyAs<F>),
-      clone(FunctionImpl<R, Args...>::cloneFor<F>())
-  {}
+  {
+    if constexpr (isPointer<F>)
+      if (callable == nullptr)
+        return;
+    this->target = new F(move(callable));
+    this->invoke = &FunctionImpl<R, Args...>::call<F>;
+    this->destroy = &FunctionImpl<R, Args...>::destroyAs<F>;
+    this->clone = FunctionImpl<R, Args...>::cloneFor<F>();
+  }
   FunctionImpl(const FunctionImpl<R, Args...>& other)
     : target(other.target ? other.clone(other.target) : nullptr), invoke(other.invoke), destroy(other.destroy), clone(other.clone)
   {}

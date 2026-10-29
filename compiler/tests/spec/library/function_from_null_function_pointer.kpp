@@ -1,0 +1,19 @@
+// spec: a Function made from a null function pointer is empty, as std::function is: `on ? hello : nullptr`, a pointer variable holding null; one made from a function is not
+// factorio: SimulationWidget::paintSimulationGameView passes `this->hasGradient ? GameViewWidgetLogic::drawGradient : nullptr` as a Function<void(DrawQueue&)>, which renderGameView calls when it is not empty: it held the null pointer, and the normal start crashed calling address 0 right after "Factorio initialised", painting the main menu's first frame
+void hello(int& x)
+{
+  x = 1;
+}
+int main()
+{
+  bool on = false;
+  Function<void(int&)> f = on ? hello : nullptr;
+  void (*p)(int&) = nullptr;
+  Function<void(int&)> g = p;
+  Function<void(int&)> h = hello;
+  int x = 0;
+  if (h)
+    h(x);
+  println("{} {} {} {}", bool(f), bool(g), bool(h), x);
+  return 0;
+}

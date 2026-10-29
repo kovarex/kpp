@@ -57,6 +57,13 @@ static void stack(CONTEXT context)
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_FAIL_CRITICAL_ERRORS);
     SymInitialize(process, directory, TRUE); /* the executable's directory: no symbol server */
   }
+  if (!context.Rip && context.Rsp)
+  {
+    /* A call through a null pointer ("executing 0x0"): the call pushed its return address, so the
+       caller is the first frame. */
+    context.Rip = *(DWORD64*)context.Rsp;
+    context.Rsp += 8;
+  }
   for (int i = 0; i < 48 && context.Rip; ++i)
   {
     frame(process, context.Rip, i);
