@@ -1,0 +1,30 @@
+// spec: class template argument deduction takes no constructor whose own template parameters the arguments leave undeduced: `template<class Owner> Set(const char*, ValueT Owner::*, ValueT)` given a Holder deduces ValueT from the last argument alone, and is not the candidate; `template<class Tag> Set(const char*, Holder<ValueT, Tag>, int)` is
+// found in tests/TestInventory (`Set("stone-furnace", Cast(&FurnacePrototype::energySourcePrototype, &BurnerPrototype::fuelInventorySize), 0u)` beside TestMigrationHelpers::Set's member-pointer constructors)
+// pending: the member-pointer constructor deduces Set<int> from the last argument, and codegen finds no constructor of Set<int> for a Holder<short, Furnace> (`a constructor of Helpers::Set taking 3 arguments`)
+struct Furnace { short size = 3; };
+template<class T, class Tag>
+struct Holder
+{
+  T value;
+};
+namespace Helpers
+{
+template<class ValueT>
+struct Set
+{
+  template<class Owner>
+  Set(const char* name, ValueT Owner::* member, ValueT value) : name(name), stored(value) {}
+  template<class Tag>
+  Set(const char* name, Holder<ValueT, Tag> holder, int extra) : name(name), stored(ValueT(holder.value + extra)) {}
+  const char* name;
+  ValueT stored;
+};
+}
+int main()
+{
+  Holder<short, Furnace> h{short(40)};
+  auto byHolder = Helpers::Set("holder", h, 2);
+  auto byMember = Helpers::Set("member", &Furnace::size, short(7));
+  println("{} {} {} {}", byHolder.stored, int(sizeof(byHolder.stored)), byMember.stored, int(sizeof(byMember.stored)));
+  return 0;
+}
