@@ -14029,6 +14029,7 @@ struct GlobalScope::Impl
     // for the code generator, as for function templates.
     const Ty* genericLambdaCall(const Ty* t, CallExpr* c)
     {
+      t = types.unqualified(t); // `(*this->f)(x)` with a `const F*` f: the closure type the lambda's environment is kept for
       LambdaExpr* l = Impl::lambdaOf(t);
       std::vector<const Ty*> argTypes = argTypesOf(c->args);
       Subst deduced;

@@ -1,6 +1,5 @@
 // spec: a transform view over a generic lambda with init-captures, returned from a function and iterated by its caller: the view's iterator's `auto operator*()` returns what the lambda returns for the element
 // found in src/Map/ChunkLineByLineScan.kpp: chunkLineByLineScan's `iotaView(...) | transformView([leftTop, width = ...](const auto& index) { ... })`, iterated by ChartRenderer, SegmentedUnitController and others (with TerritoryManager::getAllTerritories, 13 errors)
-// pending: TransformIterator's auto operator*() is not deduced ("the type auto of FunctionDecl")
 struct Chunk { int x, y; Chunk operator+(const Chunk& o) const { return Chunk{this->x + o.x, this->y + o.y}; } };
 inline auto lineByLine(const Chunk& leftTop, const Chunk& rightBottom)
 {
