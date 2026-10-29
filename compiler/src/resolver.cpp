@@ -5188,6 +5188,63 @@ struct GlobalScope::Impl
     if (d->kind != NodeKind::FunctionDecl)
       return std::nullopt;
     auto* f = static_cast<FunctionDecl*>(d);
+    // The written template arguments, an expansion among them by its elements (`typeIndex<T,
+    // Renderers...>()`), and of the functions of the name the one whose template parameters
+    // they fill: the walk chose where the pack's length was not known.
+    const NamePart& written = callee->name.last();
+    auto explicitFor = [&](FunctionDecl* g, std::vector<const Ty*>& out)
+    {
+      out.clear();
+      size_t n = g->templateParams.size();
+      for (Node* w : written.templateArgs)
+      {
+        Decl* param = n ? g->templateParams[std::min(out.size(), n - 1)] : nullptr;
+        const Ty* t = templateArgument(w, param, ctx, depth + 1);
+        if (w && w->kind == NodeKind::PackType && t && t->kind == TyKind::Pack)
+          out.insert(out.end(), t->args.begin(), t->args.end());
+        else
+          out.push_back(t);
+      }
+    };
+    auto fillsTemplate = [&](FunctionDecl* g, const std::vector<const Ty*>& given)
+    {
+      size_t n = g->templateParams.size();
+      if (given.size() > n && !(n && static_cast<TemplateParamDecl*>(g->templateParams[n - 1])->isPack))
+        return false;
+      if (c->args.empty())
+        for (size_t i = given.size(); i < n; ++i)
+          if (auto* p = static_cast<TemplateParamDecl*>(g->templateParams[i]); !p->isPack && !p->defaultArg)
+            return false; // no argument to deduce it from
+      return true;
+    };
+    std::vector<const Ty*> given;
+    if (!written.templateArgs.empty())
+    {
+      explicitFor(f, given);
+      if (!fillsTemplate(f, given))
+      {
+        Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        FunctionDecl* fits = nullptr;
+        int fitting = 0;
+        std::vector<const Ty*> candidateArgs;
+        if (l.overloads)
+          for (const Entry& entry : *l.overloads)
+            if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->params.size() == c->args.size())
+            {
+              auto* g = static_cast<FunctionDecl*>(entry.decl);
+              explicitFor(g, candidateArgs);
+              if (fillsTemplate(g, candidateArgs))
+              {
+                fits = g;
+                ++fitting;
+              }
+            }
+        if (fitting != 1)
+          return std::nullopt;
+        f = fits;
+        explicitFor(f, given);
+      }
+    }
     if (!f->body && c->args.size() == 1 && f->params.size() == 1 && !f->name.empty() && symbols.name(f->name.last().symbol) == "strlen")
     {
       std::optional<ConstValue> text = constValue(c->args[0], ctx, depth + 1);
@@ -5213,9 +5270,8 @@ struct GlobalScope::Impl
       bound = qualifierSubst(callee->name, ctx, depth + 1, lexicalScopeOf(f));
     for (const Subst::Pair& p : bound.pairs)
       params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
-    const NamePart& written = callee->name.last();
     Subst fromArgs; // `max(sizeof(Key) + 1u, 2 * sizeof(void*) - 1)`: the parameters not written, deduced from the arguments' types
-    if (written.templateArgs.size() < f->templateParams.size())
+    if (given.size() < f->templateParams.size())
     {
       LocalStack own;
       for (Decl* p : f->templateParams)
@@ -5256,8 +5312,15 @@ struct GlobalScope::Impl
     }
     for (size_t i = 0; i < f->templateParams.size(); ++i)
     {
-      const Ty* t = i < written.templateArgs.size() ? templateArgument(written.templateArgs[i], f->templateParams[i], ctx, depth + 1)
-                                                    : fromArgs.find(f->templateParams[i]);
+      auto* param = static_cast<TemplateParamDecl*>(f->templateParams[i]);
+      const Ty* t = i < given.size() ? given[i] : fromArgs.find(param);
+      if (param->isPack && i + 1 == f->templateParams.size() && (i < given.size() || (!t && c->args.empty())))
+      {
+        // The pack takes the written arguments from its position on (none: `typeIndex<T>()` of
+        // `template<class T, class... Tail>`), as bindExplicitArgs has it.
+        std::vector<const Ty*> rest(given.begin() + std::min(i, given.size()), given.end());
+        t = types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())});
+      }
       if (!t || !t->isKnown() || types.isDependent(t))
         return std::nullopt;
       bound.pairs.push_back({f->templateParams[i], t});
