@@ -150,6 +150,9 @@ namespace
   // The library files the game's build leaves out (fbuild.bff's .CompilerInputExcludedFiles): Lua's
   // standalone interpreter and compiler, by their directory and name.
   const std::set<std::string> filesNotBuilt = {"Lua/lua.c", "Lua/luac.c"};
+  // The headers the game's build force-includes in every file of a project (fbuild.bff's /FI, the
+  // precompiled headers), by their path below a root: included even where no file names them.
+  const std::set<std::string> forceIncludedHeaders = {"src/Common.hpp", "Agui/AguiCommon.hpp", "tests/TestCommon.hpp"};
   // The headers a library's build force-includes (fbuild.bff: Lua's `/FI"override_printf.h"`), by
   // the library's directory name: its files see them before their own includes.
   const std::map<std::string, std::string> forcedIncludes = {{"Lua", "override_printf.h"}};
@@ -1957,6 +1960,9 @@ namespace
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
     const ScopeNames* scopeNames = nullptr;
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
+    // The files the conversion leaves out: a class defined only in one of them is defined nowhere
+    // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
+    const std::set<const ParsedFile*>* leftOutFiles = nullptr;
     const Variants* variants = nullptr;
     // A std::variant declared in this file, which becomes a union enum (run() writes it once the
     // edits inside its alternatives' types are known).
@@ -4417,7 +4423,9 @@ namespace
               // declaration is the primary template, which the specializations need.
               bool specializedOnly = def && def != c && def->kind == NodeKind::ClassDecl && !c->templateParams.empty() &&
                                      !static_cast<ClassDecl*>(def)->name.empty() && static_cast<ClassDecl*>(def)->name.last().hasTemplateArgs;
-              if (namespaceScope && opaqueKept && (!def || def == c || specializedOnly) && opaqueKept->insert(global.qualifiedName(c)).second)
+              bool definedInLeftOutFile = def && leftOutFiles && leftOutFiles->count(def->file);
+              if (namespaceScope && opaqueKept && (!def || def == c || specializedOnly || definedInLeftOutFile) &&
+                  opaqueKept->insert(global.qualifiedName(c)).second)
               {
                 // No definition anywhere (`namespace TaskBar { class Interface; }`, used only through
                 // pointers; the tags only template arguments name, `class ElectricityTag;`): the
@@ -6390,6 +6398,43 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         externalIncludes[k].insert(name.filename().string());
     }
   }
+  // The headers that no file includes, directly or through other headers, from the sources the
+  // build compiles, the files given alone and the force-included headers: the C++ build never
+  // compiles them, so they are left out. Dead code that Kpp, compiling every file, would compile:
+  // ShaderProgram.hpp (the OpenGL renderer's) names the namespace VertexLayout as a type,
+  // ItemStackChangeWatcher.hpp assigns an ItemWithQualityID to an ItemID. The includes are read
+  // from the text, those in dropped #if branches too, so no header that may be included goes.
+  std::vector<bool> reached(inputs.size(), false);
+  {
+    std::vector<size_t> work;
+    auto reach = [&](size_t k)
+    {
+      if (!reached[k])
+      {
+        reached[k] = true;
+        work.push_back(k);
+      }
+    };
+    for (const auto& [key, k] : inputByPath)
+    {
+      const std::filesystem::path& path = inputs[k].path;
+      std::string ext = path.extension().string();
+      std::string rel = relativeTo(path, roots);
+      bool built = !filesForOtherPlatforms.count(rel) && !filesNotBuilt.count((path.parent_path().filename() / path.filename()).generic_string());
+      if (((ext == ".cpp" || ext == ".cc" || ext == ".c") && built) || forceIncludedHeaders.count(rel))
+        reach(k);
+    }
+    for (const auto& root : roots)
+      if (auto given = inputByPath.find(pathKey(root)); given != inputByPath.end()) // a file given alone (Lua/LuaCPPUtilities.hpp)
+        reach(given->second);
+    while (!work.empty())
+    {
+      size_t k = work.back();
+      work.pop_back();
+      for (size_t included : includedInputs[k])
+        reach(included);
+    }
+  }
   // The macros of the `included` headers, each directory's together, and which directory each
   // header's file name belongs to.
   std::map<std::string, MacroMap> includedHeaderMacros;
@@ -6727,6 +6772,15 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         fileAliasRenames[&in][name] = name + "Of" + stem;
       }
   }
+  // The files left out below, for the classes defined only there (FileConverter::leftOutFiles).
+  std::set<const ParsedFile*> leftOutFiles;
+  for (const ConvertInput& in : inputs)
+  {
+    std::string rel = relativeTo(in.path, roots);
+    if (in.parsed && (filesForOtherPlatforms.count(rel) || (inputByPath.count(pathKey(in.path)) && !reached[&in - inputs.data()]) ||
+                      filesNotBuilt.count((in.path.parent_path().filename() / in.path.filename()).generic_string())))
+      leftOutFiles.insert(in.parsed);
+  }
   for (const ConvertInput& in : inputs)
   {
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
@@ -6746,8 +6800,14 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       total.add("files the build leaves out");
       continue;
     }
+    if (inputByPath.count(pathKey(in.path)) && !reached[&in - inputs.data()])
+    {
+      total.add("headers no file includes left out");
+      continue;
+    }
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
+    fc.leftOutFiles = &leftOutFiles;
     if (auto kept = keptCLibraries.find(in.path.parent_path().filename().string()); kept != keptCLibraries.end())
       fc.keptCLibraries = &kept->second;
     fc.scopeNames = &scopeNames;
