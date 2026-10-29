@@ -8774,15 +8774,19 @@ struct GlobalScope::Impl
             result = nullptr; // deduced per call
           locals.pop(mark);
           // In a template, the lambda is a different type in each instantiation (its body differs).
+          // The mark telling them apart is a hash of the arguments as printed, in parameter-name
+          // order, so that it (and every name printed with it) is the same in every run.
           int64_t instance = 0;
           if (activeSubst)
           {
-            uint64_t h = 1469598103934665603ull;
+            std::vector<std::string> printed;
             for (auto& [d, ty] : activeSubst->pairs)
-            {
-              h = (h ^ uint64_t(reinterpret_cast<uintptr_t>(d))) * 1099511628211ull;
-              h = (h ^ uint64_t(reinterpret_cast<uintptr_t>(ty))) * 1099511628211ull;
-            }
+              printed.push_back(std::string(symbols.name(static_cast<TemplateParamDecl*>(d)->name)) + "=" + types.toString(ty, &symbols));
+            std::sort(printed.begin(), printed.end());
+            uint64_t h = 1469598103934665603ull;
+            for (const std::string& p : printed)
+              for (unsigned char c : p + ";")
+                h = (h ^ c) * 1099511628211ull;
             instance = int64_t(h ? h : 1);
           }
           const Ty* lambdaTy = types.lambda(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, l->closure, instance);

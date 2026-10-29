@@ -97,7 +97,6 @@ namespace
     std::string allocas; // entry-block allocas of the current function
     uint32_t temp = 0;
     uint32_t label = 0;
-    uint32_t stringCount = 0;
     bool blockTerminated = false;
     bool debug = true;        // config::debug: asserts are compiled in
     bool usesAssert = false;  // some assert was emitted: the module needs kpp_assert_failed
@@ -142,6 +141,9 @@ namespace
     };
     std::unordered_map<Decl*, Local> locals;
     std::unordered_map<Decl*, std::vector<Local>> packLocals; // one local per element of a parameter pack
+    std::unordered_map<std::string, const Ty*> irTypeNames;   // irTypeName(): a struct type's IR name -> its type
+    std::unordered_map<std::string, std::string> sharedConstants; // constantName(): a private constant's name -> its contents
+    std::vector<std::unordered_map<std::string, std::string>> moduleConstants;
     // The `__range` of a range-for that calls free begin(__range) and end(__range): a variable of
     // the compiler's and the name of it passed to the calls (one each per such loop).
     std::deque<VariableDecl> rangeVariables;
@@ -490,7 +492,7 @@ namespace
       {
         // A union is one block of storage; every member lives at its start.
         StructInfo& info = structs[key];
-        info.name = "%struct." + std::to_string(structs.size());
+        info.name = irTypeName("%struct.", key);
         info.isUnion = true;
         uint64_t size = 1, align = 1;
         for (Decl* m : c->members)
@@ -518,7 +520,7 @@ namespace
         return structs[key];
       }
       StructInfo& info = structs[key];
-      info.name = "%struct." + std::to_string(structs.size());
+      info.name = irTypeName("%struct.", key);
       // Bases first (resolved before deciding on the vtable pointer).
       std::vector<const Ty*> baseKeys;
       for (const ClassDecl::Base& b : c->bases)
@@ -2368,7 +2370,7 @@ namespace
       t = types.unqualified(t); // `const auto f = [..]{..}`: the const variable holds the same closure
       ClosureInfo& info = closures[t];
       if (info.structName.empty())
-        info.structName = "%closure." + std::to_string(closures.size());
+        info.structName = irTypeName("%closure.", t);
       return info.structName;
     }
 
@@ -4320,21 +4322,64 @@ namespace
           units.push_back(cp);
       }
       units.push_back(0);
-      std::string& out = emittingShared ? decls : moduleDecls[currentModule];
-      std::string name = "@.wstr" + std::to_string(stringCount++);
       std::string unit = bits == 16 ? "i16" : "i32", elements;
       for (size_t i = 0; i < units.size(); ++i)
         elements += std::string(i ? ", " : "") + unit + " " + std::to_string(units[i]);
-      out += name + " = private unnamed_addr constant [" + std::to_string(units.size()) + " x " + unit + "] [" + elements + "]\n";
+      std::string contents = "[" + std::to_string(units.size()) + " x " + unit + "] [" + elements + "]";
+      auto [name, isNew] = constantName(emittingShared ? "@.swstr." : "@.wstr.", contents);
+      if (isNew)
+        (emittingShared ? decls : moduleDecls[currentModule]) += name + " = private unnamed_addr constant " + contents + "\n";
       return name;
+    }
+
+    // The name of a private constant with these contents in the output being written (the shared
+    // declarations, or the current module): its contents decide it, the same in every run whatever
+    // order the functions are emitted in; isNew when the caller has to define it there.
+    std::pair<std::string, bool> constantName(const char* prefix, const std::string& contents)
+    {
+      uint64_t h = 1469598103934665603ull;
+      for (unsigned char c : contents)
+        h = (h ^ c) * 1099511628211ull;
+      char hex[17];
+      snprintf(hex, sizeof hex, "%016llx", (unsigned long long)h);
+      std::string base = std::string(prefix) + hex, name = base;
+      auto& defined = emittingShared ? sharedConstants : moduleConstants[currentModule];
+      for (int n = 2;; ++n)
+      {
+        auto [it, inserted] = defined.emplace(name, contents);
+        if (inserted)
+          return {name, true};
+        if (it->second == contents)
+          return {name, false};
+        name = base + "." + std::to_string(n); // two contents with one hash
+      }
+    }
+
+    // The IR name of a class's or closure's struct type: a hash of the type as printed, so that it
+    // is the same in every run whatever order the types are laid out in (a short name: it is
+    // written in every access), a suffix telling apart two types that print alike.
+    std::string irTypeName(const char* prefix, const Ty* t)
+    {
+      std::string printed = types.toString(t, &symbols);
+      uint64_t h = 1469598103934665603ull;
+      for (unsigned char c : printed)
+        h = (h ^ c) * 1099511628211ull;
+      char hex[17];
+      snprintf(hex, sizeof hex, "%016llx", (unsigned long long)h);
+      std::string base = std::string(prefix) + hex, name = base;
+      for (int n = 2;; ++n)
+      {
+        auto [it, inserted] = irTypeNames.emplace(name, t);
+        if (inserted || it->second == t)
+          return name;
+        name = base + "." + std::to_string(n);
+      }
     }
 
     // A NUL-terminated string constant; returns its global name.
     std::string cStringConstant(std::string bytes)
     {
-      std::string& out = emittingShared ? decls : moduleDecls[currentModule];
       bytes += '\0';
-      std::string name = "@.str" + std::to_string(stringCount++);
       std::string escaped;
       for (unsigned char c : bytes)
       {
@@ -4347,7 +4392,10 @@ namespace
           escaped += buf;
         }
       }
-      out += name + " = private unnamed_addr constant [" + std::to_string(bytes.size()) + " x i8] c\"" + escaped + "\"\n";
+      std::string contents = "[" + std::to_string(bytes.size()) + " x i8] c\"" + escaped + "\"";
+      auto [name, isNew] = constantName(emittingShared ? "@.sstr." : "@.str.", contents);
+      if (isNew)
+        (emittingShared ? decls : moduleDecls[currentModule]) += name + " = private unnamed_addr constant " + contents + "\n";
       return name;
     }
 
@@ -9935,6 +9983,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   e.moduleDecls.resize(e.moduleCount);
   e.moduleCtors.resize(e.moduleCount);
   e.vtablesIn.resize(e.moduleCount);
+  e.moduleConstants.resize(e.moduleCount);
   for (size_t i = 0; i < files.size(); ++i)
     e.fileModule[files[i].get()] = unsigned(i % e.moduleCount);
   std::vector<FunctionDecl*> functions;
