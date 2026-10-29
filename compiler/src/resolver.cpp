@@ -4999,9 +4999,9 @@ struct GlobalScope::Impl
   }
 
   // Whether a written type names something its generic conversion cannot keep for the
-  // substitution to fill in later: a decltype, a template argument computed from the
-  // parameters (`Conditional<(sizeof(A) < sizeof(B)), B, A>::Type`, `Frac<gcd(N, M)>`), or an
-  // alias template defined with one (`Wider<A, B>`). A signature written so is converted again
+  // substitution to fill in later: a decltype, a built-in type trait (`RemoveReference<T>`), a
+  // template argument computed from the parameters (`Conditional<(sizeof(A) < sizeof(B)), B,
+  // A>::Type`, `Frac<gcd(N, M)>`), or an alias template defined with one (`Wider<A, B>`). A signature written so is converted again
   // with a call's deduced arguments. scope and locals: where t is written.
   bool astNeedsArguments(Node* n, Scope* scope, const LocalStack* locals, int depth = 0)
   {
@@ -5017,6 +5017,8 @@ struct GlobalScope::Impl
       case NodeKind::NamedType:
       {
         auto* named = static_cast<NamedType*>(n);
+        if (named->name.parts.size() == 1 && named->name.parts[0].hasTemplateArgs && isTypeTraitName(named->name.parts[0].symbol))
+          return true; // `RemoveReference<T>&&` (std::move's result): the trait of the deduced T, not T
         bool hasArgs = false;
         for (const NamePart& part : named->name.parts)
           for (Node* arg : part.templateArgs)
