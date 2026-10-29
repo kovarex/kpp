@@ -7717,7 +7717,13 @@ namespace
         // (A class without a conversion to bool is no condition: never its address compared with null.)
         unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));
       }
-      std::string r = newTemp();
+      // The result's name, taken when an instruction defines it: a conversion that emits nothing (the
+      // same bits, a pointer to a pointer) takes no number. Which of two equivalent types a value
+      // carries can differ from run to run (`const Chunk*` through forward<const Chunk*&> or through
+      // ChunkSet's own argument), and a number taken for nothing renumbered the rest of the function
+      // (Vector<ChunkSet<...>>::emplace_back, one run in four at -j 32).
+      std::string r;
+      auto result = [&]() -> const std::string& { if (r.empty()) r = newTemp(); return r; };
       // A pointer to a member function is the function (null when none), one to a data member the
       // member's offset, -1 when null (offset 0 is the first member's), as MSVC has them.
       if (tk == TyKind::MemberPointer && fk == TyKind::Nullptr)
@@ -7725,7 +7731,7 @@ namespace
       if (fk == TyKind::MemberPointer && tk == TyKind::Bool)
       {
         bool function = from->inner && from->inner->kind == TyKind::Function;
-        fn += "  " + r + " = icmp ne " + (function ? "ptr " + v.text + ", null" : "i64 " + v.text + ", -1") + "\n";
+        fn += "  " + result() + " = icmp ne " + (function ? "ptr " + v.text + ", null" : "i64 " + v.text + ", -1") + "\n";
         return {r, to};
       }
       // `int (Both::*)() const = &Named::getId`: a pointer to a member of a base, as one of a class
@@ -7757,7 +7763,7 @@ namespace
           fn += "  " + offset + " = ptrtoint ptr " + pathAtNull(path) + " to i64\n";
           fn += "  " + sum + " = add i64 " + v.text + ", " + offset + "\n";
           fn += "  " + isNull + " = icmp eq i64 " + v.text + ", -1\n";
-          fn += "  " + r + " = select i1 " + isNull + ", i64 -1, i64 " + sum + "\n";
+          fn += "  " + result() + " = select i1 " + isNull + ", i64 -1, i64 " + sum + "\n";
           return {r, to};
         }
       }
@@ -7770,43 +7776,43 @@ namespace
         uint8_t fb = bitsOf(from), tb = bitsOf(to);
         if (fb == tb)
           return {v.text, to};
-        fn += "  " + r + " = " + (fb > tb ? "trunc" : unsignedOf(from) ? "zext" : "sext") + " " + fromT + " " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = " + (fb > tb ? "trunc" : unsignedOf(from) ? "zext" : "sext") + " " + fromT + " " + v.text + " to " + toT + "\n";
         return {r, to};
       }
       if (fk == TyKind::Bool && (tk == TyKind::Int || tk == TyKind::Char))
       {
-        fn += "  " + r + " = zext i1 " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = zext i1 " + v.text + " to " + toT + "\n";
         return {r, to};
       }
       if ((fk == TyKind::Int || fk == TyKind::Char) && tk == TyKind::Bool)
       {
-        fn += "  " + r + " = icmp ne " + fromT + " " + v.text + ", 0\n";
+        fn += "  " + result() + " = icmp ne " + fromT + " " + v.text + ", 0\n";
         return {r, to};
       }
       if ((fk == TyKind::Pointer || fk == TyKind::Nullptr) && tk == TyKind::Bool)
       {
-        fn += "  " + r + " = icmp ne ptr " + v.text + ", null\n";
+        fn += "  " + result() + " = icmp ne ptr " + v.text + ", null\n";
         return {r, to};
       }
       if (fk == TyKind::Float && tk == TyKind::Bool)
       {
-        fn += "  " + r + " = fcmp une " + fromT + " " + v.text + ", 0.0\n";
+        fn += "  " + result() + " = fcmp une " + fromT + " " + v.text + ", 0.0\n";
         return {r, to};
       }
       if (fk == TyKind::Float && (tk == TyKind::Int || tk == TyKind::Char))
       {
-        fn += "  " + r + " = " + (unsignedOf(to) ? "fptoui" : "fptosi") + " " + fromT + " " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = " + (unsignedOf(to) ? "fptoui" : "fptosi") + " " + fromT + " " + v.text + " to " + toT + "\n";
         return {r, to};
       }
       if ((fk == TyKind::Int || fk == TyKind::Char || fk == TyKind::Bool) && tk == TyKind::Float)
       {
         bool u = fk == TyKind::Bool || unsignedOf(from);
-        fn += "  " + r + " = " + (u ? "uitofp" : "sitofp") + " " + fromT + " " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = " + (u ? "uitofp" : "sitofp") + " " + fromT + " " + v.text + " to " + toT + "\n";
         return {r, to};
       }
       if (fk == TyKind::Float && tk == TyKind::Float)
       {
-        fn += "  " + r + " = " + (from->bits > to->bits ? "fptrunc" : "fpext") + " " + fromT + " " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = " + (from->bits > to->bits ? "fptrunc" : "fpext") + " " + fromT + " " + v.text + " to " + toT + "\n";
         return {r, to};
       }
       if (tk == TyKind::Pointer && (fk == TyKind::Pointer || fk == TyKind::Nullptr || fk == TyKind::Function || fk == TyKind::Array))
@@ -7830,7 +7836,7 @@ namespace
           fn += "  " + value + " = sext " + fromT + " " + v.text + " to i64\n";
           valueT = "i64";
         }
-        fn += "  " + r + " = inttoptr " + valueT + " " + value + " to ptr\n";
+        fn += "  " + result() + " = inttoptr " + valueT + " " + value + " to ptr\n";
         return {r, to};
       }
       if (fk == TyKind::Pointer && tk == TyKind::Int)
@@ -7839,7 +7845,7 @@ namespace
         // &x;` is an error in C++, and was a silently truncated address here.
         if (!explicitCast)
           fail(at, "error: a pointer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
-        fn += "  " + r + " = ptrtoint ptr " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = ptrtoint ptr " + v.text + " to " + toT + "\n";
         return {r, to};
       }
       // SSE vector to scalar: extract lane 0.
@@ -7857,11 +7863,11 @@ namespace
           const Ty* newVec = types.vectorType(to, newCount);
           std::string t1 = newTemp();
           fn += "  " + t1 + " = bitcast " + fromT + " " + v.text + " to " + llType(newVec, at) + "\n";
-          fn += "  " + r + " = extractelement " + llType(newVec, at) + " " + t1 + ", i32 0\n";
+          fn += "  " + result() + " = extractelement " + llType(newVec, at) + " " + t1 + ", i32 0\n";
         }
         else
         {
-          fn += "  " + r + " = extractelement " + fromT + " " + v.text + ", i32 0\n";
+          fn += "  " + result() + " = extractelement " + fromT + " " + v.text + ", i32 0\n";
         }
         return {r, to};
       }
@@ -7885,7 +7891,7 @@ namespace
       // Vector to vector bitcast (same total size, different element types).
       if (fk == TyKind::Vector && tk == TyKind::Vector)
       {
-        fn += "  " + r + " = bitcast " + fromT + " " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = bitcast " + fromT + " " + v.text + " to " + toT + "\n";
         return {r, to};
       }
       unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));
