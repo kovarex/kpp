@@ -1,6 +1,5 @@
 // spec: an object of a class with `operator bool()` and `operator Enum()` (a scoped enum, which converts to no bool) assigned to a bool: operator bool converts it, as for `bool b = x;` and `if (x)`; assigned to an Enum, operator Enum does
 // factorio: LuaEntity::luaRotate's and luaFlip's `result = this->entityTarget->rotate(rotateDirection);` and AssemblingMachine::fastReplaceSetup's `recipeCopied = this->setupForCrafting(...);`: ActionResult has `operator bool()` beside `operator Enum()`
-// pending: the declaration, the condition and the conversion to Enum work, the assignments do not ("an operator with a class on the right that no function defines"; with only operator bool they do); owner: codegen (the conversion an assignment to a scalar takes)
 class ActionResult
 {
 public:

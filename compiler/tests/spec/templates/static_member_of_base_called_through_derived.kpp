@@ -1,6 +1,6 @@
 // spec: a static member function of a class template base called through the derived class, `Derived::computeHash(args)` or `object.staticType()`, runs as the base instance's member: the CRTP parameter Expression is the derived class, so `Expression::TYPE` is its constant, and the base's own constants (N) are the instance's
 // factorio: NoiseExpressions' ComplexExpression<Expression, variableCount, constantCount, expressionCount>::computeHash called as `T::computeHash(args)` (NoiseExpressionStorage::getOrCreate) for ComplexExpressionWithOperation<NoiseOperations::BasisNoise, 2, 6> and six other operations
-// pending: through the derived class the function is made with the derived class's template arguments, where the base's parameters have no value ("a template parameter whose value is not known here"); through the base's own name it works; owner: codegen
+// pending: through the derived class's name it works (templates/static_member_through_derived_class); through an object, `object.staticType()`, the function is still made with the derived class's arguments ("a template parameter whose value is not known here", in WithOperation<7, 2, 0>::staticType()); owner: codegen
 template<class Expression, int variableCount, int constantCount, int expressionCount = 0>
 class ComplexExpression
 {
