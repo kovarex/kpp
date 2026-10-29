@@ -2,6 +2,7 @@
 // generate_imgui.py from C:\Factorio\libraries\imgui\imgui.h; do not edit. Built by build.cmd
 // into factorio-native.lib, linked with the game's imgui.lib.
 #include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
 #include <new>
 #include <stdarg.h>
 #include <stddef.h>
@@ -651,6 +652,7 @@ bool kppImGui_IsPosHoveringAnyWindow(const ImVec2* arg0) { return ImGui::IsPosHo
 bool kppImGui_IsMouseHoveringAnyWindow() { return ImGui::IsMouseHoveringAnyWindow(); }
 bool kppImGui_IsMouseHoveringWindow() { return ImGui::IsMouseHoveringWindow(); }
 bool kppImGui_CollapsingHeader3(const char* label, const char* str_id, bool framed, bool default_open) { return ImGui::CollapsingHeader(label, str_id, framed, default_open); }
+void kppImGui_EndColumns() { ImGui::EndColumns(); }
 void kppImGuiStyle_construct(ImGuiStyle* self) { new (self) ImGuiStyle(); }
 void kppImGuiStyle_ScaleAllSizes(ImGuiStyle* self, float scale_factor) { self->ScaleAllSizes(scale_factor); }
 void kppImGuiIO_AddInputCharacter(ImGuiIO* self, ImWchar c) { self->AddInputCharacter(c); }

@@ -5,7 +5,8 @@ ImVector template) and Kpp calls C only (docs/design.md, "Interop: C only"). Thi
 imgui.h and writes both sides of the interface:
 
 - native/imgui_c.cpp: one extern "C" function per function of namespace ImGui (kppImGui_<Name>,
-  numbered from the second overload on) and per method of the structs Kpp mirrors
+  numbered from the second overload on; imgui.h's, and those of imgui_internal.h the game calls,
+  INTERNAL_FUNCTIONS) and per method of the structs Kpp mirrors
   (kpp<Struct>_<Name>, kpp<Struct>_construct and kpp<Struct>_destruct), each calling imgui. Classes
   cross by pointer (an ImVec2 argument, a reference, a returned ImVec2 through an out pointer); a C
   variadic function formats through imgui's va_list variant. It also asserts the layout this
@@ -396,6 +397,15 @@ for name, values in enums:
 internal = strip_comments(read(os.path.join(IMGUI, 'imgui_internal.h')))
 m = re.search(r'#ifdef IMGUI_DEFINE_MATH_OPERATORS\n(.*?)\n#endif', internal, re.S)
 OPERATORS = [re.sub(r'^\s*static\s+inline\s+', '', l).rstrip() for l in m.group(1).split('\n') if l.strip()]
+
+# The functions of imgui_internal.h's namespace ImGui that the game calls, with imgui.h's types
+# only (DebugTools.cpp's EndColumns, closing what Columns() opened).
+INTERNAL_FUNCTIONS = ['EndColumns']
+for name in INTERNAL_FUNCTIONS:
+    m = re.search(r'IMGUI_API[^;{}]*?\b%s\s*\([^;]*?\)\s*;' % name, internal)
+    if not m:
+        fail('imgui_internal.h declares no ' + name)
+    functions.append(Function(m.group(0).rstrip(';').strip()))
 
 ALL_STRUCTS = []
 
@@ -899,6 +909,7 @@ c = ['''// dear imgui 1.53's thin C interface, for Kpp (overrides/added/src/Debu
 // generate_imgui.py from C:\\Factorio\\libraries\\imgui\\imgui.h; do not edit. Built by build.cmd
 // into factorio-native.lib, linked with the game's imgui.lib.
 #include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
 #include <new>
 #include <stdarg.h>
 #include <stddef.h>

@@ -1249,6 +1249,7 @@ namespace ImGui
   bool IsMouseHoveringAnyWindow() { return kppImGui_IsMouseHoveringAnyWindow(); }
   bool IsMouseHoveringWindow() { return kppImGui_IsMouseHoveringWindow(); }
   bool CollapsingHeader(const char* label, const char* str_id, bool framed = true, bool default_open = false) { return kppImGui_CollapsingHeader3(label, str_id, framed, default_open); }
+  void EndColumns() { kppImGui_EndColumns(); }
 }
 
 // The C interface (native/imgui_c.cpp).
@@ -1572,6 +1573,7 @@ extern "C" bool kppImGui_IsPosHoveringAnyWindow(const ImVec2* arg0);
 extern "C" bool kppImGui_IsMouseHoveringAnyWindow();
 extern "C" bool kppImGui_IsMouseHoveringWindow();
 extern "C" bool kppImGui_CollapsingHeader3(const char* label, const char* str_id, bool framed, bool default_open);
+extern "C" void kppImGui_EndColumns();
 extern "C" void kppImGuiStyle_construct(ImGuiStyle* self);
 extern "C" void kppImGuiStyle_ScaleAllSizes(ImGuiStyle* self, float scale_factor);
 extern "C" void kppImGuiIO_AddInputCharacter(ImGuiIO* self, ImWchar c);
