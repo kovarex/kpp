@@ -1,0 +1,24 @@
+// spec: a by-reference init-capture (`[&shown = this->shown]`, `[&n = counter]`) refers to what its initializer names: the lambda sees later changes and its writes reach the original
+// found in the converted game: FlowDataFrame::buildTable, GuiContext::getShouldShowItem, Pin::makeCamera, Factoriopedia and others ("a by-reference init-capture", 12 closures)
+struct Context
+{
+  Vector<int> shown;
+  int threshold = 2;
+  auto filter() const
+  {
+    return [&shown = this->shown, &limit = this->threshold](int v) { return v > limit && shown.size() > 0; };
+  }
+};
+int main()
+{
+  Context c;
+  c.shown.push_back(1);
+  auto f = c.filter();
+  int counter = 0;
+  auto bump = [&n = counter](int by) { n += by; };
+  bump(3);
+  bump(4);
+  c.threshold = 5;
+  println("{} {} {}", f(3), f(6), counter);
+  return 0;
+}

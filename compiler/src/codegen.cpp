@@ -3726,10 +3726,11 @@ namespace
       {
         if (cap.init)
         {
-          // `[x = expr]`: a field of the closure, initialised from expr when the closure is made.
-          if (!cap.decl || cap.byRef)
-            unsupported(l, "a by-reference init-capture");
-          out.push_back({cap.decl, false, cap.init});
+          // `[x = expr]`: a field of the closure, initialised from expr when the closure is made;
+          // `[&x = expr]`: one pointing at what expr names.
+          if (!cap.decl)
+            unsupported(l, "an init-capture without its variable");
+          out.push_back({cap.decl, cap.byRef, cap.init});
           continue;
         }
         if (cap.isThis)
@@ -4018,6 +4019,14 @@ namespace
         if (!d)
         {
           fn += "  store ptr " + thisPointer(l) + ", ptr " + field + "\n";
+          continue;
+        }
+        if (slots[i].init && slots[i].byRef)
+        {
+          // `[&entities = this->entities]`: the field points at what the initializer names.
+          Expr* init = slots[i].init;
+          std::string target = isClass(types.stripRef(init->ty)) ? rvalue(init).text : lvalue(init);
+          fn += "  store ptr " + target + ", ptr " + field + "\n";
           continue;
         }
         if (slots[i].init)
