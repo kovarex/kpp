@@ -2434,6 +2434,30 @@ namespace
     // The converted files' classes and aliases by their own name (convertToKpp), for the fixture of a
     // fixture test.
     const std::map<std::string, std::vector<Decl*>>* classesByName = nullptr;
+    // The tests the conversion leaves out (overrides/left-out-tests.txt: `Suite/Test` -> why), those
+    // found and the suites converted: the block of one goes, a comment in its place says why, and its
+    // suite runs its other tests (a stub would stop the suite where the test reaches it). The SUITE
+    // blocks seen so far tell a test's suite: the suite's name and its block's `{` and `}` tokens.
+    const std::map<std::string, std::string>* leftOutTests = nullptr;
+    std::set<std::string>* leftOutTestsFound = nullptr;
+    std::set<std::string>* suitesConverted = nullptr;
+    struct SuiteBlock
+    {
+      std::string name;
+      uint32_t open = 0, close = 0;
+    };
+    std::vector<SuiteBlock> suiteBlocks;
+    // The `}` token closing the `{` token open (0: none).
+    uint32_t closingBrace(uint32_t open) const
+    {
+      int depth = 0;
+      for (uint32_t k = open; k < toks.size(); ++k)
+        if (toks[k].is(P::LBrace))
+          ++depth;
+        else if (toks[k].is(P::RBrace) && --depth == 0)
+          return k;
+      return 0;
+    }
     // A fixture test's body (UnitTest++'s TEST_FIXTURE, whose expansion ends with the
     // `Fixture##Name##Helper::Run()` of a class deriving from the fixture): the parse does not see it
     // (a macro's use with a block), so the names it uses of the fixture's members get their `this->`
@@ -2500,15 +2524,7 @@ namespace
       }
       FixtureBody body;
       body.open = open;
-      int depth = 0;
-      for (uint32_t k = open; k < toks.size(); ++k)
-        if (toks[k].is(P::LBrace))
-          ++depth;
-        else if (toks[k].is(P::RBrace) && --depth == 0)
-        {
-          body.close = k;
-          break;
-        }
+      body.close = closingBrace(open);
       if (body.close == 0)
         return;
       // (A class's constructors are among its members by the class's name, which names a type here:
@@ -3850,6 +3866,33 @@ namespace
                 std::vector<std::string> argText;
                 for (auto [a0, a1] : args)
                   argText.push_back(a1 > a0 ? std::string(text.substr(toks[a0].offset, endOffset(a1 - 1) - toks[a0].offset)) : std::string());
+                if (uint32_t close = leftOutTests && !leftOutTests->empty() && toks[j + 1].is(P::LBrace) ? closingBrace(j + 1) : 0)
+                {
+                  // A test's name is its macro's last argument (TEST(Name), TEST_FIXTURE(Fixture, Name),
+                  // TEST_PARAMETRISED_FIXTURE(Fixture, Parameter, Name)), its suite the innermost SUITE
+                  // block around it.
+                  std::string name(spelling(i));
+                  if (name == "SUITE" && argText.size() == 1)
+                  {
+                    suiteBlocks.push_back({argText[0], j + 1, close});
+                    suitesConverted->insert(argText[0]);
+                  }
+                  else if ((name == "TEST" || name.rfind("TEST_", 0) == 0) && !argText.empty())
+                  {
+                    std::string suite;
+                    for (const SuiteBlock& s : suiteBlocks)
+                      if (s.open < i && i < s.close)
+                        suite = s.name;
+                    if (auto left = leftOutTests->find(suite + "/" + argText.back()); left != leftOutTests->end())
+                    {
+                      replace(t.offset, endOffset(close) - t.offset, "// " + left->first + " is left out (overrides/left-out-tests.txt): " + left->second);
+                      leftOutTestsFound->insert(left->first);
+                      counts.add("tests left out");
+                      i = close;
+                      continue;
+                    }
+                  }
+                }
                 if (const FixtureBody* body = fixtureBodies.empty() ? nullptr : fixtureBodyAt(i))
                   for (std::string& a : argText)
                     a = qualifyFixtureMembers(a, *body, i);
@@ -6770,6 +6813,38 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       headerMacros = readHeaderMacros(headers, nullptr, &headerAliases, &headerObjects);
     }
   }
+  // The tests the conversion leaves out (overrides/left-out-tests.txt: `Suite/Test: why` per line,
+  // # starts a comment; FileConverter::leftOutTests).
+  std::map<std::string, std::string> leftOutTests;
+  std::set<std::string> leftOutTestsFound, suitesConverted;
+  if (!overridesDir.empty())
+  {
+    std::string list;
+    if (readFile(overridesDir / "left-out-tests.txt", list))
+      for (size_t pos = 0; pos < list.size();)
+      {
+        size_t end = list.find('\n', pos);
+        if (end == std::string::npos)
+          end = list.size();
+        std::string line = list.substr(pos, end - pos);
+        pos = end + 1;
+        size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
+        if (a == std::string::npos || line[a] == '#')
+          continue;
+        line = line.substr(a, b - a + 1);
+        size_t colon = line.find(':');
+        size_t why = colon == std::string::npos ? std::string::npos : line.find_first_not_of(" \t", colon + 1);
+        if (colon == std::string::npos || line.find('/') > colon || why == std::string::npos)
+        {
+          fprintf(stderr, "convert: %s: `%s` is not `Suite/Test: why`\n", (overridesDir / "left-out-tests.txt").generic_string().c_str(), line.c_str());
+          continue;
+        }
+        std::string test = line.substr(0, colon);
+        while (!test.empty() && isspace((unsigned char)test.back()))
+          test.pop_back();
+        leftOutTests[test] = line.substr(why);
+      }
+  }
   // The game's own headers each input includes (the includes resolved against the including file's
   // directory, each root and each root's parent, as the game's include paths do), and the
   // function-like macros each header leaves defined: an input sees those of every header it
@@ -7283,6 +7358,9 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.leftOutFiles = &leftOutFiles;
     fc.functionMacroNames = &functionMacroNames;
     fc.classesByName = &classesByName;
+    fc.leftOutTests = &leftOutTests;
+    fc.leftOutTestsFound = &leftOutTestsFound;
+    fc.suitesConverted = &suitesConverted;
     if (auto kept = keptCLibraries.find(in.path.parent_path().filename().string()); kept != keptCLibraries.end())
       fc.keptCLibraries = &kept->second;
     fc.scopeNames = &scopeNames;
@@ -7320,6 +7398,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     for (auto& [k, v] : fc.counts.values)
       total.add(k, v);
   }
+  // (A conversion without the tests, the headline's, has none to find.)
+  for (const auto& [test, why] : leftOutTests)
+    if (!suitesConverted.empty() && !leftOutTestsFound.count(test))
+      fprintf(stderr, "convert: %s: no converted test is %s\n", (overridesDir / "left-out-tests.txt").generic_string().c_str(), test.c_str());
   std::string report = "# Conversion report\n\n";
   size_t files = 0;
   for (auto& [key, pieces] : outputs)
