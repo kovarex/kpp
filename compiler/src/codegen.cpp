@@ -2572,9 +2572,12 @@ namespace
       }
       // A destructor of its own leaves the class its implicit copy constructor (C++ only deprecates
       // it): the members copied (Achievement's `new Achievement(*this)`, InputAction's ActionData).
-      // A declared move assignment deletes it.
+      // A declared move assignment deletes it; and a union with a destructor of its own manages its
+      // member's lifetime (an Optional's storage), whose bytes a copy would share.
       if (!defaultedCopy && declaresMoveMember(c, t, true, at))
         unsupported(at, "copying " + qualifiedName(c) + ", which declares a move assignment but no copy constructor");
+      if (!defaultedCopy && c->keyword == Kw::union_ && findDestructor(c))
+        unsupported(at, "copying " + qualifiedName(c) + ", a union with a destructor but no copy constructor");
       memberwiseConstruct(dst, src, t, at, move);
     }
 
@@ -2693,6 +2696,8 @@ namespace
       // implicit copy assignment.
       if (!defaulted && !move && declaresMoveMember(classDef(t->decl, at), t, false, at))
         unsupported(at, "assignment to " + qualifiedName(t->decl) + ", which declares a move constructor but no operator=");
+      if (!defaulted && classDef(t->decl, at)->keyword == Kw::union_ && findDestructor(classDef(t->decl, at)))
+        unsupported(at, "assignment to " + qualifiedName(t->decl) + ", a union with a destructor but no operator=");
       memberwiseAssign(dst, src, t, at, move);
     }
 
