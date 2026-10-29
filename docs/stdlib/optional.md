@@ -29,7 +29,8 @@ Members:
 - `has_value()` / `hasValue()`, `explicit operator bool`, `!`.
 - `value()`: the value; throws BadOptionalAccess when empty. `*`, `->`: the value; on an empty
   Optional the program is wrong (no check).
-- `valueOr(fallback)`: a copy of the value, or fallback when empty.
+- `valueOr(fallback)`: a copy of the value, or fallback when empty. `value_or(fallback)`, std's
+  name: the same, with fallback of any type T is constructed from (`p.value_or(nullptr)`).
 - `swap(other)`.
 - Comparison: `==`, `!=` with another Optional (equal when both are empty or both hold equal
   values), with a value of any type the held one compares with (an empty Optional equals no

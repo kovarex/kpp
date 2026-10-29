@@ -270,6 +270,10 @@ struct Optional : OptionalValue<T>
   const T& operator*() const { return *this->slot(); }
   T* operator->() { return this->slot(); }
   const T* operator->() const { return this->slot(); }
+  // The value, or fallback converted to T when empty (std::optional's value_or:
+  // TerritoryManager's `territory.value_or(nullptr)`).
+  template<typename U>
+  T value_or(U&& fallback) const { return this->present ? *this->slot() : T(forward<U>(fallback)); }
   T valueOr(const T& fallback) const
   {
     if (this->present)
