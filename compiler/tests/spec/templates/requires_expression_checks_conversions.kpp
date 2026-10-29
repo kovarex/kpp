@@ -1,6 +1,5 @@
 // spec: a requirement that converts (`bool(instance)`) holds only when the conversion exists: a class without an operator bool fails `requires (T instance) { bool(instance); }`
 // found in the game's IDIndexedData::load (`if constexpr (requires(T instance) { bool(instance); })`), which took the branch for VisibleInstanceValue and then failed converting it
-// pending: the probe types a functional cast as its target type whatever the operand, so the requirement holds for every T
 class NoBool
 {
 public:

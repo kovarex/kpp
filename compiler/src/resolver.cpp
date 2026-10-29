@@ -5149,7 +5149,7 @@ struct GlobalScope::Impl
   // Whether a non-explicit conversion operator of class a, or of one of its bases (under a's
   // arguments: `Const<float> : Value<float>` with Value's `operator const T&()`), gives a value
   // that converts to param by a standard conversion.
-  bool convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth = 0)
+  bool convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth = 0, bool allowExplicit = false)
   {
     if (baseDepth > 8)
       return false;
@@ -5159,7 +5159,7 @@ struct GlobalScope::Impl
     Subst subst = substFor(a);
     for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
     {
-      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || isExplicit(static_cast<FunctionDecl*>(m), &subst))
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (!allowExplicit && isExplicit(static_cast<FunctionDecl*>(m), &subst)))
         continue;
       const Ty* ft = declaredTypeOf(m, &subst, 0);
       if (ft && ft->kind == TyKind::Function && conversionRank(ft->inner, param, depth + 1) < 4)
@@ -5169,7 +5169,7 @@ struct GlobalScope::Impl
     std::vector<const Ty*> bases;
     if (def && directBases(a, def, bases))
       for (const Ty* b : bases)
-        if (b->kind == TyKind::Class && convertsByOperator(b, param, depth, baseDepth + 1))
+        if (b->kind == TyKind::Class && convertsByOperator(b, param, depth, baseDepth + 1, allowExplicit))
           return true;
     return false;
   }
@@ -5392,6 +5392,7 @@ struct GlobalScope::Impl
     probe.file = file;
     probe.scope = lexicalScopeOf(owner);
     probe.activeSubst = &s;
+    probe.probing = true;
     pushEnclosingTemplateParams(owner, probe.locals);
     for (Decl* p : r->params)
       probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
@@ -5800,6 +5801,24 @@ struct GlobalScope::Impl
     const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
+    // Set on the scratch walkers that probe a requires-expression's requirements: an explicit
+    // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
+    // the class has an operator for it, since a requirement holds exactly when it is valid.
+    bool probing = false;
+
+    // The type of an explicit conversion of operand to t (a cast) while probing: unknown when the
+    // operand is a class with no conversion operator to t (explicit ones count), t otherwise.
+    const Ty* probedCast(const Ty* t, const Ty* operand)
+    {
+      if (!probing || !t || !operand || !t->isKnown() || !operand->isKnown() || types.isDependent(t) || types.isDependent(operand))
+        return t;
+      const Ty* from = types.unqualified(types.stripRef(operand));
+      const Ty* to = types.unqualified(types.stripRef(t));
+      if (from->kind != TyKind::Class || to->kind == TyKind::Class || to->kind == TyKind::Void || from->isBraceList())
+        return t;
+      return impl.convertsByOperator(from, to, 0, 0, true) ? t : unknown(Why::Unsupported);
+    }
+
     // Per lambda / auto function this walk entered: whether it returns `decltype(auto)`, so that
     // its returns record their expression's decltype (`f(x)` returning int& stays int&).
     std::vector<bool> decltypeReturns;
@@ -8519,15 +8538,16 @@ struct GlobalScope::Impl
         {
           auto* c = static_cast<CastExpr*>(e);
           walkType(c->type);
-          walkExpr(c->operand);
-          return record(e, typeOf(c->type));
+          const Ty* operand = walkExpr(c->operand);
+          return record(e, probedCast(typeOf(c->type), operand));
         }
         case NodeKind::NamedCastExpr:
         {
           auto* c = static_cast<NamedCastExpr*>(e);
           walkType(c->type);
-          walkExpr(c->operand);
-          return record(e, typeOf(c->type));
+          const Ty* operand = walkExpr(c->operand);
+          const Ty* t = typeOf(c->type);
+          return record(e, c->castKind == Kw::static_cast_ ? probedCast(t, operand) : t);
         }
         case NodeKind::SizeofExpr:
           walkType(static_cast<SizeofExpr*>(e)->type);
@@ -8623,10 +8643,18 @@ struct GlobalScope::Impl
         {
           auto* c = static_cast<FunctionalCastExpr*>(e);
           walkType(c->type);
-          walkExprs(c->args);
+          const Ty* operand = nullptr;
+          for (Expr* a : c->args)
+          {
+            const Ty* at = walkExpr(a);
+            if (a == c->args[0])
+              operand = at;
+          }
           const Ty* t = typeOf(c->type);
-          if (t->kind == TyKind::Auto && c->args.size() == 1 && c->args[0]->ty)
-            t = types.decay(c->args[0]->ty); // auto(x)
+          if (t->kind == TyKind::Auto && c->args.size() == 1 && operand)
+            t = types.decay(operand); // auto(x)
+          if (c->args.size() == 1 && !c->braced)
+            t = probedCast(t, operand); // `bool(instance)` in a requirement
           if (impl.isUndeducedClassTemplate(t))
           {
             // `Pair(a, b)`, `Span(p, n)`, `Pair{a, b}` in an expression: the class's arguments from a
@@ -8686,6 +8714,7 @@ struct GlobalScope::Impl
           probe.locals = locals;
           probe.activeSubst = activeSubst;
           probe.thisType = thisType;
+          probe.probing = true;
           for (Decl* p : r->params)
             probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
           bool satisfied = true;
