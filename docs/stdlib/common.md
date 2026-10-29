@@ -60,7 +60,9 @@ Iterators of every container here are at least *forward*: `*it`, `it->member`, `
 `==`, `!=`. *Bidirectional* iterators also have `--it` and `it--`. *Random access* iterators are
 pointers (`T*`) with all pointer arithmetic. Every container (and String, StringView, WString,
 Span) has `cbegin()` and `cend()`, which are `begin()` and `end()` of it as const, and those with
-`rbegin()` have `crbegin()` and `crend()` the same way.
+`rbegin()` have `crbegin()` and `crend()` the same way. The free forms, as std::begin and the rest:
+`begin(c)`, `end(c)`, `cbegin(c)`, `cend(c)`, `rbegin(c)`, `rend(c)`, `size(c)`, `ssize(c)` of a
+container or a built-in array (`T (&)[N]`: pointers, and N), `empty(c)` and `data(c)` of a container.
 
 ## Complexity
 

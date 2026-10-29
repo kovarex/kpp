@@ -20,23 +20,24 @@ struct UniquePtr
 {
   using element_type = T;
   using deleter_type = D;
+  using pointer = T*; // TechnologyGraphGui's `typename GraphT::value_type::pointer`
 
-  T* pointer = nullptr;
+  T* held = nullptr;
 
   UniquePtr() {}
   implicit UniquePtr(nullptr_t) {}
-  explicit UniquePtr(T* object) : pointer(object) {}
+  explicit UniquePtr(T* object) : held(object) {}
   UniquePtr(const UniquePtr<T, D>& other) = delete;
-  UniquePtr(UniquePtr<T, D>&& other) : pointer(other.pointer) { other.pointer = nullptr; }
+  UniquePtr(UniquePtr<T, D>&& other) : held(other.held) { other.held = nullptr; }
   // From a UniquePtr to a type whose pointer converts to T* (a derived class, T const), with a
   // deleter that converts to D: takes its object. Deleting it through T* needs T's destructor to
   // be virtual when the types differ.
   template<typename U, typename E> requires (isConvertible<U*, T*> && isConvertible<E, D> && !(isSame<U, T> && isSame<E, D>))
-  implicit UniquePtr(UniquePtr<U, E>&& other) : pointer(other.release()) {}
+  implicit UniquePtr(UniquePtr<U, E>&& other) : held(other.release()) {}
   ~UniquePtr()
   {
-    if (this->pointer)
-      D()(this->pointer);
+    if (this->held)
+      D()(this->held);
   }
 
   UniquePtr<T, D>& operator=(const UniquePtr<T, D>& other) = delete;
@@ -49,8 +50,8 @@ struct UniquePtr
   {
     if (this != &other)
     {
-      this->reset(other.pointer);
-      other.pointer = nullptr;
+      this->reset(other.held);
+      other.held = nullptr;
     }
     return *this;
   }
@@ -61,28 +62,28 @@ struct UniquePtr
     return *this;
   }
 
-  T* get() const { return this->pointer; }
+  T* get() const { return this->held; }
   // A deleter, by value (std returns a reference to the stored one; this one stores none).
   D get_deleter() const { return D(); }
-  T& operator*() const { return *this->pointer; }
-  T* operator->() const { return this->pointer; }
-  explicit operator bool() const { return this->pointer != nullptr; }
-  bool operator!() const { return this->pointer == nullptr; }
-  bool operator==(const UniquePtr<T, D>& other) const { return this->pointer == other.pointer; }
-  bool operator!=(const UniquePtr<T, D>& other) const { return this->pointer != other.pointer; }
-  bool operator==(nullptr_t) const { return this->pointer == nullptr; }
-  bool operator!=(nullptr_t) const { return this->pointer != nullptr; }
+  T& operator*() const { return *this->held; }
+  T* operator->() const { return this->held; }
+  explicit operator bool() const { return this->held != nullptr; }
+  bool operator!() const { return this->held == nullptr; }
+  bool operator==(const UniquePtr<T, D>& other) const { return this->held == other.held; }
+  bool operator!=(const UniquePtr<T, D>& other) const { return this->held != other.held; }
+  bool operator==(nullptr_t) const { return this->held == nullptr; }
+  bool operator!=(nullptr_t) const { return this->held != nullptr; }
   // Against a plain pointer, of the same class or a base of it.
   template<typename U>
-  bool operator==(const U* other) const { return this->pointer == other; }
+  bool operator==(const U* other) const { return this->held == other; }
   template<typename U>
-  bool operator!=(const U* other) const { return this->pointer != other; }
+  bool operator!=(const U* other) const { return this->held != other; }
 
   // Owns newPointer, then gives the old object (if any) to the deleter.
   void reset(T* newPointer)
   {
-    T* old = this->pointer;
-    this->pointer = newPointer;
+    T* old = this->held;
+    this->held = newPointer;
     if (old)
       D()(old);
   }
@@ -90,15 +91,15 @@ struct UniquePtr
   // Gives the object up without the deleter seeing it.
   T* release()
   {
-    T* result = this->pointer;
-    this->pointer = nullptr;
+    T* result = this->held;
+    this->held = nullptr;
     return result;
   }
   void swap(UniquePtr<T, D>& other)
   {
-    T* tmp = this->pointer;
-    this->pointer = other.pointer;
-    other.pointer = tmp;
+    T* tmp = this->held;
+    this->held = other.held;
+    other.held = tmp;
   }
 };
 

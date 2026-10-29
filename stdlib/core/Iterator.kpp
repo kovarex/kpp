@@ -185,6 +185,20 @@ template<typename T, int N>
 constexpr int size(const T (&array)[N]) { return N; }
 template<typename T, int N>
 constexpr ptrdiff_t ssize(const T (&array)[N]) { return N; }
+// A built-in array's ends (ValueToWidget's `begin(value)` of a `const T (&)[N]`,
+// CommandLineMultiplayer's `count(begin(startServerOptions), end(startServerOptions), true)`).
+template<typename T, int N>
+constexpr T* begin(T (&array)[N]) { return array; }
+template<typename T, int N>
+constexpr T* end(T (&array)[N]) { return array + N; }
+template<typename T, int N>
+constexpr const T* cbegin(const T (&array)[N]) { return array; }
+template<typename T, int N>
+constexpr const T* cend(const T (&array)[N]) { return array + N; }
+template<typename T, int N>
+ReverseIterator<T*> rbegin(T (&array)[N]) { return ReverseIterator<T*>(array + N); }
+template<typename T, int N>
+ReverseIterator<T*> rend(T (&array)[N]) { return ReverseIterator<T*>(array); }
 template<typename C> requires requires (const C& c) { c.empty(); }
 auto empty(const C& c) { return c.empty(); }
 template<typename C> requires requires (C& c) { c.data(); }

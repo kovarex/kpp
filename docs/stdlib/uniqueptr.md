@@ -29,7 +29,7 @@ Members:
 - `get()`, `*`, `->`, `explicit operator bool`, `!`; `==`, `!=` compare the pointers (with
   another UniquePtr, with nullptr, and with a plain pointer of the same class or a base).
 - `swap(other)`.
-- `element_type`: T; `deleter_type`: D.
+- `element_type`: T; `deleter_type`: D; `pointer`: T*.
 
 *Difference from C++*: a deleter with state is not supported: there is no constructor taking a
 deleter object (`UniquePtr(object, deleter)` does not compile), and `get_deleter()` returns a new
