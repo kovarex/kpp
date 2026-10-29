@@ -4795,6 +4795,12 @@ struct GlobalScope::Impl
     if (n->name.last().hasTemplateArgs)
       if (VariableDecl* primary = primaryVariableTemplate(l))
         return variableTemplateValue(primary, n->name.last(), ctx, 1);
+    // `decltype(check<T>(nullptr))::value`: a static member of the class the decltype names (or of
+    // its base), under that instance's arguments.
+    if (n->name.parts.size() == 1 && n->name.typeQualifier && l.decl && l.decl->kind == NodeKind::VariableDecl && l.foundIn)
+      if (const Ty* q = convertType(n->name.typeQualifier, ctx, 1); q && types.unqualified(types.stripRef(q))->kind == TyKind::Class)
+        if (Subst qs = memberSubst(types.unqualified(types.stripRef(q)), l.foundIn, 1); !qs.pairs.empty())
+          return memberConstant(l.decl, ctx, qs);
     // `Bits<uint64_t>::count`: a static member of a class template, under that instantiation's
     // arguments.
     if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
@@ -9293,8 +9299,11 @@ struct GlobalScope::Impl
             generic = typed; // `decltype(Definition::migrations)` in a member's type, before any walk typed it
         // `-> Future<decltype(callable())>` under an instantiation's arguments: the generic type of
         // a dependent expression (F) stands in for no call's result, so the expression is typed
-        // anew with them.
-        if ((ctx.function || ctx.tokens) && ctx.subst && !ctx.subst->empty() && d->expr && (!generic->isKnown() || types.isDependent(generic)))
+        // anew with them. So is one that names a parameter they bind, whatever its generic type:
+        // `decltype(check<T>(nullptr))` took the generic walk to the overload it could still judge
+        // (`FalseType check(...)`, the other's return type depending on T).
+        if ((ctx.function || ctx.tokens) && ctx.subst && !ctx.subst->empty() && d->expr &&
+            (!generic->isKnown() || types.isDependent(generic) || mentionsBound(d->expr, *ctx.subst)))
           if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown() && !types.isDependent(typed))
             return typed;
         return generic;
@@ -9662,6 +9671,79 @@ struct GlobalScope::Impl
               return true;
         return false;
       default: return false;
+    }
+  }
+
+  // Whether expression or type n names a template parameter that s binds (by its name, in a name,
+  // a template argument or a type written in it); true for a node it cannot look into.
+  bool mentionsBound(Node* n, const Subst& s, int depth = 0)
+  {
+    if (!n)
+      return false;
+    if (depth > 32)
+      return true;
+    auto bound = [&](uint32_t symbol)
+    {
+      for (const Subst::Pair& p : s.pairs)
+        if (p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->name == symbol)
+          return true;
+      return false;
+    };
+    auto inName = [&](const QualifiedName& q)
+    {
+      if (q.typeQualifier && mentionsBound(q.typeQualifier, s, depth + 1))
+        return true;
+      for (const NamePart& part : q.parts)
+      {
+        if (part.symbol != UINT32_MAX && bound(part.symbol))
+          return true;
+        for (Node* a : part.templateArgs)
+          if (mentionsBound(a, s, depth + 1))
+            return true;
+        if (part.convType && mentionsBound(part.convType, s, depth + 1))
+          return true;
+      }
+      return false;
+    };
+    auto any = [&](Span<Expr*> list)
+    {
+      for (Expr* e : list)
+        if (mentionsBound(e, s, depth + 1))
+          return true;
+      return false;
+    };
+    switch (n->kind)
+    {
+      case NodeKind::NamedType: return inName(static_cast<NamedType*>(n)->name);
+      case NodeKind::PointerType: return mentionsBound(static_cast<PointerType*>(n)->pointee, s, depth + 1);
+      case NodeKind::LRefType: return mentionsBound(static_cast<LRefType*>(n)->referenced, s, depth + 1);
+      case NodeKind::RRefType: return mentionsBound(static_cast<RRefType*>(n)->referenced, s, depth + 1);
+      case NodeKind::ConstType: return mentionsBound(static_cast<ConstType*>(n)->inner, s, depth + 1);
+      case NodeKind::ArrayType:
+        return mentionsBound(static_cast<ArrayType*>(n)->element, s, depth + 1) || mentionsBound(static_cast<ArrayType*>(n)->size, s, depth + 1);
+      case NodeKind::DecltypeType: return mentionsBound(static_cast<DecltypeType*>(n)->expr, s, depth + 1);
+      case NodeKind::PackType: return mentionsBound(static_cast<PackType*>(n)->pattern, s, depth + 1);
+      case NodeKind::BuiltinType: case NodeKind::AutoType: return false;
+      case NodeKind::NameExpr: return inName(static_cast<NameExpr*>(n)->name);
+      case NodeKind::LiteralExpr: case NodeKind::ThisExpr: return false;
+      case NodeKind::CallExpr: return mentionsBound(static_cast<CallExpr*>(n)->callee, s, depth + 1) || any(static_cast<CallExpr*>(n)->args);
+      case NodeKind::MemberExpr: return mentionsBound(static_cast<MemberExpr*>(n)->base, s, depth + 1) || inName(static_cast<MemberExpr*>(n)->member);
+      case NodeKind::IndexExpr: return mentionsBound(static_cast<IndexExpr*>(n)->base, s, depth + 1) || any(static_cast<IndexExpr*>(n)->args);
+      case NodeKind::UnaryExpr: return mentionsBound(static_cast<UnaryExpr*>(n)->operand, s, depth + 1);
+      case NodeKind::BinaryExpr: return mentionsBound(static_cast<BinaryExpr*>(n)->lhs, s, depth + 1) || mentionsBound(static_cast<BinaryExpr*>(n)->rhs, s, depth + 1);
+      case NodeKind::ConditionalExpr:
+        return mentionsBound(static_cast<ConditionalExpr*>(n)->cond, s, depth + 1) || mentionsBound(static_cast<ConditionalExpr*>(n)->then, s, depth + 1) ||
+               mentionsBound(static_cast<ConditionalExpr*>(n)->else_, s, depth + 1);
+      case NodeKind::CastExpr: return mentionsBound(static_cast<CastExpr*>(n)->type, s, depth + 1) || mentionsBound(static_cast<CastExpr*>(n)->operand, s, depth + 1);
+      case NodeKind::NamedCastExpr:
+        return mentionsBound(static_cast<NamedCastExpr*>(n)->type, s, depth + 1) || mentionsBound(static_cast<NamedCastExpr*>(n)->operand, s, depth + 1);
+      case NodeKind::SizeofExpr: return mentionsBound(static_cast<SizeofExpr*>(n)->type, s, depth + 1) || mentionsBound(static_cast<SizeofExpr*>(n)->operand, s, depth + 1);
+      case NodeKind::FunctionalCastExpr:
+        return mentionsBound(static_cast<FunctionalCastExpr*>(n)->type, s, depth + 1) || any(static_cast<FunctionalCastExpr*>(n)->args);
+      case NodeKind::BraceInitExpr: return any(static_cast<BraceInitExpr*>(n)->args);
+      case NodeKind::ParenExpr: return mentionsBound(static_cast<ParenExpr*>(n)->inner, s, depth + 1);
+      case NodeKind::NewExpr: return mentionsBound(static_cast<NewExpr*>(n)->type, s, depth + 1) || any(static_cast<NewExpr*>(n)->args);
+      default: return true;
     }
   }
 
@@ -12438,17 +12520,19 @@ struct GlobalScope::Impl
         return l.decl ? impl.declaredTypeOf(l.decl, activeSubst, 0) : types.unknown();
       // Members of the current class template keep their dependent types; members reached
       // through a qualified name on an instantiation get substituted.
-      if (e->name.parts.size() > 1 && l.found == Found::Member && l.foundIn && l.foundIn->owner &&
+      if ((e->name.parts.size() > 1 || e->name.typeQualifier) && l.found == Found::Member && l.foundIn && l.foundIn->owner &&
           (!l.foundIn->owner->templateParams.empty() ||
            (l.foundIn->owner->kind == NodeKind::EnumDecl && !Impl::effectiveParams(l.foundIn->owner).empty())))
       {
-        // Qualifier like `Vector<int>::npos`: substitute from the qualifier type when it is an instantiation.
+        // Qualifier like `Vector<int>::npos`: substitute from the qualifier type when it is an
+        // instantiation; `decltype(check<T>(nullptr))::value` from the class the decltype names.
         QualifiedName qualifier = e->name;
         qualifier.parts.count -= 1;
         NamedType tmp{};
         tmp.kind = NodeKind::NamedType;
         tmp.name = qualifier;
-        const Ty* q = typeOf(&tmp);
+        const Ty* q = qualifier.parts.empty() ? typeOf(e->name.typeQualifier) : typeOf(&tmp);
+        q = q ? types.unqualified(types.stripRef(q)) : types.unknown();
         // `IsSmall::value` with `struct IsSmall : Constant<bool, true> {}`: a member of a template
         // base takes that base instantiation's arguments.
         if (q->kind == TyKind::Class && (!q->args.empty() || (q->decl && q->decl->ownScope != l.foundIn)))

@@ -1,6 +1,5 @@
 // spec: the detection idiom: a class template's `static constexpr bool value = decltype(check<T>(nullptr))::value`, with check overloaded on a trailing return type that substitution may fail (`-> IsSame<decltype(declval<Y>().getQualityID()), QualityID>`) and on `...`, is true exactly for a T with that member, as a static_assert, as a variable template over it in if constexpr, and written in a function template's body
 // factorio: IDWithQuality.hpp's has_get_quality_id_impl and has_get_quality_id (IDButton's paintQuality and getQualityPrototype, FlowDataFrame::supportsQuality: 99 of the full-src errors)
-// pending: the variable template is no constant: `decltype(...)::value` named the generic IntegralConstant's value (T unbound), and the generic walk's overload for check<T> (FalseType, the other's return type depending on T) stood for every T
 struct QualityID
 {
   int v = 0;

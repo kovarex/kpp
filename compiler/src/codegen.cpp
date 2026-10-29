@@ -7065,23 +7065,32 @@ namespace
       return d && d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : v;
     }
 
+    // The type the qualifier of a qualified name names, under the current arguments: `Counted<int>`
+    // of `Counted<int>::instances`, the class `decltype(check<T>(nullptr))` names of
+    // `decltype(check<T>(nullptr))::value`; null for an unqualified name.
+    const Ty* qualifierOf(NameExpr* n)
+    {
+      TemplateArgs none;
+      if (n->name.parts.size() == 1 && n->name.typeQualifier)
+        return global.typeOfAstIn(n->name.typeQualifier, typingContext(), currentArgs ? *currentArgs : none);
+      if (n->name.parts.size() <= 1)
+        return nullptr;
+      NamedType tmp{};
+      tmp.kind = NodeKind::NamedType;
+      tmp.token = n->token;
+      tmp.name = n->name;
+      tmp.name.parts.count -= 1;
+      return global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
+    }
+
     // `Counted<int>::instances`: the instantiation a qualified static member belongs to (null for
     // an unqualified name or a class that is not a template).
     const Ty* qualifierClass(Node* e, Node* at)
     {
       if (!e || e->kind != NodeKind::NameExpr)
         return nullptr;
-      auto* n = static_cast<NameExpr*>(e);
-      if (n->name.parts.size() <= 1)
-        return nullptr;
-      QualifiedName qualifier = n->name;
-      qualifier.parts.count -= 1;
-      NamedType tmp{};
-      tmp.kind = NodeKind::NamedType;
-      tmp.token = n->token;
-      tmp.name = qualifier;
-      TemplateArgs none;
-      const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
+      const Ty* q = qualifierOf(static_cast<NameExpr*>(e));
+      q = q ? types.unqualified(types.stripRef(q)) : nullptr;
       return q && isClass(q) && !q->args.empty() ? canonicalClass(q, at) : nullptr;
     }
 
@@ -7118,16 +7127,10 @@ namespace
     // any class; null for an unqualified name.
     const Ty* qualifierType(Node* e, Node* at)
     {
-      if (!e || e->kind != NodeKind::NameExpr || static_cast<NameExpr*>(e)->name.parts.size() <= 1)
+      if (!e || e->kind != NodeKind::NameExpr)
         return nullptr;
-      auto* n = static_cast<NameExpr*>(e);
-      NamedType tmp{};
-      tmp.kind = NodeKind::NamedType;
-      tmp.token = n->token;
-      tmp.name = n->name;
-      tmp.name.parts.count -= 1;
-      TemplateArgs none;
-      const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
+      const Ty* q = qualifierOf(static_cast<NameExpr*>(e));
+      q = q ? types.unqualified(types.stripRef(q)) : nullptr;
       return q && isClass(q) && !types.isDependent(q) ? canonicalClass(q, at) : nullptr;
     }
 
