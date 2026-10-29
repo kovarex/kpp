@@ -1,0 +1,44 @@
+// spec: delete through a base pointer whose destructor is virtual destroys the whole object, also when the derived classes declare no destructor of their own (their members are destroyed) and when the base's destructor is defaulted
+// found writing multiple inheritance: a derived class without a declared destructor kept its base's destructor in the vtable slot, so its members were never destroyed
+class Noisy
+{
+public:
+  int id;
+  Noisy(int id) : id(id) {}
+  ~Noisy() { println("~Noisy {}", this->id); }
+};
+class Base
+{
+public:
+  virtual ~Base() { println("~Base"); }
+};
+class Derived : public Base
+{
+public:
+  Noisy n{1};
+};
+class MoreDerived : public Derived
+{
+public:
+  Noisy m{2};
+};
+class Quiet
+{
+public:
+  virtual ~Quiet() = default;
+};
+class Loud : public Quiet
+{
+public:
+  Noisy n{3};
+};
+int main()
+{
+  Base* b = new Derived();
+  delete b;
+  Base* c = new MoreDerived();
+  delete c;
+  Quiet* q = new Loud();
+  delete q;
+  return 0;
+}

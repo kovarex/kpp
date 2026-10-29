@@ -1127,6 +1127,7 @@ namespace
         structs[key].vtableName = vt;
         std::vector<FunctionDecl*> impls2 = structs[key].vtable;
         std::vector<const Ty*> owners2 = structs[key].vtableOwners;
+        std::vector<std::string> keys2 = structs[key].vtableKeys;
         // The vtable pointer points at the first function's slot, the functions following in
         // declaration order (MSVC's layout and COM's: a C object's table of functions is called as
         // a Kpp class's, and the reverse). Just before it, slot -1, is the class's descriptor (where
@@ -1152,7 +1153,9 @@ namespace
           {
             FunctionDecl* f = impls2[i];
             std::string entry = "ptr null";
-            if (f && !(f->flags & DF_Pure))
+            if (keys2[i] == "~" && owners2[i] != key)
+              entry = "ptr " + implicitDestructor(key, at); // a class declaring none still destroys its own members
+            else if (f && !(f->flags & DF_Pure))
               entry = "ptr " + useFunction(f, global.classArgsOf(owners2[i]), owners2[i]);
             entries += ", " + entry;
           }
@@ -1587,11 +1590,12 @@ namespace
         }
         return;
       }
-      if (!isClass(t) || !needsDestruction(t, at))
+      if (!isClass(t))
         return;
-      ClassDecl* c = classDef(t->decl, at);
       if (dynamic)
       {
+        // A virtual destructor: the dynamic class's, also when this class has nothing to destroy
+        // (`virtual ~Shape() = default`) and the derived one does.
         StructInfo& info = structFor(t, at);
         for (size_t i = 0; i < info.vtableKeys.size(); ++i)
           if (info.vtableKeys[i] == "~")
@@ -1601,6 +1605,9 @@ namespace
             return;
           }
       }
+      if (!needsDestruction(t, at))
+        return;
+      ClassDecl* c = classDef(t->decl, at);
       if (c->isTypedUnion)
       {
         destroyAlternative(c, t, addr, at);
@@ -1747,6 +1754,35 @@ namespace
       });
     }
 
+    // Points the vtable pointer of the object at addr at its class's vtable: once its bases are
+    // built (their constructors pointed it at theirs), and after its bytes were copied from an
+    // object that may be of a class derived from it.
+    void storeVptrs(const std::string& addr, const StructInfo& info)
+    {
+      if (!info.polymorphic)
+        return;
+      useVtable(info);
+      fn += "  store ptr " + info.vptrValue + ", ptr " + addr + "\n";
+    }
+
+    // The vtable pointers of the object at addr, loaded before an assignment copies its bytes and
+    // stored back after it: an object keeps its own class's vtable (it may be of a class derived
+    // from the one assigned).
+    std::vector<std::string> loadVptrs(const std::string& addr, const StructInfo& info)
+    {
+      std::vector<std::string> saved;
+      if (!info.polymorphic)
+        return saved;
+      saved.push_back(newTemp());
+      fn += "  " + saved.back() + " = load ptr, ptr " + addr + "\n";
+      return saved;
+    }
+    void restoreVptrs(const std::string& addr, const std::vector<std::string>& saved)
+    {
+      if (!saved.empty())
+        fn += "  store ptr " + saved[0] + ", ptr " + addr + "\n";
+    }
+
     // Initialises bases and members of the object at addr from constructor initializers (or
     // default member initializers / default construction when absent).
     void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at)
@@ -1784,11 +1820,7 @@ namespace
         else
           initializeMembers(baseAddr, bt, {}, at);
       }
-      if (info.polymorphic)
-      {
-        useVtable(info);
-        fn += "  store ptr " + info.vptrValue + ", ptr " + addr + "\n";
-      }
+      storeVptrs(addr, info);
       if (info.isUnion)
         return;
       std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
@@ -2098,11 +2130,7 @@ namespace
         // default member initializers (or default construction), as in C++.
         const StructInfo& info = structFor(t, at);
         storeZero(t, addr, at);
-        if (info.polymorphic)
-        {
-          useVtable(info);
-          fn += "  store ptr " + info.vptrValue + ", ptr " + addr + "\n";
-        }
+        storeVptrs(addr, info);
         if (info.fieldDecls.size() == 1 && info.bases.empty() && designators.empty() && args.size() > 1)
         {
           // Brace elision: `Array<int, 3> a = {1, 2, 3}` fills the one array field element by element.
@@ -2133,6 +2161,7 @@ namespace
             const Ty* bt = info.fieldTypes[baseFieldIdx];
             initializeFrom(baseAddr, bt, args[argIdx++], at);
           }
+          storeVptrs(addr, info); // the bases built pointed it at theirs
         }
         // The members the values go to: the fields, and each bit field of a storage unit on its
         // own (the unit's first bit field stands for the unit among the fields).
@@ -2557,15 +2586,12 @@ namespace
         std::string v = newTemp();
         fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
         fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+        if (isClass(t))
+          storeVptrs(dst, structFor(t, at)); // the source may be of a derived class (a slicing copy)
         return;
       }
       // Memberwise: bases and members in order, each with its own copy semantics.
       const StructInfo& info = structFor(t, at);
-      if (info.polymorphic)
-      {
-        useVtable(info);
-        fn += "  store ptr " + info.vptrValue + ", ptr " + dst + "\n";
-      }
       for (auto& [baseDef, index] : info.bases)
       {
         if (move)
@@ -2573,6 +2599,7 @@ namespace
         else
           copyConstruct(gep(info.name, dst, index), gep(info.name, src, index), info.fieldTypes[index], at);
       }
+      storeVptrs(dst, info); // after the bases, whose constructors pointed it at theirs
       for (Decl* d : info.fieldDecls)
       {
         uint32_t index = fieldIndexOf(info, d);
@@ -2630,9 +2657,11 @@ namespace
       }
       if (!needsDestruction(t, at))
       {
+        std::vector<std::string> vptrs = loadVptrs(dst, structFor(t, at));
         std::string v = newTemp();
         fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
         fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+        restoreVptrs(dst, vptrs);
         return;
       }
       if (findDestructor(classDef(t->decl, at)) && !defaulted) // a defaulted one is memberwise, destructor or not (Trigger)
@@ -2892,6 +2921,8 @@ namespace
       std::string v = newTemp();
       fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src.text + "\n";
       fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+      if (isClass(t) && src.ty && classKey(types.stripRef(src.ty)) != classKey(t))
+        storeVptrs(dst, structFor(t, at)); // a temporary of a derived class, sliced
     }
 
     std::string newObjectSlot(const Ty* t, Node* at)
@@ -10515,6 +10546,22 @@ namespace
       shared += sharedComdat(name) + name + " = linkonce_odr constant { ptr, ptr, i64 } { ptr " + base + ", ptr " + str + ", i64 " +
                 offset + " }, comdat\n";
       return name;
+    }
+
+    // The destructor slot of a class that declares no destructor: a function destroying its members
+    // and bases (destructorThunk), or one doing nothing when none of them needs it.
+    std::string implicitDestructor(const Ty* t, Node* at)
+    {
+      std::string thunk = destructorThunk(t, at);
+      if (thunk != "null")
+        return thunk;
+      auto lock = sharedLock();
+      if (!emittedShared["@kpp.nodtor"])
+      {
+        emittedShared["@kpp.nodtor"] = true;
+        shared += sharedComdat("@kpp.nodtor") + "define linkonce_odr void @kpp.nodtor(ptr %o) comdat {\nentry:\n  ret void\n}\n";
+      }
+      return "@kpp.nodtor";
     }
 
     // A function destroying an object of type t through a pointer (for the exception runtime), or null.

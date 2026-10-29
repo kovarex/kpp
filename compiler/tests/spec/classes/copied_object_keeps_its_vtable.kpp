@@ -1,0 +1,41 @@
+// spec: a copy of a polymorphic object has its own class's vtable (an implicit copy whose base has a user copy constructor, a slicing copy), and an assignment keeps the target's vtable
+// found writing multiple inheritance: the implicit copy stored the class's vtable pointer before copying its bases, whose copy constructor then stored the base's over it; a bitwise copy or assignment took the source's vtable pointer
+class Base
+{
+public:
+  int x = 0;
+  Base() {}
+  Base(const Base& o) : x(o.x) {}
+  virtual int f() const { return 1; }
+};
+class D : public Base
+{
+public:
+  String s;
+  int f() const override { return 2; }
+};
+class Plain
+{
+public:
+  int v = 0;
+  virtual int g() const { return 10; }
+};
+class Fancy : public Plain
+{
+public:
+  int g() const override { return 20; }
+};
+int main()
+{
+  D a;
+  D b(a);
+  const Base& r = b;
+  Fancy fancy;
+  Plain sliced = fancy;
+  Plain target;
+  Fancy other;
+  Plain& viaBase = other;
+  viaBase = target;
+  println("{} {} {}", r.f(), sliced.g(), viaBase.g());
+  return 0;
+}
