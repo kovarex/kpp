@@ -256,9 +256,18 @@ std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view s
       return fail("an empty character literal");
     if (body[0] != '\\')
     {
-      if (body.size() != 1)
+      // One character of the (UTF-8) source: in a wide literal its code point (`L'é'`), in a narrow
+      // one a single byte (more is a multicharacter literal).
+      uint32_t c = static_cast<unsigned char>(body[0]);
+      size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 0;
+      bool wide = prefix == "L" || prefix == "u" || prefix == "U";
+      if (body.size() != 1 && !(wide && n > 1 && body.size() == n))
         return fail("a character literal of more than one character (" + std::string(spelling) + ")");
-      v = static_cast<unsigned char>(body[0]);
+      if (n > 1 && body.size() == n)
+        c &= 0x7F >> n;
+      for (size_t k = 1; k < body.size(); ++k)
+        c = (c << 6) | (static_cast<unsigned char>(body[k]) & 0x3F);
+      v = c;
     }
     else
     {

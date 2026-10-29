@@ -6896,7 +6896,12 @@ namespace
       return it == enumeratorValues.end() ? 0 : it->second;
     }
 
-    static std::string decodeString(std::string_view s)
+    // A string literal's bytes with its escapes decoded, UTF-8 as the source is: a universal character
+    // name (`é`, `\U0001F600`) is its code point's UTF-8; an octal escape (up to three digits,
+    // `\101`) or a hex one is one byte in a narrow literal and one code unit in a wide one (its UTF-8
+    // here, which wideStringConstant decodes back). `L"T"` was the five units u0054 and `"\101"`
+    // the three characters 101.
+    static std::string decodeString(std::string_view s, bool wide = false)
     {
       size_t q = s.find_first_of("\"'");
       if (q == std::string_view::npos)
@@ -6904,6 +6909,37 @@ namespace
       char quote = s[q];
       bool raw = q > 0 && s[q - 1] == 'R';
       std::string out;
+      auto utf8 = [&](uint32_t cp)
+      {
+        if (cp < 0x80)
+          out += char(cp);
+        else if (cp < 0x800)
+        {
+          out += char(0xC0 | (cp >> 6));
+          out += char(0x80 | (cp & 0x3F));
+        }
+        else if (cp < 0x10000)
+        {
+          out += char(0xE0 | (cp >> 12));
+          out += char(0x80 | ((cp >> 6) & 0x3F));
+          out += char(0x80 | (cp & 0x3F));
+        }
+        else
+        {
+          out += char(0xF0 | (cp >> 18));
+          out += char(0x80 | ((cp >> 12) & 0x3F));
+          out += char(0x80 | ((cp >> 6) & 0x3F));
+          out += char(0x80 | (cp & 0x3F));
+        }
+      };
+      auto unit = [&](uint32_t v)
+      {
+        if (wide)
+          utf8(v);
+        else
+          out += char(v);
+      };
+      auto hexValue = [](char c) { return uint32_t(isdigit((unsigned char)c) ? c - '0' : tolower((unsigned char)c) - 'a' + 10); };
       if (raw)
       {
         size_t open = s.find('(', q);
@@ -6928,23 +6964,38 @@ namespace
           case 'n': out += '\n'; break;
           case 't': out += '\t'; break;
           case 'r': out += '\r'; break;
-          case '0': out += '\0'; break;
           case 'a': out += '\a'; break;
           case 'b': out += '\b'; break;
           case 'f': out += '\f'; break;
           case 'v': out += '\v'; break;
           case 'x':
           {
-            int v = 0;
+            uint32_t v = 0;
             while (i + 1 < s.size() && isxdigit((unsigned char)s[i + 1]))
-            {
-              ++i;
-              v = v * 16 + (isdigit((unsigned char)s[i]) ? s[i] - '0' : (tolower(s[i]) - 'a' + 10));
-            }
-            out += char(v);
+              v = v * 16 + hexValue(s[++i]);
+            unit(v);
             break;
           }
-          default: out += e; break;
+          case 'u':
+          case 'U':
+          {
+            uint32_t v = 0;
+            for (int digits = e == 'u' ? 4 : 8; digits > 0 && i + 1 < s.size() && isxdigit((unsigned char)s[i + 1]); --digits)
+              v = v * 16 + hexValue(s[++i]);
+            utf8(v);
+            break;
+          }
+          default:
+            if (e >= '0' && e <= '7')
+            {
+              uint32_t v = uint32_t(e - '0');
+              for (int digits = 2; digits > 0 && i + 1 < s.size() && s[i + 1] >= '0' && s[i + 1] <= '7'; --digits)
+                v = v * 8 + uint32_t(s[++i] - '0');
+              unit(v);
+            }
+            else
+              out += e;
+            break;
         }
       }
       return out;
@@ -6952,13 +7003,13 @@ namespace
 
     std::string stringConstant(LiteralExpr* l)
     {
-      std::string bytes;
-      const std::vector<Token>& toks = *literalFile(l)->tokens;
-      for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
-        bytes += decodeString(literalSpelling(l, uint32_t(i)));
       std::string_view first = literalSpelling(l, l->token);
       bool wide16 = first.starts_with("L") || (first.starts_with("u") && !first.starts_with("u8"));
       bool wide32 = first.starts_with("U");
+      std::string bytes;
+      const std::vector<Token>& toks = *literalFile(l)->tokens;
+      for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
+        bytes += decodeString(literalSpelling(l, uint32_t(i)), wide16 || wide32);
       if (wide16 || wide32)
         return wideStringConstant(bytes, wide16 ? 16 : 32);
       return cStringConstant(bytes);
@@ -6968,13 +7019,13 @@ namespace
     // stringConstant makes them, and their size: chars, or UTF-16/32 units for L"..", u"..", U"..".
     size_t stringLiteralUnits(LiteralExpr* l, uint32_t& unitBytes)
     {
-      std::string bytes;
-      const std::vector<Token>& toks = *literalFile(l)->tokens;
-      for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
-        bytes += decodeString(literalSpelling(l, uint32_t(i)));
       std::string_view first = literalSpelling(l, l->token);
       bool wide16 = first.starts_with("L") || (first.starts_with("u") && !first.starts_with("u8"));
       unitBytes = wide16 ? 2 : first.starts_with("U") ? 4 : 1;
+      std::string bytes;
+      const std::vector<Token>& toks = *literalFile(l)->tokens;
+      for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
+        bytes += decodeString(literalSpelling(l, uint32_t(i)), unitBytes != 1);
       if (unitBytes == 1)
         return bytes.size();
       size_t units = 0;
@@ -10807,11 +10858,6 @@ namespace
             return {stringConstant(l), t};
           if (l->literalKind == TokenKind::Keyword)
             return {l->keyword == Kw::nullptr_ ? "null" : l->keyword == Kw::true_ ? "true" : "false", t};
-          if (l->literalKind == TokenKind::Char)
-          {
-            std::string s = decodeString(literalSpelling(l, l->token));
-            return {std::to_string(s.empty() ? 0 : (unsigned char)s[0]), t};
-          }
           if (t->kind == TyKind::Float)
           {
             std::string digits;
