@@ -1,0 +1,28 @@
+// spec: a function template's local alias of a class template instance used as a qualifier (`using nl = Limits<T1>; nl::max()`) names that instance's members wherever the function is compiled for its arguments
+// factorio: PropertyTree::rangeCheck<T1, T2> (`using nl = Limits<T1>;`), 7 instances
+template<class T1, class T2>
+void failed(T1 value, T2 min, T2 max)
+{
+  println("{} out of {}..{}", value, min, max);
+}
+template<class T1, class T2>
+void rangeCheck(T2 value)
+{
+  using nl = Limits<T1>;
+  if constexpr (isFloatingPoint<T1>)
+  {
+    if (value < nl::lowest() || value > nl::max())
+      failed(value, nl::lowest(), nl::max());
+  }
+  else
+  {
+    if (value < nl::min() || value > nl::max())
+      failed(value, nl::min(), nl::max());
+  }
+}
+int main()
+{
+  rangeCheck<unsigned char, uint64_t>(uint64_t(300));
+  rangeCheck<float, double>(1e300);
+  return 0;
+}

@@ -999,6 +999,52 @@ struct GlobalScope::Impl
   // names stay out of the enclosing scope: the function's locals carry them (declareLocal). The
   // scope's parent is the function's, its class for a member function (finishIndex moves an
   // out-of-line member's ones under its class).
+  // The aliases a function body declares (`using nl = Limits<T1>;`, typedefs), anywhere in it.
+  void collectLocalAliases(Stmt* s, LocalStack& out, int depth = 0)
+  {
+    if (!s || depth > 64)
+      return;
+    auto each = [&](Stmt* inner) { collectLocalAliases(inner, out, depth + 1); };
+    switch (s->kind)
+    {
+      case NodeKind::BlockStmt:
+        for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+          each(inner);
+        break;
+      case NodeKind::DeclStmt:
+        for (Decl* d : static_cast<DeclStmt*>(s)->decls)
+          if (d->kind == NodeKind::UsingAliasDecl)
+            out.push(static_cast<UsingAliasDecl*>(d)->name, d);
+          else if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef) && !static_cast<VariableDecl*>(d)->name.empty())
+            out.push(static_cast<VariableDecl*>(d)->name.last().symbol, d);
+        break;
+      case NodeKind::IfStmt:
+        each(static_cast<IfStmt*>(s)->init);
+        each(static_cast<IfStmt*>(s)->then);
+        each(static_cast<IfStmt*>(s)->else_);
+        break;
+      case NodeKind::ForStmt:
+        each(static_cast<ForStmt*>(s)->init);
+        each(static_cast<ForStmt*>(s)->body);
+        break;
+      case NodeKind::RangeForStmt: each(static_cast<RangeForStmt*>(s)->body); break;
+      case NodeKind::ForConstexprStmt: each(static_cast<ForConstexprStmt*>(s)->body); break;
+      case NodeKind::WhileStmt: each(static_cast<WhileStmt*>(s)->body); break;
+      case NodeKind::DoStmt: each(static_cast<DoStmt*>(s)->body); break;
+      case NodeKind::SwitchStmt:
+        each(static_cast<SwitchStmt*>(s)->init);
+        each(static_cast<SwitchStmt*>(s)->body);
+        break;
+      case NodeKind::TryStmt:
+        each(static_cast<TryStmt*>(s)->body);
+        for (const TryStmt::Handler& h : static_cast<TryStmt*>(s)->handlers)
+          each(h.body);
+        break;
+      default:
+        break;
+    }
+  }
+
   void indexLocalTypes(Stmt* s, Scope* scope, FunctionDecl* f)
   {
     if (!s)
@@ -11224,8 +11270,18 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
       dc.params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
-  return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr,
-                                                file ? file->text : std::string_view()}, 0);
+  Impl::TypeContext ctx{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+  const Ty* r = impl->convertType(t, ctx, 0);
+  if (Impl::mentionsUnknown(r) && context && context->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(context)->body)
+  {
+    // `nl::min()` with `using nl = Limits<T1>;` in the function's body: its own aliases, which
+    // the walk had as locals.
+    size_t before = dc.params.items.size();
+    impl->collectLocalAliases(static_cast<FunctionDecl*>(context)->body, dc.params);
+    if (dc.params.items.size() != before)
+      r = impl->convertType(t, ctx, 0);
+  }
+  return r;
 }
 
 std::optional<bool> GlobalScope::typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args)
