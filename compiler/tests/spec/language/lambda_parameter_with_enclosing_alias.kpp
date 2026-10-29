@@ -1,0 +1,23 @@
+// spec: a lambda's parameter typed with an alias of a function around it (`const Layers::value_type&` with `using Layers = ...;` in the function, the lambda inside another lambda) has the alias's type, in the lambda's body and where the lambda is called (sort's comparator)
+// factorio: DebugTools' addRenderLayer: `using LayersVector = Vector<Pair<String, RenderLayer::Enum>>;` then `::sort(vec.begin(), vec.end(), [](const LayersVector::value_type& a, const LayersVector::value_type& b) { ... })` inside a lambda initializing a static
+static int firstOf()
+{
+  using Layers = Vector<Pair<int, int>>;
+  static Layers layers = []()
+  {
+    Layers vec;
+    vec.push_back(makePair(2, 1));
+    vec.push_back(makePair(1, 2));
+    vec.push_back(makePair(3, 0));
+    ::sort(vec.begin(), vec.end(), [](const Layers::value_type& a, const Layers::value_type& b) { return a.first < b.first; });
+    return vec;
+  }();
+  return layers[0].first * 10 + layers[2].first;
+}
+int main()
+{
+  using Number = int;
+  auto twice = [](Number n) { return n * 2; };
+  println("{} {}", firstOf(), twice(21));
+  return 0;
+}

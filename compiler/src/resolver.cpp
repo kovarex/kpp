@@ -10628,6 +10628,9 @@ struct GlobalScope::Impl
         }
         case NodeKind::ParamDecl:
         {
+          if (l.found == Found::Local)
+            if (const Ty* walked = locals.deducedTypeOf(d))
+              return walked; // a lambda's parameter as this walk typed it
           const Ty* t = impl.declaredTypeOf(d, activeSubst, 0);
           return impl.containsAuto(t) ? unknown(Why::Auto) : t;
         }
@@ -13383,8 +13386,20 @@ struct GlobalScope::Impl
           std::vector<const Ty*> params;
           for (Decl* p : l->params)
           {
-            walkParam(static_cast<ParamDecl*>(p));
-            params.push_back(impl.declaredTypeOf(p, activeSubst, 0));
+            auto* pd = static_cast<ParamDecl*>(p);
+            walkParam(pd);
+            const Ty* t = impl.declaredTypeOf(p, activeSubst, 0);
+            // As this walk sees the type, its locals included: `const Layers::value_type&` with
+            // `using Layers = ...;` in a function around the lambda, which the declaration's own
+            // context does not see. The parameter's uses take it from the local.
+            if (const Ty* walked = pd->type ? typeOf(pd->type) : nullptr;
+                walked && walked->isKnown() && !impl.containsAuto(walked) && (!t || !t->isKnown() || types.isDependent(t)) && !types.isDependent(walked))
+            {
+              t = walked->kind == TyKind::Array ? types.decay(walked) : walked;
+              if (!locals.items.empty() && locals.items.back().decl == p)
+                locals.items.back().type = t;
+            }
+            params.push_back(t);
           }
           walkType(l->returnType);
           const Ty* result = nullptr;
@@ -14430,9 +14445,19 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
   // A type written in the function's body (`nl::min()` after `using nl = Limits<T1>;`, `List::forEach`
   // after `using List = TypeList<int, Small>;`): the body's aliases in scope there, which the walk
   // had as locals and which hide any other declaration of their name (the library's List).
-  if (context && context->kind == NodeKind::FunctionDecl && t)
-    if (Stmt* body = static_cast<FunctionDecl*>(context)->body; body && body->token < t->token && (!context->endToken || t->token < context->endToken))
-      impl->collectVisibleLocalAliases(body, t->token, dc.params);
+  // Those of the functions it is nested in too (a lambda's parameter `const Layers::value_type&`
+  // with `using Layers = ...;` in the function around the lambda), outermost first, so that an
+  // inner alias hides an outer one of its name.
+  if (t)
+  {
+    std::vector<FunctionDecl*> around;
+    for (Decl* p = context; p; p = p->parent)
+      if (p->kind == NodeKind::FunctionDecl)
+        if (Stmt* body = static_cast<FunctionDecl*>(p)->body; body && body->token < t->token && (!p->endToken || t->token < p->endToken))
+          around.push_back(static_cast<FunctionDecl*>(p));
+    for (size_t i = around.size(); i-- > 0;)
+      impl->collectVisibleLocalAliases(around[i]->body, t->token, dc.params);
+  }
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
   return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr,
