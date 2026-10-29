@@ -1,0 +1,23 @@
+// spec: `auto x = {a, b, c}` deduces InitializerList<T>, T the elements' decayed type (`const auto entityNames = {"pipe", "storage-tank"}` is a const InitializerList<const char*>), at namespace scope and in a function, and an InitializerList variable initialized from a brace list keeps its array as long as it lives (in static storage for a global)
+// factorio: tests/TestStorageTankControlBehavior.cpp's `const auto entityNames = { "pipe", "pipe-to-ground", "storage-tank" };`
+// pending: the variable's type stays `const auto` ("codegen does not support the type const auto of VariableDecl"), and an InitializerList variable from a brace list is built through a constructor of three arguments; owner: the templates thread (deduction) with the list's lowering
+const auto entityNames = { "pipe", "pipe-to-ground", "storage-tank" };
+InitializerList<int> globalNumbers = { 10, 20 };
+int main()
+{
+  auto numbers = { 1, 2, 3 };
+  InitializerList<double> halves = { 0.5, 1.5 };
+  int sum = 0;
+  for (int n : numbers)
+    sum += n;
+  for (int n : globalNumbers)
+    sum += n;
+  int letters = 0;
+  for (const char* name : entityNames)
+    letters += int(strlen(name));
+  double total = 0;
+  for (double h : halves)
+    total += h;
+  println("{} {} {} {}", sum, int(entityNames.size()), letters, total);
+  return 0;
+}
