@@ -54,12 +54,15 @@ Adding and removing:
   old one), so n appends cost O(n) in total. The argument may refer to an element of this vector:
   the new element is built before the old ones are relocated.
 - `pop_back()`: removes the last element. Precondition: not empty.
-- `insert(position, value)`: inserts before position (a pointer into the vector, or `end()`);
-  returns a pointer to the new element. The elements from position on are relocated one place up.
-  O(size() - position + 1). `value` may be an element of this vector.
-- `insert(position, first, last)`: inserts copies of the range [first, last), which must not be
-  elements of this vector; returns a pointer to the first inserted one. `insert(position, count,
-  value)`: count copies of value (which may be an element).
+- `insert(position, value)`: inserts before position (a pointer into the vector, const or not, or
+  `end()`); returns a pointer to the new element. The elements from position on are relocated one
+  place up. O(size() - position + 1). `value` may be an element of this vector.
+- `insert(position, first, last)`: inserts the elements of [first, last), input iterators of any
+  kind that do not point into this vector: copies, or moves through a MoveIterator. Returns a
+  pointer to the first inserted one. For forward iterators the room is opened once
+  (O(size() - position + n)); a single-pass range goes in one element at a time.
+  `insert(position, {a, b})`: the list's elements. `insert(position, count, value)`: count copies
+  of value (which may be an element).
 - `emplace(position, args...)`: like insert, with an element built from the arguments.
 - `erase(position)`, `erase(first, last)`: destroys the element(s) and relocates the following ones
   down; returns a pointer to the element after the removed ones (now at the removed position).

@@ -1,0 +1,46 @@
+// spec: Vector::insert(position, first, last) from input iterators of any kind (pointers, a List's, a single-pass one, MoveIterator moving move-only elements), insert of a brace list and of count copies, at const positions (std::vector::insert taking const_iterator)
+// factorio: SmallVector::switchToBigData (`insert(end(), MoveIterator(begin()), MoveIterator(end()))`), range inserts across Util and the GUI
+struct Countdown
+{
+  using value_type = int;
+  using difference_type = ptrdiff_t;
+  using pointer = const int*;
+  using reference = int;
+  using iterator_category = InputIteratorTag;
+  int left;
+  int operator*() const { return this->left; }
+  Countdown& operator++()
+  {
+    --this->left;
+    return *this;
+  }
+  bool operator==(const Countdown& other) const { return this->left == other.left; }
+  bool operator!=(const Countdown& other) const { return this->left != other.left; }
+};
+int main()
+{
+  Vector<int> v = {1, 2, 3};
+  int extra[] = {7, 8};
+  v.insert(v.begin() + 1, extra, extra + 2);
+  List<int> list;
+  list.push_back(40);
+  list.push_back(50);
+  v.insert(v.cend(), list.begin(), list.end());
+  v.insert(v.begin(), Countdown{3}, Countdown{0});
+  v.insert(v.begin(), {-2, -1});
+  v.insert(v.end(), 2, 0);
+  const int* second = v.cbegin() + 1;
+  v.erase(second);
+  for (int x : v)
+    print("{} ", x);
+  println("");
+  Vector<UniquePtr<int>> from;
+  from.push_back(makeUnique<int>(5));
+  from.push_back(makeUnique<int>(6));
+  Vector<UniquePtr<int>> to;
+  to.push_back(makeUnique<int>(4));
+  to.insert(to.end(), MoveIterator<UniquePtr<int>*>(from.begin()), MoveIterator<UniquePtr<int>*>(from.end()));
+  MoveIterator<int*> a(extra), b(extra + 2);
+  println("{} {} {} {} {} {}", to.size(), *to[0], *to[2], from[0] == nullptr, b - a, (a + 1)[0]);
+  return 0;
+}

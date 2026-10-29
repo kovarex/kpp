@@ -224,14 +224,15 @@ struct Vector
       throwOutOfRange("Vector::at: index out of range");
     return this->items[index];
   }
-  // Inserts before the element position points at (begin()/end() and what find functions return).
-  T* insert(T* position, const T& value)
+  // Inserts before the element position points at (begin()/end() and what find functions return,
+  // const or not).
+  T* insert(const T* position, const T& value)
   {
     int index = int(position - this->items);
     this->insert(index, value);
     return this->items + index;
   }
-  T* insert(T* position, T&& value)
+  T* insert(const T* position, T&& value)
   {
     int index = int(position - this->items);
     this->insert(index, move(value));
@@ -239,10 +240,10 @@ struct Vector
   }
   // `v.emplace(position, args...)`: the element built from args, before position (std::vector::emplace).
   template<typename... Args>
-  T* emplace(T* position, Args&&... args) { return this->insert(position, T(forward<Args>(args)...)); }
+  T* emplace(const T* position, Args&&... args) { return this->insert(position, T(forward<Args>(args)...)); }
   // Inserts count copies of value (which may be an element) before position; returns the
   // position of the first one.
-  T* insert(T* position, int count, const T& value)
+  T* insert(const T* position, int count, const T& value)
   {
     T copy(value);
     int index = int(position - this->items);
@@ -251,16 +252,33 @@ struct Vector
       new (this->items + index + i) T(copy);
     return this->items + index;
   }
-  // Inserts copies of [first, last), which must not be elements of this vector; returns the
-  // position of the first one.
-  T* insert(T* position, const T* first, const T* last)
+  // Inserts the elements of [first, last), input iterators of any kind that do not point into this
+  // vector, before position: copies, or moves through MoveIterator. Returns the position of the
+  // first one. Forward iterators are counted first and the elements open their room at once; a
+  // single-pass range goes in one element at a time.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  T* insert(const T* position, InputIt first, InputIt last)
   {
-    int index = int(position - this->items), count = int(last - first);
-    this->openSlots(index, count);
-    for (int i = 0; i < count; ++i)
-      new (this->items + index + i) T(first[i]);
+    int index = int(position - this->items);
+    if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
+    {
+      int count = int(distance(first, last));
+      this->openSlots(index, count);
+      for (int i = 0; i < count; ++i)
+      {
+        new (this->items + index + i) T(*first);
+        ++first;
+      }
+    }
+    else
+    {
+      for (int at = index; first != last; ++first)
+        this->insert(at++, T(*first));
+    }
     return this->items + index;
   }
+  // `v.insert(position, {a, b, c})`.
+  T* insert(const T* position, InitializerList<T> list) { return this->insert(position, list.begin(), list.end()); }
   void insert(int index, const T& value)
   {
     T copy(value); // value may be an element, which the opening moves
@@ -300,8 +318,8 @@ struct Vector
     --this->length;
   }
   // Removes [first, last), given as pointers into the vector (begin()/end() and what find functions
-  // return); returns the position of the element after the removed ones.
-  T* erase(T* first, T* last)
+  // return, const or not); returns the position of the element after the removed ones.
+  T* erase(const T* first, const T* last)
   {
     int index = int(first - this->items), count = int(last - first);
     for (int i = 0; i < count; ++i)
@@ -310,7 +328,7 @@ struct Vector
     this->length -= count;
     return this->items + index;
   }
-  T* erase(T* at) { return this->erase(at, at + 1); }
+  T* erase(const T* at) { return this->erase(at, at + 1); }
 
   // Internals.
   // Destroys the elements from newLength on.

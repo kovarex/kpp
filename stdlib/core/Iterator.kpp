@@ -28,7 +28,8 @@ struct IteratorTraits<T*>
 };
 
 // MoveIterator<It> (std::move_iterator): an iterator of type It whose dereference moves the
-// element out instead of copying it.
+// element out instead of copying it. It is of It's category and has the operations of it: the
+// steps back and the random access ones exist for an It that has them.
 template<typename It>
 struct MoveIterator
 {
@@ -40,9 +41,11 @@ struct MoveIterator
 
   It current;
 
+  MoveIterator() : current() {}
   explicit MoveIterator(It it) : current(it) {}
 
   IteratorTraits<It>::value_type&& operator*() const { return move(*this->current); }
+  IteratorTraits<It>::value_type&& operator[](ptrdiff_t n) const { return move(this->current[n]); }
   MoveIterator<It>& operator++()
   {
     ++this->current;
@@ -54,9 +57,37 @@ struct MoveIterator
     ++this->current;
     return tmp;
   }
+  MoveIterator<It>& operator--()
+  {
+    --this->current;
+    return *this;
+  }
+  MoveIterator<It> operator--(int)
+  {
+    MoveIterator<It> tmp = *this;
+    --this->current;
+    return tmp;
+  }
+  MoveIterator<It>& operator+=(ptrdiff_t n)
+  {
+    this->current += n;
+    return *this;
+  }
+  MoveIterator<It>& operator-=(ptrdiff_t n)
+  {
+    this->current -= n;
+    return *this;
+  }
+  MoveIterator<It> operator+(ptrdiff_t n) const { return MoveIterator<It>(this->current + n); }
+  MoveIterator<It> operator-(ptrdiff_t n) const { return MoveIterator<It>(this->current - n); }
+  ptrdiff_t operator-(const MoveIterator<It>& other) const { return this->current - other.current; }
   It base() const { return this->current; }
   bool operator==(const MoveIterator<It>& other) const { return this->current == other.current; }
   bool operator!=(const MoveIterator<It>& other) const { return this->current != other.current; }
+  bool operator<(const MoveIterator<It>& other) const { return this->current < other.current; }
+  bool operator<=(const MoveIterator<It>& other) const { return this->current <= other.current; }
+  bool operator>(const MoveIterator<It>& other) const { return this->current > other.current; }
+  bool operator>=(const MoveIterator<It>& other) const { return this->current >= other.current; }
 };
 
 template<typename It>
