@@ -1564,9 +1564,9 @@ checks in 136 tests:
 
 | Checks | What fails | Cause | Kind, owner |
 |---|---|---|---|
-| 44 | a map saved and loaded through the multiplayer harness: `unknown Source value: 255` (RelativeItemStackLocation::source, 26 suites) | not found yet: save and load disagree before that field (the load's member initializers with a ternary over the stream are right, probed) | |
-| 30 | Lua: `game.map_settings`, a force's flow statistics: "attempt to index field 'map_settings' (a userdata value)", a LuaObject's userdata without an indexing metatable | not found yet | |
-| 11 | Lua: a precompiled chunk (string.dump) loaded back is "a text chunk" | not found yet | |
+| 44 | a map saved and loaded through the multiplayer harness: `unknown Source value: 255` (RelativeItemStackLocation::source, 26 suites) | InventoryHighlights' `static Type const types[];` gets its three entries at its definition; the array came out empty, so the save went over no type and wrote only their count, and the load read the controller's next fields from the wrong place (found by printing each save and load of the converted code in a scratch tree) | compiler: pending spec language/static_array_member_bound_from_definition, the resolver thread |
+| 30 | Lua: `game.map_settings`, a force's flow statistics: "attempt to index field 'map_settings' (a userdata value)", a LuaObject's userdata without an indexing metatable | the bindings that are class templates (LuaStruct<T>, LuaFlowStatistics<T>) register their metamethods in `template<class T> bool X<T>::loaded = X<T>::staticInit();` with `template class X<MapSettings>;`: an explicit instantiation's static members are never initialized | compiler: pending spec templates/explicit_instantiation_initializes_static_members, the templates thread with codegen |
+| 11 | Lua: a precompiled chunk loaded back is "a text chunk" | Lua's LUA_SIGNATURE is `"\033Lua"`, and codegen reads only \0 of an octal escape: the signature's first byte was 0 | compiler: pending spec language/universal_character_names_in_literals, the codegen thread |
 | 8 | signals on elevated rails (RailBridges, RailSignalBaseControlBehavior) | not looked at | |
 | 4 | blueprints of rolling stock: `myRollingStocks.count(*locomotive)` | not looked at | |
 | 3 | StringUtil's AnsiTextToUTF8 and NonEnglishCaseCasting, LuaHelpersObject's MultilingualToLower | `\u` escapes in literals: codegen keeps `L"\u0054"` as the five characters u0054 | compiler: pending spec language/universal_character_names_in_literals, the codegen thread |
