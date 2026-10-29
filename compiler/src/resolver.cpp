@@ -11058,6 +11058,10 @@ struct GlobalScope::Impl
     if (param->isReference())
     {
       const Ty* pt = param->inner;
+      // A function is an lvalue: `const Pred&` with Pred a function type (const has no say on
+      // one) binds `Group::ascending` itself.
+      if (a->kind == TyKind::Function && pt && pt->kind == TyKind::Function)
+        return types.unqualified(a) == types.unqualified(pt) ? 0 : NotViable;
       bool lvalueToRvalueRef = param->kind == TyKind::RRef && arg->kind == TyKind::LRef; // `T&&` takes no lvalue directly
       if (param->kind == TyKind::LRef && !pt->isConst && (!arg->isReference() || arg->kind == TyKind::RRef))
         return NotViable; // `T&` binds no rvalue (a temporary, a lambda, `move(x)`): lvalues present themselves as `T&` (argumentType)
