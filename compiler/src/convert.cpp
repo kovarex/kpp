@@ -1230,6 +1230,10 @@ namespace
         {
           LocalMacro m;
           std::string paramText = body.substr(1, close - 1);
+          // A parameter list continued over lines (CALCULATE_VERTICES): the line ends are spaces.
+          for (char& ch : paramText)
+            if (ch == '\\' || ch == '\r' || ch == '\n')
+              ch = ' ';
           size_t start = 0;
           while (start <= paramText.size())
           {
