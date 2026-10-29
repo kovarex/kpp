@@ -1240,6 +1240,8 @@ namespace
         {
           if (isClass(ft))
             constructInto(fieldAddr, ft, init->args, at);
+          else if (isLambda(ft) && init->args.size() == 1)
+            withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(fieldAddr, ft, one, at); }); // `f(f)`: the closure's bytes, not its address
           else if (init->args.size() == 1)
             withSingleElement(init->args[0], at, [&](Expr* one) { store(rvalue(one), fieldAddr, ft, at); });
           else if (init->args.empty())

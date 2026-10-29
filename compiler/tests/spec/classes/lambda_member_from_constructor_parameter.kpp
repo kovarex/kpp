@@ -1,6 +1,5 @@
 // spec: a constructor that takes a lambda by value and initialises a member from it (`Holder(int base, F f) : base(base), f(f) {}`), then calls it
 // factorio: ScopedCallback's constructor, the library's TransformView (transformView(range, lambda)), Function's constructor from a callable
-// pending: the IR passes the closure parameter as a pointer and stores it as the closure value ('%p2' defined with type 'ptr' but expected the closure type)
 template<typename F>
 struct Holder
 {
