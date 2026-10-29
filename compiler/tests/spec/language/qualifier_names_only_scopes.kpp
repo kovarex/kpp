@@ -1,0 +1,17 @@
+// spec: the name before `::` is looked up among namespaces, classes, enumerations, aliases and template parameters only, so a variable of the same name in scope (often the one being declared) does not hide it: `int clock = clock::now();`
+// factorio: RaceChecker's `Thread::id thisThread = thisThread::get_id();` (std::this_thread, converted to the library's thisThread namespace)
+namespace clock
+{
+  int now() { return 42; }
+}
+struct Pair2
+{
+  static int first() { return 7; }
+};
+int main()
+{
+  int clock = clock::now();
+  int Pair2 = Pair2::first();
+  println("{} {}", clock, Pair2);
+  return 0;
+}

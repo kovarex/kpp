@@ -1373,18 +1373,56 @@ struct GlobalScope::Impl
     return false;
   }
 
-  Lookup lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth)
+  // Whether a declaration can name a scope, as the part before `::` must: a namespace, a class,
+  // an enumeration, an alias, a template parameter (C++ looks only at those there).
+  static bool namesScope(const Decl* d)
+  {
+    if (!d)
+      return false;
+    switch (d->kind)
+    {
+      case NodeKind::NamespaceDecl: case NodeKind::ClassDecl: case NodeKind::EnumDecl: case NodeKind::UsingAliasDecl:
+      case NodeKind::TemplateParamDecl:
+        return true;
+      case NodeKind::VariableDecl: return (d->flags & DF_Typedef) != 0;
+      default: return false;
+    }
+  }
+
+  // qualifierOnly: the name is followed by `::` (`thisThread::get_id()` with a local variable
+  // thisThread in scope): variables and functions of the name are passed over.
+  Lookup lookupUnqualified(uint32_t symbol, Scope* context, const LocalStack* locals, int depth, bool qualifierOnly = false)
   {
     Lookup out;
     if (locals)
-      if (Decl* d = locals->find(symbol))
+      for (size_t i = locals->items.size(); i-- > 0;)
       {
+        const LocalStack::Item& item = locals->items[i];
+        if (item.symbol != symbol || (qualifierOnly && !namesScope(item.decl)))
+          continue;
+        Decl* d = item.decl;
         out.decl = d;
         out.found = d->kind == NodeKind::TemplateParamDecl ? Found::Dependent : Found::Local;
         if (d->ownScope)
           out.scope = d->ownScope;
         return out;
       }
+    // A scope's entry of the name, or (qualifierOnly) the one of them that names a scope.
+    auto found = [&](Lookup& l)
+    {
+      if (!qualifierOnly || namesScope(l.decl))
+        return true;
+      if (l.overloads)
+        for (const Entry& e : *l.overloads)
+          if (namesScope(e.decl))
+          {
+            l.decl = e.decl;
+            l.scope = e.scope ? e.scope : scopeOfEntry(e, depth + 1);
+            return true;
+          }
+      l = Lookup{};
+      return false;
+    };
     // A function's `using namespace Helpers;` makes Helpers' names visible as if declared in the
     // nearest enclosing namespace: tried where the search first reaches a namespace.
     bool usingsTried = !locals;
@@ -1394,19 +1432,19 @@ struct GlobalScope::Impl
       {
         usingsTried = true;
         Lookup viaUsing;
-        if (lookupInLocalUsings(symbol, *locals, viaUsing, depth))
+        if (lookupInLocalUsings(symbol, *locals, viaUsing, depth) && found(viaUsing))
         {
           // Functions of the name in both places are one overload set (`twice(x)` with
           // ::twice(double) and Helpers::twice(int)).
-          if (lookupInScope(s, symbol, out, depth))
+          if (lookupInScope(s, symbol, out, depth) && found(out))
             return mergeOverloads(out, viaUsing);
           return viaUsing;
         }
       }
-      if (lookupInScope(s, symbol, out, depth))
+      if (lookupInScope(s, symbol, out, depth) && found(out))
         return out;
     }
-    if (!usingsTried && lookupInLocalUsings(symbol, *locals, out, depth))
+    if (!usingsTried && lookupInLocalUsings(symbol, *locals, out, depth) && found(out))
       return out;
     return out;
   }
@@ -1797,7 +1835,7 @@ struct GlobalScope::Impl
           return {};
       }
       else
-        step = lookupUnqualified(part.symbol, context, locals, depth);
+        step = lookupUnqualified(part.symbol, context, locals, depth, !last);
       if (step.found == Found::No)
         return {};
       if (step.found == Found::Dependent)
