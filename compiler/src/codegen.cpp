@@ -830,7 +830,59 @@ namespace
     {
       t = classKey(t);
       ClassDecl* def = classDef(t->decl, at);
-      return def == t->decl ? t : types.classType(def, t->args);
+      std::vector<const Ty*> args;
+      bool changed = def != t->decl;
+      for (const Ty* a : t->args)
+      {
+        args.push_back(definitionsIn(a));
+        changed = changed || args.back() != a;
+      }
+      return changed ? types.classType(def, Span<const Ty*>{args.data(), uint32_t(args.size())}) : t;
+    }
+
+    // Type t with every class in it named by its definition, a forward declaration's decl and the
+    // definition's being one class: the key of a class's layout (and IR name) is then the same however
+    // its arguments were reached (`ReverseIterator<const agui::Widget**>` with Widget declared ahead in
+    // one file and defined in another was two layouts, the second named `.2` in whatever order the
+    // threads met them, so the IR differed from run to run).
+    std::unordered_map<const Ty*, const Ty*> definitionsCache;
+    const Ty* definitionsIn(const Ty* t, int depth = 0)
+    {
+      if (!t || depth > 32)
+        return t;
+      if (auto it = definitionsCache.find(t); it != definitionsCache.end())
+        return it->second;
+      const Ty* u = types.unqualified(t);
+      const Ty* result = u;
+      switch (u->kind)
+      {
+        case TyKind::Pointer: result = types.pointer(definitionsIn(u->inner, depth + 1)); break;
+        case TyKind::LRef: result = types.lref(definitionsIn(u->inner, depth + 1)); break;
+        case TyKind::RRef: result = types.rref(definitionsIn(u->inner, depth + 1)); break;
+        case TyKind::Array: result = u->decl ? u : types.array(definitionsIn(u->inner, depth + 1), u->count); break;
+        case TyKind::Class:
+          if (!u->isBraceList())
+          {
+            Decl* def = u->decl ? global.definitionOf(u->decl) : nullptr;
+            std::vector<const Ty*> args;
+            bool changed = def && def != u->decl && def->kind == NodeKind::ClassDecl;
+            for (const Ty* a : u->args)
+            {
+              args.push_back(definitionsIn(a, depth + 1));
+              changed = changed || args.back() != a;
+            }
+            if (changed)
+              result = types.classType(def && def->kind == NodeKind::ClassDecl ? def : u->decl, Span<const Ty*>{args.data(), uint32_t(args.size())});
+          }
+          break;
+        default: break;
+      }
+      if (result != u && (t->isConst || t->isVolatile))
+        result = types.qualified(result, t->isConst, t->isVolatile);
+      else if (result == u)
+        result = t;
+      definitionsCache.emplace(t, result);
+      return result;
     }
 
     // The layouts this emitter has used: complete (or failed) ones, which do not change any more,
