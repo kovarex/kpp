@@ -532,7 +532,8 @@ namespace
   // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"VCALL", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
-    {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"EXTERNC", "extern \"C\""}, {"FAR", ""}, {"NEAR", ""},
+    {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
+    {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"},
     {"DEV_TOOL_VARIABLE", ""}, {"BEGIN_SUPPRESS_CONVERSIONS", ""}, {"END_SUPPRESS_CONVERSIONS", ""}, {"BEGIN_FORCE_OPTIMIZE", ""},
     {"END_FORCE_OPTIMIZE", ""}, {"SUPPRESS_UBSAN", ""}, {"PADDING_WARNING", ""}, {"errno", "(*_errno())"},
     // SDL_stdinc.h's format for an Sint64, which SDLWindow concatenates with a literal (Windows').
@@ -2298,7 +2299,7 @@ namespace
                                                          "process.h", "signal.h", "locale.h", "wchar.h", "float.h", "limits.h", "assert.h",
                                                          "conio.h", "intrin.h", "malloc.h", "memory.h", "wctype.h", "inttypes.h",
                                                          "shellapi.h", "shlobj.h", "winsock2.h", "ws2tcpip.h", "psapi.h", "dbghelp.h",
-                                                         "tlhelp32.h", "shlwapi.h", "timeapi.h", "versionhelpers.h"};
+                                                         "tlhelp32.h", "shlwapi.h", "timeapi.h", "versionhelpers.h", "iphlpapi.h", "windns.h"};
           size_t open = rest.find_first_of("<\"");
           size_t close = rest.find_first_of(">\"", open + 1);
           std::string header = open != std::string::npos && close != std::string::npos ? rest.substr(open + 1, close - open - 1) : "";
@@ -2765,6 +2766,16 @@ namespace
           replace(t.offset, endOffset(i + 3) - t.offset, "&IID_" + std::string(spelling(i + 2)));
           counts.add("__uuidof to IID");
           i += 3;
+          continue;
+        }
+        if (t.getKind() == TokenKind::Identifier && i > 1 && (toks[i - 1].is(P::Comma) || (toks[i - 1].is(P::LParen) && (toks[i - 2].getKind() == TokenKind::Identifier || toks[i - 2].is(P::Greater)))) &&
+            (toks[i + 1].is(P::Comma) || toks[i + 1].is(P::RParen)) && (spelling(i).rfind("CLSID_", 0) == 0 || spelling(i).rfind("IID_", 0) == 0))
+        {
+          // A class or interface id passed by name (`CoCreateInstance(CLSID_WbemLocator, ...,
+          // IID_IWbemLocator, ...)`): C++ binds it to a REFCLSID or REFIID reference, which C's (and
+          // so the import's, and the converted functions') is a pointer to it.
+          insert(t.offset, "&");
+          counts.add("class and interface ids passed by address");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && !fileAliasRenames.empty() &&
