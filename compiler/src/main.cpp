@@ -18,6 +18,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#ifdef _WIN32
+#include <process.h> // _getpid
+#endif
 
 namespace
 {
@@ -215,6 +218,103 @@ namespace
     std::string text;
     readFile(path, text);
     return text;
+  }
+
+  // The files a make-style dependency list (clang's -MD) names after its target: words split at
+  // unescaped blanks, `\` before a newline continuing the line, `\ ` a blank in a path.
+  std::vector<std::string> makeDependencies(const std::string& text)
+  {
+    std::vector<std::string> words;
+    std::string word;
+    auto end = [&]()
+    {
+      if (!word.empty())
+        words.push_back(std::move(word));
+      word.clear();
+    };
+    for (size_t i = 0; i < text.size(); ++i)
+    {
+      char c = text[i];
+      if (c == '\\' && i + 1 < text.size() && (text[i + 1] == '\n' || text[i + 1] == '\r'))
+      {
+        while (i + 1 < text.size() && (text[i + 1] == '\n' || text[i + 1] == '\r'))
+          ++i;
+        end();
+      }
+      else if (c == '\\' && i + 1 < text.size() && (text[i + 1] == ' ' || text[i + 1] == '#'))
+        word += text[++i];
+      else if (c == '$' && i + 1 < text.size() && text[i + 1] == '$')
+        word += text[++i];
+      else if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
+        end();
+      else
+        word += c;
+    }
+    end();
+    size_t first = 0;
+    while (first < words.size() && words[first].back() != ':')
+      ++first;
+    return first < words.size() ? std::vector<std::string>(words.begin() + first + 1, words.end()) : std::vector<std::string>{};
+  }
+
+  // "size time path" of a file, what a cached import remembers of each header it read.
+  std::string fileStamp(const std::string& path)
+  {
+    std::error_code ec;
+    uintmax_t size = std::filesystem::file_size(path, ec);
+    if (ec)
+      return {};
+    auto time = std::filesystem::last_write_time(path, ec);
+    if (ec)
+      return {};
+    return std::to_string(size) + " " + std::to_string(time.time_since_epoch().count()) + " " + path;
+  }
+
+  // Writes the stamps of the headers a dependency list names, one per line; false when there is no
+  // list or a header cannot be stamped (no stamps: the import is never taken for a hit).
+  bool writeHeaderStamps(const std::string& makeDeps, const std::filesystem::path& source, const std::filesystem::path& out)
+  {
+    std::vector<std::string> headers = makeDependencies(makeDeps);
+    if (headers.empty())
+      return false;
+    std::string stamps;
+    for (const std::string& h : headers)
+    {
+      if (std::filesystem::path(h).filename() == source.filename())
+        continue; // the file of #includes clang was given, not a header (and deleted once done)
+      std::string stamp = fileStamp(h);
+      if (stamp.empty())
+        return false;
+      stamps += stamp + "\n";
+    }
+    FILE* f = fopen(out.string().c_str(), "wb");
+    if (!f)
+      return false;
+    fwrite(stamps.data(), 1, stamps.size(), f);
+    fclose(f);
+    return true;
+  }
+
+  // Whether every header a cached import's stamps name still has its size and time.
+  bool headersUnchanged(const std::filesystem::path& stampsPath)
+  {
+    std::string stamps = readWholeFile(stampsPath);
+    if (stamps.empty())
+      return false;
+    for (size_t pos = 0; pos < stamps.size();)
+    {
+      size_t end = stamps.find('\n', pos);
+      if (end == std::string::npos)
+        end = stamps.size();
+      std::string line = stamps.substr(pos, end - pos);
+      pos = end + 1;
+      if (line.empty())
+        continue;
+      size_t a = line.find(' '), b = a == std::string::npos ? a : line.find(' ', a + 1);
+      if (b == std::string::npos || fileStamp(line.substr(b + 1)) != line)
+        return false;
+    }
+    return true;
   }
 
   // The bodies of the object-like macros that call function-like ones (SDL3's
@@ -512,25 +612,37 @@ namespace
     std::string wrapper = "#define WIN32_LEAN_AND_MEAN\n#define NOMINMAX\n#define _USE_MATH_DEFINES\n";
     for (const std::string& h : headers)
       wrapper += "#include <" + h + ">\n";
+    // The include directories as absolute paths, in the key and on clang's command line: a relative
+    // `--cinclude native\include` names another directory in every worktree.
+    std::error_code ec;
     std::string includeArgs;
     for (const std::string& dir : options.cIncludeDirs)
-      includeArgs += " -I\"" + dir + "\"";
+    {
+      std::filesystem::path absolute = std::filesystem::absolute(dir, ec);
+      includeArgs += " -I\"" + (ec ? dir : absolute.lexically_normal().string()) + "\"";
+    }
     uint64_t hash = 1469598103934665603ull;
-    for (unsigned char c : "kpp import 2\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules)
+    for (unsigned char c : "kpp import 3\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules)
       hash = (hash ^ c) * 1099511628211ull;
-    std::error_code ec;
     std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
     std::filesystem::create_directories(cacheDir, ec);
     char hex[32];
     snprintf(hex, sizeof hex, "%016llx", (unsigned long long)hash);
     std::filesystem::path cached = cacheDir / (std::string(hex) + ".i");
+    std::filesystem::path dependencies = cacheDir / (std::string(hex) + ".deps");
     std::string text;
-    bool cacheHit = std::filesystem::exists(cached, ec);
+    // A cached import is used only while every header clang read for it is as it was then (the
+    // key names the headers imported, not what they hold: an edited kpp_directx.h is seen).
+    bool cacheHit = std::filesystem::exists(cached, ec) && headersUnchanged(dependencies);
     if (!cacheHit)
     {
-      std::filesystem::path wrapperPath = cacheDir / (std::string(hex) + ".c");
-      std::filesystem::path preprocessed = cacheDir / (std::string(hex) + ".pp");
-      std::filesystem::path defines = cacheDir / (std::string(hex) + ".dm");
+      // Several compilers may build one import at once (the spec suite's): each works in files of its
+      // own and renames the results into place whole.
+      std::string own = std::string(hex) + "." + std::to_string(_getpid());
+      std::filesystem::path wrapperPath = cacheDir / (own + ".c");
+      std::filesystem::path preprocessed = cacheDir / (own + ".pp");
+      std::filesystem::path defines = cacheDir / (own + ".dm");
+      std::filesystem::path makeDeps = cacheDir / (own + ".d");
       FILE* w = fopen(wrapperPath.string().c_str(), "wb");
       if (!w)
       {
@@ -541,7 +653,7 @@ namespace
       fclose(w);
       std::string clang = clangPath();
       std::string base = "\"\"" + clang + "\" -x c -w" + includeArgs + " \"" + wrapperPath.string() + "\"";
-      int rc = system((base + " -E -P -o \"" + preprocessed.string() + "\"\"").c_str());
+      int rc = system((base + " -E -P -MD -MF \"" + makeDeps.string() + "\" -o \"" + preprocessed.string() + "\"\"").c_str());
       int rc2 = system((base + " -E -dM -o \"" + defines.string() + "\"\"").c_str());
       if (rc != 0 || rc2 != 0)
       {
@@ -550,14 +662,21 @@ namespace
         return;
       }
       std::string definesText = readWholeFile(defines);
-      std::map<std::string, std::string> expansions = expandMacroCalls(definesText, wrapper, cacheDir / (std::string(hex) + ".x.c"), clang, includeArgs);
+      std::map<std::string, std::string> expansions = expandMacroCalls(definesText, wrapper, cacheDir / (own + ".x.c"), clang, includeArgs);
       text = readWholeFile(preprocessed) + macroConstants(definesText, expansions);
-      FILE* out = fopen(cached.string().c_str(), "wb");
-      if (out)
+      // The import, then its stamps (a reader that finds the import with older stamps checks those:
+      // they still match only when the headers, and so the import, are the same).
+      std::filesystem::path ownImport = cacheDir / (own + ".i"), ownStamps = cacheDir / (own + ".deps");
+      if (FILE* out = fopen(ownImport.string().c_str(), "wb"))
       {
         fwrite(text.data(), 1, text.size(), out);
         fclose(out);
+        std::filesystem::rename(ownImport, cached, ec);
+        if (!ec && writeHeaderStamps(readWholeFile(makeDeps), wrapperPath, ownStamps))
+          std::filesystem::rename(ownStamps, dependencies, ec);
       }
+      for (const std::filesystem::path& p : {wrapperPath, preprocessed, defines, makeDeps, ownImport, ownStamps, cacheDir / (own + ".x.c"), cacheDir / (own + ".x.pp")})
+        std::filesystem::remove(p, ec);
     }
     else
       text = readWholeFile(cached);
