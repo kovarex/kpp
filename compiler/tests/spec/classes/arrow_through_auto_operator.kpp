@@ -1,0 +1,29 @@
+// spec: `obj->member` through a class whose operator-> returns auto (`auto operator->() { return this->idIterator.operator->(); }`) reaches the member of what its body returns, in a template instance too
+// factorio: PrototypeIDWithQualityIterator's `auto operator->() { return this->idIterator.operator->(); }`, used as SelectListGui's `this->itemIterator->getGroupID()`
+struct Proto { int group = 7; int getGroupID() const { return this->group; } };
+template<typename T>
+struct IdIterator
+{
+  const T* current = nullptr;
+  const T* operator->() const { return this->current; }
+};
+template<typename T>
+struct QualityIterator
+{
+  IdIterator<T> idIterator;
+  auto operator->() { return this->idIterator.operator->(); }
+};
+template<typename T>
+struct ItemList
+{
+  QualityIterator<T> itemIterator;
+  int group() { return this->itemIterator->getGroupID(); }
+};
+int main()
+{
+  Proto p;
+  ItemList<Proto> l;
+  l.itemIterator.idIterator.current = &p;
+  println("{}", l.group());
+  return 0;
+}

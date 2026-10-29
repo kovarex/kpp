@@ -11607,6 +11607,12 @@ struct GlobalScope::Impl
       if (t->kind == TyKind::Class)
       {
         MemberResult arrow = memberOf(t, impl.opSymbols[uint32_t(P::Arrow)], nullptr, 0, false);
+        // `auto operator->() { return this->idIterator.operator->(); }`: what the body returns.
+        if (arrow.decl && arrow.decl->kind == NodeKind::FunctionDecl &&
+            (arrow.why == Why::Auto || (arrow.type && arrow.type->kind == TyKind::Function && impl.containsAuto(arrow.type->inner))))
+          return objectForArrow(returnTypeOfCall(static_cast<FunctionDecl*>(arrow.decl), arrow.subst.pairs.empty() ? nullptr : &arrow.subst,
+                                                 Span<Expr*>{}, nullptr),
+                                depth + 1);
         if (arrow.type && arrow.type->kind == TyKind::Function)
           return objectForArrow(arrow.type->inner, depth + 1);
         return types.unknown();
