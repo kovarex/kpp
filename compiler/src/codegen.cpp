@@ -8360,7 +8360,9 @@ namespace
         auto* n = static_cast<NameExpr*>(u->operand);
         Decl* d = n->resolved;
         const Ty* mp = types.stripRef(u->ty);
-        const Ty* cls = mp->args.empty() ? nullptr : mp->args[0];
+        // (`&Proto::read` in a member of the class template: this instance's class, not the
+        // template's own parameters the shared expression was typed with.)
+        const Ty* cls = mp->args.empty() ? nullptr : withCurrentArgs(mp->args[0]);
         if (d && d->kind == NodeKind::FunctionDecl && cls && isClass(cls))
         {
           // `&Calc::mul`: the function itself; a call through it passes the object first.
