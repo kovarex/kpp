@@ -126,10 +126,17 @@ function is still emitted when its address is taken or a call to it does not inl
 **With `--release` (ThinLTO).** LLVM inlines these anyway, importing across modules. kppc's
 expansion comes before LLVM in both builds, so the IR has one shape and there is one code path.
 LLVM has less to import and inline, which should cost a little less link time; run time should
-be the same within noise. Both are measured below. No debug information is emitted today, since
+be the same within noise. Both are measured below.
+
+**With debug information (Visual Studio, later).** No debug information is emitted today, since
 the PDB carries function names only, so an inlined accessor drops out of a crash stack, as it
-does in a release build. If line information comes later, the inlined expression keeps the
-caller's line.
+does in a release build. When kppc emits line information, the instructions of an inlined body
+carry the callee's own locations, with an `inlinedAt` pointing at the call: the DILocation
+chain LLVM's inliner writes. The PDB then gets S_INLINESITE records, which Visual Studio shows
+as a frame of the trivial function. Stepping into the call enters the accessor's line, and the
+call stack and the locals window show it, as for MSVC's own inlined code. The inlining keeps
+the callee's nodes for this, the same nodes that give an error inside an inlined body the
+callee's line. `--no-inline` remains for a build that wants real calls in the debugger.
 
 **How to measure each step** (A/B against a base built at the same master):
 1. Static: trivial_calls.py on the headline's IR. Its 249,485 call sites should fall by those the

@@ -27,6 +27,8 @@ struct CodegenResult
 // stubMissing (with despiteErrors; a bring-up tool, never the default): every function an error
 // left out, and every one used without a definition, is defined as a stub that aborts with its
 // name and line when called, so that the program links and runs up to the first one it reaches.
+// inlineTrivial: calls of trivial functions are emitted as the callees' bodies (docs/compile-speed.md,
+// "Design: inlining trivial functions in kppc"); false (--no-inline) keeps every call.
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,
-                           bool stubMissing = false);
+                           bool stubMissing = false, bool inlineTrivial = true);

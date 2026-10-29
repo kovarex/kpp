@@ -260,6 +260,7 @@ namespace
     std::map<std::string, FunctionDecl*> undefinedUses;  // Kpp functions used whose definition was not found (only declared)
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
     bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
+    bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
 
     explicit Shared(CodegenResult& result) : result(result)
@@ -5969,6 +5970,33 @@ namespace
       unsupported(at, "the atomic builtin " + name);
     }
 
+    // The library's `move` and `forward` called with their one argument: identity casts, a reference
+    // in and the same reference out, so the call is the argument's address as the parameter would
+    // receive it (the same conversions and temporaries) without the call (docs/compile-speed.md,
+    // "Design: inlining trivial functions in kppc", step 1). Null for any other call.
+    std::optional<Value> inlinedIdentity(FunctionDecl* f, const TemplateArgs& args, Span<Expr*> callArgs, Node* at)
+    {
+      if (!f->file || !f->file->isLibrary || f->name.empty() || f->name.parts.size() != 1 || f->templateParams.empty() || f->params.size() != 1 ||
+          callArgs.size() != 1 || !callArgs[0] || isPackExpansion(callArgs[0]) || global.owningClass(f))
+        return std::nullopt;
+      std::string_view name = symbols.name(f->name.last().symbol);
+      if (name != "move" && name != "forward")
+        return std::nullopt;
+      Signature s;
+      const Ty* ret;
+      {
+        ArgsScope scope(*this, &args);
+        s = signatureOf(f);
+        ret = declType(f)->inner;
+      }
+      if (s.hasThis || s.hasSret || s.paramTys.size() != 1 || !s.paramTys[0] || !s.paramTys[0]->isReference() || !ret || !ret->isReference())
+        return std::nullopt;
+      std::string text = argumentText(s.paramTys[0], callArgs[0], at);
+      if (text.rfind("ptr ", 0) != 0)
+        unsupported(at, "an inlined " + std::string(name) + " given no address (" + text + ")"); // (a reference argument is always one)
+      return Value{text.substr(4), ret, false};
+    }
+
     Value callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg,
                        const std::string& sret, Span<Expr*> callArgs, Node* at, const std::string& indirect = "")
     {
@@ -5981,6 +6009,9 @@ namespace
         return defaultedCall(f, classTy, thisArg, callArgs, at);
       if (!conditionHolds(f))
         return {"", types.voidType(), false}; // conditional(false): no call, arguments not evaluated
+      if (indirect.empty() && sh.inlineTrivial)
+        if (std::optional<Value> v = inlinedIdentity(f, args, callArgs, at))
+          return *v;
       std::string name = indirect.empty() ? useFunction(f, args, classTy) : indirect;
       Signature s;
       const Ty* ret;
@@ -15130,7 +15161,7 @@ namespace
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing);
+                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -15267,7 +15298,7 @@ static std::string declareUndefined(const std::string& text, const std::unordere
 }
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                           unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing)
+                           unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -15282,12 +15313,13 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     bool despiteErrors;
     unsigned threads;
     bool stubMissing;
+    bool inlineTrivial;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
-    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing);
+    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -15297,7 +15329,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial);
 }
 
 // --stub-missing: the functions used without a definition that declsFor defines as stubs.
@@ -15311,13 +15343,14 @@ static size_t countUndefinedStubs(Shared& sh)
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing)
+                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial)
 {
   CodegenResult result;
   auto shared = std::make_unique<Shared>(result);
   Shared& sh = *shared;
   sh.debug = debug;
   sh.stubMissing = despiteErrors && stubMissing;
+  sh.inlineTrivial = inlineTrivial;
   sh.setModules(moduleCount);
   for (size_t i = 0; i < files.size(); ++i)
     sh.fileModule[files[i].get()] = unsigned(i % sh.moduleCount);

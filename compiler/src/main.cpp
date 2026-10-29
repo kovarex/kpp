@@ -68,6 +68,7 @@ namespace
     int repeat = 1;
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
     bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
+    bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
   };
 
@@ -100,6 +101,8 @@ namespace
             "  --stub-missing  with --keep-going, a bring-up tool: every function left out (or used without a\n"
             "                definition) is a stub that prints its name and line and aborts when called, so the\n"
             "                program links; the errors are still reported and the exit code is still 1\n"
+            "  --no-inline   keep every call a call: no trivial function is emitted in its caller\n"
+            "                (docs/compile-speed.md, \"Design: inlining trivial functions in kppc\")\n"
             "  --clang-flags F  more flags clang compiles the modules with (`-fsanitize=address`; link with\n"
             "                `--lib -fsanitize=address`); they are part of each module's cache key\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
@@ -790,7 +793,8 @@ namespace
       modules = 1;
     auto start = Clock::now();
     CodegenResult cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing,
-                                    options.codegenThreads ? options.codegenThreads : options.threads, options.keepGoing && options.stubMissing);
+                                    options.codegenThreads ? options.codegenThreads : options.threads, options.keepGoing && options.stubMissing,
+                                    !options.noInline);
     double t = seconds(Clock::now() - start);
     size_t irBytes = cg.ir.size();
     for (const std::string& m : cg.modules)
@@ -1281,6 +1285,8 @@ int compile(int argc, char** argv)
       options.keepGoing = true;
     else if (arg == "--stub-missing")
       options.stubMissing = true;
+    else if (arg == "--no-inline")
+      options.noInline = true;
     else if (arg == "--clang-flags" && i + 1 < argc)
       options.clangFlags = argv[++i];
     else if (arg == "--codegen-threads" && i + 1 < argc)
