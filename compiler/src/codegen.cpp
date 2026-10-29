@@ -4999,6 +4999,21 @@ namespace
         argText += ", " + argumentText(pt, arg, at);
         ++position;
       }
+      // Parameters the call left out take their default arguments: GuiTargetItemBase's loader calls
+      // `[&](auto& value, OpenGuiType initIfType, bool load = true)` with two, and the operator read
+      // whatever its third register held (no targeter was read, and the map loading lost its place).
+      LambdaExpr* declared = genericBody ? genericBody : lambdaOf(t);
+      for (; position < callTy->args.size(); ++position)
+      {
+        auto* pd = declared && position < declared->params.size() ? static_cast<ParamDecl*>(declared->params[position]) : nullptr;
+        if (!pd || pd->isPack)
+          break;
+        if (!pd->defaultValue)
+          unsupported(at, "a call to a lambda without an argument for its parameter " + (pd->name != UINT32_MAX ? sym(pd->name) : std::to_string(position + 1)));
+        const Ty* pt = callTy->args[position];
+        sig += ", " + std::string(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, at));
+        argText += ", " + argumentText(pt, pd->defaultValue, pd->defaultValue);
+      }
       sig += ")";
       // The instantiation's operator is emitted after the arguments: a lambda argument's closure
       // (its capture list) is built here, in the function that writes it, before the operator's

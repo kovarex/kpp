@@ -1,0 +1,15 @@
+// spec: a lambda's parameter with a default argument takes it when a call leaves it out, in a generic lambda as in a plain one
+// factorio: GuiTargetItemBase(MapDeserialiser&)'s `auto loadTargeter = [&](auto& value, OpenGuiType initIfType, bool load = true)` called with two arguments: the call passed two, the operator read its third from whatever the register held, no targeter was read, and loading the main menu's 1.1 maps lost its place ("Invalid bool loaded from input file", "Unknown undo action type")
+int main()
+{
+  int calls = 0;
+  auto generic = [&](auto& value, int kind, bool load = true) { if (load) calls += kind; };
+  int x = 0;
+  generic(x, 1);
+  generic(x, 2, false);
+  auto plain = [&](int a, bool load = true) { if (load) calls += 10 * a; };
+  plain(3);
+  plain(4, false);
+  println("{}", calls);
+  return 0;
+}
