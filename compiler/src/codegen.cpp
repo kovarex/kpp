@@ -8694,9 +8694,16 @@ namespace
         if (auto failed = sh.failedGlobals.find(key); failed != sh.failedGlobals.end())
           fail(at, failed->second);
         size_t errorsBefore = errors.size();
+        // Defined by whichever function uses it first, which depends on the threads' timing: the
+        // temporaries it numbers (building a constant initializer) are not that function's, or its
+        // IR would differ from run to run.
+        uint32_t tempBefore = temp;
+        size_t fnBefore = fn.size(), allocasBefore = allocas.size();
         try
         {
           name = globalForOnce(v, at, classTy);
+          if (fn.size() == fnBefore && allocas.size() == allocasBefore)
+            temp = tempBefore;
         }
         catch (Unsupported&)
         {
