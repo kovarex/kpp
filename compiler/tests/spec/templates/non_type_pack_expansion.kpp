@@ -1,6 +1,5 @@
 // spec: a pack expansion over a non-type template parameter pack, `int... I` deduced from `Seq<I...>`: `sum3(values[I]...)` in a function, `p(values[I]...)` in a constructor's member initializer, the index-sequence idiom
 // factorio: the library's Pair piecewise constructor (std::pair's, `first(get<I1>(move(firstArgs))...)` over MakeIndexSequence), which LatencyState's `upgradeTargets.emplace_back(std::piecewise_construct, std::tuple{entity}, std::tuple{target})` reaches
-// pending: "a pack expansion that does not name a parameter pack" in both
 template<int... I>
 struct Seq {};
 int sum3(int a, int b, int c) { return a + b + c; }

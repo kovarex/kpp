@@ -1,6 +1,5 @@
 // spec: Pair's piecewise constructor (std::pair's): each member constructed in place from the elements of its Tuple, `emplace_back(piecewiseConstruct, Tuple{entity}, Tuple{target})`, a move-only member from an rvalue element, references from forwardAsTuple
 // factorio: LatencyState's `upgradeTargets.emplace_back(std::piecewise_construct, std::tuple{entity}, std::tuple{target})` and innerEntitiesToBeReplaced's with `std::tuple{std::move(newEntity)}`
-// pending: the delegated constructor expands `get<I1>(move(firstArgs))...` over the index pack, which codegen does not do yet (templates/non_type_pack_expansion)
 struct Entity { int id = 0; };
 struct Targeter
 {

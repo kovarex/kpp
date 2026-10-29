@@ -1,0 +1,19 @@
+// spec: the implicit assignment of a class with an empty base laid out with no bytes, and a member that needs destroying, assigns nothing for the base: its one byte as an object of its own is the member's first byte there
+// found with classes/empty_base_value_initialized_at_end: the memberwise assignment copied the empty base's byte over the String's buffer pointer, and the String's operator= then freed a corrupted pointer (heap corruption on exit)
+struct Empty
+{
+  bool operator==(const Empty&) const { return true; }
+};
+struct Holder : Empty
+{
+  String s;
+  Holder(const char* t) : s(t) {}
+};
+int main()
+{
+  Holder a("first value that is long enough to be on the heap"), b("second value that is long enough to be on the heap");
+  a = b;
+  Holder c = b;
+  println("{} {} {}", a.s, c.s.size(), a.s == b.s);
+  return 0;
+}

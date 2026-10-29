@@ -554,6 +554,10 @@ namespace
     // (BufferedReadStream); the size is LLVM's own (`getelementptr (T, ptr null, i32 1)`).
     void storeZero(const Ty* t, const std::string& addr, Node* at)
     {
+      // An empty class has no state to clear, and as a base it may have no bytes of its own (laid
+      // out with no size: its byte would be the next member's, or past the object).
+      if (isClass(t) && structFor(t, at).empty)
+        return;
       std::string ty = llType(t, at);
       if (ty[0] == '%' || ty[0] == '[' || ty.compare(0, 2, "<{") == 0)
       {
@@ -1614,6 +1618,14 @@ namespace
               out.push_back(argumentType(a, element, types));
             continue;
           }
+          // `values[I]...` over a template parameter pack: the pattern's type, once per element.
+          if (Decl* valuePack = !param && currentArgs ? typePackIn(pattern) : nullptr)
+            if (const Ty* bound = boundPack(valuePack); bound && bound->kind == TyKind::Pack)
+            {
+              for (size_t i = 0; i < bound->args.size(); ++i)
+                out.push_back(argumentType(pattern, pattern->ty, types));
+              continue;
+            }
         }
         if (a && a->kind == NodeKind::BraceInitExpr)
         {
@@ -2950,6 +2962,8 @@ namespace
       }
       if (!needsDestruction(t, at))
       {
+        if (isClass(t) && structFor(t, at).empty)
+          return; // no state, and as a base maybe no bytes of its own (the next member's)
         std::vector<std::string> vptrs = loadVptrs(dst, structFor(t, at));
         std::string v = newTemp();
         fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
@@ -3216,6 +3230,8 @@ namespace
           statementTemps.erase(statementTemps.begin() + i);
           break;
         }
+      if (isClass(t) && structFor(t, at).empty)
+        return; // no state, and as a base maybe no bytes of its own (the next member's)
       std::string v = newTemp();
       fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src.text + "\n";
       fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
@@ -3373,14 +3389,34 @@ namespace
     {
       Decl* param = packIn(pattern);
       if (!param)
+        if (Decl* pack = currentArgs ? typePackIn(pattern) : nullptr)
+          return boundPack(pack)->args.size(); // `values[I]...` over `int... I`
+      if (!param)
         unsupported(at, "a pack expansion that does not name a parameter pack");
       return packLocals[param].size();
+    }
+
+    // What the instantiation binds a template parameter pack to (typePackIn found it bound).
+    const Ty* boundPack(Decl* pack)
+    {
+      for (auto& [d, t] : currentArgs->pairs)
+        if (d == pack)
+          return t;
+      return nullptr;
     }
 
     template<typename F>
     void forEachPackElement(Expr* pattern, Node* at, F&& body)
     {
       Decl* param = packIn(pattern);
+      if (!param && currentArgs)
+        if (Decl* pack = typePackIn(pattern))
+        {
+          // `values[I]...` over a template parameter pack (`int... I` of the index-sequence idiom):
+          // the pattern once per element, with I bound to that element.
+          forEachTypePackElement(pack, body);
+          return;
+        }
       if (!param)
         unsupported(at, "a pack expansion that does not name a parameter pack");
       std::vector<Decl*> packs = templatePacksOf(param);
@@ -3446,6 +3482,16 @@ namespace
         case NodeKind::ParenExpr: return typePackIn(static_cast<ParenExpr*>(n)->inner, depth + 1);
         case NodeKind::UnaryExpr: return typePackIn(static_cast<UnaryExpr*>(n)->operand, depth + 1);
         case NodeKind::MemberExpr: return typePackIn(static_cast<MemberExpr*>(n)->base, depth + 1);
+        case NodeKind::IndexExpr:
+        {
+          auto* i = static_cast<IndexExpr*>(n);
+          if (Decl* d = typePackIn(i->base, depth + 1))
+            return d;
+          for (Expr* a : i->args)
+            if (Decl* d = typePackIn(a, depth + 1))
+              return d;
+          return nullptr;
+        }
         case NodeKind::CastExpr: return either(static_cast<CastExpr*>(n)->type, static_cast<CastExpr*>(n)->operand);
         case NodeKind::NamedCastExpr: return either(static_cast<NamedCastExpr*>(n)->type, static_cast<NamedCastExpr*>(n)->operand);
         case NodeKind::BinaryExpr: return either(static_cast<BinaryExpr*>(n)->lhs, static_cast<BinaryExpr*>(n)->rhs);
