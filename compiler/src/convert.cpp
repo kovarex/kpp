@@ -542,6 +542,15 @@ namespace
     {"INVALID_SOCKET", "((SOCKET)(~0))"}, {"SIG_DFL", "((_crt_signal_t)0)"},
     {"SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK", "((SDL_AudioDeviceID)0xFFFFFFFFu)"}, {"SDL_AUDIO_DEVICE_DEFAULT_RECORDING", "((SDL_AudioDeviceID)0xFFFFFFFEu)"},
     {"SDL_TOUCH_MOUSEID", "((SDL_MouseID)-1)"}, {"SDL_MOUSE_TOUCHID", "((SDL_TouchID)-1)"},
+    {"EXCEPTION_ACCESS_VIOLATION", "((DWORD)0xC0000005L)"}, {"EXCEPTION_STACK_OVERFLOW", "((DWORD)0xC00000FDL)"},
+    // Windows' functions with an A and a W form, as the game's narrow build has them.
+    {"LoadLibrary", "LoadLibraryA"}, {"GetModuleHandle", "GetModuleHandleA"}, {"GetModuleHandleEx", "GetModuleHandleExA"},
+    {"MapVirtualKey", "MapVirtualKeyA"},
+    // psapi.h's functions, which kernel32 has under K32 names (PSAPI_VERSION 2).
+    {"GetProcessMemoryInfo", "K32GetProcessMemoryInfo"}, {"EnumProcessModules", "K32EnumProcessModules"},
+    {"GetModuleInformation", "K32GetModuleInformation"}, {"GetModuleFileNameEx", "K32GetModuleFileNameExA"},
+    // Tracy's other profiling macros, dropped as ZoneScoped is below.
+    {"ZoneScopedNC", ""}, {"TracyMessage", ""},
     // math.h constants
     {"M_PI", "3.14159265358979323846"}, {"M_PI_2", "1.57079632679489661923"}, {"M_PI_4", "0.78539816339744830962"},
     {"M_1_PI", "0.31830988618379067154"}, {"M_2_PI", "0.63661977236758134308"}, {"M_SQRT2", "1.41421356237309504880"},
@@ -587,7 +596,9 @@ namespace
                                                                   {"HIBYTE", "((BYTE)((((DWORD_PTR)($1)) >> 8) & 0xff))"},
                                                                   {"LOWORD", "((WORD)(((DWORD_PTR)($1)) & 0xffff))"},
                                                                   {"HIWORD", "((WORD)((((DWORD_PTR)($1)) >> 16) & 0xffff))"},
-                                                                  {"FD_ZERO", "(((fd_set*)($1))->fd_count = 0)"}, {"TEXT", "$1"}};
+                                                                  {"FD_ZERO", "(((fd_set*)($1))->fd_count = 0)"}, {"TEXT", "$1"}, {"_T", "$1"},
+                                                                  // zlib.h's inflateInit, as zlib.h defines it.
+                                                                  {"inflateInit", "inflateInit_(($1), ZLIB_VERSION, (int)sizeof(z_stream))"}};
   // Macros that use an argument more than once or stringize it (`#NAME`): $N is argument N as
   // converted (with `this->` and the other rewrites), #N its original spelling as a string literal,
   // which is what the preprocessor's # makes. The prototype explorer's hand-written reflection
@@ -599,7 +610,8 @@ namespace
     // Windows' wingdi.h and winnt.h, as knownFunctionMacros above (with `(DWORD)((BYTE)(x))` where
     // wingdi.h has `(DWORD)(BYTE)(x)`, which Kpp asks to have written out).
     {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
-    {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}, {"FD_ISSET", "__WSAFDIsSet((SOCKET)($1), (fd_set*)($2))"}};
+    {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}, {"FD_ISSET", "__WSAFDIsSet((SOCKET)($1), (fd_set*)($2))"},
+    {"ZeroMemory", "memset(($1), 0, ($2))"}};
 
   // The preprocessor's #: the spelling with each run of whitespace one space, `"` and `\` escaped.
   std::string stringize(std::string_view spelling)
@@ -2281,7 +2293,8 @@ namespace
                                                          "stdarg.h", "stdint.h", "stddef.h", "time.h", "io.h", "fcntl.h", "direct.h",
                                                          "process.h", "signal.h", "locale.h", "wchar.h", "float.h", "limits.h", "assert.h",
                                                          "conio.h", "intrin.h", "malloc.h", "memory.h", "wctype.h", "inttypes.h",
-                                                         "shellapi.h", "shlobj.h", "winsock2.h", "ws2tcpip.h", "psapi.h", "dbghelp.h"};
+                                                         "shellapi.h", "shlobj.h", "winsock2.h", "ws2tcpip.h", "psapi.h", "dbghelp.h",
+                                                         "tlhelp32.h", "shlwapi.h", "timeapi.h", "versionhelpers.h"};
           size_t open = rest.find_first_of("<\"");
           size_t close = rest.find_first_of(">\"", open + 1);
           std::string header = open != std::string::npos && close != std::string::npos ? rest.substr(open + 1, close - open - 1) : "";
@@ -2299,7 +2312,8 @@ namespace
           // (stb_rect_pack, jc_voronoi and sdf are header-only C libraries whose implementations the
           // game compiles in its own .cpp files.)
           static const char* cLibraries[] = {"SDL3/", "SDL2/", "SDL", "lua", "zlib", "zconf", "curl/", "png", "jpeg", "zstd", "opus", "ogg",
-                                             "vorbis", "minizip", "stb_image", "fontstash", "imgui/stb_rect_pack", "jc_voronoi/", "sdf/", "glad/"};
+                                             "vorbis", "minizip", "stb_image", "fontstash", "imgui/stb_rect_pack", "jc_voronoi/", "sdf/", "glad/",
+                                             "CL/"};
           bool cLibrary = false;
           for (const char* prefix : cLibraries)
             if (header.rfind(prefix, 0) == 0)
@@ -2356,14 +2370,14 @@ namespace
             }
             continue;
           }
-          if (cHeaders.count(base) || cLibrary)
+          if (cHeaders.count(lowered) || cLibrary) // Windows' headers by any case (<Psapi.h>, <TlHelp32.h>)
           {
             // A C library that the game configures with #defines before its include imports through a
             // header of programs/factorio/native/include that gives the import the same configuration
             // (jc_voronoi in double precision, as Triangulation.cpp has it).
             static const std::map<std::string, std::string> configuredImports = {{"jc_voronoi/jc_voronoi.h", "kpp_jc_voronoi.h"}};
             auto configured = configuredImports.find(header);
-            std::string imported = configured != configuredImports.end() ? configured->second : cLibrary ? header : base;
+            std::string imported = configured != configuredImports.end() ? configured->second : cLibrary ? header : lowered;
             std::string imports = "extern \"C\" import \"" + imported + "\";";
             if (!importedCommon)
             {
@@ -4495,7 +4509,7 @@ namespace
         {
           if (m->flags & DF_Static)
             continue;
-          if (m->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(m)->name.parts.size() == 1)
+          if (m->kind == NodeKind::VariableDecl && !(m->flags & DF_Typedef) && static_cast<VariableDecl*>(m)->name.parts.size() == 1)
             names.insert(static_cast<VariableDecl*>(m)->name.parts[0].symbol);
           else if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->name.parts.size() == 1 &&
                    static_cast<FunctionDecl*>(m)->name.parts[0].special == 0)
@@ -4685,7 +4699,7 @@ namespace
             bool member = false;
             if (r)
               member = r->parent && r->parent->kind == NodeKind::ClassDecl &&
-                       (r->kind == NodeKind::FunctionDecl || (r->kind == NodeKind::VariableDecl && isDataMember(r))) &&
+                       (r->kind == NodeKind::FunctionDecl || (r->kind == NodeKind::VariableDecl && !(r->flags & DF_Typedef) && isDataMember(r))) &&
                        !(r->flags & DF_Static);
             else
               member = memberNames(owner).count(n->name.parts[0].symbol) != 0; // unresolved, but spelled like a member
@@ -5090,7 +5104,8 @@ static std::string pathKeyOf(const std::filesystem::path& p)
 // Takes out of a file's configured text, for the parse, what is no C++ to the parser and what the
 // conversion writes differently, recording each in `blanked` with its replacement (offsets stay):
 // the empty macros the converter drops (BEGIN_SUPPRESS_CONVERSIONS before a definition, FAR in a
-// cast, FORMAT_ATTR(4, 5) with its arguments), FORMAT_STRING( and its `)` around a parameter, and
+// cast; one used as a call with its arguments, FORMAT_ATTR(4, 5)), FORMAT_STRING( and its `)`
+// around a parameter, and
 // MSVC's structured exception handling, `__try` (try) and `__except (filter)` (catch (...)), which
 // the parse reads as two blocks. Comments, literals and preprocessor lines are left alone.
 static void blankForParse(Preprocessed& p)
@@ -5210,17 +5225,14 @@ static void blankForParse(Preprocessed& p)
       }
       end = open + 1;
     }
-    else if ((name == "FORMAT_ATTR" || name == "TAG_FORMAT_ATTR") && call)
-    {
-      size_t close = closing(open);
-      if (close != std::string::npos)
-      {
-        blank(i, close + 1, "");
-        end = close + 1;
-      }
-    }
     else if (auto known = knownMacros.find(name); known != knownMacros.end() && known->second.empty())
+    {
+      // Called, it goes with its arguments (FORMAT_ATTR(4, 5), ZoneScopedNC("name", color)).
+      size_t close = call ? closing(open) : std::string::npos;
+      if (close != std::string::npos)
+        end = close + 1;
       blank(i, end, "");
+    }
     i = end;
   }
 }
