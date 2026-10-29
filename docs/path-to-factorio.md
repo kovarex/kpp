@@ -584,7 +584,7 @@ generator writes for the converted CommonUtil, Agui, cxxopts, Lua and `src/`. Af
 ```
 ..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
   --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
-  --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include ^
+  --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude native\include ^
   --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\Lua kpp\src 2> kpp\full-errors.txt
 find /c /v "" kpp\full-errors.txt
 ```
@@ -796,6 +796,38 @@ RE2 class and re2::StringPiece (a StringView with RE2's ToString, CopyToString, 
 `overrides/src/Util/RegexUtil.kpp`, appended to the converted RegexUtil; the game's RegexUtil
 itself converts as written. Headline 22,558 -> 22,529 (paired on de36765): the 20 MacroReplacer
 layout lines, the 8 "RE2 is not declared" and the StringPiece calls go.
+
+### DirectX through generated COM classes (2026-10-29)
+
+The DirectX 11 backend calls COM interfaces C++-style (`device->CreateBuffer(...)`) and keeps
+them in ATL's CComPtr. Kpp's single-inheritance vtables are MSVC's since 8b63e33, so a COM object
+the system hands out is called through a Kpp class whose virtual functions are the interface's
+methods in vtable order. `programs/factorio/native/generate_com.py` reads that order and the C
+signatures from the Windows SDK headers' C definitions (each interface's `IFooVtbl`), the bases
+from their C++ ones, and writes:
+
+- `overrides/added/src/Graphics/DX11/ComInterfaces.kpp`: 101 interfaces (all of d3dcommon, dxgi
+  to dxgi1_5, d3d11, d3d11_1, d3d11sdklayers; IUnknown, ISequentialStream, IStream,
+  IWICImagingFactory), 1,739 vtable slots, each class with only its own methods and no destructor.
+- `native/include/kpp_directx.h`, the one import the converter writes for any of the DirectX, DXGI,
+  WIC and COM headers: it marks those interfaces defined (`__IFoo_INTERFACE_DEFINED__`) before
+  including the SDK headers, so the import keeps their types, functions and constants but not the
+  interfaces' C structs, and then declares their IIDs. The headline command passes
+  `--cinclude native\include` (relative to programs\factorio).
+
+`overrides/added/` is new: hand-written files with no C++ counterpart, written into the output at
+their path (CComPtr is `overrides/added/src/Graphics/DX11/ComPtr.kpp`, ATL's semantics). The
+converter turns `__uuidof(IFoo)` into `&IID_IFoo` (C's REFIID is a pointer). Checked on WARP:
+D3D11CreateDevice, CreateBuffer and GetDesc through the classes, QueryInterface for IDXGIDevice,
+GetAdapter, GetDesc, and the Release counts (link d3d11.lib, dxgi.lib, dxguid.lib from the SDK).
+
+Headline 22,513 -> 22,405 (paired on 9e06cde): the CComPtr, DXGI_SWAP_EFFECT,
+PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN and IStream lines go. What the backend reaches next is the
+Windows SDK's macros, which the import does not make yet (the codegen thread's next importer
+item): FAILED and SUCCEEDED (about 28 functions), ZeroMemory, LoadLibrary and _T, the HRESULT
+constants (E_INVALIDARG, E_FAIL, DXGI_ERROR_*, whose bodies call _HRESULT_TYPEDEF_), plus
+D3D11CalcSubresource (an inline function d3d11.h has only for C++), SHCreateMemStream (shlwapi.h)
+and a GUID written with brace elision (language/brace_elision_in_aggregate, pending).
 
 ### From emitted functions to an executable (2026-10-28, night)
 

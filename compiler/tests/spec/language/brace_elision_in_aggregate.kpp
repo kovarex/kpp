@@ -1,0 +1,17 @@
+// spec: an aggregate whose last member is an array takes the array's values without their own braces (brace elision): `GUID g = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, 0x42, ... }` fills Data4[8] from the last eight
+// factorio: GraphicsInterfaceDX11::setDebugName's `static const GUID Local_WKPDID_D3DDebugObjectName = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 };`
+// pending: codegen counts the values against the fields (more values than Guid has fields)
+struct Guid
+{
+  unsigned int data1;
+  unsigned short data2;
+  unsigned short data3;
+  unsigned char data4[8];
+};
+
+int main()
+{
+  static const Guid g = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 };
+  println("{} {} {} {}", g.data1 == 0x429b8c22, g.data3 == 0x4b0c, (int)g.data4[0], (int)g.data4[6]);
+  return 0;
+}

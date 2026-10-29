@@ -1,0 +1,103 @@
+// ATL's CComPtr<T> (atlbase.h), which the DirectX backend keeps its COM objects in: a pointer to a
+// COM interface that AddRefs what it takes or copies and Releases what it lets go. As ATL's:
+// operator& gives the address of the (null) pointer for a function that writes one, and the
+// conversion to T* is implicit. The interfaces are ComInterfaces.kpp's.
+template<typename T>
+class CComPtr
+{
+public:
+  T* p = nullptr;
+
+  CComPtr() {}
+  implicit CComPtr(nullptr_t) {}
+  implicit CComPtr(T* pointer) : p(pointer)
+  {
+    if (this->p)
+      this->p->AddRef();
+  }
+  CComPtr(const CComPtr<T>& other) : p(other.p)
+  {
+    if (this->p)
+      this->p->AddRef();
+  }
+  CComPtr(CComPtr<T>&& other) : p(other.p) { other.p = nullptr; }
+  ~CComPtr()
+  {
+    if (this->p)
+      this->p->Release();
+  }
+
+  CComPtr<T>& operator=(T* pointer)
+  {
+    if (pointer)
+      pointer->AddRef();
+    T* old = this->p;
+    this->p = pointer;
+    if (old)
+      old->Release();
+    return *this;
+  }
+  CComPtr<T>& operator=(const CComPtr<T>& other) { return *this = other.p; }
+  CComPtr<T>& operator=(CComPtr<T>&& other)
+  {
+    if (this != &other)
+    {
+      T* old = this->p;
+      this->p = other.p;
+      other.p = nullptr;
+      if (old)
+        old->Release();
+    }
+    return *this;
+  }
+  CComPtr<T>& operator=(nullptr_t)
+  {
+    this->Release();
+    return *this;
+  }
+
+  implicit operator T*() const { return this->p; }
+  T* operator->() const { return this->p; }
+  T& operator*() const { return *this->p; }
+  // Where a function that hands out an interface writes it; ATL asserts the pointer is null.
+  T** operator&()
+  {
+    release_assert(this->p == nullptr);
+    return &this->p;
+  }
+  bool operator!() const { return this->p == nullptr; }
+  bool operator==(T* other) const { return this->p == other; }
+  bool operator!=(T* other) const { return this->p != other; }
+
+  // Releases the interface and holds none.
+  void Release()
+  {
+    T* old = this->p;
+    if (old)
+    {
+      this->p = nullptr;
+      old->Release();
+    }
+  }
+  // Takes pointer over without AddRef (releasing the one held), or gives the one held up.
+  void Attach(T* pointer)
+  {
+    if (this->p)
+      this->p->Release();
+    this->p = pointer;
+  }
+  T* Detach()
+  {
+    T* old = this->p;
+    this->p = nullptr;
+    return old;
+  }
+  // *target becomes the interface, AddRef'ed.
+  HRESULT CopyTo(T** target) const
+  {
+    *target = this->p;
+    if (this->p)
+      this->p->AddRef();
+    return 0;
+  }
+};

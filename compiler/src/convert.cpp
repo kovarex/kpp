@@ -1859,6 +1859,7 @@ namespace
     Counts counts;
     bool importedCommon = false;
     bool importedLua = false;    // stdlib.h, string.h and stdio.h added next to the first C import
+    bool importedDirectX = false; // kpp_directx.h for the first DirectX header of the file
     std::vector<std::string> todos; // "line: text"
     std::string_view text;
     const std::vector<Token>& toks;
@@ -2161,6 +2162,28 @@ namespace
           for (const char* prefix : cLibraries)
             if (header.rfind(prefix, 0) == 0)
               cLibrary = true;
+          static const std::set<std::string> directXHeaders = {"d3d11.h", "d3d11_1.h", "d3d11sdklayers.h", "dxgi.h", "dxgi1_2.h", "dxgi1_3.h",
+                                                               "dxgi1_4.h", "dxgi1_5.h", "dxgi1_6.h", "d3dcommon.h", "d3d9.h", "d3dcompiler.h",
+                                                               "wincodec.h", "objidl.h"};
+          std::string lowered = base;
+          for (char& ch : lowered)
+            ch = (char)tolower((unsigned char)ch);
+          if (directXHeaders.count(lowered))
+          {
+            // DirectX, DXGI, WIC and the COM headers: programs/factorio/native/include/kpp_directx.h,
+            // which leaves out the C structs of the interfaces Kpp declares as classes
+            // (overrides/added/src/Graphics/DX11/ComInterfaces.kpp, generate_com.py). Once per file.
+            if (importedDirectX)
+            {
+              remove(offset, removeLength);
+              counts.add("includes removed");
+              continue;
+            }
+            importedDirectX = true;
+            replace(offset, length, "extern \"C\" import \"kpp_directx.h\";");
+            counts.add("includes to imports");
+            continue;
+          }
           if (header.rfind("Lua/", 0) == 0 || base == "lua.hpp")
           {
             // The game's Lua wrappers (libraries/Lua) bring the Lua C API: its headers, once per file.
@@ -2437,6 +2460,16 @@ namespace
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "__uuidof" && i + 3 < toks.size() && toks[i + 1].is(P::LParen) &&
+            toks[i + 2].getKind() == TokenKind::Identifier && toks[i + 3].is(P::RParen))
+        {
+          // MSVC's `__uuidof(IFoo)`: the interface's IID, which the SDK declares as IID_IFoo (in C,
+          // a REFIID is a pointer to it; kpp_directx.h declares the generated interfaces' IIDs).
+          replace(t.offset, endOffset(i + 3) - t.offset, "&IID_" + std::string(spelling(i + 2)));
+          counts.add("__uuidof to IID");
+          i += 3;
+          continue;
+        }
         if (t.getKind() == TokenKind::Identifier && !fileAliasRenames.empty() &&
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
           if (auto rename = fileAliasRenames.find(std::string(spelling(i))); rename != fileAliasRenames.end())
@@ -5383,6 +5416,27 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       for (const std::string& t : p.todos)
         report += "  - TODO " + t + "\n";
     }
+  }
+  // Hand-written files with no C++ counterpart (overrides/added/...), written into the output at
+  // their path below added/: the DirectX backend's COM interfaces and CComPtr.
+  if (!overridesDir.empty())
+  {
+    std::error_code ec;
+    std::filesystem::path added = overridesDir / "added";
+    if (std::filesystem::is_directory(added, ec))
+      for (const auto& entry : std::filesystem::recursive_directory_iterator(added, ec))
+        if (entry.is_regular_file(ec))
+        {
+          std::filesystem::path rel = entry.path().lexically_relative(added);
+          std::filesystem::path target = outDir / rel;
+          std::filesystem::create_directories(target.parent_path(), ec);
+          if (std::filesystem::copy_file(entry.path(), target, std::filesystem::copy_options::overwrite_existing, ec))
+          {
+            ++files;
+            total.add("hand-written files added");
+            report += "## " + rel.generic_string() + "\n- added from " + entry.path().generic_string() + "\n";
+          }
+        }
   }
   std::string summary = "Files written: " + std::to_string(files) + "\n\n";
   for (auto& [k, v] : total.values)
