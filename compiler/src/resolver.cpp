@@ -1029,6 +1029,10 @@ struct GlobalScope::Impl
               out.push(static_cast<UsingAliasDecl*>(d)->name, d);
             else if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef) && !static_cast<VariableDecl*>(d)->name.empty())
               out.push(static_cast<VariableDecl*>(d)->name.last().symbol, d);
+            else if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->name.parts.size() == 1)
+              out.push(static_cast<ClassDecl*>(d)->name.parts[0].symbol, d); // `struct Point { float x, y; };` then `sizeof(Point)`
+            else if (d->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(d)->name.parts.size() == 1)
+              out.push(static_cast<EnumDecl*>(d)->name.parts[0].symbol, d);
           }
     };
     // Of statements in source order, the one `at` is in: the last that starts at or before it.
@@ -5793,6 +5797,12 @@ struct GlobalScope::Impl
         if (n->name.parts.size() == 1 && n->resolved && n->resolved->kind == NodeKind::UsingAliasDecl &&
             n->resolved->parent && n->resolved->parent->kind == NodeKind::FunctionDecl && n->resolved->templateParams.empty())
           return convertType(static_cast<UsingAliasDecl*>(n->resolved)->type, ctx, depth + 1);
+        // `sizeof(prefixes)` with prefixes a local array: the parser read a type, the walk found a
+        // variable, so this is the variable's type (C++ reads `sizeof(name)` by what the name is;
+        // template arguments that name constants never get here).
+        if (n->resolved && (n->resolved->kind == NodeKind::ParamDecl || (n->resolved->kind == NodeKind::VariableDecl && !(n->resolved->flags & DF_Typedef))))
+          if (const Ty* vt = declaredTypeOf(n->resolved, ctx.subst, depth + 1); vt && vt->isKnown() && !containsAuto(vt))
+            return vt;
         if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs)
           if (const Ty* trait = typeTrait(n->name.parts[0], ctx, depth))
             return trait;
@@ -5961,6 +5971,25 @@ struct GlobalScope::Impl
       case NodeKind::ArrayType:
       {
         auto* a = static_cast<ArrayType*>(t);
+        // `sizeof(nums[1])` with nums a variable: the parser read an array type, the walk found a
+        // variable, so this is one of its elements (a level per subscript), not an array of them.
+        {
+          int levels = 0;
+          Type* inner = a;
+          for (; inner && inner->kind == NodeKind::ArrayType && levels < 8; ++levels)
+            inner = static_cast<ArrayType*>(inner)->element;
+          Decl* r = inner && inner->kind == NodeKind::NamedType ? static_cast<NamedType*>(inner)->resolved : nullptr;
+          if (r && (r->kind == NodeKind::ParamDecl || (r->kind == NodeKind::VariableDecl && !(r->flags & DF_Typedef))))
+          {
+            const Ty* e = declaredTypeOf(r, ctx.subst, depth + 1);
+            for (; levels > 0 && e && e->isKnown(); --levels)
+            {
+              e = types.stripRef(e);
+              e = e->kind == TyKind::Array || e->kind == TyKind::Pointer ? e->inner : types.unknown();
+            }
+            return e ? e : types.unknown();
+          }
+        }
         auto n = constEval(a->size, ctx);
         const Ty* element = convertType(a->element, ctx, depth + 1);
         if (!n && a->size && a->size->kind == NodeKind::NameExpr)

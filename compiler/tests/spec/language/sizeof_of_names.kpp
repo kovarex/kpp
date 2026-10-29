@@ -1,0 +1,37 @@
+// spec: sizeof of a name the parser reads as a type is decided by what the name is: a local array (`sizeof(prefixes) / sizeof(prefixes[0])`), a subscript of a variable (`sizeof(nums[1])`, `sizeof(grid[1])`, not an array of nums), a class declared in the function (`sizeof(Point)`, `sizeof(TreeGrowthData)`), also where the code generator types the sizeof again
+// factorio: StringUtil's `sizeof(prefixes) / sizeof(prefixes[0])`, PrimitiveHelper's `sizeof(Point)`, AtlasBuilder's `sizeof(TreeGrowthData)`
+struct Atlas
+{
+  int fill(int count) const
+  {
+    struct TreeGrowthData
+    {
+      float x;
+      float y;
+      int stage;
+    };
+    Vector<TreeGrowthData> table;
+    table.resize(count);
+    return int(sizeof(TreeGrowthData) * table.size());
+  }
+};
+int points(int halfNumSegments)
+{
+  struct Point { float x, y; };
+  Point pts[4];
+  return int(sizeof(Point)) * halfNumSegments + int(sizeof(pts)) + int(sizeof(pts[1]));
+}
+int prefixesSize()
+{
+  constexpr const char* prefixes[] = { nullptr, "kilo", "mega", "giga" };
+  constexpr uint32_t prefixCount = sizeof(prefixes) / sizeof(prefixes[0]);
+  return int(prefixCount);
+}
+int main()
+{
+  int grid[2][3] = {};
+  int nums[3] = {1, 2, 3};
+  Atlas a;
+  println("{} {} {} {} {} {} {}", a.fill(2), points(3), prefixesSize(), sizeof(nums[1]), sizeof(grid[1]), sizeof(grid[1][2]), sizeof nums[0]);
+  return 0;
+}
