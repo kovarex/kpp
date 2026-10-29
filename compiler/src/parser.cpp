@@ -4160,7 +4160,7 @@ namespace
         if (t && at(P::RParen))
         {
           advance();
-          if (looksLikeCastOperand(t))
+          if (looksLikeCastOperand(t) || parenthesisedTypeAhead())
           {
             CastExpr* c = node<CastExpr>(start);
             c->type = t;
@@ -4173,6 +4173,25 @@ namespace
         out.nodeCount = nodes;
       }
       return parsePostfix(parsePrimary());
+    }
+
+    // At `(` after `(T)`: a parenthesised type that only a type can be (`(long long)`, `(char*)`,
+    // `(const Item&)`), which no call's argument list is, so `(T)` casts what follows:
+    // `(HANDLE)(long long)-1` is `(HANDLE)((long long)-1)`.
+    bool parenthesisedTypeAhead()
+    {
+      if (!at(P::LParen))
+        return false;
+      uint32_t save = pos;
+      size_t mark = scratch.size();
+      uint32_t nodes = out.nodeCount;
+      advance();
+      Type* t = parseType();
+      bool type = t && at(P::RParen) && (t->kind != NodeKind::NamedType || isTemplateTypeName(t));
+      restore(save);
+      scratch.resize(mark);
+      out.nodeCount = nodes;
+      return type;
     }
 
     bool looksLikeCastOperand(Type* t) const

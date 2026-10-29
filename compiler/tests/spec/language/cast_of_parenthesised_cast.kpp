@@ -1,0 +1,11 @@
+// spec: a C-style cast to a type a typedef names, of a C-style cast to a builtin type: `(HANDLE)(long long)-1` is `(HANDLE)((long long)-1)`, since a parenthesised builtin type is never a call's argument list
+// factorio: the converter's Windows code (`(HANDLE)(long long)-1` for INVALID_HANDLE_VALUE); windows.h's own `((HANDLE)(LONG_PTR)-1)` comes through the C import
+typedef void* Handle;
+int main()
+{
+  Handle invalid = (Handle)(long long)-1;
+  Handle none = (Handle)(unsigned long long)0;
+  long long back = (long long)invalid;
+  println("{} {} {}", back, invalid == none, none == nullptr);
+  return 0;
+}
