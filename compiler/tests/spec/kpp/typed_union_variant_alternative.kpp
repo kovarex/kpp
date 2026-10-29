@@ -1,0 +1,24 @@
+// spec: VariantAlternative<I, U> of a typed union is the type of its I-th alternative, as std::variant_alternative_t is of a variant: in a static_assert, with an index given by a constant, in a declaration
+// factorio: SegmentedUnitAI's five static_assert(isSame<VariantAlternative<PatrollingIndex, AIState>, SegmentedUnitAI::Patrolling>)
+// pending: VariantAlternative was the library's V::Alternative<I>, which a typed union has not
+struct Walking
+{
+  int speed = 3;
+};
+struct Resting
+{
+  double hours = 1.5;
+};
+union enum State
+{
+  { {Walking, Walk}, {Resting, Rest} }
+};
+static constexpr size_t RestIndex = 1;
+static_assert(isSame<VariantAlternative<0, State>, Walking>);
+static_assert(isSame<VariantAlternative<RestIndex, State>, Resting>);
+int main()
+{
+  VariantAlternative<0, State> w;
+  println("{} {}", w.speed, sizeof(VariantAlternative<1, State>));
+  return 0;
+}
