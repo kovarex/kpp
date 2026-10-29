@@ -1,6 +1,5 @@
 // spec: a using-declaration in a block brings another namespace's type in for that block (`using Graphics::IntelGPUArchitecture;`): its name and its enumerators resolve there
 // factorio: GraphicsSettings::determinePreset's `using Graphics::IntelGPUArchitecture;` before `IntelGPUArchitecture intelGPUArch = ...`
-// pending: the name the using-declaration brings in is not declared in the block ("the type 'Architecture' is not declared")
 namespace Graphics
 {
   enum class Architecture

@@ -1092,6 +1092,14 @@ struct GlobalScope::Impl
   // The aliases and typedefs of a function body in scope at token `at` (`using nl = Limits<T1>;`
   // before `nl::min()`): those declared before it in the blocks around it, in declaration order,
   // so that an inner one comes later and hides an outer one of its name.
+  // What a block-scope `using Graphics::Architecture;` brings in: the declaration it names, unless
+  // that is a function (whose overloads the using-declaration would take together).
+  Decl* localUsingTarget(UsingNameDecl* u, Scope* scope, const LocalStack* locals)
+  {
+    Lookup l = lookupQualified(u->name, scope, locals, 0);
+    return l.decl && l.decl->kind != NodeKind::FunctionDecl ? l.decl : nullptr;
+  }
+
   void collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth = 0)
   {
     if (!s || s->token > at || depth > 64)
@@ -1110,6 +1118,9 @@ struct GlobalScope::Impl
               out.push(static_cast<ClassDecl*>(d)->name.parts[0].symbol, d); // `struct Point { float x, y; };` then `sizeof(Point)`
             else if (d->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(d)->name.parts.size() == 1)
               out.push(static_cast<EnumDecl*>(d)->name.parts[0].symbol, d);
+            else if (d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum && !static_cast<UsingNameDecl*>(d)->name.empty())
+              if (Decl* target = localUsingTarget(static_cast<UsingNameDecl*>(d), lexicalScopeOf(d), &out))
+                out.push(static_cast<UsingNameDecl*>(d)->name.last().symbol, target); // `using Graphics::Architecture;`
           }
     };
     // Of statements in source order, the one `at` is in: the last that starts at or before it.
@@ -14664,6 +14675,14 @@ struct GlobalScope::Impl
         }
         case NodeKind::UsingAliasDecl: locals.push(static_cast<UsingAliasDecl*>(d)->name, d); break;
         case NodeKind::UsingDirectiveDecl: locals.push(LocalStack::usingDirective, d); break; // `using namespace Helpers;`
+        case NodeKind::UsingNameDecl:
+        {
+          // `using Graphics::Architecture;` in a block: the name it brings in, for the block.
+          auto* u = static_cast<UsingNameDecl*>(d);
+          if (Decl* target = u->isEnum || u->name.empty() ? nullptr : impl.localUsingTarget(u, scope, &locals))
+            locals.push(u->name.last().symbol, target);
+          break;
+        }
         case NodeKind::FunctionDecl:
         {
           auto* f = static_cast<FunctionDecl*>(d);
