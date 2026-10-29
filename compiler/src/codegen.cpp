@@ -2267,7 +2267,16 @@ namespace
           else if (size_t values = expandedCount(init->args, at); values == 0)
             storeZero(ft, fieldAddr, at); // `value()`, `value(forward<Args>(args)...)` with Args empty: value-initialized
           else if (values == 1)
-            forEachExpanded(init->args, at, [&](Expr* one) { store(rvalue(one), fieldAddr, ft, at); }); // `value(first, args...)`, args empty
+            forEachExpanded(init->args, at, [&](Expr* one)
+            {
+              // A member initializer is direct-initialization: a class value converts through an
+              // explicit conversion operator too (Pair's `second(forward<U2>(second))` with
+              // ParsedNoiseExpression's `explicit operator const NoiseExpression*()`).
+              Value value = rvalue(one);
+              if (isClass(value.ty) && !isClass(ft) && ft->kind != TyKind::Lambda && !ft->isReference())
+                value = convert(value, ft, at, true);
+              store(value, fieldAddr, ft, at);
+            }); // `value(first, args...)`, args empty
           else
             unsupported(at, "this member initializer");
         }

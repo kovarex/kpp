@@ -2994,7 +2994,15 @@ struct GlobalScope::Impl
       }
       if (args.empty())
         return t->kind != TyKind::Void && t->kind != TyKind::Function;
-      return args.size() == 1 && traitValue("isConvertible", {args[0], t}).value_or(false);
+      if (args.size() != 1)
+        return false;
+      if (traitValue("isConvertible", {args[0], t}).value_or(false))
+        return true;
+      // Direct-initialization takes a class's explicit conversion operators too: ParsedNoiseExpression's
+      // `explicit operator const NoiseExpression*()` makes a const NoiseExpression* constructible
+      // from it (Pair's converting constructor requires that of its members).
+      const Ty* from = types.unqualified(types.stripRef(args[0]));
+      return from->kind == TyKind::Class && !types.isDependent(from) && convertsByOperator(from, t, 0, 0, true);
     }
     if (name == "isFundamental")
       return one() && (isArithmeticKind(one()) || one()->kind == TyKind::Void || one() == types.nullptrType());

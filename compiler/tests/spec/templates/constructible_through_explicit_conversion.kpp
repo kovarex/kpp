@@ -1,6 +1,5 @@
 // spec: direct-initialization takes a class's explicit conversion operators: isConstructible<const Expr*, Parsed> holds for `explicit operator const Expr*()`, so Pair's converting constructor (which requires it of its members) takes `emplace_back(&reg, Parsed())`, and its member initializer `second(forward<U2>(second))` converts through the operator
 // factorio: tests/TestNoisePerformance.cpp's `Vector<Pair<NoiseRegisterIndex*, const NoiseExpression*>>::emplace_back(register, parsedExpression)` with ParsedNoiseExpression's `explicit operator const NoiseExpression*()`
-// pending: isConstructible took only implicit conversions, so no constructor of Pair was viable ("a constructor of Pair taking 1 arguments"); owner: the templates thread (traits, conversions)
 struct Reg { int index = 0; };
 struct Expr { int v = 0; };
 Expr theExpr;
