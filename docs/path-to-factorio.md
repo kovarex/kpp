@@ -787,6 +787,9 @@ template, so that an alternative without `==` matters only where unions are comp
 comparisons; its in-place emplace_back now waits on typed unions direct-initialized from a value,
 spec kpp/typed_union_direct_init). The game's is_std_variant<T> asks `isTypedUnion<T>` (an override
 of TemplateHelpers), which routes the 9 unions' save and load through the members above: 23,633.
+An alternative named like a type hides the type inside the union, so the converter qualifies such
+names in the alternatives' types, now also inside template arguments (`Pair<::EntityWithQualityID,
+::EntityWithQualityID>`): UndoActionDescription's and TextDrawSection's unions lay out, 23,526.
 
 static_assert became a real check on master 89058a6 (the headline now includes kpp\Lua: 23,548).
 Until then the game's 470 static_asserts were parsed and never evaluated, so the step adds lines

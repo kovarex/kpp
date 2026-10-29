@@ -3159,27 +3159,43 @@ namespace
     }
 
     // An alternative's type as the union enum lists it. Inside the union, its alternatives' names
-    // come first, so a type spelled like one of them (`Patrolling` next to the alternative
-    // Patrolling) is written qualified: by the innermost scope at offset that declares it, or as global.
+    // come first, so a name in the type spelled like one of them (`Patrolling` next to the
+    // alternative Patrolling, `EntityWithQualityID` in `Pair<EntityWithQualityID, ...>`) is written
+    // qualified: by the innermost scope at offset that declares it, or as global.
     std::string qualifiedAlternativeType(const std::string& type, const VariantInfo& info, uint32_t offset) const
     {
-      if (type.rfind("::", 0) == 0)
-        return type;
-      size_t e = 0;
-      while (e < type.size() && isIdentChar(type[e]))
-        ++e;
-      std::string id = type.substr(0, e);
-      bool collides = false;
-      for (const VariantAlternative& a : info.alternatives)
-        collides = collides || a.name == id;
-      if (!collides)
-        return type;
-      std::string scope;
-      for (const ScopeRange& r : scopeRanges)
-        if (r.begin <= offset && offset < r.end && scopeNames)
-          if (auto it = scopeNames->find(r.key); it != scopeNames->end() && it->second.count(id))
-            scope = r.key;
-      return "::" + scope + type;
+      std::string out;
+      for (size_t i = 0; i < type.size();)
+      {
+        if (!isalpha((unsigned char)type[i]) && type[i] != '_')
+        {
+          out += type[i++];
+          continue;
+        }
+        size_t e = i;
+        while (e < type.size() && isIdentChar(type[e]))
+          ++e;
+        std::string id = type.substr(i, e - i);
+        size_t p = out.size();
+        while (p > 0 && out[p - 1] == ' ')
+          --p;
+        bool laterPart = p >= 2 && out[p - 1] == ':' && out[p - 2] == ':'; // `A::id`: qualified already
+        bool collides = false;
+        for (const VariantAlternative& a : info.alternatives)
+          collides = collides || (!laterPart && a.name == id);
+        if (collides)
+        {
+          std::string scope;
+          for (const ScopeRange& r : scopeRanges)
+            if (r.begin <= offset && offset < r.end && scopeNames)
+              if (auto it = scopeNames->find(r.key); it != scopeNames->end() && it->second.count(id))
+                scope = r.key;
+          out += "::" + scope;
+        }
+        out += id;
+        i = e;
+      }
+      return out;
     }
 
     // The alternative of a variant that a written type names (exactly, or by its last component).
