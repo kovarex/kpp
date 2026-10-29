@@ -1,0 +1,24 @@
+// spec: a static data member array declared with no bound (`static Type const types[];`) takes its bound from its definition's initializer (`Highlights::types[] = {...}`): sizeof and a range-for over it see all its elements, in a member function and elsewhere
+// factorio: InventoryHighlights' `static Type const types[];`, defined with three types in InventoryHighlights.cpp: its save went over none of them and wrote only their count, so the multiplayer harness's map download read the controller's next fields from the wrong place ("unknown Source value: 255", 44 of the unit tests' failed checks)
+// pending: SILENT, the array has no elements and an element reads what lies past it: prints `0 0 255`; owner: the resolver thread
+class Highlights
+{
+public:
+  enum Type : uint8_t { Regular, Search, Insert, Remove, Count };
+  static Type const types[];
+  int countTypes() const
+  {
+    int n = 0;
+    for (const Type type : Highlights::types)
+      if (type != Regular)
+        ++n;
+    return n;
+  }
+};
+Highlights::Type const Highlights::types[] = {Highlights::Regular, Highlights::Search, Highlights::Insert, Highlights::Remove};
+int main()
+{
+  Highlights h;
+  println("{} {} {}", h.countTypes(), sizeof(Highlights::types), (int)Highlights::types[2]);
+  return 0;
+}
