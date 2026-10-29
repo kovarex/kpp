@@ -1,0 +1,16 @@
+// spec: a range-for's loop variable of a class type is initialized from each element by conversion, as a declaration with that initializer would be: `for (String name : {"stone-wall", "transport-belt"})`, over a Vector<const char*>, and a `const String&` bound to the converted temporary
+// factorio: the tests' `for (std::string blockingEntity : {"stone-wall", "transport-belt"})` (TestDragBuilding), `for (std::string entityName : {"assembling-machine-3", ...})` (TestInventory) and the like: each name came out empty, "Unknown entity name: " and "Unknown item name: " (13 failed checks)
+// pending: SILENT, the loop variable is the element's bytes taken as a String, not a String made from it; owner: the codegen thread
+int main()
+{
+  String joined;
+  for (String name : {"stone-wall", "transport-belt"})
+    joined += name + ";";
+  Vector<const char*> list = {"a", "bb"};
+  for (String name : list)
+    joined += name + ";";
+  for (const String& name : {"ref"})
+    joined += name;
+  println("{}", joined);
+  return 0;
+}
