@@ -22,7 +22,17 @@ struct Vector
 
   Vector() {}
   // count default-constructed elements.
-  explicit Vector(int count) { this->resize(count); }
+  explicit Vector(int count)
+  {
+    // The elements are made in their place, so T needs no copy or move (as for std::vector(n)):
+    // TypeAwareMemoryPool keeps Vectors of SpriteRegistration, which has neither.
+    if (count <= 0)
+      return;
+    this->items = (T*)malloc((size_t)count * sizeof(T));
+    this->allocated = count;
+    for (; this->length < count; ++this->length)
+      new (this->items + this->length) T();
+  }
   // `Vector<int> primes = {2, 3, 5, 7};`
   Vector(InitializerList<T> list)
   {
