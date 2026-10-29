@@ -206,6 +206,30 @@ struct Deque
     return DequeIterator<T>(this, index);
   }
   DequeIterator<T> erase(DequeIterator<T> position) { return this->erase(position.index); }
+  // Removes the elements in [first, last), moving the shorter side of the rest by their count;
+  // returns the position of the element after them.
+  DequeIterator<T> erase(DequeIterator<T> first, DequeIterator<T> last)
+  {
+    int from = first.index;
+    int count = last.index - first.index;
+    if (count <= 0)
+      return DequeIterator<T>(this, from);
+    if (from < this->length - (from + count))
+    {
+      for (int i = from - 1; i >= 0; --i)
+        (*this)[i + count] = move((*this)[i]);
+      for (int k = 0; k < count; ++k)
+        this->pop_front();
+    }
+    else
+    {
+      for (int i = from + count; i < this->length; ++i)
+        (*this)[i - count] = move((*this)[i]);
+      for (int k = 0; k < count; ++k)
+        this->pop_back();
+    }
+    return DequeIterator<T>(this, from);
+  }
 
   void resize(int newLength)
   {

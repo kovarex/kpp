@@ -14,14 +14,15 @@ stored in fixed-size blocks; adding at either end never moves the existing eleme
 | clear | all | all |
 
 Complexity: `operator[]`, `front`, `back`, push and pop at either end: O(1). Insert or erase at
-position i: O(min(i, size() - i)).
+position i: O(min(i, size() - i)); erasing n elements at i: O(n + min(i, size() - i - n)).
 
 Members: `Deque()`, `Deque({...})`, copy, move; `size()`, `empty()`; `operator[](i)`, `at(i)`
 (throws OutOfRange), `front()`, `back()`; `begin()`, `end()` (random access iterators);
 `rbegin()`, `rend()`, `swap(other)`;
 `push_back`, `push_front`, `emplace_back`, `emplace_front`, `pop_back`, `pop_front` (not empty);
 `insert(position, value)` and `erase(position)` returning the position of the inserted element /
-the element after the erased one; `resize(n)`, `clear()`.
+the element after the erased one; `erase(first, last)`, removing the elements in [first, last) and
+returning the position of the element after them; `resize(n)`, `clear()`.
 
 ## Queue
 
