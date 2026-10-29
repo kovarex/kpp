@@ -1,14 +1,14 @@
 """Runs the converted game's unit tests one suite per process: what each suite does in the test
 binary tests.cmd builds (kpp\\tests-run\\factorio-test.exe), whatever stops it.
 
-    python suites.py [EXE] [OUT] [--jobs N] [--timeout SECONDS]
+    python suites.py [EXE] [OUT] [--jobs N] [--timeout SECONDS] [--only Suite1,Suite2]
 
 A stub (--stub-missing) or a failed assertion ends the process it is reached in, so a run of the
 whole suite stops at the first one; one process per suite lets every suite say how far it gets.
 Each of the suites of C:\\Factorio\\tests (their SUITE(Name) declarations) runs as
 `EXE --config ... --write-data ... --no-colors --suite Name`, N at a time (12 by default), each in a
 worker directory of its own under OUT (config.ini reading C:/Factorio/data, writes in its run\\),
-for at most the timeout (600 s). OUT (kpp\\tests-suites by default) gets each suite's output in
+for at most the timeout (600 s); --only runs just the suites it names. OUT (kpp\\tests-suites by default) gets each suite's output in
 logs\\<suite>.txt and suites.tsv, one line per suite: its exit code, the runner's test and failure
 counts when it got to its summary line, and the stub that stopped it. crashes.py then says what
 stopped the others. docs/path-to-factorio.md, "The unit tests".
@@ -17,7 +17,7 @@ import concurrent.futures, glob, os, queue, re, subprocess, sys, time
 
 here = os.path.dirname(os.path.abspath(__file__))
 args = [a for a in sys.argv[1:]]
-jobs, timeout = 12, 600
+jobs, timeout, only = 12, 600, None
 if '--jobs' in args:
     i = args.index('--jobs')
     jobs = int(args[i + 1])
@@ -25,6 +25,10 @@ if '--jobs' in args:
 if '--timeout' in args:
     i = args.index('--timeout')
     timeout = int(args[i + 1])
+    del args[i:i + 2]
+if '--only' in args:
+    i = args.index('--only')
+    only = set(args[i + 1].split(','))
     del args[i:i + 2]
 exe = os.path.abspath(args[0]) if len(args) > 0 else os.path.join(here, 'kpp', 'tests-run', 'factorio-test.exe')
 out = os.path.abspath(args[1]) if len(args) > 1 else os.path.join(here, 'kpp', 'tests-suites')
@@ -34,6 +38,11 @@ for f in glob.glob('C:/Factorio/tests/**/*.cpp', recursive=True):
     text = open(f, encoding='utf-8', errors='replace').read()
     for m in re.finditer(r'^\s*SUITE\((\w+)\)', text, re.M):
         suites.add(m.group(1))
+if only:
+    unknown = only - suites
+    if unknown:
+        sys.exit('no such suite: ' + ', '.join(sorted(unknown)))
+    suites = only
 suites = sorted(suites)
 
 workers = queue.Queue()
