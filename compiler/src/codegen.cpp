@@ -12819,16 +12819,28 @@ namespace
       }
       if (objects.empty())
         return "";
-      std::string parent = currentFunclet();
-      std::string key = next + "|" + parent;
-      for (const Object& o : objects)
-        key += "|" + o.addr;
-      auto it = cleanupPads.find(key);
-      if (it != cleanupPads.end())
-        return it->second;
       markEH();
       if (!next.empty())
         ehFrames.back().used = true;
+      return cleanupChain(objects, 0, next, currentFunclet());
+    }
+
+    // The pad destroying objects[from..] (the newest first) and then unwinding to next ("": out of
+    // the function or funclet): it destroys objects[from] and continues into the pad of the rest,
+    // which every call whose live objects end the same way shares. A constructor's members so cost
+    // one destructor call each, not one per member built before them: ControlSettings' constructor
+    // was 875 k lines of IR with 482 k calls of ~String, a quarter of clang's critical path.
+    std::string cleanupChain(const std::vector<Object>& objects, size_t from, const std::string& next, const std::string& parent)
+    {
+      if (from == objects.size())
+        return next;
+      std::string key = next + "|" + parent;
+      for (size_t i = from; i < objects.size(); ++i)
+        key += "|" + objects[i].addr;
+      auto it = cleanupPads.find(key);
+      if (it != cleanupPads.end())
+        return it->second;
+      std::string rest = cleanupChain(objects, from + 1, next, parent);
       std::string padLabel = newLabel("cleanup"), pad = newTemp();
       cleanupPads[key] = padLabel;
       // The pad is emitted aside, after the function body.
@@ -12838,10 +12850,9 @@ namespace
       startBlock(padLabel);
       fn += "  " + pad + " = cleanuppad within " + (parent.empty() ? "none" : parent) + " []\n";
       funcletOverride = pad;
-      for (const Object& o : objects)
-        destroyObject(o);
+      destroyObject(objects[from]);
       funcletOverride = savedOverride;
-      fn += "  cleanupret from " + pad + " unwind " + (next.empty() ? "to caller" : "label %" + next) + "\n";
+      fn += "  cleanupret from " + pad + " unwind " + (rest.empty() ? "to caller" : "label %" + rest) + "\n";
       ehBlocks += fn;
       fn = std::move(savedFn);
       currentBlock = savedBlock;
