@@ -10776,6 +10776,26 @@ namespace
               fargs.pairs.push_back({f->templateParams[i], t});
               ++given;
             }
+            // The checker typed the name as the instance a function pointer of a known type wants
+            // (`construct<Neg>` for a `const Expr& (*)(const Expr&)`, the trailing pack deduced
+            // from its parameters): the arguments not written, deduced the same way.
+            const Ty* typed = e->ty ? withCurrentArgs(types.unqualified(types.stripRef(e->ty))) : nullptr;
+            if (typed && typed->kind == TyKind::Pointer)
+              typed = typed->inner;
+            if (given < f->templateParams.size() && packElements.empty() && typed && typed->kind == TyKind::Function && typed->isKnown() &&
+                !types.isDependent(typed))
+            {
+              std::vector<const Ty*> paramTypes(typed->args.begin(), typed->args.end());
+              global.deduceArgs(f, paramTypes, fargs);
+              given = 0;
+              for (Decl* p : f->templateParams)
+                for (auto& [d, t] : fargs.pairs)
+                  if (d == p)
+                  {
+                    ++given;
+                    break;
+                  }
+            }
             if (packLast && given + 1 == f->templateParams.size())
             {
               fargs.pairs.push_back({f->templateParams[f->templateParams.size() - 1], types.pack(Span<const Ty*>{packElements.data(), uint32_t(packElements.size())})});

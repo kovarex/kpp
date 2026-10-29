@@ -1,6 +1,5 @@
 // spec: a function template named with some of its arguments where a pointer to a function of a known type is wanted (an aggregate's member, a variable, an InitializerList's element's member) is the instance whose remaining arguments, a trailing pack's included, are deduced from that type's parameters: `construct<Neg>` for a `const Expr& (*)(const Expr&)` is construct<Neg, const Expr&>
 // factorio: tests/TestNoiseProgram.cpp's `{"bitwise-not", constructExpression<NoiseExpressions::BitwiseNot>, constructUnaryOperation<...>, ...}` in an InitializerList<OperationTestCase<const NoiseExpression&(*)(const NoiseExpression&), 1>> (22 lines of the tests package)
-// pending: the pack was left empty (construct<Neg, >), whose body calls Neg::index without its argument; owner: the templates thread (deduction from a function pointer type)
 struct Expr
 {
   int v = 0;

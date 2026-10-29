@@ -14531,7 +14531,7 @@ struct GlobalScope::Impl
     // gives one argument per element of the pack, none for an empty one. Returns how many
     // arguments the list names: an expansion still dependent counts as none, since it may name
     // none.
-    size_t bindExplicitArgs(FunctionDecl* f, const NamePart& namePart, Span<Expr*> args, Subst& s)
+    size_t bindExplicitArgs(FunctionDecl* f, const NamePart& namePart, Span<Expr*> args, Subst& s, bool emptyPackWithoutArgs = true)
     {
       size_t n = f->templateParams.size(), named = 0;
       std::vector<const Ty*> given;
@@ -14574,7 +14574,7 @@ struct GlobalScope::Impl
         }
         s.pairs.push_back({param, given[i]});
       }
-      if (namePart.hasTemplateArgs && args.empty())
+      if (namePart.hasTemplateArgs && args.empty() && emptyPackWithoutArgs)
       {
         auto* last = static_cast<TemplateParamDecl*>(f->templateParams[n - 1]);
         if (last->isPack && !s.find(last))
@@ -14811,6 +14811,158 @@ struct GlobalScope::Impl
         return false;
       out = OverloadSetArgument{index, n, address, l};
       return true;
+    }
+
+    // `construct<Neg>`, a function template named with some of its arguments (or none), where a
+    // pointer to a function of a known type is wanted: its other arguments, a trailing pack's
+    // included, deduced from that type's parameters as from a call's, and the name typed as that
+    // instance's function (which the code generator takes the address of).
+    void bindTemplateAddress(Expr* a, const Ty* target)
+    {
+      Expr* named = a;
+      while (named && named->kind == NodeKind::ParenExpr)
+        named = static_cast<ParenExpr*>(named)->inner;
+      Expr* address = nullptr;
+      if (named && named->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(named)->isKeyword && P(static_cast<UnaryExpr*>(named)->op) == P::Amp)
+      {
+        address = named;
+        named = static_cast<UnaryExpr*>(named)->operand;
+      }
+      if (!named || named->kind != NodeKind::NameExpr || !target)
+        return;
+      auto* n = static_cast<NameExpr*>(named);
+      if (!n->resolved || n->resolved->kind != NodeKind::FunctionDecl || n->name.empty())
+        return;
+      auto* f = static_cast<FunctionDecl*>(n->resolved);
+      if (f->templateParams.empty() && n->name.last().hasTemplateArgs)
+      {
+        // `constructExpression<BitwiseNot>` beside a constructExpression(double) that is no
+        // template: the written arguments name the template (the only one of the name).
+        Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+        FunctionDecl* only = nullptr;
+        int templates = 0;
+        if (l.overloads)
+          for (const Entry& entry : *l.overloads)
+            if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && !entry.decl->templateParams.empty())
+            {
+              only = static_cast<FunctionDecl*>(entry.decl);
+              ++templates;
+            }
+        if (templates != 1)
+          return;
+        f = only;
+      }
+      if (f->templateParams.empty())
+        return;
+      const Ty* pt = types.unqualified(types.stripRef(target));
+      const Ty* want = pt && pt->kind == TyKind::Pointer ? pt->inner : pt;
+      if (!want || want->kind != TyKind::Function || !want->isKnown() || types.isDependent(want))
+        return;
+      Subst s;
+      bindExplicitArgs(f, n->name.last(), Span<Expr*>{}, s, false);
+      if (activeSubst)
+        for (const Subst::Pair& p : activeSubst->pairs)
+          if (!s.find(p.param))
+            s.pairs.push_back(p); // the enclosing instance's (a member of a class template)
+      const Ty* fnTy = impl.declaredTypeOf(f, &s, 0);
+      std::vector<const Ty*> argTypes(want->args.begin(), want->args.end());
+      impl.deduceCall(f, fnTy, argTypes, s);
+      for (Decl* p : f->templateParams)
+        if (!s.find(p))
+        {
+          if (!static_cast<TemplateParamDecl*>(p)->isPack)
+            return; // not deduced: left as typed
+          s.pairs.push_back({p, types.pack({})});
+        }
+      const Ty* instance = impl.declaredTypeOf(f, &s, 0);
+      if (!instance || instance->kind != TyKind::Function || !instance->isKnown() || types.isDependent(instance))
+        return;
+      n->resolved = f;
+      record(n, instance);
+      if (address)
+        record(address, types.pointer(instance));
+    }
+
+    // The function template names among what initializes an object of type target, bound to the
+    // function pointer types they initialize (bindTemplateAddress): through brace lists, an
+    // InitializerList's elements, an array's and an aggregate's members in order
+    // (`InitializerList<OperationTestCase<...>>{{"abs", constructExpression<Abs>, ...}}`).
+    void bindTemplateAddresses(Expr* e, const Ty* target, int depth = 0)
+    {
+      if (!e || !target || depth > 8)
+        return;
+      const Ty* t = types.unqualified(types.stripRef(target));
+      if (e->kind != NodeKind::BraceInitExpr)
+      {
+        bindTemplateAddress(e, t);
+        return;
+      }
+      auto* list = static_cast<BraceInitExpr*>(e);
+      if (!list->designators.empty())
+        return;
+      if (t->kind == TyKind::Array && t->inner)
+      {
+        for (Expr* a : list->args)
+          bindTemplateAddresses(a, t->inner, depth + 1);
+        return;
+      }
+      if (t->kind != TyKind::Class || !t->isKnown() || types.isDependent(t))
+        return;
+      if (impl.isInitializerList(t))
+      {
+        if (!t->args.empty())
+          for (Expr* a : list->args)
+            bindTemplateAddresses(a, t->args[0], depth + 1);
+        return;
+      }
+      Scope* s = impl.classScopeOf(t);
+      if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+        return;
+      auto* cls = static_cast<ClassDecl*>(s->owner);
+      Subst subst = impl.substFor(t);
+      // A class with constructors: the one constructor (copy and move ones aside) whose parameters
+      // the list's elements can fill, its parameter types (`OperationTestCase(const char* name,
+      // ExpressionBuilder expressionBuilder, ...)`); several or none decide nothing here.
+      FunctionDecl* taker = nullptr;
+      int takers = 0;
+      bool constructors = false;
+      for (Decl* m : cls->members)
+      {
+        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || (m->flags & DF_Delete))
+          continue;
+        constructors = true;
+        auto* f = static_cast<FunctionDecl*>(m);
+        size_t required = 0;
+        for (Decl* p : f->params)
+          required += !static_cast<ParamDecl*>(p)->defaultValue && !static_cast<ParamDecl*>(p)->isPack;
+        if (f->params.size() < list->args.size() || required > list->args.size() || !f->templateParams.empty())
+          continue;
+        if (f->params.size() == 1)
+          if (const Ty* only = impl.declaredTypeOf(f->params[0], subst.empty() ? nullptr : &subst, 0);
+              only && types.unqualified(types.stripRef(only)) == t)
+            continue; // the copy or move constructor
+        taker = f;
+        ++takers;
+      }
+      if (constructors)
+      {
+        if (takers != 1)
+          return;
+        for (size_t i = 0; i < list->args.size(); ++i)
+          bindTemplateAddresses(list->args[i], impl.declaredTypeOf(taker->params[i], subst.empty() ? nullptr : &subst, 0), depth + 1);
+        return;
+      }
+      if (!cls->bases.empty())
+        return;
+      size_t i = 0;
+      for (Decl* m : cls->members)
+      {
+        if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+          continue;
+        if (i >= list->args.size())
+          break;
+        bindTemplateAddresses(list->args[i++], impl.declaredTypeOf(m, subst.empty() ? nullptr : &subst, 0), depth + 1);
+      }
     }
 
     // Binds each overload-set argument to the overload of the type the chosen callee's parameter
@@ -16236,6 +16388,8 @@ struct GlobalScope::Impl
           scope = saved;
           // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
+          if (v->init && declared && declared->isKnown() && !impl.containsAuto(declared) && !probesSharedNodes())
+            bindTemplateAddresses(v->init, declared); // `const Expr& (*binary)(const Expr&, const Expr&) = construct<Add>;`
           bool isDraft = declared && declared->kind == TyKind::Class && declared->decl && (declared->decl->attributes & ATTR_Draft);
           if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !probesSharedNodes())
           {
@@ -17091,7 +17245,10 @@ struct GlobalScope::Impl
             // (`NamedFunction{set}`: the list's elements, for the aggregate's members or the constructor.)
             Span<Expr*> args = c->args;
             if (c->braced && args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
+            {
+              bindTemplateAddresses(args[0], t);
               args = static_cast<BraceInitExpr*>(args[0])->args;
+            }
             bindOverloadSetsOfConstruction(t, args);
           }
           return record(e, t);
