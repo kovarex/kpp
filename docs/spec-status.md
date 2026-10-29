@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**315 pass, 8 pending, 0 failing, 0 fixed** (323 snippets, 96.0 s).
+**315 pass, 9 pending, 0 failing, 0 fixed** (324 snippets, 19.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -84,6 +84,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `classes/assign_through_conversion_operator.kpp` | a class with an implicit conversion operator to another class (`implicit operator IDType() const` in Connector) is assigned to and copy-initialises that class through it: `h.chosen = c;` and `ProtoID copy = c;` | pending | IDConnector<IDType>'s `implicit operator IDType()` (`this->entityToBuild = randomElement(buildableEntities)`, `groupID = otherItemSubGroup->group`, 88 lines) | the checker types both; the code generator looks for a constructor of ID taking the Connector instead of applying the conversion: "a constructor of ID taking 1 arguments"; C:\kpp-templates\compiler\tests\spec\classes\assign_through_conversion_operator.kpp:28: codegen does not support a constructor of ID taking 1 arguments yet (in @kpp.main) |
 | `classes/local_class.kpp` | classes and enums declared in a function body: their members and methods, their own name inside them (a defaulted `operator<=>(const Key&)`), and a local class as a template argument (`Map<Key, int>`) | pending | InsertPlan::sendChangeNotifications (`class Key { strong_ordering operator<=>(const Key&) const = default; ... }; Map<Key, ItemIDWithCount>`), TimeLimiter, ToVisit, local enums | the code generator does not emit the methods of a class declared in a function body (Key::sum is called but never defined); C:\kpp-templates\compiler\build\spec\classes.local_class.exe.56.ll:394:21: error: use of undefined value '@Key::sum() const' |
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregate_reference_member.kpp` | an aggregate with reference members initialised from a braced list (`Ref r{x};`): the members refer to the objects given, reads and writes go to them, and copying the aggregate copies the references | pass | CommonUtil's ReversionWrapperByReference<T> { T& iterable; } behind every `for (x : reverse(container))`, and small reference holders across the game |  |
