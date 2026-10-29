@@ -1,0 +1,34 @@
+// spec: a brace list argument converted to an InitializerList beats one converted to anything else, the rule of C++ [over.ics.rank] 3.1 that wins over the others: `Sorted<Cell>({{-1, -1}, {0, -1}})` takes the InitializerList constructor, not the move or copy constructor through a conversion by that same constructor
+// found in tests/TestLuaTerritory (`FlatSet<ChunkPosition>({{-1,-1}, {0,-1}, ...})` compared with a territory's chunks; FlatSet has a move, an explicit copy and an implicit InitializerList constructor)
+// pending: the move constructor ties with the InitializerList one (two user-defined conversions) and is taken; codegen then needs the same conversion for its parameter (`converting <unknown> to Sorted<Cell, Less<Cell>>: the constructor chosen needs the same conversion for its own parameter`)
+struct Cell
+{
+  int x = 0, y = 0;
+  Cell() = default;
+  Cell(int x, int y) : x(x), y(y) {}
+  bool operator==(const Cell& other) const = default;
+};
+template<class T, class Comparator = Less<T>>
+class Sorted
+{
+public:
+  explicit Sorted() = default;
+  Sorted(Sorted&& other) noexcept : data(::move(other.data)) {}
+  explicit Sorted(const Sorted& other) : data(other.data) {}
+  template<typename Iterator>
+  Sorted(Iterator begin, Iterator end)
+  {
+    for (; begin != end; ++begin)
+      this->data.push_back(*begin);
+  }
+  implicit Sorted(InitializerList<T> list) : Sorted(list.begin(), list.end()) {}
+  int size() const { return int(this->data.size()); }
+  Vector<T> data;
+};
+int sizeOf(const Sorted<Cell>& s) { return s.size(); }
+int main()
+{
+  Sorted<Cell> direct({{-1, -1}, {0, -1}});
+  println("{} {} {} {}", direct.size(), direct.data[1].x, sizeOf(Sorted<Cell>({{1, 1}, {2, 2}, {3, 3}})), Sorted<Cell>({{4, 5}}).data[0].y);
+  return 0;
+}
