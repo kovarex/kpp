@@ -6794,8 +6794,14 @@ namespace
         auto* n = static_cast<NameExpr*>(callee);
         Decl* d = n->resolved;
         if (d && d->kind == NodeKind::FunctionDecl && d->file && d->file->isImported)
+        {
+          // An intrinsic declared by intrin.h (its static inline body is not emitted, or there is
+          // none): the code generator's own IR.
           if (std::optional<Value> v = sseBuiltin(n, c))
-            return *v; // an intrinsic declared by intrin.h (its static inline body is not emitted): the code generator's own IR
+            return *v;
+          if (std::optional<Value> v = msvcBuiltin(n, c))
+            return *v;
+        }
         if (d && d->kind == NodeKind::FunctionDecl)
         {
           auto* f = static_cast<FunctionDecl*>(d);
@@ -7216,6 +7222,33 @@ namespace
       return {reg, vecTy, false};
     }
 
+    // An SSE operation's immediate operand: a constant, or the macros `_MM_SHUFFLE(z, y, x, w)` and
+    // `_MM_SHUFFLE2(x, y)`, which the import does not have (function-like) and evalConst cannot call.
+    std::optional<int64_t> sseImmediate(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (e && e->kind == NodeKind::CallExpr && static_cast<CallExpr*>(e)->callee->kind == NodeKind::NameExpr)
+      {
+        auto* call = static_cast<CallExpr*>(e);
+        auto* callee = static_cast<NameExpr*>(call->callee);
+        std::string name = callee->name.parts.size() == 1 ? sym(callee->name.parts[0].symbol) : std::string();
+        if ((name == "_MM_SHUFFLE" && call->args.size() == 4) || (name == "_MM_SHUFFLE2" && call->args.size() == 2))
+        {
+          int64_t value = 0;
+          for (Expr* a : call->args)
+          {
+            std::optional<int64_t> part = sseImmediate(a);
+            if (!part)
+              return std::nullopt;
+            value = (value << (name == "_MM_SHUFFLE" ? 2 : 1)) | *part;
+          }
+          return value;
+        }
+      }
+      return evalConst(e, 0);
+    }
+
     std::optional<Value> sseBuiltin(NameExpr* n, CallExpr* c)
     {
       if (n->name.parts.size() != 1)
@@ -7237,6 +7270,14 @@ namespace
         if (a && b)
           return Value{std::to_string((*a << 1) | *b), types.intType(32)};
         return std::nullopt;
+      }
+      // _MM_GET_ROUNDING_MODE() = (_mm_getcsr() & _MM_ROUND_MASK), a function-like macro
+      if (name == "_MM_GET_ROUNDING_MODE" && c->args.empty())
+      {
+        std::optional<Value> csr = sseMore("_mm_getcsr", c);
+        std::string r = newTemp();
+        fn += "  " + r + " = and i32 " + csr->text + ", 24576\n"; // 0x6000
+        return Value{r, types.intType(32, true)};
       }
 
       if (!name.starts_with("_mm_"))
@@ -7618,7 +7659,7 @@ namespace
       {
         std::string a = sseArg(c->args[0], v4f, c);
         std::string b = sseArg(c->args[1], v4f, c);
-        auto imm = evalConst(c->args[2], 0);
+        auto imm = sseImmediate(c->args[2]);
         if (!imm) return std::nullopt;
         int m = int(*imm);
         int i0 = m & 3, i1 = (m >> 2) & 3, i2 = ((m >> 4) & 3) + 4, i3 = ((m >> 6) & 3) + 4;
@@ -7631,7 +7672,7 @@ namespace
       {
         std::string a = sseArg(c->args[0], v2d, c);
         std::string b = sseArg(c->args[1], v2d, c);
-        auto imm = evalConst(c->args[2], 0);
+        auto imm = sseImmediate(c->args[2]);
         if (!imm) return std::nullopt;
         int m = int(*imm);
         int i0 = m & 1, i1 = ((m >> 1) & 1) + 2;
@@ -7643,7 +7684,7 @@ namespace
       if (name == "_mm_shuffle_epi32" && c->args.size() >= 2)
       {
         std::string a = sseArg(c->args[0], v4i, c);
-        auto imm = evalConst(c->args[1], 0);
+        auto imm = sseImmediate(c->args[1]);
         if (!imm) return std::nullopt;
         int m = int(*imm);
         int i0 = m & 3, i1 = (m >> 2) & 3, i2 = (m >> 4) & 3, i3 = (m >> 6) & 3;
@@ -7719,7 +7760,7 @@ namespace
       if (name == "_mm_srli_si128" && c->args.size() >= 2)
       {
         std::string a = sseArg(c->args[0], v16i8, c);
-        auto imm = evalConst(c->args[1], 0);
+        auto imm = sseImmediate(c->args[1]);
         if (!imm || *imm < 0 || *imm > 16) return std::nullopt;
         int shift = int(*imm);
         // Build shuffle mask: shift bytes right, fill with zeros
@@ -7748,7 +7789,442 @@ namespace
         return sseResult(sseCall(i, ll(v2i64), ll(v4i) + " " + a + ", " + ll(v4i) + " " + b), v2i64, c);
       }
 
-      return std::nullopt; // not an SSE intrinsic we handle
+      return sseMore(name, c);
+    }
+
+    // The SSE operations sseBuiltin does not have: on 8-, 16- and 64-bit lanes, on the lowest lane
+    // only (_ss, _sd), packs, saturating and horizontal ones, the set, load and store forms and the
+    // conversions. An integer result is an __m128i (<4 x i32>), its lanes bitcast back; nothing for
+    // a name that is none of them.
+    std::optional<Value> sseMore(const std::string& name, CallExpr* c)
+    {
+      const Ty* v4f = types.vectorType(types.floatType(32), 4);
+      const Ty* v2d = types.vectorType(types.floatType(64), 2);
+      const Ty* v4i = types.vectorType(types.intType(32), 4);
+      const Ty* v2i64 = types.vectorType(types.intType(64), 2);
+      const Ty* v8i16 = types.vectorType(types.intType(16), 8);
+      const Ty* v16i8 = types.vectorType(types.intType(8), 16);
+      const Ty* f32 = types.floatType(32);
+      const Ty* f64 = types.floatType(64);
+      auto ll = [&](const Ty* t) { return llType(t, c); };
+      auto need = [&](size_t n)
+      {
+        if (c->args.size() < n)
+          unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+      };
+      auto arg = [&](size_t i, const Ty* vt) { return sseArg(c->args[i], vt, c); };
+      auto asInt = [&](const std::string& r, const Ty* lanes) -> Value
+      {
+        if (lanes == v4i)
+          return sseResult(r, v4i, c);
+        std::string b = newTemp();
+        fn += "  " + b + " = bitcast " + ll(lanes) + " " + r + " to " + ll(v4i) + "\n";
+        return sseResult(b, v4i, c);
+      };
+      auto vecName = [&](const Ty* vt) { return "v" + std::to_string(vt->count) + (vt->inner->kind == TyKind::Float ? "f" : "i") + std::to_string(vt->inner->bits); };
+      auto call2 = [&](const std::string& intrinsic, const Ty* ret, const Ty* in, const std::string& a, const std::string& b)
+      {
+        std::string i = sseIntrinsic(intrinsic, ll(ret), ll(in) + ", " + ll(in));
+        return sseCall(i, ll(ret), ll(in) + " " + a + ", " + ll(in) + " " + b);
+      };
+      auto constArg = [&](size_t i) -> int64_t
+      {
+        std::optional<int64_t> v = sseImmediate(c->args[i]);
+        if (!v)
+          unsupported(c, name + " with an operand that is no constant");
+        return *v;
+      };
+      auto laneScalar = [&](const Ty* vt) { return vt->inner; };
+      auto build = [&](const Ty* vt, const std::vector<size_t>& order) // lane i from argument order[i]
+      {
+        std::string vec = "undef";
+        for (size_t i = 0; i < order.size(); ++i)
+        {
+          std::string s = sseScalar(c->args[order[i]], laneScalar(vt), c);
+          std::string next = newTemp();
+          fn += "  " + next + " = insertelement " + ll(vt) + " " + vec + ", " + ll(laneScalar(vt)) + " " + s + ", i32 " + std::to_string(i) + "\n";
+          vec = next;
+        }
+        return vec;
+      };
+      auto splat = [&](const Ty* vt)
+      {
+        std::string s = sseScalar(c->args[0], laneScalar(vt), c);
+        std::string one = newTemp(), all = newTemp();
+        fn += "  " + one + " = insertelement " + ll(vt) + " undef, " + ll(laneScalar(vt)) + " " + s + ", i32 0\n";
+        fn += "  " + all + " = shufflevector " + ll(vt) + " " + one + ", " + ll(vt) + " undef, <" + std::to_string(vt->count) + " x i32> zeroinitializer\n";
+        return all;
+      };
+      auto lowLane = [&](const Ty* vt, const std::string& scalar) // `scalar` in lane 0, the other lanes zero
+      {
+        std::string r = newTemp();
+        fn += "  " + r + " = insertelement " + ll(vt) + " zeroinitializer, " + ll(laneScalar(vt)) + " " + scalar + ", i32 0\n";
+        return r;
+      };
+      auto extract = [&](const Ty* vt, const std::string& v, int lane)
+      {
+        std::string r = newTemp();
+        fn += "  " + r + " = extractelement " + ll(vt) + " " + v + ", i32 " + std::to_string(lane) + "\n";
+        return r;
+      };
+      std::string suffix = name.substr(name.rfind('_') + 1);
+      const Ty* lanes = suffix == "epi8" || suffix == "epu8" ? v16i8 : suffix == "epi16" || suffix == "epu16" ? v8i16
+                      : suffix == "epi32" || suffix == "epu32" ? v4i : suffix == "epi64" || suffix == "epi64x" ? v2i64 : nullptr;
+      bool unsignedLanes = suffix.size() > 2 && suffix[2] == 'u';
+
+      // --- lane arithmetic (epi32 add/sub are sseBuiltin's) ---
+      if ((name.starts_with("_mm_add_ep") || name.starts_with("_mm_sub_ep") || name == "_mm_mullo_epi16" || name == "_mm_mullo_epi32") && lanes)
+      {
+        need(2);
+        std::string op = name.starts_with("_mm_add") ? "add" : name.starts_with("_mm_sub") ? "sub" : "mul";
+        return asInt(sseBinOp(op, ll(lanes), arg(0, lanes), arg(1, lanes)), lanes);
+      }
+      if ((name.starts_with("_mm_adds_ep") || name.starts_with("_mm_subs_ep")) && lanes)
+      {
+        need(2);
+        std::string op = std::string(unsignedLanes ? "u" : "s") + (name.starts_with("_mm_adds") ? "add" : "sub") + ".sat";
+        return asInt(call2("llvm." + op + "." + vecName(lanes), lanes, lanes, arg(0, lanes), arg(1, lanes)), lanes);
+      }
+      if ((name.starts_with("_mm_min_ep") || name.starts_with("_mm_max_ep")) && lanes)
+      {
+        need(2);
+        std::string op = std::string(unsignedLanes ? "u" : "s") + (name.starts_with("_mm_min") ? "min" : "max");
+        return asInt(call2("llvm." + op + "." + vecName(lanes), lanes, lanes, arg(0, lanes), arg(1, lanes)), lanes);
+      }
+      if (name == "_mm_mulhi_epi16" || name == "_mm_mulhi_epu16")
+      {
+        need(2);
+        return asInt(call2(name == "_mm_mulhi_epi16" ? "llvm.x86.sse2.pmulh.w" : "llvm.x86.sse2.pmulhu.w", v8i16, v8i16, arg(0, v8i16), arg(1, v8i16)), v8i16);
+      }
+      if (name == "_mm_madd_epi16")
+      {
+        need(2);
+        return asInt(call2("llvm.x86.sse2.pmadd.wd", v4i, v8i16, arg(0, v8i16), arg(1, v8i16)), v4i);
+      }
+      if (name == "_mm_sad_epu8")
+      {
+        need(2);
+        return asInt(call2("llvm.x86.sse2.psad.bw", v2i64, v16i8, arg(0, v16i8), arg(1, v16i8)), v2i64);
+      }
+
+      // --- packs ---
+      if (name == "_mm_packs_epi32")
+      {
+        need(2);
+        return asInt(call2("llvm.x86.sse2.packssdw.128", v8i16, v4i, arg(0, v4i), arg(1, v4i)), v8i16);
+      }
+      if (name == "_mm_packs_epi16" || name == "_mm_packus_epi16")
+      {
+        need(2);
+        return asInt(call2(name == "_mm_packs_epi16" ? "llvm.x86.sse2.packsswb.128" : "llvm.x86.sse2.packuswb.128", v16i8, v8i16, arg(0, v8i16), arg(1, v8i16)), v16i8);
+      }
+      if (name == "_mm_packus_epi32")
+      {
+        need(2);
+        return asInt(call2("llvm.x86.sse41.packusdw", v8i16, v4i, arg(0, v4i), arg(1, v4i)), v8i16);
+      }
+
+      // --- lane compares: all ones where true (epi32 ones are sseBuiltin's) ---
+      if ((name.starts_with("_mm_cmpeq_ep") || name.starts_with("_mm_cmpgt_ep") || name.starts_with("_mm_cmplt_ep")) && lanes && lanes != v4i)
+      {
+        need(2);
+        std::string pred = name.starts_with("_mm_cmpeq") ? "eq" : name.starts_with("_mm_cmpgt") ? "sgt" : "slt";
+        std::string cmp = newTemp(), r = newTemp();
+        fn += "  " + cmp + " = icmp " + pred + " " + ll(lanes) + " " + arg(0, lanes) + ", " + arg(1, lanes) + "\n";
+        fn += "  " + r + " = sext <" + std::to_string(lanes->count) + " x i1> " + cmp + " to " + ll(lanes) + "\n";
+        return asInt(r, lanes);
+      }
+
+      // --- shifts of 16- and 64-bit lanes by a count (the hardware's: a count past the width gives 0, or the sign) ---
+      if ((name == "_mm_slli_epi16" || name == "_mm_srli_epi16" || name == "_mm_srai_epi16" || name == "_mm_slli_epi64" || name == "_mm_srli_epi64"))
+      {
+        need(2);
+        std::string kind = name.substr(4, 4) == "slli" ? "pslli" : name.substr(4, 4) == "srli" ? "psrli" : "psrai";
+        std::string intrinsic = "llvm.x86.sse2." + kind + (lanes == v8i16 ? ".w" : ".q");
+        std::string i = sseIntrinsic(intrinsic, ll(lanes), ll(lanes) + ", i32");
+        return asInt(sseCall(i, ll(lanes), ll(lanes) + " " + arg(0, lanes) + ", i32 " + sseScalar(c->args[1], types.intType(32), c)), lanes);
+      }
+      if (name == "_mm_slli_si128" || name == "_mm_bslli_si128")
+      {
+        need(2);
+        int64_t shift = constArg(1);
+        std::string mask = "<16 x i32> <";
+        for (int i = 0; i < 16; ++i)
+          mask += (i ? ", i32 " : "i32 ") + std::to_string(i - shift >= 0 && shift <= 15 ? 16 + (i - shift) : 0); // zero vector first, then the bytes moved up
+        mask += ">";
+        std::string r = newTemp();
+        fn += "  " + r + " = shufflevector " + ll(v16i8) + " zeroinitializer, " + ll(v16i8) + " " + arg(0, v16i8) + ", " + mask + "\n";
+        return asInt(r, v16i8);
+      }
+
+      // --- shuffles and unpacks on 8- and 16-bit lanes ---
+      if (name == "_mm_shufflelo_epi16" || name == "_mm_shufflehi_epi16")
+      {
+        need(2);
+        int64_t imm = constArg(1);
+        bool high = name == "_mm_shufflehi_epi16";
+        std::string mask = "<8 x i32> <";
+        for (int i = 0; i < 8; ++i)
+        {
+          int lane = i;
+          if (high == (i >= 4))
+            lane = (high ? 4 : 0) + int((imm >> (2 * (i % 4))) & 3);
+          mask += (i ? ", i32 " : "i32 ") + std::to_string(lane);
+        }
+        mask += ">";
+        std::string r = newTemp();
+        fn += "  " + r + " = shufflevector " + ll(v8i16) + " " + arg(0, v8i16) + ", " + ll(v8i16) + " undef, " + mask + "\n";
+        return asInt(r, v8i16);
+      }
+      if ((name.starts_with("_mm_unpacklo_ep") || name.starts_with("_mm_unpackhi_ep")) && (lanes == v16i8 || lanes == v8i16))
+      {
+        need(2);
+        bool high = name.starts_with("_mm_unpackhi");
+        uint32_t n = lanes->count, start = high ? n / 2 : 0;
+        std::string mask = "<" + std::to_string(n) + " x i32> <";
+        for (uint32_t i = 0; i < n / 2; ++i)
+          mask += (i ? ", i32 " : "i32 ") + std::to_string(start + i) + ", i32 " + std::to_string(n + start + i);
+        mask += ">";
+        std::string r = newTemp();
+        fn += "  " + r + " = shufflevector " + ll(lanes) + " " + arg(0, lanes) + ", " + ll(lanes) + " " + arg(1, lanes) + ", " + mask + "\n";
+        return asInt(r, lanes);
+      }
+      if (name == "_mm_insert_epi16")
+      {
+        need(3);
+        std::string r = newTemp();
+        fn += "  " + r + " = insertelement " + ll(v8i16) + " " + arg(0, v8i16) + ", i16 " + sseScalar(c->args[1], types.intType(16), c) + ", i32 " +
+              std::to_string(constArg(2) & 7) + "\n";
+        return asInt(r, v8i16);
+      }
+      if (name == "_mm_extract_epi16")
+      {
+        need(2);
+        std::string lane = extract(v8i16, arg(0, v8i16), int(constArg(1) & 7)), r = newTemp();
+        fn += "  " + r + " = zext i16 " + lane + " to i32\n";
+        return Value{r, types.intType(32)};
+      }
+
+      // --- conversions ---
+      if (name == "_mm_cvtsi128_si32")
+      {
+        need(1);
+        return Value{extract(v4i, arg(0, v4i), 0), types.intType(32)};
+      }
+      if (name == "_mm_cvtsi128_si64" || name == "_mm_cvtsi128_si64x")
+      {
+        need(1);
+        return Value{extract(v2i64, arg(0, v2i64), 0), types.intType(64)};
+      }
+      if (name == "_mm_cvtsi32_si128")
+      {
+        need(1);
+        return asInt(lowLane(v4i, sseScalar(c->args[0], types.intType(32), c)), v4i);
+      }
+      if (name == "_mm_cvtsi64_si128" || name == "_mm_cvtsi64x_si128")
+      {
+        need(1);
+        return asInt(lowLane(v2i64, sseScalar(c->args[0], types.intType(64), c)), v2i64);
+      }
+      if (name == "_mm_cvtss_f32")
+      {
+        need(1);
+        return Value{extract(v4f, arg(0, v4f), 0), f32};
+      }
+      if (name == "_mm_cvtsd_f64")
+      {
+        need(1);
+        return Value{extract(v2d, arg(0, v2d), 0), f64};
+      }
+      if (name == "_mm_cvttps_epi32" || name == "_mm_cvtpd_epi32" || name == "_mm_cvttpd_epi32")
+      {
+        need(1);
+        const Ty* in = name == "_mm_cvttps_epi32" ? v4f : v2d;
+        std::string intrinsic = name == "_mm_cvttps_epi32" ? "llvm.x86.sse2.cvttps2dq" : name == "_mm_cvtpd_epi32" ? "llvm.x86.sse2.cvtpd2dq" : "llvm.x86.sse2.cvttpd2dq";
+        std::string i = sseIntrinsic(intrinsic, ll(v4i), ll(in));
+        return asInt(sseCall(i, ll(v4i), ll(in) + " " + arg(0, in)), v4i);
+      }
+      if (name == "_mm_cvtepi32_pd")
+      {
+        need(1);
+        std::string low = newTemp(), r = newTemp();
+        fn += "  " + low + " = shufflevector " + ll(v4i) + " " + arg(0, v4i) + ", " + ll(v4i) + " undef, <2 x i32> <i32 0, i32 1>\n";
+        fn += "  " + r + " = sitofp <2 x i32> " + low + " to " + ll(v2d) + "\n";
+        return sseResult(r, v2d, c);
+      }
+
+      // --- set ---
+      if (name == "_mm_setzero_ps")
+        return sseResult("zeroinitializer", v4f, c);
+      if (name == "_mm_setzero_pd")
+        return sseResult("zeroinitializer", v2d, c);
+      if ((name == "_mm_set1_epi8" || name == "_mm_set1_epi16" || name == "_mm_set1_epi64x") && lanes)
+      {
+        need(1);
+        return asInt(splat(lanes), lanes);
+      }
+      if (name == "_mm_set1_ps1" || name == "_mm_set_ps1")
+      {
+        need(1);
+        return sseResult(splat(v4f), v4f, c);
+      }
+      if (name == "_mm_set_ss" || name == "_mm_set_sd")
+      {
+        need(1);
+        const Ty* vt = name == "_mm_set_ss" ? v4f : v2d;
+        return sseResult(lowLane(vt, sseScalar(c->args[0], laneScalar(vt), c)), vt, c);
+      }
+      if (name == "_mm_setr_ps" || name == "_mm_setr_pd" || name == "_mm_setr_epi32" || name == "_mm_setr_epi16" || name == "_mm_setr_epi8" ||
+          name == "_mm_set_epi16" || name == "_mm_set_epi8")
+      {
+        const Ty* vt = name == "_mm_setr_ps" ? v4f : name == "_mm_setr_pd" ? v2d : lanes;
+        need(vt->count);
+        std::vector<size_t> order(vt->count);
+        for (size_t i = 0; i < order.size(); ++i)
+          order[i] = name.starts_with("_mm_setr") ? i : order.size() - 1 - i; // _mm_set_ lists the highest lane first
+        std::string v = build(vt, order);
+        return vt->inner->kind == TyKind::Float ? sseResult(v, vt, c) : asInt(v, vt);
+      }
+
+      // --- loads and stores ---
+      if (name == "_mm_load_ps" || name == "_mm_load_pd" || name == "_mm_load_si128")
+      {
+        need(1);
+        const Ty* vt = name == "_mm_load_ps" ? v4f : name == "_mm_load_pd" ? v2d : v4i;
+        std::string r = newTemp();
+        fn += "  " + r + " = load " + ll(vt) + ", ptr " + rvalue(c->args[0]).text + ", align 16\n";
+        return sseResult(r, vt, c);
+      }
+      if (name == "_mm_load_ss" || name == "_mm_load_sd" || name == "_mm_loadl_epi64" || name == "_mm_loadu_si32" || name == "_mm_loadu_si64")
+      {
+        need(1);
+        const Ty* vt = name == "_mm_load_ss" ? v4f : name == "_mm_load_sd" ? v2d : name == "_mm_loadu_si32" ? v4i : v2i64;
+        std::string s = newTemp();
+        fn += "  " + s + " = load " + ll(laneScalar(vt)) + ", ptr " + rvalue(c->args[0]).text + ", align 1\n";
+        std::string v = lowLane(vt, s);
+        return vt->inner->kind == TyKind::Float ? sseResult(v, vt, c) : asInt(v, vt);
+      }
+      if (name == "_mm_store_ps" || name == "_mm_store_pd" || name == "_mm_store_si128" || name == "_mm_storeu_si128")
+      {
+        need(2);
+        const Ty* vt = name == "_mm_store_ps" ? v4f : name == "_mm_store_pd" ? v2d : v4i;
+        std::string p = rvalue(c->args[0]).text, v = arg(1, vt);
+        fn += "  store " + ll(vt) + " " + v + ", ptr " + p + (name == "_mm_storeu_si128" ? ", align 1\n" : ", align 16\n");
+        return Value{"", types.voidType(), false};
+      }
+      if (name == "_mm_store_ss" || name == "_mm_store_sd" || name == "_mm_storel_epi64" || name == "_mm_storeu_si32" || name == "_mm_storeu_si64")
+      {
+        need(2);
+        const Ty* vt = name == "_mm_store_ss" ? v4f : name == "_mm_store_sd" ? v2d : name == "_mm_storeu_si32" ? v4i : v2i64;
+        std::string p = rvalue(c->args[0]).text, lane = extract(vt, arg(1, vt), 0);
+        fn += "  store " + ll(laneScalar(vt)) + " " + lane + ", ptr " + p + ", align 1\n";
+        return Value{"", types.voidType(), false};
+      }
+
+      // --- the lowest lane only (the others from the first operand) ---
+      if (name == "_mm_add_ss" || name == "_mm_sub_ss" || name == "_mm_mul_ss" || name == "_mm_div_ss" ||
+          name == "_mm_add_sd" || name == "_mm_sub_sd" || name == "_mm_mul_sd" || name == "_mm_div_sd")
+      {
+        need(2);
+        const Ty* vt = suffix == "ss" ? v4f : v2d;
+        std::string a = arg(0, vt), b = arg(1, vt);
+        std::string x = extract(vt, a, 0), y = extract(vt, b, 0);
+        std::string op = name.substr(4, 3) == "add" ? "fadd" : name.substr(4, 3) == "sub" ? "fsub" : name.substr(4, 3) == "mul" ? "fmul" : "fdiv";
+        std::string v = sseBinOp(op, ll(laneScalar(vt)), x, y), r = newTemp();
+        fn += "  " + r + " = insertelement " + ll(vt) + " " + a + ", " + ll(laneScalar(vt)) + " " + v + ", i32 0\n";
+        return sseResult(r, vt, c);
+      }
+      if (name == "_mm_max_ss" || name == "_mm_min_ss" || name == "_mm_max_sd" || name == "_mm_min_sd")
+      {
+        need(2);
+        const Ty* vt = suffix == "ss" ? v4f : v2d;
+        std::string intrinsic = std::string("llvm.x86.") + (suffix == "ss" ? "sse." : "sse2.") + name.substr(4, 3) + "." + suffix;
+        return sseResult(call2(intrinsic, vt, vt, arg(0, vt), arg(1, vt)), vt, c);
+      }
+      if (name == "_mm_rcp_ss" || name == "_mm_rsqrt_ss")
+      {
+        need(1);
+        std::string intrinsic = "llvm.x86.sse." + name.substr(4, name.size() - 7) + ".ss";
+        std::string i = sseIntrinsic(intrinsic, ll(v4f), ll(v4f));
+        return sseResult(sseCall(i, ll(v4f), ll(v4f) + " " + arg(0, v4f)), v4f, c);
+      }
+
+      // --- the control register and cache hints ---
+      if (name == "_mm_getcsr")
+      {
+        std::string slot = "%v" + std::to_string(temp++), r = newTemp();
+        allocas += "  " + slot + " = alloca i32\n";
+        fn += "  call void " + sseIntrinsic("llvm.x86.sse.stmxcsr", "void", "ptr") + "(ptr " + slot + ")\n";
+        fn += "  " + r + " = load i32, ptr " + slot + "\n";
+        return Value{r, types.intType(32, true)};
+      }
+      if (name == "_mm_prefetch")
+      {
+        need(2);
+        int64_t hint = constArg(1); // _MM_HINT_T0 3 ... _MM_HINT_NTA 0: the locality
+        std::string i = sseIntrinsic("llvm.prefetch.p0", "void", "ptr, i32, i32, i32");
+        fn += "  call void " + i + "(ptr " + convert(rvalue(c->args[0]), types.pointer(types.voidType()), c).text + ", i32 0, i32 " +
+              std::to_string(hint & 3) + ", i32 1)\n";
+        return Value{"", types.voidType(), false};
+      }
+      return std::nullopt; // not an SSE operation the code generator has
+    }
+
+    // MSVC's intrin.h functions the game calls that are instructions: _BitScanReverse and
+    // _BitScanForward (32 and 64 bits), __cpuid and __cpuidex. Nothing for other names.
+    std::optional<Value> msvcBuiltin(NameExpr* n, CallExpr* c)
+    {
+      if (n->name.parts.size() != 1)
+        return std::nullopt;
+      std::string name = sym(n->name.parts[0].symbol);
+      if (name == "_BitScanReverse" || name == "_BitScanForward" || name == "_BitScanReverse64" || name == "_BitScanForward64")
+      {
+        if (c->args.size() != 2)
+          unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+        bool wide = name.ends_with("64"), reverse = name.starts_with("_BitScanReverse");
+        std::string iN = wide ? "i64" : "i32";
+        std::string index = convert(rvalue(c->args[0]), types.pointer(types.intType(32, true)), c).text;
+        std::string mask = convert(rvalue(c->args[1]), types.intType(wide ? 64 : 32, true), c).text;
+        std::string count = reverse ? "llvm.ctlz." + iN : "llvm.cttz." + iN;
+        if (declaredNames.claim("@" + count))
+          decls += "declare " + iN + " @" + count + "(" + iN + ", i1)\n";
+        std::string zero = newTemp(), bits = newTemp(), at = newTemp(), at32 = newTemp(), found = newTemp(), r = newTemp();
+        fn += "  " + zero + " = icmp eq " + iN + " " + mask + ", 0\n";
+        fn += "  " + bits + " = call " + iN + " @" + count + "(" + iN + " " + mask + ", i1 false)\n";
+        if (reverse)
+          fn += "  " + at + " = sub " + iN + " " + (wide ? "63" : "31") + ", " + bits + "\n";
+        else
+          fn += "  " + at + " = add " + iN + " " + bits + ", 0\n";
+        fn += "  " + at32 + " = " + (wide ? "trunc i64 " : "add i32 ") + at + (wide ? " to i32\n" : ", 0\n");
+        // With mask 0 *index is left as it was (MSVC calls it undefined; the instruction leaves it).
+        std::string old = newTemp(), kept = newTemp();
+        fn += "  " + old + " = load i32, ptr " + index + "\n";
+        fn += "  " + kept + " = select i1 " + zero + ", i32 " + old + ", i32 " + at32 + "\n";
+        fn += "  store i32 " + kept + ", ptr " + index + "\n";
+        fn += "  " + found + " = xor i1 " + zero + ", true\n";
+        fn += "  " + r + " = zext i1 " + found + " to i8\n";
+        return Value{r, types.intType(8, true)};
+      }
+      if (name == "__cpuid" || name == "__cpuidex")
+      {
+        if (c->args.size() != (name == "__cpuid" ? 2u : 3u))
+          unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+        std::string info = convert(rvalue(c->args[0]), types.pointer(types.intType(32)), c).text;
+        std::string leaf = convert(rvalue(c->args[1]), types.intType(32), c).text;
+        std::string sub = name == "__cpuidex" ? convert(rvalue(c->args[2]), types.intType(32), c).text : "0";
+        std::string regs = newTemp();
+        fn += "  " + regs + " = call { i32, i32, i32, i32 } asm sideeffect \"cpuid\", \"={ax},={bx},={cx},={dx},{ax},{cx},~{dirflag},~{fpsr},~{flags}\"(i32 " +
+              leaf + ", i32 " + sub + ")\n";
+        for (int i = 0; i < 4; ++i)
+        {
+          std::string v = newTemp(), slot = newTemp();
+          fn += "  " + v + " = extractvalue { i32, i32, i32, i32 } " + regs + ", " + std::to_string(i) + "\n";
+          fn += "  " + slot + " = getelementptr inbounds i32, ptr " + info + ", i64 " + std::to_string(i) + "\n";
+          fn += "  store i32 " + v + ", ptr " + slot + "\n";
+        }
+        return Value{"", types.voidType(), false};
+      }
+      return std::nullopt;
     }
 
     // The pointer an `->` applies to: the value itself, or what the class's operator-> returns
