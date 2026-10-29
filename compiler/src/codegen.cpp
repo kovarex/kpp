@@ -8275,7 +8275,13 @@ namespace
             tmp.name = qualifier;
             TemplateArgs none;
             const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
-            if (q && isClass(q) && !q->args.empty())
+            // `T::computeHash(args...)` with T a class deriving from the template that declares it
+            // (ComplexExpressionWithOperation<BasisNoise> from ComplexExpression<BasisNoise, 2, 6>):
+            // the member of that base instance, with its arguments.
+            const Ty* declaring = q && isClass(q) ? instantiationIn(q, global.owningClass(f), c) : nullptr;
+            if (declaring && !declaring->args.empty())
+              classTy = declaring;
+            else if (q && isClass(q) && !q->args.empty())
               classTy = canonicalClass(q, c);
           }
           // move(x) and forward(x): identity casts (lref -> rref in the type system,
