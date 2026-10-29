@@ -22,12 +22,7 @@ compile, loudly) last. State of 2026-10-29.
   (classes/reference_bound_through_conversion_operator): a `ref(x)` argument of a Thread for an
   `int&` parameter reaches a copy of x, silently.
 
-**Optional** (docs/stdlib/optional.md): the value is stored as a T member, so an empty Optional
-holds a default-constructed T: T needs a default constructor, its constructor runs for an empty
-Optional and its destructor at the end. reset() and emplace() destroy the value at once as
-specified (and default-construct the storage again). Raw storage needs `alignas(T)` on a member of
-a template (or `alignof` of an instantiation), which the compiler ignores today: the bytes would be
-misaligned for types aligned beyond their size. Not in the specification, kept from the game's own
+**Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
 
 ## Missing types and API
@@ -54,7 +49,9 @@ BadFunctionCall on an empty call), Atomic (every size from 1 to 8 bytes moved as
 float, double and enums are exact; Atomic<SharedPtr<T>>). Until 2026-10-28 Atomic of a 1- or 2-byte
 type wrote 4 bytes (overwriting the fields after it) and Atomic<float>/<double> converted the value
 to an integer; both were silent. RecursiveMutex (re-entrant for its owning thread; until 2026-10-28 it was
-Mutex itself, which deadlocks when re-entered). Thread, Thread::Id, thisThread, the mutexes, locks
+Mutex itself, which deadlocks when re-entered). Optional (the value in a union's storage since 2026-10-29: an
+empty Optional constructs no T, so T needs no default constructor; until then it held a
+default-constructed T). Thread, Thread::Id, thisThread, the mutexes, locks
 and ConditionVariable as docs/stdlib/thread.md specifies them (2026-10-29: Thread took only a
 callable and joined in its destructor, join and detach did nothing when not joinable, the timed
 waits returned a bool and Future's waitFor could report a timeout early on a spurious wake-up).

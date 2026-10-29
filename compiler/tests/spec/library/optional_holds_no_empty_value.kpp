@@ -1,0 +1,42 @@
+// spec: an empty Optional holds no T: no constructor has run for it (T needs no default constructor) and no destructor will; giving the value up destroys it at once; copies and moves construct, assign or destroy as the two Optionals hold values; emplace destroys the old value first; an over-aligned T keeps its alignment
+// factorio: PrototypeMigrationListDefinition's Optional<ParsedMigrations<ID<...>>> (ParsedMigrations has no default constructor; 42 instances)
+struct alignas(16) Wide { float v[4]; };
+static int alive = 0;
+struct Counted
+{
+  int value;
+  explicit Counted(int value) : value(value) { ++alive; }
+  Counted(const Counted& other) : value(other.value) { ++alive; }
+  Counted& operator=(const Counted& other)
+  {
+    this->value = other.value * 10;
+    return *this;
+  }
+  ~Counted() { --alive; }
+};
+int main()
+{
+  Optional<Counted> a;
+  Optional<Counted> b(nullopt);
+  println("{} {} {}", alive, a.has_value(), a == nullopt);
+  a = Counted(5);
+  Optional<Counted> c = a;
+  println("{} {} {}", alive, c->value, a->value == c.value().value);
+  c = a;
+  println("{} {}", alive, c->value);
+  a.reset();
+  println("{} {}", alive, !a);
+  c = b;
+  println("{} {}", alive, c.has_value());
+  c.emplace(7);
+  c.emplace(8);
+  println("{} {}", alive, c.value().value);
+  {
+    Optional<Counted> d(inPlace, 3);
+    println("{}", alive);
+  }
+  Optional<Wide> wide;
+  wide = Wide{{1, 2, 3, 4}};
+  println("{} {} {}", alive, alignof(Optional<Wide>), ((size_t)&*wide) % 16);
+  return 0;
+}
