@@ -125,6 +125,10 @@ int main()
   view = glm::translate(view, glm::vec3(-12.5f, 7.75f, 0));
   printMatrix("view", view);
   glm::mat4 projection = glm::ortho(0.0f, 1920.0f, 1080.0f, 0.0f);
+  glm::mat4 viewProjection = projection;
+  viewProjection *= view;
+  viewProjection *= 0.5f;
+  printMatrix("viewProjection", viewProjection);
   glm::mat4 model = glm::translate(glm::vec3{960.0f + 15.0f, 540.0f - 4.0f, 0.0f}) * glm::scale(glm::vec3{30.0f, 8.0f, 0.0f});
   printMatrix("mvp", projection * view * model * rotation);
   print4("mvp*v", projection * view * glm::vec4(1.0f, 2.0f, 0.0f, 1.0f));

@@ -40,7 +40,8 @@ reads them before writing them, so this changes nothing it computes.
 - Vectors: `+`, `-`, `*`, `/` of two vectors of a size (component by component), of a vector and a
   float on either side, the compound forms `+=`, `-=`, `*=`, `/=` with a vector or a float, unary
   `-` and `+`, `==`, `!=`.
-- Matrices: `mat4 * mat4`, `mat4 * vec4`, `mat4 * float`, `==`, `!=`.
+- Matrices: `mat4 * mat4`, `mat4 * vec4`, `mat4 * float`, `*=` with a matrix (`m = m * other`) or a
+  float, `==`, `!=`.
 
 ## Functions
 

@@ -177,6 +177,16 @@ namespace glm
     const vec4& operator[](length_t i) const { return this->value[i]; }
 
     mat4 operator*(float s) const { return mat4(this->value[0] * s, this->value[1] * s, this->value[2] * s, this->value[3] * s); }
+    mat4& operator*=(float s)
+    {
+      this->value[0] *= s;
+      this->value[1] *= s;
+      this->value[2] *= s;
+      this->value[3] *= s;
+      return *this;
+    }
+    // *this = *this * m (LightningDrawEngine's `viewProjection *= renderParameters.getViewMatrix();`).
+    mat4& operator*=(const mat4& m) { return (*this = *this * m); }
     // The matrix product, as glm sums it: each column of the result is the columns of this one
     // weighted by the other's column, added in column order.
     mat4 operator*(const mat4& m2) const
