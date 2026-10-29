@@ -1,0 +1,44 @@
+// spec: a structured binding of a class for which the library's TupleSize<E> (std::tuple_size) is specialized binds through get<i>: binding i is what get<i>(e) gives (a reference into e for `auto&`), whatever the class's data members are; a class without TupleSize binds by its data members as before
+// factorio: the game's structured bindings of std::tuple results (CutsceneController's `auto [transition, wait] = getTimes(...)`, TextureStreamingManager's `auto [tileX, tileY, mip] = tileIDToTilePosition(id)`, RobotWithLogisticInterface, TiledVideoBitmap): a variadic Tuple keeps its elements in nested members, not flat ones
+// pending: binds by data members only (b gets the nested rest)
+struct Inner
+{
+  double second = 0;
+  int third = 0;
+};
+struct Triple
+{
+  int first = 0;
+  Inner rest;
+};
+template<>
+struct TupleSize<Triple> { static constexpr int value = 3; };
+template<int I>
+decltype(auto) get(Triple& t)
+{
+  if constexpr (I == 0)
+    return (t.first);
+  else if constexpr (I == 1)
+    return (t.rest.second);
+  else
+    return (t.rest.third);
+}
+struct Plain
+{
+  int x = 7;
+  int y = 8;
+};
+int main()
+{
+  Triple t;
+  t.first = 1;
+  t.rest.second = 2.5;
+  t.rest.third = 3;
+  auto [a, b, c] = t;
+  auto& [ra, rb, rc] = t;
+  rc = 30;
+  Plain p;
+  auto [x, y] = p;
+  println("{} {} {} {} {} {}", a, b, c, t.rest.third, x, y);
+  return 0;
+}

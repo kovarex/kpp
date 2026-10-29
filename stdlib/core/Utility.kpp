@@ -209,6 +209,12 @@ Tuple<A, B, C> makeTuple(const A& a, const B& b, const C& c) { return Tuple<A, B
 template<typename A, typename B, typename C, typename D>
 Tuple<A, B, C, D> makeTuple(const A& a, const B& b, const C& c, const D& d) { return Tuple<A, B, C, D>(a, b, c, d); }
 
+// The number of elements of a tuple-like type E (std::tuple_size): specialized for one, it says that
+// `auto [a, b] = e` binds a and b to get<0>(e) and get<1>(e) rather than to e's data members (spec
+// language/structured_binding_tuple_protocol).
+template<typename E>
+struct TupleSize {};
+
 // The type of element I of a Tuple, and the element itself.
 template<int I, typename A, typename B, typename C, typename D>
 struct TupleElement {};
