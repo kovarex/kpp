@@ -2608,55 +2608,6 @@ namespace
       counts.add("fixture test bodies");
       fixtureBodies.push_back(std::move(body));
     }
-    // text (a macro's argument in a fixture test's body, at token use) with the fixture's members it
-    // names unqualified given their `this->`.
-    std::string qualifyFixtureMembers(const std::string& text, const FixtureBody& b, uint32_t use)
-    {
-      std::string out;
-      for (size_t i = 0; i < text.size();)
-      {
-        if (size_t raw = rawStringEnd(text, i); raw != std::string_view::npos)
-        {
-          out.append(text, i, raw - i);
-          i = raw;
-        }
-        else if (text[i] == '"' || (text[i] == '\'' && !isDigitSeparator(text, i)))
-        {
-          size_t k = i + 1;
-          while (k < text.size() && text[k] != text[i])
-            k += text[k] == '\\' ? 2 : 1;
-          k = std::min(k + 1, text.size());
-          out.append(text, i, k - i);
-          i = k;
-        }
-        else if (isalpha((unsigned char)text[i]) || text[i] == '_')
-        {
-          size_t k = i;
-          while (k < text.size() && isIdentChar(text[k]))
-            ++k;
-          std::string name = text.substr(i, k - i);
-          size_t p = out.size();
-          while (p > 0 && isspace((unsigned char)out[p - 1]))
-            --p;
-          bool qualified = p > 0 && (out[p - 1] == '.' || out[p - 1] == ':' || (out[p - 1] == '>' && p > 1 && out[p - 2] == '-'));
-          size_t n = k;
-          while (n < text.size() && isspace((unsigned char)text[n]))
-            ++n;
-          bool scoped = (n + 1 < text.size() && text[n] == ':' && text[n + 1] == ':') ||
-                        (n > k && n < text.size() && (isalpha((unsigned char)text[n]) || text[n] == '_')); // or a declaration's type
-          if (!qualified && !scoped && b.members.count(name) && !isFixtureLocal(b, name, use) && !isdigit((unsigned char)name[0]))
-          {
-            out += "this->";
-            counts.add("this-> added in fixture test bodies");
-          }
-          out += name;
-          i = k;
-        }
-        else
-          out += text[i++];
-      }
-      return out;
-    }
     // The C libraries this file's library keeps calling, by include path prefix, imported where it
     // includes them (Lua's override_printf.h includes trio.h; the game's own calls of trio are the
     // C runtime's, and its includes of trio.h go).
@@ -2777,6 +2728,18 @@ namespace
       const std::string* replacement;
     };
     std::vector<ArgumentMacroUse> argumentMacroUses;
+    // A use of a local macro (this file's, or a header's it includes), expanded in run() once the
+    // edits inside its arguments are known, as argument macros are: the arguments' tokens stay in
+    // the stream, so the rewrites of code apply in them too (a renamed alias, a chrono literal,
+    // this->: TestLatencyCarWhiteBox's `CHECK_EQUAL(State(...), ...)`, TestUDPSocket's
+    // `CHECK(wait_for(50ms))`).
+    struct LocalMacroUse
+    {
+      uint32_t begin, end; // the use, from the name to the closing parenthesis
+      std::vector<std::pair<uint32_t, uint32_t>> args; // offsets; an empty argument is an empty range
+      const LocalMacro* macro;
+    };
+    std::vector<LocalMacroUse> localMacroUses;
     // A hidden friend defined in a class that moves out to namespace scope (run() renders it once
     // the edits inside it are known): text[begin, end) goes to `at`, after `header`, with the names
     // it found in the class's scope (nested types) qualified; [begin, removeEnd) goes.
@@ -3392,14 +3355,85 @@ namespace
     // The body of a local macro with its parameters replaced by the argument texts; `#x` quotes,
     // `##` pastes. __VA_ARGS__ is the arguments of a variadic macro's `...`, joined by commas; when
     // there are none, a comma right before it goes too, as the game's compiler (MSVC) has it.
-    std::string expandMacroOnce(const LocalMacro& m, const std::vector<std::string>& args)
+    // An argument passed on from one macro to another: its rewritten text and its spelling, between
+    // \x01, \x02 and \x03, until the inner macro takes one of them (untagged).
+    static std::string taggedArgument(const std::string& rewritten, const std::string& spelling)
     {
+      return "\x01" + untagged(rewritten, true) + "\x02" + untagged(spelling, false) + "\x03";
+    }
+    static std::string withoutProtection(std::string text)
+    {
+      text.erase(std::remove_if(text.begin(), text.end(), [](char c) { return c == '\x04' || c == '\x05'; }), text.end());
+      return text;
+    }
+    static std::string untagged(const std::string& text, bool rewritten)
+    {
+      if (text.find('\x01') == std::string::npos)
+        return text;
+      std::string out;
+      for (size_t i = 0; i < text.size();)
+      {
+        size_t open = text.find('\x01', i);
+        if (open == std::string::npos)
+        {
+          out.append(text, i, std::string::npos);
+          break;
+        }
+        size_t middle = text.find('\x02', open), close = text.find('\x03', middle);
+        out.append(text, i, open - i);
+        out += rewritten ? text.substr(open + 1, middle - open - 1) : text.substr(middle + 1, close - middle - 1);
+        i = close + 1;
+      }
+      return out;
+    }
+    // The macro's body with the arguments put in. spellings, when given, are the arguments as written,
+    // which # and ## take (C++ stringizes and pastes the tokens as they are), a place right after
+    // `.`, `->` or `::` (a member's name: Agui's Listener puts its argument in `this->NAME` and
+    // `other.NAME`); elsewhere args, the arguments with the conversion's rewrites. An argument passed on
+    // to another macro takes both, tagged (taggedArgument), for that macro to choose by its own use
+    // of it: UpgradableEntity's dispatch puts its call after `->`, UnitTest++'s TEST passes its name
+    // on to be pasted and stringized, CHECK passes its value on to be evaluated.
+    std::string expandMacroOnce(const LocalMacro& m, const std::vector<std::string>& args, const std::vector<std::string>* spellings = nullptr,
+                                uint32_t useOffset = 0)
+    {
+      // For each parenthesis open in the body, whether it is a macro's argument list.
+      std::vector<bool> macroCalls;
       std::string out;
       const std::string& b = m.body;
-      std::string variadicArgs;
-      if (variadic(m))
-        for (size_t k = m.params.size() - 1; k < args.size(); ++k)
-          variadicArgs += (k + 1 == m.params.size() ? "" : ", ") + args[k];
+      auto variadicOf = [&](const std::vector<std::string>& list)
+      {
+        std::string joined;
+        for (size_t k = m.params.size() - 1; k < list.size(); ++k)
+          joined += (k + 1 == m.params.size() ? "" : ", ") + list[k];
+        return joined;
+      };
+      std::string variadicArgs = variadic(m) ? variadicOf(args) : std::string();
+      bool afterPaste = false;
+      // The text of argument k put in at body position at (just after the parameter's name): its
+      // spelling after # or next to ##, or after `.`, `->` or `::`; both, tagged, inside another
+      // macro's arguments; else the rewritten argument.
+      auto argumentAt = [&](size_t k, size_t at, bool stringize, bool pasteBefore) -> std::string
+      {
+        if (!spellings)
+          return k < args.size() ? args[k] : std::string();
+        size_t next = at;
+        while (next < b.size() && b[next] == ' ')
+          ++next;
+        bool pasted = pasteBefore || b.compare(next, 2, "##") == 0;
+        size_t last = out.find_last_not_of(" \t");
+        bool member = last != std::string::npos &&
+                      (out[last] == '.' || (last > 0 && out[last] == '>' && out[last - 1] == '-') || (last > 0 && out[last] == ':' && out[last - 1] == ':'));
+        bool forwarded = std::find(macroCalls.begin(), macroCalls.end(), true) != macroCalls.end();
+        std::string argument = k < args.size() ? args[k] : std::string();
+        std::string spelling = k < spellings->size() ? (*spellings)[k] : std::string();
+        if (stringize || pasted || member)
+          return spelling;
+        if (forwarded && argument != spelling)
+          return taggedArgument(argument, spelling);
+        // (Renamed already where a rewrite changed it: expandMacro's renames pass it by. One the
+        // rewrites left alone stays plain text, a macro's name passed to an X-macro list among them.)
+        return argument == spelling ? argument : "\x04" + argument + "\x05";
+      };
       for (size_t i = 0; i < b.size();)
       {
         char c = b[i];
@@ -3410,18 +3444,35 @@ namespace
           i += 2;
           while (i < b.size() && b[i] == ' ')
             ++i;
+          afterPaste = true;
           continue;
         }
+        bool pasteBefore = afterPaste;
+        afterPaste = false;
+        if (spellings && c == '(')
+        {
+          size_t last = out.find_last_not_of(" \t");
+          size_t start = last;
+          while (start != std::string::npos && start > 0 && isIdentChar(out[start - 1]))
+            --start;
+          bool call = last != std::string::npos && isIdentChar(out[last]) && localMacroAt(out.substr(start, last + 1 - start), useOffset);
+          macroCalls.push_back(call);
+        }
+        else if (spellings && c == ')' && !macroCalls.empty())
+          macroCalls.pop_back();
         if (variadic(m) && b.compare(i, 11, "__VA_ARGS__") == 0 && (i == 0 || !isIdentChar(b[i - 1])) &&
             (i + 11 == b.size() || !isIdentChar(b[i + 11])))
         {
-          if (variadicArgs.empty())
+          std::string joined;
+          for (size_t k = m.params.size() - 1; k < args.size(); ++k)
+            joined += (k + 1 == m.params.size() ? "" : ", ") + argumentAt(k, i + 11, false, pasteBefore);
+          if (joined.empty())
           {
             size_t end = out.find_last_not_of(" \t");
             if (end != std::string::npos && out[end] == ',')
               out.erase(end);
           }
-          out += variadicArgs;
+          out += joined;
           i += 11;
           continue;
         }
@@ -3439,11 +3490,11 @@ namespace
               which = k;
           if (which < m.params.size())
           {
-            std::string argument = which < args.size() ? args[which] : std::string();
-            out += stringize ? stringized(argument) : argument;
+            std::string argument = argumentAt(which, j, stringize, pasteBefore);
+            out += stringize ? stringized(withoutProtection(untagged(argument, false))) : argument;
           }
           else if (stringize && word == "__VA_ARGS__" && variadic(m))
-            out += stringized(variadicArgs);
+            out += stringized(spellings ? variadicOf(*spellings) : variadicArgs);
           else
             out.append(b, i, j - i);
           i = j;
@@ -3496,11 +3547,11 @@ namespace
     }
 
     // useOffset is where the macro is used, for __FILE__ and __LINE__ in known macros' replacements.
-    std::string expandMacro(const LocalMacro& m, const std::vector<std::string>& args, uint32_t useOffset)
+    std::string expandMacro(const LocalMacro& m, const std::vector<std::string>& args, uint32_t useOffset, const std::vector<std::string>* spellings = nullptr)
     {
       // The preprocessor's file and line in the body are the use's (`__FILE__` in a header's
       // release_assert-like macro).
-      return this->renameGameClasses(withFileAndLine(rescanMacros(expandMacroOnce(m, args), useOffset), useOffset));
+      return this->renameOutsideArguments(withFileAndLine(untagged(rescanMacros(expandMacroOnce(m, args, spellings, useOffset), useOffset), true), useOffset));
     }
     // C's `assert(c)` where an expression stands (llimits.h's `#define check_exp(c,e)
     // (lua_assert(c), (e))`): Kpp's assert is a statement, so the assert goes in a lambda called on
@@ -3582,7 +3633,21 @@ namespace
               }
               if (closed && argumentsFit(*inner, innerArgs.size()))
               {
-                next += expandMacroOnce(*inner, innerArgs);
+                bool tagged = false;
+                for (const std::string& a : innerArgs)
+                  tagged = tagged || a.find('\x01') != std::string::npos;
+                if (tagged)
+                {
+                  std::vector<std::string> rewritten, spelled;
+                  for (const std::string& a : innerArgs)
+                  {
+                    rewritten.push_back(untagged(a, true));
+                    spelled.push_back(untagged(a, false));
+                  }
+                  next += expandMacroOnce(*inner, rewritten, &spelled, useOffset);
+                }
+                else
+                  next += expandMacroOnce(*inner, innerArgs);
                 changed = true;
                 i = k + 1;
                 continue;
@@ -3691,6 +3756,32 @@ namespace
 
     // The game's classes whose names the library uses, renamed in text that never was tokens.
     std::string renameGameClasses(const std::string& s) { return renameGameClassNames(s, &counts); }
+    // A macro's expansion with the game's classes renamed in the text that came from its body, not in
+    // the arguments put in with their rewrites (between \x04 and \x05, which go): their names had the
+    // renames of code, in their context (a std::vector there is the library's Vector already, no
+    // game class Vector).
+    std::string renameOutsideArguments(const std::string& s)
+    {
+      if (s.find('\x04') == std::string::npos)
+        return this->renameGameClasses(s);
+      std::string out, pending;
+      int depth = 0;
+      for (char c : s)
+        if (c == '\x04' || c == '\x05')
+        {
+          if (depth == 0 && c == '\x04')
+          {
+            out += this->renameGameClasses(pending);
+            pending.clear();
+          }
+          depth += c == '\x04' ? 1 : -1;
+        }
+        else if (depth > 0)
+          out += c;
+        else
+          pending += c;
+      return out + this->renameGameClasses(pending);
+    }
 
     bool macroHoldsAt(const std::string& name, uint32_t offset) const
     {
@@ -3937,15 +4028,15 @@ namespace
                     }
                   }
                 }
-                if (const FixtureBody* body = fixtureBodies.empty() ? nullptr : fixtureBodyAt(i))
-                  for (std::string& a : argText)
-                    a = qualifyFixtureMembers(a, *body, i);
-                std::string expansion = expandMacro(*lm, argText, t.offset);
+                // (The fixture class a TEST_FIXTURE's expansion names, for its body's this->.)
                 if (j + 1 < toks.size() && toks[j + 1].is(P::LBrace))
-                  noteFixtureBody(expansion, j + 1);
-                replace(t.offset, endOffset(j) - t.offset, expansion);
+                  noteFixtureBody(expandMacro(*lm, argText, t.offset), j + 1);
+                LocalMacroUse use{t.offset, endOffset(j), {}, lm};
+                for (auto [a0, a1] : args)
+                  use.args.push_back(a1 > a0 ? std::pair(toks[a0].offset, endOffset(a1 - 1)) : std::pair(toks[a0].offset, toks[a0].offset));
+                localMacroUses.push_back(std::move(use));
                 counts.add(lm->from == 0 && lm->to == UINT32_MAX && headerMacros && headerMacros->count(std::string(spelling(i))) ? "C header macro expanded" : "local macro expanded");
-                i = j;
+                ++i; // on to the arguments: run() expands the use
                 continue;
               }
             }
@@ -6049,13 +6140,15 @@ namespace
 
     // text[begin, end) with the edits inside it applied; edits must be sorted as run() sorts them.
     // An insertion at end belongs to what follows, unless end is the end of the file.
-    std::string applyEdits(const std::vector<Edit>& sorted, uint32_t begin, uint32_t end) const
+    // The text [begin, end) with the edits inside it; an insertion at end goes with the next text,
+    // or with this one when it is a macro's argument (keepEnd: what is inserted after its last token).
+    std::string applyEdits(const std::vector<Edit>& sorted, uint32_t begin, uint32_t end, bool keepEnd = false) const
     {
       std::string out;
       uint32_t pos = begin;
       for (const Edit& e : sorted)
       {
-        if (e.offset < begin || e.offset + e.length > end || (e.length == 0 && e.offset == end && end < text.size()))
+        if (e.offset < begin || e.offset + e.length > end || (!keepEnd && e.length == 0 && e.offset == end && end < text.size()))
           continue;
         if (e.offset < pos)
         {
@@ -6110,6 +6203,39 @@ namespace
       // By offset; at the same offset the longest first, so that a removal cancels the edits inside it.
       auto byOffset = [](const Edit& a, const Edit& b) { return a.offset != b.offset ? a.offset < b.offset : a.length > b.length; };
       std::stable_sort(edits.begin(), edits.end(), byOffset);
+      // Local macros, now that their arguments' rewrites are known: each use becomes one replacement,
+      // which cancels the edits inside it; the innermost first, as a use inside another's argument
+      // is part of that argument. (The uses are in source order: one inside another comes after it.)
+      if (!localMacroUses.empty())
+      {
+        std::vector<int> depth(localMacroUses.size(), 0);
+        std::vector<size_t> open;
+        int deepest = 0;
+        for (size_t u = 0; u < localMacroUses.size(); ++u)
+        {
+          while (!open.empty() && localMacroUses[open.back()].end <= localMacroUses[u].begin)
+            open.pop_back();
+          depth[u] = int(open.size());
+          deepest = std::max(deepest, depth[u]);
+          open.push_back(u);
+        }
+        for (int level = deepest; level >= 0; --level)
+        {
+          for (size_t u = 0; u < localMacroUses.size(); ++u)
+            if (depth[u] == level)
+            {
+              const LocalMacroUse& use = localMacroUses[u];
+              std::vector<std::string> args, spellings;
+              for (auto [b, e] : use.args)
+              {
+                args.push_back(applyEdits(edits, b, e, true));
+                spellings.push_back(std::string(text.substr(b, e - b)));
+              }
+              edits.push_back({use.begin, use.end - use.begin, expandMacro(*use.macro, args, use.begin, &spellings)});
+            }
+          std::stable_sort(edits.begin(), edits.end(), byOffset);
+        }
+      }
       // Argument macros, now that their arguments' rewrites (this->, renames) are known: each use
       // becomes one replacement, which cancels the edits inside it.
       if (!argumentMacroUses.empty())
