@@ -9972,12 +9972,24 @@ struct GlobalScope::Impl
 
   // The substitution each instantiation's copy of a function is typed under, as its walk recorded
   // it: a class declared in that body (its members, its bases) sees the instance's arguments.
-  std::mutex instanceSubstsMutex;
-  std::unordered_map<const Decl*, Subst> instanceSubsts;
+  // Sharded by the copy's address: every instance walk records one, on every thread (one map
+  // under one lock was a fifth of the parallel front end's waiting).
+  struct InstanceSubstShard
+  {
+    std::mutex mutex;
+    std::unordered_map<const Decl*, Subst> substs;
+  };
+  InstanceSubstShard instanceSubstShards[64];
+  InstanceSubstShard& instanceSubstShard(const Decl* copy)
+  {
+    return instanceSubstShards[(reinterpret_cast<uintptr_t>(copy) >> 6) % std::size(instanceSubstShards)];
+  }
   void recordInstanceSubst(const FunctionDecl* copy, const Subst& s)
   {
-    std::lock_guard lock(instanceSubstsMutex);
-    instanceSubsts.emplace(copy, s);
+    Subst own = s; // copied outside the lock
+    InstanceSubstShard& shard = instanceSubstShard(copy);
+    std::lock_guard lock(shard.mutex);
+    shard.substs.emplace(copy, std::move(own));
   }
   // The substitution of the instance copy whose body declares the class d is (or is in), or null.
   // Only classes: the copy's own parameters and locals keep their written types, which the code
@@ -9993,9 +10005,10 @@ struct GlobalScope::Impl
       {
         if (!inClass)
           return nullptr;
-        std::lock_guard lock(instanceSubstsMutex);
-        auto it = instanceSubsts.find(p);
-        return it == instanceSubsts.end() ? nullptr : &it->second;
+        InstanceSubstShard& shard = instanceSubstShard(p);
+        std::lock_guard lock(shard.mutex);
+        auto it = shard.substs.find(p);
+        return it == shard.substs.end() ? nullptr : &it->second;
       }
     }
     return nullptr;
