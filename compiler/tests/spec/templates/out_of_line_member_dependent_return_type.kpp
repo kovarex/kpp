@@ -1,6 +1,5 @@
 // spec: an out-of-line definition of a class template's member whose return type names the class's member type through the class (`typename Id<T, I>::IndexType Id<T, I>::loadIndex(...)`, `const Loader<typename Proto<T>::IDType>* Proto<T>::getLoader() const`) defines the member declared in the class with that type unqualified (`static IndexType loadIndex(...)`)
 // factorio: ID<T, Index>::loadIndex (20 instances), Prototype<ID>::getLoader, SimpleSlot<ID>::getCountInternal and others: declared, defined out of line, and never emitted, about 100 of the link's unresolved externals with no codegen error to show for them
-// pending: the definition is not taken for the member's, which stays without a body: a link error ("unresolved external symbol Id<Item, uint16>::loadIndex(int32)")
 template<typename T>
 struct Loader
 {

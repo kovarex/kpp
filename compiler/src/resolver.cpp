@@ -361,6 +361,9 @@ struct GlobalScope::Impl
       for (Entry& e : const_cast<std::vector<Entry>&>(*entries))
         if (e.decl == f)
           e.decl = v;
+        else if (scope->kind == ScopeKind::Namespace && e.decl && e.decl->kind == NodeKind::VariableDecl &&
+                 (e.decl->flags & DF_Extern) && !static_cast<VariableDecl*>(e.decl)->init && !variableDefinitions.count(e.decl))
+          variableDefinitions[e.decl] = v; // `extern Box box;` before it: its definition (as sortEntries links)
     Span<Decl*> siblings = f->parent && f->parent->kind == NodeKind::NamespaceDecl ? static_cast<NamespaceDecl*>(f->parent)->decls
                            : f->file ? f->file->decls : Span<Decl*>{};
     for (Decl*& sibling : siblings)
@@ -8346,8 +8349,9 @@ struct GlobalScope::Impl
 
   // For `Vector<int>::iterator`: the substitution of the instantiation the qualifier names
   // (its innermost part with template arguments), or of the base the member was found in
-  // (foundIn); empty when there is none.
-  Subst qualifierSubst(const QualifiedName& name, const TypeContext& ctx, int depth, Scope* foundIn = nullptr)
+  // (foundIn); empty when there is none. qualifierOut: the qualifier's type, when it was converted.
+  Subst qualifierSubst(const QualifiedName& name, const TypeContext& ctx, int depth, Scope* foundIn = nullptr,
+                       const Ty** qualifierOut = nullptr)
   {
     Subst s;
     if (name.typeQualifier && name.parts.size() == 1 && depth <= 96)
@@ -8396,6 +8400,8 @@ struct GlobalScope::Impl
       qualifier = typeOfTypeDecl(l.decl, l, prefix.last(), ctx, depth + 1);
     if (qualifier && qualifier->kind == TyKind::Enum)
       return substFor(qualifier); // `Fast::Enum::True`: the instance's enumerator
+    if (qualifierOut)
+      *qualifierOut = qualifier;
     if (!qualifier || qualifier->kind != TyKind::Class)
       return s;
     return memberSubst(qualifier, foundIn, depth);
@@ -9222,7 +9228,8 @@ struct GlobalScope::Impl
           // `Vector<int>::iterator`: the alias as the instantiation named by the qualifier has it;
           // `Holder<int>::Node`, `Flag<A>::Enum`: the nested class or enum with the enclosing
           // instantiation's arguments; `ItemPrototype::IDType`: the alias as the base it is declared in has it.
-          Subst qs = qualifierSubst(n->name, ctx, depth, l.foundIn);
+          const Ty* qualifier = nullptr;
+          Subst qs = qualifierSubst(n->name, ctx, depth, l.foundIn, &qualifier);
           if (!qs.empty())
           {
             if (ctx.subst)
@@ -9231,6 +9238,11 @@ struct GlobalScope::Impl
             TypeContext c2{ctx.scope, ctx.locals, &qs, ctx.tokens, ctx.text};
             return typeOfTypeDecl(l.decl, l, n->name.last(), c2, depth);
           }
+          // `typename Dialog<T>::ResultMapping::value_type` in Dialog's out-of-line member: the
+          // qualifier still a member of a dependent class, so the member of whatever it becomes
+          // (substitute), not the member with its template's own parameters (`Pair<K, V>`).
+          if (qualifier && qualifier->kind == TyKind::DependentMember && !n->name.last().hasTemplateArgs)
+            return types.dependentMember(qualifier, n->name.last().symbol);
         }
         if (n->name.parts.size() == 1)
         {
@@ -10334,6 +10346,52 @@ struct GlobalScope::Impl
     return t->decl->ownScope;
   }
 
+  // `template<typename T> int Holder<T, true>::load(int x) {...}`: the scope of the partial
+  // specialisation the qualifier names, its arguments written as the specialisation's pattern
+  // with the definition's own parameters in place of the specialisation's; null when it names
+  // the primary template or no partial specialisation. l: the lookup of the qualifier.
+  Scope* partialSpecializationScope(const QualifiedName& qualifier, const Lookup& l, Scope* context, Span<Decl*> defParams,
+                                    const ParsedFile* file)
+  {
+    if (qualifier.empty() || !qualifier.last().hasTemplateArgs || !l.overloads || defParams.empty())
+      return nullptr;
+    Decl* primary = primaryOf(*l.overloads);
+    const NamePart& part = qualifier.last();
+    std::vector<const Ty*> written;
+    {
+      LocalStack params;
+      for (Decl* p : defParams)
+        params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
+      TypeContext dctx{context, &params, nullptr, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+      for (size_t i = 0; i < part.templateArgs.size(); ++i)
+        written.push_back(templateArgument(part.templateArgs[i], parameterFor(primary, i), dctx, 0));
+    }
+    for (const Entry& e : *l.overloads)
+    {
+      if (!e.decl || e.decl->kind != NodeKind::ClassDecl || !(e.decl->flags & DF_Specialization) || !e.decl->ownScope)
+        continue;
+      auto* c = static_cast<ClassDecl*>(e.decl);
+      if (!c->isDefinition || c->name.empty() || c->templateParams.size() != defParams.size() ||
+          c->name.last().templateArgs.size() != written.size())
+        continue;
+      LocalStack own;
+      for (Decl* p : c->templateParams)
+        own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      Subst s;
+      for (size_t i = 0; i < defParams.size(); ++i)
+        s.pairs.push_back({c->templateParams[i], types.param(defParams[i])});
+      TokenScope tokenScope(c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view());
+      TypeContext cctx{lexicalScopeOf(c), &own, nullptr, c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
+      bool same = true;
+      for (size_t i = 0; i < written.size() && same; ++i)
+        same = sameArgument(substitute(templateArgument(c->name.last().templateArgs[i], parameterFor(primary, i), cctx, 0), s), written[i]);
+      if (same)
+        return c->ownScope;
+    }
+    return nullptr;
+  }
+
   // Whether explicit member specialisation f is written for class instantiation classTy (the
   // same arguments for the class template's parameters).
   bool memberSpecializationIsFor(FunctionDecl* f, const Ty* classTy)
@@ -10631,7 +10689,12 @@ struct GlobalScope::Impl
         const Ty* sub = substitute(t->inner, s, depth + 1);
         if (sub && sub->kind == TyKind::Class && !types.isDependent(sub))
           sub = resolveSpecialization(sub, depth + 1);
-        if (sub && sub->kind == TyKind::Class && sub->decl && !types.isDependent(sub))
+        // (Also the current instantiation, the class with its own parameters: `typename ID<T,
+        // I>::IndexType` in `ID<T, I>::loadIndex`'s definition is ID's IndexType, I.)
+        // (And a dependent instance of a template that has no specialisations, `Map<int*, T>`:
+        // whatever T becomes, its member is the primary's, under these arguments.)
+        if (sub && sub->kind == TyKind::Class && sub->decl &&
+            (!types.isDependent(sub) || sub == selfType(sub->decl) || !(sub->decl->attributes & ATTR_Specialized)))
           if (Scope* inside = classScopeOf(sub))
           {
             Lookup inner;
@@ -15885,6 +15948,7 @@ void GlobalScope::finishIndex()
     }
   }
   // Attach out-of-line member function definitions to their class scope.
+  std::vector<FunctionDecl*> attached; // to a class: each must match a declaration (checked below)
   for (auto& [f, context] : impl->deferredFunctions)
   {
     QualifiedName qualifier = f->name;
@@ -15894,17 +15958,27 @@ void GlobalScope::finishIndex()
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
     Lookup l = impl->lookupQualified(qualifier, context, &params, 0);
     if (l.scope && l.scope->kind == ScopeKind::Class)
+    {
       if (Scope* special = impl->fullSpecializationScope(qualifier, context, &params, f->file, f->token))
       {
         l.scope = special; // `int Flag<true>::value() {...}`: a member of the specialisation
         impl->specializationMembers[f] = special;
       }
+      else if (Scope* partial = impl->partialSpecializationScope(qualifier, l, context, f->templateParams, f->file))
+      {
+        l.scope = partial; // `template<typename T> int Holder<T, true>::load(int)`: of the partial specialisation
+        impl->specializationMembers[f] = partial;
+      }
+    }
     if (l.scope && (l.scope->kind == ScopeKind::Class || l.scope->kind == ScopeKind::Namespace))
       if (auto it = impl->localTypesOfOutOfLine.find(f); it != impl->localTypesOfOutOfLine.end())
         for (Scope* local : it->second)
           local->parent = l.scope; // a class declared in `void A::f() {...}` sees A's members
     if (l.scope && l.scope->kind == ScopeKind::Class)
+    {
       l.scope->outOfLineMembers.push_back(f);
+      attached.push_back(f);
+    }
     else if (l.scope && l.scope->kind == ScopeKind::Namespace)
     {
       // `void StringUtil::f() {}` outside its namespace: the same as written inside it (its name
@@ -16005,6 +16079,31 @@ void GlobalScope::finishIndex()
   for (auto& [f, context] : impl->objectCandidates)
     impl->objectFromFunctionDeclaration(f, context);
   impl->objectCandidates.clear();
+  // An out-of-line member definition that matches no declaration of its class is an error, as in
+  // C++: never a definition silently dropped (its calls would fail only at link time).
+  for (FunctionDecl* f : attached)
+  {
+    if (Impl::isMemberSpecialization(f) || f->name.last().hasTemplateArgs || ((f->flags & DF_Specialization) && f->templateParams.empty()))
+      continue; // `template<> R Button<RecipeID>::f()`, `template<> T* Pool::get()`: matched by their arguments
+    Impl::TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());
+    if (impl->declarationOfDefinition(f))
+      continue;
+    Decl* cls = impl->owningClassOf(f);
+    if (!cls || cls->kind != NodeKind::ClassDecl)
+      continue;
+    // Constructors, destructors and conversions are no entries of the class's scope: its members.
+    const uint32_t special = DF_Constructor | DF_Destructor | DF_Conversion;
+    bool declared = false;
+    if (f->flags & special)
+      for (Decl* m : static_cast<ClassDecl*>(cls)->members)
+        if (!declared && m->kind == NodeKind::FunctionDecl && m != f && (m->flags & special) == (f->flags & special) &&
+            !static_cast<FunctionDecl*>(m)->body)
+          declared = (f->flags & DF_Destructor) ||
+                     impl->typeAs(f, static_cast<FunctionDecl*>(m)) == impl->declaredTypeOf(static_cast<FunctionDecl*>(m), nullptr, 0);
+    if (!declared)
+      impl->reportCheckerError(f->file, f->token,
+                               "the out-of-line definition of " + qualifiedName(f) + " matches no declaration in " + qualifiedName(cls));
+  }
 }
 
 std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()

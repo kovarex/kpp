@@ -1,0 +1,30 @@
+// spec: an out-of-line member of a class template whose return type names a member of a member alias, `typename Dialog<T>::ResultMapping::value_type`, with ResultMapping a template instance that depends on T: the member of that instance, and the definition matches its declaration
+// factorio: Gui/Dialog.kpp's `const typename Dialog<T>::ResultMapping::value_type* Dialog<T>::getMappingByWidget(agui::Widget*) const`, ResultMapping being Map<agui::TextButton*, ResultType>
+template<typename K, typename V>
+struct Table
+{
+  using value_type = Pair<K, V>;
+  value_type first;
+};
+template<typename T>
+class Dialog
+{
+public:
+  using ResultType = T;
+  using ResultMapping = Table<int, ResultType>;
+  const ResultMapping::value_type* get() const;
+  ResultMapping mapping;
+};
+template<typename T>
+const typename Dialog<T>::ResultMapping::value_type* Dialog<T>::get() const
+{
+  return &this->mapping.first;
+}
+int main()
+{
+  Dialog<long> d;
+  d.mapping.first.first = 3;
+  d.mapping.first.second = 40;
+  println("{} {}", d.get()->first, d.get()->second);
+  return 0;
+}

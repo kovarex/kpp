@@ -1,6 +1,5 @@
 // spec: a namespace-scope variable of class type initialized with parentheses, `Box box(HeavyMode::Enabled);` (an enumerator, a value, not a type: so a variable, not a function declaration), is that variable defined and constructed from its arguments, also after an `extern Box box;`
 // factorio: MainLoop's `Atomic<HeavyMode> globalHeavyMode(HeavyMode::Disabled);` and `Atomic<ProcessResult> shouldStop(ProcessResult::Success);` after their extern declarations: unresolved externals of the link
-// pending: it is read as the declaration of a function taking a HeavyMode::Enabled; with the extern declaration the variable is never defined (a link error), without it the uses fail ("a member access on a non-class object")
 enum class HeavyMode { Disabled, Enabled };
 struct Box
 {

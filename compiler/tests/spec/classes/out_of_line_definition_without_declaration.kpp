@@ -1,0 +1,18 @@
+// spec: an out-of-line member definition whose signature matches no declaration of its class is an error, as in C++, never a definition silently dropped
+// factorio: 272 functions of the converted code were defined out of line yet never emitted, with no error: unresolved externals at the link
+// error: the out-of-line definition of Box::get matches no declaration in Box
+struct Box
+{
+  int value = 0;
+  int get(int scale) const;
+};
+int Box::get(float scale) const
+{
+  return this->value * int(scale);
+}
+int main()
+{
+  Box b;
+  println("{}", b.get(2));
+  return 0;
+}

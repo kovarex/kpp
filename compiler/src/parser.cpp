@@ -2021,18 +2021,39 @@ namespace
     // decide (design.md rule 2), or none.
     Span<Expr*> bareNameArguments()
     {
-      int count = 0;
-      while (atIdent(1 + 2 * count) && at(P::Comma, 2 + 2 * count))
-        ++count;
-      if (!atIdent(1 + 2 * count) || !at(P::RParen, 2 + 2 * count) || !at(P::Semi, 3 + 2 * count))
-        return {};
-      size_t mark = scratch.size();
-      for (int k = 0; k <= count; ++k)
+      // Each a name, qualified or not (`HeavyMode::Disabled`), then `,` or `)`.
+      std::vector<std::pair<int, std::vector<NamePart>>> names; // (first token, parts)
+      int i = 1;
+      for (;;)
       {
-        NameExpr* n = node<NameExpr>(pos + 1 + 2 * k);
-        NamePart part;
-        part.symbol = tok(1 + 2 * k).id;
-        n->name.parts = makeSpanOf(std::vector<NamePart>{part});
+        int first = i;
+        std::vector<NamePart> parts;
+        while (atIdent(i))
+        {
+          NamePart part;
+          part.symbol = tok(i).id;
+          parts.push_back(part);
+          if (!at(P::ColonColon, i + 1))
+            break;
+          i += 2;
+        }
+        if (parts.empty() || !atIdent(i))
+          return {};
+        names.push_back({first, std::move(parts)});
+        if (at(P::Comma, i + 1))
+        {
+          i += 2;
+          continue;
+        }
+        if (!at(P::RParen, i + 1) || !at(P::Semi, i + 2))
+          return {};
+        break;
+      }
+      size_t mark = scratch.size();
+      for (auto& [first, parts] : names)
+      {
+        NameExpr* n = node<NameExpr>(pos + first);
+        n->name.parts = makeSpanOf(parts);
         scratch.push_back(n);
       }
       return makeSpan<Expr*>(mark);
@@ -2044,7 +2065,7 @@ namespace
           at(Kw::true_, 1) || at(Kw::false_, 1) || at(Kw::nullptr_, 1) || at(Kw::this_, 1))
         return false;
       if (scope != Scope::Local)
-        return !firstParameterIsExpression(); // At namespace/class scope `name(...)` is a function.
+        return !laterArgumentIsLiteral() && !firstParameterIsExpression(); // At namespace/class scope `name(...)` is a function.
       // Local: `T x(args);` is a variable, `T f(int);` a function (rare). Guess: parameter list if
       // empty or starts with a builtin type keyword / const / `void`.
       if (at(P::RParen, 1))
@@ -2053,6 +2074,36 @@ namespace
       if (t.getKind() == TokenKind::Keyword && (isBuiltinTypeKeyword(Kw(t.id)) || t.is(Kw::const_)))
         return !at(P::LParen, 2) && !at(P::LBrace, 2) && !at(P::ColonColon, 2) && !at(P::Dot, 2);
       return false;
+    }
+
+    // At the `(` after a declarator's name: whether an argument after the first starts with a
+    // literal, `Box other(HeavyMode::Disabled, 4);`, which no parameter does. Template argument
+    // lists are skipped (`Array<int, 4> a`); a `<` that is a comparison only hides a literal,
+    // leaving the list to the other checks.
+    bool laterArgumentIsLiteral()
+    {
+      int depth = 0;
+      for (int i = 1;; ++i)
+      {
+        if (at(TokenKind::End, i))
+          return false;
+        if (at(P::LParen, i) || at(P::LBracket, i) || at(P::LBrace, i) || at(P::Less, i))
+          ++depth;
+        else if (at(P::RParen, i) || at(P::RBracket, i) || at(P::RBrace, i) || at(P::Greater, i))
+        {
+          if (depth == 0)
+            return false;
+          --depth;
+        }
+        else if (at(P::Shr, i))
+          depth = depth >= 2 ? depth - 2 : 0;
+        else if (at(P::Semi, i))
+          return false;
+        else if (depth == 0 && at(P::Comma, i) &&
+                 (at(TokenKind::Number, i + 1) || at(TokenKind::String, i + 1) || at(TokenKind::Char, i + 1) ||
+                  at(Kw::true_, i + 1) || at(Kw::false_, i + 1) || at(Kw::nullptr_, i + 1)))
+          return true;
+      }
     }
 
     // At the `(` after a declarator's name: whether what starts inside is an expression, so that
@@ -2533,6 +2584,14 @@ namespace
         {
           if (d->templateParams.empty())
             d->templateParams = header.params;
+          else if (!header.params.empty())
+          {
+            // `template<class S> template<class F> S Frame<S>::merged(F)`: the class's parameters,
+            // then the member's, as an out-of-line member of a class template lists them.
+            std::vector<Decl*> all(header.params.begin(), header.params.end());
+            all.insert(all.end(), d->templateParams.begin(), d->templateParams.end());
+            d->templateParams = makeSpanOf(all);
+          }
         }
         return;
       }
