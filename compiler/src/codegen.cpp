@@ -1980,7 +1980,9 @@ namespace
     // template), `Holder<1, T>(b)` beside a base Holder<0, H>.
     bool initializerNamesOther(const Ty* t, const FunctionDecl::CtorInit& init, const Ty* cls, Node* at)
     {
-      if (init.member.empty() || !init.member.last().hasTemplateArgs)
+      // Only a name with template arguments or a qualified one can name another class than its
+      // last part spells: `Chain<Tail...>(...)`, `UnitTest::TestRunner(reporter)` in a TestRunner.
+      if (init.member.empty() || (!init.member.last().hasTemplateArgs && init.member.parts.size() == 1))
         return false;
       const Ty* named = initializerClass(t, init, at);
       return named && named != canonicalClass(cls, at);

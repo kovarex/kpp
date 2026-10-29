@@ -1017,6 +1017,25 @@ namespace
     for (const ResolveStats& s : stats)
       total.add(s);
     total.add(global.instanceStats()); // the instances', each once whoever asked first
+    // KPP_DUMP_FILESTATS=path: each file's statistics and the instances', one line each, for finding
+    // where two runs differ (tests/determinism.ps1 compares only the totals).
+    if (const char* dumpPath = getenv("KPP_DUMP_FILESTATS"))
+      if (FILE* f = fopen(dumpPath, "w"))
+      {
+        auto line = [&](const std::string& what, const ResolveStats& s)
+        {
+          fprintf(f, "%s types %llu/%llu/%llu names %llu/%llu/%llu/%llu/%llu exprs %llu/%llu/%llu calls %llu/%llu\n", what.c_str(),
+                  (unsigned long long)s.typesResolved, (unsigned long long)s.typesDependent, (unsigned long long)s.typesUnresolved,
+                  (unsigned long long)s.namesLocal, (unsigned long long)s.namesMember, (unsigned long long)s.namesGlobal,
+                  (unsigned long long)s.namesDependent, (unsigned long long)s.namesUnresolved, (unsigned long long)s.exprsTyped,
+                  (unsigned long long)s.exprsDependent, (unsigned long long)s.exprsUnknown, (unsigned long long)s.callsResolved,
+                  (unsigned long long)s.callsAmbiguousArity);
+        };
+        for (size_t i = 0; i < stats.size(); ++i)
+          line(files[i].path.string(), stats[i]);
+        line("<instances>", global.instanceStats());
+        fclose(f);
+      }
     uint64_t types = total.typesResolved + total.typesDependent + total.typesUnresolved;
     uint64_t names = total.namesLocal + total.namesMember + total.namesGlobal + total.namesDependent + total.namesUnresolved;
     uint64_t project = total.typesUnresolved + total.namesUnresolved - total.qualifiedUnresolvedStd - total.unresolvedMacroLike;

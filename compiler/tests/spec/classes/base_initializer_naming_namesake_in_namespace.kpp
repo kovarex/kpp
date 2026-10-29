@@ -1,6 +1,5 @@
 // spec: a constructor's initializer of a base class that has the class's own name in another namespace (`class TestRunner : UnitTest::TestRunner` initializing `UnitTest::TestRunner(reporter)`): the qualified name is the base, not the class being constructed
 // factorio: the tests' TestRunner.hpp, the runner every test run builds first (the converted test binary aborts there: the constructor is left out)
-// pending: the initializer resolves to the derived TestRunner ("a constructor of TestRunner taking 1 arguments"); owner: the resolver
 namespace UnitTest
 {
   class TestRunner
