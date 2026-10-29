@@ -1,6 +1,5 @@
 // spec: an integer literal 0 (and only a literal) is a null pointer constant: it converts to any pointer type as a standard conversion, so `pick(0)` chooses `pick(Entity*)` over `pick(const String&)` (a user-defined conversion) while `take(0)` stays the exact `take(int)`; `Entity* none = 0` and `none == 0` as in C++
 // found in the converted game: `CoInitializeEx(0, COINIT_MULTITHREADED)` and the like pass 0 for pointers (design.md, "The literal 0 is a null pointer constant", for kovarex's review)
-// pending: overload resolution does not count 0 as a pointer ("a call that did not resolve")
 struct Entity { int id = 5; };
 int pick(Entity* e) { return e ? e->id : -1; }
 int pick(const String& s) { return 100; }

@@ -11911,9 +11911,12 @@ struct GlobalScope::Impl
   // given, binds the call's explicit template arguments for a candidate (false: the list does not
   // fit it); a template candidate then has to have every parameter bound or deduced
   // (`T load(Args&&...)` is no candidate for `load(x)`, whose T nothing gives).
+  // nullConstants: per argument, whether it is the literal 0, which converts to any pointer (C++'s
+  // null pointer constant; design.md 4).
   FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
                             const Subst* classSubst, const Ty* objectTy, bool& ambiguous,
-                            const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr)
+                            const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr,
+                            const std::vector<bool>* nullConstants = nullptr)
   {
     bool argsConcrete = true;
     for (const Ty* at : argTypes)
@@ -12011,6 +12014,14 @@ struct GlobalScope::Impl
           break;
         }
         int r = conversionRank(argTypes[i], pt);
+        if (r >= NotViable && nullConstants && i < nullConstants->size() && (*nullConstants)[i])
+        {
+          // `CoInitializeEx(0, ...)`, `f(0)` with `f(Entity*)`: the literal 0 is a null pointer, a
+          // conversion as int's to another arithmetic type is.
+          const Ty* target = types.unqualified(types.stripRef(pt));
+          if (target->kind == TyKind::Pointer || target->kind == TyKind::MemberPointer)
+            r = 3;
+        }
         if (r >= NotViable)
           ok = false;
         c.ranks.push_back(r);
@@ -13349,8 +13360,27 @@ struct GlobalScope::Impl
       }
       else if (primary && primary->kind == NodeKind::FunctionDecl)
         candidates.push_back(static_cast<FunctionDecl*>(primary));
+      // The arguments that are the literal 0, a null pointer for a pointer parameter.
+      std::vector<bool> nullConstants;
+      bool anyNull = false;
+      for (Expr* a : callArgs)
+      {
+        Expr* x = a;
+        while (x && x->kind == NodeKind::ParenExpr)
+          x = static_cast<ParenExpr*>(x)->inner;
+        bool zero = false;
+        if (x && x->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(x)->literalKind == TokenKind::Number)
+        {
+          std::string_view text = spelling(static_cast<LiteralExpr*>(x));
+          zero = text == "0" || text == "0u" || text == "0U" || text == "0l" || text == "0L" || text == "0ll" || text == "0LL" || text == "0ull" ||
+                 text == "0ULL";
+        }
+        nullConstants.push_back(zero);
+        anyNull = anyNull || zero;
+      }
+      const std::vector<bool>* nulls = anyNull ? &nullConstants : nullptr;
       if (!namePart)
-        return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous);
+        return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, nullptr, nulls);
       // The explicit template arguments (`load<bool>()`): a candidate with fewer parameters than
       // the list names (`typeIndex<T, Tail...>` with Tail known), and no pack to take the rest,
       // is not one, nor one whose parameter is of another kind than its argument.
@@ -13368,7 +13398,7 @@ struct GlobalScope::Impl
             return false; // `create<Abs>` names no `template<VoronoiType TYPE> create`
         return true;
       };
-      return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind);
+      return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind, nulls);
     }
 
     // Argument types of a call; a pack expansion `args...` contributes one type per element.

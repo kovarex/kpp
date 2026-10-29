@@ -968,6 +968,13 @@ The smallest language that is still Kpp, as the target of the first code generat
   copy-initialisation (`T x = ...`). Why: guides are part of C++'s deduction, and dropping one
   (as the parser did) deduces other arguments than the code says, silently. Spec:
   templates/deduction_guide_target, templates/deduction_guides.
+- **The literal 0 is a null pointer constant** (C++'s rule; for kovarex's review, who may prefer
+  Kpp to require `nullptr`): an integer literal 0 (`0`, `0u`, `0L`, ..., and only a literal, not a
+  constant that is 0) converts to any pointer and member pointer type, ranked as a standard
+  conversion: `CoInitializeEx(0, COINIT_MULTITHREADED)`, `Entity* e = 0`, `pick(0)` choosing
+  `pick(Entity*)` over `pick(const String&)`, while `take(0)` stays `take(int)`. Converted C and C++
+  pass 0 for pointers throughout; requiring nullptr would be a converter rewrite instead (2026-10-29,
+  spec language/literal_zero_null_pointer).
 - **Grammar parseable without name lookup.** Three rules replace C++'s dependence on knowing
   what a name is:
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
