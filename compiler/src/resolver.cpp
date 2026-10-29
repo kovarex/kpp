@@ -10201,6 +10201,27 @@ struct GlobalScope::Impl
   }
 
   // Replaces the Auto placeholder in `pattern` with the type deduced from an initializer.
+  // `auto names = {"pipe", "pipe-to-ground"}`: the InitializerList<T> a brace list copy-initializing
+  // an `auto` variable makes, T each element's decayed type, the same for all (null when they
+  // differ, or one is not known, or a list is nested).
+  const Ty* initializerListOfElements(const BraceInitExpr* list)
+  {
+    Decl* il = initializerListDecl();
+    if (!il || !list || list->args.empty() || !list->designators.empty())
+      return nullptr;
+    const Ty* element = nullptr;
+    for (const Expr* a : list->args)
+    {
+      if (!a || a->kind == NodeKind::BraceInitExpr || !a->ty || !a->ty->isKnown() || a->ty->kind == TyKind::Pack || types.isDependent(a->ty))
+        return nullptr;
+      const Ty* t = types.unqualified(types.decay(types.stripRef(a->ty)));
+      if (element && t != element)
+        return nullptr;
+      element = t;
+    }
+    return types.classType(il, Span<const Ty*>{&element, 1});
+  }
+
   const Ty* deduceAuto(const Ty* pattern, const Ty* init)
   {
     if (!pattern || !init || !init->isKnown())
@@ -11848,7 +11869,26 @@ struct GlobalScope::Impl
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (!allowExplicit && isExplicit(static_cast<FunctionDecl*>(m), &subst)))
         continue;
       const Ty* ft = declaredTypeOf(m, &subst, 0);
-      if (ft && ft->kind == TyKind::Function && conversionRank(ft->inner, param, depth + 1) < 4)
+      if (!ft || ft->kind != TyKind::Function)
+        continue;
+      const Ty* result = ft->inner;
+      if (auto* f = static_cast<FunctionDecl*>(m); !f->templateParams.empty())
+      {
+        // `template<class T> requires isPointer<T> operator T()`: its arguments deduced from the type
+        // wanted, and its constraint holding for them (no way to a nullptr_t, a class).
+        const Ty* wanted = param ? types.unqualified(types.stripRef(param)) : nullptr;
+        if (!wanted || !wanted->isKnown() || types.isDependent(wanted))
+          continue;
+        Subst own = subst;
+        deduce(types.unqualified(types.stripRef(result)), wanted, own);
+        bool bound = true;
+        for (Decl* p : f->templateParams)
+          bound = bound && own.find(p) && own.find(p)->isKnown();
+        if (!bound || !requiresHolds(f, own))
+          continue;
+        result = substitute(result, own);
+      }
+      if (conversionRank(result, param, depth + 1) < 4)
         return true;
     }
     ClassDecl* def = classDefinition(a);
@@ -15838,6 +15878,9 @@ struct GlobalScope::Impl
             if (v->bracedInit && v->init && v->init->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(v->init)->args.size() == 1)
               if (Expr* only = static_cast<BraceInitExpr*>(v->init)->args[0]; only && only->ty)
                 initTy = only->ty; // `auto x{e}`, the init-capture `[callback{::move(callback)}]`: e's type
+            if (!v->bracedInit && v->init && v->init->kind == NodeKind::BraceInitExpr && declared != types.decltypeAutoType())
+              if (const Ty* list = impl.initializerListOfElements(static_cast<BraceInitExpr*>(v->init)))
+                initTy = list; // `const auto entityNames = {"pipe", "storage-tank"};` is an InitializerList<const char*>
             const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy) : types.unknown();
             if (deduced->isKnown() && (v->flags & DF_Constexpr) && !deduced->isReference())
               deduced = types.qualified(deduced, true, false); // `constexpr auto limit = 5;` is a const int

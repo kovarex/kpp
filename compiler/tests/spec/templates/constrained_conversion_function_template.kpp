@@ -1,6 +1,5 @@
 // spec: a conversion function template with a constraint (`template<class T> requires isPointer<T> operator T()`) converts to the types its constraint allows, its argument deduced from the type wanted: initializing a class with constructors from nullptr_t and from T* takes the T* one (no conversion to nullptr_t), as copy-initialization and a function's argument take it
 // factorio: tests/TestScenario.hpp's constructEntity, `UniquePtr<T>(this->createEntity(data))` with createEntity returning a DynamicEntityPointer (tests/DynamicEntityPointer.hpp)
-// pending: the template's return type T is taken to convert to anything, so UniquePtr(nullptr_t) is viable as well and chosen ("passing a class (Handle) where a scalar is expected"); owner: the templates thread (conversion ranking)
 struct Entity
 {
   virtual ~Entity() = default;

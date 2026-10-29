@@ -1678,7 +1678,10 @@ namespace
 
     // `{a, b, c}` for an InitializerList<E> parameter: the elements in a temporary array, the list
     // object (a pointer and a count) pointing at them; both live to the end of the statement.
-    std::string initializerListTemporary(const Ty* listTy, BraceInitExpr* b, Node* at)
+    // variable: the address of a variable the list initializes (`InitializerList<int> v = {1, 2}`,
+    // `auto names = {"a", "b"}`), whose array lives as long as it does, as C++ extends it: in the
+    // function's frame for a local, in static storage for a global or a static local.
+    std::string initializerListTemporary(const Ty* listTy, BraceInitExpr* b, Node* at, const std::string& variable = "")
     {
       if (listTy->args.empty())
         unsupported(at, "an InitializerList without its element type");
@@ -1688,7 +1691,18 @@ namespace
       for (Expr* a : b->args)
         n += isPackExpansion(a) ? uint32_t(packElementCount(static_cast<UnaryExpr*>(a)->operand, at)) : 1;
       const Ty* arrayTy = types.array(element, n);
-      std::string array = newObjectSlot(arrayTy, at);
+      bool staticArray = !variable.empty() && variable[0] == '@';
+      std::string array;
+      if (staticArray)
+      {
+        if (needsDestruction(arrayTy, at))
+          unsupported(at, "an InitializerList in static storage of elements that need destruction");
+        std::string owner = variable.substr(0, variable.size() - (variable.back() == '"' ? 1 : 0));
+        array = owner + ".list." + std::to_string(b->token) + (variable.back() == '"' ? "\"" : "");
+        moduleDecls[currentModule] += array + " = internal global " + llType(arrayTy, at) + " zeroinitializer\n";
+      }
+      else
+        array = newObjectSlot(arrayTy, at);
       uint32_t i = 0;
       auto initializeElement = [&](Expr* value)
       {
@@ -1706,9 +1720,11 @@ namespace
         else
           initializeElement(a);
       }
-      if (needsDestruction(arrayTy, at))
+      if (!variable.empty() && !staticArray && needsDestruction(arrayTy, at))
+        scopes.back().push_back({array, arrayTy}); // destroyed with the variable's scope
+      else if (variable.empty() && needsDestruction(arrayTy, at))
         statementTemps.push_back({array, arrayTy});
-      std::string list = newObjectSlot(listTy, at);
+      std::string list = variable.empty() ? newObjectSlot(listTy, at) : variable;
       const StructInfo& info = structFor(listTy, at);
       if (info.fieldDecls.size() < 2)
         unsupported(at, "an InitializerList class without its two fields");
@@ -3429,6 +3445,13 @@ namespace
         std::string tmp = newTemp();
         fn += "  " + tmp + " = load " + llType(t, at) + ", ptr " + v.text + "\n";
         fn += "  store " + llType(t, at) + " " + tmp + ", ptr " + addr + "\n";
+        return;
+      }
+      if (isClass(t) && init && init->kind == NodeKind::BraceInitExpr && isInitializerListType(t))
+      {
+        // `InitializerList<int> numbers = {1, 2, 3}`, `const auto entityNames = {"pipe", "tank"}`:
+        // the list over an array that lives as long as the variable.
+        initializerListTemporary(t, static_cast<BraceInitExpr*>(init), at, addr);
         return;
       }
       if (isClass(t))
