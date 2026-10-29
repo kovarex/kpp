@@ -1,0 +1,17 @@
+// spec: more template arguments than a class template has parameters (and no pack to take the rest) is a compile error, not an argument dropped silently
+// found by the unique-pointer research: `UniquePtr<Thing, CountingDeleter>` with the library's one-parameter UniquePtr compiled, and the deleter was never called (Factorio's 12 custom deleters convert to this)
+// error: too_many_template_arguments.kpp:13: error: Box takes 1 template argument, 2 given
+template<typename T>
+struct Box
+{
+  T value;
+};
+struct Extra {};
+
+int main()
+{
+  Box<int, Extra> b;
+  b.value = 5;
+  println("{}", b.value);
+  return 0;
+}

@@ -7187,9 +7187,43 @@ struct GlobalScope::Impl
         ++stats.typesDependent;
       else
         ++stats.typesResolved;
+      checkTemplateArgumentCount(t, l);
       for (const NamePart& part : t->name.parts)
         for (Node* arg : part.templateArgs)
           walkNode(arg);
+    }
+
+    // `UniquePtr<Thing, CountingDeleter>` with a one-parameter UniquePtr: more template arguments
+    // than the class (or alias) template has parameters, and no pack to take the rest, is a
+    // compile error, as in C++ (the extra argument was dropped silently).
+    void checkTemplateArgumentCount(NamedType* t, const Lookup& l)
+    {
+      const NamePart& last = t->name.last();
+      if (!last.hasTemplateArgs || !l.decl || !file)
+        return;
+      Decl* def = l.decl->kind == NodeKind::ClassDecl && l.scope && l.scope->owner && l.scope->kind == ScopeKind::Class ? l.scope->owner : l.decl;
+      if (def->kind == NodeKind::ClassDecl && l.overloads)
+        if (Decl* primary = impl.primaryOf(*l.overloads))
+          def = primary; // the primary's parameters, not a partial specialisation's (`FallbackValueHolder<T, true>`)
+      if (def->kind != NodeKind::ClassDecl && def->kind != NodeKind::UsingAliasDecl)
+        return;
+      Span<Decl*> params = def->kind == NodeKind::ClassDecl ? impl.effectiveParams(def) : def->templateParams;
+      if (params.empty())
+        return; // not a template: other errors say so
+      if (static_cast<TemplateParamDecl*>(params[params.size() - 1])->isPack)
+        return;
+      size_t given = 0;
+      for (Node* arg : last.templateArgs)
+      {
+        if (arg && arg->kind == NodeKind::PackType)
+          return; // `X<Args...>`: as many as the pack has, told once it is known
+        ++given;
+      }
+      if (given <= params.size())
+        return;
+      std::string name = impl.debugName(last.symbol);
+      impl.reportCheckerError(file, t->token, name + " takes " + std::to_string(params.size()) + " template argument" +
+                                                  (params.size() == 1 ? "" : "s") + ", " + std::to_string(given) + " given");
     }
 
     // Converts a type written in the current context.
