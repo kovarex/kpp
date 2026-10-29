@@ -584,25 +584,35 @@ generator writes for the converted CommonUtil, Agui, cxxopts, StackWalker, Lua a
 ```
 ..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
   --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
-  --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude native\include ^
+  --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include ^
+  --cinclude C:\Factorio\libraries\trio --cinclude native\include ^
   --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src 2> kpp\full-errors.txt
 find /c /v "" kpp\full-errors.txt
 ```
+
+The conversion behind it (convert.cmd's second one, into a fresh `kpp\`): `kppc --no-std --convert
+kpp --ext .cpp,.hpp,.h,.kpp,.c --overrides overrides` with CommonUtil, Agui, cxxopts, StackWalker,
+`C:\Factorio\libraries\Lua` and `C:\Factorio\src`. trio's include directory joined with Lua's
+switch: the converted Lua formats through trio as its C++ build does, and its override_printf.h
+imports trio.h.
 
 - Inputs: exactly `kpp\CommonUtil`, `kpp\Agui`, `kpp\cxxopts`, `kpp\StackWalker`, `kpp\Lua` and `kpp\src`, not the
   whole `kpp\`: that directory also holds the `kpp\Util` copy of `kpp\src\Util` the smoke tests
   use and whatever stubs were copied in. `kpp\cxxopts` is in since 2026-10-28 (see "cxxopts"
   below); a count from before that leaves out its errors (13 when it came in). `kpp\Lua` is in
-  since 2026-10-29: it holds only `LuaCPPUtilities.kpp`, the game's C++ overloads of Lua's API
-  (`lua_pushstring` of a String, ...), converted from `libraries\Lua\LuaCPPUtilities.hpp` while Lua
-  itself is imported as C. `kpp\StackWalker` is in since 2026-10-29 (see "StackWalker" below): the
+  since 2026-10-29. Until Lua's switch, later that day, it held only `LuaCPPUtilities.kpp`, the
+  game's C++ overloads of Lua's API (`lua_pushstring` of a String, ...), while Lua itself was
+  imported as C. Since the switch it holds Lua, converted ("Converting Lua" below), and the game
+  reaches Lua's API and internals as Kpp code. `kpp\StackWalker` is in since 2026-10-29 (see "StackWalker" below): the
   crash handler's stack walker, converted with the game; it came in with 1 error line and took the
   game's 8 StackWalkerToStream lines ("a base class names 'StackWalker'") with it.
 - The SDL_Mixer include directory is required: the imported C headers compile as one unit, so a
   single missing header fails all of them and every Lua, SDL and C library use becomes an error.
   The run is valid only if its output has no `importing C headers failed` line and shows the
   header count of its tree (50 on 2026-10-28; 54 since glad's include directory joined on
-  2026-10-29, when the converter imports `glad/glad.h` for the OpenGL backend).
+  2026-10-29, when the converter imports `glad/glad.h` for the OpenGL backend; 65 since Lua's
+  switch the same day, which took Lua's three headers and kpp_lua_internals.h out of the import
+  and put trio.h in).
 - What it counts: every line on stderr, which is one code generator error per line (`file:line:
   codegen does not support ...`, `function type unknown, skipped`, ...). Front-end complaints
   (unresolved names, unknown expression types in the statistics on stdout) are not in it.
@@ -936,6 +946,10 @@ GROUP` for a group's symbols, each one's function's first error in link-errors.t
 `kppc --why-at "File.kpp:LINE,..."` (quoted: cmd splits arguments at commas) on the lines whose
 error names no cause by itself.
 
+On master 185a717 (the evening): LNK1120 5 = 4 left out (the headline's 4 lines) + 1 never
+emitted (computeConstant, templates/inherited_static_overload_as_function_pointer) + 0 C names, and
+the same 5 after Lua's switch: the converted Lua links whole, with lua.lib gone from the link line.
+
 The link also takes the Logitech LED SDK now (fbuild.bff links `libraries/Logitech/x64/
 LogitechLEDLib.lib`): its functions are C++, so `native/logitech_led_c.cpp` gives the six the game
 calls C names and `overrides/src/LED/Logitech/Includes/LogitechLEDLib.kpp` defines the header's
@@ -1164,7 +1178,7 @@ operations in the same order, and the C library's float functions for floats); c
 smoke test, `tests/glm_smoke.kpp`, prints vector, noise and matrix results in hex, equal to
 `tests/glm_smoke.cpp` compiled against glm itself.
 
-### Lua's internals through a C bridge (2026-10-29)
+### Lua's internals through a C bridge (2026-10-29, gone with Lua's switch the same day)
 
 The game's Lua is Lua 5.2 with Wube's changes (tables that keep their insertion order, a userdata's
 pointer to the game object it binds, `factorioBindableObject`), compiled as C++, and 12 of the
@@ -1192,10 +1206,11 @@ reads a real Lua state through it (a table's array part, its nodes in insertion 
 a userdata's bound object), and its output equals `tests/lua_internals_smoke.cpp`'s, the same
 against the game's Lua headers compiled as C++.
 
-All of this goes when Lua itself is converted: the game's code then uses Lua's types and macros as
-Kpp code, and kpp_lua_internals.h, lua_internals.c and the `included` lines are deleted.
+All of this went when Lua itself was converted (step 3 of the plan below): the game's code uses
+Lua's types and macros as Kpp code, and kpp_lua_internals.h, lua_internals.c, the `included` lines
+and the internals smoke test are deleted. The record above stays for how the C side was bridged.
 
-### Converting Lua: the plan (2026-10-29, step 2 done; step 3's gate passes)
+### Converting Lua: the plan (2026-10-29, done: the game runs on the converted Lua)
 
 **What.** `libraries/Lua`: 59 files, 21,449 lines (lua.c and luac.c, the standalone interpreter
 and compiler, left out as the game's build leaves them out). fbuild.bff compiles it as C++ (`/TP`)
@@ -1315,6 +1330,17 @@ expected", one commit switches the game from Lua as C to the converted Lua:
    (converter, programs/factorio and this document, with the paired numbers), and factorio-in-kpp
    is re-converted (kpp\Lua gains Lua's sources). The game's own Lua tests come after, with the
    game running.
+
+**Step 3, done** (2026-10-29). The switch is one commit, as wired above, with convert.cmd's
+conversions taking a fresh kpp\ (an older conversion's files, such as the headers no file
+includes any more, no longer linger there). Paired on 185a717, Lua imported against Lua converted:
+the headline 4 -> 4, the same lines; the link's unresolved externals 5 -> 5; the build's input
+4,097 files and 995,751 lines -> 4,134 and 1,013,119 (kpp\Lua's 37 converted files beside
+LuaCPPUtilities.kpp); the import 68 headers -> 65. The game's `--dump-data` (run.cmd) exits 0
+with the C++ build's checksums before and after: core 1707682591, base 2202500136, test_mod
+2960982019, the prototype list 486241314. Its data stage, where the mods' Lua runs, reached the
+checksums at 1.40 s instead of 2.41 s, one run each, not yet a measurement. The compatibility
+check is convert.cmd's Lua smoke test now, on kpp\Lua.
 
 ### What the parse of the C++ does not see (2026-10-29)
 

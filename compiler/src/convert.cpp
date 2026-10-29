@@ -737,11 +737,7 @@ namespace
     {"M_1_PI", "0.31830988618379067154"}, {"M_2_PI", "0.63661977236758134308"}, {"M_SQRT2", "1.41421356237309504880"},
     {"M_LN2", "0.69314718055994530942"}, {"M_LN10", "2.30258509299404568402"}, {"M_E", "2.71828182845904523536"},
     // Tracy profiling macros (stripped)
-    {"ZoneScoped", ""}, {"ZoneScopedN", ""}, {"ZoneNamedN", ""},
-    // Lua type constants (from lua.h)
-    {"LUA_TNIL", "0"}, {"LUA_TBOOLEAN", "1"}, {"LUA_TLIGHTUSERDATA", "2"}, {"LUA_TNUMBER", "3"},
-    {"LUA_TSTRING", "4"}, {"LUA_TTABLE", "5"}, {"LUA_TFUNCTION", "6"}, {"LUA_TUSERDATA", "7"},
-    {"LUA_TTHREAD", "8"}};
+    {"ZoneScoped", ""}, {"ZoneScopedN", ""}, {"ZoneNamedN", ""}};
   // `MACRO(arg)` becomes the text with $1 standing for the argument (`toCStr(x)` is `toStr(x).c_str()`).
   // The game's Log macros become calls of Logging's functions with the use's file and line, as
   // Log.hpp defines them for this configuration: ENABLE_DEBUG_LOG is defined by no file, so
@@ -2469,8 +2465,6 @@ namespace
     std::map<uint32_t, std::string> droppedAllocators;
     Counts counts;
     bool importedCommon = false;
-    bool importedLua = false;    // stdlib.h, string.h and stdio.h added next to the first C import
-    bool importedLuaInternals = false; // kpp_lua_internals.h for the first of Lua's internal headers
     bool importedDirectX = false; // kpp_directx.h for the first DirectX header of the file
     std::vector<std::string> todos; // "line: text"
     std::string_view text;
@@ -2911,7 +2905,7 @@ namespace
           // C libraries the game uses, by their include path prefix.
           // (stb_rect_pack, jc_voronoi and sdf are header-only C libraries whose implementations the
           // game compiles in its own .cpp files.)
-          static const char* cLibraries[] = {"SDL3/", "SDL2/", "SDL", "lua", "zlib", "zconf", "curl/", "png", "jpeg", "zstd", "opus", "ogg",
+          static const char* cLibraries[] = {"SDL3/", "SDL2/", "SDL", "zlib", "zconf", "curl/", "png", "jpeg", "zstd", "opus", "ogg",
                                              "vorbis", "minizip", "stb_image", "fontstash", "imgui/stb_rect_pack", "jc_voronoi/", "sdf/", "glad/",
                                              "CL/"};
           bool cLibrary = false;
@@ -2942,36 +2936,6 @@ namespace
             importedDirectX = true;
             replace(offset, length, "extern \"C\" import \"kpp_directx.h\";");
             counts.add("includes to imports");
-            continue;
-          }
-          if (header.rfind("Lua/", 0) == 0 || base == "lua.hpp")
-          {
-            // The game's Lua wrappers (libraries/Lua) bring the Lua C API: its headers, once per file.
-            // Lua's internal headers bring its internals too, through programs/factorio/native/
-            // include/kpp_lua_internals.h (the game compiles Lua as C++, which lobject.h needs).
-            static const std::set<std::string> luaInternals = {"lapi.h", "lobject.h", "lstate.h", "ltable.h", "lgc.h", "llimits.h", "lfunc.h",
-                                                               "lstring.h", "ldo.h", "lvm.h", "ltm.h", "lzio.h", "lmem.h", "ldebug.h"};
-            std::string imports;
-            if (!importedLua)
-            {
-              importedLua = true;
-              imports = "extern \"C\" import \"lua.h\";\nextern \"C\" import \"lauxlib.h\";\nextern \"C\" import \"lualib.h\";";
-            }
-            if (luaInternals.count(base) && !importedLuaInternals)
-            {
-              importedLuaInternals = true;
-              imports += std::string(imports.empty() ? "" : "\n") + "extern \"C\" import \"kpp_lua_internals.h\";";
-            }
-            if (imports.empty())
-            {
-              remove(offset, removeLength);
-              counts.add("includes removed");
-            }
-            else
-            {
-              replace(offset, length, imports);
-              counts.add("includes to imports");
-            }
             continue;
           }
           if (cHeaders.count(lowered) || cLibrary) // Windows' headers by any case (<Psapi.h>, <TlHelp32.h>)

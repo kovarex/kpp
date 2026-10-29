@@ -6,8 +6,9 @@ rem own (into kpp\, with the hand-written files kept there), checks that kppc co
 rem the smoke tests against that result: the stubs in tests\stubs\ stand in for the modules a whole
 rem conversion pulls in (FloatCast.cpp merged into FloatCast.kpp needs global and Logging, for example).
 rem Then imgui frames through the generated imgui interface (native\generate_imgui.py), the glm port
-rem against glm, the Lua internals the game reaches into against the C++ build's layout, and the GDI+
-rem classes (overrides\added\src\Graphics\GdiplusClasses.kpp) against the SDK's gdiplus.h.
+rem against glm, the converted Lua against the C++ build's (tests\lua_compat.lua, the gate of Lua's
+rem conversion), and the GDI+ classes (overrides\added\src\Graphics\GdiplusClasses.kpp) against the
+rem SDK's gdiplus.h.
 rem Hand-written parts are in overrides\.
 setlocal
 cd /d "%~dp0"
@@ -15,13 +16,18 @@ set KPPC=..\..\compiler\build\kppc.exe
 set SRC=C:\Factorio\src
 set WHOLE=C:\factorio-in-kpp\kpp
 if not "%~1"=="" set WHOLE=%~1
-rem The game's C++ overloads of Lua's API (lua_pushstring of a std::string, ...): converted with the
-rem game, into kpp\Lua\, while Lua itself is imported as C.
-set LUACPP=C:\Factorio\libraries\Lua\LuaCPPUtilities.hpp
-%KPPC% --no-std --quiet --convert %WHOLE% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUACPP% %SRC% C:\Factorio\tests || exit /b 1
+rem Lua (libraries\Lua): its .c files as the C++ the game compiles them as, with the game's C++
+rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-factorio.md, "Converting
+rem Lua"). No other input has .c files.
+set LUA=C:\Factorio\libraries\Lua
+set EXT=--ext .cpp,.hpp,.h,.kpp,.c
+%KPPC% --no-std --quiet --convert %WHOLE% %EXT% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUA% %SRC% C:\Factorio\tests || exit /b 1
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
-set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude native\include
-%KPPC% --no-std --quiet --convert kpp --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUACPP% %SRC% || exit /b 1
+set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude C:\Factorio\libraries\trio --cinclude native\include
+rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
+rem any more) would still be compiled.
+for %%d in (CommonUtil Agui cxxopts StackWalker Lua src) do if exist kpp\%%d rd /s /q kpp\%%d
+%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUA% %SRC% || exit /b 1
 type kpp\CONVERSION.md | findstr /B "Files -"
 rem Remove stale top-level directories left by older conversions (the converter now writes src\
 rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).
@@ -74,10 +80,10 @@ echo == glm smoke test: tests\glm_smoke.kpp through the glm port in kpp\src\API\
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\glm_smoke.exe kpp\src\API\glm.kpp tests\glm_smoke.kpp || exit /b 1
 kpp\glm_smoke.exe > kpp\glm_smoke.out.txt
 fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected > nul && echo glm smoke test: output as expected || (echo glm smoke test: OUTPUT DIFFERS & fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected & exit /b 1)
-echo == Lua internals smoke test: tests\lua_internals_smoke.kpp through native\include\kpp_lua_internals.h with the game's lua.lib (the layout and the reads of tests\lua_internals_smoke.cpp, the same against the game's Lua headers as C++)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_internals_smoke.exe tests\lua_internals_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\lua.lib --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
-kpp\lua_internals_smoke.exe > kpp\lua_internals_smoke.out.txt
-fc /w kpp\lua_internals_smoke.out.txt tests\lua_internals_smoke.expected > nul && echo Lua internals smoke test: output as expected || (echo Lua internals smoke test: OUTPUT DIFFERS & fc /w kpp\lua_internals_smoke.out.txt tests\lua_internals_smoke.expected & exit /b 1)
+echo == Lua compatibility check: tests\lua_compat.lua run by the converted Lua (tests\lua_compat.kpp with kpp\Lua) prints what the game's lua.lib prints (tests\lua_compat.expected, from tests\lua_compat.cpp)
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_compat.exe tests\lua_compat.kpp kpp\Lua --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
+kpp\lua_compat.exe tests\lua_compat.lua > kpp\lua_compat.out.txt
+fc /w kpp\lua_compat.out.txt tests\lua_compat.expected > nul && echo Lua compatibility check: output as expected || (echo Lua compatibility check: OUTPUT DIFFERS & fc /w kpp\lua_compat.out.txt tests\lua_compat.expected & exit /b 1)
 echo == GDI+ smoke test: tests\gdiplus_smoke.kpp through kpp\src\Graphics\GdiplusClasses.kpp and gdiplus.dll (the layouts and results of tests\gdiplus_smoke.cpp, the same against the SDK's gdiplus.h)
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\gdiplus_smoke.exe kpp\src\Graphics\GdiplusClasses.kpp kpp\src\Graphics\DX11\ComInterfaces.kpp tests\gdiplus_smoke.kpp --lib -lgdiplus --lib -lshlwapi || exit /b 1
 kpp\gdiplus_smoke.exe > kpp\gdiplus_smoke.out.txt

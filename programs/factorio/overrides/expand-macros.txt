@@ -1,13 +1,10 @@
 # C headers whose function-like macros the converter expands at their uses in converted code
 # (convert.cpp, readHeaderMacros): the imported headers give Kpp their functions and constants, not
-# their macros. Lua's public API: lua_pop, lua_newtable, lua_isnil, ... (651 uses in the game).
+# their macros.
 # An object-like macro that is another name is written as that name: glad's OpenGL functions
 # (`#define glGenTextures glad_glGenTextures`, the function pointers gladLoadGL fills).
 # imgui.h is C++, not imported (overrides/added/src/Debug/ImGui.kpp declares imgui for Kpp, with its
 # object-like macros as constants), but its function-like macros are C's: IM_COL32, IM_ARRAYSIZE.
-C:\Factorio\libraries\Lua\luaconf.h
-C:\Factorio\libraries\Lua\lua.h
-C:\Factorio\libraries\Lua\lauxlib.h
 C:\Factorio\libraries\glad\include\glad\glad.h
 C:\Factorio\libraries\imgui\imgui.h
 # SDL3's function-like macros the game uses (SDL_BUTTON_MASK, SDL_WINDOWPOS_CENTERED_DISPLAY,
@@ -16,14 +13,3 @@ C:\Factorio\libraries\SDL3\include\SDL3\SDL_stdinc.h
 C:\Factorio\libraries\SDL3\include\SDL3\SDL_audio.h
 C:\Factorio\libraries\SDL3\include\SDL3\SDL_mouse.h
 C:\Factorio\libraries\SDL3\include\SDL3\SDL_video.h
-# Lua's internals, which the game's C++ reaches into (LuaTableIterator, LuaValueSaver, LuaBinder, ...)
-# through native/include/kpp_lua_internals.h: their function-like macros (hvalue, uvalue, ttisnil,
-# setobj2s, gkey, gval, ...) are expanded only in the files that include one of them, directly or
-# through a converted header, as in C++ only those files see them (`included`).
-included C:\Factorio\libraries\Lua\llimits.h
-included C:\Factorio\libraries\Lua\lobject.h
-included C:\Factorio\libraries\Lua\lstate.h
-included C:\Factorio\libraries\Lua\ltable.h
-included C:\Factorio\libraries\Lua\lgc.h
-included C:\Factorio\libraries\Lua\ltm.h
-included C:\Factorio\libraries\Lua\lapi.h
