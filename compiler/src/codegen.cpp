@@ -2653,6 +2653,12 @@ namespace
           args = Span<Expr*>{values.data(), uint32_t(values.size())};
         storeZero(t, addr, at);
         storeVptrs(addr, info);
+        if (info.isUnion && designators.empty() && args.size() == 1 && !info.fieldDecls.empty())
+        {
+          // `{nullptr}` for a union: its first member, at the union's start (Lua's TValue's Value).
+          initializeFrom(addr, unionMemberType(t, info.fieldDecls[0], at), args[0], at);
+          return;
+        }
         if (info.fieldDecls.size() == 1 && info.bases.empty() && designators.empty() && args.size() > 1)
         {
           // Brace elision: `Array<int, 3> a = {1, 2, 3}` fills the one array field element by element.
@@ -9041,6 +9047,25 @@ namespace
       if (n->name.parts.size() != 1)
         return std::nullopt;
       std::string name = sym(n->name.parts[0].symbol);
+      if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty)
+      {
+        // `va_arg(list, T)` (Parser::parseVaArg): x64 Windows passes each variadic argument in an
+        // 8-byte slot, one larger than 8 bytes or of another size than 1, 2, 4, 8 by its address.
+        const Ty* t = withCurrentArgs(types.unqualified(types.stripRef(c->ty)));
+        std::string list = lvalue(c->args[0]);
+        std::string slot = newTemp(), next = newTemp();
+        fn += "  " + slot + " = load ptr, ptr " + list + "\n";
+        fn += "  " + next + " = getelementptr inbounds i8, ptr " + slot + ", i64 8\n";
+        fn += "  store ptr " + next + ", ptr " + list + "\n";
+        uint64_t size = sizeOf(t, c);
+        if (size > 8 || (size != 1 && size != 2 && size != 4 && size != 8))
+        {
+          std::string address = newTemp();
+          fn += "  " + address + " = load ptr, ptr " + slot + "\n";
+          return load(address, t, c);
+        }
+        return load(slot, t, c);
+      }
       if (name != "va_start" && name != "va_end" && name != "va_copy")
         return std::nullopt;
       if (c->args.size() < (name == "va_start" ? 2u : name == "va_copy" ? 2u : 1u))

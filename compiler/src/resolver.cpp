@@ -904,6 +904,7 @@ struct GlobalScope::Impl
     add("uint32_t", types.intType(32, true));
     add("uint64_t", types.intType(64, true));
     add("size_t", types.sizeType());
+    add("__builtin_va_list", types.pointer(types.charType())); // clang's <stdarg.h> va_list: a char* on x64 Windows, as MSVC's
     add("ptrdiff_t", types.ptrdiffType());
     add("intptr_t", types.intType(64));
     add("uintptr_t", types.intType(64, true));
@@ -14288,6 +14289,17 @@ struct GlobalScope::Impl
       if (callee->kind == NodeKind::NameExpr)
       {
         auto* n = static_cast<NameExpr*>(callee);
+        if (n->name.parts.size() == 1 && !n->name.parts[0].hasTemplateArgs && c->args.size() == 2 &&
+            c->args[1]->kind == NodeKind::SizeofExpr && static_cast<SizeofExpr*>(c->args[1])->type &&
+            impl.symbols.name(n->name.parts[0].symbol) == "va_arg")
+        {
+          // `va_arg(list, T)` (the parser's form, Parser::parseVaArg): the next argument, a T.
+          n->resolved = nullptr;
+          ++stats.callsResolved;
+          const Ty* t = typeOf(static_cast<SizeofExpr*>(c->args[1])->type);
+          record(n, types.function(t, {}, false));
+          return t;
+        }
         if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && impl.isTypeTraitName(n->name.parts[0].symbol))
           if (const Ty* trait = impl.typeTrait(n->name.parts[0], ctx(), 0); trait && trait->isKnown())
           {

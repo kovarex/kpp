@@ -4592,6 +4592,30 @@ namespace
       return result;
     }
 
+    // `va_arg(list, T)` in a function defined with `...` (C's macro): a call of va_arg whose second
+    // argument is `sizeof(T)`, which carries the type (an argument cannot be a type otherwise);
+    // the resolver types the call as T, the code generator reads the next argument.
+    Expr* parseVaArg(uint32_t start)
+    {
+      CallExpr* c = node<CallExpr>(start);
+      NameExpr* callee = node<NameExpr>(start);
+      parseQualifiedName(callee->name, false);
+      c->callee = callee;
+      expect(P::LParen, "expected '('");
+      size_t mark = scratch.size();
+      scratch.push_back(parseAssignment());
+      expect(P::Comma, "expected ',' in va_arg");
+      SizeofExpr* type = node<SizeofExpr>(pos);
+      type->sizeofKind = Kw::sizeof_;
+      type->type = parseType();
+      if (!type->type)
+        error("expected a type in va_arg");
+      scratch.push_back(type);
+      c->args = makeSpan<Expr*>(mark);
+      expect(P::RParen, "expected ')' after va_arg");
+      return c;
+    }
+
     Expr* parseNew(uint32_t start)
     {
       advance();
@@ -4736,6 +4760,8 @@ namespace
         case TokenKind::Identifier:
           if (at(P::LParen, 1) && !cMode && spelling() == "offsetof")
             return parseOffsetof(start);
+          if (at(P::LParen, 1) && !cMode && spelling() == "va_arg")
+            return parseVaArg(start);
           return parseNameExpr(start);
         case TokenKind::Punctuator:
           if (at(P::LParen))
