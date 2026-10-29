@@ -4385,6 +4385,16 @@ namespace
             counts.add("std name qualified as global");
           }
           replace(t.offset, endOffset(i + 2) - t.offset, to);
+          if (it != stdNames.end() && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == name &&
+              isIdentChar(to.back()))
+          {
+            // The class's constructors by its name: `using std::string::string;` inherits them
+            // (TestFlatMap's MoveOnlyString), `using String::String;` in Kpp.
+            replace(toks[i + 4].offset, toks[i + 4].length, to.substr(to.rfind(':') == std::string::npos ? 0 : to.rfind(':') + 1));
+            counts.add("std constructor name renamed");
+            i += 4;
+            continue;
+          }
           i += 2;
           continue;
         }
