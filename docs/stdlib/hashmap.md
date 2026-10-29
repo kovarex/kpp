@@ -17,11 +17,17 @@ produced by the converter.
 
 | operation | iterators | pointers and references to entries |
 |---|---|---|
-| insert, emplace, try_emplace, operator[] that grows the table | all | none |
+| insert, emplace, try_emplace, operator[] that grows the table | all, except for dereferencing | none |
 | the same without growing | none | none |
 | erase | the erased entries' | the erased entries' |
 | clear, assignment | all | all |
-| reserve(n) that grows the table | all | none |
+| reserve(n) that grows the table | all, except for dereferencing | none |
+
+An iterator from before the table grew still reaches its entry (`*it`, `it->second`), as
+std::unordered_map's do, whose iterators are its nodes, and as code relies on: `auto [it, created]
+= memo.try_emplace(key); if (created) it->second = compute();` where compute inserts more
+(Factorio's NoiseProgramBuilder::compileExpression). Moving it (`++it`) or comparing it with a newer
+one is not allowed. FastHashMap's and FastHashSet's iterators are all invalidated by growing.
 
 The table grows when an insertion would make `size()` exceed the table's limit for its current
 number of buckets; `reserve(n)` makes room for n entries so that inserting up to n entries does

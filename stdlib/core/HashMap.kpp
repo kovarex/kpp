@@ -18,7 +18,11 @@ const uint8_t hashSlotDeleted = 1;
 // already chose the slot).
 uint8_t hashTagOf(size_t hash) { return (uint8_t)(0x80 | (hash >> 57)); }
 
-// A position in a table: a used slot, or the slot count for end().
+// A position in a table: a used slot, or the slot count for end(). A stable table's iterator also
+// holds its entry's node, and reaches the entry through it after the table grew (the slots it was
+// made from are gone then): `auto [it, created] = memo.try_emplace(n); it->second = compute();`
+// with compute inserting more, as std::unordered_map's iterators, which are its nodes, allow
+// (NoiseProgramBuilder::compileExpression).
 template<typename E, bool stable>
 struct HashIterator
 {
@@ -32,14 +36,21 @@ struct HashIterator
   char* slots = nullptr;
   int index = 0;
   int capacity = 0;
+  E* node = nullptr; // stable: the entry at index, or null at end()
 
   HashIterator() {}
-  HashIterator(uint8_t* tags, char* slots, int index, int capacity) : tags(tags), slots(slots), index(index), capacity(capacity) {}
+  // (The node is found here and in skipFree, not in a function of its own: a call more per lookup
+  // cost 8-13% in the hash lookup benchmarks, as functions of other modules are not inlined.)
+  HashIterator(uint8_t* tags, char* slots, int index, int capacity) : tags(tags), slots(slots), index(index), capacity(capacity)
+  {
+    if constexpr (stable)
+      this->node = index < capacity && tags[index] >= 0x80 ? ((E**)slots)[index] : nullptr;
+  }
 
   E* entry() const
   {
     if constexpr (stable)
-      return ((E**)this->slots)[this->index];
+      return this->node;
     else
       return (E*)this->slots + this->index;
   }
@@ -63,6 +74,8 @@ struct HashIterator
   {
     while (this->index < this->capacity && this->tags[this->index] < 0x80)
       ++this->index;
+    if constexpr (stable)
+      this->node = this->index < this->capacity ? ((E**)this->slots)[this->index] : nullptr;
   }
 };
 

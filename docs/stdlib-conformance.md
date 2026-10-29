@@ -35,6 +35,16 @@ Not in the library by decision: `<regex>`. Its one user is cxxopts, whose five f
 hand-written matchers in the conversion's overrides (docs/path-to-factorio.md, "cxxopts"); a
 library Regex comes with a second user.
 
+## Stronger than C++, by decision
+
+**HashMap and HashSet iterators survive growth for dereferencing** (docs/stdlib/hashmap.md,
+2026-10-29). std::unordered_map keeps pointers and references valid across a rehash, not
+iterators, but MSVC's and libstdc++'s iterators are its nodes and the game relies on that:
+NoiseProgramBuilder::compileExpression keeps the iterator `try_emplace` returned while the
+expression's compile inserts its subexpressions into the same map, then assigns through it. A
+stable table's iterator holds its entry's node (library/hash_map_iterator_after_growth). Moving or
+comparing an iterator from before the growth stays invalid, as does any FastHashMap iterator.
+
 ## Conforming
 
 Vector (invalidation, growth, relocation with move constructors, aliasing-safe push_back),
