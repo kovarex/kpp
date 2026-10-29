@@ -54,6 +54,7 @@ O(n). `count` in a multi container: O(log n + number found).
   including its value). Returns `Pair<iterator, bool>`: the entry with the key and whether it was
   inserted. In a multi container it always inserts (after the equivalent keys) and returns the
   iterator. The entry may be passed as an rvalue to be moved in.
+- `insert({...})`: inserts the listed entries (values of a set) one by one, as insert(entry) does.
 - `emplace(args...)`: constructs an entry from the arguments, then as insert (the entry is not
   copied or moved: when its key is present, it is destroyed).
 - `try_emplace(key, args...)`: when key is absent, inserts an entry of key and the value

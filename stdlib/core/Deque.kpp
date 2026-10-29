@@ -226,6 +226,9 @@ struct Deque
   }
   DequeIterator<T> insert(DequeIterator<T> position, const T& value) { return this->insert(position.index, value); }
   DequeIterator<T> insert(DequeIterator<T> position, T&& value) { return this->insert(position.index, move(value)); }
+  // An element made from args, inserted before position as insert does (std::deque::emplace).
+  template<typename... Args>
+  DequeIterator<T> emplace(DequeIterator<T> position, Args&&... args) { return this->insert(position.index, T(forward<Args>(args)...)); }
   // Removes the element at index, moving the shorter side by one; returns the position of the
   // element after it.
   DequeIterator<T> erase(int index)

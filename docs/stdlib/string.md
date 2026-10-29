@@ -66,7 +66,8 @@ Searching (each returns an index or npos; `from` is where the search starts, cla
   when from is npos or omitted). `find_first_of(set)`, `find_first_not_of(set)`,
   `find_last_of(set)`, `find_last_not_of(set)`: first/last byte that is (not) in set;
   `find_first_not_of(c)`, `find_last_not_of(c)`: first/last byte other than c.
-- `startsWith(prefix)`, `endsWith(suffix)` (Kpp additions; C++20 spells them starts_with/ends_with).
+- `startsWith(prefix)`, `endsWith(suffix)` (Kpp additions), and C++20's `starts_with(x)` and
+  `ends_with(x)` of a text (a String, a StringView, a literal) or a char; StringView has the same.
 
 Producing new strings:
 - `substr(start, count)`: count bytes from start (all the rest when count is negative or runs

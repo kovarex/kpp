@@ -1,0 +1,21 @@
+// spec: a transformView's front() and back() are the function of the first and last element, with the reference the function returns (std's view_interface)
+// factorio: the tests' TestLuaTerritory and TestLuaEvents take `&surface.territoryManager->getAllTerritories().front()` (and back()), getAllTerritories being `std::views::transform(this->territories, [](auto& tPtr) -> Territory& { return *tPtr; })`
+struct Territory
+{
+  int id = 0;
+};
+int main()
+{
+  Vector<UniquePtr<Territory>> territories;
+  for (int i = 1; i <= 3; ++i)
+  {
+    territories.push_back(makeUnique<Territory>());
+    territories.back()->id = i;
+  }
+  auto all = transformView(territories, [](const UniquePtr<Territory>& t) -> Territory& { return *t; });
+  Territory* first = &all.front();
+  Territory* last = &all.back();
+  last->id = 30;
+  println("{} {} {} {}", first->id, last->id, first == territories[0].get(), territories[2]->id);
+  return 0;
+}

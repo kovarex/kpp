@@ -954,6 +954,12 @@ struct Map
     for (; first != last; ++first)
       this->insert(*first);
   }
+  // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
+  void insert(InitializerList<Pair<K, V>> items)
+  {
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+  }
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
   MapNodeHandle<K, V> extract(RbIterator<Pair<K, V>> position) { return MapNodeHandle<K, V>(this->tree.unlink(position)); }
@@ -1147,6 +1153,12 @@ struct Set
     for (; first != last; ++first)
       this->insert(*first);
   }
+  // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
+  void insert(InitializerList<T> items)
+  {
+    for (const T& item : items)
+      this->insert(item);
+  }
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
   SetNodeHandle<T> extract(RbIterator<T> position) { return SetNodeHandle<T>(this->tree.unlink(position)); }
@@ -1330,6 +1342,12 @@ struct MultiMap
     for (; first != last; ++first)
       this->insert(*first);
   }
+  // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
+  void insert(InitializerList<Pair<K, V>> items)
+  {
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+  }
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
   MapNodeHandle<K, V> extract(RbIterator<Pair<K, V>> position) { return MapNodeHandle<K, V>(this->tree.unlink(position)); }
@@ -1493,6 +1511,12 @@ struct MultiSet
   {
     for (; first != last; ++first)
       this->insert(*first);
+  }
+  // Inserts the listed entries, as insert(entry) does one by one (std's insert({...})).
+  void insert(InitializerList<T> items)
+  {
+    for (const T& item : items)
+      this->insert(item);
   }
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.

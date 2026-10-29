@@ -1,0 +1,11 @@
+// spec: String's and StringView's starts_with and ends_with (C++20) take a text (a String, a StringView, a literal) or a char
+// factorio: the tests' TestTranslationCoverage: `view.starts_with('[') && view.ends_with(']')` on a std::string_view, `name.starts_with("dummy-")` and `item.first.starts_with(prefix)` on std::strings
+int main()
+{
+  String name = "dummy-tile";
+  StringView view = "[item]";
+  StringView prefix = "dummy";
+  println("{} {} {} {} | {} {} {} {}", name.starts_with("dummy-"), name.starts_with(prefix), name.ends_with('e'), name.starts_with('x'),
+          view.starts_with('['), view.ends_with(']'), StringView().starts_with('['), String().ends_with(""));
+  return 0;
+}

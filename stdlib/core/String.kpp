@@ -416,6 +416,11 @@ struct String
     int count = suffix.size(), length = this->size();
     return count <= length && memcmp(this->data() + length - count, suffix.data(), count) == 0;
   }
+  // C++20's starts_with and ends_with: of a text (a String, a StringView, a literal) or of a char.
+  bool starts_with(StringView prefix) const { return StringView(*this).startsWith(prefix); }
+  bool starts_with(char c) const { return !this->empty() && this->front() == c; }
+  bool ends_with(StringView suffix) const { return StringView(*this).endsWith(suffix); }
+  bool ends_with(char c) const { return !this->empty() && this->back() == c; }
 
   bool operator==(const String& other) const
   {

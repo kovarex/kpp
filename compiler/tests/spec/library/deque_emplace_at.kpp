@@ -1,0 +1,16 @@
+// spec: Deque's emplace(position, args...) makes an element from args before position, as insert does, and returns its position (std::deque::emplace)
+// factorio: the tests' TestCompactDeque compares the game's CompactDeque with a std::deque: `deq2.emplace(deq2.begin(), "begin")`, `deq2.emplace(deq2.begin() + index, toStr(n))`
+int main()
+{
+  Deque<String> deque;
+  deque.push_back("b");
+  deque.push_back("d");
+  auto at = deque.emplace(deque.begin(), "a");
+  deque.emplace(deque.begin() + 2, 1, 'c');
+  deque.emplace(deque.end(), "e");
+  String joined;
+  for (const String& s : deque)
+    joined += s;
+  println("{} {} {}", joined, *at, deque.size());
+  return 0;
+}

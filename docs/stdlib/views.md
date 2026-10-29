@@ -12,11 +12,12 @@ access; a reverse view's bidirectional).
 - `iotaView(first, last)`: the numbers first, first + 1, ... up to last, last excluded
   (std::views::iota(first, last)); last is converted to first's type.
 - `transformView(range, f)`: f(x) for every element x of range, called each time an element is
-  read (std::views::transform(range, f)). `range | transformView(f)` is the same.
+  read (std::views::transform(range, f)). `range | transformView(f)` is the same. `front()` and
+  `back()` (std's view_interface) are f of the first and the last element (the range not empty;
+  back() of a bidirectional one).
 - `reverseView(range)`: the elements of a bidirectional range from the last to the first
   (std::views::reverse(range)).
 
-*Differences from C++*: only these four views and the `|` form of transformView; an element of a
-transformView is f's result as a value, also when f returns a reference (a reference result needs
-decltype(auto), which the compiler does not keep yet: spec language/decltype_auto_return); no
-sentinels, no `std::ranges` algorithms.
+*Differences from C++*: only these four views and the `|` form of transformView; no sentinels, no
+`std::ranges` algorithms. An element of a transformView is f's result with the reference f returns
+(`&territories.front()` of a view returning `Territory&` is the territory's address).

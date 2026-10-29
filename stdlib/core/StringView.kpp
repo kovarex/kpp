@@ -111,6 +111,10 @@ struct StringView
   void remove_suffix(int count) { this->byteCount -= count; }
   bool starts_with(StringView prefix) const { return this->startsWith(prefix); }
   bool ends_with(StringView suffix) const { return this->endsWith(suffix); }
+  // Whether the first (last) character is c (C++20's starts_with(char), TestTranslationCoverage's
+  // `view.starts_with('[') && view.ends_with(']')`).
+  bool starts_with(char c) const { return this->byteCount > 0 && this->chars[0] == c; }
+  bool ends_with(char c) const { return this->byteCount > 0 && this->chars[this->byteCount - 1] == c; }
   int find_first_of(char c) const { return this->find(c); }
   int find_first_of(char c, int from) const { return this->find(c, from); }
   int find_first_of(StringView set, int from) const

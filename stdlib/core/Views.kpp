@@ -179,6 +179,16 @@ struct TransformView : ViewBase
   auto end() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().end(), &this->f); }
   bool empty() const { return this->base.get().begin() == this->base.get().end(); }
   ptrdiff_t size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+  // The function of the first (last) element, with the reference it returns, as std's
+  // view_interface gives them (TerritoryManager's `&getAllTerritories().front()`); the range is
+  // not empty, and back() takes a bidirectional one.
+  decltype(auto) front() const { return *this->begin(); }
+  decltype(auto) back() const
+  {
+    auto last = this->end();
+    --last;
+    return *last;
+  }
 };
 
 template<typename Range, typename F>

@@ -1,0 +1,17 @@
+// spec: insert({...}) adds the listed values to a Set and a MultiSet, as insert of each one in order (a Set keeps the first of equal values), and a Map's insert takes an InitializerList of entries
+// factorio: the tests' TestPlanetGeneration: `this->entities.missing.insert({"small-demolisher", "medium-demolisher", "big-demolisher"});` on a std::set<std::string>
+int main()
+{
+  Set<String> missing = {"a"};
+  missing.insert({"c", "b", "a"});
+  MultiSet<int> counts;
+  counts.insert({3, 1, 3});
+  Map<String, int> map;
+  InitializerList<Pair<String, int>> entries = {{"x", 1}, {"y", 2}, {"x", 3}};
+  map.insert(entries);
+  String joined;
+  for (const String& s : missing)
+    joined += s;
+  println("{} {} {} {} {}", joined, counts.size(), counts.count(3), map["x"], map.size());
+  return 0;
+}
