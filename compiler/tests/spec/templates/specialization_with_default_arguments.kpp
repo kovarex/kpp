@@ -1,0 +1,26 @@
+// spec: a specialization written with fewer arguments than its primary has parameters takes the primary's defaults for the rest (`is_optional<Optional<T>>` of `template<typename T, typename Enable = void>`), a default that names an earlier parameter (`H = Vector<K>`) included, for partial and full specializations, as a type and through a qualified name
+// found in the game's is_optional (TemplateHelpers): the specialization never matched the two arguments an instance has, so `is_optional<T>()` was false for Optional and DeserialiserHelper::load fell through to the catch-all loadValue ("Unknown type", 122 headline lines)
+template <typename T, typename Enable = void>
+struct is_optional : FalseType {};
+template <typename T>
+struct is_optional<Optional<T>> : TrueType {};
+template <typename K, typename H = Vector<K>>
+struct Table { static constexpr int kind = 0; };
+template <typename K>
+struct Table<K*> { static constexpr int kind = 1; };
+template <>
+struct Table<int> { static constexpr int kind = 2; };
+template<class T>
+const char* kind()
+{
+  if constexpr (is_optional<T>())
+    return "optional";
+  else
+    return "other";
+}
+int main()
+{
+  println("{} {} {} {}", kind<Optional<int>>(), kind<int>(), is_optional<Optional<char>>::value, is_optional<char>::value);
+  println("{} {} {} {}", Table<char>::kind, Table<char*>::kind, Table<int>::kind, Table<int, Vector<char>>::kind);
+  return 0;
+}

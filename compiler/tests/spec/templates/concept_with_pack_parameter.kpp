@@ -1,0 +1,36 @@
+// spec: a concept with a pack parameter (`template<typename T, typename D, typename... Args> concept has_load = requires(T& result, D& input, Args&&... args) { result.load(input, forward<Args>(args)...); }`) is evaluated for the arguments written, an expansion giving its elements (none for an empty pack)
+// found in the game's DeserialiserHelper::load: `if constexpr (has_load<T, DeserialiserType, Args&&...>)` was false for every T (the concept was not evaluated), so classes with a load method fell through to the catch-all loadValue ("Unknown type")
+struct Input {};
+struct Thing
+{
+  int v = 0;
+  void load(Input& in) { v = 7; }
+};
+struct Other
+{
+  int v = 0;
+};
+struct WithArg
+{
+  int v = 0;
+  void load(Input& in, int extra) { v = extra; }
+};
+template<typename T, typename DeserialiserType, typename... Args>
+concept has_load = requires(T& result, DeserialiserType& input, Args&&... args) { result.load(input, ::forward<Args>(args)...); };
+template<class T, typename... Args>
+const char* how(T& result, Args&&... args)
+{
+  if constexpr (has_load<T, Input, Args&&...>)
+    return "load";
+  else
+    return "none";
+}
+
+int main()
+{
+  Thing t;
+  Other o;
+  WithArg w;
+  println("{} {} {} {}", how(t), how(o), how(w), how(w, 3));
+  return 0;
+}

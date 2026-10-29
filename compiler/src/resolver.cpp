@@ -1514,7 +1514,37 @@ struct GlobalScope::Impl
         return false;
       out.push_back(t);
     }
+    bool expansion = !part.templateArgs.empty() && part.templateArgs[part.templateArgs.size() - 1] &&
+                     part.templateArgs[part.templateArgs.size() - 1]->kind == NodeKind::PackType;
+    if (!expansion)
+      appendDefaultPatterns(primary, out, depth);
     return true;
+  }
+
+  // A specialisation written with fewer arguments than its primary has parameters
+  // (`is_optional<Optional<T>>` of `template<typename T, typename Enable = void>`): the rest are
+  // the primary's defaults, read with the arguments before them, as C++ completes it.
+  void appendDefaultPatterns(Decl* primary, std::vector<const Ty*>& out, int depth)
+  {
+    Span<Decl*> params = primary ? effectiveParams(primary) : Span<Decl*>{};
+    for (size_t i = out.size(); i < params.size(); ++i)
+    {
+      auto* p = static_cast<TemplateParamDecl*>(params[i]);
+      if (!p->defaultArg || p->isPack)
+        return;
+      LocalStack own;
+      Subst s;
+      for (size_t k = 0; k < params.size(); ++k)
+        own.push(static_cast<TemplateParamDecl*>(params[k])->name, params[k]);
+      for (size_t k = 0; k < i; ++k)
+        s.pairs.push_back({params[k], out[k]});
+      TypeContext dctx{lexicalScopeOf(primary), &own, &s, primary->file ? primary->file->tokens : nullptr,
+                       primary->file ? primary->file->text : std::string_view()};
+      const Ty* t = templateArgument(p->defaultArg, p, dctx, depth + 1);
+      if (!t || !t->isKnown())
+        return;
+      out.push_back(t);
+    }
   }
 
   // Deduces partial specialisation c's parameters from the arguments: `<T, T, R...>` against
@@ -1525,12 +1555,13 @@ struct GlobalScope::Impl
   bool matchPatterns(ClassDecl* c, Decl* primary, const std::vector<const Ty*>& args, std::vector<const Ty*>& deduced, int depth)
   {
     const NamePart& part = c->name.last();
-    size_t n = part.templateArgs.size();
-    bool expansion = n > 0 && part.templateArgs[n - 1] && part.templateArgs[n - 1]->kind == NodeKind::PackType;
-    if (expansion ? args.size() < n - 1 : args.size() != n)
-      return false;
+    size_t written = part.templateArgs.size();
+    bool expansion = written > 0 && part.templateArgs[written - 1] && part.templateArgs[written - 1]->kind == NodeKind::PackType;
     std::vector<const Ty*> patterns;
     if (!specializationPatterns(c, primary, patterns, depth))
+      return false;
+    size_t n = patterns.size(); // the written ones, then the primary's defaults
+    if (expansion ? args.size() < n - 1 : args.size() != n)
       return false;
     Subst s;
     for (size_t i = 0; i < n; ++i)
@@ -1611,6 +1642,11 @@ struct GlobalScope::Impl
         args.push_back(a);
     }
     Decl* primary = primaryOf(*l.overloads);
+    // `Table<char*>::kind` names the arguments it writes; the instance has the defaults too.
+    appendDefaultPatterns(primary, args, depth);
+    for (const Ty* a : args)
+      if (!a || !a->isKnown() || types.isDependent(a))
+        return nullptr;
     struct Candidate
     {
       ClassDecl* decl;
@@ -1627,12 +1663,17 @@ struct GlobalScope::Impl
       const NamePart& part = c->name.last();
       if (c->templateParams.empty())
       {
-        if (part.templateArgs.size() != args.size())
-          continue;
+        // `template<> struct is_optional<int>`: the written arguments, then the primary's defaults.
         TypeContext sctx{lexicalScopeOf(c), nullptr, nullptr, c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
+        std::vector<const Ty*> full;
+        for (size_t i = 0; i < part.templateArgs.size(); ++i)
+          full.push_back(templateArgument(part.templateArgs[i], parameterFor(primary, i), sctx, depth));
+        appendDefaultPatterns(primary, full, depth);
+        if (full.size() != args.size())
+          continue;
         bool same = true;
         for (size_t i = 0; i < args.size() && same; ++i)
-          same = sameArgument(templateArgument(part.templateArgs[i], parameterFor(primary, i), sctx, depth), args[i]);
+          same = sameArgument(full[i], args[i]);
         if (same)
           return types.classType(c, {});
         continue;
@@ -6190,17 +6231,44 @@ struct GlobalScope::Impl
   // dependent, a pack).
   std::optional<bool> conceptValue(VariableDecl* concept_, const NamePart& part, const TypeContext& ctx, int depth)
   {
-    if (!concept_ || depth > 16 || part.templateArgs.size() != concept_->templateParams.size())
+    if (!concept_ || depth > 16 || concept_->templateParams.empty())
       return std::nullopt;
-    Subst cs;
-    for (size_t i = 0; i < concept_->templateParams.size(); ++i)
+    // The written arguments, an expansion (`Args&&...`) giving its elements; a trailing pack
+    // parameter takes the rest (`has_load<T, Input, Args&&...>` with Args empty: none).
+    size_t n = concept_->templateParams.size();
+    std::vector<const Ty*> given;
+    for (size_t i = 0; i < part.templateArgs.size(); ++i)
     {
-      auto* param = static_cast<TemplateParamDecl*>(concept_->templateParams[i]);
-      const Ty* a = param->isPack ? nullptr : templateArgument(part.templateArgs[i], param, ctx, depth + 1);
+      Node* written = part.templateArgs[i];
+      Decl* param = concept_->templateParams[std::min(given.size(), n - 1)];
+      const Ty* a = templateArgument(written, param, ctx, depth + 1);
       if (!a || !a->isKnown() || types.isDependent(a))
         return std::nullopt;
-      cs.pairs.push_back({param, a});
+      if (written && written->kind == NodeKind::PackType)
+      {
+        if (a->kind != TyKind::Pack)
+          return std::nullopt;
+        given.insert(given.end(), a->args.begin(), a->args.end());
+      }
+      else
+        given.push_back(a);
     }
+    Subst cs;
+    for (size_t i = 0; i < n; ++i)
+    {
+      auto* param = static_cast<TemplateParamDecl*>(concept_->templateParams[i]);
+      if (param->isPack && i + 1 == n)
+      {
+        std::vector<const Ty*> rest(given.begin() + std::min(i, given.size()), given.end());
+        cs.pairs.push_back({param, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+        break;
+      }
+      if (i >= given.size())
+        return std::nullopt; // fewer arguments than parameters (defaults: not read here)
+      cs.pairs.push_back({param, given[i]});
+    }
+    if (given.size() > n && !static_cast<TemplateParamDecl*>(concept_->templateParams[n - 1])->isPack)
+      return std::nullopt;
     if (concept_->init->kind == NodeKind::RequiresExpr)
       return requirementsHold(static_cast<RequiresExpr*>(concept_->init), concept_, cs);
     return constraintValue(concept_->init, concept_, cs, depth + 1);
@@ -7329,6 +7397,8 @@ struct GlobalScope::Impl
           if (auto* v = static_cast<VariableDecl*>(d); !v->structuredBindings.empty())
             if (const Ty* bt = bindingType(v, lastPart.symbol))
               return bt;
+          if (lastPart.hasTemplateArgs && Impl::conceptOf(d))
+            return types.boolType(); // `has_load<T, Input>` as a value: a concept-id is a bool
           const Ty* t = impl.declaredTypeOf(d, activeSubst, 0);
           if (impl.containsAuto(t))
           {
