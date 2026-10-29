@@ -1,6 +1,5 @@
 // spec: a union's own constructor initializes the member its initializer names (`Value(Thing& wrapped) : thing(&wrapped) {}`): a local union, a class's const member initialized through it (`value(wrapped)`), that class returned by value, and the default constructor's `none(nullptr)`
 // factorio: UpgradableEntity's WrappedValue (`WrappedValue(EntityWithHealth& wrapped) : wrappedEntityWithHealth(&wrapped) {}`), the entity an UpgradableEntity wraps: it was left uninitialized, so `entity->asUpgradableEntity().getUpgradeTargetWithFallback()` went through a garbage EntityWithHealth* and 53 of the unit tests' 554 suites crash under it (tests.cmd, suites.py)
-// pending: SILENT, the initializer is dropped and the member keeps whatever its storage held, so the snippet reads through a garbage pointer and crashes (a body's assignment `this->thing = &wrapped;` works); owner: the codegen thread
 struct Thing
 {
   int x = 42;

@@ -2182,6 +2182,24 @@ namespace
         for (Decl* d : info.fieldDecls)
           if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
             named = named || initFor(static_cast<VariableDecl*>(d)->name.last().symbol);
+        // The member a constructor initializer names, at the union's start (UpgradableEntity's
+        // `WrappedValue(EntityWithHealth& wrapped) : wrappedEntityWithHealth(&wrapped) {}`).
+        if (named)
+          for (Decl* d : info.fieldDecls)
+            if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
+              if (const FunctionDecl::CtorInit* init = initFor(static_cast<VariableDecl*>(d)->name.last().symbol))
+              {
+                const Ty* ft = unionMemberType(t, d, at);
+                if (isClass(ft))
+                  constructInto(addr, ft, init->args, at);
+                else if (init->args.empty())
+                  storeZero(ft, addr, at); // `: raw()`: value-initialized
+                else if (init->args.size() == 1)
+                  withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(addr, ft, one, at); });
+                else
+                  unsupported(at, "a union member initializer of several values");
+                break;
+              }
         if (!named)
           for (Decl* d : info.fieldDecls)
             if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->init && !bitfieldFor(d))
