@@ -5055,6 +5055,15 @@ struct GlobalScope::Impl
         const Ty* t = convertType(v->type, ctx, depth + 1);
         if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::BraceInitExpr)
           t = types.array(t->inner, uint32_t(static_cast<BraceInitExpr*>(v->init)->args.size())); // `double a[] = {1, 2}`
+        if (containsAuto(t) && v->init && subst && !subst->empty() && v->parent && v->parent->kind == NodeKind::ClassDecl &&
+            (v->flags & DF_Static))
+        {
+          // `static constexpr auto FOLD = fold;` in a class template: the initializer's type under
+          // this instance's arguments (the walker deduces it only for the template itself).
+          if (const Ty* init = typeOfSignatureExpression(v->init, ctx); init && init->isKnown() && !types.isDependent(init))
+            if (const Ty* deduced = deduceAuto(t, init); deduced && deduced->isKnown() && !containsAuto(deduced))
+              return deduced;
+        }
         if (types.isDependent(t) && containsAuto(t))
           return t; // Deduced from the initializer by the walker when it reaches the declaration.
         return t;

@@ -1,0 +1,20 @@
+// spec: a static `auto` member of a class template (`static constexpr auto FOLD = fold;` with fold a function pointer parameter, `static constexpr auto SCALE = Scale * 2;`) has the type its initializer gives under each instance's arguments
+// factorio: the noise expression templates' BinaryExpression<Operation, Commutative, fold>::FOLD, read by NativeNoiseFunctions' BinaryFunction::create (14 lines)
+int add(int a, int b) { return a + b; }
+template<int (*fold)(int, int), int Scale>
+struct Expr
+{
+  static constexpr auto FOLD = fold;
+  static constexpr auto SCALE = Scale * 2;
+};
+template<class E>
+int apply(int a, int b)
+{
+  auto f = E::FOLD;
+  return f(a, b) * E::SCALE;
+}
+int main()
+{
+  println("{}", apply<Expr<add, 3>>(2, 5));
+  return 0;
+}
