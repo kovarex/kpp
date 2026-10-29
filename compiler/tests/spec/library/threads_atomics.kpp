@@ -1,4 +1,4 @@
-// spec: Thread, Mutex, LockGuard, Atomic (std::thread, std::mutex, std::atomic), thisThread::yield and sleepFor (std::this_thread)
+// spec: Thread, Mutex, LockGuard, Atomic (std::thread, std::mutex, std::atomic), thisThread::yield and sleepFor (std::this_thread), Thread::hardwareConcurrency (std::thread::hardware_concurrency)
 // factorio: 78 std::thread, 479 mutex/lock_guard, 47 std::atomic
 int main()
 {
@@ -10,6 +10,6 @@ int main()
   for (Thread& t : threads)
     t.join();
   thisThread::sleepFor(Milliseconds(1));
-  println("{}", counter.load());
+  println("{} {}", counter.load(), Thread::hardwareConcurrency() >= 1);
   return 0;
 }

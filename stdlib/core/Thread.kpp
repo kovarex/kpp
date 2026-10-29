@@ -9,6 +9,7 @@ extern "C" int CloseHandle(void* handle);
 extern "C" unsigned long GetCurrentThreadId();
 extern "C" void Sleep(unsigned long milliseconds);
 extern "C" int SwitchToThread();
+extern "C" unsigned long GetActiveProcessorCount(unsigned short groupNumber);
 extern "C" void AcquireSRWLockExclusive(void** lock);
 extern "C" void ReleaseSRWLockExclusive(void** lock);
 extern "C" unsigned char TryAcquireSRWLockExclusive(void** lock);
@@ -114,6 +115,9 @@ struct Thread
   template<typename Rep, typename Period>
   static void sleepFor(const Duration<Rep, Period>& d) { Sleep(waitMilliseconds(d)); }
   static void yield() { SwitchToThread(); }
+  // How many threads can run at once: the machine's logical processors, in all its processor groups
+  // (std::thread::hardware_concurrency, which may also say 0 for "not known"; this never does).
+  static unsigned int hardwareConcurrency() { return (unsigned int)GetActiveProcessorCount(0xFFFF); }
 };
 
 struct Mutex

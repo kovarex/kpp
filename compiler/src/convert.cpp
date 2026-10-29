@@ -1998,6 +1998,14 @@ namespace
             i += 14;
             continue;
           }
+          if (name == "thread" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "hardware_concurrency")
+          {
+            // A static member whose library name differs: std::thread::hardware_concurrency().
+            replace(t.offset, endOffset(i + 4) - t.offset, shadowedAt("Thread", t.offset) ? "::Thread::hardwareConcurrency" : "Thread::hardwareConcurrency");
+            counts.add("std static member renamed");
+            i += 4;
+            continue;
+          }
           if (name == "chrono" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && toks[i + 4].getKind() == TokenKind::Identifier)
           {
             // std::chrono's names are the library's time types (Time.kpp, docs/stdlib/time.md).
