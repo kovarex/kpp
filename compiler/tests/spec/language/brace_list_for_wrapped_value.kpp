@@ -1,0 +1,24 @@
+// spec: a brace list assigned to or returned as a class that wraps a value goes through the value's type: `optional = {a, b}` builds the T from a and b and assigns it, `return {{a, b}};` builds the T from the inner list
+// factorio: ChartTagsInputState's `this->tagBeingCreated = {::move(text), icon};` and LuaSimulation's `gameView->railPlannerOverride = {ghostMode, buildMode};` (std::optional members), VectorUtils' `return {{this->point1.value(), this->point2.value()}};` for a std::optional<std::pair<V, V>>
+// pending: the list is taken as the wrapping class's own constructor arguments ("a constructor of Optional taking 2 arguments"), for the return and for the assignments
+struct Tag
+{
+  String text;
+  int icon = 0;
+  Tag(String text, int icon) : text(move(text)), icon(icon) {}
+};
+struct Point
+{
+  int x, y;
+};
+Optional<Pair<int, int>> both(int a, int b) { return {{a, b}}; }
+int main()
+{
+  Optional<Tag> tag;
+  tag = {String("hello"), 7};
+  Optional<Point> point;
+  point = {1, 2};
+  Optional<Pair<int, int>> p = both(3, 4);
+  println("{} {} {} {} {}", tag->text, tag->icon, point->x + point->y, p->first, p->second);
+  return 0;
+}

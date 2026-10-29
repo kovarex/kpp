@@ -1,0 +1,46 @@
+// spec: a class derived from an instance of a partial specialization gets that specialization's copy and move constructors, not the primary template's: moving an Opt<UniquePtr<int>> moves its Holder<T, false> base through Holder<T, false>'s move constructor
+// factorio: the library's Optional, whose storage would be one class template with partial specializations by T's triviality (std::optional's way); it is three class templates chosen by Conditional meanwhile
+// pending: the derived class's implicit move constructor moves the base's members one by one, as the primary template's implicit one would ("copying Storage, which has a destructor but no copy constructor")
+template<typename T>
+union Storage
+{
+  T value;
+  Storage() {}
+  ~Storage() {}
+};
+template<typename T, bool trivial>
+struct Holder
+{
+  Storage<T> storage;
+  bool present = false;
+};
+template<typename T>
+struct Holder<T, false>
+{
+  Storage<T> storage;
+  bool present = false;
+  Holder() {}
+  Holder(Holder<T, false>&& other) : present(other.present)
+  {
+    if (other.present)
+      new (&this->storage.value) T(move(other.storage.value));
+  }
+  ~Holder() { if (this->present) this->storage.value.~T(); }
+};
+template<typename T>
+struct Opt : Holder<T, false>
+{
+  Opt() {}
+  implicit Opt(T&& v)
+  {
+    new (&this->storage.value) T(move(v));
+    this->present = true;
+  }
+};
+int main()
+{
+  Opt<UniquePtr<int>> a = makeUnique<int>(4);
+  Opt<UniquePtr<int>> b = move(a);
+  println("{}", **&b.storage.value);
+  return 0;
+}
