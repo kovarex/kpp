@@ -1,0 +1,19 @@
+// spec: IteratorTraits<It> gives an iterator type's member types as std::iterator_traits does: a pointer's (a Vector's iterator) from the pointer, its value_type without const and its category RandomAccessIteratorTag; a class iterator's from its own members, also one that declares value_type alone
+// factorio: CreatableEntityTypeIterator's `using value_type = ListIterator::value_type;` (ListIterator a std::vector's const_iterator, a pointer here: converted to IteratorTraits<ListIterator>::value_type), and std::iterator_traits in the game's algorithms
+struct OnlyValue
+{
+  using value_type = int;
+};
+using VectorIterator = Vector<String>::const_iterator;
+int main()
+{
+  IteratorTraits<VectorIterator>::value_type text = "text";
+  IteratorTraits<OnlyValue>::value_type number = 5;
+  Vector<String> list;
+  list.push_back(text);
+  IteratorTraits<Vector<String>::iterator>::pointer first = list.data();
+  IteratorTraits<VectorIterator>::reference element = list[0];
+  println("{} {} {} {} {} {} {}", text, number, *first, element, isSame<IteratorTraits<VectorIterator>::iterator_category, RandomAccessIteratorTag>,
+          isSame<IteratorTraits<VectorIterator>::value_type, String>, isSame<IteratorTraits<VectorIterator>::difference_type, ptrdiff_t>);
+  return 0;
+}
