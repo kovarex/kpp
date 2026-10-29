@@ -8794,10 +8794,13 @@ struct GlobalScope::Impl
   // one element of its own type (or of a derived one), else by a constructor taking the elements
   // (an InitializerList one taking each of them), else as an aggregate whose bases and data
   // members take them in order, a user-defined conversion. 2 when the elements or the class are
-  // not known; an aggregate that brace elision may fill is not followed and taken as viable.
+  // not known; an aggregate that brace elision may fill is not followed and taken as viable. A
+  // list nested in another's elements is not judged: the conversions under it would run out of
+  // conversionRank's depth and read as not viable (`{"x", {"input_scale", 1}}` for a
+  // Vector<NoiseFunctionParameter>).
   int listInitRank(const Ty* list, const Ty* p, int depth)
   {
-    if (!list->inner || list->inner->kind != TyKind::Pack || depth > 4 || !p->isKnown() || types.isDependent(p))
+    if (!list->inner || list->inner->kind != TyKind::Pack || depth > 1 || !p->isKnown() || types.isDependent(p))
       return 2;
     std::vector<const Ty*> elems(list->inner->args.begin(), list->inner->args.end());
     for (const Ty* e : elems)
