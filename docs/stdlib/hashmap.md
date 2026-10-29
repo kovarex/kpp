@@ -50,7 +50,7 @@ O(n), amortized O(1) per insert.
 - `at(key)`: the value; throws OutOfRange when absent.
 - `insert(entry)`: inserts when the key is absent; an existing entry is left alone, including its
   value. Returns `Pair<iterator, bool>` (the entry with the key, whether it was inserted).
-- `emplace(args...)`, `try_emplace(key, args...)`: as for Map. As there, operator[], emplace and
+- `emplace(args...)`, `try_emplace(key, args...)`, `try_emplace(hint, key, args...)`: as for Map. As there, operator[], emplace and
   try_emplace construct the value in its entry and need no copy or move constructor of V
   (FastHashMap moves its entries when it grows, so there V needs a move constructor all the same).
 - `insert_or_assign(key, value)`: inserts, or assigns the value of the existing entry.

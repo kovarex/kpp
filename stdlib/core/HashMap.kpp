@@ -568,6 +568,12 @@ struct HashMap
       this->table.emplaceAt(slot, hash, inPlaceSecond, key, forward<Args>(args)...);
     return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
   }
+  // With a position hint, which a hash table does not need: the entry's position, new or found.
+  template<typename... Args>
+  HashIterator<Pair<K, V>, stable> try_emplace(HashIterator<Pair<K, V>, stable> hint, const K& key, Args&&... args)
+  {
+    return this->try_emplace(key, forward<Args>(args)...).first;
+  }
   // Inserts, or assigns value to the existing entry.
   Pair<HashIterator<Pair<K, V>, stable>, bool> insert_or_assign(const K& key, const V& value)
   {

@@ -893,6 +893,13 @@ struct Map
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
     return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(inPlaceSecond, key, forward<Args>(args)...), true);
   }
+  // With a position hint (ScriptRendering's `objectMapping.try_emplace(objectMapping.end(), id,
+  // move(item))`): the hint is not needed; the entry's position, new or found.
+  template<typename... Args>
+  RbIterator<Pair<K, V>> try_emplace(RbIterator<Pair<K, V>> hint, const K& key, Args&&... args)
+  {
+    return this->try_emplace(key, forward<Args>(args)...).first;
+  }
   // Kpp's shorthand: true when the key was new.
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
   // The number of entries removed (0 or 1).

@@ -666,6 +666,12 @@ struct FastMap
       return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
     return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(Pair<K, V>(key, RemoveConst<V>(forward<Args>(args)...))), true);
   }
+  // With a position hint, which is not needed: the entry's position, new or found.
+  template<typename... Args>
+  BTreeIterator<Pair<K, V>> try_emplace(BTreeIterator<Pair<K, V>> hint, const K& key, Args&&... args)
+  {
+    return this->try_emplace(key, forward<Args>(args)...).first;
+  }
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
   // The number of entries removed (0 or 1). The key is copied first: it may be one of this
   // map's, which erasing moves.

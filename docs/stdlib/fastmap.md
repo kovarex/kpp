@@ -25,7 +25,7 @@ costs O(log n) (it erases by key and looks the next entry up again).
 
 Those of Map and Set without the multi variants: construction, `= {...}`, size, empty, begin, end, find,
 contains, count, lowerBound/lower_bound, upperBound/upper_bound, equal_range, operator[] and at
-(FastMap), insert (returning `Pair<iterator, bool>`), emplace, try_emplace (FastMap), insert(key,
+(FastMap), insert (returning `Pair<iterator, bool>`), emplace, try_emplace and try_emplace(hint, key, args...) (FastMap), insert(key,
 value) (FastMap), erase(key) (returning the number removed), erase(position) (returning the next
 position), clear, rbegin, rend, insert(hint, entry) and emplace_hint (the hint is not used: O(log n)),
 insert(first, last), merge(other) (moving the entries whose keys are absent here; moving, so
