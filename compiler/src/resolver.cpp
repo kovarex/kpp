@@ -12950,6 +12950,22 @@ struct GlobalScope::Impl
         // (`T&` beats `const T&`); against a by-value parameter they are the same match.
         if (a.ranks[i] + b.ranks[i] == 1 && !(a.refs[i] && b.refs[i]))
           continue;
+        // A brace list made an InitializerList beats one made anything else, whatever the other
+        // rules say (C++ [over.ics.rank] 3.1): `FlatSet<ChunkPosition>({{-1, -1}, {0, -1}})` takes
+        // the InitializerList constructor, not the move constructor through a conversion by it.
+        if (i < argTypes.size() && argTypes[i] && types.stripRef(argTypes[i])->isBraceList() && i < a.params.size() && i < b.params.size() &&
+            a.params[i] && b.params[i])
+        {
+          bool listA = isInitializerList(types.unqualified(types.stripRef(a.params[i])));
+          bool listB = isInitializerList(types.unqualified(types.stripRef(b.params[i])));
+          if (listA != listB)
+          {
+            if (listB)
+              return false;
+            someBetter = true;
+            continue;
+          }
+        }
         // Two user-defined conversions to different types (a `const char*` made a StringView by
         // one candidate, a String by the other) are indistinguishable (C++ compares only those
         // through one conversion function): the other arguments and the object decide.

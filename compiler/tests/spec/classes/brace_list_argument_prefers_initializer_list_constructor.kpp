@@ -1,6 +1,5 @@
 // spec: a brace list argument converted to an InitializerList beats one converted to anything else, the rule of C++ [over.ics.rank] 3.1 that wins over the others: `Sorted<Cell>({{-1, -1}, {0, -1}})` takes the InitializerList constructor, not the move or copy constructor through a conversion by that same constructor
 // found in tests/TestLuaTerritory (`FlatSet<ChunkPosition>({{-1,-1}, {0,-1}, ...})` compared with a territory's chunks; FlatSet has a move, an explicit copy and an implicit InitializerList constructor)
-// pending: the move constructor ties with the InitializerList one (two user-defined conversions) and is taken; codegen then needs the same conversion for its parameter (`converting <unknown> to Sorted<Cell, Less<Cell>>: the constructor chosen needs the same conversion for its own parameter`)
 struct Cell
 {
   int x = 0, y = 0;
