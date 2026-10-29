@@ -1,0 +1,42 @@
+// spec: a member initializer at compile time is a direct-initialization: `bits(toBits(values))` takes an explicit constructor (SmallBitset(uint64_t)), as `Bits(5)` does; a derived object given to a base member is sliced to it
+// factorio: SpriteFlags(InitializerList<Enum> values) : bits(SpriteFlags::toBits(values)), behind the 27 constant SpriteOption tables
+// pending: the interpreter initialized members as an implicit conversion, so an explicit constructor never took one
+struct Bits
+{
+  constexpr Bits() = default;
+  explicit constexpr Bits(uint64_t v) : value(uint32_t(v)) {}
+  uint32_t value = 0;
+};
+struct Flags
+{
+  constexpr Flags(uint64_t raw) : bits(raw * 2) {}
+  Bits bits;
+};
+struct Base
+{
+  int a = 1;
+};
+struct Derived : Base
+{
+  int b = 2;
+};
+struct Holder
+{
+  constexpr Holder(const Derived& d) : base(d), bits(Bits(7)) {}
+  Base base;
+  Bits bits;
+};
+constexpr Flags flags(21);
+constexpr Holder holder(Derived{});
+static_assert(flags.bits.value == 42);
+static_assert(holder.base.a == 1 && holder.bits.value == 7);
+template<int N>
+struct Show
+{
+  static constexpr int value = N;
+};
+int main()
+{
+  println("{} {}", Show<int(flags.bits.value)>::value, Show<holder.base.a + int(holder.bits.value)>::value);
+  return 0;
+}
