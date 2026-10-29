@@ -1,0 +1,43 @@
+// spec: a class or enumeration declared in a function body, named again where the code generator types it outside the body's walk: an enumeration of a constructor as a lambda's parameter type (`[this](Row row)`), a class nested in a local class as a member's element type (`Vector<PowerSwitchConnection> connections`)
+// factorio: TransportBeltAnimationSet's BeltReaderLayer constructor (`enum class Row`, `auto loadRow = [this](..., Row row)`), CopperWireConnectorMigration's local ElectricPoleToPowerSwitchConnectorMigration with its PowerSwitchConnection
+struct Layer
+{
+  int total = 0;
+  Layer(int base)
+  {
+    enum class Row : uint8_t { Straight = 0, Curved = 1, Ending = 2 };
+    auto loadRow = [this](int scale, Row row) { this->total += scale * (int(row) + 1); };
+    loadRow(base, Row::Curved);
+    loadRow(base, Row::Ending);
+  }
+};
+int migrate(int count)
+{
+  class Migration
+  {
+  public:
+    class Connection
+    {
+    public:
+      explicit Connection(int side) : side(side) {}
+      int side;
+    };
+    explicit Migration(int count)
+    {
+      for (int i = 0; i < count; ++i)
+        this->connections.emplace_back(i);
+    }
+    Vector<Connection> connections;
+  };
+  Migration m(count);
+  int sum = 0;
+  for (const Migration::Connection& c : m.connections)
+    sum += c.side;
+  return sum;
+}
+int main()
+{
+  Layer l(2);
+  println("{} {}", l.total, migrate(4));
+  return 0;
+}

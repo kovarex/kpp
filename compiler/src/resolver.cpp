@@ -5858,6 +5858,18 @@ struct GlobalScope::Impl
             if (n->name.parts.size() == 1 && !first.hasTemplateArgs)
               if (const Ty* b = builtinByName(first.symbol))
                 return b;
+            // A class or enumeration the walk found where this context does not see it: one a
+            // function body declares, met again in a lambda's signature (`enum class Row` of a
+            // constructor) or in a member of a class of that body (`Vector<PowerSwitchConnection>`).
+            if (n->resolved && (n->resolved->kind == NodeKind::ClassDecl || n->resolved->kind == NodeKind::EnumDecl) &&
+                n->name.parts.size() == 1 && !first.hasTemplateArgs && n->resolved->templateParams.empty())
+            {
+              Lookup found;
+              found.found = Found::Local;
+              found.decl = n->resolved;
+              found.scope = n->resolved->ownScope;
+              return typeOfTypeDecl(n->resolved, found, first, ctx, depth + 1);
+            }
             uint32_t sym = first.symbol;
             if (sym != UINT32_MAX && !templateParamNames.count(sym))
             {
