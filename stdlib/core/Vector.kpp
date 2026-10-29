@@ -45,6 +45,10 @@ struct Vector
   Vector(int count, const T& value) { this->assign(count, value); }
   // Copies of [first, last).
   Vector(const T* first, const T* last) { this->appendCopies(first, int(last - first)); }
+  // The elements of [first, last), input iterators of any kind (`Vector<TransportLine*>
+  // sorted(lines.begin(), lines.end())` from a HashSet), as insert(end(), first, last).
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  Vector(InputIt first, InputIt last) { this->insert(this->items, first, last); }
   Vector(Vector<T>&& other) : items(other.items), length(other.length), allocated(other.allocated)
   {
     other.items = nullptr;
@@ -79,6 +83,12 @@ struct Vector
     other.items = nullptr;
     other.length = 0;
     other.allocated = 0;
+    return *this;
+  }
+  // `v = {a, b, c}`: the listed elements, as assign({...}).
+  Vector<T>& operator=(InitializerList<T> list)
+  {
+    this->assign(list);
     return *this;
   }
 

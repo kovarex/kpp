@@ -38,7 +38,8 @@ O(n), amortized O(1) per insert.
 - `HashMap()`; `HashMap(n)`, `HashMap(n, hasher)`, `HashMap(n, hasher, keyEqual)`: empty, with
   room for n entries before the table grows, using copies of the hasher and key equality given;
   `HashMap({{k1, v1}, ...})`; `HashMap(first, last)` (the entries of a range, as insert(first,
-  last)); copy and move (the hasher and key equality are copied too).
+  last)); copy and move (the hasher and key equality are copied too). `= {...}` replaces the
+  entries with the listed ones, as the list constructor builds them.
 - `hash_function()`, `key_eq()`: copies of the hasher and the key equality. Types `key_type`,
   `mapped_type` (HashMap), `value_type`, `hasher`, `key_equal`.
 - `size()`, `empty()`, `begin()`, `end()` (forward iterators; `*it` is the entry; its key must not

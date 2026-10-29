@@ -11,7 +11,8 @@ iterator, and never moves or invalidates other elements.
 | erase, pop | the erased elements' only |
 | clear, assignment | all except end |
 
-Members: `List()`, `List({...})`, copy, move; `size()` (O(1)), `empty()`, `front()`, `back()`;
+Members: `List()`, `List({...})`, copy, move, `= {...}` (replaces the contents with the listed
+elements); `size()` (O(1)), `empty()`, `front()`, `back()`;
 `begin()`, `end()` (bidirectional), `rbegin()`, `rend()`, `swap(other)`; `push_back`, `push_front`, `emplace_back`, `emplace_front`,
 `pop_back`, `pop_front`; `insert(position, value)` (before position, returns the new element's
 position), `emplace(position, args...)`, `erase(position)` (returns the next position),
@@ -27,5 +28,6 @@ As List with one link per node, so only forward iterators and operations at or a
 `emplace_after(position, args...)` (returning the new element's position), `erase_after(position)`
 and `erase_after(first, last)` (removing what is strictly between; returning the position after
 the removed ones), `before_begin()` (the position before the first element, for inserting at the
-front), `begin()`, `end()`, `empty()`, `remove(value)`, `reverse()`, `clear()`, `==` and `<=>`.
+front), `begin()`, `end()`, `empty()`, `remove(value)`, `reverse()`, `clear()`, `= {...}`, `==` and
+`<=>`.
 There is no `size()` (it would be O(n)). Invalidation as for List.

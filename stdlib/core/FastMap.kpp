@@ -594,6 +594,14 @@ struct FastMap
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+  // `= {...}`: the listed entries, replacing the contents.
+  FastMap<K, V>& operator=(InitializerList<Pair<K, V>> items)
+  {
+    this->clear();
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+    return *this;
+  }
 
   int size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
@@ -733,6 +741,14 @@ struct FastSet
   {
     for (const T& value : items)
       this->insert(value);
+  }
+  // `= {...}`: the listed values, replacing the contents.
+  FastSet<T>& operator=(InitializerList<T> items)
+  {
+    this->clear();
+    for (const T& item : items)
+      this->insert(item);
+    return *this;
   }
 
   int size() const { return this->tree.count; }

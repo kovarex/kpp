@@ -96,6 +96,14 @@ struct List
     for (const T& item : items)
       this->push_back(item);
   }
+  // `= {...}`: the listed elements, replacing the contents.
+  List<T>& operator=(InitializerList<T> items)
+  {
+    this->clear();
+    for (const T& item : items)
+      this->push_back(item);
+    return *this;
+  }
   List(const List<T>& other)
   {
     this->becomeEmpty();

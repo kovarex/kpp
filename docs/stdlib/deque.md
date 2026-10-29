@@ -16,7 +16,8 @@ stored in fixed-size blocks; adding at either end never moves the existing eleme
 Complexity: `operator[]`, `front`, `back`, push and pop at either end: O(1). Insert or erase at
 position i: O(min(i, size() - i)); erasing n elements at i: O(n + min(i, size() - i - n)).
 
-Members: `Deque()`, `Deque({...})`, copy, move; `size()`, `empty()`; `operator[](i)`, `at(i)`
+Members: `Deque()`, `Deque({...})`, `Deque(first, last)` (the elements of a range of input
+iterators, in order), copy, move, `= {...}` (replaces the contents with the listed elements); `size()`, `empty()`; `operator[](i)`, `at(i)`
 (throws OutOfRange), `front()`, `back()`; `begin()`, `end()` (random access iterators);
 `rbegin()`, `rend()`, `swap(other)`;
 `push_back`, `push_front`, `emplace_back`, `emplace_front`, `pop_back`, `pop_front` (not empty);

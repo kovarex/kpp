@@ -34,6 +34,13 @@ struct Deque
     for (const T& item : items)
       this->push_back(item);
   }
+  // The elements of [first, last), input iterators of any kind, in order.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  Deque(InputIt first, InputIt last)
+  {
+    for (; first != last; ++first)
+      this->push_back(*first);
+  }
   Deque(const Deque<T>& other)
   {
     for (int i = 0; i < other.length; ++i)
@@ -71,6 +78,14 @@ struct Deque
       other.start = 0;
       other.length = 0;
     }
+    return *this;
+  }
+  // `d = {a, b, c}`: the listed elements, replacing the contents.
+  Deque<T>& operator=(InitializerList<T> items)
+  {
+    this->clear();
+    for (const T& item : items)
+      this->push_back(item);
     return *this;
   }
 

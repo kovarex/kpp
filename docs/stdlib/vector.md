@@ -27,8 +27,11 @@ Iterators are pointers (`T*`), so "iterator" and "pointer" are invalidated toget
 Construction and assignment:
 - `Vector()`: empty, capacity 0, no allocation.
 - `Vector(int count)`: `count` default-constructed elements. `Vector(count, value)`: count copies
-  of value. `Vector(first, last)`: copies of the pointer range [first, last).
-- `Vector({a, b, c})`: the listed elements, in order.
+  of value. `Vector(first, last)`: copies of the elements of [first, last), input iterators of
+  any kind (pointers, another container's iterators), as `insert(end(), first, last)`; integer
+  arguments are a count and a value, never a range.
+- `Vector({a, b, c})`: the listed elements, in order. `= {a, b, c}`: replaces the contents with
+  them, as `assign({...})`.
 - Copy and move construction and assignment: see common.md. Copy assignment reuses nothing it does
   not need: afterwards the vector holds copies of the source's elements.
 

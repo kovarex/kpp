@@ -787,6 +787,15 @@ struct Map
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+  // `= {...}`: the listed entries, replacing the contents (later duplicates as in the
+  // list constructor).
+  Map<K, V, Compare>& operator=(InitializerList<Pair<K, V>> items)
+  {
+    this->clear();
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+    return *this;
+  }
   // The entries of [first, last), as insert(entry) one by one.
   template<typename It>
   Map(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
@@ -1006,6 +1015,15 @@ struct Set
     for (const T& value : items)
       this->insert(value);
   }
+  // `= {...}`: the listed values, replacing the contents (later duplicates as in the
+  // list constructor).
+  Set<T, Compare>& operator=(InitializerList<T> items)
+  {
+    this->clear();
+    for (const T& item : items)
+      this->insert(item);
+    return *this;
+  }
   // The values of [first, last), as insert(value) one by one.
   template<typename It>
   Set(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
@@ -1191,6 +1209,14 @@ struct MultiMap
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+  // `= {...}`: the listed entries, replacing the contents.
+  MultiMap<K, V, Compare>& operator=(InitializerList<Pair<K, V>> items)
+  {
+    this->clear();
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+    return *this;
+  }
   template<typename It>
   MultiMap(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
@@ -1347,6 +1373,14 @@ struct MultiSet
   {
     for (const T& value : items)
       this->insert(value);
+  }
+  // `= {...}`: the listed values, replacing the contents.
+  MultiSet<T, Compare>& operator=(InitializerList<T> items)
+  {
+    this->clear();
+    for (const T& item : items)
+      this->insert(item);
+    return *this;
   }
   template<typename It>
   MultiSet(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }

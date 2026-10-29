@@ -456,6 +456,14 @@ struct HashMap
     for (const Pair<K, V>& item : items)
       this->insert(item);
   }
+  // `= {...}`: the listed entries, replacing the contents.
+  HashMap<K, V, Hasher, KeyEqual, stable>& operator=(InitializerList<Pair<K, V>> items)
+  {
+    this->clear();
+    for (const Pair<K, V>& item : items)
+      this->insert(item);
+    return *this;
+  }
   // The entries of [first, last), as insert(entry) one by one.
   template<typename It>
   HashMap(It first, It last) { this->insert(first, last); }
@@ -662,6 +670,14 @@ struct HashSet
   {
     for (const T& value : items)
       this->insert(value);
+  }
+  // `= {...}`: the listed values, replacing the contents.
+  HashSet<T, Hasher, KeyEqual, stable>& operator=(InitializerList<T> items)
+  {
+    this->clear();
+    for (const T& item : items)
+      this->insert(item);
+    return *this;
   }
   // The values of [first, last), as insert(value) one by one.
   template<typename It>

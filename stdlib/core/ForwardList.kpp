@@ -66,6 +66,15 @@ struct ForwardList
     for (const T& item : items)
       last = this->insert_after(last, item);
   }
+  // `= {...}`: the listed elements, replacing the contents.
+  ForwardList<T>& operator=(InitializerList<T> items)
+  {
+    this->clear();
+    ForwardIterator<T> last = this->before_begin();
+    for (const T& item : items)
+      last = this->insert_after(last, item);
+    return *this;
+  }
   ForwardList(const ForwardList<T>& other) { this->copyFrom(other); }
   ForwardList(ForwardList<T>&& other)
   {

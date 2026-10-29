@@ -31,7 +31,8 @@ O(n). `count` in a multi container: O(log n + number found).
 - `Map()`, `Map(compare)` (an empty map ordered by a copy of compare), `Map({{k1, v1}, {k2,
   v2}})` and `Map({...}, compare)` (later duplicates of a key are ignored), `Map(first, last)` and
   `Map(first, last, compare)` (the entries of a range, as insert(first, last)), copy and move (the
-  comparator is copied too).
+  comparator is copied too). `= {...}` replaces the entries with the listed ones, as the list
+  constructor builds them (the comparator stays).
 - `key_comp()`: a copy of the comparator. Types `key_type`, `mapped_type` (maps), `value_type`,
   `key_compare`.
 - `size()`, `empty()`, `begin()`, `end()`. Iterators are bidirectional; `*it` is the entry. The
