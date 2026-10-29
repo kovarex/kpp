@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**407 pass, 5 pending, 0 failing, 0 fixed** (412 snippets, 123.1 s).
+**409 pass, 4 pending, 0 failing, 0 fixed** (413 snippets, 18.1 s).
 
 ## Language: statements, expressions, declarations
 
@@ -128,6 +128,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/base_initializer_through_alias.kpp` | a constructor initializes its base through a member alias of the base, `using super = Conditional<...>; Const(const T& v) : super(v) {}` | pass |  |  |
 | `classes/bitfield_default_initializer.kpp` | a bit field with a default member initializer (C++20): the width is a constant expression and the initializer follows it; bit fields sharing a storage unit each get their own value, from a default member initializer, a constructor initializer or an aggregate's braces | pass | AsteroidChunk (`bool reserved : 1 = false;`), 92 headline lines |  |
 | `classes/brace_init_assign.kpp` | brace-init on the right of assignment to a class object | pass | *this = {}; this->data = {a, b}; |  |
+| `classes/brace_list_argument_initializer_list.kpp` | a brace list passed for a class parameter, written at the call or as the parameter's default argument, initialises the parameter as a variable's would: through the class's InitializerList constructor when it has one (`take({Caps::Color, Caps::Light})`), else member by member | pass |  |  |
 | `classes/class_operator_rhs.kpp` | class_operator_rhs | pass |  |  |
 | `classes/conditional_explicit.kpp` | `explicit(condition)` makes a constructor explicit only while the condition holds, so Fixed<int, false> converts from double implicitly and Fixed<int, true> does not | pass |  |  |
 | `classes/const_and_mutable.kpp` | const member functions, const overloads, mutable members, const objects | pass | 198 mutable members in 127 files |  |
@@ -436,7 +437,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `interop/extern_variable_declaration.kpp` | an `extern "C"` variable declared in Kpp source without an initializer refers to the C library's or the linker's (`extern "C" const IID IID_IDXGIDevice;`, here the linker's __ImageBase, the image's DOS header) | pending | the IIDs __uuidof names (IID_ID3D11Device, IID_IDXGIFactory1, ...), defined in dxguid.lib, declared by the Kpp COM interfaces | codegen defines the variable itself, zero-initialized (linkonce_odr), so it reads zeros instead of "MZ"; program exited with 0xC0000005 |
 | `interop/c_callbacks.kpp` | Kpp functions as C callbacks (function pointers with C signatures) and C function pointers stored in Kpp | pass |  |  |
 | `interop/c_import_anonymous_enum.kpp` | a C header's anonymous enum behind a typedef, `typedef enum { ... } CURLcode;`, as a type in Kpp, also inside a struct's anonymous union (curl's CURLMsg.data.result) | pass |  |  |
 | `interop/c_import_stdlib.kpp` | importing C standard headers and using their functions, types and callbacks (qsort) | pass |  |  |
@@ -447,6 +447,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `interop/calling_convention_pointers.kpp` | function pointer types with a Windows calling convention: `BOOL(__stdcall*)(void)`, `VOID(NTAPI*)(DWORD)` (one convention on x64; the word is accepted and ignored) | pass |  |  |
 | `interop/extern_c_declarations.kpp` | hand-written extern "C" declarations, passing Strings and buffers to C | pass |  |  |
 | `interop/extern_c_variables.kpp` | a variable that an imported C header declares extern is the C library's variable: Kpp reads the library's values (an array of structs, an int, a const int) and its writes are seen by the library's own code | pass |  |  |
+| `interop/extern_variable_declaration.kpp` | an `extern "C"` variable declared in Kpp source without an initializer refers to the C library's or the linker's (`extern "C" const IID IID_IDXGIDevice;`, here the linker's __ImageBase, the image's DOS header) | pass | the IIDs __uuidof names (IID_ID3D11Device, IID_IDXGIFactory1, ...), defined in dxguid.lib, declared by the Kpp COM interfaces |  |
 | `interop/sdl_header.kpp` | importing SDL3's header (the game's platform layer) and using its types and constants without linking it | pass |  |  |
 
 ## expressions
