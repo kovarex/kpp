@@ -1,0 +1,16 @@
+// spec: the address of a global declared `extern` before its definition is a constant, as C has it: a global initialised from it holds it before anything runs, whatever the startup order
+// lua: lobject.h's `extern const TValue luaO_nilobject_;` before lobject.c's definition made `luaO_nilobject` (`&luaO_nilobject_`) a global built at startup, after lapi.c's NONVALIDVALUE had copied it (lapi comes first): NONVALIDVALUE stayed null and lua_type crashed in the Lua compatibility check
+struct TValue
+{
+  void* p;
+  int tt;
+};
+const auto NONVALIDVALUE = ((TValue*)(luaO_nilobject));
+const auto luaO_nilobject = (&luaO_nilobject_);
+extern const TValue luaO_nilobject_;
+const TValue luaO_nilobject_ = {nullptr, 7};
+int main()
+{
+  println("{} {} {}", NONVALIDVALUE == luaO_nilobject, NONVALIDVALUE != nullptr, luaO_nilobject->tt);
+  return 0;
+}

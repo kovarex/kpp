@@ -6757,10 +6757,12 @@ struct GlobalScope::Impl
   // ---- step 4: addresses of declarations and member pointers ----
 
   // Whether a variable lives as long as the program (a global, a static member, a static local),
-  // so that its address is a constant; a reference variable's address is what it refers to's.
+  // so that its address is a constant; a reference variable's address is what it refers to's. A
+  // global declared `extern` is one too, wherever it is defined (Lua's `&luaO_nilobject_` after
+  // lobject.h's `extern const TValue luaO_nilobject_;`, a constant in C).
   static bool constStaticStorage(Decl* d)
   {
-    if (!d || d->kind != NodeKind::VariableDecl || (d->flags & (DF_Typedef | DF_Extern)))
+    if (!d || d->kind != NodeKind::VariableDecl || (d->flags & DF_Typedef))
       return false;
     if (d->flags & DF_Static)
       return true;
