@@ -155,9 +155,12 @@ struct Future
 
   bool valid() const { return (bool)this->state; }
 
+  // Releases the state, as std::future::get does: valid() is false after it (ThreadedBufferedReadStream
+  // asserts that once it has waited for its worker).
   T get()
   {
-    return move(this->state->get());
+    SharedPtr<SharedState<T>> held = move(this->state);
+    return move(held->get());
   }
 
   void wait() const { this->state->wait(); }
@@ -185,7 +188,11 @@ struct Future<void>
   }
 
   bool valid() const { return (bool)this->state; }
-  void get() { this->state->get(); }
+  void get()
+  {
+    SharedPtr<SharedState<void>> held = move(this->state); // released, as Future<T>::get does
+    held->get();
+  }
   void wait() const { this->state->wait(); }
   template<typename Rep, typename Period>
   FutureStatus wait_for(const Duration<Rep, Period>& d) const { return this->state->waitFor(d); }
