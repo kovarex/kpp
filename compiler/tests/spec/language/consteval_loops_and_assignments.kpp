@@ -1,6 +1,5 @@
 // spec: functions with loops, assignments and switch run at compile time: for, while and do with break and continue, ++ and --, compound assignment in the variable's type, switch with fallthrough and default, a void helper that checks
 // factorio: about 240 constexpr bodies with statements, 30 with loops; the library's gcd and lcm as loops
-// pending: only bodies of returns, if and constant locals ran
 constexpr int gcdLoop(int a, int b)
 {
   while (b != 0)

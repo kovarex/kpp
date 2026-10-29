@@ -711,10 +711,22 @@ nested calls, the stack left. Measured on the converted game: static_asserts the
 evaluate 39 -> 22; the headline 22,776 -> 22,562 paired on 9a5ce8d (path-to-factorio.md). Specs:
 language/consteval_*.
 
-Left, in the order above: assignments, `++`, loops and `switch` (step 2, the gcd and lcm loops
-with them); objects and constructors (step 3: `BoundingBox::emptyValue().isZeroSize()`,
-`BranchVersion(0)`); constant arrays and strings and constant data (step 4: `variantNames[i]`);
-`sqrt` (the library's has no Kpp body yet); float template arguments.
+*One entry, and step 2, done 2026-10-29.* The code generator's constants go through the same
+evaluator: GlobalScope::evaluate(expression, file, context, arguments, hooks), the hooks being
+the code generator's arithmetic mode (Fold), the integer types it stores enumerations in and its
+layouts for `sizeof` and `alignof`; its own evaluator is gone, so the two can no longer disagree.
+Step 2 runs assignments (plain and compound, converted to the variable's type), `++` and `--`,
+`for`, `while` and `do` with `break` and `continue`, and `switch` with fallthrough and `default`,
+on the locals and by-value parameters of the function being run; a void function runs for what it
+checks (its asserts). Writing through a reference parameter, and a local reference, are no
+constant until step 3 has objects (spec language/consteval_reference_parameter): never the local
+copy's value. The step limit counts statements as well as expressions. Specs
+language/consteval_loops_and_assignments, language/consteval_float_variable_templates.
+
+Left, in the order above: objects and constructors (step 3: `BoundingBox::emptyValue().isZeroSize()`,
+`BranchVersion(0)`, references); constant arrays and strings and constant data (step 4:
+`variantNames[i]`, range-for over them); `sqrt` (the library's has no Kpp body yet); float template
+arguments. The library's gcd and lcm can go back to loops.
 
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`

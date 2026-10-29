@@ -2141,6 +2141,8 @@ struct GlobalScope::Impl
   {
     uint32_t symbol;
     ConstValue value;
+    const Ty* type = nullptr; // what an assignment converts to
+    bool writable = true;     // false for a const one and for a reference to the caller's object
   };
   struct TypeContext
   {
@@ -2149,7 +2151,7 @@ struct GlobalScope::Impl
     const Subst* subst;
     const std::vector<Token>* tokens = nullptr; // For evaluating array bounds written as literals.
     std::string_view text;
-    const std::vector<ConstBinding>* env = nullptr; // Parameters bound to values inside a constexpr call.
+    std::vector<ConstBinding>* env = nullptr; // The parameters and locals of a function running at compile time.
     FunctionDecl* function = nullptr; // Whose parameters a trailing return type names (`-> decltype(callable())`).
     // The variable template whose initializer is evaluated under subst (`hasBegin<Vector<int>>`):
     // a requires-expression in it holds or not for these arguments, whatever its last typing left.
@@ -4035,8 +4037,10 @@ struct GlobalScope::Impl
       {
         auto* u = static_cast<UnaryExpr*>(e);
         std::optional<P> op = constOperator(u->op, u->isKeyword);
+        if (op && (*op == P::PlusPlus || *op == P::MinusMinus))
+          return constIncrement(u, *op == P::PlusPlus, ctx, depth);
         if (!op || u->postfix || (*op != P::Bang && *op != P::Minus && *op != P::Plus && *op != P::Tilde))
-          return std::nullopt; // `&x`, `*p`, `++i`: no value of step 1's
+          return std::nullopt; // `&x`, `*p`: no values of the interpreter's yet
         std::optional<ConstValue> v = constValue(u->operand, ctx, depth + 1);
         return v ? constArith().unary(*op, *v) : std::nullopt;
       }
@@ -4044,10 +4048,20 @@ struct GlobalScope::Impl
       {
         // `1 + 1 + ... + 0` (InputAction::inputActionCount, a term per action): the chain down the
         // left operands is evaluated in a loop, not nested once per term.
+        if (auto* b = static_cast<BinaryExpr*>(e); !b->isKeyword && isAssignmentOperator(P(b->op)))
+          return constAssign(b, ctx, depth);
+        auto chained = [](Expr* x) {
+          if (!x || x->kind != NodeKind::BinaryExpr)
+            return false;
+          std::optional<P> op = constOperator(static_cast<BinaryExpr*>(x)->op, static_cast<BinaryExpr*>(x)->isKeyword);
+          return op && isConstBinaryOperator(*op);
+        };
         std::vector<BinaryExpr*> chain;
         Expr* first = e;
-        for (; first && first->kind == NodeKind::BinaryExpr; first = static_cast<BinaryExpr*>(first)->lhs)
+        for (; chained(first); first = static_cast<BinaryExpr*>(first)->lhs)
           chain.push_back(static_cast<BinaryExpr*>(first));
+        if (chain.empty())
+          return std::nullopt; // an operator that computes no value of scalars (`.*`)
         // `(DWORD)-11` from a C header, parsed as a subtraction from a parenthesized type name:
         // the cast of the negated value.
         const Ty* castTo = nullptr;
@@ -4522,7 +4536,7 @@ struct GlobalScope::Impl
 
   // Function f's body run at compile time, its parameters bound to the arguments' values (and the
   // missing ones to their defaults) converted to the parameters' types; what it returns converted
-  // to f's declared result type.
+  // to f's declared result type. A function returning void gives a value of type void.
   std::optional<ConstValue> constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth)
   {
     struct Call
@@ -4543,37 +4557,169 @@ struct GlobalScope::Impl
       auto* p = static_cast<ParamDecl*>(f->params[i]);
       if (p->isPack)
         return std::nullopt;
+      const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
       std::optional<ConstValue> v = i < args.size() ? std::optional<ConstValue>(args[i])
                                   : p->defaultValue ? constValue(p->defaultValue, fctx, depth + 1) : std::nullopt;
-      v = constAsDeclared(v, p->type ? convertType(p->type, fctx, depth + 1) : nullptr);
+      v = constAsDeclared(v, type);
       if (!v)
         return std::nullopt;
-      env.push_back({p->name, *v});
+      env.push_back(constBinding(p->name, *v, type));
     }
+    const Ty* returns = f->returnType ? convertType(f->returnType, fctx, depth + 1) : nullptr;
+    bool isVoid = returns && types.unqualified(returns)->kind == TyKind::Void;
     std::optional<ConstValue> result;
-    if (constStatement(f->body, fctx, env, result, depth + 1) != ConstFlow::Returned)
+    ConstFlow flow = constStatement(f->body, fctx, env, result, depth + 1);
+    if (isVoid && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
+      return ConstValue::integer(0, types.voidType()); // a helper run for what it checks (asserts)
+    if (flow != ConstFlow::Returned || !result)
       return std::nullopt;
-    return f->returnType ? constAsDeclared(result, convertType(f->returnType, fctx, depth + 1)) : result;
+    return returns ? constAsDeclared(result, returns) : result;
   }
 
-  enum class ConstFlow : uint8_t { Next, Returned, Failed };
+  // A parameter's or a local's binding: its declared type (the value's own for auto), and whether
+  // it refers to the caller's object (a reference other than to const), which step 2 cannot
+  // write through.
+  ConstBinding constBinding(uint32_t symbol, const ConstValue& v, const Ty* declared)
+  {
+    ConstBinding b{symbol, v};
+    const Ty* t = declared ? types.unqualified(types.stripRef(declared)) : nullptr;
+    b.type = t && (t->isArithmetic() || t->kind == TyKind::Enum) ? t : v.type;
+    b.writable = !(declared && declared->isReference() && !(declared->inner && declared->inner->isConst)) &&
+                 !(declared && !declared->isReference() && declared->isConst);
+    return b;
+  }
 
-  // One statement of a body run at compile time. Step 1 runs blocks, returns, if and if constexpr
-  // (with no init statement), locals initialized once, static_assert (checked where it is
-  // written) and assert; anything else (a loop, an assignment, a call made for its effects) makes
-  // the call no constant.
+  // The binding of the local or parameter an expression names (`count`, `(count)`), or null.
+  ConstBinding* constLocal(Expr* e, const TypeContext& ctx)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (!e || e->kind != NodeKind::NameExpr || !ctx.env)
+      return nullptr;
+    auto* n = static_cast<NameExpr*>(e);
+    if (n->name.parts.size() != 1 || n->name.global || n->name.parts[0].hasTemplateArgs)
+      return nullptr;
+    for (size_t i = ctx.env->size(); i-- > 0;)
+      if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
+        return &(*ctx.env)[i];
+    return nullptr;
+  }
+
+  // `total += i`, `a = b`: the value stored in a local of the function being run, converted to its
+  // type, which is the expression's value. A global, an object's member or what a reference
+  // parameter refers to is no local of the run: no constant.
+  std::optional<ConstValue> constAssign(BinaryExpr* b, const TypeContext& ctx, int depth)
+  {
+    std::optional<ConstValue> r = constValue(b->rhs, ctx, depth + 1); // the right operand first, as C++17 orders it
+    ConstBinding* target = r ? constLocal(b->lhs, ctx) : nullptr;
+    if (!target || !target->writable)
+      return std::nullopt;
+    P op = P(b->op);
+    std::optional<ConstValue> v = r;
+    if (op != P::Assign)
+    {
+      static const std::pair<P, P> compound[] = {{P::PlusAssign, P::Plus}, {P::MinusAssign, P::Minus}, {P::StarAssign, P::Star},
+                                                 {P::SlashAssign, P::Slash}, {P::PercentAssign, P::Percent}, {P::AmpAssign, P::Amp},
+                                                 {P::PipeAssign, P::Pipe}, {P::CaretAssign, P::Caret}, {P::ShlAssign, P::Shl},
+                                                 {P::ShrAssign, P::Shr}};
+      std::optional<P> base;
+      for (auto [assign, plain] : compound)
+        if (assign == op)
+          base = plain;
+      if (!base)
+        return std::nullopt;
+      v = constArith().binary(*base, target->value, *r);
+    }
+    v = v ? constAsDeclared(v, target->type) : std::nullopt;
+    if (!v)
+      return std::nullopt;
+    target->value = *v;
+    return v;
+  }
+
+  // `++i`, `count--`: the local stepped by one in its type; the new value, or the old one for the
+  // postfix forms.
+  std::optional<ConstValue> constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth)
+  {
+    (void)depth;
+    ConstBinding* target = constLocal(u->operand, ctx);
+    if (!target || !target->writable)
+      return std::nullopt;
+    ConstValue old = target->value;
+    std::optional<ConstValue> v = constArith().binary(increment ? P::Plus : P::Minus, old, ConstValue::integer(1, types.intType()));
+    v = v ? constAsDeclared(v, target->type) : std::nullopt;
+    if (!v)
+      return std::nullopt;
+    target->value = *v;
+    return u->postfix ? old : *v;
+  }
+
+  static bool isAssignmentOperator(P op)
+  {
+    switch (op)
+    {
+      case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign: case P::PercentAssign:
+      case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign: case P::ShrAssign:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  enum class ConstFlow : uint8_t { Next, Returned, Break, Continue, Failed };
+
+  // A case or default label of the switch body s that is not one of its statements, but inside
+  // one (a label in a nested block, Duff's device): the runner finds labels among the body's own
+  // statements only.
+  static bool hasNestedLabel(Stmt* s, int depth = 0)
+  {
+    if (!s || depth > 64)
+      return false;
+    switch (s->kind)
+    {
+      case NodeKind::CaseStmt: case NodeKind::DefaultStmt: return depth > 1; // the body's own statements are at depth 1
+      case NodeKind::BlockStmt:
+        for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+          if (hasNestedLabel(inner, depth + 1))
+            return true;
+        return false;
+      case NodeKind::IfStmt: return hasNestedLabel(static_cast<IfStmt*>(s)->then, depth + 1) || hasNestedLabel(static_cast<IfStmt*>(s)->else_, depth + 1);
+      case NodeKind::ForStmt: return hasNestedLabel(static_cast<ForStmt*>(s)->body, depth + 1);
+      case NodeKind::WhileStmt: return hasNestedLabel(static_cast<WhileStmt*>(s)->body, depth + 1);
+      case NodeKind::DoStmt: return hasNestedLabel(static_cast<DoStmt*>(s)->body, depth + 1);
+      default: return false; // a nested switch has labels of its own
+    }
+  }
+
+  // One statement of a body run at compile time (design.md, "Compile-time evaluation", steps 1 and
+  // 2): blocks, returns, if and if constexpr, locals, assignments and ++/-- of them as expression
+  // statements, for, while and do loops with break and continue, switch with fallthrough and
+  // default, static_assert (checked where it is written) and assert. Anything else (a range-for,
+  // goto, try, a static local) makes the call no constant.
   ConstFlow constStatement(Stmt* s, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth)
   {
     if (!s)
       return ConstFlow::Next;
     if (depth > 512 || (depth > 64 && !stackRoomLeft()))
       return ConstFlow::Failed;
+    if (++constSteps() > 1000000)
+    {
+      if (constWhy().empty())
+        constWhy() = "an evaluation of more than a million steps";
+      return ConstFlow::Failed;
+    }
     size_t mark = env.size(); // the locals a statement declares end with it, a block's with the block
     struct LocalsEnd
     {
       std::vector<ConstBinding>& env;
       size_t mark;
       ~LocalsEnd() { env.resize(mark); }
+    };
+    auto condition = [&](Node* c) -> std::optional<bool> {
+      if (!c || uint8_t(c->kind) < uint8_t(NodeKind::NameExpr))
+        return std::nullopt; // a declaration as the condition
+      std::optional<ConstValue> v = constValue(static_cast<Expr*>(c), ctx, depth + 1);
+      return v ? std::optional<bool>(v->truthy()) : std::nullopt;
     };
     switch (s->kind)
     {
@@ -4586,19 +4732,133 @@ struct GlobalScope::Impl
         return ConstFlow::Next;
       }
       case NodeKind::ReturnStmt:
+        if (!static_cast<ReturnStmt*>(s)->value)
+        {
+          result = ConstValue::integer(0, types.voidType()); // `return;` from a void function
+          return ConstFlow::Returned;
+        }
         result = constValue(static_cast<ReturnStmt*>(s)->value, ctx, depth + 1);
         return result ? ConstFlow::Returned : ConstFlow::Failed;
+      case NodeKind::ExprStmt:
+      {
+        // `total += i;`, `++count;`, `check(x);`: run for what it changes.
+        Expr* x = static_cast<ExprStmt*>(s)->expr;
+        return !x || constValue(x, ctx, depth + 1) ? ConstFlow::Next : ConstFlow::Failed;
+      }
       case NodeKind::IfStmt:
       {
         auto* i = static_cast<IfStmt*>(s);
-        if (i->init || !i->cond || uint8_t(i->cond->kind) < uint8_t(NodeKind::NameExpr))
-          return ConstFlow::Failed; // an init statement, a declaration as the condition
-        std::optional<ConstValue> cond = constValue(static_cast<Expr*>(i->cond), ctx, depth + 1);
+        if (i->init)
+          return ConstFlow::Failed;
+        std::optional<bool> cond = condition(i->cond);
         if (!cond)
           return ConstFlow::Failed;
         LocalsEnd end{env, mark};
-        return constStatement(cond->truthy() ? i->then : i->else_, ctx, env, result, depth + 1);
+        return constStatement(*cond ? i->then : i->else_, ctx, env, result, depth + 1);
       }
+      case NodeKind::ForStmt:
+      case NodeKind::WhileStmt:
+      case NodeKind::DoStmt:
+      {
+        LocalsEnd end{env, mark};
+        Stmt* body = nullptr;
+        Node* cond = nullptr;
+        Expr* step = nullptr;
+        bool testFirst = true;
+        if (s->kind == NodeKind::ForStmt)
+        {
+          auto* f = static_cast<ForStmt*>(s);
+          if (f->init && constStatement(f->init, ctx, env, result, depth + 1) != ConstFlow::Next)
+            return ConstFlow::Failed;
+          body = f->body;
+          cond = f->cond;
+          step = f->step;
+        }
+        else if (s->kind == NodeKind::WhileStmt)
+        {
+          body = static_cast<WhileStmt*>(s)->body;
+          cond = static_cast<WhileStmt*>(s)->cond;
+        }
+        else
+        {
+          body = static_cast<DoStmt*>(s)->body;
+          cond = static_cast<DoStmt*>(s)->cond;
+          testFirst = false;
+        }
+        for (bool first = true;; first = false)
+        {
+          if (cond && (testFirst || !first))
+          {
+            std::optional<bool> go = condition(cond);
+            if (!go)
+              return ConstFlow::Failed;
+            if (!*go)
+              break;
+          }
+          size_t bodyMark = env.size();
+          ConstFlow flow = constStatement(body, ctx, env, result, depth + 1);
+          env.resize(bodyMark);
+          if (flow == ConstFlow::Break)
+            break;
+          if (flow == ConstFlow::Returned || flow == ConstFlow::Failed)
+            return flow;
+          if (step && !constValue(step, ctx, depth + 1))
+            return ConstFlow::Failed;
+          if (!cond && !testFirst)
+            break; // `do ... while` with no condition: not C++
+        }
+        return ConstFlow::Next;
+      }
+      case NodeKind::SwitchStmt:
+      {
+        // The statements from the label the value picks (default when none does) to a break, the
+        // labels on the way falling through.
+        auto* sw = static_cast<SwitchStmt*>(s);
+        LocalsEnd end{env, mark};
+        if (sw->init && constStatement(sw->init, ctx, env, result, depth + 1) != ConstFlow::Next)
+          return ConstFlow::Failed;
+        if (!sw->cond || uint8_t(sw->cond->kind) < uint8_t(NodeKind::NameExpr) || !sw->body || sw->body->kind != NodeKind::BlockStmt ||
+            hasNestedLabel(sw->body))
+          return ConstFlow::Failed;
+        std::optional<ConstValue> value = constValue(static_cast<Expr*>(sw->cond), ctx, depth + 1);
+        if (!value || value->isFloat())
+          return ConstFlow::Failed;
+        Span<Stmt*> stmts = static_cast<BlockStmt*>(sw->body)->stmts;
+        size_t start = stmts.size(), fallback = stmts.size();
+        for (size_t i = 0; i < stmts.size() && start == stmts.size(); ++i)
+        {
+          if (stmts[i] && stmts[i]->kind == NodeKind::DefaultStmt)
+            fallback = i;
+          if (!stmts[i] || stmts[i]->kind != NodeKind::CaseStmt)
+            continue;
+          auto* label = static_cast<CaseStmt*>(stmts[i]);
+          if (label->rangeEnd)
+            return ConstFlow::Failed; // `case 1 ... 3:`
+          std::optional<ConstValue> v = constValue(label->value, ctx, depth + 1);
+          std::optional<ConstValue> same = v ? constArith().binary(P::EqEq, *value, *v) : std::nullopt;
+          if (!same)
+            return ConstFlow::Failed;
+          if (same->truthy())
+            start = i;
+        }
+        if (start == stmts.size())
+          start = fallback;
+        for (size_t i = start; i < stmts.size(); ++i)
+        {
+          ConstFlow flow = constStatement(stmts[i], ctx, env, result, depth + 1);
+          if (flow == ConstFlow::Break)
+            break;
+          if (flow != ConstFlow::Next)
+            return flow; // a return, a failure, or a continue of the loop around the switch
+        }
+        return ConstFlow::Next;
+      }
+      case NodeKind::BreakStmt: return ConstFlow::Break;
+      case NodeKind::ContinueStmt: return ConstFlow::Continue;
+      case NodeKind::CaseStmt:
+      case NodeKind::DefaultStmt:
+      case NodeKind::FallthroughStmt:
+        return ConstFlow::Next; // labels, met while the statements after one run
       case NodeKind::DeclStmt:
         for (Decl* d : static_cast<DeclStmt*>(s)->decls)
         {
@@ -4609,10 +4869,13 @@ struct GlobalScope::Impl
           auto* v = static_cast<VariableDecl*>(d);
           if (!v->init || v->name.parts.size() != 1 || (v->flags & (DF_Static | DF_Typedef)) || !v->structuredBindings.empty())
             return ConstFlow::Failed;
-          std::optional<ConstValue> value = constAsDeclared(constInitValue(v->init, ctx, depth + 1), v->type ? convertType(v->type, ctx, depth + 1) : nullptr);
+          const Ty* type = v->type ? convertType(v->type, ctx, depth + 1) : nullptr;
+          if (type && type->isReference())
+            return ConstFlow::Failed; // a local reference: an object of the run's own, not a value (step 3)
+          std::optional<ConstValue> value = constAsDeclared(constInitValue(v->init, ctx, depth + 1), type);
           if (!value)
             return ConstFlow::Failed;
-          env.push_back({v->name.parts[0].symbol, *value});
+          env.push_back(constBinding(v->name.parts[0].symbol, *value, type));
         }
         return ConstFlow::Next;
       case NodeKind::AssertStmt:

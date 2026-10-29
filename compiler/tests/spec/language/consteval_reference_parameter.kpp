@@ -1,0 +1,17 @@
+// spec: writing through a reference parameter at compile time is no constant yet (the interpreter has no objects to write to before step 3): an error, never the local copy's value
+// error: consteval_reference_parameter.kpp:13: error: static assertion whose condition the compiler cannot evaluate yet
+constexpr void bump(int& x)
+{
+  ++x;
+}
+constexpr int bumped()
+{
+  int a = 1;
+  bump(a);
+  return a;
+}
+static_assert(bumped() == 2);
+int main()
+{
+  return 0;
+}
