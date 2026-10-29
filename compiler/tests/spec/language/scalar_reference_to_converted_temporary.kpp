@@ -1,0 +1,27 @@
+// spec: a const reference to a scalar given a value of another type (an int for `const double&`, an int for `const int64_t&`, a `C*` for `const B* const&`) binds to a temporary of the referenced type holding the converted value, in a constructor's arguments, a function's and a local reference's initializer alike
+// factorio: EntityWithOwnerPrototype's `TinyVector(0, 0)` with `TinyVector(const double& dx, const double& dy)`: the reference was bound to the int, the constructor read 4 bytes of int and 4 bytes of garbage as a double, and the AddressSanitizer build of `--dump-data` stopped at FixedPointNumber's "double value not in range: -nan"
+struct Vec
+{
+  double x = 0;
+  double y = 0;
+  Vec(const double& x, const double& y) : x(x), y(y) {}
+};
+static double twice(const double& d) { return d * 2; }
+static int64_t widen(const int64_t& v) { return v; }
+static float asFloat(const float& f) { return f; }
+static double withDefault(const double& d = 3) { return d; }
+struct A { int a = 1; };
+struct B { int b = 2; };
+struct C : A, B { int c = 3; };
+static int fromB(const B* const& p) { return p->b; }
+int main()
+{
+  Vec v(0, 7);
+  int i = 5;
+  const double& d = i;
+  i = 9;
+  int minusOne = -1;
+  C c;
+  println("{} {} {} {} {} {} {} {}", v.x, v.y, twice(i), d, widen(minusOne), asFloat(i), withDefault(), fromB(&c));
+  return 0;
+}

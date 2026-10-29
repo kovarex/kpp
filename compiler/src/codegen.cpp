@@ -6135,6 +6135,37 @@ namespace
       return llType(a.ty, at) + " " + a.text;
     }
 
+    // What a local reference to a scalar binds to: the value itself, or, for a const or rvalue
+    // reference given a value of another type, a temporary of the referenced type holding the
+    // converted value, as C++ binds it and as argumentText binds a parameter (`const double& d =
+    // count;`, a `const B* const&` given a `C*`): the value's own storage holds another
+    // representation, and a double read through an int's address is 4 bytes of garbage.
+    std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at)
+    {
+      auto scalar = [](const Ty* t)
+      {
+        return t->kind == TyKind::Bool || t->kind == TyKind::Char || t->kind == TyKind::Int || t->kind == TyKind::Float ||
+               t->kind == TyKind::Enum || t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr;
+      };
+      const Ty* referenced = types.stripRef(refTy);
+      const Ty* want = types.unqualified(referenced);
+      const Ty* have = value->ty && value->ty->isKnown() && !types.isDependent(value->ty) ? types.unqualified(types.stripRef(value->ty)) : nullptr;
+      if (!have || have == want || !have->isKnown() || !want->isKnown() || types.isDependent(want) || !scalar(want) || !scalar(have))
+        return lvalue(value);
+      if (refTy->kind == TyKind::LRef && !referenced->isConst)
+      {
+        // (C++ binds no other type to a non-const lvalue reference; `long&` to an int is one
+        // representation.)
+        if (llType(have, at) != llType(want, at))
+          unsupported(at, "binding " + types.toString(refTy, &symbols) + " to a value of type " + types.toString(have, &symbols));
+        return lvalue(value);
+      }
+      Value converted = convert(rvalue(value), want, at);
+      std::string slot = newObjectSlot(want, at);
+      fn += "  store " + llType(want, at) + " " + converted.text + ", ptr " + slot + "\n";
+      return slot;
+    }
+
     // A temporary of class type cls built from a non-class value through a converting
     // constructor, alive until the end of the full expression: what a reference parameter binds to.
     std::string convertedTemporary(const Ty* cls, Expr* arg, Node* at)
@@ -12615,7 +12646,7 @@ namespace
           }
         }
         else
-          addr = lvalue(init);
+          addr = scalarReferenceTarget(t, init, v);
         fn += "  store ptr " + addr + ", ptr " + slot + "\n";
         return;
       }
