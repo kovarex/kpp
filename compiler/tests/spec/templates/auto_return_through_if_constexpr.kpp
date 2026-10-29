@@ -1,6 +1,5 @@
 // spec: a function template's auto return type follows the `if constexpr` branch its condition selects, also when the condition reads static constexpr members of the template arguments (`P1::num * P2::den <= P2::num * P1::den`)
 // factorio: std::chrono's sum of two durations, whose type is the finer of the two periods
-// pending: the return type stays unknown (codegen: a local of unknown type)
 template<long long N, long long D = 1>
 struct Rat { static constexpr long long num = N; static constexpr long long den = D; };
 template<typename Rep, typename Period>

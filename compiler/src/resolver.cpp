@@ -2686,7 +2686,9 @@ struct GlobalScope::Impl
   // Minimal constant evaluation for array bounds: literals and arithmetic on them.
   // The value of a declaration used as a constant: a const/constexpr variable with an
   // initializer, an enumerator, or a non-type template parameter under the substitution.
-  std::optional<int64_t> constOfDecl(Decl* d, const TypeContext& ctx, int depth)
+  // classSubst: the arguments of the class template instantiation a static member was named
+  // through (`Bits<uint64_t>::count`).
+  std::optional<int64_t> constOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr)
   {
     if (!d || depth > 16)
       return std::nullopt;
@@ -2715,7 +2717,23 @@ struct GlobalScope::Impl
       // under the context it is used in, which has the instantiation's arguments.
       if (v->parent && v->parent->kind == NodeKind::FunctionDecl && v->name.parts.size() == 1)
         return constEval(def->init, ctx, depth + 1);
-      TypeContext ictx{lexicalScopeOf(v), nullptr, nullptr, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+      // A member of a class template: under the instantiation's arguments, the ones it was named
+      // through or the context's when they bind the class's parameters (`count` read in another
+      // member's initializer).
+      Span<Decl*> classParams = v->parent ? effectiveParams(v->parent) : Span<Decl*>{};
+      const Subst* memberArgs = classSubst;
+      if (!memberArgs && ctx.subst)
+        for (Decl* p : classParams)
+          if (ctx.subst->find(p))
+          {
+            memberArgs = ctx.subst;
+            break;
+          }
+      LocalStack params;
+      for (Decl* p : classParams)
+        params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      TypeContext ictx{lexicalScopeOf(v), classParams.empty() ? nullptr : &params, memberArgs, def->file ? def->file->tokens : nullptr,
+                       def->file ? def->file->text : std::string_view()};
       return constEval(def->init, ictx, depth + 1);
     }
     if (d->kind == NodeKind::EnumeratorDecl)
@@ -2969,6 +2987,11 @@ struct GlobalScope::Impl
         if (n->name.last().hasTemplateArgs)
           if (VariableDecl* primary = primaryVariableTemplate(l))
             return variableTemplateValue(primary, n->name.last(), ctx, depth + 1);
+        // `Bits<uint64_t>::count`: a static member of a class template, under that instantiation's
+        // arguments.
+        if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
+          if (Subst qs = qualifierSubst(n->name, ctx, depth + 1, l.foundIn); !qs.pairs.empty())
+            return constOfDecl(l.decl, ctx, depth, &qs);
         // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`): the
         // declaration the type checker bound where the name is written.
         return constOfDecl(l.decl ? l.decl : n->resolved, ctx, depth);
@@ -3067,6 +3090,17 @@ struct GlobalScope::Impl
           return b ? std::optional<int64_t>(*b ? 1 : 0) : std::nullopt;
         }
         return static_cast<RequiresExpr*>(e)->satisfied ? 1 : 0; // set where the expression was typed
+      case NodeKind::ConditionalExpr:
+      {
+        // `isSigned<T> ? count - 1 : count`: only the branch taken has to be a constant.
+        auto* c = static_cast<ConditionalExpr*>(e);
+        auto cond = constEval(c->cond, ctx, depth + 1);
+        if (!cond)
+          return std::nullopt;
+        if (!c->then)
+          return *cond ? cond : constEval(c->else_, ctx, depth + 1); // `a ?: b`
+        return constEval(*cond ? c->then : c->else_, ctx, depth + 1);
+      }
       case NodeKind::UnaryExpr:
       {
         auto* u = static_cast<UnaryExpr*>(e);
@@ -3391,7 +3425,10 @@ struct GlobalScope::Impl
           return bound; // a function passed on (`Op<func>` inside a template given one)
       if (constant)
       {
-        v = constOfDecl(l.decl, ctx, depth);
+        Subst qs; // `Array<int, Bits<int16_t>::valueBits>`: the member under the instantiation's arguments
+        if (an.parts.size() > 1 && l.decl->kind == NodeKind::VariableDecl)
+          qs = qualifierSubst(an, ctx, depth + 1, l.foundIn);
+        v = constOfDecl(l.decl, ctx, depth, qs.pairs.empty() ? nullptr : &qs);
         if (!v && l.decl->kind == NodeKind::TemplateParamDecl)
           return types.param(l.decl); // `Num<I>` in a template: the argument is still the parameter (dependent)
       }
