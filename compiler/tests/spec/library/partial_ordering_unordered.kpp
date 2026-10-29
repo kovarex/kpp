@@ -1,0 +1,9 @@
+// spec: partial_ordering::unordered (std::partial_ordering's, what a NaN compares as): every comparison with 0 is false, and it equals none of less, equal and greater; those keep their comparisons
+// factorio: StrongTypedef's operator<=> for floating-point values gives std::partial_ordering::unordered when a side is NaN
+int main()
+{
+  partial_ordering u = partial_ordering::unordered;
+  partial_ordering g = partial_ordering::greater;
+  println("{} {} {} {} {} {} {} {}", u < 0, u > 0, u <= 0, u >= 0, u == 0, u == partial_ordering::less, g > 0, g >= 0);
+  return 0;
+}

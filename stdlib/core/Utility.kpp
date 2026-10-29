@@ -247,12 +247,15 @@ struct strong_ordering
   static inline const strong_ordering equal = strong_ordering(0);
   static inline const strong_ordering equivalent = strong_ordering(0);
   static inline const strong_ordering greater = strong_ordering(1);
+  // std::partial_ordering's: neither less, equal nor greater (a NaN against anything); every
+  // comparison with 0 is false.
+  static inline const strong_ordering unordered = strong_ordering(2);
   constexpr bool operator==(const strong_ordering& other) const { return this->value == other.value; }
   constexpr bool operator==(int zero) const { return this->value == zero; }
   constexpr bool operator<(int zero) const { return this->value < zero; }
-  constexpr bool operator>(int zero) const { return this->value > zero; }
+  constexpr bool operator>(int zero) const { return this->value > zero && this->value != 2; }
   constexpr bool operator<=(int zero) const { return this->value <= zero; }
-  constexpr bool operator>=(int zero) const { return this->value >= zero; }
+  constexpr bool operator>=(int zero) const { return this->value >= zero && this->value != 2; }
 };
 using weak_ordering = strong_ordering;
 using partial_ordering = strong_ordering;
