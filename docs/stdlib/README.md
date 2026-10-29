@@ -24,6 +24,8 @@ Files:
 - [Time](time.md): Duration, TimePoint, SteadyClock, SystemClock (std::chrono).
 - [Views](views.md): Subrange, iotaView, transformView, reverseView (std::views, std::ranges::subrange).
 - [Span](span.md): a view of contiguous elements, of a fixed extent or any length (std::span).
+- [Filesystem](filesystem.md): paths, files and directories (std::filesystem), and the error codes
+  they report with (std::error_code, std::errc, std::system_error).
 
 Not specified yet: Tuple, Pair beyond what the
 maps use, Array, StringView, formatting, streams, threads and locks, and the C library wrappers.

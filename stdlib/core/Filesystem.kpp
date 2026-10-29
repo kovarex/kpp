@@ -1,179 +1,1611 @@
-// Filesystem: maps std::filesystem types and functions for converted code.
-// Actual I/O is handled through extern "C" calls; these are the type declarations.
+// Kpp standard library: the file system, what std::filesystem converts to (namespace filesystem,
+// std's names). Windows only, over the Win32 wide-character API; paths are UTF-16 as Windows
+// keeps them. Specified in docs/stdlib/filesystem.md.
 
-struct Filesystem
+// The Win32 functions used, in namespace win32 with plain types (see Error.kpp).
+namespace win32
 {
-  struct file_type
+  extern "C" unsigned long GetFileAttributesW(const wchar_t* name);
+  extern "C" int GetFileAttributesExW(const wchar_t* name, int infoLevel, void* information);
+  extern "C" int SetFileAttributesW(const wchar_t* name, unsigned long attributes);
+  extern "C" int CreateDirectoryW(const wchar_t* name, void* security);
+  extern "C" int RemoveDirectoryW(const wchar_t* name);
+  extern "C" int DeleteFileW(const wchar_t* name);
+  extern "C" int MoveFileExW(const wchar_t* from, const wchar_t* to, unsigned long flags);
+  extern "C" int CopyFileW(const wchar_t* from, const wchar_t* to, int failIfExists);
+  extern "C" void* FindFirstFileW(const wchar_t* pattern, void* data);
+  extern "C" int FindNextFileW(void* find, void* data);
+  extern "C" int FindClose(void* find);
+  extern "C" unsigned long GetFullPathNameW(const wchar_t* name, unsigned long size, wchar_t* buffer, wchar_t** filePart);
+  extern "C" unsigned long GetCurrentDirectoryW(unsigned long size, wchar_t* buffer);
+  extern "C" int SetCurrentDirectoryW(const wchar_t* name);
+  extern "C" unsigned long GetTempPathW(unsigned long size, wchar_t* buffer);
+  extern "C" int GetDiskFreeSpaceExW(const wchar_t* directory, unsigned long long* available, unsigned long long* total, unsigned long long* free);
+  extern "C" void* CreateFileW(const wchar_t* name, unsigned long access, unsigned long share, void* security, unsigned long disposition,
+                               unsigned long flags, void* templateFile);
+  extern "C" int GetFileInformationByHandle(void* file, void* information);
+  extern "C" unsigned long GetFinalPathNameByHandleW(void* file, wchar_t* buffer, unsigned long size, unsigned long flags);
+}
+
+namespace filesystem
+{
+  struct Win32FileTime
   {
-    int value;
-    static const file_type none;
-    static const file_type not_found;
-    static const file_type regular;
-    static const file_type directory;
-    static const file_type symlink;
-    static const file_type junction;
-    bool operator==(const file_type& other) const { return this->value == other.value; }
-    bool operator!=(const file_type& other) const { return this->value != other.value; }
+    unsigned long low;
+    unsigned long high;
+  };
+  // WIN32_FILE_ATTRIBUTE_DATA
+  struct Win32AttributeData
+  {
+    unsigned long attributes;
+    Win32FileTime creation;
+    Win32FileTime access;
+    Win32FileTime write;
+    unsigned long sizeHigh;
+    unsigned long sizeLow;
+  };
+  // BY_HANDLE_FILE_INFORMATION
+  struct Win32HandleInformation
+  {
+    unsigned long attributes;
+    Win32FileTime creation;
+    Win32FileTime access;
+    Win32FileTime write;
+    unsigned long volumeSerial;
+    unsigned long sizeHigh;
+    unsigned long sizeLow;
+    unsigned long links;
+    unsigned long indexHigh;
+    unsigned long indexLow;
+  };
+  // WIN32_FIND_DATAW
+  struct Win32FindData
+  {
+    unsigned long attributes;
+    Win32FileTime creation;
+    Win32FileTime access;
+    Win32FileTime write;
+    unsigned long sizeHigh;
+    unsigned long sizeLow;
+    unsigned long reserved0;
+    unsigned long reserved1;
+    wchar_t name[260];
+    wchar_t alternateName[14];
+  };
+  const unsigned long invalidAttributes = 0xFFFFFFFF;
+  // INVALID_HANDLE_VALUE, the pointer of all ones (written through a 64-bit integer: `(void*)-1`
+  // zero-extends -1 today, language/negative_integer_to_pointer).
+  void* const invalidHandle = (void*)(long long)-1;
+  const unsigned long attributeReadOnly = 0x1;
+  const unsigned long attributeDirectory = 0x10;
+  const unsigned long attributeReparsePoint = 0x400;
+
+  // UTF-8 to UTF-16 and back (CP_UTF8); an invalid sequence becomes U+FFFD.
+  WString widenUtf8(const char* text, int length)
+  {
+    if (length <= 0)
+      return WString();
+    int count = win32::MultiByteToWideChar(65001, 0, text, length, nullptr, 0);
+    WString result;
+    result.resize(count);
+    win32::MultiByteToWideChar(65001, 0, text, length, result.data(), count);
+    return result;
+  }
+  String narrowUtf16(const wchar_t* text, int length)
+  {
+    if (length <= 0)
+      return String();
+    int count = win32::WideCharToMultiByte(65001, 0, text, length, nullptr, 0, nullptr, nullptr);
+    String result;
+    result.resize(count);
+    win32::WideCharToMultiByte(65001, 0, text, length, result.data(), count, nullptr, nullptr);
+    return result;
+  }
+
+  // --- path ---
+
+  struct pathIterator;
+
+  // A path: UTF-16 text in Windows form, with `\` and `/` both separators (std::filesystem::path).
+  struct path
+  {
+    using value_type = wchar_t;
+    using string_type = WString;
+    using iterator = pathIterator;
+    using const_iterator = pathIterator;
+    static const wchar_t preferred_separator = L'\\';
+
+    WString text;
+
+    path() {}
+    implicit path(const WString& source) : text(source) {}
+    implicit path(WString&& source) : text(move(source)) {}
+    implicit path(const wchar_t* source) : text(source) {}
+    path(const wchar_t* first, const wchar_t* last) : text(first, last) {}
+    // From UTF-8 (where C++ on Windows reads a narrow string in the ANSI code page).
+    implicit path(const String& source) : text(widenUtf8(source.data(), source.size())) {}
+    implicit path(const char* source) : text(widenUtf8(source, (int)strlen(source))) {}
+    implicit path(StringView source) : text(widenUtf8(source.data(), source.size())) {}
+    path(const char* first, const char* last) : text(widenUtf8(first, (int)(last - first))) {}
+
+    path& operator=(const WString& source)
+    {
+      this->text = source;
+      return *this;
+    }
+    path& operator=(const wchar_t* source)
+    {
+      this->text = WString(source);
+      return *this;
+    }
+    path& operator=(const String& source)
+    {
+      this->text = widenUtf8(source.data(), source.size());
+      return *this;
+    }
+    path& operator=(const char* source)
+    {
+      this->text = widenUtf8(source, (int)strlen(source));
+      return *this;
+    }
+    path& assign(const path& source)
+    {
+      this->text = source.text;
+      return *this;
+    }
+
+    static bool isSeparator(wchar_t c) { return c == L'\\' || c == L'/'; }
+
+    // The parts, as offsets into the text: the root name ends at rootNameEnd (a drive `C:` or a
+    // server `\\name`), the root directory is the one separator after it, and the relative path
+    // starts after every separator there.
+    int rootNameEnd() const
+    {
+      const WString& t = this->text;
+      int n = t.size();
+      if (n >= 2 && t[1] == L':' && ((t[0] >= L'A' && t[0] <= L'Z') || (t[0] >= L'a' && t[0] <= L'z')))
+        return 2;
+      if (n >= 3 && path::isSeparator(t[0]) && path::isSeparator(t[1]) && !path::isSeparator(t[2]))
+      {
+        int i = 3;
+        while (i < n && !path::isSeparator(t[i]))
+          ++i;
+        return i;
+      }
+      return 0;
+    }
+    int rootDirectoryEnd() const
+    {
+      int i = this->rootNameEnd();
+      return i < this->text.size() && path::isSeparator(this->text[i]) ? i + 1 : i;
+    }
+    int relativeStart() const
+    {
+      int i = this->rootNameEnd();
+      while (i < this->text.size() && path::isSeparator(this->text[i]))
+        ++i;
+      return i;
+    }
+    int filenameStart() const
+    {
+      int start = this->relativeStart();
+      int i = this->text.size();
+      while (i > start && !path::isSeparator(this->text[i - 1]))
+        --i;
+      return i;
+    }
+
+    // Appending with a separator (std's operator/=): an absolute p, or one with another root
+    // name, replaces this path; one with a root directory keeps only this root name; otherwise
+    // p follows a separator (none after a root name alone or a trailing separator).
+    path& operator/=(const path& p)
+    {
+      int otherRootName = p.rootNameEnd();
+      if (p.is_absolute() || (otherRootName > 0 && p.root_name().text != this->root_name().text))
+      {
+        this->text = p.text;
+        return *this;
+      }
+      if (p.has_root_directory())
+      {
+        this->text = this->text.substr(0, this->rootNameEnd()) + p.text.substr(otherRootName);
+        return *this;
+      }
+      if (this->has_filename() || (!this->has_root_directory() && this->is_absolute()))
+        this->text.push_back(L'\\');
+      this->text.append(p.text.c_str() + otherRootName, p.text.size() - otherRootName);
+      return *this;
+    }
+    path& append(const path& p) { return *this /= p; }
+    // Concatenation without a separator.
+    path& operator+=(const path& p)
+    {
+      this->text.append(p.text);
+      return *this;
+    }
+    path& operator+=(const WString& s)
+    {
+      this->text.append(s);
+      return *this;
+    }
+    path& operator+=(const wchar_t* s)
+    {
+      this->text.append(s);
+      return *this;
+    }
+    path& operator+=(wchar_t c)
+    {
+      this->text.push_back(c);
+      return *this;
+    }
+    path& operator+=(const String& s)
+    {
+      this->text.append(widenUtf8(s.data(), s.size()));
+      return *this;
+    }
+    path& operator+=(const char* s)
+    {
+      this->text.append(widenUtf8(s, (int)strlen(s)));
+      return *this;
+    }
+    path& concat(const path& p) { return *this += p; }
+
+    void clear() { this->text.clear(); }
+    path& make_preferred()
+    {
+      for (wchar_t& c : this->text)
+        if (c == L'/')
+          c = L'\\';
+      return *this;
+    }
+    path& remove_filename()
+    {
+      this->text.resize(this->filenameStart());
+      return *this;
+    }
+    path& replace_filename(const path& replacement)
+    {
+      this->remove_filename();
+      return *this /= replacement;
+    }
+    path& replace_extension(const path& replacement)
+    {
+      this->text.resize(this->text.size() - this->extension().text.size());
+      if (!replacement.text.empty())
+      {
+        if (replacement.text[0] != L'.')
+          this->text.push_back(L'.');
+        this->text.append(replacement.text);
+      }
+      return *this;
+    }
+    path& replace_extension() { return this->replace_extension(path()); }
+    void swap(path& other) { ::swap(this->text, other.text); }
+
+    const WString& native() const { return this->text; }
+    const wchar_t* c_str() const { return this->text.c_str(); }
+    // The text as UTF-8 (string, u8string) or UTF-16 (wstring); the generic forms with `/`.
+    String string() const { return narrowUtf16(this->text.c_str(), this->text.size()); }
+    WString wstring() const { return this->text; }
+    String u8string() const { return this->string(); }
+    WString generic_wstring() const
+    {
+      WString generic = this->text;
+      for (wchar_t& c : generic)
+        if (c == L'\\')
+          c = L'/';
+      return generic;
+    }
+    String generic_string() const
+    {
+      WString generic = this->generic_wstring();
+      return narrowUtf16(generic.c_str(), generic.size());
+    }
+    String generic_u8string() const { return this->generic_string(); }
+
+    // Element by element: the root names as text, then a root directory before none, then the
+    // relative parts' elements as text.
+    int compare(const path& other) const;
+    int compare(const WString& other) const { return this->compare(path(other)); }
+    int compare(const wchar_t* other) const { return this->compare(path(other)); }
+
+    path root_name() const { return path(this->text.substr(0, this->rootNameEnd())); }
+    path root_directory() const
+    {
+      int a = this->rootNameEnd();
+      return path(this->text.substr(a, this->rootDirectoryEnd() - a));
+    }
+    path root_path() const { return path(this->text.substr(0, this->rootDirectoryEnd())); }
+    path relative_path() const { return path(this->text.substr(this->relativeStart())); }
+    // The path without its last element (itself when it has no relative path), trailing
+    // separators before that element removed.
+    path parent_path() const
+    {
+      int start = this->relativeStart();
+      if (start == this->text.size())
+        return *this;
+      int end = this->filenameStart();
+      while (end > start && path::isSeparator(this->text[end - 1]))
+        --end;
+      if (end == start)
+        return this->root_path();
+      return path(this->text.substr(0, end));
+    }
+    path filename() const { return path(this->text.substr(this->filenameStart())); }
+    // The filename without its extension; the extension is from its last `.`, unless that is its
+    // first character or the filename is `.` or `..`.
+    path stem() const
+    {
+      WString name = this->text.substr(this->filenameStart());
+      int dot = path::extensionDot(name);
+      return path(dot == WString::npos ? name : name.substr(0, dot));
+    }
+    path extension() const
+    {
+      WString name = this->text.substr(this->filenameStart());
+      int dot = path::extensionDot(name);
+      return path(dot == WString::npos ? WString() : name.substr(dot));
+    }
+    static int extensionDot(const WString& name)
+    {
+      if (name == L"." || name == L"..")
+        return WString::npos;
+      int dot = name.rfind(L'.');
+      return dot <= 0 ? WString::npos : dot;
+    }
+
+    bool empty() const { return this->text.empty(); }
+    bool has_root_name() const { return this->rootNameEnd() > 0; }
+    bool has_root_directory() const { return this->rootDirectoryEnd() > this->rootNameEnd(); }
+    bool has_root_path() const { return this->rootDirectoryEnd() > 0; }
+    bool has_relative_path() const { return this->relativeStart() < this->text.size(); }
+    bool has_parent_path() const { return !this->parent_path().empty(); }
+    bool has_filename() const { return this->filenameStart() < this->text.size(); }
+    bool has_stem() const { return !this->stem().empty(); }
+    bool has_extension() const { return !this->extension().empty(); }
+    // Absolute on Windows: a root name and a root directory (`C:\x`, `\\server\share`).
+    bool is_absolute() const { return this->has_root_name() && this->has_root_directory(); }
+    bool is_relative() const { return !this->is_absolute(); }
+
+    path lexically_normal() const;
+    path lexically_relative(const path& base) const;
+    path lexically_proximate(const path& base) const
+    {
+      path relative = this->lexically_relative(base);
+      return relative.empty() ? *this : relative;
+    }
+
+    pathIterator begin() const;
+    pathIterator end() const;
   };
 
-  struct perms
+  // Comparisons by compare(), free so that a String or a `const char*` converts on either side
+  // (`name == directory` with a String name).
+  bool operator==(const path& left, const path& right) { return left.compare(right) == 0; }
+  bool operator!=(const path& left, const path& right) { return left.compare(right) != 0; }
+  bool operator<(const path& left, const path& right) { return left.compare(right) < 0; }
+  bool operator<=(const path& left, const path& right) { return left.compare(right) <= 0; }
+  bool operator>(const path& left, const path& right) { return left.compare(right) > 0; }
+  bool operator>=(const path& left, const path& right) { return left.compare(right) >= 0; }
+
+  path operator/(const path& left, const path& right)
   {
-    unsigned int value;
-    static const perms owner_write;
-    static const perms others_write;
-    perms operator|(const perms& other) const { return perms{this->value | other.value}; }
-    perms operator&(const perms& other) const { return perms{this->value & other.value}; }
-    bool operator==(const perms& other) const { return this->value == other.value; }
-    bool operator!=(const perms& other) const { return this->value != other.value; }
+    path result = left;
+    result /= right;
+    return result;
+  }
+
+  // The elements of a path, front to back: its root name, its root directory, each filename of
+  // its relative part, and an empty element when it ends with a separator after a filename.
+  // Dereferencing gives the element as a path (std::filesystem::path::iterator).
+  struct pathIterator
+  {
+    using value_type = path;
+    using difference_type = ptrdiff_t;
+    using pointer = const path*;
+    using reference = const path&;
+    using iterator_category = BidirectionalIteratorTag;
+
+    const path* owner = nullptr;
+    int position = 0; // where the element starts; past the text's end for end()
+    int length = 0;
+    path element;
+
+    pathIterator() {}
+    pathIterator(const path* owner, int position, int length) : owner(owner), position(position), length(length)
+    {
+      if (owner && position <= owner->text.size())
+        this->element = path(owner->text.substr(position, length));
+    }
+
+    // The element after the one at [position, position + length).
+    static pathIterator after(const path* owner, int position, int length)
+    {
+      const WString& t = owner->text;
+      int n = t.size();
+      int rootName = owner->rootNameEnd();
+      int rootDirectory = owner->rootDirectoryEnd();
+      if (position >= n)
+        return pathIterator(owner, n + 1, 0);
+      if (position == 0 && length == rootName && rootName > 0)
+      {
+        if (rootDirectory > rootName)
+          return pathIterator(owner, rootName, 1);
+        return pathIterator::filenameAt(owner, rootName);
+      }
+      if (position == rootName && rootDirectory > rootName && length == 1)
+        return pathIterator::filenameAt(owner, owner->relativeStart());
+      int i = position + length;
+      int separators = i;
+      while (i < n && path::isSeparator(t[i]))
+        ++i;
+      if (i == n)
+        return separators < n ? pathIterator(owner, n, 0) : pathIterator(owner, n + 1, 0);
+      return pathIterator::filenameAt(owner, i);
+    }
+    static pathIterator filenameAt(const path* owner, int start)
+    {
+      const WString& t = owner->text;
+      if (start >= t.size())
+        return pathIterator(owner, t.size() + 1, 0);
+      int end = start;
+      while (end < t.size() && !path::isSeparator(t[end]))
+        ++end;
+      return pathIterator(owner, start, end - start);
+    }
+    static pathIterator first(const path* owner)
+    {
+      if (owner->text.empty())
+        return pathIterator(owner, 1, 0);
+      int rootName = owner->rootNameEnd();
+      if (rootName > 0)
+        return pathIterator(owner, 0, rootName);
+      if (owner->rootDirectoryEnd() > 0)
+        return pathIterator(owner, 0, 1);
+      return pathIterator::filenameAt(owner, owner->relativeStart());
+    }
+
+    const path& operator*() const { return this->element; }
+    const path* operator->() const { return &this->element; }
+    pathIterator& operator++()
+    {
+      *this = pathIterator::after(this->owner, this->position, this->length);
+      return *this;
+    }
+    pathIterator operator++(int)
+    {
+      pathIterator before = *this;
+      ++*this;
+      return before;
+    }
+    // The element before: found from the front.
+    pathIterator& operator--()
+    {
+      pathIterator previous = pathIterator::first(this->owner);
+      for (pathIterator next = previous; next.position != this->position; next = pathIterator::after(this->owner, next.position, next.length))
+        previous = next;
+      *this = previous;
+      return *this;
+    }
+    pathIterator operator--(int)
+    {
+      pathIterator before = *this;
+      --*this;
+      return before;
+    }
+    bool operator==(const pathIterator& other) const { return this->owner == other.owner && this->position == other.position; }
+    bool operator!=(const pathIterator& other) const { return !(*this == other); }
   };
 
-  struct perm_options
+  pathIterator path::begin() const { return pathIterator::first(this); }
+  pathIterator path::end() const { return pathIterator(this, this->text.size() + 1, 0); }
+
+  int path::compare(const path& other) const
   {
-    int value;
-    static const perm_options add;
-    static const perm_options remove;
-    static const perm_options replace;
+    int names = this->root_name().text.compare(other.root_name().text);
+    if (names != 0)
+      return names;
+    bool directory = this->has_root_directory();
+    bool otherDirectory = other.has_root_directory();
+    if (directory != otherDirectory)
+      return directory ? 1 : -1;
+    path relative = this->relative_path();
+    path otherRelative = other.relative_path();
+    pathIterator a = relative.begin();
+    pathIterator b = otherRelative.begin();
+    pathIterator aEnd = relative.end();
+    pathIterator bEnd = otherRelative.end();
+    for (; a != aEnd && b != bEnd; ++a, ++b)
+    {
+      int c = a->text.compare(b->text);
+      if (c != 0)
+        return c;
+    }
+    if (a == aEnd && b == bEnd)
+      return 0;
+    return a == aEnd ? -1 : 1;
+  }
+
+  // std's lexically_normal: separators made `\`, `.` elements and each `name\..` pair gone, a `..`
+  // right after the root directory gone, no trailing separator after a final `..`, and `.` for
+  // what ends up empty.
+  path path::lexically_normal() const
+  {
+    if (this->text.empty())
+      return path();
+    Vector<WString> parts;
+    bool trailing = false;
+    path relative = this->relative_path();
+    for (const path& element : relative)
+    {
+      const WString& e = element.text;
+      if (e.empty() || e == L".")
+        trailing = true;
+      else if (e == L"..")
+      {
+        if (!parts.empty() && parts.back() != L"..")
+        {
+          parts.pop_back();
+          trailing = true;
+        }
+        else if (!this->has_root_directory())
+        {
+          parts.push_back(e);
+          trailing = false;
+        }
+      }
+      else
+      {
+        parts.push_back(e);
+        trailing = false;
+      }
+    }
+    WString result = this->root_name().text;
+    for (wchar_t& c : result)
+      if (c == L'/')
+        c = L'\\';
+    if (this->has_root_directory())
+      result.push_back(L'\\');
+    for (int i = 0; i < parts.size(); ++i)
+    {
+      if (i > 0)
+        result.push_back(L'\\');
+      result.append(parts[i]);
+    }
+    if (trailing && !parts.empty() && parts.back() != L"..")
+      result.push_back(L'\\');
+    if (result.empty())
+      result = L".";
+    return path(result);
+  }
+
+  // std's lexically_relative: empty when the root names or absoluteness differ (or only base has a
+  // root directory); otherwise `..` for each element of base after the common start (net of its
+  // `.` and `..`), then the rest of this path, or `.` for none.
+  path path::lexically_relative(const path& base) const
+  {
+    if (this->root_name().text != base.root_name().text || this->is_absolute() != base.is_absolute() ||
+        (!this->has_root_directory() && base.has_root_directory()))
+      return path();
+    pathIterator a = this->begin();
+    pathIterator aEnd = this->end();
+    pathIterator b = base.begin();
+    pathIterator bEnd = base.end();
+    while (a != aEnd && b != bEnd && a->text == b->text)
+    {
+      ++a;
+      ++b;
+    }
+    if (a == aEnd && b == bEnd)
+      return path(L".");
+    int count = 0;
+    for (; b != bEnd; ++b)
+    {
+      if (b->text == L"..")
+        --count;
+      else if (!b->text.empty() && b->text != L".")
+        ++count;
+    }
+    if (count < 0)
+      return path();
+    if (count == 0 && (a == aEnd || a->text.empty()))
+      return path(L".");
+    path result;
+    for (int i = 0; i < count; ++i)
+      result /= path(L"..");
+    for (; a != aEnd; ++a)
+      result /= *a;
+    return result;
+  }
+
+  // --- what a file is ---
+
+  enum class file_type
+  {
+    none = 0,
+    not_found = -1,
+    regular = 1,
+    directory = 2,
+    symlink = 3,
+    block = 4,
+    character = 5,
+    fifo = 6,
+    socket = 7,
+    unknown = 8,
+    junction = 10,
   };
 
-  struct copy_options
+  // POSIX permission bits; Windows has only the read-only attribute, which status reports as
+  // 0555 (others 0777) and permissions sets when the result has no write bit.
+  enum class perms : unsigned int
   {
-    int value;
-    static const copy_options overwrite_existing;
+    none = 0,
+    owner_read = 0400,
+    owner_write = 0200,
+    owner_exec = 0100,
+    owner_all = 0700,
+    group_read = 040,
+    group_write = 020,
+    group_exec = 010,
+    group_all = 070,
+    others_read = 04,
+    others_write = 02,
+    others_exec = 01,
+    others_all = 07,
+    all = 0777,
+    set_uid = 04000,
+    set_gid = 02000,
+    sticky_bit = 01000,
+    mask = 07777,
+    unknown = 0xFFFF,
+  };
+  perms operator|(perms a, perms b) { return perms((unsigned int)a | (unsigned int)b); }
+  perms operator&(perms a, perms b) { return perms((unsigned int)a & (unsigned int)b); }
+  perms operator^(perms a, perms b) { return perms((unsigned int)a ^ (unsigned int)b); }
+  perms operator~(perms a) { return perms(~(unsigned int)a & 0xFFFF); }
+  perms& operator|=(perms& a, perms b) { return a = a | b; }
+  perms& operator&=(perms& a, perms b) { return a = a & b; }
+  perms& operator^=(perms& a, perms b) { return a = a ^ b; }
+
+  enum class perm_options : unsigned int
+  {
+    replace = 1,
+    add = 2,
+    remove = 4,
+    nofollow = 8,
+  };
+  perm_options operator|(perm_options a, perm_options b) { return perm_options((unsigned int)a | (unsigned int)b); }
+  perm_options operator&(perm_options a, perm_options b) { return perm_options((unsigned int)a & (unsigned int)b); }
+
+  enum class copy_options : unsigned int
+  {
+    none = 0,
+    skip_existing = 1,
+    overwrite_existing = 2,
+    update_existing = 4,
+    recursive = 0x10,
+    copy_symlinks = 0x100,
+    skip_symlinks = 0x200,
+    directories_only = 0x1000,
+    create_symlinks = 0x2000,
+    create_hard_links = 0x4000,
+    inRecursiveCopy = 0x10000, // Kpp: copy's own mark for the entries of a directory it copies
+  };
+  copy_options operator|(copy_options a, copy_options b) { return copy_options((unsigned int)a | (unsigned int)b); }
+  copy_options operator&(copy_options a, copy_options b) { return copy_options((unsigned int)a & (unsigned int)b); }
+
+  enum class directory_options : unsigned int
+  {
+    none = 0,
+    follow_directory_symlink = 1,
+    skip_permission_denied = 2,
   };
 
-  struct ErrorCode
+  struct space_info
   {
-    int code;
-    ErrorCode() : code(0) {}
-    explicit ErrorCode(int c) : code(c) {}
-    String message() const;
-    const char* c_str() const;
-    bool operator==(const ErrorCode& other) const { return this->code == other.code; }
-    bool operator!=(const ErrorCode& other) const { return this->code != other.code; }
-    explicit operator bool() const { return this->code != 0; }
-  };
-
-  struct ErrorCodes
-  {
-    static const ErrorCode cross_device_link;
-    static const ErrorCode permission_denied;
-    static const ErrorCode no_such_file_or_directory;
+    uint64_t capacity = 0;
+    uint64_t free = 0;
+    uint64_t available = 0;
   };
 
   struct file_status
   {
-    file_type type() const;
-    perms permissions() const;
+    file_type typeValue = file_type::none;
+    perms permsValue = perms::unknown;
+
+    file_status() {}
+    explicit file_status(file_type type, perms permissions = perms::unknown) : typeValue(type), permsValue(permissions) {}
+    file_type type() const { return this->typeValue; }
+    perms permissions() const { return this->permsValue; }
+    void type(file_type type) { this->typeValue = type; }
+    void permissions(perms permissions) { this->permsValue = permissions; }
+    bool operator==(const file_status& other) const { return this->typeValue == other.typeValue && this->permsValue == other.permsValue; }
   };
 
-  struct Path
+  bool status_known(file_status s) { return s.type() != file_type::none; }
+  bool exists(file_status s) { return status_known(s) && s.type() != file_type::not_found; }
+  bool is_regular_file(file_status s) { return s.type() == file_type::regular; }
+  bool is_directory(file_status s) { return s.type() == file_type::directory; }
+  bool is_symlink(file_status s) { return s.type() == file_type::symlink; }
+  bool is_block_file(file_status s) { return s.type() == file_type::block; }
+  bool is_character_file(file_status s) { return s.type() == file_type::character; }
+  bool is_fifo(file_status s) { return s.type() == file_type::fifo; }
+  bool is_socket(file_status s) { return s.type() == file_type::socket; }
+  bool is_other(file_status s) { return exists(s) && !is_regular_file(s) && !is_directory(s) && !is_symlink(s); }
+
+  // --- errors ---
+
+  // An error of an operation on paths (std::filesystem::filesystem_error): what() is the message
+  // given, then the error code's, then the paths in brackets.
+  struct filesystem_error : SystemError
   {
-    Path();
-    Path(const char* s);
-    Path(const String& s);
-    Path(const Path& other);
-    Path(Path&& other);
-    Path& operator=(const Path& other);
-    Path& operator=(Path&& other);
+    path path1Value;
+    path path2Value;
 
-    String string() const;
-    String wstring() const;
-    String generic_string() const;
-    const char* c_str() const;
-    const String& native() const;
-    Path filename() const;
-    Path parent_path() const;
-    Path extension() const;
-    Path stem() const;
-    Path lexically_normal() const;
-    bool is_absolute() const;
-    bool has_filename() const;
-    bool empty() const;
-    void clear();
-
-    Path operator/(const Path& other) const;
-    Path operator/(const char* other) const;
-    Path operator/(const String& other) const;
-    Path& operator/=(const Path& other);
-    Path& operator/=(const char* other);
-    Path& operator/=(const String& other);
-    Path& operator+=(const Path& other);
-    Path& operator+=(const char* other);
-    Path& operator+=(const String& other);
-    bool operator==(const Path& other) const;
-    bool operator!=(const Path& other) const;
-    bool operator<(const Path& other) const;
-
-    struct iterator
+    filesystem_error(const String& what, ErrorCode code) : SystemError(code, what) {}
+    filesystem_error(const String& what, const path& path1, ErrorCode code) : SystemError(code, what), path1Value(path1)
     {
-      bool operator==(const iterator& other) const;
-      bool operator!=(const iterator& other) const;
-      iterator& operator++();
-      Path operator*() const;
-    };
-
-    iterator begin() const;
-    iterator end() const;
+      this->message = what + ": " + code.message() + " [" + path1.string() + "]";
+    }
+    filesystem_error(const String& what, const path& path1, const path& path2, ErrorCode code)
+      : SystemError(code, what), path1Value(path1), path2Value(path2)
+    {
+      this->message = what + ": " + code.message() + " [" + path1.string() + "] [" + path2.string() + "]";
+    }
+    const path& path1() const { return this->path1Value; }
+    const path& path2() const { return this->path2Value; }
   };
 
-  using path = Path;
+  ErrorCode lastError() { return ErrorCode((int)win32::GetLastError(), systemCategory()); }
+  // Win32 errors that mean the path does not resolve: file, path not found; a bad name, network
+  // path, net name, path.
+  bool isNotFound(int error) { return error == 2 || error == 3 || error == 123 || error == 53 || error == 67 || error == 161; }
 
+  // --- what a path names ---
+
+  file_status statusOfAttributes(unsigned long attributes)
+  {
+    perms permissions = (attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all;
+    if ((attributes & attributeDirectory) != 0)
+      return file_status(file_type::directory, permissions);
+    return file_status(file_type::regular, permissions);
+  }
+
+  // The attributes and size of what p names, links followed (a reparse point is opened and asked).
+  bool attributesOf(const path& p, Win32HandleInformation& out, ErrorCode& ec)
+  {
+    Win32AttributeData data;
+    if (!win32::GetFileAttributesExW(p.c_str(), 0, &data))
+    {
+      ec = lastError();
+      return false;
+    }
+    if ((data.attributes & attributeReparsePoint) != 0)
+    {
+      void* file = win32::CreateFileW(p.c_str(), 0x80, 7, nullptr, 3, 0x02000000, nullptr); // FILE_READ_ATTRIBUTES, share all, OPEN_EXISTING, BACKUP_SEMANTICS
+      if (file == invalidHandle)
+      {
+        ec = lastError();
+        return false;
+      }
+      bool ok = win32::GetFileInformationByHandle(file, &out) != 0;
+      if (!ok)
+        ec = lastError();
+      CloseHandle(file);
+      if (!ok)
+        return false;
+      ec.clear();
+      return true;
+    }
+    out.attributes = data.attributes;
+    out.sizeHigh = data.sizeHigh;
+    out.sizeLow = data.sizeLow;
+    ec.clear();
+    return true;
+  }
+
+  // What p names, links followed: not_found when it does not resolve (ec says why, as std's does).
+  file_status status(const path& p, ErrorCode& ec)
+  {
+    Win32HandleInformation info;
+    if (!attributesOf(p, info, ec))
+      return file_status(isNotFound(ec.value()) ? file_type::not_found : file_type::none);
+    return statusOfAttributes(info.attributes);
+  }
+  file_status status(const path& p)
+  {
+    ErrorCode ec;
+    file_status s = status(p, ec);
+    if (s.type() == file_type::none)
+      throw filesystem_error(String("status"), p, ec);
+    return s;
+  }
+  // What p itself is: a reparse point (a symbolic link or a junction) is a symlink.
+  file_status symlink_status(const path& p, ErrorCode& ec)
+  {
+    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
+    if (attributes == invalidAttributes)
+    {
+      ec = lastError();
+      return file_status(isNotFound(ec.value()) ? file_type::not_found : file_type::none);
+    }
+    ec.clear();
+    if ((attributes & attributeReparsePoint) != 0)
+      return file_status(file_type::symlink, (attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all);
+    return statusOfAttributes(attributes);
+  }
+  file_status symlink_status(const path& p)
+  {
+    ErrorCode ec;
+    file_status s = symlink_status(p, ec);
+    if (s.type() == file_type::none)
+      throw filesystem_error(String("symlink_status"), p, ec);
+    return s;
+  }
+
+  bool exists(const path& p, ErrorCode& ec)
+  {
+    file_status s = status(p, ec);
+    if (status_known(s))
+      ec.clear();
+    return exists(s);
+  }
+  bool exists(const path& p) { return exists(status(p)); }
+  bool is_directory(const path& p, ErrorCode& ec) { return is_directory(status(p, ec)); }
+  bool is_directory(const path& p) { return is_directory(status(p)); }
+  bool is_regular_file(const path& p, ErrorCode& ec) { return is_regular_file(status(p, ec)); }
+  bool is_regular_file(const path& p) { return is_regular_file(status(p)); }
+  bool is_symlink(const path& p, ErrorCode& ec) { return is_symlink(symlink_status(p, ec)); }
+  bool is_symlink(const path& p) { return is_symlink(symlink_status(p)); }
+  bool is_other(const path& p, ErrorCode& ec) { return is_other(status(p, ec)); }
+  bool is_other(const path& p) { return is_other(status(p)); }
+
+  // The size of the regular file p, links followed; an error for a directory or a missing file.
+  uint64_t file_size(const path& p, ErrorCode& ec)
+  {
+    Win32HandleInformation info;
+    if (!attributesOf(p, info, ec))
+      return (uint64_t)-1;
+    if ((info.attributes & attributeDirectory) != 0)
+    {
+      ec = make_error_code(Errc::is_a_directory);
+      return (uint64_t)-1;
+    }
+    return ((uint64_t)info.sizeHigh << 32) | info.sizeLow;
+  }
+  uint64_t file_size(const path& p)
+  {
+    ErrorCode ec;
+    uint64_t size = file_size(p, ec);
+    if (ec)
+      throw filesystem_error(String("file_size"), p, ec);
+    return size;
+  }
+
+  // --- directories ---
+
+  // A directory's entry: its path, and the status the listing gave (std::filesystem::directory_entry).
   struct directory_entry
   {
-    Path path() const;
-    file_status status() const;
-    uint64_t file_size() const;
+    filesystem::path pathValue;
+    unsigned long attributes = 0;
+    uint64_t size = 0;
+    bool listed = false; // attributes and size came with the listing
+
+    directory_entry() {}
+    explicit directory_entry(const filesystem::path& p) : pathValue(p) {}
+
+    const filesystem::path& path() const { return this->pathValue; }
+    implicit operator const filesystem::path&() const { return this->pathValue; }
+    void assign(const filesystem::path& p)
+    {
+      this->pathValue = p;
+      this->listed = false;
+    }
+    void refresh() { this->listed = false; }
+    // The listing's status, links followed (a link is asked anew).
+    file_status status(ErrorCode& ec) const
+    {
+      if (this->listed && (this->attributes & attributeReparsePoint) == 0)
+      {
+        ec.clear();
+        return statusOfAttributes(this->attributes);
+      }
+      return filesystem::status(this->pathValue, ec);
+    }
+    file_status status() const
+    {
+      ErrorCode ec;
+      file_status s = this->status(ec);
+      if (s.type() == file_type::none)
+        throw filesystem_error(String("directory_entry::status"), this->pathValue, ec);
+      return s;
+    }
+    file_status symlink_status(ErrorCode& ec) const
+    {
+      if (this->listed)
+      {
+        ec.clear();
+        if ((this->attributes & attributeReparsePoint) != 0)
+          return file_status(file_type::symlink, (this->attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all);
+        return statusOfAttributes(this->attributes);
+      }
+      return filesystem::symlink_status(this->pathValue, ec);
+    }
+    file_status symlink_status() const
+    {
+      ErrorCode ec;
+      return this->symlink_status(ec);
+    }
+    bool exists() const { return filesystem::exists(this->status()); }
+    bool is_directory() const { return filesystem::is_directory(this->status()); }
+    bool is_regular_file() const { return filesystem::is_regular_file(this->status()); }
+    bool is_symlink() const { return filesystem::is_symlink(this->symlink_status()); }
+    uint64_t file_size(ErrorCode& ec) const
+    {
+      if (this->listed && (this->attributes & (attributeReparsePoint | attributeDirectory)) == 0)
+      {
+        ec.clear();
+        return this->size;
+      }
+      return filesystem::file_size(this->pathValue, ec);
+    }
+    uint64_t file_size() const
+    {
+      ErrorCode ec;
+      uint64_t s = this->file_size(ec);
+      if (ec)
+        throw filesystem_error(String("directory_entry::file_size"), this->pathValue, ec);
+      return s;
+    }
+    bool operator==(const directory_entry& other) const { return this->pathValue == other.pathValue; }
+    bool operator!=(const directory_entry& other) const { return this->pathValue != other.pathValue; }
+    bool operator<(const directory_entry& other) const { return this->pathValue < other.pathValue; }
   };
 
+  // A directory listing in progress, which copies of a directory_iterator share.
+  struct DirectoryListing
+  {
+    void* find = invalidHandle;
+    Win32FindData data;
+    path directory;
+    directory_entry entry;
+
+    DirectoryListing() {}
+    DirectoryListing(const DirectoryListing&) = delete;
+    ~DirectoryListing()
+    {
+      if (this->find != invalidHandle)
+        win32::FindClose(this->find);
+    }
+    // The entry of the current find data; false for `.` and `..`, which listings skip.
+    bool take()
+    {
+      const wchar_t* name = this->data.name;
+      if (name[0] == L'.' && (name[1] == 0 || (name[1] == L'.' && name[2] == 0)))
+        return false;
+      this->entry.pathValue = this->directory / path(name);
+      this->entry.attributes = this->data.attributes;
+      this->entry.size = ((uint64_t)this->data.sizeHigh << 32) | this->data.sizeLow;
+      this->entry.listed = true;
+      return true;
+    }
+  };
+
+  // The entries of a directory, `.` and `..` left out, in the order the file system gives them
+  // (std::filesystem::directory_iterator). Copies share the position; the end iterator is the
+  // default-constructed one.
   struct directory_iterator
   {
-    directory_iterator();
-    explicit directory_iterator(const Path& p);
-    directory_iterator(const Path& p, ErrorCode& ec);
-    bool operator==(const directory_iterator& other) const;
-    bool operator!=(const directory_iterator& other) const;
-    directory_iterator& operator++();
-    const directory_entry& operator*() const;
-    const directory_entry* operator->() const;
-  };
+    using value_type = directory_entry;
+    using difference_type = ptrdiff_t;
+    using pointer = const directory_entry*;
+    using reference = const directory_entry&;
+    using iterator_category = InputIteratorTag;
 
-  struct filesystem_error
+    SharedPtr<DirectoryListing> listing;
+
+    directory_iterator() {}
+    explicit directory_iterator(const path& p)
+    {
+      ErrorCode ec;
+      this->open(p, ec);
+      if (ec)
+        throw filesystem_error(String("directory_iterator"), p, ec);
+    }
+    directory_iterator(const path& p, ErrorCode& ec) { this->open(p, ec); }
+    directory_iterator(const path& p, directory_options options)
+    {
+      ErrorCode ec;
+      this->open(p, ec);
+      if (ec)
+        throw filesystem_error(String("directory_iterator"), p, ec);
+    }
+    directory_iterator(const path& p, directory_options options, ErrorCode& ec) { this->open(p, ec); }
+
+    void open(const path& p, ErrorCode& ec)
+    {
+      ec.clear();
+      SharedPtr<DirectoryListing> state = makeShared<DirectoryListing>();
+      state->directory = p;
+      path pattern = p / path(L"*");
+      state->find = win32::FindFirstFileW(pattern.c_str(), &state->data);
+      if (state->find == invalidHandle)
+      {
+        // ERROR_FILE_NOT_FOUND or ERROR_NO_MORE_FILES on a directory that is there: an empty
+        // listing; on a missing one, its own error.
+        ErrorCode failure = lastError();
+        if (failure.value() != 2 && failure.value() != 18)
+          ec = failure;
+        else if (file_status s = status(p, ec); !is_directory(s))
+          ec = ec ? ec : make_error_code(Errc::not_a_directory);
+        return;
+      }
+      this->listing = state;
+      if (!this->listing->take())
+        this->advance(ec);
+    }
+    // The next entry; the end when there is none (or on an error, which ec reports).
+    void advance(ErrorCode& ec)
+    {
+      ec.clear();
+      while (this->listing)
+      {
+        if (!win32::FindNextFileW(this->listing->find, &this->listing->data))
+        {
+          int error = (int)win32::GetLastError();
+          if (error != 18)
+            ec = ErrorCode(error, systemCategory());
+          this->listing = SharedPtr<DirectoryListing>();
+          return;
+        }
+        if (this->listing->take())
+          return;
+      }
+    }
+    directory_iterator& increment(ErrorCode& ec)
+    {
+      this->advance(ec);
+      return *this;
+    }
+    directory_iterator& operator++()
+    {
+      ErrorCode ec;
+      this->advance(ec);
+      if (ec)
+        throw filesystem_error(String("directory_iterator::operator++"), ec);
+      return *this;
+    }
+    const directory_entry& operator*() const { return this->listing->entry; }
+    const directory_entry* operator->() const { return &this->listing->entry; }
+    bool operator==(const directory_iterator& other) const { return this->listing == other.listing; }
+    bool operator!=(const directory_iterator& other) const { return this->listing != other.listing; }
+  };
+  directory_iterator begin(directory_iterator it) { return it; }
+  directory_iterator end(const directory_iterator& it) { return directory_iterator(); }
+
+  // --- paths from the system ---
+
+  // A path a Win32 function writes (its size, its buffer -> the length, or the size it needs).
+  WString systemPath(unsigned long (*get)(unsigned long, wchar_t*))
   {
-    const char* what() const;
-    const Path& path1() const;
-    const Path& path2() const;
-  };
+    wchar_t buffer[520];
+    unsigned long n = get(520, buffer);
+    if (n < 520)
+      return WString(buffer, (int)n);
+    WString big;
+    big.resize((int)n);
+    n = get(n, big.data());
+    big.resize((int)n);
+    return big;
+  }
 
-  struct SystemError
+  // p made absolute against the current directory (GetFullPathName, which also resolves `.` and `..`).
+  path absolute(const path& p, ErrorCode& ec)
   {
-    ErrorCode code;
-    explicit SystemError(const ErrorCode& ec);
-    const char* what() const;
-  };
+    ec.clear();
+    if (p.empty())
+      return path();
+    wchar_t buffer[520];
+    unsigned long n = win32::GetFullPathNameW(p.c_str(), 520, buffer, nullptr);
+    if (n == 0)
+    {
+      ec = lastError();
+      return path();
+    }
+    if (n < 520)
+      return path(WString(buffer, (int)n));
+    WString big;
+    big.resize((int)n);
+    n = win32::GetFullPathNameW(p.c_str(), n, big.data(), nullptr);
+    big.resize((int)n);
+    return path(big);
+  }
+  path absolute(const path& p)
+  {
+    ErrorCode ec;
+    path result = absolute(p, ec);
+    if (ec)
+      throw filesystem_error(String("absolute"), p, ec);
+    return result;
+  }
 
-  static const Path dotDot;
+  // The absolute path of what p names with every link resolved; p must exist. The system's
+  // `\\?\` prefix is removed (`\\?\UNC\` becomes `\\`).
+  path canonical(const path& p, ErrorCode& ec)
+  {
+    void* file = win32::CreateFileW(p.c_str(), 0, 7, nullptr, 3, 0x02000000, nullptr); // no access, share all, OPEN_EXISTING, BACKUP_SEMANTICS
+    if (file == invalidHandle)
+    {
+      ec = lastError();
+      return path();
+    }
+    wchar_t buffer[520];
+    unsigned long n = win32::GetFinalPathNameByHandleW(file, buffer, 520, 0);
+    WString result;
+    if (n > 0 && n < 520)
+      result = WString(buffer, (int)n);
+    else if (n >= 520)
+    {
+      result.resize((int)n);
+      n = win32::GetFinalPathNameByHandleW(file, result.data(), n, 0);
+      result.resize((int)n);
+    }
+    if (n == 0)
+      ec = lastError();
+    else
+      ec.clear();
+    CloseHandle(file);
+    if (ec)
+      return path();
+    if (result.find(L"\\\\?\\UNC\\") == 0)
+      result = L"\\\\" + result.substr(8);
+    else if (result.find(L"\\\\?\\") == 0)
+      result = result.substr(4);
+    return path(result);
+  }
+  path canonical(const path& p)
+  {
+    ErrorCode ec;
+    path result = canonical(p, ec);
+    if (ec)
+      throw filesystem_error(String("canonical"), p, ec);
+    return result;
+  }
 
-  static bool exists(const Path& p);
-  static bool exists(const Path& p, ErrorCode& ec);
-  static bool is_directory(const Path& p);
-  static bool is_directory(const file_status& s);
-  static bool is_regular_file(const Path& p);
-  static bool is_regular_file(const file_status& s);
-  static file_status status(const Path& p);
-  static file_status status(const Path& p, ErrorCode& ec);
-  static file_status symlink_status(const Path& p, ErrorCode& ec);
-  static Path canonical(const Path& p);
-  static Path weakly_canonical(const Path& p);
-  static Path absolute(const Path& p);
-  static bool create_directories(const Path& p);
-  static bool create_directories(const Path& p, ErrorCode& ec);
-  static void copy_file(const Path& from, const Path& to, copy_options options);
-  static void copy(const Path& from, const Path& to);
-  static void rename(const Path& from, const Path& to, ErrorCode& ec);
-  static bool remove(const Path& p, ErrorCode& ec);
-  static uint64_t RemoveAll(const Path& p, ErrorCode& ec);
-  static uint64_t file_size(const Path& p);
-  static void permissions(const Path& p, perms prm, perm_options opts, ErrorCode& ec);
-  static int64_t LastWriteTime(const Path& p);
-  static Path unique_path(const String& pattern);
-};
+  // canonical of the longest leading part of p that exists, then the rest; lexically normal.
+  path weakly_canonical(const path& p, ErrorCode& ec)
+  {
+    ec.clear();
+    path head = p.root_path();
+    path tail;
+    bool inTail = false;
+    path relative = p.relative_path();
+    for (const path& element : relative)
+    {
+      if (!inTail)
+      {
+        path candidate = head / element;
+        ErrorCode probe;
+        if (exists(candidate, probe))
+        {
+          head = candidate;
+          continue;
+        }
+        inTail = true;
+      }
+      tail /= element;
+    }
+    path result = head;
+    if (!head.empty() && head != p.root_path())
+    {
+      result = canonical(head, ec);
+      if (ec)
+        return path();
+    }
+    if (!tail.empty())
+      result /= tail;
+    return result.lexically_normal();
+  }
+  path weakly_canonical(const path& p)
+  {
+    ErrorCode ec;
+    path result = weakly_canonical(p, ec);
+    if (ec)
+      throw filesystem_error(String("weakly_canonical"), p, ec);
+    return result;
+  }
+
+  path current_path(ErrorCode& ec)
+  {
+    ec.clear();
+    return path(systemPath(win32::GetCurrentDirectoryW));
+  }
+  path current_path()
+  {
+    ErrorCode ec;
+    return current_path(ec);
+  }
+  void current_path(const path& p, ErrorCode& ec)
+  {
+    if (win32::SetCurrentDirectoryW(p.c_str()))
+      ec.clear();
+    else
+      ec = lastError();
+  }
+  void current_path(const path& p)
+  {
+    ErrorCode ec;
+    current_path(p, ec);
+    if (ec)
+      throw filesystem_error(String("current_path"), p, ec);
+  }
+  path temp_directory_path(ErrorCode& ec)
+  {
+    ec.clear();
+    return path(systemPath(win32::GetTempPathW));
+  }
+  path temp_directory_path()
+  {
+    ErrorCode ec;
+    return temp_directory_path(ec);
+  }
+
+  space_info space(const path& p, ErrorCode& ec)
+  {
+    space_info result;
+    unsigned long long available = 0;
+    unsigned long long total = 0;
+    unsigned long long free = 0;
+    if (!win32::GetDiskFreeSpaceExW(p.c_str(), &available, &total, &free))
+    {
+      ec = lastError();
+      result.capacity = (uint64_t)-1;
+      result.free = (uint64_t)-1;
+      result.available = (uint64_t)-1;
+      return result;
+    }
+    ec.clear();
+    result.capacity = total;
+    result.free = free;
+    result.available = available;
+    return result;
+  }
+  space_info space(const path& p)
+  {
+    ErrorCode ec;
+    space_info result = space(p, ec);
+    if (ec)
+      throw filesystem_error(String("space"), p, ec);
+    return result;
+  }
+
+  // --- changing the file system ---
+
+  // Creates the directory p; false (and no error) when a directory is there already.
+  bool create_directory(const path& p, ErrorCode& ec)
+  {
+    if (win32::CreateDirectoryW(p.c_str(), nullptr))
+    {
+      ec.clear();
+      return true;
+    }
+    ErrorCode failure = lastError();
+    if ((failure.value() == 183 || failure.value() == 5) && is_directory(p, ec)) // ERROR_ALREADY_EXISTS; ACCESS_DENIED for a drive's root
+    {
+      ec.clear();
+      return false;
+    }
+    ec = failure;
+    return false;
+  }
+  bool create_directory(const path& p)
+  {
+    ErrorCode ec;
+    bool created = create_directory(p, ec);
+    if (ec)
+      throw filesystem_error(String("create_directory"), p, ec);
+    return created;
+  }
+  // Creates p and every missing directory above it; true when it created any.
+  bool create_directories(const path& p, ErrorCode& ec)
+  {
+    ec.clear();
+    if (p.empty())
+      return false;
+    file_status s = status(p, ec);
+    if (is_directory(s))
+    {
+      ec.clear();
+      return false;
+    }
+    if (exists(s))
+    {
+      ec = make_error_code(Errc::not_a_directory);
+      return false;
+    }
+    path parent = p.parent_path();
+    if (!p.has_filename())
+      return create_directories(parent, ec); // `a/b/`: b is the last directory
+    if (!parent.empty() && parent != p)
+    {
+      create_directories(parent, ec);
+      if (ec)
+        return false;
+    }
+    return create_directory(p, ec);
+  }
+  bool create_directories(const path& p)
+  {
+    ErrorCode ec;
+    bool created = create_directories(p, ec);
+    if (ec)
+      throw filesystem_error(String("create_directories"), p, ec);
+    return created;
+  }
+
+  // Removes the file or empty directory p; false (and no error) when there is none. A read-only
+  // file is not removed (the error is access denied), as with MSVC.
+  bool remove(const path& p, ErrorCode& ec)
+  {
+    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
+    if (attributes == invalidAttributes)
+    {
+      ErrorCode failure = lastError();
+      if (isNotFound(failure.value()))
+      {
+        ec.clear();
+        return false;
+      }
+      ec = failure;
+      return false;
+    }
+    bool ok = (attributes & attributeDirectory) != 0 ? win32::RemoveDirectoryW(p.c_str()) != 0 : win32::DeleteFileW(p.c_str()) != 0;
+    if (!ok)
+    {
+      ec = lastError();
+      return false;
+    }
+    ec.clear();
+    return true;
+  }
+  bool remove(const path& p)
+  {
+    ErrorCode ec;
+    bool removed = remove(p, ec);
+    if (ec)
+      throw filesystem_error(String("remove"), p, ec);
+    return removed;
+  }
+  // Removes p and, for a directory (not a link to one), everything in it; the count removed, or
+  // -1 on an error.
+  uint64_t remove_all(const path& p, ErrorCode& ec)
+  {
+    file_status s = symlink_status(p, ec);
+    if (s.type() == file_type::not_found)
+    {
+      ec.clear();
+      return 0;
+    }
+    if (ec)
+      return (uint64_t)-1;
+    uint64_t count = 0;
+    if (s.type() == file_type::directory)
+    {
+      Vector<path> children;
+      for (directory_iterator it(p, ec); !ec && it != directory_iterator(); it.increment(ec))
+        children.push_back(it->path());
+      if (ec)
+        return (uint64_t)-1;
+      for (const path& child : children)
+      {
+        uint64_t removed = remove_all(child, ec);
+        if (ec)
+          return (uint64_t)-1;
+        count += removed;
+      }
+    }
+    if (remove(p, ec))
+      ++count;
+    return ec ? (uint64_t)-1 : count;
+  }
+  uint64_t remove_all(const path& p)
+  {
+    ErrorCode ec;
+    uint64_t count = remove_all(p, ec);
+    if (ec)
+      throw filesystem_error(String("remove_all"), p, ec);
+    return count;
+  }
+
+  // Moves from to to, replacing a file there (MoveFileEx with MOVEFILE_REPLACE_EXISTING: not
+  // across volumes, which is errc::cross_device_link).
+  void rename(const path& from, const path& to, ErrorCode& ec)
+  {
+    if (win32::MoveFileExW(from.c_str(), to.c_str(), 1))
+      ec.clear();
+    else
+      ec = lastError();
+  }
+  void rename(const path& from, const path& to)
+  {
+    ErrorCode ec;
+    rename(from, to, ec);
+    if (ec)
+      throw filesystem_error(String("rename"), from, to, ec);
+  }
+
+  // Copies the regular file from to to: with none, an existing to is an error (file_exists);
+  // skip_existing leaves it; overwrite_existing replaces it; update_existing replaces it when from
+  // is newer. True when it copied.
+  bool copy_file(const path& from, const path& to, copy_options options, ErrorCode& ec)
+  {
+    ec.clear();
+    Win32AttributeData source;
+    Win32AttributeData target;
+    if (!win32::GetFileAttributesExW(from.c_str(), 0, &source))
+    {
+      ec = lastError();
+      return false;
+    }
+    if ((source.attributes & attributeDirectory) != 0)
+    {
+      ec = make_error_code(Errc::is_a_directory);
+      return false;
+    }
+    if (win32::GetFileAttributesExW(to.c_str(), 0, &target))
+    {
+      if ((options & copy_options::skip_existing) != copy_options::none)
+        return false;
+      if ((options & copy_options::update_existing) != copy_options::none)
+      {
+        uint64_t sourceTime = ((uint64_t)source.write.high << 32) | source.write.low;
+        uint64_t targetTime = ((uint64_t)target.write.high << 32) | target.write.low;
+        if (sourceTime <= targetTime)
+          return false;
+      }
+      else if ((options & copy_options::overwrite_existing) == copy_options::none)
+      {
+        ec = make_error_code(Errc::file_exists);
+        return false;
+      }
+    }
+    if (!win32::CopyFileW(from.c_str(), to.c_str(), 0))
+    {
+      ec = lastError();
+      return false;
+    }
+    return true;
+  }
+  bool copy_file(const path& from, const path& to, ErrorCode& ec) { return copy_file(from, to, copy_options::none, ec); }
+  bool copy_file(const path& from, const path& to, copy_options options)
+  {
+    ErrorCode ec;
+    bool copied = copy_file(from, to, options, ec);
+    if (ec)
+      throw filesystem_error(String("copy_file"), from, to, ec);
+    return copied;
+  }
+  bool copy_file(const path& from, const path& to) { return copy_file(from, to, copy_options::none); }
+
+  // std's copy: a file is copied as copy_file does (into to when to is a directory); a directory,
+  // with recursive or with no options, to a directory created at to, entry by entry (its
+  // subdirectories only with recursive). Links are followed.
+  void copy(const path& from, const path& to, copy_options options, ErrorCode& ec)
+  {
+    file_status source = status(from, ec);
+    if (!exists(source))
+    {
+      if (!ec)
+        ec = make_error_code(Errc::no_such_file_or_directory);
+      return;
+    }
+    ErrorCode probe;
+    file_status target = status(to, probe);
+    if (exists(target) && source.type() == target.type() && canonical(from, probe) == canonical(to, probe))
+    {
+      ec = make_error_code(Errc::file_exists);
+      return;
+    }
+    ec.clear();
+    bool nested = (options & copy_options::inRecursiveCopy) != copy_options::none;
+    bool recursive = (options & copy_options::recursive) != copy_options::none;
+    if (is_regular_file(source))
+    {
+      if ((options & copy_options::directories_only) != copy_options::none)
+        return;
+      if (is_directory(target))
+        copy_file(from, to / from.filename(), options, ec);
+      else
+        copy_file(from, to, options, ec);
+      return;
+    }
+    if (is_directory(source) && (recursive || (options == copy_options::none && !nested)))
+    {
+      if (!exists(target))
+      {
+        create_directory(to, ec);
+        if (ec)
+          return;
+      }
+      Vector<path> entries;
+      for (directory_iterator it(from, ec); !ec && it != directory_iterator(); it.increment(ec))
+        entries.push_back(it->path());
+      if (ec)
+        return;
+      for (const path& entry : entries)
+      {
+        copy(entry, to / entry.filename(), options | copy_options::inRecursiveCopy, ec);
+        if (ec)
+          return;
+      }
+    }
+  }
+  void copy(const path& from, const path& to, ErrorCode& ec) { copy(from, to, copy_options::none, ec); }
+  void copy(const path& from, const path& to, copy_options options)
+  {
+    ErrorCode ec;
+    copy(from, to, options, ec);
+    if (ec)
+      throw filesystem_error(String("copy"), from, to, ec);
+  }
+  void copy(const path& from, const path& to) { copy(from, to, copy_options::none); }
+
+  // Sets p's permissions (replace, add or remove the bits given): Windows keeps only whether it
+  // is read-only, which it is when the result has no write bit.
+  void permissions(const path& p, perms permissions, perm_options options, ErrorCode& ec)
+  {
+    unsigned long attributes = win32::GetFileAttributesW(p.c_str());
+    if (attributes == invalidAttributes)
+    {
+      ec = lastError();
+      return;
+    }
+    perms current = (attributes & attributeReadOnly) != 0 ? perms(0555) : perms::all;
+    perms result = permissions;
+    if ((options & perm_options::add) != perm_options(0))
+      result = current | permissions;
+    else if ((options & perm_options::remove) != perm_options(0))
+      result = current & ~permissions;
+    bool readOnly = (result & (perms::owner_write | perms::group_write | perms::others_write)) == perms::none;
+    unsigned long wanted = readOnly ? (attributes | attributeReadOnly) : (attributes & ~attributeReadOnly);
+    if (wanted != attributes && !win32::SetFileAttributesW(p.c_str(), wanted))
+    {
+      ec = lastError();
+      return;
+    }
+    ec.clear();
+  }
+  void permissions(const path& p, perms permissions, ErrorCode& ec) { filesystem::permissions(p, permissions, perm_options::replace, ec); }
+  void permissions(const path& p, perms permissions, perm_options options)
+  {
+    ErrorCode ec;
+    filesystem::permissions(p, permissions, options, ec);
+    if (ec)
+      throw filesystem_error(String("permissions"), p, ec);
+  }
+  void permissions(const path& p, perms permissions) { filesystem::permissions(p, permissions, perm_options::replace); }
+
+  // Whether p is an empty file or a directory without entries.
+  bool is_empty(const path& p, ErrorCode& ec)
+  {
+    file_status s = status(p, ec);
+    if (ec)
+      return false;
+    if (is_directory(s))
+    {
+      directory_iterator it(p, ec);
+      return !ec && it == directory_iterator();
+    }
+    uint64_t size = file_size(p, ec);
+    return !ec && size == 0;
+  }
+  bool is_empty(const path& p)
+  {
+    ErrorCode ec;
+    bool empty = is_empty(p, ec);
+    if (ec)
+      throw filesystem_error(String("is_empty"), p, ec);
+    return empty;
+  }
+}

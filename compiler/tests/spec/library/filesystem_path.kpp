@@ -1,0 +1,33 @@
+// spec: filesystem::path (std::filesystem::path): its parts (root name and directory, filename, stem, extension, parent), its elements, `/` and its rules, lexically_normal and lexically_relative, and element-wise comparison; ErrorCode against Errc
+// factorio: Filesystem::Path over std::filesystem::path (1,221 uses), Package::normalizedPath's loop over the elements, FileUtil's isSubdir
+String show(const filesystem::path& p) { return "[" + p.generic_string() + "]"; }
+
+void parts(const char* text)
+{
+  filesystem::path p(text);
+  String elements;
+  for (const filesystem::path& e : p)
+    elements += show(e);
+  println("{} {} {} {} {} {} {} | {}", show(p.root_name()), show(p.root_directory()), show(p.parent_path()), show(p.filename()), show(p.stem()),
+          show(p.extension()), p.is_absolute(), elements);
+}
+
+int main()
+{
+  parts("C:\\a\\b.txt");
+  parts("a/b/");
+  parts("C:x");
+  parts("\\\\server\\share\\f");
+  parts(".profile");
+  println("{} {} {} {}", show(filesystem::path("C:") / "a"), show(filesystem::path("a/") / "b"), show(filesystem::path("a") / "C:\\abs"),
+          show(filesystem::path("a/b/c") / "\\d"));
+  println("{} {} {} {}", show(filesystem::path("a/./b/../c").lexically_normal()), show(filesystem::path("a/b/..").lexically_normal()),
+          show(filesystem::path("a/..").lexically_normal()), show(filesystem::path("C:/../x").lexically_normal()));
+  println("{} {}", show(filesystem::path("a/b/c").lexically_relative("a/d")), show(filesystem::path("a/b").lexically_relative("a/b")));
+  filesystem::path file = "dir/file.tar.gz";
+  file.replace_extension(".png");
+  println("{} {} {}", show(file), filesystem::path("a/b") == filesystem::path("a\\b"), filesystem::path("a/b") < filesystem::path("a-b"));
+  ErrorCode notFound(2, systemCategory());
+  println("{} {} {}", notFound == Errc::no_such_file_or_directory, make_error_code(Errc::file_exists) == Errc::file_exists, (bool)ErrorCode());
+  return 0;
+}

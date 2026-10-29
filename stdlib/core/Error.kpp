@@ -12,35 +12,145 @@ struct LengthError : LogicError
   explicit LengthError(const String& message) : LogicError(message) {}
 };
 
-struct SystemError : RuntimeError
-{
-  int code_;
+// --- Error codes (std::error_code, std::errc, std::system_error); specified in docs/stdlib/filesystem.md ---
 
-  SystemError() : code_(0) {}
-  SystemError(int code, const String& message) : RuntimeError(message), code_(code) {}
-  int code() const { return this->code_; }
+// The Win32 functions the library calls, declared in a namespace of their own with plain types, so
+// that a program's import of windows.h (whose declarations use its own types) does not meet them as
+// other overloads of the same names.
+namespace win32
+{
+  extern "C" unsigned long FormatMessageW(unsigned long flags, const void* source, unsigned long messageId, unsigned long languageId, wchar_t* buffer,
+                                          unsigned long size, void* arguments);
+  extern "C" int WideCharToMultiByte(unsigned int codePage, unsigned long flags, const wchar_t* wide, int wideCount, char* narrow, int narrowSize,
+                                     const char* defaultChar, int* usedDefault);
+  extern "C" int MultiByteToWideChar(unsigned int codePage, unsigned long flags, const char* narrow, int narrowCount, wchar_t* wide, int wideSize);
+  extern "C" unsigned long GetLastError();
+}
+
+// What an error code's value means (std::error_category): an errno value (generic) or a Windows
+// error code, what GetLastError returns (system).
+struct ErrorCategory
+{
+  bool system = false;
+
+  bool operator==(const ErrorCategory& other) const { return this->system == other.system; }
+  bool operator!=(const ErrorCategory& other) const { return this->system != other.system; }
+  const char* name() const { return this->system ? "system" : "generic"; }
+};
+ErrorCategory genericCategory() { return ErrorCategory{false}; }
+ErrorCategory systemCategory() { return ErrorCategory{true}; }
+
+// Portable error conditions (std::errc), with the C library's errno values.
+enum class Errc
+{
+  operation_not_permitted = 1,
+  no_such_file_or_directory = 2,
+  interrupted = 4,
+  io_error = 5,
+  permission_denied = 13,
+  device_or_resource_busy = 16,
+  file_exists = 17,
+  cross_device_link = 18,
+  no_such_device = 19,
+  not_a_directory = 20,
+  is_a_directory = 21,
+  invalid_argument = 22,
+  too_many_files_open = 24,
+  file_too_large = 27,
+  no_space_on_device = 28,
+  read_only_file_system = 30,
+  filename_too_long = 38,
+  function_not_supported = 40,
+  directory_not_empty = 41,
+  not_supported = 129,
+  operation_not_supported = 130,
+  timed_out = 138,
 };
 
+// The condition a Windows error means, as std::system_category's equivalence maps it, or 0.
+int errcOfWindowsError(int error)
+{
+  switch (error)
+  {
+    case 2: case 3: case 15: case 53: case 67: case 123: case 161: return int(Errc::no_such_file_or_directory); // file, path not found; bad drive, network path, name
+    case 5: case 19: case 32: case 82: return int(Errc::permission_denied); // access denied, write protected, sharing violation, cannot make
+    case 17: return int(Errc::cross_device_link);
+    case 80: case 183: return int(Errc::file_exists);
+    case 145: return int(Errc::directory_not_empty);
+    case 267: return int(Errc::not_a_directory);
+    case 87: return int(Errc::invalid_argument);
+    case 39: case 112: return int(Errc::no_space_on_device);
+    case 170: return int(Errc::device_or_resource_busy);
+    case 206: return int(Errc::filename_too_long);
+    case 50: return int(Errc::not_supported);
+    case 4: return int(Errc::too_many_files_open);
+    case 29: case 30: return int(Errc::io_error); // write fault, read fault
+    default: return 0;
+  }
+}
+
+// An error value with its category (std::error_code); 0 is no error. Compared with an Errc, a
+// Windows error equals the condition it means (ERROR_FILE_NOT_FOUND is no_such_file_or_directory).
 struct ErrorCode
 {
   int value_ = 0;
+  ErrorCategory category_ = ErrorCategory{true};
 
   ErrorCode() {}
-  explicit ErrorCode(int value) : value_(value) {}
+  ErrorCode(int value, ErrorCategory category) : value_(value), category_(category) {}
+
   int value() const { return this->value_; }
-  operator bool() const { return this->value_ != 0; }
-  bool operator==(const ErrorCode& other) const { return this->value_ == other.value_; }
-  bool operator!=(const ErrorCode& other) const { return this->value_ != other.value_; }
-  String message() const { return String(strerror(this->value_)); }
+  ErrorCategory category() const { return this->category_; }
+  explicit operator bool() const { return this->value_ != 0; }
+  void clear()
+  {
+    this->value_ = 0;
+    this->category_ = systemCategory();
+  }
+  void assign(int value, ErrorCategory category)
+  {
+    this->value_ = value;
+    this->category_ = category;
+  }
+  // The text the system has for the value: FormatMessage's for a Windows error, strerror's for errno.
+  String message() const
+  {
+    if (!this->category_.system)
+      return String(strerror(this->value_));
+    wchar_t buffer[512];
+    unsigned long count = win32::FormatMessageW(0x1000 | 0x200, nullptr, (unsigned long)this->value_, 0, buffer, 512, nullptr); // FROM_SYSTEM | IGNORE_INSERTS
+    while (count > 0 && (buffer[count - 1] == L'\r' || buffer[count - 1] == L'\n' || buffer[count - 1] == L' '))
+      --count;
+    if (count == 0)
+      return String("unknown error ") + toString(this->value_);
+    char narrow[1536];
+    int length = win32::WideCharToMultiByte(65001, 0, buffer, (int)count, narrow, 1536, nullptr, nullptr); // CP_UTF8
+    return String(narrow, length);
+  }
+  bool operator==(const ErrorCode& other) const { return this->value_ == other.value_ && this->category_ == other.category_; }
+  bool operator!=(const ErrorCode& other) const { return !(*this == other); }
+  bool operator==(Errc condition) const
+  {
+    if (this->value_ == 0)
+      return false;
+    return (this->category_.system ? errcOfWindowsError(this->value_) : this->value_) == int(condition);
+  }
+  bool operator!=(Errc condition) const { return !(*this == condition); }
 };
 
-struct Errc
+// An Errc as an error code of the generic category (std::make_error_code).
+ErrorCode make_error_code(Errc condition) { return ErrorCode(int(condition), genericCategory()); }
+
+// An exception for an ErrorCode (std::system_error): what() is the message given, then the code's.
+struct SystemError : RuntimeError
 {
-  int value;
-  explicit Errc(int v) : value(v) {}
-};
+  ErrorCode code_;
 
-ErrorCode systemCategory() { return ErrorCode(); }
+  SystemError() {}
+  explicit SystemError(ErrorCode code) : RuntimeError(code.message()), code_(code) {}
+  SystemError(ErrorCode code, const String& what) : RuntimeError(what + ": " + code.message()), code_(code) {}
+  const ErrorCode& code() const { return this->code_; }
+};
 
 // Exception pointers (std::exception_ptr): a shared handle to a copy of an exception, thrown again
 // where it is needed (Promise::setException, then Future::get on another thread). Copies of an

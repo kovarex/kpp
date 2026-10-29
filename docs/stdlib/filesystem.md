@@ -1,0 +1,186 @@
+# Filesystem: paths, files and directories
+
+What `std::filesystem` converts to: namespace `filesystem`, with std's names (`filesystem::path`,
+`filesystem::exists`, ...), so that code which reaches it through a namespace alias or a
+using-directive (Factorio's `namespace __fs = std::filesystem;` with `using namespace __fs;`)
+reads the same. Windows only: paths are UTF-16 text as Windows keeps them, and every operation is
+a Win32 wide-character call. The error types it reports with (ErrorCode, Errc, SystemError) are
+specified at the end.
+
+## path
+
+A path is text in Windows form: `\` and `/` are both separators, `preferred_separator` is `\`.
+It is stored as a WString (`native()`, `c_str()`); `value_type` is wchar_t.
+
+Construction (implicit, except the two-pointer forms): from a WString, a `const wchar_t*`, or a
+`[first, last)` range of wchar_t; from a String, a `const char*`, a StringView or a range of char,
+read as UTF-8. *Difference from C++*: on Windows C++ reads a narrow string in the ANSI code page;
+Kpp always reads UTF-8 (what Factorio's own Path does with its widen). Assignment from the same
+types.
+
+The parts of a path, by example (`C:\a\b.txt`):
+- root name: a drive (`C:`) or a server (`\\server`, two separators and a name); else empty.
+- root directory: the separator right after the root name (`\`), if there is one.
+- root path: the two together (`C:\`). Relative path: the rest, after every separator there
+  (`a\b.txt`).
+- filename: the text after the last separator of the relative path (`b.txt`), empty when the
+  path ends with a separator. `stem()`, `extension()`: the filename split at its last `.`
+  (`b`, `.txt`), except that a filename starting with its only `.` (`.profile`) and the
+  filenames `.` and `..` have no extension.
+- `parent_path()`: the path without its last element, trailing separators before it removed
+  (`a\b\` gives `a\b`, `a\b` gives `a`, `\a` gives `\`, `a` gives an empty path); a path without a
+  relative path is its own parent.
+- Each `has_x()` says whether x is non-empty. `is_absolute()`: a root name and a root directory
+  (`C:\x`, `\\server\share`); `C:x` and `\x` are relative, as on Windows. `is_relative()`: not
+  absolute. `empty()`.
+
+Elements, for iteration (`begin()`, `end()`, bidirectional; each element a path): the root name,
+the root directory, each filename of the relative path in order, and an empty element when the
+path ends with a separator after a filename. `C:\a\b\` has `C:`, `\`, `a`, `b` and ``.
+
+Changing:
+- `p /= q`, `p / q` (also `append`): an absolute q, or one with a different root name, replaces
+  p; a q with a root directory keeps only p's root name before it; otherwise q follows p after a
+  separator, which is added unless p is empty, ends with a separator or is a root name alone
+  (`C:` / `a` is `C:a`).
+- `p += x` (also `concat`): x's text appended without a separator (x a path, WString,
+  `const wchar_t*`, wchar_t, String or `const char*`).
+- `remove_filename()`: the text up to the filename (`a\b` becomes `a\`). `replace_filename(q)`:
+  that, then `/= q`. `replace_extension(e)`: the extension removed, then e appended with a `.`
+  in front when it has none; with no argument only removed.
+- `make_preferred()`: every `/` becomes `\`. `clear()`, `swap(other)`.
+
+Text: `string()` and `u8string()` (UTF-8 String), `wstring()` (WString), `generic_string()`,
+`generic_u8string()` and `generic_wstring()` (the same with `/` for every `\`).
+
+`lexically_normal()`: separators made `\`; every `.` element and every `name\..` pair (name not
+`..`) removed; a `..` right after the root directory removed; no trailing separator after a final
+`..`; an empty result becomes `.`. A removed element that ended the path leaves a trailing
+separator (`a\b\..` is `a\`). `lexically_relative(base)`: empty when the root names differ, when
+one is absolute and the other not, or when only base has a root directory; otherwise, after the
+elements the two have in common, one `..` for each remaining element of base (a `..` there counts
+minus one, `.` and empty elements nothing; a negative total gives an empty path), followed by
+this path's remaining elements, or `.` when there are none. `lexically_proximate(base)`:
+`lexically_relative(base)`, or this path when that is empty.
+
+Comparison: `compare(other)` and `==`, `!=`, `<`, `<=`, `>`, `>=` (free functions, so a String
+converts on either side) compare the root names as text, then a path without a root directory
+before one with it, then the relative paths element by element as text (UTF-16 units, so case
+matters). `a\b` equals `a/b`; `a/b` sorts before `a-b`.
+
+## What a path names
+
+`file_status`: a `file_type` (`type()`) and `perms` (`permissions()`), both settable.
+`file_type`: none (unknown because of an error), not_found, regular, directory, symlink (a
+reparse point: a symbolic link or a junction), block, character, fifo, socket, unknown,
+junction; Windows gives only not_found, regular, directory and symlink.
+`perms`: the POSIX bits (owner_read 0400 ... others_exec 01, owner_all, group_all, others_all,
+all 0777, set_uid, set_gid, sticky_bit, mask, unknown 0xFFFF) with `|`, `&`, `^`, `~` and their
+assignments. *Windows*: a file is read-only or not; status reports 0555 for a read-only one and
+0777 otherwise.
+
+`status(p)`: what p names, links followed: a regular file or a directory with its permissions,
+or not_found when p does not resolve (a missing file or directory, a bad name, a missing network
+path). `symlink_status(p)`: the same without following: a reparse point is symlink.
+`status_known(s)`, `exists(s)`, `is_regular_file(s)`, `is_directory(s)`, `is_symlink(s)`,
+`is_other(s)` (exists, and not a file, directory or link), `is_block_file(s)`,
+`is_character_file(s)`, `is_fifo(s)`, `is_socket(s)`; and each of these also for a path.
+`file_size(p)`: the size of the regular file p (links followed); an error for a directory
+(errc::is_a_directory) or a missing file. `is_empty(p)`: a file of size 0, or a directory
+without entries. `space(p)`: `space_info` {capacity, free, available} of the volume of p.
+
+## Directories
+
+`directory_iterator(p)`: the entries of directory p, without `.` and `..`, in the order the file
+system lists them. An input iterator: copies share one position; the default-constructed one is
+the end, which an iterator becomes after its last entry. `begin(it)` and `end(it)` make it a
+range. `increment(ec)` advances reporting errors in ec; `operator++` throws. A missing p (or one
+that is not a directory) is an error; an empty directory gives the end at once.
+
+`directory_entry`: `path()` (and an implicit conversion to `const path&`), and the status the
+listing gave without asking the file system again: `status()`, `symlink_status()`, `exists()`,
+`is_directory()`, `is_regular_file()`, `is_symlink()`, `file_size()` (a link is asked anew,
+followed). `refresh()` forgets the listing's data; `assign(p)` makes it another path's entry.
+Compared by path.
+
+## Changing the file system
+
+- `create_directory(p)`: creates the directory; true if it did; false, and no error, when a
+  directory is there already.
+- `create_directories(p)`: creates p and every missing directory above it; true if it created
+  any; an existing non-directory on the way is an error (errc::not_a_directory).
+- `remove(p)`: removes the file or the empty directory p; true if it did; false, and no error,
+  when there is none. A read-only file is not removed: the error is access denied (as with
+  MSVC); make it writable with permissions first.
+- `remove_all(p)`: p and, when p is a directory (not a link to one), everything in it, depth
+  first; the number removed (0 when p does not exist).
+- `rename(from, to)`: moves a file or directory, replacing an existing file `to`. Not across
+  volumes (errc::cross_device_link, the system's ERROR_NOT_SAME_DEVICE), as with MSVC.
+- `copy_file(from, to, options)`: copies a regular file. When `to` exists: an error
+  (errc::file_exists) with `copy_options::none`; nothing with skip_existing; replaced with
+  overwrite_existing; replaced with update_existing only if from was written later. True when it
+  copied.
+- `copy(from, to, options)`: a regular file as copy_file does, into `to` when that is a
+  directory (nothing with directories_only); a directory, with `recursive` or with no options at
+  all, to a directory created at `to` if needed, entry by entry, its subdirectories copied (and
+  recursed into) only with recursive. Copying a file or directory onto itself is an error.
+  Links are followed (copy_symlinks, skip_symlinks, create_symlinks and create_hard_links are
+  accepted and do nothing more).
+- `permissions(p, prms, opts)`: with `perm_options::replace` (also the default), `add` or
+  `remove`, computes the new bits from p's current ones; p becomes read-only when they have no
+  write bit, writable otherwise (Windows keeps nothing else). nofollow is accepted.
+- `current_path()`, `current_path(p)`: the current directory, read or set.
+  `temp_directory_path()`: the system's directory for temporary files.
+- `absolute(p)`: p against the current directory (GetFullPathName, which also removes `.` and
+  `..`); empty for an empty p. `canonical(p)`: the absolute path of what p names with every link
+  resolved; p must exist; the system's `\\?\` prefix is removed (`\\?\UNC\` becomes `\\`).
+  `weakly_canonical(p)`: canonical of the longest leading part of p that exists, followed by the
+  rest, lexically normal.
+
+## Errors
+
+Every operation that can fail comes in two forms: one that throws `filesystem_error`, and one
+with a last parameter `ErrorCode& ec` that sets ec instead (and clears it on success) and returns
+what the other would (an empty path, false, -1 for counts and sizes). status and symlink_status
+do not throw for a path that does not resolve: they return not_found (and the ec form sets ec to
+the reason, as std's does); exists clears ec when the status is known.
+
+`filesystem_error` is a SystemError with `path1()` and `path2()`; what() is the message given,
+`: `, the error code's message, then the paths in brackets: `remove: Access is denied.
+[C:\x.txt]`. *Difference from C++*: the format of what() is Kpp's own.
+
+The following are not provided: `last_write_time` and `file_time_type`, `equivalent`,
+`hard_link_count`, `resize_file`, links (`read_symlink`, `create_symlink`, ...),
+`recursive_directory_iterator`, `relative` and `proximate` against the file system (the lexical
+ones are), `hash_value`, and paths' stream operators.
+
+# ErrorCode, Errc, SystemError
+
+What `std::error_code`, `std::errc` and `std::system_error` convert to (global names).
+
+`ErrorCategory`: what an error value means: `systemCategory()` (a Windows error, what
+GetLastError returns) or `genericCategory()` (an errno value); `name()` is "system" or "generic".
+
+`ErrorCode`: a value and a category. `ErrorCode()` is 0 in the system category, no error.
+`value()`, `category()`, `explicit operator bool` (value is not 0), `clear()`, `assign(value,
+category)`, `message()`: the system's text for a Windows error (FormatMessage, without its
+trailing line break, as UTF-8), strerror's for a generic one. `==`, `!=` with another ErrorCode
+compare value and category.
+
+`Errc`: the portable conditions with their errno values (operation_not_permitted 1,
+no_such_file_or_directory 2, interrupted 4, io_error 5, permission_denied 13,
+device_or_resource_busy 16, file_exists 17, cross_device_link 18, no_such_device 19,
+not_a_directory 20, is_a_directory 21, invalid_argument 22, too_many_files_open 24,
+file_too_large 27, no_space_on_device 28, read_only_file_system 30, filename_too_long 38,
+function_not_supported 40, directory_not_empty 41, not_supported 129,
+operation_not_supported 130, timed_out 138). `make_error_code(e)`: the ErrorCode of e in the
+generic category. `ec == e` (and `!=`) for an ErrorCode and an Errc: a generic code equals the
+condition of its value; a system code equals the condition its Windows error means: file, path
+or network path not found, a bad name: no_such_file_or_directory; access denied, write
+protected, sharing violation: permission_denied; already exists: file_exists; not same device:
+cross_device_link; directory not empty: directory_not_empty; a directory name expected:
+not_a_directory; and the others listed in Error.kpp's errcOfWindowsError. A zero code equals no
+condition.
+
+`SystemError`: a RuntimeError with an ErrorCode (`code()`); `SystemError(code)` has the code's
+message as what(), `SystemError(code, what)` has `what: message`.

@@ -1,0 +1,11 @@
+// spec: a negative integer cast to a pointer keeps its value as a pointer-sized integer (`(void*)-1` is all ones, Windows' INVALID_HANDLE_VALUE), as converting through intptr_t does
+// factorio: C code and the Win32 API compare handles with `(HANDLE)-1`; the stdlib's Filesystem tested FindFirstFileW's result so
+// pending: the int is zero-extended, so `(void*)-1` is 0xFFFFFFFF and never equals the handle the API returns
+int main()
+{
+  void* direct = (void*)-1;
+  long long wide = -1;
+  void* throughWide = (void*)wide;
+  println("{} {}", direct == throughWide, (unsigned long long)direct == 18446744073709551615ull);
+  return 0;
+}

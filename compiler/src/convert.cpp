@@ -845,9 +845,10 @@ namespace
     {"ratio", "Ratio"}, {"nano", "Nano"}, {"micro", "Micro"}, {"milli", "Milli"}, {"centi", "Centi"}, {"deci", "Deci"}, {"kilo", "Kilo"}, {"mega", "Mega"},
     {"string_literals", "stringLiterals"},
     {"numbers", "Numbers"},
-    {"filesystem", "Filesystem"},
+    {"filesystem", "filesystem"},
     {"error_code", "ErrorCode"}, {"errc", "Errc"},
-    {"system_error", "SystemError"}, {"system_category", "systemCategory"},
+    {"system_error", "SystemError"}, {"system_category", "systemCategory"}, {"generic_category", "genericCategory"},
+    {"error_category", "ErrorCategory"}, {"make_error_code", "make_error_code"},
     {"length_error", "LengthError"},
     {"codecvt_utf8", "CodecvtUtf8"}, {"wstring_convert", "WStringConvert"},
     {"milli", "Milli"}, {"rotr", "rotr"}, {"lcm", "lcm"}};
@@ -3420,8 +3421,26 @@ namespace
             break;
           }
           case NodeKind::UsingAliasDecl:
+          {
             recordVariantDeclaration(d, false);
+            // `using path = path;` in a namespace that a using-directive opens to the other path
+            // (Filesystem.hpp: `using namespace __fs;`): in C++ the alias's own name is not in
+            // scope in its type, in Kpp it would name the alias itself; the type is qualified
+            // with the namespace the directive names (with `::` when there is none).
+            auto* a = static_cast<UsingAliasDecl*>(d);
+            Type* t = a->type;
+            if (t && t->token + 1 < toks.size() && toks[t->token].getKind() == TokenKind::Identifier &&
+                spelling(t->token) == symbols.name(a->name) && toks[t->token + 1].is(P::Semi) && !(t->token > 0 && toks[t->token - 1].is(P::ColonColon)))
+            {
+              std::string qualifier;
+              for (Decl* other : decls)
+                if (other->kind == NodeKind::UsingDirectiveDecl)
+                  qualifier = nameText(static_cast<UsingDirectiveDecl*>(other)->name, symbols);
+              insert(toks[t->token].offset, qualifier + "::");
+              counts.add("alias of its own name qualified");
+            }
             break;
+          }
           default: break;
         }
       }

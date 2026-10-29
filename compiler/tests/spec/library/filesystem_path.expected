@@ -1,0 +1,10 @@
+[C:] [/] [C:/a] [b.txt] [b] [.txt] true | [C:][/][a][b.txt]
+[] [] [a/b] [] [] [] false | [a][b][]
+[C:] [] [C:] [x] [x] [] false | [C:][x]
+[//server] [/] [//server/share] [f] [f] [] true | [//server][/][share][f]
+[] [] [] [.profile] [.profile] [] false | [.profile]
+[C:a] [a/b] [C:/abs] [/d]
+[a/c] [a/] [.] [C:/x]
+[../b/c] [.]
+[dir/file.tar.png] true true
+true true false
