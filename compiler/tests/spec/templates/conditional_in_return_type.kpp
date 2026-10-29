@@ -1,0 +1,36 @@
+// spec: a function template's return type chosen by a specialization on a value computed from the template's parameters: `typename Conditional<(sizeof(A) < sizeof(B)), B, A>::Type`, directly or through an alias template, is the false alternative when the condition is false
+// factorio: std::conditional_t in signatures and in the library's computed types (a common type of two reps, a common period of two durations)
+// pending: the signature takes Conditional's primary (the true alternative) whatever the condition, silently: wider(2.0, 1) returns int and prints 2; the same alias in the function body picks right
+template<typename T>
+struct Outer
+{
+  T inner;
+};
+template<typename A, typename B>
+using Wider = typename Conditional<(sizeof(A) < sizeof(B)), B, A>::Type;
+template<typename A, typename B>
+Outer<Wider<A, B>> viaAlias(A, B) { return Outer<Wider<A, B>>{}; }
+template<typename A, typename B>
+Outer<typename Conditional<(sizeof(A) < sizeof(B)), B, A>::Type> direct(A, B) { return Outer<typename Conditional<(sizeof(A) < sizeof(B)), B, A>::Type>{}; }
+template<typename A, typename B>
+Wider<A, B> bare(A, B) { return 2.5; }
+template<typename A, typename B>
+double inBody(A, B)
+{
+  Wider<A, B> x = 2.5;
+  return x;
+}
+int main()
+{
+  auto e = viaAlias(1, 2.0);
+  auto f = viaAlias(2.0, 1);
+  auto g = direct(1, 2.0);
+  auto h = direct(2.0, 1);
+  e.inner = 2.5;
+  f.inner = 2.5;
+  g.inner = 2.5;
+  h.inner = 2.5;
+  println("{} {} {} {}", e.inner, f.inner, g.inner, h.inner);
+  println("{} {} {} {}", bare(1, 2.0), bare(2.0, 1), inBody(1, 2.0), inBody(2.0, 1));
+  return 0;
+}
