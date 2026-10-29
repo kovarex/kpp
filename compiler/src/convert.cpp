@@ -637,6 +637,9 @@ namespace
     // by the atomic add the library's Atomic is made of (stdlib/core/Thread.kpp, codegen's intrinsic).
     {"InterlockedIncrement", "(kpp_atomic_add32((long*)($1), 1) + 1)"}, {"InterlockedDecrement", "(kpp_atomic_add32((long*)($1), -1) - 1)"},
     {"ZeroMemory", "memset(($1), 0, ($2))"},
+    // stdlib.h's element count of an array, as its C definition has it (GraphicsInterfaceDX11's
+    // `_countof(lvl)` of the feature levels).
+    {"_countof", "(sizeof($1) / sizeof(($1)[0]))"},
     // d3d11.h's inline function, which it has only for C++ (the import's C has none).
     {"D3D11CalcSubresource", "((UINT)($1) + (UINT)($2) * (UINT)($3))"}};
 
