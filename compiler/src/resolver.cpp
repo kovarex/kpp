@@ -1243,6 +1243,21 @@ struct GlobalScope::Impl
       collectVisibleLocalAliases(l->body, at, out);
   }
 
+  // `using enum UndoActionDescription::Type;` in a block: the enumeration's enumerators, as locals
+  // of the block (C++20's using-enum-declaration).
+  void pushLocalUsingEnum(UsingNameDecl* u, Scope* scope, LocalStack& locals)
+  {
+    if (!u || u->name.empty())
+      return;
+    Lookup l = lookupQualified(u->name, scope, &locals, 0);
+    Decl* e = l.scope && l.scope->owner && l.scope->owner->kind == NodeKind::EnumDecl ? l.scope->owner : l.decl;
+    if (!e || e->kind != NodeKind::EnumDecl)
+      return;
+    for (Decl* en : static_cast<EnumDecl*>(e)->enumerators)
+      if (en->kind == NodeKind::EnumeratorDecl)
+        locals.push(static_cast<EnumeratorDecl*>(en)->name, en);
+  }
+
   void collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth = 0)
   {
     if (!s || s->token > at || depth > 64)
@@ -1261,6 +1276,8 @@ struct GlobalScope::Impl
               out.push(static_cast<ClassDecl*>(d)->name.parts[0].symbol, d); // `struct Point { float x, y; };` then `sizeof(Point)`
             else if (d->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(d)->name.parts.size() == 1)
               out.push(static_cast<EnumDecl*>(d)->name.parts[0].symbol, d);
+            else if (d->kind == NodeKind::UsingNameDecl && static_cast<UsingNameDecl*>(d)->isEnum)
+              pushLocalUsingEnum(static_cast<UsingNameDecl*>(d), lexicalScopeOf(d), out); // `using enum Desc::Type;`
             else if (d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum && !static_cast<UsingNameDecl*>(d)->name.empty())
               if (Decl* target = localUsingTarget(static_cast<UsingNameDecl*>(d), lexicalScopeOf(d), &out))
                 out.push(static_cast<UsingNameDecl*>(d)->name.last().symbol, target); // `using Graphics::Architecture;`
@@ -16307,7 +16324,12 @@ struct GlobalScope::Impl
         {
           // `using Graphics::Architecture;` in a block: the name it brings in, for the block.
           auto* u = static_cast<UsingNameDecl*>(d);
-          if (Decl* target = u->isEnum || u->name.empty() ? nullptr : impl.localUsingTarget(u, scope, &locals))
+          if (u->isEnum)
+          {
+            impl.pushLocalUsingEnum(u, scope, locals); // `using enum UndoActionDescription::Type;`: its enumerators
+            break;
+          }
+          if (Decl* target = u->name.empty() ? nullptr : impl.localUsingTarget(u, scope, &locals))
             locals.push(u->name.last().symbol, target);
           break;
         }
