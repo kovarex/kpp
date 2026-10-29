@@ -543,14 +543,18 @@ namespace
     {"SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK", "((SDL_AudioDeviceID)0xFFFFFFFFu)"}, {"SDL_AUDIO_DEVICE_DEFAULT_RECORDING", "((SDL_AudioDeviceID)0xFFFFFFFEu)"},
     {"SDL_TOUCH_MOUSEID", "((SDL_MouseID)-1)"}, {"SDL_MOUSE_TOUCHID", "((SDL_TouchID)-1)"},
     {"EXCEPTION_ACCESS_VIOLATION", "((DWORD)0xC0000005L)"}, {"EXCEPTION_STACK_OVERFLOW", "((DWORD)0xC00000FDL)"},
+    {"EXCEPTION_ILLEGAL_INSTRUCTION", "((DWORD)0xC000001DL)"}, {"E_NOT_VALID_STATE", "((HRESULT)0x8007139FL)"},
+    {"INIT_ONCE_STATIC_INIT", "{}"}, {"CURLOPT_XFERINFODATA", "CURLOPT_PROGRESSDATA"},
     // Windows' functions with an A and a W form, as the game's narrow build has them.
     {"LoadLibrary", "LoadLibraryA"}, {"GetModuleHandle", "GetModuleHandleA"}, {"GetModuleHandleEx", "GetModuleHandleExA"},
     {"MapVirtualKey", "MapVirtualKeyA"},
     // psapi.h's functions, which kernel32 has under K32 names (PSAPI_VERSION 2).
     {"GetProcessMemoryInfo", "K32GetProcessMemoryInfo"}, {"EnumProcessModules", "K32EnumProcessModules"},
     {"GetModuleInformation", "K32GetModuleInformation"}, {"GetModuleFileNameEx", "K32GetModuleFileNameExA"},
+    {"GetPerformanceInfo", "K32GetPerformanceInfo"},
+    {"GetFileVersionInfoSize", "GetFileVersionInfoSizeA"}, {"GetFileVersionInfo", "GetFileVersionInfoA"}, {"VerQueryValue", "VerQueryValueA"},
     // Tracy's other profiling macros, dropped as ZoneScoped is below.
-    {"ZoneScopedNC", ""}, {"TracyMessage", ""},
+    {"ZoneScopedNC", ""}, {"TracyMessage", ""}, {"TracyPlot", ""}, {"TracySystem", ""}, {"FrameMark", ""},
     // math.h constants
     {"M_PI", "3.14159265358979323846"}, {"M_PI_2", "1.57079632679489661923"}, {"M_PI_4", "0.78539816339744830962"},
     {"M_1_PI", "0.31830988618379067154"}, {"M_2_PI", "0.63661977236758134308"}, {"M_SQRT2", "1.41421356237309504880"},
