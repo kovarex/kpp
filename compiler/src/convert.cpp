@@ -217,6 +217,11 @@ namespace
   // The headers the game's build force-includes in every file of a project (fbuild.bff's /FI, the
   // precompiled headers), by their path below a root: included even where no file names them.
   const std::set<std::string> forceIncludedHeaders = {"src/Common.hpp", "Agui/AguiCommon.hpp", "tests/TestCommon.hpp"};
+  // A project's header whose macros all its files see first, as through its force-included header:
+  // the tests' UnitTest.hpp (UnitTest++), which TestCommon.hpp brings in (SelectionToolDrawResult.hpp
+  // includes no UnitTest++ header and uses CHECK_FAILED). Not TestCommon.hpp itself: the conversion
+  // reads the game's Common.hpp's debug assert and Lua's printf override among its macros.
+  const std::map<std::string, std::string> forcedMacroHeaders = {{"tests/", "tests/UnitTest.hpp"}};
   // The headers a library's build force-includes (fbuild.bff: Lua's `/FI"override_printf.h"`), by
   // the library's directory name: its files see them before their own includes.
   const std::map<std::string, std::string> forcedIncludes = {{"Lua", "override_printf.h"}};
@@ -6913,6 +6918,19 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (auto forced = forcedIncludes.find(inputs[k].path.parent_path().filename().string()); forced != forcedIncludes.end())
       if (auto header = inputByPath.find(pathKey(inputs[k].path.parent_path() / forced->second)); header != inputByPath.end() && header->second != k)
         includedInputs[k].push_back(header->second);
+  // A forced macro header (forcedMacroHeaders) comes first in every file of its project,
+  // subdirectories too, as the build's /FI puts it.
+  for (const auto& [project, forced] : forcedMacroHeaders)
+  {
+    size_t header = SIZE_MAX;
+    for (const auto& [key, k] : inputByPath)
+      if (relativeTo(inputs[k].path, roots) == forced)
+        header = k;
+    if (header != SIZE_MAX)
+      for (const auto& [key, k] : inputByPath)
+        if (k != header && relativeTo(inputs[k].path, roots).rfind(project, 0) == 0)
+          includedInputs[k].insert(includedInputs[k].begin(), header);
+  }
   for (const auto& [key, k] : inputByPath)
   {
     std::string_view t = inputs[k].text;
