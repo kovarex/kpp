@@ -108,6 +108,10 @@ namespace
     "PRINT_SIZES", "CHECK_DATA_CONSISTENCY", "FEEDBACK_ENABLED", "FORCE_STATIC_INIT_ENABLED", "GPU_IHV_API_ENABLED",
     "DEBUG_INVALID_REPAIR_ORDERS", "DEBUG_MAP_DESERIALIZATION", "DEBUG_DANGLING_TRAIN_STOP_POINTERS", "DEBUG_PLATFORM_BOUNDS",
     "NVIDIA_G7X_HARDWARE_BUG_FIX", "NVIDIA_7X_HARDWARE_BUG_FIX", "DISABLE_LOG_TIME", "SUPPRESS_FLOAT_CAST", "WINDOWS"};
+  // The game's sources that its Windows build does not compile (fastbuild/fbuild.bff,
+  // .factorioFilesForOtherPlatforms): PngLoad.cpp is Linux's image loader (`#error Only for
+  // linux`), StacktraceToStream.cpp the stack trace printer of the other platforms. Not converted.
+  const std::set<std::string> filesForOtherPlatforms = {"src/Graphics/PngLoad.cpp", "src/Util/StacktraceToStream.cpp"};
   // The standard headers `__has_include(<...>)` finds: the ones the game asks about, all in MSVC's
   // library (the experimental one is deprecated there, still present).
   const std::set<std::string> availableHeaders = {"filesystem", "experimental/filesystem", "optional", "variant", "string_view"};
@@ -2199,7 +2203,13 @@ namespace
           }
           if (cHeaders.count(base) || cLibrary)
           {
-            std::string imports = "extern \"C\" import \"" + (cLibrary ? header : base) + "\";";
+            // A C library that the game configures with #defines before its include imports through a
+            // header of programs/factorio/native/include that gives the import the same configuration
+            // (jc_voronoi in double precision, as Triangulation.cpp has it).
+            static const std::map<std::string, std::string> configuredImports = {{"jc_voronoi/jc_voronoi.h", "kpp_jc_voronoi.h"}};
+            auto configured = configuredImports.find(header);
+            std::string imported = configured != configuredImports.end() ? configured->second : cLibrary ? header : base;
+            std::string imports = "extern \"C\" import \"" + imported + "\";";
             if (!importedCommon)
             {
               // The C++ standard headers brought these in transitively; converted code expects them.
@@ -2218,6 +2228,8 @@ namespace
         {
           if (word == "pragma")
             notePack(rest, offset);
+          if (word == "error")
+            todo(offset, "#error" + rest + ": an #error this configuration reaches (a file for another platform or build?)");
           if (word == "undef")
           {
             size_t n = rest.find_first_not_of(" \t");
@@ -5334,6 +5346,11 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".cc" && ext != ".inl")
       continue;
     std::string rel = relativeTo(in.path, roots);
+    if (filesForOtherPlatforms.count(rel))
+    {
+      total.add("files of other platforms left out");
+      continue;
+    }
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
     fc.scopeNames = &scopeNames;

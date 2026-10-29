@@ -1,0 +1,4 @@
+// stb_image_resize's implementation is built in C (programs/factorio/native/header_only.c), where
+// BitmapUtil.cpp's STBIR_MALLOC and STBIR_FREE call these: the game's allocator, exported to C.
+extern "C" void* kppStbirMalloc(size_t size, void* context) { return stbirCustomMalloc(size, context); }
+extern "C" void kppStbirFree(void* pointer, void* context) { stbirCustomFree(pointer, context); }

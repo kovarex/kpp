@@ -829,6 +829,34 @@ constants (E_INVALIDARG, E_FAIL, DXGI_ERROR_*, whose bodies call _HRESULT_TYPEDE
 D3D11CalcSubresource (an inline function d3d11.h has only for C++), SHCreateMemStream (shlwapi.h)
 and a GUID written with brace elision (language/brace_elision_in_aggregate, pending).
 
+### The link line (2026-10-29)
+
+`programs/factorio/link.cmd` links the converted tree: kppc `--keep-going --exe` against the game's
+own Release builds of its libraries (C:\Factorio\vs2022\Releasex64), `native\build\factorio-native.lib`
+(built first by native\build.cmd), and the Windows libraries of the game's link line
+(fbuild.bff's .extraExecLibs: dnsapi, wldap32, gdi32, comdlg32, ole32, winmm, psapi, opengl32,
+gdiplus, shell32, shlwapi, user32, imm32, oleaut32, setupapi) plus dxguid, uuid and windowscodecs
+for the COM interfaces' IIDs, which C++ compiled in through __uuidof. The native library now also
+holds the header-only C libraries the game implements inside its .cpp files, with the
+configuration those files give them: stb_image_resize with BitmapUtil's allocator, sdf,
+stb_rect_pack (header_only.c) and jc_voronoi in double precision with the game's deterministic
+Math::atan2 (jc_voronoi.cpp: the game's copy of the header calls std::floor). The game functions
+they call are exported to C by overrides (kppStbirMalloc, kppStbirFree in Graphics/BitmapUtil,
+kppMathAtan2 in Logistics/Triangulation), and the import of jc_voronoi.h goes through
+native/include/kpp_jc_voronoi.h, which gives it the same double precision. The converter also
+leaves out the two files the Windows build does not compile (fbuild.bff's
+.factorioFilesForOtherPlatforms: Graphics/PngLoad.cpp, which is what needed libpng, and
+Util/StacktraceToStream.cpp), and an #error the configuration reaches is a TODO, no longer only
+removed.
+
+On master 8179bf6 with these, every one of the 64 modules still fails in clang (IR codegen
+rejects), so the link itself lists nothing yet. Counted over the modules instead: of the 552 C
+functions declared and defined in no module, 43 are in none of the link line's libraries either
+(llvm-nm over each): 16 libpng functions (PngLoad, now left out), the LLVM intrinsics codegen
+names as functions (llvm.memcpy, llvm.sqrt, llvm.va_*, 14 llvm.x86.sse*), MSVC's
+_BitScanReverse, __cpuid and _mm_prefetch, ws2tcpip.h's inline gai_strerrorW, and two names
+that are no functions (`factorio.com`, `serialized`). Headline 22,321 -> 22,318.
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in
