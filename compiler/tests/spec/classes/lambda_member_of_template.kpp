@@ -1,6 +1,5 @@
 // spec: a class template instantiated with a lambda's closure type holds the lambda as a member and calls it (`Holder<decltype(lambda)>{lambda}`, made by a function template from its argument)
 // factorio: ScopedCallback<F> (the game's scope guards: destructorCallback), the library's transformView, Function's small callables
-// pending: the layout of the instantiation is needed before the closure is built (codegen: the member f holds a lambda whose closure is not built yet)
 template<typename F>
 struct Holder
 {

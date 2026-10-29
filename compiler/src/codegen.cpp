@@ -2415,6 +2415,68 @@ namespace
       return closures[t];
     }
 
+    // Lays out the closure of every lambda written in n (not in a lambda's body), before n is
+    // emitted: a slot for a class holding one (`auto h = hold([base](int x) { ... })` and its
+    // Holder<closure>, a call's result) is laid out before the expression that builds the closure
+    // is reached. The captures are the locals in scope where the statement starts.
+    void layOutClosuresIn(Node* n)
+    {
+      if (!n)
+        return;
+      switch (n->kind)
+      {
+        case NodeKind::LambdaExpr:
+        {
+          auto* l = static_cast<LambdaExpr*>(n);
+          for (const LambdaCapture& c : l->captures)
+            layOutClosuresIn(c.init);
+          if (isLambda(l->ty))
+            closureFor(l->ty, l, true);
+          return;
+        }
+        case NodeKind::CallExpr:
+          layOutClosuresIn(static_cast<CallExpr*>(n)->callee);
+          for (Expr* a : static_cast<CallExpr*>(n)->args)
+            layOutClosuresIn(a);
+          return;
+        case NodeKind::MemberExpr: layOutClosuresIn(static_cast<MemberExpr*>(n)->base); return;
+        case NodeKind::IndexExpr:
+          layOutClosuresIn(static_cast<IndexExpr*>(n)->base);
+          for (Expr* a : static_cast<IndexExpr*>(n)->args)
+            layOutClosuresIn(a);
+          return;
+        case NodeKind::UnaryExpr: layOutClosuresIn(static_cast<UnaryExpr*>(n)->operand); return;
+        case NodeKind::BinaryExpr:
+          layOutClosuresIn(static_cast<BinaryExpr*>(n)->lhs);
+          layOutClosuresIn(static_cast<BinaryExpr*>(n)->rhs);
+          return;
+        case NodeKind::ConditionalExpr:
+          layOutClosuresIn(static_cast<ConditionalExpr*>(n)->cond);
+          layOutClosuresIn(static_cast<ConditionalExpr*>(n)->then);
+          layOutClosuresIn(static_cast<ConditionalExpr*>(n)->else_);
+          return;
+        case NodeKind::CastExpr: layOutClosuresIn(static_cast<CastExpr*>(n)->operand); return;
+        case NodeKind::NamedCastExpr: layOutClosuresIn(static_cast<NamedCastExpr*>(n)->operand); return;
+        case NodeKind::FunctionalCastExpr:
+          for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
+            layOutClosuresIn(a);
+          return;
+        case NodeKind::NewExpr:
+          for (Expr* a : static_cast<NewExpr*>(n)->placement)
+            layOutClosuresIn(a);
+          for (Expr* a : static_cast<NewExpr*>(n)->args)
+            layOutClosuresIn(a);
+          return;
+        case NodeKind::BraceInitExpr:
+          for (Expr* a : static_cast<BraceInitExpr*>(n)->args)
+            layOutClosuresIn(a);
+          return;
+        case NodeKind::ParenExpr: layOutClosuresIn(static_cast<ParenExpr*>(n)->inner); return;
+        case NodeKind::ThrowExpr: layOutClosuresIn(static_cast<ThrowExpr*>(n)->operand); return;
+        default: return;
+      }
+    }
+
     // Builds the closure object of a lambda expression in a fresh slot and emits its function.
     Value makeClosure(LambdaExpr* l)
     {
@@ -8431,7 +8493,10 @@ namespace
           break;
         case NodeKind::ExprStmt:
           if (static_cast<ExprStmt*>(s)->expr)
+          {
+            layOutClosuresIn(static_cast<ExprStmt*>(s)->expr);
             rvalue(static_cast<ExprStmt*>(s)->expr);
+          }
           destroyTemps();
           break;
         case NodeKind::GotoStmt:
@@ -8459,6 +8524,7 @@ namespace
           {
             if (d->kind == NodeKind::VariableDecl)
             {
+              layOutClosuresIn(static_cast<VariableDecl*>(d)->init); // the variable's slot may hold one
               declareLocal(static_cast<VariableDecl*>(d));
               destroyTemps();
             }
@@ -8475,6 +8541,7 @@ namespace
         case NodeKind::ReturnStmt:
         {
           auto* r = static_cast<ReturnStmt*>(s);
+          layOutClosuresIn(r->value);
           std::string retText;
           if (currentReturn->kind == TyKind::Void)
           {
