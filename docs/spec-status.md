@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**334 pass, 5 pending, 0 failing, 0 fixed** (339 snippets, 9.8 s).
+**334 pass, 6 pending, 0 failing, 0 fixed** (340 snippets, 10.4 s).
 
 ## Language: statements, expressions, declarations
 
@@ -145,6 +145,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/partial_specialization_template_template_parameter.kpp` | a partial specialization whose pattern applies a template template parameter to a pack, `IsSpec<Spec<Args...>, Spec>`, matches `IsSpec<Box<char>, Box>` (Spec deduced from both arguments), also read through a variable template in a constexpr local | pending | is_specialization<T, ID> (IsSpecialization.hpp) behind is_id_like<T>, which DeserialiserHelper's map loading and the ID helpers consult; with TrueType/FalseType as IntegralConstant aliases the variable template is not even a constant (+56 lines) | the specialization never matches, silently: IsSpec<Box<char>, Box>::value is false and classify<Box<int>>() returns 2 (with Constant<bool, ...> instance bases instead of plain structs: "a variable template whose value is not a constant"); line 1: got `2 2 false false`, expected `1 2 true false` |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
