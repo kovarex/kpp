@@ -15,7 +15,9 @@ struct StringView
   using pointer = const char*;
   using const_pointer = const char*;
 
-  static const int npos = -1;
+  // Not found, or to the end: the largest int, as C++'s npos is the largest size_t, so that a
+  // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
+  static const int npos = 2147483647;
 
   StringView() {}
   implicit StringView(const char* text) : chars(text), byteCount(text ? (int)strlen(text) : 0) {}
@@ -42,18 +44,18 @@ struct StringView
   {
     if (start > this->byteCount)
       start = this->byteCount;
-    if (count < 0 || start + count > this->byteCount)
+    if (count < 0 || count > this->byteCount - start)
       count = this->byteCount - start;
     return StringView(this->chars + start, count);
   }
-  StringView substr(int start) const { return this->substr(start, -1); }
+  StringView substr(int start) const { return this->substr(start, npos); }
 
   int find(char c) const
   {
     for (int i = 0; i < this->byteCount; ++i)
       if (this->chars[i] == c)
         return i;
-    return -1;
+    return npos;
   }
   int find(StringView needle) const
   {
@@ -62,14 +64,14 @@ struct StringView
     for (int i = 0; i + needle.byteCount <= this->byteCount; ++i)
       if (memcmp(this->chars + i, needle.chars, needle.byteCount) == 0)
         return i;
-    return -1;
+    return npos;
   }
   int rfind(char c) const
   {
     for (int i = this->byteCount; i-- > 0;)
       if (this->chars[i] == c)
         return i;
-    return -1;
+    return npos;
   }
   // The last occurrence starting at or before `from` (anywhere when from is npos), or npos, as
   // String's (DebugTools.cpp's `line.rfind("ghostShimmerConfig.tint", 0) == 0`, a prefix test).
@@ -81,21 +83,21 @@ struct StringView
     for (; i >= 0; --i)
       if (this->chars[i] == c)
         return i;
-    return -1;
+    return npos;
   }
   int rfind(StringView needle, int from) const
   {
     int i = this->byteCount - needle.byteCount;
     if (i < 0)
-      return -1;
+      return npos;
     if (from >= 0 && from < i)
       i = from;
     for (; i >= 0; --i)
       if (needle.byteCount == 0 || memcmp(this->chars + i, needle.chars, needle.byteCount) == 0)
         return i;
-    return -1;
+    return npos;
   }
-  int rfind(StringView needle) const { return this->rfind(needle, -1); }
+  int rfind(StringView needle) const { return this->rfind(needle, npos); }
   bool startsWith(StringView prefix) const
   {
     return prefix.byteCount <= this->byteCount && memcmp(this->chars, prefix.chars, prefix.byteCount) == 0;
@@ -114,14 +116,14 @@ struct StringView
   int find_first_of(StringView set, int from) const
   {
     int i = this->substr(from).find_first_of(set);
-    return i < 0 ? -1 : i + from;
+    return i == npos ? npos : i + from;
   }
   int find(char c, int from) const
   {
-    for (int i = from; i < this->byteCount; ++i)
+    for (int i = from < 0 ? 0 : from; i < this->byteCount; ++i)
       if (this->chars[i] == c)
         return i;
-    return -1;
+    return npos;
   }
   int find_first_of(StringView set) const
   {
@@ -129,13 +131,13 @@ struct StringView
       for (int k = 0; k < set.byteCount; ++k)
         if (this->chars[i] == set.chars[k])
           return i;
-    return -1;
+    return npos;
   }
   int find(StringView needle, int from) const
   {
     StringView rest = this->substr(from);
     int i = rest.find(needle);
-    return i < 0 ? -1 : i + from;
+    return i == npos ? npos : i + from;
   }
   int find_first_of(const char* set) const
   {
@@ -143,14 +145,14 @@ struct StringView
       for (int k = 0; set[k] != 0; ++k)
         if (this->chars[i] == set[k])
           return i;
-    return -1;
+    return npos;
   }
   int find_first_not_of(char c) const
   {
     for (int i = 0; i < this->byteCount; ++i)
       if (this->chars[i] != c)
         return i;
-    return -1;
+    return npos;
   }
   int find_first_not_of(const char* set) const
   {
@@ -163,7 +165,7 @@ struct StringView
       if (!inSet)
         return i;
     }
-    return -1;
+    return npos;
   }
   void removeSuffix(int count) { this->byteCount -= count; }
 

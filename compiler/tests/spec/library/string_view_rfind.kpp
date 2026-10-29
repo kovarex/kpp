@@ -1,4 +1,4 @@
-// spec: StringView's rfind of a text and of a char from a position: the last occurrence starting at or before it (anywhere without one, or with npos), npos when there is none; an empty text is found where the search starts
+// spec: StringView's rfind of a text and of a char from a position: the last occurrence starting at or before it (anywhere without one, or with npos), npos (the largest int) when there is none; an empty text is found where the search starts
 // factorio: DebugTools.cpp's preset loading, `line.rfind("ghostShimmerConfig.tint", 0) == 0` on a std::string_view line (a prefix test), 30 uses through its macros
 int main()
 {

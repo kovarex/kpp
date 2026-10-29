@@ -8,7 +8,9 @@ struct WString
   int unitCount = 0;
   int capacity = 0;
 
-  static const int npos = -1;
+  // Not found, or to the end: the largest int, as C++'s npos is the largest size_t, so that a
+  // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
+  static const int npos = 2147483647;
 
   using iterator = wchar_t*;
   using const_iterator = const wchar_t*;
@@ -179,7 +181,7 @@ struct WString
   {
     if (index < 0 || index > this->unitCount)
       throw OutOfRange(String("WString::erase"));
-    if (count < 0 || index + count > this->unitCount)
+    if (count < 0 || count > this->unitCount - index)
       count = this->unitCount - index;
     if (count > 0)
     {
@@ -259,7 +261,7 @@ struct WString
   {
     if (from < 0)
       from = 0;
-    for (int i = from; i + count <= this->unitCount; ++i)
+    for (int i = from; i <= this->unitCount - count; ++i)
     {
       int k = 0;
       while (k < count && this->chars[i + k] == needle[k])
@@ -312,11 +314,11 @@ struct WString
   {
     if (start < 0 || start > this->unitCount)
       throw OutOfRange(String("WString::substr"));
-    if (count < 0 || start + count > this->unitCount)
+    if (count < 0 || count > this->unitCount - start)
       count = this->unitCount - start;
     return WString(this->c_str() + start, count);
   }
-  WString substr(int start) const { return this->substr(start, -1); }
+  WString substr(int start) const { return this->substr(start, npos); }
 
   // Negative, 0 or positive as this sorts before, with or after other, unit by unit.
   int compare(const WString& other) const

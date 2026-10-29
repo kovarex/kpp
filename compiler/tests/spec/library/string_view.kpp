@@ -6,7 +6,7 @@ int countWords(StringView text)
   while (!text.empty())
   {
     int space = text.find(' ');
-    if (space < 0) { ++words; break; }
+    if (space == StringView::npos) { ++words; break; }
     if (space > 0) ++words;
     text = text.substr(space + 1);
   }

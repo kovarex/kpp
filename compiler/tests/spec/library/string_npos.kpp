@@ -1,0 +1,12 @@
+// spec: npos, what a search returns when it finds nothing and a count meaning "to the end", is the largest int, as C++'s npos is the largest value of its size type: it compares with sizes as in C++ (`min(s.find(x), s.size())` is the size, `s.find(x) < s.size()` is false), and String, StringView and WString take it as a count and as rfind's "anywhere"
+// factorio: LocaleStringReplacer's `Math::min(this->input.find(PARAMETER_SEPARATOR), this->input.size())`: with npos -1 the minimum was -1, a huge size_t offset, and every localised string came out followed by its own suffixes (`0 minutes__inutes__nutes__...`: 15 of the Localisation suite's tests and the others showing localised text)
+int main()
+{
+  String text = "minutes";
+  StringView view = text;
+  size_t offset = min(view.find("__"), view.size());
+  println("{} {} {} {}", offset, text.find('x') < text.size(), view.substr(2, StringView::npos), String::npos == StringView::npos);
+  WString wide = L"abc";
+  println("{} {} {}", text.rfind('t', String::npos), wide.substr(1, WString::npos).size(), text.erase(3, String::npos));
+  return 0;
+}

@@ -18,10 +18,14 @@ the move.
 
 ## Positions and npos
 
-Indices are `int`. Searches return the index of the match, or `npos`, which is -1. *Difference
-from C++*: C++'s npos is the largest `size_t`. Comparing a search result with npos, or storing it
-in a `size_t` (where -1 becomes the largest value), behaves the same; comparing it with a size
-does not: `s.find(x) < s.size()` is true here when x is absent.
+Indices are `int`. Searches return the index of the match, or `npos`, the largest `int`
+(2147483647), as C++'s npos is the largest value of its size type: a search result compares with
+npos and with sizes as in C++ (`min(s.find(x), s.size())` is the size when x is absent, and
+`s.find(x) < s.size()` is false), and as a count npos means "to the end". Stored in a `size_t` it
+stays 2147483647, not C++'s largest `size_t`, so compare a search result with npos itself (or
+with a size) rather than with `SIZE_MAX`. (Until 2026-10-29 npos was -1, which made the game's
+`Math::min(input.find(separator), input.size())` -1, and its localised strings came out as their
+own suffixes.)
 
 ## Members
 
@@ -93,7 +97,7 @@ int's size, as MSVC's.
 A sequence of `wchar_t` (UTF-16 code units on Windows, not checked), what `std::wstring` converts
 to: the text the Windows API takes and gives (`CreateFileW`, command lines, paths). Always followed
 by a zero unit, so `c_str()` is free; stored in a heap block (no short-string storage). Indices
-are `int` and searches return an index or `npos` (-1), as for String; iterators are `wchar_t*`,
+are `int` and searches return an index or `npos` (the largest `int`), as for String; iterators are `wchar_t*`,
 invalidated as String's are.
 
 Members, as String's of the same name but in units of wchar_t:

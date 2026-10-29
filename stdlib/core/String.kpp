@@ -77,7 +77,9 @@ struct String
     return *this;
   }
 
-  static const int npos = -1;
+  // Not found, or to the end: the largest int, as C++'s npos is the largest size_t, so that a
+  // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
+  static const int npos = 2147483647;
 
   bool isLarge() const { return (uint8_t)this->smallChars[String::markIndex] == String::largeMark; }
   int size() const { return this->isLarge() ? this->heapLength : (int)this->smallChars[String::markIndex]; }
@@ -148,14 +150,14 @@ struct String
       throwOutOfRange("String::erase: index out of range");
     if (index == length)
       return *this;
-    if (count < 0 || index + count > length)
+    if (count < 0 || count > length - index)
       count = length - index;
     char* chars = this->data();
     memmove(chars + index, chars + index + count, length - index - count);
     this->setLength(length - count);
     return *this;
   }
-  String& erase(int index) { return this->erase(index, -1); }
+  String& erase(int index) { return this->erase(index, npos); }
   // The range [first, last) of this string's characters (begin()/end() and what find functions
   // return); returns where the character after them is now.
   char* erase(char* first, char* last)
@@ -238,10 +240,10 @@ struct String
     if (from < 0)
       from = 0;
     if (from >= length)
-      return -1;
+      return npos;
     const char* chars = this->data();
     const char* at = (const char*)memchr(chars + from, c, length - from);
-    return at ? int(at - chars) : -1;
+    return at ? int(at - chars) : npos;
   }
   int find(char c) const { return this->find(c, 0); }
   // memchr finds candidates for the first byte, memcmp checks the rest.
@@ -251,9 +253,9 @@ struct String
     if (from < 0)
       from = 0;
     if (count == 0)
-      return from <= length ? from : -1;
-    if (count > length)
-      return -1;
+      return from <= length ? from : npos;
+    if (count > length || from > length - count)
+      return npos;
     const char* chars = this->data();
     const char* lastStart = chars + length - count;
     const char* at = chars + from;
@@ -261,12 +263,12 @@ struct String
     {
       at = (const char*)memchr(at, needle[0], lastStart - at + 1);
       if (!at)
-        return -1;
+        return npos;
       if (memcmp(at + 1, needle + 1, count - 1) == 0)
         return int(at - chars);
       ++at;
     }
-    return -1;
+    return npos;
   }
   // The last occurrence starting at or before `from` (anywhere when from is npos), or npos.
   int rfind(char c, int from) const
@@ -278,26 +280,26 @@ struct String
     for (; i >= 0; --i)
       if (chars[i] == c)
         return i;
-    return -1;
+    return npos;
   }
-  int rfind(char c) const { return this->rfind(c, -1); }
+  int rfind(char c) const { return this->rfind(c, npos); }
   int rfindBytes(const char* needle, int count, int from) const
   {
     int i = this->size() - count;
     if (i < 0)
-      return -1;
+      return npos;
     if (from >= 0 && from < i)
       i = from;
     const char* chars = this->data();
     for (; i >= 0; --i)
       if (memcmp(chars + i, needle, count) == 0)
         return i;
-    return -1;
+    return npos;
   }
   int rfind(const char* needle, int from) const { return this->rfindBytes(needle, (int)strlen(needle), from); }
-  int rfind(const char* needle) const { return this->rfind(needle, -1); }
+  int rfind(const char* needle) const { return this->rfind(needle, npos); }
   int rfind(const String& needle, int from) const { return this->rfindBytes(needle.data(), needle.size(), from); }
-  int rfind(const String& needle) const { return this->rfindBytes(needle.data(), needle.size(), -1); }
+  int rfind(const String& needle) const { return this->rfindBytes(needle.data(), needle.size(), npos); }
   // The last byte that is in set, or npos.
   int find_last_of(const char* set) const
   {
@@ -305,7 +307,7 @@ struct String
     for (int i = this->size(); i-- > 0;)
       if (String::oneOf(chars[i], set))
         return i;
-    return -1;
+    return npos;
   }
   int find_last_of(const String& set) const { return this->find_last_of(set.c_str()); }
   int find_last_of(char c) const { return this->rfind(c); }
@@ -350,11 +352,11 @@ struct String
   {
     const char* chars = this->data();
     int length = this->size();
-    for (int i = from; i < length; ++i)
+    for (int i = from < 0 ? 0 : from; i < length; ++i)
       for (int k = 0; k < set.byteCount; ++k)
         if (chars[i] == set.chars[k])
           return i;
-    return -1;
+    return npos;
   }
   int find_first_of(StringView set) const { return this->find_first_of(set, 0); }
   int find_first_of(const String& set) const { return this->find_first_of(set.c_str()); }
@@ -367,7 +369,7 @@ struct String
     for (int i = 0; i < length; ++i)
       if (String::oneOf(chars[i], set))
         return i;
-    return -1;
+    return npos;
   }
   int find_first_not_of(const char* set) const
   {
@@ -376,7 +378,7 @@ struct String
     for (int i = 0; i < length; ++i)
       if (!String::oneOf(chars[i], set))
         return i;
-    return -1;
+    return npos;
   }
   // The first (last) byte other than c (LocaleStringReplacer's `find_first_not_of('0')`).
   int find_first_not_of(char c) const
@@ -386,7 +388,7 @@ struct String
     for (int i = 0; i < length; ++i)
       if (chars[i] != c)
         return i;
-    return -1;
+    return npos;
   }
   int find_last_not_of(char c) const
   {
@@ -394,7 +396,7 @@ struct String
     for (int i = this->size(); i-- > 0;)
       if (chars[i] != c)
         return i;
-    return -1;
+    return npos;
   }
   int find_last_not_of(const char* set) const
   {
@@ -402,7 +404,7 @@ struct String
     for (int i = this->size(); i-- > 0;)
       if (!String::oneOf(chars[i], set))
         return i;
-    return -1;
+    return npos;
   }
   bool startsWith(const String& prefix) const
   {
@@ -592,7 +594,7 @@ struct String
     int available = length - start;
     return String(this->data() + start, count >= 0 && count < available ? count : available);
   }
-  String substr(int start) const { return this->substr(start, -1); }
+  String substr(int start) const { return this->substr(start, npos); }
   // Empties the string; the capacity stays.
   void clear() { this->setLength(0); }
 
