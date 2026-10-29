@@ -6,13 +6,13 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**309 pass, 6 pending, 0 failing, 0 fixed** (315 snippets, 7.6 s).
+**312 pass, 4 pending, 0 failing, 0 fixed** (316 snippets, 7.5 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `language/forwarding_reference_to_lambda.kpp` | a local `auto&&` bound to a lambda (a temporary whose lifetime the reference extends), then called | pending | the std::visit rewrite and generic code that holds a callable as `auto&& f = ...` | the IR treats the reference as the closure itself (clang: '%o4' defined with type 'ptr' but expected the closure type); C:\kpp-resolver\compiler\build\spec\language.forwarding_reference_to_lambda.exe.56.ll:348:20: error: '%o2' defined with type 'ptr' but expected '%closure.4 = type { ptr }' |
+| `language/forwarding_reference_to_lambda.kpp` | a local `auto&&` bound to a lambda (a temporary whose lifetime the reference extends), then called | pending | the std::visit rewrite and generic code that holds a callable as `auto&& f = ...` | the IR treats the reference as the closure itself (clang: '%o4' defined with type 'ptr' but expected the closure type); C:\kpp-templates\compiler\build\spec\language.forwarding_reference_to_lambda.exe.56.ll:348:20: error: '%o2' defined with type 'ptr' but expected '%closure.4 = type { ptr }' |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
 | `language/alignas_template_member.kpp` | alignas on a class template and alignof of an instantiation (raw storage for a T: what Optional, Variant and small-buffer containers need) | pass | the library's Optional (docs/stdlib-conformance.md), and the game's own aligned buffers |  |
@@ -84,7 +84,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `classes/local_class.kpp` | classes and enums declared in a function body: their members and methods, their own name inside them (a defaulted `operator<=>(const Key&)`), and a local class as a template argument (`Map<Key, int>`) | pending | InsertPlan::sendChangeNotifications (`class Key { strong_ordering operator<=>(const Key&) const = default; ... }; Map<Key, ItemIDWithCount>`), TimeLimiter, ToVisit, local enums | the code generator does not emit the methods of a class declared in a function body (Key::sum is called but never defined); C:\kpp-resolver\compiler\build\spec\classes.local_class.exe.56.ll:393:21: error: use of undefined value '@Key::sum() const' |
+| `classes/local_class.kpp` | classes and enums declared in a function body: their members and methods, their own name inside them (a defaulted `operator<=>(const Key&)`), and a local class as a template argument (`Map<Key, int>`) | pending | InsertPlan::sendChangeNotifications (`class Key { strong_ordering operator<=>(const Key&) const = default; ... }; Map<Key, ItemIDWithCount>`), TimeLimiter, ToVisit, local enums | the code generator does not emit the methods of a class declared in a function body (Key::sum is called but never defined); C:\kpp-templates\compiler\build\spec\classes.local_class.exe.56.ll:393:21: error: use of undefined value '@Key::sum() const' |
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregate_reference_member.kpp` | an aggregate with reference members initialised from a braced list (`Ref r{x};`): the members refer to the objects given, reads and writes go to them, and copying the aggregate copies the references | pass | CommonUtil's ReversionWrapperByReference<T> { T& iterable; } behind every `for (x : reverse(container))`, and small reference holders across the game |  |
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
@@ -137,7 +137,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-resolver\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -263,7 +263,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-resolver\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-templates\compiler\tests\spec\library\variant.kpp:7: codegen does not support assigning an unrelated class yet (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/algorithms_iterators.kpp` | the algorithms over iterators of every category: sort, removeIf, stableSort on a Deque (random access, not pointers); find, count, reverse, rotate, merge on a List (bidirectional); lowerBound, upperBound, accumulate, setDifference on a Set; transform from a Map into a backInserter; upperBound over reverse iterators with Greater; unique, nextPermutation, isSorted, equal, maxElement with a comparator | pass | 108 sort, 74 find, 49 distance, 47 find_if, 37 stable_sort, 32 remove_if, 29 lower_bound, 22 is_sorted, ...; BlueprintLibrary's remove_if over a deque, GameSpeed's upper_bound over rbegin/rend with greater<double>, cxxopts' transform over a map |  |
 | `library/array_span.kpp` | Array<T, N> and Span<T> (std::array, std::span) | pass | 372 std::array uses in 193 files, 147 std::span |  |
@@ -316,8 +316,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `kpp/typed_union_alternatives.kpp` | `alternatives(U)` reflection over a typed union: `a.name`, `a.type`, `a.tag`, `u[a]`, `u == a.tag`, and `u.tag()`, enough to save the alternative held and load one by its index | pending |  | alternatives(U) and u.tag() are not implemented; C:\kpp-resolver\compiler\tests\spec\kpp\typed_union_alternatives.kpp:35: codegen does not support a call that did not resolve to a function (the callee has type Tag) yet (in @kpp.main) |
-| `kpp/typed_union_from_value.kpp` | a typed union constructed and assigned from a value of exactly one alternative's type: `AIState s = Patrolling{1}`, `return Attacking{n}`, `s = Attacking{7}` | pending |  | a union is not constructed from an alternative's value ("conversion from Patrolling to Tag"); C:\kpp-resolver\compiler\tests\spec\kpp\typed_union_from_value.kpp:15: codegen does not support a conversion from Attacking to Tag yet (in @"next(int32)") |
 | `kpp/asserts_and_config.kpp` | assert and release_assert statements, config constants with if constexpr, conditional functions, CallerLocation | pass |  |  |
 | `kpp/attributes_inline.kpp` | [[noinline]] and [[forceinline]] attributes | pass |  |  |
 | `kpp/config_values.kpp` | config constants from the command line (`--config name=value`, `--release`) as compile-time values | pass |  |  |
@@ -334,6 +332,9 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/reflection_members.kpp` | members(T) with m.name, m.type and object.[m] | pass |  |  |
 | `kpp/requires_file.kpp` | `requires <condition>;` at the top of a file (compiled only when the config says so) | pass |  |  |
 | `kpp/tests_in_compiler.kpp` | `test "name" { check(...); }` declarations are accepted and cost nothing without --tests | pass |  |  |
+| `kpp/typed_union_alternatives.kpp` | `alternatives(U)` reflection over a typed union: `a.name`, `a.type`, `a.tag`, `u[a]`, `u == a.tag`, and `u.tag()`, enough to save the alternative held and load one by its index | pass |  |  |
+| `kpp/typed_union_from_value.kpp` | a typed union constructed and assigned from a value of exactly one alternative's type: `AIState s = Patrolling{1}`, `return Attacking{n}`, `s = Attacking{7}` | pass |  |  |
+| `kpp/typed_union_value_forms.kpp` | the other forms of a typed union from a value: passed for a by-value parameter, chosen by overload resolution over an unrelated overload, alternatives that are no classes (an int, a double, a String from an lvalue or a const reference), a union template; and `a.type` of alternatives(U) as a template argument and `a.type(args)`, `m.type` of members(T) | pass |  |  |
 | `kpp/typed_unions.kpp` | typed unions (`union enum`) | pass |  |  |
 | `kpp/typed_unions_switch_copy.kpp` | typed unions: switch on the union, methods, copying and assignment carry the alternative, destruction follows the tag | pass |  |  |
 | `kpp/underscore_guard_varargs.kpp` | `_` guards of a nested class with a C-variadic constructor (what SAVING_TAG converts to) | pass | 688 uses (SAVING_TAG 647, SAVING_STATISTICS 41) |  |
