@@ -919,6 +919,61 @@ namespace
     return out;
   }
 
+  // The aliases the program declares (`using X = ...;` and typedefs), at any scope: their name,
+  // the file, and whether at namespace scope (in C++ a .cpp file's namespace-scope alias is its
+  // own; in Kpp every namespace-scope name is the program's).
+  struct AliasDeclaration
+  {
+    std::string name;
+    const void* file;
+    bool namespaceScope;
+  };
+  void collectAliasesIn(Stmt* s, const void* file, const SymbolTable& symbols, std::vector<AliasDeclaration>& out);
+  void collectAliases(Span<Decl*> decls, const void* file, bool namespaceScope, const SymbolTable& symbols, std::vector<AliasDeclaration>& out)
+  {
+    for (Decl* d : decls)
+      switch (d->kind)
+      {
+        case NodeKind::NamespaceDecl: collectAliases(static_cast<NamespaceDecl*>(d)->decls, file, true, symbols, out); break;
+        case NodeKind::ClassDecl: collectAliases(static_cast<ClassDecl*>(d)->members, file, false, symbols, out); break;
+        case NodeKind::UsingAliasDecl: out.push_back({std::string(symbols.name(static_cast<UsingAliasDecl*>(d)->name)), file, namespaceScope}); break;
+        case NodeKind::VariableDecl:
+          if ((d->flags & DF_Typedef) && static_cast<VariableDecl*>(d)->name.parts.size() == 1)
+            out.push_back({std::string(symbols.name(static_cast<VariableDecl*>(d)->name.parts[0].symbol)), file, namespaceScope});
+          break;
+        case NodeKind::FunctionDecl: collectAliasesIn(static_cast<FunctionDecl*>(d)->body, file, symbols, out); break;
+        default: break;
+      }
+  }
+  void collectAliasesIn(Stmt* s, const void* file, const SymbolTable& symbols, std::vector<AliasDeclaration>& out)
+  {
+    if (!s)
+      return;
+    switch (s->kind)
+    {
+      case NodeKind::BlockStmt:
+        for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+          collectAliasesIn(inner, file, symbols, out);
+        break;
+      case NodeKind::DeclStmt: collectAliases(static_cast<DeclStmt*>(s)->decls, file, false, symbols, out); break;
+      case NodeKind::IfStmt:
+        collectAliasesIn(static_cast<IfStmt*>(s)->then, file, symbols, out);
+        collectAliasesIn(static_cast<IfStmt*>(s)->else_, file, symbols, out);
+        break;
+      case NodeKind::ForStmt: collectAliasesIn(static_cast<ForStmt*>(s)->body, file, symbols, out); break;
+      case NodeKind::RangeForStmt: collectAliasesIn(static_cast<RangeForStmt*>(s)->body, file, symbols, out); break;
+      case NodeKind::WhileStmt: collectAliasesIn(static_cast<WhileStmt*>(s)->body, file, symbols, out); break;
+      case NodeKind::DoStmt: collectAliasesIn(static_cast<DoStmt*>(s)->body, file, symbols, out); break;
+      case NodeKind::SwitchStmt: collectAliasesIn(static_cast<SwitchStmt*>(s)->body, file, symbols, out); break;
+      case NodeKind::TryStmt:
+        collectAliasesIn(static_cast<TryStmt*>(s)->body, file, symbols, out);
+        for (const TryStmt::Handler& h : static_cast<TryStmt*>(s)->handlers)
+          collectAliasesIn(h.body, file, symbols, out);
+        break;
+      default: break;
+    }
+  }
+
   // --- hand-written overrides ---
 
   // What an override file defines, by qualified name: those definitions of the converted file
@@ -1674,6 +1729,10 @@ namespace
     // The imported C headers' object-like macros that are another name (glad's glGenTextures is
     // glad_glGenTextures): a use is written as that name.
     const std::map<std::string, std::string>* headerAliases = nullptr;
+    // This .cpp file's namespace-scope aliases that another file declares too, with their own
+    // names (`using MyBinder = LuaBinder<LuaRocketSiloControlBehavior>;` is
+    // MyBinderOfLuaRocketSiloControlBehavior): file-local in C++, program-wide in Kpp.
+    std::map<std::string, std::string> fileAliasRenames;
     // The function-like macros of the game's headers this file includes, directly or through other
     // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
     // include order.
@@ -2378,6 +2437,14 @@ namespace
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        if (t.getKind() == TokenKind::Identifier && !fileAliasRenames.empty() &&
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
+          if (auto rename = fileAliasRenames.find(std::string(spelling(i))); rename != fileAliasRenames.end())
+          {
+            replace(t.offset, t.length, rename->second);
+            counts.add("file-local aliases renamed");
+            continue;
+          }
         if (t.getKind() == TokenKind::Identifier && headerAliases && !headerAliases->empty() &&
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
           if (auto alias = headerAliases->find(std::string(spelling(i))); alias != headerAliases->end())
@@ -5202,6 +5269,30 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         collectVariants(in.parsed->decls, "", *in.tokens, in.text, symbols, variants);
     }
   addInheritedNames(scopeNames, classBases);
+  // The .cpp files' namespace-scope aliases whose names another file declares as an alias too
+  // (Cliff.cpp's and CliffPrototype.cpp's `using CO = CliffOrientation;`, EntityPrototypeFlags'
+  // and ItemPrototypeFlags' different FlagPairTypes, the rocket silo's MyBinder beside 140
+  // function-local ones): each gets its file's name after it.
+  std::vector<AliasDeclaration> aliases;
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && !in.parsed->isImported)
+      collectAliases(in.parsed->decls, &in, true, symbols, aliases);
+  std::map<std::string, std::set<const void*>> aliasFiles;
+  for (const AliasDeclaration& a : aliases)
+    aliasFiles[a.name].insert(a.file);
+  std::map<const void*, std::map<std::string, std::string>> fileAliasRenames;
+  for (const AliasDeclaration& a : aliases)
+  {
+    const ConvertInput& in = *static_cast<const ConvertInput*>(a.file);
+    std::string ext = in.path.extension().string();
+    if (!a.namespaceScope || (ext != ".cpp" && ext != ".cc") || aliasFiles[a.name].size() < 2)
+      continue;
+    std::string stem;
+    for (char c : in.path.stem().string())
+      if (isIdentChar(c))
+        stem += c;
+    fileAliasRenames[a.file][a.name] = a.name + "Of" + stem;
+  }
   for (const ConvertInput& in : inputs)
   {
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
@@ -5216,6 +5307,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.opaqueKept = &opaqueKept;
     fc.headerMacros = &headerMacros;
     fc.headerAliases = &headerAliases;
+    if (auto renames = fileAliasRenames.find(&in); renames != fileAliasRenames.end())
+      fc.fileAliasRenames = renames->second;
     if (configuration)
       fc.preprocessed = configuration->impl->find(in.path);
     if (auto ip = inputByPath.find(pathKey(in.path)); ip != inputByPath.end())
