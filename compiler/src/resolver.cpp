@@ -10996,6 +10996,7 @@ struct GlobalScope::Impl
               if (v->init->kind == NodeKind::FunctionalCastExpr)
                 record(v->init, deduced);
               declared = deduced;
+              deducedLocal = deduced; // the uses in this walk (a template instance's body asks under its substitution)
             }
           }
           if (impl.containsAuto(declared))
@@ -12501,6 +12502,10 @@ const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
   if (d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::FunctionDecl && Impl::mentionsUnknown(t))
     if (const Ty* cached = d->cachedType.load(std::memory_order_acquire); cached && !Impl::mentionsUnknown(cached) && !impl->containsAuto(cached))
       return cached; // `Vector<ToCall> calls;` with ToCall a class of the instance's own body: as its walk typed it
+  if (d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::FunctionDecl && impl->isUndeducedClassTemplate(t))
+    if (const Ty* cached = d->cachedType.load(std::memory_order_acquire);
+        cached && cached->kind == TyKind::Class && cached->decl == t->decl && !impl->types.isDependent(cached))
+      return cached; // `Failed result = this->canSet(id)` in an instance's copy: the arguments its walk deduced
   if (d->kind == NodeKind::FunctionDecl && t && t->kind == TyKind::Function && impl->containsAuto(t->inner))
   {
     // `template<typename T> auto f(T)`: the return type its body deduced for these arguments.
