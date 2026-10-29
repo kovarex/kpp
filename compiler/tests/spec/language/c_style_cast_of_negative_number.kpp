@@ -1,0 +1,13 @@
+// spec: a C-style cast of a negative number to a type alias, `(HANDLE) -1` and `(DWORD) -1`, is a cast (the name is a type, so `-` is unary), as C++ reads it: the handle with all bits set, the largest DWORD
+// factorio: StackWalker's `if (hSnap == (HANDLE) -1)` (GetModuleListTH32): codegen wrote `getelementptr inbounds void` from a load of a global HANDLE, clang rejected the whole module and 4,000 of the game's functions went missing from the link
+// pending: invalid IR ("void type only allowed for function results") instead of a cast, or an error for the module's one function
+typedef void* HANDLE;
+typedef unsigned int DWORD;
+HANDLE invalid() { return (HANDLE) -1; }
+int main()
+{
+  HANDLE h = invalid();
+  DWORD all = (DWORD) -1;
+  println("{} {} {}", h == (HANDLE) -1 ? 1 : 0, all, (long long)(HANDLE) -2);
+  return 0;
+}

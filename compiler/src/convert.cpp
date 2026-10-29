@@ -2865,6 +2865,17 @@ namespace
           insert(endOffset(end), ")");
           counts.add("casts of an address parenthesized");
         }
+        if (t.is(P::LParen) && i + 4 < toks.size() && toks[i + 1].getKind() == TokenKind::Identifier && isAllCapsName(spelling(i + 1)) &&
+            toks[i + 2].is(P::RParen) && toks[i + 3].is(P::Minus) && toks[i + 4].getKind() == TokenKind::Number &&
+            !(i > 0 && (toks[i - 1].getKind() == TokenKind::Identifier || toks[i - 1].is(P::RParen) || toks[i - 1].is(P::RBracket) ||
+                        toks[i - 1].is(P::Greater))))
+        {
+          // `(HANDLE) -1`, a C type's cast of a negative number (StackWalker's invalid snapshot
+          // handle), which Kpp reads as a subtraction from NAME, as above: `(HANDLE)(-1)`.
+          insert(toks[i + 3].offset, "(");
+          insert(endOffset(i + 4), ")");
+          counts.add("casts of a negative number parenthesized");
+        }
         // A string macro or a macro that is a qualified name is its text wherever it is used: macros
         // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
         // namespace), and only literals concatenate (`"\n" UTF8_BULLET " "`).
