@@ -644,6 +644,7 @@ FunctionDecl* InstanceCopier::function(const FunctionDecl* f)
   auto* copy = static_cast<FunctionDecl*>(decl(f));
   copy->cachedType.store(nullptr, std::memory_order_relaxed);
   copy->parent = f->parent;
+  copy->attributes |= ATTR_InstanceCopy;
   fixReferences(copy);
   return copy;
 }

@@ -1,0 +1,35 @@
+// spec: a class declared in a function template's body whose base or member names the function's template parameters (`struct TooltipProvider : public ElemProvider<ElemType>`, `const PrototypeType* prototype`) is laid out and used under each instance's arguments
+// factorio: RichTextHoverManager's TooltipProvider classes (12 instances) and CompiledMapGenSettings' ProtoAutoplacer (6)
+template<class ElemType>
+struct ElemProvider
+{
+  ElemType value;
+};
+template<class ElemType>
+int describe(ElemType v)
+{
+  struct TooltipProvider : public ElemProvider<ElemType>
+  {
+    int extra = 1;
+  };
+  TooltipProvider p;
+  p.value = v;
+  return int(p.value) * 2 + p.extra;
+}
+template<class PrototypeType>
+int count(const PrototypeType* prototype)
+{
+  struct ProtoAutoplacer
+  {
+    const PrototypeType* prototype;
+    int weight;
+  };
+  ProtoAutoplacer placer{prototype, 3};
+  return placer.weight + int(*placer.prototype);
+}
+int main()
+{
+  int seven = 7;
+  println("{} {}", describe(21), count(&seven));
+  return 0;
+}

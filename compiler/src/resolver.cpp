@@ -3951,6 +3951,8 @@ struct GlobalScope::Impl
       if (lastParam->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(lastParam)->isPack)
         s.pairs.push_back({lastParam, types.pack({})}); // `Function<void()>`: an empty pack
     }
+    if (instanceSubstOf(classTy->decl))
+      return withInstanceSubst(classTy->decl, &s); // a class of an instance's body: that instance's arguments too
     return s;
   }
 
@@ -3967,6 +3969,7 @@ struct GlobalScope::Impl
     LocalStack params;
     for (Decl* p : cls->templateParams)
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    pushEnclosingTemplateParams(cls->owner->parent, params); // a class of a function template's body: `ElemProvider<ElemType>`
     ParsedFile* file = cls->owner->file;
     TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
     for (Type* b : cls->baseTypes)
@@ -4026,6 +4029,7 @@ struct GlobalScope::Impl
     LocalStack params;
     for (Decl* p : cls->templateParams)
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    pushEnclosingTemplateParams(cls->owner->parent, params); // a class of a function template's body: `ElemProvider<ElemType>`
     ParsedFile* file = cls->owner->file;
     TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
     for (Type* b : cls->baseTypes)
@@ -4928,10 +4932,57 @@ struct GlobalScope::Impl
     return result;
   }
 
+  // The substitution each instantiation's copy of a function is typed under, as its walk recorded
+  // it: a class declared in that body (its members, its bases) sees the instance's arguments.
+  std::mutex instanceSubstsMutex;
+  std::unordered_map<const Decl*, Subst> instanceSubsts;
+  void recordInstanceSubst(const FunctionDecl* copy, const Subst& s)
+  {
+    std::lock_guard lock(instanceSubstsMutex);
+    instanceSubsts.emplace(copy, s);
+  }
+  // The substitution of the instance copy whose body declares the class d is (or is in), or null.
+  // Only classes: the copy's own parameters and locals keep their written types, which the code
+  // generator substitutes itself (packs included).
+  const Subst* instanceSubstOf(const Decl* d)
+  {
+    bool inClass = false;
+    for (const Decl* p = d; p; p = p->parent)
+    {
+      if (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl)
+        inClass = true;
+      else if (p->kind == NodeKind::FunctionDecl && (p->attributes & ATTR_InstanceCopy))
+      {
+        if (!inClass)
+          return nullptr;
+        std::lock_guard lock(instanceSubstsMutex);
+        auto it = instanceSubsts.find(p);
+        return it == instanceSubsts.end() ? nullptr : &it->second;
+      }
+    }
+    return nullptr;
+  }
+  // subst with the pairs of the instance d is declared in added (those subst binds stay).
+  Subst withInstanceSubst(const Decl* d, const Subst* subst)
+  {
+    Subst out = subst ? *subst : Subst{};
+    if (const Subst* inst = instanceSubstOf(d))
+      for (const Subst::Pair& p : inst->pairs)
+        if (!out.find(p.param))
+          out.pairs.push_back(p);
+    return out;
+  }
+
   const Ty* computeDeclaredType(Decl* d, const Subst* subst, int depth)
   {
     DeclContext dc;
     declContextFor(d, dc);
+    Subst withInstance; // `const PrototypeType* prototype` in a class of an instance's body
+    if (instanceSubstOf(d))
+    {
+      withInstance = withInstanceSubst(d, subst);
+      subst = &withInstance;
+    }
     TypeContext ctx{dc.scope, &dc.params, subst, d->file ? d->file->tokens : nullptr, d->file ? d->file->text : std::string_view()};
     switch (d->kind)
     {
@@ -9436,6 +9487,8 @@ struct GlobalScope::Impl
         case NodeKind::FunctionDecl:
         {
           auto* f = static_cast<FunctionDecl*>(d);
+          if (activeSubst && (f->attributes & ATTR_InstanceCopy))
+            impl.recordInstanceSubst(f, *activeSubst); // the classes of its body see these arguments
           Scope* saved = scope;
           const Ty* savedThis = thisType;
           walkType(f->returnType);
@@ -11039,6 +11092,8 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
   if (context && (context->kind == NodeKind::ClassDecl || context->kind == NodeKind::EnumDecl) && context->ownScope)
     dc.scope = context->ownScope;
   Subst s = toSubst(args);
+  if (impl->instanceSubstOf(context))
+    s = impl->withInstanceSubst(context, &s); // `ElemProvider<ElemType>` based on by a class of an instance's body
   // A parameter args binds that context does not declare: a for constexpr variable
   // (`sizeof(E)` in `for constexpr (typename E : types<A, B>)`), found by its name too.
   for (const Subst::Pair& p : s.pairs)
@@ -11046,7 +11101,7 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
       dc.params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
-  return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, args.empty() ? nullptr : &s, file ? file->tokens : nullptr,
+  return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr,
                                                 file ? file->text : std::string_view()}, 0);
 }
 
