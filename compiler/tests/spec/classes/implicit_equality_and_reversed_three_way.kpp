@@ -1,0 +1,37 @@
+// spec: a defaulted operator<=> gives its class a defaulted operator==, which takes a value of another type through the class's converting constructor (`kind == Kind::Second` beside a non-defaulted `operator<=>(const Enum&)`, which makes no ==); and `a < b` with a scalar on the left uses the right operand's operator<=> the other way round (`0 < (b <=> a)`)
+// found in the converted game: AlertType's `alertType == AlertType::ALERTS_COUNT` ("AlertType has no operator==", 22 uses with PipeConnectionType), and CommandProcessor's `scale < ScreenshotRequest::MinScale`, a double against a StrongTypedef<double>
+class Kind
+{
+public:
+  enum class Enum : uint8_t
+  {
+    First = 0,
+    Second = 1,
+    Count = 2,
+  };
+  using enum Enum;
+  constexpr Kind() : value(Count) {}
+  implicit constexpr Kind(Enum value) : value(value) {}
+  constexpr strong_ordering operator<=>(const Kind&) const = default;
+  constexpr strong_ordering operator<=>(const Enum& other) const { return this->value <=> other; }
+  Enum value;
+};
+class Strong
+{
+public:
+  double value;
+  explicit Strong(double v) : value(v) {}
+  partial_ordering operator<=>(const Strong& other) const = default;
+  partial_ordering operator<=>(const double& other) const { return this->value <=> other; }
+};
+int main()
+{
+  Kind k = Kind::Second;
+  Kind other;
+  Strong minimum(0.5);
+  double scale = 0.25;
+  println("{} {} {} {}", k == Kind::Second, k != Kind::First, k == other, k < Kind::Count);
+  bool less = scale < minimum, greater = scale > minimum, lessEqual = 0.5 <= minimum, greaterEqual = 1.0 >= minimum;
+  println("{} {} {} {}", less, greater, lessEqual, greaterEqual);
+  return 0;
+}

@@ -1,0 +1,26 @@
+// spec: a brace list as the value of a type that is no class: `x = {}`, `return {};`, an argument `{}` and a default argument `= {}` value-initialize (zero, null), `{v}` is v converted; a literal 0 default argument is a null pointer
+// found in the converted game: `mod->id.crc = {};`, GameControllerVibrationData's `return {};` of an enum, `deduceSelectedEntity(surface, position, allow, {}, {})` for two pointers, TileDrawQueue's `Flags flags = {}`, HeapArray's `(*this)[i] = {};`, and `Entity* secondaryEntity = 0`
+enum class PlayFor : uint8_t { Nothing, Everything };
+enum class Flags : uint8_t { None = 0, Mirror = 1 };
+struct Mod { uint32_t crc = 7; };
+struct Entity { int id = 3; };
+PlayFor loadPlayFor(bool any)
+{
+  if (any)
+    return PlayFor::Everything;
+  return {};
+}
+int pick(int a, Entity* e = 0, Entity* other = nullptr, Flags flags = {}) { return a + (e ? e->id : 0) + (other ? 100 : 0) + int(flags); }
+int main()
+{
+  Mod m;
+  m.crc = {};
+  double d = 2.5;
+  d = {};
+  Entity e;
+  int values[3] = {1, 2, 3};
+  values[1] = {};
+  values[2] = {9};
+  println("{} {} {} {} {} {} {}", m.crc, d, int(loadPlayFor(false)), pick(1, &e, {}, {}), pick(2), values[1], values[2]);
+  return 0;
+}

@@ -1311,6 +1311,36 @@ namespace
       return "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr " + s.returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
     }
 
+    // What a pointer to a member function of class cls holds when calling f with the object is not
+    // enough: a virtual f calls the object's override (through the vtable pointer of owner, the class
+    // declaring f), and an f of a base at another place in cls gets `this` moved to that base (path,
+    // from cls down to owner). One function per class and member, in every module.
+    std::string memberFunctionThunk(const Ty* cls, const Ty* owner, const std::vector<std::pair<std::string, uint32_t>>& path, FunctionDecl* f, int slot, Node* at)
+    {
+      Signature s;
+      std::string key;
+      {
+        TemplateArgs args = global.classArgsOf(owner);
+        ArgsScope scope(*this, &args);
+        s = signatureOf(f);
+        key = methodKey(f);
+      }
+      if (s.variadic)
+        unsupported(at, "a pointer to the variadic member function " + qualifiedName(f) + " (its thunk cannot pass the arguments on)");
+      std::string target = slot < 0 ? useFunction(f, global.classArgsOf(owner), owner) : std::string();
+      return sharedThunk("@\"pmf." + irString(cls) + "." + irString(owner) + "::" + key + "\"", s, pathAtNull(path), target, slot);
+    }
+
+    // The offset of the subobject a path of base fields leads to, as a pointer constant (see
+    // subobjectAtNull).
+    static std::string pathAtNull(const std::vector<std::pair<std::string, uint32_t>>& path)
+    {
+      std::string offset = "null";
+      for (auto& [structName, index] : path)
+        offset = "getelementptr (" + structName + ", ptr " + offset + ", i32 0, i32 " + std::to_string(index) + ")";
+      return offset;
+    }
+
     // The descriptor of a class (what slot -1 of its vtables points at, what dynamic_cast searches):
     // { name, number of direct bases, [{ base's descriptor, base's offset }] }, for any class (a
     // polymorphic class's bases need not be polymorphic). Built once, used per module (useDescriptor).
@@ -2201,7 +2231,11 @@ namespace
       // `using Base::Base;`: the base's constructors, when none of the class's own takes the
       // arguments (a copy stays a copy).
       bool copyLike = args.size() == 1 && args[0]->ty && isClass(types.stripRef(args[0]->ty)) && classKey(types.stripRef(args[0]->ty)) == classKey(t);
-      if (!copyLike && (!hasUserConstructors(c) || !findConstructor(t, argTypesOf(args), at)))
+      // (A value whose class converts to t itself takes that conversion: `return connector;` for a
+      // SignalID through SignalIDConnector's `operator SignalID()`, not a base's constructors.)
+      bool converts = args.size() == 1 && !copyLike && args[0]->ty && isClass(types.stripRef(args[0]->ty)) &&
+                      !types.isDependent(types.stripRef(args[0]->ty)) && conversionOperator(types.stripRef(args[0]->ty), t, at);
+      if (!copyLike && !converts && (!hasUserConstructors(c) || !findConstructor(t, argTypesOf(args), at)))
         if (std::optional<QualifiedName> base = inheritedConstructorBase(c))
         {
           // Inherited constructors: the arguments build that base, everything else is default.
@@ -4443,6 +4477,65 @@ namespace
       bool hasThis = false, hasSret = false, variadic = false;
     };
 
+    // A function (in every module) that moves `this` by the offset `at` (a pointer constant) and calls
+    // callee, or the function in slot `slot` of the vtable `this` then has, with its other arguments.
+    std::string sharedThunk(const std::string& name, const Signature& s, const std::string& at, const std::string& callee, int slot)
+    {
+      auto lock = sharedLock();
+      if (emittedShared[name])
+        return name;
+      emittedShared[name] = true;
+      std::string params, args;
+      for (size_t i = 1; i < s.paramTypes.size(); ++i)
+      {
+        params += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
+        args += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
+      }
+      std::string body = "  %off = ptrtoint ptr " + at + " to i64\n  %self = getelementptr i8, ptr %this, i64 %off\n";
+      std::string target = callee;
+      if (slot >= 0)
+      {
+        body += "  %vt = load ptr, ptr %self\n  %sp = getelementptr inbounds ptr, ptr %vt, i64 " + std::to_string(slot) + "\n  %fp = load ptr, ptr %sp\n";
+        target = "%fp";
+      }
+      if (s.returnType == "void")
+        body += "  tail call void " + target + "(ptr %self" + args + ")\n  ret void\n";
+      else
+        body += "  %r = tail call " + s.returnType + " " + target + "(ptr %self" + args + ")\n  ret " + s.returnType + " %r\n";
+      shared += sharedComdat(name) + "define linkonce_odr " + s.returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
+      return name;
+    }
+
+    // The calling convention of a member function of type ft, as signatureOf gives it for a
+    // declaration: `this`, the result's slot for a class result, then the parameters.
+    Signature methodSignature(const Ty* ft, Node* at)
+    {
+      Signature s;
+      const Ty* ret = ft->inner;
+      if (returnsInMemory(ret))
+      {
+        s.hasSret = true;
+        s.returnType = "void";
+      }
+      else
+        s.returnType = !ret || !ret->isKnown() || ret->isReference() ? "ptr" : llType(ret, at);
+      s.hasThis = true;
+      s.paramTypes.push_back("ptr");
+      s.paramTys.push_back(nullptr);
+      if (s.hasSret)
+      {
+        s.paramTypes.push_back("ptr");
+        s.paramTys.push_back(nullptr);
+      }
+      for (const Ty* pt : ft->args)
+      {
+        s.paramTypes.push_back(isAggregate(pt) || pt->isReference() || !pt->isKnown() ? "ptr" : llType(pt, at));
+        s.paramTys.push_back(pt);
+      }
+      s.variadic = ft->variadic;
+      return s;
+    }
+
     // Signature under the arguments currently in effect.
     Signature signatureOf(FunctionDecl* f)
     {
@@ -5193,6 +5286,41 @@ namespace
       return memberwiseEqual(a, b, t, at);
     }
 
+    // A brace list as a value of a type that is no class (`x = {}`, `return {};`, an argument `{}`):
+    // empty, the type's zero (value initialization); one value, that value converted.
+    Value braceScalar(BraceInitExpr* list, const Ty* t, Node* at)
+    {
+      t = types.unqualified(types.stripRef(t));
+      if (!t->isKnown() || isAggregate(t))
+        unsupported(at, "a brace list as a value of " + types.toString(t, &symbols));
+      if (list->args.empty())
+      {
+        if (t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr)
+          return {"null", t};
+        if (t->kind == TyKind::MemberPointer)
+          return convert(Value{"null", types.nullptrType()}, t, at);
+        return {t->kind == TyKind::Float ? floatConstant(0, t->bits) : t->kind == TyKind::Vector ? "zeroinitializer" : "0", t};
+      }
+      if (list->args.size() == 1 && list->designators.empty())
+        return convert(rvalue(list->args[0]), t, at);
+      unsupported(at, "a brace list of " + std::to_string(list->args.size()) + " values as a value of " + types.toString(t, &symbols));
+    }
+
+    // Whether e is the literal 0, a null pointer constant.
+    static bool nullPointerConstant(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (!e || e->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(e)->literalKind != TokenKind::Number)
+        return false;
+      auto* l = static_cast<LiteralExpr*>(e);
+      if (!l->file || !l->file->tokens || l->token >= l->file->tokens->size())
+        return false;
+      const Token& tok = (*l->file->tokens)[l->token];
+      std::string_view text = l->file->text.substr(tok.offset, tok.length);
+      return text == "0" || text == "0u" || text == "0U" || text == "0l" || text == "0L" || text == "0ll" || text == "0LL" || text == "0ull" || text == "0ULL";
+    }
+
     // One call argument as "<type> <operand>", converted to the parameter type (null: variadic).
     std::string argumentText(const Ty* pt, Expr* arg, Node* at)
     {
@@ -5313,6 +5441,13 @@ namespace
           copyConstruct(copy, v.text, pt, at);
         return "ptr " + copy;
       }
+      if (arg->kind == NodeKind::BraceInitExpr && pt)
+      {
+        Value a = braceScalar(static_cast<BraceInitExpr*>(arg), pt, at); // `deduceSelectedEntity(surface, position, allow, {}, {})`
+        return llType(a.ty, at) + " " + a.text;
+      }
+      if (pt && pt->kind == TyKind::Pointer && nullPointerConstant(arg))
+        return "ptr null"; // `Entity* secondaryEntity = 0`
       Value a = rvalue(arg);
       if (isClass(a.ty) && pt && !isAggregate(pt) && conversionOperator(a.ty, types.unqualified(pt), at))
         a = convert(a, types.unqualified(pt), at); // `draw(image)` with `operator const Image*()`
@@ -6134,9 +6269,10 @@ namespace
     {
       return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
       {
-        if (global.isExplicit(f, args) && to->kind != TyKind::Bool && (!explicitCast || ret != types.unqualified(to)))
+        bool exact = ret == types.unqualified(to) || (isClass(ret) && isClass(to) && classKey(ret) == classKey(to));
+        if (global.isExplicit(f, args) && to->kind != TyKind::Bool && (!explicitCast || !exact))
           return 0;
-        return ret == types.unqualified(to) ? 2 : isClass(ret) ? 0 : 1;
+        return exact ? 2 : isClass(ret) ? 0 : 1;
       }, to, opArgs);
     }
 
@@ -6263,6 +6399,49 @@ namespace
         unsupported(at, "a conversion from " + types.toString(from, &symbols) + " to " + types.toString(to, &symbols));
       }
       std::string r = newTemp();
+      // A pointer to a member function is the function (null when none), one to a data member the
+      // member's offset, -1 when null (offset 0 is the first member's), as MSVC has them.
+      if (tk == TyKind::MemberPointer && fk == TyKind::Nullptr)
+        return {to->inner && to->inner->kind == TyKind::Function ? "null" : "-1", to};
+      if (fk == TyKind::MemberPointer && tk == TyKind::Bool)
+      {
+        bool function = from->inner && from->inner->kind == TyKind::Function;
+        fn += "  " + r + " = icmp ne " + (function ? "ptr " + v.text + ", null" : "i64 " + v.text + ", -1") + "\n";
+        return {r, to};
+      }
+      // `int (Both::*)() const = &Named::getId`: a pointer to a member of a base, as one of a class
+      // derived from it. A data member's offset grows by the base's place; a member function gets a
+      // thunk moving `this` to the base, for a function known here (a pointer read at run time
+      // carries nothing to move by).
+      if (fk == TyKind::MemberPointer && tk == TyKind::MemberPointer && !from->args.empty() && !to->args.empty() && isClass(from->args[0]) &&
+          isClass(to->args[0]) && classKey(from->args[0]) != classKey(to->args[0]))
+      {
+        const Ty* base = withCurrentArgs(from->args[0]);
+        const Ty* derived = withCurrentArgs(to->args[0]);
+        std::vector<std::pair<std::string, uint32_t>> path;
+        if (basePath(derived, base, path, at))
+        {
+          bool moved = false;
+          for (auto& [structName, index] : path)
+            moved = moved || index != 0;
+          if (!moved)
+            return {v.text, to};
+          if (from->inner && from->inner->kind == TyKind::Function)
+          {
+            if (v.text.empty() || v.text[0] != '@')
+              unsupported(at, "a pointer to a member function of " + types.toString(base, &symbols) + " read at run time, as one of " +
+                                  types.toString(derived, &symbols) + ", which has that base at an offset");
+            std::string function = v.text[1] == '"' ? v.text.substr(2, v.text.size() - 3) : v.text.substr(1);
+            return {sharedThunk("@\"pmf." + irString(derived) + "." + function + "\"", methodSignature(from->inner, at), pathAtNull(path), v.text, -1), to};
+          }
+          std::string offset = newTemp(), sum = newTemp(), isNull = newTemp();
+          fn += "  " + offset + " = ptrtoint ptr " + pathAtNull(path) + " to i64\n";
+          fn += "  " + sum + " = add i64 " + v.text + ", " + offset + "\n";
+          fn += "  " + isNull + " = icmp eq i64 " + v.text + ", -1\n";
+          fn += "  " + r + " = select i1 " + isNull + ", i64 -1, i64 " + sum + "\n";
+          return {r, to};
+        }
+      }
       std::string fromT = llType(from, at), toT = llType(to, at);
       if (fromT == toT && !(fk == TyKind::Pointer && tk == TyKind::Pointer))
         return {v.text, to, v.isTemporary}; // the same bits: bool to `enum class E : bool`, uint8 to an int8 enum
@@ -7884,7 +8063,13 @@ namespace
           const Ty* mp = b->rhs && b->rhs->ty ? types.stripRef(b->rhs->ty) : nullptr;
           if (mp && mp->kind == TyKind::MemberPointer && mp->inner && mp->inner->kind == TyKind::Function)
           {
-            std::string object = P(b->op) == P::ArrowStar ? arrowOperand(rvalue(b->lhs), c).text : rvalue(b->lhs).text;
+            Value o = P(b->op) == P::ArrowStar ? arrowOperand(rvalue(b->lhs), c) : rvalue(b->lhs);
+            std::string object = o.text;
+            // The object as the pointer's class: an object of a class derived from it moves to that base.
+            const Ty* objectTy = P(b->op) == P::ArrowStar ? (o.ty && o.ty->kind == TyKind::Pointer ? o.ty->inner : nullptr) : types.stripRef(o.ty);
+            const Ty* memberOf = mp->args.empty() ? nullptr : withCurrentArgs(mp->args[0]);
+            if (isClass(objectTy) && isClass(memberOf) && classKey(objectTy) != classKey(memberOf))
+              baseAddress(objectTy, memberOf, o.text, object, c);
             Value fp = rvalue(b->rhs);
             return callIndirect(fp.text, mp->inner, object, c->args, sret, c);
           }
@@ -9947,14 +10132,42 @@ namespace
         // (`&Proto::read` in a member of the class template: this instance's class, not the
         // template's own parameters the shared expression was typed with.)
         const Ty* cls = mp->args.empty() ? nullptr : withCurrentArgs(mp->args[0]);
+        if (cls && types.isDependent(cls) && n->name.parts.size() > 1)
+        {
+          // `&T::luaNewIndex` in LuaBinder<T>: typed with the declaring template's own parameters
+          // (LuaPrototypeTemplate<TemplateType, ...>), which this instance does not bind; the
+          // qualifier under this instance's arguments names the class.
+          QualifiedName qualifier = n->name;
+          qualifier.parts.count -= 1;
+          NamedType tmp{};
+          tmp.kind = NodeKind::NamedType;
+          tmp.token = n->token;
+          tmp.name = qualifier;
+          TemplateArgs none;
+          if (const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none); q && isClass(q) && !types.isDependent(q))
+            cls = q;
+        }
         if (d && d->kind == NodeKind::FunctionDecl && cls && isClass(cls))
         {
-          // `&Calc::mul`: the function itself; a call through it passes the object first.
+          // `&Calc::mul`: the function itself; a call through it passes the object first. A virtual
+          // function, or one of a base at another place in the object, goes through a thunk that
+          // calls the object's override, or moves `this` to that base.
           auto* f = static_cast<FunctionDecl*>(d);
-          if (f->flags & DF_Virtual)
-            unsupported(u, "a pointer to a virtual member function");
           const Ty* key = canonicalClass(cls, u);
-          return {useFunction(f, global.classArgsOf(key), key), mp};
+          const Ty* owner = key;
+          if (Decl* ownerDecl = global.owningClass(f); ownerDecl && ownerDecl->kind == NodeKind::ClassDecl && classDef(ownerDecl, u) != classDef(key->decl, u))
+            if (const Ty* base = baseInstantiation(key, ownerDecl, u))
+              owner = base;
+          std::vector<std::pair<std::string, uint32_t>> path;
+          if (owner != key)
+            basePath(key, owner, path, u);
+          bool moved = false;
+          for (auto& [structName, index] : path)
+            moved = moved || index != 0;
+          int slot = f->templateParams.empty() ? slotOf(owner, f, u) : -1;
+          if (slot < 0 && !moved)
+            return {useFunction(f, global.classArgsOf(owner), owner), mp};
+          return {memberFunctionThunk(key, owner, path, f, slot, u), mp};
         }
         if (!d || d->kind != NodeKind::VariableDecl || !cls || !isClass(cls))
           unsupported(u, "a pointer to a member that is neither a field nor a function");
@@ -10306,7 +10519,8 @@ namespace
           else
             unsupported(b, "an assignment to an expression of unknown type");
         }
-        Value rhs = rvalue(b->rhs);
+        Value rhs = op == P::Assign && b->rhs->kind == NodeKind::BraceInitExpr ? braceScalar(static_cast<BraceInitExpr*>(b->rhs), t, b) // `mod->id.crc = {};`
+                                                                                : rvalue(b->rhs);
         if (scalarAssignment)
           rhs = convert(rhs, global.scalarConversionOf(rhs.ty), b);
         const BitfieldInfo* bits = nullptr;
@@ -10562,6 +10776,53 @@ namespace
           return std::nullopt;
         return compare(cmp, orderOf(*ordering, b), Value{"0", types.intType(8)}, b);
       };
+      // `scale < ScreenshotRequest::MinScale` with a double on the left: the right operand's
+      // `operator<=>(const double&)`, the operands the other way round (`0 < (b <=> a)`).
+      auto reversedOrder = [&](P cmp) -> std::optional<Value>
+      {
+        if (!rt || !isClass(rt) || (lt && isClass(lt)))
+          return std::nullopt;
+        Expr* lhsExpr = b->lhs;
+        Span<Expr*> left{&lhsExpr, 1};
+        const Ty* foundIn = nullptr;
+        if (!findMemberFunction(types.unqualified(rt), "operator<=>", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
+          return std::nullopt;
+        Value ordering = callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b);
+        P swapped = cmp == P::Less ? P::Greater : cmp == P::Greater ? P::Less : cmp == P::LessEq ? P::GreaterEq : P::LessEq;
+        return compare(swapped, orderOf(ordering, b), Value{"0", types.intType(8)}, b);
+      };
+      // C++20: a class whose operator<=> is defaulted has a defaulted operator==(const T&) too, which
+      // takes a value of another type through T's converting constructor (`alertType ==
+      // AlertType::ALERTS_COUNT` beside AlertType's `operator<=>(const Enum&)`, which is no ==).
+      auto implicitEquality = [&]() -> std::optional<Value>
+      {
+        if (!isClass(lt) || !b->rhs->ty || !b->rhs->ty->isKnown())
+          return std::nullopt;
+        const Ty* cls = canonicalClass(types.unqualified(lt), b);
+        bool defaulted = false;
+        for (Decl* m : classDef(cls->decl, b)->members)
+          if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Default) && !static_cast<FunctionDecl*>(m)->name.empty() &&
+              static_cast<FunctionDecl*>(m)->name.last().special == 2 && P(static_cast<FunctionDecl*>(m)->name.last().opToken) == P::Spaceship)
+            defaulted = true;
+        if (!defaulted)
+          return std::nullopt;
+        const Ty* other = withCurrentArgs(types.unqualified(types.stripRef(b->rhs->ty)));
+        Value l = rvalue(b->lhs);
+        std::string r;
+        if (isClass(other) && classKey(other) == classKey(cls))
+          r = rvalue(b->rhs).text;
+        else if (findConstructor(cls, {argumentType(b->rhs, b->rhs->ty, types)}, b))
+        {
+          r = newObjectSlot(cls, b);
+          Expr* one = b->rhs;
+          constructInto(r, cls, Span<Expr*>{&one, 1}, b);
+          if (needsDestruction(cls, b))
+            statementTemps.push_back({r, cls});
+        }
+        else
+          return std::nullopt;
+        return objectsEqual(l.text, r, cls, b);
+      };
       switch (op)
       {
         case P::NotEq:
@@ -10572,6 +10833,8 @@ namespace
           if (!eq)
             eq = reversed();
           if (!eq)
+            eq = implicitEquality();
+          if (!eq)
             return std::nullopt;
           std::string r = newTemp();
           fn += "  " + r + " = xor i1 " + convert(*eq, types.boolType(), b).text + ", true\n";
@@ -10580,9 +10843,13 @@ namespace
         case P::EqEq:
           if (threeWayDefaulted())
             return orderCompare(P::EqEq);
-          return reversed();
+          if (std::optional<Value> eq = reversed())
+            return eq;
+          return implicitEquality();
         case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
-          return orderCompare(op);
+          if (std::optional<Value> ordered = orderCompare(op))
+            return ordered;
+          return reversedOrder(op);
         default:
           return std::nullopt;
       }
@@ -11430,7 +11697,10 @@ namespace
           {
             if (!r->value)
               unsupported(s, "return without a value in a non-void function");
-            retText = convert(rvalue(r->value), currentReturn, s).text;
+            if (r->value->kind == NodeKind::BraceInitExpr)
+              retText = braceScalar(static_cast<BraceInitExpr*>(r->value), currentReturn, s).text; // `return {};` of an enum
+            else
+              retText = convert(rvalue(r->value), currentReturn, s).text;
           }
           destroyTemps();
           std::string retLl = currentReturn->kind == TyKind::Void || returnsInMemory(currentReturn) ? std::string()

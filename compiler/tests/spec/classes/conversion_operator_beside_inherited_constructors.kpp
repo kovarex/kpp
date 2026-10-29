@@ -1,0 +1,38 @@
+// spec: a value of a class whose conversion operator yields the target class initializes it through that operator, also when the target inherits its base's constructors (`using super::super;`), none of which takes the value
+// found in src/CircuitNetwork/Behaviors/AccumulatorControlBehavior.kpp: `return entity.getPrototype()->defaultOutputSignal;` returns a SignalIDConnector as a SignalID (which inherits IDWithQuality's constructors) through `implicit operator SignalID() const`: "a constructor of IDWithQuality taking 1 arguments"
+template<class T>
+class WithQuality
+{
+public:
+  int base = 0;
+  int quality = 1;
+  WithQuality() = default;
+  explicit WithQuality(int b) : base(b) {}
+  explicit WithQuality(StringView name) : base(int(name.size())) {}
+};
+class Signal : public WithQuality<char>
+{
+public:
+  using super = WithQuality<char>;
+  using super::super;
+  explicit Signal(const char* name) : super(StringView(name)) {}
+};
+class Connector
+{
+public:
+  int v = 7;
+  Connector() {}
+  Connector(const Connector&) = delete;
+  Signal get() const { return Signal(this->v); }
+  implicit operator Signal() const { return this->get(); }
+};
+struct Prototype { Connector output; };
+Signal defaultOutput(const Prototype* p) { return p->output; }
+int main()
+{
+  Prototype p;
+  Signal s = p.output;
+  Signal fromName("abc");
+  println("{} {} {}", defaultOutput(&p).base, s.base, fromName.base);
+  return 0;
+}

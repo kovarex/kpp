@@ -1,0 +1,43 @@
+// spec: a pointer to a virtual member function calls the object's override; a pointer to a member function of a base the class has at an offset moves `this` to that base; pointers to members are null and tested for it (`!pmf`, `if (field)`)
+// found in the converted game: `result.qualityStrAsPower(this, &AccumulatorPrototype::maximumPowerOutput)` with a virtual maximumPowerOutput (12 such), `assert(!this->getControllerHandler(actionType))` on a pointer to a member function, and TimeStatistics' `if (mappingProperty.mappingProperty)` on a pointer to a data member initialised with nullptr
+class Prototype
+{
+public:
+  int power = 10;
+  virtual ~Prototype() {}
+  virtual int maximumPower() const { return this->power; }
+  int plain() const { return this->power + 1; }
+};
+class Accumulator : public Prototype
+{
+public:
+  int maximumPower() const override { return this->power * 3; }
+};
+class Named
+{
+public:
+  int id = 4;
+  int getId() const { return this->id; }
+};
+class Both : public Prototype, public Named
+{
+};
+int describe(const Prototype* p, int (Prototype::*get)() const) { return (p->*get)(); }
+struct Holder
+{
+  int Named::* field = nullptr;
+  void (Holder::*action)() = nullptr;
+};
+int main()
+{
+  Accumulator a;
+  Both both;
+  int (Both::*viaBase)() const = &Both::getId;
+  int Both::* idField = &Named::id;
+  Holder h;
+  bool none = !h.action && !h.field;
+  h.field = &Named::id;
+  println("{} {} {} {}", describe(&a, &Prototype::maximumPower), describe(&a, &Prototype::plain), (both.*viaBase)(), both.*idField);
+  println("{} {}", none, h.field ? 1 : 0);
+  return 0;
+}
