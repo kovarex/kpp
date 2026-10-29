@@ -8945,7 +8945,9 @@ struct GlobalScope::Impl
         return substFor(sub); // `E::values` with E = Flag<A>::Enum
       return s;
     }
-    if (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::UsingAliasDecl && l.decl->kind != NodeKind::EnumDecl)
+    // (A `typedef Vector<Result> ResultList;` as the qualifier too, as a `using` alias.)
+    if (l.decl->kind != NodeKind::ClassDecl && l.decl->kind != NodeKind::UsingAliasDecl && l.decl->kind != NodeKind::EnumDecl &&
+        !(l.decl->kind == NodeKind::VariableDecl && (l.decl->flags & DF_Typedef)))
       return s;
     const Ty* qualifier = nullptr;
     if (prefix.parts.size() > 1 || l.found == Found::Member)

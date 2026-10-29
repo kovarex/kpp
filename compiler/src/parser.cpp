@@ -1649,7 +1649,7 @@ namespace
       // Class / enum definitions (which may be followed by declarators). `const struct { ... }
       // passes[] {...};`: the const is the declarators' (or, when the class is only named, the
       // type's: `const struct Point* p`).
-      if (at(Kw::const_) && (at(Kw::class_, 1) || at(Kw::struct_, 1) || at(Kw::union_, 1)))
+      if (at(Kw::const_) && (at(Kw::class_, 1) || at(Kw::struct_, 1) || at(Kw::union_, 1) || at(Kw::enum_, 1)))
       {
         advance();
         pendingConst = true;
@@ -2135,7 +2135,8 @@ namespace
     }
 
     // At the `(` after a declarator's name: whether an argument after the first starts with a
-    // literal, `Box other(HeavyMode::Disabled, 4);`, which no parameter does. Template argument
+    // literal or a brace list, `Box other(HeavyMode::Disabled, 4);`, `Adder added(suite, {"a"});`,
+    // which no parameter does. Template argument
     // lists are skipped (`Array<int, 4> a`); a `<` that is a comparison only hides a literal,
     // leaving the list to the other checks.
     bool laterArgumentIsLiteral()
@@ -2159,7 +2160,7 @@ namespace
           return false;
         else if (depth == 0 && at(P::Comma, i) &&
                  (at(TokenKind::Number, i + 1) || at(TokenKind::String, i + 1) || at(TokenKind::Char, i + 1) ||
-                  at(Kw::true_, i + 1) || at(Kw::false_, i + 1) || at(Kw::nullptr_, i + 1)))
+                  at(Kw::true_, i + 1) || at(Kw::false_, i + 1) || at(Kw::nullptr_, i + 1) || at(P::LBrace, i + 1)))
           return true;
       }
     }
@@ -3123,6 +3124,14 @@ namespace
     {
       uint32_t start = pos;
       uint32_t save = pos;
+      // `const enum class Type { Entity, Tile } type;`: the const is the declarators' after a
+      // definition; the type's, when this is no definition and the caller parses the type again.
+      bool constDeclarators = std::exchange(pendingConst, false);
+      auto restore = [&](uint32_t to)
+      {
+        this->restore(to);
+        pendingConst = constDeclarators;
+      };
       advance();
       EnumDecl* e = decl<EnumDecl>(start);
       e->flags |= flags;
@@ -3245,10 +3254,17 @@ namespace
         }
         NamedType* selfType = node<NamedType>(start);
         selfType->name = e->name;
+        Type* declaratorType = selfType;
+        if (constDeclarators)
+        {
+          ConstType* c = node<ConstType>(start);
+          c->inner = selfType;
+          declaratorType = c;
+        }
         for (;;)
         {
           Declarator d;
-          d.type = selfType;
+          d.type = declaratorType;
           parseDeclarator(d, scope);
           if (inRecovery)
             return true;

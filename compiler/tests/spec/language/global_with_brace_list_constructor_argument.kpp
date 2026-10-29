@@ -1,6 +1,5 @@
 // spec: a namespace-scope object constructed with parenthesized arguments whose first is a name and a later one a brace list (`Adder added(currentSuite, { "vanilla" });`): a brace list is no parameter, so the declaration is an object, as in C++
 // factorio: UnitTest++'s `#define SUITE_MODPACKS(...) UnitTest::SuiteModpackAdder environmentsAdded(currentSuite, { __VA_ARGS__ })`, used by the tests' TestSuiteModpacks, TestVanilla, TestVanillaRocketSilo and TestVanillaTechnology (the modpacks a suite runs in)
-// pending: the parser reads it as a function declaration and fails at the brace list ("expected parameter type (at '{')"); with `&currentSuite` first it works; owner: the parser
 namespace UnitTest
 {
   struct SuiteModpackAdder
