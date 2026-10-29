@@ -12,7 +12,10 @@ container is a huge number there and -1 here.
 
 An element type needs a destructor and a move constructor; operations that copy elements (copying
 a container, `push_back(const T&)`) need a copy constructor, and operations that make new
-elements from nothing (`resize(n)`, `map[key]` for a new key) a default constructor.
+elements from nothing (`resize(n)`, `map[key]` for a new key) a default constructor. The
+exceptions are the operations that construct an element in its place and never move it after,
+which need no move constructor: those of Map and HashMap that say so (operator[], emplace,
+try_emplace).
 
 When a container has to put an existing element somewhere else (growing, shifting, rebalancing),
 it **relocates** it: it constructs the element at the new place with the move constructor from the

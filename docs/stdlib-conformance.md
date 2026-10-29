@@ -30,7 +30,10 @@ Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue()
 
 ## Missing types and API
 
-None of the members specified in docs/stdlib/ are missing (2026-10-28).
+None of the members specified in docs/stdlib/ are missing (2026-10-28). One works only for
+movable values: Map's and HashMap's `emplace(args...)` builds the entry and then moves it into its
+node (map.md: constructed in place), so a value that can be neither copied nor moved does not
+compile there; operator[] and try_emplace construct it in place as specified (2026-10-29).
 
 Not in the library by decision: `<regex>`. Its one user is cxxopts, whose five fixed patterns are
 hand-written matchers in the conversion's overrides (docs/path-to-factorio.md, "cxxopts"); a

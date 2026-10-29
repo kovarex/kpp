@@ -69,6 +69,11 @@ const T& max(const T& a, const T& b) { return a < b ? b : a; }
 template<typename T>
 const T& clamp(const T& value, const T& low, const T& high) { return value < low ? low : high < value ? high : value; }
 
+// The tag of Pair's constructor that builds the second member in place: `Pair<K, V>(inPlaceSecond,
+// key, args...)`.
+struct InPlaceSecond {};
+const InPlaceSecond inPlaceSecond;
+
 // Two values together: the result of split functions, entries of maps.
 template<typename A, typename B>
 struct Pair
@@ -108,6 +113,21 @@ struct Pair
   explicit(!isConvertible<U1, A> || !isConvertible<U2, B>) Pair(Pair<U1, U2>&& other)
     requires(isConstructible<A, U1> && isConstructible<B, U2>)
     : first(forward<U1>(other.first)), second(forward<U2>(other.second))
+  {
+  }
+  // first from first, second constructed from the arguments (with none, value-initialized), and
+  // neither copied nor moved afterwards: how Map and HashMap build the entries of operator[] and
+  // try_emplace, so that their values need not be movable (std::pair's piecewise constructor with
+  // the key alone in the first tuple). No argument and one argument are overloads of their own:
+  // a pack that expands to nothing in a scalar member's initializer does not compile yet
+  // (templates/empty_pack_value_initializes_member).
+  template<typename U1>
+  Pair(InPlaceSecond, U1&& first) : first(forward<U1>(first)), second() {}
+  template<typename U1, typename Arg>
+  Pair(InPlaceSecond, U1&& first, Arg&& arg) : first(forward<U1>(first)), second(forward<Arg>(arg)) {}
+  template<typename U1, typename Arg1, typename Arg2, typename... Args>
+  Pair(InPlaceSecond, U1&& first, Arg1&& arg1, Arg2&& arg2, Args&&... args)
+    : first(forward<U1>(first)), second(forward<Arg1>(arg1), forward<Arg2>(arg2), forward<Args>(args)...)
   {
   }
 

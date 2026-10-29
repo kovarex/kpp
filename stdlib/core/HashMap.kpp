@@ -487,7 +487,7 @@ struct HashMap
     }
     if (found)
       return this->table.entryAt(slot)->second;
-    return this->table.emplaceAt(slot, hash, key, V())->second;
+    return this->table.emplaceAt(slot, hash, inPlaceSecond, key)->second;
   }
   // The value of key's entry; throws OutOfRange when there is none.
   V& at(const K& key)
@@ -537,7 +537,7 @@ struct HashMap
   }
   template<typename... Args>
   Pair<HashIterator<Pair<K, V>, stable>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
-  // Builds the value from the arguments only when the key is new.
+  // Builds the value from the arguments, in its entry, only when the key is new.
   template<typename... Args>
   Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(const K& key, Args&&... args)
   {
@@ -551,11 +551,11 @@ struct HashMap
       K copy(key);
       this->table.grow();
       slot = this->table.place(copy, hash, found);
-      this->table.emplaceAt(slot, hash, copy, V(forward<Args>(args)...));
+      this->table.emplaceAt(slot, hash, inPlaceSecond, move(copy), forward<Args>(args)...);
       return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), true);
     }
     if (!found)
-      this->table.emplaceAt(slot, hash, key, V(forward<Args>(args)...));
+      this->table.emplaceAt(slot, hash, inPlaceSecond, key, forward<Args>(args)...);
     return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
   }
   // Inserts, or assigns value to the existing entry.

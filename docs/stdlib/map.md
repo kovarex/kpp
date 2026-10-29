@@ -47,15 +47,19 @@ O(n). `count` in a multi container: O(log n + number found).
   comparator, `count` of a unique container can exceed 1 when several keys are equivalent to the
   argument.
 - `operator[](key)`: a reference to the value of key's entry, inserting `Pair(key, V())` first when
-  there is none. Map only.
+  there is none, its value value-initialized in the new node. Map only.
 - `at(key)`: the value of key's entry; throws OutOfRange when there is none. Map only.
 - `insert(entry)`: inserts when no equivalent key is present (an existing entry is left alone,
   including its value). Returns `Pair<iterator, bool>`: the entry with the key and whether it was
   inserted. In a multi container it always inserts (after the equivalent keys) and returns the
   iterator. The entry may be passed as an rvalue to be moved in.
-- `emplace(args...)`: builds an entry from the arguments, then as insert.
-- `try_emplace(key, args...)`: when key is absent, inserts `Pair(key, V(args...))`; when present,
-  does not touch the arguments. Returns `Pair<iterator, bool>`. Map only.
+- `emplace(args...)`: constructs an entry from the arguments, then as insert (the entry is not
+  copied or moved: when its key is present, it is destroyed).
+- `try_emplace(key, args...)`: when key is absent, inserts an entry of key and the value
+  constructed from the arguments, `V(args...)`, in the new node; when present, does not touch the
+  arguments. Returns `Pair<iterator, bool>`. Map only. Like operator[] and emplace, it neither
+  copies nor moves the value, so V needs no copy or move constructor for them (`Map<Path, File>`
+  with File's move constructor deleted).
 - `erase(key)`: removes the entry (in a multi container all entries) with an equivalent key;
   returns how many were removed. `key` may refer to an entry of this container.
 - `erase(position)`: removes that entry, returns an iterator to the next one. `erase(first,

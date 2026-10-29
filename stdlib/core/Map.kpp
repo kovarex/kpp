@@ -498,9 +498,12 @@ struct RbTree
   }
 
   // Adds entry after any entries with an equal key and returns where it went.
-  RbIterator<E> insertEqual(E&& entry)
+  RbIterator<E> insertEqual(E&& entry) { return this->emplaceEqual(move(entry)); }
+  // The same with the entry constructed in its node from the arguments.
+  template<typename... Args>
+  RbIterator<E> emplaceEqual(Args&&... args)
   {
-    RbNode<E>* node = this->newNode(move(entry));
+    RbNode<E>* node = this->newNode(forward<Args>(args)...);
     RbNodeBase* parent;
     bool asLeft;
     this->equalPosition(RbTree::keyOf(node), parent, asLeft);
@@ -546,10 +549,11 @@ struct RbTree
     asLeft = true;
     return true;
   }
-  RbNode<E>* newNode(E&& entry)
+  template<typename... Args>
+  RbNode<E>* newNode(Args&&... args)
   {
     RbNode<E>* node = (RbNode<E>*)malloc(sizeof(RbNode<E>));
-    new (&node->entry) E(move(entry));
+    new (&node->entry) E(forward<Args>(args)...);
     return node;
   }
   RbIterator<E> link(RbNode<E>* node, RbNodeBase* parent, bool asLeft)
@@ -832,7 +836,7 @@ struct Map
     RbIterator<Pair<K, V>> at = this->tree.lowerBound(key);
     if (at != this->tree.end() && !this->tree.compare(key, at->first))
       return at->second;
-    return this->tree.insertEqual(Pair<K, V>(key, V()))->second;
+    return this->tree.emplaceEqual(inPlaceSecond, key)->second;
   }
   // The value of key's entry; throws OutOfRange when there is none.
   V& at(const K& key)
@@ -867,14 +871,14 @@ struct Map
   // std::map::emplace: the entry built from the arguments, unless its key is there already.
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> emplace(Args&&... args) { return this->insert(Pair<K, V>(forward<Args>(args)...)); }
-  // std::map::try_emplace: builds the value from the arguments only when the key is new.
+  // std::map::try_emplace: builds the value from the arguments, in its node, only when the key is new.
   template<typename... Args>
   Pair<RbIterator<Pair<K, V>>, bool> try_emplace(const K& key, Args&&... args)
   {
     RbIterator<Pair<K, V>> at = this->tree.find(key);
     if (at != this->tree.end())
       return Pair<RbIterator<Pair<K, V>>, bool>(at, false);
-    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.insertEqual(Pair<K, V>(key, V(forward<Args>(args)...))), true);
+    return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(inPlaceSecond, key, forward<Args>(args)...), true);
   }
   // Kpp's shorthand: true when the key was new.
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }

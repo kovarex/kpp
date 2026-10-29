@@ -1,0 +1,37 @@
+// spec: Map and HashMap (std::map, std::unordered_map) construct the value of operator[] and try_emplace in its entry, so a value that can be neither copied nor moved works (const or not); try_emplace leaves its arguments alone when the key is there, and a HashMap that grows keeps every entry
+// factorio: TransferSource's std::map<Filesystem::Path, File> (File's move constructor deleted) filled with files[path]; GraphicsInterfaceOpenGL's std::unordered_map<std::string, const ShaderOpenGL> (neither copyable nor movable) filled with try_emplace(name, path, type, throwOnError)
+struct Shader
+{
+  int id = 0;
+  int kind = 0;
+  Shader(int id, int kind) : id(id), kind(kind) {}
+  Shader(const Shader&) = delete;
+  Shader(Shader&&) = delete;
+};
+struct File
+{
+  int refCount = 0;
+  File() = default;
+  File(File&&) = delete;
+};
+int main()
+{
+  HashMap<String, const Shader> shaders;
+  for (int i = 0; i < 100; ++i)
+    shaders.try_emplace(toString(i), i, i * 2);
+  bool added = shaders.try_emplace(String("7"), 0, 0).second;
+  const Shader& seven = shaders.find(String("7"))->second;
+  HashMap<int, File> open;
+  open[1].refCount = 4;
+  Map<int, File> files;
+  files[3].refCount += 2;
+  files[3].refCount += 1;
+  Map<int, const Shader> byId;
+  byId.try_emplace(5, 50, 1);
+  HashMap<int, const UniquePtr<int>> owned;
+  owned.try_emplace(1, new int(5));
+  UniquePtr<int> spare(new int(7));
+  bool replaced = owned.try_emplace(1, move(spare)).second;
+  println("{} {} {} {} {} {} {} {} {}", shaders.size(), added, seven.id, seven.kind, open[1].refCount, files[3].refCount, byId.find(5)->second.id, *owned.find(1)->second, replaced ? 0 : *spare);
+  return 0;
+}

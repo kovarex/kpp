@@ -44,11 +44,14 @@ O(n), amortized O(1) per insert.
 - `size()`, `empty()`, `begin()`, `end()` (forward iterators; `*it` is the entry; its key must not
   be changed).
 - `find(key)`: an iterator to the entry, or `end()`. `contains(key)`, `count(key)` (0 or 1).
-- `operator[](key)`: the value for key, inserting `Pair(key, V())` first when absent.
+- `operator[](key)`: the value for key, inserting `Pair(key, V())` first when absent (the value
+  value-initialized in its entry).
 - `at(key)`: the value; throws OutOfRange when absent.
 - `insert(entry)`: inserts when the key is absent; an existing entry is left alone, including its
   value. Returns `Pair<iterator, bool>` (the entry with the key, whether it was inserted).
-- `emplace(args...)`, `try_emplace(key, args...)`: as for Map.
+- `emplace(args...)`, `try_emplace(key, args...)`: as for Map. As there, operator[], emplace and
+  try_emplace construct the value in its entry and need no copy or move constructor of V
+  (FastHashMap moves its entries when it grows, so there V needs a move constructor all the same).
 - `insert_or_assign(key, value)`: inserts, or assigns the value of the existing entry.
 - `erase(key)`: returns the number removed (0 or 1); `erase(position)`: returns the next position.
 - `insert(hint, entry)`, `emplace_hint(hint, args...)`: as insert and emplace, returning the

@@ -652,7 +652,7 @@ struct FastMap
     BTreeIterator<Pair<K, V>> at = this->tree.find(key);
     if (at != this->tree.end())
       return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
-    return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(Pair<K, V>(key, V(forward<Args>(args)...))), true);
+    return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(Pair<K, V>(key, RemoveConst<V>(forward<Args>(args)...))), true);
   }
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
   // The number of entries removed (0 or 1). The key is copied first: it may be one of this
