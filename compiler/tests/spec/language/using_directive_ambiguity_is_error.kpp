@@ -1,0 +1,18 @@
+// spec: a using-directive makes its namespace's names visible as if declared in the nearest namespace enclosing both the directive and the namespace (here the global one): an unqualified name a global class and the nominated namespace's class both have is ambiguous, an error, as in C++
+// factorio: `using namespace` of a namespace with its own `Set` beside the stdlib's global `Set`: the game's line took the namespace's silently; the converter writes `::Set` there now
+// error: using_directive_ambiguity_is_error.kpp:12: error: 'Bag' is ambiguous
+namespace Lib
+{
+  class Bag { public: int v = 1; };
+}
+class Bag { public: int v = 2; };
+namespace Game
+{
+  using namespace Lib;
+  int f() { Bag b; return b.v; }
+}
+int main()
+{
+  println("{}", Game::f());
+  return 0;
+}

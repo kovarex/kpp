@@ -1,0 +1,24 @@
+// spec: a using-directive's names are visible at the nearest namespace enclosing both the directive and the nominated namespace: a namespace's own declaration of the name between them hides them, and functions of the name at that level and in the nominated namespace are one overload set
+namespace Lib
+{
+  class Bag { public: int v = 1; };
+  int pick(int) { return 10; }
+}
+class Bag { public: int v = 2; };
+int pick(double) { return 20; }
+namespace Game
+{
+  class Bag { public: int v = 3; };
+  using namespace Lib;
+  int a() { Bag b; return b.v; }
+}
+namespace Other
+{
+  using namespace Lib;
+  int c() { return pick(1) + pick(1.5); }
+}
+int main()
+{
+  println("{} {}", Game::a(), Other::c());
+  return 0;
+}

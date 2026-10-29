@@ -418,6 +418,7 @@ namespace
     Scope* scope = nullptr;                        // Scope opened by decl, if any.
     const std::vector<Entry>* overloads = nullptr; // All entries with that name in the scope where it was found.
     Scope* foundIn = nullptr;                      // Scope the name was found in.
+    Decl* ambiguousWith = nullptr; // another entity the name equally names (through a using-directive): an error
   };
 
   // Template parameter -> type, for members seen through an instantiation like Vector<int>.
@@ -2083,6 +2084,7 @@ struct GlobalScope::Impl
     // A function's `using namespace Helpers;` makes Helpers' names visible as if declared in the
     // nearest enclosing namespace: tried where the search first reaches a namespace.
     bool usingsTried = !locals;
+    std::vector<std::pair<Scope*, Scope*>> nominated; // (the namespace their names are visible in, the nominated namespace)
     for (Scope* s = context; s; s = s->parent)
     {
       if (!usingsTried && s->kind == ScopeKind::Namespace)
@@ -2094,15 +2096,84 @@ struct GlobalScope::Impl
           // Functions of the name in both places are one overload set (`twice(x)` with
           // ::twice(double) and Helpers::twice(int)).
           if (lookupInScope(s, symbol, out, depth) && found(out))
-            return mergeOverloads(out, viaUsing);
+            return sameNameTogether(out, viaUsing);
           return viaUsing;
         }
       }
-      if (lookupInScope(s, symbol, out, depth) && found(out))
-        return out;
+      if (s->kind != ScopeKind::Namespace)
+      {
+        if (lookupInScope(s, symbol, out, depth) && found(out))
+          return out;
+        continue;
+      }
+      // A namespace's using-directive makes the nominated namespace's names visible as if declared
+      // in the nearest namespace enclosing both ([namespace.udir]): found there, beside its own
+      // names (a name both declare is ambiguous, functions of it are one overload set), and hidden
+      // by what the namespaces in between declare.
+      if (!s->usingDirectives.empty())
+      {
+        ensureUsing(s, depth);
+        for (Scope* u : s->usingScopes)
+          nominated.push_back({enclosingBoth(s, u), u});
+      }
+      Lookup own;
+      bool ownFound = lookupInScope(s, symbol, own, depth, false) && found(own);
+      Lookup via;
+      bool viaFound = false;
+      for (auto& [at, u] : nominated)
+      {
+        Lookup one;
+        if (at != s || !lookupInScope(u, symbol, one, depth + 1) || !found(one))
+          continue;
+        via = viaFound ? sameNameTogether(via, one) : one;
+        viaFound = true;
+      }
+      if (ownFound && viaFound)
+        return sameNameTogether(own, via);
+      if (ownFound)
+        return own;
+      if (viaFound)
+        return via;
     }
     if (!usingsTried && lookupInLocalUsings(symbol, *locals, out, depth) && found(out))
       return out;
+    return out;
+  }
+
+  // The nearest namespace enclosing both a and b (the global one at worst).
+  static Scope* enclosingBoth(Scope* a, Scope* b)
+  {
+    for (Scope* x = a; x; x = x->parent)
+      if (x->kind == ScopeKind::Namespace)
+        for (Scope* y = b; y; y = y->parent)
+          if (y == x)
+            return x;
+    Scope* root = a;
+    while (root && root->parent)
+      root = root->parent;
+    return root;
+  }
+
+  // One name found twice at one level (a namespace's own declaration and a using-directive's, or
+  // two directives'): the same entity, or functions (one overload set), or ambiguous.
+  Lookup sameNameTogether(const Lookup& a, const Lookup& b)
+  {
+    if (a.decl == b.decl || (a.scope && a.scope == b.scope))
+      return a;
+    auto onlyFunctions = [](const Lookup& l)
+    {
+      if (!l.decl || l.decl->kind != NodeKind::FunctionDecl)
+        return false;
+      if (l.overloads)
+        for (const Entry& e : *l.overloads)
+          if (!e.decl || e.decl->kind != NodeKind::FunctionDecl)
+            return false;
+      return true;
+    };
+    if (onlyFunctions(a) && onlyFunctions(b))
+      return mergeOverloads(a, b);
+    Lookup out = a;
+    out.ambiguousWith = b.decl;
     return out;
   }
 
@@ -13966,11 +14037,23 @@ struct GlobalScope::Impl
 
     // --- names ---
 
+    // A name two entities answer equally (a namespace's class and a using-directive's): an error,
+    // as in C++, where the first was taken silently.
+    void reportAmbiguity(const Lookup& l, const QualifiedName& name, uint32_t token)
+    {
+      if (!l.ambiguousWith || !l.decl || !file || name.parts.size() != 1)
+        return;
+      std::string spelled(impl.symbols.name(name.parts[0].symbol));
+      impl.reportCheckerError(file, token, "'" + spelled + "' is ambiguous: the one declared at " + impl.locationOf(l.decl->file, l.decl->token) + " and the one at " +
+                                               impl.locationOf(l.ambiguousWith->file, l.ambiguousWith->token) + " (a using-directive puts both at one level)");
+    }
+
     void resolveTypeName(NamedType* t)
     {
       if (t->name.empty())
         return;
       Lookup l = impl.lookupQualified(t->name, scope, &locals, 0, activeSubst);
+      reportAmbiguity(l, t->name, t->token);
       t->resolved = l.decl;
       if (l.found == Found::No)
       {
@@ -14232,6 +14315,7 @@ struct GlobalScope::Impl
         return types.boolType();
       }
       Lookup l = impl.lookupQualified(e->name, scope, &locals, 0, activeSubst);
+      reportAmbiguity(l, e->name, e->token);
       e->resolved = l.decl;
       for (const NamePart& part : e->name.parts)
         for (Node* arg : part.templateArgs)
