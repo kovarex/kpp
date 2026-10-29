@@ -168,6 +168,10 @@ public:
   // functions it never emitted (all of them, when no code is generated).
   void functionEmitted(const FunctionDecl* f);
   size_t unusedFailedAsserts();
+  // The first part of checkerErrors: the static_asserts of the class template instances named so
+  // far. The code generator runs it once its functions are emitted (they name instances of their
+  // own), before it checks the asserts on layouts.
+  void checkInstanceStaticAsserts();
   // The static_asserts whose condition needs a class's size or alignment, which only the code
   // generator's layout knows: each with the arguments of the instance it is in (none outside
   // templates) and that instance for messages. The checker leaves them to the code generator.
@@ -225,6 +229,9 @@ public:
   // written there and copied onto the definition); null when there is none.
   FunctionDecl* declarationOf(FunctionDecl* def);
   std::string qualifiedName(Decl* d);            // `ns::Class::name`
+  // The name a type name declared nowhere was written with, for the placeholder class the resolver
+  // gives it (a draft, ATTR_Draft) so that checking goes on; "?" for any other declaration.
+  std::string draftName(const Decl* d);
   bool isExternC(FunctionDecl* f);
   bool isTemplateContext(Decl* d);               // Inside a template (any enclosing declaration has parameters).
   // Instantiation queries, single-threaded (code generation):

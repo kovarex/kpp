@@ -404,16 +404,19 @@ namespace
     struct Unsupported
     {
     };
-    std::string lastUnsupported; // what the last unsupported() reported (a failed layout keeps it for its other uses)
-    [[noreturn]] void unsupported(Node* at, const std::string& what)
+    std::string lastFailure; // the message of the last fail(), without its place (a failed layout or global repeats it at every use)
+    // An error that abandons what is being emitted (the function, layout or global it is in).
+    [[noreturn]] void fail(Node* at, const std::string& message)
     {
       std::string where;
       if (!currentFunctionName.empty())
         where = " (in " + currentFunctionName + (currentRequestedBy.empty() ? "" : ", requested by " + currentRequestedBy) + ")";
-      lastUnsupported = what;
-      error(at, "codegen does not support " + what + " yet" + where);
+      lastFailure = message;
+      error(at, message + where);
       throw Unsupported{};
     }
+    // A construct the code generator cannot translate yet.
+    [[noreturn]] void unsupported(Node* at, const std::string& what) { fail(at, "codegen does not support " + what + " yet"); }
 
     // --- names and types ---
 
@@ -615,10 +618,10 @@ namespace
             // (its own report came from inside the layout, wherever that was), so that the lines
             // do not depend on which use comes first.
             structs[key].failed = true;
-            structs[key].failedWhy = lastUnsupported;
+            structs[key].failedWhy = lastFailure;
             layoutCache.emplace(classTy, &structs[key]);
             errors.resize(errorsBefore);
-            unsupported(at, structs[key].failedWhy);
+            fail(at, structs[key].failedWhy);
           }
         }
       }
@@ -632,8 +635,18 @@ namespace
     StructInfo& checkedLayout(StructInfo& info, const Ty* classTy, Node* at)
     {
       if (info.failed)
-        unsupported(at, info.failedWhy.empty() ? "the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed" : info.failedWhy);
+        fail(at, info.failedWhy.empty() ? "codegen does not support the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed yet" : info.failedWhy);
       return info;
+    }
+
+    // The placeholder class of a type name declared nowhere (a draft) that a value of type t is or
+    // holds by value (through arrays), or null.
+    static const Ty* draftHeld(const Ty* t)
+    {
+      for (; t; t = t->kind == TyKind::Array ? t->inner : nullptr)
+        if (t->kind == TyKind::Class && t->decl && (t->decl->attributes & ATTR_Draft))
+          return t;
+      return nullptr;
     }
 
     // Lays out a class: bases first, then its data members; every member and base must be known
@@ -656,6 +669,14 @@ namespace
             written += ch == '\t' ? ' ' : ch;
         return name + " (`" + written + "`)";
       };
+      // A type name declared nowhere is the resolver's placeholder class (a draft, so that checking
+      // goes on): an error wherever a layout needs it, never an empty class that compiles.
+      if (c->attributes & ATTR_Draft)
+        fail(at, "error: the type '" + global.draftName(c) + "' is not declared");
+      auto undeclared = [&](const std::string& what, const Ty* draft)
+      {
+        fail(at, "error: the layout of " + types.toString(key, &symbols) + ": " + what + " names '" + global.draftName(draft->decl) + "', which is not declared");
+      };
       TemplateArgs args = global.classArgsOf(key);
       if (c->keyword == Kw::union_)
       {
@@ -677,6 +698,8 @@ namespace
           info.fieldDecls.push_back(m);
           if (!ft || !ft->isKnown() || types.isDependent(ft))
             layoutError("the member " + memberName(m) + " has an unknown type");
+          if (const Ty* draft = draftHeld(ft))
+            undeclared("the member " + memberName(m), draft);
           if (m->kind == NodeKind::ClassDecl)
             info.anonymous.push_back({m, 0});
           size = std::max(size, sizeOf(ft, at));
@@ -697,6 +720,8 @@ namespace
         const Ty* bt = global.typeOfAstIn(b.type, c, args);
         if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
           layoutError("a base class whose type is unknown (" + (bt ? types.toString(bt, &symbols) : std::string("?")) + ")");
+        if (const Ty* draft = draftHeld(bt))
+          undeclared("a base class", draft);
         const Ty* baseKey = canonicalClass(bt, at);
         structFor(baseKey, at);
         baseKeys.push_back(baseKey);
@@ -782,6 +807,8 @@ namespace
         const Ty* ft = global.typeOfDeclIn(m, args);
         if (!ft || !ft->isKnown() || types.isDependent(ft))
           layoutError("the member " + memberName(m) + " has an unknown type");
+        if (const Ty* draft = draftHeld(ft))
+          undeclared("the member " + memberName(m), draft);
         // A lambda held by value (FunctionImpl<F>'s `F f`): its closure must be laid out, by the
         // function the lambda is written in, before a class can contain it.
         for (const Ty* held = types.unqualified(ft); held; held = held->kind == TyKind::Array ? types.unqualified(held->inner) : nullptr)
@@ -5774,7 +5801,7 @@ namespace
         auto lock = sharedLock(); // a global is defined (and its startup function emitted) once
         std::pair<Decl*, const Ty*> key{v, classTy};
         if (auto failed = sh.failedGlobals.find(key); failed != sh.failedGlobals.end())
-          unsupported(at, failed->second);
+          fail(at, failed->second);
         size_t errorsBefore = errors.size();
         try
         {
@@ -5784,10 +5811,10 @@ namespace
         {
           // Every use, the first one like the others, reports the global unusable and why (the
           // same lines whichever use comes first).
-          std::string why = "a use of the global " + qualifiedName(v) + ", whose definition failed (" + lastUnsupported + ")";
+          std::string why = "a use of the global " + qualifiedName(v) + ", whose definition failed (" + lastFailure + ")";
           sh.failedGlobals[key] = why;
           errors.resize(errorsBefore);
-          unsupported(at, why);
+          fail(at, why);
         }
       }
       globalCache.emplace(std::pair<Decl*, const Ty*>{v, classTy}, name);
@@ -10231,6 +10258,41 @@ namespace
       currentClassTy = nullptr;
     }
 
+    // A static_assert the checker left to the layouts (`static_assert(sizeof(Pair) == 16)`): its
+    // condition under the instance's arguments, with sizes and alignments as laid out. A false one is
+    // the checker's error ("static assertion failed"); a layout that fails reports itself.
+    void checkLayoutAssert(const GlobalScope::LayoutStaticAssert& a)
+    {
+      StaticAssertDecl* s = a.decl;
+      if (!s || !s->cond)
+        return;
+      ArgsScope scope(*this, &a.args);
+      ConstContextScope context(*this, s);
+      currentFile = s->file;
+      currentFunctionName.clear();
+      currentRequestedBy.clear();
+      std::optional<int64_t> v;
+      try
+      {
+        v = evalConst(s->cond);
+      }
+      catch (Unsupported&)
+      {
+        return;
+      }
+      if (v && *v)
+        return;
+      std::string message = v ? "static assertion failed" : "static assertion whose condition the compiler cannot evaluate yet";
+      if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
+      {
+        const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];
+        message += ": " + std::string(s->file->text.substr(t.offset, t.length));
+      }
+      if (v && !a.instance.empty())
+        message += " (in " + a.instance + ")";
+      error(s, "error: " + message);
+    }
+
     // Out-of-line member definitions (`void Text::split(...) {}`, `Flow::~Flow() = default;`, those
     // of class templates too) take `static`, `virtual` and `= default` from their declarations, and
     // the declarations `= default` from them, before any function is emitted: emitters on several
@@ -10462,8 +10524,28 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   };
   std::atomic<bool> outOfMemory{false};
   size_t emitted = 0;
-  while (!level.empty() && !outOfMemory)
+  size_t layoutAssertsChecked = 0;
+  while (!outOfMemory)
   {
+    if (level.empty())
+    {
+      // Everything is emitted: the static_asserts on a class's size or alignment, which the
+      // checker leaves to the layouts; those of class template instances once the functions
+      // that name the instances are emitted. A layout they build can ask for functions (its
+      // vtable's), which go on.
+      global.checkInstanceStaticAsserts();
+      std::vector<GlobalScope::LayoutStaticAssert> asserts = global.layoutStaticAsserts();
+      if (asserts.size() == layoutAssertsChecked)
+        break;
+      for (size_t i = layoutAssertsChecked; i < asserts.size(); ++i)
+        e.checkLayoutAssert(asserts[i]);
+      layoutAssertsChecked = asserts.size();
+      for (Instantiation& item : e.worklist)
+        level.push_back(std::move(item));
+      e.worklist.clear();
+      std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
+      continue;
+    }
     std::atomic<size_t> next{0};
     auto work = [&](unsigned i) {
       try

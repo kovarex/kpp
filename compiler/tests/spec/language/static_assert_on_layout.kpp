@@ -1,0 +1,27 @@
+// spec: a static_assert on a class's size or alignment is decided by the layout the code generator gives the class (padding and bit fields included): a true one compiles, a false one is a compile error with its message, and with its instance in a class template
+// factorio: 470 uses in 237 files
+// error: static_assert_on_layout.kpp:13: error: static assertion failed: "a pair of ints is 16 bytes"
+// error: static_assert_on_layout.kpp:19: error: static assertion failed: "no padding after the first member" (in Wide<char>)
+struct Couple { int a; int b; };
+struct Padded { char c; double d; };
+struct Bits { u32 x : 3; u32 y : 5; };
+struct Mixed { int a; u32 x : 3; u32 y : 5; };
+static_assert(sizeof(Couple) == 8, "two ints");
+static_assert(alignof(Padded) == 8 && sizeof(Padded) == 16, "padded to the double");
+static_assert(sizeof(Bits) == 4, "two bit fields share one unit");
+static_assert(sizeof(Mixed) == 8, "an int and a unit of bit fields");
+static_assert(sizeof(Couple) == 16, "a pair of ints is 16 bytes");
+template<class T>
+struct Wide
+{
+  T a;
+  int32_t b;
+  static_assert(sizeof(Wide) == sizeof(T) + 4, "no padding after the first member");
+};
+int main()
+{
+  Wide<int32_t> w{1, 2};
+  Wide<char> n{'x', 3};
+  println("{} {} {}", sizeof(Bits), w.b, n.b);
+  return 0;
+}

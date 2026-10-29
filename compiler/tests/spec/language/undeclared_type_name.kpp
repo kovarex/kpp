@@ -1,0 +1,39 @@
+// spec: a type name declared nowhere is a compile error where the program needs the type's layout (a member, a base, a local, a sizeof), never an empty class that compiles
+// error: undeclared_type_name.kpp:17: error: the layout of Settings: the member first (`Missing first`) names 'Missing', which is not declared (in @"settings()")
+// error: undeclared_type_name.kpp:23: error: the layout of Derived: a base class names 'Unknown', which is not declared (in @"derived()")
+// error: undeclared_type_name.kpp:28: error: the type 'Undeclared' is not declared (in @"local()")
+// error: undeclared_type_name.kpp:33: error: the type 'Nowhere' is not declared (in @"size()")
+struct Settings
+{
+  Missing first;
+  int count;
+};
+struct Derived : Unknown
+{
+  int value;
+};
+int settings()
+{
+  Settings s;
+  s.count = 2;
+  return s.count;
+}
+int derived()
+{
+  Derived d;
+  return 1;
+}
+int local()
+{
+  Undeclared u;
+  return 2;
+}
+size_t size()
+{
+  return sizeof(Nowhere);
+}
+int main()
+{
+  println("{} {} {} {}", settings(), derived(), local(), size());
+  return 0;
+}

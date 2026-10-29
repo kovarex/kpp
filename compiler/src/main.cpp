@@ -491,7 +491,8 @@ namespace
   }
 
   // The errors the checker found itself (a static_assert that fails or cannot be evaluated).
-  void reportCheckerErrors(GlobalScope& global)
+  // laidOut: codegen ran and checked the asserts on sizes and alignments (its errors).
+  void reportCheckerErrors(GlobalScope& global, bool laidOut = false)
   {
     for (const std::string& e : global.checkerErrors())
     {
@@ -499,7 +500,9 @@ namespace
       codegenExit = 1;
     }
     if (size_t waiting = global.layoutStaticAsserts().size())
-      report("static_assert: %zu on a class's size or alignment, left to the code generator's layout\n", waiting);
+      report(laidOut ? "static_assert: %zu on a class's size or alignment, checked with codegen's layouts\n"
+                     : "static_assert: %zu on a class's size or alignment, left to the code generator's layout\n",
+             waiting);
     if (size_t unused = global.unusedFailedAsserts())
       report("static_assert: %zu failed in template instances' functions never emitted (unused, so not errors, as in C++)\n", unused);
   }
@@ -525,7 +528,7 @@ namespace
       fprintf(stderr, "%s\n", e.c_str());
     if (!cg.errors.empty())
       codegenExit = 1;
-    reportCheckerErrors(global);
+    reportCheckerErrors(global, true);
     auto writeFile = [&](const std::string& path, const std::string& text)
     {
       FILE* out = fopen(path.c_str(), "wb");

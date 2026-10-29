@@ -10234,7 +10234,7 @@ std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
   return out;
 }
 
-std::vector<std::string> GlobalScope::checkerErrors()
+void GlobalScope::checkInstanceStaticAsserts()
 {
   // The static_asserts in the bodies of class templates, once per instance the program names (a
   // template's own walk leaves them to its instances).
@@ -10242,6 +10242,10 @@ std::vector<std::string> GlobalScope::checkerErrors()
   {
     if (!cls->decl || cls->decl->kind != NodeKind::ClassDecl || cls->isConst || cls->isVolatile || !cls->isKnown() ||
         impl->types.isDependent(cls) || Impl::mentionsUnknown(cls))
+      continue;
+    // The primary's arguments that pick a specialisation (`Atomic<SharedPtr<Config>>`) instantiate
+    // the specialisation's body, not the primary's: its own instance is walked by itself.
+    if (impl->resolveSpecialization(cls, 0) != cls)
       continue;
     auto* c = static_cast<ClassDecl*>(cls->decl);
     Subst subst = impl->substFor(cls);
@@ -10254,6 +10258,11 @@ std::vector<std::string> GlobalScope::checkerErrors()
       if (m->kind == NodeKind::StaticAssertDecl)
         impl->checkStaticAssert(static_cast<StaticAssertDecl*>(m), ctx, impl->types.toString(cls, &impl->symbols));
   }
+}
+
+std::vector<std::string> GlobalScope::checkerErrors()
+{
+  checkInstanceStaticAsserts();
   // By file, then line number, then text.
   auto key = [](const std::string& e)
   {
@@ -10634,6 +10643,13 @@ Decl* GlobalScope::definitionOf(Decl* d)
     return f;
   }
   return d;
+}
+
+std::string GlobalScope::draftName(const Decl* d)
+{
+  if (!d || !(d->attributes & ATTR_Draft) || !d->ownScope || d->ownScope->name == UINT32_MAX)
+    return "?";
+  return std::string(impl->symbols.name(d->ownScope->name));
 }
 
 std::string GlobalScope::qualifiedName(Decl* d)
