@@ -266,7 +266,7 @@ namespace
   const std::map<std::string, std::string> stdNames = {
     {"string", "String"}, {"string_view", "StringView"}, {"wstring", "WString"}, {"vector", "Vector"}, {"pair", "Pair"},
     {"optional", "Optional"}, {"map", "Map"}, {"set", "Set"}, {"unordered_map", "HashMap"}, {"unordered_set", "HashSet"},
-    {"deque", "Deque"}, {"list", "List"}, {"array", "Array"}, {"span", "Span"}, {"unique_ptr", "UniquePtr"}, {"default_delete", "DefaultDelete"}, {"queue", "Queue"},
+    {"deque", "Deque"}, {"list", "List"}, {"array", "Array"}, {"span", "Span"}, {"dynamic_extent", "dynamicExtent"}, {"unique_ptr", "UniquePtr"}, {"default_delete", "DefaultDelete"}, {"queue", "Queue"},
     {"replace", "replace"}, {"advance", "advance"}, {"make_optional", "makeOptional"}, {"clock", "::clock"}, {"abort", "::abort"},
     {"shared_ptr", "SharedPtr"}, {"weak_ptr", "WeakPtr"}, {"function", "Function"}, {"tuple", "Tuple"}, {"variant", "Variant"},
     {"initializer_list", "InitializerList"}, {"numeric_limits", "Limits"}, {"runtime_error", "RuntimeError"},
@@ -2798,14 +2798,19 @@ namespace
             if (!c->isDefinition)
             {
               Decl* def = global.definitionOf(c);
-              if (namespaceScope && opaqueKept && (!def || def == c) && opaqueKept->insert(global.qualifiedName(c)).second)
+              // A class template whose primary is only declared, defined through its partial
+              // specializations (`template<typename...> struct IndexInTemplateList;`): the
+              // declaration is the primary template, which the specializations need.
+              bool specializedOnly = def && def != c && def->kind == NodeKind::ClassDecl && !c->templateParams.empty() &&
+                                     !static_cast<ClassDecl*>(def)->name.empty() && static_cast<ClassDecl*>(def)->name.last().hasTemplateArgs;
+              if (namespaceScope && opaqueKept && (!def || def == c || specializedOnly) && opaqueKept->insert(global.qualifiedName(c)).second)
               {
                 // No definition anywhere (`namespace TaskBar { class Interface; }`, used only through
                 // pointers; the tags only template arguments name, `class ElectricityTag;`): the
                 // declaration is the class, an opaque type; kept once in the program. At global scope
                 // the name may also be a C library's type (SDL_Cursor, which the C import defines too)
                 // or a class a macro defines (BITFIELD): a declaration next to a definition is fine.
-                counts.add("declarations of classes defined nowhere kept");
+                counts.add(specializedOnly ? "primary templates only specialized kept" : "declarations of classes defined nowhere kept");
               }
               else if (namespaceScope)
               {
