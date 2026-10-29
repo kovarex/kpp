@@ -1,0 +1,30 @@
+// spec: a lambda an `auto` member function returns (init-captures of the object's state) is called by other functions, also ones emitted before the function that writes it: its call operator is emitted from the lambda by whichever needs it first
+// found in the converted game: RenderParameters::getScreenPositionFunction and getVectorScreenPositionFunction, whose callers name the lambda type of the function's typed copy, so its call operator was never emitted (unresolved externals with no error)
+struct Position { int x, y; };
+class Parameters
+{
+public:
+  int shift = 3;
+  int scale = 2;
+  auto screenPositionFunction() const
+  {
+    return [shift = this->shift, scale = this->scale](Position p) { return Position{p.x * scale - shift, p.y * scale - shift}; };
+  }
+};
+int drawFirst(const Parameters& parameters)
+{
+  auto toScreen = parameters.screenPositionFunction();
+  Position p = toScreen(Position{5, 7});
+  return p.x * 100 + p.y;
+}
+int drawSecond(const Parameters& parameters)
+{
+  auto toScreen = parameters.screenPositionFunction();
+  return toScreen(Position{1, 1}).x;
+}
+int main()
+{
+  Parameters parameters;
+  println("{} {}", drawFirst(parameters), drawSecond(parameters));
+  return 0;
+}

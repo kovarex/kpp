@@ -4245,6 +4245,41 @@ namespace
       currentFile = savedFile;
     }
 
+    // The call operator of a (non-generic) lambda a call needs, emitted from the lambda's AST by
+    // whoever needs it first when its writer has not (a lambda a function returns, whose caller may
+    // be emitted before it; a private copy's lambda type the writer never makes: the callers of
+    // RenderParameters::getScreenPositionFunction). Only for a lambda written outside templates:
+    // an instance's arguments, which its body may need, are known to its writer alone.
+    void emitCallOperatorOnDemand(const Ty* t, const Ty* callTy, const std::string& name)
+    {
+      LambdaExpr* l = lambdaOf(t);
+      if (!l || !l->closure)
+        return;
+      Decl* writer = l->closure->parent;
+      while (writer && writer->kind != NodeKind::FunctionDecl)
+      {
+        if (!writer->templateParams.empty())
+          return;
+        writer = writer->parent;
+      }
+      if (!writer || !writer->templateParams.empty())
+        return;
+      Decl* owner = global.owningClass(writer);
+      for (Decl* o = owner; o; o = o->parent)
+        if (!o->templateParams.empty() || (o->kind == NodeKind::FunctionDecl && o != writer))
+          return; // a member of a class template, or of a local class (inside a function that may be one)
+      {
+        auto lock = sharedLock();
+        if (!sh.closuresEmitted.insert(t).second)
+          return;
+        ClosureInfo& shared = closures[types.unqualified(t)];
+        if (!shared.enclosingClass && owner && owner->kind == NodeKind::ClassDecl)
+          shared.enclosingClass = types.classType(owner, {}); // what `this` in the body points to
+      }
+      TemplateArgs none;
+      emitLambda(l, t, callTy, name, &none);
+    }
+
     // A lambda without captures used as a pointer to function: a function with the pointer's
     // signature that calls the lambda's operator with no closure (nothing is captured), defined
     // once per lambda.
@@ -4332,8 +4367,11 @@ namespace
       else
       {
         // Emitted with the function the lambda is written in: checked once generation is done.
-        auto lock = sharedLock();
-        sh.closureCalls.emplace(functionName, t);
+        {
+          auto lock = sharedLock();
+          sh.closureCalls.emplace(functionName, t);
+        }
+        emitCallOperatorOnDemand(t, callTy, functionName);
       }
       const Ty* ret = callTy->inner ? callTy->inner : types.voidType();
       std::string argText = "ptr " + closure.text;
