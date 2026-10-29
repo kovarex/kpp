@@ -415,7 +415,7 @@ struct RbTree
   template<typename Key>
   RbIterator<E> lowerBound(const Key& key) const
   {
-    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
+    if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
       return this->lowerBound(converted);
@@ -441,7 +441,7 @@ struct RbTree
   template<typename Key>
   RbIterator<E> upperBound(const Key& key) const
   {
-    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
+    if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
       return this->upperBound(converted);
@@ -467,7 +467,7 @@ struct RbTree
   template<typename Key>
   RbIterator<E> find(const Key& key) const
   {
-    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
+    if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
       return this->find(converted);
@@ -483,7 +483,7 @@ struct RbTree
   template<typename Key>
   int countOf(const Key& key) const
   {
-    if constexpr (!isTransparent<Compare> && !isSame<Key, K>)
+    if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
       const K& converted = key;
       return this->countOf(converted);

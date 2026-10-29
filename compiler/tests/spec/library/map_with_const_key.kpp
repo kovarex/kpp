@@ -1,0 +1,19 @@
+// spec: a map whose key type is const (`Map<const Id, V>`) looks keys up as any other: find, contains, count and the bounds take a key of the key type without converting it again and again
+// factorio: AmbientPool's `static inline Map<const SpaceLocationID, const AmbientSound*> heroTracks` (std::map<const SpaceLocationID, ...> in the game): the tree's lookup by another key type converted the key to `const K&` and called itself, which deduced the unqualified key type again, and `--dump-data` died of a stack overflow in RbTree::find
+struct Id
+{
+  int value = 0;
+  auto operator<=>(const Id&) const = default;
+};
+int main()
+{
+  Map<const Id, int> tracks;
+  tracks.emplace(Id{3}, 30);
+  tracks.emplace(Id{1}, 10);
+  Set<const int> numbers;
+  numbers.insert(4);
+  auto found = tracks.find(Id{3});
+  println("{} {} {} {} {} {}", found != tracks.end() ? found->second : -1, tracks.contains(Id{1}), tracks.count(Id{2}),
+          tracks.lower_bound(Id{2})->second, numbers.contains(4), numbers.count(5));
+  return 0;
+}
