@@ -56,6 +56,9 @@ if not exist %GAME%\run\config\config.ini (
   echo read-data=__PATH__executable__/../../data
   echo write-data=__PATH__executable__/../../run
 ) > %GAME%\run\config\config.ini
+rem The C++ log loads the game's test_mod, so this run does too, from a copy (a mod the game finds
+rem new is enabled): then its checksums, the prototype list's 486241314 among them, are comparable.
+if not exist %GAME%\run\mods\test_mod_1.0.0 xcopy /e /i /q C:\Factorio\tests\mods\test_mod_1.0.0 %GAME%\run\mods\test_mod_1.0.0 >nul
 :run
 echo == running %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%
 %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%

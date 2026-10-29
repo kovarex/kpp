@@ -1085,6 +1085,40 @@ UniqueArray one pointer).
     GlobalContext::postPrototypesConstructedSetup's generic lambda has local aliases of its
     template parameter's members that the resolver does not substitute in the instance
     (templates/local_alias_in_generic_lambda_instance, pending, resolver).
+18. With the templates thread's 2741fe7 for those aliases, RecipePrototype::addTrashRecursive
+    followed every item's empty spoil result into a null prototype: a condition that declares a
+    reference, `if (const IDConnector<ItemID>& spoilResultID = itemID->spoilResult)`, tested the
+    reference's address, always true, not the object's operator bool
+    (language/condition_declaration_of_reference). Then the prototype setup completes and prints
+    "Prototype list checksum: 2335390327" (the C++ log's 486241314 includes test_mod; see 22).
+19. Then heap corruption, exit 0xC0000374, which ends the process past the exception filters, so
+    the crash report says nothing. kppc's `--clang-flags F` builds the game with AddressSanitizer:
+    `set KPPC_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address` before run.cmd. The
+    first such run stopped earlier, at the game's own "double value not in range for fixed point
+    number: -nan" in EntityWithOwnerPrototype: `TinyVector(0, 0)` with `TinyVector(const double&
+    dx, const double& dy)` bound the references to the ints themselves, and the constructor read
+    4 bytes of int and 4 of garbage as each double. That was silent everywhere a `const double&`
+    (or any const reference to a scalar of another type) was given an int; such a reference binds
+    to a converted temporary now (language/scalar_reference_to_converted_temporary).
+20. The second AddressSanitizer run named the corruption: a double free of the vectors of
+    UnlockableRules::prepareRulesByDependency's `return buckets;`, an Array<Vector<const
+    UnlockableRule*>, 317>. The implicit move copied the member array `T items[N]` bitwise and
+    then destroyed the local's vectors. A member array is copied or moved element by element now,
+    each element through its own constructor or assignment (classes/implicit_copy_of_array_member).
+21. Then a stack overflow (the crash report now walks the stack from a thread of its own when the
+    faulting thread has no stack left, and prints the image base for the map): RbTree::find calling
+    itself for AmbientPool's `Map<const SpaceLocationID, const AmbientSound*>`. The tree converts a
+    key of another type to `const K&` and looks it up again, and with a const K the deduced key type
+    never counted as the same (the library compares the unqualified types now;
+    library/map_with_const_key). Then a crash in TipsAndTricks::TriggerList<T>::registerTriggerSafe,
+    whose `for (TriggerType* myTrigger : *this)` is in a class derived from Vector<T*> after a
+    polymorphic base: Vector's begin() and end() were called on the object's address, not the
+    Vector's, and the loop ran over the vtable (classes/range_for_over_base_after_polymorphic_base).
+22. **`--dump-data` runs to the end**: "Factorio initialised", "Goodbye", exit 0, and
+    script-output/data-raw-dump.json (32 MB). The C++ log loads the game's test_mod
+    (C:\Factorio\tests\mods\test_mod_1.0.0), so run.cmd copies it into run\mods, and then every
+    checksum is the C++ build's: the six mods', test_mod's 2960982019 and the prototype list's
+    486241314.
 
 ### dear imgui through a generated C interface (2026-10-29)
 

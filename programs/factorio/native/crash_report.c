@@ -70,6 +70,15 @@ static void walk(CONTEXT context, DWORD code)
   TerminateProcess(process, code);
 }
 
+/* A stack overflow leaves the thread no stack for dbghelp: another thread walks its stack. */
+static CONTEXT overflowContext;
+static DWORD WINAPI walkOverflow(LPVOID unused)
+{
+  (void)unused;
+  walk(overflowContext, EXCEPTION_STACK_OVERFLOW);
+  return 0;
+}
+
 static LONG WINAPI report(EXCEPTION_POINTERS* e)
 {
   EXCEPTION_RECORD* r = e->ExceptionRecord;
@@ -88,6 +97,16 @@ static LONG WINAPI report(EXCEPTION_POINTERS* e)
   say(text);
   snprintf(text, sizeof text, "  r8 %llx r9 %llx r10 %llx r11 %llx rsp %llx rbp %llx\n", c->R8, c->R9, c->R10, c->R11, c->Rsp, c->Rbp);
   say(text);
+  snprintf(text, sizeof text, "  image base %p (the map's addresses are 0x140000000 + RVA)\n", (void*)GetModuleHandleA(NULL));
+  say(text);
+  if (r->ExceptionCode == EXCEPTION_STACK_OVERFLOW)
+  {
+    overflowContext = *e->ContextRecord;
+    HANDLE walker = CreateThread(NULL, 1 << 20, walkOverflow, NULL, 0, NULL);
+    if (walker)
+      WaitForSingleObject(walker, INFINITE);
+    TerminateProcess(GetCurrentProcess(), r->ExceptionCode);
+  }
   walk(*e->ContextRecord, r->ExceptionCode);
   return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -103,6 +122,8 @@ static void aborted(int signal)
 
 static void install(void)
 {
+  ULONG reserve = 64 * 1024; /* the main thread's stack the handler has after a stack overflow */
+  SetThreadStackGuarantee(&reserve);
   SetUnhandledExceptionFilter(report);
   signal(SIGABRT, aborted);
 }
