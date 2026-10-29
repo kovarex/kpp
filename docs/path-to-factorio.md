@@ -1132,7 +1132,49 @@ UniqueArray one pointer).
     script-output/data-raw-dump.json (32 MB). The C++ log loads the game's test_mod
     (C:\Factorio\tests\mods\test_mod_1.0.0), so run.cmd copies it into run\mods, and then every
     checksum is the C++ build's: the six mods', test_mod's 2960982019 and the prototype list's
-    486241314.
+    486241314. The Lua gate came next (master 097f296): `&luaO_nilobject_` after lobject.h's
+    `extern` declaration was no constant (language/global_address_constant_after_extern_declaration).
+23. The normal start (`run.cmd` with no arguments) opens the window and initialises Direct3D 11,
+    and stopped at the stub of GraphicsInterfaceDX11::logDeviceInfo, left out for two reasons. A
+    class defined in a lambda's body (createDriverDescription's unnamed union of the driver's
+    version parts) was never indexed, so it had no definition: the resolver indexes the bodies of
+    the lambdas in a function's statements now (language/anonymous_union_local_in_lambda). And
+    IDirect3D9Ex, which it asks for the adapters' driver versions, was the import's C struct with
+    an lpVtbl: d3d9.h declares its interfaces with DECLARE_INTERFACE_, not MIDL's guarded C
+    structs, and native/generate_com.py reads those too now (IDirect3D9, IDirect3D9Ex).
+24. Then the sounds, all 8,611 sprites and their mipmaps load (3.9 GB of atlases on the RTX 5080),
+    the log says "Custom inputs active: 1" as the C++ one does, and loading the main menu's map
+    stopped at the game's own "Unknown enum value: 5" in NoiseExpressionConstant.
+    NoiseProgramBuilder::compileExpression keeps the iterator `try_emplace` returned while the
+    expression's compile inserts its subexpressions into the same HashMap, which std::unordered_map
+    allows (its iterators are its nodes); ours read the slot array freed when the table grew. A
+    HashMap iterator reaches its entry through its node now, a guarantee stronger than C++'s,
+    recorded in docs/stdlib-conformance.md (library/hash_map_iterator_after_growth). Also on the
+    way: a lambda captured `surface` from the `if constexpr` branch its instance discards
+    (FluidBox::findOtherUndergroundEnd<BlueprintSurface>;
+    templates/lambda_capture_in_discarded_constexpr_branch).
+25. Then loading the map's tiles failed Tile::setupLargeTileOnSameChunk's `chunk->position ==
+    ChunkPosition(position)`: ChunkPosition(const TilePosition&)'s `position.x >>
+    Dimensions::Chunk::sideBitShift` shifts an int32 by a uint32_t constant, and the code generator
+    gave a shift's operands the usual arithmetic conversions, as `+` has them, so it was a logical
+    shift of a uint32 and every negative tile coordinate made a chunk 134 million chunks away
+    (silently, everywhere). A shift has its left operand's promoted type now
+    (language/shift_by_unsigned_count).
+26. The main menu's background is a menu simulation chosen at random, so runs differ from here on.
+    One run's map failed to load with "Invalid bool loaded from input file" (a read before it took
+    the wrong number of bytes; not found yet). For such errors, which the game catches and reports,
+    `set KPP_TRACE_THROW=1` before run.cmd makes the crash report print the stack of every Kpp throw
+    as it is raised. Another run stopped at the game's "Already linked" in
+    ActiveEntitiesList::makeActive: EntityAndIndex's reference member `UpdatableEntity& entity`,
+    bound to an InfinityContainer (LogisticContainer first, then UpdatableEntity), held the
+    container's own address, not its UpdatableEntity's (classes/reference_member_bound_to_derived_object).
+    Then the map loads and closing its zip stream failed ThreadedBufferedReadStream's
+    `assert(!this->worker.valid())`: the library's Future stayed valid after get(), where
+    std::future releases its state (library/future_get_releases_state).
+27. **"Factorio initialised"**: the main menu state, its background map loaded, and the first
+    update of the menu simulation stops at the stub of EntityOrderHelpers::EntityOrderList::update
+    (ActiveEntitiesOrder.kpp:75), the one function the headline still leaves out with an error
+    (templates/fold_over_pack_with_pack_sized_parameter, the templates thread's).
 
 ### dear imgui through a generated C interface (2026-10-29)
 

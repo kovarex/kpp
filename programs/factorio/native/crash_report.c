@@ -9,6 +9,7 @@
 #include <dbghelp.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void say(const char* text)
@@ -40,17 +41,22 @@ static void frame(HANDLE process, DWORD64 address, int index)
   say(text);
 }
 
-/* The stack from context, one frame per line, then the process ends with code. */
-static void walk(CONTEXT context, DWORD code)
+/* The stack from context, one frame per line. */
+static void stack(CONTEXT context)
 {
   HANDLE process = GetCurrentProcess();
-  char directory[MAX_PATH];
-  GetModuleFileNameA(NULL, directory, MAX_PATH);
-  char* slash = strrchr(directory, '\\');
-  if (slash)
-    *slash = 0;
-  SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_FAIL_CRITICAL_ERRORS);
-  SymInitialize(process, directory, TRUE); /* the executable's directory: no symbol server */
+  static int initialized = 0;
+  if (!initialized)
+  {
+    initialized = 1;
+    char directory[MAX_PATH];
+    GetModuleFileNameA(NULL, directory, MAX_PATH);
+    char* slash = strrchr(directory, '\\');
+    if (slash)
+      *slash = 0;
+    SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_FAIL_CRITICAL_ERRORS);
+    SymInitialize(process, directory, TRUE); /* the executable's directory: no symbol server */
+  }
   for (int i = 0; i < 48 && context.Rip; ++i)
   {
     frame(process, context.Rip, i);
@@ -67,7 +73,26 @@ static void walk(CONTEXT context, DWORD code)
     DWORD64 establisher = 0;
     RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, context.Rip, function, &context, &handlerData, &establisher, NULL);
   }
-  TerminateProcess(process, code);
+}
+
+/* The stack from context, then the process ends with code. */
+static void walk(CONTEXT context, DWORD code)
+{
+  stack(context);
+  TerminateProcess(GetCurrentProcess(), code);
+}
+
+/* KPP_TRACE_THROW set: each Kpp throw (exception code 0xE0000001, kpp_throw's) prints its stack
+   when it is raised, caught or not, up to 50 of them: where the errors the game catches and reports
+   come from ("Map loading failed: Invalid bool loaded"). */
+static LONG WINAPI traceThrow(EXCEPTION_POINTERS* e)
+{
+  static volatile LONG count = 0;
+  if (e->ExceptionRecord->ExceptionCode != 0xE0000001u || InterlockedIncrement(&count) > 50)
+    return EXCEPTION_CONTINUE_SEARCH;
+  say("kpp crash report: a throw (KPP_TRACE_THROW):\n");
+  stack(*e->ContextRecord);
+  return EXCEPTION_CONTINUE_SEARCH;
 }
 
 /* A stack overflow leaves the thread no stack for dbghelp: another thread walks its stack. */
@@ -126,6 +151,8 @@ static void install(void)
   SetThreadStackGuarantee(&reserve);
   SetUnhandledExceptionFilter(report);
   signal(SIGABRT, aborted);
+  if (getenv("KPP_TRACE_THROW"))
+    AddVectoredExceptionHandler(1, traceThrow);
 }
 
 #pragma section(".CRT$XCU", read)
