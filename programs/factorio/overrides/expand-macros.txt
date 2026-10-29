@@ -10,3 +10,14 @@ C:\Factorio\libraries\Lua\lua.h
 C:\Factorio\libraries\Lua\lauxlib.h
 C:\Factorio\libraries\glad\include\glad\glad.h
 C:\Factorio\libraries\imgui\imgui.h
+# Lua's internals, which the game's C++ reaches into (LuaTableIterator, LuaValueSaver, LuaBinder, ...)
+# through native/include/kpp_lua_internals.h: their function-like macros (hvalue, uvalue, ttisnil,
+# setobj2s, gkey, gval, ...) are expanded only in the files that include one of them, directly or
+# through a converted header, as in C++ only those files see them (`included`).
+included C:\Factorio\libraries\Lua\llimits.h
+included C:\Factorio\libraries\Lua\lobject.h
+included C:\Factorio\libraries\Lua\lstate.h
+included C:\Factorio\libraries\Lua\ltable.h
+included C:\Factorio\libraries\Lua\lgc.h
+included C:\Factorio\libraries\Lua\ltm.h
+included C:\Factorio\libraries\Lua\lapi.h

@@ -1937,6 +1937,7 @@ namespace
     Counts counts;
     bool importedCommon = false;
     bool importedLua = false;    // stdlib.h, string.h and stdio.h added next to the first C import
+    bool importedLuaInternals = false; // kpp_lua_internals.h for the first of Lua's internal headers
     bool importedDirectX = false; // kpp_directx.h for the first DirectX header of the file
     std::vector<std::string> todos; // "line: text"
     std::string_view text;
@@ -2300,14 +2301,31 @@ namespace
           if (header.rfind("Lua/", 0) == 0 || base == "lua.hpp")
           {
             // The game's Lua wrappers (libraries/Lua) bring the Lua C API: its headers, once per file.
-            if (importedLua)
+            // Lua's internal headers bring its internals too, through programs/factorio/native/
+            // include/kpp_lua_internals.h (the game compiles Lua as C++, which lobject.h needs).
+            static const std::set<std::string> luaInternals = {"lapi.h", "lobject.h", "lstate.h", "ltable.h", "lgc.h", "llimits.h", "lfunc.h",
+                                                               "lstring.h", "ldo.h", "lvm.h", "ltm.h", "lzio.h", "lmem.h", "ldebug.h"};
+            std::string imports;
+            if (!importedLua)
             {
-              counts.add("includes removed");
-              continue;
+              importedLua = true;
+              imports = "extern \"C\" import \"lua.h\";\nextern \"C\" import \"lauxlib.h\";\nextern \"C\" import \"lualib.h\";";
             }
-            importedLua = true;
-            replace(offset, length, "extern \"C\" import \"lua.h\";\nextern \"C\" import \"lauxlib.h\";\nextern \"C\" import \"lualib.h\";");
-            counts.add("includes to imports");
+            if (luaInternals.count(base) && !importedLuaInternals)
+            {
+              importedLuaInternals = true;
+              imports += std::string(imports.empty() ? "" : "\n") + "extern \"C\" import \"kpp_lua_internals.h\";";
+            }
+            if (imports.empty())
+            {
+              remove(offset, removeLength);
+              counts.add("includes removed");
+            }
+            else
+            {
+              replace(offset, length, imports);
+              counts.add("includes to imports");
+            }
             continue;
           }
           if (cHeaders.count(base) || cLibrary)
@@ -5132,8 +5150,9 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
       {
         // Object-like: the import makes the constants. One whose body is another name (glad's
         // `#define glGenTextures glad_glGenTextures`, the function pointer the loader fills) is an
-        // alias the converted code is written through.
-        if (aliases && nameEnd > p)
+        // alias the converted code is written through; when that name is a function-like macro
+        // (lobject.h's `#define setobj2s setobj`), the alias is that macro under its own name.
+        if (nameEnd > p)
         {
           std::string body = line.substr(nameEnd);
           size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
@@ -5144,7 +5163,12 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
           for (char c : body)
             identifier = identifier && (isalnum((unsigned char)c) || c == '_');
           if (identifier && !keywords.count(body))
-            (*aliases)[line.substr(p, nameEnd - p)] = body;
+          {
+            if (auto macro = macros.find(body); macro != macros.end())
+              macros[line.substr(p, nameEnd - p)] = macro->second;
+            else if (aliases)
+              (*aliases)[line.substr(p, nameEnd - p)] = body;
+          }
         }
         // One whose body is string literals (`#define UTF8_BULLET "\xE2\x80\xA2"`: the conversion
         // makes it a constant, and a use inside a literal concatenation gets its text) or a
@@ -5249,9 +5273,12 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   std::map<std::string, std::vector<Piece>> outputs; // output path -> header piece(s) then source piece(s)
   Counts total;
   // The C headers whose function-like macros the converted code uses (overrides/expand-macros.txt:
-  // one path per line, # starts a comment).
+  // one path per line, # starts a comment). Those of a line `included PATH` are expanded only in the
+  // files that include one of the headers of PATH's directory listed so, directly or through a
+  // converted header, as only those see them in C++ (Lua's internals: lobject.h's hvalue, ...).
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> headerMacros;
   std::map<std::string, std::string> headerAliases; // their object-like macros that name another identifier
+  std::map<std::string, std::vector<std::filesystem::path>> includedHeaders; // by directory
   if (!overridesDir.empty())
   {
     std::string list;
@@ -5266,8 +5293,16 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         std::string line = list.substr(pos, end - pos);
         pos = end + 1;
         size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
-        if (a != std::string::npos && line[a] != '#')
-          headers.push_back(line.substr(a, b - a + 1));
+        if (a == std::string::npos || line[a] == '#')
+          continue;
+        std::string entry = line.substr(a, b - a + 1);
+        if (entry.rfind("included ", 0) == 0)
+        {
+          std::filesystem::path path = entry.substr(entry.find_first_not_of(" \t", 9));
+          includedHeaders[path.parent_path().string()].push_back(path);
+        }
+        else
+          headers.push_back(entry);
       }
       headerMacros = readHeaderMacros(headers, nullptr, &headerAliases);
     }
@@ -5283,6 +5318,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (inputs[k].parsed && !inputs[k].parsed->isImported && inputs[k].path.string().rfind("<", 0) != 0)
       inputByPath[pathKey(inputs[k].path)] = k;
   std::vector<std::vector<size_t>> includedInputs(inputs.size());
+  std::vector<std::set<std::string>> externalIncludes(inputs.size()); // the file names of the other includes
   for (const auto& [key, k] : inputByPath)
   {
     std::string_view t = inputs[k].text;
@@ -5301,13 +5337,27 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         candidates.push_back(root / name);
         candidates.push_back(root.parent_path() / name);
       }
+      bool converted = false;
       for (const auto& c : candidates)
         if (auto it = inputByPath.find(pathKey(c)); it != inputByPath.end() && it->second != k)
         {
           includedInputs[k].push_back(it->second);
+          converted = true;
           break;
         }
+      if (!converted)
+        externalIncludes[k].insert(name.filename().string());
     }
+  }
+  // The macros of the `included` headers, each directory's together, and which directory each
+  // header's file name belongs to.
+  std::map<std::string, MacroMap> includedHeaderMacros;
+  std::map<std::string, std::string> includedHeaderDirectory;
+  for (const auto& [directory, paths] : includedHeaders)
+  {
+    includedHeaderMacros[directory] = readHeaderMacros(paths, nullptr, nullptr);
+    for (const auto& path : paths)
+      includedHeaderDirectory[path.filename().string()] = directory;
   }
   std::map<size_t, MacroMap> ownMacros; // a header's macros it leaves defined, read once
   std::map<size_t, std::map<std::string, std::string>> ownObjects; // and its string and name macros
@@ -5341,7 +5391,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   };
   auto visibleMacros = [&](size_t k)
   {
-    // Depth first in include order, each header once.
+    // Depth first in include order, each header once; then the `included` headers' macros of the
+    // directories whose headers the file or one of those includes.
     std::vector<const MacroMap*> out;
     std::set<size_t> seen = {k};
     std::function<void(size_t)> visit = [&](size_t h)
@@ -5355,6 +5406,11 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         }
     };
     visit(k);
+    std::set<std::string> directories;
+    for (size_t h : seen)
+      for (const std::string& name : externalIncludes[h])
+        if (auto directory = includedHeaderDirectory.find(name); directory != includedHeaderDirectory.end() && directories.insert(directory->second).second)
+          out.push_back(&includedHeaderMacros[directory->second]);
     return out;
   };
   // Hand-written override files, parsed once: what they define replaces the converted definitions.
