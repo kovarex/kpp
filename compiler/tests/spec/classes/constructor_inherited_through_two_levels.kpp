@@ -1,0 +1,41 @@
+// spec: a converting constructor inherited through two levels of `using Base::Base;` (CompressionState from MipmapState from Handle) converts an assigned value, as one inherited through one level does: `compression = create(5);` constructs a CompressionState from the UniquePtr
+// factorio: PipelineStateManager::setupSpriteLoadingStates' `this->ycocgDXTCompressionState = this->graphics.createPipelineStateObject(spec);`, CompressionPipelineState inheriting MipmapGeneratorPipelineState's constructors, which inherits PipelineStateHandle's
+// pending: one level works (classes/inherited_converting_constructor_for_argument), two do not ("assigning an unrelated class"); owner: the resolver (implicit conversions)
+struct PipelineStateObject
+{
+  int id = 0;
+};
+class Handle
+{
+public:
+  Handle() = default;
+  Handle(UniquePtr<PipelineStateObject> state) : state(move(state)) {}
+  int id() const { return this->state ? this->state->id : -1; }
+  UniquePtr<PipelineStateObject> state;
+};
+class MipmapState : public Handle
+{
+public:
+  using Handle::Handle;
+};
+class CompressionState : public MipmapState
+{
+public:
+  using MipmapState::MipmapState;
+};
+UniquePtr<PipelineStateObject> create(int id)
+{
+  UniquePtr<PipelineStateObject> result = makeUnique<PipelineStateObject>();
+  result->id = id;
+  return result;
+}
+int main()
+{
+  MipmapState mipmap;
+  mipmap = create(4);
+  CompressionState compression;
+  compression = create(5);
+  CompressionState direct = create(3);
+  println("{} {} {}", mipmap.id(), compression.id(), direct.id());
+  return 0;
+}
