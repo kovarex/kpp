@@ -1302,6 +1302,17 @@ namespace
   };
 
   // The `class [[members]]` classes of an override file (lexed into tk), by qualified name.
+  // The name a `[[replaces]]` member of an override class replaces: a function's (every overload)
+  // or a member alias's (`using StringType = ...;`); empty for any other member.
+  std::string replaceableName(Decl* member, const SymbolTable& symbols)
+  {
+    if (member->kind == NodeKind::FunctionDecl)
+      return nameText(static_cast<FunctionDecl*>(member)->name, symbols);
+    if (member->kind == NodeKind::UsingAliasDecl)
+      return std::string(symbols.name(static_cast<UsingAliasDecl*>(member)->name));
+    return std::string();
+  }
+
   void collectMemberOverrides(Span<Decl*> decls, const std::string& prefix, const std::vector<Token>& tk, std::string_view text,
                               const SymbolTable& symbols, std::map<std::string, MemberOverride>& out)
   {
@@ -1340,11 +1351,11 @@ namespace
       if (last + 1 < tk.size() && tk[last + 1].is(P::Semi))
         ++last;
       m.end = tk[last].offset + tk[last].length;
-      // A member marked `[[replaces]]` (before its template header or type) takes the place of the
-      // converted members of its name, every overload; the others are added.
+      // A member marked `[[replaces]]` (before its template header, type or `using`) takes the
+      // place of the converted members of its name, every overload; the others are added.
       for (Decl* member : c->members)
       {
-        if (member->kind != NodeKind::FunctionDecl || member->token <= open || member->token >= close)
+        if (replaceableName(member, symbols).empty() || member->token <= open || member->token >= close)
           continue;
         uint32_t k = member->token;
         while (k > open + 1 && !tk[k - 1].is(P::Semi) && !tk[k - 1].is(P::RBrace) && !tk[k - 1].is(P::LBrace) && !tk[k - 1].is(P::Colon))
@@ -1353,7 +1364,7 @@ namespace
           if (tk[k].is(P::LBracket) && tk[k + 1].is(P::LBracket) && text.substr(tk[k + 2].offset, tk[k + 2].length) == "replaces" &&
               tk[k + 3].is(P::RBracket) && tk[k + 4].is(P::RBracket))
           {
-            m.replaces.insert(nameText(static_cast<FunctionDecl*>(member)->name, symbols));
+            m.replaces.insert(replaceableName(member, symbols));
             break;
           }
       }
@@ -3309,7 +3320,7 @@ namespace
             if (memberOverrides)
               if (auto mo = memberOverrides->find(prefix + nameText(c->name, symbols)); mo != memberOverrides->end() && !mo->second.replaces.empty())
                 for (Decl* member : c->members)
-                  if (member->kind == NodeKind::FunctionDecl && mo->second.replaces.count(nameText(static_cast<FunctionDecl*>(member)->name, symbols)))
+                  if (std::string name = replaceableName(member, symbols); !name.empty() && mo->second.replaces.count(name))
                   {
                     removeDecl(member);
                     counts.add("members replaced by hand-written ones");
