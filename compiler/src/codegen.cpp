@@ -8932,7 +8932,16 @@ namespace
             if (bt && bt->kind == TyKind::Pointer)
               bt = bt->inner;
             if (isClass(bt))
+            {
               objectTy = canonicalClass(bt, c);
+              // `object.staticType()` with staticType a static member of a base class template
+              // (ComplexExpression<WithOperation<7, 2, 0>, 2, 0>): that base instance's member,
+              // as for a call through the derived class's name.
+              Decl* owner = global.owningClass(f);
+              if (owner && classDef(owner, c) != static_cast<ClassDecl*>(objectTy->decl))
+                if (const Ty* base = baseInstantiation(objectTy, owner, c))
+                  objectTy = base;
+            }
           }
           std::string indirect;
           if (objectTy && !thisArg.empty() && m->member.parts.size() == 1)
