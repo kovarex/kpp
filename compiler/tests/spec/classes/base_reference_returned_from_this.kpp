@@ -1,0 +1,43 @@
+// spec: a function returning a reference to a base class returns `*this` (or any derived object) as that base's subobject, at the base's offset: a base after a polymorphic one, and each of two bases of one class template that differ only in an incomplete tag argument
+// factorio: RobotWithLogisticInterface's `PendingRobotsSetHook& asPendingRobotsHook() { return *this; }` returned the robot's start, so LogisticNetwork::updateLogisticRobot's `robot->asPendingRobotsHook().unlink()` walked the robot's vtable as the set's tree and crashed (the big-defense and logistic-robots menu maps, 59 unit-test suites under RobotWithLogisticInterface::setup)
+template<class T, class Tag>
+class Hook
+{
+public:
+  void* parent = nullptr;
+  int id = 0;
+};
+class TagA;
+class TagB;
+class Plain
+{
+public:
+  int id = 0;
+};
+class Polymorphic
+{
+public:
+  virtual ~Polymorphic() {}
+  int x = 1;
+};
+class Robot : public Polymorphic, public Plain, public Hook<Robot, TagA>, public Hook<Robot, TagB>
+{
+public:
+  Plain& asPlain() { return *this; }
+  Hook<Robot, TagA>& asA() { return *this; }
+  const Hook<Robot, TagB>& asB() const { return *this; }
+};
+Plain& plainOf(Robot& robot)
+{
+  return robot;
+}
+int main()
+{
+  Robot r;
+  static_cast<Plain&>(r).id = 10;
+  static_cast<Hook<Robot, TagA>&>(r).id = 20;
+  static_cast<Hook<Robot, TagB>&>(r).id = 30;
+  Hook<Robot, TagA>* a = &r;
+  println("{} {} {} {} {}", r.asPlain().id, r.asA().id, r.asB().id, plainOf(r).id, &r.asA() == a);
+  return 0;
+}

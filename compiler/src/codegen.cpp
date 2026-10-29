@@ -13395,6 +13395,12 @@ namespace
               Value v = rvalue(r->value);
               if (v.text.empty() || !v.ty || v.ty->kind == TyKind::Void)
                 fail(r->value, "error: a function returning " + types.toString(currentReturn, &symbols) + " returns an expression without a value (of type void)");
+              // A derived object returned as a base's reference is that base's subobject:
+              // `PendingRobotsSetHook& asPendingRobotsHook() { return *this; }` returned the robot's
+              // start, and unlinking that "hook" walked the vtable as its tree.
+              const Ty* want = types.unqualified(types.stripRef(currentReturn));
+              if (isClass(v.ty) && isClass(want) && classKey(v.ty) != classKey(want))
+                v = convert(v, want, s);
               retText = v.text;
             }
             else
