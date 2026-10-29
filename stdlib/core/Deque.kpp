@@ -88,6 +88,23 @@ struct Deque
       this->push_back(item);
     return *this;
   }
+  // Replace the contents: with the elements of [first, last) (ResearchQueue's
+  // `queue.assign(other.queue.begin(), other.queue.end())`), count copies of value, or the listed
+  // elements. The range must not be this deque's.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  void assign(InputIt first, InputIt last)
+  {
+    this->clear();
+    for (; first != last; ++first)
+      this->push_back(*first);
+  }
+  void assign(int count, const T& value)
+  {
+    this->clear();
+    for (int i = 0; i < count; ++i)
+      this->push_back(value);
+  }
+  void assign(InitializerList<T> items) { *this = items; }
 
   // Elements per block: about 512 bytes' worth, a power of two, at least 16.
   static int blockSize()

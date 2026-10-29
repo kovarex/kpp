@@ -48,8 +48,8 @@ Size and capacity:
 - `resize(n)`, `resize(n, value)`: removes elements from the end, or appends default-constructed
   elements (or copies of `value`; `value` may be an element of this vector) until `size() == n`.
 - `shrink_to_fit()`: reduces the capacity to `size()`, relocating the elements (invalidates all).
-- `assign(count, value)`, `assign(first, last)`, `assign({...})`: replace the contents (value may be
-  an element; the range must not be).
+- `assign(count, value)`, `assign(first, last)` (input iterators of any kind), `assign({...})`:
+  replace the contents (value may be an element; the range must not be).
 
 Adding and removing:
 - `push_back(value)`, `emplace_back(args...)`: append one element (copied, moved, or built from

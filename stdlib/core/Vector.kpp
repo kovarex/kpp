@@ -163,6 +163,14 @@ struct Vector
     this->clear();
     this->appendCopies(first, int(last - first));
   }
+  // The elements of [first, last), input iterators of any kind (ResearchQueue's
+  // `queue.assign(other.queue.begin(), other.queue.end())`); they must not point into this vector.
+  template<typename InputIt> requires (!isIntegral<InputIt>)
+  void assign(InputIt first, InputIt last)
+  {
+    this->clear();
+    this->insert(this->items + this->length, first, last);
+  }
   void assign(InitializerList<T> list)
   {
     this->clear();
