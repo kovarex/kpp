@@ -5588,6 +5588,11 @@ namespace
             // not the caller's token read in the callee's file.
             struct FileRestore { ParsedFile*& f; ParsedFile* saved; ~FileRestore() { f = saved; } } fileRestore{currentFile, callerFile};
             currentFile = f->file;
+            // Names in it are the callee's (`Limits<ModifierValueType>::max()` with the class's
+            // `using ModifierValueType = double;`), not those of the caller's scope.
+            struct ContextRestore { Decl*& d; Decl* saved; ~ContextRestore() { d = saved; } } contextRestore{initializerOf, initializerOf};
+            initializerOf = instance;
+            ArgsScope calleeArgs(*this, args.empty() ? currentArgs : &args); // CharacterModifier<double>'s ModifierValueType
             text = argumentText(pt, value, value);
           }
           argText += std::string(argText.empty() ? "" : ", ") + text;
@@ -10343,7 +10348,11 @@ namespace
                 return {t->kind == TyKind::Bool ? (*c ? "true" : "false") : std::to_string(*c), types.unqualified(t)};
           }
           std::string addr = lvalue(e);
-          return load(addr, e->ty ? e->ty : (d ? declType(d) : nullptr), e);
+          const Ty* type = e->ty;
+          if ((!type || !type->isKnown()) && d)
+            if (auto local = locals.find(d); local != locals.end() && local->second.ty && local->second.ty->isKnown())
+              type = local->second.ty; // `auto xmm0 = _mm_loadu_si128(...)`: the type the code generator gave the local
+          return load(addr, type ? type : (d ? declType(d) : nullptr), e);
         }
         case NodeKind::ThisExpr:
         {
@@ -11412,6 +11421,9 @@ namespace
                 t = types.stripRef(declType(fd));
           }
         }
+        if ((!t || !t->isKnown()) && b->lhs->kind == NodeKind::NameExpr)
+          if (auto local = locals.find(static_cast<NameExpr*>(b->lhs)->resolved); local != locals.end() && local->second.ty && local->second.ty->isKnown())
+            t = types.stripRef(local->second.ty); // `xmm7 = _mm_shufflelo_epi16(...)` into an SSE `auto` local
         if (!t || !t->isKnown())
         {
           // Fall back to the RHS type when the LHS type is unknown.
@@ -11682,7 +11694,9 @@ namespace
       // `operator<=>(const double&)`, the operands the other way round (`0 < (b <=> a)`).
       auto reversedOrder = [&](P cmp) -> std::optional<Value>
       {
-        if (!rt || !isClass(rt) || (lt && isClass(lt)))
+        // (Also with a class on the left whose own <=> does not take the right operand: C++20's
+        // reversed candidate, `current > latest` with Optional's `operator<=>(const U&)`.)
+        if (!rt || !isClass(rt))
           return std::nullopt;
         Expr* lhsExpr = b->lhs;
         Span<Expr*> left{&lhsExpr, 1};
@@ -12395,8 +12409,12 @@ namespace
     // own on its first pass (destroyed at no thread's exit yet).
     void staticLocal(VariableDecl* v, const Ty* t)
     {
-      if (t->isReference())
-        unsupported(v, "a static local reference");
+      // `static const Map<String, SDL_Scancode>& keyStrings = generate();`: a pointer, bound on the
+      // first pass to what the initializer names (an lvalue: a reference bound to a temporary would
+      // need the temporary kept for the program).
+      bool isRef = t->isReference();
+      if (isRef && (!v->init || !(isLvalueExpression(v->init) || (v->init->ty && v->init->ty->isReference()))))
+        unsupported(v, "a static local reference bound to a temporary");
       std::string owner = currentFunctionName;
       if (owner.rfind("@\"", 0) == 0)
         owner = owner.substr(2, owner.size() - 3);
@@ -12406,20 +12424,25 @@ namespace
       std::string name = "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(v->token) + "\"";
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
       std::string storage = (v->flags & DF_ThreadLocal) ? " = internal thread_local global " : " = internal global ";
-      moduleDecls[currentModule] += name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n";
+      if (isRef)
+        moduleDecls[currentModule] += name + storage + "ptr null\n";
+      else
+        moduleDecls[currentModule] += name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n";
       moduleDecls[currentModule] += guard + storage + "i1 false\n";
       {
         auto lock = sharedLock();
         globals[v] = name;
       }
-      locals[v] = {name, t, false};
+      locals[v] = {name, t, isRef};
       std::string done = newLabel("static.done"), init = newLabel("static.init");
       std::string flag = newTemp();
       fn += "  " + flag + " = load i1, ptr " + guard + "\n";
       fn += "  br i1 " + flag + ", label %" + done + ", label %" + init + "\n";
       startBlock(init);
       fn += "  store i1 true, ptr " + guard + "\n";
-      if (v->init)
+      if (isRef)
+        fn += "  store ptr " + lvalue(v->init) + ", ptr " + name + "\n";
+      else if (v->init)
         initializeFrom(name, t, v->init, v);
       else if (isClass(t))
         defaultConstruct(name, t, v);
@@ -12451,6 +12474,26 @@ namespace
         const Ty* initTy = types.stripRef(v->init->ty);
         if (initTy && initTy->isKnown() && !types.isDependent(initTy))
           t = initTy;
+      }
+      if ((!t || !t->isKnown() || types.isDependent(t)) && v->init && v->init->kind == NodeKind::NameExpr)
+        if (auto local = locals.find(static_cast<NameExpr*>(v->init)->resolved); local != locals.end() && local->second.ty && local->second.ty->kind == TyKind::Vector)
+          t = local->second.ty; // `auto xmm3 = xmm6;` of an SSE `auto` local, which the code generator typed
+      if ((!t || !t->isKnown() || types.isDependent(t)) && v->init && v->init->kind == NodeKind::CallExpr && v->type &&
+          v->type->kind == NodeKind::AutoType && !(v->flags & (DF_Static | DF_ThreadLocal)))
+      {
+        // `auto xmm0 = _mm_loadu_si128(...)`: an SSE operation, which the code generator types (the
+        // type checker does not know them): the local has the vector type of its value.
+        auto* call = static_cast<CallExpr*>(v->init);
+        Decl* callee = call->callee && call->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(call->callee)->resolved : nullptr;
+        if (call->callee && call->callee->kind == NodeKind::NameExpr && (!callee || (callee->kind == NodeKind::FunctionDecl && callee->file && callee->file->isImported)))
+          if (std::optional<Value> value = sseBuiltin(static_cast<NameExpr*>(call->callee), call); value && value->ty && value->ty->kind == TyKind::Vector)
+          {
+            std::string slot = "%v" + std::to_string(temp++);
+            allocas += "  " + slot + " = alloca " + llType(value->ty, v) + "\n";
+            fn += "  store " + llType(value->ty, v) + " " + value->text + ", ptr " + slot + "\n";
+            locals[v] = {slot, value->ty, false};
+            return;
+          }
       }
       if (!t || !t->isKnown() || types.isDependent(t))
         unsupported(v, "a local of unknown type (" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + ")");

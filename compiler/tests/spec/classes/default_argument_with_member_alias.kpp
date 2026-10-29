@@ -1,6 +1,5 @@
 // spec: a default argument naming the callee's class member alias (`ModifierValueType maximumValue = Limits<ModifierValueType>::max()`, with `using ModifierValueType = double;` in the class) is typed in the callee's scope wherever a call leaves it out, here another class's member initializer
 // factorio: CharacterModifier's constructor, `ModifierValueType maximumValue = std::numeric_limits<ModifierValueType>::max()`, called from CharacterModifiers' two constructors
-// pending: the default argument is typed where the call is ("the type 'ModifierValueType' is not declared", in CharacterModifiers::CharacterModifiers()); owner: codegen (default arguments)
 class CharacterModifier
 {
 public:

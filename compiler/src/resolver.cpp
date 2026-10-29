@@ -12291,6 +12291,18 @@ struct GlobalScope::Impl
           return false;
         if (a.ranks[i] < b.ranks[i])
           someBetter = true;
+        // Two derived-to-base bindings of one rank: an rvalue binds a `T&&` better than a
+        // `const T&` (C++'s rvalue-reference rule; `Holder(Holder&& other) :
+        // UniquePtr<Entity>(move(other))` takes UniquePtr's move constructor, not its deleted copy).
+        if (a.ranks[i] == 3 && b.ranks[i] == 3 && i < a.params.size() && i < b.params.size() && i < argTypes.size() && a.params[i] &&
+            b.params[i] && argTypes[i] && argTypes[i]->kind != TyKind::LRef && a.params[i]->kind != b.params[i]->kind &&
+            a.params[i]->isReference() && b.params[i]->isReference())
+        {
+          if (a.params[i]->kind == TyKind::RRef)
+            someBetter = true;
+          else
+            return false;
+        }
       }
       if (a.thisRank > b.thisRank)
         return false;

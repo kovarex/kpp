@@ -1,6 +1,5 @@
 // spec: `a > b`, `a >= b` with a class on the left whose own operator<=> does not take b and a class on the right whose operator<=> takes an a (`operator<=>(const Version&)`, a template's `operator<=>(const U&)` as Optional's): C++20's reversed candidate, `0 > (b <=> a)`
 // factorio: InstallButton::logic's `downloading && *downloading > latestVersion` (ModVersion > Optional<ModVersion>, ModVersion deriving Version's defaulted <=>) and ControllerManager::resolveRequestedZoomLevel's `*zoomData.zoom >= getFurthestGameViewZoom()` (Zoom >= Optional<Zoom>), through the library Optional's `operator<=>(const U&)`
-// pending: the comparison is typed bool, but codegen looks only at the left class's operators ("ModVersion has no operator>"); with a scalar on the left it works (classes/reversed_three_way_typed); owner: codegen
 struct Version
 {
   int major = 0;
