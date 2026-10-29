@@ -169,6 +169,9 @@ struct Span
   T* end() const { return this->items + this->length; }
   T* cbegin() const { return this->begin(); }
   T* cend() const { return this->end(); }
+  // From the last element back (std::span's rbegin and rend).
+  ReverseIterator<T*> rbegin() const { return ReverseIterator<T*>(this->end()); }
+  ReverseIterator<T*> rend() const { return ReverseIterator<T*>(this->begin()); }
   T& front() const { return this->items[0]; }
   T& back() const { return this->items[this->length - 1]; }
   Span<T> subspan(int offset, int count) const { return Span<T>(this->items + offset, count); }

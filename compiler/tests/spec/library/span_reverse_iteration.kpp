@@ -1,6 +1,5 @@
 // spec: a Span iterates backwards through rbegin() and rend() (std::span's), so the free rbegin and rend and a reversing wrapper over a Span work: `for (int x : reverseOf(Span<int>(data, 3)))` visits 3, 2, 1
 // found in the converted game: CommonUtil's `Util::reverse(span)`, whose ReversionWrapperByValue's `auto begin(...) { return rbegin(w.iterable); }` found no rbegin of a Span (Inserter, Inventory, InventoryWithFilters: 9 "the type auto of FunctionDecl")
-// pending: Span has no rbegin ("the type auto of FunctionDecl")
 template <typename T>
 struct ByValue { T iterable; };
 template <typename T>
