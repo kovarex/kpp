@@ -7590,7 +7590,12 @@ struct GlobalScope::Impl
       {
         case NodeKind::NameExpr:
         {
-          Decl* d = static_cast<NameExpr*>(n)->resolved;
+          // Before the walk resolved the name (an instance's copy, typed the first time), the
+          // parameter it names among the locals.
+          auto* name = static_cast<NameExpr*>(n);
+          Decl* d = name->resolved;
+          if (!d && name->name.parts.size() == 1 && !name->name.parts[0].hasTemplateArgs)
+            d = locals.find(name->name.parts[0].symbol);
           return d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack ? d : nullptr;
         }
         case NodeKind::ParenExpr: return packParamIn(static_cast<ParenExpr*>(n)->inner, depth + 1);
@@ -8489,6 +8494,21 @@ struct GlobalScope::Impl
       if (!pt || pt->kind != TyKind::Pack)
         return nullptr;
       size_t n = pt->args.size();
+      if (n == 0)
+      {
+        // No element: C++ instantiates no pattern, so nothing is typed or counted; its names are
+        // still resolved, on a scratch walk, for the code generator, which finds the pack
+        // through them.
+        ResolveStats scratch;
+        Walker probe(impl, scratch, tokens, text);
+        probe.file = file;
+        probe.scope = scope;
+        probe.locals = locals;
+        probe.activeSubst = activeSubst;
+        probe.thisType = thisType;
+        probe.walkExpr(u->operand);
+        return types.pack({});
+      }
       const Subst* outer = activeSubst;
       std::vector<const Ty*> elements;
       for (size_t i = 0; i < n; ++i)
