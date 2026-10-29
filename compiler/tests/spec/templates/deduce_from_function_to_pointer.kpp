@@ -1,0 +1,30 @@
+// spec: a function template's `StringType (*toString)(T)` parameter deduces T and StringType from a function passed by name (the function decays to its pointer, as in C++), and from `&Class::staticFunction`
+// factorio: the prototypes' `result.add(beaconCounter, "beacon_counter", beaconCounterToString)` into PrototypeExplorerWidgets::add (21 in BeaconPrototype and the like)
+enum class Counter { Total, Same };
+struct Widgets
+{
+  int sum = 0;
+  template<class T, class StringType> requires isEnum<T>
+  void add(const T& value, const String& name, StringType (*toString)(T))
+  {
+    this->sum += int(String(toString(value)).size()) + int(name.size());
+  }
+};
+struct Beacon
+{
+  Counter counter = Counter::Same;
+  static const char* counterToString(Counter c) { return c == Counter::Total ? "total" : "same_type"; }
+  int describe() const
+  {
+    Widgets result;
+    result.add(this->counter, "beacon_counter", counterToString);
+    result.add(this->counter, "beacon", &Beacon::counterToString);
+    return result.sum;
+  }
+};
+int main()
+{
+  Beacon b;
+  println("{}", b.describe());
+  return 0;
+}
