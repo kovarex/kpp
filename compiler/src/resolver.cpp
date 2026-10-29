@@ -1110,9 +1110,17 @@ struct GlobalScope::Impl
       {
         if (entries.size() > 1)
           std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return declaredBefore(a.decl, b.decl); });
+        bool specialized = false; // a class template's specialisations among them: its instances may be one (resolveSpecialization)
         for (const Entry& e : entries)
+        {
+          specialized = specialized || (e.decl && e.decl->kind == NodeKind::ClassDecl && (e.decl->flags & DF_Specialization));
           if (e.scope && e.scope->kind != ScopeKind::Enum)
             sortEntries(e.scope, seen);
+        }
+        if (specialized)
+          for (const Entry& e : entries)
+            if (e.decl && e.decl->kind == NodeKind::ClassDecl && !(e.decl->flags & DF_Specialization))
+              e.decl->attributes |= ATTR_Specialized;
       }
     std::stable_sort(scope->usingDirectives.begin(), scope->usingDirectives.end(), declaredBefore);
     std::stable_sort(scope->usingEnums.begin(), scope->usingEnums.end(), declaredBefore);
@@ -5136,6 +5144,14 @@ struct GlobalScope::Impl
         if (a->kind == TyKind::Class && a->decl == pattern->decl)
           for (size_t i = 0; i < pattern->args.size() && i < a->args.size(); ++i)
             deduce(pattern->args[i], a->args[i], out, depth + 1);
+        else if (std::vector<const Ty*> given; a->kind == TyKind::Class && !pattern->args.empty() &&
+                 !(given = primaryArgumentsOf(types.unqualified(a), pattern->decl, depth + 1)).empty())
+        {
+          // `Owner<T>` given an instance of Owner's specialisation `Owner<T, Del<T>>`: deduced from
+          // the primary template's arguments it stands for (Owner<int, Del<int>>).
+          for (size_t i = 0; i < pattern->args.size() && i < given.size(); ++i)
+            deduce(pattern->args[i], given[i], out, depth + 1);
+        }
         else if (a->kind == TyKind::Class && a->decl && pattern->decl && pattern->decl->ownScope && !pattern->args.empty())
         {
           // `const Opt<T>&` given a class derived from Opt<int>: T from that base, as C++ has it.
@@ -5456,21 +5472,57 @@ struct GlobalScope::Impl
   // Applies a substitution to a canonical type.
   // An instantiation of a primary class template whose arguments pick a specialisation: that
   // specialisation's type; otherwise the type as given.
+  std::mutex specializationCacheMutex;
+  std::unordered_map<const Ty*, const Ty*> specializationCache; // resolveSpecialization's answers for known arguments
+
   const Ty* resolveSpecialization(const Ty* classTy, int depth)
   {
     Decl* d = classTy ? classTy->decl : nullptr;
-    if (!d || d->kind != NodeKind::ClassDecl || d->templateParams.empty() || (d->flags & DF_Specialization) || classTy->args.empty() || depth > 24)
+    if (!d || d->kind != NodeKind::ClassDecl || d->templateParams.empty() || (d->flags & DF_Specialization) || !(d->attributes & ATTR_Specialized) ||
+        classTy->args.empty() || depth > 24)
       return classTy;
     const QualifiedName& name = static_cast<ClassDecl*>(d)->name;
     if (name.empty())
       return classTy;
+    bool known = classTy->isKnown() && !types.isDependent(classTy) && !mentionsUnknown(classTy);
+    if (known)
+    {
+      std::lock_guard lock(specializationCacheMutex);
+      if (auto it = specializationCache.find(classTy); it != specializationCache.end())
+        return it->second;
+    }
     Lookup l;
     if (!lookupInScope(lexicalScopeOf(d), name.last().symbol, l, depth + 1) || !l.overloads)
       return classTy;
     std::vector<const Ty*> args(classTy->args.begin(), classTy->args.end());
-    if (const Ty* spec = matchSpecialization(l, args, depth + 1))
-      return spec;
-    return classTy;
+    const Ty* spec = matchSpecialization(l, args, depth + 1);
+    const Ty* result = spec ? spec : classTy;
+    if (known && depth < 8)
+    {
+      std::lock_guard lock(specializationCacheMutex);
+      specializationCache.emplace(classTy, result);
+    }
+    return result;
+  }
+
+  // The primary template's arguments of a specialisation's instance: `Owner<T, Del<T>>` with T =
+  // int is Owner<int, Del<int>>. Empty when t is no instance of a specialisation of `primary`.
+  std::vector<const Ty*> primaryArgumentsOf(const Ty* t, Decl* primary, int depth)
+  {
+    std::vector<const Ty*> out;
+    auto* c = t && t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && (t->decl->flags & DF_Specialization)
+                ? static_cast<ClassDecl*>(t->decl) : nullptr;
+    if (!c || c->name.empty() || !primary || primary->kind != NodeKind::ClassDecl || static_cast<ClassDecl*>(primary)->name.empty() ||
+        static_cast<ClassDecl*>(primary)->name.last().symbol != c->name.last().symbol || lexicalScopeOf(primary) != lexicalScopeOf(c))
+      return out;
+    std::vector<const Ty*> patterns;
+    if (!specializationPatterns(c, primary, patterns, depth))
+      return out;
+    Subst s = substFor(t);
+    for (const Ty* p : patterns)
+      if (const Ty* sub = substitute(p, s, depth + 1); !spliceIfPack(sub, out))
+        out.push_back(sub);
+    return out;
   }
 
   // A parameter whose type became a pack (`Args...` -> int, String), also under a reference or a
@@ -5584,7 +5636,10 @@ struct GlobalScope::Impl
           return types.function(substitute(t->inner, s, depth + 1), span, t->variadic);
         if (t->kind == TyKind::Lambda)
           return types.lambda(substitute(t->inner, s, depth + 1), span, t->decl, t->value);
-        return types.qualified(types.classType(t->decl, span), t->isConst, t->isVolatile);
+        const Ty* c = types.classType(t->decl, span);
+        if (t->decl && (t->decl->attributes & ATTR_Specialized) && !types.isDependent(c))
+          c = resolveSpecialization(c, depth + 1); // `Owner<T>` with T = int: the specialisation Owner<int, Del<int>> picks
+        return types.qualified(c, t->isConst, t->isVolatile);
       }
       default:
         return t;

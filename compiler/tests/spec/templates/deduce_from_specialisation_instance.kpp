@@ -1,0 +1,36 @@
+// spec: a function template's parameter `const Owner<T>&` deduces T from an argument whose type is an instance of one of Owner's partial specialisations (`Owner<T, Del<T>>`): by the primary template's arguments that instance stands for, Owner<int, Del<int>>
+// factorio: UniquePtr<T> parameters (`template<class T> void f(const UniquePtr<T>&)`) given a UniquePtr with the default deleter, once the library keeps that one in a specialisation as std::unique_ptr does
+template<typename T>
+struct Del
+{
+};
+template<typename T, typename D = Del<T>>
+struct Owner
+{
+  T* pointer = nullptr;
+  D deleter;
+  int which() const { return 1; }
+};
+template<typename T>
+struct Owner<T, Del<T>>
+{
+  T* pointer = nullptr;
+  int which() const { return 2; }
+};
+template<typename T>
+T valueOf(const Owner<T>& owner)
+{
+  return *owner.pointer + owner.which();
+}
+template<typename T, typename D>
+int deleterKind(const Owner<T, D>& owner)
+{
+  return owner.which() * 10;
+}
+int main()
+{
+  int value = 5;
+  Owner<int> owner{&value};
+  println("{} {}", valueOf(owner), deleterKind(owner));
+  return 0;
+}
