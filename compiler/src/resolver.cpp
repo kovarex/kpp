@@ -1931,6 +1931,11 @@ struct GlobalScope::Impl
     if (name == "isPointer") return one() && one()->kind == TyKind::Pointer;
     if (name == "isEnum") return one() && one()->kind == TyKind::Enum;
     if (name == "isClass") return one() && one()->kind == TyKind::Class;
+    if (name == "isTypedUnion") // a `union enum` (design.md 8.5)
+    {
+      const Ty* t = one() ? types.unqualified(one()) : nullptr;
+      return t && t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(t->decl)->isTypedUnion;
+    }
     if (name == "isVoid") return one() && one()->kind == TyKind::Void;
     if (name == "isReference") return one() && one()->isReference();
     if (name == "isConst") return one() && one()->isConst;
@@ -2059,7 +2064,7 @@ struct GlobalScope::Impl
   bool isBoolTraitName(uint32_t symbol)
   {
     std::string_view n = symbols.name(symbol);
-    return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isVoid" || n == "isReference" || n == "isConst" ||
+    return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
            n == "isNullPointer" || n == "isIntegral" || n == "isFloatingPoint" || n == "isArithmetic" || n == "isSigned" ||
            n == "isUnsigned" || n == "isFunction" || n == "isTriviallyCopyable" || n == "isSame" || n == "isBaseOf" || n == "isConvertible" ||
            n == "isConstructible" || n == "isFundamental" || n == "isTriviallyDestructible" || n == "isTriviallyCopyAssignable" ||
@@ -2761,7 +2766,9 @@ struct GlobalScope::Impl
       const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];
       message += ": " + std::string(s->file->text.substr(t.offset, t.length));
     }
-    if (!instance.empty())
+    // A failure names its instance; a condition the checker cannot evaluate is its gap at that
+    // place, one error however many instances meet it.
+    if (v && !instance.empty())
       message += " (in " + instance + ")";
     reportCheckerError(s->file, s->token, message);
   }
