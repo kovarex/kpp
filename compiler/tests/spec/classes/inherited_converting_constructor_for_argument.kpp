@@ -1,5 +1,5 @@
-// spec: a constructor inherited with `using Base::Base;` converts an argument implicitly, as the derived class's own converting constructor would: a SignalID passed for a SignalFilter parameter, of a function or of another class's constructor, constructs the SignalFilter through the base's `Filter(const WithQuality<IdType>&)`
-// factorio: LogisticFilter(SignalID(itemID), value) and its five siblings (TransitionalRequestLogic::request, ItemRequestProxy::setRequests, ConstantCombinatorControlBehavior, ...): SignalFilter inherits IDWithQualityFilter<SignalIDBase>'s constructors (`using super::super;`), one of which takes the SignalID
+// spec: a constructor inherited with `using Base::Base;` converts implicitly, as the derived class's own converting constructor would: a SignalID passed for a SignalFilter parameter, of a function or of another class's constructor, or assigned to a SignalFilter, constructs the SignalFilter through the base's `Filter(const WithQuality<IdType>&)`
+// factorio: LogisticFilter(SignalID(itemID), value) and its five siblings (TransitionalRequestLogic::request, ItemRequestProxy::setRequests, ConstantCombinatorControlBehavior, ...) and ChooseOrbitalRequestButton::selectFromSignalID: SignalFilter inherits IDWithQualityFilter<SignalIDBase>'s constructors (`using super::super;`), one of which takes the SignalID; PipelineStateManager's `spritePipelineStatesByBlendMode[i] = createPipelineStateObject(spec)` (SpritePipelineState inherits PipelineStateHandle(std::unique_ptr<PipelineStateObject>), four functions)
 struct SignalIdBase
 {
   int value = 0;
@@ -43,6 +43,8 @@ int main()
   base.value = 4;
   SignalFilter direct = SignalId(base, 1);
   Holder holder(SignalId(base, 2), 3);
-  println("{} {} {} {} {}", direct.quality, holder.filter.baseId.value, holder.filter.quality, holder.count, quality(SignalId(base, 5)));
+  Array<SignalFilter, 2> filters;
+  filters[1] = SignalId(base, 6);
+  println("{} {} {} {} {} {}", direct.quality, holder.filter.baseId.value, holder.filter.quality, holder.count, quality(SignalId(base, 5)), filters[1].quality);
   return 0;
 }

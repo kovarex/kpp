@@ -1,0 +1,36 @@
+// spec: the address of a function whose overloads differ only in the parameter's reference kind (`const T&`, `T&`, `T&&`) passed for a function pointer parameter is the overload of exactly the pointer's type: `&EditorAction::SetForceFriend` for an `EditorAction(*)(ForceIdsAndBool&&)` is the T&& one
+// factorio: ForceEditorGui::editFriends and editCeaseFire, `new EditForceGui(this->context, forceData->id, &EditorAction::SetForceFriend, ...)` with `using ActionConstructor = EditorAction(*)(ActionData::ForceIDsAndBool&& data);` and EditorAction's three named constructors per action (MAKE_NAMED_CONSTRUCTOR)
+// pending: the first overload is taken (typed `EditorAction(const ForceIdsAndBool&)*`), so the constructor does not match ("a constructor of EditForceGui taking 3 arguments"); overloads of different parameter types work (language/overload_set_as_function_pointer); owner: the resolver
+struct ForceIdsAndBool
+{
+  int forces = 0;
+  bool value = false;
+};
+class EditorAction
+{
+public:
+  static EditorAction SetForceFriend(const ForceIdsAndBool& value) { return EditorAction(1, value.forces); }
+  static EditorAction SetForceFriend(ForceIdsAndBool& value) { return EditorAction(2, value.forces); }
+  static EditorAction SetForceFriend(ForceIdsAndBool&& value) { return EditorAction(3, value.forces); }
+  int kind;
+  int forces;
+private:
+  EditorAction(int kind, int forces) : kind(kind), forces(forces) {}
+};
+class EditForceGui
+{
+public:
+  using ActionConstructor = EditorAction(*)(ForceIdsAndBool&& data);
+  EditForceGui(int context, ActionConstructor actionConstructor, String&& title) : actionConstructor(actionConstructor), title(move(title)) {}
+  EditorAction apply(int forces) { return this->actionConstructor(ForceIdsAndBool{forces, true}); }
+  ActionConstructor actionConstructor;
+  String title;
+};
+int main()
+{
+  EditForceGui* gui = new EditForceGui(0, &EditorAction::SetForceFriend, String("friends"));
+  EditorAction action = gui->apply(5);
+  println("{} {} {}", action.kind, action.forces, gui->title);
+  delete gui;
+  return 0;
+}

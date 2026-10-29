@@ -1,0 +1,49 @@
+// spec: a qualified call of a member that a class template instance inherits from its template parameter (`template<class WidgetType> class DragPaneWidget : public WidgetType, public DragPane`), through an alias of the instance: `super::paintBackgroundGlow(...)` with `using super = DragPaneVerticalFlow;` calls agui::Widget's, without virtual dispatch
+// factorio: ConditionDragPane::paintBackgroundGlow's `super::paintBackgroundGlow(paintEvent, absolutePosition);`, DragPaneVerticalFlow = DragPaneWidget<agui::VerticalFlow, DragPane::DragMode::MOVE, DragPane::VERTICAL>
+// pending: the call does not resolve ("a call that did not resolve"), also as `Wrapper<Widget>::glowBy(...)` with one base and no alias; owner: the resolver (lookup in the bases of a class template instance)
+namespace agui
+{
+  class Widget
+  {
+  public:
+    virtual ~Widget() {}
+    virtual void paintBackgroundGlow(int amount) { this->glow += amount; }
+    int glow = 0;
+  };
+  class VerticalFlow : public Widget
+  {
+  };
+}
+class DragPane
+{
+public:
+  DragPane(int mode) : mode(mode) {}
+  virtual ~DragPane() {}
+  int mode;
+};
+template<class WidgetType, int dragMode>
+class DragPaneWidget : public WidgetType, public DragPane
+{
+  using super = WidgetType;
+public:
+  DragPaneWidget() : super(), DragPane(dragMode) {}
+};
+using DragPaneVerticalFlow = DragPaneWidget<agui::VerticalFlow, 1>;
+class ConditionDragPane : public DragPaneVerticalFlow
+{
+  using super = DragPaneVerticalFlow;
+public:
+  void paintBackgroundGlow(int amount) override;
+};
+void ConditionDragPane::paintBackgroundGlow(int amount)
+{
+  super::paintBackgroundGlow(amount * 2);
+}
+int main()
+{
+  ConditionDragPane pane;
+  agui::Widget* widget = &pane;
+  widget->paintBackgroundGlow(3);
+  println("{} {}", pane.glow, pane.mode);
+  return 0;
+}

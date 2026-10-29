@@ -1,0 +1,57 @@
+// spec: a member function template whose return type is deduced (`auto*`, `auto`), declared in the class and defined outside it after its callers: each instance's return type comes from its own definition's returns (here different types under `if constexpr`), as for one defined in the class
+// factorio: LogisticNetwork's `template<bool ForLogistics> auto* maybeGetRobotsEstimatedToFinishOnChunk(ChunkPosition) const`, defined after findBestBusyRobot<ForLogistics>, which calls it (five instances of findBestBusyRobot)
+// pending: defined in the class it works; defined outside, the call has no type ("a local of unknown type (list)"); owner: the resolver (return type deduction)
+struct LogisticList
+{
+  int count = 3;
+};
+struct ConstructionList
+{
+  int count = 5;
+};
+class Network
+{
+public:
+  template<bool forLogistics>
+  int countOn(int chunk) const
+  {
+    auto* list = this->maybeGetList<forLogistics>(chunk);
+    return list ? list->count : -1;
+  }
+  template<bool forLogistics>
+  auto* maybeGetList(int chunk) const;
+  template<bool doubled>
+  auto scaled(int value) const;
+  LogisticList logistic;
+  ConstructionList construction;
+};
+template<bool forLogistics>
+auto* Network::maybeGetList(int chunk) const
+{
+  if constexpr (forLogistics)
+  {
+    if (chunk > 0)
+      return &this->logistic;
+    return (const LogisticList*) nullptr;
+  }
+  else
+  {
+    if (chunk > 0)
+      return &this->construction;
+    return (const ConstructionList*) nullptr;
+  }
+}
+template<bool doubled>
+auto Network::scaled(int value) const
+{
+  if constexpr (doubled)
+    return value * 2.5;
+  else
+    return value;
+}
+int main()
+{
+  Network network;
+  println("{} {} {} {} {}", network.countOn<true>(1), network.countOn<false>(1), network.countOn<false>(0), network.scaled<true>(2), network.scaled<false>(2));
+  return 0;
+}

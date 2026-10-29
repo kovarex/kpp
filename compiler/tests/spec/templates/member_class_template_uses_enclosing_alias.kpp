@@ -1,0 +1,61 @@
+// spec: a member class template of a class template uses the enclosing template's alias of its parameter (`using HookType = Hook<Tag>;` in Heap<ValueType, Tag>, `HookType* current` in its IteratorBase<Value>): each instance of the member template is laid out with the enclosing instance's arguments
+// factorio: IntrusivePairingHeap<ValueType, Compare, Tag>::IteratorBase<Value> (PathFindAlgorithm's open list of BaseNode: DebugVisualizationRenderer::renderPathfinderFringe, ChartRenderer::drawFringe)
+// pending: the instance is made without the enclosing Heap's arguments ("the layout of IteratorBase<Node>: the member current (`HookType* current = nullptr`) has an unknown type", requested as Heap::IteratorBase<Node>); owner: the templates thread (instances of member templates of class templates)
+template <typename Tag = void>
+struct Hook
+{
+  Hook* next = nullptr;
+};
+template <typename ValueType, typename Tag = void>
+class Heap
+{
+  using HookType = Hook<Tag>;
+
+  template <typename Value>
+  class IteratorBase
+  {
+  public:
+    IteratorBase() = default;
+    explicit IteratorBase(HookType* current) : current(current) {}
+    Value& operator*() const { return *static_cast<Value*>(this->current); }
+    IteratorBase& operator++()
+    {
+      this->current = this->current->next;
+      return *this;
+    }
+    bool operator!=(IteratorBase other) { return this->current != other.current; }
+  private:
+    HookType* current = nullptr;
+  };
+
+public:
+  using iterator = IteratorBase<ValueType>;
+  void push(ValueType& value)
+  {
+    value.next = this->root;
+    this->root = &value;
+  }
+  iterator begin() { return iterator(this->root); }
+  iterator end() { return iterator(); }
+private:
+  HookType* root = nullptr;
+};
+struct Node : Hook<>
+{
+  int value = 0;
+};
+int main()
+{
+  Node a;
+  a.value = 1;
+  Node b;
+  b.value = 2;
+  Heap<Node> heap;
+  heap.push(a);
+  heap.push(b);
+  int sum = 0;
+  for (Node& n : heap)
+    sum = sum * 10 + n.value;
+  println("{}", sum);
+  return 0;
+}

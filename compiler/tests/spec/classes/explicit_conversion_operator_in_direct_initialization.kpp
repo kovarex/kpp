@@ -1,5 +1,5 @@
-// spec: direct-initialization of a class from an object with an explicit conversion operator to that class, `Constant(parsed)` with `explicit operator const Constant&() const`, `AchievementId(id)` with `explicit operator AchievementId() const`: the class's copy or move constructor takes what the operator gives (C++'s rule for a constructor's first parameter in direct-initialization), also as a template's `Value(x)` and in an if's declaration
-// factorio: NoiseExpressionParser::processNamedFunction<NoiseExpressionConstant>'s `storage[i] = Value((*parameters)[i].defaultValue);` (ParsedNoiseExpression's `explicit operator const NoiseExpressionConstant&() const`), CustomGuiToolTipCreator::createToolTip's `if (AchievementID achievementID = AchievementID(this->id))` and its 20 siblings (ChooseElemID's `explicit operator AchievementID() const`)
+// spec: direct-initialization of a class from an object with an explicit conversion operator to that class, `Constant(parsed)` with `explicit operator const Constant&() const`, `AchievementId(id)` with `explicit operator AchievementId() const`, `Scale(zoom)` with a template `explicit operator CastType() const`: the class's copy or move constructor takes what the operator gives (C++'s rule for a constructor's first parameter in direct-initialization), also as a template's `Value(x)` and in an if's declaration
+// factorio: NoiseExpressionParser::processNamedFunction<NoiseExpressionConstant>'s `storage[i] = Value((*parameters)[i].defaultValue);` (ParsedNoiseExpression's `explicit operator const NoiseExpressionConstant&() const`), CustomGuiToolTipCreator::createToolTip's `if (AchievementID achievementID = AchievementID(this->id))` and its 20 siblings (ChooseElemID's `explicit operator AchievementID() const`), UniverseWidget::SpaceConnectionWidget::getSegmentCount's `Scale(this->universe.zoomLevel)` (StrongTypedef's `template<typename CastType> explicit operator CastType() const`)
 class Constant
 {
 public:
@@ -52,6 +52,23 @@ public:
   ItemId item;
 };
 
+template<typename ValueType, class Tag>
+class StrongTypedef
+{
+public:
+  constexpr explicit StrongTypedef(const ValueType& value) : value(value) {}
+  constexpr explicit operator const ValueType&() const { return this->value; }
+  template<typename CastType> requires (!isSame<CastType, ValueType>)
+  constexpr explicit operator CastType() const { return CastType(this->value); }
+private:
+  ValueType value;
+};
+struct ScaleTag {};
+struct ZoomTag {};
+using Scale = StrongTypedef<double, ScaleTag>;
+using Zoom = StrongTypedef<double, ZoomTag>;
+double toScreen(double distance, Scale scale) { return distance * double(scale); }
+
 int main()
 {
   Parsed parsed(Constant(2.5));
@@ -64,6 +81,8 @@ int main()
     found = -1;
   else if (ItemId item = ItemId(id))
     found = item.index;
-  println("{} {} {} {}", direct.number, viaTemplate.number, cast.number, found);
+  Zoom zoom(2.5);
+  double screen = toScreen(4.0, Scale(zoom));
+  println("{} {} {} {} {}", direct.number, viaTemplate.number, cast.number, found, screen);
   return 0;
 }

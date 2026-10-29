@@ -1,0 +1,50 @@
+// spec: a conversion function called by its name: `commands.operator AllowedCommands::Enum()` (the type qualified), and a base's `super::operator bool()` from the derived class's own explicit operator bool (the base named through an alias of its template's injected name)
+// factorio: ServerMultiplayerManager::hostGame's `uint8_t(scenario->requestedValueOfAllowedCommands.operator AllowedCommands::Enum())`, PortTargeter's `explicit operator bool() const { return super::operator bool(); }` (super = TargeterWithOwner, whose base Targeter has the operator)
+// pending: the member access does not resolve ("a member access that did not resolve to a field"), and the qualified call is typed as the base class itself, its arguments unsubstituted ("the layout of TargeterWithOwner<TargetType, Owner, type>: a base class whose type is unknown"); converting the object instead works; owner: the resolver (lookup of conversion-function-ids)
+class AllowedCommands
+{
+public:
+  enum class Enum : uint8_t
+  {
+    True = 1,
+    False = 2,
+    AdminsOnly = 3
+  };
+  constexpr AllowedCommands(Enum value) : value(value) {}
+  explicit constexpr operator uint8_t() const { return static_cast<uint8_t>(this->value); }
+  constexpr operator Enum() const { return this->value; }
+  Enum value;
+};
+template<typename TargetType, int type>
+class Targeter
+{
+public:
+  explicit operator bool() const { return this->target != nullptr; }
+  TargetType* target = nullptr;
+};
+template<typename TargetType, typename Owner, int type>
+class TargeterWithOwner : public Targeter<TargetType, type>
+{
+public:
+  Owner* owner = nullptr;
+};
+struct Entity {};
+struct Robot {};
+class PortTargeter : private TargeterWithOwner<Entity, Robot, 7>
+{
+  using super = TargeterWithOwner;
+public:
+  void aim(Entity* entity) { this->target = entity; }
+  explicit operator bool() const { return super::operator bool(); }
+};
+int main()
+{
+  AllowedCommands commands(AllowedCommands::Enum::AdminsOnly);
+  uint8_t raw = uint8_t(commands.operator AllowedCommands::Enum());
+  PortTargeter port;
+  bool before = bool(port);
+  Entity entity;
+  port.aim(&entity);
+  println("{} {} {}", int(raw), before, bool(port));
+  return 0;
+}

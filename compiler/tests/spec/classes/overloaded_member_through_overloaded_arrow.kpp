@@ -1,0 +1,44 @@
+// spec: a member function with overloads called through a class's `operator->` that is itself overloaded on const (`const T* operator->() const`, `T* operator->()`), `w->set(4)`, `w->set(3, true)`, `w->reset()`: the non-const object takes the non-const operator->, then the call resolves among T's overloads; in a class template too (OnHeap<Bitset<N>>)
+// factorio: GameMap::loadData's `input.tilesNeedCorrection->reset();`, MapDeserialiser's `OnHeap<std::bitset<MaxTileIDCount>> tilesNeedCorrection` (OnHeap has both operator->, Bitset's reset and set are overloaded)
+// pending: with one operator-> or one overload of the member it works; with both overloaded the member access does not resolve ("a member access that did not resolve to a field"); owner: the resolver
+struct Counter
+{
+  int count = 0;
+  void set(int n) { this->count = n; }
+  void set(int n, bool twice) { this->count = twice ? 2 * n : n; }
+  void reset() { this->count = 0; }
+};
+struct Wrapper
+{
+  Counter* value = new Counter();
+  ~Wrapper() { delete this->value; }
+  const Counter* operator->() const { return this->value; }
+  Counter* operator->() { return this->value; }
+};
+template<typename InnerType>
+class OnHeap
+{
+public:
+  OnHeap() : value(new InnerType()) {}
+  ~OnHeap() { delete this->value; }
+  const InnerType* operator->() const { return this->value; }
+  InnerType* operator->() { return this->value; }
+private:
+  InnerType* value;
+};
+int main()
+{
+  Wrapper w;
+  w->set(4);
+  int four = w->count;
+  w->set(3, true);
+  int six = w->count;
+  w->reset();
+  OnHeap<Bitset<64>> bits;
+  bits->set(5);
+  bits->set(7);
+  int set = int(bits->count());
+  bits->reset();
+  println("{} {} {} {} {}", four, six, w->count, set, int(bits->count()));
+  return 0;
+}

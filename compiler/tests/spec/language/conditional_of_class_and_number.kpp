@@ -1,0 +1,58 @@
+// spec: `c ? object : number` where the object's class converts to a number (`operator double()`, an inherited `operator const T&()`) and the number converts to no object of the class: the conditional has the number's type (C++ tries each way and takes the one that works), the object's value converted, then the usual arithmetic conversions between the two numbers
+// factorio: FlyingRobotPrototype::addAdjustedEnergyConsumptionToDescription's `forceData ? forceData->workerRobotsBatteryModifier : 0.0` (SimpleModifierTarget's operator double), ClearCursorLogic::execute's `cursorID ? UtilityConstants::instance().clearCursorVolumeModifier : 1.0f` (Const<float>'s inherited operator const float&), MapPreviewGenerator's `threadCount == 0 ? global->otherSettings->maxMapPreviewThreads : threadCount` (SimpleConfigItem<uint8_t>'s operator const uint8_t& beside a uint32)
+// pending: the conditional gets the class type, so the number has to construct an object of it ("a constructor of Modifier taking 1 arguments"); owner: the resolver (typing of ?:)
+class Modifier
+{
+public:
+  Modifier() = delete;
+  Modifier(int base, int type) : value(base * 0.5 + type) {}
+  operator double() const { return this->value; }
+  double value;
+};
+struct ForceData
+{
+  Modifier batteryModifier{3, 1};
+};
+template<class T>
+struct Value
+{
+  Value(T value) : storage(value) {}
+  operator const T&() const { return this->storage; }
+  T storage;
+};
+template<class T>
+struct Const : Value<T>
+{
+  static Const<T> make(T value) { return Const<T>(value, true); }
+private:
+  Const(T value, bool loaded) : Value<T>(value) {}
+};
+template<class T>
+class ConfigItem
+{
+public:
+  explicit ConfigItem(T value) : value(value) {}
+  operator const T&() const { return this->value; }
+private:
+  T value;
+};
+int main()
+{
+  ForceData force;
+  const ForceData* forceData = &force;
+  const ForceData* none = nullptr;
+  double withForce = 1.0 + (forceData ? forceData->batteryModifier : 0.0);
+  double without = 1.0 + (none ? none->batteryModifier : 0.0);
+  Const<float> volume = Const<float>::make(0.25f);
+  int cursor = 1;
+  int zero = 0;
+  float scaled = cursor ? volume : 1.0f;
+  float plain = zero ? volume : 1.0f;
+  ConfigItem<uint8_t> maxThreads(6);
+  uint32_t threadCount = 0;
+  uint32_t workers = threadCount == 0 ? maxThreads : threadCount;
+  threadCount = 40;
+  uint32_t other = threadCount == 0 ? maxThreads : threadCount;
+  println("{} {} {} {} {} {}", withForce, without, scaled, plain, workers, other);
+  return 0;
+}

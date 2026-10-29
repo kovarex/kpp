@@ -1,0 +1,39 @@
+// spec: a static member function of a class template base called through the derived class, `Derived::computeHash(args)` or `object.staticType()`, runs as the base instance's member: the CRTP parameter Expression is the derived class, so `Expression::TYPE` is its constant, and the base's own constants (N) are the instance's
+// factorio: NoiseExpressions' ComplexExpression<Expression, variableCount, constantCount, expressionCount>::computeHash called as `T::computeHash(args)` (NoiseExpressionStorage::getOrCreate) for ComplexExpressionWithOperation<NoiseOperations::BasisNoise, 2, 6> and six other operations
+// pending: through the derived class the function is made with the derived class's template arguments, where the base's parameters have no value ("a template parameter whose value is not known here"); through the base's own name it works; owner: codegen
+template<class Expression, int variableCount, int constantCount, int expressionCount = 0>
+class ComplexExpression
+{
+public:
+  static constexpr int N = variableCount + constantCount + expressionCount;
+  static int computeHash(const Vector<int>& args);
+  static int staticType() { return Expression::TYPE; }
+  int memberType() const { return Expression::TYPE; }
+};
+template<class Expression, int variableCount, int constantCount, int expressionCount>
+int ComplexExpression<Expression, variableCount, constantCount, expressionCount>::computeHash(const Vector<int>& args)
+{
+  release_assert(args.size() == N);
+  int hash = Expression::TYPE;
+  for (int arg : args)
+    hash = hash * 31 + arg;
+  return hash;
+}
+template<int operation, int variableCount, int constantCount>
+class WithOperation : public ComplexExpression<WithOperation<operation, variableCount, constantCount>, variableCount, constantCount>
+{
+public:
+  static constexpr int TYPE = operation;
+};
+template<typename T>
+int hashOf(const Vector<int>& args) { return T::computeHash(args); }
+int main()
+{
+  Vector<int> args = {1, 2};
+  WithOperation<7, 2, 0> object;
+  int viaBase = ComplexExpression<WithOperation<7, 2, 0>, 2, 0>::staticType();
+  int viaDerived = WithOperation<7, 2, 0>::staticType();
+  int viaObject = object.staticType();
+  println("{} {} {} {} {} {}", viaBase, viaDerived, viaObject, object.memberType(), WithOperation<7, 2, 0>::computeHash(args), hashOf<WithOperation<3, 1, 1>>(args));
+  return 0;
+}

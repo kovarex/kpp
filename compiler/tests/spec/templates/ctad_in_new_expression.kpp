@@ -1,0 +1,39 @@
+// spec: class template argument deduction in a new-expression, `new DeleteHelper(old.release())`: the constructor's arguments deduce T as in a declaration (`DeleteHelper local(new OldData())`), the parameter with a default argument included
+// factorio: the save loader's `input.loadHelpers.push_back(new DeleteHelper(oldTrainData.release()));` (Train::Train(MapDeserialiser&, TrainManager&), LogisticSupply::load, EntityToNameTagRecord's constructor), DeleteHelper<T>(T* data, std::source_location = current())
+// pending: the declaration deduces, the new-expression does not ("the layout of DeleteHelper<T>: the member data (`UniquePtr<T> data`) has an unknown type"); owner: the resolver (class template argument deduction)
+struct SourceLocation
+{
+  static SourceLocation current() { return SourceLocation(); }
+  int line = 0;
+};
+class LoadHelper
+{
+public:
+  LoadHelper(SourceLocation location) : location(location) {}
+  virtual ~LoadHelper() {}
+  virtual int size() const = 0;
+  SourceLocation location;
+};
+template<class T>
+class DeleteHelper : public LoadHelper
+{
+public:
+  DeleteHelper(T* data, SourceLocation location = SourceLocation::current()) : LoadHelper(location), data(data) {}
+  int size() const override { return int(sizeof(T)); }
+private:
+  UniquePtr<T> data;
+};
+struct OldData
+{
+  double values[3] = {};
+};
+int main()
+{
+  UniquePtr<OldData> old = makeUnique<OldData>();
+  Vector<LoadHelper*> helpers;
+  helpers.push_back(new DeleteHelper(old.release()));
+  DeleteHelper local(new OldData());
+  println("{} {} {}", helpers[0]->size(), local.size(), old == nullptr);
+  delete helpers[0];
+  return 0;
+}
