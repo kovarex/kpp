@@ -1,6 +1,5 @@
 // spec: a variable initialised from a call of an object's operator() that returns a class (`Chunk c = maker(3);`) holds the returned value, as with a named method or a lambda
 // factorio: function objects across the game (comparators, hashers, ToChunk-style mappers), Function<R(Args)> calls returning classes, the library's views
-// pending: the result is built in a temporary that is never copied into the variable, which keeps its uninitialised bytes (silent: prints garbage)
 struct Chunk { int x, y; };
 struct Maker
 {

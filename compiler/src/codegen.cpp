@@ -1910,7 +1910,11 @@ namespace
         }
         if (init->kind == NodeKind::CallExpr && sameClass && !init->ty->isReference())
         {
-          callValue(static_cast<CallExpr*>(init), addr);
+          // The result is built in place; a call that put it anywhere else would leave the
+          // variable unset (`Chunk c = maker(5)` through operator() once did).
+          Value v = callValue(static_cast<CallExpr*>(init), addr);
+          if (isClass(v.ty) && v.text != addr)
+            unsupported(at, "a call that built its " + types.toString(t, &symbols) + " result somewhere else than the object it initialises");
           return;
         }
         if (init->kind == NodeKind::CallExpr && dependent && !init->ty->isReference())
@@ -4002,6 +4006,14 @@ namespace
               ParsedFile* saved = currentFile;
               ConstContextScope context(*this, def);
               currentFile = def->file;
+              // A static member of a class template: its initializer under the arguments of the
+              // instantiation the use names (`MyLimits<int>::digits`, declared in the base
+              // IntegerLimits<int, true, 32>); without one in sight, under the current ones.
+              TemplateArgs classArgs;
+              const Ty* cls = locals.count(d) ? nullptr : staticMemberClass(v, e, e, nullptr);
+              if (cls)
+                classArgs = global.definitionArgs(def, global.classArgsOf(cls));
+              ArgsScope scope(*this, cls ? &classArgs : currentArgs);
               std::optional<int64_t> r = evalConst(def->init, depth + 1);
               currentFile = saved;
               return r;
@@ -5222,7 +5234,9 @@ namespace
     }
 
     // The instantiation a static member of a class template is used with: the qualifier written,
-    // or the class of the method being emitted.
+    // or the class of the method being emitted, or the base of either that is an instantiation of
+    // the member's class (`MyLimits<int>::digits` with digits declared in the base
+    // IntegerLimits<int, true, 32>).
     const Ty* staticMemberClass(VariableDecl* v, Node* e, Node* at, const Ty* classTy)
     {
       Decl* owner = global.owningClass(v);
@@ -5230,11 +5244,49 @@ namespace
         return nullptr;
       if (classTy)
         return canonicalClass(classTy, at);
+      if (const Ty* q = qualifierType(e, at))
+        if (const Ty* found = instantiationIn(q, owner, at))
+          return found;
+      if (currentClassTy)
+        if (const Ty* found = instantiationIn(currentClassTy, owner, at))
+          return found;
       if (const Ty* q = qualifierClass(e, at))
         return q;
-      if (currentClassTy && classDef(canonicalClass(currentClassTy, at)->decl, at) == classDef(owner, at))
-        return canonicalClass(currentClassTy, at);
       return nullptr; // no instantiation in sight (an alias used as the qualifier): one shared object, as for a plain class
+    }
+
+    // The class a qualified name's qualifier names (`MyLimits<int>` of `MyLimits<int>::digits`),
+    // any class; null for an unqualified name.
+    const Ty* qualifierType(Node* e, Node* at)
+    {
+      if (!e || e->kind != NodeKind::NameExpr || static_cast<NameExpr*>(e)->name.parts.size() <= 1)
+        return nullptr;
+      auto* n = static_cast<NameExpr*>(e);
+      NamedType tmp{};
+      tmp.kind = NodeKind::NamedType;
+      tmp.token = n->token;
+      tmp.name = n->name;
+      tmp.name.parts.count -= 1;
+      TemplateArgs none;
+      const Ty* q = global.typeOfAstIn(&tmp, currentFunction, currentArgs ? *currentArgs : none);
+      return q && isClass(q) && !types.isDependent(q) ? canonicalClass(q, at) : nullptr;
+    }
+
+    // The instantiation of the class template owner that cls is or derives from; null if none.
+    const Ty* instantiationIn(const Ty* cls, Decl* owner, Node* at, int depth = 0)
+    {
+      if (!cls || !isClass(cls) || depth > 32)
+        return nullptr;
+      const Ty* c = canonicalClass(cls, at);
+      ClassDecl* def = classDef(c->decl, at);
+      if (def == classDef(owner, at))
+        return c;
+      TemplateArgs args = global.classArgsOf(c);
+      for (const ClassDecl::Base& b : def->bases)
+        if (const Ty* bt = global.typeOfAstIn(b.type, def, args); bt && isClass(bt) && !types.isDependent(bt))
+          if (const Ty* found = instantiationIn(bt, owner, at, depth + 1))
+            return found;
+      return nullptr;
     }
 
     // `using EmptyWidget::EmptyWidget;` in a class without constructors of its own: the base whose
@@ -5454,8 +5506,9 @@ namespace
     }
 
     // Calls an operator member on an object. The result of a reference-returning operator is
-    // the referenced address (ty keeps the reference).
-    Value operatorCall(Value object, const std::string& name, Span<Expr*> args, Node* at, bool required)
+    // the referenced address (ty keeps the reference). sret: where a class result is built (the
+    // variable `Chunk c = maker(5)` initialises), or empty for a temporary.
+    Value operatorCall(Value object, const std::string& name, Span<Expr*> args, Node* at, bool required, const std::string& sret = "")
     {
       const Ty* foundIn = nullptr;
       FunctionDecl* f = findMemberFunction(object.ty, name, argTypesOf(args), object.ty, at, &foundIn, true);
@@ -5479,7 +5532,7 @@ namespace
       if ((f->flags & DF_Virtual) && isClass(object.ty))
         if (int slot = slotOf(object.ty, f, at); slot >= 0)
           indirect = loadSlot(object.text, slot); // `*a == *b` on images: the dynamic type's operator==
-      return callFunction(f, fnArgs, foundIn, thisArg, "", args, at, indirect);
+      return callFunction(f, fnArgs, foundIn, thisArg, sret, args, at, indirect);
     }
 
     Value arithmetic(P op, Value l, Value r, Node* at)
@@ -5838,7 +5891,7 @@ namespace
       if (isLambda(fnValue.ty))
         return callClosure(fnValue, c->args, sret, c);
       if (isClass(fnValue.ty))
-        return operatorCall(fnValue, "operator()", c->args, c, true); // a functor: object(args)
+        return operatorCall(fnValue, "operator()", c->args, c, true, sret); // a functor: object(args)
       const Ty* ft = fnValue.ty->kind == TyKind::Pointer ? fnValue.ty->inner : fnValue.ty;
       if (!ft || ft->kind != TyKind::Function)
         unsupported(c, "a call that did not resolve to a function (the callee has type " + types.toString(fnValue.ty, &symbols) + ")");
