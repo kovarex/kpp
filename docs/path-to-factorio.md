@@ -932,6 +932,37 @@ operations in the same order, and the C library's float functions for floats); c
 smoke test, `tests/glm_smoke.kpp`, prints vector, noise and matrix results in hex, equal to
 `tests/glm_smoke.cpp` compiled against glm itself.
 
+### Lua's internals through a C bridge (2026-10-29)
+
+The game's Lua is Lua 5.2 with Wube's changes (tables that keep their insertion order, a userdata's
+pointer to the game object it binds, `factorioBindableObject`), compiled as C++, and 12 of the
+game's files reach past its API into its internals: LuaBinder, LuaBindableObject, LuaValueSaver,
+LuaValueLoader, LuaTableIterator, LuaRef, LuaHelper and others use `index2addr`, TValue, Table,
+Node and Udata and lobject.h's macros (hvalue, uvalue, ttisnil, setobj2s, gkey, gval, ...). Lua stays
+C for now (kpp\Lua is the game's C++ around it), so the internals are imported as C too:
+
+- `programs/factorio/native/include/kpp_lua_internals.h` imports lobject.h, lstate.h, ltable.h,
+  lgc.h and ltm.h. lobject.h's one C++ word, `class LuaBindableObject*` in Udata, is read as a
+  struct pointer (the C import's struct is the game's class), and Node, which names itself without
+  `struct`, gets its typedef first. It declares index2addr, which lua.lib has with C linkage. The
+  converter imports it next to the API's headers for any of Lua's internal headers a file includes.
+- Their function-like macros are expanded at their uses only in the files that include one of
+  those headers, directly or through a converted header, as only those see them in C++
+  (`included` lines in overrides/expand-macros.txt). An object-like macro that names a function-like
+  one (`#define setobj2s setobj`) expands as that one.
+- What lua.lib has under C++'s names (in the game's C++ build of Lua, LUAI_FUNC is a plain
+  `extern`): luaH_getint gets a C function of its name that calls the C++ one through clang's asm
+  label (`native/lua_internals.c`), luaT_typenames_ a linker alias there.
+
+convert.cmd's sixth smoke test checks the bridge: `tests/lua_internals_smoke.kpp` prints the layout
+(TValue 16 bytes, Udata 56 with factorioBindableObject at 40, Table 88, Node 56, lua_State 232) and
+reads a real Lua state through it (a table's array part, its nodes in insertion order, luaH_getint,
+a userdata's bound object), and its output equals `tests/lua_internals_smoke.cpp`'s, the same
+against the game's Lua headers compiled as C++.
+
+All of this goes when Lua itself is converted: the game's code then uses Lua's types and macros as
+Kpp code, and kpp_lua_internals.h, lua_internals.c and the `included` lines are deleted.
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in

@@ -5,7 +5,8 @@ rem hand). Then converts the CommonUtil and Agui libraries and the game's Util m
 rem own (into kpp\, with the hand-written files kept there), checks that kppc compiles them, and runs
 rem the smoke tests against that result: the stubs in tests\stubs\ stand in for the modules a whole
 rem conversion pulls in (FloatCast.cpp merged into FloatCast.kpp needs global and Logging, for example).
-rem The last one runs imgui frames through the generated imgui interface (native\generate_imgui.py).
+rem Then imgui frames through the generated imgui interface (native\generate_imgui.py), the glm port
+rem against glm, and the Lua internals the game reaches into against the C++ build's layout.
 rem Hand-written parts are in overrides\.
 setlocal
 cd /d "%~dp0"
@@ -72,3 +73,7 @@ echo == glm smoke test: tests\glm_smoke.kpp through the glm port in kpp\src\API\
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\glm_smoke.exe kpp\src\API\glm.kpp tests\glm_smoke.kpp || exit /b 1
 kpp\glm_smoke.exe > kpp\glm_smoke.out.txt
 fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected > nul && echo glm smoke test: output as expected || (echo glm smoke test: OUTPUT DIFFERS & fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected & exit /b 1)
+echo == Lua internals smoke test: tests\lua_internals_smoke.kpp through native\include\kpp_lua_internals.h with the game's lua.lib (the layout and the reads of tests\lua_internals_smoke.cpp, the same against the game's Lua headers as C++)
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_internals_smoke.exe tests\lua_internals_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\lua.lib --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
+kpp\lua_internals_smoke.exe > kpp\lua_internals_smoke.out.txt
+fc /w kpp\lua_internals_smoke.out.txt tests\lua_internals_smoke.expected > nul && echo Lua internals smoke test: output as expected || (echo Lua internals smoke test: OUTPUT DIFFERS & fc /w kpp\lua_internals_smoke.out.txt tests\lua_internals_smoke.expected & exit /b 1)

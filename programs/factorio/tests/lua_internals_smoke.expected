@@ -1,0 +1,9 @@
+TValue 16 tt_ 8
+Udata 56 metatable 24 env 32 factorioBindableObject 40 len 48
+Table 88 array 32 node 40 sizearray 64 firstadded 72 lastadded 80
+Node 56 i_key 16 next 40 prev 48
+lua_State 232 top 24 l_G 32
+sizearray 4 sum 100 istable 1
+x=7 y=8 
+luaH_getint 2: 20
+userdata bound 1 payload after header 56
