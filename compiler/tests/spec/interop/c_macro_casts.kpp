@@ -1,0 +1,10 @@
+// spec: an imported header's constant macro that casts through typedef names (windows.h's `INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)`) is the constant the casts make: all ones, as Win32 returns it
+// found by the converter thread (the stdlib's Filesystem compares FindFirstFileW's result with INVALID_HANDLE_VALUE): "a call that did not resolve to a function (the callee has type void*)"
+extern "C" import "windows.h";
+int main()
+{
+  HANDLE h = INVALID_HANDLE_VALUE;
+  void* minusOne = (void*)-1;
+  println("{} {}", h == minusOne, (unsigned long long)h == 18446744073709551615ull);
+  return 0;
+}

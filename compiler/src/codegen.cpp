@@ -5806,7 +5806,16 @@ namespace
       }
       if (tk == TyKind::Pointer && fk == TyKind::Int)
       {
-        fn += "  " + r + " = inttoptr " + fromT + " " + v.text + " to ptr\n";
+        // A signed integer narrower than a pointer is widened as a signed value first, as through
+        // intptr_t: `(HANDLE)-1` is all ones (INVALID_HANDLE_VALUE); inttoptr alone zero-extends.
+        std::string value = v.text, valueT = fromT;
+        if (!unsignedOf(from) && bitsOf(from) < 64)
+        {
+          value = newTemp();
+          fn += "  " + value + " = sext " + fromT + " " + v.text + " to i64\n";
+          valueT = "i64";
+        }
+        fn += "  " + r + " = inttoptr " + valueT + " " + value + " to ptr\n";
         return {r, to};
       }
       if (fk == TyKind::Pointer && tk == TyKind::Int)

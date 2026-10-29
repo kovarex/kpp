@@ -8,6 +8,8 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <unordered_set>
 
 namespace
 {
@@ -118,6 +120,7 @@ namespace
     bool cMode = false;   // Preprocessed C text (imported headers): no macro heuristics.
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
   private:
+    std::unordered_set<uint32_t> cTypedefNames; // in cMode: the typedef names declared so far (what `(Name)` casts to)
     bool conditionMode = false; // Declarations inside `if (...)` end at ')' instead of ';'.
     bool inRequires = false;    // Inside a requires-clause names are always template-ids.
     std::vector<std::pair<uint32_t, Token>> splits; // '>>' tokens split in place, for undo on backtrack.
@@ -1049,6 +1052,12 @@ namespace
     {
       d->endToken = pos;
       scratch.push_back(d);
+      // C declares a type before using it: the typedef names seen so far make `(HANDLE)(LONG_PTR)-1`
+      // two casts (windows.h's INVALID_HANDLE_VALUE), not a call.
+      if (cMode)
+        if constexpr (std::is_same_v<T, VariableDecl>)
+          if ((d->flags & DF_Typedef) && d->name.parts.size() == 1)
+            cTypedefNames.insert(d->name.parts[0].symbol);
     }
 
     Decl* lastPushedDecl(size_t mark) const
@@ -4171,6 +4180,11 @@ namespace
       // After `(T)`: a cast if T is obviously a type (builtin, pointer, const...) or the next
       // token cannot continue an expression that `(T)` started.
       bool obviousType = t->kind != NodeKind::NamedType || isTemplateTypeName(t);
+      if (!obviousType && cMode)
+      {
+        const QualifiedName& name = static_cast<NamedType*>(t)->name;
+        obviousType = name.parts.size() == 1 && !name.parts[0].hasTemplateArgs && cTypedefNames.count(name.parts[0].symbol);
+      }
       if (!obviousType)
       {
         std::string_view s = spelling(toks[t->token]);
