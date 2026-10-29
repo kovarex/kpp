@@ -1,6 +1,5 @@
 // spec: an object-like macro whose body is a function-like macro's call on a constant is a constant too: SDL3's `#define SDL_WINDOW_FULLSCREEN SDL_UINT64_C(0x0000000000000001)`
 // factorio: SDL's window flags at 6 uses (SDL_WINDOW_FULLSCREEN, SDL_WINDOW_MAXIMIZED, ImguiSDL's SDL_WINDOW_MOUSE_FOCUS)
-// pending: the import makes constants only of bodies without calls (main.cpp, macroConstants), so the flags are unresolved names
 extern "C" import "SDL3/SDL.h";
 int main()
 {

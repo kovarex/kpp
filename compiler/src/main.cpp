@@ -217,9 +217,80 @@ namespace
     return text;
   }
 
+  // The bodies of the object-like macros that call function-like ones (SDL3's
+  // `SDL_WINDOW_FULLSCREEN SDL_UINT64_C(0x0000000000000001)`, windows.h's `E_FAIL
+  // _HRESULT_TYPEDEF_(0x80004005L)`), expanded by clang: each such name on a line of its own after
+  // the headers, behind a numbered marker. Name -> expansion.
+  std::map<std::string, std::string> expandMacroCalls(const std::string& defines, const std::string& wrapper, const std::filesystem::path& source,
+                                                      const std::string& clang, const std::string& includeArgs)
+  {
+    std::vector<std::string> names;
+    for (size_t p = 0; p < defines.size();)
+    {
+      size_t end = defines.find('\n', p);
+      if (end == std::string::npos)
+        end = defines.size();
+      std::string line = defines.substr(p, end - p);
+      p = end + 1;
+      if (line.rfind("#define ", 0) != 0 || line.compare(8, 2, "__") == 0)
+        continue;
+      size_t nameEnd = line.find_first_of(" (", 8);
+      if (nameEnd == std::string::npos || line[nameEnd] == '(')
+        continue;
+      bool call = false;
+      for (size_t i = nameEnd + 1; i < line.size() && !call; ++i)
+        if (line[i] == '(')
+        {
+          size_t j = i;
+          while (j > nameEnd + 1 && line[j - 1] == ' ')
+            --j;
+          call = j > nameEnd + 1 && (isalnum((unsigned char)line[j - 1]) || line[j - 1] == '_');
+        }
+      if (call)
+        names.push_back(line.substr(8, nameEnd - 8));
+    }
+    std::map<std::string, std::string> out;
+    if (names.empty())
+      return out;
+    std::string text = wrapper + "\n";
+    for (size_t i = 0; i < names.size(); ++i)
+      text += "__kpp_x_" + std::to_string(i) + "__ " + names[i] + "\n";
+    std::filesystem::path expanded = source;
+    expanded.replace_extension(".pp");
+    FILE* w = fopen(source.string().c_str(), "wb");
+    if (!w)
+      return out;
+    fwrite(text.data(), 1, text.size(), w);
+    fclose(w);
+    if (system(("\"\"" + clang + "\" -x c -w" + includeArgs + " \"" + source.string() + "\" -E -P -o \"" + expanded.string() + "\"\"").c_str()) != 0)
+      return out; // the bodies stay as they are (not constants)
+    std::string result = readWholeFile(expanded);
+    for (size_t p = 0; p < result.size();) // the markers' lines (one with an empty expansion is the marker alone)
+    {
+      size_t end = result.find('\n', p);
+      if (end == std::string::npos)
+        end = result.size();
+      std::string line = result.substr(p, end - p);
+      p = end + 1;
+      if (line.rfind("__kpp_x_", 0) != 0)
+        continue;
+      size_t close = line.find("__ ", 8);
+      if (close == std::string::npos)
+        continue;
+      size_t index = size_t(strtoull(line.c_str() + 8, nullptr, 10));
+      std::string body = line.substr(close + 3);
+      while (!body.empty() && (body.back() == ' ' || body.back() == '\r'))
+        body.pop_back();
+      if (index < names.size() && !body.empty())
+        out[names[index]] = body;
+    }
+    return out;
+  }
+
   // Turns `#define NAME body` lines (clang -dM output) into Kpp constant declarations where the
-  // body looks like a constant: numbers, string literals, operators, parentheses and names.
-  std::string macroConstants(const std::string& defines)
+  // body looks like a constant: numbers, string literals, operators, parentheses and names. A body
+  // that calls function-like macros is taken as clang expanded it (expansions).
+  std::string macroConstants(const std::string& defines, const std::map<std::string, std::string>& expansions)
   {
     std::string out = "\n// Object-like macros, as constants.\n";
     // Names of object-like macros with a body: a body may refer to them (INFINITY uses _HUGE_ENUF).
@@ -250,6 +321,13 @@ namespace
                                                     "UINT32", "UINT64", "INT8", "INT16", "INT32", "INT64", "ULONG64", "LONG64", "DWORD64", "USHORT",
                                                     "SHORT", "UCHAR", "CHAR", "WCHAR"};
     std::map<std::string, std::string> integerTypes; // constants with a plain integer body, by name
+    std::map<std::string, std::string> floatTypes;   // constants with a plain floating literal body (__FLT_MAX__), by name
+    // `3.40282347e+38F`, `2.2204460492503131e-16`: a decimal floating literal.
+    auto floatLiteral = [](const std::string& body)
+    {
+      return !body.empty() && isdigit((unsigned char)body[0]) && body.find_first_not_of("0123456789.eE+-fFlL") == std::string::npos &&
+             body.find_first_of(".eE") != std::string::npos;
+    };
     for (size_t p = 0; p < defines.size();)
     {
       size_t end = defines.find('\n', p);
@@ -265,6 +343,13 @@ namespace
       std::string body = line.substr(nameEnd + 1);
       while (!body.empty() && (body.back() == ' ' || body.back() == '\r'))
         body.pop_back();
+      if (auto e = expansions.find(line.substr(8, nameEnd - 8)); e != expansions.end())
+        body = e->second;
+      if (floatLiteral(body))
+      {
+        floatTypes[line.substr(8, nameEnd - 8)] = body.back() == 'f' || body.back() == 'F' ? "float" : "double";
+        continue;
+      }
       if (body.empty() || !isdigit((unsigned char)body[0]) || body.find_first_not_of("0123456789xXabcdefABCDEFuUlLi") != std::string::npos ||
           (body.find('i') != std::string::npos && body.find("i64") == std::string::npos && body.find("i32") == std::string::npos) ||
           (body.find_first_of("xX") == std::string::npos && body.find_first_of("abcdefABCDEF") != std::string::npos))
@@ -291,8 +376,11 @@ namespace
       std::string body = line.substr(nameEnd + 1);
       while (!body.empty() && (body.back() == ' ' || body.back() == '\r'))
         body.pop_back();
-      bool internal = name.rfind("__", 0) == 0; // __FILE__-style internals stay out, unless a plain number (__LONG_LONG_MAX__)
-      if (name.empty() || body.empty() || (internal && body.find_first_not_of("0123456789xXabcdefABCDEFuUlL") != std::string::npos))
+      if (auto e = expansions.find(name); e != expansions.end())
+        body = e->second;
+      // __FILE__-style internals stay out, unless a plain number (__LONG_LONG_MAX__, __FLT_MAX__)
+      bool internal = name.rfind("__", 0) == 0;
+      if (name.empty() || body.empty() || (internal && body.find_first_not_of("0123456789xXabcdefABCDEFuUlL") != std::string::npos && !floatLiteral(body)))
         continue;
       bool hasNumber = false, ok = true, call = false, namesKnown = true;
       int quotes = 0;
@@ -326,8 +414,9 @@ namespace
         }
       }
       bool aliasOfInteger = integerTypes.count(body) != 0; // DBL_MANT_DIG = __DBL_MANT_DIG__
+      bool aliasOfFloat = floatTypes.count(body) != 0;     // FLT_MAX = __FLT_MAX__
       if (!ok || call || (quotes != 0 && quotes != 2) || !namesKnown ||
-          (!hasNumber && quotes == 0 && body.find('(') == std::string::npos && !aliasOfInteger))
+          (!hasNumber && quotes == 0 && body.find('(') == std::string::npos && !aliasOfInteger && !aliasOfFloat))
         continue;
       // A declared type where the body shows one: a cast, a string, a float or an integer literal.
       std::string type = "auto";
@@ -355,6 +444,8 @@ namespace
       }
       if (type == "auto" && aliasOfInteger)
         type = integerTypes[body];
+      if (type == "auto" && aliasOfFloat)
+        type = floatTypes[body];
       if (type == "auto" && hasNumber && quotes == 0)
       {
         // Names of other integer constants with numbers and operators (LLONG_MIN = (-__LONG_LONG_MAX__-1LL)):
@@ -425,7 +516,7 @@ namespace
     for (const std::string& dir : options.cIncludeDirs)
       includeArgs += " -I\"" + dir + "\"";
     uint64_t hash = 1469598103934665603ull;
-    for (unsigned char c : wrapper + includeArgs)
+    for (unsigned char c : "kpp import 2\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules)
       hash = (hash ^ c) * 1099511628211ull;
     std::error_code ec;
     std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
@@ -458,7 +549,9 @@ namespace
         codegenExit = 1;
         return;
       }
-      text = readWholeFile(preprocessed) + macroConstants(readWholeFile(defines));
+      std::string definesText = readWholeFile(defines);
+      std::map<std::string, std::string> expansions = expandMacroCalls(definesText, wrapper, cacheDir / (std::string(hex) + ".x.c"), clang, includeArgs);
+      text = readWholeFile(preprocessed) + macroConstants(definesText, expansions);
       FILE* out = fopen(cached.string().c_str(), "wb");
       if (out)
       {
