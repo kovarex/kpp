@@ -1,0 +1,27 @@
+// spec: a constructor or member function declared in its class and defined after it runs at compile time with the definition's body (the game's .cpp half, merged after the class) and the declaration's default arguments; a default constructor defined so runs, never skipped for the members' defaults
+// factorio: agui::Graphics::FULL_SCREEN_RECTANGLE = Rectangle(-1, 0, 0, 0) (Rectangle::Rectangle defined after the class), and every constant made through such a constructor
+// pending: the interpreter ran only bodies written in the class, and took a declared default constructor for the members' defaults (fresh.width read 0: a wrong constant)
+struct Rect
+{
+  Rect();
+  Rect(int x, int y, int w, int h = 4);
+  int area() const;
+  int width = 0;
+  int height = 0;
+  int left = 0;
+};
+Rect::Rect() : width(7), height(1) {}
+Rect::Rect(int x, int y, int w, int h) : width(w), height(h), left(x) {}
+int Rect::area() const
+{
+  return this->width * this->height;
+}
+constexpr Rect full = Rect(-1, 0, 3);
+constexpr Rect fresh = Rect();
+static_assert(full.area() == 12 && full.left == -1);
+static_assert(fresh.width == 7 && fresh.area() == 7);
+int main()
+{
+  println("{} {}", full.area(), fresh.width);
+  return 0;
+}
