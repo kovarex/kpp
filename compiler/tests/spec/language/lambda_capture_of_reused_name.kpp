@@ -1,0 +1,29 @@
+// spec: a lambda's capture by name (`[&list]`, `[list]`) is the local of that name in scope where the lambda is written, not another local of the function with the same name (one of an earlier block)
+// found linking the converted game: DebugTools' particleCreator has several `Vector<...> prototypeList;` in sibling blocks; a lambda's `[&prototypeList]` took an earlier one, and the `prototypeList` its body names (the one in scope) became a global of that name, defined once per function that used it (`redefinition of comdat '$prototypeList'`)
+int main()
+{
+  for (int round = 0; round < 2; ++round)
+  {
+    Vector<int> list;
+    list.push_back(round);
+  }
+  {
+    Vector<int> list;
+    list.push_back(1);
+    list.push_back(2);
+  }
+  {
+    Vector<int> list;
+    list.push_back(3);
+  }
+  {
+    Vector<int> list;
+    auto add = [&list](int v) { list.push_back(v); };
+    add(5);
+    add(6);
+    auto count = [&list]() { return list.size(); };
+    auto first = [list]() { return list[0]; };
+    println("{} {} {}", list.size(), count(), first());
+  }
+  return 0;
+}

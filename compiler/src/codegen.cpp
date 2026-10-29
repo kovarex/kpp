@@ -2981,19 +2981,37 @@ namespace
       }
     }
 
-    Decl* localByName(uint32_t symbol)
+    static bool localNamed(Decl* d, uint32_t symbol)
     {
-      for (auto& [d, local] : locals)
+      if (d && d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty())
+        return static_cast<VariableDecl*>(d)->name.last().symbol == symbol;
+      return d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->name == symbol;
+    }
+
+    // The local a capture by name (`[&list]`) captures: the one of that name the lambda's body names
+    // (resolved where the lambda is written), not another local of the function with that name (of
+    // an earlier block: `locals` keeps every local of the function). A capture the body does not use
+    // takes the only local of that name; with several, which one it is the code generator cannot tell.
+    Decl* capturedLocal(LambdaExpr* l, uint32_t symbol, std::vector<Decl*>& namedInBody, bool& scanned)
+    {
+      if (!scanned)
       {
-        if (!d)
-          continue;
-        if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty() &&
-            static_cast<VariableDecl*>(d)->name.last().symbol == symbol)
-          return d;
-        if (d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->name == symbol)
-          return d;
+        bool usesThis = false;
+        scanCaptures(l->body, namedInBody, usesThis);
+        scanned = true;
       }
-      return nullptr;
+      for (Decl* d : namedInBody)
+        if (localNamed(d, symbol))
+          return d;
+      Decl* only = nullptr;
+      for (auto& [d, local] : locals)
+        if (localNamed(d, symbol))
+        {
+          if (only)
+            unsupported(l, "a capture of " + sym(symbol) + " that the lambda does not use, with several locals of that name in the function");
+          only = d;
+        }
+      return only;
     }
 
     // The closure of a lambda type, created from its capture list in the current function.
@@ -3062,8 +3080,9 @@ namespace
       info.enclosingClass = currentClassTy;
       info.writtenIn = currentFunctionName;
       bool usesThis = false;
-      std::vector<Decl*> explicitDecls;
       bool thisCaptured = false;
+      std::vector<Decl*> namedInBody;
+      bool bodyScanned = false;
       for (const LambdaCapture& cap : l->captures)
       {
         if (cap.init)
@@ -3081,7 +3100,7 @@ namespace
           thisCaptured = true;
           continue;
         }
-        Decl* d = localByName(cap.symbol);
+        Decl* d = capturedLocal(l, cap.symbol, namedInBody, bodyScanned);
         if (!d)
           unsupported(l, "a capture that is not a local variable (" + sym(cap.symbol) + ")");
         info.captured.push_back(d);
