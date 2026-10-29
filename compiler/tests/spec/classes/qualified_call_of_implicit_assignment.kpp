@@ -1,0 +1,36 @@
+// spec: `super::operator=(other)` (or `Base::operator=(other)`) of a class that declares no operator= calls its implicit assignment on this object's base part, as `this->super::operator=(other)` does: the base's members are assigned, member by member
+// found in src (RobotWithLogisticInterface, CustomAlert, EntityToNameTagMapping, TrainStopReservation, ModInfo, CircularBuffer: `super::operator=(other);` in their own assignments)
+// pending: SILENT, the name resolves to the class, so the call builds a temporary Base from other and drops it: the base part is never assigned (`1 106 0 0`)
+struct Base
+{
+  int a = 0;
+  int list[2] = {0, 0};
+};
+struct Derived : Base
+{
+  using super = Base;
+  int b = 0;
+  Derived& operator=(const Derived& other)
+  {
+    super::operator=(other);
+    this->b = other.b + 100;
+    return *this;
+  }
+  void assignFromBase(const Base& other) { Base::operator=(other); }
+};
+int main()
+{
+  Derived x;
+  x.a = 1;
+  Derived y;
+  y.a = 5;
+  y.b = 6;
+  y.list[1] = 4;
+  x = y;
+  Derived z;
+  Base source;
+  source.a = 9;
+  z.assignFromBase(source);
+  println("{} {} {} {}", x.a, x.b, z.a, x.list[1]);
+  return 0;
+}
