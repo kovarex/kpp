@@ -2947,9 +2947,12 @@ namespace
             return true;
           if ((flags & DF_Typedef) && synthetic && d.type == selfType && d.name.parts.size() == 1)
           {
-            // `typedef struct { ... } Name;`: the class itself takes the name.
+            // `typedef struct { ... } Name;`: the class itself takes the name, the first one; any
+            // later plain name is a typedef of it (windns.h's `} DNS_KEY_DATA, *PDNS_KEY_DATA,
+            // DNS_DNSKEY_DATA, *PDNS_DNSKEY_DATA;`, which renamed the class to its last name).
             c->name = d.name;
             selfType->name = d.name;
+            synthetic = false;
             if (!accept(P::Comma))
               break;
             continue;

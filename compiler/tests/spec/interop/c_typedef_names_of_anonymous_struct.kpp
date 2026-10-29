@@ -1,6 +1,5 @@
 // spec: a C header's struct without a tag behind several typedef names, `typedef struct { ... } DNS_KEY_DATA, *PDNS_KEY_DATA, DNS_DNSKEY_DATA, *PDNS_DNSKEY_DATA;`: every name is the one type (the pointer names pointers to it), also as a member's type in another struct's union
 // factorio: SocketAddress.cpp's DNS_RECORD (windns.h), whose union's `DNS_KEY_DATA KEY, Key;` made its layout fail: only the last name of such a typedef is declared
-// pending: the import declares only the last of the typedef names ("the type 'SpecKeyData' is not declared")
 extern "C" import "c_typedef_names.h";
 int main()
 {
