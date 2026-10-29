@@ -14033,6 +14033,29 @@ struct GlobalScope::Impl
         }
         MemberResult r = memberOf(object, symbol, &m->member, m->token);
         m->resolved = r.decl;
+        if ((!r.decl || r.decl->kind != NodeKind::FunctionDecl) && last.special == 2 && P(last.opToken) == P::Assign && c->args.size() == 1)
+        {
+          // `this->CollisionMask::operator=(other)` of a class declaring none: its implicit
+          // assignment, of the class the name is qualified with (or the object's), giving the object.
+          const Ty* target = types.unqualified(types.stripRef(object));
+          if (m->member.parts.size() > 1)
+          {
+            NamedType written{};
+            written.kind = NodeKind::NamedType;
+            written.token = m->token;
+            written.name = m->member;
+            written.name.parts.count -= 1;
+            if (const Ty* q = typeOf(&written); q && q->isKnown() && types.unqualified(types.stripRef(q))->kind == TyKind::Class)
+              target = types.unqualified(types.stripRef(q));
+          }
+          if (target && target->kind == TyKind::Class)
+          {
+            ++stats.callsResolved;
+            m->resolved = nullptr; // (the qualifier's class, which the name found instead)
+            record(m, types.function(types.lref(target), {}, false));
+            return types.lref(target);
+          }
+        }
         if (!r.decl)
         {
           if (r.why == Why::Base)

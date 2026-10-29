@@ -1,6 +1,5 @@
 // spec: a class's implicitly declared copy assignment called by name, `this->Mask::operator=(other)` in a derived class's operator= and `plain.operator=(m)`, assigns member by member and gives the object, as the implicit operator= does when written as `=`
 // found in the converted game: CollisionMaskConnector's and TileCollisionMaskConnector's operator= calling `this->CollisionMask::operator=(other)` (3 "member access that did not resolve to a field")
-// pending: the implicit operator= is no member the name finds ("a member access that did not resolve to a field")
 struct Mask
 {
   int bits = 0;

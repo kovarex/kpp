@@ -8383,6 +8383,55 @@ namespace
             destroy(addr, objectTy, c);
           return {"", types.voidType()};
         }
+        if ((!m->resolved || m->resolved->kind != NodeKind::FunctionDecl) && !m->member.empty() && m->member.last().special == 2 &&
+            P(m->member.last().opToken) == P::Assign && c->args.size() == 1)
+        {
+          // `this->CollisionMask::operator=(other)` of a class declaring none: its implicit
+          // assignment, member by member, of the base the name is qualified with; the object.
+          std::string addr;
+          const Ty* objectTy;
+          if (m->op == P::Arrow)
+          {
+            Value p = arrowOperand(rvalue(m->base), c);
+            if (p.ty->kind != TyKind::Pointer)
+              unsupported(c, "-> on something that is not a pointer");
+            addr = p.text;
+            objectTy = p.ty->inner;
+          }
+          else
+          {
+            Value o = rvalue(m->base);
+            addr = o.text;
+            objectTy = o.ty;
+          }
+          objectTy = types.unqualified(types.stripRef(objectTy));
+          if (!isClass(objectTy))
+            unsupported(c, "operator= on a non-class object");
+          const Ty* target = objectTy;
+          if (m->member.parts.size() > 1)
+          {
+            NamedType written{};
+            written.kind = NodeKind::NamedType;
+            written.token = m->token;
+            written.name = m->member;
+            written.name.parts.count -= 1;
+            TemplateArgs none;
+            if (const Ty* q = global.typeOfAstIn(&written, typingContext(), currentArgs ? *currentArgs : none); q && isClass(types.stripRef(q)))
+              target = canonicalClass(types.unqualified(types.stripRef(q)), c);
+          }
+          std::string dst = addr;
+          if (canonicalClass(target, c) != canonicalClass(objectTy, c) && !baseAddress(objectTy, target, addr, dst, c))
+            unsupported(c, "operator= of " + types.toString(target, &symbols) + ", which is no base of " + types.toString(objectTy, &symbols));
+          Value src = rvalue(c->args[0]);
+          const Ty* srcTy = types.unqualified(types.stripRef(src.ty));
+          std::string from = src.text;
+          if (!isClass(srcTy))
+            unsupported(c, "assigning a value that is no object to " + types.toString(target, &symbols));
+          if (canonicalClass(srcTy, c) != canonicalClass(target, c) && !baseAddress(srcTy, target, src.text, from, c))
+            unsupported(c, "assigning " + types.toString(srcTy, &symbols) + " to " + types.toString(target, &symbols));
+          assignObject(dst, from, target, c, isXvalue(c->args[0]));
+          return {dst, types.lref(target)};
+        }
         if (m->resolved && m->resolved->kind == NodeKind::FunctionDecl)
         {
           auto* f = static_cast<FunctionDecl*>(m->resolved);
