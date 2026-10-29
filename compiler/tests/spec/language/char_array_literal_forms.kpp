@@ -1,0 +1,15 @@
+// spec: a char array from a string literal in braces, a wchar_t array from L"..", a member's default char text[8] = "abc", beside an array of pointers from a list of literals (each element a pointer, untouched by the char rule)
+// found with language/char_array_from_string_literal (the array stayed empty): the forms the game's converted code also has
+struct Name
+{
+  char text[8] = "abc";
+};
+int main()
+{
+  char braced[6] = {"hi"};
+  wchar_t wide[5] = L"wid";
+  const char* names[2] = {"first", "second"};
+  Name n;
+  println("[{}] {} {} {} [{}] {}", (const char*)braced, (int)braced[5], (int)wide[0], (int)wide[3], names[1], (const char*)n.text);
+  return 0;
+}

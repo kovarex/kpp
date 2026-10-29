@@ -7825,6 +7825,10 @@ struct GlobalScope::Impl
         const Ty* t = convertType(v->type, ctx, depth + 1);
         if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::BraceInitExpr)
           t = types.array(t->inner, uint32_t(static_cast<BraceInitExpr*>(v->init)->args.size())); // `double a[] = {1, 2}`
+        else if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::LiteralExpr &&
+                 static_cast<LiteralExpr*>(v->init)->literalKind == TokenKind::String)
+          if (std::optional<ConstValue> s = constString(static_cast<LiteralExpr*>(v->init), ctx))
+            t = types.array(t->inner, uint32_t(s->parts->size())); // `char s[] = "abc"`: its four chars
         // A constexpr variable is const (`decltype(COUNT)` is `const int`), an array of them of
         // const elements; one whose type is deduced stays as deduced.
         if ((v->flags & DF_Constexpr) && t && t->isKnown() && !t->isReference() && !containsAuto(t))

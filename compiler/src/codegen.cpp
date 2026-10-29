@@ -2679,17 +2679,17 @@ namespace
           initializeFrom(addr, t, static_cast<ParenExpr*>(init)->inner, at);
           return;
         }
-        // SSE intrinsic returning a vector → store directly into the wrapper class's first field.
+        // An SSE operation the checker could not type (one intrin.h has as a macro, _mm_shuffle_ps)
+        // initialising a wrapper class (float32x4): the vector stored into its first field.
         if (init->kind == NodeKind::CallExpr && (!init->ty || !init->ty->isKnown()))
         {
           Value v = rvalue(init);
           if (v.ty && v.ty->kind == TyKind::Vector)
           {
             StructInfo& info = structFor(t, at);
-            std::string field0 = gep(info.name, addr, 0);
-            std::string tmp = newTemp();
-            fn += "  " + tmp + " = load " + llType(v.ty, at) + ", ptr " + v.text + "\n";
-            fn += "  store " + llType(v.ty, at) + " " + tmp + ", ptr " + field0 + "\n";
+            if (info.fieldTypes.empty() || llType(info.fieldTypes[0], at) != llType(v.ty, at))
+              unsupported(at, "initialising " + types.toString(t, &symbols) + ", whose first member is not that vector, from a vector");
+            fn += "  store " + llType(v.ty, at) + " " + v.text + ", ptr " + gep(info.name, addr, 0) + "\n";
             return;
           }
           // Not a vector — fall through to the non-class converting constructor path.
@@ -2720,6 +2720,30 @@ namespace
           moveConstruct(addr, src.text, t, at); // `T tmp = move(a);`
         else
           copyConstruct(addr, src.text, t, at);
+        return;
+      }
+      // `char text[16] = "edit me"` (also in braces or parentheses), `wchar_t name[8] = L"x"`: the
+      // literal's characters and its terminating zero, the rest of the array zero.
+      Expr* literal = init;
+      while (literal && literal->kind == NodeKind::ParenExpr)
+        literal = static_cast<ParenExpr*>(literal)->inner;
+      if (literal && literal->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(literal)->args.size() == 1)
+        literal = static_cast<BraceInitExpr*>(literal)->args[0];
+      if (t->kind == TyKind::Array && (types.unqualified(t->inner)->kind == TyKind::Char || types.unqualified(t->inner)->kind == TyKind::Int) &&
+          literal && literal->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(literal)->literalKind == TokenKind::String)
+      {
+        auto* l = static_cast<LiteralExpr*>(literal);
+        uint32_t unitBytes = 1;
+        size_t units = stringLiteralUnits(l, unitBytes);
+        if (sizeOf(t->inner, at) != unitBytes)
+          fail(at, "error: an array of " + types.toString(t->inner, &symbols) + " initialised from a string literal of " + std::to_string(unitBytes * 8) + "-bit characters");
+        if (units > t->count)
+          fail(at, "error: a string literal of " + std::to_string(units) + " characters initialises an array of " + std::to_string(t->count));
+        storeZero(t, addr, at);
+        if (declaredNames.claim("@llvm.memcpy.p0.p0.i64"))
+          decls += "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
+        fn += "  call void @llvm.memcpy.p0.p0.i64(ptr " + addr + ", ptr " + stringConstant(l) + ", i64 " +
+              std::to_string(std::min<uint64_t>(units + 1, t->count) * unitBytes) + ", i1 false)\n";
         return;
       }
       if (init->kind == NodeKind::BraceInitExpr)
@@ -5031,6 +5055,30 @@ namespace
       if (wide16 || wide32)
         return wideStringConstant(bytes, wide16 ? 16 : 32);
       return cStringConstant(bytes);
+    }
+
+    // The code units of a string literal (adjacent ones joined) without its terminating zero, as
+    // stringConstant makes them, and their size: chars, or UTF-16/32 units for L"..", u"..", U"..".
+    size_t stringLiteralUnits(LiteralExpr* l, uint32_t& unitBytes)
+    {
+      std::string bytes;
+      const std::vector<Token>& toks = *currentFile->tokens;
+      for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
+        bytes += decodeString(spelling(uint32_t(i)));
+      std::string_view first = spelling(l->token);
+      bool wide16 = first.starts_with("L") || (first.starts_with("u") && !first.starts_with("u8"));
+      unitBytes = wide16 ? 2 : first.starts_with("U") ? 4 : 1;
+      if (unitBytes == 1)
+        return bytes.size();
+      size_t units = 0;
+      for (size_t i = 0; i < bytes.size();)
+      {
+        unsigned char c = bytes[i];
+        size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
+        units += unitBytes == 2 && n == 4 ? 2 : 1; // a surrogate pair in UTF-16
+        i += n;
+      }
+      return units;
     }
 
     // `L"text"` / `U"text"`: the UTF-8 bytes decoded and re-encoded as UTF-16 or UTF-32 code units.
