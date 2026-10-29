@@ -1411,6 +1411,25 @@ struct GlobalScope::Impl
     return out;
   }
 
+  // A name in an alias's own definition, `using Option = Option<DataType>;` in a class deriving the
+  // template: not yet the alias (C++ declares it after its type), but what the class's bases or
+  // the enclosing scopes declare.
+  Lookup lookupPastAlias(UsingAliasDecl* alias, uint32_t symbol, int depth)
+  {
+    Lookup out;
+    Scope* s = lexicalScopeOf(alias);
+    if (!s || depth > 24)
+      return out;
+    if (s->kind == ScopeKind::Class && !s->baseTypes.empty())
+    {
+      ensureBases(s, depth);
+      for (Scope* b : s->baseScopes)
+        if (lookupInScope(b, symbol, out, depth + 1))
+          return out;
+    }
+    return lookupUnqualified(symbol, s->parent, nullptr, depth + 1);
+  }
+
   // Two lookups' function overloads as one set (kept for the run: a lookup's overloads outlive it);
   // `a` alone when either found something other than functions.
   std::mutex mergedOverloadsMutex;
@@ -4614,6 +4633,8 @@ struct GlobalScope::Impl
         // Under an instantiation the qualifier's arguments are known: `Pick<1, A, B>::Type` with
         // A = int finds the member in the specialisation those arguments pick.
         Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        if (l.decl && l.decl->kind == NodeKind::UsingAliasDecl && static_cast<UsingAliasDecl*>(l.decl)->type == t && n->name.parts.size() == 1)
+          l = lookupPastAlias(static_cast<UsingAliasDecl*>(l.decl), n->name.parts[0].symbol, depth + 1); // `using Option = Option<DataType>;`
         if (n->name.parts.size() == 2 && !n->name.parts[1].hasTemplateArgs && n->name.parts[0].hasTemplateArgs)
         {
           // `Num<I>::Type` with I still a parameter: the member of whichever specialisation the

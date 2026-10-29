@@ -3308,6 +3308,9 @@ namespace
           default:
             if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && atIdent(2) && at(P::ColonColon, 3) && at(P::Star, 4))
               return true; // `int (Calc::*op)(int)`: a pointer to a member
+            if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && (at(P::Star, 2) || at(P::Amp, 2)) && atIdent(3) &&
+                ((at(P::RParen, 4) && at(P::LParen, 5)) || at(P::LBracket, 4)))
+              return true; // `void (*callback)();`, `int (*op)(int) = twice;`: a function pointer declarator
             return isBuiltinTypeKeyword(Kw(tok().id)) && !at(P::LParen, 1) && !at(P::LBrace, 1) && !at(P::ColonColon, 1);
         }
       }

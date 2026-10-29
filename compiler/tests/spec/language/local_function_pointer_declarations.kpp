@@ -1,0 +1,14 @@
+// spec: in a function body, `void (*callback)();` and `int (*op)(int) = twice;` (a builtin return type, then a parenthesised pointer declarator) declare function pointers; `int(x)` stays a cast
+// factorio: Graphics::handleGraphicsError's `void(*funcPtr)();`, kept to stop inlining
+void hello() { println("hi"); }
+int twice(int x) { return 2 * x; }
+int main()
+{
+  void(*funcPtr)();
+  funcPtr = hello;
+  funcPtr();
+  int (*op)(int) = twice;
+  int value = int(7.5);
+  println("{} {}", op(value), int(op != nullptr));
+  return 0;
+}
