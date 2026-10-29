@@ -1,6 +1,5 @@
 // spec: a structured binding of a class for which the library's TupleSize<E> (std::tuple_size) is specialized binds through get<i>: binding i is what get<i>(e) gives (a reference into e for `auto&`), whatever the class's data members are; a class without TupleSize binds by its data members as before
 // factorio: the game's structured bindings of std::tuple results (CutsceneController's `auto [transition, wait] = getTimes(...)`, TextureStreamingManager's `auto [tileX, tileY, mip] = tileIDToTilePosition(id)`, RobotWithLogisticInterface, TiledVideoBitmap): a variadic Tuple keeps its elements in nested members, not flat ones
-// pending: binds by data members only (b gets the nested rest)
 struct Inner
 {
   double second = 0;

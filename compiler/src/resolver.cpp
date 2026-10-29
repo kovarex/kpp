@@ -219,6 +219,9 @@ namespace
     // The symbol of an item that is a body's `using namespace N;` (decl the UsingDirectiveDecl):
     // no name, a namespace for unqualified lookups to try.
     static constexpr uint32_t usingDirective = UINT32_MAX - 1;
+    // The symbol of an item that only carries a nameless local's type for this walk (the hidden
+    // object of structured bindings, while their get<i> calls are typed: Walker::tupleBindings).
+    static constexpr uint32_t hiddenObject = UINT32_MAX - 2;
     size_t mark() const { return items.size(); }
     void pop(size_t mark) { items.resize(mark); }
     void push(uint32_t symbol, Decl* decl)
@@ -770,6 +773,12 @@ struct GlobalScope::Impl
   uint32_t symStd, symValue;
   uint32_t opSymbols[size_t(P::Count)]; // "operator+" etc., so operators can be looked up by name.
   uint32_t symBegin, symEnd, symFirst, symSecond;
+  uint32_t symTupleSize, symGet;
+  // The numbers 0 to 63 spelled in a file of their own: the explicit template argument of the
+  // get<i>(e) a tuple-like structured binding calls (Walker::tupleBindings), which no source spells.
+  std::string indexText;
+  std::vector<Token> indexTokens;
+  ParsedFile indexFile;
   std::vector<std::pair<std::string, uint32_t>> whyAt; // --why-at: trace the expressions typed on these (file suffix, line)s
   struct BuiltinName
   {
@@ -786,6 +795,21 @@ struct GlobalScope::Impl
     symFirst = symbols.intern("first");
     symSecond = symbols.intern("second");
     symValue = symbols.intern("value");
+    symTupleSize = symbols.intern("TupleSize");
+    symGet = symbols.intern("get");
+    for (uint32_t i = 0; i < 64; ++i)
+    {
+      std::string n = std::to_string(i);
+      Token t{};
+      t.offset = uint32_t(indexText.size());
+      t.length = uint32_t(n.size());
+      t.kind = uint32_t(TokenKind::Number);
+      indexTokens.push_back(t);
+      indexText += n + " ";
+    }
+    indexFile.tokens = &indexTokens;
+    indexFile.text = indexText;
+    indexFile.path = "<structured binding index>";
     for (uint32_t i = 0; i < uint32_t(P::Count); ++i)
       opSymbols[i] = symbols.intern("operator" + std::string(punctuatorSpelling(P(i))));
     auto add = [&](const char* name, const Ty* t) { builtinNames.push_back({symbols.intern(name), t}); };
@@ -3421,6 +3445,65 @@ struct GlobalScope::Impl
     TypeContext vctx{lexicalScopeOf(v), &own, sub.pairs.empty() ? nullptr : &sub, def->file ? def->file->tokens : nullptr,
                      def->file ? def->file->text : std::string_view()};
     return constAsDeclared(constInitValue(def->init, vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
+  }
+
+  // Whether e names a tuple-like structured binding (its hidden `auto&&` variable, Walker::tupleBindings).
+  static bool namesTupleBinding(const Expr* e)
+  {
+    Decl* d = e && e->kind == NodeKind::NameExpr ? static_cast<const NameExpr*>(e)->resolved : nullptr;
+    return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->tupleBinding;
+  }
+
+  // `auto [a, b] = e;` of class type t: whether the library's TupleSize<t> (std::tuple_size) has
+  // a member named value, which makes the binding tuple-like (design.md 4, structured bindings);
+  // size gets that value, nothing when it is no constant.
+  bool tupleSizeOf(const Ty* t, std::optional<int64_t>& size, int depth)
+  {
+    Lookup l;
+    if (!lookupInScope(&root, symTupleSize, l, depth + 1, false) || !l.decl)
+      return false;
+    Decl* primary = nullptr;
+    auto isPrimary = [](Decl* d) { return d && d->kind == NodeKind::ClassDecl && !(d->flags & DF_Specialization) && d->templateParams.size() == 1; };
+    if (l.overloads)
+    {
+      for (const Entry& e : *l.overloads)
+        if (isPrimary(e.decl))
+          primary = e.decl;
+    }
+    else if (isPrimary(l.decl))
+      primary = l.decl;
+    if (!primary)
+      return false;
+    const Ty* args[1] = {t};
+    const Ty* instance = resolveSpecialization(types.classType(primary, Span<const Ty*>{args, 1}), depth + 1);
+    Scope* s = classScopeOf(instance);
+    Lookup value;
+    if (!s || !lookupInScope(s, symValue, value, depth + 1) || !value.decl)
+      return false;
+    if (std::optional<ConstValue> v = traitObjectValue(instance, depth + 1); v && v->kind == ConstValue::Kind::Int)
+      size = v->i;
+    return true;
+  }
+
+  // Whether class t has a member function template get whose first template parameter is a
+  // constant (`template<int I> auto& get()`): its tuple-like bindings call e.get<i>(), as C++'s do.
+  bool hasMemberGet(const Ty* t, int depth)
+  {
+    Scope* s = classScopeOf(t);
+    Lookup l;
+    if (!s || !lookupInScope(s, symGet, l, depth + 1) || !l.decl || l.decl->kind != NodeKind::FunctionDecl)
+      return false;
+    auto constantFirst = [](Decl* d)
+    {
+      return d && d->kind == NodeKind::FunctionDecl && !d->templateParams.empty() && d->templateParams[0]->kind == NodeKind::TemplateParamDecl &&
+             !static_cast<TemplateParamDecl*>(d->templateParams[0])->isType;
+    };
+    if (!l.overloads)
+      return constantFirst(l.decl);
+    for (const Entry& e : *l.overloads)
+      if (constantFirst(e.decl))
+        return true;
+    return false;
   }
 
   VariableDecl* findStaticBoolValue(ClassDecl* c, int depth)
@@ -9157,6 +9240,8 @@ struct GlobalScope::Impl
       {
         auto* d = static_cast<DecltypeType*>(t);
         const Ty* generic = d->expr && d->expr->ty ? d->expr->ty : types.unknown();
+        if (namesTupleBinding(d->expr))
+          generic = types.stripRef(generic); // `decltype(a)` of a tuple-like binding: the type get gives it, not its reference
         if (d->expr && !d->expr->ty && !d->isAuto)
           if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown())
             generic = typed; // `decltype(Definition::migrations)` in a member's type, before any walk typed it
@@ -11605,6 +11690,8 @@ struct GlobalScope::Impl
     // to its type, a call or cast keeps the reference its type has.
     const Ty* decltypeOf(Expr* e, const Ty* t)
     {
+      if (Impl::namesTupleBinding(e) && t)
+        return types.stripRef(t); // `decltype(auto) x = a;` of a tuple-like binding a: what get gives, no reference
       if (!e || !t || !t->isKnown() || t->isReference() || e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr)
         return t;
       return isLvalueExpression(e) ? types.lref(t) : t;
@@ -12072,16 +12159,9 @@ struct GlobalScope::Impl
     const Ty* typeOf(Type* t) { return impl.convertType(t, ctx(), 0); }
 
     // Type of a name expression from the declaration it resolved to.
-    // `auto [a, b] = pair;`: the type of the binding named `symbol`, the matching data member (or
-    // array element) of the hidden object the declaration names; null when symbol is no binding.
-    const Ty* bindingType(VariableDecl* v, uint32_t symbol)
+    // The hidden object of `auto [a, b] = e;` (v) as this walk deduced it; null when not known.
+    const Ty* hiddenObjectType(VariableDecl* v)
     {
-      size_t index = v->structuredBindings.size();
-      for (size_t i = 0; i < v->structuredBindings.size(); ++i)
-        if (static_cast<NameExpr*>(v->structuredBindings[i])->name.last().symbol == symbol)
-          index = i;
-      if (index == v->structuredBindings.size())
-        return nullptr;
       const Ty* t = impl.declaredTypeOf(v, activeSubst, 0);
       if (t && impl.containsAuto(t))
       {
@@ -12094,7 +12174,22 @@ struct GlobalScope::Impl
         else
           t = nullptr;
       }
-      if (!t || !t->isKnown())
+      return t && t->isKnown() ? t : nullptr;
+    }
+
+    // `auto [a, b] = pair;`: the type of the binding named `symbol`, the matching data member (or
+    // array element) of the hidden object the declaration names; null when symbol is no binding.
+    // (A tuple-like binding names a variable of its own: tupleBindings.)
+    const Ty* bindingType(VariableDecl* v, uint32_t symbol)
+    {
+      size_t index = v->structuredBindings.size();
+      for (size_t i = 0; i < v->structuredBindings.size(); ++i)
+        if (static_cast<NameExpr*>(v->structuredBindings[i])->name.last().symbol == symbol)
+          index = i;
+      if (index == v->structuredBindings.size())
+        return nullptr;
+      const Ty* t = hiddenObjectType(v);
+      if (!t)
         return unknown(Why::Auto);
       bool isConst = types.stripRef(t)->isConst;
       const Ty* object = types.unqualified(types.stripRef(t));
@@ -12226,7 +12321,14 @@ struct GlobalScope::Impl
     const Ty* resolveName(NameExpr* e)
     {
       if (e->name.empty())
+      {
+        // The hidden object of `auto [a, b] = e;`, which a tuple-like binding's get<i>(object)
+        // names (tupleBindings).
+        if (e->resolved && e->resolved->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(e->resolved)->structuredBindings.empty())
+          if (const Ty* t = hiddenObjectType(static_cast<VariableDecl*>(e->resolved)))
+            return t;
         return unknown(Why::Unsupported);
+      }
       walkType(e->name.typeQualifier); // `decltype(this->deviation)::CoordinateType::FractionalBits`
       if (e->name.parts.size() == 1 && e->name.parts[0].hasTemplateArgs && impl.isBoolTraitName(e->name.parts[0].symbol))
       {
@@ -14475,7 +14577,14 @@ struct GlobalScope::Impl
           if (v->name.parts.size() == 1)
             locals.push(v->name.parts[0].symbol, v);
           for (Expr* b : v->structuredBindings)
-            locals.push(static_cast<NameExpr*>(b)->name.parts[0].symbol, v);
+          {
+            // A tuple-like binding names its hidden variable (tupleBindings), any other the object.
+            Decl* own = static_cast<NameExpr*>(b)->resolved;
+            bool tuple = own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding;
+            locals.push(static_cast<NameExpr*>(b)->name.parts[0].symbol, tuple ? own : v);
+            if (tuple)
+              locals.items.back().type = own->cachedType.load(std::memory_order_acquire); // as its walk deduced it
+          }
           break;
         }
         case NodeKind::ClassDecl:
@@ -14508,6 +14617,110 @@ struct GlobalScope::Impl
       }
     }
 
+    // `auto [a, b] = e;` of a class E whose TupleSize<E> (the library's std::tuple_size) has a
+    // member value binds tuple-like (design.md 4, structured bindings): binding i names a hidden
+    // `auto&& a = get<i>(object)`, or `object.get<i>()` when E has a member template get whose
+    // first parameter is a constant, the object passed as an lvalue. The binding's own name node
+    // in v's list records that variable (resolved), for declareLocal and the code generator. Any
+    // other object (an array, a class without TupleSize<E>::value) binds member by member
+    // (bindingType).
+    void tupleBindings(VariableDecl* v, const Ty* object)
+    {
+      if (v->structuredBindings.empty() || probesSharedNodes())
+        return;
+      for (Expr* b : v->structuredBindings)
+        static_cast<NameExpr*>(b)->resolved = nullptr; // what the template's own walk made (an instance copies it)
+      const Ty* e = object ? types.unqualified(types.stripRef(object)) : nullptr;
+      if (!e || e->kind != TyKind::Class || !e->isKnown() || types.isDependent(e) || Impl::mentionsUnknown(e))
+        return;
+      std::optional<int64_t> size;
+      if (!impl.tupleSizeOf(e, size, 0))
+        return;
+      size_t n = v->structuredBindings.size();
+      if (!size || *size != int64_t(n))
+      {
+        if (!inGenericTemplate())
+          impl.reportCheckerError(v->file, v->token,
+                                  !size ? "a structured binding of " + types.toString(e, &impl.symbols) + ", whose TupleSize<>::value is no constant"
+                                        : std::to_string(n) + " names bound to " + types.toString(e, &impl.symbols) + ", whose TupleSize<>::value is " +
+                                              std::to_string(*size));
+        return;
+      }
+      if (n > impl.indexTokens.size())
+        return;
+      bool member = impl.hasMemberGet(e, 0);
+      Arena& arena = impl.instanceArena();
+      size_t mark = locals.mark();
+      locals.items.push_back({LocalStack::hiddenObject, v, object}); // the object as the calls name it (resolveName)
+      for (size_t i = 0; i < n; ++i)
+      {
+        auto* b = static_cast<NameExpr*>(v->structuredBindings[i]);
+        auto* hidden = arena.make<NameExpr>();
+        hidden->kind = NodeKind::NameExpr;
+        hidden->token = b->token;
+        hidden->resolved = v; // no name: the hidden object itself (resolveName)
+        auto* index = arena.make<LiteralExpr>();
+        index->kind = NodeKind::LiteralExpr;
+        index->token = uint32_t(i);
+        index->literalKind = TokenKind::Number;
+        index->keyword = Kw{};
+        index->file = &impl.indexFile;
+        Node* indexArg = index;
+        NamePart part{};
+        part.symbol = impl.symGet;
+        part.templateArgs = Span<Node*>{arena.array(&indexArg, 1), 1};
+        part.hasTemplateArgs = true;
+        auto* call = arena.make<CallExpr>();
+        call->kind = NodeKind::CallExpr;
+        call->token = b->token;
+        if (member)
+        {
+          auto* m = arena.make<MemberExpr>();
+          m->kind = NodeKind::MemberExpr;
+          m->token = b->token;
+          m->base = hidden;
+          m->member.parts = Span<NamePart>{arena.array(&part, 1), 1};
+          m->op = P::Dot;
+          call->callee = m;
+        }
+        else
+        {
+          // `::get<i>(object)`: the library's get and those argument-dependent lookup finds, never
+          // a member or a local named get.
+          auto* callee = arena.make<NameExpr>();
+          callee->kind = NodeKind::NameExpr;
+          callee->token = b->token;
+          callee->name.parts = Span<NamePart>{arena.array(&part, 1), 1};
+          callee->name.global = true;
+          Expr* argument = hidden;
+          call->callee = callee;
+          call->args = Span<Expr*>{arena.array(&argument, 1), 1};
+        }
+        auto* deduced = arena.make<AutoType>();
+        deduced->kind = NodeKind::AutoType;
+        deduced->token = b->token;
+        auto* reference = arena.make<RRefType>();
+        reference->kind = NodeKind::RRefType;
+        reference->token = b->token;
+        reference->referenced = deduced;
+        auto* var = arena.make<VariableDecl>();
+        var->kind = NodeKind::VariableDecl;
+        var->token = b->token;
+        var->endToken = v->endToken;
+        var->file = v->file;
+        var->parent = v->parent;
+        var->type = reference;
+        var->name = b->name;
+        var->init = call;
+        var->tupleBinding = true;
+        deducedLocal = nullptr;
+        walkDecl(var);
+        deducedLocal = nullptr;
+        b->resolved = var;
+      }
+      locals.pop(mark);
+    }
+
     void walkLocalDecl(Decl* d)
     {
       // Classes are in scope in their own bodies. A variable whose type is written is in scope
@@ -14529,6 +14742,8 @@ struct GlobalScope::Impl
         walkDecl(d);
         const Ty* deduced = v ? deducedLocal : nullptr;
         deducedLocal = nullptr;
+        if (v && !v->structuredBindings.empty())
+          tupleBindings(v, deduced ? deduced : hiddenObjectType(v));
         if (!early)
         {
           declaredAt = locals.mark();
@@ -14536,7 +14751,8 @@ struct GlobalScope::Impl
         }
         if (deduced)
           for (size_t i = declaredAt; i < locals.items.size(); ++i)
-            locals.items[i].type = deduced; // `auto x = e;`: the type this walk deduced
+            if (locals.items[i].decl == d)
+              locals.items[i].type = deduced; // `auto x = e;`: the type this walk deduced
       }
     }
 
@@ -14642,11 +14858,14 @@ struct GlobalScope::Impl
             else
               ++stats.unknownAuto;
           }
+          if (!v->structuredBindings.empty())
+            tupleBindings(v, loopVarType ? loopVarType : hiddenObjectType(v)); // `for (auto& [key, value] : tuples)`, each iteration's get<i>
           size_t declaredAt = locals.mark();
           declareLocal(v);
           if (loopVarType)
             for (size_t i = declaredAt; i < locals.items.size(); ++i)
-              locals.items[i].type = loopVarType;
+              if (locals.items[i].decl == v)
+                locals.items[i].type = loopVarType;
           walkStmt(f->body);
           locals.pop(mark);
           break;

@@ -87,6 +87,23 @@ builds win less unless machine code is cached per function.
   C++20 hold: a class with `operator<=>` has `<`, `>`, `<=` and `>=`; a defaulted one orders by
   its bases and members in turn and gives `==`; `a != b` is `!(a == b)` for every class.
   (Done 2026-10-25.)
+- Structured bindings are tuple-like through the library's `TupleSize` and `get` (std::tuple_size,
+  std::get), as in C++: when `TupleSize<E>` has a member named `value` (a full or partial
+  specialization for E; the primary `TupleSize` is empty), `auto [a, b] = e` names exactly
+  `value` names, and binding i names a hidden `auto&& a = get<i>(e)`. That is `e.get<i>()` when E
+  has a member function template `get` whose first template parameter is a constant, else a `get`
+  of the global scope or of E's namespace (argument-dependent lookup), never a member or local
+  named `get` where the binding is written. Any other object (an array, a class without
+  `TupleSize<E>::value`) binds its elements or data members in order, as before. Two
+  simplifications against C++: e is passed to get as an lvalue (C++ passes an xvalue when the
+  hidden object is no reference, to pick a `get(E&&)`; the library's get takes `E&` and
+  `const E&`, which name the same element), and a binding's type is what get gives without its
+  reference, which is also what decltype(a) gives (C++ takes it from std::tuple_element<i,
+  E>::type, which the library need not declare; the two agree whenever get returns the element
+  by reference). A get that returns a value gives the binding that value, which lives as long as
+  the binding. A count other than `value`, or a `value` that is no constant, is an error.
+  (2026-10-29: specs language/structured_binding_tuple_protocol, _tuple_forms and
+  _tuple_size_mismatch.)
 - Each library type that a std type converts to keeps the guarantees the C++ standard gives that
   type (iterator, pointer and reference invalidation, complexity, the meaning of return values),
   since converted code relies on them. A faster type that breaks one is a separate, explicitly

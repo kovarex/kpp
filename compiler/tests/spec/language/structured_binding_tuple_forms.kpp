@@ -1,0 +1,107 @@
+// spec: the other forms of tuple-like bindings: a class with a member template get<I>() binds through it (C++ tries the member first); a class in a namespace finds its get there by argument-dependent lookup, never a member named get where the binding is written; a get returning a value gives the binding that value for as long as the binding lives; a range for binds each element through get<i>; a partial specialization of TupleSize counts; `const auto&` binds through the const get; a binding in a template binds per instance; decltype of a binding is what get gives without its reference
+// found by the templates thread with the tuple-like bindings (language/structured_binding_tuple_protocol)
+struct Counter
+{
+  int a = 1;
+  int b = 2;
+  template<int I>
+  int& get()
+  {
+    if constexpr (I == 0)
+      return a;
+    else
+      return b;
+  }
+  template<int I>
+  const int& get() const
+  {
+    if constexpr (I == 0)
+      return a;
+    else
+      return b;
+  }
+};
+template<>
+struct TupleSize<Counter> { static constexpr int value = 2; };
+
+namespace geometry
+{
+  struct Point
+  {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+  };
+  template<int I>
+  int get(const Point& p)
+  {
+    if constexpr (I == 0)
+      return p.x * 10;
+    else if constexpr (I == 1)
+      return p.y * 10;
+    else
+      return p.z * 10;
+  }
+}
+template<>
+struct TupleSize<geometry::Point> { static constexpr int value = 3; };
+
+template<typename T>
+struct Swapped
+{
+  T inner;
+  T outer;
+};
+template<typename T>
+struct TupleSize<Swapped<T>> { static constexpr int value = 2; };
+template<int I, typename T>
+T& get(Swapped<T>& s)
+{
+  if constexpr (I == 0)
+    return s.outer;
+  else
+    return s.inner;
+}
+
+struct Grid
+{
+  int get() const { return -1; }
+  int sum(const geometry::Point& p) const
+  {
+    auto [x, y, z] = p;
+    return x + y + z;
+  }
+};
+
+template<typename T>
+int firstOf(T& t)
+{
+  auto& [x, y] = t;
+  return x * 100 + y;
+}
+
+int main()
+{
+  Counter c;
+  auto& [first, second] = c;
+  second = 20;
+  decltype(first) copy = first;
+  copy = 7;
+  geometry::Point p{1, 2, 3};
+  auto [px, py, pz] = p;
+  Grid g;
+  Swapped<int> s{1, 2};
+  auto [o, i] = s;
+  Vector<Counter> counters;
+  counters.push_back(Counter());
+  counters.push_back(Counter());
+  int total = 0;
+  for (auto& [a, b] : counters)
+  {
+    a = 5;
+    total += a + b;
+  }
+  const auto& [ca, cb] = c;
+  println("{} {} {} {} {} {} {} {} {} {} {} {} {}", c.a, c.b, copy, px, py, pz, g.sum(p), o, i, total, counters[0].a, ca + cb, firstOf(c));
+  return 0;
+}

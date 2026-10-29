@@ -1,0 +1,40 @@
+// spec: a tuple-like binding names as many elements as TupleSize<E>::value says (C++ rejects another count), and a TupleSize<E>::value that is no constant is an error, not a binding member by member
+// found by the templates thread with the tuple-like bindings (language/structured_binding_tuple_protocol)
+// error: structured_binding_tuple_size_mismatch.kpp:31: error: a structured binding of Odd, whose TupleSize<>::value is no constant
+// error: structured_binding_tuple_size_mismatch.kpp:37: error: 2 names bound to Triple, whose TupleSize<>::value is 3
+struct Triple
+{
+  int a = 1;
+  int b = 2;
+  int c = 3;
+};
+template<>
+struct TupleSize<Triple> { static constexpr int value = 3; };
+template<int I>
+int& get(Triple& t)
+{
+  if constexpr (I == 0)
+    return t.a;
+  else if constexpr (I == 1)
+    return t.b;
+  else
+    return t.c;
+}
+struct Odd
+{
+  int a = 0;
+};
+template<>
+struct TupleSize<Odd> { static int value; };
+int odd(Odd& o)
+{
+  auto& [a] = o;
+  return a;
+}
+int main()
+{
+  Triple t;
+  auto [x, y] = t;
+  println("{} {}", x, y);
+  return 0;
+}

@@ -2452,10 +2452,11 @@ namespace
     }
 
     // `auto [a, b] = pair;`: e names a binding of the hidden local v; out gets the address of the
-    // matching data member (or array element). False when e is not one of v's bindings.
+    // matching data member (or array element). False when e is not one of v's bindings (the
+    // nameless name of v itself, which a tuple-like binding's get<i>(v) passes, included).
     bool bindingAddress(VariableDecl* v, Node* e, std::string& out)
     {
-      if (v->structuredBindings.empty() || !e || e->kind != NodeKind::NameExpr)
+      if (v->structuredBindings.empty() || !e || e->kind != NodeKind::NameExpr || static_cast<NameExpr*>(e)->name.empty())
         return false;
       uint32_t symbol = static_cast<NameExpr*>(e)->name.last().symbol;
       size_t index = v->structuredBindings.size();
@@ -11201,6 +11202,18 @@ namespace
       startBlock(done);
     }
 
+    // `auto [a, b] = e;` binding tuple-like: after the object, the hidden variables `auto&& a =
+    // get<0>(e)` and so on that the bindings' names name (the resolver's tupleBindings).
+    void declareTupleBindings(VariableDecl* v)
+    {
+      for (Expr* b : v->structuredBindings)
+        if (Decl* own = static_cast<NameExpr*>(b)->resolved; own && own->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(own)->tupleBinding)
+        {
+          declareLocal(static_cast<VariableDecl*>(own));
+          destroyTemps();
+        }
+    }
+
     void declareLocal(VariableDecl* v)
     {
       const Ty* t = declType(v);
@@ -11355,6 +11368,7 @@ namespace
               layOutClosuresIn(static_cast<VariableDecl*>(d)->init); // the variable's slot may hold one
               declareLocal(static_cast<VariableDecl*>(d));
               destroyTemps();
+              declareTupleBindings(static_cast<VariableDecl*>(d));
             }
             else if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
                      d->kind == NodeKind::UsingDirectiveDecl || d->kind == NodeKind::UsingNameDecl ||
@@ -11713,6 +11727,7 @@ namespace
           scopes.back().push_back({slot, vt});
       }
       destroyTemps();
+      declareTupleBindings(v); // `for (auto& [a, b] : tuples)`: each element's get<i>
       loops.push_back({eL, sL, scopes.size()});
       statement(f->body);
       loops.pop_back();
@@ -12348,6 +12363,7 @@ namespace
         if (needsDestruction(vt, v))
           scopes.back().push_back({slot, vt});
       }
+      declareTupleBindings(v); // `for (auto& [a, b] : tuples)`: each element's get<i>
       loops.push_back({eL, sL, scopes.size()});
       statement(f->body);
       loops.pop_back();

@@ -259,6 +259,9 @@ struct VariableDecl : Decl
   QualifiedName name;
   Expr* init = nullptr;
   bool bracedInit = false;
+  // A hidden `auto&& a = get<i>(e)` that a tuple-like structured binding names (the resolver's
+  // tupleBindings); the binding's name node in the object's list points at it (resolved).
+  bool tupleBinding = false;
   Expr* bitfield = nullptr;
   Span<Expr*> structuredBindings; // NameExpr* for `auto [a, b] = ...`
   Expr* alignment = nullptr; // alignas(N) on the variable or data member
