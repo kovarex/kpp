@@ -1,0 +1,25 @@
+// spec: an explicit instantiation (`template int twice<double>(const Vector<double>&, int);`, `template struct Box<int>;`) declares nothing: calls reach the template's instance, which the whole-program compile makes when used
+// found in src/Util/Gui.kpp: its explicit instantiations of countsAsButtons and createButton were functions of their own without bodies that calls chose over the template, so the instances were never emitted (12 unresolved externals of the link, with getSortedCounts)
+template<class T>
+int twice(const Vector<T>& values, int scale = 1)
+{
+  int sum = 0;
+  for (const T& v : values)
+    sum += int(v) * 2 * scale;
+  return sum;
+}
+template int twice<int>(const Vector<int>& values, int scale);
+template int twice<double>(const Vector<double>& values, int scale);
+template<class T>
+struct Box { T value; T get() const { return this->value; } };
+template struct Box<int>;
+int main()
+{
+  Vector<int> a;
+  a.push_back(3);
+  Vector<double> b;
+  b.push_back(1.5);
+  Box<int> box{4};
+  println("{} {} {}", twice(a), twice(b, 2), box.get());
+  return 0;
+}

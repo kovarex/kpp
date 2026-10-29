@@ -2598,6 +2598,17 @@ namespace
       uint32_t declFlags = flags;
       parseDeclSpecifiers(declFlags);
       (void)start;
+      // An explicit instantiation (`template Widget* countsAsButtons<ItemID, double>(...);`,
+      // `template class X<int>;`) declares nothing: the whole program is compiled together, so what
+      // is used is instantiated. Kept, it was a function of its own without a body that calls chose
+      // over the template, and only declared.
+      struct DropExplicitInstantiation
+      {
+        std::vector<Node*>& scratch;
+        size_t mark;
+        bool drop;
+        ~DropExplicitInstantiation() { if (drop && scratch.size() > mark) scratch.resize(mark); }
+      } dropInstantiation{scratch, scratch.size(), !header.present && header.params.empty()};
       if (at(Kw::class_) || at(Kw::struct_) || at(Kw::union_))
       {
         if (parseClassOrElaborated(scope, declFlags, header))

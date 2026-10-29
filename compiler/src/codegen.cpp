@@ -249,6 +249,8 @@ namespace
     std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
     std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
+    std::map<std::string, FunctionDecl*> undefinedUses;  // Kpp functions used whose definition was not found (only declared)
+    std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
 
     explicit Shared(CodegenResult& result) : result(result)
     {
@@ -4327,6 +4329,12 @@ namespace
           params += (i ? ", " : "") + irString(callTy->args[i]);
         functionName = "@\"" + irString(t) + "::operator()(" + params + ")\"";
       }
+      else
+      {
+        // Emitted with the function the lambda is written in: checked once generation is done.
+        auto lock = sharedLock();
+        sh.closureCalls.emplace(functionName, t);
+      }
       const Ty* ret = callTy->inner ? callTy->inner : types.voidType();
       std::string argText = "ptr " + closure.text;
       std::string resultAddr = sret;
@@ -4830,6 +4838,13 @@ namespace
       {
         emitEnumStr(f, name);
         return name;
+      }
+      // A function of the program's own (not C's) with no definition found: only declared, it would
+      // be missing from the link with no error. Reported once generation is done (generateLLVM).
+      if (!global.isExternC(f) && !(f->file && f->file->isImported) && !(f->flags & (DF_Delete | DF_Pure)))
+      {
+        auto lock = sharedLock();
+        sh.undefinedUses.emplace(name, f);
       }
       ArgsScope scope(*this, &args);
       Signature s = signatureOf(f);
@@ -6180,6 +6195,8 @@ namespace
       if (moduleCount <= 1)
       {
         body += text;
+        auto lock = sharedLock();
+        definedIn[name] = 0; // (what generateLLVM's check of the functions used without a definition reads)
         return;
       }
       std::string declare = declareFromHeader(text);
@@ -7536,6 +7553,10 @@ namespace
     std::map<std::pair<Decl*, const Ty*>, std::string> globalCache; // globalFor's answers this emitter had
     std::string globalFor(VariableDecl* v, Node* at, const Ty* classTy = nullptr)
     {
+      // A type name read as a value (`(HANDLE) -1` taken for `HANDLE - 1`, `(LPWSTR)&msg` for
+      // `LPWSTR & msg`): no variable to define, never a global of that name.
+      if (v->flags & DF_Typedef)
+        unsupported(at, "the type " + (v->name.empty() ? std::string("?") : sym(v->name.last().symbol)) + " used as a value");
       if (!classTy && (v->flags & DF_Extern))
         v = variableDefinition(v); // `extern T x;` names the variable its namespace defines, if it does
       if (auto mine = globalCache.find({v, classTy}); mine != globalCache.end())
@@ -7845,6 +7866,10 @@ namespace
         {
           if (rp)
             std::swap(l, r);
+          // C++ has no arithmetic on a pointer to void or to a function (no element size): an error,
+          // never a `getelementptr inbounds void` LLVM rejects.
+          if (!l.ty->inner || l.ty->inner->kind == TyKind::Void || l.ty->inner->kind == TyKind::Function || !l.ty->inner->isKnown())
+            unsupported(at, "arithmetic on a pointer to " + (l.ty->inner ? types.toString(l.ty->inner, &symbols) : std::string("?")));
           Value idx = convert(r, types.intType(64), at);
           std::string i = idx.text;
           if (op == P::Minus)
@@ -9342,6 +9367,16 @@ namespace
       if (n->name.parts.size() != 1)
         return std::nullopt;
       std::string name = sym(n->name.parts[0].symbol);
+      if (name == "_alloca" || name == "alloca")
+      {
+        // Stack memory for the rest of the function (StackWalker's buffers): an alloca where the
+        // call is, aligned as malloc's (MSVC's _alloca gives 16).
+        if (c->args.size() != 1)
+          unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+        std::string size = convert(rvalue(c->args[0]), types.intType(64, true), c).text, r = newTemp();
+        fn += "  " + r + " = alloca i8, i64 " + size + ", align 16\n";
+        return Value{r, types.pointer(types.voidType()), false};
+      }
       if (name == "_BitScanReverse" || name == "_BitScanForward" || name == "_BitScanReverse64" || name == "_BitScanForward64")
       {
         if (c->args.size() != 2)
@@ -13612,6 +13647,32 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
           e.error(t->decl, "error: the closure of " + e.irString(t) + " is used, but its lambda was never emitted");
         }
         sh.decls += info.structName + " = type { i8 } ; left out by codegen errors\n";
+      }
+  }
+  // Functions of the program used where no definition of theirs was found (an out-of-line member
+  // the resolver did not attach to its declaration, a template whose definition it did not find):
+  // each an error at its declaration, never only a name the link misses.
+  for (auto& [name, f] : sh.undefinedUses)
+    if (!sh.definedIn.count(name))
+    {
+      e.currentFile = f->file;
+      e.error(f, "error: " + e.qualifiedName(f) + " is used, but no definition of it was found (" + name + ")");
+    }
+  // A lambda's call operator is emitted with the function the lambda is written in; one called
+  // that never was is reported, unless that function failed (its own error says why).
+  {
+    std::unordered_set<std::string> failed;
+    for (auto& em : emitters)
+      failed.insert(em->failedFunctions.begin(), em->failedFunctions.end());
+    for (auto& [name, lambda] : sh.closureCalls)
+      if (!sh.definedIn.count(name))
+      {
+        const std::string& writer = sh.closures[lambda].writtenIn;
+        if (!writer.empty() && failed.count(writer))
+          continue;
+        e.currentFile = lambda->decl->file;
+        e.error(lambda->decl, "error: the call operator of a lambda written in " + (writer.empty() ? std::string("a function never emitted") : writer) +
+                                  " is used, but it was never emitted (" + name + ")");
       }
   }
   // The errors, in the same order in every run.
