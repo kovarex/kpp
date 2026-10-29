@@ -1,0 +1,46 @@
+// spec: explicit template arguments for a function template whose parameter pack comes first (`template<typename... Ts, typename InputT, typename... Args> void dummyLoad(InputT& input, Args&&... args)`) all go to that pack, the parameters after it deduced from the call: `dummyLoad<char, int>(input)`, `dummyLoad<Ts...>(input)` in a class template's constructor
+// factorio: src/Util/DummyLoader.hpp's Util::dummyLoad<Ts...>(input) in Dummy<Ts...>'s constructor, which the tests' save/load of maps reach
+// pending: the written arguments were bound one by one (Ts = char, InputT = int), so no call resolved ("a call that did not resolve"); owner: the templates thread (explicit template arguments)
+struct Input
+{
+  int loaded = 0;
+  template <class T>
+  void load() { this->loaded = this->loaded * 10 + int(sizeof(T)); }
+};
+template <typename... Ts>
+struct Helper;
+template <typename T, typename... Rest>
+struct Helper<T, Rest...>
+{
+  template <typename InputT>
+  static void load(InputT& input)
+  {
+    input.template load<T>();
+    Helper<Rest...>::load(input);
+  }
+};
+template <>
+struct Helper<>
+{
+  template <typename InputT>
+  static void load(InputT&) {}
+};
+template <typename... Ts, typename InputT, typename... Args>
+void dummyLoad(InputT& input, Args&&... args)
+{
+  Helper<Ts...>::load(input);
+}
+template <typename... Ts>
+struct Dummy
+{
+  template <typename InputT>
+  explicit Dummy(InputT& input) { dummyLoad<Ts...>(input); }
+};
+int main()
+{
+  Input input;
+  dummyLoad<char, int>(input);
+  Dummy<short, double> d(input);
+  println("{}", input.loaded);
+  return 0;
+}
