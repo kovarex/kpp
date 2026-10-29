@@ -1,0 +1,39 @@
+// spec: the address of an overloaded member function passed to a call with several candidates makes viable only the candidates with a parameter type one of the functions has, and selects that function: `hs.add(1, &Handler::remove)` with add(int, ControllerAction) and add(int, CommonAction) and two functions named remove calls the second add with remove(int, const Adapter&), as a name of one function (`&Handler::other`, `&Handler::single`) already chooses
+// factorio: InputActionHandler::getHandlers' `handlers.add(InputActionType::RemoveCables, &InputActionHandler::removeCables)`, with removeCables(const InputAction&, const GameAdapter&) and removeCables(Entity*, const MapPosition&, const GameAdapter&): registered as a controller action, the handler was called with the player's Controller where its GameAdapter is, found no selected entity and removed no cable (CircuitNetwork, LatencyInput and UndoRedo: 3 failed checks, all passing with the handler named through a CommonAction variable)
+// pending: SILENT, the first add is called, the pointer converted to its parameter type (`1 0 2 0 2 1`); owner: the templates thread (overload resolution)
+struct Controller
+{
+  int c = 1;
+};
+struct Adapter
+{
+  int a = 2;
+};
+struct Handler;
+using ControllerAction = void (Handler::*)(int, Controller&);
+using CommonAction = void (Handler::*)(int, const Adapter&);
+struct Handlers
+{
+  int controllerCount = 0;
+  int commonCount = 0;
+  void add(int, ControllerAction) { this->controllerCount += 1; }
+  void add(int, CommonAction) { this->commonCount += 1; }
+};
+struct Handler
+{
+  void remove(int, const Adapter& a) { println("remove {}", a.a); }
+  bool remove(int* p, const Adapter&) { return p != nullptr; }
+  void other(int, Controller& c) { println("other {}", c.c); }
+  void single(int, const Adapter& a) { println("single {}", a.a); }
+};
+int main()
+{
+  Handlers hs;
+  hs.add(1, &Handler::remove);
+  print("{} {} ", hs.controllerCount, hs.commonCount);
+  hs.add(2, &Handler::other);
+  print("{} {} ", hs.controllerCount, hs.commonCount);
+  hs.add(3, &Handler::single);
+  println("{} {}", hs.controllerCount, hs.commonCount);
+  return 0;
+}
