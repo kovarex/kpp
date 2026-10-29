@@ -84,6 +84,16 @@ struct Pair
   Pair(A&& first, B&& second) : first(move(first)), second(move(second)) {}
   Pair(const A& first, B&& second) : first(first), second(move(second)) {}
   Pair(A&& first, const B& second) : first(move(first)), second(second) {}
+  // From two values the members are constructed from, as std::pair's converting constructor:
+  // explicit when one of them converts to its member only explicitly
+  // (`Pair<SharedStringKey, bool> emptyItem{StringView(), false}` with an explicit
+  // SharedStringKey(StringView)); there only for arguments the members can be constructed from.
+  template<typename U1, typename U2>
+  explicit(!isConvertible<U1, A> || !isConvertible<U2, B>) Pair(U1&& first, U2&& second)
+    requires(isConstructible<A, U1> && isConstructible<B, U2>)
+    : first(forward<U1>(first)), second(forward<U2>(second))
+  {
+  }
 
   bool operator==(const Pair<A, B>& other) const { return this->first == other.first && this->second == other.second; }
   bool operator!=(const Pair<A, B>& other) const { return !(*this == other); }

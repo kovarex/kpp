@@ -12,6 +12,14 @@ struct LengthError : LogicError
   explicit LengthError(const String& message) : LogicError(message) {}
 };
 
+// An arithmetic result too large for its type (std::overflow_error): Bitset::to_ullong of bits
+// that do not fit.
+struct OverflowError : RuntimeError
+{
+  OverflowError() {}
+  explicit OverflowError(const String& message) : RuntimeError(message) {}
+};
+
 // --- Error codes (std::error_code, std::errc, std::system_error); specified in docs/stdlib/filesystem.md ---
 
 // The Win32 functions the library calls, declared in a namespace of their own with plain types, so

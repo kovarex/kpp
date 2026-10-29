@@ -24,6 +24,7 @@ Files:
 - [Time](time.md): Duration, TimePoint, SteadyClock, SystemClock (std::chrono).
 - [Views](views.md): Subrange, iotaView, transformView, reverseView (std::views, std::ranges::subrange).
 - [Span](span.md): a view of contiguous elements, of a fixed extent or any length (std::span).
+- [Bitset](bitset.md): a fixed number of bits (std::bitset).
 - [Filesystem](filesystem.md): paths, files and directories (std::filesystem), and the error codes
   they report with (std::error_code, std::errc, std::system_error).
 

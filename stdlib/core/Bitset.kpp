@@ -1,22 +1,51 @@
-// A fixed-size set of bits (what std::bitset<N> converts to).
+// A fixed-size set of bits (what std::bitset<N> converts to). Specified in docs/stdlib/bitset.md.
 template<int N>
 struct Bitset
 {
   unsigned long long words[(N + 63) / 64] = {};
 
+  // A bit of a Bitset that reads as a bool and assigns (std::bitset<N>::reference), what the
+  // non-const operator[] gives.
+  struct reference
+  {
+    Bitset<N>* bits;
+    int position;
+
+    reference(Bitset<N>* bits, int position) : bits(bits), position(position) {}
+    reference& operator=(bool value)
+    {
+      this->bits->set(this->position, value);
+      return *this;
+    }
+    reference& operator=(const reference& other)
+    {
+      this->bits->set(this->position, other.bits->test(other.position));
+      return *this;
+    }
+    implicit operator bool() const { return this->bits->test(this->position); }
+    bool operator~() const { return !this->bits->test(this->position); }
+    reference& flip()
+    {
+      this->bits->flip(this->position);
+      return *this;
+    }
+  };
+
   bool test(int pos) const { return (this->words[pos / 64] >> (pos % 64)) & 1; }
   bool operator[](int pos) const { return this->test(pos); }
+  reference operator[](int pos) { return reference(this, pos); }
 
   Bitset<N>& set(int pos)
   {
     this->words[pos / 64] |= 1ull << (pos % 64);
     return *this;
   }
+  Bitset<N>& set(int pos, bool value) { return value ? this->set(pos) : this->reset(pos); }
   Bitset<N>& set()
   {
     for (int i = 0; i < (N + 63) / 64; ++i)
       this->words[i] = ~0ull;
-    return *this;
+    return this->trim();
   }
   Bitset<N>& reset(int pos)
   {
@@ -32,6 +61,19 @@ struct Bitset
   Bitset<N>& flip(int pos)
   {
     this->words[pos / 64] ^= 1ull << (pos % 64);
+    return *this;
+  }
+  Bitset<N>& flip()
+  {
+    for (int i = 0; i < (N + 63) / 64; ++i)
+      this->words[i] = ~this->words[i];
+    return this->trim();
+  }
+  // The bits past N in the last word, which no operation may leave set.
+  Bitset<N>& trim()
+  {
+    if (N % 64 != 0)
+      this->words[(N + 63) / 64 - 1] &= (1ull << (N % 64)) - 1;
     return *this;
   }
 
@@ -54,6 +96,30 @@ struct Bitset
   bool none() const { return this->count() == 0; }
   bool any() const { return !this->none(); }
   bool all() const { return this->count() == N; }
+
+  // The bits as a number, bit 0 lowest; throws Overflow when a set bit does not fit.
+  unsigned long long to_ullong() const
+  {
+    for (int i = 1; i < (N + 63) / 64; ++i)
+      if (this->words[i] != 0)
+        throw OverflowError(String("Bitset::to_ullong"));
+    return (N + 63) / 64 == 0 ? 0 : this->words[0];
+  }
+  unsigned long to_ulong() const
+  {
+    unsigned long long value = this->to_ullong();
+    if (value > 0xFFFFFFFFull)
+      throw OverflowError(String("Bitset::to_ulong"));
+    return (unsigned long)value;
+  }
+  // The bits as text, bit N - 1 first.
+  String to_string(char zero = '0', char one = '1') const
+  {
+    String result;
+    for (int i = N - 1; i >= 0; --i)
+      result.push_back(this->test(i) ? one : zero);
+    return result;
+  }
 
   Bitset<N> operator&(const Bitset<N>& other) const
   {
@@ -78,11 +144,12 @@ struct Bitset
   }
   Bitset<N> operator~() const
   {
-    Bitset<N> result;
-    for (int i = 0; i < (N + 63) / 64; ++i)
-      result.words[i] = ~this->words[i];
-    return result;
+    Bitset<N> result = *this;
+    return result.flip();
   }
+  Bitset<N>& operator&=(const Bitset<N>& other) { return *this = *this & other; }
+  Bitset<N>& operator|=(const Bitset<N>& other) { return *this = *this | other; }
+  Bitset<N>& operator^=(const Bitset<N>& other) { return *this = *this ^ other; }
 
   Bitset<N> operator<<(int shift) const
   {
@@ -97,8 +164,25 @@ struct Bitset
       if (bitShift > 0 && src - 1 >= 0)
         result.words[i] |= this->words[src - 1] >> (64 - bitShift);
     }
+    return result.trim();
+  }
+  Bitset<N> operator>>(int shift) const
+  {
+    Bitset<N> result;
+    int wordShift = shift / 64;
+    int bitShift = shift % 64;
+    for (int i = 0; i < (N + 63) / 64; ++i)
+    {
+      int src = i + wordShift;
+      if (src < (N + 63) / 64)
+        result.words[i] = this->words[src] >> bitShift;
+      if (bitShift > 0 && src + 1 < (N + 63) / 64)
+        result.words[i] |= this->words[src + 1] << (64 - bitShift);
+    }
     return result;
   }
+  Bitset<N>& operator<<=(int shift) { return *this = *this << shift; }
+  Bitset<N>& operator>>=(int shift) { return *this = *this >> shift; }
 
   bool operator==(const Bitset<N>& other) const
   {

@@ -849,7 +849,7 @@ namespace
     {"error_code", "ErrorCode"}, {"errc", "Errc"},
     {"system_error", "SystemError"}, {"system_category", "systemCategory"}, {"generic_category", "genericCategory"},
     {"error_category", "ErrorCategory"}, {"make_error_code", "make_error_code"},
-    {"length_error", "LengthError"},
+    {"length_error", "LengthError"}, {"overflow_error", "OverflowError"},
     {"codecvt_utf8", "CodecvtUtf8"}, {"wstring_convert", "WStringConvert"},
     {"milli", "Milli"}, {"rotr", "rotr"}, {"lcm", "lcm"}};
 
