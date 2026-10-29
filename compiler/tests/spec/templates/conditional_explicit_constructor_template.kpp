@@ -1,6 +1,5 @@
 // spec: a constructor template's `explicit(cond)` is decided with its template arguments deduced from the argument: Optional's `explicit(!isConvertible<U, T>) Optional(U&& v)` converts a NamedBool's enumerator to an Optional<NamedBool> parameter implicitly (U = const Enum&, which converts to the NamedBool), and is explicit for a type T takes only explicitly, which then leaves the other overload
 // found in the converted game: BuildingRenderer::drawEntityToBeBuilt(gameView, player, params, TooFar::False, ...) with an `Optional<TooFar> tooFar` parameter, TooFar a NamedBool (5 calls in BuildingRenderer, CliffEditor, EditorBase, ResourceEditor did not resolve)
-// pending: the condition is evaluated before U is deduced, unknown, so taken as explicit ("a conversion to an unknown type")
 template<class Tag>
 class NamedBool
 {

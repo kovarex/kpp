@@ -6226,8 +6226,9 @@ struct GlobalScope::Impl
     auto choose = [&](const ConstClassLayout& of, bool& ambiguous) -> FunctionDecl* {
       std::vector<FunctionDecl*> candidates;
       for (FunctionDecl* c : of.constructors)
-        if (!(c->flags & DF_Delete) && (!implicitOnly || !isExplicit(c, of.subst.empty() ? nullptr : &of.subst)))
-          candidates.push_back(c);
+        if (!(c->flags & DF_Delete) && (!implicitOnly || (c->explicitCondition && !c->templateParams.empty()) ||
+                                        !isExplicit(c, of.subst.empty() ? nullptr : &of.subst)))
+          candidates.push_back(c); // (a template's explicit(cond) is decided with its arguments deduced, below)
       ambiguous = false;
       if (candidates.empty())
         return nullptr;
@@ -6262,6 +6263,8 @@ struct GlobalScope::Impl
       for (Decl* p : ctor->templateParams)
         if (const Ty* bound = own.find(p); !bound || !bound->isKnown() || types.isDependent(bound))
           return std::nullopt;
+      if (implicitOnly && ctor->explicitCondition && isExplicit(ctor, &own))
+        return std::nullopt; // `explicit(!isConvertible<U, T>)` true for these arguments: no implicit conversion
       return constRunConstructor(ctor, t, args, depth + 1, &own);
     }
     if (ambiguous)
@@ -11183,9 +11186,14 @@ struct GlobalScope::Impl
           Subst s = substFor(p);
           for (Decl* m : static_cast<ClassDecl*>(def)->members)
           {
-            if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || isExplicit(static_cast<FunctionDecl*>(m), &s))
+            if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
               continue;
             auto* f = static_cast<FunctionDecl*>(m);
+            // `explicit(!isConvertible<U, T>)` of a constructor template (Optional's from a value
+            // of another type): decided with U deduced, below.
+            bool explicitWhenDeduced = f->explicitCondition && !f->templateParams.empty();
+            if (!explicitWhenDeduced && isExplicit(f, &s))
+              continue;
             // Callable with one argument: the others defaulted or a pack (`implicit
             // DragBuildInfo(DragBuild dragBuild, OptionalMapPosition startPosition = {})`).
             if (f->params.empty() || (f->params.size() > 1 && !static_cast<ParamDecl*>(f->params[1])->defaultValue &&
@@ -11211,6 +11219,8 @@ struct GlobalScope::Impl
               if (undeduced)
                 continue;
             }
+            if (explicitWhenDeduced && isExplicit(f, &d))
+              continue;
             if (f->requiresClause && !requiresHolds(f, d))
               continue; // `template<typename F> Wrapper(F f) requires(!isPointer<F>)` given a pointer: no conversion
             const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
