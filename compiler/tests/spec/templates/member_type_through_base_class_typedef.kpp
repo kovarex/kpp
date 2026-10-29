@@ -1,0 +1,40 @@
+// spec: a member type of a class template's instance named through a typedef the class inherits from its base (`ResultList::const_iterator` in a class derived from one with `typedef Vector<Result> ResultList;`): the instance's type, `const Result*`, as named directly
+// factorio: UnitTest++'s XmlTestReporter::reportSummary, `for (DeferredTestResultList::const_iterator i(results.begin()); ...)` with DeferredTestReporter's `typedef std::vector<DeferredTestResult> DeferredTestResultList;` (the tests' XML report)
+// pending: through the inherited typedef the iterator's type keeps Vector's parameter ("the type const T (a template parameter) of UnaryExpr"); `Vector<Result>::const_iterator` works; owner: the resolver (member types through aliases)
+struct Result
+{
+  bool failed = false;
+  int id = 0;
+};
+class Reporter
+{
+public:
+  typedef Vector<Result> ResultList;
+  ResultList& results() { return this->list; }
+  ResultList list;
+};
+class XmlReporter : public Reporter
+{
+public:
+  int failedIds()
+  {
+    int sum = 0;
+    ResultList const& all = this->results();
+    for (ResultList::const_iterator i = all.begin(); i != all.end(); ++i)
+    {
+      Result const& result = *i;
+      if (i->failed)
+        sum += result.id;
+    }
+    return sum;
+  }
+};
+int main()
+{
+  XmlReporter reporter;
+  reporter.list.push_back({true, 5});
+  reporter.list.push_back({false, 7});
+  reporter.list.push_back({true, 9});
+  println("{}", reporter.failedIds());
+  return 0;
+}

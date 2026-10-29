@@ -1,0 +1,15 @@
+// spec: a const data member whose enum type is defined in the member's own declaration (`const enum class Type { Entity, Tile } type;`): the enum is the class's, and the member has that type
+// factorio: the tests' TestCollisionMask.cpp, a mask that is an entity's or a tile's, `const enum class Type { Entity, Tile } type;` beside the two masks
+// pending: the parser stops at the member's name ("expected ';' after declaration (at 'type')"); owner: the parser
+struct Mask
+{
+  Mask(bool entity) : type(entity ? Type::Entity : Type::Tile) {}
+  const enum class Type { Entity, Tile } type;
+};
+int main()
+{
+  Mask tile(false);
+  Mask entity(true);
+  println("{} {}", tile.type == Mask::Type::Tile, entity.type == Mask::Type::Entity);
+  return 0;
+}
