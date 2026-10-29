@@ -9098,6 +9098,10 @@ struct GlobalScope::Impl
       return l.scope ? l.scope : scope;
     }
 
+    // A probe of a requires-expression under arguments walks the template's own nodes, which other
+    // walks share: nothing it finds is cached on them. (An instance's walk has its own copy.)
+    bool probesSharedNodes() const { return probing && activeSubst; }
+
     // A template's own walk: a template parameter in scope that this walk binds to nothing.
     bool inGenericTemplate() const
     {
@@ -9299,7 +9303,7 @@ struct GlobalScope::Impl
           // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
           bool isDraft = declared && declared->kind == TyKind::Class && declared->decl && (declared->decl->attributes & ATTR_Draft);
-          if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !activeSubst)
+          if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !probesSharedNodes())
           {
             // A type only the function's locals know (`using Match = Pair<int, int>;` in the body,
             // `Map<Key, int>` with a local class Key): resolved here, where the locals are, and
@@ -9311,7 +9315,7 @@ struct GlobalScope::Impl
               declared = local;
             }
           }
-          if (v->init && !activeSubst && impl.isUndeducedClassTemplate(declared))
+          if (v->init && !probesSharedNodes() && impl.isUndeducedClassTemplate(declared))
           {
             // `ScopedSetter guard(x, true)`: the class's arguments from a constructor (CTAD);
             // `Array names = {a, b}`: from an aggregate's members; `Duration budget =
@@ -9345,7 +9349,7 @@ struct GlobalScope::Impl
             if (deduced->isKnown())
             {
               deducedLocal = deduced; // kept with the local by walkLocalDecl, per walk
-              if (!activeSubst)
+              if (!probesSharedNodes())
                 v->cachedType.store(deduced, std::memory_order_release);
             }
             else
