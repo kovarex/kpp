@@ -173,7 +173,6 @@ namespace
     };
     unsigned currentDepth = 0;       // of the function being emitted: 0 for one that is not an instantiation
     std::string currentFunctionName; // LLVM name of the function being emitted
-    unsigned staticLocals = 0;       // numbers the function-local statics' globals
     std::string currentRequestedBy;  // for an instantiation: the function that first used it
 
     // A lambda's closure: one struct per lambda, fields for the captures, one function.
@@ -233,7 +232,6 @@ namespace
     std::string funcletOverride;                              // the pad being emitted, for its calls
     bool usesEH = false;                                      // the current function has invokes or pads
     bool usesExceptions = false;                              // the program needs the exception runtime
-    uint32_t filterCount = 0;
     std::unordered_map<std::string, bool> emittedShared;      // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                            // typeinfo of the library's Exception, once seen
 
@@ -2683,6 +2681,9 @@ namespace
       FunctionState saved = saveState();
       const TemplateArgs* savedArgs = currentArgs;
       ParsedFile* savedFile = currentFile;
+      std::string savedName = currentFunctionName;
+      struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = saved; } } nameRestore{currentFunctionName, savedName};
+      currentFunctionName = name; // what the operator's own statics and filters are named after
       resetFunctionState();
       if (args)
         currentArgs = args;
@@ -8326,8 +8327,11 @@ namespace
         startBlock(endL); // nothing in the body can throw to the handlers
         return;
       }
-      // The filter function.
-      std::string filter = "@kpp.filter." + std::to_string(filterCount++);
+      // The filter function, named by the function and where the try is written (the same in every
+      // run, whatever order the functions are emitted in).
+      std::string owner = currentFunctionName.size() > 2 && currentFunctionName[1] == '"' ? currentFunctionName.substr(2, currentFunctionName.size() - 3)
+                                                                                          : currentFunctionName.substr(currentFunctionName.empty() ? 0 : 1);
+      std::string filter = "@\"kpp.filter." + owner + "." + std::to_string(t->token) + "\"";
       std::string ft = "define i32 " + filter + "(ptr %pointers, ptr %frame) {\nentry:\n"
                        "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n"
                        "  %tip = getelementptr inbounds i8, ptr %rec, i64 40\n  %ti = load ptr, ptr %tip\n"
@@ -8554,7 +8558,8 @@ namespace
         owner = owner.substr(2, owner.size() - 3);
       else if (!owner.empty() && owner[0] == '@')
         owner = owner.substr(1);
-      std::string name = "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(staticLocals++) + "\"";
+      // Numbered by where the variable is written (its token): the same name in every run.
+      std::string name = "@\"" + owner + "::" + sym(v->name.last().symbol) + "." + std::to_string(v->token) + "\"";
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
       moduleDecls[currentModule] += name + " = internal global " + llType(t, v) + " zeroinitializer\n";
       moduleDecls[currentModule] += guard + " = internal global i1 false\n";
