@@ -1094,10 +1094,14 @@ struct GlobalScope::Impl
     }
   }
 
-  void indexLocalTypes(Stmt* s, Scope* scope, FunctionDecl* f)
+  void indexLocalTypes(Stmt* s, Scope* scope, FunctionDecl* f, std::unordered_map<uint32_t, std::vector<ClassDecl*>>* forward = nullptr)
   {
     if (!s)
       return;
+    std::unordered_map<uint32_t, std::vector<ClassDecl*>> declaredAhead; // `struct Support;` before its definition
+    if (!forward)
+      forward = &declaredAhead;
+    auto indexLocalTypes = [&](Stmt* inner, Scope* sc, FunctionDecl* fn) { this->indexLocalTypes(inner, sc, fn, forward); };
     switch (s->kind)
     {
       case NodeKind::BlockStmt:
@@ -1106,12 +1110,25 @@ struct GlobalScope::Impl
         break;
       case NodeKind::DeclStmt:
         for (Decl* d : static_cast<DeclStmt*>(s)->decls)
-          if (Scope* own = (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && !d->ownScope ? indexLocalType(d, scope) : nullptr;
-              own && f->name.parts.size() > 1)
+        {
+          if (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->isDefinition && static_cast<ClassDecl*>(d)->name.parts.size() == 1 &&
+              !(d->flags & DF_Friend))
+            (*forward)[static_cast<ClassDecl*>(d)->name.parts[0].symbol].push_back(static_cast<ClassDecl*>(d));
+          Scope* own = (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && !d->ownScope ? indexLocalType(d, scope) : nullptr;
+          // The body's earlier declarations of the class are the same class: they name its scope.
+          if (own && d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->name.parts.size() == 1)
+            if (auto it = forward->find(static_cast<ClassDecl*>(d)->name.parts[0].symbol); it != forward->end())
+            {
+              for (ClassDecl* ahead : it->second)
+                ahead->ownScope = own;
+              forward->erase(it);
+            }
+          if (own && f->name.parts.size() > 1)
           {
             std::lock_guard lock(deferredMutex);
             localTypesOfOutOfLine[f].push_back(own);
           }
+        }
         break;
       case NodeKind::IfStmt:
       {
@@ -5868,6 +5885,11 @@ struct GlobalScope::Impl
               found.found = Found::Local;
               found.decl = n->resolved;
               found.scope = n->resolved->ownScope;
+              if (!found.scope)
+              {
+                Entry e{n->resolved, nullptr};
+                found.scope = scopeOfEntry(e, depth + 1); // `struct ExtendedSupportData;` before its definition
+              }
               return typeOfTypeDecl(n->resolved, found, first, ctx, depth + 1);
             }
             uint32_t sym = first.symbol;

@@ -1,0 +1,34 @@
+// spec: a class a function body declares ahead (`struct Support;`) and defines later is one class: a member `Support* latest` of another local class, set from `&supports[i]` and read through in a lambda
+// factorio: RailBuildPlan's removeUnnecesaryRailSupports (`struct ExtendedSupportData;` before RailSupportData's `ExtendedSupportData* latestSupport`)
+int plan(int count)
+{
+  struct Support;
+  struct Rail
+  {
+    Support* latest = nullptr;
+  };
+  struct Support
+  {
+    int index = 0;
+  };
+  Vector<Support> supports;
+  Vector<Rail> rails;
+  for (int i = 0; i < count; ++i)
+  {
+    supports.push_back(Support{i});
+    rails.push_back(Rail{});
+  }
+  int sum = 0;
+  for (int i = 0; i < count; ++i)
+  {
+    rails[i].latest = &supports[i];
+    auto add = [&sum](Rail& rail) { sum += rail.latest->index; };
+    add(rails[i]);
+  }
+  return sum;
+}
+int main()
+{
+  println("{}", plan(4));
+  return 0;
+}
