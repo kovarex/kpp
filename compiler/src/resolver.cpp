@@ -1932,6 +1932,24 @@ struct GlobalScope::Impl
       return out;
     Scope* current = name.global ? &root : nullptr;
     const Ty* currentTy = nullptr; // the class current is the scope of, when its arguments are known
+    if (name.typeQualifier)
+    {
+      // `decltype(this->inventories)::mapped_type`: the name inside the class the type names.
+      const Ty* q = convertType(name.typeQualifier, TypeContext{context, locals, subst}, depth + 1);
+      q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+      if (!q || !q->isKnown())
+        return out;
+      if (types.isDependent(q))
+      {
+        out.found = Found::Dependent;
+        return out;
+      }
+      if (q->kind == TyKind::Class)
+        currentTy = q;
+      current = q->kind == TyKind::Class ? classScopeOf(q) : q->kind == TyKind::Enum && q->decl ? q->decl->ownScope : nullptr;
+      if (!current)
+        return out;
+    }
     for (size_t i = 0; i < name.parts.size(); ++i)
     {
       const NamePart& part = name.parts[i];
@@ -5113,6 +5131,13 @@ struct GlobalScope::Impl
   Subst qualifierSubst(const QualifiedName& name, const TypeContext& ctx, int depth, Scope* foundIn = nullptr)
   {
     Subst s;
+    if (name.typeQualifier && name.parts.size() == 1 && depth <= 96)
+    {
+      // `decltype(this->inventories)::mapped_type`: under the arguments of the class decltype gives.
+      const Ty* q = convertType(name.typeQualifier, ctx, depth + 1);
+      q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+      return q && q->kind == TyKind::Class && !types.isDependent(q) ? memberSubst(q, foundIn, depth) : s;
+    }
     if (name.parts.size() < 2 || depth > 96) // (called with constEval's depth, which nests calls)
       return s;
     // The qualifier as a type: `Vector<int>::`, or `VT::` with `using VT = Vector<int>`.
@@ -5927,7 +5952,7 @@ struct GlobalScope::Impl
         }
         if (!l.decl)
           return types.unknown();
-        if (n->name.parts.size() > 1 &&
+        if ((n->name.parts.size() > 1 || n->name.typeQualifier) &&
             (l.decl->kind == NodeKind::UsingAliasDecl || (l.decl->kind == NodeKind::VariableDecl && (l.decl->flags & DF_Typedef)) ||
              (l.decl->kind == NodeKind::ClassDecl && l.decl->templateParams.empty() && !effectiveParams(l.decl).empty())))
         {
@@ -6022,6 +6047,9 @@ struct GlobalScope::Impl
       {
         auto* d = static_cast<DecltypeType*>(t);
         const Ty* generic = d->expr && d->expr->ty ? d->expr->ty : types.unknown();
+        if (d->expr && !d->expr->ty && !d->isAuto)
+          if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown())
+            generic = typed; // `decltype(Definition::migrations)` in a member's type, before any walk typed it
         // `-> Future<decltype(callable())>` under an instantiation's arguments: the generic type of
         // a dependent expression (F) stands in for no call's result, so the expression is typed
         // anew with them.
@@ -8849,6 +8877,7 @@ struct GlobalScope::Impl
     {
       if (e->name.empty())
         return unknown(Why::Unsupported);
+      walkType(e->name.typeQualifier); // `decltype(this->deviation)::CoordinateType::FractionalBits`
       if (e->name.parts.size() == 1 && e->name.parts[0].hasTemplateArgs && impl.isBoolTraitName(e->name.parts[0].symbol))
       {
         // A builtin trait: a bool the code generator evaluates once the arguments are known.
@@ -10618,7 +10647,10 @@ struct GlobalScope::Impl
         return;
       switch (t->kind)
       {
-        case NodeKind::NamedType: resolveTypeName(static_cast<NamedType*>(t)); break;
+        case NodeKind::NamedType:
+          walkType(static_cast<NamedType*>(t)->name.typeQualifier); // `decltype(x)::member`: x typed first
+          resolveTypeName(static_cast<NamedType*>(t));
+          break;
         case NodeKind::PointerType: walkType(static_cast<PointerType*>(t)->pointee); break;
         case NodeKind::LRefType: walkType(static_cast<LRefType*>(t)->referenced); break;
         case NodeKind::RRefType: walkType(static_cast<RRefType*>(t)->referenced); break;

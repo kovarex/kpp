@@ -863,7 +863,7 @@ namespace
           if (!expect(P::RParen, "expected ')' after decltype"))
             return nullptr;
           type = d;
-          // decltype(x)::member
+          // decltype(x)::member: the rest of the name inside the class decltype gives.
           if (at(P::ColonColon) && atIdent(1))
           {
             NamedType* n = node<NamedType>(typeToken);
@@ -872,6 +872,7 @@ namespace
             if (!parseQualifiedName(rest, true, false))
               return nullptr;
             n->name = rest;
+            n->name.typeQualifier = d;
             type = n;
           }
         }
@@ -4446,6 +4447,8 @@ namespace
         advance();
         NameExpr* n = node<NameExpr>(start);
         parseQualifiedName(n->name, false);
+        if (t->kind == NodeKind::DecltypeType)
+          n->name.typeQualifier = t;
         return n;
       }
       // A type where an expression was expected (e.g. in a macro argument). Represent as a name.

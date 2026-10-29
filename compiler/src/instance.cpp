@@ -47,6 +47,7 @@ QualifiedName InstanceCopier::name(const QualifiedName& q)
     part.templateArgs = span(part.templateArgs, [&](Node*& a) { a = node(a); });
     part.convType = type(part.convType);
   });
+  out.typeQualifier = type(q.typeQualifier);
   return out;
 }
 
@@ -669,6 +670,7 @@ void InstanceCopier::fixReferences(Node* root)
           push(a);
         push(p.convType);
       }
+      push(q.typeQualifier);
     };
     switch (n->kind)
     {

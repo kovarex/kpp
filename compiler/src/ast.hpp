@@ -132,6 +132,7 @@ struct QualifiedName
 {
   Span<NamePart> parts;
   bool global = false; // Leading `::`.
+  Type* typeQualifier = nullptr; // `decltype(x)::member`: the parts are looked up in the class this type names.
   bool empty() const { return parts.empty(); }
   const NamePart& last() const { return parts[parts.size() - 1]; }
 };
