@@ -927,6 +927,15 @@ gai_strerrorW and IsWindows8OrGreater, inline functions of ws2tcpip.h and versio
 - the rest: function templates and two lambdas that templates' instances use and codegen never
   instantiates (countsAsButtons, getSortedCounts; not reduced yet).
 
+On master 251e4e2 (later the same day): LNK1120 55 = 53 left out + 2 never emitted + 0 C names.
+Every one of the 53 has its root cause named, almost all in a pending spec that says its owner
+(25 the resolver's, 19 codegen's, 9 the templates thread's); the never emitted are a CRTP base's
+static member taken through the derived class (computeConstant) and an MplVector::forEach of a
+lambda. To redo the split: link.cmd, `externals.py kpp\factorio.exe.link.txt kpp\link-errors.txt
+GROUP` for a group's symbols, each one's function's first error in link-errors.txt, and
+`kppc --why-at "File.kpp:LINE,..."` (quoted: cmd splits arguments at commas) on the lines whose
+error names no cause by itself.
+
 The link also takes the Logitech LED SDK now (fbuild.bff links `libraries/Logitech/x64/
 LogitechLEDLib.lib`): its functions are C++, so `native/logitech_led_c.cpp` gives the six the game
 calls C names and `overrides/src/LED/Logitech/Includes/LogitechLEDLib.kpp` defines the header's
