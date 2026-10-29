@@ -1,0 +1,28 @@
+// spec: an rvalue (`move(x)`, a temporary) does not bind to a non-const lvalue reference: of `void addAuth(Query&)` and `Query addAuth(Query&&)` a moved argument takes the second, an lvalue the first; a named rvalue reference is an lvalue
+// factorio: ModPortal::addAuthFields(PropertyTree&) beside addAuthFields(PropertyTree&&), called with `::move(query)` (the void overload made a PropertyTree from void)
+struct Query
+{
+  int fields = 0;
+};
+void addAuth(Query& query)
+{
+  query.fields += 1;
+}
+Query addAuth(Query&& query)
+{
+  addAuth(query); // a named rvalue reference: an lvalue, the first overload
+  query.fields += 10;
+  return query;
+}
+int kind(Query&) { return 1; }
+int kind(const Query&) { return 2; }
+int kind(Query&&) { return 3; }
+int main()
+{
+  Query query;
+  Query sent = addAuth(move(query));
+  addAuth(query);
+  const Query fixed;
+  println("{} {} {} {} {} {}", sent.fields, query.fields, kind(query), kind(fixed), kind(move(query)), kind(Query{}));
+  return 0;
+}

@@ -5748,8 +5748,8 @@ struct GlobalScope::Impl
     {
       const Ty* pt = param->inner;
       bool lvalueToRvalueRef = param->kind == TyKind::RRef && arg->kind == TyKind::LRef; // `T&&` takes no lvalue directly
-      if (param->kind == TyKind::LRef && !pt->isConst && !arg->isReference())
-        return NotViable; // `T&` binds no prvalue (a temporary, a lambda): lvalues present themselves as references (argumentType)
+      if (param->kind == TyKind::LRef && !pt->isConst && (!arg->isReference() || arg->kind == TyKind::RRef))
+        return NotViable; // `T&` binds no rvalue (a temporary, a lambda, `move(x)`): lvalues present themselves as `T&` (argumentType)
       if (types.unqualified(a) == types.unqualified(pt))
       {
         if (lvalueToRvalueRef || (!pt->isConst && a->isConst))
