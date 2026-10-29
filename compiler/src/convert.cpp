@@ -543,6 +543,9 @@ namespace
     {"INVALID_SOCKET", "((SOCKET)(~0))"}, {"SIG_DFL", "((_crt_signal_t)0)"},
     {"SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK", "((SDL_AudioDeviceID)0xFFFFFFFFu)"}, {"SDL_AUDIO_DEVICE_DEFAULT_RECORDING", "((SDL_AudioDeviceID)0xFFFFFFFEu)"},
     {"SDL_TOUCH_MOUSEID", "((SDL_MouseID)(-1))"}, {"SDL_MOUSE_TOUCHID", "((SDL_TouchID)(-1))"},
+    // SDL_hints.h's names, which the game joins to a literal (SoundInterfaceSDL's
+    // `SDL_HINT_AUDIO_DRIVER " is set to \"%s\". Ignoring..."`): the literal itself.
+    {"SDL_HINT_AUDIO_DRIVER", "\"SDL_AUDIO_DRIVER\""},
     {"EXCEPTION_ACCESS_VIOLATION", "((DWORD)0xC0000005L)"}, {"EXCEPTION_STACK_OVERFLOW", "((DWORD)0xC00000FDL)"},
     {"EXCEPTION_ILLEGAL_INSTRUCTION", "((DWORD)0xC000001DL)"}, {"E_NOT_VALID_STATE", "((HRESULT)0x8007139FL)"},
     {"INIT_ONCE_STATIC_INIT", "{}"}, {"CURLOPT_XFERINFODATA", "CURLOPT_PROGRESSDATA"},
