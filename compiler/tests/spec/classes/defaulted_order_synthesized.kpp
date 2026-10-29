@@ -1,6 +1,5 @@
 // spec: a defaulted <=> over members that have no <=> of their own orders as C++'s synthesized three-way comparison: a member converting to an enumeration by the conversion, a class with only == and < (a member operator taking its operand by value, or free ones) by them, an array member element by element; the == it implies compares the same members
 // factorio: Less<ConnectionData> (Direction), IDWithQualityFilter (QualityCondition), UpgradeMapping (UpgradeIDBase), SpriteID (SHA1Digest's free operators), CollisionLayers and PathfindingCollisionMask (array members)
-// pending: "Dir has no operator<=> (a defaulted one orders by the members)", "a defaulted comparison of an array member"
 struct Dir
 {
   enum class Enum : uint8_t { North, East, South };

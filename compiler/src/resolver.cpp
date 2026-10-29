@@ -5231,6 +5231,16 @@ struct GlobalScope::Impl
     {
       Subst subst;
       FunctionDecl* spaceship = constClassOperator(l.type, P::Spaceship, {r.type}, subst, depth);
+      if (!spaceship)
+      {
+        // No <=> of its own: C++'s synthesized three-way comparison, equal by ==, else less by <.
+        std::optional<ConstValue> equal = constBinaryValues(P::EqEq, l, r, ctx, depth + 1);
+        std::optional<ConstValue> less = equal ? constBinaryValues(P::Less, l, r, ctx, depth + 1) : std::nullopt;
+        std::optional<bool> e = equal ? constTruth(*equal, depth + 1) : std::nullopt, s = less ? constTruth(*less, depth + 1) : std::nullopt;
+        if (!e || !s)
+          return std::nullopt;
+        return *e ? 0 : *s ? -1 : 1;
+      }
       if (!constDefaulted(spaceship))
         return std::nullopt;
     }

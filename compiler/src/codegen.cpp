@@ -347,6 +347,11 @@ namespace
     // the compiler's and the name of it passed to the calls (one each per such loop).
     std::deque<VariableDecl> rangeVariables;
     std::deque<NameExpr> rangeNames;
+    // The objects a defaulted comparison compares by their own operators (`a.dir < b.dir` for a
+    // member with no <=>): a variable of the compiler's for each, names of them, the comparison.
+    std::deque<VariableDecl> comparedVariables;
+    std::deque<NameExpr> comparedNames;
+    std::deque<BinaryExpr> comparisons;
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     Span<uint32_t> pendingDesignators;                        // of the brace list constructInto is about to consume
     std::unordered_map<Decl*, int64_t> enumeratorValues;
@@ -4639,14 +4644,98 @@ namespace
         uint32_t index = fieldIndexOf(info, d);
         const Ty* ft = info.fieldTypes[index];
         std::string fa = gep(info.name, a, index), fb = gep(info.name, b, index);
-        if (isClass(ft))
-          combine(objectsEqual(fa, fb, ft, at).text);
-        else if (ft->kind == TyKind::Array)
-          unsupported(at, "a defaulted comparison of an array member");
-        else
-          combine(compare(P::EqEq, load(fa, ft, at), load(fb, ft, at), at).text);
+        combine(partsEqual(fa, fb, ft, at).text);
       }
       return {result, types.boolType(), false};
+    }
+
+    // a == b of two parts of objects (members, elements) at those addresses.
+    Value partsEqual(const std::string& a, const std::string& b, const Ty* t, Node* at)
+    {
+      if (isClass(t))
+        return objectsEqual(a, b, t, at);
+      if (t->kind == TyKind::Array)
+        return arraysEqual(a, b, t, at);
+      return compare(P::EqEq, load(a, t, at), load(b, t, at), at);
+    }
+
+    // a == b of two arrays at those addresses, element by element (the first that differs decides).
+    Value arraysEqual(const std::string& a, const std::string& b, const Ty* t, Node* at)
+    {
+      if (!t->count || !t->inner)
+        unsupported(at, "a defaulted comparison of an array member without its length");
+      std::string slot = "%equal" + std::to_string(temp++), index = "%index" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca i1\n  " + index + " = alloca i64\n";
+      fn += "  store i1 true, ptr " + slot + "\n  store i64 0, ptr " + index + "\n";
+      std::string arrayType = llType(t, at);
+      std::string cond = newLabel("arrayequal.cond"), body = newLabel("arrayequal.body"), next = newLabel("arrayequal.next"), done = newLabel("arrayequal.done");
+      emitBranch(cond);
+      startBlock(cond);
+      std::string i = newTemp(), more = newTemp();
+      fn += "  " + i + " = load i64, ptr " + index + "\n";
+      fn += "  " + more + " = icmp ult i64 " + i + ", " + std::to_string(t->count) + "\n";
+      fn += "  br i1 " + more + ", label %" + body + ", label %" + done + "\n";
+      blockTerminated = true;
+      startBlock(body);
+      std::string ea = newTemp(), eb = newTemp();
+      fn += "  " + ea + " = getelementptr inbounds " + arrayType + ", ptr " + a + ", i64 0, i64 " + i + "\n";
+      fn += "  " + eb + " = getelementptr inbounds " + arrayType + ", ptr " + b + ", i64 0, i64 " + i + "\n";
+      Value same = partsEqual(ea, eb, t->inner, at);
+      fn += "  store i1 " + same.text + ", ptr " + slot + "\n";
+      fn += "  br i1 " + same.text + ", label %" + next + ", label %" + done + "\n";
+      blockTerminated = true;
+      startBlock(next);
+      std::string i2 = newTemp();
+      fn += "  " + i2 + " = add i64 " + i + ", 1\n  store i64 " + i2 + ", ptr " + index + "\n";
+      emitBranch(cond);
+      startBlock(done);
+      return load(slot, types.boolType(), at);
+    }
+
+    // `x OP y` of the objects at a and b, emitted as that expression would be: the class's operator,
+    // a free one, or a built-in one through a conversion (a Direction's to its Enum).
+    Value comparedAt(P op, const std::string& a, const std::string& b, const Ty* t, Node* at)
+    {
+      VariableDecl& va = comparedVariables.emplace_back();
+      VariableDecl& vb = comparedVariables.emplace_back();
+      NameExpr& na = comparedNames.emplace_back();
+      NameExpr& nb = comparedNames.emplace_back();
+      BinaryExpr& cmp = comparisons.emplace_back();
+      const Ty* operand = types.lref(types.qualified(t, true, false));
+      for (VariableDecl* v : {&va, &vb})
+      {
+        v->kind = NodeKind::VariableDecl;
+        v->token = at ? at->token : 0;
+        v->file = currentFile;
+      }
+      for (auto [n, v] : {std::pair{&na, &va}, std::pair{&nb, &vb}})
+      {
+        n->kind = NodeKind::NameExpr;
+        n->token = at ? at->token : 0;
+        n->resolved = v;
+        n->ty = operand;
+      }
+      cmp.kind = NodeKind::BinaryExpr;
+      cmp.token = at ? at->token : 0;
+      cmp.lhs = &na;
+      cmp.rhs = &nb;
+      cmp.op = uint32_t(op);
+      cmp.isKeyword = false;
+      cmp.ty = op == P::Spaceship ? orderingType() : types.boolType();
+      locals[&va] = Local{a, t, false};
+      locals[&vb] = Local{b, t, false};
+      struct Forget
+      {
+        std::unordered_map<Decl*, Local>& locals;
+        Decl* x;
+        Decl* y;
+        ~Forget()
+        {
+          locals.erase(x);
+          locals.erase(y);
+        }
+      } forget{locals, &va, &vb};
+      return rvalue(&cmp);
     }
 
     // a == b for class objects: the class's own operator== unless it is defaulted, else memberwise.
@@ -4673,6 +4762,9 @@ namespace
           return {r, types.boolType(), false};
         return convert(Value{r, types.intType(32), false}, types.boolType(), at);
       }
+      if (!op)
+        if (const Ty* operand = types.lref(types.qualified(t, true, false)); global.findFreeOperator(uint32_t(P::EqEq), operand, operand, currentFunction))
+          return convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at); // SHA1Digest's `operator==(const SHA1Digest&, const SHA1Digest&)`
       return memberwiseEqual(a, b, t, at);
     }
 
@@ -9525,7 +9617,20 @@ namespace
       std::vector<const Ty*> argTypes{types.lref(types.qualified(t, true, false))};
       FunctionDecl* op = findMemberFunction(t, "operator<=>", argTypes, t, at, &foundIn);
       if (!op)
-        unsupported(at, qualifiedName(t->decl) + " has no operator<=> (a defaulted one orders by the members)");
+      {
+        const Ty* operand = types.lref(types.qualified(t, true, false));
+        if (global.findFreeOperator(uint32_t(P::Spaceship), operand, operand, currentFunction))
+          return orderOf(comparedAt(P::Spaceship, a, b, t, at), at);
+        // C++'s synthesized three-way comparison (what a defaulted <=> declaring its order type does
+        // with a member that has no <=>): equal by ==, else less by <, else greater; a Direction
+        // compares by its conversion to its Enum.
+        Value equal = convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at);
+        Value less = convert(comparedAt(P::Less, a, b, t, at), types.boolType(), at);
+        std::string ordered = newTemp(), order = newTemp();
+        fn += "  " + ordered + " = select i1 " + less.text + ", i8 -1, i8 1\n";
+        fn += "  " + order + " = select i1 " + equal.text + ", i8 0, i8 " + ordered + "\n";
+        return {order, types.intType(8)};
+      }
       if (op->flags & DF_Default)
         return memberwiseOrder(a, b, t, at);
       TemplateArgs args = global.classArgsOf(foundIn);
@@ -9576,14 +9681,54 @@ namespace
         uint32_t index = fieldIndexOf(info, d);
         const Ty* ft = info.fieldTypes[index];
         std::string fa = gep(info.name, a, index), fb = gep(info.name, b, index);
-        if (isClass(ft))
-          part(orderOfObjects(fa, fb, ft, at));
-        else if (ft->kind == TyKind::Array)
-          unsupported(at, "a defaulted comparison of an array member");
-        else
-          part(orderOfScalars(load(fa, ft, at), load(fb, ft, at), at));
+        part(orderOfParts(fa, fb, ft, at));
       }
       emitBranch(done);
+      startBlock(done);
+      return load(slot, types.intType(8), at);
+    }
+
+    // The order (i8) of two parts of objects (members, elements) at those addresses.
+    Value orderOfParts(const std::string& a, const std::string& b, const Ty* t, Node* at)
+    {
+      if (isClass(t))
+        return orderOfObjects(a, b, t, at);
+      if (t->kind == TyKind::Array)
+        return orderOfArrays(a, b, t, at);
+      return orderOfScalars(load(a, t, at), load(b, t, at), at);
+    }
+
+    // The order of two arrays at those addresses element by element: the first that differs decides.
+    Value orderOfArrays(const std::string& a, const std::string& b, const Ty* t, Node* at)
+    {
+      if (!t->count || !t->inner)
+        unsupported(at, "a defaulted comparison of an array member without its length");
+      std::string slot = "%order" + std::to_string(temp++), index = "%index" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca i8\n  " + index + " = alloca i64\n";
+      fn += "  store i8 0, ptr " + slot + "\n  store i64 0, ptr " + index + "\n";
+      std::string arrayType = llType(t, at);
+      std::string cond = newLabel("arrayorder.cond"), body = newLabel("arrayorder.body"), next = newLabel("arrayorder.next"), done = newLabel("arrayorder.done");
+      emitBranch(cond);
+      startBlock(cond);
+      std::string i = newTemp(), more = newTemp();
+      fn += "  " + i + " = load i64, ptr " + index + "\n";
+      fn += "  " + more + " = icmp ult i64 " + i + ", " + std::to_string(t->count) + "\n";
+      fn += "  br i1 " + more + ", label %" + body + ", label %" + done + "\n";
+      blockTerminated = true;
+      startBlock(body);
+      std::string ea = newTemp(), eb = newTemp();
+      fn += "  " + ea + " = getelementptr inbounds " + arrayType + ", ptr " + a + ", i64 0, i64 " + i + "\n";
+      fn += "  " + eb + " = getelementptr inbounds " + arrayType + ", ptr " + b + ", i64 0, i64 " + i + "\n";
+      Value order = orderOfParts(ea, eb, t->inner, at);
+      std::string differs = newTemp();
+      fn += "  store i8 " + order.text + ", ptr " + slot + "\n";
+      fn += "  " + differs + " = icmp ne i8 " + order.text + ", 0\n";
+      fn += "  br i1 " + differs + ", label %" + done + ", label %" + next + "\n";
+      blockTerminated = true;
+      startBlock(next);
+      std::string i2 = newTemp();
+      fn += "  " + i2 + " = add i64 " + i + ", 1\n  store i64 " + i2 + ", ptr " + index + "\n";
+      emitBranch(cond);
       startBlock(done);
       return load(slot, types.intType(8), at);
     }
