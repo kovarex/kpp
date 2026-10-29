@@ -542,7 +542,7 @@ namespace
     // signal.h, SDL_audio.h, SDL_touch.h).
     {"INVALID_SOCKET", "((SOCKET)(~0))"}, {"SIG_DFL", "((_crt_signal_t)0)"},
     {"SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK", "((SDL_AudioDeviceID)0xFFFFFFFFu)"}, {"SDL_AUDIO_DEVICE_DEFAULT_RECORDING", "((SDL_AudioDeviceID)0xFFFFFFFEu)"},
-    {"SDL_TOUCH_MOUSEID", "((SDL_MouseID)-1)"}, {"SDL_MOUSE_TOUCHID", "((SDL_TouchID)-1)"},
+    {"SDL_TOUCH_MOUSEID", "((SDL_MouseID)(-1))"}, {"SDL_MOUSE_TOUCHID", "((SDL_TouchID)(-1))"},
     {"EXCEPTION_ACCESS_VIOLATION", "((DWORD)0xC0000005L)"}, {"EXCEPTION_STACK_OVERFLOW", "((DWORD)0xC00000FDL)"},
     {"EXCEPTION_ILLEGAL_INSTRUCTION", "((DWORD)0xC000001DL)"}, {"E_NOT_VALID_STATE", "((HRESULT)0x8007139FL)"},
     {"INIT_ONCE_STATIC_INIT", "{}"}, {"CURLOPT_XFERINFODATA", "CURLOPT_PROGRESSDATA"},
@@ -632,6 +632,9 @@ namespace
     {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
     {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}, {"FD_ISSET", "__WSAFDIsSet((SOCKET)($1), (fd_set*)($2))"},
     {"FD_SET", "kppFdSet((SOCKET)($1), (fd_set*)($2))"},
+    // winnt.h's InterlockedIncrement and InterlockedDecrement, MSVC intrinsics on x64: the new value,
+    // by the atomic add the library's Atomic is made of (stdlib/core/Thread.kpp, codegen's intrinsic).
+    {"InterlockedIncrement", "(kpp_atomic_add32((long*)($1), 1) + 1)"}, {"InterlockedDecrement", "(kpp_atomic_add32((long*)($1), -1) - 1)"},
     {"ZeroMemory", "memset(($1), 0, ($2))"},
     // d3d11.h's inline function, which it has only for C++ (the import's C has none).
     {"D3D11CalcSubresource", "((UINT)($1) + (UINT)($2) * (UINT)($3))"}};
