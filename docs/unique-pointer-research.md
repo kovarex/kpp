@@ -4,7 +4,7 @@ kovarex asked (2026-10-29) whether the unique pointer should be part of the lang
 like `A^ b;`, instead of the library class `UniquePtr<T>` (docs/stdlib/uniqueptr.md). This is a
 research note: nothing in the language, the compiler or the library was changed. It records what
 Factorio uses, what the class costs kppc today, what clang pays for `std::unique_ptr`, what a
-built-in would have to mean, the syntax options, and a recommendation.
+built-in would have to mean, the syntax options, how other languages do it, and a recommendation.
 
 Measured on PC-PRACOVNA (Ryzen 9 9950X, 32 threads) with kppc built from master `89058a6`, on a
 fresh conversion of the game (the headline inputs of path-to-factorio.md: CommonUtil, Agui,
@@ -39,6 +39,11 @@ cxxopts, Lua and `src/`, 4,102 files with the stdlib, 0.99 M lines). The scripts
 - What only a built-in can do (covariant `clone()` returns, an ownership-moving `dynamic_cast`, a
   null niche in `Optional<A^>`) is not used by the converted code: Factorio has 17 `clone()`
   functions, 0 ownership-moving casts and 0 `optional<unique_ptr>`.
+- Other languages point the same way (section 5): no current language with destructors has a
+  built-in sole-owner pointer type. Rust had one (`~T`) and replaced it with the library's `Box<T>`
+  before 1.0, and Nim's `owned ref` gave way to ARC/ORC. What languages add instead is syntax
+  around library types: Swift's `T?` for Optional, Cpp2's `new<T>(args)` for make_unique, Mojo's
+  `x^` for a move.
 
 `T^` as a spelling is a parser and printer change with nothing behind it: the type stays
 `UniquePtr<T>`, so overloads, templates, traits, the specification and the C++ guarantees stay as
@@ -393,7 +398,56 @@ only to UniquePtr, which is why they come first in the recommendation:
    7,853 functions, more functions than UniquePtr and makeUnique together (5,643), though smaller
    ones.
 
-## 5. Recommendation and what is left to decide
+## 5. How other languages do it
+
+kovarex asked for this comparison too. From the languages' own documentation (sources below):
+
+| language | sole owner of a heap object | built in or library | empty state |
+|---|---|---|---|
+| C++ | `std::unique_ptr<T>` | library class, instantiated in every TU that uses it; `std::move` and `std::forward` are compiler builtins in clang and MSVC (1.6) | nullable, moved-from is null |
+| Rust | `Box<T>` | library type that the compiler knows (a lang item: moving out with `*b`, `Box<dyn Trait>`); until 2014 a built-in `~T`, removed for `Box` | never null; `Option<Box<T>>` is one pointer |
+| Swift | none: class references are shared (ARC); a noncopyable value type (`~Copyable`, Swift 5.9) with `consume`, `borrowing` and `consuming` makes a value uniquely owned | the language, as a property of a type, not a pointer | |
+| C#, Java, Go | none, garbage collected | | C#'s `int?` is a spelling of the library's `Nullable<int>` |
+| C++/CLI | `T^` is a handle to a garbage-collected object (made by `gcnew`), not an owner | built in | nullable |
+| Objective-C | none: ARC, with ownership qualifiers on pointers (`__strong`, `__weak`, `__unsafe_unretained`) | built in (qualifiers) | nullable |
+| D | `std.typecons.Unique!T` (garbage collection by default) | library | nullable |
+| Nim | `owned ref T`, proposed 2019 as "very much like C++'s unique_ptr", unowned refs counted in debug builds | built in, an experimental runtime; Nim went to ARC/ORC instead (destructors and moves, `ref` reference-counted) | nil |
+| Zig, Odin | none: no destructors; explicit allocators and `defer` | | |
+| Mojo | ownership is an argument convention (`var` owns, `mut`, read-only by default); `x^` moves x into a call and ends its lifetime | built in, as a move operator, not a type | |
+| Carbon | `T*` is never null; a nullable pointer is `Optional(T*)` | | `Optional` |
+| Cpp2 (cppfront) | `std::unique_ptr<T>`, made with `unique.new<T>(args)` or just `new<T>(args)` (`shared.new<T>` for shared_ptr) | library type, new creation syntax | nullable |
+| Safe C++ (P3390) | `std2::box<T>`; there `T^` is a borrow (a checked reference, `const T^` a shared one) and `rel x` a destructive move | library type | never empty |
+
+What this says for Kpp:
+
+- No current language with destructors makes the sole owner a built-in pointer type. The two that
+  did went back: Rust replaced `~T` with `Box<T>` before 1.0 (RFC 59, 2014: `~T` could not take an
+  allocator, two spellings did one thing, `Box` documents itself where `~` does not, and sigils
+  invite adding them until the compiler is quiet), and Nim left its `owned ref` for ARC/ORC. Rust
+  kept compiler support for Box, which is option E. The allocator reason does not apply to Kpp
+  (allocators are passed at run time, design.md section 4); the reading reasons are the opposite of
+  the reason kovarex gives, so this is a judgement of taste, not a fact.
+- What languages do add is syntax around library types: spellings (Swift's `T?` and `[T]`, C#'s
+  `int?`), creation (Cpp2's `new<T>(args)`) and moves (Mojo's `x^`, Swift's `consume x`, Safe C++'s
+  `rel x`). All of these leave the type a library class, as `T^` as sugar would.
+- `^` already means three things: a garbage-collected handle (C++/CLI), a borrow (Safe C++) and a
+  move (Mojo, in expressions). The Safe C++ meaning is the one nearest Kpp: if Kpp ever adds checked
+  borrows, `^` would be the natural spelling, and it would be taken.
+- A non-null owner with Optional for the empty case (Rust, Safe C++, Carbon's pointers) is a
+  different design; converted code needs the nullable owner (section 2, item 2), so it could only
+  come as a second type.
+- A shorter `makeUnique<T>(args)` (Cpp2's `new<T>(args)`) is a separate question from the type's
+  spelling; Factorio has 990 make_unique calls and 742 `.reset(new ...)`.
+
+Sources: Rust RFC 59 "remove-tilde" (rust-lang.github.io/rfcs/0059-remove-tilde.html) and the
+std::boxed documentation; Swift SE-0390 (noncopyable structs and enums), SE-0366 (`consume`) and
+SE-0377 (`borrowing`/`consuming`); Nim, "A new runtime for Nim" (nim-lang.org/araq/ownedrefs.html)
+and "Introduction to ARC/ORC in Nim" (nim-lang.org/blog, 2020); the Mojo manual, "Ownership"
+(mojolang.org/docs/manual/values/ownership); the Carbon design overview
+(github.com/carbon-language/carbon-lang, docs/design/README.md); the cppfront documentation,
+"Objects" (hsutter.github.io/cppfront/cpp2/objects); the Safe C++ draft (safecpp.org/draft.html).
+
+## 6. Recommendation and what is left to decide
 
 1. Keep the unique pointer a library class, `UniquePtr<T>`, specified in docs/stdlib/uniqueptr.md
    with std::unique_ptr's guarantees and produced by the converter. No new kind of type.
