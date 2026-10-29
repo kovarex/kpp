@@ -140,6 +140,7 @@ namespace
 
   double seconds(std::chrono::steady_clock::duration d);
   int codegenExit = 0;
+  std::string lastImportStamps; // the C import's header stamps (importCHeaders), for a server's next build
 
   // What the executable links against: legacy_stdio_definitions (the printf family the UCRT
   // headers define inline), the Windows libraries programs commonly reach, --lib files; unused
@@ -692,6 +693,7 @@ namespace
     // A cached import is used only while every header clang read for it is as it was then (the
     // key names the headers imported, not what they hold: an edited kpp_directx.h is seen).
     bool cacheHit = std::filesystem::exists(cached, ec) && headersUnchanged(dependencies);
+    lastImportStamps = dependencies.string();
     if (!cacheHit)
     {
       // Several compilers may build one import at once (the spec suite's): each works in files of its
@@ -1300,6 +1302,8 @@ int compile(int argc, char** argv)
       options.modules = unsigned(atoi(argv[++i]));
     else if (arg == "--convert" && i + 1 < argc)
       options.convertDir = argv[++i];
+    else if (arg == "--verify-incremental")
+      ; // the compile server's (server.cpp): a build in its own process is from scratch anyway
     else if (arg == "--overrides" && i + 1 < argc)
       options.overridesDir = argv[++i];
     else if (arg[0] == '-')
@@ -1372,6 +1376,32 @@ int compile(int argc, char** argv)
     config.text = configSource(options.configValues);
     totalBytes += config.text.size();
     files.push_back(std::move(config));
+  }
+  // A compile server's build whose every input is as the previous one's (step 3a of the
+  // persistent compiler, docs/compile-speed.md): the previous build's output again.
+  if (servingBuild() && options.convertDir.empty())
+  {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&](std::string_view bytes)
+    {
+      for (unsigned char c : bytes)
+        h = (h ^ c) * 1099511628211ull;
+      h = (h ^ 0xff) * 1099511628211ull;
+    };
+    for (const SourceFile& file : files)
+    {
+      mix(file.path.string());
+      mix(file.text);
+    }
+    mix(environmentBlock()); // TMP (the import cache), KPP_CLANG, LIB...
+    std::vector<std::string> outputs;
+    for (const std::string& o : {options.emitLLVM, options.exe})
+      if (!o.empty())
+        outputs.push_back(std::filesystem::absolute(o).string());
+    int replayed = 0;
+    if (replayBuild(h, outputs, lastImportStamps.empty() || headersUnchanged(lastImportStamps), replayed))
+      return replayed;
+    lastImportStamps.clear(); // this build's, if it imports any
   }
   // Converting, the front end lexes the C++ sources with the #if branches the converter drops
   // blanked, so that its rewrites reach the branches that are written out (offsets are unchanged:

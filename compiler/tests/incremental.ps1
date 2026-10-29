@@ -13,6 +13,7 @@ New-Item -ItemType Directory -Force $src | Out-Null
 Copy-Item "$PSScriptRoot\incremental\*.kpp" $src
 $Kppc = (Resolve-Path $Kppc).Path
 $failed = 0
+$started = Get-Date
 
 function Normalize([string[]]$lines)
 {
@@ -68,11 +69,26 @@ foreach ($step in $steps)
     if ($d) { $ok = $false; "FAIL incremental ${n} ($($step.name)): $part differs"; $d | Select-Object -First 4 | ForEach-Object { "  $($_.SideIndicator) $($_.InputObject)" } }
   }
   if ((Get-FileHash $ir).Hash -ne (Get-FileHash $fresh).Hash) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the IR differs" }
+  # The same request again, nothing changed: the server sends the kept build's output again (step
+  # 3a) and, with --verify-incremental, checks it against a build from scratch.
+  $r = Build @('--server', '--verify-incremental', '--emit-llvm', (Join-Path $work 'server.ll'), $src) "replay.$n"
+  if ($r.exit -ne $f.exit) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the replay's exit $($r.exit), fresh $($f.exit)" }
+  foreach ($part in 'out', 'err')
+  {
+    $d = Compare-Object $f.$part $r.$part -SyncWindow 0
+    if ($d) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the replay's $part differs"; $d | Select-Object -First 4 | ForEach-Object { "  $($_.SideIndicator) $($_.InputObject)" } }
+  }
+  if ((Get-FileHash (Join-Path $work 'server.ll')).Hash -ne (Get-FileHash $fresh).Hash) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the IR after the replay differs" }
   $b = Build @('--server', '--quiet', '--exe', $exe, $src) "exe.$n"
   $printed = if ($b.exit -eq 0) { (& $exe) -join ' ' } else { "(build exit $($b.exit))" }
   if ($printed -ne $step.expect) { $ok = $false; "FAIL incremental ${n} ($($step.name)): printed '$printed', expected '$($step.expect)'" }
   if ($ok) { "ok   incremental $n ($($step.name))" } else { $failed++ }
 }
+# Each step's repeat was a replay, checked against a build from scratch (the server's log says so).
+$log = Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $started } |
+  ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'verify-incremental: the same as from scratch' -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $started }
+if (@($log).Count -lt $steps.Count) { "FAIL incremental: $(@($log).Count) replays verified, $($steps.Count) expected (the server's log, %TEMP%\kppc-server)"; $failed++ }
+else { "ok   incremental replays ($($steps.Count), each the same as from scratch)" }
 & $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
 & $Kppc --stop-server --quiet --exe $exe $src | Out-Null
 if ($failed -gt 0) { exit 1 }

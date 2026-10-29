@@ -346,10 +346,24 @@ before relying on the recorded uses.
 
 ### Step 3 in three pieces, and what 3c needs from codegen
 
-- **3a** (resolver thread): the server keeps the previous build (files, trees, the resolved
-  program, codegen's result); a request whose inputs all hash as before reuses all of it, and
-  `--verify-incremental` builds clean in the same server afterwards and compares stdout, stderr
-  and the IR byte for byte.
+- **3a** (resolver thread, landed): a request whose inputs are all as the previous build's is
+  answered with that build's stdout, stderr and exit code, nothing built. The inputs: every
+  source file's path and text (the stdlib's and the configuration's included), the environment
+  (TMP, which holds the C import cache, LIB, KPP_CLANG...), the stamps of the C headers the import
+  read (headersUnchanged), and the outputs (`--exe`, `--emit-llvm`) at the size and time the build
+  left them; the arguments, the directory and the kppc binary are the server's key already.
+  `--verify-incremental` (not part of the key) then builds from scratch in the same server, its
+  output into files, and compares: stdout and stderr with timings, rates, wait counts, the
+  interned types' count, `(cached)` and the object cache's "N unchanged" masked, the exit code, and
+  what was written (the IR file's bytes, or an executable's module hashes; the executable carries
+  the link's time). A difference is an error naming the first differing line, also in the server's
+  log. The server answers a build when it is done and frees it on its own thread, serving the next
+  request meanwhile (freeing the full game took about 10 s, and the next request waited for it).
+  Full game as run.cmd builds it, frozen tree: a build in its own process 17.6 s; through the
+  server, the first 21.5 s, then no-change rebuilds **0.17 s and 0.16 s**; with
+  `--verify-incremental` 34 s (the replay and a build from scratch), "the same as from scratch".
+  tests/incremental.ps1 repeats each of its six steps through the server with
+  `--verify-incremental` and checks in the server's log that all six were replays, verified.
 - **3b** (resolver thread): a body-only edit re-parses the changed file, moves the new bodies into
   the kept declarations and checks only those bodies (and the instances they newly request); codegen
   still runs in full.

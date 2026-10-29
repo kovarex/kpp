@@ -11,6 +11,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <regex>
+#include <sys/stat.h>
+#include <algorithm>
 #include <string>
 #include <thread>
 #include <vector>
@@ -152,7 +155,8 @@ namespace
     for (char c : cwd)
       text += char(tolower(static_cast<unsigned char>(c)));
     for (const std::string& arg : args)
-      text += std::string(1, '\0') + arg;
+      if (arg != "--verify-incremental") // a check of the server's build, not another build
+        text += std::string(1, '\0') + arg;
     uint64_t h = 1469598103934665603ull;
     for (unsigned char c : text)
       h = (h ^ c) * 1099511628211ull;
@@ -229,6 +233,16 @@ namespace
     std::thread outForward, errForward;
     bool answered = false;
     bool clientLost = false; // a write to the client failed: it went away (the build goes on, unseen)
+    HANDLE answeredEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr); // set by answer()
+    int exitCode = 0;
+    ~Session() { CloseHandle(answeredEvent); }
+    std::string captured[2];     // what the build printed (stdout, stderr), kept for a replay (step 3a)
+    bool muted = false;          // --verify-incremental's own build: captured, not sent
+    bool verifying = false;      // that build is running: its end does not answer the client
+    bool replayed = false;       // this request was answered from the kept build
+    bool keep = false;           // this build's result is kept (replayBuild found nothing to replay)
+    uint64_t fingerprint = 0;
+    std::vector<std::string> outputs;
   };
   Session* session = nullptr;
   size_t builds = 0;
@@ -263,6 +277,12 @@ namespace
       DWORD n = 0;
       if (!ReadFile(from, buffer, DWORD(sizeof buffer), &n, nullptr) || n == 0)
         return;
+      {
+        std::lock_guard lock(s.writeLock);
+        s.captured[type == stderrFrame].append(buffer, n);
+        if (s.muted)
+          continue;
+      }
       sendFrame(s, type, buffer, n);
     }
   }
@@ -303,6 +323,42 @@ namespace
     return true;
   }
 
+  // The previous build of this server's arguments, for a request whose inputs are as they were
+  // (step 3a): what it printed, its exit code, and the stamps of the files it wrote.
+  struct KeptBuild
+  {
+    bool valid = false;
+    uint64_t fingerprint = 0;
+    std::string out, err;
+    int exitCode = 0;
+    std::vector<std::string> outputs, stamps;
+  };
+  KeptBuild kept;
+  bool replayOff = false; // --verify-incremental's build from scratch
+
+  // A file's size and time of writing (or that it is missing).
+  std::string stampOf(const std::string& path)
+  {
+    WIN32_FILE_ATTRIBUTE_DATA a{};
+    if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &a))
+      return "missing";
+    return std::to_string(a.nFileSizeLow) + " " + std::to_string(a.nFileSizeHigh) + " " + std::to_string(a.ftLastWriteTime.dwLowDateTime) + " " +
+           std::to_string(a.ftLastWriteTime.dwHighDateTime);
+  }
+
+  void keepBuild(Session& s, int exitCode)
+  {
+    kept.valid = true;
+    kept.fingerprint = s.fingerprint;
+    kept.out = s.captured[0];
+    kept.err = s.captured[1];
+    kept.exitCode = exitCode;
+    kept.outputs = s.outputs;
+    kept.stamps.clear();
+    for (const std::string& o : s.outputs)
+      kept.stamps.push_back(stampOf(o));
+  }
+
   // Sends the build's exit code once everything it printed is through, and lets the client go.
   void answer(Session& s, int exitCode)
   {
@@ -321,9 +377,13 @@ namespace
       s.errForward.join();
     CloseHandle(s.outRead);
     CloseHandle(s.errRead);
+    if (s.keep)
+      keepBuild(s, exitCode);
     sendFrame(s, exitFrame, &exitCode, 4);
     FlushFileBuffers(s.client);
     DisconnectNamedPipe(s.client);
+    s.exitCode = exitCode;
+    SetEvent(s.answeredEvent);
   }
 
   // The client's environment for the build (TMP, which holds the C import cache, LIB and INCLUDE
@@ -377,13 +437,17 @@ namespace
     CompileFunction compile;
     std::vector<std::string> args;
     int result = 1;
+    std::atomic<bool> released{false};
   };
 
   // One build, on a thread of its own: thread-local state (the resolver's, the evaluator's) starts
   // fresh as in a new process, and the stack is the 8 MB the executable is linked with.
-  int runBuild(CompileFunction compile, std::vector<std::string> args)
+  // When the build has answered its client (buildDone), what is left is freeing what it built
+  // (about 10 s on the full game): the next request is served meanwhile, the thread finishing on
+  // its own. Whoever of the two lets go of the job last deletes it.
+  int runBuild(CompileFunction compile, std::vector<std::string> args, Session& s)
   {
-    BuildJob job{compile, std::move(args)};
+    BuildJob* job = new BuildJob{compile, std::move(args)};
     HANDLE thread = CreateThread(nullptr, size_t(8) << 20, [](void* p) -> DWORD
     {
       BuildJob* j = static_cast<BuildJob*>(p);
@@ -392,13 +456,146 @@ namespace
         argv.push_back(a.data());
       argv.push_back(nullptr);
       j->result = j->compile(int(argv.size() - 1), argv.data());
+      if (j->released.exchange(true))
+        delete j;
       return 0;
-    }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    }, job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
     if (!thread)
+    {
+      delete job;
       return 1;
-    WaitForSingleObject(thread, INFINITE);
+    }
+    HANDLE both[2] = {thread, s.answeredEvent};
+    DWORD which = WaitForMultipleObjects(s.verifying ? 1 : 2, both, FALSE, INFINITE);
+    int result = which == WAIT_OBJECT_0 ? job->result : s.exitCode;
     CloseHandle(thread);
-    return job.result;
+    if (job->released.exchange(true))
+      delete job;
+    return result;
+  }
+
+  // What a build printed, without what differs from run to run by design (timings and rates, wait
+  // counts, the interned types' count, whether the C import came from its cache).
+  std::string normalized(const std::string& text)
+  {
+    static const std::regex seconds("[0-9]+\\.[0-9]+ s\\b"), rates("\\([0-9.]+ [MG]?B/s[^)]*\\)"), lines("\\([0-9.]+ M lines/s\\)"),
+      waits("\\([0-9]+ requests, [0-9]+ waits\\)"), unchanged("[0-9]+ unchanged"), types("^check: +[0-9]+ distinct types"), cached(" \\(cached\\)$");
+    std::string out;
+    size_t start = 0;
+    while (start < text.size())
+    {
+      size_t end = text.find('\n', start);
+      std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+      start = end == std::string::npos ? text.size() : end + 1;
+      if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+      line = std::regex_replace(line, seconds, "_ s");
+      line = std::regex_replace(line, rates, "(_)");
+      line = std::regex_replace(line, lines, "(_)");
+      line = std::regex_replace(line, waits, "(_)");
+      line = std::regex_replace(line, unchanged, "_ unchanged"); // the object cache's state, not the build's
+      line = std::regex_replace(line, types, "check:");
+      line = std::regex_replace(line, cached, "");
+      out += line + "\n";
+    }
+    return out;
+  }
+
+  // What a build wrote, for comparing two builds: an IR file's bytes, an executable's modules'
+  // hashes (the executable itself carries the link's time).
+  std::string writtenContents(const std::vector<std::string>& outputs)
+  {
+    std::string out;
+    auto read = [](const std::string& path, std::string& into)
+    {
+      FILE* f = fopen(path.c_str(), "rb");
+      if (!f)
+        return false;
+      char buffer[1 << 16];
+      for (size_t n; (n = fread(buffer, 1, sizeof buffer, f)) > 0;)
+        into.append(buffer, n);
+      fclose(f);
+      return true;
+    };
+    for (const std::string& o : outputs)
+    {
+      out += o + "\n";
+      if (o.size() > 3 && o.compare(o.size() - 3, 3, ".ll") == 0)
+        read(o, out);
+      else
+        for (int k = 0; read(o + "." + std::to_string(k) + ".hash", out); ++k)
+          out += "\n";
+    }
+    return out;
+  }
+
+  // The first line two texts differ in, for the report.
+  std::string firstDifference(const std::string& a, const std::string& b)
+  {
+    size_t i = 0;
+    while (i < a.size() && i < b.size() && a[i] == b[i])
+      ++i;
+    size_t from = a.rfind('\n', i == 0 ? 0 : i - 1);
+    from = from == std::string::npos ? 0 : from + 1;
+    auto lineAt = [&](const std::string& t) { size_t e = t.find('\n', from); return t.substr(from, e == std::string::npos ? std::string::npos : e - from); };
+    return "kept: \"" + lineAt(a) + "\", from scratch: \"" + lineAt(b) + "\"";
+  }
+
+  // --verify-incremental after a replayed build: builds the same arguments from scratch in this
+  // server (its output into files, not to the client) and compares what both printed and wrote.
+  bool verifyReplay(Session& s, CompileFunction compile, std::vector<std::string> args, int replayedExit)
+  {
+    std::string before = writtenContents(kept.outputs);
+    fflush(stdout);
+    fflush(stderr);
+    std::string dir = serverDirectory(), outPath = dir + "verify.out", errPath = dir + "verify.err";
+    int savedOut = _dup(_fileno(stdout)), savedErr = _dup(_fileno(stderr));
+    int out = _open(outPath.c_str(), _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+    int err = _open(errPath.c_str(), _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+    pointStreams(out, err);
+    _close(out);
+    _close(err);
+    replayOff = true;
+    s.verifying = true;
+    int fresh = runBuild(compile, std::move(args), s);
+    s.verifying = false;
+    replayOff = false;
+    fflush(stdout);
+    fflush(stderr);
+    pointStreams(savedOut, savedErr);
+    _close(savedOut);
+    _close(savedErr);
+    auto slurp = [](const std::string& path)
+    {
+      std::string text;
+      if (FILE* f = fopen(path.c_str(), "rb"))
+      {
+        char buffer[1 << 16];
+        for (size_t n; (n = fread(buffer, 1, sizeof buffer, f)) > 0;)
+          text.append(buffer, n);
+        fclose(f);
+      }
+      return text;
+    };
+    std::string problem;
+    std::string keptOut = normalized(kept.out), freshOut = normalized(slurp(outPath));
+    std::string keptErr = normalized(kept.err), freshErr = normalized(slurp(errPath));
+    std::string after = writtenContents(kept.outputs);
+    if (fresh != replayedExit)
+      problem = "exit code " + std::to_string(replayedExit) + " kept, " + std::to_string(fresh) + " from scratch";
+    else if (keptOut != freshOut)
+      problem = "stdout differs: " + firstDifference(keptOut, freshOut);
+    else if (keptErr != freshErr)
+      problem = "stderr differs: " + firstDifference(keptErr, freshErr);
+    else if (before != after)
+      problem = "what it wrote differs (" + std::to_string(before.size()) + " and " + std::to_string(after.size()) + " bytes compared)";
+    logLine("build %zu: --verify-incremental: %s", builds, problem.empty() ? "the same as from scratch" : problem.c_str());
+    if (problem.empty())
+      return true;
+    std::string message = "kppc: --verify-incremental: the server's build is not what a build from scratch gives: " + problem + "\n";
+    fwrite(message.data(), 1, message.size(), stderr);
+    fflush(stderr);
+    return false;
   }
 
   // Serves one client. Returns false when the client asked the server to stop.
@@ -452,8 +649,12 @@ namespace
       return true;
     }
     session = &s;
-    int result = runBuild(compile, std::move(args));
-    answer(s, result); // if the build did not answer itself (usage errors, --dump)
+    bool verify = std::find(args.begin(), args.end(), "--verify-incremental") != args.end();
+    std::vector<std::string> again = args;
+    int result = runBuild(compile, std::move(args), s);
+    if (verify && s.replayed && !verifyReplay(s, compile, std::move(again), result))
+      result = 1;
+    answer(s, result); // if the build did not answer itself (usage errors, --dump, a replay)
     session = nullptr;
     logLine("build %zu done, exit %d%s", builds, result, s.clientLost ? " (its client went away before the answer)" : "");
     return true;
@@ -470,8 +671,54 @@ namespace
 
 bool servingBuild() { return session != nullptr; }
 
+bool replayDisabled() { return replayOff; }
+
+std::string environmentBlock()
+{
+  std::string out;
+  if (wchar_t* block = GetEnvironmentStringsW())
+  {
+    const wchar_t* q = block;
+    while (*q)
+      q += wcslen(q) + 1;
+    out.assign(reinterpret_cast<const char*>(block), (q - block + 1) * sizeof(wchar_t));
+    FreeEnvironmentStringsW(block);
+  }
+  return out;
+}
+
+bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, bool headersUnchanged, int& exitCode)
+{
+  if (!session || replayOff)
+    return false;
+  bool same = kept.valid && kept.fingerprint == fingerprint && headersUnchanged && kept.outputs == outputs;
+  for (size_t i = 0; same && i < outputs.size(); ++i)
+    same = stampOf(outputs[i]) == kept.stamps[i];
+  if (!same)
+  {
+    session->keep = true; // this build's result is what the next one compares with
+    session->fingerprint = fingerprint;
+    session->outputs = outputs;
+    return false;
+  }
+  fwrite(kept.out.data(), 1, kept.out.size(), stdout);
+  fwrite(kept.err.data(), 1, kept.err.size(), stderr);
+  fflush(stdout);
+  fflush(stderr);
+  session->replayed = true;
+  logLine("build %zu: no input changed, the previous build's output sent again", builds);
+  exitCode = kept.exitCode;
+  return true;
+}
+
 void buildDone(int exitCode)
 {
+  if (session && session->verifying)
+  {
+    fflush(stdout); // --verify-incremental's build from scratch: the request's own build answers
+    fflush(stderr);
+    return;
+  }
   if (session)
   {
     answer(*session, exitCode);
