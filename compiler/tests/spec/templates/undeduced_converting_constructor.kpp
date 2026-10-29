@@ -1,0 +1,19 @@
+// spec: a converting constructor template whose parameter the argument cannot deduce (`UniquePtr(UniquePtr<U, E>&&)` given a const char*) is no candidate, so it makes no conversion and the overload whose parameter the argument does convert to is chosen
+// factorio: ValueToWidget's `makeCollapsibleValue(value.loaded() ? "..." : "<empty>", ::move(table))` beside makeCollapsibleValue(UniquePtr<Widget>, UniquePtr<Widget>) and makeCollapsibleValue(String&&, UniquePtr<Widget>)
+struct Widget
+{
+  virtual ~Widget() {}
+  int id = 0;
+};
+static int collapsible(UniquePtr<Widget> collapsed, UniquePtr<Widget> expanded) { return 1; }
+static int collapsible(UniquePtr<Widget> expanded) { return 2; }
+static int collapsible(const String& collapsed, UniquePtr<Widget> expanded) { return 3; }
+static int collapsible(String&& collapsed, UniquePtr<Widget> expanded) { return 4; }
+int main()
+{
+  bool loaded = true;
+  UniquePtr<Widget> table = makeUnique<Widget>();
+  UniquePtr<Widget> other = makeUnique<Widget>();
+  println("{} {}", collapsible(loaded ? "..." : "<empty>", move(table)), collapsible(move(other)));
+  return 0;
+}

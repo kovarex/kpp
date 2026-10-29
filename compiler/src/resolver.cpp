@@ -9089,6 +9089,16 @@ struct GlobalScope::Impl
               deduceCall(f, ft, std::vector<const Ty*>{arg}, d);
               if (isFunctionImpl(p) && !callableWith(a, p, depth))
                 continue; // Function<void(double)> takes no `[]() {}`
+              // A parameter the argument does not deduce and that has no default: deduction failed,
+              // so no candidate (`UniquePtr(UniquePtr<U, E>&&)` given a const char*).
+              bool undeduced = false;
+              for (Decl* tp : f->templateParams)
+              {
+                auto* param = static_cast<TemplateParamDecl*>(tp);
+                undeduced = undeduced || (!d.find(tp) && !param->defaultArg && !param->isPack);
+              }
+              if (undeduced)
+                continue;
             }
             const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
             if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(p))
