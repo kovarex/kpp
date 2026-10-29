@@ -5625,8 +5625,9 @@ namespace
               return "ptr " + convertedTemporary(cls, arg, at); // `report(Patrolling{3})` with `report(const AIState&)`
             if (conversionOperator(argTy, types.unqualified(cls), at))
               return "ptr " + convert(rvalue(arg), types.unqualified(cls), at).text; // `f(lowercase)` through `operator const String&()`
-            // (the argument as overload resolution sees it: an lvalue binds a constructor template's `T&`)
-            if (findConstructor(cls, argTypesOf(Span<Expr*>{&arg, 1}), at))
+            // (the argument as overload resolution sees it: an lvalue binds a constructor template's `T&`;
+            // a constructor inherited with `using Base::Base;` converts too, as the resolver ranks it)
+            if (findConstructor(cls, argTypesOf(Span<Expr*>{&arg, 1}), at) || global.converts(argumentType(arg, arg->ty, types), types.unqualified(cls)))
               return "ptr " + convertedTemporary(cls, arg, at); // `f(view)` with `f(const String&)`
           }
           Value o = rvalue(arg);

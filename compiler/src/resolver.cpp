@@ -11190,11 +11190,13 @@ struct GlobalScope::Impl
               return 4;
           return NotViable; // no other conversion makes a union
         }
-        // User-defined: a non-explicit single-argument constructor of p accepting a.
+        // User-defined: a non-explicit single-argument constructor of p accepting a, its own or
+        // one a `using Base::Base;` inherits (not the base's copy or move constructor).
         if (Decl* def = p->decl && p->decl->ownScope ? p->decl : (classScopeOf(p) ? classScopeOf(p)->owner : nullptr))
         {
-          Subst s = substFor(p);
-          for (Decl* m : static_cast<ClassDecl*>(def)->members)
+          auto converts = [&](ClassDecl* owner, const Ty* ownerTy, const Subst& s) -> bool
+          {
+          for (Decl* m : owner->members)
           {
             if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
               continue;
@@ -11234,9 +11236,42 @@ struct GlobalScope::Impl
             if (f->requiresClause && !requiresHolds(f, d))
               continue; // `template<typename F> Wrapper(F f) requires(!isPointer<F>)` given a pointer: no conversion
             const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
-            if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(p))
+            if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(ownerTy))
               continue; // The copy constructor is not a conversion (ReverseIterator<const T> from ReverseIterator<T> is).
             if (conversionRank(arg, pt, depth + 1) < 4)
+              return true;
+          }
+          return false;
+          };
+          Subst s = substFor(p);
+          if (converts(static_cast<ClassDecl*>(def), p, s))
+            return 4;
+          // `using super::super;` (SignalFilter from IDWithQualityFilter<SignalIDBase>): the base's
+          // constructors, with that base's arguments.
+          for (Decl* m : static_cast<ClassDecl*>(def)->members)
+          {
+            if (m->kind != NodeKind::UsingNameDecl)
+              continue;
+            const QualifiedName& un = static_cast<UsingNameDecl*>(m)->name;
+            if (un.parts.size() < 2 || un.last().symbol != un.parts[un.parts.size() - 2].symbol)
+              continue;
+            NamedType written{};
+            written.kind = NodeKind::NamedType;
+            written.token = m->token;
+            written.name = un;
+            written.name.parts.count -= 1;
+            LocalStack params;
+            for (Decl* tp : def->templateParams)
+              params.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+            ParsedFile* file = def->file;
+            Scope* inside = classScopeOf(p) ? classScopeOf(p) : def->ownScope;
+            TypeContext bctx{inside, &params, s.pairs.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+            const Ty* bt = convertType(&written, bctx, depth + 1);
+            bt = bt ? types.unqualified(types.stripRef(bt)) : nullptr;
+            if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
+              continue;
+            Scope* bs = classScopeOf(bt);
+            if (bs && bs->owner && bs->owner->kind == NodeKind::ClassDecl && converts(static_cast<ClassDecl*>(bs->owner), bt, substFor(bt)))
               return 4;
           }
         }

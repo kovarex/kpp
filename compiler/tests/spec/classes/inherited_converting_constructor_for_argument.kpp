@@ -1,6 +1,5 @@
 // spec: a constructor inherited with `using Base::Base;` converts an argument implicitly, as the derived class's own converting constructor would: a SignalID passed for a SignalFilter parameter, of a function or of another class's constructor, constructs the SignalFilter through the base's `Filter(const WithQuality<IdType>&)`
 // factorio: LogisticFilter(SignalID(itemID), value) and its five siblings (TransitionalRequestLogic::request, ItemRequestProxy::setRequests, ConstantCombinatorControlBehavior, ...): SignalFilter inherits IDWithQualityFilter<SignalIDBase>'s constructors (`using super::super;`), one of which takes the SignalID
-// pending: copy-initialization (`SignalFilter direct = id;`) converts, but overload resolution does not count the inherited constructor for an argument ("a constructor of Holder taking 2 arguments", "a conversion to an unknown type"); owner: the resolver (overload resolution)
 struct SignalIdBase
 {
   int value = 0;
