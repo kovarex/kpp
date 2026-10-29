@@ -94,6 +94,22 @@ struct Pair
     : first(forward<U1>(first)), second(forward<U2>(second))
   {
   }
+  // From a Pair of other types whose members these are constructed from (std::pair's converting
+  // constructors), with the same explicitness rule: `map.emplace(Pair<uint32, Sound*>(...))` into
+  // a Map<uint32, UniquePointer<Sound>> (ProcessionAudioCatalogue). The other's members are copied,
+  // or moved from an rvalue Pair.
+  template<typename U1, typename U2>
+  explicit(!isConvertible<const U1&, A> || !isConvertible<const U2&, B>) Pair(const Pair<U1, U2>& other)
+    requires(isConstructible<A, const U1&> && isConstructible<B, const U2&>)
+    : first(other.first), second(other.second)
+  {
+  }
+  template<typename U1, typename U2>
+  explicit(!isConvertible<U1, A> || !isConvertible<U2, B>) Pair(Pair<U1, U2>&& other)
+    requires(isConstructible<A, U1> && isConstructible<B, U2>)
+    : first(forward<U1>(other.first)), second(forward<U2>(other.second))
+  {
+  }
 
   bool operator==(const Pair<A, B>& other) const { return this->first == other.first && this->second == other.second; }
   bool operator!=(const Pair<A, B>& other) const { return !(*this == other); }
