@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**643 pass, 8 pending, 0 failing, 0 fixed** (651 snippets, 20.1 s).
+**645 pass, 8 pending, 0 failing, 0 fixed** (653 snippets, 27.5 s).
 
 ## Language: statements, expressions, declarations
 
@@ -93,6 +93,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/converting_constructor_reference_parameter.kpp` | an implicit conversion through a converting constructor whose parameter is a const reference of another type (`Constant(const double&)` given an int) binds the reference to a converted temporary, as a function's const reference parameter does (`byRef(two)`; `ref` would name the library's std::ref) | pass | NoiseFunctionParameter's `{"output_scale", 1}` through `NoiseFunctionParameter(String&&, NoiseExpressionConstant&&)`, and every class built from a number its constructor takes as `const double&` |  |
 | `language/converting_init_contexts.kpp` | copy-initialising a class from a prvalue of another class goes through the converting constructor in every context: a variable, a return, a default member initializer, a functional cast | pass |  |  |
 | `language/copy_init_converting_from_prvalue.kpp` | `Target t = make();` where make() returns another class and Target has a converting constructor from it: the constructor runs | pass | SharedPtr<T> p = makeUnique<T>(...), and every copy-initialisation from a returned object of another class |  |
+| `language/declaration_statement_by_first_tokens.kpp` | design.md, "Grammar parseable without name lookup", rule 1: a statement that starts with a (qualified) name, then `*`, `&` or `&&` chains, then an identifier is a declaration, whatever the name is; pointer, reference and rvalue-reference locals of a class, of a nested class and of a pointer to pointer | pass |  |  |
 | `language/decltype.kpp` | decltype | pass | 163 uses in 57 files |  |
 | `language/decltype_auto_return.kpp` | a decltype(auto) return type keeps the reference the returned expression has: returning `f(x)` where f returns int& returns int&, so the call can be assigned to and bound to a reference | pass | the library's views (a transform yielding `const Territory&` in TerritoryManager::getAllTerritories), generic forwarding wrappers |  |
 | `language/decltype_auto_value_categories.kpp` | decltype(auto) takes the decltype of the expression: a call returning int& stays int&, a parenthesised variable or member is a reference to it, a variable or member named plainly has its declared type (a copy); for returns, lambdas (`-> decltype(auto)`) and variables alike | pass | generic forwarding wrappers and views over the game's containers; complements language/decltype_auto_return |  |
@@ -186,6 +187,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/switch_on_class_with_conversion.kpp` | `switch` on an object of a class with a conversion to an enum or integer switches on the converted value | pass |  |  |
 | `language/switch_on_declaration.kpp` | a switch whose condition declares a variable (`switch (const int type = table.get<uint32_t>("type"))`): the variable is in scope in the cases and holds the value switched on | pass |  |  |
 | `language/switch_through_local_alias.kpp` | case labels named through a local alias of a nested enum: `using Kind = Token::Special; case Kind::Unary:` | pass |  |  |
+| `language/template_id_or_comparison.kpp` | design.md, "Grammar parseable without name lookup", rule 3: in an expression `name<...>` is a template-id when what follows the `>` cannot continue a comparison (`(`, `::`, `;`, `)`, `,`, `==`, ...), and comparisons otherwise: `a < b > c` compares twice, and `v<N> * 2` with a value as the argument reads as comparisons, so `(v<N>) * 2` is written for the template-id | pass |  |  |
 | `language/temporaries_in_branches.kpp` | a temporary made inside one branch of `?:`, or inside the right operand of `&&` / `||`, is destroyed only when that branch ran, and before the expression's value is used | pass |  |  |
 | `language/ternary_comma_sizeof.kpp` | conditional operator with objects, comma operator, sizeof of expressions | pass |  |  |
 | `language/ternary_in_for_init.kpp` | ternary_in_for_init | pass |  |  |
