@@ -1,0 +1,36 @@
+// spec: decltype(auto) takes the decltype of the expression: a call returning int& stays int&, a parenthesised variable or member is a reference to it, a variable or member named plainly has its declared type (a copy); for returns, lambdas (`-> decltype(auto)`) and variables alike
+// factorio: generic forwarding wrappers and views over the game's containers; complements language/decltype_auto_return
+struct Box { int v; int w; };
+int global = 1;
+int& refGlobal() { return global; }
+int byValue() { return 4; }
+decltype(auto) a() { return refGlobal(); }
+decltype(auto) b() { return byValue(); }
+decltype(auto) c() { return (global); }
+decltype(auto) d() { return global; }
+template<class T> decltype(auto) first(T& box) { return (box.v); }
+template<class T> decltype(auto) second(T& box) { return box.w; }
+
+int main()
+{
+  a() = 2;
+  c() += 1;
+  int x = d();
+  x = 9;
+  println("{} {}", global, b());
+  Box bx{5, 6};
+  first(bx) = 50;
+  int y = second(bx);
+  y = 60;
+  auto lam = [](Box& q) -> decltype(auto) { return (q.w); };
+  lam(bx) += 1;
+  println("{} {}", bx.v, bx.w);
+  decltype(auto) r = refGlobal();
+  r = 10;
+  decltype(auto) p = (global);
+  p += 1;
+  decltype(auto) copy = global;
+  copy = 100;
+  println("{}", global);
+  return 0;
+}

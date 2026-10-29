@@ -1,6 +1,5 @@
 // spec: a decltype(auto) return type keeps the reference the returned expression has: returning `f(x)` where f returns int& returns int&, so the call can be assigned to and bound to a reference
 // factorio: the library's views (a transform yielding `const Territory&` in TerritoryManager::getAllTerritories), generic forwarding wrappers
-// pending: decltype(auto) decays like auto, so the assignment goes to a temporary (prints 5)
 struct Box { int v; };
 template<typename F, typename T>
 decltype(auto) call(F f, T& x) { return f(x); }

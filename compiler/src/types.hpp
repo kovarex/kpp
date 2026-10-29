@@ -68,6 +68,9 @@ public:
   const Ty* nullptrType() const { return nullptr_; }
   const Ty* unknown() const { return unknown_; }
   const Ty* autoType() const { return auto_; }
+  // `decltype(auto)`: a placeholder whose deduced type is the expression's decltype as it is
+  // (references kept), where `auto` decays it. Kind Auto, count = 1.
+  const Ty* decltypeAutoType() const { return decltypeAuto_; }
   const Ty* intType(uint8_t bits = 32, bool isUnsigned = false);
   const Ty* charType(uint8_t bits = 8, bool isUnsigned = false);
   const Ty* floatType(uint8_t bits = 64);
@@ -122,4 +125,5 @@ private:
   const Ty* nullptr_;
   const Ty* unknown_;
   const Ty* auto_;
+  const Ty* decltypeAuto_;
 };

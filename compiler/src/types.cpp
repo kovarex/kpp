@@ -68,6 +68,8 @@ TypeTable::TypeTable() : impl(new Impl)
   unknown_ = intern(t);
   t = Ty{TyKind::Auto};
   auto_ = intern(t);
+  t.count = 1;
+  decltypeAuto_ = intern(t);
 }
 
 TypeTable::~TypeTable() { delete impl; }
@@ -527,7 +529,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols) const
     case TyKind::MemberPointer:
       s += toString(t->inner, symbols) + " " + (t->args.empty() ? declName(t->decl) : toString(t->args[0], symbols)) + "::*";
       break;
-    case TyKind::Auto: s += "auto"; break;
+    case TyKind::Auto: s += t->count == 1 ? "decltype(auto)" : "auto"; break;
     case TyKind::Pack:
       for (size_t i = 0; i < t->args.size(); ++i)
         s += (i ? ", " : "") + toString(t->args[i], symbols);

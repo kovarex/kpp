@@ -4028,7 +4028,7 @@ struct GlobalScope::Impl
         }
         return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, false);
       }
-      case NodeKind::AutoType: return types.autoType();
+      case NodeKind::AutoType: return static_cast<AutoType*>(t)->isDecltypeAuto ? types.decltypeAutoType() : types.autoType();
       case NodeKind::DecltypeType:
       {
         auto* d = static_cast<DecltypeType*>(t);
@@ -4221,6 +4221,8 @@ struct GlobalScope::Impl
   {
     if (!pattern || !init || !init->isKnown())
       return types.unknown();
+    if (pattern == types.decltypeAutoType())
+      return init; // `decltype(auto)`: the expression's decltype, references kept
     if (pattern->kind == TyKind::Auto)
       return pattern->isConst ? types.qualified(types.decay(init), true, false) : types.decay(init);
     auto leaf = [&](const Ty* p) -> const Ty*
@@ -5796,6 +5798,19 @@ struct GlobalScope::Impl
     const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
+    // Per lambda / auto function this walk entered: whether it returns `decltype(auto)`, so that
+    // its returns record their expression's decltype (`f(x)` returning int& stays int&).
+    std::vector<bool> decltypeReturns;
+
+    // The type `decltype(e)` names, for a `decltype(auto)` return, given e's type t: a variable
+    // or member named without parentheses has its declared type, any other lvalue is a reference
+    // to its type, a call or cast keeps the reference its type has.
+    const Ty* decltypeOf(Expr* e, const Ty* t)
+    {
+      if (!e || !t || !t->isKnown() || t->isReference() || e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr)
+        return t;
+      return isLvalueExpression(e) ? types.lref(t) : t;
+    }
 
     // A typed union (`union enum`, design.md 8.5), given its class type; null for anything else.
     static ClassDecl* typedUnionOf(const Ty* t)
@@ -8036,7 +8051,10 @@ struct GlobalScope::Impl
           }
           bool autoReturn = f->returnType && Impl::astMentionsAuto(f->returnType) && !f->trailingReturn;
           if (autoReturn)
+          {
             returnFrames.push_back(nullptr);
+            decltypeReturns.push_back(f->returnType->kind == NodeKind::AutoType && static_cast<AutoType*>(f->returnType)->isDecltypeAuto);
+          }
           if (f->flags & DF_Static)
             thisType = nullptr;
           else if ((f->flags & DF_Const) && thisType && thisType->kind == TyKind::Pointer && !thisType->inner->isConst)
@@ -8046,6 +8064,7 @@ struct GlobalScope::Impl
           {
             const Ty* deduced = returnFrames.back();
             returnFrames.pop_back();
+            decltypeReturns.pop_back();
             if (deduced && !returnFrames.empty() && !returnFrames.back())
               returnFrames.back() = deduced; // an instantiation's frame around the body takes it
             if (deduced && deduced->isKnown() && !types.isDependent(deduced))
@@ -8114,6 +8133,8 @@ struct GlobalScope::Impl
           if (impl.containsAuto(declared))
           {
             // From the type this walk gave the initializer, not the one on its (shared) node.
+            if (declared == types.decltypeAutoType())
+              initTy = decltypeOf(v->init, initTy); // `decltype(auto) r = (x);` is a reference
             const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy) : types.unknown();
             if (deduced->isKnown())
             {
@@ -8371,6 +8392,8 @@ struct GlobalScope::Impl
         case NodeKind::ReturnStmt:
         {
           const Ty* t = walkExpr(static_cast<ReturnStmt*>(s)->value);
+          if (!decltypeReturns.empty() && decltypeReturns.back())
+            t = decltypeOf(static_cast<ReturnStmt*>(s)->value, t);
           if (!returnFrames.empty() && !returnFrames.back() && t && t->isKnown())
             returnFrames.back() = t;
           break;
@@ -8545,11 +8568,15 @@ struct GlobalScope::Impl
           if (l->returnType)
             result = typeOf(l->returnType);
           returnFrames.push_back(nullptr);
+          decltypeReturns.push_back(l->returnType && l->returnType->kind == NodeKind::AutoType && static_cast<AutoType*>(l->returnType)->isDecltypeAuto);
           walkStmt(l->body);
           const Ty* deduced = returnFrames.back();
           returnFrames.pop_back();
+          decltypeReturns.pop_back();
           if (!result)
             result = deduced ? types.decay(deduced) : types.voidType();
+          else if (impl.containsAuto(result))
+            result = deduced ? impl.deducedShape(result, deduced) : types.voidType(); // `-> decltype(auto)`, `-> auto&`
           if (generic && (!result->isKnown() || types.isDependent(result)))
             result = nullptr; // deduced per call
           locals.pop(mark);
