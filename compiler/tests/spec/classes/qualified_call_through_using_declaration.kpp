@@ -1,0 +1,59 @@
+// spec: a qualified call `super::transfer(move(data))` of a class that has `using Vehicle::transfer;` beside its own transfer(Fluid&) chooses among both sets, as an unqualified call in the class does: the inherited transfer(TransferData) takes the data (non-virtually, being qualified); also through a class template's using-declaration of its template base's members
+// found by the code generator thread in the converted game: FluidWagon's and ArtilleryWagon's `super::transfer(::move(data))` with RollingStock's `using Vehicle::transfer;` ("binding an unrelated class to a reference (TransferData to Fluid&)")
+// pending: the qualified call sees only RollingStock's own transfer(Fluid&)
+struct TransferData { int x = 1; };
+struct Fluid { int f = 0; };
+struct Entity
+{
+  virtual void transfer(TransferData data) { println("entity {}", data.x); }
+  virtual ~Entity() {}
+};
+struct Vehicle : Entity {};
+struct RollingStock : Vehicle
+{
+  virtual void transfer(Fluid&) { println("fluid"); }
+  using Vehicle::transfer;
+};
+struct FluidWagon : RollingStock
+{
+  using super = RollingStock;
+  void transfer(TransferData data) override
+  {
+    println("wagon");
+    super::transfer(::move(data));
+  }
+};
+template<typename T>
+struct Store
+{
+  T stored = T();
+  void put(const T& value) { this->stored = value; }
+};
+template<typename T>
+struct LabelledStore : Store<T>
+{
+  void put(const char* label) { println("label {}", label); }
+  using Store<T>::put;
+};
+struct IntStore : LabelledStore<int>
+{
+  void put(int value)
+  {
+    LabelledStore<int>::put("int");
+    LabelledStore<int>::put(value * 2);
+  }
+};
+int main()
+{
+  FluidWagon w;
+  TransferData d;
+  d.x = 5;
+  w.transfer(d);
+  Fluid f;
+  RollingStock& r = w;
+  r.transfer(f);
+  IntStore s;
+  s.put(21);
+  println("{}", s.stored);
+  return 0;
+}
