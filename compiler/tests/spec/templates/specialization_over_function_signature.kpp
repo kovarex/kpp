@@ -1,6 +1,5 @@
 // spec: a partial specialisation written over the library's Function with a parameter for the signature (`template<class T> struct is_std_function<Function<T>> : TrueType {}`) matches every Function, T deduced as its signature (Function<void()> is FunctionImpl<void>), so a constructor constrained by it (`Scoped(Scoped&&) requires(is_std_function<Callback>::value)`) is there for a Function callback
 // factorio: src/Util/ScopedCallback.hpp's move constructor, `requires(is_std_function<DestructorCallbackType>::value)`, which the tests' `ScopedCallback resetSettings(...scopedSetValueWithoutNotification(false));` move from (21 lines of the tests package)
-// pending: the pattern Function<T> stays the Function declaration and matches no FunctionImpl, so the move constructor is not viable ("constructing Scoped<FunctionImpl<void>> with a deleted constructor"); owner: the templates thread (deduction)
 template <typename T>
 struct is_std_function : FalseType {};
 template <typename T>

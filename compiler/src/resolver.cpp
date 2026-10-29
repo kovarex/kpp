@@ -9103,6 +9103,31 @@ struct GlobalScope::Impl
       functionImplSymbol_ = symbols.intern("FunctionImpl");
     return functionImplSymbol_;
   }
+  // The library's `Function` (stdlib/core/Function.kpp's `template<typename Signature> struct
+  // Function;`, a name for FunctionImpl<R, Args...>) and its FunctionImpl: whether d is that one.
+  bool isLibraryFunction(const Decl* d, bool impl)
+  {
+    if (!d || d->kind != NodeKind::ClassDecl || static_cast<const ClassDecl*>(d)->name.empty() ||
+        static_cast<const ClassDecl*>(d)->name.last().symbol != (impl ? functionImplSymbolId() : functionSymbolId()))
+      return false;
+    Lookup l;
+    return lookupInScope(&root, impl ? functionImplSymbolId() : functionSymbolId(), l, 0) && (l.decl == d || (l.scope && l.scope->owner == d));
+  }
+  // `Function<T>` written with T a parameter (`template<class T> struct is_std_function<Function<T>>`)
+  // and T now a signature: the FunctionImpl<R, Args...> it means, as `Function<void()>` written is.
+  const Ty* functionOfSignature(const Ty* signature)
+  {
+    if (!signature || signature->kind != TyKind::Function)
+      return nullptr;
+    Lookup implLookup;
+    if (!lookupInScope(&root, functionImplSymbolId(), implLookup, 0) || !implLookup.scope || !implLookup.scope->owner)
+      return nullptr;
+    std::vector<const Ty*> implArgs{signature->inner};
+    for (const Ty* a : signature->args)
+      implArgs.push_back(a);
+    return types.classType(implLookup.scope->owner, Span<const Ty*>{implArgs.data(), uint32_t(implArgs.size())});
+  }
+
   Decl* initializerListDecl()
   {
     if (initializerListSymbol_ == UINT32_MAX)
@@ -10844,7 +10869,17 @@ struct GlobalScope::Impl
         }
         break;
       case TyKind::Class:
-        if (a->kind == TyKind::Class && a->decl == pattern->decl)
+        if (a->kind == TyKind::Class && pattern->args.size() == 1 && !a->args.empty() && a->decl != pattern->decl &&
+            isLibraryFunction(pattern->decl, false) && isLibraryFunction(a->decl, true))
+        {
+          // `Function<T>` (T a parameter) given FunctionImpl<R, Args...>: T is the signature R(Args...).
+          std::vector<const Ty*> params;
+          for (size_t i = 1; i < a->args.size(); ++i)
+            if (!spliceIfPack(a->args[i], params))
+              params.push_back(a->args[i]);
+          deduce(pattern->args[0], types.function(a->args[0], Span<const Ty*>{params.data(), uint32_t(params.size())}, false), out, depth + 1);
+        }
+        else if (a->kind == TyKind::Class && a->decl == pattern->decl)
           deduceClassArgs(pattern->args, a->args, out, depth);
         else if (std::vector<const Ty*> given; a->kind == TyKind::Class && !pattern->args.empty() &&
                  !(given = primaryArgumentsOf(types.unqualified(a), pattern->decl, depth + 1)).empty())
@@ -11435,6 +11470,9 @@ struct GlobalScope::Impl
           return types.function(substitute(t->inner, s, depth + 1), span, t->variadic);
         if (t->kind == TyKind::Lambda)
           return types.lambda(substitute(t->inner, s, depth + 1), span, t->decl, t->value);
+        if (args.size() == 1 && args[0] && args[0]->kind == TyKind::Function && isLibraryFunction(t->decl, false))
+          if (const Ty* f = functionOfSignature(args[0]))
+            return types.qualified(f, t->isConst, t->isVolatile); // `Function<T>` with T = void(): FunctionImpl<void>
         const Ty* c = types.classType(t->decl, span);
         if (t->decl && (t->decl->attributes & ATTR_Specialized) && !types.isDependent(c))
           c = resolveSpecialization(c, depth + 1); // `Owner<T>` with T = int: the specialisation Owner<int, Del<int>> picks
