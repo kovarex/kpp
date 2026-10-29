@@ -778,7 +778,24 @@ defined above: FastDebug with FACTORIO_PACKAGE 22,968, exact FastDebug 23,720; t
 that developer code, much of it calls of imgui, a C++ library without an interop yet (design.md's
 route: a thin C wrapper; cimgui is one). Against the old configuration (24,458 on b77b5ff): 958
 lines fewer (the Steam code: CSteamID, HAuthTicket, CCallResult in 800 functions) and 220 more
-(functions now reaching their next error, and the developer code).
+(functions now reaching their next error, and the developer code). kovarex's standing rule is to
+compile the whole game, so FACTORIO_PACKAGE stays undefined and imgui joins the C++ libraries to
+wrap (after RE2 and DirectX, via cimgui).
+
+### RE2 through a thin C wrapper (2026-10-29)
+
+The first C++ library on design.md's route ("a thin C wrapper"): 17 game files use RE2, about 20
+fixed patterns (FullMatch with string, StringPiece and integer targets, Replace) and
+MacroReplacer's patterns built at run time. `programs/factorio/native/re2_c.cpp` is the C
+interface: an RE2 object behind a pointer, a match with its submatches as offsets, Replace and
+GlobalReplace, and RE2's own parsers of submatches into numbers (so FullMatch's parsing is RE2's,
+not a copy). `native\build.cmd` compiles it with clang-cl as the game's Release builds are made
+(/MT, /O2, against libraries\re2) into `native\build\factorio-native.lib`; a link of the converted
+game passes it with `--lib`, next to `C:\Factorio\vs2022\Releasex64\re2.lib`. The Kpp side is the
+RE2 class and re2::StringPiece (a StringView with RE2's ToString, CopyToString, AppendToString) in
+`overrides/src/Util/RegexUtil.kpp`, appended to the converted RegexUtil; the game's RegexUtil
+itself converts as written. Headline 22,558 -> 22,529 (paired on de36765): the 20 MacroReplacer
+layout lines, the 8 "RE2 is not declared" and the StringPiece calls go.
 
 ### From emitted functions to an executable (2026-10-28, night)
 

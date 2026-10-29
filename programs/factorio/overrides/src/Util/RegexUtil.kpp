@@ -1,0 +1,171 @@
+// RE2 through its thin C interface (programs/factorio/native/re2_c.cpp, built into
+// native\build\factorio-native.lib by native\build.cmd and linked with the game's re2.lib): the
+// part of RE2's interface the game uses, with RE2's own semantics. FullMatch and PartialMatch
+// parse the submatches with RE2's parsers (an integer in base 10 without leading spaces and in its
+// type's range; a group that took no part parses as empty, which fails for a number), Replace and
+// GlobalReplace take RE2's rewrite strings (\0 to \9).
+extern "C" void* kppRe2New(const char* pattern, size_t length, int latin1);
+extern "C" void kppRe2Delete(void* re);
+extern "C" int kppRe2Ok(const void* re);
+extern "C" int kppRe2GroupCount(const void* re);
+extern "C" int kppRe2Match(const void* re, const char* text, size_t length, size_t start, size_t end, int anchor, long long* offsets, int count);
+extern "C" int kppRe2Replace(const void* re, const char* text, size_t length, const char* rewrite, size_t rewriteLength, int global, char** out,
+                             size_t* outLength);
+extern "C" void kppRe2Free(void* p);
+extern "C" int kppRe2ParseShort(const char* s, size_t n, int16_t* out);
+extern "C" int kppRe2ParseUnsignedShort(const char* s, size_t n, uint16_t* out);
+extern "C" int kppRe2ParseInt(const char* s, size_t n, int32_t* out);
+extern "C" int kppRe2ParseUnsignedInt(const char* s, size_t n, uint32_t* out);
+extern "C" int kppRe2ParseLongLong(const char* s, size_t n, int64_t* out);
+extern "C" int kppRe2ParseUnsignedLongLong(const char* s, size_t n, uint64_t* out);
+extern "C" int kppRe2ParseFloat(const char* s, size_t n, float* out);
+extern "C" int kppRe2ParseDouble(const char* s, size_t n, double* out);
+
+namespace re2
+{
+  // RE2's StringPiece: a view of text, with RE2's copy-outs (ToString, CopyToString,
+  // AppendToString).
+  struct StringPiece : StringView
+  {
+    StringPiece() {}
+    implicit StringPiece(const char* text) : StringView(text) {}
+    StringPiece(const char* text, int count) : StringView(text, count) {}
+    implicit StringPiece(const String& text) : StringView(text) {}
+    implicit StringPiece(StringView view) : StringView(view) {}
+    String ToString() const { return String(this->data(), this->size()); }
+    void CopyToString(String* target) const { *target = String(this->data(), this->size()); }
+    void AppendToString(String* target) const { target->append(this->data(), this->size()); }
+  };
+}
+
+class RE2
+{
+public:
+  enum CannedOptions
+  {
+    DefaultOptions = 0,
+    Latin1 = 1,
+    POSIX = 2,
+    Quiet = 3,
+  };
+  enum Anchor
+  {
+    UNANCHORED = 0,
+    ANCHOR_START = 1,
+    ANCHOR_BOTH = 2,
+  };
+
+  // A submatch's parser for a target of any of the types FullMatch takes (RE2::Arg).
+  struct Arg
+  {
+    void* target = nullptr;
+    bool (*parser)(StringView, void*) = nullptr;
+
+    template<typename T>
+    implicit Arg(T* target) : target(target), parser(&RE2::parseInto<T>) {}
+    bool Parse(const char* text, size_t n) const { return this->parser(StringView(text, (int)n), this->target); }
+  };
+
+  void* handle = nullptr;
+
+  implicit RE2(const char* pattern) : handle(kppRe2New(pattern, strlen(pattern), 0)) {}
+  implicit RE2(const String& pattern) : handle(kppRe2New(pattern.data(), (size_t)pattern.size(), 0)) {}
+  RE2(const char* pattern, CannedOptions options) : handle(kppRe2New(pattern, strlen(pattern), options == Latin1 ? 1 : 0)) {}
+  RE2(const String& pattern, CannedOptions options) : handle(kppRe2New(pattern.data(), (size_t)pattern.size(), options == Latin1 ? 1 : 0)) {}
+  RE2(const RE2& other) = delete;
+  ~RE2() { kppRe2Delete(this->handle); }
+
+  bool ok() const { return kppRe2Ok(this->handle) != 0; }
+  int NumberOfCapturingGroups() const { return kppRe2GroupCount(this->handle); }
+
+  // RE2::Match: text[startpos, endpos) against the pattern; submatch[0] is the whole match,
+  // submatch[i] group i (empty, without data, for a group that took no part).
+  bool Match(StringView text, size_t startpos, size_t endpos, Anchor anchor, re2::StringPiece* submatch, int nsubmatch) const
+  {
+    long long offsets[64];
+    if (nsubmatch > 32)
+      nsubmatch = 32;
+    if (!kppRe2Match(this->handle, text.data(), (size_t)text.size(), startpos, endpos, (int)anchor, offsets, nsubmatch))
+      return false;
+    for (int i = 0; i < nsubmatch; ++i)
+      submatch[i] = offsets[2 * i] < 0 ? re2::StringPiece() : re2::StringPiece(text.data() + offsets[2 * i], (int)(offsets[2 * i + 1] - offsets[2 * i]));
+    return true;
+  }
+
+  // The whole text matches (FullMatch), or a part of it (PartialMatch), and each submatch parses
+  // into its target (a pointer), in order; false when there are more targets than groups. (RE2
+  // takes the targets as `A*... args`; a pack of pointer parameters does not deduce yet,
+  // templates/pack_of_pointer_parameters.)
+  template<typename... Args>
+  static bool FullMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, ANCHOR_BOTH, args...); }
+  template<typename... Args>
+  static bool PartialMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, UNANCHORED, args...); }
+
+  // Replaces the first match of re in *str (Replace, true when there was one) or every match
+  // (GlobalReplace, the count) by rewrite.
+  static bool Replace(String* str, const RE2& re, StringView rewrite) { return RE2::replaceIn(str, re, rewrite, 0) > 0; }
+  static int GlobalReplace(String* str, const RE2& re, StringView rewrite) { return RE2::replaceIn(str, re, rewrite, 1); }
+
+  template<typename... Args>
+  static bool matchInto(StringView text, const RE2& re, Anchor anchor, Args... args)
+  {
+    if (re.NumberOfCapturingGroups() < (int)sizeof...(Args))
+      return false;
+    re2::StringPiece groups[sizeof...(Args) + 1];
+    if (!re.Match(text, 0, (size_t)text.size(), anchor, groups, (int)sizeof...(Args) + 1))
+      return false;
+    return RE2::parseAll(groups + 1, args...);
+  }
+  static bool parseAll(const re2::StringPiece* groups) { return true; }
+  template<typename T, typename... Rest>
+  static bool parseAll(const re2::StringPiece* groups, T first, Rest... rest)
+  {
+    return RE2::parse(groups[0], first) && RE2::parseAll(groups + 1, rest...);
+  }
+  template<typename T>
+  static bool parseInto(StringView text, void* target) { return RE2::parse(text, (T*)target); }
+
+  static bool parse(StringView text, re2::StringPiece* out)
+  {
+    *out = re2::StringPiece(text);
+    return true;
+  }
+  static bool parse(StringView text, String* out)
+  {
+    *out = String(text.data(), text.size());
+    return true;
+  }
+  static bool parse(StringView text, char* out)
+  {
+    if (text.size() != 1)
+      return false;
+    *out = text[0];
+    return true;
+  }
+  static bool parse(StringView text, uint8_t* out)
+  {
+    if (text.size() != 1)
+      return false;
+    *out = (uint8_t)text[0];
+    return true;
+  }
+  static bool parse(StringView text, int16_t* out) { return kppRe2ParseShort(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(StringView text, uint16_t* out) { return kppRe2ParseUnsignedShort(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(StringView text, int32_t* out) { return kppRe2ParseInt(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(StringView text, uint32_t* out) { return kppRe2ParseUnsignedInt(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(StringView text, int64_t* out) { return kppRe2ParseLongLong(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(StringView text, uint64_t* out) { return kppRe2ParseUnsignedLongLong(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(StringView text, float* out) { return kppRe2ParseFloat(text.data(), (size_t)text.size(), out) != 0; }
+  static bool parse(StringView text, double* out) { return kppRe2ParseDouble(text.data(), (size_t)text.size(), out) != 0; }
+
+  static int replaceIn(String* str, const RE2& re, StringView rewrite, int global)
+  {
+    char* out = nullptr;
+    size_t length = 0;
+    int n = kppRe2Replace(re.handle, str->data(), (size_t)str->size(), rewrite.data(), (size_t)rewrite.size(), global, &out, &length);
+    if (n > 0)
+      *str = String(out, (int)length);
+    kppRe2Free(out);
+    return n;
+  }
+};

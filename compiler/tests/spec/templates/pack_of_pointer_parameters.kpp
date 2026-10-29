@@ -1,0 +1,13 @@
+// spec: a parameter pack of pointers (`template<typename... Args> f(StringView text, Args*... args)`) deduces each Args from the pointee of its argument
+// factorio: RE2's `FullMatch(const StringPiece& text, const RE2& re, A*... args)`, as the game calls it with &major, &minor, &subVersionString
+// pending: the call does not resolve (an `Args... args` pack of the same pointers does)
+template<typename... Args>
+int countPointers(StringView text, Args*... args) { return (int)sizeof...(Args) + text.size(); }
+
+int main()
+{
+  int a = 0;
+  short b = 0;
+  println("{}", countPointers("xy", &a, &b));
+  return 0;
+}
