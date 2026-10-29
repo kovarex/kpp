@@ -1,0 +1,279 @@
+// Kpp standard library: Tuple, one or more values of any types together (what std::tuple converts
+// to), and what goes with it: get<I>, TupleSize, TupleElement, makeTuple, tie, forwardAsTuple, and
+// IndexSequence (std::index_sequence). Specified in docs/stdlib/tuple.md.
+
+// The number of elements of a tuple-like type E (std::tuple_size): specialized for one, it says that
+// `auto [a, b] = e` binds a and b to get<0>(e) and get<1>(e) rather than to e's data members
+// (design.md 4). Tuple and Array are tuple-like.
+template<typename E>
+struct TupleSize {};
+template<typename E>
+constexpr int tupleSize = TupleSize<E>::value;
+
+// The type of element I of a tuple-like type E (std::tuple_element).
+template<int I, typename E>
+struct TupleElement {};
+
+// One element of a Tuple, which is one of the Tuple's bases: I counts from the last element, so
+// that the leaves of a Tuple differ.
+template<int I, typename T>
+struct TupleLeaf
+{
+  T value;
+
+  TupleLeaf() : value() {}
+  template<typename U> requires (!isSame<RemoveCvRef<U>, TupleLeaf<I, T>>)
+  TupleLeaf(U&& v) : value(forward<U>(v)) {}
+};
+
+// What follows a Tuple's last element. (Its constructor is user-provided so that the last
+// element's `Rest()` calls it rather than value-initializing it, which writes past the Tuple:
+// classes/empty_base_value_initialized_at_end.)
+struct EmptyTuple
+{
+  EmptyTuple() {}
+  bool operator==(const EmptyTuple&) const { return true; }
+  strong_ordering operator<=>(const EmptyTuple&) const { return strong_ordering::equal; }
+};
+
+template<typename H, typename... T>
+struct Tuple;
+
+// The rest of a Tuple after its first element, a base of it: a Tuple of the others, or EmptyTuple.
+template<typename... T>
+struct TupleRest { using Type = Tuple<T...>; };
+template<>
+struct TupleRest<> { using Type = EmptyTuple; };
+
+// The first element is the leaf TupleLeaf<sizeof...(T), H>, the others are the Tuple<T...> it
+// derives from. (The primary template, not a partial specialization of a Tuple<Types...>: so a
+// Tuple of references and class template argument deduction work, templates/
+// partial_specialization_reference_argument; and so there is no Tuple of no elements.)
+template<typename H, typename... T>
+struct Tuple : TupleLeaf<int(sizeof...(T)), H>, TupleRest<T...>::Type
+{
+  using Leaf = TupleLeaf<int(sizeof...(T)), H>;
+  using Rest = typename TupleRest<T...>::Type;
+
+  // Every element value-initialized.
+  Tuple() {}
+  // Every element copied from its value.
+  implicit Tuple(const H& head, const T&... tail) : Leaf(head), Rest(tail...) {}
+  // Every element constructed from its argument, which is forwarded: moved from an rvalue
+  // (`Tuple<String, UniquePtr<Sprite>>("name", move(sprite))`).
+  template<typename UH, typename... UT>
+    requires (sizeof...(UT) == sizeof...(T) && !isSame<RemoveCvRef<UH>, Tuple<H, T...>> && isConstructible<H, UH&&>)
+  implicit Tuple(UH&& head, UT&&... tail) : Leaf(forward<UH>(head)), Rest(forward<UT>(tail)...)
+  {
+  }
+  // From a Tuple of as many elements of other types, each constructed from the other's: copied,
+  // or moved from an rvalue Tuple.
+  template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
+  implicit Tuple(const Tuple<UH, UT...>& other) : Leaf(other.template get<0>()), Rest(static_cast<const typename TupleRest<UT...>::Type&>(other))
+  {
+  }
+  template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
+  implicit Tuple(Tuple<UH, UT...>&& other)
+    : Leaf(other.template getRvalue<0>()), Rest(static_cast<typename TupleRest<UT...>::Type&&>(other))
+  {
+  }
+  // From a Pair, for two elements: first and second.
+  template<typename U1, typename U2> requires (sizeof...(T) == 1)
+  implicit Tuple(const Pair<U1, U2>& pair) : Leaf(pair.first), Rest(pair.second) {}
+  template<typename U1, typename U2> requires (sizeof...(T) == 1)
+  implicit Tuple(Pair<U1, U2>&& pair) : Leaf(forward<U1>(pair.first)), Rest(forward<U2>(pair.second)) {}
+  Tuple(const Tuple<H, T...>& other) = default;
+  Tuple(Tuple<H, T...>&& other) = default;
+
+  // Element I (std::get, which is this): a reference to it, const for a const Tuple; getRvalue,
+  // what get gives for an rvalue Tuple, an rvalue reference. A reference element is the reference
+  // it is in each case.
+  template<int I>
+  decltype(auto) get()
+  {
+    if constexpr (I == 0)
+      return (static_cast<Leaf&>(*this).value);
+    else
+      return static_cast<Rest&>(*this).template get<I - 1>();
+  }
+  template<int I>
+  decltype(auto) get() const
+  {
+    if constexpr (I == 0)
+      return (static_cast<const Leaf&>(*this).value);
+    else
+      return static_cast<const Rest&>(*this).template get<I - 1>();
+  }
+  template<int I>
+  decltype(auto) getRvalue()
+  {
+    if constexpr (I == 0)
+      return static_cast<H&&>(static_cast<Leaf&>(*this).value);
+    else
+      return static_cast<Rest&>(*this).template getRvalue<I - 1>();
+  }
+
+  // Assignment assigns element by element; an element that is a reference (a tie's) assigns what
+  // it refers to.
+  Tuple<H, T...>& operator=(const Tuple<H, T...>& other)
+  {
+    static_cast<Leaf&>(*this).value = other.template get<0>();
+    static_cast<Rest&>(*this) = static_cast<const Rest&>(other);
+    return *this;
+  }
+  Tuple<H, T...>& operator=(Tuple<H, T...>&& other)
+  {
+    static_cast<Leaf&>(*this).value = other.template getRvalue<0>();
+    static_cast<Rest&>(*this) = static_cast<Rest&&>(other);
+    return *this;
+  }
+  template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
+  Tuple<H, T...>& operator=(const Tuple<UH, UT...>& other)
+  {
+    static_cast<Leaf&>(*this).value = other.template get<0>();
+    static_cast<Rest&>(*this) = static_cast<const typename TupleRest<UT...>::Type&>(other);
+    return *this;
+  }
+  template<typename UH, typename... UT> requires (sizeof...(UT) == sizeof...(T) && !isSame<Tuple<UH, UT...>, Tuple<H, T...>>)
+  Tuple<H, T...>& operator=(Tuple<UH, UT...>&& other)
+  {
+    static_cast<Leaf&>(*this).value = other.template getRvalue<0>();
+    static_cast<Rest&>(*this) = static_cast<typename TupleRest<UT...>::Type&&>(other);
+    return *this;
+  }
+  // `tie(speed, force) = pair`: first to the first element, second to the second.
+  template<typename U1, typename U2> requires (sizeof...(T) == 1)
+  Tuple<H, T...>& operator=(const Pair<U1, U2>& pair)
+  {
+    static_cast<Leaf&>(*this).value = pair.first;
+    static_cast<Rest&>(*this).template get<0>() = pair.second;
+    return *this;
+  }
+  template<typename U1, typename U2> requires (sizeof...(T) == 1)
+  Tuple<H, T...>& operator=(Pair<U1, U2>&& pair)
+  {
+    static_cast<Leaf&>(*this).value = forward<U1>(pair.first);
+    static_cast<Rest&>(*this).template get<0>() = forward<U2>(pair.second);
+    return *this;
+  }
+
+  // Equal element by element; ordered by the first element that differs (common.md, "Comparison").
+  bool operator==(const Tuple<H, T...>& other) const
+  {
+    return this->template get<0>() == other.template get<0>() && static_cast<const Rest&>(*this) == static_cast<const Rest&>(other);
+  }
+  strong_ordering operator<=>(const Tuple<H, T...>& other) const
+  {
+    strong_ordering order = synthThreeWay(this->template get<0>(), other.template get<0>());
+    return order != 0 ? order : static_cast<const Rest&>(*this) <=> static_cast<const Rest&>(other);
+  }
+};
+
+// What class template argument deduction makes of `Tuple(a, b)` and `Tuple{a}` (std::tuple's
+// deduction guides): the arguments' types, decayed; from a Pair, its two types.
+template<typename... Types>
+Tuple(Types...) -> Tuple<Types...>;
+template<typename A, typename B>
+Tuple(Pair<A, B>) -> Tuple<A, B>;
+
+template<typename... Types>
+struct TupleSize<Tuple<Types...>> { static constexpr int value = int(sizeof...(Types)); };
+template<int I, typename H, typename... T>
+struct TupleElement<I, Tuple<H, T...>> { using Type = typename TupleElement<I - 1, Tuple<T...>>::Type; };
+template<typename H, typename... T>
+struct TupleElement<0, Tuple<H, T...>> { using Type = H; };
+
+// Element I of a tuple (std::get): a reference to it, const from a const tuple; from an rvalue
+// tuple, an rvalue reference. A reference element is the reference it is in each case.
+template<int I, typename... Types> requires (I >= 0 && I < int(sizeof...(Types)))
+decltype(auto) get(Tuple<Types...>& t)
+{
+  return t.template get<I>();
+}
+template<int I, typename... Types> requires (I >= 0 && I < int(sizeof...(Types)))
+decltype(auto) get(const Tuple<Types...>& t)
+{
+  return t.template get<I>();
+}
+template<int I, typename... Types> requires (I >= 0 && I < int(sizeof...(Types)))
+decltype(auto) get(Tuple<Types...>&& t)
+{
+  return t.template getRvalue<I>();
+}
+
+// A Tuple of the values (std::make_tuple): of their types without reference and const, an array
+// or a function as a pointer. The arguments are taken by value and moved into the Tuple, one move
+// more than std::make_tuple's forwarding, and a ReferenceWrapper (ref(x)) stays a ReferenceWrapper
+// element rather than making a reference one, until `Tuple<UnwrapRefDecay<Args>...>` over forwarded
+// arguments is the Tuple it names (templates/pack_expansion_of_type_trait,
+// templates/pack_expansion_of_member_type).
+template<typename... Args>
+Tuple<Args...> makeTuple(Args... args)
+{
+  return Tuple<Args...>(move(args)...);
+}
+
+// A Tuple of references to the variables (std::tie): `tie(speed, force) = calculate(...)` assigns
+// both from a Pair or a Tuple.
+template<typename... Args>
+Tuple<Args&...> tie(Args&... args)
+{
+  return Tuple<Args&...>(args...);
+}
+
+// A Tuple of references to the arguments as they were passed, lvalue or rvalue
+// (std::forward_as_tuple): the arguments of a piecewise construction.
+template<typename... Args>
+Tuple<Args&&...> forwardAsTuple(Args&&... args)
+{
+  return Tuple<Args&&...>(forward<Args>(args)...);
+}
+
+// Array is tuple-like too (std::array): `auto [x, y] = array`, tupleSize<Array<T, N>>.
+template<typename T, int N>
+struct TupleSize<Array<T, N>> { static constexpr int value = N; };
+template<int I, typename T, int N>
+struct TupleElement<I, Array<T, N>> { using Type = T; };
+template<int I, typename T, int N> requires (I >= 0 && I < N)
+T& get(Array<T, N>& a) { return a[I]; }
+template<int I, typename T, int N> requires (I >= 0 && I < N)
+const T& get(const Array<T, N>& a) { return a[I]; }
+template<int I, typename T, int N> requires (I >= 0 && I < N)
+T&& get(Array<T, N>&& a) { return move(a[I]); }
+
+// Pair's members by index (std::get on a pair). Pair is not tuple-like (no TupleSize): a binding
+// takes first and second directly.
+template<int I, typename A, typename B> requires (I == 0 || I == 1)
+auto& get(Pair<A, B>& p)
+{
+  if constexpr (I == 0)
+    return p.first;
+  else
+    return p.second;
+}
+template<int I, typename A, typename B> requires (I == 0 || I == 1)
+const auto& get(const Pair<A, B>& p)
+{
+  if constexpr (I == 0)
+    return p.first;
+  else
+    return p.second;
+}
+
+// A sequence of int constants as a type (std::integer_sequence of int): `IndexSequence<0, 1, 2>`;
+// MakeIndexSequence<N> is IndexSequence<0, ..., N - 1>, IndexSequenceFor<T...> one per type.
+template<int... I>
+struct IndexSequence
+{
+  static constexpr int size() { return int(sizeof...(I)); }
+};
+template<int N, typename S>
+struct IndexSequenceOf {};
+template<int N, int... I>
+struct IndexSequenceOf<N, IndexSequence<I...>> { using Type = typename IndexSequenceOf<N - 1, IndexSequence<N - 1, I...>>::Type; };
+template<int... I>
+struct IndexSequenceOf<0, IndexSequence<I...>> { using Type = IndexSequence<I...>; };
+template<int N>
+using MakeIndexSequence = typename IndexSequenceOf<N, IndexSequence<>>::Type;
+template<typename... T>
+using IndexSequenceFor = MakeIndexSequence<int(sizeof...(T))>;

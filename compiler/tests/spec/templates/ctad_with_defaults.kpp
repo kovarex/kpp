@@ -1,13 +1,24 @@
-// spec: class template argument deduction leaves the parameters the constructor does not deduce to their defaults: `Tuple(mask, gap, id)` of `template<A, B = Nothing, C = Nothing, D = Nothing>`
-// found in the game's ChunkComponents (`neighborComponentConnections[Tuple(collisionMask, maxGapSize, component)]`): Tuple<A, B, C, D> stayed dependent and its layout failed
+// spec: class template argument deduction leaves the parameters the constructor does not deduce to their defaults: `Quad(mask, gap, id)` of `template<A, B = Gap, C = Gap, D = Gap>`
+// found in the game's ChunkComponents (`neighborComponentConnections[Tuple(collisionMask, maxGapSize, component)]`) with the library's Tuple of up to four, `template<A, B = Nothing, C = Nothing, D = Nothing>`: Tuple<A, B, C, D> stayed dependent and its layout failed (the Tuple is variadic now, library/tuple)
+struct Gap {};
+template<typename A, typename B = Gap, typename C = Gap, typename D = Gap>
+struct Quad
+{
+  A first;
+  B second;
+  C third;
+  D fourth;
+  Quad(const A& first, const B& second) : first(first), second(second) {}
+  Quad(const A& first, const B& second, const C& third) : first(first), second(second), third(third) {}
+};
 struct Mask { int bits = 1; };
 int main()
 {
   Mask m;
   unsigned char gap = 2;
   int id = 7;
-  auto t = Tuple(m, gap, id);
-  Tuple<int, double> p = Tuple(1, 2.5);
+  auto t = Quad(m, gap, id);
+  Quad<int, double> p = Quad(1, 2.5);
   println("{} {} {} {}", t.first.bits, int(t.second), t.third, p.second);
   return 0;
 }

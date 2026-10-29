@@ -118,16 +118,20 @@ struct Pair
   // first from first, second constructed from the arguments (with none, value-initialized), and
   // neither copied nor moved afterwards: how Map and HashMap build the entries of operator[] and
   // try_emplace, so that their values need not be movable (std::pair's piecewise constructor with
-  // the key alone in the first tuple). No argument and one argument are overloads of their own:
-  // a pack that expands to nothing in a scalar member's initializer does not compile yet
-  // (templates/empty_pack_value_initializes_member).
-  template<typename U1>
-  Pair(InPlaceSecond, U1&& first) : first(forward<U1>(first)), second() {}
-  template<typename U1, typename Arg>
-  Pair(InPlaceSecond, U1&& first, Arg&& arg) : first(forward<U1>(first)), second(forward<Arg>(arg)) {}
-  template<typename U1, typename Arg1, typename Arg2, typename... Args>
-  Pair(InPlaceSecond, U1&& first, Arg1&& arg1, Arg2&& arg2, Args&&... args)
-    : first(forward<U1>(first)), second(forward<Arg1>(arg1), forward<Arg2>(arg2), forward<Args>(args)...)
+  // the key alone in the first tuple).
+  template<typename U1, typename... Args>
+  Pair(InPlaceSecond, U1&& first, Args&&... args) : first(forward<U1>(first)), second(forward<Args>(args)...) {}
+  // Each member constructed from the elements of its tuple, in place (std::pair's piecewise
+  // constructor): `emplace_back(piecewiseConstruct, Tuple{entity}, Tuple{target})`, or with
+  // forwardAsTuple(...) for references to the arguments.
+  template<typename... Args1, typename... Args2>
+  Pair(PiecewiseConstruct_t, Tuple<Args1...> firstArgs, Tuple<Args2...> secondArgs)
+    : Pair(firstArgs, secondArgs, MakeIndexSequence<int(sizeof...(Args1))>(), MakeIndexSequence<int(sizeof...(Args2))>())
+  {
+  }
+  template<typename... Args1, typename... Args2, int... I1, int... I2>
+  Pair(Tuple<Args1...>& firstArgs, Tuple<Args2...>& secondArgs, IndexSequence<I1...>, IndexSequence<I2...>)
+    : first(get<I1>(move(firstArgs))...), second(get<I2>(move(secondArgs))...)
   {
   }
 
@@ -165,81 +169,6 @@ Pair<UnwrapRefDecay<A>, UnwrapRefDecay<B>> makePair(A&& first, B&& second)
 {
   return Pair<UnwrapRefDecay<A>, UnwrapRefDecay<B>>(forward<A>(first), forward<B>(second));
 }
-
-// Up to four values together (what std::tuple converts to); `get<I>(tuple)` reads one.
-struct Nothing
-{
-  bool operator==(const Nothing&) const { return true; }
-  strong_ordering operator<=>(const Nothing&) const { return strong_ordering::equal; }
-};
-template<typename A, typename B = Nothing, typename C = Nothing, typename D = Nothing>
-struct Tuple
-{
-  A first;
-  B second;
-  C third;
-  D fourth;
-
-  Tuple() {}
-  Tuple(const A& first, const B& second) : first(first), second(second) {}
-  Tuple(const A& first, const B& second, const C& third) : first(first), second(second), third(third) {}
-  Tuple(const A& first, const B& second, const C& third, const D& fourth) : first(first), second(second), third(third), fourth(fourth) {}
-
-  // Equal member by member; ordered by the first that differs (common.md).
-  bool operator==(const Tuple<A, B, C, D>& other) const
-  {
-    return this->first == other.first && this->second == other.second && this->third == other.third && this->fourth == other.fourth;
-  }
-  strong_ordering operator<=>(const Tuple<A, B, C, D>& other) const
-  {
-    strong_ordering order = synthThreeWay(this->first, other.first);
-    if (order != 0)
-      return order;
-    order = synthThreeWay(this->second, other.second);
-    if (order != 0)
-      return order;
-    order = synthThreeWay(this->third, other.third);
-    return order != 0 ? order : synthThreeWay(this->fourth, other.fourth);
-  }
-};
-template<typename A, typename B>
-Tuple<A, B> makeTuple(const A& a, const B& b) { return Tuple<A, B>(a, b); }
-template<typename A, typename B, typename C>
-Tuple<A, B, C> makeTuple(const A& a, const B& b, const C& c) { return Tuple<A, B, C>(a, b, c); }
-template<typename A, typename B, typename C, typename D>
-Tuple<A, B, C, D> makeTuple(const A& a, const B& b, const C& c, const D& d) { return Tuple<A, B, C, D>(a, b, c, d); }
-
-// The number of elements of a tuple-like type E (std::tuple_size): specialized for one, it says that
-// `auto [a, b] = e` binds a and b to get<0>(e) and get<1>(e) rather than to e's data members (spec
-// language/structured_binding_tuple_protocol).
-template<typename E>
-struct TupleSize {};
-
-// The type of element I of a Tuple, and the element itself.
-template<int I, typename A, typename B, typename C, typename D>
-struct TupleElement {};
-template<typename A, typename B, typename C, typename D>
-struct TupleElement<0, A, B, C, D> { using Type = A; };
-template<typename A, typename B, typename C, typename D>
-struct TupleElement<1, A, B, C, D> { using Type = B; };
-template<typename A, typename B, typename C, typename D>
-struct TupleElement<2, A, B, C, D> { using Type = C; };
-template<typename A, typename B, typename C, typename D>
-struct TupleElement<3, A, B, C, D> { using Type = D; };
-template<int I>
-struct TupleGet {};
-template<>
-struct TupleGet<0> { template<typename A, typename B, typename C, typename D> static A& of(Tuple<A, B, C, D>& t) { return t.first; } };
-template<>
-struct TupleGet<1> { template<typename A, typename B, typename C, typename D> static B& of(Tuple<A, B, C, D>& t) { return t.second; } };
-template<>
-struct TupleGet<2> { template<typename A, typename B, typename C, typename D> static C& of(Tuple<A, B, C, D>& t) { return t.third; } };
-template<>
-struct TupleGet<3> { template<typename A, typename B, typename C, typename D> static D& of(Tuple<A, B, C, D>& t) { return t.fourth; } };
-template<int I, typename A, typename B, typename C, typename D>
-typename TupleElement<I, A, B, C, D>::Type& get(Tuple<A, B, C, D>& t) { return TupleGet<I>::of(t); }
-template<int I, typename A, typename B, typename C, typename D>
-const typename TupleElement<I, A, B, C, D>::Type& get(const Tuple<A, B, C, D>& t) { return TupleGet<I>::of(const_cast<Tuple<A, B, C, D>&>(t)); }
 
 // The result of a three-way comparison `a <=> b` (what std::strong_ordering, weak_ordering and
 // partial_ordering convert to): less, equal or greater, compared with the literal 0 as in C++

@@ -792,7 +792,8 @@ namespace
     {"nextafter", "::nextafter"}, {"rbegin", "rbegin"}, {"rend", "rend"}, {"unique", "unique"}, {"is_class_v", "isClass"},
     {"is_convertible_v", "isConvertible"}, {"is_null_pointer_v", "isNullPointer"}, {"back_inserter", "backInserter"},
     {"is_void_v", "isVoid"}, {"is_function_v", "isFunction"}, {"invoke", "invoke"}, {"apply", "apply"}, {"tie", "tie"},
-    {"ignore", "ignore"}, {"index_sequence", "IndexSequence"}, {"make_index_sequence", "makeIndexSequence"}, {"byte", "u8"},
+    {"ignore", "ignore"}, {"index_sequence", "IndexSequence"}, {"make_index_sequence", "MakeIndexSequence"},
+    {"index_sequence_for", "IndexSequenceFor"}, {"byte", "u8"},
     {"int8_t", "int8_t"}, {"int16_t", "int16_t"}, {"int32_t", "int32_t"}, {"int64_t", "int64_t"}, {"uint8_t", "uint8_t"},
     {"uint16_t", "uint16_t"}, {"uint32_t", "uint32_t"}, {"uint64_t", "uint64_t"}, {"intptr_t", "intptr_t"}, {"uintptr_t", "uintptr_t"},
     {"ptrdiff_t", "ptrdiff_t"}, {"fabs", "::fabs"}, {"fmod", "::fmod"}, {"log", "::log"}, {"exp", "::exp"}, {"sin", "::sin"}, {"cos", "::cos"},
@@ -873,7 +874,7 @@ namespace
     {"in_place_index", "inPlaceIndex"}, {"in_place_type_t", "InPlaceType"},
     {"variant_alternative_t", "VariantAlternative"}, {"variant_size_v", "variantSize"},
     // tuple helpers
-    {"forward_as_tuple", "forwardAsTuple"}, {"tuple_size_v", "tupleSize"},
+    {"forward_as_tuple", "forwardAsTuple"}, {"tuple_size_v", "tupleSize"}, {"tuple_size", "TupleSize"}, {"tuple_element", "TupleElement"},
     {"piecewise_construct", "piecewiseConstruct"},
     // iterator tags
     {"input_iterator_tag", "InputIteratorTag"},

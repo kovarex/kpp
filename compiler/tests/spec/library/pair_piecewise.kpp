@@ -1,0 +1,29 @@
+// spec: Pair's piecewise constructor (std::pair's): each member constructed in place from the elements of its Tuple, `emplace_back(piecewiseConstruct, Tuple{entity}, Tuple{target})`, a move-only member from an rvalue element, references from forwardAsTuple
+// factorio: LatencyState's `upgradeTargets.emplace_back(std::piecewise_construct, std::tuple{entity}, std::tuple{target})` and innerEntitiesToBeReplaced's with `std::tuple{std::move(newEntity)}`
+// pending: the delegated constructor expands `get<I1>(move(firstArgs))...` over the index pack, which codegen does not do yet (templates/non_type_pack_expansion)
+struct Entity { int id = 0; };
+struct Targeter
+{
+  Entity* entity = nullptr;
+  implicit Targeter(Entity* e) : entity(e) {}
+};
+struct Owner
+{
+  UniquePtr<int> value;
+  int extra = 0;
+  Owner(UniquePtr<int>&& v, int extra) : value(move(v)), extra(extra) {}
+};
+int main()
+{
+  Entity entity;
+  entity.id = 42;
+  Vector<Pair<Targeter, int>> targets;
+  targets.emplace_back(piecewiseConstruct, Tuple{&entity}, Tuple{5});
+  Vector<Pair<Targeter, Owner>> owners;
+  owners.emplace_back(piecewiseConstruct, Tuple{&entity}, Tuple<UniquePtr<int>, int>(makeUnique<int>(8), 3));
+  int seed = 6;
+  Pair<String, int> named(piecewiseConstruct, forwardAsTuple("abc", 2), forwardAsTuple(seed));
+  println("{} {} {} {} {} {} {}", targets[0].first.entity->id, targets[0].second, owners[0].first.entity->id, *owners[0].second.value, owners[0].second.extra,
+          named.first, named.second);
+  return 0;
+}

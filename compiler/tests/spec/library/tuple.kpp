@@ -1,0 +1,57 @@
+// spec: Tuple (std::tuple) of any number of elements: get<I> (a reference, const from a const tuple, an rvalue reference from an rvalue tuple), structured bindings through TupleSize, makeTuple, tie assigning from a Pair or a Tuple, forwardAsTuple, deduction (`Tuple(1, 2.5)`), converting construction and assignment, a move-only element, comparisons in lexicographic order and a Tuple as a Map key; Array is tuple-like too (get<I>, bindings, tupleSize)
+// factorio: 51 std::tuple uses: PerformanceLogger's statistics of 5 (`auto [min, max, median, avg, stdDev] = ...`), FramebufferDX11's (width, height, format), GraphicsInterfaceDX11's Map keyed by (driver, version) and (path, entryPoint, target), SpiderUnit's `std::tie(movementSpeed, stretchForce) = calculate(...)`, TurretRangeListDrawOrder's std::tuple_size_v of an array
+Pair<double, double> speedAndForce(double s) { return Pair<double, double>(s * 2, s * 3); }
+Tuple<int, double> times(int i) { return makeTuple(i, i * 0.5); }
+Tuple<double, double, double, double, double> statistics() { return makeTuple(1.0, 9.0, 4.0, 4.5, 2.25); }
+
+int main()
+{
+  Tuple<int, String, double> t(1, String("two"), 3.0);
+  get<0>(t) += 10;
+  auto [x, y, z] = t;
+  auto& [rx, ry, rz] = t;
+  rx = 5;
+  const auto& [cx, cy, cz] = t;
+  println("{} {} {} {} {} {}", x, y, z, get<0>(t), cx + int(cz), cy.size());
+
+  double speed = 0;
+  double force = 0;
+  tie(speed, force) = speedAndForce(1.5);
+  int count = 0;
+  double half = 0;
+  tie(count, half) = times(4);
+  println("{} {} {} {}", speed, force, count, half);
+
+  Tuple<UniquePtr<int>, int> owning = makeTuple(makeUnique<int>(7), 3);
+  Tuple<UniquePtr<int>, int> moved = move(owning);
+  UniquePtr<int> taken = get<0>(move(moved));
+  println("{} {} {}", *taken, get<1>(moved), get<0>(owning) == nullptr);
+
+  Tuple<int, char, char> t1(1, 'a', 'b');
+  Tuple<int, char, char> t2(1, 'a', 'c');
+  auto deduced = Tuple(1, 2.5);
+  Tuple<int, double> fromPair = Pair<int, double>(3, 4.5);
+  Tuple<long long, double> widened = deduced;
+  println("{} {} {} {} | {} {} {} {}", t1 == t2, t1 < t2, t2 > t1, (t1 <=> t1) == 0, get<1>(deduced), get<0>(fromPair), get<1>(fromPair), get<0>(widened));
+
+  int a = 1;
+  int b = 2;
+  auto references = forwardAsTuple(a, b);
+  get<0>(references) = 9;
+  auto [mn, mx, median, average, deviation] = statistics();
+  println("{} {} | {} {} {} {} {}", a, get<1>(references), mn, mx, median, average, deviation);
+
+  static_assert(TupleSize<Tuple<int, char, String>>::value == 3);
+  static_assert(isSame<TupleElement<1, Tuple<int, char, String>>::Type, char>);
+  static_assert(tupleSize<Array<float, 4>> == 4);
+  Array<int, 3> array = {4, 5, 6};
+  auto [p, q, r] = array;
+  Map<Tuple<String, uint64_t>, Vector<int>> drivers;
+  drivers[makeTuple(String("nv"), uint64_t(3))].push_back(1);
+  drivers[makeTuple(String("nv"), uint64_t(3))].push_back(2);
+  drivers[makeTuple(String("amd"), uint64_t(1))].push_back(3);
+  println("{} {} {} {}", p, q, r, get<2>(array));
+  for (const auto& [key, list] : drivers)
+    println("{} {} {}", get<0>(key), get<1>(key), list.size());
+  return 0;
+}

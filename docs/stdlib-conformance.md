@@ -21,17 +21,23 @@ compile, loudly) last. State of 2026-10-29.
 - A reference parameter bound through a conversion operator binds to a copy
   (classes/reference_bound_through_conversion_operator): a `ref(x)` argument of a Thread for an
   `int&` parameter reaches a copy of x, silently.
-- A data member of a class template whose type argument is a reference (`Pair<int&, int>`, what
-  `makePair(ref(x), y)` makes) is not written through: assigning to it leaves the referred object
-  as it was, silently (templates/reference_type_argument_member).
+- Tuple (docs/stdlib/tuple.md): makeTuple takes its arguments by value (one move more) and keeps a
+  `ref(x)` argument a ReferenceWrapper element, since a Tuple of `UnwrapRefDecay<Args>...` over
+  forwarded arguments is not the Tuple it names (templates/pack_expansion_of_type_trait,
+  templates/pack_expansion_of_member_type). TupleSize and TupleElement of a Tuple of references
+  (`tie(a, b)`) are not found (templates/partial_specialization_reference_argument), so such a
+  Tuple does not bind (`auto [x, y] = tie(a, b)`); get and assignment work. The last element's
+  EmptyTuple base has a user-provided constructor so that it is not value-initialized past the
+  Tuple (classes/empty_base_value_initialized_at_end).
 
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
 
 ## Missing types and API
 
-None of the members specified in docs/stdlib/ are missing (2026-10-28). One works only for
-movable values: Map's and HashMap's `emplace(args...)` builds the entry and then moves it into its
+None of the members specified in docs/stdlib/ are missing (2026-10-28) but Pair's piecewise
+constructor (tuple.md), which compiles only once codegen expands a pack of indices
+(templates/non_type_pack_expansion; library/pair_piecewise). One works only for movable values: Map's and HashMap's `emplace(args...)` builds the entry and then moves it into its
 node (map.md: constructed in place), so a value that can be neither copied nor moved does not
 compile there; operator[] and try_emplace construct it in place as specified (2026-10-29).
 
