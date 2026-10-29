@@ -6114,7 +6114,9 @@ struct GlobalScope::Impl
   {
     out.scope = lexicalScopeOf(d);
     for (Decl* p = d; p; p = p->parent)
-      if (p->kind == NodeKind::FunctionDecl)
+      if (p != d && (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl) && p->ownScope)
+        break; // a member of a class (one declared in a function body included): that class's scope
+      else if (p->kind == NodeKind::FunctionDecl)
       {
         // `int Box::f(const Terminal t) const` outside its class: the class scope, as C++ has it,
         // for the function and everything declared inside it.

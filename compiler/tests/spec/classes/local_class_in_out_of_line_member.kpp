@@ -1,0 +1,46 @@
+// spec: a class declared in an out-of-line member function (`int Migration::load(int)`) names the classes nested in it from its members (`Vector<PowerSwitchConnection> connections`, a range-for over them in an override), as well as the enclosing class's members
+// factorio: CopperWireConnectorMigration::loadFromElectricPolePowerSwitches's ElectricPoleToPowerSwitchConnectorMigration with its PowerSwitchConnection
+class LoadHelper
+{
+public:
+  virtual ~LoadHelper() = default;
+  virtual int setup() { return 0; }
+};
+class Migration
+{
+public:
+  static int load(int count);
+};
+int Migration::load(int count)
+{
+  class ConnectorMigration : public LoadHelper
+  {
+  public:
+    class PowerSwitchConnection
+    {
+    public:
+      explicit PowerSwitchConnection(int side) : side(side) {}
+      int side;
+    };
+    explicit ConnectorMigration(int count)
+    {
+      for (int i = 0; i < count; ++i)
+        this->connections.emplace_back(i);
+    }
+    virtual int setup() override
+    {
+      int sum = 0;
+      for (const PowerSwitchConnection& connection : this->connections)
+        sum += connection.side;
+      return sum;
+    }
+    Vector<PowerSwitchConnection> connections;
+  };
+  ConnectorMigration m(count);
+  return m.setup();
+}
+int main()
+{
+  println("{}", Migration::load(4));
+  return 0;
+}
