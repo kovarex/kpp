@@ -8,6 +8,7 @@
 #include <cstring>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -210,6 +211,9 @@ namespace
       const Ty* type = nullptr;
     };
     std::vector<Item> items;
+    // The symbol of an item that is a body's `using namespace N;` (decl the UsingDirectiveDecl):
+    // no name, a namespace for unqualified lookups to try.
+    static constexpr uint32_t usingDirective = UINT32_MAX - 1;
     size_t mark() const { return items.size(); }
     void pop(size_t mark) { items.resize(mark); }
     void push(uint32_t symbol, Decl* decl)
@@ -1336,10 +1340,76 @@ struct GlobalScope::Impl
           out.scope = d->ownScope;
         return out;
       }
+    // A function's `using namespace Helpers;` makes Helpers' names visible as if declared in the
+    // nearest enclosing namespace: tried where the search first reaches a namespace.
+    bool usingsTried = !locals;
     for (Scope* s = context; s; s = s->parent)
+    {
+      if (!usingsTried && s->kind == ScopeKind::Namespace)
+      {
+        usingsTried = true;
+        Lookup viaUsing;
+        if (lookupInLocalUsings(symbol, *locals, viaUsing, depth))
+        {
+          // Functions of the name in both places are one overload set (`twice(x)` with
+          // ::twice(double) and Helpers::twice(int)).
+          if (lookupInScope(s, symbol, out, depth))
+            return mergeOverloads(out, viaUsing);
+          return viaUsing;
+        }
+      }
       if (lookupInScope(s, symbol, out, depth))
         return out;
+    }
+    if (!usingsTried && lookupInLocalUsings(symbol, *locals, out, depth))
+      return out;
     return out;
+  }
+
+  // Two lookups' function overloads as one set (kept for the run: a lookup's overloads outlive it);
+  // `a` alone when either found something other than functions.
+  std::mutex mergedOverloadsMutex;
+  std::map<std::pair<const void*, const void*>, std::unique_ptr<std::vector<Entry>>> mergedOverloads;
+  Lookup mergeOverloads(const Lookup& a, const Lookup& b)
+  {
+    auto functions = [](const Lookup& l)
+    {
+      if (!l.decl || l.decl->kind != NodeKind::FunctionDecl)
+        return false;
+      if (l.overloads)
+        for (const Entry& e : *l.overloads)
+          if (!e.decl || e.decl->kind != NodeKind::FunctionDecl)
+            return false;
+      return true;
+    };
+    if (!functions(a) || !functions(b) || !a.overloads || !b.overloads || a.overloads == b.overloads)
+      return a;
+    std::lock_guard lock(mergedOverloadsMutex);
+    std::unique_ptr<std::vector<Entry>>& merged = mergedOverloads[{a.overloads, b.overloads}];
+    if (!merged)
+    {
+      merged = std::make_unique<std::vector<Entry>>(*a.overloads);
+      merged->insert(merged->end(), b.overloads->begin(), b.overloads->end());
+    }
+    Lookup out = a;
+    out.overloads = merged.get();
+    return out;
+  }
+
+  // The using-directives among a body's locals (LocalStack::usingDirective items), innermost first.
+  bool lookupInLocalUsings(uint32_t symbol, const LocalStack& locals, Lookup& out, int depth)
+  {
+    for (size_t i = locals.items.size(); i-- > 0;)
+    {
+      const LocalStack::Item& item = locals.items[i];
+      if (item.symbol != LocalStack::usingDirective || !item.decl || item.decl->kind != NodeKind::UsingDirectiveDecl || depth > 16)
+        continue;
+      auto* u = static_cast<UsingDirectiveDecl*>(item.decl);
+      Lookup ns = lookupQualified(u->name, lexicalScopeOf(u), nullptr, depth + 1);
+      if (ns.scope && ns.scope->kind == ScopeKind::Namespace && lookupInScope(ns.scope, symbol, out, depth + 1))
+        return true;
+    }
+    return false;
   }
 
   // Among the entries a class template's name resolved to, the specialisation for `args`: a full
@@ -8839,6 +8909,7 @@ struct GlobalScope::Impl
           break;
         }
         case NodeKind::UsingAliasDecl: locals.push(static_cast<UsingAliasDecl*>(d)->name, d); break;
+        case NodeKind::UsingDirectiveDecl: locals.push(LocalStack::usingDirective, d); break; // `using namespace Helpers;`
         case NodeKind::FunctionDecl:
         {
           auto* f = static_cast<FunctionDecl*>(d);

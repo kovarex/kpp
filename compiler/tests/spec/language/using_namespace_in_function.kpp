@@ -1,0 +1,29 @@
+// spec: a `using namespace` inside a function body makes the namespace's names visible to the rest of that block, as if declared in the nearest enclosing namespace: its functions join that namespace's functions of the same name in one overload set, and it ends with its block
+// factorio: LuaCommonEventFilters (`using namespace LuaEventFilterHelpers;` then make_name_builder<T>), about a hundred converted files use one in a body
+namespace Helpers
+{
+  int twice(int x) { return 2 * x; }
+  template<class T>
+  T thrice(T x) { return 3 * x; }
+  struct Builder { int value = 7; };
+}
+int twice(double x) { return -1; }
+int useHelpers(int x)
+{
+  using namespace Helpers;
+  Builder b;
+  return twice(x) + thrice(x) + b.value;
+}
+int insideBlock(int x)
+{
+  {
+    using namespace Helpers;
+    x = thrice(x);
+  }
+  return twice(x);
+}
+int main()
+{
+  println("{} {}", useHelpers(1), insideBlock(2));
+  return 0;
+}
