@@ -594,6 +594,27 @@ struct GlobalScope::Impl
     }
   }
 
+  // The hash of an instance key (pointers appended as bytes): eight bytes at a time, where
+  // std::hash<std::string> takes them one by one (the instance maps were 8% of the front end).
+  struct PointerKeyHash
+  {
+    size_t operator()(const std::string& key) const
+    {
+      uint64_t h = 0x9E3779B97F4A7C15ull ^ key.size();
+      size_t i = 0;
+      for (; i + 8 <= key.size(); i += 8)
+      {
+        uint64_t w;
+        memcpy(&w, key.data() + i, 8);
+        h = (h ^ w) * 0xFF51AFD7ED558CCDull;
+        h ^= h >> 32;
+      }
+      for (; i < key.size(); ++i)
+        h = (h ^ (unsigned char)key[i]) * 0x100000001B3ull;
+      return size_t(h ^ (h >> 29));
+    }
+  };
+
   // ---- instantiations' own bodies (docs/design.md, "Instantiations own their typed bodies") ----
   // One record per (function, arguments, `this` type): the copy of the function's nodes typed for
   // them, built once by whichever asks first (the checker's instantiation checks, or codegen for an
@@ -610,7 +631,7 @@ struct GlobalScope::Impl
   struct InstanceShard
   {
     std::mutex mutex;
-    std::unordered_map<std::string, std::unique_ptr<InstanceRecord>> map; // key: f, this type, sorted argument pointers
+    std::unordered_map<std::string, std::unique_ptr<InstanceRecord>, PointerKeyHash> map; // key: f, this type, sorted argument pointers
   };
   InstanceShard instanceShards[64];
 
@@ -631,7 +652,7 @@ struct GlobalScope::Impl
       key.append(reinterpret_cast<const char*>(&d), sizeof d);
       key.append(reinterpret_cast<const char*>(&t), sizeof t);
     }
-    InstanceShard& shard = instanceShards[std::hash<std::string>()(key) % std::size(instanceShards)];
+    InstanceShard& shard = instanceShards[(PointerKeyHash()(key) >> 58) % std::size(instanceShards)]; // the top bits: the map inside buckets by the low ones
     std::lock_guard lock(shard.mutex);
     auto& slot = shard.map[key];
     if (slot)
@@ -743,7 +764,7 @@ struct GlobalScope::Impl
   {
     std::mutex mutex;
     std::unordered_map<const Ty*, std::unique_ptr<Instantiation>> classes;
-    std::unordered_map<std::string, std::unique_ptr<Instantiation>> functions; // key: decl + arg pointers
+    std::unordered_map<std::string, std::unique_ptr<Instantiation>, PointerKeyHash> functions; // key: decl + arg pointers
   };
   static constexpr uint32_t instShardCount = 64;
   InstShard instShards[instShardCount];
@@ -822,10 +843,7 @@ struct GlobalScope::Impl
       key.append(reinterpret_cast<const char*>(&pair.param), sizeof(pair.param));
       key.append(reinterpret_cast<const char*>(&pair.type), sizeof(pair.type));
     }
-    uint64_t h = 1469598103934665603ull;
-    for (unsigned char c : key)
-      h = (h ^ c) * 1099511628211ull;
-    InstShard& shard = instShards[h % instShardCount];
+    InstShard& shard = instShards[(PointerKeyHash()(key) >> 58) % instShardCount]; // the top bits: the map inside buckets by the low ones
     std::lock_guard lock(shard.mutex);
     auto it = shard.functions.find(key);
     if (it != shard.functions.end())
