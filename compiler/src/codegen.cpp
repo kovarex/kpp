@@ -10884,6 +10884,24 @@ namespace
           if (std::optional<Value> ordered = orderCompare(op))
             return ordered;
           return reversedOrder(op);
+        case P::Spaceship:
+        {
+          // `minimum <=> scale`: the reversed `0 <=> (scale <=> minimum)`, its order negated, of the
+          // type that call gives (as the resolver types it).
+          if (!rt || !isClass(rt) || (lt && isClass(lt)))
+            return std::nullopt;
+          Expr* lhsExpr = b->lhs;
+          Span<Expr*> left{&lhsExpr, 1};
+          const Ty* foundIn = nullptr;
+          if (!findMemberFunction(types.unqualified(rt), "operator<=>", argTypesOf(left), types.unqualified(rt), b, &foundIn, true))
+            return std::nullopt;
+          Value ordering = callRvalue(operatorCall(rvalue(b->rhs), "operator<=>", left, b, true), b);
+          std::string negated = newTemp();
+          fn += "  " + negated + " = sub i8 0, " + orderOf(ordering, b).text + "\n";
+          Value order{negated, types.intType(8)};
+          const Ty* ot = types.unqualified(types.stripRef(ordering.ty));
+          return isClass(ot) ? orderingObject(order, b) : convert(order, ot, b);
+        }
         default:
           return std::nullopt;
       }

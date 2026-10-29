@@ -13932,9 +13932,25 @@ struct GlobalScope::Impl
               return types.boolType();
             break;
           case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
-            if (operatorFunction(P::Spaceship, lhs, rhs, token, 2, subst, isMember))
+            // `minimum < scale` through scale's operator<=>(const double&) too: C++20's reversed
+            // candidate, `0 < (scale <=> minimum)`.
+            if (operatorFunction(P::Spaceship, lhs, rhs, token, 2, subst, isMember) || operatorFunction(P::Spaceship, rhs, lhs, token, 2, subst, isMember))
               return types.boolType();
             break;
+          case P::Spaceship:
+          {
+            // `minimum <=> scale`: the reversed `0 <=> (scale <=> minimum)`, of that call's type.
+            Subst reversed;
+            if (FunctionDecl* f = operatorFunction(P::Spaceship, rhs, lhs, token, 2, reversed, isMember))
+            {
+              std::vector<const Ty*> operands;
+              if (!isMember)
+                operands.push_back(rhs);
+              operands.push_back(lhs);
+              return returnTypeOfCall(f, isMember ? &reversed : nullptr, none, nullptr, nullptr, &operands);
+            }
+            break;
+          }
           default:
             break;
         }

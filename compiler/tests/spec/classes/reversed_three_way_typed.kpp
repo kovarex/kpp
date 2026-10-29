@@ -1,6 +1,5 @@
 // spec: `scale < minimum` with a scalar on the left and a class whose operator<=>(const double&) takes it is a bool wherever its type matters (a println argument, an auto variable), as `0 < (minimum <=> scale)` is; and `scale <=> minimum` itself is the reversed `0 <=> (minimum <=> scale)`, the order turned round
 // found by the code generator thread in the converted game: CommandProcessor's `println("{}", scale < minimum)` with a StrongTypedef<double> (the walk typed the comparison as unknown, C++20's reversed candidate missing)
-// pending: the comparisons with the scalar on the left are of unknown type, and `scale <=> minimum` has no operator
 template<typename T, typename Tag>
 struct StrongTypedef
 {
