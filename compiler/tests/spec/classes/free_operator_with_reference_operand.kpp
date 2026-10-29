@@ -1,0 +1,39 @@
+// spec: a free operator whose left parameter is a non-const reference to a class (`Stream& operator<<(Stream& s, const char* text)`, `Acc& operator+=(Acc& a, int v)`) is found for that class's lvalue, chained as each returns the reference
+// factorio: Main's `std::cerr << "Error: This is a headless executable..."` through the library's `StderrStream& operator<<(StderrStream&, const char*)` (stdlib/io/Stream.kpp); the same shape as any stream operator a program writes
+// pending: "Stream has no operator<<" (and "Acc has no operator+="); with a const reference parameter the operator is found
+extern "C" import "stdio.h";
+struct Stream
+{
+  int written = 0;
+};
+Stream& operator<<(Stream& s, const char* text)
+{
+  s.written += 1;
+  fputs(text, stdout);
+  return s;
+}
+Stream& operator<<(Stream& s, int value)
+{
+  s.written += 1;
+  printf("%d", value);
+  return s;
+}
+struct Acc
+{
+  int count = 0;
+};
+Acc& operator+=(Acc& a, int v)
+{
+  a.count += v;
+  return a;
+}
+Stream out;
+int main()
+{
+  out << "a" << 1 << "b\n";
+  Acc acc;
+  acc += 5;
+  (acc += 2) += 3;
+  printf("%d %d\n", out.written, acc.count);
+  return 0;
+}
