@@ -1,6 +1,9 @@
 # C headers whose function-like macros the converter expands at their uses in converted code
 # (convert.cpp, readHeaderMacros): the imported headers give Kpp their functions and constants, not
 # their macros. Lua's public API: lua_pop, lua_newtable, lua_isnil, ... (651 uses in the game).
+# An object-like macro that is another name is written as that name: glad's OpenGL functions
+# (`#define glGenTextures glad_glGenTextures`, the function pointers gladLoadGL fills).
 C:\Factorio\libraries\Lua\luaconf.h
 C:\Factorio\libraries\Lua\lua.h
 C:\Factorio\libraries\Lua\lauxlib.h
+C:\Factorio\libraries\glad\include\glad\glad.h

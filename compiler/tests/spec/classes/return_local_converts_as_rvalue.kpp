@@ -1,0 +1,22 @@
+// spec: returning a local of another class type than the function's moves it into the result through a converting constructor taking an rvalue (`return obj;` with UniquePtr<Derived> obj in a function returning UniquePtr<Base>), C++'s implicit move on return
+// factorio: GraphicsInterfaceOpenGL::createPipelineStateObject and createSamplerState (`auto obj = std::make_unique<PipelineStateObjectOpenGL>(); ... return obj;` as std::unique_ptr<PipelineStateObject>)
+// pending: the local is passed as an lvalue, which the converting constructor does not take (a constructor of UniquePtr taking 1 arguments)
+struct Base
+{
+  virtual ~Base() {}
+  virtual int id() const { return 1; }
+};
+struct Derived : Base
+{
+  int id() const override { return 2; }
+};
+UniquePtr<Base> make()
+{
+  UniquePtr<Derived> obj = makeUnique<Derived>();
+  return obj;
+}
+int main()
+{
+  println("{}", make()->id());
+  return 0;
+}

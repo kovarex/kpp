@@ -584,7 +584,7 @@ generator writes for the converted CommonUtil, Agui, cxxopts, Lua and `src/`. Af
 ```
 ..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
   --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
-  --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include ^
+  --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include ^
   --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\Lua kpp\src 2> kpp\full-errors.txt
 find /c /v "" kpp\full-errors.txt
 ```
@@ -597,9 +597,10 @@ find /c /v "" kpp\full-errors.txt
   (`lua_pushstring` of a String, ...), converted from `libraries\Lua\LuaCPPUtilities.hpp` while Lua
   itself is imported as C.
 - The SDL_Mixer include directory is required: the imported C headers compile as one unit, so a
-  single missing header fails all 50 of them and every Lua, SDL and C library use becomes an error.
-  The run is valid only if its output shows `imports: 50 header(s)` and no `importing C headers
-  failed` line.
+  single missing header fails all of them and every Lua, SDL and C library use becomes an error.
+  The run is valid only if its output has no `importing C headers failed` line and shows the
+  header count of its tree (50 on 2026-10-28; 54 since glad's include directory joined on
+  2026-10-29, when the converter imports `glad/glad.h` for the OpenGL backend).
 - What it counts: every line on stderr, which is one code generator error per line (`file:line:
   codegen does not support ...`, `function type unknown, skipped`, ...). Front-end complaints
   (unresolved names, unknown expression types in the statistics on stdout) are not in it.

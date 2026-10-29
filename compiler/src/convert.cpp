@@ -1522,17 +1522,32 @@ namespace
     // The locals and parameters of the file's functions by name: where each declaration starts and
     // where its function ends (the block it is in ends there or sooner: a `::` too many is harmless).
     std::map<std::string, std::vector<std::pair<uint32_t, uint32_t>>> localNames;
-    void collectLocals(Span<Decl*> decls)
+    // The function definitions of the file: where each starts and ends, and its qualified name.
+    struct FunctionRange
+    {
+      uint32_t begin, end;
+      std::string name;
+    };
+    std::vector<FunctionRange> functionRanges;
+    void collectLocals(Span<Decl*> decls, const std::string& prefix = "")
     {
       for (Decl* d : decls)
         if (d->kind == NodeKind::NamespaceDecl)
-          collectLocals(static_cast<NamespaceDecl*>(d)->decls);
+        {
+          auto* n = static_cast<NamespaceDecl*>(d);
+          std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
+          collectLocals(n->decls, name.empty() ? prefix : prefix + name + "::");
+        }
         else if (d->kind == NodeKind::ClassDecl)
-          collectLocals(static_cast<ClassDecl*>(d)->members);
+        {
+          auto* c = static_cast<ClassDecl*>(d);
+          collectLocals(c->members, c->name.empty() ? prefix : prefix + nameText(c->name, symbols) + "::");
+        }
         else if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && d->endToken > 0 && d->endToken <= toks.size())
         {
           auto* f = static_cast<FunctionDecl*>(d);
           uint32_t end = endOffset(d->endToken - 1);
+          functionRanges.push_back({toks[d->token].offset, end, prefix + nameText(f->name, symbols)});
           for (Decl* p : f->params)
             if (auto* pd = static_cast<ParamDecl*>(p); pd->name != UINT32_MAX)
               localNames[std::string(symbols.name(pd->name))].push_back({toks[p->token].offset, end});
@@ -1656,6 +1671,9 @@ namespace
     // headers expand-macros.txt in the overrides lists), expanded like this file's own: the imported
     // headers give Kpp their functions and constants, not their macros.
     const std::map<std::string, std::pair<std::vector<std::string>, std::string>>* headerMacros = nullptr;
+    // The imported C headers' object-like macros that are another name (glad's glGenTextures is
+    // glad_glGenTextures): a use is written as that name.
+    const std::map<std::string, std::string>* headerAliases = nullptr;
     // The function-like macros of the game's headers this file includes, directly or through other
     // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
     // include order.
@@ -1825,7 +1843,34 @@ namespace
         s.replace(p, 8, line);
         p += line.size();
       }
+      // __FUNCTION__ and __func__: the name of the function around the use, qualified as MSVC's
+      // __FUNCTION__ is (`FramebufferOpenGL::generateFramebufferObject`; a template's without its
+      // arguments). Outside a function they stay, and the compiler reports them.
+      for (const char* macro : {"__FUNCTION__", "__func__"})
+        for (size_t p = s.find(macro); p != std::string::npos; p = s.find(macro, p))
+        {
+          size_t length = strlen(macro);
+          bool word = (p == 0 || !isIdentChar(s[p - 1])) && (p + length >= s.size() || !isIdentChar(s[p + length]));
+          const std::string* name = functionNameAt(offset);
+          if (!word || !name)
+          {
+            p += length;
+            continue;
+          }
+          std::string literal = "\"" + *name + "\"";
+          s.replace(p, length, literal);
+          p += literal.size();
+        }
       return s;
+    }
+    // The qualified name of the innermost function whose definition holds offset, or null.
+    const std::string* functionNameAt(uint32_t offset) const
+    {
+      const FunctionRange* best = nullptr;
+      for (const FunctionRange& f : functionRanges)
+        if (f.begin <= offset && offset < f.end && (!best || f.begin >= best->begin))
+          best = &f;
+      return best ? &best->name : nullptr;
     }
 
     std::string_view spelling(uint32_t token) const
@@ -2052,7 +2097,7 @@ namespace
           // (stb_rect_pack, jc_voronoi and sdf are header-only C libraries whose implementations the
           // game compiles in its own .cpp files.)
           static const char* cLibraries[] = {"SDL3/", "SDL2/", "SDL", "lua", "zlib", "zconf", "curl/", "png", "jpeg", "zstd", "opus", "ogg",
-                                             "vorbis", "minizip", "stb_image", "fontstash", "imgui/stb_rect_pack", "jc_voronoi/", "sdf/"};
+                                             "vorbis", "minizip", "stb_image", "fontstash", "imgui/stb_rect_pack", "jc_voronoi/", "sdf/", "glad/"};
           bool cLibrary = false;
           for (const char* prefix : cLibraries)
             if (header.rfind(prefix, 0) == 0)
@@ -2333,6 +2378,14 @@ namespace
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        if (t.getKind() == TokenKind::Identifier && headerAliases && !headerAliases->empty() &&
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
+          if (auto alias = headerAliases->find(std::string(spelling(i))); alias != headerAliases->end())
+          {
+            replace(t.offset, t.length, alias->second);
+            counts.add("C header alias macros expanded");
+            continue;
+          }
         if (t.getKind() == TokenKind::Identifier && toks[i + 1].is(P::LParen) && !localMacros.empty())
         {
           const LocalMacro* lm = localMacroAt(std::string(spelling(i)), t.offset);
@@ -2429,11 +2482,12 @@ namespace
             continue;
           }
         }
-        if (t.getKind() == TokenKind::Identifier && (spelling(i) == "__FILE__" || spelling(i) == "__LINE__"))
+        if (t.getKind() == TokenKind::Identifier &&
+            (spelling(i) == "__FILE__" || spelling(i) == "__LINE__" || ((spelling(i) == "__FUNCTION__" || spelling(i) == "__func__") && functionNameAt(t.offset))))
         {
           // The preprocessor's file name and line: the literal values, since Kpp has no preprocessor.
           replace(t.offset, endOffset(i) - t.offset, withFileAndLine(std::string(spelling(i)), t.offset));
-          counts.add("__FILE__/__LINE__ replaced");
+          counts.add("__FILE__, __LINE__, __FUNCTION__ replaced");
           continue;
         }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "Vector" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
@@ -4643,7 +4697,8 @@ struct SourceConfiguration::Impl
 // the converter selects them), by name: parameters and body, the body on one line without comments,
 // and C's NULL as nullptr.
 std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHeaderMacros(const std::vector<std::filesystem::path>& paths,
-                                                                                       const SourceConfiguration* configuration)
+                                                                                       const SourceConfiguration* configuration,
+                                                                                       std::map<std::string, std::string>* aliases)
 {
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> macros;
   for (const std::filesystem::path& path : paths)
@@ -4734,7 +4789,25 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
       while (nameEnd < line.size() && (isalnum((unsigned char)line[nameEnd]) || line[nameEnd] == '_'))
         ++nameEnd;
       if (nameEnd == p || nameEnd >= line.size() || line[nameEnd] != '(')
-        continue; // object-like: the import makes the constants
+      {
+        // Object-like: the import makes the constants. One whose body is another name (glad's
+        // `#define glGenTextures glad_glGenTextures`, the function pointer the loader fills) is an
+        // alias the converted code is written through.
+        if (aliases && nameEnd > p)
+        {
+          std::string body = line.substr(nameEnd);
+          size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
+          body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
+          static const std::set<std::string> keywords = {"extern", "static", "const", "volatile", "inline", "void", "char", "short", "int", "long",
+                                                         "float", "double", "signed", "unsigned", "struct", "union", "enum", "typedef", "register"};
+          bool identifier = !body.empty() && (isalpha((unsigned char)body[0]) || body[0] == '_');
+          for (char c : body)
+            identifier = identifier && (isalnum((unsigned char)c) || c == '_');
+          if (identifier && !keywords.count(body))
+            (*aliases)[line.substr(p, nameEnd - p)] = body;
+        }
+        continue;
+      }
       size_t close = line.find(')', nameEnd);
       if (close == std::string::npos)
         continue;
@@ -4821,6 +4894,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   // The C headers whose function-like macros the converted code uses (overrides/expand-macros.txt:
   // one path per line, # starts a comment).
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> headerMacros;
+  std::map<std::string, std::string> headerAliases; // their object-like macros that name another identifier
   if (!overridesDir.empty())
   {
     std::string list;
@@ -4838,7 +4912,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         if (a != std::string::npos && line[a] != '#')
           headers.push_back(line.substr(a, b - a + 1));
       }
-      headerMacros = readHeaderMacros(headers, nullptr);
+      headerMacros = readHeaderMacros(headers, nullptr, &headerAliases);
     }
   }
   // The game's own headers each input includes (the includes resolved against the including file's
@@ -4883,7 +4957,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   {
     auto it = ownMacros.find(k);
     if (it == ownMacros.end())
-      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration)).first;
+      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration, nullptr)).first;
     return it->second;
   };
   auto visibleMacros = [&](size_t k)
@@ -5141,6 +5215,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.scopeNames = &scopeNames;
     fc.opaqueKept = &opaqueKept;
     fc.headerMacros = &headerMacros;
+    fc.headerAliases = &headerAliases;
     if (configuration)
       fc.preprocessed = configuration->impl->find(in.path);
     if (auto ip = inputByPath.find(pathKey(in.path)); ip != inputByPath.end())
