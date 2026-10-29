@@ -63,6 +63,28 @@ namespace
 
   bool isIdentChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
 
+  // A macro's text with its line continuations (a backslash ending a line, or the text: Agui's
+  // Transform.cpp continues `#define E(x, y)` onto an empty line) and its line ends as spaces.
+  // Every other backslash stays: an escape in a literal (llex.c's `#define currIsNewline(ls)
+  // (ls->current == '\n' || ls->current == '\r')`).
+  std::string continuationsAsSpaces(std::string text)
+  {
+    for (size_t i = 0; i < text.size(); ++i)
+      if (text[i] == '\\')
+      {
+        size_t e = i + 1;
+        while (e < text.size() && (text[e] == ' ' || text[e] == '\t' || text[e] == '\r'))
+          ++e;
+        if (e == text.size() || text[e] == '\n')
+          text[i] = ' ';
+        else
+          ++i; // an escape: the character it escapes stays too (`'\\'`)
+      }
+      else if (text[i] == '\r' || text[i] == '\n')
+        text[i] = ' ';
+    return text;
+  }
+
   // Whether text leaves a block comment open: a `/*` without its `*/`, outside literals and line
   // comments.
   bool opensBlockComment(std::string_view text)
@@ -2588,10 +2610,7 @@ namespace
               break;
             start = comma + 1;
           }
-          m.body = body.substr(close + 1);
-          for (char& ch : m.body)
-            if (ch == '\\' || ch == '\r' || ch == '\n')
-              ch = ' ';
+          m.body = continuationsAsSpaces(body.substr(close + 1));
           while (!m.body.empty() && isspace((unsigned char)m.body.front()))
             m.body.erase(m.body.begin());
           while (!m.body.empty() && isspace((unsigned char)m.body.back()))
