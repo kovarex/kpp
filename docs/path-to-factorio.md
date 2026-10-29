@@ -994,6 +994,15 @@ exception code), not a crash in a C function, so the game's four uses get no pro
   minidump: overrides/src/Util/CrashHandler.kpp writes the dump without an exception record and
   terminates as before.
 
+### Standard input (2026-10-29)
+
+Kpp has no iostreams (design.md 4), and the game reads std::cin in one place: the Windows path of
+InterruptibleStdioStream::read, the dedicated server's console, `std::getline(std::cin, result)`.
+`overrides/src/Util/Streams/InterruptibleStdioStream.kpp` reads the line with the C library's
+fgets on stdin instead, piece by piece up to its line break (left out, as getline leaves it); a
+partial line at the end of the input counts, an empty one does not, as with getline. unblock()
+still ends a pending read by putting an Enter key press into the console's input.
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in
