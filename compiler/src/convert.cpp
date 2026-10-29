@@ -2033,6 +2033,11 @@ namespace
           out += "nullptr"; // lobject.h's NILCONSTANT, `{NULL}, LUA_TNIL`
           continue;
         }
+        if (auto known = knownMacros.find(word); known != knownMacros.end())
+        {
+          out += known->second; // as at its uses in the source (NILCONSTANT's LUA_TNIL: 0, whose #define goes)
+          continue;
+        }
         auto o = objects.find(word);
         if (o != objects.end() && depth < 8 && (isSplicedMacroBody(o->second) || isStringLiterals(o->second)))
           out += splicedMacroText(o->second, objects, depth + 1);
