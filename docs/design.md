@@ -776,9 +776,14 @@ The smallest language that is still Kpp, as the target of the first code generat
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
      an identifier is a declaration (`Foo* p;`); as an expression it would be useless anyway.
   2. `Type name(args)` is a declaration; `Type(args)` is an expression (no most vexing parse).
-  3. `name<...>` is a template-id in type positions always, and in expression positions only
-     when the closing `>` is followed by `(`, `::`, `{`, `.` or `->`. `a < b > c` without
-     parentheses is a compile error.
+  3. `name<...>` is a template-id in type positions always. In expression positions it is one
+     when one of its arguments can only be a type (a type keyword, `const`, a pointer, reference,
+     array or function type, `decltype`, `typename`), whatever follows: `pi_v<float> * x`
+     (decided 2026-10-29). Otherwise it is one when what follows the closing `>` cannot continue
+     a comparison: `(`, `::`, `{`, `.`, `->`, `)`, `,`, `;`, `]`, `...`, `>`, or a binary operator
+     that cannot start an operand (`==`, `!=`, `&&`, `||`, `?`, `/`, `%`, `|`, `^`, `=`, `<`,
+     `<=`, `<<`, `<=>`). Anything else reads as comparisons (`a < b > c`, and `v<N> * 2` with a
+     value as the argument): `(v<N>) * 2` is the template-id.
   4. `f(*p);` and `f(&x);` are calls. A parenthesised declarator is a declaration only when a
      parameter list or an array bound follows: `R (*f)(int)`, `T (&a)[3]`. Pointer and reference
      variables are written `T* p;`, never `T (*p);` (decided 2026-10-23, when `windows.h` showed

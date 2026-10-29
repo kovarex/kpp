@@ -575,6 +575,24 @@ namespace
     }
 
     // Template argument heuristics: see parseQualifiedName.
+    // A template argument as parsed that no expression is written as: a type keyword, `const`, a
+    // pointer, reference, array or function type, `decltype(...)`, `typename X` (a pack of one).
+    static bool typeOnlyArgument(Node* n)
+    {
+      if (!n)
+        return false;
+      switch (n->kind)
+      {
+        case NodeKind::BuiltinType: case NodeKind::PointerType: case NodeKind::LRefType: case NodeKind::RRefType:
+        case NodeKind::ConstType: case NodeKind::ArrayType: case NodeKind::DecltypeType: case NodeKind::MemberPointerType:
+          return true;
+        case NodeKind::FunctionType: return !static_cast<FunctionType*>(n)->asCall; // `gcd(N, M)` may be a call
+        case NodeKind::NamedType: return static_cast<NamedType*>(n)->typename_ || static_cast<NamedType*>(n)->elaborated;
+        case NodeKind::PackType: return typeOnlyArgument(static_cast<PackType*>(n)->pattern);
+        default: return false;
+      }
+    }
+
     void tryParseTemplateArgs(NamePart& part, bool typeContext)
     {
       uint32_t save = pos;
@@ -621,7 +639,12 @@ namespace
                           at(P::Less) || at(P::LessEq) || at(P::Shl) || at(P::Spaceship) || at(P::Elvis);
         if (inRequires)
           plausible = true, sawLogical = false;
-        if (binaryOnly)
+        // An argument that can only be a type (`pi_v<float> * x`, `v<const T*> - 1`): `<` cannot be
+        // a comparison, so the arguments are a template-id's whatever follows.
+        bool typeOnly = false;
+        for (size_t i = mark; i < scratch.size(); ++i)
+          typeOnly = typeOnly || typeOnlyArgument(scratch[i]);
+        if (binaryOnly || typeOnly)
           ok = true;
         else if (!plausible || sawLogical)
           ok = false;

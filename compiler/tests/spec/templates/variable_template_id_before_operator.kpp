@@ -1,6 +1,5 @@
 // spec: a variable template's id followed by an arithmetic operator (`pi_v<float> * x`, `two_v<int> - 1`): a template argument that can only be a type makes the `<` a template's, whatever follows the `>`
 // factorio: Numbers::pi_v<float> * x (Attenuation)
-// pending: read as the comparisons `(two_v < int) > (*2)`, which crashed the constant evaluator
 template<typename T>
 constexpr T two_v = T(2);
 static_assert(two_v<int> * 2 == 4);

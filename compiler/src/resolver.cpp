@@ -4275,6 +4275,8 @@ struct GlobalScope::Impl
 
   std::optional<ConstValue> constName(NameExpr* n, const TypeContext& ctx)
   {
+    if (n->name.empty())
+      return std::nullopt; // `int` read as a name (`v < int > ...`): no part to look up
     if (ctx.env && n->name.parts.size() == 1 && !n->name.global)
       for (size_t i = ctx.env->size(); i-- > 0;)
         if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
@@ -7202,15 +7204,15 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
-  // The value of variable template v for the arguments part writes, read under ctx: the
-  // initializer of the specialisation they pick (variableSpecialization), evaluated with them
-  // bound; a trailing pack takes the rest, defaults fill the end. nullopt while an argument is
-  // dependent or unknown, or two specialisations match equally well.
-  std::optional<ConstValue> variableTemplateValue(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth)
+  // The specialisation of variable template v the arguments part writes pick, read under ctx
+  // (variableSpecialization), and its arguments: a trailing pack takes the rest, defaults fill the
+  // end. Null while an argument is unknown, or dependent unless dependent is allowed (typing a
+  // template's own body), or when two specialisations match equally well.
+  VariableDecl* variableTemplateSource(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth, bool dependent, Subst& out)
   {
     size_t n = v->templateParams.size();
     if (n == 0 || depth > 16)
-      return std::nullopt;
+      return nullptr;
     auto* lastParam = static_cast<TemplateParamDecl*>(v->templateParams[n - 1]);
     std::vector<const Ty*> given, packElements;
     for (Node* written : part.templateArgs)
@@ -7218,8 +7220,8 @@ struct GlobalScope::Impl
       size_t i = given.size() + packElements.size();
       Decl* param = v->templateParams[std::min(i, n - 1)];
       const Ty* a = templateArgument(written, param, ctx, depth + 1);
-      if (!a || !a->isKnown() || types.isDependent(a))
-        return std::nullopt;
+      if (!a || !a->isKnown() || (types.isDependent(a) && !dependent))
+        return nullptr;
       std::vector<const Ty*> elements;
       if (written && written->kind == NodeKind::PackType && a->kind == TyKind::Pack)
         elements.assign(a->args.begin(), a->args.end());
@@ -7229,7 +7231,7 @@ struct GlobalScope::Impl
         (lastParam->isPack && given.size() + 1 >= n ? packElements : given).push_back(t);
     }
     if (given.size() > n || (!lastParam->isPack && !packElements.empty()))
-      return std::nullopt;
+      return nullptr;
     Subst bound;
     for (size_t i = 0; i < given.size(); ++i)
       bound.pairs.push_back({v->templateParams[i], given[i]});
@@ -7242,8 +7244,8 @@ struct GlobalScope::Impl
       auto* p = static_cast<TemplateParamDecl*>(v->templateParams[i]);
       TypeContext dctx{lexicalScopeOf(v), &own, &bound, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
       const Ty* t = p->defaultArg ? templateArgument(p->defaultArg, p, dctx, depth + 1) : nullptr;
-      if (!t || !t->isKnown() || types.isDependent(t))
-        return std::nullopt; // `isX<A>` naming fewer arguments than the template has, and no default
+      if (!t || !t->isKnown() || (types.isDependent(t) && !dependent))
+        return nullptr; // `isX<A>` naming fewer arguments than the template has, and no default
       bound.pairs.push_back({p, t});
     }
     std::vector<const Ty*> args;
@@ -7251,10 +7253,19 @@ struct GlobalScope::Impl
       args.push_back(q.type);
     Subst specialised;
     VariableDecl* source = lastParam->isPack ? v : variableSpecialization(v, args, specialised);
-    if (!source)
-      return std::nullopt;
-    const Subst& sourceSubst = source == v ? bound : specialised;
-    if (!source->init)
+    if (source)
+      out = source == v ? bound : specialised;
+    return source;
+  }
+
+  // The value of variable template v for the arguments part writes, read under ctx: the
+  // initializer of the specialisation they pick, evaluated with them bound. nullopt while an
+  // argument is dependent or unknown, or two specialisations match equally well.
+  std::optional<ConstValue> variableTemplateValue(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth)
+  {
+    Subst sourceSubst;
+    VariableDecl* source = variableTemplateSource(v, part, ctx, depth, false, sourceSubst);
+    if (!source || !source->init)
       return std::nullopt;
     LocalStack sourceOwn;
     pushEnclosingTemplateParams(source, sourceOwn);
@@ -7262,6 +7273,22 @@ struct GlobalScope::Impl
                      source->file ? source->file->text : std::string_view()};
     vctx.variableTemplate = source;
     return constAsDeclared(constInitValue(source->init, vctx, depth + 1), source->type ? convertType(source->type, vctx, depth + 1) : nullptr);
+  }
+
+  // The type of `two_v<int>`: the declared type of the specialisation the arguments pick, with them
+  // bound (`T` is int); null when they pick none.
+  const Ty* variableTemplateType(VariableDecl* v, const NamePart& part, const TypeContext& ctx)
+  {
+    Subst sourceSubst;
+    VariableDecl* source = variableTemplateSource(v, part, ctx, 0, true, sourceSubst);
+    if (!source)
+      return nullptr;
+    if (ctx.subst) // inside an instance: its arguments stay for what the declaration names of its own
+      for (const Subst::Pair& p : ctx.subst->pairs)
+        if (!sourceSubst.find(p.param))
+          sourceSubst.pairs.push_back(p);
+    const Ty* t = declaredTypeOf(source, &sourceSubst, 0);
+    return t && t->isKnown() && !containsAuto(t) ? t : nullptr;
   }
 
   // The concept d declares (`template<class T> concept C = ...;`, a variable template with no
@@ -8448,6 +8475,9 @@ struct GlobalScope::Impl
               return bt;
           if (lastPart.hasTemplateArgs && Impl::conceptOf(d))
             return types.boolType(); // `has_load<T, Input>` as a value: a concept-id is a bool
+          if (lastPart.hasTemplateArgs && !d->templateParams.empty())
+            if (const Ty* t = impl.variableTemplateType(static_cast<VariableDecl*>(d), lastPart, ctx()))
+              return t; // `two_v<int>`: T is int here
           if (l.found == Found::Local)
             if (const Ty* walked = locals.deducedTypeOf(d); walked && !impl.containsAuto(walked))
               return walked; // the type this walk gave the local (a class of the function's own, under an instance's arguments)
