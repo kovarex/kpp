@@ -14434,9 +14434,19 @@ struct GlobalScope::Impl
     {
       size_t n = f->templateParams.size(), named = 0;
       std::vector<const Ty*> given;
+      // A parameter pack takes the written arguments from its position on, wherever it is
+      // (`template<typename... Ts, typename InputT, typename... Args> dummyLoad(InputT&, Args&&...)`
+      // called `dummyLoad<char, int>(input)`): the parameters after it are deduced.
+      size_t firstPack = n;
+      for (size_t i = 0; i < n; ++i)
+        if (static_cast<TemplateParamDecl*>(f->templateParams[i])->isPack)
+        {
+          firstPack = i;
+          break;
+        }
       for (Node* written : namePart.templateArgs)
       {
-        Decl* param = n ? f->templateParams[std::min(given.size(), n - 1)] : nullptr;
+        Decl* param = n ? f->templateParams[std::min(std::min(given.size(), n - 1), firstPack)] : nullptr;
         const Ty* t = explicitArgument(written, param);
         bool expansion = written && written->kind == NodeKind::PackType;
         if (expansion && t && t->kind == TyKind::Pack)
@@ -14455,7 +14465,7 @@ struct GlobalScope::Impl
       for (size_t i = 0; i < given.size() && i < n; ++i)
       {
         auto* param = static_cast<TemplateParamDecl*>(f->templateParams[i]);
-        if (param->isPack && i + 1 == n)
+        if (param->isPack)
         {
           std::vector<const Ty*> rest(given.begin() + i, given.end());
           s.pairs.push_back({param, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
