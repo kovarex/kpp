@@ -1,0 +1,25 @@
+// spec: typed unions compare as std::variant does: == when both hold the same alternative and its values are equal; < (and the other orderings) by the alternative held, in declaration order, then by the values; a defaulted <=> of a class with a typed union member orders it so
+// factorio: UndoActionDescription's defaulted <=> over its ValueVariant (std::variant converted to a typed union)
+// pending: "Value has no operator==" (and "no operator<" from a defaulted <=>)
+union enum Value
+{
+  { {int, Integer}, {double, Real}, {String, Text} }
+};
+struct Entry
+{
+  int id = 0;
+  Value value;
+  strong_ordering operator<=>(const Entry&) const = default;
+};
+int main()
+{
+  Value a, b, c, d;
+  a[Integer] = 5;
+  b[Integer] = 7;
+  c[Real] = 1.5;
+  d[Integer] = 5;
+  Entry e1{1, a};
+  Entry e2{1, c};
+  println("{} {} {} {} {} {} {}", a == d, a == b, a < b, b < c, c < a, e1 < e2, e2 == e2);
+  return 0;
+}
