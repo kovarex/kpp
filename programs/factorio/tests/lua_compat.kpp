@@ -1,0 +1,34 @@
+// The Lua compatibility check (docs/path-to-factorio.md, "Converting Lua", step 3's gate):
+// lua_compat.lua run with the converted Lua, which lua-trial.cmd builds with this file; the output
+// must be lua_compat.expected, the C++ build's (lua_compat.cpp). The Lua API's function-like macros
+// are written as what they expand to (luaL_loadbuffer, lua_pcall, lua_tostring).
+extern "C" import "stdio.h";
+
+char compatScript[1 << 20];
+
+int main(int argc, char** argv)
+{
+  if (argc < 2)
+  {
+    fprintf(stderr, "usage: lua_compat script.lua\n");
+    return 2;
+  }
+  FILE* file = fopen(argv[1], "rb");
+  if (!file)
+  {
+    fprintf(stderr, "cannot open %s\n", argv[1]);
+    return 2;
+  }
+  size_t size = fread(compatScript, 1, sizeof(compatScript), file);
+  fclose(file);
+  lua_State* L = luaL_newstate();
+  luaL_openlibs(L, 0); // the debug library as mods get it
+  // A fixed chunk name: the error messages the script prints carry it, whatever path it runs from.
+  if (luaL_loadbufferx(L, compatScript, size, "=lua_compat", nullptr) != LUA_OK || lua_pcallk(L, 0, 0, 0, 0, nullptr) != LUA_OK)
+  {
+    printf("error: %s\n", lua_tolstring(L, -1, nullptr));
+    return 1;
+  }
+  lua_close(L);
+  return 0;
+}

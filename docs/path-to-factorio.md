@@ -1161,7 +1161,7 @@ against the game's Lua headers compiled as C++.
 All of this goes when Lua itself is converted: the game's code then uses Lua's types and macros as
 Kpp code, and kpp_lua_internals.h, lua_internals.c and the `included` lines are deleted.
 
-### Converting Lua: the plan (2026-10-29, not started)
+### Converting Lua: the plan (2026-10-29, step 2 under way)
 
 **What.** `libraries/Lua`: 59 files, 21,449 lines (lua.c and luac.c, the standalone interpreter
 and compiler, left out as the game's build leaves them out). fbuild.bff compiles it as C++ (`/TP`)
@@ -1212,6 +1212,19 @@ lua_TValue 17, the other GC objects) and the type macros (about 150: SemInfo's `
 the headline today; after step 2, an estimated 100 to 150, compiler gaps in C-style code (unions
 of GC objects, casts between them, exceptions as Lua's error mechanism). The game's side should not
 change: it compiles against the import now.
+
+**Step 2, where it stands** (2026-10-29). The trial is now `programs\factorio\lua-trial.cmd`: the
+converter takes `libraries\Lua` itself (no copies), and the build is the headline's with trio's
+headers added. 564 error lines to 48, one parse error left, and each of the 48 is a compiler gap
+with a pending spec: a union's pointer member initialized from nullptr in a brace list
+(luaO_nilobject_ and dummynode_, behind 36 lines; classes/union_pointer_member_from_brace_list),
+C varargs read in a function defined in Kpp (6; interop/c_varargs_definition), offsetof (4;
+language/offsetof), sizeof of a string literal (LUAC_HEADERSIZE; language/sizeof_string_literal)
+and `b < ((i >> 8) & 3)` parsed as template arguments (ldebug.c; language/less_than_parenthesized_shift).
+The converter's part was C's macros as the preprocessor reads them (member lists, types, storage
+words, aliases, statement arguments, constants over several lines), C's parenthesized declarator
+names, assert where an expression stands, and file-local names the library has too (ltablib.c's
+sort).
 
 ### What the parse of the C++ does not see (2026-10-29)
 
