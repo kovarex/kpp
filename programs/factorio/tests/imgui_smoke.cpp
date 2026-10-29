@@ -6,7 +6,6 @@
 #include <imgui/imgui_internal.h>
 #include <stdio.h>
 #include <stdint.h>
-#include <string.h>
 
 static float sample(void* data, int idx) { return ((float*)data)[idx] * 2.0f; }
 static bool item(void* data, int idx, const char** out_text)
@@ -35,8 +34,7 @@ int main()
   int counter = 3;
   bool check = true;
   int current = 1;
-  char text[32] = {};
-  strcpy(text, "edit me"); // (not `= "edit me"`: language/char_array_from_string_literal)
+  char text[32] = "edit me";
   for (int frame = 0; frame < 3; ++frame)
   {
     io.MousePos = ImVec2(40.0f + frame, 60.0f);
