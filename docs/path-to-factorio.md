@@ -33,10 +33,10 @@ hard each site is.
 | **RTTI** | 647 `dynamic_cast`, 93 `typeid` | Type descriptors behind the vtable, `dynamic_cast` through them (single inheritance only, which is the common case) | M |
 | **SIMD intrinsics** | 1,122 `_mm_*` calls (bitmaps, atlas, DXT compression) | Intrinsics as compiler builtins lowered to LLVM vector operations; imported `immintrin.h` declares nothing usable | M |
 | **Statics and global objects** | about 5,000 `static` declarations; codegen rejects globals with constructors and arrays of objects | Static locals with one-time initialisation, global constructors in a defined order (per file, files in dependency order), arrays of objects | M |
-| **`constexpr`** | 4,517 uses, mostly constants, some functions | The constexpr interpreter from the design (ints, bools, enums, simple functions); only literals and `const` initialisers fold today | M |
+| **`constexpr`** | 4,517 uses, mostly constants, some functions | The constexpr interpreter from the design: step 1 is done (typed values with C++'s arithmetic, floats, bodies of returns, `if constexpr` and constant locals, folds over packs; 2026-10-29); loops and assignments, objects and constant data are next | M |
 | **Smaller gaps** | multiple inheritance beyond the first polymorphic base, init-captures, member pointers, bit fields, `goto` (15), stream operators (136), partial specialisations (about 6) | Each small; the converter's error list tells which to do first | S each |
 | **Macro replacements, the big four** | the X-macro lists, `ADD_VALUE` reflection, `InputAction`-style unions, UnitTest++ | design.md section 8: `for constexpr`, `members(T)`, `union enum`, `test` blocks (after review) | L in total |
-| **Resolver tail** | 22% of expressions untyped today | Most of it is `std::`; the rest is templated `using` aliases, dependent lookups and ADL, fixed as the converter exposes them | M, continuous |
+| **Resolver tail** | 22% of expressions untyped today | Most of it is `std::`; the rest is templated `using` aliases, dependent lookups and ADL, fixed as the converter exposes them. And the checker checks every member function of a class template instance whether the program uses it or not (GamePair::str, which its instances cannot compile): C++ instantiates a member only where it is used, and the eager checks put failures no program would see into the `--why` statistics (a static_assert in such a member already counts only when the function is emitted) | M, continuous |
 | **C libraries** | Lua (1,665 includes), SDL3 (69), curl, zlib, png, jpeg, opus, vorbis, zstd, openssl, minizip, stb_image, fontstash, nvapi, Logitech, CL | `extern "C" import` works. Lua is imported as C now and converted later (kovarex, 2026-10-28); the converter expands the function-like macros of lua.h, lauxlib.h and luaconf.h at their 642 uses (programs/factorio/overrides/expand-macros.txt). Left for Lua's own conversion: Factorio's copies of Lua's internal headers are C++ (`class LuaBindableObject*` in lobject.h's Udata, `extern "C"` in lapi.h), so the C import cannot take them, and with them go 61 uses of internal macros (hvalue 13, iscollectable 7, gcvalue 7, ttisnil 6, gval 6, ...) and 14 calls of index2addr in about 10 files | S |
 | **C++ libraries** | tracy (62), steam (62), glm (19), re2 (13), imgui (9), cxxopts, open-vcdiff, StackWalker; metal-cpp (193) is macOS only | Steam has a flat C API; tracy a C API; re2 and imgui need thin C wrappers; glm is a port (small); the rest are replaceable | M |
 | **DirectX 11** | 17 includes, COM interfaces | COM is C-callable through vtables; the importer must take the `lpVtbl` form of the headers, or a thin C wrapper does it | M |
@@ -717,6 +717,24 @@ lines, nearly all from four gaps of the checker's constant evaluator, for the in
   `ChunkGeneratedStatus::generationTaskStates.size()` (28).
 About 740 lines of other errors went, from functions that now fail first at such a layout. One
 tree (the converter output of master b2e6053), master 9909b71's compiler against this one.
+
+**The interpreter's first step (2026-10-29): 23,819 -> 23,511.** The checker and the code
+generator compute constants with one typed arithmetic (design.md, "Compile-time evaluation",
+step 1). What went: the code generator's folds over packs (`a fold expression that expands no
+parameter pack`, 84 lines) and the PipetteID and FactoriopediaID constructors behind them (65);
+the last unknown constant arguments in layouts (`Array<Deque<MapGenerationRequest>,
+generationTaskStates.size()>` 28, `Bitset<Limits<DamageTypeID::IndexType>::max() + 1>` and the
+other Bitset<?> 14, five Array<?> 5); InputAction::inputActionCount read at run time (6); the
+static_asserts the compiler cannot evaluate, 42 -> 27 (floats, enumerators converted to integers,
+`sizeof` of a local array). With it, bit fields with a default member initializer (`bool reserved
+: 1 = false;`, AsteroidChunk): the parser read the width as the assignment `1 = false` (92 lines,
+and the initializer was lost); with the width read right, the code generator wrote each bit
+field's initializer over the whole storage unit it shares, and an aggregate's values went to the
+units instead of the members, silent wrong values both, now stored into each bit field's own bits
+(spec classes/bitfield_default_initializer). The lines that came in are code that gets further:
+multiple inheritance in Surface's and Entity's layouts (+11), `Bitset<256>::reference` and
+Pair's constructors (library gaps). One tree (the converter output of e1b268e), e1b268e's
+compiler against this one.
 
 ### The configuration (2026-10-29)
 

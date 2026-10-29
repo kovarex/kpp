@@ -1902,7 +1902,7 @@ namespace
       if (at(P::Colon) && !at(P::ColonColon) && scope == Scope::Class && !d.isFunction)
       {
         advance();
-        d.bitfield = parseAssignmentNoBrace();
+        d.bitfield = parseConditionalExpression();
       }
     }
 
@@ -3722,6 +3722,22 @@ namespace
 
     Expr* parseAssignment() { return parseAssignmentImpl(true, true); }
     Expr* parseAssignmentNoBrace() { return parseAssignmentImpl(true, false); }
+    // A conditional-expression, what a bit field's width is: `bool flag : 1 = false;` is a width
+    // and a default member initializer, not an assignment.
+    Expr* parseConditionalExpression()
+    {
+      Expr* lhs = parseLogicalOr();
+      if (!at(P::Question))
+        return lhs;
+      uint32_t opTok = pos;
+      advance();
+      ConditionalExpr* c = node<ConditionalExpr>(opTok);
+      c->cond = lhs;
+      c->then = parseExpression();
+      expect(P::Colon, "expected ':' in conditional");
+      c->else_ = parseConditionalExpression();
+      return c;
+    }
     Expr* parseTernaryNoColon() { return parseAssignmentImpl(false, true); }
 
     Expr* parseAssignmentImpl(bool allowTernary, bool allowBrace)

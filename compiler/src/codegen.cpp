@@ -1567,6 +1567,7 @@ namespace
       }
       if (info.isUnion)
         return;
+      std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
       for (Decl* d : info.fieldDecls)
       {
         if (d->kind != NodeKind::VariableDecl)
@@ -1575,6 +1576,20 @@ namespace
         const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
         std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
         const FunctionDecl::CtorInit* init = v->name.empty() ? nullptr : initFor(v->name.last().symbol);
+        if (bitfieldFor(d))
+        {
+          // The unit's first bit field stands for the unit: each bit field in it is initialised.
+          for (Decl* m : unitMembers(info, classDef(t->decl, at), d))
+          {
+            auto* bv = static_cast<VariableDecl*>(m);
+            const FunctionDecl::CtorInit* bitInit = bv->name.empty() ? nullptr : initFor(bv->name.last().symbol);
+            if (bitInit && bitInit->args.size() > 1)
+              unsupported(at, "this member initializer");
+            initializeBitfield(addr, t, info, bv, *bitfieldFor(m), bitInit != nullptr, bitInit && bitInit->args.size() == 1 ? bitInit->args[0] : nullptr,
+                               zeroedUnits, at);
+          }
+          continue;
+        }
         if (const Ty* declared = global.typeOfDecl(v); ft->isReference() || (declared && declared->isReference()))
         {
           // A reference member: the field holds the address of what it refers to.
@@ -1873,20 +1888,29 @@ namespace
             initializeFrom(baseAddr, bt, args[argIdx++], at);
           }
         }
-        // Which value goes to which field: in order, or by name for `.x = 1` designators.
-        std::vector<Expr*> valueOf(info.fieldDecls.size(), nullptr);
+        // The members the values go to: the fields, and each bit field of a storage unit on its
+        // own (the unit's first bit field stands for the unit among the fields).
+        std::vector<Decl*> members;
+        for (Decl* d : info.fieldDecls)
+          if (d->kind == NodeKind::VariableDecl && bitfieldFor(d))
+            for (Decl* m : unitMembers(info, c, d))
+              members.push_back(m);
+          else
+            members.push_back(d);
+        // Which value goes to which member: in order, or by name for `.x = 1` designators.
+        std::vector<Expr*> valueOf(members.size(), nullptr);
         size_t next = 0;
         for (size_t k = argIdx; k < args.size(); ++k)
         {
           uint32_t designator = k < designators.size() ? designators[k] : UINT32_MAX;
           if (designator != UINT32_MAX)
           {
-            size_t found = info.fieldDecls.size();
-            for (size_t j = 0; j < info.fieldDecls.size(); ++j)
-              if (info.fieldDecls[j]->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(info.fieldDecls[j])->name.empty() &&
-                  static_cast<VariableDecl*>(info.fieldDecls[j])->name.last().symbol == designator)
+            size_t found = members.size();
+            for (size_t j = 0; j < members.size(); ++j)
+              if (members[j]->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(members[j])->name.empty() &&
+                  static_cast<VariableDecl*>(members[j])->name.last().symbol == designator)
                 found = j;
-            if (found == info.fieldDecls.size())
+            if (found == members.size())
               unsupported(at, "a designator naming no field of " + qualifiedName(c) + " (" + sym(designator) + ")");
             valueOf[found] = args[k];
             next = found + 1;
@@ -1901,13 +1925,21 @@ namespace
           valueOf[next++] = args[k];
         }
         size_t i = 0;
-        for (Decl* d : info.fieldDecls)
+        std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
+        for (Decl* d : members)
         {
+          Expr* value = valueOf[i++];
+          if (d->kind == NodeKind::VariableDecl)
+            if (const BitfieldInfo* bits = bitfieldFor(d))
+            {
+              initializeBitfield(addr, t, info, static_cast<VariableDecl*>(d), *bits, value != nullptr, value, zeroedUnits, at);
+              continue;
+            }
           std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
           const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
           const Ty* declared = d->kind == NodeKind::VariableDecl ? global.typeOfDecl(d) : nullptr;
           bool reference = ft->isReference() || (declared && declared->isReference());
-          if (Expr* value = valueOf[i++])
+          if (value)
           {
             if (reference)
               bindReferenceMember(fieldAddr, value, at); // `Ref r{x}`: the member refers to x
@@ -2035,6 +2067,53 @@ namespace
       fn += "  " + shifted + " = shl " + unitLl + " " + masked + ", " + std::to_string(bits.shift) + "\n";
       fn += "  " + merged + " = or " + unitLl + " " + cleared + ", " + shifted + "\n";
       fn += "  store " + unitLl + " " + merged + ", ptr " + addr + "\n";
+    }
+
+    // The bit fields that share first's storage unit, in declaration order (first among them).
+    std::vector<Decl*> unitMembers(const StructInfo& info, ClassDecl* c, Decl* first)
+    {
+      std::vector<Decl*> out;
+      uint32_t index = fieldIndexOf(info, first);
+      if (c)
+        for (Decl* m : c->members)
+          if (info.bitfields.count(m) && fieldIndexOf(info, m) == index)
+            out.push_back(m);
+      if (out.empty())
+        out.push_back(first);
+      return out;
+    }
+
+    // A bit field initialised: from value (an aggregate's element, a constructor initializer's
+    // argument; `: flag()` is explicit with none, a zero), else from its default member
+    // initializer (`bool known : 1 = true;`). It shares its storage unit with its neighbours: the
+    // unit is zeroed once, at its first member (zeroed), and each value stored into its own bits.
+    void initializeBitfield(const std::string& addr, const Ty* t, const StructInfo& info, VariableDecl* v, const BitfieldInfo& bits,
+                            bool explicitInit, Expr* value, std::set<size_t>& zeroed, Node* at)
+    {
+      size_t index = fieldIndexOf(info, v);
+      std::string fieldAddr = gep(info.name, addr, index);
+      if (zeroed.insert(index).second)
+        fn += "  store " + llType(info.fieldTypes[index], at) + " 0, ptr " + fieldAddr + "\n";
+      const Ty* memberTy = types.unqualified(types.stripRef(declType(v)));
+      auto storeInto = [&](Expr* e, Node* where)
+      {
+        if (e && e->kind == NodeKind::BraceInitExpr)
+        {
+          auto* list = static_cast<BraceInitExpr*>(e);
+          if (list->args.empty())
+            return; // `{}`: zero, as the unit already is
+          if (list->args.size() != 1)
+            unsupported(where, "a bit field initialised with a list of several values");
+          e = list->args[0];
+        }
+        storeBitfield(convert(rvalue(e), memberTy, where), fieldAddr, bits, memberTy, where);
+      };
+      if (value)
+        withSingleElement(value, at, [&](Expr* one) { storeInto(one, at); });
+      else if (explicitInit)
+        storeBitfield(Value{"0", bits.unit, false}, fieldAddr, bits, memberTy, at);
+      else if (v->init)
+        withMemberInitializer(addr, t, v, [&](Expr* init) { storeInto(init, v); });
     }
 
     // The address of the object a variable or parameter declaration names (what lvalue gives a

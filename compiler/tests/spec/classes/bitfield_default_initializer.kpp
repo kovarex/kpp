@@ -1,6 +1,5 @@
 // spec: a bit field with a default member initializer (C++20): the width is a constant expression and the initializer follows it; bit fields sharing a storage unit each get their own value, from a default member initializer, a constructor initializer or an aggregate's braces
 // factorio: AsteroidChunk (`bool reserved : 1 = false;`), 92 headline lines
-// pending: the width was parsed as the assignment `1 = false`, which lost the initializer; bit fields sharing a storage unit had their initializers written over each other
 struct Flags
 {
   bool reserved : 1 = false;
