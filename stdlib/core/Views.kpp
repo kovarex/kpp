@@ -145,8 +145,7 @@ struct TransformIterator
   TransformIterator(It position, const F* f) : position(position), f(f) {}
 
   // f of the element, with the reference f returns.
-  // (Called as f->operator()(...): spec language/call_operator_class_result.)
-  auto operator*() const { return this->f->operator()(*this->position); }
+  auto operator*() const { return (*this->f)(*this->position); }
   TransformIterator<It, F>& operator++()
   {
     ++this->position;
