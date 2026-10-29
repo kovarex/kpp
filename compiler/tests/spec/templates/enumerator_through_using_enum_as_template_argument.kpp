@@ -1,0 +1,46 @@
+// spec: value template arguments in a static member's initializer taking functions of instances (`&positionFunction<AlignTo::Begin, Direction::North>`): an enumerator of the class's own nested enum, declared after the static member, and one named through another class's `using enum` (`Direction::North` for `Direction::Enum::North`)
+// found in src/Entity/TransportBeltConnectable.kpp: straightItemPositionFunctions' table of `&TransportBeltConnectableHelper::positionFunction<AlignTo::Begin, Direction::North>` asked for `positionFunction<?@0::Begin, <unknown>>`, and the instance failed on "a template parameter whose value is not known here" (10 errors)
+// pending: the arguments are not evaluated
+class Direction
+{
+public:
+  enum class Enum : uint8_t { North = 0, East = 4, South = 8, West = 12 };
+  using enum Enum;
+};
+struct Position { int x, y; };
+using PositionFunction = Position (*)(int, int);
+class Belt
+{
+public:
+  static const PositionFunction functions[2][2];
+  enum class AlignTo { Begin = 0, End = 1 };
+};
+namespace BeltHelper
+{
+  template<Direction::Enum direction>
+  Position rotated(int x, int y)
+  {
+    if constexpr (direction == Direction::North)
+      return Position{x, y};
+    else if constexpr (direction == Direction::East)
+      return Position{-y, x};
+    else
+      return Position{-x, -y};
+  }
+  template<Belt::AlignTo alignment, Direction::Enum direction>
+  Position positionFunction(int position, int length)
+  {
+    return rotated<direction>(1, alignment == Belt::AlignTo::Begin ? position - length : position);
+  }
+}
+const PositionFunction Belt::functions[2][2] =
+{
+  {&BeltHelper::positionFunction<AlignTo::Begin, Direction::North>, &BeltHelper::positionFunction<AlignTo::Begin, Direction::East>},
+  {&BeltHelper::positionFunction<AlignTo::End, Direction::North>, &BeltHelper::positionFunction<AlignTo::End, Direction::East>},
+};
+int main()
+{
+  Position a = Belt::functions[0][0](5, 2), b = Belt::functions[0][1](5, 2), c = Belt::functions[1][0](5, 2);
+  println("{} {} {} {} {} {}", a.x, a.y, b.x, b.y, c.x, c.y);
+  return 0;
+}
