@@ -58,6 +58,14 @@ builds win less unless machine code is cached per function.
 - Compile-time computation is done with ordinary constexpr code run by an interpreter.
 - Factorio survey: almost no SFINAE (2 `enable_if`, 1 `void_t`), but 593 full
   specializations, plus `if constexpr`, `requires` and variadics, so those stay.
+- Constraints (2026-10-29): a requires clause is evaluated for a call's deduced arguments, its
+  `!`, `&&`, `||` and parentheses over parts that are traits (`isIntegral<T>`), concepts, boolean
+  variable templates (`hasBegin<C>`), requires-expressions (each requirement must type-check for
+  the arguments) and any other constant expression (`N1 * D2 <= N2 * D1` over deduced constants).
+  A part whose arguments do not form for the known arguments (`decltype(declval<T>().str())` for a
+  T without str()) is false, as C++'s substitution failure is. A clause naming something not
+  declared is a compile error, and so is a clause that cannot be evaluated once every argument is
+  known: never a silent pass. While an argument is still dependent the clause waits.
 - Instantiation depth (implementation limit, 2026-10-28, open to change by kovarex): a function
   instantiation requested through a chain of more than 64 instantiations, each asked for by the
   previous one's body, is an error naming the last two. Without a limit, a template that
