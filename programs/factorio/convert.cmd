@@ -22,6 +22,9 @@ rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-fact
 rem Lua"). No other input has .c files.
 set LUA=C:\Factorio\libraries\Lua
 set EXT=--ext .cpp,.hpp,.h,.kpp,.c
+rem Fresh every run, as kpp\ below: a file an older conversion wrote and this one does not (a header
+rem no file includes any more, as ShaderProgram.hpp) would stay in the tree and be built with it.
+for %%d in (CommonUtil Agui cxxopts StackWalker Lua src UnitTest++ tests) do if exist "%WHOLE%\%%d" rd /s /q "%WHOLE%\%%d"
 %KPPC% --no-std --quiet --convert %WHOLE% %EXT% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUA% %SRC% C:\Factorio\libraries\UnitTest++ C:\Factorio\tests || exit /b 1
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
 set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude C:\Factorio\libraries\trio --cinclude native\include
