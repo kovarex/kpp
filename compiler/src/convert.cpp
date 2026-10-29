@@ -84,6 +84,8 @@ namespace
     {"_DEBUG", ""}, {"DEBUG", ""}, {"USE_COMMON_HPP", ""}, {"LUA_USE_APICHECK", ""}, {"DISABLE_EXPRESSION_ID", ""}, {"SPACE_AGE", ""},
     // the factorio project's .librarySpecificDefines and .sdlDefines
     {"NOMINMAX", ""}, {"BUILDING_WARNLESS_C", ""}, {"CURL_STATICLIB", ""}, {"SDL_MAIN_HANDLED", ""}, {"SDL_SENSOR_DISABLED", ""},
+    // the lua project's .librarySpecificDefines (.luaConfig); only Lua's own files test it
+    {"LUA_COMPAT_ALL", ""},
     // MSVC for x64, C++ with the standard library (<optional> defines __cpp_lib_optional)
     {"_WIN32", "1"}, {"_WIN64", "1"}, {"_MSC_VER", "1944"}, {"_M_X64", "100"}, {"_M_AMD64", "100"}, {"__cplusplus", "199711L"},
     {"__cpp_lib_optional", "202110L"},
@@ -112,6 +114,12 @@ namespace
   // .factorioFilesForOtherPlatforms): PngLoad.cpp is Linux's image loader (`#error Only for
   // linux`), StacktraceToStream.cpp the stack trace printer of the other platforms. Not converted.
   const std::set<std::string> filesForOtherPlatforms = {"src/Graphics/PngLoad.cpp", "src/Util/StacktraceToStream.cpp"};
+  // The library files the game's build leaves out (fbuild.bff's .CompilerInputExcludedFiles): Lua's
+  // standalone interpreter and compiler, by their directory and name.
+  const std::set<std::string> filesNotBuilt = {"Lua/lua.c", "Lua/luac.c"};
+  // The headers a library's build force-includes (fbuild.bff: Lua's `/FI"override_printf.h"`), by
+  // the library's directory name: its files see them before their own includes.
+  const std::map<std::string, std::string> forcedIncludes = {{"Lua", "override_printf.h"}};
   // The standard headers `__has_include(<...>)` finds: the ones the game asks about, all in MSVC's
   // library (the experimental one is deprecated there, still present).
   const std::set<std::string> availableHeaders = {"filesystem", "experimental/filesystem", "optional", "variant", "string_view"};
@@ -531,7 +539,7 @@ namespace
 
   // Known object-like and function-like macros of the corpus that have a direct Kpp spelling.
   const std::map<std::string, std::string> knownMacros = {
-    {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"VCALL", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
+    {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
     {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"}, {"NULL", "nullptr"},
     {"DEV_TOOL_VARIABLE", ""}, {"BEGIN_SUPPRESS_CONVERSIONS", ""}, {"END_SUPPRESS_CONVERSIONS", ""}, {"BEGIN_FORCE_OPTIMIZE", ""},
@@ -1631,6 +1639,264 @@ namespace
     return parts >= 2;
   }
 
+  // The text of a macro body made of string literals, string macros (in objects) and calls of
+  // function-like macros (in macros) that give string literals, expanded: luaconf.h's
+  // `LUA_QL("%s")` with `#define LUA_QL(x) "'" x "'"` is `"'" "%s" "'"`. Empty when the body is
+  // anything else.
+  std::string stringMacroText(const std::string& body, const std::map<std::string, std::string>& objects,
+                              const std::map<std::string, std::pair<std::vector<std::string>, std::string>>& macros, int depth = 0)
+  {
+    if (depth > 8)
+      return "";
+    std::string out;
+    size_t i = 0;
+    auto skipSpace = [&]()
+    {
+      while (i < body.size() && (body[i] == ' ' || body[i] == '\t'))
+        ++i;
+    };
+    for (skipSpace(); i < body.size(); skipSpace())
+    {
+      if (body[i] == '"')
+      {
+        size_t e = i + 1;
+        while (e < body.size() && body[e] != '"')
+          e += body[e] == '\\' ? 2 : 1;
+        if (e >= body.size())
+          return "";
+        out += (out.empty() ? "" : " ") + body.substr(i, e + 1 - i);
+        i = e + 1;
+      }
+      else if (isalpha((unsigned char)body[i]) || body[i] == '_')
+      {
+        size_t e = i;
+        while (e < body.size() && (isalnum((unsigned char)body[e]) || body[e] == '_'))
+          ++e;
+        std::string name = body.substr(i, e - i);
+        i = e;
+        skipSpace();
+        std::string text;
+        if (auto o = objects.find(name); o != objects.end() && isStringLiterals(o->second))
+          text = o->second;
+        else if (auto m = macros.find(name); m != macros.end() && i < body.size() && body[i] == '(')
+        {
+          // The arguments, split at top-level commas, put in for the parameters by name.
+          std::vector<std::string> args;
+          int level = 0;
+          size_t start = i + 1, k = i;
+          for (; k < body.size(); ++k)
+          {
+            if (body[k] == '"')
+            {
+              for (++k; k < body.size() && body[k] != '"'; ++k)
+                if (body[k] == '\\')
+                  ++k;
+              continue;
+            }
+            if (body[k] == '(')
+              ++level;
+            else if (body[k] == ')' && --level == 0)
+              break;
+            else if (body[k] == ',' && level == 1)
+            {
+              args.push_back(body.substr(start, k - start));
+              start = k + 1;
+            }
+          }
+          if (k >= body.size())
+            return "";
+          args.push_back(body.substr(start, k - start));
+          i = k + 1;
+          const auto& [params, macroBody] = m->second;
+          if (args.size() != params.size())
+            return "";
+          std::string expanded;
+          for (size_t q = 0; q < macroBody.size();)
+          {
+            if (isalpha((unsigned char)macroBody[q]) || macroBody[q] == '_')
+            {
+              size_t r = q;
+              while (r < macroBody.size() && (isalnum((unsigned char)macroBody[r]) || macroBody[r] == '_'))
+                ++r;
+              std::string word = macroBody.substr(q, r - q);
+              auto param = std::find(params.begin(), params.end(), word);
+              expanded += param == params.end() ? word : args[param - params.begin()];
+              q = r;
+            }
+            else if (macroBody[q] == '"')
+            {
+              size_t r = q + 1;
+              while (r < macroBody.size() && macroBody[r] != '"')
+                r += macroBody[r] == '\\' ? 2 : 1;
+              expanded += macroBody.substr(q, r + 1 - q);
+              q = r + 1;
+            }
+            else
+              expanded += macroBody[q++];
+          }
+          text = stringMacroText(expanded, objects, macros, depth + 1);
+        }
+        if (text.empty())
+          return "";
+        out += (out.empty() ? "" : " ") + text;
+      }
+      else
+        return "";
+    }
+    return isStringLiterals(out) ? out : "";
+  }
+
+  // Whether an object-like macro's body is no value but text C++ splices in where the name stands:
+  // nothing (`#define LUAI_DDEF /* empty */`), declarations (lobject.h's `#define CommonHeader
+  // GCObject *next; lu_byte tt; lu_byte marked`, used as `CommonHeader;` among a struct's members),
+  // a type (`#define LUA_NUMBER double`, `#define LUAI_UMEM size_t`, `unsigned LUA_INT32`), or
+  // storage and attribute words (`#define LUA_API extern "C"`, `#define l_noret void
+  // __declspec(noreturn)`). The conversion writes such a macro out at its uses, as the
+  // preprocessor did; a constant of it would be wrong.
+  bool isSplicedMacroBody(std::string body)
+  {
+    for (size_t c = body.find("/*"); c != std::string::npos; c = body.find("/*", c))
+    {
+      size_t e = body.find("*/", c + 2);
+      body.replace(c, (e == std::string::npos ? body.size() : e + 2) - c, " ");
+    }
+    if (body.find_first_not_of(" \t") == std::string::npos)
+      return true;
+    // Declarations, a braced initializer, a list (lobject.h's `#define NILCONSTANT {NULL}, LUA_TNIL`).
+    int depth = 0;
+    for (size_t i = 0; i < body.size(); ++i)
+      if (body[i] == '"' || body[i] == '\'')
+        for (char quote = body[i++]; i < body.size() && body[i] != quote; ++i)
+          i += body[i] == '\\';
+      else if (body[i] == ';' || body[i] == '{' || (body[i] == ',' && depth == 0))
+        return true;
+      else if (body[i] == '(')
+        ++depth;
+      else if (body[i] == ')')
+        --depth;
+    static const std::set<std::string> words = {"void", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "bool",
+                                                "const", "volatile", "extern", "static", "inline", "__forceinline", "__inline", "register",
+                                                "__vectorcall", "__cdecl", "__stdcall", "__fastcall", "__thiscall"};
+    bool keyword = false;
+    size_t identifiers = 0;
+    std::string last;
+    for (size_t i = 0; i < body.size();)
+    {
+      char c = body[i];
+      if (c == ' ' || c == '\t' || c == '*' || c == '&')
+        ++i;
+      else if (c == '"')
+      {
+        // extern "C"
+        if (body.compare(i, 3, "\"C\"") != 0)
+          return false;
+        i += 3;
+      }
+      else if (isalpha((unsigned char)c) || c == '_')
+      {
+        size_t e = i;
+        while (e < body.size() && (isalnum((unsigned char)body[e]) || body[e] == '_'))
+          ++e;
+        std::string w = body.substr(i, e - i);
+        i = e;
+        if (w == "__declspec" || w == "__attribute__")
+        {
+          size_t open = body.find_first_not_of(" \t", i);
+          if (open == std::string::npos || body[open] != '(')
+            return false;
+          int depth = 0;
+          size_t k = open;
+          for (; k < body.size(); ++k)
+            if (body[k] == '(')
+              ++depth;
+            else if (body[k] == ')' && --depth == 0)
+              break;
+          if (k >= body.size())
+            return false;
+          i = k + 1;
+          keyword = true;
+        }
+        else if (words.count(w))
+          keyword = true;
+        else
+        {
+          ++identifiers;
+          last = w;
+        }
+      }
+      else
+        return false;
+    }
+    // Words with at most one other name (`unsigned LUA_INT32`, `struct lua_State`), or a C typedef's
+    // name alone (`size_t`, `ptrdiff_t`).
+    return (keyword && identifiers <= 1) || (identifiers == 1 && last.size() > 2 && last.compare(last.size() - 2, 2, "_t") == 0);
+  }
+
+  // Whether `#define name body` makes name another name for a function or variable, written out at
+  // its uses as the preprocessor does: override_printf.h's `#define sprintf trio_sprintf`, which
+  // Lua's C++ build is force-included with so that it formats as trio does (a constant of it would
+  // be another sprintf beside the library's). A name in capitals keeps its constant.
+  bool isAliasMacro(const std::string& name, const std::string& body)
+  {
+    if (body.empty() || body == name || isAllCapsName(name) || !(isalpha((unsigned char)body[0]) || body[0] == '_'))
+      return false;
+    for (char c : body)
+      if (!(isalnum((unsigned char)c) || c == '_'))
+        return false;
+    return true;
+  }
+
+  // What a spliced macro (isSplicedMacroBody) is written out as: its body without comments and
+  // without calling conventions, which Kpp has none of (SSE.hpp's `#define VCALL __vectorcall` is
+  // nothing), the spliced and string macros it names (in objects) written out in turn
+  // (lobject.h's ClosureHeader begins with CommonHeader).
+  std::string splicedMacroText(std::string body, const std::map<std::string, std::string>& objects, int depth = 0)
+  {
+    for (size_t c = body.find("/*"); c != std::string::npos; c = body.find("/*", c))
+    {
+      size_t e = body.find("*/", c + 2);
+      body.replace(c, (e == std::string::npos ? body.size() : e + 2) - c, " ");
+    }
+    static const std::set<std::string> conventions = {"__vectorcall", "__cdecl", "__stdcall", "__fastcall", "__thiscall"};
+    std::string out;
+    for (size_t i = 0; i < body.size();)
+    {
+      if (body[i] == '"' || body[i] == '\'')
+      {
+        size_t e = i + 1;
+        while (e < body.size() && body[e] != body[i])
+          e += body[e] == '\\' ? 2 : 1;
+        e = std::min(e + 1, body.size());
+        out.append(body, i, e - i);
+        i = e;
+      }
+      else if (isalpha((unsigned char)body[i]) || body[i] == '_')
+      {
+        size_t e = i;
+        while (e < body.size() && (isalnum((unsigned char)body[e]) || body[e] == '_'))
+          ++e;
+        std::string word = body.substr(i, e - i);
+        i = e;
+        if (conventions.count(word))
+          continue;
+        if (word == "NULL")
+        {
+          out += "nullptr"; // lobject.h's NILCONSTANT, `{NULL}, LUA_TNIL`
+          continue;
+        }
+        auto o = objects.find(word);
+        if (o != objects.end() && depth < 8 && (isSplicedMacroBody(o->second) || isStringLiterals(o->second)))
+          out += splicedMacroText(o->second, objects, depth + 1);
+        else
+          out += word;
+      }
+      else
+        out += body[i] == '\t' ? ' ' : body[i], ++i;
+    }
+    size_t a = out.find_first_not_of(' '), b = out.find_last_not_of(' ');
+    return a == std::string::npos ? std::string() : out.substr(a, b - a + 1);
+  }
+
   struct OverrideFile
   {
     std::string text;
@@ -1647,7 +1913,7 @@ namespace
     bool isHeader() const
     {
       std::string ext = in.path.extension().string();
-      return ext != ".cpp" && ext != ".cc";
+      return ext != ".cpp" && ext != ".cc" && ext != ".c";
     }
     const OverrideKeys* overrides = nullptr; // definitions a hand-written file replaces
     std::map<std::string, MemberOverride>* memberOverrides = nullptr; // members a hand-written file adds to classes
@@ -1908,6 +2174,8 @@ namespace
     // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
     // include order.
     std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
+    // The includes of this file that name a converted file beside it (siblingIncludes): removed.
+    const std::set<std::string>* siblingIncludes = nullptr;
     // The object-like macros of this file and the headers it reaches that are written out at their
     // uses: those whose body is string literals (UTF8_BULLET; constants in the conversion) where
     // C++ concatenates them with a literal (`"\n" UTF8_BULLET " "`, since only literals concatenate),
@@ -2204,11 +2472,44 @@ namespace
           }
         }
       }
+      if (!functionLike && body == name)
+      {
+        // Crypto.cpp's `#define fileno fileno` (so that curl's `#ifndef fileno` declares nothing):
+        // a use is the name itself, as the preprocessor leaves it.
+        counts.add("macros naming themselves");
+        return "// macro naming itself: " + line;
+      }
+      if (!functionLike && !isStringLiterals(body) && objectMacros.count(name) && isStringLiterals(objectMacros.at(name)))
+        body = objectMacros.at(name); // made of string macros (lua.h's LUA_RELEASE): their literals
+      if (!functionLike && (isSplicedMacroBody(body) || (isAliasMacro(name, body) && !localMacroAt(body, offset))))
+      {
+        // Written out at its uses (convertTokens, objectMacros): declarations, a type, storage words,
+        // another name.
+        counts.add("spliced macros");
+        std::string commented = "// macro written out at its uses: ";
+        for (char c : line)
+        {
+          commented += c;
+          if (c == '\n')
+            commented += "// ";
+        }
+        return commented;
+      }
       if (!functionLike && !body.empty())
       {
         bool constant = true;
         int quotes = 0, depth = 0;
-        for (char c : body)
+        // Checked without its comments and with tabs as spaces (lstate.h's `#define CIST_LUA\t(1<<0)\t/* ... */`).
+        std::string checked = body;
+        for (size_t c = checked.find("/*"); c != std::string::npos; c = checked.find("/*", c))
+        {
+          size_t e = checked.find("*/", c + 2);
+          checked.replace(c, (e == std::string::npos ? checked.size() : e + 2) - c, " ");
+        }
+        for (char& c : checked)
+          if (c == '\t')
+            c = ' ';
+        for (char c : checked)
         {
           if (c == '"')
             ++quotes;
@@ -2252,6 +2553,10 @@ namespace
         }
         if (constant && (quotes == 0 || quotes == 2))
         {
+          // Its function-like macros expanded, as at a use (lgc.h's `#define WHITEBITS
+          // bit2mask(WHITE0BIT, WHITE1BIT)`).
+          if (!localMacros.empty())
+            body = rescanMacros(body, offset);
           counts.add("macro to constant");
           std::string indent = line.substr(0, line.find('#'));
           // In a class's definition (StackWalker's `#define MAX_MODULE_NAME32 255` among its
@@ -2375,6 +2680,14 @@ namespace
                                                                     {"cfloat", "float.h"}, {"climits", "limits.h"}, {"cstdint", "stdint.h"},
                                                                     {"cstddef", "stddef.h"}, {"cassert", "assert.h"}, {"csignal", "signal.h"},
                                                                     {"clocale", "locale.h"}, {"cwctype", "wctype.h"}, {"cinttypes", "inttypes.h"}};
+          if (siblingIncludes && siblingIncludes->count(header))
+          {
+            // A converted file of this file's directory (Lua's own headers, by names a C library's
+            // prefix would otherwise take for an import): its symbols are the program's.
+            remove(offset, removeLength);
+            counts.add("includes removed");
+            continue;
+          }
           auto cxx = cxxToC.find(base);
           if (cxx != cxxToC.end())
             base = cxx->second;
@@ -2662,11 +2975,26 @@ namespace
     // useOffset is where the macro is used, for __FILE__ and __LINE__ in known macros' replacements.
     std::string expandMacro(const LocalMacro& m, const std::vector<std::string>& args, uint32_t useOffset)
     {
-      std::string result = expandMacroOnce(m, args);
+      // The preprocessor's file and line in the body are the use's (`__FILE__` in a header's
+      // release_assert-like macro).
+      return this->renameGameClasses(withFileAndLine(rescanMacros(expandMacroOnce(m, args), useOffset), useOffset));
+    }
+    // C's `assert(c)` where an expression stands (llimits.h's `#define check_exp(c,e)
+    // (lua_assert(c), (e))`): Kpp's assert is a statement, so the assert goes in a lambda called on
+    // the spot, which asserts as the statement does.
+    static bool expressionPosition(const std::string& before)
+    {
+      size_t last = before.find_last_not_of(" \t\n");
+      return last != std::string::npos && strchr("(,?=&|!+-*/%<>^~[", before[last]);
+    }
+    std::string rescanMacros(std::string result, uint32_t useOffset)
+    {
       // Re-scan for nested local macro calls (X-macro pattern: outer expands to inner(args) calls)
       // and for the known function macros (a local macro wrapping SAVING_TAG, for example), which
-      // the token-level rewrite does not see inside the expansion's text.
-      for (int pass = 0; pass < 4; ++pass)
+      // the token-level rewrite does not see inside the expansion's text. Each pass goes one level
+      // deeper, until nothing is left to expand: Lua's nest about eight deep (setsvalue2s through
+      // checkliveness, righttt and ttypenv to rttype).
+      for (int pass = 0; pass < 16; ++pass)
       {
         bool changed = false;
         std::string next;
@@ -2678,6 +3006,18 @@ namespace
             while (j < result.size() && isIdentChar(result[j]))
               ++j;
             std::string name = result.substr(i, j - i);
+            if (name == "assert" && j < result.size() && result[j] == '(' && expressionPosition(next))
+            {
+              size_t close = closingParen(result, j);
+              if (close != std::string::npos)
+              {
+                next += "([&] { assert(" + result.substr(j + 1, close - j - 1) + "); }())";
+                changed = true;
+                i = close + 1;
+                counts.add("asserts in expressions put in lambdas");
+                continue;
+              }
+            }
             const LocalMacro* inner = localMacroAt(name, useOffset); // the definition in force where the outer macro is used
             if (inner && j < result.size() && result[j] == '(')
             {
@@ -2775,6 +3115,18 @@ namespace
                 continue;
               }
             }
+            // A string, name or spliced macro (lstring.h's `luaS_newliteral(L, MEMERRMSG)` gives
+            // `"" MEMERRMSG`), which convertTokens writes out at the uses it sees, but not in here.
+            if (auto om = objectMacros.find(name); om != objectMacros.end() && !(j < result.size() && result[j] == '(') &&
+                !(i > 0 && (result[i - 1] == '.' || (result[i - 1] == '>' && i > 1 && result[i - 2] == '-') ||
+                            (result[i - 1] == ':' && i > 1 && result[i - 2] == ':'))) &&
+                macroHoldsAt(om->first, useOffset))
+            {
+              next += om->second;
+              changed = true;
+              i = j;
+              continue;
+            }
             // The object-like names the converter rewrites (SDL_PRIs64 in a LOG_GRAPHICS_DEBUG
             // argument, FAR, ...), which the token-level rewrite does not see inside the expansion.
             if (auto km = knownMacros.find(name); km != knownMacros.end() && !(j < result.size() && result[j] == '('))
@@ -2805,9 +3157,7 @@ namespace
           break;
         result = std::move(next);
       }
-      // The preprocessor's file and line in the body are the use's (`__FILE__` in a header's
-      // release_assert-like macro).
-      return this->renameGameClasses(withFileAndLine(result, useOffset));
+      return result;
     }
 
     // The game's classes whose names the library uses, renamed in text that never was tokens.
@@ -2832,6 +3182,25 @@ namespace
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        // C's parenthesized declarator name, lua.h's `LUA_API int (lua_gettop) (lua_State *L);`
+        // (written so that a function-like macro of the same name does not expand): the name alone,
+        // in a declaration outside any function body. `(f)(x)` in an expression is a call and stays.
+        if (t.is(P::LParen) && i > 0 && i + 3 < toks.size() && toks[i + 1].getKind() == TokenKind::Identifier && toks[i + 2].is(P::RParen) &&
+            toks[i + 3].is(P::LParen) && !functionNameAt(t.offset))
+        {
+          static const std::set<std::string_view> typeWords = {"void", "char", "short", "int", "long", "float", "double", "bool", "signed",
+                                                               "unsigned", "const", "volatile", "auto"};
+          const Token& before = toks[i - 1];
+          if (before.getKind() == TokenKind::Identifier || (before.getKind() == TokenKind::Keyword && typeWords.count(spelling(i - 1))) ||
+              before.is(P::Star) || before.is(P::Amp) || before.is(P::AndAnd) || before.is(P::Greater))
+          {
+            remove(t.offset, t.length);
+            remove(toks[i + 2].offset, toks[i + 2].length);
+            counts.add("parenthesized declarator names unwrapped");
+            i += 2;
+            continue;
+          }
+        }
         if (t.getKind() == TokenKind::Identifier && spelling(i) == "__uuidof" && i + 3 < toks.size() && toks[i + 1].is(P::LParen) &&
             toks[i + 2].getKind() == TokenKind::Identifier && toks[i + 3].is(P::RParen) && i > 2 && (toks[i - 1].is(P::EqEq) || toks[i - 1].is(P::NotEq)) &&
             toks[i - 2].getKind() == TokenKind::Identifier &&
@@ -2930,7 +3299,9 @@ namespace
           if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset))
           {
             replace(t.offset, t.length, macro->second);
-            counts.add(isStringLiterals(macro->second) ? "string macros written out" : "name macros written out");
+            counts.add(isStringLiterals(macro->second)                                       ? "string macros written out"
+                       : isQualifiedName(macro->second) || isAliasMacro(macro->first, macro->second) ? "name macros written out"
+                                                                                                      : "spliced macros written out");
             continue;
           }
         if (t.getKind() == TokenKind::Identifier && headerAliases && !headerAliases->empty() &&
@@ -5675,7 +6046,16 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
           std::string body = line.substr(nameEnd);
           size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
           body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
-          if (isStringLiterals(body) || isQualifiedName(body))
+          // Made of string macros and literals (lua.h's `#define LUA_RELEASE LUA_VERSION "."
+          // LUA_VERSION_RELEASE`, luaconf.h's `#define LUA_QS LUA_QL("%s")`): their literals.
+          if (!isStringLiterals(body) && objects)
+            if (std::string literals = stringMacroText(body, *objects, macros); !literals.empty())
+              body = literals;
+          if (!isStringLiterals(body) && !isQualifiedName(body) && isSplicedMacroBody(body) && objects)
+            body = splicedMacroText(body, *objects);
+          // (An alias of a function-like macro, lobject.h's `#define setobj2s setobj`, is that macro, above.)
+          if (isStringLiterals(body) || isQualifiedName(body) || isSplicedMacroBody(body) ||
+              (isAliasMacro(line.substr(p, nameEnd - p), body) && !macros.count(body)))
           {
             if (objects)
               (*objects)[line.substr(p, nameEnd - p)] = body;
@@ -5819,6 +6199,13 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       inputByPath[pathKey(inputs[k].path)] = k;
   std::vector<std::vector<size_t>> includedInputs(inputs.size());
   std::vector<std::set<std::string>> externalIncludes(inputs.size()); // the file names of the other includes
+  // The includes written as a file of the including file's own directory that is converted too (Lua's
+  // `#include "lua.h"` in lapi.c): the converted file, never an import, whatever its name.
+  std::vector<std::set<std::string>> siblingIncludes(inputs.size());
+  for (const auto& [key, k] : inputByPath)
+    if (auto forced = forcedIncludes.find(inputs[k].path.parent_path().filename().string()); forced != forcedIncludes.end())
+      if (auto header = inputByPath.find(pathKey(inputs[k].path.parent_path() / forced->second)); header != inputByPath.end() && header->second != k)
+        includedInputs[k].push_back(header->second);
   for (const auto& [key, k] : inputByPath)
   {
     std::string_view t = inputs[k].text;
@@ -5843,6 +6230,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         {
           includedInputs[k].push_back(it->second);
           converted = true;
+          if (&c == &candidates[0] && !name.has_parent_path())
+            siblingIncludes[k].insert(name.string());
           break;
         }
       if (!converted)
@@ -6153,7 +6542,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   {
     const ConvertInput& in = *static_cast<const ConvertInput*>(a.file);
     std::string ext = in.path.extension().string();
-    if (!a.namespaceScope || (ext != ".cpp" && ext != ".cc") || aliasFiles[a.name].size() < 2)
+    if (!a.namespaceScope || (ext != ".cpp" && ext != ".cc" && ext != ".c") || aliasFiles[a.name].size() < 2)
       continue;
     std::string stem;
     for (char c : in.path.stem().string())
@@ -6166,12 +6555,18 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
       continue;
     std::string ext = in.path.extension().string();
-    if (ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".cc" && ext != ".inl")
+    // A .c file is converted as the C++ the game compiles it as (Lua's, fbuild.bff's `/TP`).
+    if (ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".cc" && ext != ".inl" && ext != ".c")
       continue;
     std::string rel = relativeTo(in.path, roots);
     if (filesForOtherPlatforms.count(rel))
     {
       total.add("files of other platforms left out");
+      continue;
+    }
+    if (filesNotBuilt.count((in.path.parent_path().filename() / in.path.filename()).generic_string()))
+    {
+      total.add("files the build leaves out");
       continue;
     }
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
@@ -6188,6 +6583,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     {
       fc.includedMacros = visibleMacros(ip->second);
       fc.objectMacros = visibleObjectMacros(ip->second);
+      fc.siblingIncludes = &siblingIncludes[ip->second];
       for (const auto& [name, body] : headerObjects)
         if (!knownMacros.count(name)) // the converter's own rewrite (SDL_PRIs64) stands
           fc.objectMacros.emplace(name, body);
@@ -6205,7 +6601,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     piece.counts = fc.counts;
     piece.todos = fc.todos;
     piece.source = in.path.string();
-    piece.header = ext != ".cpp" && ext != ".cc";
+    piece.header = ext != ".cpp" && ext != ".cc" && ext != ".c";
     outputs[key].push_back(std::move(piece));
     for (auto& [k, v] : fc.counts.values)
       total.add(k, v);
