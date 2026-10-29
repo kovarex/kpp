@@ -26,12 +26,9 @@ struct TupleLeaf
   TupleLeaf(U&& v) : value(forward<U>(v)) {}
 };
 
-// What follows a Tuple's last element. (Its constructor is user-provided so that the last
-// element's `Rest()` calls it rather than value-initializing it, which writes past the Tuple:
-// classes/empty_base_value_initialized_at_end.)
+// What follows a Tuple's last element.
 struct EmptyTuple
 {
-  EmptyTuple() {}
   bool operator==(const EmptyTuple&) const { return true; }
   strong_ordering operator<=>(const EmptyTuple&) const { return strong_ordering::equal; }
 };
@@ -201,16 +198,13 @@ decltype(auto) get(Tuple<Types...>&& t)
   return t.template getRvalue<I>();
 }
 
-// A Tuple of the values (std::make_tuple): of their types without reference and const, an array
-// or a function as a pointer. The arguments are taken by value and moved into the Tuple, one move
-// more than std::make_tuple's forwarding, and a ReferenceWrapper (ref(x)) stays a ReferenceWrapper
-// element rather than making a reference one, until `Tuple<UnwrapRefDecay<Args>...>` over forwarded
-// arguments is the Tuple it names (templates/pack_expansion_of_type_trait,
-// templates/pack_expansion_of_member_type).
+// A Tuple of the values, each moved in when it is an rvalue (std::make_tuple): of their types
+// without reference and const, an array or a function as a pointer; a ReferenceWrapper (ref(x))
+// makes a reference element.
 template<typename... Args>
-Tuple<Args...> makeTuple(Args... args)
+Tuple<UnwrapRefDecay<Args>...> makeTuple(Args&&... args)
 {
-  return Tuple<Args...>(move(args)...);
+  return Tuple<UnwrapRefDecay<Args>...>(forward<Args>(args)...);
 }
 
 // A Tuple of references to the variables (std::tie): `tie(speed, force) = calculate(...)` assigns

@@ -42,9 +42,8 @@ Functions:
   for an lvalue Tuple, a const reference for a const one, an rvalue reference for an rvalue one,
   so that `get<0>(move(t))` moves the element out. A reference element is given as the reference
   it is in all three cases.
-- `makeTuple(v1, ..., vn)`: a Tuple of the values, of their decayed types. The values are taken
-  by value and moved into the Tuple. Difference from C++: a `ref(x)` argument makes a
-  ReferenceWrapper element, not a reference element (std::make_tuple unwraps it).
+- `makeTuple(v1, ..., vn)`: a Tuple of the values, of their decayed types, each moved in when it
+  is an rvalue; a `ref(x)` argument makes a reference element.
 - `tie(a1, ..., an)`: a Tuple of references to the variables, `Tuple<A1&, ..., An&>`; assigning a
   Tuple or a Pair to it assigns the variables.
 - `forwardAsTuple(a1, ..., an)`: a Tuple of references to the arguments as they were passed, an
@@ -65,8 +64,7 @@ Difference from C++ (std::pair is tuple-like); the bindings are the same either 
 
 `Pair(piecewiseConstruct, Tuple<A...> firstArgs, Tuple<B...> secondArgs)`: first constructed from
 the elements of firstArgs and second from those of secondArgs, each in place (never copied or
-moved afterwards); with forwardAsTuple, from the arguments as they were passed. Not usable yet
-(docs/stdlib-conformance.md).
+moved afterwards); with forwardAsTuple, from the arguments as they were passed.
 
 `IndexSequence<i1, ..., in>`: a sequence of int constants as a type, for expanding a pack of
 indices (`get<I>(t)...`). `MakeIndexSequence<n>` is `IndexSequence<0, 1, ..., n - 1>`, and
