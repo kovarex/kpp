@@ -14,6 +14,79 @@ for 10 minutes on half-written input), then
 powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tree <the copy>
 ```
 
+## Parallel front end: contention, not work (2026-10-29, evening)
+
+The front end on the headline tree had grown to about 4 s (read, imports, parse and index 1.1 s;
+resolve 2.6 to 4.4 s), with 18 k class and 72 k function instantiations checked. A sampling
+profiler over all threads (temporary, not committed: it suspends every thread of the process each
+millisecond and unwinds its stack; threads stopped in ntdll are counted as waiting, and where they
+wait is reported apart) showed that the resolve phase was not short of CPU but of parallelism:
+
+- The same tree resolved on one thread (`-j 1`) in 9.4 s, while the 32-thread run spent 66 s of
+  thread time in resolveFile (the per-file times summed) and 30 to 70 s of process CPU: about
+  seven times the work, burnt in contention.
+- On average 1.5 of the 32 workers were running; the rest waited, nearly half of the waiting in
+  one lock: `SymbolTable::name` took the symbol table's mutex on every call (trait names,
+  conversions, lookups ask for names constantly). A fifth of the rest was `recordInstanceSubst`'s
+  single map under a single mutex.
+- The function-instance maps hashed their keys (pointer bytes) one byte at a time, and chose the
+  shard by the same hash modulo 64, so within a shard all keys shared their low six bits and the
+  map used one bucket in 64: long chains under the shard lock.
+- Type traits (isTriviallyCopyable, isConstructible, isAbstract) walked a class's special members
+  and bases on every query: a fifth of the busy samples.
+
+Fixed (each measured paired on a frozen copy of the converted tree, front end only, five runs;
+the machine is shared, so minima and medians): word-wise key hash and top-bit shards (2884b16),
+a per-(trait, types) answer cache (e46314f), lock-free `SymbolTable::name` (5cca409), sharded
+instance substitutions (af28a09). Together, master 7fa0dc4 against 92342eb:
+
+| frozen headline tree, front end | before | after |
+|---|---:|---:|
+| resolve, 32 threads, median of 5 | 3.34 s | **1.03 s** |
+| resolve, 32 threads, min of 5 | 2.04 s | 1.03 s |
+| process CPU, 32 threads, median | 52.6 s | 18.4 s |
+| resolve, `-j 1` | 10.8 s | 9.1 s |
+
+Errors, function counts and the canonical count are unchanged. Not done: starting the largest
+files first (ValueToWidget.kpp, 0.7 MB, alone took 2.2 s and started late) made no difference at
+32 threads once contention dominated, and it changed the typed-expression count, so it was left out.
+
+**The front end is not deterministic.** Two runs of the same tree on 32 threads type a slightly
+different number of expressions (6,707,129 against 6,720,488 on master, about 0.2%); one thread is
+stable. Which thread instantiates first decides what an instance sees of others still being built
+(an instance asked for while its producer is still typing it gets "what exists so far"). Codegen's
+output is byte-identical on 1 or 32 threads; the front end's has to become so too.
+
+### Design: instantiation checks as tasks (proposed, not implemented)
+
+Today a walker that needs a class instance claims it and checks it inline: the instance's
+declarations and then every member body (`instantiateClass` -> `checkMemberBody`, 31% of the busy
+samples), before returning to its own file. A thread asking for an instance another thread is
+building spins on `yield` until it is done. So one file drags its whole instance tree onto one
+thread, and the waiting threads burn CPU.
+
+1. **Waits block instead of spinning.** `state.wait()` / `notify_all()` (C++20 atomic wait) in
+   place of the yield loops in claimInstance's, claimClass's and claimFunction's consumers. No
+   change in results; CPU only.
+2. **Member bodies become tasks.** Instantiating a class does what its users need now (the
+   declarations, base classes, layout facts, members' declared types) and queues the check of each
+   member body as a task, keyed by (instance, member). Members whose return type is deduced
+   (`auto`) are still checked when a caller needs that type, by the caller, as today. All workers
+   take tasks after their files and whenever they would otherwise wait; checking a body may queue
+   more. The phase ends when the queue is empty.
+3. **Results independent of order.** An instance's typing must not depend on what other instances
+   have finished: an instance found on the current thread's own stack (a cycle) gets a fixed
+   answer (the declared type, never the partial body), and one being built on another thread is
+   waited for. Errors and statistics are collected per instance and sorted at the end, as codegen's
+   are.
+4. **Checked by** comparing the whole of stdout and stderr between `-j 1`, `-j 8` and `-j 32` and
+   between repeated runs: they must be byte-identical, as codegen's IR is. A new determinism check
+   runs this on the headline tree.
+
+Expected: resolve close to `-j 1`'s 9 s divided by the workers that have work, so well under a
+second, and no CPU burnt waiting. Order of work: 1 (small, alone), then 3 with its check (it is
+the property the rest relies on), then 2.
+
 ## Parallel codegen, first step (2026-10-29)
 
 Codegen now emits functions on all threads (`--codegen-threads N`, default `--threads`): level by
