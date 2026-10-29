@@ -1,0 +1,18 @@
+// spec: a function that returns a reference cannot return an expression without a value (a call of a function returning void): an error, as in C++
+// found linking the converted game: cxxopts' `return s.append(::move(a));` (String::append returns void) became `ret ptr` with no value, which LLVM rejected
+// error: void_returned_as_reference.kpp:11: error: a function returning Counter& returns an expression without a value (of type void) (in @"bumped(Counter&)")
+struct Counter
+{
+  int n = 0;
+  void bump() { ++this->n; }
+};
+Counter& bumped(Counter& c)
+{
+  return c.bump();
+}
+int main()
+{
+  Counter c;
+  println("{}", bumped(c).n);
+  return 0;
+}

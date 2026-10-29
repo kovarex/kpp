@@ -829,6 +829,37 @@ constants (E_INVALIDARG, E_FAIL, DXGI_ERROR_*, whose bodies call _HRESULT_TYPEDE
 D3D11CalcSubresource (an inline function d3d11.h has only for C++), SHCreateMemStream (shlwapi.h)
 and a GUID written with brace elision (language/brace_elision_in_aggregate, pending).
 
+### The first link (2026-10-29, morning)
+
+`programs/factorio/link.cmd` gets to the linker for the first time: all 64 modules compile in clang
+(no LLVM rejects, no crash), and link.exe ends with LNK1120, **7,372 unresolved externals**:
+
+- 7,346 game functions, the ones codegen errors leave out (the headline);
+- 17 SSE intrinsics the code generator does not implement yet (_mm_cvtss_f32, _mm_set_ss,
+  _mm_unpacklo_epi8/epi16, _mm_packus_epi16, ...): intrin.h's are now imported as typed functions,
+  so a missing one is an unresolved symbol, not an untyped call; the game uses about 70 more of
+  them in functions that still have other errors;
+- MSVC's __cpuid and _BitScanReverse, ws2tcpip.h's inline gai_strerrorW, the overrides' kppStbirMalloc
+  and kppStbirFree (native's stb_image_resize calls them), and stb_image_write's
+  `stbi_write_png_compression_level` variable. (version.lib, which SDL's IME code needs, is now on
+  the link line.)
+
+What it took, from 64 rejected modules (each module's first error): the scan that declares the
+names a module uses without defining them read the `@` inside quoted names and strings (a local
+lambda `f::__lambda_1_2@10834` became `declare void @10834()`, and two string constants became the
+"functions" `factorio.com` and `serialized`); an `auto` function template's signature was typed from
+a copy of its instantiation's copy, so the lambda it returns was another closure type than its
+body's (`%closure.X.2`, never laid out); a closure whose layout failed half way was used half built
+(a call with no callee); closures nobody could build (their function failed first) get a placeholder
+type under --keep-going; `return s.append(x)` with String::append returning void (cxxopts) is now an
+error, not `ret ptr` with no value; intrin.h's `typedef float __m128 __attribute__((__vector_size__(16)))`
+made `__m128` a float (vector typedefs are no longer imported, so __m128 & co. stay the compiler's
+vector types), `__inline__` stopped the import of every static inline function, and the SSE
+operations returned slot addresses that locals then stored as vectors (vector values are registers
+now, interop/sse_vector_values); a lambda emitted between a `goto` and its label forgot the label
+(language/goto_past_lambda); value-initializing a 1 MB array member (`store [1048576 x i8]
+zeroinitializer`) crashed instruction selection (a memset now); and the entry is `wmain`.
+
 ### The link line (2026-10-29)
 
 `programs/factorio/link.cmd` links the converted tree: kppc `--keep-going --exe` against the game's

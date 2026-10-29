@@ -97,6 +97,7 @@ namespace
     std::string functionName;
     std::string writtenIn; // the function the lambda is written in (its call operator's requester in diagnostics)
     bool laidOut = false; // captures and fields known (read where the lambda is written); before that only the struct's name exists
+    std::string failure;  // why laying it out failed where it is written, if it did
   };
 
   struct Instantiation
@@ -516,6 +517,23 @@ namespace
           if (u->isKnown())
             return u;
       return types.intType(32);
+    }
+
+    // Zeroes an object of type t at addr (value initialization): a struct or an array with a memset of
+    // its size, anything else with a store. The instruction selector splits `store [1048576 x i8]
+    // zeroinitializer` into a node per element and crashed on a member `char buffer[1 << 20]`
+    // (BufferedReadStream); the size is LLVM's own (`getelementptr (T, ptr null, i32 1)`).
+    void storeZero(const Ty* t, const std::string& addr, Node* at)
+    {
+      std::string ty = llType(t, at);
+      if (ty[0] == '%' || ty[0] == '[' || ty.compare(0, 2, "<{") == 0)
+      {
+        if (declaredNames.claim("@llvm.memset.p0.i64"))
+          decls += "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n";
+        fn += "  call void @llvm.memset.p0.i64(ptr " + addr + ", i8 0, i64 ptrtoint (ptr getelementptr (" + ty + ", ptr null, i32 1) to i64), i1 false)\n";
+        return;
+      }
+      fn += "  store " + ty + " zeroinitializer, ptr " + addr + "\n";
     }
 
     uint64_t sizeOf(const Ty* t, Node* at = nullptr)
@@ -1263,7 +1281,7 @@ namespace
         else if (t->inner->kind == TyKind::Array)
           constructArray(element, t->inner, at);
         else
-          fn += "  store " + llType(t->inner, at) + " zeroinitializer, ptr " + element + "\n";
+          storeZero(t->inner, element, at);
       };
       if (t->count <= 8)
       {
@@ -1446,7 +1464,7 @@ namespace
       if (c->isTypedUnion)
       {
         // `Property p;`: the first alternative, default-constructed.
-        fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+        storeZero(t, addr, at);
         if (!c->alternatives.empty())
           constructAlternative(c, t, addr, 0, nullptr, at);
         return;
@@ -1467,7 +1485,7 @@ namespace
         }
         // `T() = default;` next to other constructors: the memberwise default construction below.
       }
-      fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+      storeZero(t, addr, at);
       initializeMembers(addr, t, {}, at);
     }
 
@@ -1638,7 +1656,7 @@ namespace
           else if (init->args.size() == 1)
             withSingleElement(init->args[0], at, [&](Expr* one) { store(rvalue(one), fieldAddr, ft, at); });
           else if (init->args.empty())
-            fn += "  store " + llType(ft, at) + " zeroinitializer, ptr " + fieldAddr + "\n";
+            storeZero(ft, fieldAddr, at);
           else
             unsupported(at, "this member initializer");
         }
@@ -1651,7 +1669,7 @@ namespace
         else if (ft->kind == TyKind::Array && (needsDestruction(ft, at) || needsConstruction(ft, at))) // elements with constructors or default member initializers
           constructArray(fieldAddr, ft, at);
         else
-          fn += "  store " + llType(ft, at) + " zeroinitializer, ptr " + fieldAddr + "\n";
+          storeZero(ft, fieldAddr, at);
       }
     }
 
@@ -1745,7 +1763,7 @@ namespace
         const Ty* argTy = types.stripRef(args[0]->ty);
         if (!(isClass(argTy) && classKey(argTy) == classKey(t)))
         {
-          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+          storeZero(t, addr, at);
           constructAlternative(c, t, addr, alternativeForValue(c, t, args[0]->ty, at), args[0], at);
           return;
         }
@@ -1790,7 +1808,7 @@ namespace
         if (!hasUserConstructors(c))
         {
           const StructInfo& info = structFor(t, at);
-          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+          storeZero(t, addr, at);
           size_t i = 0;
           forEachPackElement(pattern, at, [&](size_t)
           {
@@ -1894,7 +1912,7 @@ namespace
         // An aggregate: the values fill the fields in order; the fields left over get their
         // default member initializers (or default construction), as in C++.
         const StructInfo& info = structFor(t, at);
-        fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+        storeZero(t, addr, at);
         if (info.polymorphic)
         {
           useVtable(info);
@@ -2465,7 +2483,7 @@ namespace
           // `AIState s = Patrolling{1};`, `return Attacking{n};`: the alternative of the value's
           // type, constructed from it (design.md 8.5).
           size_t index = alternativeForValue(u, t, initTy, at);
-          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+          storeZero(t, addr, at);
           constructAlternative(u, t, addr, index, init, at);
           return;
         }
@@ -2550,13 +2568,13 @@ namespace
         auto* bi = static_cast<BraceInitExpr*>(init);
         if (bi->args.empty())
         {
-          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+          storeZero(t, addr, at);
           return;
         }
         if (t->kind == TyKind::Array)
         {
           // Element by element (nested lists for arrays of arrays); the rest stays zero.
-          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + addr + "\n";
+          storeZero(t, addr, at);
           for (size_t i = 0; i < bi->args.size() && i < t->count; ++i)
           {
             std::string element = newTemp();
@@ -3012,16 +3030,35 @@ namespace
         return it->second;
       }
       if (!create)
+      {
+        if (it != closures.end() && !it->second.failure.empty())
+          fail(at, "the closure of " + irString(t) + " could not be built where it is written (" + it->second.failure + ")");
         unsupported(at, "a lambda used before its closure was built (its captures are read where it is written)");
+      }
+      try
+      {
+        return layOutClosure(t, at);
+      }
+      catch (Unsupported&)
+      {
+        closures[t].failure = lastFailure;
+        throw;
+      }
+    }
+
+    // closureFor's layout, from the lambda expression being emitted (at) or the closure's own.
+    ClosureInfo& layOutClosure(const Ty* t, Node* at)
+    {
       auto* c = static_cast<ClassDecl*>(t->decl);
       // The lambda being emitted (at): in a private copy of an instantiation it is the copy's, whose
       // captures name the copy's locals; the closure's own is the instantiation's.
       LambdaExpr* l = at && at->kind == NodeKind::LambdaExpr ? static_cast<LambdaExpr*>(at) : c->lambda;
       if (!l)
         unsupported(at, "a lambda without its expression");
-      std::string structName = closureStructName(t);
-      ClosureInfo& info = closures[t];
-      info.laidOut = true;
+      // Laid out aside and published whole: a capture that fails (an unsupported one, a field whose
+      // class cannot be laid out) leaves the closure unbuilt for every later use, not half built.
+      ClosureInfo info;
+      info.structName = closureStructName(t);
       info.enclosingClass = currentClassTy;
       info.writtenIn = currentFunctionName;
       bool usesThis = false;
@@ -3092,13 +3129,16 @@ namespace
       for (size_t i = 0; i < info.fieldTypes.size(); ++i)
         line += (i ? ", " : "") + (info.byRef[i] ? std::string("ptr") : llType(info.fieldTypes[i], at));
       line += info.fieldTypes.empty() ? "i8 }\n" : " }\n";
-      decls += line;
       const Ty* ft = t;
       std::string params;
       for (size_t i = 0; i < ft->args.size(); ++i)
         params += (i ? ", " : "") + irString(ft->args[i]);
       info.functionName = "@\"" + irString(t) + "::operator()(" + params + ")\"";
-      return closures[t];
+      info.laidOut = true;
+      decls += line;
+      ClosureInfo& published = closures[t];
+      published = std::move(info);
+      return published;
     }
 
     // Lays out the closure of every lambda written in n (not in a lambda's body), before n is
@@ -3223,6 +3263,7 @@ namespace
     {
       std::string fn, allocas, currentBlock, sretAddr;
       std::unordered_map<Decl*, Local> locals;
+      std::unordered_map<uint32_t, std::string> labelBlocks; // a lambda emitted between a goto and its label keeps the label's block
       std::vector<Loop> loops;
       std::vector<std::vector<Object>> scopes;
       std::vector<Object> statementTemps;
@@ -3239,7 +3280,7 @@ namespace
 
     FunctionState saveState()
     {
-      return {fn, allocas, currentBlock, sretAddr, locals, loops, scopes, statementTemps, temp, label, blockTerminated,
+      return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
               currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH};
     }
 
@@ -3250,6 +3291,7 @@ namespace
       currentBlock = s.currentBlock;
       sretAddr = s.sretAddr;
       locals = s.locals;
+      labelBlocks = s.labelBlocks;
       loops = s.loops;
       scopes = s.scopes;
       statementTemps = s.statementTemps;
@@ -3619,8 +3661,8 @@ namespace
     {
       if (global.isExternC(f))
         return "@" + sym(f->name.last().symbol);
-      if (f->name.parts.size() == 1 && sym(f->name.parts[0].symbol) == "main" && !global.owningClass(f))
-        return "@kpp.main"; // called by the generated @main, which reports uncaught exceptions
+      if (f->name.parts.size() == 1 && (sym(f->name.parts[0].symbol) == "main" || sym(f->name.parts[0].symbol) == "wmain") && !global.owningClass(f))
+        return "@kpp." + sym(f->name.parts[0].symbol); // called by the generated @main (@wmain), which reports uncaught exceptions
       ArgsScope scope(*this, &args);
       std::string q;
       if (classTy && !classTy->args.empty())
@@ -4207,7 +4249,7 @@ namespace
         std::vector<std::pair<std::string, uint32_t>> path;
         bool related = argTy && isClass(argTy) && !types.isDependent(argTy) &&
                        (canonicalClass(argTy, at) == canonicalClass(t, at) || basePath(argTy, t, path, at));
-        if (argTy && argTy->isKnown() && !related && argTy->kind != TyKind::Vector && !(f->flags & (DF_Constructor | DF_Destructor)) && isClass(t))
+        if (argTy && argTy->isKnown() && !related && !(f->flags & (DF_Constructor | DF_Destructor)) && isClass(t))
         {
           std::string tmp = newObjectSlot(t, at);
           Expr* one = args[0];
@@ -4219,15 +4261,17 @@ namespace
         Value v = rvalue(args[0]);
         if (!isClass(v.ty))
         {
-          // A Vector value being assigned/copied into a class that wraps it (e.g. float32x4
-          // wrapping __m128): store the vector directly into the wrapper's first field and return.
+          // A vector the checker could not type (an SSE operation intrin.h has as a macro,
+          // _mm_shuffle_ps) assigned or copied into a class that wraps it (float32x4 wrapping
+          // __m128): stored into the wrapper's first field. A typed one goes through the class's
+          // converting constructor above.
           if (v.ty && v.ty->kind == TyKind::Vector && isClass(t))
           {
             StructInfo& info = structFor(t, at);
+            if (info.fieldTypes.empty() || llType(info.fieldTypes[0], at) != llType(v.ty, at))
+              unsupported(at, "assigning a vector to " + types.toString(t, &symbols) + ", whose first member is not that vector");
             std::string field0 = gep(info.name, thisArg, 0);
-            std::string tmp = newTemp();
-            fn += "  " + tmp + " = load " + llType(v.ty, at) + ", ptr " + v.text + "\n";
-            fn += "  store " + llType(v.ty, at) + " " + tmp + ", ptr " + field0 + "\n";
+            fn += "  store " + llType(v.ty, at) + " " + v.text + ", ptr " + field0 + "\n";
             bool isAssign = (f->flags & DF_Constructor) == 0;
             if (isAssign)
               return {thisArg, classTy, false};
@@ -4271,7 +4315,7 @@ namespace
       {
         if (src.empty())
         {
-          fn += "  store " + llType(t, at) + " zeroinitializer, ptr " + thisArg + "\n";
+          storeZero(t, thisArg, at);
           initializeMembers(thisArg, t, {}, at);
           return {"", types.voidType(), false};
         }
@@ -4463,7 +4507,7 @@ namespace
           if (v.ty && v.ty->kind == TyKind::Vector && isClass(pt))
           {
             std::string copy = newObjectSlot(pt, at);
-            fn += "  store " + llType(pt, at) + " zeroinitializer, ptr " + copy + "\n";
+            storeZero(pt, copy, at);
             StructInfo& info = structFor(pt, at);
             std::string field0 = gep(info.name, copy, 0);
             std::string tmp = newTemp();
@@ -5628,7 +5672,7 @@ namespace
       {
         // A scalar stored into an array: zero-init the array, then store the scalar
         // converted to the element type in element 0 (C's `T a[N] = {value}` semantics).
-        fn += "  store " + llType(ty, at) + " zeroinitializer, ptr " + addr + "\n";
+        storeZero(ty, addr, at);
         auto isNumeric = [](TyKind k) { return k == TyKind::Int || k == TyKind::Bool || k == TyKind::Char || k == TyKind::Float; };
         if (v.ty && ty->inner && isNumeric(v.ty->kind) && isNumeric(ty->inner->kind))
         {
@@ -6477,6 +6521,9 @@ namespace
       {
         auto* n = static_cast<NameExpr*>(callee);
         Decl* d = n->resolved;
+        if (d && d->kind == NodeKind::FunctionDecl && d->file && d->file->isImported)
+          if (std::optional<Value> v = sseBuiltin(n, c))
+            return *v; // an intrinsic declared by intrin.h (its static inline body is not emitted): the code generator's own IR
         if (d && d->kind == NodeKind::FunctionDecl)
         {
           auto* f = static_cast<FunctionDecl*>(d);
@@ -6833,21 +6880,28 @@ namespace
       return nullptr;
     }
 
-    // Load a SIMD vector from an argument expression. If the argument is an SSE wrapper class
-    // (float32x4, float64x2, int32x4), extract the first field; otherwise load directly.
+    // A SIMD vector argument as a register value of vecTy. A vector value is a register like a
+    // scalar (bitcast when its lanes differ: an __m128i of <4 x i32> where <16 x i8> is wanted);
+    // an SSE wrapper class (float32x4, float64x2, int32x4) gives its first field.
     std::string sseArg(Expr* arg, const Ty* vecTy, Node* at)
     {
       Value v = rvalue(arg);
-      std::string src = v.text;
       const Ty* vt = v.ty ? types.unqualified(types.stripRef(v.ty)) : nullptr;
       if (vt && vt->kind == TyKind::Class)
       {
         StructInfo& info = structFor(vt, at);
-        if (!info.fieldDecls.empty())
-          src = gep(info.name, v.text, 0); // field 0: the __m128/__m128d/__m128i member
+        if (info.fieldDecls.empty())
+          unsupported(at, "an SSE operation on " + types.toString(vt, &symbols) + ", a class without a vector member");
+        std::string r = newTemp();
+        fn += "  " + r + " = load " + llType(vecTy, at) + ", ptr " + gep(info.name, v.text, 0) + "\n"; // the __m128/__m128d/__m128i member
+        return r;
       }
+      if (!vt || vt->kind != TyKind::Vector)
+        unsupported(at, "an SSE operation on " + (vt ? types.toString(vt, &symbols) : std::string("an operand without a type")) + ", which is not a vector");
+      if (llType(vt, at) == llType(vecTy, at))
+        return v.text;
       std::string r = newTemp();
-      fn += "  " + r + " = load " + llType(vecTy, at) + ", ptr " + src + "\n";
+      fn += "  " + r + " = bitcast " + llType(vt, at) + " " + v.text + " to " + llType(vecTy, at) + "\n";
       return r;
     }
 
@@ -6883,13 +6937,11 @@ namespace
       return r;
     }
 
-    // Store a vector result into a temporary alloca and return its address with the vector type.
-    Value sseResult(const std::string& reg, const Ty* vecTy, Node* at)
+    // A vector result: its register, as any value of a scalar type is (it was a slot's address, which
+    // a local or a parameter of type __m128 then stored as the vector itself).
+    Value sseResult(const std::string& reg, const Ty* vecTy, Node*)
     {
-      std::string slot = newTemp();
-      allocas += "  " + slot + " = alloca " + llType(vecTy, at) + "\n";
-      fn += "  store " + llType(vecTy, at) + " " + reg + ", ptr " + slot + "\n";
-      return {slot, vecTy, false};
+      return {reg, vecTy, false};
     }
 
     std::optional<Value> sseBuiltin(NameExpr* n, CallExpr* c)
@@ -8018,7 +8070,7 @@ namespace
             Expr* pattern = static_cast<UnaryExpr*>(n->args[0])->operand;
             size_t count = packElementCount(pattern, e);
             if (count == 0)
-              fn += "  store " + llType(t, e) + " zeroinitializer, ptr " + r + "\n";
+              storeZero(t, r, e);
             else if (count != 1)
               unsupported(e, "a scalar built from a pack of several elements");
             else
@@ -8032,7 +8084,7 @@ namespace
             store(rvalue(a), r, t, e);
           }
           else
-            fn += "  store " + llType(t, e) + " zeroinitializer, ptr " + r + "\n";
+            storeZero(t, r, e);
           return {r, e->ty};
         }
         case NodeKind::LambdaExpr: return makeClosure(static_cast<LambdaExpr*>(e));
@@ -9107,7 +9159,6 @@ namespace
     // program's main and reports an exception nobody caught.
     void finishExceptionRuntime()
     {
-      std::string mainName = "@kpp.main";
       auto declareOnce = [&](const char* name, const std::string& line)
       {
         if (declaredNames.claim(name))
@@ -9188,7 +9239,14 @@ namespace
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
         declareOnce("@llvm.memcpy.p0.p0.i64", "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)");
       }
-      // @main.
+      // @main, or @wmain for a program whose entry takes wide arguments (the game's, on Windows: the
+      // C runtime calls whichever the program defines).
+      for (const char* entry : {"main", "wmain"})
+        emitEntry(entry, "@kpp." + std::string(entry));
+    }
+
+    void emitEntry(const std::string& entry, const std::string& mainName)
+    {
       std::string declare = declareLines[mainName];
       if (moduleCount <= 1)
       {
@@ -9201,7 +9259,7 @@ namespace
         return;
       bool args = declare.find("(i32, ptr)") != std::string::npos || declare.find("(i32 %p0, ptr %p1)") != std::string::npos;
       std::string call = "i32 " + mainName + (args ? "(i32 %argc, ptr %argv)" : "()");
-      std::string text = "define i32 @main(i32 %argc, ptr %argv) " + std::string(usesExceptions ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n";
+      std::string text = "define i32 @" + entry + "(i32 %argc, ptr %argv) " + std::string(usesExceptions ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n";
       if (!usesExceptions)
         text += "  %r = call " + call + "\n  ret i32 %r\n}\n\n";
       else
@@ -9329,7 +9387,7 @@ namespace
       else if (t->kind == TyKind::Array && needsConstruction(t, v))
         constructArray(slot, t, v); // `StringView text[2];`
       else
-        fn += "  store " + llType(t, v) + " zeroinitializer, ptr " + slot + "\n";
+        storeZero(t, slot, v);
       if (needsDestruction(t, v))
         scopes.back().push_back({slot, t});
     }
@@ -9434,7 +9492,19 @@ namespace
               initializeFrom(sretAddr, currentReturn, r->value, s);
           }
           else if (currentReturn->isReference())
-            retText = isAggregate(types.stripRef(currentReturn)) ? rvalue(r->value).text : lvalue(r->value);
+          {
+            if (!r->value)
+              unsupported(s, "return without a value in a function returning a reference");
+            if (isAggregate(types.stripRef(currentReturn)))
+            {
+              Value v = rvalue(r->value);
+              if (v.text.empty() || !v.ty || v.ty->kind == TyKind::Void)
+                fail(r->value, "error: a function returning " + types.toString(currentReturn, &symbols) + " returns an expression without a value (of type void)");
+              retText = v.text;
+            }
+            else
+              retText = lvalue(r->value);
+          }
           else
           {
             if (!r->value)
@@ -9849,7 +9919,7 @@ namespace
       else if (altTy->kind == TyKind::Array && needsDestruction(altTy, at))
         constructArray(addr, altTy, at);
       else
-        fn += "  store " + llType(altTy, at) + " zeroinitializer, ptr " + addr + "\n";
+        storeZero(altTy, addr, at);
     }
     // Runs body(index) for the alternative the object holds, among those `wanted` selects: a
     // switch on the tag.
@@ -10493,7 +10563,10 @@ namespace
       if (!currentClassTy)
         if (Decl* cls = global.owningClass(f))
           currentClassTy = cls->kind == NodeKind::EnumDecl ? types.enumType(cls) : canonicalClass(types.classType(cls, {}), f);
-      const Ty* ft = declType(f);
+      // The type callers see: the template's own declaration under args. An `auto` instantiation's
+      // return type is the one its body (the copy emitted here) deduced; asking for the copy's type
+      // would type a copy of the copy, whose lambdas are other closure types than the body's.
+      const Ty* ft = declType(original);
       if (!ft || ft->kind != TyKind::Function)
       {
         error(f, "function type unknown, skipped");
@@ -10511,7 +10584,7 @@ namespace
       currentFunctionName = nameOverride.empty() ? functionName(original, args, classTy) : nameOverride;
       try
       {
-        Signature s = signatureOf(f);
+        Signature s = signatureOf(original);
         std::string params;
         std::vector<std::string> paramNames;
         for (size_t i = 0; i < s.paramTypes.size(); ++i)
@@ -10617,7 +10690,7 @@ namespace
           popScope();
           if (currentReturn->kind == TyKind::Void || returnsInMemory(currentReturn))
             fn += "  ret void\n";
-          else if (name == "@kpp.main")
+          else if (name == "@kpp.main" || name == "@kpp.wmain")
             fn += "  ret i32 0\n";
           else // falling off the end (after a throw, usually): a zero rather than `unreachable`, see emitThrow
             fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, f) + " zeroinitializer") + "\n";
@@ -10813,11 +10886,21 @@ static std::string declareUndefined(const std::string& text)
       known.insert(nameAt(line)); // `@name = ... global ...`
     line = next;
   }
-  for (size_t i = text.find('@'); i != std::string::npos; i = text.find('@', i + 1))
+  // A quoted name or string (`@"f::__lambda_1_2@10834::operator()()"`, c"name@factorio.com") and a
+  // comment are skipped whole: an '@' inside them names nothing.
+  for (size_t i = text.find_first_of("\"@;"); i != std::string::npos; i = text.find_first_of("\"@;", i + 1))
   {
+    if (text[i] == '"' || text[i] == ';')
+    {
+      i = text.find(text[i] == '"' ? '"' : '\n', i + 1);
+      if (i == std::string::npos)
+        break;
+      continue;
+    }
     std::string name = nameAt(i);
     if (name.size() > 1 && name.rfind("@llvm.", 0) != 0 && !known.count(name))
       used.insert(name);
+    i += name.size() - 1;
   }
   std::vector<std::string> sorted(used.begin(), used.end());
   std::sort(sorted.begin(), sorted.end());
@@ -10992,6 +11075,24 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   }
   e.finishAssertRuntime();
   e.finishExceptionRuntime();
+  // A closure that functions name but whose lambda was never laid out: the function it is written
+  // in failed before it (an error), and so did those functions, but with --keep-going the modules
+  // have to parse, so the type gets a placeholder. Without any error it is a closure nobody built.
+  {
+    bool anyErrors = false;
+    for (auto& em : emitters)
+      anyErrors = anyErrors || !em->errors.empty();
+    for (auto& [t, info] : sh.closures)
+      if (!info.laidOut && !info.structName.empty())
+      {
+        if (!anyErrors)
+        {
+          e.currentFile = t->decl->file;
+          e.error(t->decl, "error: the closure of " + e.irString(t) + " is used, but its lambda was never emitted");
+        }
+        sh.decls += info.structName + " = type { i8 } ; left out by codegen errors\n";
+      }
+  }
   // The errors, in the same order in every run.
   for (auto& em : emitters)
   {

@@ -63,6 +63,7 @@ namespace
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint8_t pendingAttributes = 0;   // [[noinline]] and friends seen before the current declaration.
+    bool sawVectorSize = false;      // C: `__attribute__((__vector_size__(N)))` seen since the last declaration (pushDecl).
     bool pendingConst = false;       // `const static int x`: the const read among the specifiers, applied to the type that follows.
     Expr* pendingAlignment = nullptr; // alignas(N) seen before the current class.
     Expr* pendingCondition = nullptr; // conditional(expr) seen in the current specifiers.
@@ -401,10 +402,16 @@ namespace
         else if (atIdent() && (spelling() == "__declspec" || spelling() == "__attribute__" || spelling() == "__pragma" ||
                                spelling() == "alignas") && at(P::LParen, 1))
         {
+          bool gnu = spelling() == "__attribute__";
           advance();
+          uint32_t from = pos;
           skipBalanced();
+          if (gnu && cMode)
+            for (uint32_t i = from; i < pos && i < toks.size(); ++i)
+              if (toks[i].getKind() == TokenKind::Identifier && (spelling(toks[i]) == "__vector_size__" || spelling(toks[i]) == "vector_size"))
+                sawVectorSize = true;
         }
-        else if (atIdent() && (spelling() == "__forceinline" || spelling() == "__inline" || spelling() == "__cdecl" ||
+        else if (atIdent() && (spelling() == "__forceinline" || spelling() == "__inline" || spelling() == "__inline__" || spelling() == "__cdecl" ||
                                spelling() == "__stdcall" || spelling() == "__fastcall" || spelling() == "__vectorcall" ||
                                spelling() == "__restrict" || spelling() == "__unaligned" || spelling() == "__thiscall" ||
                                spelling() == "__ptr64" || spelling() == "__ptr32" || spelling() == "__sptr" ||
@@ -1075,6 +1082,17 @@ namespace
     void pushDecl(T* d)
     {
       d->endToken = pos;
+      // A C typedef of a SIMD vector (`typedef float __m128 __attribute__((__vector_size__(16)))`,
+      // clang's intrinsics headers) is left out: the importer would make it a plain float. So
+      // __m128, __m128i and __m128d stay the compiler's own vector types, which the code generator's
+      // SSE operations work on, and a use of another one (__v4sf) is an unresolved name.
+      if (cMode && sawVectorSize)
+      {
+        sawVectorSize = false;
+        if constexpr (std::is_same_v<T, VariableDecl>)
+          if (d->flags & DF_Typedef)
+            return;
+      }
       scratch.push_back(d);
       // C declares a type before using it: the typedef names seen so far make `(HANDLE)(LONG_PTR)-1`
       // two casts (windows.h's INVALID_HANDLE_VALUE), not a call.

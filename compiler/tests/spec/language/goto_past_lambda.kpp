@@ -1,0 +1,26 @@
+// spec: a goto jumps past a lambda written between it and its label: the lambda's function is emitted in between, and the label is still the block the goto names
+// found linking the converted game: TechnologyGraphGui::resolveVerticalConflicts' `goto skip;` before a sort with a lambda comparator branched to a block that was never defined (emitting the lambda forgot the function's labels)
+int firstNegative(const Vector<int>& values)
+{
+  int found = -1;
+  for (int i = 0; i < values.size(); ++i)
+  {
+    if (values[i] < 0)
+    {
+      found = i;
+      goto done;
+    }
+    auto twice = [](int x) { return 2 * x; };
+    if (twice(values[i]) > 100)
+      goto done;
+  }
+done:
+  return found;
+}
+int main()
+{
+  Vector<int> a = {1, 2, -3, 4};
+  Vector<int> b = {1, 60, -3};
+  println("{} {}", firstNegative(a), firstNegative(b));
+  return 0;
+}

@@ -1,0 +1,67 @@
+// spec: SSE vectors (__m128, __m128i) are values with intrin.h imported: locals, parameters, results and class members hold them, the _mm_ operations take and give them, and a wrapper class converts from and to them
+// found linking the converted game: Color::anyGreaterThan's `__m128 cmp` was a float (intrin.h's typedef of __m128, imported without its vector_size), and each operation's result was the address of a slot, stored as if it were the vector
+extern "C" import "intrin.h";
+
+struct Float4
+{
+  __m128 v;
+};
+
+// Util/SSE.kpp's float32x4: built from a vector implicitly, read as one, its copies and moves defaulted.
+struct Wide
+{
+  Wide() : value(_mm_undefined_ps()) {}
+  Wide(const Wide& other) = default;
+  Wide(Wide&& other) = default;
+  Wide& operator=(const Wide&) = default;
+  Wide& operator=(Wide&&) = default;
+  implicit Wide(__m128 v) : value(v) {}
+  implicit operator __m128() { return this->value; }
+  Wide& operator&=(Wide right) { return *this = _mm_and_ps(*this, right); }
+  __m128 value;
+};
+
+template<class T, class... Args>
+T make(Args&&... args)
+{
+  return T(forward<Args>(args)...);
+}
+
+__m128 twice(__m128 x) { return _mm_add_ps(x, x); }
+
+Float4 scaled(Float4 f, float s)
+{
+  Float4 r;
+  r.v = _mm_mul_ps(f.v, _mm_set1_ps(s));
+  return r;
+}
+
+int main()
+{
+  float values[4] = {1.0f, 3.0f, 0.5f, 2.0f};
+  __m128 loaded = _mm_loadu_ps(values);
+  __m128 cmp = _mm_cmpgt_ps(loaded, _mm_set1_ps(1.5f));
+  int mask = _mm_movemask_ps(cmp);
+  float doubled[4];
+  _mm_storeu_ps(doubled, twice(loaded));
+  Float4 f;
+  f.v = loaded;
+  Float4 g = scaled(f, 10.0f);
+  float tens[4];
+  _mm_storeu_ps(tens, g.v);
+  __m128i ints = _mm_add_epi32(_mm_set1_epi32(40), _mm_set_epi32(4, 3, 2, 1));
+  float fromInts[4];
+  _mm_storeu_ps(fromInts, _mm_cvtepi32_ps(ints));
+  Wide w = _mm_set1_ps(3.0f);
+  w &= cmp;
+  float masked[4];
+  _mm_storeu_ps(masked, w);
+  Wide made = make<Wide>(_mm_set1_ps(2.5f));
+  float madeOut[4];
+  _mm_storeu_ps(madeOut, made);
+  println("{} {} {} {} {}", mask, doubled[0], doubled[1], doubled[2], doubled[3]);
+  println("{} {} {} {}", tens[0], tens[1], tens[2], tens[3]);
+  println("{} {} {} {}", fromInts[0], fromInts[1], fromInts[2], fromInts[3]);
+  println("{} {} {} {} {}", masked[0], masked[1], masked[2], masked[3], madeOut[3]);
+  return 0;
+}
