@@ -412,6 +412,96 @@ public:
   for the leaf), the modules rebuilt (one), the wall time to a linked game, and
   `--verify-incremental` byte-identical.
 
+### Design: codegen's results, home modules and module assembly (codegen thread, for review, 2026-10-30)
+
+One structure for 3c and for the codegen items above (the destructor helpers copied into every
+module, the 4.5 s serial assembly, the 3 s teardown), so that each step lands on its own and the
+last one is the server's `rebuild`.
+
+**Where the IR goes today** (the game as run.cmd builds it, master fb0ce0e, over the 64 module
+files): 1,760 MB in all. 843 MB are the `kpp.dtor.*` helpers, 14 MB the other linkonce_odr helpers
+(thunks, kpp.nodtor), 563 MB the modules' own function definitions, 123 MB type definitions, 72 MB
+declarations, 39 MB constants, 21 MB comdat lines, 85 MB the rest (globals, startup lists).
+
+**What emitting a function produces today.** Its definition goes into `bodies[k]`, k a hash of its
+IR name modulo the module count; the texts are lists of entries sorted at the end, which is why
+the output no longer depends on the threads. Besides its definition a function leaves *first-use
+effects*, written by whichever function reaches them first and owned by nobody: a layout (`structs`),
+a global and its startup constructor (globalForOnce, into `decls` or `moduleDecls[k]`), a constant
+(one per module and content, `moduleConstants`), a vtable (per module, `vtablesIn`), a helper
+(`emittedShared`: the destructor thunks, pointer-to-member thunks, the dyncast helper), a lambda's
+call operator or an instance (the worklist). Helpers go into `shared`, which every module gets
+whole; types and external declarations into `decls`, which every module gets filtered;
+`moduleText` then scans each module's whole text for `@names` to add `declare` lines. Two
+consequences: the copies (helpers and types in all 64 modules), and that no function's output can
+be replaced alone, since what it caused first belongs to no one.
+
+**Proposed: everything emitted is an item with a stable name, and every item records what it uses.**
+
+```
+struct Item                     // kept between builds by the CodegenSession
+{
+  std::string name;             // IR name: a function's, a global's, a helper's, `%struct.<hash>`, a constant's content hash
+  Placement placement;          // Own (a function, in module hash(name) % N), Home (one definition in module
+                                // hash(name) % N, declared where used: helpers, globals, vtables, typeinfo),
+                                // Private (a copy in each module that uses it: constants, type definitions)
+  std::string text;             // its definition, nothing order-dependent in it (as today's entries)
+  std::string declare;          // what a module that uses it but does not hold it writes (Home and Own)
+  std::vector<std::string> uses;     // the items its text names (calls, constants, types, globals, helpers)
+  std::vector<FunctionKey> requested; // the functions it asked to be emitted (today's worklist entries)
+  std::vector<const Ty*> layouts;    // the class layouts it read
+  std::vector<std::string> errors;   // as a clean build reports them
+  const Decl* decl;             // for a function: its declaration (and the instance's arguments), for rebuild()
+};
+```
+
+A function's FunctionResult (the 3c interface) is its Item; a first-use effect becomes an Item of its
+own the first time any function names it, and every function that names it lists it in `uses`, so
+it stays as long as anyone uses it. An item's text is a function of its name and the program, never
+of who reached it first (true today for constants and helpers; globals' startup constructors need
+their temporaries numbered from zero, which globalFor already ensures).
+
+**Module k** is then a pure function of the items: the header; the Private items used by module k's
+items, sorted; the Home items whose home is k, sorted; a `declare` for every Home or Own item used in
+k and held elsewhere, sorted; k's Own items, sorted. The `uses` lists replace the scan of the text
+for `@names`, and each module is assembled on a thread of its own once emission is done (64
+independent jobs instead of 4.5 s on one). The helpers stop being copied: **843 + 14 MB become about
+13 MB**, defined once in their home modules (linkonce_odr stays, harmless). Type definitions become
+Private items written only where used (123 MB today, every type in every module). Expected: the IR
+from 1.76 GB to about 0.85 GB, clang's work and the assembly roughly halved, and smaller modules
+possible (256 instead of 64) once a module no longer carries a fixed 15 MB of helpers.
+
+**rebuild(changedBodies, changedLayouts)** on these items: drop the Items of the functions whose
+declaration is in changedBodies (all of its instances, and the lambdas and local classes inside it:
+their names carry the enclosing instance's mark and token, so a body edit renames them and the old
+ones go unreached) and of every item whose `layouts` meets changedLayouts; emit those again through
+the same emitter as a clean build, so an item's text cannot depend on the path; then recompute the
+reachable set from the roots (the program's non-template functions, startup functions, vtables'
+slots) through the kept `uses` and `requested`, without emitting what is kept; emit new requests,
+drop unreached items. A module is assembled again when the set of item names it holds or uses, or
+one of their texts, changed; the server compiles the modules whose text hash changed (the object
+cache already skips the others).
+
+**Notes on the interface above.** `FunctionKey` as the resolver's records works: codegen keeps
+`decl` and the instance's arguments in each Item and maps the server's keys to the Items of that
+declaration; inside codegen the IR name stays the key (stable while the declaration and its types
+are). Layouts are recorded as canonical class types (canonicalClass), the keys structFor uses.
+Errors stay per Item and are reported sorted, as now.
+
+**Order of work**, each step landed with its measurement and run_tests' byte-for-byte checks:
+1. Codegen's teardown skipped (its 3 s of freeing; the process exits, the server frees on its own
+   thread). Measured: codegen's wall time on the game.
+2. Chained cleanups: each landing pad continues into the previous one's instead of destroying again
+   everything built before it (ControlSettings' constructor, 875 k lines, a quarter of clang's
+   critical path). Measured: that module's size and clang time.
+3. Home modules for the helpers, per-module type definitions, declares from recorded `uses`
+   instead of the text scan, and parallel assembly. The output changes once (smaller). Measured: IR
+   size, codegen's assembly time, clang's total and slowest module, the link.
+4. Every emission recorded as Items (what step 3 placed by name, now with its `uses`, `requested`
+   and `layouts`), and the modules assembled from the Items: byte-identical to step 3's output.
+   Measured: the cost to a clean build (target: within a few percent).
+5. CodegenSession::rebuild with the resolver's 3b, measured as 3c says above.
+
 ## Parallel front end: contention, not work (2026-10-29, evening)
 
 The front end on the headline tree had grown to about 4 s (read, imports, parse and index 1.1 s;
