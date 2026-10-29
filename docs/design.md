@@ -583,7 +583,7 @@ templates need nothing special):
 - Expressions: every operator on those values, conversions (implicit and the casts between
   arithmetic, enumeration and class types along bases), calls of functions with a body (free,
   member on an object value, static, constructors and destructors, templates as the call deduces
-  them, lambdas as objects), `sizeof`/`alignof` (class sizes from the code generator's layout),
+  them, lambdas as objects), `sizeof`/`alignof` and field offsets (from the layout, below),
   the built-in traits, requires-expressions, fold expressions.
 - Statements: local declarations, assignment and compound assignment, `++`/`--`, `if`/`else`,
   `switch`, `for`, `while`, `do`, range-for over arrays and over objects with begin/end, `break`,
@@ -608,6 +608,16 @@ Kpp body", "reads the global gameTick, which is not a constant", "divides by zer
 int32 (question 2)". Never a silent pass, a guessed 0 or a fallback to run time. A `const` global
 that is not needed as a constant and does not evaluate keeps today's run-time initialisation.
 
+*Two modes.* Required: the contexts above, where a failure is the error just described. Try:
+where a constant is welcome but not needed (the code generator folding an initializer or an
+operand, a `const` global that may become constant data), a failure answers "not a constant",
+silently, and the caller emits run-time code as it does today. The same evaluation serves both;
+only what happens on failure differs.
+
+*Folding is not evaluation.* Whatever question 2 decides for required constants, ordinary
+run-time expressions the code generator folds keep run-time semantics: signed arithmetic wraps,
+as the emitted code does, and never takes the erroring path.
+
 *Where it plugs in.*
 - The checker: constEval becomes the interpreter's entry for an expression in a context
   (scope, locals, substitution); constOfDecl, the constant parts of requires clauses, variable
@@ -616,8 +626,13 @@ that is not needed as a constant and does not evaluate keeps today's run-time in
   integral, enumeration and bool constants); float or class constants as template arguments
   (C++20) are a later step, none needed by the game.
 - The code generator: evalConst becomes a call to the same interpreter
-  (GlobalScope::evaluate(expression, context, arguments)), so the two can no longer disagree. The
-  interpreter asks the code generator for class sizes and field offsets (a layout callback).
+  (GlobalScope::evaluate(expression, context, arguments, mode)), so the two can no longer
+  disagree.
+- Layout (agreed with the code generator thread, 2026-10-29): class sizes, alignments, field and
+  base offsets (empty base optimisation, later multiple inheritance) become a pure function of the
+  type in a file of their own, owned by the code generator thread, which derives its IR struct
+  types from it. The checker runs before any code is generated, so the interpreter and the checker
+  call that layout, not the code generator.
 - Constant data: a constexpr global or static member whose value evaluates is emitted as constant
   data (its value lowered to an LLVM constant) instead of by a startup function.
 - A cache of (declaration, arguments) to value, thread-safe like the instantiation records, so
@@ -630,9 +645,12 @@ game's ~240 bodies with statements); (3) objects and constructors (the ~300 cons
 constructors, `BoundingBox::emptyValue().isZeroSize()`, constexpr arrays and strings); (4)
 constant data.
 
-*Who builds it.* A file of its own (compiler/src/consteval.cpp) with one owner; constEval and
-evalConst become thin calls into it, reviewed by the resolver and code generator threads. To be
-settled by the coordinator.
+*Who builds it* (settled 2026-10-29): compiler/src/consteval.cpp, owned by the templates thread,
+which also does step 1's cutover; constEval and evalConst become thin calls into it, the resolver
+and code generator threads reviewing. Kept from constEval (174c22e): each name's evaluation starts
+its own call depth, nesting is bounded (1024, and a check for stack room), and static members'
+values are memoised per class instance (specs templates/pack_recursion_depth and
+templates/variadic_partial_specialisation).
 
 Questions for kovarex:
 1. May any function with a body in the subset run at compile time, or only one marked `constexpr`
