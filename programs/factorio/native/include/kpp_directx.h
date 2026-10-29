@@ -101,6 +101,8 @@
 #define __IDXGISwapChain3_INTERFACE_DEFINED__
 #define __IDXGISwapChain4_INTERFACE_DEFINED__
 #define __IDXGISwapChainMedia_INTERFACE_DEFINED__
+#define __IDirect3D9_INTERFACE_DEFINED__
+#define __IDirect3D9Ex_INTERFACE_DEFINED__
 #define __IEnumWbemClassObject_INTERFACE_DEFINED__
 #define __ISequentialStream_INTERFACE_DEFINED__
 #define __IStream_INTERFACE_DEFINED__
@@ -117,7 +119,11 @@
 #include <d3d11_1.h>
 #include <d3d11sdklayers.h>
 #include <dxgi1_5.h>
+#pragma push_macro("DECLARE_INTERFACE_")
+#undef DECLARE_INTERFACE_
+#define DECLARE_INTERFACE_(iface, baseiface) typedef struct iface iface; struct iface##KppUnusedVtbl
 #include <d3d9.h>
+#pragma pop_macro("DECLARE_INTERFACE_")
 #include <d3dcompiler.h>
 #include <wincodec.h>
 #include <wbemidl.h>
@@ -259,6 +265,8 @@ extern const IID IID_IDXGISwapChain2;
 extern const IID IID_IDXGISwapChain3;
 extern const IID IID_IDXGISwapChain4;
 extern const IID IID_IDXGISwapChainMedia;
+extern const IID IID_IDirect3D9;
+extern const IID IID_IDirect3D9Ex;
 extern const IID IID_IEnumWbemClassObject;
 extern const IID IID_ISequentialStream;
 extern const IID IID_IStream;

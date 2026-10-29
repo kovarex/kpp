@@ -1019,6 +1019,35 @@ public:
   virtual HRESULT CheckPresentDurationSupport(UINT DesiredPresentDuration, UINT* pClosestSmallerPresentDuration, UINT* pClosestLargerPresentDuration) = 0;
 };
 
+class IDirect3D9 : public IUnknown
+{
+public:
+  virtual HRESULT RegisterSoftwareDevice(void* pInitializeFunction) = 0;
+  virtual UINT GetAdapterCount() = 0;
+  virtual HRESULT GetAdapterIdentifier(UINT Adapter, DWORD Flags, D3DADAPTER_IDENTIFIER9* pIdentifier) = 0;
+  virtual UINT GetAdapterModeCount(UINT Adapter, D3DFORMAT Format) = 0;
+  virtual HRESULT EnumAdapterModes(UINT Adapter, D3DFORMAT Format, UINT Mode, D3DDISPLAYMODE* pMode) = 0;
+  virtual HRESULT GetAdapterDisplayMode(UINT Adapter, D3DDISPLAYMODE* pMode) = 0;
+  virtual HRESULT CheckDeviceType(UINT Adapter, D3DDEVTYPE DevType, D3DFORMAT AdapterFormat, D3DFORMAT BackBufferFormat, BOOL bWindowed) = 0;
+  virtual HRESULT CheckDeviceFormat(UINT Adapter, D3DDEVTYPE DeviceType, D3DFORMAT AdapterFormat, DWORD Usage, D3DRESOURCETYPE RType, D3DFORMAT CheckFormat) = 0;
+  virtual HRESULT CheckDeviceMultiSampleType(UINT Adapter, D3DDEVTYPE DeviceType, D3DFORMAT SurfaceFormat, BOOL Windowed, D3DMULTISAMPLE_TYPE MultiSampleType, DWORD* pQualityLevels) = 0;
+  virtual HRESULT CheckDepthStencilMatch(UINT Adapter, D3DDEVTYPE DeviceType, D3DFORMAT AdapterFormat, D3DFORMAT RenderTargetFormat, D3DFORMAT DepthStencilFormat) = 0;
+  virtual HRESULT CheckDeviceFormatConversion(UINT Adapter, D3DDEVTYPE DeviceType, D3DFORMAT SourceFormat, D3DFORMAT TargetFormat) = 0;
+  virtual HRESULT GetDeviceCaps(UINT Adapter, D3DDEVTYPE DeviceType, D3DCAPS9* pCaps) = 0;
+  virtual HMONITOR GetAdapterMonitor(UINT Adapter) = 0;
+  virtual HRESULT CreateDevice(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags, D3DPRESENT_PARAMETERS* pPresentationParameters, IDirect3DDevice9** ppReturnedDeviceInterface) = 0;
+};
+
+class IDirect3D9Ex : public IDirect3D9
+{
+public:
+  virtual UINT GetAdapterModeCountEx(UINT Adapter, const D3DDISPLAYMODEFILTER* pFilter) = 0;
+  virtual HRESULT EnumAdapterModesEx(UINT Adapter, const D3DDISPLAYMODEFILTER* pFilter, UINT Mode, D3DDISPLAYMODEEX* pMode) = 0;
+  virtual HRESULT GetAdapterDisplayModeEx(UINT Adapter, D3DDISPLAYMODEEX* pMode, D3DDISPLAYROTATION* pRotation) = 0;
+  virtual HRESULT CreateDeviceEx(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags, D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode, IDirect3DDevice9Ex** ppReturnedDeviceInterface) = 0;
+  virtual HRESULT GetAdapterLUID(UINT Adapter, LUID* pLUID) = 0;
+};
+
 class IEnumWbemClassObject : public IUnknown
 {
 public:

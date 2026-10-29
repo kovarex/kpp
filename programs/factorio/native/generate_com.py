@@ -35,6 +35,9 @@ SINGLE = {r'um\Unknwn.h': ['IUnknown'], r'um\ObjIdl.h': ['ISequentialStream', 'I
           r'um\wincodec.h': ['IWICImagingFactory', 'IWICBitmapSource', 'IWICBitmapDecoder', 'IWICBitmapFrameDecode', 'IWICFormatConverter',
                              'IWICStream'],
           r'um\WbemCli.h': ['IWbemLocator', 'IWbemServices', 'IWbemClassObject', 'IEnumWbemClassObject']}
+# Interfaces of headers that declare them with DECLARE_INTERFACE_ (d3d9.h), not MIDL's C structs:
+# GraphicsInterfaceDX11::logDeviceInfo asks IDirect3D9Ex for the adapters' driver versions.
+DECLARED = {r'shared\d3d9.h': ['IDirect3D9', 'IDirect3D9Ex']}
 # IIDs the game names with __uuidof without calling the interface.
 EXTRA_IIDS = ['ID3D10Device']
 # What the import must include, in order (the SDK's own includes bring the rest).
@@ -135,6 +138,35 @@ def interfaces_of(path, wanted=None):
     return found
 
 
+def declared_interfaces_of(path, wanted):
+    """The interfaces a header declares with `DECLARE_INTERFACE_(IFoo, IBar) { STDMETHOD(Method)(THIS_
+    ...) PURE; STDMETHOD_(Result, Method)(THIS) PURE; ... };`, each listing its bases' methods first,
+    as MIDL's C vtables do."""
+    text = strip_comments(open(path, encoding='utf-8', errors='replace').read())
+    found = {}
+    for m in re.finditer(r'DECLARE_INTERFACE_\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*\{(.*?)\}\s*;', text, flags=re.S):
+        name, base, body = m.group(1), m.group(2), m.group(3)
+        if name not in wanted:
+            continue
+        methods = []
+        for e in re.finditer(r'STDMETHOD(?:_\(\s*([^,]+?)\s*,\s*(\w+)\s*\)|\(\s*(\w+)\s*\))\s*\((.*?)\)\s*PURE\s*;', body, flags=re.S):
+            result = ' '.join(e.group(1).split()) if e.group(1) else 'HRESULT'
+            method = e.group(2) or e.group(3)
+            params = ' '.join(re.sub(r'\bCONST\b', 'const', e.group(4)).replace('FAR', ' ').split())
+            if params == 'THIS':
+                params = ''
+            elif params.startswith('THIS_'):
+                params = params[len('THIS_'):]
+            else:
+                raise SystemExit(f'{path}: {name}::{method}: no THIS first')
+            methods.append((result, method, [parameter(x) for x in split_top(params)]))
+        names = [x[1] for x in methods]
+        if len(set(names)) != len(names):
+            raise SystemExit(f'{path}: {name} has overloads, whose vtable order this script does not handle')
+        found[name] = (base, methods)
+    return found
+
+
 def guarded_declarations(path, names):
     """The C declarations an interface's guard holds besides the interface (`typedef IUnknown
     *LPUNKNOWN;`, IStream's STATSTG and enums): the text between `#define __IFoo_INTERFACE_DEFINED__`
@@ -155,6 +187,12 @@ def main():
         interfaces.update(interfaces_of(os.path.join(SDK, header)))
     for header, names in SINGLE.items():
         got = interfaces_of(os.path.join(SDK, header), set(names))
+        missing = set(names) - set(got)
+        if missing:
+            raise SystemExit(f'{header}: {sorted(missing)} not found')
+        interfaces.update(got)
+    for header, names in DECLARED.items():
+        got = declared_interfaces_of(os.path.join(SDK, header), set(names))
         missing = set(names) - set(got)
         if missing:
             raise SystemExit(f'{header}: {sorted(missing)} not found')
@@ -211,7 +249,16 @@ def main():
               '// keeps the SDK\'s types, functions and constants but not those interfaces\' C structs.',
               '#pragma once']
     header += [f'#define __{name}_INTERFACE_DEFINED__' for name in order]
-    header += [f'#include <{h}>' for h in IMPORTED]
+    for h in IMPORTED:
+        if h == 'd3d9.h':
+            # Its interfaces have no guards: each DECLARE_INTERFACE_ becomes a forward declaration,
+            # which names the Kpp class where one is generated, and its method table a struct
+            # nothing uses.
+            header += ['#pragma push_macro("DECLARE_INTERFACE_")', '#undef DECLARE_INTERFACE_',
+                       '#define DECLARE_INTERFACE_(iface, baseiface) typedef struct iface iface; struct iface##KppUnusedVtbl',
+                       f'#include <{h}>', '#pragma pop_macro("DECLARE_INTERFACE_")']
+        else:
+            header.append(f'#include <{h}>')
     for path in [os.path.join(SDK, h) for h in WHOLE + list(SINGLE)]:
         for name, declarations in guarded_declarations(path, set(order)):
             header.append(f'// What the guard of {name} also holds ({os.path.basename(path)}).')
