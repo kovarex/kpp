@@ -5029,6 +5029,30 @@ struct GlobalScope::Impl
     }
   }
 
+  // A class's argument list against an instance's: element by element, a trailing parameter
+  // pack taking the rest as a pack (`TList<Ts...>` given TList<int, float>: Ts = int, float), as
+  // an applied template template parameter's does below.
+  void deduceClassArgs(Span<const Ty*> patterns, Span<const Ty*> args, Subst& out, int depth)
+  {
+    for (size_t i = 0; i < patterns.size(); ++i)
+    {
+      const Ty* p = patterns[i];
+      if (i + 1 == patterns.size() && isPackParam(p))
+      {
+        if (!out.find(p->decl))
+        {
+          std::vector<const Ty*> rest;
+          for (size_t k = i; k < args.size(); ++k)
+            rest.push_back(args[k]);
+          out.pairs.push_back({p->decl, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+        }
+        return;
+      }
+      if (i < args.size())
+        deduce(p, args[i], out, depth + 1);
+    }
+  }
+
   // Structural template argument deduction: binds parameters of `pattern` from `arg`.
   void deduce(const Ty* pattern, const Ty* arg, Subst& out, int depth = 0)
   {
@@ -5144,22 +5168,19 @@ struct GlobalScope::Impl
         break;
       case TyKind::Class:
         if (a->kind == TyKind::Class && a->decl == pattern->decl)
-          for (size_t i = 0; i < pattern->args.size() && i < a->args.size(); ++i)
-            deduce(pattern->args[i], a->args[i], out, depth + 1);
+          deduceClassArgs(pattern->args, a->args, out, depth);
         else if (std::vector<const Ty*> given; a->kind == TyKind::Class && !pattern->args.empty() &&
                  !(given = primaryArgumentsOf(types.unqualified(a), pattern->decl, depth + 1)).empty())
         {
           // `Owner<T>` given an instance of Owner's specialisation `Owner<T, Del<T>>`: deduced from
           // the primary template's arguments it stands for (Owner<int, Del<int>>).
-          for (size_t i = 0; i < pattern->args.size() && i < given.size(); ++i)
-            deduce(pattern->args[i], given[i], out, depth + 1);
+          deduceClassArgs(pattern->args, Span<const Ty*>{given.data(), uint32_t(given.size())}, out, depth);
         }
         else if (a->kind == TyKind::Class && a->decl && pattern->decl && pattern->decl->ownScope && !pattern->args.empty())
         {
           // `const Opt<T>&` given a class derived from Opt<int>: T from that base, as C++ has it.
           if (const Ty* base = instantiationOfBase(a, classScopeOf(a), pattern->decl->ownScope, depth + 1); base && base != a)
-            for (size_t i = 0; i < pattern->args.size() && i < base->args.size(); ++i)
-              deduce(pattern->args[i], base->args[i], out, depth + 1);
+            deduceClassArgs(pattern->args, base->args, out, depth);
         }
         break;
       case TyKind::Function:

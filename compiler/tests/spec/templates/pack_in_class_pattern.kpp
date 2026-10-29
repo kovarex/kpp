@@ -1,0 +1,15 @@
+// spec: a trailing pack in a class's argument list deduces as a pack (`TList<Ts...>` given TList<int, float, char>: Ts = int, float, char), for a partial specialization and for a function parameter, also after a leading argument, through a base, and empty
+// found with is_specialization<T, ID>: a trailing pack in a class's arguments took the first element only, so a specialization over more than one never matched (silently: the primary's value) and `countOf(TList<int, float>())` did not resolve
+template<typename... Ts> struct TList {};
+template<class T> struct Count { static int get() { return 0; } };
+template<class... Ts> struct Count<TList<Ts...>> { static int get() { return int(sizeof...(Ts)); } };
+template<class... Ts> int countOf(TList<Ts...>) { return int(sizeof...(Ts)); }
+template<class... Ts> int afterInt(const TList<int, Ts...>&) { return int(sizeof...(Ts)); }
+struct Derived : TList<char, double> {};
+
+int main()
+{
+  println("{} {} {}", Count<TList<int, float, char>>::get(), Count<int>::get(), Count<TList<>>::get());
+  println("{} {} {} {}", countOf(TList<int, float>()), countOf(TList<>()), countOf(Derived()), afterInt(TList<int, char, bool>()));
+  return 0;
+}
