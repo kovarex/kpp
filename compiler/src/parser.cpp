@@ -1578,7 +1578,14 @@ namespace
         return;
       }
 
-      // Class / enum definitions (which may be followed by declarators).
+      // Class / enum definitions (which may be followed by declarators). `const struct { ... }
+      // passes[] {...};`: the const is the declarators' (or, when the class is only named, the
+      // type's: `const struct Point* p`).
+      if (at(Kw::const_) && (at(Kw::class_, 1) || at(Kw::struct_, 1) || at(Kw::union_, 1)))
+      {
+        advance();
+        pendingConst = true;
+      }
       if (at(Kw::class_) || at(Kw::struct_) || at(Kw::union_))
       {
         if (parseClassOrElaborated(scope, flags, templ))
@@ -2777,6 +2784,15 @@ namespace
         return parseTypedUnion(scope, flags, templ);
       uint32_t start = pos;
       uint32_t save = pos;
+      // A const read before the keyword: the declarators' after a definition; the type's, when
+      // this is no definition and the caller parses the type again.
+      bool constDeclarators = std::exchange(pendingConst, false);
+      auto notADefinition = [&]()
+      {
+        restore(save);
+        pendingConst = constDeclarators;
+        return false;
+      };
       Kw keyword = Kw(tok().id);
       advance();
       skipAttributes();
@@ -2794,10 +2810,7 @@ namespace
       if (atIdent() || at(P::ColonColon))
       {
         if (!parseQualifiedName(c->name, true, false))
-        {
-          restore(save);
-          return false;
-        }
+          return notADefinition();
       }
       skipAttributes();
       if (templ.present && !c->name.empty() && c->name.last().hasTemplateArgs)
@@ -2819,11 +2832,7 @@ namespace
         return true;
       }
       if (!at(P::LBrace) && !at(P::Colon))
-      {
-        // Elaborated type specifier used in a declaration.
-        restore(save);
-        return false;
-      }
+        return notADefinition(); // an elaborated type specifier used in a declaration
       if (accept(P::Colon))
       {
         std::vector<ClassDecl::Base> bases;
@@ -2886,10 +2895,17 @@ namespace
         }
         NamedType* selfType = node<NamedType>(start);
         selfType->name = c->name;
+        Type* declaredType = selfType;
+        if (constDeclarators)
+        {
+          ConstType* constType = node<ConstType>(start);
+          constType->inner = selfType;
+          declaredType = constType;
+        }
         for (;;)
         {
           Declarator d;
-          d.type = selfType;
+          d.type = declaredType;
           parseDeclarator(d, scope);
           if (inRecovery)
             return true;
@@ -3359,6 +3375,32 @@ namespace
     }
 
     // Syntactic guess whether a statement starting with a name is a declaration.
+    // At `ahead` tokens on, a declarator in parentheses: `(*name)(` or `(&name)(` (a pointer or
+    // reference to a function), `(*name[N])(` or `(*name[N])[` (an array of pointers to functions
+    // or to arrays). A call's first argument can start the same way (`f(*p);`, `f(&x);`,
+    // `memcpy(&image[i * 4], &color, 3);`, `exchange(*items[0], *items[1]);`); no array of
+    // references exists, so `(&name[` is always one.
+    bool parenthesisedDeclaratorAhead(int ahead) const
+    {
+      if (!at(P::LParen, ahead) || !(at(P::Star, ahead + 1) || at(P::Amp, ahead + 1)) || !atIdent(ahead + 2))
+        return false;
+      if (at(P::RParen, ahead + 3))
+        return at(P::LParen, ahead + 4);
+      if (!at(P::Star, ahead + 1) || !at(P::LBracket, ahead + 3))
+        return false;
+      int i = ahead + 3;
+      for (int depth = 0;; ++i)
+      {
+        if (at(TokenKind::End, i))
+          return false;
+        if (at(P::LBracket, i))
+          ++depth;
+        else if (at(P::RBracket, i) && --depth == 0)
+          break;
+      }
+      return at(P::RParen, i + 1) && (at(P::LParen, i + 2) || at(P::LBracket, i + 2));
+    }
+
     bool looksLikeDeclaration()
     {
       if (at(TokenKind::Keyword))
@@ -3375,8 +3417,7 @@ namespace
           default:
             if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && atIdent(2) && at(P::ColonColon, 3) && at(P::Star, 4))
               return true; // `int (Calc::*op)(int)`: a pointer to a member
-            if (isBuiltinTypeKeyword(Kw(tok().id)) && at(P::LParen, 1) && (at(P::Star, 2) || at(P::Amp, 2)) && atIdent(3) &&
-                ((at(P::RParen, 4) && at(P::LParen, 5)) || at(P::LBracket, 4)))
+            if (isBuiltinTypeKeyword(Kw(tok().id)) && parenthesisedDeclaratorAhead(1))
               return true; // `void (*callback)();`, `int (*op)(int) = twice;`: a function pointer declarator
             return isBuiltinTypeKeyword(Kw(tok().id)) && !at(P::LParen, 1) && !at(P::LBrace, 1) && !at(P::ColonColon, 1);
         }
@@ -3415,8 +3456,7 @@ namespace
             result = atIdent() && (at(P::Semi, 1) || at(P::Assign, 1) || at(P::LParen, 1) || at(P::LBrace, 1) ||
                                    at(P::Comma, 1) || at(P::LBracket, 1) || at(P::RParen, 1));
           }
-          else if (at(P::LParen) && (at(P::Star, 1) || at(P::Amp, 1)) && atIdent(2) &&
-                   ((at(P::RParen, 3) && at(P::LParen, 4)) || at(P::LBracket, 3)))
+          else if (parenthesisedDeclaratorAhead(0))
             result = true; // function pointer declarator `R (*f)(...)`; `f(*p);` and `f(&x);` are calls
           else if (at(P::LParen) && atIdent(1) && at(P::ColonColon, 2) && at(P::Star, 3))
             result = true; // pointer to member declarator `R (C::*name)(...)`

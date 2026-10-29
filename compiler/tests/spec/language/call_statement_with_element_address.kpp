@@ -1,6 +1,5 @@
 // spec: a statement calling a function whose first argument is the address of an element or an element through a pointer is a call, not a declaration with a parenthesised declarator: `memcpy(&image[i * 4], &color, 3);`, `Holder<int>::exchange(*items[0], *items[1]);`
 // factorio: DXTDecompression's `memcpy(&image[pixel * 4], &finalColor, 3);`, YCoCgDXTCompression's `memcpy( &colorBlock[j*4*4], inPtr, 4*4 );`, DeconstructionItemGui's `ChooseButton<FilterType>::swapCallbacks(*buttons[from], *buttons[to]);`
-// pending: the parser takes `name(&x[i]` and `name(*x[i]` for the start of a declarator and stops at the comma ("expected ')' in declarator"); the statement is lost
 extern "C" import "string.h";
 template<typename T>
 struct Holder
