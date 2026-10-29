@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**680 pass, 3 pending, 0 failing, 0 fixed** (683 snippets, 33.8 s).
+**680 pass, 4 pending, 0 failing, 0 fixed** (684 snippets, 26.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -218,6 +218,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `classes/union_constructor_initializes_member.kpp` | a union's own constructor initializes the member its initializer names (`Value(Thing& wrapped) : thing(&wrapped) {}`): a local union, a class's const member initialized through it (`value(wrapped)`), that class returned by value, and the default constructor's `none(nullptr)` | pending | UpgradableEntity's WrappedValue (`WrappedValue(EntityWithHealth& wrapped) : wrappedEntityWithHealth(&wrapped) {}`), the entity an UpgradableEntity wraps: it was left uninitialized, so `entity->asUpgradableEntity().getUpgradeTargetWithFallback()` went through a garbage EntityWithHealth* and 53 of the unit tests' 554 suites crash under it (tests.cmd, suites.py) | SILENT, the initializer is dropped and the member keeps whatever its storage held, so the snippet reads through a garbage pointer and crashes (a body's assignment `this->thing = &wrapped;` works); owner: the codegen thread; program exited with 0xC0000005 |
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregate_reference_member.kpp` | an aggregate with reference members initialised from a braced list (`Ref r{x};`): the members refer to the objects given, reads and writes go to them, and copying the aggregate copies the references | pass | CommonUtil's ReversionWrapperByReference<T> { T& iterable; } behind every `for (x : reverse(container))`, and small reference holders across the game |  |
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
