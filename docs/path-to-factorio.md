@@ -677,6 +677,25 @@ the 28,000 new lines (one frozen tree, master 4c98ac0's converter output, two ru
   pointer and a few local enums.
 - **5 bases of unknown type.**
 
+**Undeclared type names (2026-10-29): 23,197 -> 24,168.** A correction of the same kind: a type
+name declared nowhere becomes the resolver's placeholder class (a draft, so that checking goes
+on), and codegen laid that out as an empty class, so every function using it compiled against a
+one-byte nothing. Now a layout that needs one is an error naming it (`the type 'X' is not
+declared`, `the layout of C: the member m (...) names 'X', which is not declared`): 1,239 lines,
+60 names. By name: CSteamID 803 (SteamID's base: the Steam API is not imported), GLuint 125 and
+GLenum 16 (the OpenGL backend's object ids), CComPtr 80 and DXGI_SWAP_EFFECT 41,
+PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN 8, IStream 3 (the DirectX backend), RE2 25 (MacroReplacer's
+pattern), `path` 24 (std::filesystem::path, Path's base), HAuthTicket 12, TooltipProvider 12,
+ReferenceWrapper 11, StackWalker 8, ProtoAutoplacer 6, LevelRange 5. The same change has codegen
+check the static_asserts on a class's size or alignment (the checker leaves them to the
+layouts; those of class template instances were never checked): 12 fail, most because layouts
+have no empty-base optimisation yet (CorpseSaveFlags, DrawingFlags, SamplingMode,
+SpriteDrawOrder, ...), and 128 lines are DeserialiserHelper's catch-all `loadValue(..., T&,
+Args&&...)` with its `static_assert(sizeof(T) == 0, "Unknown type")`, which overload resolution
+picks for `Optional<X>` targets (silent before: the assert needs T's layout). About 400 lines of
+other errors went, from functions whose first error is now the undeclared name. One tree (the
+converter output of master eac68d2), master's compiler against this one.
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in

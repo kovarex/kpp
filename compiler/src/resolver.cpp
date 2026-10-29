@@ -326,6 +326,7 @@ struct GlobalScope::Impl
     StaticAssertDecl* decl = nullptr;
     Subst subst;                                                   // the instance's arguments, in a template
     std::string instance;
+    const FunctionDecl* inFunction = nullptr;                      // the instance's function body it is in: counts if emitted
   };
   std::vector<LayoutAssert> layoutAsserts;                          // (under checkerErrorsMutex) for the code generator
   // (under checkerErrorsMutex) Failed static_asserts in template instances' function bodies, by
@@ -3055,6 +3056,7 @@ struct GlobalScope::Impl
       if (ctx.subst)
         a.subst = *ctx.subst;
       a.instance = instance;
+      a.inFunction = inFunction;
       return;
     }
     if (v && *v)
@@ -10222,6 +10224,8 @@ std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
   std::unordered_set<std::string> seen; // an instance's assert met by several walks once
   for (const Impl::LayoutAssert& a : impl->layoutAsserts)
   {
+    if (a.inFunction && !impl->emittedFunctions.count(a.inFunction))
+      continue; // in a template instance's function the program does not use (functionEmitted)
     std::string key = std::to_string(reinterpret_cast<uintptr_t>(a.decl)) + "|" + a.instance;
     if (!seen.insert(key).second)
       continue;

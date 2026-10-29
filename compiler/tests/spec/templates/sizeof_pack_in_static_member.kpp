@@ -1,0 +1,16 @@
+// spec: `sizeof...(Ts)` in a class template's static member initializer and in a variable template is the number of the pack's elements, also inside a larger expression
+// found by the template thread: codegen's constant evaluator took the size of the pack type ("sizeof int32, float, char") instead of counting it
+template<typename... Ts>
+struct TypeList
+{
+  static constexpr size_t count = sizeof...(Ts);
+  static constexpr int doubled = int(sizeof...(Ts)) * 2 + 1;
+};
+template<typename... Ts>
+constexpr size_t countOf = sizeof...(Ts);
+int main()
+{
+  const size_t* where = &TypeList<int, float, char>::count;
+  println("{} {} {} {} {}", TypeList<int, float, char>::count, TypeList<int, float, char>::doubled, countOf<int, double>, TypeList<>::count, *where);
+  return 0;
+}

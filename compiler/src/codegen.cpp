@@ -4432,6 +4432,21 @@ namespace
         case NodeKind::SizeofExpr:
         {
           auto* s = static_cast<SizeofExpr*>(e);
+          if (s->isPack)
+          {
+            // `sizeof...(Ts)`: how many elements the pack has (a static member's initializer, a
+            // variable template's), not a size.
+            Decl* param = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved : nullptr;
+            if (!param && s->operand)
+              param = packIn(s->operand);
+            if (param && param->kind == NodeKind::TemplateParamDecl && currentArgs)
+              for (auto& [p, t] : currentArgs->pairs)
+                if (p == param && t && t->kind == TyKind::Pack)
+                  return int64_t(t->args.size());
+            if (param && packLocals.count(param))
+              return int64_t(packLocals[param].size());
+            return std::nullopt;
+          }
           const Ty* t = nullptr;
           if (s->type && s->type->kind == NodeKind::NamedType && static_cast<NamedType*>(s->type)->resolved &&
               (static_cast<NamedType*>(s->type)->resolved->kind == NodeKind::VariableDecl ||
@@ -10524,22 +10539,25 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   };
   std::atomic<bool> outOfMemory{false};
   size_t emitted = 0;
-  size_t layoutAssertsChecked = 0;
+  std::set<std::pair<StaticAssertDecl*, std::string>> layoutAssertsChecked;
   while (!outOfMemory)
   {
     if (level.empty())
     {
       // Everything is emitted: the static_asserts on a class's size or alignment, which the
       // checker leaves to the layouts; those of class template instances once the functions
-      // that name the instances are emitted. A layout they build can ask for functions (its
-      // vtable's), which go on.
+      // that name the instances are emitted (and one in an instance's function if that is
+      // emitted). A layout they build can ask for functions (its vtable's), which go on.
       global.checkInstanceStaticAsserts();
-      std::vector<GlobalScope::LayoutStaticAssert> asserts = global.layoutStaticAsserts();
-      if (asserts.size() == layoutAssertsChecked)
+      bool checked = false;
+      for (const GlobalScope::LayoutStaticAssert& a : global.layoutStaticAsserts())
+        if (layoutAssertsChecked.insert({a.decl, a.instance}).second)
+        {
+          e.checkLayoutAssert(a);
+          checked = true;
+        }
+      if (!checked)
         break;
-      for (size_t i = layoutAssertsChecked; i < asserts.size(); ++i)
-        e.checkLayoutAssert(asserts[i]);
-      layoutAssertsChecked = asserts.size();
       for (Instantiation& item : e.worklist)
         level.push_back(std::move(item));
       e.worklist.clear();
