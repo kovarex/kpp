@@ -2422,7 +2422,24 @@ struct GlobalScope::Impl
     // The variable template whose initializer is evaluated under subst (`hasBegin<Vector<int>>`):
     // a requires-expression in it holds or not for these arguments, whatever its last typing left.
     Decl* variableTemplate = nullptr;
+    // One element of a pack expansion typed (TemplateArgs::elementPacks): the packs whose mentions
+    // here name the element at elementIndex, subst binding them whole. Only the pattern's own
+    // nodes see it: a context made for a declaration they name starts without it.
+    const std::vector<Decl*>* elementPacks = nullptr;
+    uint32_t elementIndex = 0;
   };
+
+  // What a mention of template parameter d names, subst binding it to bound: under ctx's pack
+  // element (an expansion's pattern), the element of a pack it expands; bound otherwise.
+  static const Ty* elementOf(const Decl* d, const Ty* bound, const TypeContext& ctx)
+  {
+    if (!ctx.elementPacks || !bound || bound->kind != TyKind::Pack || ctx.elementIndex >= bound->args.size())
+      return bound;
+    for (const Decl* p : *ctx.elementPacks)
+      if (p == d)
+        return bound->args[ctx.elementIndex];
+    return bound;
+  }
 
   // A written template argument that names only types that exist under ctx's substitution,
   // the arguments of an alias template included: `VoidT<T::force_memcpy_save>` is void for any T
@@ -3809,7 +3826,7 @@ struct GlobalScope::Impl
     if (d->kind == NodeKind::TemplateParamDecl)
     {
       if (ctx.subst)
-        if (const Ty* t = ctx.subst->find(d); t && t->kind == TyKind::Value)
+        if (const Ty* t = elementOf(d, ctx.subst->find(d), ctx); t && t->kind == TyKind::Value)
         {
           if (!t->decl)
             return ConstValue::integer(t->value, t->inner);
@@ -9476,7 +9493,7 @@ struct GlobalScope::Impl
       case NodeKind::TemplateParamDecl:
         if (ctx.subst)
           if (const Ty* t = ctx.subst->find(d))
-            return t;
+            return elementOf(d, t, ctx);
         return types.param(d);
       case NodeKind::UsingAliasDecl:
       {
@@ -9730,7 +9747,7 @@ struct GlobalScope::Impl
           }
           if (ctx.subst)
             if (const Ty* sub = ctx.subst->find(l.decl))
-              return sub;
+              return elementOf(l.decl, sub, ctx);
           return types.param(l.decl);
         }
         if (!l.decl)
@@ -9866,11 +9883,13 @@ struct GlobalScope::Impl
         // pattern once per element, each pack it names bound to that element, as a pack (a bare
         // `Args...` is the pack itself).
         Type* pattern = static_cast<PackType*>(t)->pattern;
+        TypeContext whole = ctx;
+        whole.elementPacks = nullptr; // (an expansion in an expansion's pattern: its packs whole, `g<Ts...>()`)
         std::vector<Decl*> packs;
         if (ctx.subst && !isBarePack(pattern))
           packsNamedIn(pattern, *ctx.subst, packs);
         if (packs.empty())
-          return convertType(pattern, ctx, depth + 1);
+          return convertType(pattern, whole, depth + 1);
         size_t n = ctx.subst->find(packs[0])->args.size();
         for (Decl* pack : packs)
           if (ctx.subst->find(pack)->args.size() != n)
@@ -9882,7 +9901,7 @@ struct GlobalScope::Impl
           for (Subst::Pair& pair : element.pairs)
             if (std::find(packs.begin(), packs.end(), pair.param) != packs.end())
               pair.type = pair.type->args[i];
-          TypeContext ectx = ctx;
+          TypeContext ectx = whole;
           ectx.subst = &element;
           elements.push_back(convertType(pattern, ectx, depth + 1));
         }
@@ -12729,6 +12748,10 @@ struct GlobalScope::Impl
     // would decide anew (`isConstructible<T, Input&, Args&&...>`, false for each element alone).
     // Not for a `for constexpr` element, whose body's if constexpr depends on it.
     bool keepConstexprBranches = false;
+    // Of that re-typing: the packs whose mentions name one element (TemplateArgs::elementPacks),
+    // activeSubst binding them whole; null otherwise.
+    const std::vector<Decl*>* elementPacks = nullptr;
+    uint32_t elementIndex = 0;
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
     // Set on the scratch walkers that probe a requires-expression's requirements: an explicit
@@ -13053,7 +13076,13 @@ struct GlobalScope::Impl
               text.data() + tk.offset, types.toString(t, &symbols).c_str(), inst.c_str(), inst.empty() ? "" : "]");
     }
 
-    TypeContext ctx() const { return TypeContext{scope, &locals, activeSubst, &tokens, text}; }
+    TypeContext ctx() const
+    {
+      TypeContext c{scope, &locals, activeSubst, &tokens, text};
+      c.elementPacks = elementPacks;
+      c.elementIndex = elementIndex;
+      return c;
+    }
 
     // --- template instantiation: check bodies once per (template, arguments) ---
 
@@ -13433,6 +13462,9 @@ struct GlobalScope::Impl
             if (const Ty* walked = locals.deducedTypeOf(d))
               return walked; // a lambda's parameter as this walk typed it
           const Ty* t = impl.declaredTypeOf(d, activeSubst, 0);
+          // A function parameter pack in the pattern of one element's expansion: that element.
+          if (static_cast<ParamDecl*>(d)->isPack && elementPacks && !elementPacks->empty() && t && t->kind == TyKind::Pack && elementIndex < t->args.size())
+            return t->args[elementIndex];
           return impl.containsAuto(t) ? unknown(Why::Auto) : t;
         }
         case NodeKind::EnumeratorDecl:
@@ -13494,6 +13526,19 @@ struct GlobalScope::Impl
       }
     }
 
+    // The type of a template parameter named as a value or a type: what activeSubst binds it to,
+    // a constant parameter's value as its type, and in the pattern of one element's expansion
+    // (elementPacks) that element (`values[I]...` over `int... I`, `func(Args())...`).
+    const Ty* dependentNameType(Decl* d)
+    {
+      const Ty* t = impl.declaredTypeOf(d, activeSubst, 0);
+      const Ty* element = Impl::elementOf(d, t, ctx());
+      if (element != t && element && element->kind == TyKind::Value && d->kind == NodeKind::TemplateParamDecl &&
+          !static_cast<TemplateParamDecl*>(d)->isType && element->inner)
+        return element->inner; // a constant's element, as declaredTypeOf gives a constant parameter's type
+      return element;
+    }
+
     const Ty* resolveName(NameExpr* e)
     {
       if (e->name.empty())
@@ -13535,7 +13580,7 @@ struct GlobalScope::Impl
         case Found::Dependent: ++stats.namesDependent; break;
       }
       if (l.found == Found::Dependent)
-        return l.decl ? impl.declaredTypeOf(l.decl, activeSubst, 0) : types.unknown();
+        return l.decl ? dependentNameType(l.decl) : types.unknown();
       // Members of the current class template keep their dependent types; members reached
       // through a qualified name on an instantiation get substituted.
       if ((e->name.parts.size() > 1 || e->name.typeQualifier) && l.found == Found::Member && l.foundIn && l.foundIn->owner &&
@@ -14674,7 +14719,8 @@ struct GlobalScope::Impl
         }
         if (l.found == Found::Dependent)
         {
-          const Ty* t = l.decl ? impl.declaredTypeOf(l.decl, activeSubst, 0) : types.unknown();
+          // (`Args()` in the pattern of one element's expansion: that element's type.)
+          const Ty* t = l.decl ? dependentNameType(l.decl) : types.unknown();
           record(n, t);
           if (l.decl && l.decl->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(l.decl)->isType)
             return callResultOfValue(t && t->kind == TyKind::Value && t->inner ? t->inner : t, c); // `func(a, b)`: a call through a constant parameter
@@ -15330,6 +15376,16 @@ struct GlobalScope::Impl
       const Ty* pt = pd ? impl.declaredTypeOf(pd, activeSubst, 0) : nullptr;
       if (!pt || pt->kind != TyKind::Pack)
         return nullptr;
+      // An expansion of the packs whose one element the code generator emits (elementPacks): its
+      // pattern typed once, for that element, as typeOfUnary types an expansion of no pack.
+      if (elementPacks && !elementPacks->empty() && pd->kind == NodeKind::ParamDecl)
+      {
+        std::vector<Decl*> packs;
+        impl.packsNamedIn(static_cast<ParamDecl*>(pd)->type, *activeSubst, packs);
+        for (Decl* p : packs)
+          if (std::find(elementPacks->begin(), elementPacks->end(), p) != elementPacks->end())
+            return nullptr;
+      }
       size_t n = pt->args.size();
       if (n == 0)
       {
@@ -17735,6 +17791,11 @@ std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e,
   }
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
   Impl::TypeContext ctx{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+  if (!args.elementPacks.empty())
+  {
+    ctx.elementPacks = &args.elementPacks;
+    ctx.elementIndex = args.elementIndex;
+  }
   struct Lent
   {
     const ConstHooks* saved = Impl::constHooks();
@@ -17779,8 +17840,13 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
   }
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
-  return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr,
-                                                file ? file->text : std::string_view()}, 0);
+  Impl::TypeContext ctx{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+  if (!args.elementPacks.empty())
+  {
+    ctx.elementPacks = &args.elementPacks;
+    ctx.elementIndex = args.elementIndex;
+  }
+  return impl->convertType(t, ctx, 0);
 }
 
 std::optional<bool> GlobalScope::typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args)
@@ -17859,6 +17925,11 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   Impl::Walker w(impl, scratch, *f->file->tokens, f->file->text);
   w.retypingElements = retypingElements;
   w.keepConstexprBranches = keepBranches;
+  if (!args.elementPacks.empty())
+  {
+    w.elementPacks = &args.elementPacks;
+    w.elementIndex = args.elementIndex;
+  }
   for (Decl* p = f; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);

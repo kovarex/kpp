@@ -19,6 +19,13 @@ struct Scope;
 struct TemplateArgs
 {
   std::vector<std::pair<Decl*, const Ty*>> pairs;
+  // While one element of a pack expansion is emitted: the packs its pattern expands and the
+  // element's index. The pattern's own mentions of those packs name that element; everything else
+  // (the function's parameters, the class instance, its members) keeps the whole packs the pairs
+  // bind (`(OrderList::update<Ts>(lists[OrderList::getIndex<Ts>()]), ...)` with lists an
+  // `Array<Entry, sizeof...(Ts)>&`).
+  std::vector<Decl*> elementPacks;
+  uint32_t elementIndex = 0;
   bool empty() const { return pairs.empty(); }
 };
 

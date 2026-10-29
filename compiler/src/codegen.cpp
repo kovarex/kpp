@@ -3613,7 +3613,14 @@ namespace
         case TyKind::Param:
           for (auto& [d, a] : currentArgs->pairs)
             if (d == t->decl && a)
-              return types.qualified(a, t->isConst || a->isConst, t->isVolatile || a->isVolatile);
+            {
+              const Ty* bound = a;
+              // (of one element's expansion: the pattern's mention of the pack, that element)
+              if (a->kind == TyKind::Pack && currentArgs->elementIndex < a->args.size() &&
+                  std::find(currentArgs->elementPacks.begin(), currentArgs->elementPacks.end(), d) != currentArgs->elementPacks.end())
+                bound = a->args[currentArgs->elementIndex];
+              return types.qualified(bound, t->isConst || bound->isConst, t->isVolatile || bound->isVolatile);
+            }
           return t;
         case TyKind::Pointer: return types.qualified(types.pointer(withCurrentArgs(t->inner, depth + 1)), t->isConst, t->isVolatile);
         case TyKind::LRef: return types.lref(withCurrentArgs(t->inner, depth + 1));
@@ -3909,15 +3916,14 @@ namespace
       if (packs.empty() || !currentArgs)
         unsupported(at, "a pack expansion outside an instantiation");
       std::vector<Local> elements = packLocals[param];
-      std::vector<const Ty*> bound = boundPacks(packs, elements.size(), at);
+      boundPacks(packs, elements.size(), at); // (each as long as the parameter pack)
       TemplateArgs original = *currentArgs;
       for (size_t i = 0; i < elements.size(); ++i)
       {
+        // The pattern's mentions of the packs name element i; the rest of the body keeps them whole.
         TemplateArgs elementArgs = original;
-        for (auto& [d, t] : elementArgs.pairs)
-          for (size_t k = 0; k < packs.size(); ++k)
-            if (d == packs[k])
-              t = bound[k]->args[i];
+        elementArgs.elementPacks = packs;
+        elementArgs.elementIndex = uint32_t(i);
         global.retypeFor(currentFunction, elementArgs, currentClassTy, true);
         locals[param] = elements[i];
         body(i);
@@ -4024,10 +4030,11 @@ namespace
           bound = t;
       for (size_t i = 0; bound && i < bound->args.size(); ++i)
       {
+        // The pattern's mentions of the pack name element i; the parameters, the class instance
+        // and its members keep the whole pack (`lists` an `Array<Entry, sizeof...(Ts)>&`).
         TemplateArgs elementArgs = original;
-        for (auto& [d, t] : elementArgs.pairs)
-          if (d == pack)
-            t = bound->args[i];
+        elementArgs.elementPacks = {pack};
+        elementArgs.elementIndex = uint32_t(i);
         global.retypeFor(currentFunction, elementArgs, currentClassTy, true);
         ArgsScope scope(*this, &elementArgs);
         body(i);

@@ -1,6 +1,5 @@
 // spec: a fold expression over a class template's pack (`(OrderList::update<Ts>(lists[OrderList::getIndex<Ts>()], sum), ...)`) in a member whose parameter's type depends on the pack's size (`Array<Entry, size>&` with `static constexpr size_t size = sizeof...(Ts)`): the parameter keeps its type in every element of the expansion
 // factorio: EntityOrderHelpers::EntityOrderList<LogisticRobot, ConstructionRobot, Inserter, ...>::update and getTimes (Surface/ActiveEntitiesOrder.hpp, the order in which active entities update)
-// pending: without the fold the call works; inside it the parameter's type is re-made where the pack has one element ("the layout of Array<Entry, <unknown>>: the argument for N is a constant the compiler could not evaluate"), also with sizeof...(Ts) written in the parameter; owner: the templates thread (pack expansion)
 struct Entry
 {
   int value = 0;
