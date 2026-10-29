@@ -2264,6 +2264,47 @@ namespace
 
     // --- token-level rewrites ---
 
+    // A macro argument as `#x` makes it a string literal, by C's rule: the white space between its
+    // tokens, line breaks too (an argument may span lines: a release_assert of a long condition),
+    // becomes one space, none at its ends, and the `"` and `\` of its string and character
+    // literals are escaped.
+    static std::string stringized(const std::string& argument)
+    {
+      std::string out = "\"";
+      bool space = false;
+      for (size_t i = 0; i < argument.size();)
+      {
+        char c = argument[i];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
+        {
+          space = out.size() > 1;
+          ++i;
+          continue;
+        }
+        if (space)
+          out += ' ';
+        space = false;
+        if (c == '"' || c == '\'')
+        {
+          size_t j = i + 1;
+          while (j < argument.size() && argument[j] != c && argument[j] != '\n')
+            j += argument[j] == '\\' && j + 1 < argument.size() ? 2 : 1;
+          size_t end = std::min(j + 1, argument.size());
+          for (size_t k = i; k < end; ++k)
+          {
+            if (argument[k] == '"' || argument[k] == '\\')
+              out += '\\';
+            out += argument[k];
+          }
+          i = end;
+          continue;
+        }
+        out += c;
+        ++i;
+      }
+      return out + "\"";
+    }
+
     // The body of a local macro with its parameters replaced by the argument texts; `#x` quotes,
     // `##` pastes.
     std::string expandMacroOnce(const LocalMacro& m, const std::vector<std::string>& args)
@@ -2295,7 +2336,7 @@ namespace
             if (m.params[k] == word)
               which = k;
           if (which < m.params.size())
-            out += stringize ? "\"" + args[which] + "\"" : args[which];
+            out += stringize ? stringized(args[which]) : args[which];
           else
             out.append(b, i, j - i);
           i = j;
