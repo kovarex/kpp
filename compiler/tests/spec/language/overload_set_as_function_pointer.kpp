@@ -1,0 +1,32 @@
+// spec: a name of several functions passed for a function pointer parameter is the overload of the parameter's type (C++'s address of an overloaded function): `Named(7, Expression::computeConstant)` with computeConstant(const Konst&) and computeConstant(const Vector<Konst>&) passes the second, through a template parameter, written alone and with `&`
+// factorio: NoiseExpressionParser's `NamedFunction(::move(parameters), getOrCreate<...>, Expression::computeConstant)` (19 instances)
+struct Konst
+{
+  int v = 0;
+};
+struct Unary
+{
+  static Konst computeConstant(const Konst& a) { return Konst{a.v + 1}; }
+  static Konst computeConstant(const Vector<Konst>& args) { return Konst{int(args.size()) * 10}; }
+};
+struct Named
+{
+  Konst (*compute)(const Vector<Konst>&);
+  int tag;
+  Named(int tag, Konst (*compute)(const Vector<Konst>&) = nullptr) : compute(compute), tag(tag) {}
+};
+int apply(Konst (*f)(const Konst&), int v) { return f(Konst{v}).v; }
+template<class Expression>
+Named make()
+{
+  return Named(7, Expression::computeConstant);
+}
+int main()
+{
+  Named n = make<Unary>();
+  Vector<Konst> two;
+  two.push_back(Konst{});
+  two.push_back(Konst{});
+  println("{} {} {}", n.compute(two).v, apply(Unary::computeConstant, 4), apply(&Unary::computeConstant, 5));
+  return 0;
+}

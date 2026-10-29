@@ -9382,12 +9382,123 @@ struct GlobalScope::Impl
       return functions <= 1;
     }
 
+    // An argument naming several functions, alone or under `&` (`Expression::computeConstant` with
+    // an overload for one constant and one for a Vector of them): C++ takes the overload whose type
+    // the parameter names, once the callee is chosen, so meanwhile the argument decides nothing.
+    struct OverloadSetArgument
+    {
+      size_t index;
+      NameExpr* name;
+      Expr* address; // the `&name` around it, or null
+      Lookup set;
+    };
+    bool overloadSetArgument(Expr* a, size_t index, OverloadSetArgument& out)
+    {
+      while (a && a->kind == NodeKind::ParenExpr)
+        a = static_cast<ParenExpr*>(a)->inner;
+      Expr* address = nullptr;
+      if (a && a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && !static_cast<UnaryExpr*>(a)->postfix &&
+          P(static_cast<UnaryExpr*>(a)->op) == P::Amp)
+      {
+        address = a;
+        a = static_cast<UnaryExpr*>(a)->operand;
+      }
+      if (!a || a->kind != NodeKind::NameExpr)
+        return false;
+      auto* n = static_cast<NameExpr*>(a);
+      if (!n->resolved || n->resolved->kind != NodeKind::FunctionDecl || n->name.empty())
+        return false;
+      Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+      if (l.found == Found::Global)
+        l = impl.withNamespaceUsings(l, 0);
+      size_t functions = 0;
+      if (l.overloads)
+        for (const Entry& e : *l.overloads)
+          functions += e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty();
+      if (functions < 2)
+        return false;
+      out = OverloadSetArgument{index, n, address, l};
+      return true;
+    }
+
+    // Binds each overload-set argument to the overload of the type the chosen callee's parameter
+    // takes (fnTy: the callee's function type): a function pointer's or reference's function, or a
+    // member pointer's. Several or none of that type leave the argument as it is.
+    void bindOverloadSets(const std::vector<OverloadSetArgument>& sets, const Ty* fnTy)
+    {
+      if (!fnTy || fnTy->kind != TyKind::Function)
+        return;
+      for (const OverloadSetArgument& s : sets)
+      {
+        if (s.index >= fnTy->args.size())
+          continue;
+        const Ty* pt = types.unqualified(types.stripRef(fnTy->args[s.index]));
+        const Ty* target = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
+        if (!target || target->kind != TyKind::Function || types.isDependent(target))
+          continue;
+        Subst qs = s.name->name.parts.size() > 1 ? impl.qualifierSubst(s.name->name, ctx(), 0, s.set.foundIn) : Subst{};
+        FunctionDecl* chosen = nullptr;
+        const Ty* chosenTy = nullptr;
+        bool several = false;
+        for (const Entry& e : *s.set.overloads)
+        {
+          if (!e.decl || e.decl->kind != NodeKind::FunctionDecl || !e.decl->templateParams.empty())
+            continue;
+          const Ty* ot = impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0);
+          if (ot != target)
+            continue;
+          several = several || chosen;
+          chosen = static_cast<FunctionDecl*>(e.decl);
+          chosenTy = ot;
+        }
+        if (!chosen || several || chosen == s.name->resolved)
+          continue;
+        s.name->resolved = chosen;
+        record(s.name, chosenTy);
+        if (s.address && s.address->ty)
+        {
+          const Ty* was = s.address->ty;
+          if (was->kind == TyKind::MemberPointer && !was->args.empty())
+            record(s.address, types.memberPointer(chosenTy, was->args[0]));
+          else if (was->kind == TyKind::Pointer)
+            record(s.address, types.pointer(chosenTy));
+        }
+      }
+    }
+
+    // `NamedFunction(move(parameters), create, Expression::computeConstant)`: the constructor of
+    // class type t the arguments choose, its parameters binding the overload sets among them.
+    void bindOverloadSetsToConstructor(const std::vector<OverloadSetArgument>& sets, const Ty* t, Span<Expr*> args)
+    {
+      t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+      if (!t || t->kind != TyKind::Class || !t->isKnown() || types.isDependent(t))
+        return;
+      Scope* s = impl.classScopeOf(t);
+      if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+        return;
+      std::vector<FunctionDecl*> constructors;
+      for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+          constructors.push_back(static_cast<FunctionDecl*>(m));
+      Subst subst = impl.substFor(t);
+      bool ambiguous = false;
+      if (FunctionDecl* ctor = impl.chooseAmong(constructors, argTypesOf(args), subst.empty() ? nullptr : &subst, nullptr, ambiguous); ctor && !ambiguous)
+        bindOverloadSets(sets, impl.declaredTypeOf(ctor, subst.empty() ? nullptr : &subst, 0));
+    }
+
     const Ty* typeOfCall(CallExpr* c)
     {
       std::vector<const Ty*> walked;
       walked.reserve(c->args.size());
       for (Expr* a : c->args)
         walked.push_back(walkExpr(a));
+      std::vector<OverloadSetArgument> sets;
+      for (size_t i = 0; i < c->args.size(); ++i)
+        if (OverloadSetArgument s; overloadSetArgument(c->args[i], i, s))
+        {
+          sets.push_back(s);
+          walked[i] = types.unknown();
+        }
       WalkedArgs walkedArgsScope(*this, c->args, std::move(walked));
       Expr* callee = c->callee;
       bool ambiguous = false;
@@ -9511,11 +9622,14 @@ struct GlobalScope::Impl
           n->resolved = f;
           const Ty* fnTy = impl.declaredTypeOf(f, classSubst, 0);
           record(n, fnTy);
+          bindOverloadSets(sets, fnTy);
           return returnTypeOfCall(f, classSubst, c->args, &n->name.last(), c);
         }
         // Constructor call, functional cast, callable variable...
         const Ty* t = typeOfResolvedName(l, n->name.last(), n);
         record(n, t);
+        if (!sets.empty())
+          bindOverloadSetsToConstructor(sets, t, c->args);
         if (d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
                   (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
         {
@@ -9610,6 +9724,7 @@ struct GlobalScope::Impl
             ++stats.membersDependent;
           else
             ++stats.membersBound;
+          bindOverloadSets(sets, fnTy);
           return returnTypeOfCall(f, &r.subst, c->args, &last, c);
         }
         if (r.type && types.isDependent(r.type))
