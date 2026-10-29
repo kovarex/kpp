@@ -1485,6 +1485,53 @@ namespace
       }
   }
 
+  // Whether text is one or more string literals and nothing else (`"a" "b"`, `u8"x"`).
+  bool isStringLiterals(const std::string& text)
+  {
+    size_t i = 0;
+    bool any = false;
+    for (;;)
+    {
+      while (i < text.size() && (text[i] == ' ' || text[i] == '\t'))
+        ++i;
+      if (i == text.size())
+        return any;
+      if (text.compare(i, 2, "u8") == 0)
+        i += 2;
+      else if (text[i] == 'u' || text[i] == 'U' || text[i] == 'L')
+        ++i;
+      if (i == text.size() || text[i] != '"')
+        return false;
+      for (++i; i < text.size() && text[i] != '"'; ++i)
+        if (text[i] == '\\')
+          ++i;
+      if (i >= text.size())
+        return false;
+      ++i;
+      any = true;
+    }
+  }
+
+  // Whether text is a qualified name, `A::b` (`#define vkCreateInstance VulkanImpl::CreateInstanceWrapper`).
+  bool isQualifiedName(const std::string& text)
+  {
+    size_t i = 0, parts = 0;
+    while (i < text.size())
+    {
+      if (!(isalpha((unsigned char)text[i]) || text[i] == '_'))
+        return false;
+      while (i < text.size() && (isalnum((unsigned char)text[i]) || text[i] == '_'))
+        ++i;
+      ++parts;
+      if (i == text.size())
+        break;
+      if (text.compare(i, 2, "::") != 0)
+        return false;
+      i += 2;
+    }
+    return parts >= 2;
+  }
+
   struct OverrideFile
   {
     std::string text;
@@ -1759,10 +1806,15 @@ namespace
     // headers, that they leave defined (the X-macro lists a header defines and its .cpp expands), in
     // include order.
     std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
-    // The object-like macros of this file and the headers it reaches whose body is string literals
-    // (UTF8_BULLET): constants in the conversion, written out where C++ concatenates them with a
-    // literal (`"\n" UTF8_BULLET " "`), since only literals concatenate.
-    std::map<std::string, std::string> literalMacros;
+    // The object-like macros of this file and the headers it reaches that are written out at their
+    // uses: those whose body is string literals (UTF8_BULLET; constants in the conversion) where
+    // C++ concatenates them with a literal (`"\n" UTF8_BULLET " "`, since only literals concatenate),
+    // and those whose body is a qualified name everywhere (`#define vkCreateInstance
+    // VulkanImpl::CreateInstanceWrapper`: Vulkan through the function pointers the game loads).
+    std::map<std::string, std::string> objectMacros;
+    // Where this file's own #define of a name holds: from the #define to its #undef (a header's,
+    // seen through an include, holds everywhere).
+    std::map<std::string, std::pair<uint32_t, uint32_t>> ownMacroRanges;
     // Which lines the configuration keeps (null: the file's own lines decide, without its includes).
     const Preprocessed* preprocessed = nullptr;
     // `#pragma pack(push, 1)` to its `#pragma pack(pop)`: the classes defined there are [[packed]]
@@ -2292,12 +2344,23 @@ namespace
             size_t n = rest.find_first_not_of(" \t");
             size_t e = n == std::string::npos ? n : rest.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_", n);
             if (n != std::string::npos)
-              endLocalMacro(rest.substr(n, e == std::string::npos ? std::string::npos : e - n), offset);
+            {
+              std::string name = rest.substr(n, e == std::string::npos ? std::string::npos : e - n);
+              endLocalMacro(name, offset);
+              if (auto range = ownMacroRanges.find(name); range != ownMacroRanges.end() && range->second.second == UINT32_MAX)
+                range->second.second = offset;
+            }
           }
           counts.add("#" + word + " removed");
         }
         else if (word == "define")
         {
+          {
+            size_t n = rest.find_first_not_of(" \t");
+            size_t e = n == std::string::npos ? n : rest.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_", n);
+            if (n != std::string::npos)
+              ownMacroRanges[rest.substr(n, e == std::string::npos ? std::string::npos : e - n)] = {offset, UINT32_MAX};
+          }
           std::string replacement = macroToKpp(line, offset);
           if (!replacement.empty())
           {
@@ -2565,14 +2628,21 @@ namespace
     // The game's classes whose names the library uses, renamed in text that never was tokens.
     std::string renameGameClasses(const std::string& s) { return renameGameClassNames(s, &counts); }
 
-    // Whether token j is a string literal, or a name of a string macro (literalMacros) where it is
+    // Whether token j is a string literal, or a name of a string macro (objectMacros) where it is
     // no member: a piece of a literal concatenation.
     bool literalLike(uint32_t j) const
     {
       if (toks[j].getKind() == TokenKind::String)
         return true;
-      return toks[j].getKind() == TokenKind::Identifier && literalMacros.count(std::string(spelling(j))) &&
-             !(j > 0 && (toks[j - 1].is(P::Dot) || toks[j - 1].is(P::Arrow) || toks[j - 1].is(P::ColonColon)));
+      if (toks[j].getKind() != TokenKind::Identifier || (j > 0 && (toks[j - 1].is(P::Dot) || toks[j - 1].is(P::Arrow) || toks[j - 1].is(P::ColonColon))))
+        return false;
+      auto macro = objectMacros.find(std::string(spelling(j)));
+      return macro != objectMacros.end() && isStringLiterals(macro->second) && macroHoldsAt(macro->first, toks[j].offset);
+    }
+    bool macroHoldsAt(const std::string& name, uint32_t offset) const
+    {
+      auto range = ownMacroRanges.find(name);
+      return range == ownMacroRanges.end() || (range->second.first <= offset && offset < range->second.second);
     }
 
     void convertTokens()
@@ -2599,14 +2669,24 @@ namespace
             continue;
           }
         // A string macro beside a string literal (apart from it: `"x"sv` is a suffix), or beside
-        // another string macro (`" " UTF8_A UTF8_NBSP`), is part of a concatenation: its text.
-        if (t.getKind() == TokenKind::Identifier && !literalMacros.empty() &&
-            ((i > 0 && literalLike(i - 1) && endOffset(i - 1) < t.offset) || (literalLike(i + 1) && endOffset(i) < toks[i + 1].offset)))
-          if (auto literal = literalMacros.find(std::string(spelling(i))); literal != literalMacros.end())
+        // another string macro (`" " UTF8_A UTF8_NBSP`), is part of a concatenation: its text. A
+        // macro that is a qualified name is that name wherever it is used.
+        if (t.getKind() == TokenKind::Identifier && !objectMacros.empty() &&
+            !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
+          if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset))
           {
-            replace(t.offset, t.length, literal->second);
-            counts.add("string macros written out in concatenations");
-            continue;
+            if (!isStringLiterals(macro->second))
+            {
+              replace(t.offset, t.length, macro->second);
+              counts.add("name macros written out");
+              continue;
+            }
+            if ((i > 0 && literalLike(i - 1) && endOffset(i - 1) < t.offset) || (literalLike(i + 1) && endOffset(i) < toks[i + 1].offset))
+            {
+              replace(t.offset, t.length, macro->second);
+              counts.add("string macros written out in concatenations");
+              continue;
+            }
           }
         if (t.getKind() == TokenKind::Identifier && headerAliases && !headerAliases->empty() &&
             !(i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow) || toks[i - 1].is(P::ColonColon))))
@@ -4943,43 +5023,17 @@ struct SourceConfiguration::Impl
   }
 };
 
-// Whether text is one or more string literals and nothing else (`"a" "b"`, `u8"x"`).
-static bool isStringLiterals(const std::string& text)
-{
-  size_t i = 0;
-  bool any = false;
-  for (;;)
-  {
-    while (i < text.size() && (text[i] == ' ' || text[i] == '\t'))
-      ++i;
-    if (i == text.size())
-      return any;
-    if (text.compare(i, 2, "u8") == 0)
-      i += 2;
-    else if (text[i] == 'u' || text[i] == 'U' || text[i] == 'L')
-      ++i;
-    if (i == text.size() || text[i] != '"')
-      return false;
-    for (++i; i < text.size() && text[i] != '"'; ++i)
-      if (text[i] == '\\')
-        ++i;
-    if (i >= text.size())
-      return false;
-    ++i;
-    any = true;
-  }
-}
-
 // The function-like macros the C headers at paths define (in the branches their #if lines select, as
 // the converter selects them), by name: parameters and body, the body on one line without comments,
 // and C's NULL as nullptr. aliases, when given, gets the object-like macros that are another name,
-// literals those that are string literals and that the headers leave defined, definedLiterals every
-// string literal macro they define (one a file #undefs at its end still holds before that).
+// objects those whose body is string literals or a qualified name and that the headers leave
+// defined, definedObjects every such macro they define (one a file #undefs at its end still holds
+// before that).
 std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHeaderMacros(const std::vector<std::filesystem::path>& paths,
                                                                                        const SourceConfiguration* configuration,
                                                                                        std::map<std::string, std::string>* aliases,
-                                                                                       std::map<std::string, std::string>* literals = nullptr,
-                                                                                       std::map<std::string, std::string>* definedLiterals = nullptr)
+                                                                                       std::map<std::string, std::string>* objects = nullptr,
+                                                                                       std::map<std::string, std::string>* definedObjects = nullptr)
 {
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> macros;
   for (const std::filesystem::path& path : paths)
@@ -5061,8 +5115,8 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
         if (n != std::string::npos)
         {
           macros.erase(line.substr(n, e - n));
-          if (literals)
-            literals->erase(line.substr(n, e - n));
+          if (objects)
+            objects->erase(line.substr(n, e - n));
         }
         continue;
       }
@@ -5092,19 +5146,21 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
           if (identifier && !keywords.count(body))
             (*aliases)[line.substr(p, nameEnd - p)] = body;
         }
-        // One whose body is string literals (`#define UTF8_BULLET "\xE2\x80\xA2"`): the conversion
-        // makes it a constant, and a use inside a literal concatenation gets its text.
-        if ((literals || definedLiterals) && nameEnd > p)
+        // One whose body is string literals (`#define UTF8_BULLET "\xE2\x80\xA2"`: the conversion
+        // makes it a constant, and a use inside a literal concatenation gets its text) or a
+        // qualified name (`#define vkCreateInstance VulkanImpl::CreateInstanceWrapper`: every use
+        // gets it).
+        if ((objects || definedObjects) && nameEnd > p)
         {
           std::string body = line.substr(nameEnd);
           size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
           body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
-          if (isStringLiterals(body))
+          if (isStringLiterals(body) || isQualifiedName(body))
           {
-            if (literals)
-              (*literals)[line.substr(p, nameEnd - p)] = body;
-            if (definedLiterals)
-              (*definedLiterals)[line.substr(p, nameEnd - p)] = body;
+            if (objects)
+              (*objects)[line.substr(p, nameEnd - p)] = body;
+            if (definedObjects)
+              (*definedObjects)[line.substr(p, nameEnd - p)] = body;
           }
         }
         continue;
@@ -5254,19 +5310,19 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     }
   }
   std::map<size_t, MacroMap> ownMacros; // a header's macros it leaves defined, read once
-  std::map<size_t, std::map<std::string, std::string>> ownLiterals; // and those that are string literals
-  std::map<size_t, std::map<std::string, std::string>> definedLiterals; // every string literal one it defines
+  std::map<size_t, std::map<std::string, std::string>> ownObjects; // and its string and name macros
+  std::map<size_t, std::map<std::string, std::string>> definedObjects; // every string or name macro it defines
   auto macrosOf = [&](size_t k) -> const MacroMap&
   {
     auto it = ownMacros.find(k);
     if (it == ownMacros.end())
-      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration, nullptr, &ownLiterals[k], &definedLiterals[k])).first;
+      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration, nullptr, &ownObjects[k], &definedObjects[k])).first;
     return it->second;
   };
-  // The string literal macros an input sees: all of its own (TestLuaTerritory.cpp #undefs its
+  // The string and name macros an input sees: all of its own (TestLuaTerritory.cpp #undefs its
   // NINE_CHUNKS at the end) and those the headers it reaches leave defined (the first to define a
   // name gives its text).
-  auto visibleLiterals = [&](size_t k)
+  auto visibleObjectMacros = [&](size_t k)
   {
     std::map<std::string, std::string> out;
     std::set<size_t> seen;
@@ -5275,8 +5331,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       if (!seen.insert(h).second)
         return;
       macrosOf(h);
-      for (const auto& [name, literal] : h == k ? definedLiterals[h] : ownLiterals[h])
-        out.emplace(name, literal);
+      for (const auto& [name, body] : h == k ? definedObjects[h] : ownObjects[h])
+        out.emplace(name, body);
       for (size_t inc : includedInputs[h])
         visit(inc);
     };
@@ -5575,7 +5631,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (auto ip = inputByPath.find(pathKey(in.path)); ip != inputByPath.end())
     {
       fc.includedMacros = visibleMacros(ip->second);
-      fc.literalMacros = visibleLiterals(ip->second);
+      fc.objectMacros = visibleObjectMacros(ip->second);
     }
     fc.variants = &variants;
     fc.carriedDefaults = &carriedDefaults;
