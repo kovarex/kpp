@@ -13,6 +13,7 @@ allocation).
 Members:
 - `Optional()`, `Optional(nullopt)`: empty. `Optional(const T& value)`, `Optional(T&& value)`:
   holds a copy of value, or value moved in.
+- `Optional(inPlace, args...)` (explicit): holds a T constructed from args in place (std::in_place).
 - `= nullopt`: empty; `= value` (copy or move): holds value.
 - `emplace(args...)`: destroys the value held, if any, then constructs T from args in place;
   returns a reference to it.
@@ -26,5 +27,6 @@ Members:
   values), with a value (an empty Optional equals no value), with nullopt (equal when empty);
   `<` with another Optional: empty orders before every value, values by their `<`.
 
-`makeOptional(value)`: an Optional holding a copy of value. `BadOptionalAccess`: an Exception, what
+`makeOptional(value)`: an Optional holding a copy of value; `makeOptional<T>(args...)`: one holding a
+T built from args in place. `BadOptionalAccess`: an Exception, what
 value() throws.

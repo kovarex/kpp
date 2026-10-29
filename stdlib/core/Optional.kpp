@@ -4,6 +4,9 @@
 // docs/stdlib-conformance.md); giving the value up assigns T() so that it releases what it held.
 struct NullOpt {};
 const NullOpt nullopt;
+// What asks Optional's constructor to build the value in place (std::in_place).
+struct InPlaceTag {};
+const InPlaceTag inPlace;
 
 // What value() throws on an empty Optional.
 struct BadOptionalAccess : Exception
@@ -21,6 +24,9 @@ struct Optional
   implicit Optional(NullOpt) {}
   implicit Optional(const T& v) : stored(v), present(true) {}
   implicit Optional(T&& v) : stored(move(v)), present(true) {}
+  // The value built from the arguments, in place (std::optional's in_place_t constructor).
+  template<typename... Args>
+  explicit Optional(InPlaceTag, Args&&... args) : stored(forward<Args>(args)...), present(true) {}
 
   Optional<T>& operator=(NullOpt)
   {
@@ -131,6 +137,9 @@ struct Optional
 
 template<typename T>
 Optional<T> makeOptional(const T& value) { return Optional<T>(value); }
+// An Optional<T> holding a T built from the arguments (std::make_optional<T>(args...)).
+template<typename T, typename... Args>
+Optional<T> makeOptional(Args&&... args) { return Optional<T>(inPlace, forward<Args>(args)...); }
 
 // The generated `E::fromStr(text)` of a Kpp enum (design.md 8.4): the value whose str() is text,
 // or none. The compiler lowers E::fromStr to this function.

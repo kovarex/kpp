@@ -1,4 +1,4 @@
-// spec: UniquePtr (std::unique_ptr): makeUnique, move, release/reset, polymorphic delete, UniqueArray
+// spec: UniquePtr (std::unique_ptr): makeUnique, move, release/reset, polymorphic delete, UniqueArray, makeUniqueArrayForOverwrite (std::make_unique_for_overwrite<T[]>)
 // factorio: 3820 uses in 1049 files
 static int alive = 0;
 struct Res { int id; Res(int id) : id(id) { ++alive; } virtual ~Res() { --alive; } };
@@ -16,5 +16,9 @@ int main()
   println("{} {} {} {} {}", ids, a == nullptr, alive, (bool)c, arr[2]);
   c = nullptr;
   println("{}", alive);
+  UniqueArray<char> buffer = makeUniqueArrayForOverwrite<char>(16);
+  buffer[15] = 'z';
+  UniqueArray<String> names = makeUniqueArrayForOverwrite<String>(2);
+  println("{} {} {}", buffer.size(), buffer[15], names[1].size());
   return 0;
 }

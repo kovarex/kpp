@@ -56,3 +56,20 @@ struct UniqueArray
 
 template<typename T>
 UniqueArray<T> makeUniqueArray(int count) { return UniqueArray<T>(count); }
+
+// count elements to be overwritten (std::make_unique_for_overwrite<T[]>(n)): default-initialized,
+// which leaves a type that needs no construction (numbers, chars, plain structs) uninitialized
+// instead of zeroed; other types are constructed.
+template<typename T>
+UniqueArray<T> makeUniqueArrayForOverwrite(int count)
+{
+  UniqueArray<T> result;
+  if (count <= 0)
+    return result;
+  result.pointer = (T*)malloc(count * sizeof(T));
+  result.length = count;
+  if constexpr (!isTriviallyDefaultConstructible<T>)
+    for (int i = 0; i < count; ++i)
+      new (result.pointer + i) T();
+  return result;
+}

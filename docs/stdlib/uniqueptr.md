@@ -32,3 +32,6 @@ Members:
 What `std::unique_ptr<T[]>` converts to: sole ownership of an array of T on the heap, deleted
 with its elements when the UniqueArray goes. `UniqueArray(n)` makes n default-constructed
 elements; `operator[](i)`, `get()`; moved, never copied. `makeUniqueArray<T>(n)` makes one.
+`makeUniqueArrayForOverwrite<T>(n)` (std::make_unique_for_overwrite<T[]>) makes n elements to be
+overwritten: default-initialized, so a type that needs no construction (numbers, chars) is left
+uninitialized rather than zeroed.
