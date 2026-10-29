@@ -10624,6 +10624,8 @@ struct GlobalScope::Impl
               if (undeduced)
                 continue;
             }
+            if (f->requiresClause && !requiresHolds(f, d))
+              continue; // `template<typename F> Wrapper(F f) requires(!isPointer<F>)` given a pointer: no conversion
             const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
             if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(p))
               continue; // The copy constructor is not a conversion (ReverseIterator<const T> from ReverseIterator<T> is).

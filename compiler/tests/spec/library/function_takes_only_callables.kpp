@@ -1,6 +1,5 @@
 // spec: Function's converting constructor takes only something that can be called (std::function's needs a callable): with overloads for a String and for a Function, a string literal or a number takes the String's or another, and a lambda or a function pointer the Function's
 // factorio: a string literal passed where overloads take a String and a std::function<void()> instantiated FunctionImpl<void>'s constructor from a const char*, which cannot be called
-// pending: overload resolution does not check the constructor's requires-clause yet (templates/constrained_converting_constructor)
 void use(const String& text) { println("text {}", text); }
 void use(Function<void()> callback) { callback(); }
 void count(long long n) { println("number {}", n); }

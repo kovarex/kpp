@@ -1,6 +1,5 @@
 // spec: a converting constructor template whose requires-clause does not hold is no conversion in overload resolution: with overloads taking a String and a Wrapper that converts from anything but a pointer, a string literal takes the String one and a number the Wrapper one
 // factorio: Function's converting constructor takes only callables, as std::function's (library/function_takes_only_callables): a string literal passed where overloads take a String and a std::function<void()>
-// pending: the constrained constructor still counts as a conversion, so take(Wrapper) is chosen for the literal and then has no constructor for it ("a constructor of Wrapper taking 1 arguments")
 struct Wrapper
 {
   int kind = 0;
