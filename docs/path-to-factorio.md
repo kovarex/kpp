@@ -784,6 +784,17 @@ overridden for its one use (one lambda). 23,548 -> 23,546. What routes the 9 uni
 load through these members is the game's is_std_variant<T> becoming `isTypedUnion<T>`, an override
 of TemplateHelpers that waits for the compiler to have that trait (spec kpp/typed_union_trait).
 
+static_assert became a real check on master 89058a6 (the headline now includes kpp\Lua: 23,548).
+Until then the game's 470 static_asserts were parsed and never evaluated, so the step adds lines
+honestly: 23,643 (+95), all of them static_asserts. 83 have a condition the checker cannot evaluate
+yet (one error per place, however many instances meet it: constexpr function bodies such as
+AreCreatedInOrder<...>(), variable templates over traits, floating constants, which the checker
+no longer cuts to integers); each is a gap of the checker's constant evaluation. 12 "fail", and
+those are the checker's mistakes, not the game's: a trait it answers wrongly (isBaseOf through
+the bases it cannot see, isMoveConstructible) or an instance it should not have made. A further
+268 assert a class's size or alignment, which only the code generator's layout knows exactly (bit
+fields, empty bases); they are counted on the report and left to the code generator's check.
+
 ### Error breakdown by root cause
 
 | category | count | % | what it is |
