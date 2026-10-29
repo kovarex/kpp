@@ -1,0 +1,47 @@
+// spec: a member function template whose parameter pack follows a value parameter (`template<class T, ZeroHandling Zeros, typename... Args>`) forwards the pack's elements in order: `new T(input, forward<Args>(args)...)` gets each element where its parameter is
+// found in src/Util/DeserialiserHelper.kpp: loadSTDUniquePtr<T, Zeros, Args...>'s `target.reset(new T(input, ::forward<Args>(args)...))` (14 instances with the push_back and emplace_back forms) passed the second element where the first goes ("binding an unrelated class to a reference (Params to Machine&)"); the snippet fails as it stands and passes without either the virtual destructor or the unused variable template, so some typing state leaks between instantiations
+// pending: the pack's elements are typed one off
+class Input { public: int pos = 1; };
+class Machine { public: int id = 2; };
+class Params { public: int flags = 3; };
+class Behavior
+{
+public:
+  int sum;
+  implicit Behavior(Machine& m) : sum(m.id) {}
+  Behavior(Input& in, Machine& m, const Params& p) : sum(in.pos * 100 + m.id * 10 + p.flags) {}
+  virtual ~Behavior() {}
+};
+enum class ZeroHandling { KeepZeros, SkipZeros };
+template<class T, class... A>
+constexpr bool shouldConstruct = isConstructible<T, A...>;
+template<class DeserialiserType>
+class Helper
+{
+public:
+  template<class T, ZeroHandling Zeros, typename ... Args>
+  static void loadUnique(DeserialiserType& input, UniquePtr<T>& target, Args&&... args)
+  {
+    constexpr bool keepZeros = Zeros == ZeroHandling::KeepZeros;
+    if constexpr (shouldConstruct<T, DeserialiserType&, Args&&...>)
+      target.reset(new T(input, ::forward<Args>(args)...));
+    else if constexpr (keepZeros)
+      target.reset(new T(::forward<Args>(args)...));
+  }
+  template<class T, typename ... Args>
+  static void loadValue(DeserialiserType& input, UniquePtr<T>& target, Args&&... args)
+  {
+    loadUnique<T, ZeroHandling::KeepZeros>(input, target, ::forward<Args>(args)...);
+  }
+};
+int main()
+{
+  Input in;
+  Machine m;
+  const Params p;
+  UniquePtr<Behavior> b;
+  Helper<Input>::loadValue(in, b, m, p);
+  println("{}", b->sum);
+  return 0;
+}
+

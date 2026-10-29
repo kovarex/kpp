@@ -5379,7 +5379,7 @@ namespace
               return "ptr " + convertedTemporary(cls, arg, at);
             if (conversionOperator(o.ty, types.unqualified(cls), at))
               return "ptr " + convert(o, types.unqualified(cls), at).text;
-            unsupported(at, "binding an unrelated class to a reference");
+            unsupported(at, "binding an unrelated class to a reference (" + types.toString(o.ty, &symbols) + " to " + types.toString(pt, &symbols) + ")");
           }
           return "ptr " + addr;
         }
