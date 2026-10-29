@@ -15,6 +15,9 @@ compile, loudly) last. State of 2026-10-29.
 - A function passed by its name to a forwarding reference (`invoke(add, 1, 2)`) does not compile
   (templates/forwarding_reference_to_function); a pointer to it does. Thread takes its function
   and arguments by value, which decays the name to a pointer, so it is not affected.
+- `new T[n]` makes one element and `delete[]` destroys one (language/array_new_and_delete): an
+  array UniqueArray takes over from `new T[n]` (std::unique_ptr<T[]>(new T[n]), 30 uses in the
+  game) is overrun and freed wrongly, silently (library/unique_array_from_new).
 - A reference parameter bound through a conversion operator binds to a copy
   (classes/reference_bound_through_conversion_operator): a `ref(x)` argument of a Thread for an
   `int&` parameter reaches a copy of x, silently.

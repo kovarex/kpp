@@ -41,8 +41,21 @@ the game's deleters are, the behavior is C++'s.
 ## UniqueArray
 
 What `std::unique_ptr<T[]>` converts to: sole ownership of an array of T on the heap, deleted
-with its elements when the UniqueArray goes. `UniqueArray(n)` makes n default-constructed
-elements; `operator[](i)`, `get()`; moved, never copied. `makeUniqueArray<T>(n)` makes one.
-`makeUniqueArrayForOverwrite<T>(n)` (std::make_unique_for_overwrite<T[]>) makes n elements to be
-overwritten: default-initialized, so a type that needs no construction (numbers, chars) is left
-uninitialized rather than zeroed.
+with its elements (each destroyed, the last first) when the UniqueArray goes, is reset or is
+assigned another array or nullptr. Moved, never copied; a moved-from UniqueArray is empty.
+
+- `UniqueArray()`, `UniqueArray(nullptr)`: empty.
+- `explicit UniqueArray(n)`: makes n default-constructed elements. `makeUniqueArray<T>(n)` makes
+  the same. `makeUniqueArrayForOverwrite<T>(n)` (std::make_unique_for_overwrite<T[]>) makes n
+  elements to be overwritten: default-initialized, so a type that needs no construction (numbers,
+  chars) is left uninitialized rather than zeroed.
+- `explicit UniqueArray(array)`: takes over an array made by `new T[n]` (or nothing for null), and
+  gives it back to `delete[]`.
+- `reset()`, `= nullptr`: delete the array. `reset(array)`: takes over array (made by `new T[n]`),
+  then deletes the old one; resetting to the array it holds does nothing.
+- `operator[](i)`, `get()`, `explicit operator bool`, `!`, `== nullptr`, `!= nullptr`, `swap(other)`.
+- `size()`: the count of an array it made (`UniqueArray(n)`, makeUniqueArray); for an array it took
+  over from `new T[n]` the count is not known, and asking ends the program.
+
+*Difference from C++*: no `release()` (no use in the converted code yet), and `size()`, which C++
+does not have.

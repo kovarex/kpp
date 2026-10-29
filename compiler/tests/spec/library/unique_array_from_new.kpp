@@ -1,0 +1,26 @@
+// spec: UniqueArray takes over an array made by `new T[n]` (std::unique_ptr<T[]>(new T[n])) and gives it back to delete[], which destroys every element, the last first: at its end, at reset(new array) (after taking the new one), at `= nullptr`
+// factorio: Inventory's `UniqueArray<ItemStack> newData(new ItemStack[newCapacity])`, Noise's `UniqueArray<float> modifiedX(new float[vectorSize])`, MemoryBitmapData's `bitmapData.reset(new uint8_t[size])`, 30 such uses
+// pending: new T[n] makes one element (language/array_new_and_delete)
+struct Item
+{
+  int value = 0;
+  ~Item() { println("drop {}", this->value); }
+};
+int main()
+{
+  {
+    UniqueArray<Item> items(new Item[3]);
+    items[0].value = 1;
+    items[1].value = 2;
+    items[2].value = 3;
+    items.reset(new Item[2]);
+    items[1].value = 5;
+    println("{} {}", (bool)items, items != nullptr);
+  }
+  UniqueArray<float> values(new float[4]());
+  values[3] = 2.5f;
+  println("{} {}", values[0], values[3]);
+  values = nullptr;
+  println("{}", values == nullptr);
+  return 0;
+}

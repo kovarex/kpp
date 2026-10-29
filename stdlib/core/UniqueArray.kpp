@@ -1,19 +1,24 @@
-// Kpp standard library: UniqueArray<T>, sole ownership of a heap array of count elements (what
-// std::unique_ptr<T[]> converts to): indexed, destroyed and freed when the owner goes away or is
-// reset, moved but never copied. The count is kept so that the elements' destructors run.
+// Kpp standard library: UniqueArray<T>, sole ownership of a heap array (what std::unique_ptr<T[]>
+// converts to): indexed, destroyed and freed when the owner goes away or is reset, moved but never
+// copied. An array it makes keeps its count, so that the elements' destructors run; one it takes
+// over from `new T[n]` goes back to `delete[]`, which knows its count. Specified in
+// docs/stdlib/uniqueptr.md.
 template<typename T>
 struct UniqueArray
 {
   T* pointer = nullptr;
-  int length = 0;
+  int length = 0; // the count of an array made here; -1 for one taken over from `new T[n]`
 
   UniqueArray() {}
+  implicit UniqueArray(nullptr_t) {}
   // count default-constructed elements.
   explicit UniqueArray(int count) : pointer(count > 0 ? (T*)malloc(count * sizeof(T)) : nullptr), length(count)
   {
     for (int i = 0; i < count; ++i)
       new (this->pointer + i) T();
   }
+  // Takes over array, made by `new T[n]` (std::unique_ptr<T[]>(array)), or nothing for null.
+  explicit UniqueArray(T* array) : pointer(array), length(array ? -1 : 0) {}
   UniqueArray(const UniqueArray<T>& other) = delete;
   UniqueArray(UniqueArray<T>&& other) : pointer(other.pointer), length(other.length)
   {
@@ -35,22 +40,52 @@ struct UniqueArray
     }
     return *this;
   }
+  UniqueArray<T>& operator=(nullptr_t)
+  {
+    this->reset();
+    return *this;
+  }
 
   T* get() const { return this->pointer; }
-  int size() const { return this->length; }
+  // The count of an array made here (UniqueArray(count), makeUniqueArray); not known for one taken
+  // over from `new T[n]` (std::unique_ptr<T[]> has no size), where asking ends the program.
+  int size() const
+  {
+    release_assert(this->length >= 0);
+    return this->length;
+  }
   T& operator[](int index) const { return this->pointer[index]; }
   explicit operator bool() const { return this->pointer != nullptr; }
   bool operator!() const { return this->pointer == nullptr; }
+  bool operator==(nullptr_t) const { return this->pointer == nullptr; }
+  bool operator!=(nullptr_t) const { return this->pointer != nullptr; }
 
-  // Destroys the elements and frees the array.
-  void reset()
+  // Destroys the elements and frees the array; then the UniqueArray is empty.
+  void reset() { this->reset(nullptr); }
+  // Takes over array (made by `new T[n]`, or null), then destroys the array it had, as std's
+  // reset does; resetting to the array it holds does nothing.
+  void reset(T* array)
   {
-    for (int i = 0; i < this->length; ++i)
-      this->pointer[i].~T();
-    if (this->pointer)
-      free(this->pointer);
-    this->pointer = nullptr;
-    this->length = 0;
+    if (array && array == this->pointer)
+      return;
+    T* old = this->pointer;
+    int oldLength = this->length;
+    this->pointer = array;
+    this->length = array ? -1 : 0;
+    if (oldLength < 0)
+      delete[] old;
+    else
+    {
+      for (int i = 0; i < oldLength; ++i)
+        old[i].~T();
+      if (old)
+        free(old);
+    }
+  }
+  void swap(UniqueArray<T>& other)
+  {
+    ::swap(this->pointer, other.pointer);
+    ::swap(this->length, other.length);
   }
 };
 
