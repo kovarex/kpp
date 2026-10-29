@@ -17,6 +17,11 @@ classes/reference_bound_through_conversion_operator).
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
 
+**throw_with_nested** (core/Error.kpp): throws its argument without the exception being handled
+attached to it, since Kpp has no std::current_exception to capture that one (nor
+std::nested_exception and rethrow_if_nested, which no converted code uses). Its one user is
+UnitTest++'s Test::HandleDesync, which only needs the RuntimeError it throws. 2026-10-29.
+
 ## Missing types and API
 
 None of the members specified in docs/stdlib/ are missing (2026-10-29). One works only for

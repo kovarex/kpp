@@ -209,3 +209,19 @@ ExceptionPtr makeExceptionPtr(const E& exception)
 // The uncaught exception count (C++17).
 extern "C" int __uncaught_exceptions();
 int uncaught_exceptions() { return __uncaught_exceptions(); }
+
+// std::throw_with_nested: throws value. C++ also attaches the exception being handled when it is
+// called (a std::nested_exception base); Kpp has no current_exception yet, so nothing is attached
+// (stdlib-conformance.md). UnitTest++'s Test::HandleDesync throws a RuntimeError this way.
+template<typename T>
+[[noreturn]] void throw_with_nested(T&& value)
+{
+  throw value;
+}
+
+// std::set_terminate: installs the C runtime's terminate handler and returns the one before. Kpp's
+// own uncaught exceptions do not reach it: they print and abort (design.md section 9). The tests'
+// Main.cpp installs one that logs the stack before it aborts.
+using TerminateHandlerFunction = void (*)();
+extern "C" TerminateHandlerFunction set_terminate(TerminateHandlerFunction handler);
+TerminateHandlerFunction setTerminate(TerminateHandlerFunction handler) { return set_terminate(handler); }

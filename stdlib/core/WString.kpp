@@ -189,6 +189,34 @@ struct WString
     }
     return *this;
   }
+  // Inserts count units before index (ForkTask.cpp puts the executable's path in front of a
+  // command line); throws OutOfRange when index is past the end. units may point into this WString.
+  WString& insert(int index, const wchar_t* units, int count)
+  {
+    if (index < 0 || index > this->unitCount)
+      throw OutOfRange(String("WString::insert"));
+    if (count <= 0)
+      return *this;
+    if (this->chars && units >= this->chars && units < this->chars + this->capacity)
+    {
+      WString copy(units, count);
+      return this->insert(index, copy.chars, count);
+    }
+    this->reserve(this->unitCount + count);
+    // The units from index on, the terminating 0 with them, move up by count.
+    memmove(this->chars + index + count, this->chars + index, (size_t)(this->unitCount - index + 1) * sizeof(wchar_t));
+    memcpy(this->chars + index, units, (size_t)count * sizeof(wchar_t));
+    this->unitCount += count;
+    return *this;
+  }
+  WString& insert(int index, const wchar_t* text) { return this->insert(index, text, WString::lengthOf(text)); }
+  WString& insert(int index, const WString& text) { return this->insert(index, text.chars, text.unitCount); }
+  WString& insert(int index, int count, wchar_t c)
+  {
+    WString units;
+    units.append(count, c);
+    return this->insert(index, units.chars, units.unitCount);
+  }
 
   WString& operator+=(const WString& other)
   {

@@ -1,0 +1,5 @@
+C:\factorio.exe --run-test x 28
+C:\__factorio.exe --run-test x 2>&1
+aabcbc 6
+z
+out of range

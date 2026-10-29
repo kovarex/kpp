@@ -1,0 +1,10 @@
+// spec: setTerminate installs the C runtime's terminate handler (a function or a lambda without captures) and returns the one installed before (std::set_terminate)
+// factorio: the tests' Main.cpp, `std::set_terminate([]() { Logger::logStacktraceToStdout(); std::abort(); });`
+void first() {}
+int main()
+{
+  setTerminate(first);
+  TerminateHandlerFunction previous = setTerminate([]() { abort(); });
+  println("{}", previous == &first);
+  return 0;
+}

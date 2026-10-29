@@ -54,9 +54,78 @@ struct InFileStream
   }
 };
 
-struct OutFileStream
+// The output streams' base (what std::ostream is to code that writes to any stream: UnitTest++'s
+// XmlTestReporter writes its report to the stream it is given, the tests' an OutFileStream). A
+// stream writes the bytes (writeBytes); `<<` writes text, a char as itself and numbers as
+// std::ostream's defaults do (%d, %u, %lld, %llu, %g), and endl a newline.
+struct OutStream
+{
+  virtual ~OutStream() {}
+  virtual void writeBytes(const char* data, int count) = 0;
+  // count bytes from data, as they are (std::ostream::write; TestBitmapUtil dumps a pointer's bytes).
+  OutStream& write(const char* data, int count)
+  {
+    this->writeBytes(data, count);
+    return *this;
+  }
+};
+
+OutStream& operator<<(OutStream& s, const char* text)
+{
+  s.writeBytes(text, (int)strlen(text));
+  return s;
+}
+OutStream& operator<<(OutStream& s, const String& text)
+{
+  s.writeBytes(text.data(), text.size());
+  return s;
+}
+OutStream& operator<<(OutStream& s, char c)
+{
+  s.writeBytes(&c, 1);
+  return s;
+}
+OutStream& operator<<(OutStream& s, int value)
+{
+  char text[16];
+  s.writeBytes(text, snprintf(text, sizeof(text), "%d", value));
+  return s;
+}
+OutStream& operator<<(OutStream& s, unsigned int value)
+{
+  char text[16];
+  s.writeBytes(text, snprintf(text, sizeof(text), "%u", value));
+  return s;
+}
+OutStream& operator<<(OutStream& s, long long value)
+{
+  char text[24];
+  s.writeBytes(text, snprintf(text, sizeof(text), "%lld", value));
+  return s;
+}
+OutStream& operator<<(OutStream& s, unsigned long long value)
+{
+  char text[24];
+  s.writeBytes(text, snprintf(text, sizeof(text), "%llu", value));
+  return s;
+}
+OutStream& operator<<(OutStream& s, double value)
+{
+  char text[32];
+  s.writeBytes(text, snprintf(text, sizeof(text), "%g", value));
+  return s;
+}
+OutStream& operator<<(OutStream& s, EndlTag)
+{
+  s.writeBytes("\n", 1);
+  return s;
+}
+
+struct OutFileStream : OutStream
 {
   void* handle = nullptr;
+
+  void writeBytes(const char* data, int count) override { this->write(data, count); }
 
   OutFileStream() {}
   explicit OutFileStream(const char* filename) { this->open(filename); }
