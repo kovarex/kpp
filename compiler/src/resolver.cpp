@@ -9236,6 +9236,10 @@ struct GlobalScope::Impl
     std::vector<const Ty*> walkedArgTypes;
     const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
     int undecidedBranches = 0;         // inside an instance's `if constexpr` branch this walk could not decide
+    // The code generator's re-typing of an instance's copy with a type pack bound to one element
+    // (a fold over the pack, GlobalScope::retypeFor): its static_asserts were checked with the
+    // whole pack, and a fold over the pack cannot be evaluated against one element.
+    bool retypingElements = false;
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
     // Set on the scratch walkers that probe a requires-expression's requirements: an explicit
@@ -12101,7 +12105,7 @@ struct GlobalScope::Impl
           // Checked where its condition is known: not in a template's own walk (its instances
           // are), nor in a branch of an instance's `if constexpr` left undecided (it may be the
           // discarded one).
-          if (undecidedBranches == 0 && !inGenericTemplate() && !replacedBySpecialization(s))
+          if (undecidedBranches == 0 && !inGenericTemplate() && !replacedBySpecialization(s) && !retypingElements)
           {
             std::string instance = instanceDescription();
             if (!instance.empty() && requestFile)
@@ -13698,7 +13702,7 @@ TemplateArgs GlobalScope::classArgsOf(const Ty* classType)
 }
 
 // f's template parameters bound to args, `this` of objectType.
-const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType)
+const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements)
 {
   Impl& impl = *this->impl;
   if (!f->file || !f->file->tokens)
@@ -13706,6 +13710,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   Subst subst = toSubst(args);
   ResolveStats scratch;
   Impl::Walker w(impl, scratch, *f->file->tokens, f->file->text);
+  w.retypingElements = retypingElements;
   for (Decl* p = f; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
@@ -13740,7 +13745,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
 
 void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
 {
-  typeFunctionFor(f, f, args, objectType);
+  typeFunctionFor(f, f, args, objectType, true);
 }
 
 FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
