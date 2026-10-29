@@ -1,0 +1,28 @@
+// spec: a constructor callable with one argument, its other parameters defaulted, converts implicitly (C++'s converting constructor): an argument of its first parameter's type picks the overload taking the class, also through a fold over a forwarded pack
+// factorio: DragBuildInfo's `implicit DragBuildInfo(DragBuild dragBuild, OptionalMapPosition startPosition = OptionalMapPosition())` for ActionData::BuildParameters's `(this->loadArg(args), ...)` with `loadArg(DragBuildInfo)`
+struct Drag { bool on = false; };
+struct DragInfo
+{
+  implicit DragInfo(Drag drag, int start = 5) : drag(drag), start(start) {}
+  Drag drag;
+  int start;
+};
+enum class Mode : uint8_t { Normal, Forced };
+struct Parameters
+{
+  template<typename... Args>
+  Parameters(Args&&... args) { (this->load(args), ...); }
+  void load(DragInfo info) { this->start = info.start; this->on = info.drag.on; }
+  void load(Mode mode) { this->mode = mode; }
+  int start = 0;
+  bool on = false;
+  Mode mode = Mode::Normal;
+};
+static int startOf(DragInfo info) { return info.start; }
+int main()
+{
+  const Drag drag{true};
+  Parameters parameters(drag, Mode::Forced);
+  println("{} {} {} {}", startOf(drag), parameters.start, parameters.on, int(parameters.mode));
+  return 0;
+}

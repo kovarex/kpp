@@ -2472,8 +2472,11 @@ struct GlobalScope::Impl
       return false;
     if (derived->kind != TyKind::Class || base->kind != TyKind::Class)
       return false;
+    // The class itself: one instance of a template, not another (Flag<A> is no base of Flag<B>);
+    // either's arguments unknown or dependent, the template.
     if (derived->decl == base->decl)
-      return true;
+      return derived->args.empty() || base->args.empty() || types.isDependent(derived) || types.isDependent(base) ||
+             types.unqualified(derived) == types.unqualified(base);
     Decl* def = derived->decl;
     if (def && def->kind == NodeKind::ClassDecl && !def->ownScope)
     {
@@ -8951,7 +8954,10 @@ struct GlobalScope::Impl
             if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || isExplicit(static_cast<FunctionDecl*>(m), &s))
               continue;
             auto* f = static_cast<FunctionDecl*>(m);
-            if (f->params.size() != 1)
+            // Callable with one argument: the others defaulted or a pack (`implicit
+            // DragBuildInfo(DragBuild dragBuild, OptionalMapPosition startPosition = {})`).
+            if (f->params.empty() || (f->params.size() > 1 && !static_cast<ParamDecl*>(f->params[1])->defaultValue &&
+                                      !static_cast<ParamDecl*>(f->params[1])->isPack))
               continue;
             Subst d = s;
             if (!f->templateParams.empty())
