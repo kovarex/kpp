@@ -312,6 +312,10 @@ namespace
     std::vector<std::pair<uint32_t, std::string>> notes; // the #if lines that test a symbol nothing defines, with a TODO text
     MacroTable defined;                                  // the object-like macros it leaves defined beyond the build's (its includes' too)
     std::set<std::string> undefined;                     // the build's or its includes' macros it #undefs
+    // What blankForParse took out of `configured` for the parse: [offset, offset + length) of the
+    // text, and what the conversion writes there instead.
+    struct Blank { uint32_t offset, length; std::string replacement; };
+    std::vector<Blank> blanked;
   };
 
   // Walks a file's preprocessor lines under the configuration: `#if` and its relatives choose the
@@ -4840,12 +4844,35 @@ namespace
       return out;
     }
 
+    // What the configuration took out of the parsed text (blankForParse) gets its replacement:
+    // `__try` is try, `__except (filter)` catch (...) (the filter is lost: a todo), the converter's
+    // empty macros go.
+    void convertBlanked()
+    {
+      if (!preprocessed)
+        return;
+      for (const Preprocessed::Blank& b : preprocessed->blanked)
+      {
+        replace(b.offset, b.length, b.replacement);
+        if (b.replacement == "try")
+          counts.add("SEH __try to try");
+        else if (b.replacement == "catch (...)")
+        {
+          todo(b.offset, "SEH filter dropped: " + std::string(text.substr(b.offset, b.length)));
+          counts.add("SEH __except to catch (...)");
+        }
+        else
+          counts.add("macro use rewritten");
+      }
+    }
+
     std::string run()
     {
       collectScopeRanges(in.parsed->decls, "");
       collectLocals(in.parsed->decls);
       seedHeaderMacros();
       convertPreprocessor();
+      convertBlanked();
       convertTokens();
       convertDecls(in.parsed->decls, true);
       removeUnparsedDefinitions();
@@ -5058,6 +5085,144 @@ static std::string pathKeyOf(const std::filesystem::path& p)
   for (char& c : s)
     c = (char)tolower((unsigned char)c);
   return s;
+}
+
+// Takes out of a file's configured text, for the parse, what is no C++ to the parser and what the
+// conversion writes differently, recording each in `blanked` with its replacement (offsets stay):
+// the empty macros the converter drops (BEGIN_SUPPRESS_CONVERSIONS before a definition, FAR in a
+// cast, FORMAT_ATTR(4, 5) with its arguments), FORMAT_STRING( and its `)` around a parameter, and
+// MSVC's structured exception handling, `__try` (try) and `__except (filter)` (catch (...)), which
+// the parse reads as two blocks. Comments, literals and preprocessor lines are left alone.
+static void blankForParse(Preprocessed& p)
+{
+  std::string& t = p.configured;
+  auto blank = [&](size_t from, size_t to, std::string replacement)
+  {
+    for (size_t k = from; k < to; ++k)
+      if (t[k] != '\n' && t[k] != '\r')
+        t[k] = ' ';
+    p.blanked.push_back({uint32_t(from), uint32_t(to - from), std::move(replacement)});
+  };
+  // The `)` that closes the `(` at open, or npos.
+  auto closing = [&](size_t open)
+  {
+    int depth = 0;
+    for (size_t k = open; k < t.size(); ++k)
+    {
+      if (t[k] == '"' || t[k] == '\'')
+      {
+        char quote = t[k];
+        for (++k; k < t.size() && t[k] != quote; ++k)
+          k += t[k] == '\\';
+      }
+      else if (t[k] == '(')
+        ++depth;
+      else if (t[k] == ')' && --depth == 0)
+        return k;
+    }
+    return std::string::npos;
+  };
+  bool lineStart = true;
+  for (size_t i = 0; i < t.size();)
+  {
+    char c = t[i];
+    if (c == '\n')
+    {
+      lineStart = true;
+      ++i;
+      continue;
+    }
+    if (c == ' ' || c == '\t' || c == '\r')
+    {
+      ++i;
+      continue;
+    }
+    if (lineStart && c == '#')
+    {
+      // A preprocessor line, continuations included.
+      while (i < t.size() && t[i] != '\n')
+        i += t[i] == '\\' && i + 1 < t.size() && t[i + 1] == '\n' ? 2 : 1;
+      continue;
+    }
+    lineStart = false;
+    if (c == '/' && i + 1 < t.size() && t[i + 1] == '/')
+    {
+      while (i < t.size() && t[i] != '\n')
+        ++i;
+      continue;
+    }
+    if (c == '/' && i + 1 < t.size() && t[i + 1] == '*')
+    {
+      size_t end = t.find("*/", i + 2);
+      i = end == std::string::npos ? t.size() : end + 2;
+      continue;
+    }
+    if (c == 'R' && i + 1 < t.size() && t[i + 1] == '"' && (i == 0 || !isIdentChar(t[i - 1])))
+    {
+      // A raw string: R"delimiter( ... )delimiter".
+      size_t open = t.find('(', i + 2);
+      if (open != std::string::npos)
+      {
+        std::string close = ")" + t.substr(i + 2, open - i - 2) + "\"";
+        size_t end = t.find(close, open);
+        i = end == std::string::npos ? t.size() : end + close.size();
+        continue;
+      }
+    }
+    if (c == '"' || c == '\'')
+    {
+      for (++i; i < t.size() && t[i] != c && t[i] != '\n'; ++i)
+        i += t[i] == '\\';
+      ++i;
+      continue;
+    }
+    if (!(isalpha((unsigned char)c) || c == '_') || (i > 0 && isIdentChar(t[i - 1])))
+    {
+      ++i;
+      continue;
+    }
+    size_t end = i;
+    while (end < t.size() && isIdentChar(t[end]))
+      ++end;
+    std::string name = t.substr(i, end - i);
+    size_t open = end;
+    while (open < t.size() && (t[open] == ' ' || t[open] == '\t' || t[open] == '\r' || t[open] == '\n'))
+      ++open;
+    bool call = open < t.size() && t[open] == '(';
+    if (name == "__try")
+      blank(i, end, "try");
+    else if (name == "__except" && call)
+    {
+      size_t close = closing(open);
+      if (close != std::string::npos)
+      {
+        blank(i, close + 1, "catch (...)");
+        end = close + 1;
+      }
+    }
+    else if (name == "FORMAT_STRING" && call)
+    {
+      size_t close = closing(open);
+      if (close != std::string::npos)
+      {
+        blank(i, open + 1, "");
+        blank(close, close + 1, "");
+      }
+      end = open + 1;
+    }
+    else if ((name == "FORMAT_ATTR" || name == "TAG_FORMAT_ATTR") && call)
+    {
+      size_t close = closing(open);
+      if (close != std::string::npos)
+      {
+        blank(i, close + 1, "");
+        end = close + 1;
+      }
+    }
+    else if (auto known = knownMacros.find(name); known != knownMacros.end() && known->second.empty())
+      blank(i, end, "");
+    i = end;
+  }
 }
 
 struct SourceConfiguration::Impl
@@ -5322,6 +5487,9 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
   }
   for (size_t i = 0; i < paths.size(); ++i)
     impl->of(i);
+  for (auto& result : impl->results)
+    if (result)
+      blankForParse(*result);
 }
 
 SourceConfiguration::~SourceConfiguration() = default;
