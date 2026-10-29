@@ -1,0 +1,34 @@
+// spec: a brace list assigned to an object of a class with an InitializerList constructor and only the implicit assignment operators, `mode = {Mode::MinLinear, Mode::MagLinear};`: the list builds a Mode through the InitializerList constructor, as `Mode c = {...};` does, which is then assigned
+// factorio: LoadingSplashScreen::renderWubeLogo's `samplingMode = {SamplingMode::MinLinear, SamplingMode::MagLinear};`, SamplingMode a BITFIELD class (Util/Container/BitField.hpp: `Name(std::initializer_list<Enum> values)`)
+// pending: the declaration converts, the assignment does not ("a constructor of Mode taking 2 arguments"); owner: codegen (the assignment's temporary built from the list)
+class Mode
+{
+public:
+  enum class Enum
+  {
+    MinLinear, MagLinear, MipLinear
+  };
+  constexpr Mode() = default;
+  constexpr Mode(InitializerList<Enum> values) : bits(Mode::toBits(values)) {}
+  constexpr Mode(Enum value) : bits(uint8_t(1u << int(value))) {}
+  using enum Enum;
+  uint8_t bits = 0;
+private:
+  constexpr static uint8_t toBits(InitializerList<Enum> values)
+  {
+    uint8_t acc = 0;
+    for (auto value : values)
+      acc |= uint8_t(1u << int(value));
+    return acc;
+  }
+};
+int main()
+{
+  Mode declared = {Mode::MagLinear, Mode::MipLinear};
+  Mode assigned;
+  assigned = {Mode::MinLinear, Mode::MagLinear};
+  Mode one;
+  one = {Mode::Enum::MipLinear};
+  println("{} {} {}", int(declared.bits), int(assigned.bits), int(one.bits));
+  return 0;
+}
