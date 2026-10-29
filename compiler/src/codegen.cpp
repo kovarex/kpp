@@ -1827,10 +1827,10 @@ namespace
             constructInto(fieldAddr, ft, init->args, at);
           else if (isLambda(ft) && init->args.size() == 1)
             withSingleElement(init->args[0], at, [&](Expr* one) { initializeFrom(fieldAddr, ft, one, at); }); // `f(f)`: the closure's bytes, not its address
-          else if (init->args.size() == 1)
-            withSingleElement(init->args[0], at, [&](Expr* one) { store(rvalue(one), fieldAddr, ft, at); });
-          else if (init->args.empty())
-            storeZero(ft, fieldAddr, at);
+          else if (size_t values = expandedCount(init->args, at); values == 0)
+            storeZero(ft, fieldAddr, at); // `value()`, `value(forward<Args>(args)...)` with Args empty: value-initialized
+          else if (values == 1)
+            forEachExpanded(init->args, at, [&](Expr* one) { store(rvalue(one), fieldAddr, ft, at); }); // `value(first, args...)`, args empty
           else
             unsupported(at, "this member initializer");
         }
@@ -2970,6 +2970,30 @@ namespace
       if (packElementCount(pattern, at) != 1)
         unsupported(at, "a pack of " + std::to_string(packElementCount(pattern, at)) + " elements where one value is expected");
       forEachPackElement(pattern, at, [&](size_t) { body(pattern); });
+    }
+
+    // How many values arguments stand for once their pack expansions are expanded.
+    size_t expandedCount(Span<Expr*> args, Node* at)
+    {
+      size_t n = 0;
+      for (Expr* a : args)
+        n += isPackExpansion(a) ? packElementCount(static_cast<UnaryExpr*>(a)->operand, at) : 1;
+      return n;
+    }
+
+    // Runs body on each value arguments stand for: an expression as it is, a pack expansion's
+    // pattern once per element, the element bound.
+    template<typename F>
+    void forEachExpanded(Span<Expr*> args, Node* at, F&& body)
+    {
+      for (Expr* a : args)
+        if (isPackExpansion(a))
+        {
+          Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
+          forEachPackElement(pattern, at, [&](size_t) { body(pattern); });
+        }
+        else
+          body(a);
     }
 
     size_t packElementCount(Expr* pattern, Node* at)

@@ -9679,6 +9679,15 @@ struct GlobalScope::Impl
                 elems.push_back(types.unknown());
               else if (forwarding && at->kind == TyKind::LRef)
                 elems.push_back(types.lref(types.stripRef(at))); // `emplace_back(name)`: Args = String&
+              else if (forwarding)
+              {
+                // A const prvalue of a class, `move(constObject)`: Args = const Program, as a single
+                // T&& deduces; a prvalue of a scalar is never const ([expr.type]).
+                const Ty* e = types.stripRef(at);
+                if (at->kind != TyKind::RRef && e->kind != TyKind::Class && e->kind != TyKind::Array)
+                  e = types.unqualified(e);
+                elems.push_back(e);
+              }
               else
                 elems.push_back(types.decay(at));
             }

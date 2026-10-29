@@ -1,6 +1,5 @@
 // spec: a member initializer whose arguments end in a pack expansion of no elements: with nothing before it the member is value-initialized (`value(forward<Args>(args)...)` with Args empty is `value()`, zero for an int and null for a pointer), with arguments before it they are all there is (`value(first, forward<Args>(args)...)` is `value(first)`)
 // factorio: the library's Pair(inPlaceSecond, key, args...), which builds the entry of map[key] and of try_emplace(key, value) (Map<ChunkPosition, uint32>, HashMap<String, int>, ... all over the game) and now has overloads of its own for no argument and one
-// pending: "a pack of 0 elements where one value is expected", and "this member initializer" for the second form
 template<typename T>
 struct Holder
 {

@@ -1,6 +1,5 @@
 // spec: a forwarding-reference pack (Args&&... args) deduces from a const rvalue as a single T&& does: a const prvalue and an xvalue of a const object (move(x)) both give Args = const Program, and forward<Args> passes them on as const Program&& (here to the copy constructor)
 // factorio: GraphicsInterfaceOpenGL's std::unordered_map<std::string, const LinkedProgram> and <std::string, const ShaderOpenGL> filled with try_emplace, whose library code passed the value V(args...), a const prvalue, on to the table's emplaceAt(Args&&...) (HashMap now builds it as RemoveConst<V>)
-// pending: the call does not resolve ("a call that did not resolve")
 struct Program
 {
   int a = 0;
