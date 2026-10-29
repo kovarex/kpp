@@ -1,0 +1,27 @@
+// spec: a constructor inherited with `using Base::Base;` competes with the class's own ones, and an exact match of it beats the class's move constructor reached through a conversion by that same inherited constructor; the base's copy and move constructors are not inherited
+// found in tests/TestFlatMap (MoveOnlyString: `using String::String;` beside a deleted copy and a defaulted move constructor)
+// pending: codegen considers only the class's own constructors, takes the move constructor and fails (`a defaulted function given a non-class`)
+struct Text
+{
+  String value;
+  Text() = default;
+  implicit Text(const char* s) : value(s) {}
+  Text(const Text& other) = default;
+  Text(Text&& other) = default;
+};
+class MoveOnly : public Text
+{
+public:
+  using Text::Text;
+  MoveOnly(const MoveOnly&) = delete;
+  MoveOnly(MoveOnly&&) = default;
+};
+int take(MoveOnly&& m) { return int(m.value.size()); }
+int main()
+{
+  MoveOnly direct("abc");
+  int converted = take("hello");
+  MoveOnly moved(static_cast<MoveOnly&&>(direct));
+  println("{} {} {}", int(moved.value.size()), converted, moved.value);
+  return 0;
+}
