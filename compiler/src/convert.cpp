@@ -531,6 +531,8 @@ namespace
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"EXTERNC", "extern \"C\""}, {"FAR", ""}, {"NEAR", ""},
     {"DEV_TOOL_VARIABLE", ""}, {"BEGIN_SUPPRESS_CONVERSIONS", ""}, {"END_SUPPRESS_CONVERSIONS", ""}, {"BEGIN_FORCE_OPTIMIZE", ""},
     {"END_FORCE_OPTIMIZE", ""}, {"SUPPRESS_UBSAN", ""}, {"PADDING_WARNING", ""}, {"errno", "(*_errno())"},
+    // SDL_stdinc.h's format for an Sint64, which SDLWindow concatenates with a literal (Windows').
+    {"SDL_PRIs64", "\"I64d\""},
     // math.h constants
     {"M_PI", "3.14159265358979323846"}, {"M_PI_2", "1.57079632679489661923"}, {"M_PI_4", "0.78539816339744830962"},
     {"M_1_PI", "0.31830988618379067154"}, {"M_2_PI", "0.63661977236758134308"}, {"M_SQRT2", "1.41421356237309504880"},
@@ -1885,9 +1887,11 @@ namespace
       for (const auto* macros : includedMacros)
         for (const auto& [name, macro] : *macros)
         {
-          // The macros the converter rewrites by name keep their rewrite; the first header to define
-          // a name gives its definition.
-          if (knownMacros.count(name) || knownFunctionMacros.count(name) || localMacros.count(name))
+          // The macros the converter rewrites by name keep their rewrite (convertTokens writes
+          // Util/Enums.hpp's ENUM as a readable class, ...); the first header to define a name gives
+          // its definition.
+          static const std::set<std::string> rewrittenByName = {"ENUM", "ENUM_IMPL", "ENUM_IMPL_NOSTRING", "BITFIELD", "MAKE_OPTIONAL"};
+          if (knownMacros.count(name) || knownFunctionMacros.count(name) || rewrittenByName.count(name) || localMacros.count(name))
             continue;
           LocalMacro m;
           m.params = macro.first;
@@ -2433,12 +2437,28 @@ namespace
       return out + "\"";
     }
 
+    // Whether a macro is variadic: its last parameter is `...`, which __VA_ARGS__ stands for.
+    static bool variadic(const LocalMacro& m) { return !m.params.empty() && m.params.back() == "..."; }
+    // Whether a use with count arguments fits the macro: one each, or for a variadic macro any number
+    // for the `...` (none included). Fewer are empty, as the game's compiler (MSVC) has it:
+    // UpgradableEntity's FOR_EACH_SUPPORTED_TYPE(DEFINE_ENUM_ENTRY,) passes DEFINE_ENUM_ENTRY(type, _)
+    // one argument once its empty __VA_ARGS__ takes the comma along.
+    static bool argumentsFit(const LocalMacro& m, size_t count)
+    {
+      return variadic(m) || count <= m.params.size();
+    }
+
     // The body of a local macro with its parameters replaced by the argument texts; `#x` quotes,
-    // `##` pastes.
+    // `##` pastes. __VA_ARGS__ is the arguments of a variadic macro's `...`, joined by commas; when
+    // there are none, a comma right before it goes too, as the game's compiler (MSVC) has it.
     std::string expandMacroOnce(const LocalMacro& m, const std::vector<std::string>& args)
     {
       std::string out;
       const std::string& b = m.body;
+      std::string variadicArgs;
+      if (variadic(m))
+        for (size_t k = m.params.size() - 1; k < args.size(); ++k)
+          variadicArgs += (k + 1 == m.params.size() ? "" : ", ") + args[k];
       for (size_t i = 0; i < b.size();)
       {
         char c = b[i];
@@ -2449,6 +2469,19 @@ namespace
           i += 2;
           while (i < b.size() && b[i] == ' ')
             ++i;
+          continue;
+        }
+        if (variadic(m) && b.compare(i, 11, "__VA_ARGS__") == 0 && (i == 0 || !isIdentChar(b[i - 1])) &&
+            (i + 11 == b.size() || !isIdentChar(b[i + 11])))
+        {
+          if (variadicArgs.empty())
+          {
+            size_t end = out.find_last_not_of(" \t");
+            if (end != std::string::npos && out[end] == ',')
+              out.erase(end);
+          }
+          out += variadicArgs;
+          i += 11;
           continue;
         }
         bool stringize = c == '#';
@@ -2464,7 +2497,12 @@ namespace
             if (m.params[k] == word)
               which = k;
           if (which < m.params.size())
-            out += stringize ? stringized(args[which]) : args[which];
+          {
+            std::string argument = which < args.size() ? args[which] : std::string();
+            out += stringize ? stringized(argument) : argument;
+          }
+          else if (stringize && word == "__VA_ARGS__" && variadic(m))
+            out += stringized(variadicArgs);
           else
             out.append(b, i, j - i);
           i = j;
@@ -2568,7 +2606,7 @@ namespace
                 while (!a.empty() && isspace((unsigned char)a.front())) a.erase(a.begin());
                 while (!a.empty() && isspace((unsigned char)a.back())) a.pop_back();
               }
-              if (closed && innerArgs.size() == inner->params.size())
+              if (closed && argumentsFit(*inner, innerArgs.size()))
               {
                 next += expandMacroOnce(*inner, innerArgs);
                 changed = true;
@@ -2628,8 +2666,28 @@ namespace
                 continue;
               }
             }
+            // The object-like names the converter rewrites (SDL_PRIs64 in a LOG_GRAPHICS_DEBUG
+            // argument, FAR, ...), which the token-level rewrite does not see inside the expansion.
+            if (auto km = knownMacros.find(name); km != knownMacros.end() && !(j < result.size() && result[j] == '('))
+            {
+              next += km->second;
+              changed = true;
+              i = j;
+              continue;
+            }
             next.append(result, i, j - i);
             i = j;
+            continue;
+          }
+          if (result[i] == '"' || result[i] == '\'')
+          {
+            // A string or character literal goes as it is: no macro is used inside it.
+            size_t k = i + 1;
+            while (k < result.size() && result[k] != result[i])
+              k += result[k] == '\\' ? 2 : 1;
+            k = std::min(k + 1, result.size());
+            next.append(result, i, k - i);
+            i = k;
             continue;
           }
           next += result[i++];
@@ -2750,7 +2808,7 @@ namespace
             {
               if (j > argStart || !args.empty())
                 args.push_back({argStart, j});
-              if (args.size() == lm->params.size())
+              if (argumentsFit(*lm, args.size()))
               {
                 std::vector<std::string> argText;
                 for (auto [a0, a1] : args)
@@ -3186,6 +3244,18 @@ namespace
           {
             replace(t.offset, t.length, mr->second);
             counts.add("std member renamed");
+            continue;
+          }
+        }
+        if (t.getKind() == TokenKind::Identifier && i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)))
+        {
+          // The C headers' macros that name a member path (in_addr's `#define s_addr S_un.S_addr`,
+          // in6_addr's s6_addr): the import has the structs' own members, so a use gets the path.
+          static const std::map<std::string_view, std::string> memberMacros = {{"s_addr", "S_un.S_addr"}, {"s6_addr", "_S6_un._S6_u8"}};
+          if (auto mm = memberMacros.find(spelling(i)); mm != memberMacros.end())
+          {
+            replace(t.offset, t.length, mm->second);
+            counts.add("C member macros expanded");
             continue;
           }
         }
