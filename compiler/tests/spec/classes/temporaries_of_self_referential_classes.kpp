@@ -1,0 +1,43 @@
+// spec: an object that keeps its own address somewhere stays whole when a temporary of it initialises another object: a class whose constructors tell a keeper the new address, a Map whose empty tree points at its own header. Built in place where C++17 builds it (a call's result in a member, an argument), else (a ?: of two maps) moved by its constructor, never bitwise
+// factorio: GlobalContext::assignPrototypeIDs crashed in an IDConnector resolver: temporaries were moved bitwise into their objects, so a Map kept its header pointing at the dead temporary and IDConnector, which hands `this` to its resolver, left it a dangling pointer
+struct Keeper
+{
+  void* where = nullptr;
+};
+Keeper keeper;
+struct Registered
+{
+  int id;
+  explicit Registered(int id) : id(id) { keeper.where = this; }
+  Registered(Registered&& other) : id(other.id) { keeper.where = this; }
+  Registered(const Registered& other) : id(other.id) { keeper.where = this; }
+  ~Registered() {}
+};
+Registered make(int id) { return Registered(id); }
+Map<String, int> makeMap()
+{
+  Map<String, int> m;
+  m[String("one")] = 1;
+  return m;
+}
+struct Holder
+{
+  Map<String, int> map;
+  Registered reg;
+  Holder() : map(makeMap()), reg(make(5)) {}
+};
+int consume(Registered r) { return keeper.where == &r ? r.id : -1; }
+int main()
+{
+  Holder h;
+  int kept = keeper.where == &h.reg ? 1 : 0;
+  h.map[String("two")] = 2;
+  int sum = 0;
+  for (const auto& entry : h.map)
+    sum += entry.second;
+  bool flag = sum > 0;
+  Map<String, int> chosen = flag ? makeMap() : Map<String, int>();
+  chosen[String("three")] = 3;
+  println("{} {} {} {}", sum, int(chosen.size()), kept, consume(make(9)));
+  return 0;
+}

@@ -1251,6 +1251,20 @@ namespace
     // reverse). Slot -1 is the class's descriptor (typeid, dynamic_cast), slot -2 the offset of the
     // subobject holding the pointer within the whole object (delete and dynamic_cast find the whole
     // object with it).
+    // The name a class's vtables, thunks and typeinfo are called by: its printed name, and for a class
+    // whose printed name another class shares, the number its IR type got (irTypeName's ".N"). A
+    // local class of a function template has one name for all instances
+    // (`LambdaIDConnector::make::InnerResolver@73` for every Callback): their vtables were one
+    // linkonce_odr vtable, which the linker kept for all, so every InnerResolver ran one callback.
+    std::string classIrName(const Ty* key, const StructInfo& info)
+    {
+      std::string name = irString(key);
+      const size_t hashed = std::string("%struct.").size() + 16; // "%struct." and 16 hex digits
+      if (info.name.size() > hashed && info.name[hashed] == '.')
+        name += "#" + info.name.substr(hashed + 1);
+      return name;
+    }
+
     void emitVtables(const Ty* key, Node* at)
     {
       StructInfo& info = structs[key];
@@ -1264,7 +1278,7 @@ namespace
       for (size_t t = 0; t < tables.size(); ++t)
       {
         Vtable& table = tables[t];
-        table.name = "@\"vtable." + irString(key) + (t ? "." + std::to_string(t) : std::string()) + "\"";
+        table.name = "@\"vtable." + classIrName(key, info) + (t ? "." + std::to_string(t) : std::string()) + "\"";
         std::string entries = "ptr " + subobjectAtNull(key, table.path, at) + ", ptr " + ti;
         for (size_t s = 0; s < table.slots.size(); ++s)
         {
@@ -1278,7 +1292,7 @@ namespace
                                              : implicitDestructor(slot.owner, at); // a class declaring none still destroys its own members
           if (!samePlace(slot.ownerPath, table.path))
           {
-            std::string thunk = "@\"thunk." + irString(key) + "." + std::to_string(t) + "." + std::to_string(s) + "\"";
+            std::string thunk = "@\"thunk." + classIrName(key, info) + "." + std::to_string(t) + "." + std::to_string(s) + "\"";
             thunks += adjustingThunk(thunk, target, slot, subobjectAtNull(key, table.path, at), subobjectAtNull(key, slot.ownerPath, at), at);
             target = thunk;
           }
@@ -1370,7 +1384,7 @@ namespace
       if (!info.typeInfoName.empty())
         return info.typeInfoName;
       const Ty* key = canonicalClass(cls, at);
-      std::string name = "@\"typeinfo." + irString(key) + "\"";
+      std::string name = "@\"typeinfo." + classIrName(key, info) + "\"";
       info.typeInfoName = name;
       bool savedShared = emittingShared;
       emittingShared = true; // the descriptor goes into every module that uses it
@@ -2588,6 +2602,20 @@ namespace
       }
       if (args.size() == 1 && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t))
       {
+        if (args[0]->kind == NodeKind::CallExpr && !firstTy->isReference())
+        {
+          // `: simulations(loadSimulations(input))`: the result built in the object itself (C++17),
+          // as `T x = f();` is; a Map moved bitwise afterwards kept its header pointing at the dead
+          // temporary.
+          Value v = callValue(static_cast<CallExpr*>(args[0]), addr);
+          if (!isClass(v.ty) || v.text == addr)
+            return;
+          if (v.isTemporary)
+            moveTemporary(addr, v, t, at);
+          else
+            copyConstruct(addr, v.text, t, at);
+          return;
+        }
         Value src = rvalue(args[0]);
         if (src.isTemporary)
           moveTemporary(addr, src, t, at);
@@ -3509,7 +3537,77 @@ namespace
       }
     }
 
-    // A temporary that is used to initialise an object is moved bitwise and no longer destroyed.
+    // Whether a temporary of class t may move to the object it initialises bitwise, as if it had been
+    // built there (C++17 builds a prvalue in its object; kppc may build it in a slot of its own first):
+    // no user-provided copy or move constructor in the class, its bases or its members. A class with
+    // one may keep its own address somewhere: IDConnector hands `this` to its resolver, and its move
+    // constructor gives the resolver the new address (a bitwise move left the resolver writing to the
+    // dead temporary: assignPrototypeIDs then deleted garbage).
+    std::unordered_map<const Ty*, bool> bitwiseRelocation; // this emitter's answers
+    bool relocatesBitwise(const Ty* t, Node* at, int depth = 0)
+    {
+      t = types.unqualified(types.stripRef(t));
+      while (t->kind == TyKind::Array && t->inner)
+        t = types.unqualified(t->inner);
+      if (!isClass(t) || depth > 32)
+        return true;
+      const Ty* key = canonicalClass(t, at);
+      if (auto it = bitwiseRelocation.find(key); it != bitwiseRelocation.end())
+        return it->second;
+      bitwiseRelocation[key] = true; // (a member pointing back at its class is no member by value)
+      ClassDecl* c = classDef(key->decl, at);
+      bool bitwise = !c->isTypedUnion;
+      if (bitwise)
+      {
+        TemplateArgs args = global.classArgsOf(key);
+        ArgsScope scope(*this, &args);
+        for (Decl* m : c->members)
+        {
+          if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || (m->flags & (DF_Default | DF_Delete)) ||
+              !m->templateParams.empty() || static_cast<FunctionDecl*>(m)->params.size() != 1)
+            continue;
+          const Ty* pt = declType(static_cast<FunctionDecl*>(m)->params[0]);
+          if (pt && pt->isReference() && isClass(pt->inner) && classKey(pt->inner) == classKey(key))
+            bitwise = false; // `IDConnector(IDConnector&& other)`, `T(const T&)` of its own
+        }
+      }
+      if (bitwise)
+      {
+        const StructInfo& info = structFor(key, at);
+        std::vector<const Ty*> fields = info.fieldTypes;
+        for (const Ty* f : fields)
+          if (!relocatesBitwise(f, at, depth + 1))
+            bitwise = false;
+      }
+      bitwiseRelocation[key] = bitwise;
+      return bitwise;
+    }
+
+    // Whether class t has a move or copy constructor that is not deleted (an implicit one counts).
+    bool movableByConstructor(const Ty* t, Node* at)
+    {
+      ClassDecl* c = classDef(t->decl, at);
+      TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+      ArgsScope scope(*this, &args);
+      bool declared = false, usable = false;
+      for (Decl* m : c->members)
+      {
+        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || !m->templateParams.empty() ||
+            static_cast<FunctionDecl*>(m)->params.size() != 1)
+          continue;
+        const Ty* pt = declType(static_cast<FunctionDecl*>(m)->params[0]);
+        if (!pt || !pt->isReference() || !isClass(pt->inner) || classKey(pt->inner) != classKey(t))
+          continue;
+        declared = true;
+        usable = usable || !(m->flags & DF_Delete);
+      }
+      return !declared || usable;
+    }
+
+    // A temporary that is used to initialise an object is moved there and no longer destroyed:
+    // bitwise when its class allows it (relocatesBitwise), else by its move (or copy) constructor,
+    // and the temporary destroyed then (a class that can be neither moved nor copied: bitwise, as
+    // C++17 builds such a prvalue in its object).
     void moveTemporary(const std::string& dst, Value src, const Ty* t, Node* at)
     {
       for (size_t i = statementTemps.size(); i-- > 0;)
@@ -3520,6 +3618,14 @@ namespace
         }
       if (isClass(t) && structFor(t, at).empty)
         return; // no state, and as a base maybe no bytes of its own (the next member's)
+      if (isClass(t) && !relocatesBitwise(t, at) && !(src.ty && classKey(types.stripRef(src.ty)) != classKey(t)) && movableByConstructor(t, at))
+      {
+        // (Where the object could be built in place, it is: a call's result, an argument. Here it was
+        // built elsewhere first; a class that may know its own address is moved by its constructor.)
+        moveConstruct(dst, src.text, t, at);
+        destroy(src.text, t, at);
+        return;
+      }
       std::string v = newTemp();
       fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src.text + "\n";
       fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
@@ -5900,6 +6006,18 @@ namespace
           std::string tmp = newTemp();
           fn += "  " + tmp + " = load " + llType(pt, at) + ", ptr " + v.text + "\n";
           fn += "  store " + llType(pt, at) + " " + tmp + ", ptr " + copy + "\n";
+        }
+        else if (v.isTemporary && isClass(v.ty) && classKey(v.ty) == classKey(pt) && !isLambda(pt))
+        {
+          // `byValue(Tracker(5))`, `f(makeT())`: the temporary is the parameter, not moved (C++17
+          // builds the prvalue in the parameter); the callee destroys it.
+          for (size_t i = statementTemps.size(); i-- > 0;)
+            if (statementTemps[i].addr == v.text)
+            {
+              statementTemps.erase(statementTemps.begin() + i);
+              break;
+            }
+          return "ptr " + v.text;
         }
         else if (v.isTemporary)
           moveTemporary(copy, v, pt, at);

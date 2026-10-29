@@ -1064,6 +1064,27 @@ UniqueArray one pointer).
     ssprintf's `...` on its error path (a game bug MSVC compiles): a class through C's `...` is
     passed as MSVC does, a copy, as an integer when it has 1, 2, 4 or 8 bytes, else by its address
     (interop/c_class_through_varargs).
+16. Prototype loading completes (master 5af4055: 33 error lines, 24 stubs) and
+    GlobalContext::assignPrototypeIDs crashed in CollisionMaskConnector's deferred resolver on
+    garbage layer names. LambdaIDConnector::make<Callback> defines a local class, InnerResolver,
+    with virtual functions: each instance is a class of its own, but their vtables (and typeinfo,
+    thunks) were named after the class's printed name, the same for every Callback, so the linker
+    kept one linkonce_odr vtable for all and every resolver ran one callback. The names now carry
+    the number irTypeName gives a class whose printed name another shares
+    (templates/local_class_of_template_instance_vtable; the old compiler printed "40 40 40").
+17. Then assignPrototypeIDs crashed in an IDConnector resolver writing through a dead pointer. The
+    code generator built some temporaries in a slot of their own and moved them bitwise into the
+    object they initialise, which C++17 builds in place: anything that knows its own address broke
+    (the library's Map, whose empty tree points at its own header; IDConnector, whose resolver
+    points back at it). A temporary is now the parameter it is passed to, a call's result is built
+    in the member or object it initialises (`: map(makeMap())`), and where kppc still builds one
+    elsewhere a class with a copy or move constructor of its own (or in a member or base) is moved
+    by its constructor and the temporary destroyed (classes/temporaries_of_self_referential_classes;
+    the old compiler's program looped forever in the broken map). With that, prototype loading and
+    ID assignment complete, and `--dump-data` stops at the stub of MplVector::forEach:
+    GlobalContext::postPrototypesConstructedSetup's generic lambda has local aliases of its
+    template parameter's members that the resolver does not substitute in the instance
+    (templates/local_alias_in_generic_lambda_instance, pending, resolver).
 
 ### dear imgui through a generated C interface (2026-10-29)
 
