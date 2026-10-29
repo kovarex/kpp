@@ -11063,6 +11063,12 @@ struct GlobalScope::Impl
       if (a->kind == TyKind::Function && pt && pt->kind == TyKind::Function)
         return types.unqualified(a) == types.unqualified(pt) ? 0 : NotViable;
       bool lvalueToRvalueRef = param->kind == TyKind::RRef && arg->kind == TyKind::LRef; // `T&&` takes no lvalue directly
+      // `frame << agui::horizontalLine` with the helper's `operator HorizontalLine&()`: a class
+      // whose conversion operator gives an lvalue of pt's class or of one derived from it binds a
+      // non-const `pt&` (a user-defined conversion), whatever the object's own value category.
+      if (param->kind == TyKind::LRef && !pt->isConst && a->kind == TyKind::Class && pt->kind == TyKind::Class &&
+          types.unqualified(a) != types.unqualified(pt) && !isBaseClass(pt, a) && convertsByOperator(a, param, depth + 1))
+        return 4;
       if (param->kind == TyKind::LRef && !pt->isConst && (!arg->isReference() || arg->kind == TyKind::RRef))
         return NotViable; // `T&` binds no rvalue (a temporary, a lambda, `move(x)`): lvalues present themselves as `T&` (argumentType)
       if (types.unqualified(a) == types.unqualified(pt))
