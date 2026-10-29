@@ -11622,9 +11622,10 @@ namespace
       own(begin);
       own(end);
       destroyTemps();
-      // `it != end`, or `!(it == end)`.
+      // `it != end`, or `!(it == end)`; end may be of another type than the iterator (a sentinel:
+      // CircleIterator's `nullptr_t end()` and `bool operator!=(nullptr_t)`).
       const Ty* in = nullptr;
-      std::vector<const Ty*> argTypes{types.lref(types.qualified(begin.ty, true, false))};
+      std::vector<const Ty*> argTypes{isClass(end.ty) ? types.lref(types.qualified(end.ty, true, false)) : end.ty};
       bool negate = false;
       FunctionDecl* compare = findMemberFunction(begin.ty, "operator!=", argTypes, begin.ty, f, &in);
       if (!compare)
@@ -11647,8 +11648,21 @@ namespace
       std::string thisArg = begin.text;
       if (canonicalClass(begin.ty, f) != in)
         baseAddress(begin.ty, in, begin.text, thisArg, f);
+      std::string endArg = "ptr " + end.text;
+      if (!isClass(end.ty) && compareSig.paramTys.size() > 1 && compareSig.paramTys[1])
+      {
+        const Ty* pt = compareSig.paramTys[1];
+        if (pt->isReference())
+        {
+          std::string slot = newObjectSlot(end.ty, f);
+          store(end, slot, end.ty, f);
+          endArg = "ptr " + slot;
+        }
+        else
+          endArg = compareSig.paramTypes[1] + " " + convert(end, pt, f).text;
+      }
       std::string cond = newTemp();
-      emitCall(cond + " = ", compareSig.returnType + " " + compareName + "(ptr " + thisArg + ", ptr " + end.text + ")");
+      emitCall(cond + " = ", compareSig.returnType + " " + compareName + "(ptr " + thisArg + ", " + endArg + ")");
       if (compareSig.returnType != "i1")
         cond = convert(Value{cond, types.intType(32)}, types.boolType(), f).text;
       if (negate)
@@ -12264,6 +12278,23 @@ namespace
           b = call(freeBegin);
           e = call(freeEnd);
         }
+        // `Iterator& begin()`, `const Iterator& end()`: the loop works on copies, C++'s `auto __begin
+        // = range.begin()` (HeuristicEntitySearch hands out its own iterator member).
+        auto byValue = [&](Value v) -> Value
+        {
+          if (!v.ty || !v.ty->isReference())
+            return v;
+          const Ty* t = types.unqualified(types.stripRef(v.ty));
+          if (t->kind == TyKind::Pointer)
+            return load(v.text, t, f);
+          if (!isClass(t))
+            return v;
+          std::string copy = newObjectSlot(t, f);
+          copyConstruct(copy, v.text, t, f);
+          return {copy, t, true};
+        };
+        b = byValue(b);
+        e = byValue(e);
         if (b.ty && isClass(b.ty))
         {
           iteratorLoop(f, b, e);

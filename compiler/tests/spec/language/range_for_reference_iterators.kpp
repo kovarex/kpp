@@ -1,6 +1,5 @@
 // spec: a range-for over a class whose begin() and end() return references to its iterators (`Iterator& begin()`, `const Iterator& end()`) iterates by copies of them, as with iterators returned by value
 // factorio: HeuristicEntitySearch's `Iterator& begin() { return this->iterator; }` and `const Iterator& end()`, iterated by EntitySearch's `for (RawEntityT* rawEntity : HeuristicEntitySearch(surface, position))`
-// pending: codegen takes the reference-returning begin() for a range whose iterators are not pointers ("a range whose iterators are not pointers")
 struct Surf { int entities[3] = {1, 2, 3}; };
 template<class SurfaceT>
 struct It

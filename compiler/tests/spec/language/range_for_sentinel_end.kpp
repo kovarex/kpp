@@ -1,0 +1,24 @@
+// spec: a range-for whose end() is a sentinel of another type than its iterator (`nullptr_t end()`, compared by `bool operator!=(nullptr_t)`), the iterator being the range itself (`begin()` returns `*this`, which the loop copies, as C++'s `auto __begin = range.begin()`)
+// factorio: CircleIterator's `CircleIterator& begin() { return *this; }` and `nullptr_t end() const`, iterated by `for (MapPosition position : MapPositionCircleIterator(center, radius))`
+class Countdown
+{
+public:
+  int left;
+  Countdown(int n) : left(n) {}
+  Countdown& begin() { return *this; }
+  nullptr_t end() const { return nullptr; }
+  bool operator!=(nullptr_t) const { return this->left > 0; }
+  void operator++() { --this->left; }
+  int operator*() const { return this->left; }
+};
+int main()
+{
+  Countdown c(3);
+  int sum = 0;
+  for (int v : c)
+    sum += v;
+  for (int v : Countdown(2))
+    sum += v * 10;
+  println("{} {}", sum, c.left);
+  return 0;
+}
