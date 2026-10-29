@@ -7,6 +7,7 @@
 #include "consteval.hpp"
 #include "types.hpp"
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -196,6 +197,10 @@ public:
   std::vector<std::string> topLevelClashes();
   // Phase 2, thread-safe and read-only on the scope tree: resolve and type one file.
   void resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats);
+  // Resolves `count` files with resolveOne(i) on `threads` workers, which take the class instances'
+  // member bodies as tasks when they run out of files (queued by the files' walks instead of
+  // checked by the asking walk; a task may queue more), until nothing is left.
+  void resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne);
   // After the checker (and the code generator, which asks it for instance bodies) is done: the
   // static_asserts of the class template instances it made are checked, and the errors the checker
   // found are returned, `path:line: error: ...` one each, sorted. A static_assert whose condition

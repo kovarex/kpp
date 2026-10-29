@@ -1011,7 +1011,9 @@ namespace
       stats[i].fileIndex = uint32_t(i);
       stats[i].collectWhy = options.showWhy > 0;
     }
-    parallelFor(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
+    // Class instances' member bodies as tasks, taken by the workers that run out of files
+    // (docs/compile-speed.md, step 3), so that no file drags its instances onto one thread.
+    global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
     double resolveTime = seconds(Clock::now() - start);
     ResolveStats total;
     for (const ResolveStats& s : stats)

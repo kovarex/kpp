@@ -131,9 +131,20 @@ the property the rest relies on), then 2.
 Done so far (numbered as landed: step 1 = item 1, step 2 = items 3 and 4):
 - Step 1 (cee6aa6): waits block. No measurable change (resolve median 1.05 -> 1.03 s): by then
   waits were rare, so it removes a worst case rather than a cost.
-- Step 2 (932b4c4 and the follow-up): the output does not depend on the thread count, as above.
-  Cost: none measurable at 32 threads (median 1.07 -> 1.12 s, within the noise); `-j 1` 7.9 ->
-  7.5 s.
+- Step 2 (932b4c4 and the follow-ups to 098b96e): the output does not depend on the thread count,
+  as above. Cost: none measurable at 32 threads (median 1.07 -> 1.12 s, within the noise); `-j 1`
+  7.9 -> 7.5 s.
+- Step 3 (item 2): while the files are resolved, a class instance's member bodies and a function
+  instance whose result nobody waits for are queued as tasks; one pool takes files, then tasks
+  (GlobalScope::resolveAll), until nothing is queued or running. A walk that needs a queued
+  instance's deduced return takes its check over on the spot (an atomic exchange decides who runs
+  it), at the depth of the walk that asked, so the depth limit and the results do not depend on
+  who ran it; the statistics and errors are those of `-j 1` exactly, and tests/determinism.ps1
+  passes. Per member body the tasks cost more than they spread, so a class instance is one task.
+  The headline tree's front end (CommonUtil, Agui, cxxopts, StackWalker, Lua, src), five paired
+  runs: resolve median **1.57 -> 1.25 s** (min 1.55 -> 1.25 s), CPU about the same. A first version
+  that queued only class instances' member bodies, and drained them after the files, was 0.15 s
+  slower: the files' own function instances kept a few threads busy while the rest waited.
 
 ## Parallel codegen, first step (2026-10-29)
 

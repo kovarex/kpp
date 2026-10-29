@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <condition_variable>
 #include <deque>
 #include <functional>
 #include <map>
@@ -640,10 +641,25 @@ struct GlobalScope::Impl
   // One record per (function, arguments, `this` type): the copy of the function's nodes typed for
   // them, built once by whichever asks first (the checker's instantiation checks, or codegen for an
   // instantiation the checker did not reach) and read by everyone after.
+  // A function instance's check queued while the files are resolved (Walker::instantiateFunction):
+  // what running it later needs.
+  struct FunctionInstanceTask
+  {
+    FunctionDecl* f;
+    FunctionDecl* def;
+    Subst full, defFull;
+    Scope* bodyScope;
+    const Ty* bodyThis;
+    const ParsedFile* requestFile;
+    uint32_t requestToken;
+    int depth;
+  };
   struct InstanceRecord
   {
     std::atomic<int> state{0}; // 1 being built (by owner), 2 built
-    std::thread::id owner;
+    std::atomic<std::thread::id> owner; // who builds it (whoever takes a queued check over)
+    std::atomic<int> queued{0};         // 1: its check is queued, not started; taken by whoever exchanges it to 0 first
+    std::unique_ptr<FunctionInstanceTask> task;
     FunctionDecl* body = nullptr;
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
     Expr* init = nullptr;              // for a variable: its initializer's copy (GlobalScope::instanceInitializer)
@@ -13439,9 +13455,20 @@ struct GlobalScope::Impl
       Impl::Instantiation* inst = impl.claimClass(classTy, producer);
       if (!producer)
         return; // Done or being done by someone else; nothing here needs its result.
+      Scope* cls = classTy->decl->ownScope;
+      if (impl.queueMemberBodies.load(std::memory_order_relaxed))
+      {
+        // While the files are resolved: the instance's member bodies a task for whichever worker
+        // is free (Impl::MemberTask), not a weight on the thread that happened to ask first.
+        const ParsedFile* askedIn = current && file ? file : nullptr;
+        uint32_t askedAt = askedIn ? current->token : UINT32_MAX;
+        impl.queueMemberBody({classTy, nullptr, askedIn, askedAt, instantiationDepth});
+        inst->state.store(2, std::memory_order_release);
+        inst->state.notify_all();
+        return;
+      }
       auto start = std::chrono::steady_clock::now();
       Subst subst = impl.substFor(classTy);
-      Scope* cls = classTy->decl->ownScope;
       subCheck(classTy->decl, subst, cls, types.pointer(classTy), [&](Walker& sub)
       {
         auto* c = static_cast<ClassDecl*>(classTy->decl);
@@ -13524,7 +13551,11 @@ struct GlobalScope::Impl
           return nullptr;
         if (inst->state.load(std::memory_order_acquire) != 2)
         {
-          if (inst->owner == std::this_thread::get_id())
+          // Queued and not started (by this thread or another): its result is needed now, so
+          // this walk takes the check over (never waits for a task no worker may have reached).
+          if (inst->queued.exchange(0) == 1)
+            return runFunctionInstance(inst, *inst->task);
+          if (inst->owner.load() == std::this_thread::get_id())
             return nullptr; // Recursive auto function.
           ++impl.instWaits;
           for (int seen = inst->state.load(std::memory_order_acquire); seen != 2; seen = inst->state.load(std::memory_order_acquire))
@@ -13532,18 +13563,47 @@ struct GlobalScope::Impl
         }
         return inst->deducedReturn;
       }
-      ++impl.instFunctions;
+      Impl::FunctionInstanceTask task{f, def, full, defFull, bodyScope, bodyThis, current && file ? file : nullptr,
+                                      current && file ? current->token : UINT32_MAX, instantiationDepth};
+      if (!needReturn && impl.queueMemberBodies.load(std::memory_order_relaxed))
+      {
+        // While the files are resolved: a check nobody waits for is a task for whichever worker
+        // is free (docs/compile-speed.md, step 3), not a weight on the file that asked first.
+        inst->task = std::make_unique<Impl::FunctionInstanceTask>(std::move(task));
+        inst->queued.store(1);
+        impl.queueMemberBody({nullptr, nullptr, nullptr, 0, 0, inst});
+        return nullptr;
+      }
+      return runFunctionInstance(inst, task);
+    }
+
+    // Checks the function instance inst describes (claimed by this walk, or a queued one this walk
+    // took over) on this thread, and publishes its body and deduced return.
+    const Ty* runFunctionInstance(Impl::InstanceRecord* inst, const Impl::FunctionInstanceTask& t)
+    {
+      inst->owner.store(std::this_thread::get_id());
+      // At the depth of the walk that asked for it, whoever runs it (the depth limit decides what
+      // is checked, so it must not depend on which walk took a queued check over).
+      int savedDepth = std::exchange(instantiationDepth, t.depth);
+      struct DepthRestore { int& d; int saved; ~DepthRestore() { d = saved; } } depthRestore{instantiationDepth, savedDepth};
+      if (!t.f->templateParams.empty())
+        ++impl.instFunctions; // a function template's (a class template's member claimed here or by its class's check counts as a body either way)
       auto start = std::chrono::steady_clock::now();
       // The instantiation's own copy of f's nodes (its definition's), typed here and kept as its body.
       // One with no arguments at all is a function that is no template, typed before the walk of
       // its file reached it (for its `auto` return): its lambdas are the types that walk gives
       // them, which the code generator emits (`chunkLineByLineScan(...)`'s TransformView).
-      FunctionDecl* copy = impl.copyInstance(def, bodyScope, full.pairs.empty());
+      FunctionDecl* copy = impl.copyInstance(t.def, t.bodyScope, t.full.pairs.empty());
       inst->body = copy;
       const Ty* deduced = nullptr;
       const Ty* pattern = nullptr; // the written `auto&`, `const auto*`...: the deduced type takes its shape
-      subCheck(def, defFull, bodyScope, bodyThis, [&](Walker& sub)
+      subCheck(t.def, t.defFull, t.bodyScope, t.bodyThis, [&](Walker& sub)
       {
+        if (t.requestFile)
+        {
+          sub.requestFile = t.requestFile;
+          sub.requestToken = t.requestToken;
+        }
         sub.returnFrames.push_back(nullptr);
         sub.walkDecl(copy);
         deduced = sub.returnFrames.back();
@@ -17196,6 +17256,85 @@ struct GlobalScope::Impl
       w.scope = w.semanticScopeFor(f->name);
     return w.instantiateFunction(f, subst, true);
   }
+
+  // ---- member bodies of class instances, checked as tasks (docs/compile-speed.md, step 3) ----
+  // While the files are resolved, instantiating a class queues the check of each member body
+  // instead of checking it on the asking thread; every worker takes them after the files
+  // (GlobalScope::checkQueuedMemberBodies). An instance's typing does not depend on when it is
+  // checked (each instance is claimed once, its statistics and errors kept apart and sorted).
+  struct MemberTask
+  {
+    const Ty* classTy;
+    FunctionDecl* f;
+    const ParsedFile* requestFile;
+    uint32_t requestToken;
+    int depth;
+    InstanceRecord* functionInstance = nullptr; // or a function instance's queued check (its record holds the task)
+  };
+  std::atomic<bool> queueMemberBodies{false};
+  std::mutex memberTaskMutex;
+  std::condition_variable memberTaskCv;
+  std::deque<MemberTask> memberTasks;
+  int memberTasksRunning = 0;
+  void queueMemberBody(const MemberTask& t)
+  {
+    {
+      std::lock_guard lock(memberTaskMutex);
+      memberTasks.push_back(t);
+    }
+    memberTaskCv.notify_one();
+  }
+  void runMemberTask(const MemberTask& t)
+  {
+    if (InstanceRecord* inst = t.functionInstance)
+    {
+      // A function instance's check, unless a walk that needed its result took it over first.
+      if (inst->queued.exchange(0) != 1)
+        return;
+      const FunctionInstanceTask& ft = *inst->task;
+      if (!ft.def->file || !ft.def->file->tokens)
+      {
+        inst->state.store(2, std::memory_order_release); // nothing to check: built, as an inline check would leave it
+        inst->state.notify_all();
+        return;
+      }
+      ResolveStats scratch;
+      Walker w(*this, scratch, *ft.def->file->tokens, ft.def->file->text);
+      w.file = ft.def->file;
+      w.scope = ft.bodyScope;
+      w.runFunctionInstance(inst, ft);
+      return;
+    }
+    auto* c = static_cast<ClassDecl*>(t.classTy->decl);
+    if (!c->file || !c->file->tokens)
+      return;
+    ResolveStats scratch;
+    Walker w(*this, scratch, *c->file->tokens, c->file->text);
+    w.file = c->file;
+    w.scope = c->ownScope;
+    w.instantiationDepth = t.depth;
+    Subst subst = substFor(t.classTy);
+    auto start = std::chrono::steady_clock::now();
+    w.subCheck(c, subst, c->ownScope, types.pointer(t.classTy), [&](Walker& sub)
+    {
+      sub.requestFile = t.requestFile;
+      sub.requestToken = t.requestToken;
+      if (t.f)
+      {
+        w.checkMemberBody(sub, t.f, subst);
+        return;
+      }
+      // The whole instance (one task per class instance: per member, the tasks' own setup cost
+      // more than they spread).
+      for (Decl* m : c->members)
+        if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->body && m->templateParams.empty())
+          w.checkMemberBody(sub, static_cast<FunctionDecl*>(m), subst);
+      for (FunctionDecl* f : c->ownScope->outOfLineMembers)
+        if (f->body && (!isMemberSpecialization(f) || memberSpecializationIsFor(f, t.classTy)))
+          w.checkMemberBody(sub, f, subst);
+    });
+    instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
+  }
 };
 
 GlobalScope::GlobalScope(SymbolTable& symbols) : impl(new Impl(symbols)) {}
@@ -17521,6 +17660,68 @@ size_t GlobalScope::unusedFailedAsserts()
     if (!impl->emittedFunctions.count(f))
       n += errors.size();
   return n;
+}
+
+void GlobalScope::resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne)
+{
+  Impl& im = *impl;
+  im.queueMemberBodies.store(true);
+  std::atomic<size_t> next{0};
+  // Running work: files being resolved and tasks being checked; either may queue tasks. A
+  // worker takes the next file while there is one, then tasks, and is done when nothing is
+  // queued and nothing runs.
+  im.memberTasksRunning = 0;
+  auto finishOne = [&]
+  {
+    bool finished;
+    {
+      std::lock_guard lock(im.memberTaskMutex);
+      --im.memberTasksRunning;
+      finished = im.memberTasks.empty() && im.memberTasksRunning == 0 && next.load() >= count;
+    }
+    if (finished)
+      im.memberTaskCv.notify_all(); // the waiting workers see that nothing is left
+  };
+  auto worker = [&]
+  {
+    for (;;)
+    {
+      {
+        std::lock_guard lock(im.memberTaskMutex);
+        ++im.memberTasksRunning; // counted before taking a file: a worker waiting for tasks must not see zero meanwhile
+      }
+      size_t i = next.fetch_add(1);
+      if (i < count)
+      {
+        resolveOne(i);
+        finishOne();
+        continue;
+      }
+      finishOne();
+      Impl::MemberTask task;
+      {
+        std::unique_lock lock(im.memberTaskMutex);
+        im.memberTaskCv.wait(lock, [&] { return !im.memberTasks.empty() || im.memberTasksRunning == 0; });
+        if (im.memberTasks.empty())
+        {
+          im.memberTaskCv.notify_all(); // none left and none running: every worker is done
+          return;
+        }
+        task = im.memberTasks.front();
+        im.memberTasks.pop_front();
+        ++im.memberTasksRunning;
+      }
+      im.runMemberTask(task); // may queue more (each push wakes a waiting worker)
+      finishOne();
+    }
+  };
+  std::vector<std::thread> pool;
+  for (unsigned t = 1; t < threads; ++t)
+    pool.emplace_back(worker);
+  worker();
+  for (auto& t : pool)
+    t.join();
+  im.queueMemberBodies.store(false);
 }
 
 void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats)

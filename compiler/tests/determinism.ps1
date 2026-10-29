@@ -72,8 +72,8 @@ if (Test-Path (Join-Path $tree 'src'))
   $common = @('--std', "$PSScriptRoot\..\..\stdlib",
     '--cinclude', 'C:\Factorio\libraries\SDL3\include', '--cinclude', 'C:\Factorio\libraries\SDL_Mixer\include',
     '--cinclude', 'C:\Factorio\libraries\Lua', '--cinclude', 'C:\Factorio\libraries', '--cinclude', 'C:\Factorio\libraries\curl\include',
-    '--cinclude', 'C:\Factorio\libraries\glad\include', '--cinclude', "$factorio\native\include",
-    '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\Lua", "$tree\src")
+    '--cinclude', 'C:\Factorio\libraries\glad\include', '--cinclude', 'C:\Factorio\libraries\trio', '--cinclude', "$factorio\native\include",
+    '--errors', '0', '--unresolved', '0', "$tree\CommonUtil", "$tree\Agui", "$tree\cxxopts", "$tree\StackWalker", "$tree\Lua", "$tree\src")
   $runs = @()
   $n = 0
   foreach ($j in @('1', '8', '32', '32'))
