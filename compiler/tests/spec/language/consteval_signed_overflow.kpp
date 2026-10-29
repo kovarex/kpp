@@ -1,7 +1,6 @@
 // spec: a signed overflow or a division by zero in a constant the program needs is a compile error with its reason, as in C++ (unsigned arithmetic wraps and is no error)
-// pending: the checker's 64-bit arithmetic let a 32-bit overflow pass
-// error: consteval_signed_overflow.kpp:7: error: static assertion whose condition is no constant: signed overflow in int32 (addition)
-// error: consteval_signed_overflow.kpp:8: error: static assertion whose condition is no constant: a division by zero
+// error: consteval_signed_overflow.kpp:6: error: static assertion whose condition is no constant: signed overflow in int32 (addition)
+// error: consteval_signed_overflow.kpp:7: error: static assertion whose condition is no constant: a division by zero
 constexpr int big = 2147483647;
 constexpr unsigned ubig = 4294967295u;
 static_assert(big + 1 > 0);

@@ -1,5 +1,4 @@
 // spec: compile-time arithmetic follows C++'s types: unsigned values wrap, narrower types promote to int, conversions are modular, shifts take the promoted left operand's type, character literals read their escapes, alignof is the alignment
-// pending: the checker computed every constant as a 64-bit integer, and alignof as sizeof
 struct Vec3 { float x, y, z; };
 static_assert(0xFFFFFFFFu + 1u == 0u);
 static_assert(uint8_t(250) + uint8_t(10) == 260);

@@ -589,7 +589,7 @@ are hashes of their contents, a lambda's mark in an instantiation is a hash of t
 printed, filters and function-local statics are named by where they are written, module texts
 are sorted, and every use of a failed layout or global reports the same error.
 
-## Compile-time evaluation: one interpreter (proposed 2026-10-29, for review)
+## Compile-time evaluation: one interpreter (decided 2026-10-29; step 1 done)
 
 **Today.** Two evaluators compute constants: the checker's (constEval, for template arguments,
 `if constexpr`, requires clauses, static_assert) and the code generator's (evalConst, for the
@@ -686,14 +686,41 @@ its own call depth, nesting is bounded (1024, and a check for stack room), and s
 values are memoised per class instance (specs templates/pack_recursion_depth and
 templates/variadic_partial_specialisation).
 
-Questions for kovarex:
-1. May any function with a body in the subset run at compile time, or only one marked `constexpr`
-   (C++)? Proposed: any; `constexpr` stays allowed and becomes a promise the compiler checks.
-2. Signed overflow during compile-time evaluation: an error (C++, proposed) or wrap-around, as Kpp's
-   run time does?
-3. Floating point at compile time: the host's IEEE arithmetic, which is the target's for `+`, `-`,
-   `*`, `/` and `sqrt`; nothing else from the C math library (an error until the library has Kpp
-   versions). Proposed as written.
+*Step 1, done 2026-10-29.* compiler/src/consteval.cpp holds the values (ConstValue: an integer
+normalised to its type's width and signedness, an enumeration with the underlying type it was
+declared with, bool, char, float or double) and C++'s arithmetic on them (ConstArith: literals
+with every suffix and escape, integral promotion and the usual arithmetic conversions, modular
+conversions between integer types, shifts in the promoted left type, IEEE `+ - * /` and
+comparisons), in two modes: *Required* for the checker, where a signed overflow, a division by
+zero, a shift by the width or more, or a float out of an integer's range fails the constant with
+its reason (static_assert reports it: `static assertion whose condition is no constant: signed
+overflow in int32 (addition)`), and *Fold* for the code generator, where signed arithmetic wraps.
+The walk types number literals with the same function, so a literal's type and value cannot
+disagree. The checker's evaluator (constValue in resolver.cpp; constEval is its integer view)
+covers step 1 and the part of step 2 that changes nothing: function bodies of returns, `if`,
+`if constexpr`, locals initialised once and `assert` (`Limits<T>::max()`, the library's `max`),
+member functions on an object whose result its type decides (`layers.size()` of an Array),
+conversions through aliases, enumerations and type parameters (`size_t(Layer::Count)`,
+`U(2 * limit)`), fold expressions over template packs, `sizeof` of a variable, and `alignof`
+(which was computed as `sizeof`). Long operator chains (InputAction::inputActionCount's 300 terms)
+are evaluated in a loop. The code generator's evalConst computes through the same ConstArith and
+runs the same statements, on the callee's own instantiation (`Limits<uint16_t>::max()` in a
+static_assert on a layout); its lookup of names (variables, enumerators, parameters) is still its
+own, which the GlobalScope::evaluate entry replaces next. Limits as proposed: a million steps, 512
+nested calls, the stack left. Measured on the converted game: static_asserts the compiler cannot
+evaluate 42 -> 27; the headline 23,819 -> 23,511 paired on e1b268e (path-to-factorio.md). Specs:
+language/consteval_*.
+
+Left, in the order above: assignments, `++`, loops and `switch` (step 2, the gcd and lcm loops
+with them); objects and constructors (step 3: `BoundingBox::emptyValue().isZeroSize()`,
+`BranchVersion(0)`); constant arrays and strings and constant data (step 4: `variantNames[i]`);
+`sqrt` (the library's has no Kpp body yet); float template arguments.
+
+The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
+kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`
+optional; signed overflow at compile time is an error, as in C++ (spec
+language/consteval_signed_overflow), while folding keeps wrap-around; floating point is the host's
+IEEE arithmetic for `+`, `-`, `*`, `/` and `sqrt`, nothing else from the C math library.
 
 ## Benchmark target
 

@@ -1,6 +1,5 @@
 // spec: a constant summed from hundreds of terms (1 + 1 + ... + 0, a term per action) as a static member, a template argument and a run-time value
 // factorio: InputAction::inputActionCount, Bitset<InputAction::inputActionCount>
-// pending: the code generator nested one evaluation per term and gave up
 struct Actions
 {
   static constexpr size_t count =

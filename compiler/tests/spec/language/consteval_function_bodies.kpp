@@ -1,6 +1,5 @@
 // spec: functions run at compile time: bodies of returns, if, if constexpr and constant locals (Limits<T>::max()), a library template (max), a member function of a class instance (Array::size on a local array), a scoped enumerator converted to an integer
 // factorio: Bitset<Limits<DamageTypeID::IndexType>::max() + 1>, static_assert(layers.size() == size_t(TileSpriteLayer::Count))
-// pending: only bodies of one return statement ran
 enum class Layer { Ground, Object, Air, Count };
 template<typename T>
 T clampTo(T value, T low, T high)

@@ -1,4 +1,5 @@
 #include "resolver.hpp"
+#include "consteval.hpp"
 #include "instance.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -2068,10 +2069,10 @@ struct GlobalScope::Impl
 
   // ---------------- phase 2: types ----------------
 
-  struct ConstBinding // a parameter's value while a constexpr function call is evaluated
+  struct ConstBinding // a parameter's or a local's value while a function runs at compile time
   {
     uint32_t symbol;
-    int64_t value;
+    ConstValue value;
   };
   struct TypeContext
   {
@@ -3171,7 +3172,7 @@ struct GlobalScope::Impl
   // A trait object converted to bool (`HasSize<T>()`, `HasSize<T>{}`): the class's static
   // constexpr `value`, its own or a base's, read for the instance its arguments make, a base's
   // with that base's arguments (`HasSize<double> : Constant<bool, false>`: V is false).
-  std::optional<int64_t> traitObjectValue(const Ty* cls, int depth)
+  std::optional<ConstValue> traitObjectValue(const Ty* cls, int depth)
   {
     cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
     if (!cls || cls->kind != TyKind::Class || !cls->decl || types.isDependent(cls) || depth > 64)
@@ -3192,7 +3193,7 @@ struct GlobalScope::Impl
     pushEnclosingTemplateParams(v, own);
     TypeContext vctx{lexicalScopeOf(v), &own, sub.pairs.empty() ? nullptr : &sub, def->file ? def->file->tokens : nullptr,
                      def->file ? def->file->text : std::string_view()};
-    return constEval(def->init, vctx, depth + 1);
+    return constAsDeclared(constInitValue(def->init, vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
   }
 
   VariableDecl* findStaticBoolValue(ClassDecl* c, int depth)
@@ -3220,9 +3221,6 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
-  // Minimal constant evaluation for array bounds: literals and arithmetic on them.
-  // The value of a declaration used as a constant: a const/constexpr variable with an
-  // initializer, an enumerator, or a non-type template parameter under the substitution.
   // `path:line` of a token.
   static std::string locationOf(const ParsedFile* file, uint32_t token)
   {
@@ -3260,7 +3258,9 @@ struct GlobalScope::Impl
     bool outerExact = exactLayoutOnly, outerNeeded = layoutNeeded; // (an assert met while another is evaluated)
     exactLayoutOnly = true;
     layoutNeeded = false;
-    std::optional<int64_t> v = knownInstance ? constEval(s->cond, ctx, 0) : std::nullopt;
+    constWhy().clear();
+    std::optional<bool> v = knownInstance ? constCondition(s->cond, ctx, 0) : std::nullopt;
+    std::string why = v ? std::string() : constWhy();
     bool needed = layoutNeeded;
     exactLayoutOnly = outerExact;
     layoutNeeded = outerNeeded;
@@ -3277,7 +3277,11 @@ struct GlobalScope::Impl
     }
     if (v && *v)
       return;
-    std::string message = v ? "static assertion failed" : "static assertion whose condition the compiler cannot evaluate yet";
+    // A condition that is no constant in C++ (a signed overflow, a division by zero) says why; one
+    // the checker cannot evaluate yet is its gap.
+    std::string message = v               ? "static assertion failed"
+                        : !why.empty()    ? "static assertion whose condition is no constant: " + why
+                                          : "static assertion whose condition the compiler cannot evaluate yet";
     if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
     {
       const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];
@@ -3296,9 +3300,19 @@ struct GlobalScope::Impl
     reportCheckerError(s->file, s->token, message);
   }
 
-  // classSubst: the arguments of the class template instantiation a static member was named
-  // through (`Bits<uint64_t>::count`).
+  // The value of a declaration used as a constant: a const/constexpr variable with an initializer
+  // (converted to its declared type), an enumerator, a Kpp enum's count, or a non-type template
+  // parameter under the substitution. classSubst: the arguments of the class template
+  // instantiation a static member was named through (`Bits<uint64_t>::count`).
   std::optional<int64_t> constOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr)
+  {
+    std::optional<ConstValue> v = constValueOfDecl(d, ctx, depth, classSubst);
+    if (!v || v->isFloat())
+      return std::nullopt;
+    return v->i;
+  }
+
+  std::optional<ConstValue> constValueOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr)
   {
     if (!d || depth > 96)
       return std::nullopt;
@@ -3306,17 +3320,21 @@ struct GlobalScope::Impl
     {
       if (ctx.subst)
         if (const Ty* t = ctx.subst->find(d); t && t->kind == TyKind::Value)
-          return t->value;
+          return ConstValue::integer(t->value, t->inner);
       return std::nullopt;
     }
     if (d->kind == NodeKind::VariableDecl)
     {
       auto* v = static_cast<VariableDecl*>(d);
+      if (v->builtin == BUILTIN_EnumCount && v->parent && v->parent->kind == NodeKind::EnumDecl)
+        return ConstValue::integer(int64_t(enumeratorCount(v->parent)), types.intType()); // a Kpp enum's count
+      if (v->parent && v->parent->kind == NodeKind::ClassDecl && !(v->flags & DF_Static))
+        return std::nullopt; // a data member: its value is an object's, not its initializer
       VariableDecl* def = v; // `static const int LIMIT;` in the class, `const int Gui::LIMIT = 21;` outside
       if (!v->init)
         if (auto it = variableDefinitions.find(v); it != variableDefinitions.end())
           def = it->second;
-      if (!def->init)
+      if (!def->init || !v->type)
         return std::nullopt;
       TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
       const Ty* t = convertType(v->type, vctx, depth + 1);
@@ -3326,7 +3344,7 @@ struct GlobalScope::Impl
       // A constant local to a function body (`constexpr bool sign = isSigned<T>;`): its initializer
       // under the context it is used in, which has the instantiation's arguments.
       if (v->parent && v->parent->kind == NodeKind::FunctionDecl && v->name.parts.size() == 1)
-        return constEval(def->init, ctx, depth + 1);
+        return constAsDeclared(constInitValue(def->init, ctx, depth + 1), convertType(v->type, ctx, depth + 1));
       // A member of a class template: under the instantiation's arguments, the ones it was named
       // through or the context's when they bind the class's parameters (`count` read in another
       // member's initializer).
@@ -3344,18 +3362,20 @@ struct GlobalScope::Impl
         params.push(static_cast<TemplateParamDecl*>(p)->name, p);
       TypeContext ictx{lexicalScopeOf(v), classParams.empty() ? nullptr : &params, memberArgs, def->file ? def->file->tokens : nullptr,
                        def->file ? def->file->text : std::string_view()};
-      return constEval(def->init, ictx, depth + 1);
+      return constAsDeclared(constInitValue(def->init, ictx, depth + 1), convertType(v->type, ictx, depth + 1));
     }
     if (d->kind == NodeKind::EnumeratorDecl)
     {
-      // Enumerators count up from zero, or from the last written value.
+      // Enumerators count up from zero, or from the last written value, converted to the
+      // enumeration's underlying type when it was declared with one.
       auto* e = static_cast<EnumDecl*>(d->parent);
       if (!e || e->kind != NodeKind::EnumDecl)
         return std::nullopt;
       // In the enum's own scope: `GENERIC = NOTHING` names an earlier enumerator of an enum class.
       TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
                        e->file ? e->file->text : std::string_view()};
-      int64_t next = 0;
+      const Ty* enumType = types.enumType(e);
+      ConstValue next = ConstValue::integer(0, enumType);
       for (Decl* m : e->enumerators)
       {
         if (m->kind != NodeKind::EnumeratorDecl)
@@ -3363,14 +3383,14 @@ struct GlobalScope::Impl
         auto* cur = static_cast<EnumeratorDecl*>(m);
         if (cur->value)
         {
-          std::optional<int64_t> v = constEval(cur->value, ectx, depth + 1);
+          std::optional<ConstValue> v = constConverted(constValue(cur->value, ectx, depth + 1), enumType);
           if (!v)
             return std::nullopt;
           next = *v;
         }
         if (cur == d)
           return next;
-        ++next;
+        ++next.i;
       }
     }
     return std::nullopt;
@@ -3573,30 +3593,14 @@ struct GlobalScope::Impl
   }
 
   // `static_cast<size_t>(value)` with value an enumerator or a constant parameter (a template
-  // argument `bits.test<static_cast<size_t>(value)>()`): the operand's value in the target type.
-  std::optional<int64_t> constCast(Type* type, Expr* operand, const TypeContext& ctx, int depth)
+  // argument `bits.test<static_cast<size_t>(value)>()`), `(uint8_t)x`: the operand's value
+  // converted to the written type.
+  std::optional<ConstValue> constCastValue(Type* type, Expr* operand, const TypeContext& ctx, int depth)
   {
-    std::optional<int64_t> v = constEval(operand, ctx, depth + 1);
+    std::optional<ConstValue> v = constValue(operand, ctx, depth + 1);
     if (!v || !type)
       return v;
-    return castValue(types.unqualified(convertType(type, ctx, depth + 1)), *v);
-  }
-
-  // A constant converted to type t: to bool, or cut to a narrower integer type.
-  static std::optional<int64_t> castValue(const Ty* t, std::optional<int64_t> v)
-  {
-    if (!v || !t)
-      return v;
-    if (t->kind == TyKind::Bool)
-      return *v != 0 ? 1 : 0;
-    if ((t->kind == TyKind::Int || t->kind == TyKind::Char) && t->bits > 0 && t->bits < 64)
-    {
-      uint64_t mask = (uint64_t(1) << t->bits) - 1, bits = uint64_t(*v) & mask;
-      if (!t->isUnsigned && (bits >> (t->bits - 1)))
-        return int64_t(bits | ~mask); // a negative value of a narrower signed type
-      return int64_t(bits);
-    }
-    return v;
+    return constConverted(v, convertType(type, ctx, depth + 1));
   }
 
   // Whether this thread's stack has room for more nested evaluation (a megabyte kept spare).
@@ -3633,11 +3637,11 @@ struct GlobalScope::Impl
   // the same ones over and over. Not while a static_assert is checked (its class layouts are the
   // code generator's, see exactLayoutOnly), and only values that were found.
   std::mutex memberConstantsMutex;
-  std::map<std::vector<const void*>, int64_t> memberConstants;
-  std::optional<int64_t> memberConstant(Decl* d, const TypeContext& ctx, const Subst& classSubst)
+  std::map<std::vector<const void*>, ConstValue> memberConstants;
+  std::optional<ConstValue> memberConstant(Decl* d, const TypeContext& ctx, const Subst& classSubst)
   {
     if (exactLayoutOnly)
-      return constOfDecl(d, ctx, 0, &classSubst);
+      return constValueOfDecl(d, ctx, 0, &classSubst);
     std::vector<const void*> key{d};
     for (const Subst::Pair& p : classSubst.pairs)
     {
@@ -3649,7 +3653,7 @@ struct GlobalScope::Impl
       if (auto it = memberConstants.find(key); it != memberConstants.end())
         return it->second;
     }
-    std::optional<int64_t> v = constOfDecl(d, ctx, 0, &classSubst);
+    std::optional<ConstValue> v = constValueOfDecl(d, ctx, 0, &classSubst);
     if (v)
     {
       std::lock_guard lock(memberConstantsMutex);
@@ -3658,332 +3662,321 @@ struct GlobalScope::Impl
     return v;
   }
 
+  // ---- compile-time evaluation (design.md, "Compile-time evaluation: one interpreter") ----
+  // Step 1: expressions with C++'s types (consteval.hpp computes them, for the code generator's
+  // folding too), and function bodies of returns, if, if constexpr and locals initialized once.
+  // A name's evaluation starts its calls' depth afresh (NameEvaluation); calls nest at most 512
+  // deep, an evaluation takes at most a million steps, and the stack left bounds both.
+
+  // Why the last evaluation that failed stopped (a signed overflow, a division by zero): the first
+  // reason since whoever reports it cleared it (checkStaticAssert).
+  static std::string& constWhy()
+  {
+    static thread_local std::string why;
+    return why;
+  }
+
+  ConstArith constArith()
+  {
+    return ConstArith{types, ConstMode::Required, &constWhy(), [this](const Ty* e) { return declaredUnderlying(e); }};
+  }
+
+  // The underlying type an enumeration type was declared with (`enum class Tag : uint8_t`), null
+  // for one declared without, unknown when the written one cannot be converted.
+  std::mutex underlyingMutex;
+  std::unordered_map<const Ty*, const Ty*> underlyingTypes;
+  const Ty* declaredUnderlying(const Ty* t)
+  {
+    {
+      std::lock_guard lock(underlyingMutex);
+      if (auto it = underlyingTypes.find(t); it != underlyingTypes.end())
+        return it->second;
+    }
+    Decl* def = t ? t->decl : nullptr;
+    if (def && !def->ownScope)
+    {
+      Entry e{def, nullptr};
+      if (Scope* s = scopeOfEntry(e, 0))
+        def = s->owner;
+    }
+    const Ty* u = nullptr;
+    if (def && def->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(def)->underlying)
+    {
+      DeclContext dc;
+      declContextFor(def, dc);
+      TypeContext ctx{dc.scope, &dc.params, nullptr, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+      u = convertType(static_cast<EnumDecl*>(def)->underlying, ctx, 1);
+      u = u ? types.unqualified(u) : nullptr;
+      if (!u || !(u->kind == TyKind::Int || u->kind == TyKind::Char || u->kind == TyKind::Bool))
+        return types.unknown(); // not kept: a later conversion may succeed
+    }
+    std::lock_guard lock(underlyingMutex);
+    underlyingTypes.emplace(t, u);
+    return u;
+  }
+
   // depth: nesting of the evaluation, calls included (`ratioGcd(b, a % b)` recursing a few times
   // inside a static member's initializer inside a requires clause).
   std::optional<int64_t> constEval(Expr* e, const TypeContext& ctx, int depth = 0)
   {
-    if (!e || depth > 96)
+    std::optional<ConstValue> v = constValue(e, ctx, depth);
+    if (!v || v->isFloat())
+      return std::nullopt; // a floating value is no integer constant (a bound, a template argument)
+    return v->i;
+  }
+
+  // A condition (static_assert, if constexpr, a requires clause): any scalar constant, a floating
+  // one included.
+  std::optional<bool> constCondition(Expr* e, const TypeContext& ctx, int depth = 0)
+  {
+    std::optional<ConstValue> v = constValue(e, ctx, depth);
+    return v ? std::optional<bool>(v->truthy()) : std::nullopt;
+  }
+
+  // A value converted to type t as a cast converts it (consteval.hpp): to an arithmetic or
+  // enumeration type; a null pointer constant stays one for a pointer; nothing else is a constant
+  // (a class, a type the checker does not know).
+  std::optional<ConstValue> constConverted(std::optional<ConstValue> v, const Ty* t)
+  {
+    if (!v || !t)
       return std::nullopt;
+    t = types.unqualified(types.stripRef(t));
+    if (t->isArithmetic() || t->kind == TyKind::Enum)
+      return constArith().convert(*v, t);
+    if ((t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr) && !v->isFloat() && v->i == 0)
+      return v;
+    return std::nullopt;
+  }
+
+  // A value given the type it was declared with (a variable's, a parameter's, a function's
+  // result): converted to an arithmetic or enumeration type; kept for a type the checker leaves
+  // open (auto, a dependent type); no constant for an object (step 1 has none) or a pointer other
+  // than the null one.
+  std::optional<ConstValue> constAsDeclared(std::optional<ConstValue> v, const Ty* t)
+  {
+    if (!v || !t)
+      return v;
+    const Ty* u = types.unqualified(types.stripRef(t));
+    switch (u->kind)
+    {
+      case TyKind::Class: case TyKind::Array: case TyKind::Function: case TyKind::Lambda: case TyKind::MemberPointer:
+      case TyKind::Void: case TyKind::Vector:
+        return std::nullopt;
+      case TyKind::Pointer: case TyKind::Nullptr:
+        return !v->isFloat() && v->i == 0 ? v : std::nullopt;
+      default:
+        return u->isArithmetic() || u->kind == TyKind::Enum ? constArith().convert(*v, u) : v;
+    }
+  }
+
+  // A scalar's initializer: `= value`, `{value}`, `{}` (zero).
+  std::optional<ConstValue> constInitValue(Expr* init, const TypeContext& ctx, int depth)
+  {
+    if (init && init->kind == NodeKind::BraceInitExpr)
+    {
+      auto* b = static_cast<BraceInitExpr*>(init);
+      if (b->args.empty())
+        return ConstValue::integer(0);
+      return b->args.size() == 1 ? constValue(b->args[0], ctx, depth) : std::nullopt;
+    }
+    return constValue(init, ctx, depth);
+  }
+
+  // The class type of an object a member is named through (`layers.size()`, `p->value`): the
+  // walk's type when it holds for every instance, else the expression typed under ctx; null when
+  // it is no class type the checker knows.
+  const Ty* constObjectType(Expr* object, const TypeContext& ctx, bool arrow)
+  {
+    const Ty* t = object->ty && object->ty->isKnown() && !types.isDependent(object->ty) && !mentionsUnknown(object->ty)
+                ? object->ty : typeOfSignatureExpression(object, ctx);
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (t && arrow)
+      t = t->kind == TyKind::Pointer && t->inner ? types.unqualified(t->inner) : nullptr;
+    return t && t->kind == TyKind::Class && !types.isDependent(t) && !mentionsUnknown(t) ? t : nullptr;
+  }
+
+  // Bounds of one evaluation: the steps it takes and the calls nested in it.
+  static uint64_t& constSteps()
+  {
+    static thread_local uint64_t steps = 0;
+    return steps;
+  }
+  static int& constCalls()
+  {
+    static thread_local int calls = 0;
+    return calls;
+  }
+  static int& constActive()
+  {
+    static thread_local int active = 0;
+    return active;
+  }
+
+  // An expression's value at compile time under ctx, typed as C++ types it, or nullopt when it is
+  // no constant the checker can evaluate.
+  std::optional<ConstValue> constValue(Expr* e, const TypeContext& ctx, int depth = 0)
+  {
+    if (!e || depth > 512 || (depth > 64 && !stackRoomLeft()))
+      return std::nullopt;
+    struct Active
+    {
+      Active()
+      {
+        if (constActive()++ == 0)
+          constSteps() = 0;
+      }
+      ~Active() { --constActive(); }
+    } active;
+    if (++constSteps() > 1000000)
+    {
+      if (constWhy().empty())
+        constWhy() = "an evaluation of more than a million steps";
+      return std::nullopt;
+    }
     switch (e->kind)
     {
-      case NodeKind::NameExpr:
-      {
-        auto* n = static_cast<NameExpr*>(e);
-        if (ctx.env && n->name.parts.size() == 1)
-          for (const ConstBinding& b : *ctx.env)
-            if (b.symbol == n->name.parts[0].symbol)
-              return b.value; // a parameter of the constexpr function being evaluated
-        NameEvaluation nested; // the calls below start at depth 0 (see nameEvaluations)
-        if (!nested.ok)
-          return std::nullopt;
-        Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst);
-        if (l.found == Found::No && !n->resolved && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs &&
-            isBoolTraitName(n->name.parts[0].symbol))
-        {
-          // `isSame<T, int>` as a constant (an if constexpr condition under the substitution).
-          std::vector<const Ty*> a = traitArgs(n->name.parts[0], ctx, 1);
-          if (a.empty())
-            return std::nullopt;
-          std::optional<bool> v = traitValue(symbols.name(n->name.parts[0].symbol), a);
-          return v ? std::optional<int64_t>(*v ? 1 : 0) : std::nullopt;
-        }
-        // `if constexpr (has_get_entity<OwnerType>)`: a concept for these arguments, not the value its
-        // requires-expression was last typed to.
-        if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs)
-          if (VariableDecl* concept_ = conceptOf(l.decl))
-          {
-            std::optional<bool> v = conceptValue(concept_, n->name.parts[0], ctx, 1);
-            return v ? std::optional<int64_t>(*v ? 1 : 0) : std::nullopt;
-          }
-        // `hasBegin<Vector<int>>`, `bytes<T>` under an instantiation: a variable template for these
-        // arguments, not its initializer as written.
-        if (n->name.last().hasTemplateArgs)
-          if (VariableDecl* primary = primaryVariableTemplate(l))
-            return variableTemplateValue(primary, n->name.last(), ctx, 1);
-        // `Bits<uint64_t>::count`: a static member of a class template, under that instantiation's
-        // arguments.
-        if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
-          if (Subst qs = qualifierSubst(n->name, ctx, 1, l.foundIn); !qs.pairs.empty())
-            return memberConstant(l.decl, ctx, qs);
-        // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`): the
-        // declaration the type checker bound where the name is written.
-        return constOfDecl(l.decl ? l.decl : n->resolved, ctx, 0);
-      }
+      case NodeKind::NameExpr: return constName(static_cast<NameExpr*>(e), ctx);
       case NodeKind::MemberExpr:
       {
-        // `Enum::Value` is parsed as a name; `object.member` is rarely constant, but
-        // `object.value` where the member is a static constexpr variable is (e.g. trait structs).
-        Decl* d = static_cast<MemberExpr*>(e)->resolved;
-        if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Static))
-          return constOfDecl(d, ctx, depth + 1);
-        return std::nullopt;
+        // `Enum::Value` is parsed as a name; `object.member` is a constant when the member is an
+        // enumerator or a static constexpr variable (a trait object's value), read for the
+        // object's class instance.
+        auto* m = static_cast<MemberExpr*>(e);
+        if (m->dynamicMember || m->member.parts.size() != 1)
+          return std::nullopt;
+        Decl* d = m->resolved;
+        auto isConstant = [](Decl* x) {
+          return x && ((x->kind == NodeKind::VariableDecl && (x->flags & DF_Static)) || x->kind == NodeKind::EnumeratorDecl);
+        };
+        if (d && !isConstant(d))
+          return std::nullopt;
+        Scope* foundIn = d && d->parent ? d->parent->ownScope : nullptr;
+        const Ty* object = m->base && (!d || d->kind == NodeKind::VariableDecl) ? constObjectType(m->base, ctx, m->op == P::Arrow) : nullptr;
+        if (!d && object)
+          if (Scope* s = classScopeOf(object))
+          {
+            Lookup l;
+            if (lookupInScope(s, m->member.parts[0].symbol, l, depth + 1))
+            {
+              d = l.decl;
+              foundIn = l.foundIn;
+            }
+          }
+        if (!isConstant(d))
+          return std::nullopt;
+        if (d->kind == NodeKind::VariableDecl && object)
+          if (Subst s = memberSubst(object, foundIn, depth + 1); !s.pairs.empty())
+            return memberConstant(d, ctx, s);
+        return constValueOfDecl(d, ctx, depth + 1);
       }
-      case NodeKind::CallExpr:
-      {
-        // `cells()`: a call to a function whose body is one `return expression;`, evaluated with
-        // the arguments bound to its parameters (constexpr functions as bounds and constants).
-        auto* c = static_cast<CallExpr*>(e);
-        if (!c->callee || c->callee->kind != NodeKind::NameExpr)
-          return std::nullopt;
-        auto* callee = static_cast<NameExpr*>(c->callee);
-        Decl* d = callee->resolved;
-        if (!d || d->kind == NodeKind::TemplateParamDecl)
-        {
-          Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
-          d = l.decl;
-          // Not typed where it is written (a template argument, `Imm<max(a, b)>`): of the
-          // functions of the name, the one whose parameters the arguments fill, when one does.
-          if (d && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->params.size() != c->args.size() && l.overloads)
-          {
-            Decl* fits = nullptr;
-            int fitting = 0;
-            for (const Entry& entry : *l.overloads)
-              if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->params.size() == c->args.size() &&
-                  static_cast<FunctionDecl*>(entry.decl)->body)
-              {
-                fits = entry.decl;
-                ++fitting;
-              }
-            if (fitting == 1)
-              d = fits;
-          }
-        }
-        // `size_t(5)`, `uint8_t(x)`, `RenderLayer::LayerType(RenderLayer::LAST)`: a type's name
-        // called with one value converts it.
-        if (c->args.size() == 1 && !callee->name.last().hasTemplateArgs)
-        {
-          const Ty* to = !d && callee->name.parts.size() == 1 ? builtinByName(callee->name.parts[0].symbol) : nullptr;
-          if (d && (d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
-          {
-            NamedType named{};
-            named.kind = NodeKind::NamedType;
-            named.token = callee->token;
-            named.name = callee->name;
-            to = types.unqualified(convertType(&named, ctx, depth + 1));
-          }
-          if (to && (to->kind == TyKind::Int || to->kind == TyKind::Char || to->kind == TyKind::Bool))
-            return castValue(to, constEval(c->args[0], ctx, depth + 1));
-        }
-        if (!d)
-          return std::nullopt;
-        if (d->kind == NodeKind::EnumDecl && c->args.size() == 1)
-          return constEval(c->args[0], ctx, depth + 1); // `U::Tag(0)`: a conversion to an enumeration
-        if (d->kind == NodeKind::ClassDecl && c->args.empty())
-        {
-          // `is_optional<T>()`: a zero-arg constructor of a type-trait struct used as bool.
-          // Return its static constexpr `value` member (inherited from TrueType/FalseType), read
-          // for the instance the arguments make (`HasSize<double> : Constant<bool, false>`).
-          NamedType named{};
-          named.kind = NodeKind::NamedType;
-          named.token = callee->token;
-          named.name = callee->name;
-          if (std::optional<int64_t> v = traitObjectValue(convertType(&named, ctx, depth + 1), depth + 1))
-            return v;
-          if (VariableDecl* v = findStaticBoolValue(static_cast<ClassDecl*>(d), depth + 1))
-          {
-            TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
-            return constEval(v->init, vctx, depth + 1);
-          }
-          return std::nullopt;
-        }
-        if (d->kind != NodeKind::FunctionDecl)
-          return std::nullopt;
-        auto* f = static_cast<FunctionDecl*>(d);
-        if (!f->body || f->body->kind != NodeKind::BlockStmt || f->params.size() != c->args.size())
-          return std::nullopt;
-        auto* block = static_cast<BlockStmt*>(f->body);
-        if (block->stmts.size() != 1 || !block->stmts[0] || block->stmts[0]->kind != NodeKind::ReturnStmt)
-          return std::nullopt;
-        std::vector<ConstBinding> env;
-        for (size_t i = 0; i < c->args.size(); ++i)
-        {
-          auto v = constEval(c->args[i], ctx, depth + 1);
-          if (!v)
-            return std::nullopt;
-          env.push_back({static_cast<ParamDecl*>(f->params[i])->name, *v});
-        }
-        // `AreCreatedInOrder<EntityPrototypeList, AchievementPrototypeList>()`: a template's body
-        // with its parameters bound to the written arguments (and a class template member's to the
-        // instance it is named through); a parameter left unbound decides nothing.
-        Subst bound;
-        LocalStack params;
-        if (callee->name.parts.size() > 1)
-          bound = qualifierSubst(callee->name, ctx, depth + 1, lexicalScopeOf(f));
-        for (const Subst::Pair& p : bound.pairs)
-          params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
-        const NamePart& written = callee->name.last();
-        Subst fromArgs; // `max(sizeof(Key) + 1u, 2 * sizeof(void*) - 1)`: the parameters not written, deduced from the arguments' types
-        if (written.templateArgs.size() < f->templateParams.size())
-        {
-          LocalStack own;
-          for (Decl* p : f->templateParams)
-            own.push(static_cast<TemplateParamDecl*>(p)->name, p);
-          TypeContext pctx{lexicalScopeOf(f), &own, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-          for (size_t i = 0; i < c->args.size() && i < f->params.size(); ++i)
-          {
-            const Ty* argTy = typeOfSignatureExpression(c->args[i], ctx);
-            const Ty* pattern = convertType(static_cast<ParamDecl*>(f->params[i])->type, pctx, depth + 1);
-            if (argTy && argTy->isKnown() && pattern && pattern->isKnown())
-              deduce(pattern, argumentType(c->args[i], argTy, types), fromArgs);
-          }
-        }
-        for (size_t i = 0; i < f->templateParams.size(); ++i)
-        {
-          const Ty* t = i < written.templateArgs.size() ? templateArgument(written.templateArgs[i], f->templateParams[i], ctx, depth + 1)
-                                                        : fromArgs.find(f->templateParams[i]);
-          if (!t || !t->isKnown() || types.isDependent(t))
-            return std::nullopt;
-          bound.pairs.push_back({f->templateParams[i], t});
-          params.push(static_cast<TemplateParamDecl*>(f->templateParams[i])->name, f->templateParams[i]);
-        }
-        if (ctx.subst) // called from inside an instance: its class's arguments stay
-          for (const Subst::Pair& p : ctx.subst->pairs)
-            if (!bound.find(p.param))
-              bound.pairs.push_back(p);
-        for (Decl* p : effectiveParams(f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : nullptr))
-          if (!bound.find(p))
-            return std::nullopt; // a member of a class template named with no instance
-        TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
-                         f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-        fctx.env = &env;
-        return constEval(static_cast<ReturnStmt*>(block->stmts[0])->value, fctx, depth + 1);
-      }
+      case NodeKind::CallExpr: return constCall(static_cast<CallExpr*>(e), ctx, depth);
       case NodeKind::LiteralExpr:
       {
         auto* l = static_cast<LiteralExpr*>(e);
-        if (l->literalKind == TokenKind::Keyword) // nullptr: the null pointer constant (`fold = nullptr` as a template argument)
-          return l->keyword == Kw::true_ ? 1 : l->keyword == Kw::false_ || l->keyword == Kw::nullptr_ ? 0 : std::optional<int64_t>();
+        if (l->literalKind == TokenKind::Keyword)
+        {
+          if (l->keyword == Kw::true_ || l->keyword == Kw::false_)
+            return ConstValue::integer(l->keyword == Kw::true_, types.boolType());
+          if (l->keyword == Kw::nullptr_) // the null pointer constant (`fold = nullptr` as a template argument)
+            return ConstValue::integer(0, types.nullptrType());
+          return std::nullopt;
+        }
         const std::vector<Token>* toks = ctx.tokens ? ctx.tokens : fallbackTokens;
         std::string_view text = ctx.tokens ? ctx.text : fallbackText;
-        if (l->literalKind != TokenKind::Number || !toks)
+        if ((l->literalKind != TokenKind::Number && l->literalKind != TokenKind::Char) || !toks || toks->empty())
           return std::nullopt;
         const Token& t = (*toks)[std::min<size_t>(l->token, toks->size() - 1)];
-        std::string digits;
-        for (char c : text.substr(t.offset, t.length))
-          if (c != '\'')
-            digits += c;
-        // A floating literal (`0.25`, `1e-9`, `2.f`) is no integer: not cut to one (`0.25 < 0.45`
-        // would read 0 < 0).
-        bool hex = digits.size() > 1 && digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X');
-        if (digits.find('.') != std::string::npos || (!hex && digits.find_first_of("eEfF") != std::string::npos))
-          return std::nullopt;
-        try
-        {
-          if (digits.size() > 2 && digits[0] == '0' && (digits[1] == 'b' || digits[1] == 'B'))
-            return std::stoll(digits.substr(2), nullptr, 2); // 0b1010
-          return std::stoll(digits, nullptr, 0);
-        }
-        catch (...)
-        {
-          return std::nullopt;
-        }
+        return constArith().literal(l->literalKind, text.substr(t.offset, t.length));
       }
-      case NodeKind::ParenExpr: return constEval(static_cast<ParenExpr*>(e)->inner, ctx, depth + 1);
-      case NodeKind::CastExpr: return constCast(static_cast<CastExpr*>(e)->type, static_cast<CastExpr*>(e)->operand, ctx, depth);
-      case NodeKind::NamedCastExpr: return constCast(static_cast<NamedCastExpr*>(e)->type, static_cast<NamedCastExpr*>(e)->operand, ctx, depth);
+      case NodeKind::ParenExpr: return constValue(static_cast<ParenExpr*>(e)->inner, ctx, depth + 1);
+      case NodeKind::CastExpr: return constCastValue(static_cast<CastExpr*>(e)->type, static_cast<CastExpr*>(e)->operand, ctx, depth);
+      case NodeKind::NamedCastExpr: return constCastValue(static_cast<NamedCastExpr*>(e)->type, static_cast<NamedCastExpr*>(e)->operand, ctx, depth);
       case NodeKind::FunctionalCastExpr:
       {
         auto* f = static_cast<FunctionalCastExpr*>(e);
         bool noValue = f->args.empty() || (f->args.size() == 1 && f->args[0] && f->args[0]->kind == NodeKind::BraceInitExpr &&
                                            static_cast<BraceInitExpr*>(f->args[0])->args.empty());
-        if (noValue && f->type)
-          if (const Ty* t = convertType(f->type, ctx, depth + 1); t && t->kind == TyKind::Class)
-            return traitObjectValue(t, depth + 1); // `HasSize<T>{}`: a trait object as bool
-        return f->args.size() == 1 ? constCast(f->type, f->args[0], ctx, depth) : std::nullopt;
+        const Ty* t = f->type ? convertType(f->type, ctx, depth + 1) : nullptr;
+        if (noValue && t && t->kind == TyKind::Class)
+          return traitObjectValue(t, depth + 1); // `HasSize<T>{}`: a trait object as bool
+        if (noValue)
+          return constConverted(ConstValue::integer(0), t); // `int()`, `T{}`: zero
+        Expr* arg = f->args.size() == 1 ? f->args[0] : nullptr;
+        if (arg && arg->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(arg)->args.size() == 1)
+          arg = static_cast<BraceInitExpr*>(arg)->args[0]; // `int{x}`
+        return arg ? constConverted(constValue(arg, ctx, depth + 1), t) : std::nullopt;
       }
       case NodeKind::RequiresExpr:
         if (ctx.variableTemplate && ctx.subst)
         {
           // In `hasBegin<Vector<int>>`'s initializer: the requirements for these arguments.
           std::optional<bool> b = requirementsHold(static_cast<RequiresExpr*>(e), ctx.variableTemplate, *ctx.subst);
-          return b ? std::optional<int64_t>(*b ? 1 : 0) : std::nullopt;
+          return b ? std::optional<ConstValue>(ConstValue::integer(*b, types.boolType())) : std::nullopt;
         }
-        return static_cast<RequiresExpr*>(e)->satisfied ? 1 : 0; // set where the expression was typed
+        return ConstValue::integer(static_cast<RequiresExpr*>(e)->satisfied, types.boolType()); // set where the expression was typed
       case NodeKind::ConditionalExpr:
       {
-        // `isSigned<T> ? count - 1 : count`: only the branch taken has to be a constant.
+        // `isSigned<T> ? count - 1 : count`: only the branch taken has to be a constant. Its value
+        // takes the type of the whole expression when the walk typed both branches with types
+        // that hold for every instance (`flag ? -1 : 0u` is unsigned).
         auto* c = static_cast<ConditionalExpr*>(e);
-        auto cond = constEval(c->cond, ctx, depth + 1);
+        std::optional<ConstValue> cond = constValue(c->cond, ctx, depth + 1);
         if (!cond)
           return std::nullopt;
         if (!c->then)
-          return *cond ? cond : constEval(c->else_, ctx, depth + 1); // `a ?: b`
-        return constEval(*cond ? c->then : c->else_, ctx, depth + 1);
+          return cond->truthy() ? cond : constValue(c->else_, ctx, depth + 1); // `a ?: b`
+        std::optional<ConstValue> v = constValue(cond->truthy() ? c->then : c->else_, ctx, depth + 1);
+        auto scalar = [this](const Ty* t) {
+          t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+          return t && (t->isArithmetic() || t->kind == TyKind::Enum) && !types.isDependent(t) ? t : nullptr;
+        };
+        if (const Ty* t = scalar(c->ty); v && t && scalar(c->then->ty) && c->else_ && scalar(c->else_->ty))
+          return constArith().convert(*v, t);
+        return v;
       }
       case NodeKind::UnaryExpr:
       {
         auto* u = static_cast<UnaryExpr*>(e);
-        auto v = constEval(u->operand, ctx, depth + 1);
-        if (!v || u->isKeyword)
-          return std::nullopt;
-        if (P(u->op) == P::Minus) return -*v;
-        if (P(u->op) == P::Plus) return *v;
-        if (P(u->op) == P::Bang) return !*v ? 1 : 0;
-        if (P(u->op) == P::Tilde) return ~*v;
-        return std::nullopt;
+        std::optional<P> op = constOperator(u->op, u->isKeyword);
+        if (!op || u->postfix || (*op != P::Bang && *op != P::Minus && *op != P::Plus && *op != P::Tilde))
+          return std::nullopt; // `&x`, `*p`, `++i`: no value of step 1's
+        std::optional<ConstValue> v = constValue(u->operand, ctx, depth + 1);
+        return v ? constArith().unary(*op, *v) : std::nullopt;
       }
       case NodeKind::BinaryExpr:
       {
-        auto* b = static_cast<BinaryExpr*>(e);
-        // `1 + 1 + ... + 0` (InputAction::inputActionCount, a term per action): a long chain to the
-        // left is evaluated in a loop, not nested once per term.
-        auto chained = [](Expr* x)
+        // `1 + 1 + ... + 0` (InputAction::inputActionCount, a term per action): the chain down the
+        // left operands is evaluated in a loop, not nested once per term.
+        std::vector<BinaryExpr*> chain;
+        Expr* first = e;
+        for (; first && first->kind == NodeKind::BinaryExpr; first = static_cast<BinaryExpr*>(first)->lhs)
+          chain.push_back(static_cast<BinaryExpr*>(first));
+        std::optional<ConstValue> value = constValue(first, ctx, depth + 1);
+        bool failed = !value;
+        for (size_t i = chain.size(); i-- > 0;)
         {
-          if (!x || x->kind != NodeKind::BinaryExpr || static_cast<BinaryExpr*>(x)->isKeyword)
-            return false;
-          P op = P(static_cast<BinaryExpr*>(x)->op);
-          return op == P::Plus || op == P::Minus || op == P::Pipe;
-        };
-        if (chained(b) && chained(b->lhs))
-        {
-          std::vector<BinaryExpr*> chain;
-          Expr* first = b;
-          for (; chained(first); first = static_cast<BinaryExpr*>(first)->lhs)
-            chain.push_back(static_cast<BinaryExpr*>(first));
-          std::optional<int64_t> sum = constEval(first, ctx, depth + 1);
-          for (size_t i = chain.size(); i-- > 0 && sum;)
+          std::optional<P> op = constOperator(chain[i]->op, chain[i]->isKeyword);
+          // Short-circuit: `true || <unknown>` is true, `false && <unknown>` is false.
+          if (!failed && op && (*op == P::OrOr || *op == P::AndAnd) && value->truthy() == (*op == P::OrOr))
           {
-            std::optional<int64_t> r = constEval(chain[i]->rhs, ctx, depth + 1);
-            if (!r)
-              return std::nullopt;
-            P op = P(chain[i]->op);
-            sum = op == P::Plus ? *sum + *r : op == P::Minus ? *sum - *r : *sum | *r;
+            value = ConstValue::integer(*op == P::OrOr, types.boolType());
+            continue;
           }
-          return sum;
+          if (!op || !isConstBinaryOperator(*op))
+            return std::nullopt;
+          // After an operand that is no constant the others are still evaluated: a class's size
+          // one of them needs defers a static_assert to the code generator's layouts
+          // (`sizeof(grid) == 18 && sizeof(TileID) == 2`, layoutNeeded).
+          std::optional<ConstValue> r = constValue(chain[i]->rhs, ctx, depth + 1);
+          if (failed || !r)
+          {
+            failed = true;
+            continue;
+          }
+          value = *op == P::Comma ? r : constArith().binary(*op, *value, *r);
+          failed = !value;
         }
-        auto l = constEval(b->lhs, ctx, depth + 1);
-        // Short-circuit: `true || <unknown>` is 1, `false && <unknown>` is 0.
-        if (l && P(b->op) == P::OrOr && *l)
-          return 1;
-        if (l && P(b->op) == P::AndAnd && !*l)
-          return 0;
-        auto r = constEval(b->rhs, ctx, depth + 1);
-        if (l && r && P(b->op) == P::OrOr)
-          return (*l || *r) ? 1 : 0;
-        if (l && r && P(b->op) == P::AndAnd)
-          return (*l && *r) ? 1 : 0;
-        if (!l || !r || b->isKeyword)
-          return std::nullopt;
-        switch (P(b->op))
-        {
-          case P::Plus: return *l + *r;
-          case P::Minus: return *l - *r;
-          case P::Star: return *l * *r;
-          case P::Slash: return *r ? *l / *r : std::optional<int64_t>();
-          case P::Percent: return *r ? *l % *r : std::optional<int64_t>();
-          case P::Shl: return *l << *r;
-          case P::Shr: return *l >> *r;
-          case P::Amp: return *l & *r; // `BOTH = ONE | 2` inside an enum: the underlying values
-          case P::Pipe: return *l | *r;
-          case P::Caret: return *l ^ *r;
-          case P::Less: return *l < *r;
-          case P::Greater: return *l > *r;
-          case P::LessEq: return *l <= *r;
-          case P::GreaterEq: return *l >= *r;
-          case P::EqEq: return *l == *r;
-          case P::NotEq: return *l != *r;
-          default: return std::nullopt;
-        }
+        return failed ? std::nullopt : value;
       }
       case NodeKind::SizeofExpr:
       {
@@ -4006,19 +3999,444 @@ struct GlobalScope::Impl
             pack = ctx.subst->find(d);
           else if (d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack)
             pack = declaredTypeOf(d, ctx.subst, depth + 1);
-          return pack && pack->kind == TyKind::Pack ? std::optional<int64_t>(int64_t(pack->args.size())) : std::nullopt;
+          if (!pack || pack->kind != TyKind::Pack)
+            return std::nullopt;
+          return ConstValue::integer(int64_t(pack->args.size()), types.sizeType());
         }
         const Ty* t = nullptr;
-        if (s->type)
+        // `sizeof(grid)`: the parser reads a lone name as a type; a variable's is its declared one.
+        Decl* named = s->type && s->type->kind == NodeKind::NamedType ? static_cast<NamedType*>(s->type)->resolved : nullptr;
+        if (named && (named->kind == NodeKind::VariableDecl || named->kind == NodeKind::ParamDecl) && !(named->flags & DF_Typedef))
+          t = declaredTypeOf(named, ctx.subst, depth + 1);
+        else if (s->type)
           t = convertType(s->type, ctx, depth + 1);
         else if (s->operand && s->operand->ty)
           t = s->operand->ty;
         if (!t || !t->isKnown() || types.isDependent(t))
           return std::nullopt;
-        return constSizeOf(types.stripRef(t), depth + 1);
+        std::optional<int64_t> n = s->sizeofKind == Kw::alignof_ ? constAlignOf(types.stripRef(t), depth + 1) : constSizeOf(types.stripRef(t), depth + 1);
+        return n ? std::optional<ConstValue>(ConstValue::integer(*n, types.sizeType())) : std::nullopt;
       }
+      case NodeKind::FoldExpr: return constFold(static_cast<FoldExpr*>(e), ctx, depth);
       default:
         return std::nullopt;
+    }
+  }
+
+  // `(isFundamental<RemoveReference<Ts>> && ...)`, `(Ns + ... + 0)`: the pattern evaluated once per
+  // element of the packs ctx binds (each pack parameter bound to its element), the values combined
+  // in the fold's order; `&&` and `||` stop at the element that decides. Packs of values the
+  // function being run was given (`args...`) are no constants of step 1's.
+  std::optional<ConstValue> constFold(FoldExpr* f, const TypeContext& ctx, int depth)
+  {
+    std::optional<P> op = constOperator(f->op, false);
+    Expr* pattern = f->lhs ? f->lhs : f->rhs;
+    Expr* init = f->lhs ? f->rhs : nullptr; // `(pack op ... op init)`
+    if (!op || !pattern || !ctx.subst || (!isConstBinaryOperator(*op) && *op != P::Comma))
+      return std::nullopt;
+    std::vector<const Subst::Pair*> packs;
+    for (const Subst::Pair& p : ctx.subst->pairs)
+      if (p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->isPack && p.type &&
+          p.type->kind == TyKind::Pack)
+        packs.push_back(&p);
+    if (packs.empty())
+      return std::nullopt;
+    size_t n = packs[0]->type->args.size();
+    for (const Subst::Pair* p : packs)
+      if (p->type->args.size() != n)
+        return std::nullopt; // packs of different lengths: which the pattern expands is not decided here
+    auto element = [&](size_t i) -> std::optional<ConstValue> {
+      Subst one = *ctx.subst;
+      for (Subst::Pair& q : one.pairs)
+        for (const Subst::Pair* p : packs)
+          if (q.param == p->param)
+            q.type = p->type->args[i];
+      TypeContext ectx = ctx;
+      ectx.subst = &one;
+      return constValue(pattern, ectx, depth + 1);
+    };
+    if (n == 0)
+    {
+      if (init)
+        return constValue(init, ctx, depth + 1);
+      if (*op == P::AndAnd || *op == P::OrOr)
+        return ConstValue::integer(*op == P::AndAnd, types.boolType()); // an empty `&&` fold is true, `||` false
+      return std::nullopt;
+    }
+    if (*op == P::AndAnd || *op == P::OrOr)
+    {
+      for (size_t i = 0; i < n; ++i)
+      {
+        std::optional<ConstValue> v = element(i);
+        if (!v)
+          return std::nullopt;
+        if (v->truthy() == (*op == P::OrOr))
+          return ConstValue::integer(*op == P::OrOr, types.boolType());
+      }
+      if (!init)
+        return ConstValue::integer(*op == P::AndAnd, types.boolType());
+      std::optional<ConstValue> v = constValue(init, ctx, depth + 1);
+      return v ? std::optional<ConstValue>(ConstValue::integer(v->truthy(), types.boolType())) : std::nullopt;
+    }
+    std::vector<ConstValue> values;
+    for (size_t i = 0; i < n; ++i)
+    {
+      std::optional<ConstValue> v = element(i);
+      if (!v)
+        return std::nullopt;
+      values.push_back(*v);
+    }
+    if (init)
+    {
+      std::optional<ConstValue> v = constValue(init, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      values.push_back(*v);
+    }
+    // `(E op ...)` folds to the right, E1 op (E2 op ...); `(... op E)` to the left.
+    std::optional<ConstValue> value = f->lhs ? values.back() : values.front();
+    if (f->lhs)
+      for (size_t i = values.size() - 1; i-- > 0 && value;)
+        value = *op == P::Comma ? value : constArith().binary(*op, values[i], *value);
+    else
+      for (size_t i = 1; i < values.size() && value;)
+        value = *op == P::Comma ? std::optional<ConstValue>(values[i++]) : constArith().binary(*op, *value, values[i++]);
+    return value;
+  }
+
+  std::optional<ConstValue> constName(NameExpr* n, const TypeContext& ctx)
+  {
+    if (ctx.env && n->name.parts.size() == 1 && !n->name.global)
+      for (size_t i = ctx.env->size(); i-- > 0;)
+        if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
+          return (*ctx.env)[i].value; // a parameter or a local of the function being run
+    NameEvaluation nested; // the calls below start at depth 0 (see nameEvaluations)
+    if (!nested.ok)
+      return std::nullopt;
+    auto boolean = [this](std::optional<bool> b) {
+      return b ? std::optional<ConstValue>(ConstValue::integer(*b, types.boolType())) : std::nullopt;
+    };
+    Lookup l = lookupQualified(n->name, ctx.scope, ctx.locals, 1, ctx.subst);
+    if (l.found == Found::No && !n->resolved && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs &&
+        isBoolTraitName(n->name.parts[0].symbol))
+    {
+      // `isSame<T, int>` as a constant (an if constexpr condition under the substitution).
+      std::vector<const Ty*> a = traitArgs(n->name.parts[0], ctx, 1);
+      if (a.empty())
+        return std::nullopt;
+      return boolean(traitValue(symbols.name(n->name.parts[0].symbol), a));
+    }
+    // `if constexpr (has_get_entity<OwnerType>)`: a concept for these arguments, not the value its
+    // requires-expression was last typed to.
+    if (n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs)
+      if (VariableDecl* concept_ = conceptOf(l.decl))
+        return boolean(conceptValue(concept_, n->name.parts[0], ctx, 1));
+    // `hasBegin<Vector<int>>`, `bytes<T>` under an instantiation: a variable template for these
+    // arguments, not its initializer as written.
+    if (n->name.last().hasTemplateArgs)
+      if (VariableDecl* primary = primaryVariableTemplate(l))
+        return variableTemplateValue(primary, n->name.last(), ctx, 1);
+    // `Bits<uint64_t>::count`: a static member of a class template, under that instantiation's
+    // arguments.
+    if (n->name.parts.size() > 1 && l.decl && l.decl->kind == NodeKind::VariableDecl)
+      if (Subst qs = qualifierSubst(n->name, ctx, 1, l.foundIn); !qs.pairs.empty())
+        return memberConstant(l.decl, ctx, qs);
+    // A name the context cannot see (a for constexpr variable in `int buffer[i + 1]`): the
+    // declaration the type checker bound where the name is written.
+    return constValueOfDecl(l.decl ? l.decl : n->resolved, ctx, 0);
+  }
+
+  // A call at compile time: a type's name converting a value (`size_t(5)`, `Tag(0)`), a trait
+  // object as bool (`isOptional<T>()`), or a function run with its arguments bound (constRun).
+  std::optional<ConstValue> constCall(CallExpr* c, const TypeContext& ctx, int depth)
+  {
+    if (c->callee && c->callee->kind == NodeKind::MemberExpr)
+      return constMemberCall(c, ctx, depth);
+    if (!c->callee || c->callee->kind != NodeKind::NameExpr)
+      return std::nullopt;
+    auto* callee = static_cast<NameExpr*>(c->callee);
+    Decl* d = callee->resolved;
+    if (!d || d->kind == NodeKind::TemplateParamDecl)
+    {
+      Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+      d = l.decl;
+      // Not typed where it is written (a template argument, `Imm<max(a, b)>`): of the
+      // functions of the name, the one whose parameters the arguments fill, when one does.
+      if (d && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->params.size() != c->args.size() && l.overloads)
+      {
+        Decl* fits = nullptr;
+        int fitting = 0;
+        for (const Entry& entry : *l.overloads)
+          if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->params.size() == c->args.size() &&
+              static_cast<FunctionDecl*>(entry.decl)->body)
+          {
+            fits = entry.decl;
+            ++fitting;
+          }
+        if (fitting == 1)
+          d = fits;
+      }
+    }
+    // `size_t(5)`, `uint8_t(x)`, `RenderLayer::LayerType(RenderLayer::LAST)`, `Tag(0)`, `U(2 * limit)`:
+    // a type's name called with one value converts it, with none makes a zero.
+    if (c->args.size() <= 1 && !callee->name.last().hasTemplateArgs)
+    {
+      const Ty* to = !d && callee->name.parts.size() == 1 ? builtinByName(callee->name.parts[0].symbol) : nullptr;
+      if (d && (d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EnumDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)) ||
+                (d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType)))
+      {
+        NamedType named{};
+        named.kind = NodeKind::NamedType;
+        named.token = callee->token;
+        named.name = callee->name;
+        to = types.unqualified(convertType(&named, ctx, depth + 1));
+      }
+      if (to && (to->isArithmetic() || to->kind == TyKind::Enum))
+        return c->args.empty() ? constConverted(ConstValue::integer(0), to) : constConverted(constValue(c->args[0], ctx, depth + 1), to);
+      if (d && d->kind == NodeKind::EnumDecl)
+        return std::nullopt; // an enumeration the checker cannot convert
+    }
+    if (!d)
+      return std::nullopt;
+    if (d->kind == NodeKind::ClassDecl && c->args.empty())
+    {
+      // `is_optional<T>()`: a zero-arg constructor of a type-trait struct used as bool.
+      // Return its static constexpr `value` member (inherited from TrueType/FalseType), read
+      // for the instance the arguments make (`HasSize<double> : Constant<bool, false>`).
+      NamedType named{};
+      named.kind = NodeKind::NamedType;
+      named.token = callee->token;
+      named.name = callee->name;
+      if (std::optional<ConstValue> v = traitObjectValue(convertType(&named, ctx, depth + 1), depth + 1))
+        return v;
+      if (VariableDecl* v = findStaticBoolValue(static_cast<ClassDecl*>(d), depth + 1))
+      {
+        TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
+        return constAsDeclared(constInitValue(v->init, vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
+      }
+      return std::nullopt;
+    }
+    if (d->kind != NodeKind::FunctionDecl)
+      return std::nullopt;
+    auto* f = static_cast<FunctionDecl*>(d);
+    if (!f->body || f->body->kind != NodeKind::BlockStmt || c->args.size() > f->params.size())
+      return std::nullopt;
+    std::vector<ConstValue> values;
+    for (Expr* a : c->args)
+    {
+      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      values.push_back(*v);
+    }
+    // `AreCreatedInOrder<EntityPrototypeList, AchievementPrototypeList>()`: a template's body
+    // with its parameters bound to the written arguments (and a class template member's to the
+    // instance it is named through); a parameter left unbound decides nothing.
+    Subst bound;
+    LocalStack params;
+    if (callee->name.parts.size() > 1)
+      bound = qualifierSubst(callee->name, ctx, depth + 1, lexicalScopeOf(f));
+    for (const Subst::Pair& p : bound.pairs)
+      params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+    const NamePart& written = callee->name.last();
+    Subst fromArgs; // `max(sizeof(Key) + 1u, 2 * sizeof(void*) - 1)`: the parameters not written, deduced from the arguments' types
+    if (written.templateArgs.size() < f->templateParams.size())
+    {
+      LocalStack own;
+      for (Decl* p : f->templateParams)
+        own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      TypeContext pctx{lexicalScopeOf(f), &own, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+      for (size_t i = 0; i < c->args.size() && i < f->params.size(); ++i)
+      {
+        const Ty* argTy = typeOfSignatureExpression(c->args[i], ctx);
+        const Ty* pattern = convertType(static_cast<ParamDecl*>(f->params[i])->type, pctx, depth + 1);
+        if (argTy && argTy->isKnown() && pattern && pattern->isKnown())
+          deduce(pattern, argumentType(c->args[i], argTy, types), fromArgs);
+      }
+    }
+    for (size_t i = 0; i < f->templateParams.size(); ++i)
+    {
+      const Ty* t = i < written.templateArgs.size() ? templateArgument(written.templateArgs[i], f->templateParams[i], ctx, depth + 1)
+                                                    : fromArgs.find(f->templateParams[i]);
+      if (!t || !t->isKnown() || types.isDependent(t))
+        return std::nullopt;
+      bound.pairs.push_back({f->templateParams[i], t});
+      params.push(static_cast<TemplateParamDecl*>(f->templateParams[i])->name, f->templateParams[i]);
+    }
+    if (ctx.subst) // called from inside an instance: its class's arguments stay
+      for (const Subst::Pair& p : ctx.subst->pairs)
+        if (!bound.find(p.param))
+          bound.pairs.push_back(p);
+    for (Decl* p : effectiveParams(f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : nullptr))
+      if (!bound.find(p))
+        return std::nullopt; // a member of a class template named with no instance
+    TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
+                     f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    return constRun(f, values, fctx, depth);
+  }
+
+  // `layers.size()`: a member function called on an object, run with the arguments of the
+  // object's class instance bound. Step 1 has no objects: a body that reads a data member makes
+  // no constant (constValueOfDecl), so only what the type decides is computed (Array::size).
+  std::optional<ConstValue> constMemberCall(CallExpr* c, const TypeContext& ctx, int depth)
+  {
+    auto* m = static_cast<MemberExpr*>(c->callee);
+    if (!m->base || m->dynamicMember || m->member.parts.size() != 1 || m->member.parts[0].hasTemplateArgs)
+      return std::nullopt;
+    const Ty* object = constObjectType(m->base, ctx, m->op == P::Arrow);
+    Scope* s = object ? classScopeOf(object) : nullptr;
+    Lookup l;
+    if (!s || !lookupInScope(s, m->member.parts[0].symbol, l, depth + 1))
+      return std::nullopt;
+    // Of the functions of the name, the one the call's arguments fill.
+    FunctionDecl* f = nullptr;
+    auto fills = [&](Decl* d) {
+      return d && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && static_cast<FunctionDecl*>(d)->templateParams.empty() &&
+             static_cast<FunctionDecl*>(d)->params.size() == c->args.size();
+    };
+    if (m->resolved && m->resolved->kind == NodeKind::FunctionDecl)
+      f = fills(m->resolved) ? static_cast<FunctionDecl*>(m->resolved) : nullptr;
+    else if (l.overloads)
+    {
+      int fitting = 0;
+      for (const Entry& entry : *l.overloads)
+        if (fills(entry.decl))
+        {
+          f = static_cast<FunctionDecl*>(entry.decl);
+          ++fitting;
+        }
+      if (fitting != 1)
+        f = nullptr; // `size() const` and `size()` alike: either computes the same here, but which is not decided
+    }
+    else if (fills(l.decl))
+      f = static_cast<FunctionDecl*>(l.decl);
+    if (!f || f->body->kind != NodeKind::BlockStmt)
+      return std::nullopt;
+    std::vector<ConstValue> values;
+    for (Expr* a : c->args)
+    {
+      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      values.push_back(*v);
+    }
+    Subst bound = memberSubst(object, l.foundIn, depth + 1);
+    LocalStack params;
+    for (const Subst::Pair& p : bound.pairs)
+      params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+    for (Decl* p : effectiveParams(f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : nullptr))
+      if (!bound.find(p))
+        return std::nullopt;
+    TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
+                     f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    return constRun(f, values, fctx, depth);
+  }
+
+  // Function f's body run at compile time, its parameters bound to the arguments' values (and the
+  // missing ones to their defaults) converted to the parameters' types; what it returns converted
+  // to f's declared result type.
+  std::optional<ConstValue> constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth)
+  {
+    struct Call
+    {
+      bool ok = ++constCalls() <= 512 && stackRoomLeft();
+      ~Call() { --constCalls(); }
+    } call;
+    if (!call.ok)
+    {
+      if (constWhy().empty())
+        constWhy() = "calls nested more than 512 deep";
+      return std::nullopt;
+    }
+    std::vector<ConstBinding> env;
+    fctx.env = &env;
+    for (size_t i = 0; i < f->params.size(); ++i)
+    {
+      auto* p = static_cast<ParamDecl*>(f->params[i]);
+      if (p->isPack)
+        return std::nullopt;
+      std::optional<ConstValue> v = i < args.size() ? std::optional<ConstValue>(args[i])
+                                  : p->defaultValue ? constValue(p->defaultValue, fctx, depth + 1) : std::nullopt;
+      v = constAsDeclared(v, p->type ? convertType(p->type, fctx, depth + 1) : nullptr);
+      if (!v)
+        return std::nullopt;
+      env.push_back({p->name, *v});
+    }
+    std::optional<ConstValue> result;
+    if (constStatement(f->body, fctx, env, result, depth + 1) != ConstFlow::Returned)
+      return std::nullopt;
+    return f->returnType ? constAsDeclared(result, convertType(f->returnType, fctx, depth + 1)) : result;
+  }
+
+  enum class ConstFlow : uint8_t { Next, Returned, Failed };
+
+  // One statement of a body run at compile time. Step 1 runs blocks, returns, if and if constexpr
+  // (with no init statement), locals initialized once, static_assert (checked where it is
+  // written) and assert; anything else (a loop, an assignment, a call made for its effects) makes
+  // the call no constant.
+  ConstFlow constStatement(Stmt* s, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth)
+  {
+    if (!s)
+      return ConstFlow::Next;
+    if (depth > 512 || (depth > 64 && !stackRoomLeft()))
+      return ConstFlow::Failed;
+    size_t mark = env.size(); // the locals a statement declares end with it, a block's with the block
+    struct LocalsEnd
+    {
+      std::vector<ConstBinding>& env;
+      size_t mark;
+      ~LocalsEnd() { env.resize(mark); }
+    };
+    switch (s->kind)
+    {
+      case NodeKind::BlockStmt:
+      {
+        LocalsEnd end{env, mark};
+        for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+          if (ConstFlow flow = constStatement(inner, ctx, env, result, depth + 1); flow != ConstFlow::Next)
+            return flow;
+        return ConstFlow::Next;
+      }
+      case NodeKind::ReturnStmt:
+        result = constValue(static_cast<ReturnStmt*>(s)->value, ctx, depth + 1);
+        return result ? ConstFlow::Returned : ConstFlow::Failed;
+      case NodeKind::IfStmt:
+      {
+        auto* i = static_cast<IfStmt*>(s);
+        if (i->init || !i->cond || uint8_t(i->cond->kind) < uint8_t(NodeKind::NameExpr))
+          return ConstFlow::Failed; // an init statement, a declaration as the condition
+        std::optional<ConstValue> cond = constValue(static_cast<Expr*>(i->cond), ctx, depth + 1);
+        if (!cond)
+          return ConstFlow::Failed;
+        LocalsEnd end{env, mark};
+        return constStatement(cond->truthy() ? i->then : i->else_, ctx, env, result, depth + 1);
+      }
+      case NodeKind::DeclStmt:
+        for (Decl* d : static_cast<DeclStmt*>(s)->decls)
+        {
+          if (d->kind == NodeKind::StaticAssertDecl || d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EmptyDecl)
+            continue;
+          if (d->kind != NodeKind::VariableDecl)
+            return ConstFlow::Failed;
+          auto* v = static_cast<VariableDecl*>(d);
+          if (!v->init || v->name.parts.size() != 1 || (v->flags & (DF_Static | DF_Typedef)) || !v->structuredBindings.empty())
+            return ConstFlow::Failed;
+          std::optional<ConstValue> value = constAsDeclared(constInitValue(v->init, ctx, depth + 1), v->type ? convertType(v->type, ctx, depth + 1) : nullptr);
+          if (!value)
+            return ConstFlow::Failed;
+          env.push_back({v->name.parts[0].symbol, *value});
+        }
+        return ConstFlow::Next;
+      case NodeKind::AssertStmt:
+      {
+        // A failing assert stops a constant evaluation, as C++'s does.
+        std::optional<ConstValue> cond = constValue(static_cast<AssertStmt*>(s)->cond, ctx, depth + 1);
+        return cond && cond->truthy() ? ConstFlow::Next : ConstFlow::Failed;
+      }
+      case NodeKind::EmptyStmt:
+        return ConstFlow::Next;
+      default:
+        return ConstFlow::Failed;
     }
   }
 
@@ -4301,7 +4719,7 @@ struct GlobalScope::Impl
     if (arg->kind == NodeKind::FunctionType && static_cast<FunctionType*>(arg)->asCall && param && param->kind == NodeKind::TemplateParamDecl &&
         !static_cast<TemplateParamDecl*>(param)->isType)
       arg = static_cast<FunctionType*>(arg)->asCall; // `Frac<gcd(N, M)>`: a call, for a constant parameter
-    std::optional<int64_t> v;
+    std::optional<ConstValue> v;
     if (arg->kind == NodeKind::NamedType)
     {
       const QualifiedName& an = static_cast<NamedType*>(arg)->name;
@@ -4329,7 +4747,7 @@ struct GlobalScope::Impl
         Subst qs; // `Array<int, Bits<int16_t>::valueBits>`: the member under the instantiation's arguments
         if (an.parts.size() > 1 && l.decl->kind == NodeKind::VariableDecl)
           qs = qualifierSubst(an, ctx, depth + 1, l.foundIn);
-        v = constOfDecl(l.decl, ctx, depth, qs.pairs.empty() ? nullptr : &qs);
+        v = constValueOfDecl(l.decl, ctx, depth, qs.pairs.empty() ? nullptr : &qs);
         if (!v && l.decl->kind == NodeKind::TemplateParamDecl)
           return types.param(l.decl); // `Num<I>` in a template: the argument is still the parameter (dependent)
       }
@@ -4350,17 +4768,26 @@ struct GlobalScope::Impl
       Lookup l = lookupQualified(static_cast<NameExpr*>(static_cast<UnaryExpr*>(arg)->operand)->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
       if (l.decl && l.decl->kind == NodeKind::FunctionDecl)
         return functionArgument(l, param, depth);
-      v = constEval(static_cast<Expr*>(arg), ctx, depth + 1);
+      v = constValue(static_cast<Expr*>(arg), ctx, depth + 1);
     }
     else
-      v = constEval(static_cast<Expr*>(arg), ctx, depth + 1);
-    if (!v)
-      return types.unknown();
-    const Ty* of = types.intType();
+      v = constValue(static_cast<Expr*>(arg), ctx, depth + 1);
+    if (!v || v->isFloat())
+      return types.unknown(); // a floating argument: no constant parameter holds one yet
+    // Converted to the parameter's type (`Bits<300>` for a uint8_t parameter is 44); for an auto
+    // parameter, or none in sight, the value's own type.
+    const Ty* of = nullptr;
     if (param && param->kind == NodeKind::TemplateParamDecl)
       if (auto* p = static_cast<TemplateParamDecl*>(param); !p->isType && p->valueType)
         of = convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1);
-    return types.valueType(of, *v);
+    const Ty* u = of ? types.unqualified(types.stripRef(of)) : nullptr;
+    if (u && (u->isArithmetic() || u->kind == TyKind::Enum))
+      v = constArith().convert(*v, u);
+    else if (!u || !u->isKnown() || u->kind == TyKind::Auto)
+      of = v->type && (v->type->isArithmetic() || v->type->kind == TyKind::Enum) ? v->type : types.intType();
+    if (!v)
+      return types.unknown();
+    return types.valueType(of, v->i);
   }
 
   uint32_t functionSymbol_ = UINT32_MAX;
@@ -6463,8 +6890,7 @@ struct GlobalScope::Impl
         if (VariableDecl* concept_ = conceptOf(lookupQualified(n->name, ctx.scope, &own, depth + 1).decl))
           return conceptValue(concept_, n->name.last(), ctx, depth + 1);
     }
-    std::optional<int64_t> v = constEval(e, ctx, depth + 1);
-    return v ? std::optional<bool>(*v != 0) : std::nullopt;
+    return constCondition(e, ctx, depth + 1);
   }
 
   // The primary of the variable template a lookup found (its declaration without written
@@ -6488,7 +6914,7 @@ struct GlobalScope::Impl
   // initializer of the specialisation they pick (variableSpecialization), evaluated with them
   // bound; a trailing pack takes the rest, defaults fill the end. nullopt while an argument is
   // dependent or unknown, or two specialisations match equally well.
-  std::optional<int64_t> variableTemplateValue(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth)
+  std::optional<ConstValue> variableTemplateValue(VariableDecl* v, const NamePart& part, const TypeContext& ctx, int depth)
   {
     size_t n = v->templateParams.size();
     if (n == 0 || depth > 16)
@@ -6543,7 +6969,7 @@ struct GlobalScope::Impl
     TypeContext vctx{lexicalScopeOf(source), &sourceOwn, &sourceSubst, source->file ? source->file->tokens : nullptr,
                      source->file ? source->file->text : std::string_view()};
     vctx.variableTemplate = source;
-    return constEval(source->init, vctx, depth + 1);
+    return constAsDeclared(constInitValue(source->init, vctx, depth + 1), source->type ? convertType(source->type, vctx, depth + 1) : nullptr);
   }
 
   // The concept d declares (`template<class T> concept C = ...;`, a variable template with no
@@ -9331,57 +9757,12 @@ struct GlobalScope::Impl
         }
         case TokenKind::Number:
         {
-          std::string_view s = spelling(l->token);
-          bool hex = s.size() > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
-          bool isFloat = false;
-          bool isUnsigned = false;
-          int longs = 0;
-          bool f32 = false;
-          for (size_t i = hex ? 2 : 0; i < s.size(); ++i)
-          {
-            char c = s[i];
-            if (c == '.' || (!hex && (c == 'e' || c == 'E')) || (hex && (c == 'p' || c == 'P')))
-              isFloat = true;
-          }
-          size_t end = s.size();
-          for (const char* ms : {"i64", "i32", "i16", "i8"}) // MSVC: 1i64, 1ui64
-            if (!isFloat && end > strlen(ms) && s.compare(end - strlen(ms), strlen(ms), ms) == 0)
-            {
-              if (ms[1] == '6')
-                longs = 2;
-              end -= strlen(ms);
-              break;
-            }
-          while (end > 0)
-          {
-            char c = s[end - 1];
-            if (c == 'u' || c == 'U') { isUnsigned = true; --end; }
-            else if (c == 'l' || c == 'L') { ++longs; --end; }
-            else if ((c == 'f' || c == 'F') && !hex) { f32 = true; isFloat = true; --end; }
-            else if (c == 'z' || c == 'Z') { --end; }
-            else break;
-          }
-          if (isFloat)
-            return types.floatType(f32 ? 32 : 64);
-          // The first type the value fits: int, then (for hex and octal) unsigned int, then the
-          // 64-bit ones, as C++ has it; 0xffffffff is unsigned, 4294967296 is 64 bits wide.
-          std::string digits;
-          for (size_t i = 0; i < end; ++i)
-            if (s[i] != '\'')
-              digits += s[i];
-          bool binary = digits.size() > 2 && digits[0] == '0' && (digits[1] == 'b' || digits[1] == 'B');
-          unsigned long long value = binary ? strtoull(digits.c_str() + 2, nullptr, 2) : strtoull(digits.c_str(), nullptr, 0);
-          bool decimal = !hex && !(digits.size() > 1 && digits[0] == '0');
-          if (longs < 2)
-          {
-            if (!isUnsigned && value <= 0x7fffffffull)
-              return types.intType(32, false);
-            if ((isUnsigned || !decimal) && value <= 0xffffffffull)
-              return types.intType(32, true);
-          }
-          if (!isUnsigned && value <= 0x7fffffffffffffffull)
-            return types.intType(64, false);
-          return types.intType(64, true);
+          // The type the compile-time evaluator gives the literal (consteval.cpp: C++'s rules for
+          // suffixes and the first type that holds the value), so that the two agree.
+          ConstArith arith{types};
+          if (std::optional<ConstValue> v = arith.literal(TokenKind::Number, spelling(l->token)); v && v->type)
+            return v->type;
+          return types.unknown();
         }
         default:
           return types.unknown();
@@ -9966,7 +10347,7 @@ struct GlobalScope::Impl
           walkNode(i->cond);
           if (i->isConstexpr && activeSubst && i->cond && uint8_t(i->cond->kind) > uint8_t(NodeKind::PackType) &&
               uint8_t(i->cond->kind) >= uint8_t(NodeKind::NameExpr))
-            if (std::optional<int64_t> known = impl.constEval(static_cast<Expr*>(i->cond), ctx(), 0))
+            if (std::optional<bool> known = impl.constCondition(static_cast<Expr*>(i->cond), ctx(), 0))
             {
               // if constexpr in an instantiation: the discarded branch is not checked (nor are
               // its calls instantiated), as in C++.  Store the result so codegen can read it

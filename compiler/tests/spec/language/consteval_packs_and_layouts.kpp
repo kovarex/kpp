@@ -1,6 +1,5 @@
 // spec: constants over packs and layouts: fold expressions over a type pack and a value pack, sizeof of a local array, a type parameter converting a value (`U(2 * limit)`), a library function with if constexpr in a static_assert on a class's size
 // factorio: static_assert((isFundamental<RemoveReference<Ts>> && ...)), static_assert(sizeof(grid) == 9 * 2 && sizeof(TileID) == 2), static_assert(sizeof(EntityWorkingAreaData::WorkingArea) <= Limits<uint16_t>::max())
-// pending: fold expressions, sizeof of a variable and type parameters as conversions were no constants, and the code generator ran no if constexpr body
 struct Area { int32_t x, y, w, h; };
 template<typename... Ts>
 int countFundamental()

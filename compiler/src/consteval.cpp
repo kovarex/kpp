@@ -1,0 +1,446 @@
+#include "consteval.hpp"
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <limits>
+#include <vector>
+
+std::optional<P> constOperator(uint32_t op, bool isKeyword)
+{
+  if (!isKeyword)
+    return P(op);
+  switch (Kw(op))
+  {
+    case Kw::or_: return P::OrOr;
+    case Kw::and_: return P::AndAnd;
+    case Kw::bitor_: return P::Pipe;
+    case Kw::xor_: return P::Caret;
+    case Kw::bitand_: return P::Amp;
+    case Kw::not_eq_: return P::NotEq;
+    case Kw::not_: return P::Bang;
+    case Kw::compl_: return P::Tilde;
+    default: return std::nullopt;
+  }
+}
+
+bool isConstBinaryOperator(P op)
+{
+  switch (op)
+  {
+    case P::Plus: case P::Minus: case P::Star: case P::Slash: case P::Percent: case P::Shl: case P::Shr:
+    case P::Amp: case P::Pipe: case P::Caret: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
+    case P::EqEq: case P::NotEq: case P::AndAnd: case P::OrOr: case P::Comma:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// --- integer types ---
+
+ConstArith::IntType ConstArith::intTypeOf(const Ty* t) const
+{
+  if (!t)
+    return {64, false}; // a value of no known type: what the evaluators computed with before
+  t = types.unqualified(types.stripRef(t));
+  switch (t->kind)
+  {
+    case TyKind::Bool: return {1, true};
+    case TyKind::Char:
+    case TyKind::Int: return {t->bits ? t->bits : uint8_t(32), t->isUnsigned};
+    case TyKind::Enum:
+      if (const Ty* u = underlying ? underlying(t) : nullptr; u && u->kind != TyKind::Enum)
+        return intTypeOf(u);
+      return {32, false};
+    default: return {64, false};
+  }
+}
+
+// A value's integer type; an enumeration declared without an underlying type computes as int,
+// or as a 64-bit integer for a value int cannot hold.
+ConstArith::IntType ConstArith::intTypeOf(const ConstValue& v) const
+{
+  const Ty* t = v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
+  if (t && t->kind == TyKind::Enum && !(underlying && underlying(t)) && (v.i < INT32_MIN || v.i > INT32_MAX))
+    return {64, false};
+  return intTypeOf(t);
+}
+
+const Ty* ConstArith::tyOf(IntType it)
+{
+  if (it.bits == 1)
+    return types.boolType();
+  return types.intType(it.bits, it.isUnsigned);
+}
+
+// Integral promotion: anything narrower than int (bool, char, short) computes as int.
+ConstArith::IntType ConstArith::promoted(IntType it) const
+{
+  return it.bits < 32 ? IntType{32, false} : it;
+}
+
+// The usual arithmetic conversions between two promoted integer types.
+ConstArith::IntType ConstArith::common(IntType a, IntType b) const
+{
+  if (a.isUnsigned == b.isUnsigned)
+    return a.bits >= b.bits ? a : b;
+  IntType u = a.isUnsigned ? a : b, s = a.isUnsigned ? b : a;
+  return u.bits >= s.bits ? u : s; // a wider signed type holds every value of the unsigned one
+}
+
+int64_t ConstArith::normalise(int64_t v, IntType it)
+{
+  if (it.bits == 1)
+    return v != 0;
+  if (it.bits >= 64)
+    return v;
+  uint64_t mask = (uint64_t(1) << it.bits) - 1, x = uint64_t(v) & mask;
+  if (!it.isUnsigned && (x >> (it.bits - 1)) & 1)
+    x |= ~mask;
+  return int64_t(x);
+}
+
+namespace
+{
+  // A normalised value as the exact number it stands for.
+  __int128 exactOf(int64_t v, bool isUnsigned) { return isUnsigned ? __int128(uint64_t(v)) : __int128(v); }
+
+  const char* typeName(uint8_t bits, bool isUnsigned)
+  {
+    switch (bits)
+    {
+      case 1: return "bool";
+      case 8: return isUnsigned ? "uint8" : "int8";
+      case 16: return isUnsigned ? "uint16" : "int16";
+      case 32: return isUnsigned ? "uint32" : "int32";
+      default: return isUnsigned ? "uint64" : "int64";
+    }
+  }
+}
+
+std::optional<ConstValue> ConstArith::fail(const std::string& reason)
+{
+  if (why && why->empty())
+    *why = reason;
+  return std::nullopt;
+}
+
+// The exact result of an operation in type it: unsigned arithmetic wraps (C++ defines it so);
+// signed arithmetic out of range is an overflow, an error where a constant is required and
+// wrap-around where the code generator folds.
+std::optional<ConstValue> ConstArith::fitted(__int128 exact, IntType it, const char* what)
+{
+  if (!it.isUnsigned)
+  {
+    __int128 max = (__int128(1) << (it.bits - 1)) - 1, min = -max - 1;
+    if ((exact < min || exact > max) && mode == ConstMode::Required)
+      return fail(std::string("signed overflow in ") + typeName(it.bits, false) + " (" + what + ")");
+  }
+  return ConstValue::integer(normalise(int64_t(uint64_t(exact)), it), tyOf(it));
+}
+
+// --- literals ---
+
+std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view spelling)
+{
+  if (kind == TokenKind::Char)
+  {
+    // 'a', '\n', '\x41', '\101', '\0', u8'a', L'a', U'\U0001F600': the character's value.
+    size_t q = spelling.find('\'');
+    if (q == std::string_view::npos || spelling.size() < q + 3 || spelling.back() != '\'')
+      return fail("a character literal it cannot read");
+    std::string_view prefix = spelling.substr(0, q), body = spelling.substr(q + 1, spelling.size() - q - 2);
+    const Ty* type = prefix.empty() ? types.charType(8, false) : prefix == "L" || prefix == "u" ? types.charType(16, true)
+                   : prefix == "U" ? types.charType(32, true) : types.charType(8, true);
+    int64_t v = 0;
+    if (body.empty())
+      return fail("an empty character literal");
+    if (body[0] != '\\')
+    {
+      if (body.size() != 1)
+        return fail("a character literal of more than one character (" + std::string(spelling) + ")");
+      v = static_cast<unsigned char>(body[0]);
+    }
+    else
+    {
+      if (body.size() < 2)
+        return fail("a character literal it cannot read");
+      char e = body[1];
+      std::string rest(body.substr(2));
+      auto digitsOf = [](int base, std::string_view text) {
+        std::string s(text);
+        char* end = nullptr;
+        long long n = std::strtoll(s.c_str(), &end, base);
+        return !s.empty() && end && *end == 0 ? std::optional<int64_t>(n) : std::nullopt;
+      };
+      std::optional<int64_t> n;
+      switch (e)
+      {
+        case 'n': n = '\n'; break;
+        case 't': n = '\t'; break;
+        case 'r': n = '\r'; break;
+        case 'a': n = '\a'; break;
+        case 'b': n = '\b'; break;
+        case 'f': n = '\f'; break;
+        case 'v': n = '\v'; break;
+        case '\\': case '\'': case '"': case '?':
+          if (rest.empty())
+            n = e;
+          break;
+        case 'x': n = digitsOf(16, rest); break;
+        case 'u': n = rest.size() == 4 ? digitsOf(16, rest) : std::nullopt; break;
+        case 'U': n = rest.size() == 8 ? digitsOf(16, rest) : std::nullopt; break;
+        default:
+          if (e >= '0' && e <= '7' && body.size() <= 4) // up to three octal digits
+            n = digitsOf(8, body.substr(1));
+          break;
+      }
+      if (!n)
+        return fail("a character literal it cannot read (" + std::string(spelling) + ")");
+      v = *n;
+    }
+    return ConstValue::integer(normalise(v, intTypeOf(type)), type);
+  }
+  if (kind != TokenKind::Number)
+    return fail("a literal that is no number");
+  std::string digits;
+  for (char c : spelling)
+    if (c != '\'')
+      digits += c;
+  bool hex = digits.size() > 1 && digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X');
+  bool binary = digits.size() > 1 && digits[0] == '0' && (digits[1] == 'b' || digits[1] == 'B');
+  bool isFloat = hex ? digits.find_first_of("pP") != std::string::npos
+                     : !binary && (digits.find('.') != std::string::npos || digits.find_first_of("eE") != std::string::npos);
+  if (isFloat)
+  {
+    // 0.25, 1e-9, 2.f, 1.5L, 0x1.8p3: double unless an f suffix makes it float.
+    bool single = !digits.empty() && (digits.back() == 'f' || digits.back() == 'F');
+    while (!digits.empty() && strchr("fFlL", digits.back()))
+      digits.pop_back();
+    char* end = nullptr;
+    double v = std::strtod(digits.c_str(), &end);
+    if (!end || *end)
+      return fail("a floating literal it cannot read (" + std::string(spelling) + ")");
+    const Ty* type = types.floatType(single ? 32 : 64);
+    return ConstValue::floating(single ? double(float(v)) : v, type);
+  }
+  // The suffix: u, l, ll, z in any case and order, or MSVC's i8 ... i64 and ui8 ... ui64.
+  size_t end = digits.size();
+  bool msvc64 = false;
+  for (const char* s : {"i64", "i32", "i16", "i8"})
+    if (end > strlen(s) && digits.compare(end - strlen(s), strlen(s), s) == 0)
+    {
+      msvc64 = s[1] == '6';
+      end -= strlen(s);
+      break;
+    }
+  size_t numberEnd = end;
+  while (numberEnd > 0 && strchr("uUlLzZ", digits[numberEnd - 1]))
+    --numberEnd;
+  std::string suffix = digits.substr(numberEnd, end - numberEnd), number = digits.substr(0, numberEnd);
+  int base = hex ? 16 : binary ? 2 : number.size() > 1 && number[0] == '0' ? 8 : 10;
+  std::string_view body = number;
+  if (hex || binary)
+    body.remove_prefix(2);
+  if (body.empty())
+    return fail("a number it cannot read (" + std::string(spelling) + ")");
+  unsigned __int128 value = 0;
+  for (char c : body)
+  {
+    int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : 99;
+    if (d >= base)
+      return fail("a number it cannot read (" + std::string(spelling) + ")");
+    value = value * base + d;
+    if (value > std::numeric_limits<uint64_t>::max())
+      return fail("an integer literal too large for 64 bits (" + std::string(spelling) + ")");
+  }
+  bool u = suffix.find_first_of("uU") != std::string::npos, z = suffix.find_first_of("zZ") != std::string::npos;
+  int longs = 0;
+  for (char c : suffix)
+    longs += c == 'l' || c == 'L';
+  // The first type that holds the value, as C++ chooses it (LLP64: long is 32 bits wide): a
+  // literal without u stays signed when it can, a hex, octal or binary one may become unsigned,
+  // and a decimal one too large for every signed type is unsigned (as clang and MSVC take it).
+  auto fits = [&](IntType t) {
+    return t.isUnsigned ? (t.bits >= 64 || value < (unsigned __int128)(uint64_t(1) << t.bits))
+                        : value <= (unsigned __int128)((uint64_t(1) << (t.bits - 1)) - 1);
+  };
+  std::vector<IntType> candidates;
+  if (z)
+    candidates = {IntType{64, u}}; // C++23: size_t, or its signed counterpart
+  else if (u)
+    candidates = longs >= 2 || msvc64 ? std::vector<IntType>{{64, true}} : std::vector<IntType>{{32, true}, {64, true}};
+  else if (longs >= 2 || msvc64)
+    candidates = {{64, false}, {64, true}};
+  else
+    candidates = base == 10 ? std::vector<IntType>{{32, false}, {64, false}, {64, true}}
+                            : std::vector<IntType>{{32, false}, {32, true}, {64, false}, {64, true}};
+  for (IntType t : candidates)
+    if (fits(t))
+      return ConstValue::integer(normalise(int64_t(uint64_t(value)), t), tyOf(t));
+  return fail("an integer literal too large for its type (" + std::string(spelling) + ")");
+}
+
+// --- operators ---
+
+std::optional<ConstValue> ConstArith::unary(P op, const ConstValue& v)
+{
+  if (op == P::Bang)
+    return ConstValue::integer(!v.truthy(), types.boolType());
+  if (v.isFloat())
+  {
+    if (op == P::Minus)
+      return ConstValue::floating(-v.f, v.type);
+    if (op == P::Plus)
+      return v;
+    return fail("this operator on a floating value");
+  }
+  IntType it = promoted(intTypeOf(v));
+  __int128 x = exactOf(normalise(v.i, it), it.isUnsigned);
+  switch (op)
+  {
+    case P::Plus: return ConstValue::integer(normalise(v.i, it), tyOf(it));
+    case P::Minus: return fitted(-x, it, "negation");
+    case P::Tilde: return ConstValue::integer(normalise(~normalise(v.i, it), it), tyOf(it));
+    default: return fail("this unary operator in a constant");
+  }
+}
+
+std::optional<ConstValue> ConstArith::binary(P op, const ConstValue& l, const ConstValue& r)
+{
+  bool comparison = op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq || op == P::EqEq || op == P::NotEq;
+  if (op == P::AndAnd || op == P::OrOr)
+    return ConstValue::integer(op == P::AndAnd ? l.truthy() && r.truthy() : l.truthy() || r.truthy(), types.boolType());
+  if (l.isFloat() || r.isFloat())
+  {
+    // The usual arithmetic conversions: double if either is double, else float.
+    bool isDouble = (l.isFloat() && (!l.type || l.type->bits != 32)) || (r.isFloat() && (!r.type || r.type->bits != 32));
+    auto asDouble = [this](const ConstValue& v) {
+      return v.isFloat() ? v.f : intTypeOf(v).isUnsigned ? double(uint64_t(v.i)) : double(v.i);
+    };
+    double a = asDouble(l), b = asDouble(r);
+    if (!isDouble)
+    {
+      a = double(float(a));
+      b = double(float(b));
+    }
+    if (comparison)
+    {
+      bool c = op == P::Less ? a < b : op == P::Greater ? a > b : op == P::LessEq ? a <= b : op == P::GreaterEq ? a >= b
+             : op == P::EqEq ? a == b : a != b;
+      return ConstValue::integer(c, types.boolType());
+    }
+    double x;
+    switch (op)
+    {
+      case P::Plus: x = a + b; break;
+      case P::Minus: x = a - b; break;
+      case P::Star: x = a * b; break;
+      case P::Slash: x = a / b; break; // IEEE: a division by zero is an infinity, as at run time
+      default: return fail("this operator on a floating value");
+    }
+    return ConstValue::floating(isDouble ? x : double(float(x)), types.floatType(isDouble ? 64 : 32));
+  }
+  if (op == P::Shl || op == P::Shr)
+  {
+    // The promoted left operand's type; a count outside [0, width) is undefined, so no constant.
+    IntType it = promoted(intTypeOf(l));
+    __int128 count = exactOf(r.i, intTypeOf(r).isUnsigned);
+    if (count < 0 || count >= it.bits)
+      return fail("a shift by " + std::to_string(int64_t(count)) + " of a " + typeName(it.bits, it.isUnsigned));
+    int64_t a = normalise(l.i, it);
+    if (op == P::Shl)
+      return ConstValue::integer(normalise(int64_t(uint64_t(a) << int(count)), it), tyOf(it)); // C++20: modulo 2^width
+    if (it.isUnsigned)
+      return ConstValue::integer(normalise(int64_t(uint64_t(a) >> int(count)), it), tyOf(it));
+    return ConstValue::integer(normalise(a >> int(count), it), tyOf(it));
+  }
+  IntType it = common(promoted(intTypeOf(l)), promoted(intTypeOf(r)));
+  __int128 a = exactOf(normalise(l.i, it), it.isUnsigned), b = exactOf(normalise(r.i, it), it.isUnsigned);
+  if (comparison)
+  {
+    bool c = op == P::Less ? a < b : op == P::Greater ? a > b : op == P::LessEq ? a <= b : op == P::GreaterEq ? a >= b
+           : op == P::EqEq ? a == b : a != b;
+    return ConstValue::integer(c, types.boolType());
+  }
+  switch (op)
+  {
+    case P::Plus: return fitted(a + b, it, "addition");
+    case P::Minus: return fitted(a - b, it, "subtraction");
+    case P::Star:
+      if (it.isUnsigned) // modulo 2^width, without the exact product (which can exceed 128 bits)
+        return ConstValue::integer(normalise(int64_t(uint64_t(a) * uint64_t(b)), it), tyOf(it));
+      return fitted(a * b, it, "multiplication");
+    case P::Slash:
+    case P::Percent:
+    {
+      if (b == 0)
+        return fail("a division by zero");
+      if (!it.isUnsigned && b == -1 && a == -(__int128(1) << (it.bits - 1)))
+      {
+        if (mode == ConstMode::Required)
+          return fail(std::string("signed overflow in ") + typeName(it.bits, false) + " (division)");
+        return ConstValue::integer(op == P::Slash ? normalise(int64_t(uint64_t(a)), it) : 0, tyOf(it)); // wraps
+      }
+      // In 64 bits (both operands fit them; 128-bit division needs a runtime library MSVC lacks).
+      int64_t q = it.isUnsigned ? int64_t(op == P::Slash ? uint64_t(a) / uint64_t(b) : uint64_t(a) % uint64_t(b))
+                                : op == P::Slash ? int64_t(a) / int64_t(b) : int64_t(a) % int64_t(b);
+      return ConstValue::integer(normalise(q, it), tyOf(it));
+    }
+    case P::Amp: return ConstValue::integer(normalise(int64_t(a & b), it), tyOf(it));
+    case P::Pipe: return ConstValue::integer(normalise(int64_t(a | b), it), tyOf(it));
+    case P::Caret: return ConstValue::integer(normalise(int64_t(a ^ b), it), tyOf(it));
+    default: return fail("this binary operator in a constant");
+  }
+}
+
+// --- conversions ---
+
+std::optional<ConstValue> ConstArith::convert(const ConstValue& v, const Ty* to)
+{
+  if (!to)
+    return std::nullopt;
+  const Ty* t = types.unqualified(types.stripRef(to));
+  switch (t->kind)
+  {
+    case TyKind::Bool: return ConstValue::integer(v.truthy(), types.boolType());
+    case TyKind::Float:
+    {
+      double x = v.isFloat() ? v.f : intTypeOf(v).isUnsigned ? double(uint64_t(v.i)) : double(v.i);
+      return ConstValue::floating(t->bits == 32 ? double(float(x)) : x, t);
+    }
+    case TyKind::Enum:
+    {
+      // To the underlying type the enumeration was declared with; one declared without keeps
+      // the value (every value of its enumerators fits it).
+      if (const Ty* u = underlying ? underlying(t) : nullptr; u && u->kind != TyKind::Enum)
+      {
+        std::optional<ConstValue> c = convert(v, u);
+        if (c)
+          c->type = t;
+        return c;
+      }
+      if (v.isFloat())
+        return convert(ConstValue::integer(int64_t(v.f)), t);
+      return ConstValue::integer(v.i, t);
+    }
+    case TyKind::Char:
+    case TyKind::Int:
+    {
+      IntType it = intTypeOf(t);
+      if (v.isFloat())
+      {
+        // Truncation toward zero; a value the type cannot hold is undefined, so no constant.
+        double lo = it.isUnsigned ? -1.0 : -std::ldexp(1.0, it.bits - 1) - 1.0, hi = std::ldexp(1.0, it.isUnsigned ? it.bits : it.bits - 1);
+        if (!(v.f > lo && v.f < hi))
+          return fail(std::string("a floating value out of the range of ") + typeName(it.bits, it.isUnsigned));
+        int64_t x = it.isUnsigned && v.f >= 9223372036854775808.0 ? int64_t(uint64_t(v.f)) : int64_t(v.f);
+        return ConstValue::integer(normalise(x, it), t);
+      }
+      // Between integer types the value is taken modulo 2^width (C++20), never an error.
+      return ConstValue::integer(normalise(v.i, it), t);
+    }
+    default:
+      return std::nullopt;
+  }
+}

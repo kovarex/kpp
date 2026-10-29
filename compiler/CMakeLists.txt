@@ -17,6 +17,7 @@ add_executable(kppc
   src/resolver.cpp
   src/types.cpp
   src/codegen.cpp
+  src/consteval.cpp
   src/instance.cpp
   src/source.cpp
 )
