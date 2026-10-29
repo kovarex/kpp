@@ -1,6 +1,5 @@
 // spec: value template arguments in a static member's initializer taking functions of instances (`&positionFunction<AlignTo::Begin, Direction::North>`): an enumerator of the class's own nested enum, declared after the static member, and one named through another class's `using enum` (`Direction::North` for `Direction::Enum::North`)
 // found in src/Entity/TransportBeltConnectable.kpp: straightItemPositionFunctions' table of `&TransportBeltConnectableHelper::positionFunction<AlignTo::Begin, Direction::North>` asked for `positionFunction<?@0::Begin, <unknown>>`, and the instance failed on "a template parameter whose value is not known here" (10 errors)
-// pending: the arguments are not evaluated
 class Direction
 {
 public:

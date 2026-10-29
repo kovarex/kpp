@@ -9386,6 +9386,21 @@ struct GlobalScope::Impl
   void declContextFor(Decl* d, DeclContext& out)
   {
     out.scope = lexicalScopeOf(d);
+    if (d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->name.parts.size() > 1 &&
+        !(d->parent && d->parent->kind == NodeKind::FunctionDecl))
+    {
+      // `const PositionFunction Belt::functions[2][2] = {...}` outside its class: the class scope,
+      // as C++ has it for what follows the name (the initializer's `AlignTo::Begin`).
+      auto* v = static_cast<VariableDecl*>(d);
+      QualifiedName qualifier = v->name;
+      qualifier.parts.count -= 1;
+      LocalStack params;
+      for (Decl* tp : v->templateParams)
+        params.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+      Lookup l = lookupQualified(qualifier, out.scope, &params, 0);
+      if (l.scope && l.scope->kind == ScopeKind::Class)
+        out.scope = l.scope;
+    }
     for (Decl* p = d; p; p = p->parent)
       if (p != d && (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl) && p->ownScope)
         break; // a member of a class (one declared in a function body included): that class's scope
