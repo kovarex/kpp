@@ -1,6 +1,5 @@
 // spec: the operator== that a defaulted operator<=> declares is a member a qualified call names: a derived class's own operator== written `super::operator==(other) && ...` (super an alias of the base) compares the base's members, as `a == b` on two bases does
 // factorio: RelativeItemStackLocation::operator== is `super::operator==(condition) && this->source == condition.source` over ItemStackLocation's `operator<=>(...) const = default`: the call came out as a copy of condition, converted to bool by ItemStackLocation's explicit operator bool, so any two locations with the same source compared equal and the tests' getWidget lookups found the first slot: InsertPlan's "Expected {speed-module, normal} x 1 but was {<null>, <null>} x 0" and the like (8 failed checks, all passing with the call written as a comparison of the bases); ApplicationVersion::operator== over Version is written the same way
-// pending: SILENT, `super::operator==(other)` is a copy of other converted to bool (`1 1 1 1 0`); without the explicit operator bool it is a codegen error, a conversion from Base to bool; owner: the templates thread (implicit special members)
 class Base
 {
 public:

@@ -2957,6 +2957,53 @@ namespace
       return true;
     }
 
+    // The operator== a class declares implicitly when it defaults operator<=> and declares no
+    // operator== of its own (C++ [class.compare.default]/5): `bool operator==(const X&) const =
+    // default`, with the <=>'s parameters, constness and access, so that a qualified call names it
+    // (`super::operator==(other)`) and `a == b` finds it as the member it is. The class's members
+    // are scratch[mark..].
+    void implicitEquality(size_t mark)
+    {
+      FunctionDecl* spaceship = nullptr;
+      for (size_t i = mark; i < scratch.size(); ++i)
+      {
+        if (scratch[i]->kind != NodeKind::FunctionDecl)
+          continue;
+        auto* f = static_cast<FunctionDecl*>(scratch[i]);
+        if (f->name.parts.size() != 1 || f->name.last().special != 2)
+          continue;
+        if (P(f->name.last().opToken) == P::EqEq)
+          return;
+        if (P(f->name.last().opToken) == P::Spaceship && (f->flags & DF_Default) && f->templateParams.empty() && !spaceship)
+          spaceship = f;
+      }
+      if (!spaceship)
+        return;
+      FunctionDecl* eq = decl<FunctionDecl>(spaceship->token);
+      eq->flags |= DF_Default | (spaceship->flags & (DF_Const | DF_Constexpr | DF_Friend));
+      eq->access = spaceship->access;
+      eq->endToken = spaceship->endToken;
+      NamePart part;
+      part.special = 2;
+      part.opToken = uint32_t(P::EqEq);
+      eq->name.parts = makeSpanOf(std::vector<NamePart>{part});
+      BuiltinType* boolType = node<BuiltinType>(spaceship->token);
+      boolType->keyword = Kw::bool_;
+      eq->returnType = boolType;
+      std::vector<Decl*> params;
+      for (Decl* p : spaceship->params)
+      {
+        auto* from = static_cast<ParamDecl*>(p);
+        ParamDecl* copy = decl<ParamDecl>(from->token);
+        copy->type = from->type;
+        copy->name = from->name;
+        copy->parent = eq;
+        params.push_back(copy);
+      }
+      eq->params = makeSpanOf(params);
+      pushDecl(eq);
+    }
+
     bool parseClassOrElaborated(Scope scope, uint32_t flags, TemplateHeader templ)
     {
       if (at(Kw::union_) && at(Kw::enum_, 1))
@@ -3070,6 +3117,7 @@ namespace
       while (!at(P::RBrace) && !at(TokenKind::End))
         parseDeclaration(Scope::Class);
       classMembersMark = savedMembersMark;
+      implicitEquality(mark);
       c->members = makeSpan<Decl*>(mark);
       currentParent = savedParent;
       currentAccess = savedAccess;

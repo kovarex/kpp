@@ -2602,7 +2602,9 @@ struct GlobalScope::Impl
       {
         if (!last)
           return {};
+        // (Not found is not found: `super::operator!=` of a class declaring none names no class.)
         uint32_t symbol = opSymbols[part.opToken];
+        out = Lookup{};
         if (current)
           lookupInScope(current, symbol, out, depth);
         else
@@ -15581,6 +15583,25 @@ struct GlobalScope::Impl
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
         if (l.found == Found::Global)
           l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
+        if ((!l.decl || l.decl->kind != NodeKind::FunctionDecl) && l.found != Found::Dependent && n->name.parts.size() > 1 &&
+            n->name.last().special == 2 && P(n->name.last().opToken) == P::Assign && c->args.size() == 1 && thisType)
+        {
+          // `super::operator=(other)` of a class declaring none: its implicit assignment, of the
+          // class the name is qualified with, on this object, as `this->super::operator=(other)`.
+          NamedType written{};
+          written.kind = NodeKind::NamedType;
+          written.token = n->token;
+          written.name = n->name;
+          written.name.parts.count -= 1;
+          if (const Ty* q = typeOf(&written); q && q->isKnown() && types.unqualified(types.stripRef(q))->kind == TyKind::Class)
+          {
+            const Ty* target = types.unqualified(types.stripRef(q));
+            n->resolved = nullptr;
+            ++stats.callsResolved;
+            record(n, types.function(types.lref(target), {}, false));
+            return types.lref(target);
+          }
+        }
         MemberResult viaInstance; // keeps a merged overload set alive
         if (l.found == Found::No && n->name.parts.size() > 1 && !n->name.last().hasTemplateArgs)
         {

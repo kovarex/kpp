@@ -8503,6 +8503,25 @@ namespace
 
     // The class a member's name is qualified with (`Hook<Robot, TagB>` of `r.Hook<Robot, TagB>::getId()`),
     // canonical; null for an unqualified member.
+    // The implicit assignment of class target (objectTy itself or a base of it), member by member,
+    // into the object of class objectTy at addr from arg (`this->Base::operator=(other)` and
+    // `super::operator=(other)` of a class declaring none); the target object as an lvalue.
+    Value implicitAssignment(const std::string& addr, const Ty* objectTy, const Ty* target, Expr* arg, Node* at)
+    {
+      std::string dst = addr;
+      if (canonicalClass(target, at) != canonicalClass(objectTy, at) && !baseAddress(objectTy, target, addr, dst, at))
+        unsupported(at, "operator= of " + types.toString(target, &symbols) + ", which is no base of " + types.toString(objectTy, &symbols));
+      Value src = rvalue(arg);
+      const Ty* srcTy = types.unqualified(types.stripRef(src.ty));
+      std::string from = src.text;
+      if (!isClass(srcTy))
+        unsupported(at, "assigning a value that is no object to " + types.toString(target, &symbols));
+      if (canonicalClass(srcTy, at) != canonicalClass(target, at) && !baseAddress(srcTy, target, src.text, from, at))
+        unsupported(at, "assigning " + types.toString(srcTy, &symbols) + " to " + types.toString(target, &symbols));
+      assignObject(dst, from, target, at, isXvalue(arg));
+      return {dst, types.lref(target)};
+    }
+
     const Ty* memberQualifier(MemberExpr* m, Node* at)
     {
       if (m->member.parts.size() < 2)
@@ -9320,6 +9339,16 @@ namespace
       {
         auto* n = static_cast<NameExpr*>(callee);
         Decl* d = n->resolved;
+        if (!d && n->name.parts.size() > 1 && n->name.last().special == 2 && P(n->name.last().opToken) == P::Assign && c->args.size() == 1)
+        {
+          // `super::operator=(other)` of a class declaring none: its implicit assignment, as the
+          // walker typed it, on this object (`this->super::operator=(other)`).
+          const Ty* q = qualifierOf(n);
+          q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+          if (!q || !isClass(q) || !currentClassTy)
+            unsupported(c, "operator= qualified with no class of this object");
+          return implicitAssignment(thisPointer(c), currentClassTy, canonicalClass(q, c), c->args[0], c);
+        }
         if (d && d->kind == NodeKind::FunctionDecl && d->file && d->file->isImported)
         {
           // An intrinsic declared by intrin.h (its static inline body is not emitted, or there is
@@ -9549,18 +9578,7 @@ namespace
           const Ty* target = objectTy;
           if (const Ty* q = memberQualifier(m, c))
             target = q;
-          std::string dst = addr;
-          if (canonicalClass(target, c) != canonicalClass(objectTy, c) && !baseAddress(objectTy, target, addr, dst, c))
-            unsupported(c, "operator= of " + types.toString(target, &symbols) + ", which is no base of " + types.toString(objectTy, &symbols));
-          Value src = rvalue(c->args[0]);
-          const Ty* srcTy = types.unqualified(types.stripRef(src.ty));
-          std::string from = src.text;
-          if (!isClass(srcTy))
-            unsupported(c, "assigning a value that is no object to " + types.toString(target, &symbols));
-          if (canonicalClass(srcTy, c) != canonicalClass(target, c) && !baseAddress(srcTy, target, src.text, from, c))
-            unsupported(c, "assigning " + types.toString(srcTy, &symbols) + " to " + types.toString(target, &symbols));
-          assignObject(dst, from, target, c, isXvalue(c->args[0]));
-          return {dst, types.lref(target)};
+          return implicitAssignment(addr, objectTy, target, c->args[0], c);
         }
         if (m->resolved && m->resolved->kind == NodeKind::FunctionDecl)
         {
