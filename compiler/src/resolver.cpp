@@ -1172,6 +1172,18 @@ struct GlobalScope::Impl
     return l.decl && l.decl->kind != NodeKind::FunctionDecl ? l.decl : nullptr;
   }
 
+  // Those visible at token `at` in the body of the lambda whose closure is context (the code
+  // generator types a lambda's body from its closure): a body's declarations belong to the function
+  // around the lambda, whose statements do not reach into it.
+  void collectLambdaBodyAliases(Decl* context, uint32_t at, LocalStack& out)
+  {
+    if (!context || context->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(context)->isClosure)
+      return;
+    LambdaExpr* l = static_cast<ClassDecl*>(context)->lambda;
+    if (l && l->body && l->body->token < at)
+      collectVisibleLocalAliases(l->body, at, out);
+  }
+
   void collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth = 0)
   {
     if (!s || s->token > at || depth > 64)
@@ -9205,6 +9217,13 @@ struct GlobalScope::Impl
           TypeContext actx{lexicalScopeOf(u), &own, &s, u->file ? u->file->tokens : nullptr, u->file ? u->file->text : std::string_view()};
           return convertType(u->type, actx, depth + 1);
         }
+        // An alias local to a function body, named as a qualifier (`PrototypeType::IDType` after
+        // `using PrototypeType = ListType::ThePrototypeType;` in a generic lambda): its type where
+        // it is named, as convertType has a local alias named alone; the declaration's own context
+        // does not see a lambda's template parameters (the body's declarations belong to the
+        // enclosing function).
+        if (ctx.locals && d->parent && d->parent->kind == NodeKind::FunctionDecl)
+          return convertType(u->type, ctx, depth + 1);
         return declaredTypeOf(d, ctx.subst, depth + 1); // under the instantiation's arguments, if any
       }
       case NodeKind::VariableDecl:
@@ -17285,6 +17304,18 @@ std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e,
   if (context && context->kind == NodeKind::FunctionDecl && file == context->file)
     if (Stmt* body = static_cast<FunctionDecl*>(context)->body; body && body->token < e->token && (!context->endToken || e->token < context->endToken))
       impl->collectVisibleLocalAliases(body, e->token, dc.params);
+  if (context && file == context->file)
+  {
+    // In a lambda's body (the closure as the context): the function around it, then the body.
+    for (Decl* p = context->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(context)->isClosure ? context->parent : nullptr; p; p = p->parent)
+      if (p->kind == NodeKind::FunctionDecl)
+      {
+        if (Stmt* body = static_cast<FunctionDecl*>(p)->body; body && body->token < e->token && (!p->endToken || e->token < p->endToken))
+          impl->collectVisibleLocalAliases(body, e->token, dc.params);
+        break;
+      }
+    impl->collectLambdaBodyAliases(context, e->token, dc.params);
+  }
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
   Impl::TypeContext ctx{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
   struct Lent
@@ -17327,6 +17358,7 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
           around.push_back(static_cast<FunctionDecl*>(p));
     for (size_t i = around.size(); i-- > 0;)
       impl->collectVisibleLocalAliases(around[i]->body, t->token, dc.params);
+    impl->collectLambdaBodyAliases(context, t->token, dc.params); // innermost: they hide the function's
   }
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());

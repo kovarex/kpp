@@ -505,7 +505,11 @@ namespace
     // in it are typed from its declaration (the class's member aliases are in scope there), not
     // from the function that happens to be emitted (none, for a startup function).
     Decl* initializerOf = nullptr;
-    Decl* typingContext() const { return initializerOf ? initializerOf : static_cast<Decl*>(currentFunction); }
+    // The closure of the lambda whose body is being emitted, or null: names written in the body
+    // are typed from it (the lambda's template parameters, the aliases its body declares), not
+    // from the function that happens to emit it (a generic lambda's is the one calling it).
+    Decl* lambdaContext = nullptr;
+    Decl* typingContext() const { return initializerOf ? initializerOf : lambdaContext ? lambdaContext : static_cast<Decl*>(currentFunction); }
 
     // A class declared in a function body, or a member of one: the main pass does not reach its
     // member functions (they are emitted when used), and its name alone is not unique.
@@ -4555,6 +4559,26 @@ namespace
       // happened to emit it first.
       NameRestore requesterRestore{currentRequestedBy, currentRequestedBy};
       currentRequestedBy = info.writtenIn;
+      struct ContextRestore
+      {
+        Decl*& lambda;
+        Decl*& initializer;
+        Decl* savedLambda;
+        Decl* savedInitializer;
+        ~ContextRestore()
+        {
+          lambda = savedLambda;
+          initializer = savedInitializer;
+        }
+      } contextRestore{lambdaContext, initializerOf, lambdaContext, initializerOf};
+      // One written in a function body (whose declarations the closure's context reaches); one in
+      // a constructor's initializer list or a member's initializer is typed as before, from the
+      // function or the initializer being emitted.
+      if (l->closure && l->closure->parent && l->closure->parent->kind == NodeKind::FunctionDecl)
+      {
+        lambdaContext = l->closure;
+        initializerOf = nullptr;
+      }
       resetFunctionState();
       if (args)
         currentArgs = args;

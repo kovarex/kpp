@@ -1,6 +1,5 @@
 // spec: local type aliases in a generic lambda's body that name its template parameter's members (`using PrototypeType = ListType::ThePrototypeType; using IDType = PrototypeType::IDType;`) are the instance's types, so `auto& loader = Loader<IDType>::instance();` is typed
 // factorio: GlobalContext::postPrototypesConstructedSetup's `RequiredPrototypeTypesList::forEach([]<class ListType>(ListType) { using PrototypeType = ListType::ThePrototypeType; ... auto& instanceLoader = InstanceLoader<IDType>::instance(); ...})`: the instance is left out ("a local of unknown type (instanceLoader)"), MplVector::forEach is a stub, and `--dump-data` stops there right after assigning prototype IDs
-// pending: in the instance [PrototypeList<ItemPrototype>] the call is typed Loader<?::ThePrototypeType::IDType>& (the aliases are not substituted); owner: resolver (generic lambda instances)
 struct ItemPrototype { using IDType = int; };
 template<class P> struct PrototypeList { using ThePrototypeType = P; };
 template<class ID> struct Loader { static Loader& instance() { static Loader l; return l; } int count = 3; };
