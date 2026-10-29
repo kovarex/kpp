@@ -1,0 +1,13 @@
+// spec: a C-style cast to a typedef or alias name of a parenthesised operand: `(Packed)(255) << 24` casts 255, it does not call `(Packed)`
+// factorio: imgui's IM_COL32 at its four uses in DebugTools, as the converter expands it: `(((ImU32)(255)<<IM_COL32_A_SHIFT) | ((ImU32)(180)<<IM_COL32_B_SHIFT) | ...)`
+// pending: the parenthesised name is read as an expression and the operand as its call's arguments ("a call that did not resolve to a function (the callee has type uint32)"; for the alias, "taking the address of Wide")
+typedef unsigned int Packed;
+using Wide = unsigned long long;
+const int Shift = 24;
+int main()
+{
+  Packed a = (((Packed)(255) << Shift) | ((Packed)(180) << 16));
+  Wide b = (Wide)(7) + 1;
+  println("{} {}", a, b);
+  return 0;
+}

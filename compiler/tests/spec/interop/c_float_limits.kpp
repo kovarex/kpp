@@ -1,0 +1,9 @@
+// spec: float.h's limits through the import: FLT_MAX, FLT_EPSILON, DBL_MAX, DBL_EPSILON
+// factorio: 8 uses (ImguiSDL's `ImVec2(-FLT_MAX, -FLT_MAX)`, AsteroidCollectorNavmeshPathfinding's `float pathCost = FLT_MAX;`, RocketSilo's FLT_EPSILON)
+// pending: clang's float.h defines FLT_MAX as __FLT_MAX__, a compiler macro the import leaves out with the other __ names, so FLT_MAX is no constant either
+extern "C" import "float.h";
+int main()
+{
+  println("{} {} {} {}", FLT_MAX > 3.4e38f, FLT_EPSILON < 1.2e-7f && FLT_EPSILON > 1.1e-7f, DBL_MAX > 1.7e308, DBL_EPSILON < 2.3e-16);
+  return 0;
+}
