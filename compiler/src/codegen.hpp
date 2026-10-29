@@ -19,8 +19,9 @@ struct CodegenResult
 
 // debug: config::debug; `assert` statements compile to nothing when it is false.
 // moduleCount > 1 splits the output into that many modules (functions by file, instantiations
-// with the function that asked for them) so that LLVM can compile them in parallel.
+// by the hash of their name) so that LLVM can compile them in parallel.
 // despiteErrors: assemble the IR even when there are errors (--keep-going): the functions with
 // errors are left out and only declared, so that what remains can be compiled and linked.
+// threads: how many threads emit functions at once (the output does not depend on it).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
-                           bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false);
+                           bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1);

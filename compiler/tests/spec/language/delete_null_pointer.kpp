@@ -1,0 +1,31 @@
+// spec: `delete p` with p null does nothing, also for a class with a destructor or a virtual one (C++ makes it a no-op, and `delete this->x;` relies on it)
+// found by the unique-pointer research: a null pointer to a class with a virtual destructor loaded its vtable from address 0 (the library's UniquePtr checks for null itself, which hid it)
+struct Plain
+{
+  int x = 1;
+};
+struct WithDestructor
+{
+  ~WithDestructor() { println("destroyed"); }
+};
+struct Virtual
+{
+  virtual ~Virtual() { println("virtual destroyed"); }
+};
+struct Derived : Virtual
+{
+  ~Derived() { println("derived destroyed"); }
+};
+int main()
+{
+  Plain* a = nullptr;
+  WithDestructor* b = nullptr;
+  Virtual* c = nullptr;
+  delete a;
+  delete b;
+  delete c;
+  Virtual* d = new Derived();
+  delete d;
+  println("done");
+  return 0;
+}

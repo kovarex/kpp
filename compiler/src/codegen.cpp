@@ -3,11 +3,14 @@
 #include <set>
 #include <unordered_set>
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <deque>
 #include <functional>
+#include <mutex>
 #include <optional>
+#include <thread>
 #include <unordered_map>
 #ifdef _WIN32
 #include <windows.h>
@@ -60,6 +63,7 @@ namespace
     uint64_t size = 0, align = 0;             // computed on first use once complete (align 0: not yet)
     bool sizing = false;                      // its size is being computed (a class that contains itself comes back here)
     bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
+    std::string failedWhy;                    // what made it fail, which every use reports
   };
   // The field index of a member, 0 when the layout has no such member.
   uint32_t fieldIndexOf(const StructInfo& info, Decl* member)
@@ -73,33 +77,209 @@ namespace
     const Ty* unit; // the storage unit's (integer) type
   };
 
+  // A lambda's closure: one struct per lambda, fields for the captures, one function.
+  struct ClosureInfo
+  {
+    std::string structName;
+    std::vector<Decl*> captured;       // enclosing local per field (null for `this`)
+    std::vector<bool> byRef;
+    std::vector<Expr*> inits;          // init-captures: the initializer (null for other captures)
+    std::vector<const Ty*> fieldTypes; // pointee type for references and `this`
+    const Ty* enclosingClass = nullptr;
+    std::string functionName;
+    bool laidOut = false; // captures and fields known (read where the lambda is written); before that only the struct's name exists
+  };
+
+  struct Instantiation
+  {
+    FunctionDecl* f;
+    TemplateArgs args;
+    const Ty* classTy;
+    unsigned module;         // the module of the function that asked for it
+    std::string requestedBy; // the name of that function, for diagnostics
+    std::string name;        // the LLVM name to define it under (the declaration's), or empty
+    unsigned depth;          // instantiations in the chain that asked for it, itself included
+  };
+
+  // IR text several emitters append to (the shared declarations, a module's), one whole
+  // declaration or definition per append, in whatever order the emitters reach them.
+  struct SharedText
+  {
+    std::recursive_mutex* mutex = nullptr;
+    std::vector<std::string> entries;
+    std::string text; // the entries, once finish() put them in order
+    SharedText& operator+=(const std::string& s)
+    {
+      std::lock_guard lock(*mutex);
+      entries.push_back(s);
+      return *this;
+    }
+    // The text the module is assembled from, the same in every run: the entries sorted (LLVM takes
+    // declarations and definitions in any order), each freed once copied.
+    void finish()
+    {
+      std::sort(entries.begin(), entries.end());
+      size_t total = text.size();
+      for (const std::string& e : entries)
+        total += e.size();
+      text.reserve(total);
+      for (std::string& e : entries)
+      {
+        text += e;
+        std::string().swap(e);
+      }
+      entries.clear();
+    }
+    // The text from `needle` to the end of the entry holding it (before finish()), or empty.
+    std::string fromFirst(const std::string& needle) const
+    {
+      for (const std::string& e : entries)
+        if (size_t at = e.find(needle); at != std::string::npos)
+          return e.substr(at);
+      return {};
+    }
+  };
+
+  // A set of IR names several emitters mark, in shards with a lock each (marking is frequent).
+  struct NameSet
+  {
+    struct Shard
+    {
+      std::mutex mutex;
+      std::unordered_set<std::string> names;
+    };
+    Shard shards[64];
+    Shard& shardOf(const std::string& name) { return shards[std::hash<std::string>()(name) % std::size(shards)]; }
+    // Marks name; true for whoever marked it first.
+    bool claim(const std::string& name)
+    {
+      Shard& s = shardOf(name);
+      std::lock_guard lock(s.mutex);
+      return s.names.insert(name).second;
+    }
+    bool contains(const std::string& name)
+    {
+      Shard& s = shardOf(name);
+      std::lock_guard lock(s.mutex);
+      return s.names.count(name) != 0;
+    }
+  };
+
+  // What the emitters of one program share, under `mutex` (recursive: laying out a class lays out
+  // the classes of its fields): class layouts, closures, globals, the instantiations asked for,
+  // and the output. Everything else an emitter has is its own (the function it is emitting, and
+  // caches of what only depends on the program).
+  struct Shared
+  {
+    std::recursive_mutex mutex;
+    CodegenResult& result;
+    unsigned moduleCount = 1;
+    bool debug = true; // config::debug: asserts are compiled in
+    SharedText decls;  // struct types, globals, string constants, declares
+    SharedText body;   // function definitions (single module), or unused when split
+    SharedText shared; // definitions every module carries (linkonce_odr): enum str(), the assert handler
+    std::vector<SharedText> bodies;                         // per module
+    std::vector<SharedText> moduleDecls;                    // per module: its string constants and vtables
+    std::vector<std::vector<std::string>> moduleCtors;      // per module: startup functions for its globals
+    std::vector<std::unordered_set<std::string>> vtablesIn; // per module: the vtables it already has
+    std::unordered_map<ParsedFile*, unsigned> fileModule;   // file -> module
+    std::unordered_map<std::string, unsigned> definedIn;    // function name -> module
+    std::unordered_map<std::string, std::string> declareLines; // function name -> its declare line
+    std::unordered_map<std::string, const Ty*> irTypeNames; // irTypeName(): a struct type's IR name -> its type
+    std::unordered_map<std::string, std::string> sharedConstants; // constantName(): a private constant's name -> its contents
+    std::vector<std::unordered_map<std::string, std::string>> moduleConstants;
+    std::unordered_map<const Ty*, StructInfo> structs;
+    std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
+    std::unordered_map<Decl*, std::string> globals;
+    std::map<std::pair<Decl*, const Ty*>, std::string> failedGlobals; // globals whose definition failed -> what their uses report
+    std::unordered_map<Decl*, BitfieldInfo> bitfieldOf; // bit-field members of every laid-out class
+    bool dyncastEmitted = false;                        // the @kpp.dyncast helper is in `decls`
+    std::unordered_map<std::string, std::string> instanceGlobals; // static members of class template instantiations, by name
+    NameSet declaredNames;                               // IR names with a declare/define line
+    std::atomic<size_t> functions{0};                    // functions defined (result.functions once done)
+    std::unordered_map<const Ty*, ClosureInfo> closures; // keyed by the lambda type (one per enclosing instantiation)
+    std::unordered_set<const Ty*> closuresEmitted;       // lambdas whose call operator is emitted (or being emitted)
+    std::unordered_set<std::string> lambdaInstances;     // call operators of generic lambdas emitted so far, by IR name
+    NameSet requested;                                   // instantiated names queued or emitted
+    bool mallocDeclared = false;
+    std::atomic<bool> usesAssert{false};                 // some assert was emitted: the module needs kpp_assert_failed
+    std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
+    std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
+    std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
+    std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
+
+    explicit Shared(CodegenResult& result) : result(result)
+    {
+      decls.mutex = body.mutex = shared.mutex = &mutex;
+    }
+    // The per-module parts, for n modules.
+    void setModules(unsigned n)
+    {
+      moduleCount = std::max(1u, n);
+      bodies.resize(moduleCount);
+      moduleDecls.resize(moduleCount);
+      for (unsigned k = 0; k < moduleCount; ++k)
+        bodies[k].mutex = moduleDecls[k].mutex = &mutex;
+      moduleCtors.resize(moduleCount);
+      vtablesIn.resize(moduleCount);
+      moduleConstants.resize(moduleCount);
+    }
+  };
+
   struct Emitter
   {
     GlobalScope& global;
     TypeTable& types;
     const SymbolTable& symbols;
-    CodegenResult& result;
+    Shared& sh;
+    // The shared state, under the names the emitter has always used (see Shared). What the
+    // emitter changes there it changes under sharedLock().
+    CodegenResult& result = sh.result;
+    SharedText& decls = sh.decls;
+    SharedText& body = sh.body;
+    SharedText& shared = sh.shared;
+    unsigned& moduleCount = sh.moduleCount;
+    std::vector<SharedText>& bodies = sh.bodies;
+    std::vector<SharedText>& moduleDecls = sh.moduleDecls;
+    std::vector<std::vector<std::string>>& moduleCtors = sh.moduleCtors;
+    std::vector<std::unordered_set<std::string>>& vtablesIn = sh.vtablesIn;
+    std::unordered_map<ParsedFile*, unsigned>& fileModule = sh.fileModule;
+    std::unordered_map<std::string, unsigned>& definedIn = sh.definedIn;
+    std::unordered_map<std::string, std::string>& declareLines = sh.declareLines;
+    bool& debug = sh.debug;
+    std::atomic<bool>& usesAssert = sh.usesAssert;
+    std::unordered_map<std::string, const Ty*>& irTypeNames = sh.irTypeNames;
+    std::unordered_map<std::string, std::string>& sharedConstants = sh.sharedConstants;
+    std::vector<std::unordered_map<std::string, std::string>>& moduleConstants = sh.moduleConstants;
+    std::unordered_map<const Ty*, StructInfo>& structs = sh.structs;
+    std::unordered_map<const Ty*, StructInfo*>& structsByType = sh.structsByType;
+    std::unordered_map<Decl*, std::string>& globals = sh.globals;
+    std::unordered_map<Decl*, BitfieldInfo>& bitfieldOf = sh.bitfieldOf;
+    bool& dyncastEmitted = sh.dyncastEmitted;
+    std::unordered_map<std::string, std::string>& instanceGlobals = sh.instanceGlobals;
+    NameSet& declaredNames = sh.declaredNames;
+    std::unordered_map<const Ty*, ClosureInfo>& closures = sh.closures;
+    std::unordered_set<std::string>& lambdaInstances = sh.lambdaInstances;
+    NameSet& requested = sh.requested;
+    // What this emitter asked for: the next level's functions (the driver gathers them).
+    std::vector<Instantiation> worklist;
+    // Its errors and the functions they left out, gathered once all are emitted.
+    std::vector<std::string> errors, failedFunctions;
+    bool& mallocDeclared = sh.mallocDeclared;
+    std::atomic<bool>& usesExceptions = sh.usesExceptions;
+    std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
+    std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
+    std::unordered_set<std::string>& sharedDeclared = sh.sharedDeclared;
+    std::unique_lock<std::recursive_mutex> sharedLock() { return std::unique_lock<std::recursive_mutex>(sh.mutex); }
+    void countFunction() { ++sh.functions; }
 
-    std::string decls;   // struct types, globals, string constants, declares
-    std::string body;    // function definitions (single module), or unused when split
-    std::string shared;  // definitions every module carries (linkonce_odr): enum str(), the assert handler
-    unsigned moduleCount = 1;
-    unsigned currentModule = 0;                                  // where the function being emitted goes
-    std::vector<std::string> bodies;                             // per module
-    std::vector<std::string> moduleDecls;                        // per module: its string constants and vtables
-    std::vector<std::vector<std::string>> moduleCtors;           // per module: startup functions for its globals
-    std::vector<std::unordered_set<std::string>> vtablesIn;      // per module: the vtables it already has
-    bool emittingShared = false;                                 // string constants go to the shared decls
-    std::unordered_map<ParsedFile*, unsigned> fileModule;        // file -> module
-    std::unordered_map<std::string, unsigned> definedIn;         // function name -> module
-    std::unordered_map<std::string, std::string> declareLines;   // function name -> its declare line
+    unsigned currentModule = 0;  // where the function being emitted goes
+    bool emittingShared = false; // string constants go to the shared decls
     std::string fn;      // current function text (after the allocas)
     std::string allocas; // entry-block allocas of the current function
     uint32_t temp = 0;
     uint32_t label = 0;
     bool blockTerminated = false;
-    bool debug = true;        // config::debug: asserts are compiled in
-    bool usesAssert = false;  // some assert was emitted: the module needs kpp_assert_failed
     std::string currentBlock = "entry";
     FunctionDecl* currentFunction = nullptr;
     const Ty* currentReturn = nullptr;
@@ -141,61 +321,24 @@ namespace
     };
     std::unordered_map<Decl*, Local> locals;
     std::unordered_map<Decl*, std::vector<Local>> packLocals; // one local per element of a parameter pack
-    std::unordered_map<std::string, const Ty*> irTypeNames;   // irTypeName(): a struct type's IR name -> its type
-    std::unordered_map<std::string, std::string> sharedConstants; // constantName(): a private constant's name -> its contents
-    std::vector<std::unordered_map<std::string, std::string>> moduleConstants;
     // The `__range` of a range-for that calls free begin(__range) and end(__range): a variable of
     // the compiler's and the name of it passed to the calls (one each per such loop).
     std::deque<VariableDecl> rangeVariables;
     std::deque<NameExpr> rangeNames;
-    std::unordered_map<const Ty*, StructInfo> structs;
-    std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
-    std::unordered_map<Decl*, std::string> globals;
-    std::unordered_map<Decl*, BitfieldInfo> bitfieldOf; // bit-field members of every laid-out class
-    bool dyncastEmitted = false; // the @kpp.dyncast helper is in `decls`
     std::unordered_map<uint32_t, std::string> labelBlocks; // goto labels of the current function -> their blocks
     Span<uint32_t> pendingDesignators;                        // of the brace list constructInto is about to consume
     std::vector<std::pair<Decl*, int64_t>> constEnv;          // parameters bound while evalConst runs a constexpr call
-    std::unordered_map<std::string, std::string> instanceGlobals; // static members of class template instantiations, by name
-    std::unordered_map<std::string, bool> declaredNames; // IR names with a declare/define line
     std::unordered_map<Decl*, int64_t> enumeratorValues;
     std::unordered_map<Decl*, std::string> qualifiedNames; // qualifiedName() per declaration
 
-    struct Instantiation
-    {
-      FunctionDecl* f;
-      TemplateArgs args;
-      const Ty* classTy;
-      unsigned module;         // the module of the function that asked for it
-      std::string requestedBy; // the name of that function, for diagnostics
-      std::string name;        // the LLVM name to define it under (the declaration's), or empty
-      unsigned depth;          // instantiations in the chain that asked for it, itself included
-    };
     unsigned currentDepth = 0;       // of the function being emitted: 0 for one that is not an instantiation
     std::string currentFunctionName; // LLVM name of the function being emitted
     std::string currentRequestedBy;  // for an instantiation: the function that first used it
 
-    // A lambda's closure: one struct per lambda, fields for the captures, one function.
-    struct ClosureInfo
-    {
-      std::string structName;
-      std::vector<Decl*> captured;       // enclosing local per field (null for `this`)
-      std::vector<bool> byRef;
-      std::vector<Expr*> inits;          // init-captures: the initializer (null for other captures)
-      std::vector<const Ty*> fieldTypes; // pointee type for references and `this`
-      const Ty* enclosingClass = nullptr;
-      std::string functionName;
-      bool emitted = false;
-      bool laidOut = false; // captures and fields known (read where the lambda is written); before that only the struct's name exists
-    };
-    std::unordered_map<const Ty*, ClosureInfo> closures; // keyed by the lambda type (one per enclosing instantiation)
     static bool isLambda(const Ty* t) { return t && t->kind == TyKind::Lambda && t->decl; }
     static bool isAggregate(const Ty* t) { return isClass(t) || isLambda(t); }
     static LambdaExpr* lambdaOf(const Ty* t) { return isLambda(t) && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl)->lambda : nullptr; }
     static bool isGenericLambda(const Ty* t) { LambdaExpr* l = lambdaOf(t); return l && !l->templateParams.empty(); }
-    std::unordered_set<std::string> lambdaInstances; // call operators of generic lambdas emitted so far, by IR name
-    std::deque<Instantiation> worklist;
-    std::unordered_map<std::string, bool> requested; // instantiated names queued or emitted
 
     struct Object
     {
@@ -211,7 +354,6 @@ namespace
       size_t scopeDepth;
     };
     std::vector<Loop> loops;
-    bool mallocDeclared = false;
 
     // Exceptions (docs/design.md section 9) on Windows SEH: `throw` raises through kpp_throw, one
     // filter function per try statement matches the thrown type against the handlers, and the
@@ -231,14 +373,8 @@ namespace
     std::unordered_map<std::string, std::string> cleanupPads; // destruction state -> cleanup block
     std::string funcletOverride;                              // the pad being emitted, for its calls
     bool usesEH = false;                                      // the current function has invokes or pads
-    bool usesExceptions = false;                              // the program needs the exception runtime
-    std::unordered_map<std::string, bool> emittedShared;      // typeinfo and destructor thunks emitted
-    std::string exceptionTypeinfo;                            // typeinfo of the library's Exception, once seen
 
-    Emitter(GlobalScope& global, const SymbolTable& symbols, CodegenResult& result)
-      : global(global), types(global.types()), symbols(symbols), result(result)
-    {
-    }
+    Emitter(GlobalScope& global, const SymbolTable& symbols, Shared& sh) : global(global), types(global.types()), symbols(symbols), sh(sh) {}
 
     // --- diagnostics ---
 
@@ -262,17 +398,19 @@ namespace
         size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), t.offset) - starts.begin()); // lines starting at or before the token
         where = currentFile->path + ":" + std::to_string(line);
       }
-      result.errors.push_back(where + ": " + message);
+      errors.push_back(where + ": " + message);
     }
 
     struct Unsupported
     {
     };
+    std::string lastUnsupported; // what the last unsupported() reported (a failed layout keeps it for its other uses)
     [[noreturn]] void unsupported(Node* at, const std::string& what)
     {
       std::string where;
       if (!currentFunctionName.empty())
         where = " (in " + currentFunctionName + (currentRequestedBy.empty() ? "" : ", requested by " + currentRequestedBy) + ")";
+      lastUnsupported = what;
       error(at, "codegen does not support " + what + " yet" + where);
       throw Unsupported{};
     }
@@ -363,11 +501,18 @@ namespace
     }
 
     // A class's size and alignment from its fields, remembered once its layout is complete.
+    std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> sizeCache; // this emitter's view of the remembered sizes
     std::pair<uint64_t, uint64_t> classSizeAndAlign(const Ty* t, Node* at)
     {
+      if (auto mine = sizeCache.find(t); mine != sizeCache.end())
+        return mine->second;
+      auto lock = sharedLock(); // the size is remembered in the shared layout
       StructInfo& info = structFor(t, at);
       if (info.align)
+      {
+        sizeCache.emplace(t, std::pair{info.size, info.align});
         return {info.size, info.align};
+      }
       if (info.sizing)
         unsupported(at, "the class " + types.toString(t, &symbols) + ", which contains itself (a member or base of its own type)");
       struct Sizing
@@ -436,32 +581,58 @@ namespace
       return def == t->decl ? t : types.classType(def, t->args);
     }
 
+    // The layouts this emitter has used: complete (or failed) ones, which do not change any more,
+    // so they are read without the shared lock.
+    std::unordered_map<const Ty*, StructInfo*> layoutCache;
+
     StructInfo& structFor(const Ty* classTy, Node* at)
     {
+      if (auto mine = layoutCache.find(classTy); mine != layoutCache.end())
+        return checkedLayout(*mine->second, classTy, at);
+      auto lock = sharedLock();
+      StructInfo* info = nullptr;
       if (auto known = structsByType.find(classTy); known != structsByType.end())
-        return checkedLayout(*known->second, classTy, at);
-      const Ty* key = canonicalClass(classTy, at);
-      auto it = structs.find(key);
-      if (it != structs.end())
+        info = known->second;
+      else
       {
-        structsByType.emplace(classTy, &it->second);
-        return checkedLayout(it->second, classTy, at);
+        const Ty* key = canonicalClass(classTy, at);
+        auto it = structs.find(key);
+        if (it != structs.end())
+        {
+          structsByType.emplace(classTy, &it->second);
+          info = &it->second;
+        }
+        else
+        {
+          size_t errorsBefore = errors.size();
+          try
+          {
+            info = &buildStruct(key, at);
+          }
+          catch (Unsupported&)
+          {
+            // Every use reports what made it fail, at the use: the first use like the others
+            // (its own report came from inside the layout, wherever that was), so that the lines
+            // do not depend on which use comes first.
+            structs[key].failed = true;
+            structs[key].failedWhy = lastUnsupported;
+            layoutCache.emplace(classTy, &structs[key]);
+            errors.resize(errorsBefore);
+            unsupported(at, structs[key].failedWhy);
+          }
+        }
       }
-      try
-      {
-        return buildStruct(key, at);
-      }
-      catch (Unsupported&)
-      {
-        structs[key].failed = true;
-        throw;
-      }
+      if (info->complete || info->failed)
+        layoutCache.emplace(classTy, info);
+      return checkedLayout(*info, classTy, at);
     }
 
+    // A failed layout gives every use the error its first use got (the same lines whichever use
+    // comes first, so that they do not depend on the order functions are emitted in).
     StructInfo& checkedLayout(StructInfo& info, const Ty* classTy, Node* at)
     {
       if (info.failed)
-        unsupported(at, "the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed where it was first used");
+        unsupported(at, info.failedWhy.empty() ? "the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed" : info.failedWhy);
       return info;
     }
 
@@ -620,9 +791,16 @@ namespace
         {
           // `unsigned level : 3;`: consecutive bit fields of one type share a storage unit of that
           // type while their widths fit; each remembers its shift and width.
+          // The width under the class's arguments, in its context: not the arguments of whichever
+          // function asked for the layout first.
           ParsedFile* savedFile = currentFile;
           currentFile = c->file ? c->file : currentFile;
-          std::optional<int64_t> w = evalConst(widthExpr);
+          std::optional<int64_t> w;
+          {
+            ArgsScope widthArgs(*this, &args);
+            ConstContextScope widthContext(*this, c);
+            w = evalConst(widthExpr);
+          }
           currentFile = savedFile;
           if (!w || *w <= 0)
             unsupported(m, "a bit field whose width is not a constant");
@@ -1020,10 +1198,20 @@ namespace
         return needsDestruction(t->inner, at);
       if (!isClass(t))
         return false;
+      if (auto mine = destructionCache.find(t); mine != destructionCache.end())
+        return mine->second;
+      auto lock = sharedLock(); // remembered in the shared layout, computed under the lock
       StructInfo& info = structFor(t, at);
       if (info.needsDestruction)
+      {
+        // Final unless this emitter is in the middle of computing it (the recursion guard below):
+        // nobody else computes while the lock is held.
+        if (destructionDepth == 0)
+          destructionCache.emplace(t, *info.needsDestruction);
         return *info.needsDestruction;
+      }
       info.needsDestruction = false; // Guard against recursion.
+      struct Depth { int& d; Depth(int& d) : d(d) { ++d; } ~Depth() { --d; } } depth(destructionDepth);
       ClassDecl* c = classDef(t->decl, at);
       if (c->isTypedUnion)
       {
@@ -1040,6 +1228,8 @@ namespace
       structFor(t, at).needsDestruction = result;
       return result;
     }
+    std::unordered_map<const Ty*, bool> destructionCache; // this emitter's view of the answers above
+    int destructionDepth = 0;
 
     // Destroys the object at addr: user destructor if any (it destroys members itself), else
     // members and bases that need it, in reverse order.
@@ -2378,27 +2568,41 @@ namespace
     // The IR name of a lambda's closure struct: known as soon as the type is mentioned (a slot
     // for the variable holding it is allocated before its expression is reached); the struct is
     // defined once the captures are known.
+    std::unordered_map<const Ty*, std::string> closureNames; // this emitter's view of the names below
     std::string closureStructName(const Ty* t)
     {
       t = types.unqualified(t); // `const auto f = [..]{..}`: the const variable holds the same closure
+      if (auto mine = closureNames.find(t); mine != closureNames.end())
+        return mine->second;
+      auto lock = sharedLock();
       ClosureInfo& info = closures[t];
       if (info.structName.empty())
         info.structName = irTypeName("%closure.", t);
+      closureNames.emplace(t, info.structName);
       return info.structName;
     }
 
     // The closure of a lambda type with its captures laid out. Only the lambda expression itself
     // (create) may lay it out: the capture list is read from the function the lambda is written in.
+    std::unordered_map<const Ty*, ClosureInfo*> closureCache; // laid-out closures this emitter used
     ClosureInfo& closureFor(const Ty* t, Node* at, bool create = false)
     {
       t = types.unqualified(t);
+      if (auto mine = closureCache.find(t); mine != closureCache.end())
+        return *mine->second;
+      auto lock = sharedLock(); // a laid-out closure does not change, so its reference may be read after
       auto it = closures.find(t);
       if (it != closures.end() && it->second.laidOut)
+      {
+        closureCache.emplace(t, &it->second);
         return it->second;
+      }
       if (!create)
         unsupported(at, "a lambda used before its closure was built (its captures are read where it is written)");
       auto* c = static_cast<ClassDecl*>(t->decl);
-      LambdaExpr* l = c->lambda;
+      // The lambda being emitted (at): in a private copy of an instantiation it is the copy's, whose
+      // captures name the copy's locals; the closure's own is the instantiation's.
+      LambdaExpr* l = at && at->kind == NodeKind::LambdaExpr ? static_cast<LambdaExpr*>(at) : c->lambda;
       if (!l)
         unsupported(at, "a lambda without its expression");
       std::string structName = closureStructName(t);
@@ -2589,11 +2793,14 @@ namespace
         else
           store(load(addr, info.fieldTypes[i], l), field, info.fieldTypes[i], l);
       }
-      if (!closures[t].emitted && !isGenericLambda(t)) // a generic lambda's operator is emitted per call, once its types are known
+      bool first = false; // this emitter emits the operator (a generic lambda's is emitted per call, once its types are known)
       {
-        closures[t].emitted = true;
-        emitLambda(l, t, types.function(t->inner ? t->inner : types.voidType(), t->args, false), info.functionName, nullptr);
+        auto lock = sharedLock();
+        if (!isGenericLambda(t))
+          first = sh.closuresEmitted.insert(t).second;
       }
+      if (first)
+        emitLambda(l, t, types.function(t->inner ? t->inner : types.voidType(), t->args, false), info.functionName, nullptr);
       return {slot, t, false};
     }
 
@@ -2757,7 +2964,7 @@ namespace
             fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, l) + " zeroinitializer") + "\n";
         }
         addDefinition(name, functionText(header));
-        ++result.functions;
+        countFunction();
       }
       catch (Unsupported&)
       {
@@ -2794,8 +3001,11 @@ namespace
           unsupported(at, "a lambda used as a pointer to function taking an object with a destructor by value");
       }
       std::string name = "@\"" + types.toString(t, &symbols) + "::thunk\"";
-      if (!lambdaInstances.insert(name).second)
-        return name;
+      {
+        auto lock = sharedLock();
+        if (!lambdaInstances.insert(name).second)
+          return name;
+      }
       bool hasSret = isClass(ret);
       std::string retType = hasSret ? "void" : (!ret || !ret->isKnown()) ? "ptr" : ret->isReference() ? "ptr" : llType(ret, at);
       std::string params, args = "ptr null";
@@ -2818,7 +3028,7 @@ namespace
         text += "  %r = call " + retType + " " + info.functionName + "(" + args + ")\n  ret " + retType + " %r\n";
       text += "}\n\n";
       addDefinition(name, text);
-      ++result.functions;
+      countFunction();
       return name;
     }
 
@@ -2895,7 +3105,13 @@ namespace
       // The instantiation's operator is emitted after the arguments: a lambda argument's closure
       // (its capture list) is built here, in the function that writes it, before the operator's
       // body calls it.
-      if (genericLambda && lambdaInstances.insert(functionName).second)
+      bool firstUse = false;
+      if (genericLambda)
+      {
+        auto lock = sharedLock();
+        firstUse = lambdaInstances.insert(functionName).second;
+      }
+      if (firstUse)
         emitLambda(genericBody, t, callTy, functionName, &instanceArgs);
       if (hasSret || ret->kind == TyKind::Void)
       {
@@ -3141,7 +3357,21 @@ namespace
 
     // Makes a function usable from the current function: declares external ones, queues
     // instantiations. Returns its IR name.
+    std::unordered_map<std::string, std::string> usedFunctions; // what useFunction answered this emitter (its shared part done)
     std::string useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    {
+      if (f->builtin == BUILTIN_EnumFromStr)
+        return useFunctionOnce(f, args, classTy);
+      std::string key = functionName(f, args, classTy);
+      if (auto mine = usedFunctions.find(key); mine != usedFunctions.end())
+        return mine->second;
+      std::string name = useFunctionOnce(f, args, classTy);
+      usedFunctions.emplace(std::move(key), name);
+      return name;
+    }
+
+
+    std::string useFunctionOnce(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
     {
       if (f->builtin == BUILTIN_EnumFromStr)
       {
@@ -3160,24 +3390,20 @@ namespace
       bool templated = !args.empty();
       if (def->file && def->file->isImported)
         def = f, templated = false; // inline C functions are declared, the library provides them
-      if (def != f && (def->flags & DF_Default) && !def->body)
-        f->flags |= DF_Default; // `Flow::~Flow() = default;` out of line: the declaration is defaulted too
+      if (def != f && (def->flags & DF_Default) && !def->body && !(f->flags & DF_Default))
+        f->flags |= DF_Default; // `Flow::~Flow() = default;` out of line: the declaration is defaulted too (settled before emitting)
       if ((f->flags & DF_Default) && !f->body)
       {
         // `= default`: the compiler's memberwise function, defined where first needed (a vtable
         // slot or a function pointer wants a real function; calls inline the body).
-        if (!requested[name])
-        {
-          requested[name] = true;
+        if (requested.claim(name))
           queueInstantiation(f, args, classTy, name);
-        }
         return name;
       }
       if (def->body && templated)
       {
-        if (!requested[name])
+        if (requested.claim(name))
         {
-          requested[name] = true;
           // A definition separate from the declaration has its own parameter declarations:
           // `template<typename Policy> ScrollBar<Policy>::ScrollBar(...)` names the class's
           // parameters first, then the member's own.
@@ -3211,9 +3437,8 @@ namespace
       }
       if (def->body && !(def->file && def->file->isImported))
         return name; // Defined by the main pass.
-      if (declaredNames[name])
+      if (!declaredNames.claim(name))
         return name;
-      declaredNames[name] = true;
       {
         static bool debugCalls = getenv("KPP_DEBUG_CALLS") != nullptr;
         if (debugCalls)
@@ -4353,22 +4578,28 @@ namespace
     // The name of a private constant with these contents in the output being written (the shared
     // declarations, or the current module): its contents decide it, the same in every run whatever
     // order the functions are emitted in; isNew when the caller has to define it there.
+    std::unordered_map<std::string, std::string> constantCache; // where + prefix + contents -> the name this emitter got
     std::pair<std::string, bool> constantName(const char* prefix, const std::string& contents)
     {
+      std::string key = (emittingShared ? std::string("*") : std::to_string(currentModule)) + "|" + prefix + "|" + contents;
+      if (auto mine = constantCache.find(key); mine != constantCache.end())
+        return {mine->second, false};
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : contents)
         h = (h ^ c) * 1099511628211ull;
       char hex[17];
       snprintf(hex, sizeof hex, "%016llx", (unsigned long long)h);
       std::string base = std::string(prefix) + hex, name = base;
+      auto lock = sharedLock();
       auto& defined = emittingShared ? sharedConstants : moduleConstants[currentModule];
       for (int n = 2;; ++n)
       {
         auto [it, inserted] = defined.emplace(name, contents);
-        if (inserted)
-          return {name, true};
-        if (it->second == contents)
-          return {name, false};
+        if (inserted || it->second == contents)
+        {
+          constantCache.emplace(std::move(key), name);
+          return {name, inserted};
+        }
         name = base + "." + std::to_string(n); // two contents with one hash
       }
     }
@@ -4378,6 +4609,7 @@ namespace
     // written in every access), a suffix telling apart two types that print alike.
     std::string irTypeName(const char* prefix, const Ty* t)
     {
+      auto lock = sharedLock();
       std::string printed = types.toString(t, &symbols);
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : printed)
@@ -4420,6 +4652,7 @@ namespace
     // The vtable of a class is defined in every module that stores it (linkonce_odr).
     void useVtable(const StructInfo& info)
     {
+      auto lock = sharedLock();
       if (info.vtableText.empty() || !vtablesIn[currentModule].insert(info.vtableName).second)
         return;
       moduleDecls[currentModule] += info.vtableText;
@@ -4456,6 +4689,7 @@ namespace
         return std::nullopt; // the same class or a base of it: the static conversion
       StructInfo& ti = structFor(tcls, e);
       useVtable(ti);
+      auto lock = sharedLock();
       if (!dyncastEmitted)
       {
         dyncastEmitted = true;
@@ -4564,9 +4798,11 @@ namespace
         body += text;
         return;
       }
+      std::string declare = declareFromHeader(text);
+      auto lock = sharedLock();
       bodies[currentModule] += text;
       definedIn[name] = currentModule;
-      declareLines[name] = declareFromHeader(text);
+      declareLines[name] = std::move(declare);
     }
 
     // "declare RET NAME(TYPES)" from a "define RET NAME(TYPE %name, ...) attrs {" header.
@@ -4602,6 +4838,7 @@ namespace
     std::string declsFor(unsigned k)
     {
       std::string out;
+      const std::string& decls = this->decls.text;
       size_t pos = 0;
       while (pos < decls.size())
       {
@@ -4652,16 +4889,15 @@ namespace
         pos = end + 1;
       }
     }
-    std::unordered_set<std::string> sharedDeclared; // functions with a declare line in `decls`, found once
 
     std::string moduleText(unsigned k, const std::string& prefix)
     {
-      std::string text = moduleDecls[k] + bodies[k] + shared;
+      std::string text = moduleDecls[k].text + bodies[k].text + shared.text;
       std::string decls = declsFor(k);
       if (sharedDeclared.empty())
-        declaredIn(this->decls, sharedDeclared);
+        declaredIn(this->decls.text, sharedDeclared);
       std::unordered_set<std::string> already; // declarations the module carries (shared, or its own)
-      declaredIn(moduleDecls[k], already);
+      declaredIn(moduleDecls[k].text, already);
       std::string declares;
       std::unordered_set<std::string> seen;
       for (size_t i = text.find('@'); i != std::string::npos; i = text.find('@', i + 1))
@@ -4682,37 +4918,27 @@ namespace
         if (it != definedIn.end() && it->second != k && !sharedDeclared.count(name) && !already.count(name))
           declares += declareLines[name] + "\n"; // not when a declaration is in the module's text already
       }
-      return prefix + decls + moduleDecls[k] + ctorsText(k) + "\n" + shared + declares + "\n" + bodies[k];
+      return prefix + decls + moduleDecls[k].text + ctorsText(k) + "\n" + shared.text + declares + "\n" + bodies[k].text;
     }
 
     // The default assert handler, unless the program defines `extern "C" kpp_assert_failed`.
     void finishAssertRuntime()
     {
-      if (!usesAssert || declaredNames["@kpp_assert_failed"])
+      if (!usesAssert || !declaredNames.claim("@kpp_assert_failed"))
         return;
       emittingShared = true;
       std::string format = cStringConstant("%s:%u:%u: assertion failed: %s\n");
-      if (!declaredNames["@fprintf"])
-      {
+      if (declaredNames.claim("@fprintf"))
         decls += "declare i32 @fprintf(ptr, ptr, ...)\n";
-        declaredNames["@fprintf"] = true;
-      }
-      if (!declaredNames["@__acrt_iob_func"])
-      {
+      if (declaredNames.claim("@__acrt_iob_func"))
         decls += "declare ptr @__acrt_iob_func(i32)\n";
-        declaredNames["@__acrt_iob_func"] = true;
-      }
-      if (!declaredNames["@abort"])
-      {
+      if (declaredNames.claim("@abort"))
         decls += "declare void @abort()\n";
-        declaredNames["@abort"] = true;
-      }
       shared += "$kpp_assert_failed = comdat any\n"
                 "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {\nentry:\n"
               "  %err = call ptr @__acrt_iob_func(i32 2)\n"
               "  %0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %file, i32 %line, i32 %column, ptr %expression)\n"
               "  call void @abort()\n  unreachable\n}\n";
-      declaredNames["@kpp_assert_failed"] = true;
       emittingShared = false;
     }
 
@@ -5354,6 +5580,19 @@ namespace
       currentFile = def->file;
       emittingShared = false;
       std::string fnName = "@\"kpp.init." + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
+      // In the module its name hashes to, whoever uses the global first (the same in every run),
+      // and its errors are its own, not of the function that happened to use it first.
+      struct ModuleRestore { unsigned& m; unsigned saved; ~ModuleRestore() { m = saved; } } moduleRestore{currentModule, currentModule};
+      currentModule = moduleCount <= 1 ? 0 : unsigned(std::hash<std::string>()(fnName) % moduleCount);
+      struct NameRestore
+      {
+        std::string& name;
+        std::string& requestedBy;
+        std::string savedName, savedRequestedBy;
+        ~NameRestore() { name = savedName, requestedBy = savedRequestedBy; }
+      } nameRestore{currentFunctionName, currentRequestedBy, currentFunctionName, currentRequestedBy};
+      currentFunctionName = fnName;
+      currentRequestedBy.clear();
       try
       {
         pushScope();
@@ -5525,7 +5764,37 @@ namespace
       return p;
     }
 
+    std::map<std::pair<Decl*, const Ty*>, std::string> globalCache; // globalFor's answers this emitter had
     std::string globalFor(VariableDecl* v, Node* at, const Ty* classTy = nullptr)
+    {
+      if (auto mine = globalCache.find({v, classTy}); mine != globalCache.end())
+        return mine->second;
+      std::string name;
+      {
+        auto lock = sharedLock(); // a global is defined (and its startup function emitted) once
+        std::pair<Decl*, const Ty*> key{v, classTy};
+        if (auto failed = sh.failedGlobals.find(key); failed != sh.failedGlobals.end())
+          unsupported(at, failed->second);
+        size_t errorsBefore = errors.size();
+        try
+        {
+          name = globalForOnce(v, at, classTy);
+        }
+        catch (Unsupported&)
+        {
+          // Every use, the first one like the others, reports the global unusable and why (the
+          // same lines whichever use comes first).
+          std::string why = "a use of the global " + qualifiedName(v) + ", whose definition failed (" + lastUnsupported + ")";
+          sh.failedGlobals[key] = why;
+          errors.resize(errorsBefore);
+          unsupported(at, why);
+        }
+      }
+      globalCache.emplace(std::pair<Decl*, const Ty*>{v, classTy}, name);
+      return name;
+    }
+
+    std::string globalForOnce(VariableDecl* v, Node* at, const Ty* classTy)
     {
       TemplateArgs classArgs;
       std::string instanceName;
@@ -5546,7 +5815,11 @@ namespace
         if (it != globals.end())
           return it->second;
       }
-      ArgsScope argsScope(*this, classTy ? &classArgs : currentArgs);
+      // The global's initializer under its own arguments and class, not those of the function that
+      // happened to use it first.
+      ArgsScope argsScope(*this, classTy ? &classArgs : nullptr);
+      struct ClassRestore { const Ty*& c; const Ty* saved; ~ClassRestore() { c = saved; } } classRestore{currentClassTy, currentClassTy};
+      currentClassTy = classTy;
       struct SharedScope
       {
         bool& flag;
@@ -6177,11 +6450,8 @@ namespace
         unsupported(c, name + " with too few arguments");
       std::string list = lvalue(c->args[0]);
       std::string intrinsic = name == "va_start" ? "@llvm.va_start.p0" : name == "va_end" ? "@llvm.va_end.p0" : "@llvm.va_copy.p0";
-      if (!declaredNames[intrinsic])
-      {
-        declaredNames[intrinsic] = true;
+      if (declaredNames.claim(intrinsic))
         decls += "declare void " + intrinsic + (name == "va_copy" ? "(ptr, ptr)\n" : "(ptr)\n");
-      }
       if (name == "va_copy")
         fn += "  call void " + intrinsic + "(ptr " + list + ", ptr " + lvalue(c->args[1]) + ")\n";
       else
@@ -6234,11 +6504,8 @@ namespace
     std::string sseIntrinsic(const std::string& name, const std::string& retTy, const std::string& paramTys)
     {
       std::string full = "@" + name;
-      if (!declaredNames[full])
-      {
-        declaredNames[full] = true;
+      if (declaredNames.claim(full))
         decls += "declare " + retTy + " " + full + "(" + paramTys + ")\n";
-      }
       return full;
     }
 
@@ -7044,8 +7311,8 @@ namespace
               if (Decl* fd = findFieldByName(bt, m->member.last().symbol, e))
                 memberTy = declType(fd);
           }
-          if (m->resolved && bitfieldOf.count(m->resolved))
-            return loadBitfield(addr, bitfieldOf[m->resolved], types.stripRef(memberTy), e);
+          if (const BitfieldInfo* bits = m->resolved ? bitfieldFor(m->resolved) : nullptr)
+            return loadBitfield(addr, *bits, types.stripRef(memberTy), e);
           return load(addr, memberTy, e);
         }
         case NodeKind::IndexExpr:
@@ -7399,10 +7666,22 @@ namespace
           Value p = rvalue(d->operand);
           if (p.ty->kind != TyKind::Pointer)
             unsupported(e, "delete of a non-pointer");
-          if (isClass(p.ty->inner))
-            destroy(p.text, p.ty->inner, e, true);
           ensureMalloc();
-          emitCall("", "void @free(ptr " + p.text + ")", false);
+          if (isClass(p.ty->inner) && (needsDestruction(p.ty->inner, e) || structFor(p.ty->inner, e).polymorphic))
+          {
+            // `delete p` with p null does nothing (C++): no destructor runs on address 0.
+            std::string isNull = newTemp(), objectL = newLabel("delete.object"), endL = newLabel("delete.end");
+            fn += "  " + isNull + " = icmp eq ptr " + p.text + ", null\n";
+            fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + objectL + "\n";
+            blockTerminated = true;
+            startBlock(objectL);
+            destroy(p.text, p.ty->inner, e, true);
+            emitCall("", "void @free(ptr " + p.text + ")", false);
+            emitBranch(endL);
+            startBlock(endL);
+            return {"", types.voidType()};
+          }
+          emitCall("", "void @free(ptr " + p.text + ")", false); // free(null) does nothing
           return {"", types.voidType()};
         }
         default:
@@ -7410,16 +7689,31 @@ namespace
       }
     }
 
+    // The bit-field layout of member d (a bit field of some laid-out class), or null.
+    // (Only asked after the member's class was laid out, so the answer, none included, is final:
+    // remembered by this emitter.)
+    std::unordered_map<Decl*, const BitfieldInfo*> bitfieldCache;
+    const BitfieldInfo* bitfieldFor(Decl* d)
+    {
+      if (auto mine = bitfieldCache.find(d); mine != bitfieldCache.end())
+        return mine->second;
+      auto lock = sharedLock();
+      auto it = bitfieldOf.find(d);
+      const BitfieldInfo* bits = it == bitfieldOf.end() ? nullptr : &it->second; // map nodes stay put: the pointer outlives the lock
+      bitfieldCache.emplace(d, bits);
+      return bits;
+    }
+
     void ensureMalloc()
     {
+      auto lock = sharedLock();
       if (mallocDeclared)
         return;
       mallocDeclared = true;
-      if (!declaredNames["@malloc"])
+      if (declaredNames.claim("@malloc"))
         decls += "declare ptr @malloc(i64)\n";
-      if (!declaredNames["@free"])
+      if (declaredNames.claim("@free"))
         decls += "declare void @free(ptr)\n";
-      declaredNames["@malloc"] = declaredNames["@free"] = true;
     }
 
     Value unary(UnaryExpr* u)
@@ -7769,8 +8063,8 @@ namespace
           rhs = convert(rhs, global.scalarConversionOf(rhs.ty), b);
         const BitfieldInfo* bits = nullptr;
         if (b->lhs->kind == NodeKind::MemberExpr)
-          if (Decl* d = static_cast<MemberExpr*>(b->lhs)->resolved; d && bitfieldOf.count(d))
-            bits = &bitfieldOf[d];
+          if (Decl* d = static_cast<MemberExpr*>(b->lhs)->resolved)
+            bits = bitfieldFor(d);
         if (op != P::Assign)
         {
           Value old = bits ? loadBitfield(addr, *bits, t, b) : load(addr, t, b);
@@ -8122,14 +8416,15 @@ namespace
       return f.empty() ? "" : " [ \"funclet\"(token " + f + ") ]";
     }
 
+    bool handlerDeclared = false; // this emitter saw __C_specific_handler declared
     void markEH()
     {
       usesEH = true;
-      if (!declaredNames["@__C_specific_handler"])
-      {
+      if (handlerDeclared)
+        return;
+      handlerDeclared = true;
+      if (declaredNames.claim("@__C_specific_handler"))
         decls += "declare i32 @__C_specific_handler(...)\n";
-        declaredNames["@__C_specific_handler"] = true;
-      }
     }
 
     // Emits `call` or, when an exception leaving the call has to run destructors or reach a handler
@@ -8205,6 +8500,7 @@ namespace
     std::string typeinfoFor(const Ty* t, Node* at)
     {
       t = types.unqualified(types.stripRef(t));
+      auto lock = sharedLock(); // the descriptors emitted, the library's Exception's
       std::string name, base = "null", offset = "0", display;
       if (isClass(t))
       {
@@ -8242,6 +8538,7 @@ namespace
       if (!needsDestruction(t, at))
         return "null";
       std::string name = "@kpp.dtor." + structFor(t, at).name.substr(8);
+      auto lock = sharedLock(); // held while the thunk is emitted: one emitter writes it
       if (emittedShared[name])
         return name;
       emittedShared[name] = true;
@@ -8434,10 +8731,8 @@ namespace
       std::string mainName = "@kpp.main";
       auto declareOnce = [&](const char* name, const std::string& line)
       {
-        if (declaredNames[name])
-          return;
-        declaredNames[name] = true;
-        decls += line + "\n";
+        if (declaredNames.claim(name))
+          decls += line + "\n";
       };
       if (usesExceptions)
       {
@@ -8518,11 +8813,10 @@ namespace
       std::string declare = declareLines[mainName];
       if (moduleCount <= 1)
       {
-        size_t at = body.find("define i32 " + mainName + "(");
-        if (at == std::string::npos)
+        std::string definition = body.fromFirst("define i32 " + mainName + "(");
+        if (definition.empty())
           return;
-        size_t close = body.find(")", at);
-        declare = body.substr(at, close - at + 1);
+        declare = definition.substr(0, definition.find(")") + 1);
       }
       if (declare.empty())
         return;
@@ -8563,7 +8857,10 @@ namespace
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
       moduleDecls[currentModule] += name + " = internal global " + llType(t, v) + " zeroinitializer\n";
       moduleDecls[currentModule] += guard + " = internal global i1 false\n";
-      globals[v] = name;
+      {
+        auto lock = sharedLock();
+        globals[v] = name;
+      }
       locals[v] = {name, t, false};
       std::string done = newLabel("static.done"), init = newLabel("static.init");
       std::string flag = newTemp();
@@ -9724,11 +10021,58 @@ namespace
 
     // --- function definitions ---
 
+    // Whether emitting f re-types its nodes in place, once per element of a pack expansion (f or
+    // its class has a parameter pack) or of a `for constexpr` (design.md 8.2).
+    static bool retypedPerElement(FunctionDecl* f)
+    {
+      for (Decl* p = f; p; p = p->parent)
+        for (Decl* tp : p->templateParams)
+          if (tp->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(tp)->isPack)
+            return true;
+      return containsForConstexpr(f->body);
+    }
+    static bool containsForConstexpr(Stmt* s)
+    {
+      if (!s)
+        return false;
+      switch (s->kind)
+      {
+        case NodeKind::ForConstexprStmt: return true;
+        case NodeKind::BlockStmt:
+          for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+            if (containsForConstexpr(inner))
+              return true;
+          return false;
+        case NodeKind::IfStmt: return containsForConstexpr(static_cast<IfStmt*>(s)->then) || containsForConstexpr(static_cast<IfStmt*>(s)->else_);
+        case NodeKind::ForStmt: return containsForConstexpr(static_cast<ForStmt*>(s)->body);
+        case NodeKind::RangeForStmt: return containsForConstexpr(static_cast<RangeForStmt*>(s)->body);
+        case NodeKind::WhileStmt: return containsForConstexpr(static_cast<WhileStmt*>(s)->body);
+        case NodeKind::DoStmt: return containsForConstexpr(static_cast<DoStmt*>(s)->body);
+        case NodeKind::SwitchStmt: return containsForConstexpr(static_cast<SwitchStmt*>(s)->body);
+        case NodeKind::TryStmt:
+        {
+          auto* t = static_cast<TryStmt*>(s);
+          if (containsForConstexpr(t->body))
+            return true;
+          for (const TryStmt::Handler& h : t->handlers)
+            if (containsForConstexpr(h.body))
+              return true;
+          return false;
+        }
+        default: return false;
+      }
+    }
+
     void emitFunction(FunctionDecl* original, const TemplateArgs& args, const Ty* classTy, const std::string& nameOverride = "")
     {
       // An instantiation is emitted from its own copy of the template's nodes, typed for args once
-      // (GlobalScope::instanceBody); its IR name is the template's with the arguments.
+      // (GlobalScope::instanceBody); its IR name is the template's with the arguments. One that is
+      // re-typed per pack element while it is emitted gets a copy of its own for that, so that
+      // nobody reading the instantiation's copy meanwhile (a caller's default arguments, on another
+      // thread) sees the element's types.
       FunctionDecl* f = args.empty() ? original : global.instanceBody(original, args, classTy);
+      if (retypedPerElement(f))
+        f = global.privateInstance(original, args, classTy);
       if (!conditionHolds(f))
         return; // conditional(false): the function does not exist in this build
       currentFile = f->file;
@@ -9767,7 +10111,7 @@ namespace
         if (s.variadic)
           params += params.empty() ? "..." : ", ...";
         std::string name = currentFunctionName;
-        declaredNames[name] = true;
+        declaredNames.claim(name);
         std::string header = "define " + s.returnType + " " + name + "(" + params + ") " + attributeText(f) + "{\nentry:\n";
         pushScope();
         size_t slot = 0;
@@ -9843,7 +10187,7 @@ namespace
           else
             fn += "  ret " + llType(currentReturn, f) + " " + r.text + "\n";
           addDefinition(name, functionText(header));
-          ++result.functions;
+          countFunction();
           currentArgs = nullptr;
           currentClassTy = nullptr;
           return;
@@ -9873,14 +10217,33 @@ namespace
           return;
         }
         addDefinition(name, functionText(header));
-        ++result.functions;
+        countFunction();
       }
       catch (Unsupported&)
       {
-        result.failedFunctions.push_back(currentFunctionName);
+        failedFunctions.push_back(currentFunctionName);
       }
       currentArgs = nullptr;
       currentClassTy = nullptr;
+    }
+
+    // Out-of-line member definitions (`void Text::split(...) {}`, `Flow::~Flow() = default;`, those
+    // of class templates too) take `static`, `virtual` and `= default` from their declarations, and
+    // the declarations `= default` from them, before any function is emitted: emitters on several
+    // threads read these flags.
+    void settleDefinitionFlags(Span<Decl*> decls)
+    {
+      for (Decl* d : decls)
+      {
+        if (d->kind == NodeKind::NamespaceDecl)
+          settleDefinitionFlags(static_cast<NamespaceDecl*>(d)->decls);
+        if (d->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(d)->name.parts.size() <= 1)
+          continue;
+        auto* def = static_cast<FunctionDecl*>(d);
+        FunctionDecl* declaration = global.declarationOf(def);
+        if (declaration && (def->flags & DF_Default) && !def->body && !(declaration->flags & DF_Default))
+          declaration->flags |= DF_Default;
+      }
     }
 
     void collectFunctions(Span<Decl*> decls, std::vector<FunctionDecl*>& out)
@@ -9910,7 +10273,48 @@ namespace
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors);
+                              unsigned moduleCount, bool despiteErrors, unsigned threads);
+
+// Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
+// (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
+template<typename F>
+static void onThreads(unsigned n, F& work)
+{
+#ifdef _WIN32
+  struct Arg
+  {
+    F* work;
+    unsigned i;
+  };
+  std::vector<Arg> args(n);
+  std::vector<HANDLE> handles;
+  for (unsigned i = 1; i < n; ++i)
+  {
+    args[i] = {&work, i};
+    HANDLE h = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
+    {
+      auto* a = static_cast<Arg*>(p);
+      (*a->work)(a->i);
+      return 0;
+    }, &args[i], STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    if (h)
+      handles.push_back(h);
+  }
+  work(0);
+  for (HANDLE h : handles)
+  {
+    WaitForSingleObject(h, INFINITE);
+    CloseHandle(h);
+  }
+#else
+  std::vector<std::thread> pool;
+  for (unsigned i = 1; i < n; ++i)
+    pool.emplace_back([&work, i] { work(i); });
+  work(0);
+  for (std::thread& t : pool)
+    t.join();
+#endif
+}
 
 // The global names a module's text uses without a definition or declaration (functions an error
 // left out, with --keep-going), each declared as `declare void @name()`: with opaque pointers a
@@ -9963,7 +10367,7 @@ static std::string declareUndefined(const std::string& text)
 }
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                           unsigned moduleCount, bool despiteErrors)
+                           unsigned moduleCount, bool despiteErrors, unsigned threads)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -9976,12 +10380,13 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     bool debug;
     unsigned moduleCount;
     bool despiteErrors;
+    unsigned threads;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
-    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors);
+    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -9991,82 +10396,116 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads);
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors)
+                              unsigned moduleCount, bool despiteErrors, unsigned threads)
 {
   CodegenResult result;
-  Emitter e(global, symbols, result);
-  e.debug = debug;
-  e.moduleCount = std::max(1u, moduleCount);
-  e.bodies.resize(e.moduleCount);
-  e.moduleDecls.resize(e.moduleCount);
-  e.moduleCtors.resize(e.moduleCount);
-  e.vtablesIn.resize(e.moduleCount);
-  e.moduleConstants.resize(e.moduleCount);
+  Shared sh(result);
+  sh.debug = debug;
+  sh.setModules(moduleCount);
   for (size_t i = 0; i < files.size(); ++i)
-    e.fileModule[files[i].get()] = unsigned(i % e.moduleCount);
+    sh.fileModule[files[i].get()] = unsigned(i % sh.moduleCount);
+  // One emitter per thread; the first one also finishes the runtime and assembles the modules.
+  threads = std::max(1u, threads);
+  std::vector<std::unique_ptr<Emitter>> emitters;
+  for (unsigned i = 0; i < threads; ++i)
+    emitters.push_back(std::make_unique<Emitter>(global, symbols, sh));
+  Emitter& e = *emitters[0];
   std::vector<FunctionDecl*> functions;
   for (auto& file : files)
+  {
+    e.settleDefinitionFlags(file->decls);
     e.collectFunctions(file->decls, functions);
+  }
+  // Level 0: the functions the program writes. Each later level: the instantiations the previous
+  // one asked for. The functions of a level are emitted on all threads at once.
+  std::vector<Instantiation> level;
+  for (FunctionDecl* f : functions)
+  {
+    auto it = sh.fileModule.find(f->file);
+    level.push_back({f, {}, nullptr, it == sh.fileModule.end() ? 0 : it->second, "", "", 0});
+  }
   // emitFunction with the stack overflow caught. With a 1 GB stack an overflow means recursion
   // without end; the fault may have struck inside the allocator, leaving the heap mid-update (a
   // later allocation then spins forever), so nothing is allocated after it: the function's name
   // goes out through a fixed buffer and the process ends.
-  struct EmitCall { Emitter* e; FunctionDecl* f; const TemplateArgs* args; const Ty* classTy; const std::string* name; };
-  auto safeEmit = [&](FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& name) {
-    EmitCall call{&e, f, &args, classTy, &name};
+  struct EmitCall { Emitter* e; const Instantiation* item; };
+  auto emitOne = [&](Emitter& em, const Instantiation& item) {
+    em.currentModule = item.module;
+    em.currentRequestedBy = item.requestedBy;
+    em.currentDepth = item.depth;
+    EmitCall call{&em, &item};
 #ifdef _WIN32
     if (callWithStackGuard([](void* p) {
       auto* c = static_cast<EmitCall*>(p);
-      c->e->emitFunction(c->f, *c->args, c->classTy, *c->name);
+      c->e->emitFunction(c->item->f, c->item->args, c->item->classTy, c->item->name);
     }, &call))
     {
       static char message[1024];
-      int n = snprintf(message, sizeof message, "codegen: out of stack (recursion without end) in %.900s\n", e.currentFunctionName.c_str());
+      int n = snprintf(message, sizeof message, "codegen: out of stack (recursion without end) in %.900s\n", em.currentFunctionName.c_str());
       DWORD written = 0;
       WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, DWORD(n > 0 ? std::min(n, int(sizeof message) - 1) : 0), &written, nullptr);
       TerminateProcess(GetCurrentProcess(), 3);
     }
 #else
-    e.emitFunction(f, args, classTy, name);
+    em.emitFunction(item.f, item.args, item.classTy, item.name);
 #endif
+    em.currentRequestedBy.clear();
+    em.currentDepth = 0;
   };
-  for (FunctionDecl* f : functions)
+  std::atomic<bool> outOfMemory{false};
+  size_t emitted = 0;
+  while (!level.empty() && !outOfMemory)
   {
-    auto it = e.fileModule.find(f->file);
-    e.currentModule = it == e.fileModule.end() ? 0 : it->second;
-    if (f->name.parts.size() > 1)
-      global.declarationOf(f); // `void Text::split(...)`: static or virtual as its declaration says, whoever asks first
-    TemplateArgs emptyArgs;
-    safeEmit(f, emptyArgs, nullptr, std::string());
-  }
-  // Instantiations requested while emitting, including ones requested by other instantiations.
-  size_t wlCount = 0;
-  try
-  {
-    while (!e.worklist.empty())
+    std::atomic<size_t> next{0};
+    auto work = [&](unsigned i) {
+      try
+      {
+        for (size_t k; !outOfMemory && (k = next++) < level.size();)
+          emitOne(*emitters[i], level[k]);
+      }
+      catch (const std::bad_alloc&)
+      {
+        outOfMemory = true;
+      }
+    };
+    onThreads(level.size() < 64 ? 1 : threads, work);
+    emitted += level.size();
+    // The next level: what this one asked for (each function once: the names were claimed), in
+    // the order of their names, whichever emitter asked.
+    level.clear();
+    for (auto& em : emitters)
     {
-      Emitter::Instantiation inst = e.worklist.front();
-      e.worklist.pop_front();
-      e.currentModule = inst.module;
-      e.currentRequestedBy = inst.requestedBy;
-      e.currentDepth = inst.depth;
-      safeEmit(inst.f, inst.args, inst.classTy, inst.name);
-      e.currentRequestedBy.clear();
-      e.currentDepth = 0;
-      ++wlCount;
+      for (Instantiation& item : em->worklist)
+        level.push_back(std::move(item));
+      em->worklist.clear();
     }
-  }
-  catch (const std::bad_alloc&)
-  {
-    result.errors.push_back("codegen: out of memory after " + std::to_string(wlCount) + " template instantiations (" +
-                            std::to_string(e.worklist.size()) + " remaining)");
+    std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
   }
   e.finishAssertRuntime();
   e.finishExceptionRuntime();
+  // The errors, in the same order in every run.
+  for (auto& em : emitters)
+  {
+    result.errors.insert(result.errors.end(), em->errors.begin(), em->errors.end());
+    result.failedFunctions.insert(result.failedFunctions.end(), em->failedFunctions.begin(), em->failedFunctions.end());
+  }
+  std::sort(result.errors.begin(), result.errors.end());
+  std::sort(result.failedFunctions.begin(), result.failedFunctions.end());
+  if (outOfMemory)
+    result.errors.push_back("codegen: out of memory after " + std::to_string(emitted) + " functions");
+  result.functions = sh.functions;
+  sh.decls.finish();
+  sh.shared.finish();
+  sh.body.finish();
+  for (unsigned k = 0; k < sh.moduleCount; ++k)
+  {
+    sh.bodies[k].finish();
+    sh.moduleDecls[k].finish();
+  }
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
@@ -10080,15 +10519,15 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     // Pre-compute pieces and reserve to avoid temporary-string OOM on large programs.
     std::string decls = e.declsFor(0);
     std::string ctors = e.ctorsText(0);
-    size_t total = prefix.size() + decls.size() + e.moduleDecls[0].size() + ctors.size() + 1 + e.shared.size() + e.body.size();
+    size_t total = prefix.size() + decls.size() + e.moduleDecls[0].text.size() + ctors.size() + 1 + e.shared.text.size() + e.body.text.size();
     result.ir.reserve(total);
     result.ir.append(prefix);
     result.ir.append(decls);
-    result.ir.append(e.moduleDecls[0]);
+    result.ir.append(e.moduleDecls[0].text);
     result.ir.append(ctors);
     result.ir.push_back('\n');
-    result.ir.append(e.shared);
-    result.ir.append(std::move(e.body));
+    result.ir.append(e.shared.text);
+    result.ir.append(std::move(e.body.text));
     if (!result.errors.empty())
       result.ir += declareUndefined(result.ir);
     return result;

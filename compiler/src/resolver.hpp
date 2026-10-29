@@ -231,6 +231,11 @@ public:
   // nodes are never written for an instantiation (docs/design.md, "Instantiations own their typed
   // bodies"). Thread-safe; the same copy for the same arguments.
   FunctionDecl* instanceBody(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);
+  // A copy of that instantiation (of f itself when args is empty) no one else has, typed for args:
+  // for an emitter that re-types it in place, once per element of a pack expansion or `for
+  // constexpr` (retypeFor), while other threads read the instantiation's own copy. Its lambdas keep
+  // the instantiation's closure types. Not kept.
+  FunctionDecl* privateInstance(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);
   // The call operator of a generic lambda (one with template parameters, written or invented for
   // its `auto` parameters) for one set of its own arguments: its parameters and body copied and
   // typed in the environment the lambda was written in, once, and kept (body gets the copy; its

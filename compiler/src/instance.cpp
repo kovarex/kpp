@@ -548,9 +548,12 @@ Expr* InstanceCopier::expr(const Expr* e)
           cap.init = expr(init);
       });
       c->body = stmt(c->body);
-      c->closure = decl(c->closure);
-      if (c->closure && c->closure->kind == NodeKind::ClassDecl)
-        static_cast<ClassDecl*>(c->closure)->lambda = c;
+      if (!keepClosures)
+      {
+        c->closure = decl(c->closure);
+        if (c->closure && c->closure->kind == NodeKind::ClassDecl)
+          static_cast<ClassDecl*>(c->closure)->lambda = c;
+      }
       out = c;
       break;
     }

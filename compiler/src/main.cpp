@@ -56,6 +56,7 @@ namespace
     ConfigValues configValues;     // --config name=value, --release; becomes the `config` namespace
     bool debug = true;             // config::debug
     unsigned modules = 0;          // --modules N: IR modules compiled in parallel (0: 2 per thread, 1: one module)
+    unsigned codegenThreads = 0;   // --codegen-threads N: threads emitting IR (0: --threads)
     std::string convertDir;        // --convert DIR: write the inputs as Kpp sources there
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
     int repeat = 1;
@@ -85,6 +86,7 @@ namespace
             "  --config N=V  build configuration constant config::N (bool, integer, enumerator or string)\n"
             "  --release     the same as --config debug=false\n"
             "  --modules N   split the program into N IR modules compiled in parallel (default: two per thread)\n"
+            "  --codegen-threads N  threads emitting IR (default: --threads; the IR does not depend on it)\n"
             "  --keep-going  compile and link the IR codegen emitted even when it reported errors (functions with\n"
             "                errors are left out; the link lists what is missing)\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n");
@@ -509,7 +511,8 @@ namespace
     if (!options.emitLLVM.empty())
       modules = 1;
     auto start = Clock::now();
-    CodegenResult cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing);
+    CodegenResult cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing,
+                                    options.codegenThreads ? options.codegenThreads : options.threads);
     double t = seconds(Clock::now() - start);
     size_t irBytes = cg.ir.size();
     for (const std::string& m : cg.modules)
@@ -924,6 +927,8 @@ int main(int argc, char** argv)
       options.cIncludeDirs.push_back(argv[++i]);
     else if (arg == "--keep-going")
       options.keepGoing = true;
+    else if (arg == "--codegen-threads" && i + 1 < argc)
+      options.codegenThreads = unsigned(atoi(argv[++i]));
     else if (arg == "--lib" && i + 1 < argc)
       options.libs.push_back(argv[++i]);
     else if (arg == "--config" && i + 1 < argc)

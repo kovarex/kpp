@@ -41,6 +41,10 @@ public:
 
   size_t nodesCopied() const { return nodes; }
 
+  // The copy's lambdas keep the closures of the nodes copied (a private copy of an instantiation
+  // made for re-typing it in place: its lambdas are the same types as the instantiation's).
+  bool keepClosures = false;
+
 private:
   Arena& arena;
   std::unordered_map<Decl*, Decl*> decls; // declaration inside the copied part -> its copy

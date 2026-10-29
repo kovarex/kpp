@@ -14,6 +14,27 @@ for 10 minutes on half-written input), then
 powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tree <the copy>
 ```
 
+## Parallel codegen, first step (2026-10-29)
+
+Codegen now emits functions on all threads (`--codegen-threads N`, default `--threads`): level by
+level (the functions the program writes, then each round of instantiations they asked for), each
+emitter with its own function state and caches, the class layouts, closures, globals and output
+shared under one lock, the sets of names asked for and declared in 64 locked shards. What it
+emits does not depend on the thread count or on timing: names come from contents (fe55d9e), the
+output is sorted, every use of a failed layout or global reports the same error, and the errors
+are sorted. Frozen headline tree (the evening's copy), headline command, machine shared with other
+builds (48% busy):
+
+| | codegen | wall | stderr lines |
+|---|---:|---:|---:|
+| `--codegen-threads 1` | 8.69 s | 15.7 s | 26,094 |
+| 32 threads (two runs) | 4.07 s, 4.08 s | 11.8 s, 14.3 s | 26,094, 26,094 |
+
+A first 2.1x: the layouts are still built under the shared lock (the largest holder, about 1 s
+of it), and every emitter lays out each class it meets once more for its own cache. Run to run,
+the error lines differ only in the "requested by" part (which function asked first) and in about
+ten lines around function-local statics used by generic lambdas.
+
 ## Whole converted src, evening of 2026-10-28 (d549f69)
 
 Input: the headline inputs (path-to-factorio.md: CommonUtil, Agui and `src/` with the stdlib,

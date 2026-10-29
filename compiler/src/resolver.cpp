@@ -568,7 +568,9 @@ struct GlobalScope::Impl
           continue;
         if (typeAs(def, decl) == declaredTypeOf(decl, nullptr, 0))
         {
-          def->flags |= decl->flags & (DF_Static | DF_Virtual);
+          uint32_t taken = decl->flags & (DF_Static | DF_Virtual);
+          if ((def->flags & taken) != taken)
+            def->flags |= taken; // written once (codegen settles it before emitting on several threads)
           return decl;
         }
       }
@@ -10448,6 +10450,19 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
   record->body = copy;
   record->deducedReturn = typeFunctionFor(f, copy, args, objectType);
   record->state.store(2, std::memory_order_release);
+  return copy;
+}
+
+FunctionDecl* GlobalScope::privateInstance(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
+{
+  if (!f->file || !f->file->tokens)
+    return f;
+  FunctionDecl* shared = instanceBody(f, args, objectType);
+  impl->declarationOfDefinition(f);
+  InstanceCopier copier(impl->instanceArena());
+  copier.keepClosures = true; // its lambdas are the instantiation's types
+  FunctionDecl* copy = copier.function(shared);
+  typeFunctionFor(f, copy, args, objectType);
   return copy;
 }
 
