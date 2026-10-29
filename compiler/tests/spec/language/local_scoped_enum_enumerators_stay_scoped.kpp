@@ -1,6 +1,5 @@
 // spec: the enumerators of an `enum class` declared in a function stay in the enum's scope, as at namespace scope: `MapVersion(2, 31)` after `enum class Reason { None, MapVersion, Mods };` constructs the class MapVersion, and the enumerator is `Reason::MapVersion`
 // factorio: Scenario::loadFactory's local `enum class PrototypeDataChangedReason {None, MapVersion, Mods, ...};` followed by `if (input->mapVersion < MapVersion(2, 0, 31, 2))`
-// pending: the enumerator hides the class in the function ("a call that did not resolve to a function (the callee has type Reason)"); owner: the resolver (lookup)
 struct MapVersion
 {
   MapVersion(int major, int minor) : value(major * 100 + minor) {}

@@ -321,6 +321,75 @@ struct GlobalScope::Impl
   std::vector<std::pair<VariableDecl*, Scope*>> deferredVariables; // Out-of-line static data member definitions.
   std::vector<std::pair<DeductionGuideDecl*, Scope*>> deferredGuides; // Deduction guides, attached to their class templates by finishIndex.
   std::vector<std::pair<FunctionDecl*, Scope*>> objectCandidates; // `T five(a, m);`: an object when a and m are variables (finishIndex).
+  std::vector<ParsedFile*> castFiles; // files with `(name) op x` candidates (ParsedFile::castCandidates), for finishIndex
+
+  // `(HANDLE) -1` (also `(T) +x`, `(T) *p`, `(T) &x`), which the parser read as `(HANDLE) - 1`:
+  // when the name is a type where it is written, the cast of the unary expression it reads as in
+  // C++, `(HANDLE)(-1)`, rewritten in place before any walk. The cast takes the leftmost operand
+  // of what the parser took for the right side (`(T) -a * b` is `((T)(-a)) * b`). A parameter of
+  // the function of the same name hides the type, so stays a subtraction. Run by finishIndex.
+  void castFromBinary(BinaryExpr* b, Decl* where)
+  {
+    Expr** paren = &b->lhs; // `(long long)(HANDLE) -2`: the parenthesised name under the casts before it
+    while ((*paren)->kind == NodeKind::CastExpr)
+      paren = &static_cast<CastExpr*>(*paren)->operand;
+    if ((*paren)->kind != NodeKind::ParenExpr || !static_cast<ParenExpr*>(*paren)->inner ||
+        static_cast<ParenExpr*>(*paren)->inner->kind != NodeKind::NameExpr)
+      return;
+    auto* name = static_cast<NameExpr*>(static_cast<ParenExpr*>(*paren)->inner);
+    LocalStack locals;
+    Scope* scope = lexicalScopeOf(where);
+    if (where && where->kind == NodeKind::FunctionDecl)
+    {
+      auto* f = static_cast<FunctionDecl*>(where);
+      if (f->name.parts.size() > 1)
+        if (Decl* cls = owningClassOf(f); cls && cls->ownScope)
+          scope = cls->ownScope; // `void A::f() { (IndexType) -1; }`: A's members are visible
+      if (f->parent && f->parent->kind == NodeKind::ClassDecl)
+        for (Decl* p : effectiveParams(f->parent))
+          locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      for (Decl* p : f->templateParams)
+        locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      for (Decl* p : f->params)
+        if (static_cast<ParamDecl*>(p)->name != UINT32_MAX)
+          locals.push(static_cast<ParamDecl*>(p)->name, p);
+    }
+    Decl* d = lookupQualified(name->name, scope, &locals, 0).decl;
+    bool type = d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
+                      (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)) ||
+                      (d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType));
+    if (!type)
+      return;
+    Arena& arena = instanceArena();
+    Expr** slot = &b->rhs;
+    while ((*slot)->kind == NodeKind::BinaryExpr)
+      slot = &static_cast<BinaryExpr*>(*slot)->lhs;
+    auto* u = arena.make<UnaryExpr>();
+    u->kind = NodeKind::UnaryExpr;
+    u->token = b->token;
+    u->operand = *slot;
+    u->op = b->op;
+    u->isKeyword = false;
+    u->postfix = false;
+    auto* t = arena.make<NamedType>();
+    t->kind = NodeKind::NamedType;
+    t->token = name->token;
+    t->name = name->name;
+    auto* c = arena.make<CastExpr>();
+    c->kind = NodeKind::CastExpr;
+    c->token = (*paren)->token;
+    c->type = t;
+    c->operand = u;
+    *paren = c;
+    if (slot == &b->rhs)
+    {
+      static_assert(sizeof(CastExpr) <= sizeof(BinaryExpr) && alignof(CastExpr) <= alignof(BinaryExpr));
+      new (b) CastExpr(*static_cast<CastExpr*>(b->lhs)); // the node its parent points to becomes the (outermost) cast
+      return;
+    }
+    *slot = b->lhs;
+    *b = *static_cast<BinaryExpr*>(b->rhs); // `(T) -a * b`: the node becomes the multiplication, the cast its left operand
+  }
 
   // `constexpr Pair<int, Mode> five(a, m);` at namespace scope, which the parser read as a function
   // with unnamed parameters of the types a and m: when every name is a variable (or an enumerator
@@ -9728,6 +9797,8 @@ struct GlobalScope::Impl
       case TyKind::Pointer:
       {
         const Ty* base = types.stripRef(init);
+        if (base->kind == TyKind::Array || base->kind == TyKind::Function)
+          base = types.decay(base); // `auto* m = uniforms.matrix;`: the array decays to a pointer to its first element
         if (pattern->inner->kind == TyKind::Auto && base->kind == TyKind::Pointer)
           return types.qualified(types.pointer(types.qualified(base->inner, pattern->inner->isConst, false)), pattern->isConst, false);
         if (base->kind == TyKind::Pointer)
@@ -15275,7 +15346,7 @@ struct GlobalScope::Impl
           auto* e = static_cast<EnumDecl*>(d);
           if (e->name.parts.size() == 1)
             locals.push(e->name.parts[0].symbol, e);
-          for (Decl* en : e->enumerators)
+          for (Decl* en : e->isClass ? Span<Decl*>{} : e->enumerators) // a scoped enum's stay in it
             if (en->kind == NodeKind::EnumeratorDecl)
               locals.push(static_cast<EnumeratorDecl*>(en)->name, en);
           break;
@@ -16139,6 +16210,11 @@ GlobalScope::~GlobalScope() { delete impl; }
 void GlobalScope::indexFile(ParsedFile& file)
 {
   impl->indexDecls(file.decls, &impl->root);
+  if (!file.castCandidates.empty())
+  {
+    std::lock_guard lock(impl->deferredMutex);
+    impl->castFiles.push_back(&file);
+  }
 }
 
 void GlobalScope::finishIndex()
@@ -16319,6 +16395,12 @@ void GlobalScope::finishIndex()
   for (auto& [f, context] : impl->objectCandidates)
     impl->objectFromFunctionDeclaration(f, context);
   impl->objectCandidates.clear();
+  // `(HANDLE) -1`: a cast when HANDLE is a type (every type name is known now, no walk has begun).
+  std::stable_sort(impl->castFiles.begin(), impl->castFiles.end(), [](ParsedFile* a, ParsedFile* b) { return a->index < b->index; });
+  for (ParsedFile* file : impl->castFiles)
+    for (auto& [b, where] : file->castCandidates)
+      impl->castFromBinary(b, where);
+  impl->castFiles.clear();
   // An out-of-line member definition that matches no declaration of its class is an error, as in
   // C++: never a definition silently dropped (its calls would fail only at link time).
   for (FunctionDecl* f : attached)

@@ -391,6 +391,9 @@ struct ParsedFile
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files, closure names.
   std::vector<Diagnostic> diagnostics;
+  // `(HANDLE) -1`, `(T) *p`, parsed as `(name) op x`, with the declaration it is in: a cast when the
+  // name is a type, rewritten as one by the resolver's finishIndex.
+  std::vector<std::pair<BinaryExpr*, Decl*>> castCandidates;
   uint32_t declCount = 0; // All declaration nodes created.
   uint32_t functionBodies = 0;
   uint32_t nodeCount = 0;

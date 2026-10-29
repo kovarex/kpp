@@ -1,6 +1,5 @@
 // spec: `auto* p = object.array;` deduces a pointer to the elements of an array member (the array decays, as for `float* p = ...`), and writes through it reach the member
 // factorio: SDLWindow::presentEngineMainFramebuffer's `auto* m = uniforms.customColorTransformationMatrix; m[0] = m[5] = m[10] = m[15] = 1;` (a float[16] member)
-// pending: m has no type ("the type <unknown> of NameExpr"); owner: the resolver (auto deduction)
 struct Uniforms
 {
   float matrix[16];

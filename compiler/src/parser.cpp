@@ -4199,6 +4199,14 @@ namespace
         b->rhs = rhs;
         b->op = op;
         b->isKeyword = isKeyword;
+        // `(HANDLE) -1`: a cast when HANDLE is a type, which only the resolver knows (ParsedFile::castCandidates).
+        Expr* paren = lhs; // also under casts: `(long long)(HANDLE) -2`
+        while (paren->kind == NodeKind::CastExpr && static_cast<CastExpr*>(paren)->operand)
+          paren = static_cast<CastExpr*>(paren)->operand;
+        if (!isKeyword && !cMode && paren->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(paren)->inner &&
+            static_cast<ParenExpr*>(paren)->inner->kind == NodeKind::NameExpr &&
+            (op == uint32_t(P::Minus) || op == uint32_t(P::Plus) || op == uint32_t(P::Star) || op == uint32_t(P::Amp)))
+          out.castCandidates.push_back({b, currentParent});
         lhs = b;
       }
     }
