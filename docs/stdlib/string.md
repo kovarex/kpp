@@ -72,3 +72,32 @@ bytes), a proper prefix before the longer string. Comparison with a `const char*
 zero-terminated text.
 
 Hashing: `hashOf(string)` depends on every byte.
+
+# WString
+
+A sequence of `wchar_t` (UTF-16 code units on Windows, not checked), what `std::wstring` converts
+to: the text the Windows API takes and gives (`CreateFileW`, command lines, paths). Always followed
+by a zero unit, so `c_str()` is free; stored in a heap block (no short-string storage). Indices
+are `int` and searches return an index or `npos` (-1), as for String; iterators are `wchar_t*`,
+invalidated as String's are.
+
+Members, as String's of the same name but in units of wchar_t:
+- Construction: `WString()`, from a zero-terminated `const wchar_t*` (implicit), from
+  `(const wchar_t*, count)`, from a `[first, last)` pair of `const wchar_t*`, `(count, c)`; copy
+  and move; assignment from a WString or a `const wchar_t*`.
+- Access: `size()`, `length()`, `empty()`, `operator[](i)`, `at(i)` (throws OutOfRange), `front()`,
+  `back()`, `data()`, `c_str()`, `begin()`, `end()`.
+- Changing: `append(text, count)`, `append(text)`, `append(other)`, `append(count, c)`,
+  `push_back(c)`, `pop_back()`, `+=` (a WString, a `const wchar_t*` or a wchar_t), `resize(n)`,
+  `resize(n, c)`, `reserve(n)`, `clear()`, `erase(index, count)`. A text argument may point into
+  this WString.
+- Searching: `find(text, from)`, `find(c, from)` (text: a WString or a `const wchar_t*`),
+  `rfind(c, from)`, `find_first_of(set, from)`, `find_last_of(set)`, `find_last_of(c)`.
+- `substr(start, count)`: as String's. `a + b` for any two of WString, `const wchar_t*` (at least
+  one WString) and wchar_t.
+- `compare(other)`, `==`, `!=` (also with a `const wchar_t*`), `<`, `>`, `<=`, `>=`: unit by unit,
+  a proper prefix before the longer string.
+
+`toWString(number)` (std::to_wstring) writes a number as String's toString does. Conversions
+between WString and UTF-8 Strings are not part of WString (StringUtil's widen and narrow in the
+game, and Filesystem's path).

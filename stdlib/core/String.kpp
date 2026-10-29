@@ -625,3 +625,11 @@ String operator+(const char* left, const String& right)
   result.append(right);
   return result;
 }
+String operator+(char left, const String& right)
+{
+  String result;
+  result.reserve(1 + right.size());
+  result.append(left);
+  result.append(right);
+  return result;
+}

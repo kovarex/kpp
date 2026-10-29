@@ -1,10 +1,14 @@
-// Kpp standard library: WString, a string of wchar_t for the Windows API (UTF-16), always
-// zero-terminated. Conversions to and from UTF-8 live in StringUtil of the program using it.
+// Kpp standard library: WString, a string of wchar_t for the Windows API (UTF-16 code units),
+// always zero-terminated: what std::wstring converts to. String's interface over wchar_t;
+// specified in docs/stdlib/string.md, "WString". Conversions to and from UTF-8 live in StringUtil
+// of the program using it (and in Filesystem's path).
 struct WString
 {
   wchar_t* chars = nullptr;
   int unitCount = 0;
   int capacity = 0;
+
+  static const int npos = -1;
 
   using iterator = wchar_t*;
   using const_iterator = const wchar_t*;
@@ -17,13 +21,10 @@ struct WString
   using const_pointer = const wchar_t*;
 
   WString() {}
-  implicit WString(const wchar_t* text)
-  {
-    int n = 0;
-    while (text != nullptr && text[n] != 0)
-      ++n;
-    this->append(text, n);
-  }
+  implicit WString(const wchar_t* text) { this->append(text, WString::lengthOf(text)); }
+  WString(const wchar_t* text, int count) { this->append(text, count); }
+  WString(const wchar_t* first, const wchar_t* last) { this->append(first, (int)(last - first)); }
+  WString(int count, wchar_t c) { this->append(count, c); }
   WString(const WString& other) { this->append(other.chars, other.unitCount); }
   WString(WString&& other) : chars(other.chars), unitCount(other.unitCount), capacity(other.capacity)
   {
@@ -40,10 +41,8 @@ struct WString
   {
     if (this == &other)
       return *this;
-    this->unitCount = 0;
+    this->clear();
     this->append(other.chars, other.unitCount);
-    if (this->chars)
-      this->chars[this->unitCount] = 0;
     return *this;
   }
   WString& operator=(WString&& other)
@@ -60,16 +59,43 @@ struct WString
     other.capacity = 0;
     return *this;
   }
+  WString& operator=(const wchar_t* text)
+  {
+    WString copy(text); // text may point into this WString
+    *this = move(copy);
+    return *this;
+  }
+
+  static int lengthOf(const wchar_t* text)
+  {
+    int n = 0;
+    while (text != nullptr && text[n] != 0)
+      ++n;
+    return n;
+  }
 
   int size() const { return this->unitCount; }
   int length() const { return this->unitCount; }
   bool empty() const { return this->unitCount == 0; }
   const wchar_t* c_str() const { return this->chars ? this->chars : L""; }
   wchar_t* data() { return this->chars; }
-  const wchar_t* data() const { return this->chars; }
-  wchar_t operator[](int index) const { return this->chars[index]; }
+  const wchar_t* data() const { return this->c_str(); }
+  wchar_t& operator[](int index) { return this->chars[index]; }
+  wchar_t operator[](int index) const { return this->c_str()[index]; }
+  wchar_t& at(int index)
+  {
+    if (index < 0 || index >= this->unitCount)
+      throw OutOfRange(String("WString::at"));
+    return this->chars[index];
+  }
+  wchar_t& front() { return this->chars[0]; }
+  wchar_t front() const { return this->chars[0]; }
+  wchar_t& back() { return this->chars[this->unitCount - 1]; }
+  wchar_t back() const { return this->chars[this->unitCount - 1]; }
   wchar_t* begin() { return this->chars; }
   wchar_t* end() { return this->chars + this->unitCount; }
+  const wchar_t* begin() const { return this->chars; }
+  const wchar_t* end() const { return this->chars + this->unitCount; }
 
   void reserve(int needed)
   {
@@ -78,10 +104,10 @@ struct WString
     int newCapacity = this->capacity == 0 ? 16 : this->capacity;
     while (newCapacity < needed + 1)
       newCapacity *= 2;
-    wchar_t* bigger = (wchar_t*)malloc((size_t)newCapacity * 2);
+    wchar_t* bigger = (wchar_t*)malloc((size_t)newCapacity * sizeof(wchar_t));
     if (this->chars)
     {
-      memcpy(bigger, this->chars, (size_t)(this->unitCount + 1) * 2);
+      memcpy(bigger, this->chars, (size_t)(this->unitCount + 1) * sizeof(wchar_t));
       free(this->chars);
     }
     else
@@ -89,25 +115,206 @@ struct WString
     this->chars = bigger;
     this->capacity = newCapacity;
   }
+  // count units at units appended; units may point into this WString.
   void append(const wchar_t* units, int count)
   {
     if (count <= 0)
       return;
+    if (this->chars && units >= this->chars && units < this->chars + this->capacity)
+    {
+      WString copy(units, count);
+      this->append(copy.chars, count);
+      return;
+    }
     this->reserve(this->unitCount + count);
-    memcpy(this->chars + this->unitCount, units, (size_t)count * 2);
+    memcpy(this->chars + this->unitCount, units, (size_t)count * sizeof(wchar_t));
+    this->unitCount += count;
+    this->chars[this->unitCount] = 0;
+  }
+  void append(const wchar_t* text) { this->append(text, WString::lengthOf(text)); }
+  void append(const WString& other) { this->append(other.chars, other.unitCount); }
+  void append(int count, wchar_t c)
+  {
+    if (count <= 0)
+      return;
+    this->reserve(this->unitCount + count);
+    for (int i = 0; i < count; ++i)
+      this->chars[this->unitCount + i] = c;
     this->unitCount += count;
     this->chars[this->unitCount] = 0;
   }
   void push_back(wchar_t c) { this->append(&c, 1); }
+  void pop_back()
+  {
+    --this->unitCount;
+    this->chars[this->unitCount] = 0;
+  }
+  void resize(int newLength, wchar_t fill)
+  {
+    if (newLength < this->unitCount)
+    {
+      this->unitCount = newLength;
+      this->chars[newLength] = 0;
+    }
+    else
+      this->append(newLength - this->unitCount, fill);
+  }
+  void resize(int newLength) { this->resize(newLength, 0); }
   void clear()
   {
     this->unitCount = 0;
     if (this->chars)
       this->chars[0] = 0;
   }
+  // Removes count units from index (to the end when count is negative or reaches past it);
+  // throws OutOfRange when index is past the end.
+  WString& erase(int index, int count)
+  {
+    if (index < 0 || index > this->unitCount)
+      throw OutOfRange(String("WString::erase"));
+    if (count < 0 || index + count > this->unitCount)
+      count = this->unitCount - index;
+    if (count > 0)
+    {
+      memmove(this->chars + index, this->chars + index + count, (size_t)(this->unitCount - index - count) * sizeof(wchar_t));
+      this->unitCount -= count;
+      this->chars[this->unitCount] = 0;
+    }
+    return *this;
+  }
+
+  WString& operator+=(const WString& other)
+  {
+    this->append(other);
+    return *this;
+  }
+  WString& operator+=(const wchar_t* text)
+  {
+    this->append(text);
+    return *this;
+  }
+  WString& operator+=(wchar_t c)
+  {
+    this->push_back(c);
+    return *this;
+  }
+  WString operator+(const WString& other) const
+  {
+    WString result;
+    result.reserve(this->unitCount + other.unitCount);
+    result.append(*this);
+    result.append(other);
+    return result;
+  }
+  WString operator+(const wchar_t* text) const
+  {
+    WString result(*this);
+    result.append(text);
+    return result;
+  }
+  WString operator+(wchar_t c) const
+  {
+    WString result(*this);
+    result.push_back(c);
+    return result;
+  }
+
+  // Searching: each returns the index of the first match at or after from, or npos.
+  int find(const wchar_t* needle, int count, int from) const
+  {
+    if (from < 0)
+      from = 0;
+    for (int i = from; i + count <= this->unitCount; ++i)
+    {
+      int k = 0;
+      while (k < count && this->chars[i + k] == needle[k])
+        ++k;
+      if (k == count)
+        return i;
+    }
+    return npos;
+  }
+  int find(const wchar_t* needle, int from) const { return this->find(needle, WString::lengthOf(needle), from); }
+  int find(const wchar_t* needle) const { return this->find(needle, 0); }
+  int find(const WString& needle, int from) const { return this->find(needle.c_str(), needle.unitCount, from); }
+  int find(const WString& needle) const { return this->find(needle, 0); }
+  int find(wchar_t c, int from) const { return this->find(&c, 1, from); }
+  int find(wchar_t c) const { return this->find(c, 0); }
+  // The last c at or before from (anywhere when from is npos), or npos.
+  int rfind(wchar_t c, int from) const
+  {
+    int i = from < 0 || from >= this->unitCount ? this->unitCount - 1 : from;
+    for (; i >= 0; --i)
+      if (this->chars[i] == c)
+        return i;
+    return npos;
+  }
+  int rfind(wchar_t c) const { return this->rfind(c, npos); }
+  // The first unit at or after from that is in set, or npos.
+  int find_first_of(const wchar_t* set, int from) const
+  {
+    for (int i = from < 0 ? 0 : from; i < this->unitCount; ++i)
+      for (const wchar_t* s = set; *s; ++s)
+        if (this->chars[i] == *s)
+          return i;
+    return npos;
+  }
+  int find_first_of(const wchar_t* set) const { return this->find_first_of(set, 0); }
+  // The last unit that is in set, or npos.
+  int find_last_of(const wchar_t* set) const
+  {
+    for (int i = this->unitCount - 1; i >= 0; --i)
+      for (const wchar_t* s = set; *s; ++s)
+        if (this->chars[i] == *s)
+          return i;
+    return npos;
+  }
+  int find_last_of(wchar_t c) const { return this->rfind(c); }
+
+  // count units from start (all the rest when count is negative or runs past the end); throws
+  // OutOfRange when start is past the end.
+  WString substr(int start, int count) const
+  {
+    if (start < 0 || start > this->unitCount)
+      throw OutOfRange(String("WString::substr"));
+    if (count < 0 || start + count > this->unitCount)
+      count = this->unitCount - start;
+    return WString(this->c_str() + start, count);
+  }
+  WString substr(int start) const { return this->substr(start, -1); }
+
+  // Negative, 0 or positive as this sorts before, with or after other, unit by unit.
+  int compare(const WString& other) const
+  {
+    int n = this->unitCount < other.unitCount ? this->unitCount : other.unitCount;
+    for (int i = 0; i < n; ++i)
+      if (this->chars[i] != other.chars[i])
+        return this->chars[i] < other.chars[i] ? -1 : 1;
+    return this->unitCount < other.unitCount ? -1 : this->unitCount > other.unitCount ? 1 : 0;
+  }
   bool operator==(const WString& other) const
   {
-    return this->unitCount == other.unitCount && (this->unitCount == 0 || memcmp(this->chars, other.chars, (size_t)this->unitCount * 2) == 0);
+    return this->unitCount == other.unitCount &&
+           (this->unitCount == 0 || memcmp(this->chars, other.chars, (size_t)this->unitCount * sizeof(wchar_t)) == 0);
   }
   bool operator!=(const WString& other) const { return !(*this == other); }
+  bool operator==(const wchar_t* text) const { return *this == WString(text); }
+  bool operator!=(const wchar_t* text) const { return !(*this == text); }
+  bool operator<(const WString& other) const { return this->compare(other) < 0; }
+  bool operator>(const WString& other) const { return this->compare(other) > 0; }
+  bool operator<=(const WString& other) const { return this->compare(other) <= 0; }
+  bool operator>=(const WString& other) const { return this->compare(other) >= 0; }
 };
+
+WString operator+(const wchar_t* left, const WString& right)
+{
+  WString result(left);
+  result.append(right);
+  return result;
+}
+WString operator+(wchar_t left, const WString& right)
+{
+  WString result(1, left);
+  result.append(right);
+  return result;
+}
