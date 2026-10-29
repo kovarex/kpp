@@ -1,0 +1,24 @@
+// spec: isTypedUnion<T>, whether T is a typed union (`union enum`), a constant like the other type traits (std has none; a std::variant check is the nearest)
+// factorio: the game's is_std_variant<T>, which picks the variant save and load in SerialiserHelper and DeserialiserHelper for the 9 std::variants that become typed unions
+// pending: there is no such trait (an unresolved name)
+union enum Shape : uint8_t
+{
+  { {int, Circle}, {double, Square} }
+};
+struct Plain
+{
+  int x;
+};
+template<typename T>
+const char* kind()
+{
+  if constexpr (isTypedUnion<T>)
+    return "union";
+  else
+    return "other";
+}
+int main()
+{
+  println("{} {} {} {} {}", isTypedUnion<Shape>, isTypedUnion<Plain>, isTypedUnion<int>, kind<Shape>(), kind<Plain>());
+  return 0;
+}
