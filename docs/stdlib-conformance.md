@@ -21,6 +21,9 @@ compile, loudly) last. State of 2026-10-29.
 - A reference parameter bound through a conversion operator binds to a copy
   (classes/reference_bound_through_conversion_operator): a `ref(x)` argument of a Thread for an
   `int&` parameter reaches a copy of x, silently.
+- A data member of a class template whose type argument is a reference (`Pair<int&, int>`, what
+  `makePair(ref(x), y)` makes) is not written through: assigning to it leaves the referred object
+  as it was, silently (templates/reference_type_argument_member).
 
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().

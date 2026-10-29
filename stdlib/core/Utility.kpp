@@ -123,8 +123,22 @@ struct Pair
   }
 };
 
+// What makePair stores for an argument of type T (std::unwrap_ref_decay_t): T decayed (without
+// reference and const, an array or a function as a pointer), and a ReferenceWrapper<U> as U&.
+template<typename T>
+struct UnwrapReference { using Type = T; };
+template<typename T>
+struct UnwrapReference<ReferenceWrapper<T>> { using Type = T&; };
+template<typename T>
+using UnwrapRefDecay = typename UnwrapReference<Decay<T>>::Type;
+
+// A Pair of the two values, each moved in when it is an rvalue (std::make_pair):
+// `makePair(id, move(animation))` moves a move-only value.
 template<typename A, typename B>
-Pair<A, B> makePair(const A& first, const B& second) { return Pair<A, B>(first, second); }
+Pair<UnwrapRefDecay<A>, UnwrapRefDecay<B>> makePair(A&& first, B&& second)
+{
+  return Pair<UnwrapRefDecay<A>, UnwrapRefDecay<B>>(forward<A>(first), forward<B>(second));
+}
 
 // Up to four values together (what std::tuple converts to); `get<I>(tuple)` reads one.
 struct Nothing {};

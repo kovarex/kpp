@@ -1,0 +1,13 @@
+// spec: makePair (std::make_pair) makes a Pair of its arguments' types without reference and const (a string literal as a pointer), moving rvalues in (a move-only value) and copying lvalues; for a ReferenceWrapper argument (ref(x)) the member is a reference (the type is checked here; writing through such a member is templates/reference_type_argument_member)
+// factorio: ProcessionGraphicCatalogue's animationCatalogue.emplace(std::make_pair(index, Animation(...))) and spriteCatalogue.emplace(std::make_pair(index, UniquePointer<Sprite>(new Sprite(...)))), whose values can only be moved
+int main()
+{
+  UniquePtr<int> p(new int(4));
+  Pair<int, UniquePtr<int>> a = makePair(1, move(p));
+  String s("text");
+  Pair<String, const char*> b = makePair(s, "literal");
+  int x = 1;
+  static_assert(isSame<decltype(makePair(ref(x), 2)), Pair<int&, int>>);
+  println("{} {} {} {} {} {}", a.first, *a.second, p == nullptr, b.first, b.second, s);
+  return 0;
+}
