@@ -214,8 +214,9 @@ Reflection reads declarations; it never creates names. Save and load written thi
 the `accumulate` idea of section 6 for the serialisation case.
 Done 2026-10-25: `for constexpr (auto m : members(T))` with `m.name`, `m.offset` and
 `object.[m]` (bases' members first, then the class's own, in declaration order; a member
-descriptor is a compile-time value the loop binds, like a template argument). Not yet: `m.type`,
-`enumerators(E)`, `alternatives(U)`, comparing types with `==` in `if constexpr`.
+descriptor is a compile-time value the loop binds, like a template argument). Done 2026-10-29:
+`m.type`, written where a type is (`m.type copy = object.[m];`), and `alternatives(U)` (8.5). Not
+yet: `enumerators(E)`, comparing types with `==` in `if constexpr`.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```
@@ -553,6 +554,94 @@ stderr lines against master's 29,177 (noise), codegen 6.45 s against 6.89, 79.7 
 reach), peak memory 1.94 GB against 1.34 (the copies of every member of every instantiated class,
 as measured above). Next: per-instance member initializers and statics, pack expansions and
 generic lambdas (codegen still re-types those in place), then the parallel codegen driver.
+
+## Compile-time evaluation: one interpreter (proposed 2026-10-29, for review)
+
+**Today.** Two evaluators compute constants: the checker's (constEval, for template arguments,
+`if constexpr`, requires clauses, static_assert) and the code generator's (evalConst, for the
+same plus static members and variable templates as it emits them). Both compute only 64-bit
+integers from expressions; a call folds when the function's body is a single `return expr;`.
+Measured on the converted game (2026-10-29): 75 static_asserts the checker cannot evaluate, for
+floating point (`1.0 / ValuesPerOne > 1.0e-9`), a constexpr member function called on a constexpr
+object (`BoundingBox::emptyValue().isZeroSize()`), constexpr arrays and strings
+(`variantNames[i].empty()`, `layerSpriteOptions.size()`), fold expressions, and function bodies
+with statements. Of about 1,480 constexpr function bodies in the game, 874 are one return, about
+300 are constructors with member initializers, about 210 have locals, `if` or `switch`, about 30
+have loops. The library's gcd and lcm had to be rewritten as single recursive returns to fold.
+
+**Proposal.** One interpreter, used by every place that needs a constant; "compile-time
+computation is ordinary code run by an interpreter" (section 3) made true.
+
+*What it evaluates.* Ordinary Kpp, on the typed tree (an instantiation's own typed copy, so
+templates need nothing special):
+- Values: integers, enumerations, bool and char of every width (wrapping as their types do),
+  float and double (IEEE, as the target computes them), nullptr, a function or member pointer (to
+  compare and to call), class objects (a value per field, bases first; aggregates and classes with
+  a constexpr constructor), fixed-size arrays, string literals (read-only char arrays), and
+  references and pointers into the interpreter's own objects (a local, a field, an element; no
+  arithmetic beyond an array's elements, no cast between unrelated pointers).
+- Expressions: every operator on those values, conversions (implicit and the casts between
+  arithmetic, enumeration and class types along bases), calls of functions with a body (free,
+  member on an object value, static, constructors and destructors, templates as the call deduces
+  them, lambdas as objects), `sizeof`/`alignof` (class sizes from the code generator's layout),
+  the built-in traits, requires-expressions, fold expressions.
+- Statements: local declarations, assignment and compound assignment, `++`/`--`, `if`/`else`,
+  `switch`, `for`, `while`, `do`, range-for over arrays and over objects with begin/end, `break`,
+  `continue`, `return`, `if constexpr`, `for constexpr`, `static_assert`.
+- Not evaluated: what has no Kpp body (C functions, intrinsics, the C library's math), `new` and
+  `delete`, inline assembly, reading a global that is not a constant, exceptions. The library's
+  own constexpr code (Limits, Array, StringView, Span) is ordinary code under these rules, with no
+  case in the compiler.
+
+*Which functions.* Any function whose body is in the subset, marked `constexpr` or not (question
+1 below); the converted C++ marks them anyway.
+
+*Limits*, implementation limits that are compile errors when reached: 1,000,000 steps (statements
+and expressions executed) per constant, calls nested 512 deep, 64 MB of interpreter objects. The
+error names the constant and the limit.
+
+*Errors.* A constant that a context needs (static_assert, a template argument, an array bound, an
+enumerator's value, `if constexpr`, a requires clause, a `constexpr` variable) and that does not
+evaluate is a compile error naming the first thing that stopped it: "calls printf, which has no
+Kpp body", "reads the global gameTick, which is not a constant", "divides by zero (Math.kpp:12)",
+"indexes element 4 of an array of 4", "reads the local x before it is set", "signed overflow in
+int32 (question 2)". Never a silent pass, a guessed 0 or a fallback to run time. A `const` global
+that is not needed as a constant and does not evaluate keeps today's run-time initialisation.
+
+*Where it plugs in.*
+- The checker: constEval becomes the interpreter's entry for an expression in a context
+  (scope, locals, substitution); constOfDecl, the constant parts of requires clauses, variable
+  templates, static_assert and template arguments go through it. Traits stay built-ins
+  (traitValue), which the interpreter calls. Template arguments keep the `Value` kind (64-bit
+  integral, enumeration and bool constants); float or class constants as template arguments
+  (C++20) are a later step, none needed by the game.
+- The code generator: evalConst becomes a call to the same interpreter
+  (GlobalScope::evaluate(expression, context, arguments)), so the two can no longer disagree. The
+  interpreter asks the code generator for class sizes and field offsets (a layout callback).
+- Constant data: a constexpr global or static member whose value evaluates is emitted as constant
+  data (its value lowered to an LLVM constant) instead of by a startup function.
+- A cache of (declaration, arguments) to value, thread-safe like the instantiation records, so
+  that `Limits<int32>::max()` or a table is computed once per program.
+
+*Order of work*, each step measured on the static_asserts and the headline: (1) values (floats
+included), expressions, calls of single-return bodies, static constexpr members of class template
+instances, replacing both evaluators; (2) statements and loops (gcd and lcm back to loops; the
+game's ~240 bodies with statements); (3) objects and constructors (the ~300 constexpr
+constructors, `BoundingBox::emptyValue().isZeroSize()`, constexpr arrays and strings); (4)
+constant data.
+
+*Who builds it.* A file of its own (compiler/src/consteval.cpp) with one owner; constEval and
+evalConst become thin calls into it, reviewed by the resolver and code generator threads. To be
+settled by the coordinator.
+
+Questions for kovarex:
+1. May any function with a body in the subset run at compile time, or only one marked `constexpr`
+   (C++)? Proposed: any; `constexpr` stays allowed and becomes a promise the compiler checks.
+2. Signed overflow during compile-time evaluation: an error (C++, proposed) or wrap-around, as Kpp's
+   run time does?
+3. Floating point at compile time: the host's IEEE arithmetic, which is the target's for `+`, `-`,
+   `*`, `/` and `sqrt`; nothing else from the C math library (an error until the library has Kpp
+   versions). Proposed as written.
 
 ## Benchmark target
 
