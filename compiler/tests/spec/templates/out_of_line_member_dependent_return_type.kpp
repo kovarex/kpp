@@ -1,0 +1,34 @@
+// spec: an out-of-line definition of a class template's member whose return type names the class's member type through the class (`typename Id<T, I>::IndexType Id<T, I>::loadIndex(...)`, `const Loader<typename Proto<T>::IDType>* Proto<T>::getLoader() const`) defines the member declared in the class with that type unqualified (`static IndexType loadIndex(...)`)
+// factorio: ID<T, Index>::loadIndex (20 instances), Prototype<ID>::getLoader, SimpleSlot<ID>::getCountInternal and others: declared, defined out of line, and never emitted, about 100 of the link's unresolved externals with no codegen error to show for them
+// pending: the definition is not taken for the member's, which stays without a body: a link error ("unresolved external symbol Id<Item, uint16>::loadIndex(int32)")
+template<typename T>
+struct Loader
+{
+  int code = 0;
+};
+template<typename T, typename I>
+struct Id
+{
+  using IndexType = I;
+  using LoaderType = Loader<T>;
+  static IndexType loadIndex(int v);
+  const LoaderType* getLoader() const;
+  I index = 0;
+  explicit Id(I index) : index(index) {}
+};
+template<typename T, typename I>
+typename Id<T, I>::IndexType Id<T, I>::loadIndex(int v) { return I(v * 2); }
+template<typename T, typename I>
+const Loader<T>* Id<T, I>::getLoader() const
+{
+  static Loader<T> loader;
+  loader.code = int(this->index) + 1;
+  return &loader;
+}
+struct Item {};
+int main()
+{
+  Id<Item, unsigned short> id(Id<Item, unsigned short>::loadIndex(21));
+  println("{} {}", id.index, id.getLoader()->code);
+  return 0;
+}

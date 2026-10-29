@@ -1,0 +1,30 @@
+// spec: a member of a class template's partial specialization defined out of the class (`template<typename T> void Holder<T, true>::load(int v) { ... }`) is that specialization's member: each instance's call runs it
+// factorio: detail::FallbackValueHolder<T, true>::load and ::save and the <T, false> ones (Util/FallbackValue): unresolved externals of the link with no codegen error to show for them
+// pending: the definition is not taken for the member's (a link error "unresolved external symbol Holder<int32>/spec45::load(int32)")
+template<typename T, bool Trivial>
+struct Holder;
+template<typename T>
+struct Holder<T, true>
+{
+  T value = T();
+  void load(int v);
+};
+template<typename T>
+struct Holder<T, false>
+{
+  T value = T();
+  void load(int v);
+};
+template<typename T>
+void Holder<T, true>::load(int v) { this->value = T(v); }
+template<typename T>
+void Holder<T, false>::load(int v) { this->value = T(v * 10); }
+int main()
+{
+  Holder<int, true> a;
+  Holder<int, false> b;
+  a.load(2);
+  b.load(3);
+  println("{} {}", a.value, b.value);
+  return 0;
+}

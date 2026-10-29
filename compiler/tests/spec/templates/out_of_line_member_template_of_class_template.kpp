@@ -1,0 +1,32 @@
+// spec: a member template of a class template defined out of the class, under both template headers (`template<typename S> template<class F> void Frame<S>::merged(F op) const { ... }`), is the definition of the member: each instance's call runs it
+// factorio: FlowDataFrame<...>::getMergedValues<T> (14 instances), LogisticNetwork::findBestBusyRobot, IDFiltersBackup::applyUntil, ImmutableStringTemplate's comparison operators: declared in the class, defined below it, and never emitted, unresolved externals of the link with no codegen error to show for them
+// pending: the definitions are not taken for the members' (link errors "unresolved external symbol Frame<int32>::merged<...>(...) const")
+template<typename S>
+struct Frame
+{
+  S base = S(1);
+  template<class F>
+  void merged(F op) const;
+  template<class U>
+  S scaled(U factor) const;
+};
+template<typename S>
+template<class F>
+void Frame<S>::merged(F op) const
+{
+  op(this->base);
+}
+template<typename S>
+template<class U>
+S Frame<S>::scaled(U factor) const
+{
+  return S(this->base * factor);
+}
+int main()
+{
+  Frame<int> f;
+  int seen = 0;
+  f.merged([&](int v) { seen = v + 10; });
+  println("{} {}", seen, f.scaled(3.5));
+  return 0;
+}
