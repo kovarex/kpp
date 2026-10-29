@@ -3555,7 +3555,21 @@ struct GlobalScope::Impl
     {
       if (ctx.subst)
         if (const Ty* t = ctx.subst->find(d); t && t->kind == TyKind::Value)
-          return ConstValue::integer(t->value, t->inner);
+        {
+          if (!t->decl)
+            return ConstValue::integer(t->value, t->inner);
+          // `Expr<add, 3>`'s fold: the address of the function (or variable) given, never the null
+          // pointer its value field would read as; one of a class template's members, whose
+          // instance the argument does not record, is no constant.
+          if (t->decl->parent && t->decl->parent->kind == NodeKind::ClassDecl && !effectiveParams(t->decl->parent).empty())
+            return std::nullopt;
+          ConstTarget target;
+          target.decl = t->decl;
+          const Ty* pt = t->inner ? types.unqualified(t->inner) : nullptr;
+          if (!pt || pt->kind != TyKind::Pointer)
+            return std::nullopt;
+          return ConstValue::address(pt, std::move(target));
+        }
       return std::nullopt;
     }
     if (d->kind == NodeKind::VariableDecl)
@@ -8075,6 +8089,18 @@ struct GlobalScope::Impl
       v = constValue(static_cast<Expr*>(arg), ctx, depth + 1);
     if (!v || v->isFloat())
       return types.unknown(); // a floating argument: no constant parameter holds one yet
+    if (v->isAddress())
+    {
+      // `Holder<&table>`, a function pointer a constant holds: the declaration's address, as an
+      // argument naming the function makes it (functionArgument); a part of a variable, or a member
+      // of a class template's instance, is no argument it can hold yet.
+      const ConstTarget& t = *v->target;
+      if (!t.path.empty() || t.owner || !t.args.empty() || !v->type)
+        return types.unknown();
+      return types.functionValue(types.unqualified(v->type), t.decl);
+    }
+    if (v->kind != ConstValue::Kind::Int)
+      return types.unknown(); // an object, a pointer into an array the evaluation made: never a number
     // Converted to the parameter's type (`Bits<300>` for a uint8_t parameter is 44); for an auto
     // parameter, or none in sight, the value's own type.
     const Ty* of = nullptr;

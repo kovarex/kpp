@@ -1,6 +1,5 @@
 // spec: a function given as a template argument is that function's address at compile time: `static constexpr auto FOLD = fold;` compares equal to `&add` and calls it (constant data can hold it as the function)
 // factorio: the code generator's constant data (a static member holding a function template argument), spec templates/static_auto_member_of_instance
-// pending: the interpreter read the argument as the null pointer (`FOLD == &add` was false)
 constexpr int add(int a, int b) { return a + b; }
 constexpr int mul(int a, int b) { return a * b; }
 template<int (*fold)(int, int), int Scale>
