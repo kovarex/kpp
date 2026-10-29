@@ -7659,7 +7659,7 @@ struct GlobalScope::Impl
             auto* v = static_cast<VariableDecl*>(d);
             if (const Ty* deduced = locals.deducedTypeOf(v))
               return deduced; // a local (or range-for variable) as this walk deduced it
-            if (v->init && v->init->ty)
+            if (v->init && v->init->ty && v->init->kind != NodeKind::BraceInitExpr)
               return impl.deduceAuto(t, v->init->ty);
             return unknown(Why::Auto);
           }
@@ -9713,6 +9713,9 @@ struct GlobalScope::Impl
             // From the type this walk gave the initializer, not the one on its (shared) node.
             if (declared == types.decltypeAutoType())
               initTy = decltypeOf(v->init, initTy); // `decltype(auto) r = (x);` is a reference
+            if (v->bracedInit && v->init && v->init->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(v->init)->args.size() == 1)
+              if (Expr* only = static_cast<BraceInitExpr*>(v->init)->args[0]; only && only->ty)
+                initTy = only->ty; // `auto x{e}`, the init-capture `[callback{::move(callback)}]`: e's type
             const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy) : types.unknown();
             if (deduced->isKnown())
             {
@@ -11191,7 +11194,10 @@ const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
   if (impl->containsAuto(t) && d->kind == NodeKind::VariableDecl)
   {
     auto* v = static_cast<VariableDecl*>(d);
-    if (v->init && v->init->ty)
+    // A braced initializer (`auto x{e}`, an init-capture `[callback{::move(callback)}]`) is no
+    // value of its own: the type the walk deduced from its element.
+    bool braced = v->init && v->init->kind == NodeKind::BraceInitExpr;
+    if (v->init && v->init->ty && !braced)
       return impl->deduceAuto(t, v->init->ty);
     if (const Ty* cached = v->cachedType.load(std::memory_order_acquire); cached && !impl->containsAuto(cached))
       return cached; // a range-for variable: the element type the loop deduced

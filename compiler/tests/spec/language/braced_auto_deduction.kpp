@@ -1,0 +1,12 @@
+// spec: `auto x{e}` and an init-capture with a braced initializer (`[value{value + 1}]`, `[length{name.size()}]`) have e's type (C++17), not a brace list's
+// factorio: init-captures `[names{ ::move(names) }, resolver]` (PrototypeFilterHelpers), `[callback { ::move(callback) }]` (FloatingGuiWindow), `[this, ptree { ::move(ptree) }]` (ModPortalJob); a class-typed one is pending in templates/braced_init_capture_of_class
+int main()
+{
+  auto direct{41};
+  int value = 5;
+  auto copyOf = [value{value + 1}] { return value; };
+  String name("abc");
+  auto sized = [length{name.size()}] { return length * 10; };
+  println("{} {} {}", direct + 1, copyOf(), sized());
+  return 0;
+}
