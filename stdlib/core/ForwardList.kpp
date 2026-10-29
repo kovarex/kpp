@@ -98,6 +98,9 @@ struct ForwardList
   ForwardIterator<T> before_begin() const { return ForwardIterator<T>((ForwardLinks*)&this->beforeHead); }
   ForwardIterator<T> begin() const { return ForwardIterator<T>(this->beforeHead.next); }
   ForwardIterator<T> end() const { return ForwardIterator<T>(nullptr); }
+  // Equal with the same elements in the same order, ordered lexicographically (common.md).
+  bool operator==(const ForwardList<T>& other) const { return equal(this->begin(), this->end(), other.begin(), other.end()); }
+  strong_ordering operator<=>(const ForwardList<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
 
   void push_front(const T& value) { this->insert_after(this->before_begin(), value); }
   void push_front(T&& value) { this->insert_after(this->before_begin(), move(value)); }

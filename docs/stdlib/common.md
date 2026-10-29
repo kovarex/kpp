@@ -74,6 +74,22 @@ container, `*end()`, an iterator of another container) is undefined behaviour: t
 not check. The exceptions are the checked accessors, which say so on their page (`at()` throws
 OutOfRange for an index or key that is not there).
 
+## Comparison
+
+The sequences (Vector, Deque, List, ForwardList, Array, String, StringView, WString), the ordered
+containers (Map, Set, MultiMap, MultiSet, FastMap, FastSet), Pair and Tuple compare with `==` and
+`<=>`:
+- `a == b`: the same number of elements, equal one by one in order by `==`. `a != b` is its
+  negation.
+- `a <=> b`: lexicographically. The first pair of elements that differ decides, by their `<=>`
+  where they have one and by `<` otherwise (less when `x < y`, greater when `y < x`, else
+  equivalent); when one runs out first, it is the lesser. `a < b` is `(a <=> b) < 0`, and so are
+  `>`, `<=` and `>=`, so a class whose `<=>` is defaulted can have such a member.
+
+The hash containers (HashMap, HashSet, FastHashMap, FastHashSet) compare with `==` only: the same
+size, and every entry of one is in the other (a HashMap's with an equal value), in any order.
+Optional's comparisons are on its page.
+
 ## Copies and moves of containers
 
 Copying a container copies every element (O(n)); the copy is independent of the original.

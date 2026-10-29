@@ -602,6 +602,19 @@ struct HashMap
   }
   // Moves the entries of other whose keys are not here into this map; the rest stay in other.
   void merge(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
+  // Equal with the same keys, each with an equal value, in any order (common.md).
+  bool operator==(const HashMap<K, V, Hasher, KeyEqual, stable>& other) const
+  {
+    if (this->size() != other.size())
+      return false;
+    for (const Pair<K, V>& entry : *this)
+    {
+      HashIterator<Pair<K, V>, stable> found = other.find(entry.first);
+      if (found == other.end() || !(found->second == entry.second))
+        return false;
+    }
+    return true;
+  }
   void swap(HashMap<K, V, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(int n) { this->table.reserve(n); }
@@ -724,6 +737,16 @@ struct HashSet
       this->insert(*first);
   }
   void merge(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.mergeFrom(other.table); }
+  // Equal with the same values, in any order (common.md).
+  bool operator==(const HashSet<T, Hasher, KeyEqual, stable>& other) const
+  {
+    if (this->size() != other.size())
+      return false;
+    for (const T& value : *this)
+      if (!other.contains(value))
+        return false;
+    return true;
+  }
   void swap(HashSet<T, Hasher, KeyEqual, stable>& other) { this->table.swap(other.table); }
   void clear() { this->table.clear(); }
   void reserve(int n) { this->table.reserve(n); }

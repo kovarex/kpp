@@ -22,7 +22,8 @@ Members: `Deque()`, `Deque({...})`, copy, move; `size()`, `empty()`; `operator[]
 `push_back`, `push_front`, `emplace_back`, `emplace_front`, `pop_back`, `pop_front` (not empty);
 `insert(position, value)` and `erase(position)` returning the position of the inserted element /
 the element after the erased one; `erase(first, last)`, removing the elements in [first, last) and
-returning the position of the element after them; `resize(n)`, `clear()`.
+returning the position of the element after them; `resize(n)`, `clear()`; `==` and `<=>`
+(common.md).
 
 ## Queue
 

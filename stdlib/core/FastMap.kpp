@@ -696,6 +696,9 @@ struct FastMap
     }
     other = move(rest);
   }
+  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
+  bool operator==(const FastMap<K, V>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
+  strong_ordering operator<=>(const FastMap<K, V>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(FastMap<K, V>& other)
   {
     FastMap<K, V> held(move(other));
@@ -795,6 +798,9 @@ struct FastSet
     }
     other = move(rest);
   }
+  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
+  bool operator==(const FastSet<T>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
+  strong_ordering operator<=>(const FastSet<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(FastSet<T>& other)
   {
     FastSet<T> held(move(other));

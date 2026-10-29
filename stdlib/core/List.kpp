@@ -136,6 +136,9 @@ struct List
   ListIterator<T> end() const { return ListIterator<T>((ListLinks*)&this->sentinel); }
   ReverseIterator<ListIterator<T>> rbegin() const { return ReverseIterator<ListIterator<T>>(this->end()); }
   ReverseIterator<ListIterator<T>> rend() const { return ReverseIterator<ListIterator<T>>(this->begin()); }
+  // Equal with the same elements in the same order, ordered lexicographically (common.md).
+  bool operator==(const List<T>& other) const { return this->length == other.length && equal(this->begin(), this->end(), other.begin()); }
+  strong_ordering operator<=>(const List<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(List<T>& other)
   {
     List<T> held(move(other));

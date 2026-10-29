@@ -53,6 +53,7 @@ O(n), amortized O(1) per insert.
   try_emplace construct the value in its entry and need no copy or move constructor of V
   (FastHashMap moves its entries when it grows, so there V needs a move constructor all the same).
 - `insert_or_assign(key, value)`: inserts, or assigns the value of the existing entry.
+- `==`: the same keys, each with an equal value, in any order (common.md). There is no ordering.
 - `erase(key)`: returns the number removed (0 or 1); `erase(position)`: returns the next position.
 - `insert(hint, entry)`, `emplace_hint(hint, args...)`: as insert and emplace, returning the
   entry's position (the hint is accepted and not needed).

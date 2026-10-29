@@ -141,6 +141,12 @@ struct Pair
       return false;
     return this->second < other.second;
   }
+  // first decides, then second (each by <=>, or by < where it has none): gives >, <= and >=.
+  strong_ordering operator<=>(const Pair<A, B>& other) const
+  {
+    strong_ordering byFirst = synthThreeWay(this->first, other.first);
+    return byFirst != 0 ? byFirst : synthThreeWay(this->second, other.second);
+  }
 };
 
 // What makePair stores for an argument of type T (std::unwrap_ref_decay_t): T decayed (without
@@ -161,7 +167,11 @@ Pair<UnwrapRefDecay<A>, UnwrapRefDecay<B>> makePair(A&& first, B&& second)
 }
 
 // Up to four values together (what std::tuple converts to); `get<I>(tuple)` reads one.
-struct Nothing {};
+struct Nothing
+{
+  bool operator==(const Nothing&) const { return true; }
+  strong_ordering operator<=>(const Nothing&) const { return strong_ordering::equal; }
+};
 template<typename A, typename B = Nothing, typename C = Nothing, typename D = Nothing>
 struct Tuple
 {
@@ -174,6 +184,23 @@ struct Tuple
   Tuple(const A& first, const B& second) : first(first), second(second) {}
   Tuple(const A& first, const B& second, const C& third) : first(first), second(second), third(third) {}
   Tuple(const A& first, const B& second, const C& third, const D& fourth) : first(first), second(second), third(third), fourth(fourth) {}
+
+  // Equal member by member; ordered by the first that differs (common.md).
+  bool operator==(const Tuple<A, B, C, D>& other) const
+  {
+    return this->first == other.first && this->second == other.second && this->third == other.third && this->fourth == other.fourth;
+  }
+  strong_ordering operator<=>(const Tuple<A, B, C, D>& other) const
+  {
+    strong_ordering order = synthThreeWay(this->first, other.first);
+    if (order != 0)
+      return order;
+    order = synthThreeWay(this->second, other.second);
+    if (order != 0)
+      return order;
+    order = synthThreeWay(this->third, other.third);
+    return order != 0 ? order : synthThreeWay(this->fourth, other.fourth);
+  }
 };
 template<typename A, typename B>
 Tuple<A, B> makeTuple(const A& a, const B& b) { return Tuple<A, B>(a, b); }
@@ -229,6 +256,17 @@ struct strong_ordering
 };
 using weak_ordering = strong_ordering;
 using partial_ordering = strong_ordering;
+
+// a <=> b where the types have it, else what < says (C++20's synth-three-way): how the containers,
+// Pair, Tuple and Optional order what they hold (docs/stdlib/common.md, "Comparison").
+template<typename T, typename U>
+strong_ordering synthThreeWay(const T& a, const U& b)
+{
+  if constexpr (requires { a <=> b; })
+    return a <=> b;
+  else
+    return a < b ? strong_ordering::less : b < a ? strong_ordering::greater : strong_ordering::equal;
+}
 
 // The properties of the arithmetic types (what std::numeric_limits converts to), for every
 // integer and character type, bool, float and double; for any other type (an enum, a class)

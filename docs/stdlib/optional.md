@@ -27,8 +27,10 @@ Members:
 - `valueOr(fallback)`: a copy of the value, or fallback when empty.
 - `swap(other)`.
 - Comparison: `==`, `!=` with another Optional (equal when both are empty or both hold equal
-  values), with a value (an empty Optional equals no value), with nullopt (equal when empty);
-  `<` with another Optional: empty orders before every value, values by their `<`.
+  values), with a value of any type the held one compares with (an empty Optional equals no
+  value), with nullopt (equal when empty); `<` and `<=>` with another Optional (empty orders
+  before every value, values by their `<=>`, or `<` where they have none) and `<=>` with a value
+  (an empty Optional orders before it), which give `>`, `<=` and `>=` too.
 
 `makeOptional(value)`: an Optional holding a copy of value; `makeOptional<T>(args...)`: one holding a
 T built from args in place. `BadOptionalAccess`: an Exception, what

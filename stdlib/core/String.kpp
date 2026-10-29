@@ -404,6 +404,10 @@ struct String
     int c = memcmp(this->data(), other.data(), length < otherLength ? length : otherLength);
     return c != 0 ? c < 0 : length < otherLength;
   }
+  // Byte-wise as <: gives >, <= and >= with a String or a const char* (and `"x" < s` below).
+  strong_ordering operator<=>(const String& other) const { return strong_ordering(signOf(this->compare(other))); }
+  strong_ordering operator<=>(const char* other) const { return strong_ordering(signOf(this->compare(other))); }
+  static int8_t signOf(int compared) { return compared < 0 ? -1 : compared > 0 ? 1 : 0; }
 
   // Makes room for `needed` characters (exactly: growth by appending is geometric).
   void reserve(int needed)
@@ -633,6 +637,13 @@ struct String
     this->adopt(block, newLength, newCapacity);
   }
 };
+
+// A const char* on the left of an ordering comparison with a String (`"b" < name`), byte-wise as
+// String's own.
+bool operator<(const char* left, const String& right) { return right.compare(left) > 0; }
+bool operator>(const char* left, const String& right) { return right.compare(left) < 0; }
+bool operator<=(const char* left, const String& right) { return right.compare(left) >= 0; }
+bool operator>=(const char* left, const String& right) { return right.compare(left) <= 0; }
 
 String operator+(const char* left, const String& right)
 {

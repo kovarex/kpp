@@ -87,6 +87,8 @@ O(n). `count` in a multi container: O(log n + number found).
 - `swap(other)`: exchanges the contents and the comparators in O(1); iterators, pointers and
   references keep referring to the same entries, now in the other container (end() excepted).
 - `clear()`.
+- `==` and `<=>` (common.md): equal with equal entries in order (keys and values by their `==`),
+  ordered lexicographically by the entries (a Pair orders by its first, then its second).
 
 Kpp additions (not in C++): `insert(key, value)` returning whether the key was new (Map), and the
 camel-case spellings `lowerBound`, `upperBound`.

@@ -4,6 +4,12 @@
 // and an empty Optional holds no T.
 struct NullOpt {};
 const NullOpt nullopt;
+
+// Whether T is an Optional (what Optional's comparisons with a value leave out).
+template<typename T>
+struct IsOptional { static constexpr bool value = false; };
+template<typename T>
+struct IsOptional<Optional<T>> { static constexpr bool value = true; };
 // What asks Optional's constructor to build the value in place (std::in_place).
 struct InPlaceTag {};
 const InPlaceTag inPlace;
@@ -188,9 +194,16 @@ struct Optional : OptionalValue<T>
     return *this;
   }
 
-  // Comparisons with a value: an absent optional equals nothing.
-  bool operator==(const T& v) const { return this->present && *this->slot() == v; }
-  bool operator!=(const T& v) const { return !this->present || !(*this->slot() == v); }
+  // Comparisons with a value of any type the held one compares with (`source == entity` for an
+  // Optional<Targeter<Entity>>, `maxSpeed <= 0`): an empty Optional equals no value and orders
+  // before every value.
+  template<typename U>
+  bool operator==(const U& v) const requires(!IsOptional<U>::value && !isSame<U, NullOpt>) { return this->present && *this->slot() == v; }
+  template<typename U>
+  strong_ordering operator<=>(const U& v) const requires(!IsOptional<U>::value && !isSame<U, NullOpt>)
+  {
+    return this->present ? synthThreeWay(*this->slot(), v) : strong_ordering::less;
+  }
   bool operator==(const Optional<T>& other) const
   {
     if (this->present != other.present)
@@ -206,6 +219,12 @@ struct Optional : OptionalValue<T>
     if (!other.present)
       return false;
     return !this->present || *this->slot() < *other.slot();
+  }
+  strong_ordering operator<=>(const Optional<T>& other) const
+  {
+    if (this->present && other.present)
+      return synthThreeWay(*this->slot(), *other.slot());
+    return this->present ? strong_ordering::greater : other.present ? strong_ordering::less : strong_ordering::equal;
   }
 
   bool hasValue() const { return this->present; }

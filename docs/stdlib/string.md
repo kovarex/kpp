@@ -70,8 +70,9 @@ Producing new strings:
 other by `<`. `swap(other)`: exchanges the contents.
 
 Comparison: `==`, `!=` byte-wise with the same length; `<` byte-wise lexicographic (as unsigned
-bytes), a proper prefix before the longer string. Comparison with a `const char*` treats it as its
-zero-terminated text.
+bytes), a proper prefix before the longer string; `<=>` orders the same way and gives `>`, `<=`
+and `>=` (common.md). Comparison with a `const char*` treats it as its zero-terminated text, on
+either side. A StringView compares the same way.
 
 Hashing: `hashOf(string)` depends on every byte.
 

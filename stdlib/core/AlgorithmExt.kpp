@@ -156,6 +156,20 @@ bool lexicographicalCompare(It1 first1, It1 last1, It2 first2, It2 last2)
 {
   return lexicographicalCompare(first1, last1, first2, last2, Less<>());
 }
+// [first1, last1) against [first2, last2) element by element (std::lexicographical_compare_three_way):
+// the first pair that differs decides, by synthThreeWay; a range that is a proper prefix of the
+// other orders before it.
+template<typename It1, typename It2>
+strong_ordering lexicographicalCompareThreeWay(It1 first1, It1 last1, It2 first2, It2 last2)
+{
+  for (; first1 != last1 && first2 != last2; ++first1, ++first2)
+  {
+    strong_ordering order = synthThreeWay(*first1, *first2);
+    if (order != 0)
+      return order;
+  }
+  return first1 != last1 ? strong_ordering::greater : first2 != last2 ? strong_ordering::less : strong_ordering::equal;
+}
 
 // Merges two sorted ranges into the one starting at out; on ties the first range's element goes
 // first. Returns the end of the merged range.

@@ -69,8 +69,8 @@ Adding and removing:
 - `clear()`: destroys all elements; the capacity stays.
 - `swap(other)`: exchanges the contents, O(1).
 
-Comparison: `a == b` when the sizes are equal and every element compares equal with `==`;
-`a != b` is its negation.
+Comparison: `==` and `<=>` (common.md): equal with equal elements in order, ordered
+lexicographically.
 
 Kpp additions (not in C++): `insert(int index, value)`, `erase(int index)` taking an index,
 `contains(value)` (linear search with `==`). A Vector converts to `Span<T>` of its elements.

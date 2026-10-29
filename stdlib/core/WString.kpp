@@ -305,6 +305,11 @@ struct WString
   bool operator>(const WString& other) const { return this->compare(other) > 0; }
   bool operator<=(const WString& other) const { return this->compare(other) <= 0; }
   bool operator>=(const WString& other) const { return this->compare(other) >= 0; }
+  strong_ordering operator<=>(const WString& other) const
+  {
+    int c = this->compare(other);
+    return c < 0 ? strong_ordering::less : c > 0 ? strong_ordering::greater : strong_ordering::equal;
+  }
 };
 
 WString operator+(const wchar_t* left, const WString& right)

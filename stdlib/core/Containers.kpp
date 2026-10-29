@@ -54,6 +54,8 @@ struct Array
         return false;
     return true;
   }
+  // Ordered lexicographically by the elements (common.md): gives <, >, <= and >=.
+  strong_ordering operator<=>(const Array<T, N>& other) const { return lexicographicalCompareThreeWay(this->items, this->items + N, other.items, other.items + N); }
 };
 
 // The extent of a Span whose length is known only when the program runs (std::dynamic_extent).

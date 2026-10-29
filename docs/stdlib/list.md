@@ -18,7 +18,7 @@ position), `emplace(position, args...)`, `erase(position)` (returns the next pos
 `erase(first, last)`; `splice(position, other)` and `splice(position, other, it)` (move nodes
 from other without copying, O(1) for one element); `remove(value)`, `removeIf(predicate)`;
 `reverse()`; `sort()`, `sort(less)` (stable, O(n log n), moves nodes, not elements); `unique()`;
-`merge(other)` of two sorted lists (stable); `clear()`.
+`merge(other)` of two sorted lists (stable); `clear()`; `==` and `<=>` (common.md).
 
 ## ForwardList (singly linked)
 
@@ -27,5 +27,5 @@ As List with one link per node, so only forward iterators and operations at or a
 `emplace_after(position, args...)` (returning the new element's position), `erase_after(position)`
 and `erase_after(first, last)` (removing what is strictly between; returning the position after
 the removed ones), `before_begin()` (the position before the first element, for inserting at the
-front), `begin()`, `end()`, `empty()`, `remove(value)`, `reverse()`, `clear()`. There is no
-`size()` (it would be O(n)). Invalidation as for List.
+front), `begin()`, `end()`, `empty()`, `remove(value)`, `reverse()`, `clear()`, `==` and `<=>`.
+There is no `size()` (it would be O(n)). Invalidation as for List.

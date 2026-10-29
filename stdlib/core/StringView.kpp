@@ -140,6 +140,11 @@ struct StringView
     int c = common == 0 ? 0 : memcmp(this->chars, other.chars, common);
     return c != 0 ? c < 0 : this->byteCount < other.byteCount;
   }
+  // Byte-wise as <: gives >, <= and >=.
+  strong_ordering operator<=>(StringView other) const
+  {
+    return *this < other ? strong_ordering::less : other < *this ? strong_ordering::greater : strong_ordering::equal;
+  }
 
   String toString() const
   {

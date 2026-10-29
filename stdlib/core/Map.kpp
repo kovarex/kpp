@@ -968,6 +968,9 @@ struct Map
       it = next;
     }
   }
+  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
+  bool operator==(const Map<K, V, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
+  strong_ordering operator<=>(const Map<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(Map<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
@@ -1145,6 +1148,9 @@ struct Set
       it = next;
     }
   }
+  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
+  bool operator==(const Set<T, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
+  strong_ordering operator<=>(const Set<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(Set<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
@@ -1296,6 +1302,9 @@ struct MultiMap
       this->tree.link(node, parent, asLeft);
     }
   }
+  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
+  bool operator==(const MultiMap<K, V, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
+  strong_ordering operator<=>(const MultiMap<K, V, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(MultiMap<K, V, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
@@ -1443,6 +1452,9 @@ struct MultiSet
       this->tree.link(node, parent, asLeft);
     }
   }
+  // Equal with equal entries in the same order, ordered lexicographically by them (common.md).
+  bool operator==(const MultiSet<T, Compare>& other) const { return this->size() == other.size() && equal(this->begin(), this->end(), other.begin()); }
+  strong_ordering operator<=>(const MultiSet<T, Compare>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
   void swap(MultiSet<T, Compare>& other) { this->tree.swap(other.tree); }
   void clear() { this->tree.clear(); }
 };
