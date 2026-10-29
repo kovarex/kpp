@@ -1,0 +1,24 @@
+// spec: a constexpr variable is const (`decltype(COUNT)` is `const int`, a constexpr array's elements are const), so a reference to it is a const one and it picks `const T&` over `T&` overloads
+// factorio: the game's `static constexpr` members (Direction::COUNT, AlertType::alertTTL, NamedBool's True and False) passed and compared everywhere
+struct Plain
+{
+  enum class Enum : uint8_t { False, True };
+  static constexpr Enum True = Enum::True;
+  static constexpr int count = 3;
+  static constexpr int limits[] = {1, 2};
+};
+static int kind(int&) { return 1; }
+static int kind(const int&) { return 2; }
+static int kind(double&) { return 3; }
+static int kind(const double&) { return 4; }
+int main()
+{
+  constexpr double half = 0.5;
+  int plain = 1;
+  static_assert(isSame<decltype(Plain::count), const int>);
+  static_assert(isSame<decltype(Plain::True), const Plain::Enum>);
+  static_assert(isSame<decltype(half), const double>);
+  static_assert(isSame<decltype(Plain::limits[0]), const int&>);
+  println("{} {} {} {}", kind(Plain::count), kind(half), kind(plain), Plain::limits[1] + Plain::count);
+  return 0;
+}
