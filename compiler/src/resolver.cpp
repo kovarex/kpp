@@ -1913,7 +1913,7 @@ struct GlobalScope::Impl
         return false;
       if (types.isDependent(pattern))
       {
-        deduce(pattern, args[i], s, 1);
+        deduceArgument(pattern, args[i], s, 1);
         if (!sameArgument(substitute(pattern, s), args[i]))
           return false;
       }
@@ -9855,8 +9855,23 @@ struct GlobalScope::Impl
         return;
       }
       if (i < args.size())
-        deduce(p, args[i], out, depth + 1);
+        deduceArgument(p, args[i], out, depth + 1);
     }
+  }
+
+  // Deduction from a template argument (a specialisation's pattern, an argument of a class
+  // template's instance): a parameter takes the argument as it is, a reference type included
+  // (`Row<H, T...>` given Row<double&> binds H = double&, Wrapped<T> given Wrapped<int&> T =
+  // int&), where a function parameter's T takes the type referred to.
+  void deduceArgument(const Ty* pattern, const Ty* arg, Subst& out, int depth)
+  {
+    if (pattern && arg && pattern->kind == TyKind::Param && pattern->args.empty() && arg->isReference() && !pattern->isConst && !pattern->isVolatile)
+    {
+      if (!out.find(pattern->decl))
+        out.pairs.push_back({pattern->decl, arg});
+      return;
+    }
+    deduce(pattern, arg, out, depth);
   }
 
   // Structural template argument deduction: binds parameters of `pattern` from `arg`.
