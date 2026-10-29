@@ -599,6 +599,52 @@ namespace
     return out;
   }
 
+  // Lexes one large text on several threads: the C import, 10 MB of preprocessed headers (the
+  // Factorio build's), took 0.3 to 0.6 s on one thread, most of the import. The pieces end at
+  // line ends with no continuation (no token of the preprocessed text spans one) and each is
+  // lexed from a copy with its own terminator; the tokens are those of one lex of the whole.
+  LexResult lexInChunks(std::string_view text, SymbolTable& symbols, unsigned threads)
+  {
+    const size_t piece = 256 * 1024;
+    std::vector<size_t> starts{0};
+    for (size_t at = piece; at < text.size();)
+    {
+      size_t nl = text.find('\n', at);
+      while (nl != std::string_view::npos && nl > 0 && (text[nl - 1] == '\\' || (text[nl - 1] == '\r' && nl > 1 && text[nl - 2] == '\\')))
+        nl = text.find('\n', nl + 1);
+      if (nl == std::string_view::npos || nl + 1 >= text.size())
+        break;
+      starts.push_back(nl + 1);
+      at = nl + 1 + piece;
+    }
+    if (starts.size() == 1)
+      return lex(text, symbols);
+    std::vector<LexResult> parts(starts.size());
+    parallelFor(starts.size(), threads, [&](size_t k)
+    {
+      size_t from = starts[k], to = k + 1 < starts.size() ? starts[k + 1] : text.size();
+      std::string copy(text.substr(from, to - from));
+      parts[k] = lex(copy, symbols);
+      for (Token& t : parts[k].tokens)
+        t.offset += uint32_t(from);
+    });
+    LexResult whole;
+    size_t count = 0;
+    for (const LexResult& r : parts)
+      count += r.tokens.size();
+    whole.tokens.reserve(count);
+    for (size_t k = 0; k < parts.size(); ++k)
+    {
+      std::vector<Token>& tokens = parts[k].tokens;
+      if (k + 1 < parts.size() && !tokens.empty() && tokens.back().getKind() == TokenKind::End)
+        tokens.pop_back(); // only the last piece ends the text
+      whole.tokens.insert(whole.tokens.end(), tokens.begin(), tokens.end());
+      whole.lineCount += parts[k].lineCount;
+      whole.errorCount += parts[k].errorCount;
+    }
+    return whole;
+  }
+
   // Collects `extern "C" import "header";` declarations, preprocesses the headers with clang
   // once (cached by content hash in the temp directory) and parses the result as one more file.
   void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
@@ -694,7 +740,7 @@ namespace
     source.text = std::move(text);
     source.text.reserve(source.text.size() + 1);
     files.push_back(std::move(source));
-    lexed.push_back(lex(files.back().text, symbols));
+    lexed.push_back(lexInChunks(files.back().text, symbols, options.threads));
     parsed.push_back(std::make_unique<ParsedFile>());
     parsed.back()->path = files.back().path.string();
     parsed.back()->index = uint32_t(parsed.size() - 1);
