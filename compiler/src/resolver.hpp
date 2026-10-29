@@ -78,7 +78,9 @@ inline const Ty* argumentType(const Expr* e, const Ty* t, TypeTable& types)
 // (TypeTable::braceList) of the first element's type, the first of a pack's for `{args...}` (null
 // when the elements are untyped or there is no such class). Only for ranking and deduction: the
 // expression itself stays untyped, since a brace list also initialises aggregates and calls
-// constructors.
+// constructors. Each element initialises one of the list's from what it is, so when every
+// element is an lvalue the element type is an lvalue reference: a converting constructor taking
+// `T&` takes them (`implicit BoxRef(Box& b)` for `{a, b}`).
 inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& types)
 {
   if (!e || e->kind != NodeKind::BraceInitExpr || !initializerList)
@@ -93,7 +95,10 @@ inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& 
       return nullptr;
     first = first->args[0];
   }
-  return types.braceList(initializerList, types.decay(first));
+  bool lvalues = types.stripRef(first)->kind != TyKind::Array;
+  for (const Expr* a : b->args)
+    lvalues = lvalues && a && a->ty && a->ty->kind != TyKind::Pack && isLvalueExpression(a);
+  return types.braceList(initializerList, lvalues ? argumentType(b->args[0], first, types) : types.decay(first));
 }
 
 struct ResolveStats

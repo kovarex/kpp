@@ -5441,11 +5441,15 @@ struct GlobalScope::Impl
       return; // `typename T::Unit` is not a deduced context
     if (arg->isBraceList())
     {
-      // `{a, b}` deduces only an InitializerList<P> parameter (its P from the elements); for
-      // any other parameter, `const T&` included, it is a non-deduced context.
-      const Ty* p = types.stripRef(pattern);
+      // `{a, b}` deduces only an InitializerList<P> parameter, its P from the elements as from
+      // the arguments of a by-value parameter (P = Box given `{cb, cb}` of const Box lvalues);
+      // for any other parameter, `const T&` included, it is a non-deduced context.
+      const Ty* p = types.unqualified(types.stripRef(pattern));
       if (p->kind != TyKind::Class || p->decl != arg->decl)
         return;
+      if (p->args.size() == 1 && arg->args.size() == 1)
+        deduce(p->args[0], types.decay(arg->args[0]), out, depth + 1);
+      return;
     }
     if (pattern->kind == TyKind::Param && !pattern->args.empty())
     {

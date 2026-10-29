@@ -1,6 +1,5 @@
-// spec: a call whose brace-list argument converts element by element (`countRefs({a, b})` taking InitializerList<BoxRef>), itself an argument of a function template
+// spec: a call whose brace-list argument converts element by element (`countRefs({a, b})` taking InitializerList<BoxRef>, through `implicit BoxRef(Box&)`: lvalue elements bind the constructor's `Box&`), itself an argument of a function template; an InitializerList<T> parameter deduces T from const lvalue elements without their const
 // factorio: not seen in the game yet (found testing ReferenceWrapper: `println("{}", search({x, y}, "y"))`)
-// pending: the inner call has no type while the outer template's arguments are deduced (a call to same whose template arguments could not be deduced)
 struct Box
 {
   int v;
@@ -17,10 +16,15 @@ int countRefs(InitializerList<BoxRef> refs) { return refs.size(); }
 template<typename T>
 T same(T value) { return value; }
 
+template<typename T>
+int countOf(InitializerList<T> list) { return int(list.size()) * 10 + int(isConst<T>); }
+
 int main()
 {
   Box a{1};
   Box b{2};
   println("{}", same(countRefs({a, b})));
+  const Box c{3};
+  println("{}", countOf({c, c, c}));
   return 0;
 }
