@@ -488,6 +488,18 @@ namespace
            cacheHit ? " (cached)" : "");
   }
 
+  // The errors the checker found itself (a static_assert that fails or cannot be evaluated).
+  void reportCheckerErrors(GlobalScope& global)
+  {
+    for (const std::string& e : global.checkerErrors())
+    {
+      fprintf(stderr, "%s\n", e.c_str());
+      codegenExit = 1;
+    }
+    if (size_t waiting = global.layoutStaticAsserts().size())
+      report("static_assert: %zu on a class's size or alignment, left to the code generator's layout\n", waiting);
+  }
+
   void runCodegen(std::vector<std::unique_ptr<ParsedFile>>& parsed, GlobalScope& global, SymbolTable& symbols, const Options& options)
   {
     using Clock = std::chrono::steady_clock;
@@ -508,6 +520,7 @@ namespace
       fprintf(stderr, "%s\n", e.c_str());
     if (!cg.errors.empty())
       codegenExit = 1;
+    reportCheckerErrors(global);
     auto writeFile = [&](const std::string& path, const std::string& text)
     {
       FILE* out = fopen(path.c_str(), "wb");
@@ -823,6 +836,8 @@ namespace
     std::sort(top.begin(), top.end(), [](auto& a, auto& b) { return a.second > b.second; });
     if (!options.emitLLVM.empty() || !options.exe.empty())
       runCodegen(parsed, global, symbols, options);
+    else if (options.convertDir.empty())
+      reportCheckerErrors(global);
     if (!options.convertDir.empty())
     {
       std::vector<ConvertInput> inputs;

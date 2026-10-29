@@ -1,0 +1,36 @@
+// spec: a static_assert whose condition is false is a compile error, as is one whose condition is no constant the compiler can evaluate (never a silent pass): at namespace scope, in a class, in a function, in a class template instance and in a function template instance's taken branch, each with its message and the instance
+// factorio: 470 uses in 237 files
+// error: static_assert_failures.kpp:9: error: static assertion failed: "one is two"
+// error: static_assert_failures.kpp:12: error: static assertion failed: "int is 64 bits"
+// error: static_assert_failures.kpp:17: error: static assertion failed: "no pointers in a Box" (in Box<int32*>)
+// error: static_assert_failures.kpp:26: error: static assertion failed: "describe needs a number" (in T = float)
+// error: static_assert_failures.kpp:31: error: static assertion failed: "in a function"
+// error: static_assert_failures.kpp:32: error: static assertion whose condition the compiler cannot evaluate yet: "a variable"
+static_assert(1 == 2, "one is two");
+struct S
+{
+  static_assert(sizeof(int) == 8, "int is 64 bits");
+};
+template<class T>
+struct Box
+{
+  static_assert(!isPointer<T>, "no pointers in a Box");
+  T value{};
+};
+template<class T>
+int describe()
+{
+  if constexpr (isIntegral<T>)
+    return 1;
+  else
+    static_assert(sizeof(T) == 0, "describe needs a number");
+}
+int counter = 3;
+int main()
+{
+  static_assert(false, "in a function");
+  static_assert(counter == 3, "a variable");
+  Box<int*> b;
+  println("{}", describe<float>());
+  return 0;
+}

@@ -258,7 +258,7 @@ struct VariableDecl : Decl
 struct UsingAliasDecl : Decl { uint32_t name; Type* type; };
 struct UsingDirectiveDecl : Decl { QualifiedName name; };
 struct UsingNameDecl : Decl { QualifiedName name; bool isEnum = false; };
-struct StaticAssertDecl : Decl { Expr* cond; };
+struct StaticAssertDecl : Decl { Expr* cond; Expr* message = nullptr; };
 struct MacroDecl : Decl { uint32_t name; uint32_t endToken; };
 struct ErrorDecl : Decl { uint32_t endToken; };
 struct EmptyDecl : Decl { bool isDeductionGuide = false; }; // isDeductionGuide: `template<...> Name(args) -> Name<...>;`, skipped (Kpp deduces from constructors)

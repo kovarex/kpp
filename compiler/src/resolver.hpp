@@ -156,6 +156,21 @@ public:
   std::vector<std::string> topLevelClashes();
   // Phase 2, thread-safe and read-only on the scope tree: resolve and type one file.
   void resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats);
+  // After the checker (and the code generator, which asks it for instance bodies) is done: the
+  // static_asserts of the class template instances it made are checked, and the errors the checker
+  // found are returned, `path:line: error: ...` one each, sorted. A static_assert whose condition
+  // is false, or no constant the checker can evaluate, is one.
+  std::vector<std::string> checkerErrors();
+  // The static_asserts whose condition needs a class's size or alignment, which only the code
+  // generator's layout knows: each with the arguments of the instance it is in (none outside
+  // templates) and that instance for messages. The checker leaves them to the code generator.
+  struct LayoutStaticAssert
+  {
+    StaticAssertDecl* decl;
+    TemplateArgs args;
+    std::string instance;
+  };
+  std::vector<LayoutStaticAssert> layoutStaticAsserts();
 
   size_t scopeCount() const;
   size_t entryCount() const;

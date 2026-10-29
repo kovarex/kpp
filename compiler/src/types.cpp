@@ -109,6 +109,19 @@ const Ty* TypeTable::intern(const Ty& t)
 
 size_t TypeTable::size() const { return impl->count.load(); }
 
+std::vector<const Ty*> TypeTable::classInstances()
+{
+  std::vector<const Ty*> out;
+  for (Impl::Shard& shard : impl->shards)
+  {
+    std::shared_lock lock(shard.mutex);
+    for (auto& entry : shard.map)
+      if (entry.second->kind == TyKind::Class && !entry.second->args.empty())
+        out.push_back(entry.second);
+  }
+  return out;
+}
+
 const Ty* TypeTable::intType(uint8_t bits, bool isUnsigned)
 {
   Ty t{TyKind::Int};

@@ -115,6 +115,7 @@ public:
   bool isDependent(const Ty* t) const;
   std::string toString(const Ty* t, const SymbolTable* symbols) const;
   size_t size() const;
+  std::vector<const Ty*> classInstances(); // every class type with template arguments made so far
 
 private:
   const Ty* intern(const Ty& t);

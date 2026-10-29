@@ -1399,7 +1399,7 @@ namespace
         expect(P::LParen, "expected '('");
         s->cond = parseAssignment();
         if (accept(P::Comma))
-          parseAssignment();
+          s->message = parseAssignment();
         expect(P::RParen, "expected ')'");
         expect(P::Semi, "expected ';'");
         pushDecl(s);

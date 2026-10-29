@@ -7,6 +7,8 @@ snippet says what it is about:
     // spec: default arguments
     // factorio: 32235 uses in 4539 files        (from the construct survey, optional)
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
+    // error: static assertion failed            (the program must not compile, and the compiler's
+                                                  output must say this; one line per expected error)
 
 Statuses: pass, FAIL (a regression), pending (a known gap, still failing), fixed (a pending
 snippet that passes: remove its pending line). The run writes docs/spec-status.md, the
@@ -40,15 +42,18 @@ AREA_TITLES = {
 
 
 def header(path):
-    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None}
+    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": []}
     with open(path, encoding="utf-8") as f:
         for line in f:
-            m = re.match(r"//\s*(spec|factorio|pending):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending|error):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
                 continue
-            info[m.group(1)] = m.group(2).strip()
+            if m.group(1) == "error":
+                info["errors"].append(m.group(2).strip())
+            else:
+                info[m.group(1)] = m.group(2).strip()
     return info
 
 
@@ -75,6 +80,19 @@ def run_one(path):
         c = subprocess.run([KPPC, "--quiet", *EXTRA, "--exe", exe, path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
+    if info["errors"]:
+        # A snippet that must not compile: every expected error is in the compiler's output.
+        output = c.stdout + c.stderr
+        missing = [e for e in info["errors"] if e not in output]
+        if c.returncode == 0:
+            result["status"] = "FAIL"; result["note"] = f"compiled, but the error `{info['errors'][0]}` was expected"
+        elif c.returncode != 1:
+            result["status"] = "FAIL"; result["note"] = f"the compiler crashed (exit 0x{c.returncode & 0xFFFFFFFF:X})"
+        elif missing:
+            result["status"] = "FAIL"; result["note"] = f"no error `{missing[0]}`; the first complaint: " + (first_complaint(output) or "none")
+        else:
+            result["status"] = "pass"
+        return finish(result)
     if c.returncode != 0 or not os.path.exists(exe):
         result["status"] = "FAIL"
         if c.returncode not in (0, 1):

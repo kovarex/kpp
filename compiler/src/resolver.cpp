@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <unordered_set>
 
 void ResolveStats::add(const ResolveStats& o)
@@ -310,6 +311,15 @@ struct GlobalScope::Impl
   std::vector<Scope*> scopesWithUsingEnums; // `using enum E;` in them: resolved once by finishIndex, before parallel lookups
   std::unordered_map<Decl*, VariableDecl*> variableDefinitions;    // Static data member -> its `T C::x = ...;` definition.
   std::unordered_map<Decl*, Scope*> specializationMembers;         // `int Flag<true>::value() {...}` -> Flag<true>'s scope (finishIndex).
+  std::mutex checkerErrorsMutex;
+  std::unordered_set<std::string> checkerErrorSet;                 // `path:line: error: ...`, each once (a failed static_assert)
+  struct LayoutAssert                                              // a static_assert on a class's size or alignment
+  {
+    StaticAssertDecl* decl = nullptr;
+    Subst subst;                                                   // the instance's arguments, in a template
+    std::string instance;
+  };
+  std::vector<LayoutAssert> layoutAsserts;                          // (under checkerErrorsMutex) for the code generator
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
   // scope tree so Phase 2 lookups remain lock-free. Keyed by (scope*, symbol).
@@ -2703,6 +2713,59 @@ struct GlobalScope::Impl
   // Minimal constant evaluation for array bounds: literals and arithmetic on them.
   // The value of a declaration used as a constant: a const/constexpr variable with an
   // initializer, an enumerator, or a non-type template parameter under the substitution.
+  void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message)
+  {
+    std::string where = file ? file->path : std::string("?");
+    if (file && file->tokens && !file->tokens->empty())
+    {
+      const Token& t = (*file->tokens)[std::min<size_t>(token, file->tokens->size() - 1)];
+      where += ":" + std::to_string(1 + std::count(file->text.begin(), file->text.begin() + std::min<size_t>(t.offset, file->text.size()), '\n'));
+    }
+    std::lock_guard lock(checkerErrorsMutex);
+    checkerErrorSet.insert(where + ": error: " + message);
+  }
+
+  // A static_assert under ctx (an instance's arguments, when it is in a template): an error when
+  // its condition is false, or is no constant the checker can evaluate (never a silent pass).
+  // instance: which instance, for the message. One that needs a class's size or alignment waits
+  // for the code generator's layout (layoutAsserts).
+  void checkStaticAssert(StaticAssertDecl* s, const TypeContext& ctx, const std::string& instance)
+  {
+    if (!s->cond)
+      return;
+    TokenScope tokenScope(ctx.tokens, ctx.text);
+    // An instance whose arguments the checker does not know (`EnumType = ?`) decides nothing.
+    bool knownInstance = true;
+    if (ctx.subst)
+      for (const Subst::Pair& p : ctx.subst->pairs)
+        knownInstance = knownInstance && p.type && !mentionsUnknown(p.type);
+    exactLayoutOnly = true;
+    layoutNeeded = false;
+    std::optional<int64_t> v = knownInstance ? constEval(s->cond, ctx, 0) : std::nullopt;
+    exactLayoutOnly = false;
+    if (!v && layoutNeeded)
+    {
+      std::lock_guard lock(checkerErrorsMutex);
+      LayoutAssert& a = layoutAsserts.emplace_back();
+      a.decl = s;
+      if (ctx.subst)
+        a.subst = *ctx.subst;
+      a.instance = instance;
+      return;
+    }
+    if (v && *v)
+      return;
+    std::string message = v ? "static assertion failed" : "static assertion whose condition the compiler cannot evaluate yet";
+    if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
+    {
+      const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];
+      message += ": " + std::string(s->file->text.substr(t.offset, t.length));
+    }
+    if (!instance.empty())
+      message += " (in " + instance + ")";
+    reportCheckerError(s->file, s->token, message);
+  }
+
   // classSubst: the arguments of the class template instantiation a static member was named
   // through (`Bits<uint64_t>::count`).
   std::optional<int64_t> constOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr)
@@ -2785,11 +2848,21 @@ struct GlobalScope::Impl
 
   // Compile-time sizeof/alignof for constEval — mirrors the codegen's sizeOf/alignOf but returns
   // nullopt instead of throwing when a type can't be sized (the codegen may still handle it later).
+  // Set while a static_assert is checked: a class's size or alignment is then left to the code
+  // generator, whose layout is the exact one (bit fields, empty bases), and layoutNeeded says so.
+  static thread_local bool exactLayoutOnly;
+  static thread_local bool layoutNeeded;
+
   std::optional<int64_t> constSizeOf(const Ty* t, int depth)
   {
     if (!t || depth > 24)
       return std::nullopt;
     t = types.unqualified(t);
+    if (t->kind == TyKind::Class && exactLayoutOnly)
+    {
+      layoutNeeded = true;
+      return std::nullopt;
+    }
     switch (t->kind)
     {
       case TyKind::Bool: return 1;
@@ -2898,6 +2971,11 @@ struct GlobalScope::Impl
     t = types.unqualified(t);
     if (t->kind == TyKind::Array)
       return constAlignOf(t->inner, depth + 1);
+    if (t->kind == TyKind::Class && exactLayoutOnly)
+    {
+      layoutNeeded = true; // only the code generator's layout is exact (bit fields, empty bases)
+      return std::nullopt;
+    }
     if (t->kind == TyKind::Class)
     {
       Decl* def = t->decl;
@@ -3031,10 +3109,12 @@ struct GlobalScope::Impl
           return std::nullopt;
         auto* callee = static_cast<NameExpr*>(c->callee);
         Decl* d = callee->resolved;
-        if (!d)
+        if (!d || d->kind == NodeKind::TemplateParamDecl)
           d = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
         if (!d)
           return std::nullopt;
+        if (d->kind == NodeKind::EnumDecl && c->args.size() == 1)
+          return constEval(c->args[0], ctx, depth + 1); // `U::Tag(0)`: a conversion to an enumeration
         if (d->kind == NodeKind::ClassDecl && c->args.empty())
         {
           // `is_optional<T>()`: a zero-arg constructor of a type-trait struct used as bool.
@@ -3080,6 +3160,11 @@ struct GlobalScope::Impl
         for (char c : text.substr(t.offset, t.length))
           if (c != '\'')
             digits += c;
+        // A floating literal (`0.25`, `1e-9`, `2.f`) is no integer: not cut to one (`0.25 < 0.45`
+        // would read 0 < 0).
+        bool hex = digits.size() > 1 && digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X');
+        if (digits.find('.') != std::string::npos || (!hex && digits.find_first_of("eEfF") != std::string::npos))
+          return std::nullopt;
         try
         {
           if (digits.size() > 2 && digits[0] == '0' && (digits[1] == 'b' || digits[1] == 'B'))
@@ -6000,6 +6085,7 @@ struct GlobalScope::Impl
     Expr* const* walkedArgs = nullptr; // see WalkedArgs
     std::vector<const Ty*> walkedArgTypes;
     const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
+    int undecidedBranches = 0;         // inside an instance's `if constexpr` branch this walk could not decide
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
     // Set on the scratch walkers that probe a requires-expression's requirements: an explicit
@@ -8322,6 +8408,30 @@ struct GlobalScope::Impl
       return l.scope ? l.scope : scope;
     }
 
+    // A template's own walk: a template parameter in scope that this walk binds to nothing.
+    bool inGenericTemplate() const
+    {
+      for (const LocalStack::Item& item : locals.items)
+        if (item.decl && item.decl->kind == NodeKind::TemplateParamDecl && (!activeSubst || !activeSubst->find(item.decl)))
+          return true;
+      return false;
+    }
+
+    // The instance this walk types, for messages: `T = int32, N = 3`; empty outside templates.
+    std::string instanceDescription() const
+    {
+      std::string out;
+      if (activeSubst)
+        for (const Subst::Pair& p : activeSubst->pairs)
+          if (p.param && p.param->kind == NodeKind::TemplateParamDecl)
+          {
+            uint32_t name = static_cast<TemplateParamDecl*>(p.param)->name;
+            out += (out.empty() ? "" : ", ") + std::string(name == UINT32_MAX ? "?" : impl.symbols.name(name)) + " = " +
+                   types.toString(p.type, &impl.symbols);
+          }
+      return out;
+    }
+
     const Ty* computeThisType()
     {
       Decl* cls = enclosingClassDecl(scope);
@@ -8562,7 +8672,17 @@ struct GlobalScope::Impl
             ++stats.typesResolved;
           break;
         }
-        case NodeKind::StaticAssertDecl: walkExpr(static_cast<StaticAssertDecl*>(d)->cond); break;
+        case NodeKind::StaticAssertDecl:
+        {
+          auto* s = static_cast<StaticAssertDecl*>(d);
+          walkExpr(s->cond);
+          // Checked where its condition is known: not in a template's own walk (its instances
+          // are), nor in a branch of an instance's `if constexpr` left undecided (it may be the
+          // discarded one).
+          if (undecidedBranches == 0 && !inGenericTemplate())
+            impl.checkStaticAssert(s, ctx(), instanceDescription());
+          break;
+        }
         case NodeKind::FriendDecl: walkType(static_cast<FriendDecl*>(d)->type); break;
         default: break;
       }
@@ -8673,8 +8793,11 @@ struct GlobalScope::Impl
               locals.pop(mark);
               break;
             }
+          bool undecided = i->isConstexpr && activeSubst;
+          undecidedBranches += undecided;
           walkStmt(i->then);
           walkStmt(i->else_);
+          undecidedBranches -= undecided;
           locals.pop(mark);
           break;
         }
@@ -9390,6 +9513,59 @@ void GlobalScope::finishIndex()
   impl->scopesWithUsingEnums.clear();
 }
 
+std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  std::vector<LayoutStaticAssert> out;
+  std::unordered_set<std::string> seen; // an instance's assert met by several walks once
+  for (const Impl::LayoutAssert& a : impl->layoutAsserts)
+  {
+    std::string key = std::to_string(reinterpret_cast<uintptr_t>(a.decl)) + "|" + a.instance;
+    if (!seen.insert(key).second)
+      continue;
+    LayoutStaticAssert& l = out.emplace_back();
+    l.decl = a.decl;
+    for (const Subst::Pair& p : a.subst.pairs)
+      l.args.pairs.push_back({p.param, p.type});
+    l.instance = a.instance;
+  }
+  return out;
+}
+
+std::vector<std::string> GlobalScope::checkerErrors()
+{
+  // The static_asserts in the bodies of class templates, once per instance the program names (a
+  // template's own walk leaves them to its instances).
+  for (const Ty* cls : impl->types.classInstances())
+  {
+    if (!cls->decl || cls->decl->kind != NodeKind::ClassDecl || cls->isConst || cls->isVolatile || !cls->isKnown() ||
+        impl->types.isDependent(cls) || Impl::mentionsUnknown(cls))
+      continue;
+    auto* c = static_cast<ClassDecl*>(cls->decl);
+    Subst subst = impl->substFor(cls);
+    LocalStack params;
+    for (Decl* p : Impl::effectiveParams(c))
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    Impl::TypeContext ctx{c->ownScope ? c->ownScope : impl->lexicalScopeOf(c), &params, subst.empty() ? nullptr : &subst,
+                          c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
+    for (Decl* m : c->members)
+      if (m->kind == NodeKind::StaticAssertDecl)
+        impl->checkStaticAssert(static_cast<StaticAssertDecl*>(m), ctx, impl->types.toString(cls, &impl->symbols));
+  }
+  // By file, then line number, then text.
+  auto key = [](const std::string& e)
+  {
+    size_t error = e.find(": error: ");
+    size_t colon = e.rfind(':', error == std::string::npos ? std::string::npos : error - 1);
+    if (error == std::string::npos || colon == std::string::npos || colon == 0)
+      return std::make_tuple(e, 0L, e);
+    return std::make_tuple(e.substr(0, colon), std::strtol(e.c_str() + colon + 1, nullptr, 10), e);
+  };
+  std::vector<std::string> out(impl->checkerErrorSet.begin(), impl->checkerErrorSet.end());
+  std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) { return key(a) < key(b); });
+  return out;
+}
+
 void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats)
 {
   Impl::Walker walker(*impl, stats, tokens, text);
@@ -9535,6 +9711,8 @@ FunctionDecl* GlobalScope::enumOperator(uint32_t punctuator, const Ty* lhs, cons
 const Ty* GlobalScope::typeOfDecl(Decl* d) { return impl->declaredTypeOf(d, nullptr, 0); }
 
 thread_local const std::vector<Token>* GlobalScope::Impl::fallbackTokens = nullptr;
+thread_local bool GlobalScope::Impl::exactLayoutOnly = false;
+thread_local bool GlobalScope::Impl::layoutNeeded = false;
 thread_local std::string_view GlobalScope::Impl::fallbackText;
 
 const Ty* GlobalScope::typeOfAst(Type* t, Decl* context)
