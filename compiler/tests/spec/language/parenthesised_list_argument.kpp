@@ -1,0 +1,19 @@
+// spec: `T({...})`, a class named with one brace list in parentheses, passes the list to a constructor as its argument (`Widths({{120, 0}})` builds the Vector<Item> parameter from the list), where `T{...}` is the class's own list (`Vector<Pair<int, int>>{{1, 2}}` holds one pair)
+// factorio: ModInfoPane's `this->modInfoTable.style.setColumnWidths((agui::TableStyle::Widths({{int(GuiConstants::getScaled(120)), 0}})));`
+class Widths
+{
+public:
+  struct Item { int minimalWidth = 0, maximalWidth = 0; };
+  Widths() = default;
+  implicit Widths(const Vector<Item>& data) : data(data) {}
+  Vector<Item> data;
+};
+static int first(const Widths& w) { return w.data[0].minimalWidth; }
+int main()
+{
+  Widths parenthesised = Widths({{120, 0}});
+  Vector<Pair<int, int>> pairs{{1, 2}};
+  Optional<Pair<int, int>> wrapped{{3, 4}};
+  println("{} {} {} {} {}", first(Widths({{120, 0}})), parenthesised.data.size(), pairs.size(), pairs[0].second, wrapped->first);
+  return 0;
+}

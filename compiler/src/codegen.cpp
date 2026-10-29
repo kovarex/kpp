@@ -2492,7 +2492,8 @@ namespace
         }
         if (init->kind == NodeKind::FunctionalCastExpr && sameClass)
         {
-          constructInto(addr, t, static_cast<FunctionalCastExpr*>(init)->args, at);
+          // `T(list)`: the list is a constructor's argument; `T{...}` has its list as the one argument.
+          constructInto(addr, t, static_cast<FunctionalCastExpr*>(init)->args, at, !static_cast<FunctionalCastExpr*>(init)->braced);
           return;
         }
         if (init->kind == NodeKind::BraceInitExpr)
@@ -6651,7 +6652,7 @@ namespace
           if (isClass(t))
           {
             std::string addr = sret.empty() ? newObjectSlot(t, c) : sret;
-            constructInto(addr, t, c->args, c);
+            constructInto(addr, t, c->args, c, true); // `Widths({{120, 0}})`: the list is the constructor's argument
             if (sret.empty())
               statementTemps.push_back({addr, t});
             return {addr, t, sret.empty()};
@@ -7883,7 +7884,7 @@ namespace
           if (isClass(t))
           {
             std::string addr = newObjectSlot(t, e);
-            constructInto(addr, t, c->args, e);
+            constructInto(addr, t, c->args, e, !c->braced); // `T(list)`: the list is a constructor's argument
             statementTemps.push_back({addr, t});
             return {addr, t, true};
           }
