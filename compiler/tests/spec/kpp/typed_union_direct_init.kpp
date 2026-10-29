@@ -1,0 +1,28 @@
+// spec: a typed union direct-initialized from a value of exactly one alternative's type, as copy-initialization is: `U u(x)`, `U(x)`, a member initializer `state(x)`, and placement new `new (slot) U(x)` (what Vector::emplace_back(x) does)
+// factorio: DrawCommandBatch's `batches.emplace_back(desc)` and `emplace_back(std::in_place_type_t<SpriteBatchDescription>(), ...)` (std::variant's converting constructor), ZoomSpecification's constructors initializing its variant member from a ZoomVariant or a ViewDistanceVariant
+// pending: only copy-initialization, assignment, return and arguments set the alternative; direct-initialization reads the value as the union's tag (codegen: a conversion from Square to Tag)
+struct Square
+{
+  double side;
+};
+union enum Shape : uint8_t
+{
+  { {int, Circle}, {Square, Box} }
+};
+struct Holder
+{
+  Shape shape;
+  explicit Holder(Square s) : shape(s) {}
+};
+int main()
+{
+  Square s{2.5};
+  Shape a(s);
+  Shape b = Shape(7);
+  Holder h(s);
+  Vector<Shape> shapes;
+  shapes.emplace_back(s);
+  shapes.emplace_back(3);
+  println("{} {} {} {} {}", a == Shape::Box, b[Circle], h.shape[Box].side, shapes[0] == Shape::Box, shapes[1][Circle]);
+  return 0;
+}
