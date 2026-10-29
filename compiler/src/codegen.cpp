@@ -7579,19 +7579,21 @@ namespace
       return false;
     }
 
+    // An arithmetic operand's type after the integral promotions.
+    const Ty* promoted(const Ty* t)
+    {
+      t = types.unqualified(types.stripRef(t));
+      if (t->kind == TyKind::Enum)
+        return enumUnderlying(t->decl);
+      if (t->kind == TyKind::Bool || t->kind == TyKind::Char || (t->kind == TyKind::Int && t->bits < 32))
+        return types.intType(32);
+      return t;
+    }
+
     const Ty* commonArithmetic(const Ty* a, const Ty* b)
     {
-      auto promote = [&](const Ty* t) -> const Ty*
-      {
-        t = types.unqualified(types.stripRef(t));
-        if (t->kind == TyKind::Enum)
-          return enumUnderlying(t->decl);
-        if (t->kind == TyKind::Bool || t->kind == TyKind::Char || (t->kind == TyKind::Int && t->bits < 32))
-          return types.intType(32);
-        return t;
-      };
-      a = promote(a);
-      b = promote(b);
+      a = promoted(a);
+      b = promoted(b);
       if (a->kind == TyKind::Float || b->kind == TyKind::Float)
         return types.floatType(std::max<uint8_t>(a->kind == TyKind::Float ? a->bits : 0, b->kind == TyKind::Float ? b->bits : 0));
       if (a->kind != TyKind::Int || b->kind != TyKind::Int)
@@ -8743,7 +8745,10 @@ namespace
         std::string spelling(punctuatorSpelling(op));
         unsupported(at, spelling + " on a pointer (" + types.toString(l.ty, &symbols) + " " + spelling + " " + types.toString(r.ty, &symbols) + ")");
       }
-      const Ty* ct = commonArithmetic(l.ty, r.ty);
+      // A shift has its left operand's promoted type, the count converted to it (LLVM shifts two
+      // operands of one type), never a type common to both: `position.x >> sideBitShift` with an
+      // int32 x and a uint32 count is an arithmetic shift of an int32 (ChunkPosition(TilePosition)).
+      const Ty* ct = op == P::Shl || op == P::Shr ? promoted(l.ty) : commonArithmetic(l.ty, r.ty);
       l = convert(l, ct, at);
       r = convert(r, ct, at);
       bool isFloat = ct->kind == TyKind::Float;

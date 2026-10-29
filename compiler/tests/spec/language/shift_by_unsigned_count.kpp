@@ -1,0 +1,15 @@
+// spec: a shift has its left operand's promoted type whatever the count's type: `x >> n` with an int32 x and a uint32 n is an arithmetic shift of an int32 (a negative x stays negative), a uint8 shifted is an int
+// factorio: ChunkPosition(const TilePosition&)'s `position.x >> Dimensions::Chunk::sideBitShift`, a uint32_t constant: it was a logical shift, as if both operands were unsigned, so a negative tile coordinate gave a chunk 134 million chunks away, and loading the main menu's map failed Tile::setupLargeTileOnSameChunk's `chunk->position == ChunkPosition(position)`
+constexpr uint32_t sideBitShift = 5;
+int main()
+{
+  int32_t x = -91;
+  uint32_t n = 5;
+  int64_t big = -1;
+  uint8_t small = 200;
+  int32_t compound = -64;
+  compound >>= n;
+  auto promotedSmall = small << n;
+  println("{} {} {} {} {} {}", x >> sideBitShift, x >> n, big >> n, promotedSmall, compound, (-1 << n) >> 2u);
+  return 0;
+}
