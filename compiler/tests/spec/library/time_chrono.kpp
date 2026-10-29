@@ -1,4 +1,4 @@
-// spec: the time types (std::chrono): durations of every period with lossless implicit conversions and durationCast, comparisons across periods, arithmetic, SteadyClock and SystemClock time points, time_t conversion, floor
+// spec: the time types (std::chrono): durations of every period with lossless implicit conversions and durationCast, comparisons across periods, arithmetic of any two durations and of time points in their common duration (std::common_type: Seconds + Milliseconds is Milliseconds, Ratio<1, 2> and Ratio<1, 3> count in sixths), SteadyClock and SystemClock time points, time_t conversion, floor
 // factorio: 394 chrono uses in 97 files (nanoseconds 144, steady_clock 91, system_clock 37, duration_cast 31, milliseconds 26, ...), 30 literals like 10ms
 int main()
 {
@@ -22,6 +22,13 @@ int main()
   println("{} {} {} {} {}", elapsedMs >= 0, ordered, fraction.count(), epochSeconds > 1700000000, back <= now);
   println("{} {} {} {} {}", durationCast<Minutes>(day).count(), Milliseconds(two) / ms, (ms * 2).count(), (ms * 0.5).count(), floor<Seconds>(Milliseconds(-1500)).count());
   println("{} {}", (3 * ms).count(), (0.5 * two).count());
+  auto mixed = two + ms;
+  auto sixths = Duration<int, Ratio<1, 2>>(3) + Duration<int, Ratio<1, 3>>(2);
+  TimePoint<SystemClock, Seconds> second = timePointCast<Seconds>(now);
+  auto plus = second + ms;
+  println("{} {} {} {} {} {}", mixed.count(), (ms - two).count(), sixths.count(), Minutes(1) / ms, (plus - second).count(), (Minutes(1) % Seconds(7)).count());
+  println("{} {} {} {}", isSame<decltype(mixed), Milliseconds>, isSame<decltype(sixths), Duration<int, Ratio<1, 6>>>, isSame<decltype(plus), TimePoint<SystemClock, Milliseconds>>, isSame<decltype(start + ms), TimePoint<SteadyClock, Nanoseconds>>);
+  println("{} {} {}", Ratio<2, -4>::num, Ratio<2, -4>::den, Duration<int, Ratio<1, 2>>(1) < Duration<int, Ratio<1, 3>>(2));
   thisThread::sleepFor(Milliseconds(1));
   return 0;
 }

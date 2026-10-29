@@ -5,7 +5,8 @@ What std::chrono converts to: `std::chrono::milliseconds` is `Milliseconds`, `st
 
 ## Ratio
 
-`Ratio<N, D>` is the fraction N/D, known at compile time: members `num` and `den`. `Nano`, `Micro`,
+`Ratio<N, D>` is the fraction N/D, known at compile time: members `num` and `den`, the fraction in
+lowest terms with a positive denominator (`Ratio<2, -4>` has num -1 and den 2). `Nano`, `Micro`,
 `Milli`, `Centi`, `Deci`, `Kilo`, `Mega` are the usual ones.
 
 ## Duration<Rep, Period>
@@ -21,12 +22,18 @@ Ratio, `Ratio<1>` unless given). The usual durations count in `long long`: `Nano
   (`Nanoseconds ns = Milliseconds(5);`, `Duration<double> s = Milliseconds(1500);` is 1.5).
   Other conversions go through `durationCast<To>(d)`, which truncates toward zero for an integer
   To; `floor<To>(d)` and `ceil<To>(d)` round down and up instead.
-- `+d`, `-d`; `d1 + d2` and `d1 - d2` for two durations of the same type; `d * n`, `n * d`,
-  `d / n` and `d % n` for an integer n keep the type, `d * x`, `x * d` and `d / x` for a
-  floating-point x give `Duration<double, Period>`; `d1 / d2` of the same type is the number of times d2 fits in d1
-  (Rep), `d1 % d2` the rest. `+=`, `-=`, `*=`, `/=`, `++`, `--` change the count.
-- `==`, `!=`, `<`, `<=`, `>`, `>=` compare durations of any two types by the time they stand for
-  (`Minutes(1) == Seconds(60)`).
+- The *common duration* of two durations is the one both convert to without loss: its rep is the
+  type of the sum of the two reps, its period the greatest period that divides both, so the finer
+  one when the other is a whole multiple of it (Milliseconds and Seconds: Milliseconds; this is
+  so for any two of the standard durations), else gcd of the numerators over lcm of the
+  denominators (`Ratio<1, 2>` and `Ratio<1, 3>`: `Ratio<1, 6>`).
+- `+d`, `-d`; `d1 + d2`, `d1 - d2` and `d1 % d2` for any two durations are in their common
+  duration (`Seconds(2) + Milliseconds(1500)` is `Milliseconds(3500)`), and `d1 / d2` is the
+  number of times d2 fits in d1, a count of the common rep; `d * n`, `n * d`, `d / n` and `d % n`
+  for an integer n keep the type, `d * x`, `x * d` and `d / x` for a floating-point x give
+  `Duration<double, Period>`. `+=`, `-=`, `*=`, `/=`, `++`, `--` change the count.
+- `==`, `!=`, `<`, `<=`, `>`, `>=` compare durations of any two types in their common duration,
+  by the time they stand for (`Minutes(1) == Seconds(60)`).
 
 ## TimePoint<Clock, Dur>
 
@@ -35,8 +42,11 @@ unless given).
 
 - `TimePoint()`: the epoch; `TimePoint(d)` (explicit); from a time point of the same clock whose
   duration converts implicitly. `time_since_epoch()`; `min()`, `max()`.
-- `t + d`, `t - d` (any duration, converted to Dur), `t += d`, `t -= d`; `t1 - t2`: the Dur between
-  them; `==`, `!=`, `<`, `<=`, `>`, `>=` between time points of the same type.
+- `t + d`, `d + t` and `t - d` for any duration d: a time point of the clock in the common duration
+  of Dur and d's (a `TimePoint<SystemClock, Seconds>` plus Milliseconds counts in milliseconds);
+  `t += d`, `t -= d` (d converted to Dur); `t1 - t2` for two time points of the clock: the common
+  duration of theirs between them; `==`, `!=`, `<`, `<=`, `>`, `>=` between time points of the
+  clock in any durations.
 - `timePointCast<To>(t)`: t with its duration cast to To.
 
 ## Clocks
@@ -59,9 +69,8 @@ values.
 Waiting functions take any duration: `thisThread::sleepFor(d)`, a Future's `waitFor(d)`, a
 ConditionVariable's `waitFor(lock, d)`; they wait at least d, rounded up to whole milliseconds.
 
-*Differences from C++*: `d1 + d2`, `d1 - d2`, `d1 / d2` and `d1 % d2` need durations of the same
-type (C++ gives the common type of any two; convert one first, the finer type takes the coarser
-without loss); the common period of two durations is
-the finer one, where C++ takes the greatest common divisor of the two (the same for every pair of
-the standard durations); there are no calendar types, no `file_clock`, `utc_clock` or time zones,
-and no `round` or `abs` of durations.
+*Differences from C++*: the common rep of two reps is the type of their sum, which is
+std::common_type's except for two reps of one type narrower than int (two `short` reps give an
+`int` count); `d * n` and `d / n` keep the rep for an integer n where C++ takes the common type of
+the rep and n's type; there are no calendar types, no `file_clock`, `utc_clock` or time zones, and
+no `round` or `abs` of durations.

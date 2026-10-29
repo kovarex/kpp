@@ -9,27 +9,16 @@ extern "C" void GetSystemTimePreciseAsFileTime(uint64_t* fileTime);
 
 // --- Ratio ---
 
-// A fraction known at compile time (std::ratio), kept in lowest terms.
-long long ratioGcd(long long a, long long b)
-{
-  if (a < 0)
-    a = -a;
-  if (b < 0)
-    b = -b;
-  while (b != 0)
-  {
-    long long t = a % b;
-    a = b;
-    b = t;
-  }
-  return a;
-}
+// The greatest common divisor of a and b, not negative (0 for two zeros); one return expression, so
+// that it folds at compile time (Ratio's terms, CommonDuration's period).
+constexpr long long ratioGcd(long long a, long long b) { return b == 0 ? (a < 0 ? -a : a) : ratioGcd(b, a % b); }
 
+// A fraction known at compile time (std::ratio): num and den are N/D in lowest terms, den positive.
 template<long long N, long long D = 1>
 struct Ratio
 {
-  static constexpr long long num = N;
-  static constexpr long long den = D;
+  static constexpr long long num = (D < 0 ? -N : N) / ratioGcd(N, D);
+  static constexpr long long den = (D < 0 ? -D : D) / ratioGcd(N, D);
 };
 using Nano = Ratio<1, 1000000000>;
 using Micro = Ratio<1, 1000000>;
@@ -93,16 +82,39 @@ struct Duration
     return *this;
   }
 
-  // The operators are members (overloads per scalar type rather than templates), which the compiler
-  // ranks today; free templates of the same operator do not overload reliably yet (spec
-  // templates/overload_rank_non_deduced_parameter). Sums and differences take two durations of the
-  // same type (convert one first: the finer type takes the coarser losslessly); C++ adds any two,
-  // in the finer period.
   Duration<Rep, Period> operator+() const { return *this; }
   Duration<Rep, Period> operator-() const { return Duration<Rep, Period>(-this->ticks); }
-  Duration<Rep, Period> operator+(const Duration<Rep, Period>& other) const { return Duration<Rep, Period>(this->ticks + other.ticks); }
-  Duration<Rep, Period> operator-(const Duration<Rep, Period>& other) const { return Duration<Rep, Period>(this->ticks - other.ticks); }
+  // The sum, difference and remainder of two durations of any types are in their common duration
+  // (inCommonDuration: Milliseconds + Seconds is Milliseconds), as is the quotient of two, a count.
+  template<typename Rep2, typename Period2>
+  auto operator+(const Duration<Rep2, Period2>& other) const
+  {
+    auto sum = inCommonDuration(*this, other);
+    sum.ticks += inCommonDuration(other, *this).ticks;
+    return sum;
+  }
+  template<typename Rep2, typename Period2>
+  auto operator-(const Duration<Rep2, Period2>& other) const
+  {
+    auto difference = inCommonDuration(*this, other);
+    difference.ticks -= inCommonDuration(other, *this).ticks;
+    return difference;
+  }
+  template<typename Rep2, typename Period2>
+  auto operator%(const Duration<Rep2, Period2>& other) const
+  {
+    auto rest = inCommonDuration(*this, other);
+    rest.ticks %= inCommonDuration(other, *this).ticks;
+    return rest;
+  }
+  // How many times other fits in this duration.
+  template<typename Rep2, typename Period2>
+  auto operator/(const Duration<Rep2, Period2>& other) const
+  {
+    return inCommonDuration(*this, other).ticks / inCommonDuration(other, *this).ticks;
+  }
   // Times or divided by an integer keeps the type; by a floating-point number it counts in double.
+  // (Members, one per scalar type: C++ takes any rep, in the common type of the two.)
   Duration<Rep, Period> operator*(int factor) const { return Duration<Rep, Period>(this->ticks * factor); }
   Duration<Rep, Period> operator*(long long factor) const { return Duration<Rep, Period>(this->ticks * factor); }
   Duration<double, Period> operator*(double factor) const { return Duration<double, Period>((double)this->ticks * factor); }
@@ -111,10 +123,7 @@ struct Duration
   Duration<double, Period> operator/(double divisor) const { return Duration<double, Period>((double)this->ticks / divisor); }
   Duration<Rep, Period> operator%(int divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
   Duration<Rep, Period> operator%(long long divisor) const { return Duration<Rep, Period>(this->ticks % divisor); }
-  // Divided by a duration of the same type: how many times it fits.
-  Rep operator/(const Duration<Rep, Period>& other) const { return this->ticks / other.ticks; }
-  Duration<Rep, Period> operator%(const Duration<Rep, Period>& other) const { return Duration<Rep, Period>(this->ticks % other.ticks); }
-  // Comparisons with a duration of any type, in their common period.
+  // Comparisons with a duration of any type, in their common duration.
   template<typename Rep2, typename Period2>
   bool operator==(const Duration<Rep2, Period2>& other) const { return compareDurations(*this, other) == 0; }
   template<typename Rep2, typename Period2>
@@ -188,28 +197,29 @@ Duration<R, P> operator*(long long factor, const Duration<R, P>& d) { return d *
 template<typename R, typename P>
 Duration<double, P> operator*(double factor, const Duration<R, P>& d) { return d * factor; }
 
+// a in the common duration of a and b (std::common_type of two durations), which both convert to
+// without loss: its rep is the type of the sum of the two reps, its period the greatest that divides
+// both periods, so the finer of the two when the other is a whole multiple of it (Milliseconds and
+// Seconds: Milliseconds, as for every two of the standard durations), else the fraction
+// gcd(numerators) / lcm(denominators) (Ratio<1, 2> and Ratio<1, 3>: Ratio<1, 6>).
+template<typename R1, typename P1, typename R2, typename P2>
+auto inCommonDuration(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
+{
+  if constexpr ((P2::num * P1::den) % (P2::den * P1::num) == 0)
+    return Duration<decltype(a.ticks + b.ticks), P1>(a);
+  else if constexpr ((P1::num * P2::den) % (P1::den * P2::num) == 0)
+    return Duration<decltype(a.ticks + b.ticks), P2>(a);
+  else // (the call in parentheses: written bare, kppc reads it as a function type)
+    return Duration<decltype(a.ticks + b.ticks), Ratio<(ratioGcd(P1::num, P2::num)), P1::den / ratioGcd(P1::den, P2::den) * P2::den>>(a);
+}
+
 // The ticks of a and b in their common duration, compared.
 template<typename R1, typename P1, typename R2, typename P2>
 int compareDurations(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
 {
-  if constexpr (isFloatingPoint<R1> || isFloatingPoint<R2>)
-  {
-    double x = Duration<double, Nano>(a).ticks;
-    double y = Duration<double, Nano>(b).ticks;
-    return x < y ? -1 : y < x ? 1 : 0;
-  }
-  else if constexpr (P1::num * P2::den <= P2::num * P1::den)
-  {
-    long long x = a.ticks;
-    long long y = Duration<long long, P1>(b).ticks;
-    return x < y ? -1 : y < x ? 1 : 0;
-  }
-  else
-  {
-    long long x = Duration<long long, P2>(a).ticks;
-    long long y = b.ticks;
-    return x < y ? -1 : y < x ? 1 : 0;
-  }
+  auto x = inCommonDuration(a, b);
+  auto y = inCommonDuration(b, a);
+  return x.ticks < y.ticks ? -1 : y.ticks < x.ticks ? 1 : 0;
 }
 // --- TimePoint and the clocks ---
 
@@ -244,20 +254,42 @@ struct TimePoint
     this->sinceEpoch -= d;
     return *this;
   }
-  // The operators are members, so that their types come from the class (`durationCast<Milliseconds>(
-  // end - start)` deduces from the difference's type at once).
+  // A time point plus or minus a duration, and the difference of two time points of the clock, are
+  // in the common duration of the two (a SteadyClock time point plus Milliseconds counts in
+  // nanoseconds; a Seconds one plus Milliseconds in milliseconds). The operators are members, so
+  // that their types come from the class (`durationCast<Milliseconds>(end - start)`).
   template<typename R, typename P>
-  TimePoint<Clock, Dur> operator+(const Duration<R, P>& d) const { return TimePoint<Clock, Dur>(this->sinceEpoch + Dur(d)); }
+  auto operator+(const Duration<R, P>& d) const
+  {
+    auto sinceEpoch = this->sinceEpoch + d;
+    return TimePoint<Clock, decltype(sinceEpoch)>(sinceEpoch);
+  }
   template<typename R, typename P>
-  TimePoint<Clock, Dur> operator-(const Duration<R, P>& d) const { return TimePoint<Clock, Dur>(this->sinceEpoch - Dur(d)); }
-  Dur operator-(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch - other.sinceEpoch; }
-  bool operator==(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch == other.sinceEpoch; }
-  bool operator!=(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch != other.sinceEpoch; }
-  bool operator<(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch < other.sinceEpoch; }
-  bool operator<=(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch <= other.sinceEpoch; }
-  bool operator>(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch > other.sinceEpoch; }
-  bool operator>=(const TimePoint<Clock, Dur>& other) const { return this->sinceEpoch >= other.sinceEpoch; }
+  auto operator-(const Duration<R, P>& d) const
+  {
+    auto sinceEpoch = this->sinceEpoch - d;
+    return TimePoint<Clock, decltype(sinceEpoch)>(sinceEpoch);
+  }
+  template<typename Dur2>
+  auto operator-(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch - other.sinceEpoch; }
+  // Comparisons with a time point of the clock in any duration.
+  template<typename Dur2>
+  bool operator==(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch == other.sinceEpoch; }
+  template<typename Dur2>
+  bool operator!=(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch != other.sinceEpoch; }
+  template<typename Dur2>
+  bool operator<(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch < other.sinceEpoch; }
+  template<typename Dur2>
+  bool operator<=(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch <= other.sinceEpoch; }
+  template<typename Dur2>
+  bool operator>(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch > other.sinceEpoch; }
+  template<typename Dur2>
+  bool operator>=(const TimePoint<Clock, Dur2>& other) const { return this->sinceEpoch >= other.sinceEpoch; }
 };
+
+// A duration plus a time point, as the time point plus the duration.
+template<typename R, typename P, typename C, typename D>
+auto operator+(const Duration<R, P>& d, const TimePoint<C, D>& t) { return t + d; }
 
 // t in another duration of the same clock (std::chrono::time_point_cast).
 template<typename To, typename C, typename D>

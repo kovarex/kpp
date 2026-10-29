@@ -760,7 +760,11 @@ converter now drops a std container's allocator argument (`std::vector<T, Alloca
 `Vector<T>`: the library's containers have no allocator parameter) and the template parameter
 that only it used, so CommonUtil's `Util::eraseIf` and `eraseEmpty` overloads match again: 24,097
 (the unresolved calls in the 21 functions that call them are gone; 8 of those functions now stop
-at a later, unrelated class layout error).
+at a later, unrelated class layout error). Later that night, on master 9c965bd (23,973): durations
+and time points add, subtract and compare in their common duration as in C++ (docs/stdlib/time.md;
+`Util::sleep_for`'s two mixed-period calls): 23,971; `std::thread::hardware_concurrency()` as
+`Thread::hardwareConcurrency()` (8 functions get past the call; 3 of them stop at a later error):
+23,966.
 
 ### Error breakdown by root cause
 
