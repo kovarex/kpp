@@ -12580,7 +12580,36 @@ struct GlobalScope::Impl
       for (Decl* p : f->templateParams)
         if (!subst.find(p) || types.isDependent(subst.find(p)) || !subst.find(p)->isKnown())
           return nullptr;
-      if (!f->body || instantiationDepth > 16)
+      // A member function template declared in its class and defined after it (`template<bool B>
+      // auto* Net::maybeGet(int) const {...}`): the definition's body, its own template parameters
+      // taking the declaration's arguments in order; the instance stays the declaration's.
+      FunctionDecl* def = f;
+      if (!f->body && needReturn && f->returnType && !f->trailingReturn && Impl::astMentionsAuto(f->returnType))
+        if (Decl* cls = impl.owningClassOf(f); cls && cls->ownScope && !f->templateParams.empty())
+        {
+          uint32_t symbol = impl.functionSymbol(f->name);
+          const Ty* ft = impl.matchedType(f);
+          // (The declaration's `auto` return against whatever the definition's type has deduced:
+          // the parameters and the method's constness decide.)
+          auto sameParameters = [&](const Ty* a, const Ty* b)
+          {
+            if (!a || !b || a->kind != TyKind::Function || b->kind != TyKind::Function || a->args.size() != b->args.size() || a->variadic != b->variadic)
+              return false;
+            for (size_t i = 0; i < a->args.size(); ++i)
+              if (a->args[i] != b->args[i])
+                return false;
+            return true;
+          };
+          for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
+            if (candidate->body && impl.functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) &&
+                candidate->templateParams.size() == f->templateParams.size() && (candidate->flags & DF_Const) == (f->flags & DF_Const))
+              if (const Ty* ct = impl.typeAs(candidate, f); ct == ft || (ft && ft->kind == TyKind::Function && impl.containsAuto(ft->inner) && sameParameters(ct, ft)))
+              {
+                def = candidate;
+                break;
+              }
+        }
+      if (!def->body || instantiationDepth > 16)
         return nullptr;
       if (classSubst)
         for (const Subst::Pair& pair : classSubst->pairs)
@@ -12591,7 +12620,11 @@ struct GlobalScope::Impl
         for (const Subst::Pair& pair : classSubst->pairs)
           if (!full.find(pair.param))
             full.pairs.push_back(pair);
-      Scope* bodyScope = f->name.parts.size() > 1 ? semanticScopeFor(f->name) : impl.lexicalScopeOf(f);
+      Subst defFull = full;
+      if (def != f)
+        for (size_t i = 0; i < f->templateParams.size(); ++i)
+          defFull.pairs.push_back({def->templateParams[i], subst.find(f->templateParams[i])});
+      Scope* bodyScope = def->name.parts.size() > 1 ? semanticScopeFor(def->name) : impl.lexicalScopeOf(def);
       const Ty* bodyThis = nullptr;
       if (objectType)
         bodyThis = types.pointer(types.unqualified(types.stripRef(objectType)));
@@ -12616,12 +12649,12 @@ struct GlobalScope::Impl
       }
       ++impl.instFunctions;
       auto start = std::chrono::steady_clock::now();
-      // The instantiation's own copy of f's nodes, typed here and kept as its body.
-      FunctionDecl* copy = impl.copyInstance(f, bodyScope);
+      // The instantiation's own copy of f's nodes (its definition's), typed here and kept as its body.
+      FunctionDecl* copy = impl.copyInstance(def, bodyScope);
       inst->body = copy;
       const Ty* deduced = nullptr;
       const Ty* pattern = nullptr; // the written `auto&`, `const auto*`...: the deduced type takes its shape
-      subCheck(f, full, bodyScope, bodyThis, [&](Walker& sub)
+      subCheck(def, defFull, bodyScope, bodyThis, [&](Walker& sub)
       {
         sub.returnFrames.push_back(nullptr);
         sub.walkDecl(copy);
@@ -16713,8 +16746,23 @@ Decl* GlobalScope::definitionOf(Decl* d)
     {
       uint32_t symbol = impl->functionSymbol(f->name);
       const Ty* ft = impl->matchedType(f);
+      // A declaration returning `auto` against a definition whose type has its return deduced:
+      // the parameters and the method's constness decide.
+      auto matches = [&](FunctionDecl* candidate)
+      {
+        const Ty* ct = impl->typeAs(candidate, f);
+        if (ct == ft)
+          return true;
+        if (!ft || !ct || ft->kind != TyKind::Function || ct->kind != TyKind::Function || !impl->containsAuto(ft->inner) ||
+            (candidate->flags & DF_Const) != (f->flags & DF_Const) || ct->args.size() != ft->args.size() || ct->variadic != ft->variadic)
+          return false;
+        for (size_t i = 0; i < ct->args.size(); ++i)
+          if (ct->args[i] != ft->args[i])
+            return false;
+        return true;
+      };
       for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
-        if (impl->functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) && impl->typeAs(candidate, f) == ft)
+        if (impl->functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) && matches(candidate))
         {
           // `static` and `virtual` are written on the declaration only; the definition is emitted
           // (with or without `this`) by what the declaration says.

@@ -1,6 +1,5 @@
 // spec: a member function template returning `auto*`, declared in its class and defined after it (`template<bool ForLogistics> auto* Net::maybeGet(int) const {...}`), has the return type its definition's body deduces for each instance, called directly and from a lambda in another member template
 // found in the converted game: LogisticNetwork::maybeGetRobotsEstimatedToFinishOnChunk<ForLogistics>, called by findBestBusyRobot's checkChunk lambda (5 "a local of unknown type (robotList)")
-// pending: the declaration has no body to deduce from, and the definition, whose type already shows a deduced return, matches no `auto` declaration ("a local of unknown type")
 struct Net
 {
   int a = 1;
