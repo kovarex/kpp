@@ -284,6 +284,9 @@ namespace filesystem
 
     const WString& native() const { return this->text; }
     const wchar_t* c_str() const { return this->text.c_str(); }
+    // The native string, implicitly (std::filesystem::path's operator string_type): Logger's
+    // `widen(directory / "factorio-dump-current.dmp")` takes it as a WString.
+    implicit operator WString() const { return this->text; }
     // The text as UTF-8 (string, u8string) or UTF-16 (wstring); the generic forms with `/`.
     String string() const { return narrowUtf16(this->text.c_str(), this->text.size()); }
     WString wstring() const { return this->text; }

@@ -10,7 +10,8 @@ specified at the end.
 ## path
 
 A path is text in Windows form: `\` and `/` are both separators, `preferred_separator` is `\`.
-It is stored as a WString (`native()`, `c_str()`); `value_type` is wchar_t.
+It is stored as a WString (`native()`, `c_str()`, and an implicit conversion to WString, the native
+string); `value_type` is wchar_t.
 
 Construction (implicit, except the two-pointer forms): from a WString, a `const wchar_t*`, or a
 `[first, last)` range of wchar_t; from a String, a `const char*`, a StringView or a range of char,

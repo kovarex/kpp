@@ -154,9 +154,8 @@ InsertIterator<Container> inserter(Container& c, typename Container::iterator po
 
 // The free forms of a container's begin(), end(), size() and the rest (std::begin and friends), for
 // generic code that calls them on any range. Each takes part only for a type that has the member
-// (a class with its own free begin, like a reverse wrapper, keeps it). Built-in arrays wait for the
-// compiler to deduce an array's bound from a `const T (&)[N]` parameter (spec
-// templates/array_reference_parameter).
+// (a class with its own free begin, like a reverse wrapper, keeps it); size and ssize take a
+// built-in array too.
 template<typename C> requires requires (C& c) { c.begin(); }
 auto begin(C& c) { return c.begin(); }
 template<typename C> requires requires (const C& c) { c.begin(); }
@@ -181,6 +180,11 @@ template<typename C> requires requires (const C& c) { c.size(); }
 auto size(const C& c) { return c.size(); }
 template<typename C> requires requires (const C& c) { c.size(); }
 ptrdiff_t ssize(const C& c) { return (ptrdiff_t)c.size(); }
+// A built-in array's element count (SelectorCombinatorGui's `std::size(modeOfOperationMapping)`).
+template<typename T, int N>
+constexpr int size(const T (&array)[N]) { return N; }
+template<typename T, int N>
+constexpr ptrdiff_t ssize(const T (&array)[N]) { return N; }
 template<typename C> requires requires (const C& c) { c.empty(); }
 auto empty(const C& c) { return c.empty(); }
 template<typename C> requires requires (C& c) { c.data(); }
