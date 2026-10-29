@@ -15,9 +15,9 @@ set KPPC=..\..\compiler\build\kppc.exe
 set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude native\include
 set L=C:\Factorio\vs2022\Releasex64
 set LIBS=--lib native\build\factorio-native.lib
-for %%l in (lua sdl sdl-mixer curl zlib zstd minizip ogg vorbis opus opusfile re2 crc32fast stb fontstash glad imgui trio open-vcdiff stack-walker) do call set LIBS=%%LIBS%% --lib %L%\%%l.lib
+for %%l in (lua sdl sdl-mixer curl zlib zstd minizip ogg vorbis opus opusfile re2 crc32fast stb fontstash glad imgui trio open-vcdiff) do call set LIBS=%%LIBS%% --lib %L%\%%l.lib
 for %%l in (dnsapi wldap32 gdi32 comdlg32 ole32 winmm psapi opengl32 gdiplus shell32 shlwapi user32 imm32 oleaut32 setupapi dxguid uuid windowscodecs version) do call set LIBS=%%LIBS%% --lib -l%%l
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going %LIBS% --exe kpp\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\Lua kpp\src > kpp\link.txt 2> kpp\link-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going %LIBS% --exe kpp\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\link.txt 2> kpp\link-errors.txt
 echo kppc exit %errorlevel%
 echo unresolved externals (lines, then the linker's count):
 %SystemRoot%\System32\find.exe /c "unresolved external symbol" kpp\factorio.exe.link.txt

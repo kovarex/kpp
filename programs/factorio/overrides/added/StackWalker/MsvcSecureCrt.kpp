@@ -1,0 +1,16 @@
+// MSVC's C++ overloads of the secure CRT functions that take the destination as an array and its
+// size from that array (what <string.h> and <stdio.h> add for C++ under MSVC): StackWalker writes
+// `strcat_s(szTemp, ".local")` (through tchar.h's _tcscat_s) and `_snprintf_s(buffer, count,
+// format, ...)`. C has only the forms with the size after the destination, which the import
+// declares and these call.
+extern "C" import "string.h";
+extern "C" import "stdio.h";
+
+template<int N>
+errno_t strcat_s(char (&destination)[N], const char* source) { return strcat_s(destination, rsize_t(N), source); }
+
+template<int N, typename... Args>
+int _snprintf_s(char (&buffer)[N], size_t count, const char* format, Args... args)
+{
+  return _snprintf_s(buffer, size_t(N), count, format, args...);
+}

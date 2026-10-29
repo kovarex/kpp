@@ -551,7 +551,10 @@ namespace
     {"REFIID", "const IID*"},
     // Windows' functions with an A and a W form, as the game's narrow build has them.
     {"LoadLibrary", "LoadLibraryA"}, {"GetModuleHandle", "GetModuleHandleA"}, {"GetModuleHandleEx", "GetModuleHandleExA"},
-    {"MapVirtualKey", "MapVirtualKeyA"},
+    {"MapVirtualKey", "MapVirtualKeyA"}, {"GetModuleFileName", "GetModuleFileNameA"}, {"GetFileAttributes", "GetFileAttributesA"},
+    {"GetEnvironmentVariable", "GetEnvironmentVariableA"},
+    // tchar.h's names, as the narrow build has them (StackWalker).
+    {"_tcscat_s", "strcat_s"},
     // psapi.h's functions, which kernel32 has under K32 names (PSAPI_VERSION 2).
     {"GetProcessMemoryInfo", "K32GetProcessMemoryInfo"}, {"EnumProcessModules", "K32EnumProcessModules"},
     {"GetModuleInformation", "K32GetModuleInformation"}, {"GetModuleFileNameEx", "K32GetModuleFileNameExA"},
@@ -1645,6 +1648,7 @@ namespace
     {
       uint32_t begin, end;
       std::string key; // as ScopeNames has it
+      bool classBody = false; // a class's definition (not a namespace, not an out-of-line member's scope)
     };
     std::vector<ScopeRange> scopeRanges;
     void collectScopeRanges(Span<Decl*> decls, const std::string& prefix)
@@ -1664,7 +1668,7 @@ namespace
         else if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->isDefinition && !static_cast<ClassDecl*>(d)->name.empty())
         {
           std::string key = prefix + nameText(static_cast<ClassDecl*>(d)->name, symbols) + "::";
-          scopeRanges.push_back({begin, end, key});
+          scopeRanges.push_back({begin, end, key, true});
           collectScopeRanges(static_cast<ClassDecl*>(d)->members, key);
         }
         else if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->name.parts.size() > 1)
@@ -2213,7 +2217,13 @@ namespace
         {
           counts.add("macro to constant");
           std::string indent = line.substr(0, line.find('#'));
-          return indent + "const auto " + name + " = " + body + ";" + trailing;
+          // In a class's definition (StackWalker's `#define MAX_MODULE_NAME32 255` among its
+          // members) the constant is the class's, not a data member of each object.
+          const ScopeRange* innermost = nullptr;
+          for (const ScopeRange& r : scopeRanges)
+            if (r.begin <= offset && offset < r.end && (!innermost || r.begin >= innermost->begin))
+              innermost = &r;
+          return indent + (innermost && innermost->classBody ? "static constexpr auto " : "const auto ") + name + " = " + body + ";" + trailing;
         }
       }
       todo(offset, "macro " + name + (functionLike ? "(...)" : "") + " kept as a comment");

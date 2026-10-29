@@ -578,24 +578,26 @@ entire `src/` directory (3,779 files), plus tests. 4,043 Kpp files through the c
 ### The headline number: how it is measured
 
 The one number tracked from here on is **full-src codegen errors**: the error lines the code
-generator writes for the converted CommonUtil, Agui, cxxopts, Lua and `src/`. After `convert.cmd`
+generator writes for the converted CommonUtil, Agui, cxxopts, StackWalker, Lua and `src/`. After `convert.cmd`
 (or just its conversion step into `kpp\`), from `programs\factorio`:
 
 ```
 ..\..\compiler\build\kppc.exe --std ..\..\stdlib ^
   --cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include ^
   --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude native\include ^
-  --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\Lua kpp\src 2> kpp\full-errors.txt
+  --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src 2> kpp\full-errors.txt
 find /c /v "" kpp\full-errors.txt
 ```
 
-- Inputs: exactly `kpp\CommonUtil`, `kpp\Agui`, `kpp\cxxopts`, `kpp\Lua` and `kpp\src`, not the
+- Inputs: exactly `kpp\CommonUtil`, `kpp\Agui`, `kpp\cxxopts`, `kpp\StackWalker`, `kpp\Lua` and `kpp\src`, not the
   whole `kpp\`: that directory also holds the `kpp\Util` copy of `kpp\src\Util` the smoke tests
   use and whatever stubs were copied in. `kpp\cxxopts` is in since 2026-10-28 (see "cxxopts"
   below); a count from before that leaves out its errors (13 when it came in). `kpp\Lua` is in
   since 2026-10-29: it holds only `LuaCPPUtilities.kpp`, the game's C++ overloads of Lua's API
   (`lua_pushstring` of a String, ...), converted from `libraries\Lua\LuaCPPUtilities.hpp` while Lua
-  itself is imported as C.
+  itself is imported as C. `kpp\StackWalker` is in since 2026-10-29 (see "StackWalker" below): the
+  crash handler's stack walker, converted with the game; it came in with 1 error line and took the
+  game's 8 StackWalkerToStream lines ("a base class names 'StackWalker'") with it.
 - The SDL_Mixer include directory is required: the imported C headers compile as one unit, so a
   single missing header fails all of them and every Lua, SDL and C library use becomes an error.
   The run is valid only if its output has no `importing C headers failed` line and shows the
@@ -1032,6 +1034,28 @@ layouts, starts GDI+, lists the encoders, writes a 3x2 bitmap through LockBits, 
 JPEG (with EncoderQuality) into memory streams, reads both back (the PNG's pixels), and loads a
 stream that holds no image; its output equals `tests/gdiplus_smoke.cpp`'s, the same steps against
 the SDK's gdiplus.h.
+
+### StackWalker (2026-10-29)
+
+The crash handler writes its stack traces with Jochen Kalmbach's StackWalker (BSD licence; the
+game's copy in `libraries/StackWalker`, with Wube's ShowCallstacks, OnEntrySymbolized and
+ShouldLogEntry), which the game's StackWalkerToStream derives from. It is C++ over DbgHelp and
+ToolHelp, which it loads with LoadLibrary and GetProcAddress, so it is converted with the game, as
+cxxopts is: convert.cmd, link.cmd and the headline command take `libraries/StackWalker` (into
+`kpp/StackWalker`), and link.cmd no longer links the game's stack-walker.lib. What its conversion
+needed:
+
+- MSVC's C++ forms of the secure CRT functions, which take the destination as an array and its size
+  from it (`strcat_s(szTemp, ".local")` through tchar.h's _tcscat_s, `_snprintf_s(buffer, count,
+  format, ...)`): `overrides/added/StackWalker/MsvcSecureCrt.kpp` has them as templates over the C
+  forms the import declares.
+- The narrow names of the Windows functions it calls by their generic ones (GetModuleFileName,
+  GetFileAttributes, GetEnvironmentVariable) and tchar.h's _tcscat_s, in the converter's table.
+- A `#define` among a class's members (`#define MAX_MODULE_NAME32 255` in StackWalkerInternal)
+  becomes a `static constexpr` member of the class, where it was a data member of each object.
+
+One line is left: USED_CONTEXT_FLAGS is CONTEXT_FULL, which the import writes before the constants
+it is made of (language/auto_global_from_later_global, pending).
 
 ### From emitted functions to an executable (2026-10-28, night)
 
