@@ -2458,6 +2458,30 @@ namespace
           return k;
       return 0;
     }
+    // Whether name is an iterator type's, whose member types (value_type, ...) the library's
+    // IteratorTraits gives: an alias of an iterator (`using ListIterator = ...::const_iterator;`; a
+    // Vector's iterator is a pointer, which has no members), or, naming no class or alias of the
+    // converted files, a template parameter named as std names iterators (RandomIt, InputIt, Iter).
+    bool namesIteratorType(const std::string& name) const
+    {
+      if (classesByName)
+        if (auto found = classesByName->find(name); found != classesByName->end() && !found->second.empty())
+        {
+          for (Decl* d : found->second)
+          {
+            Type* aliased = d->kind == NodeKind::UsingAliasDecl ? static_cast<UsingAliasDecl*>(d)->type : nullptr;
+            if (!aliased || aliased->kind != NodeKind::NamedType || static_cast<NamedType*>(aliased)->name.empty() ||
+                static_cast<NamedType*>(aliased)->name.last().symbol == UINT32_MAX)
+              return false;
+            std::string last(symbols.name(static_cast<NamedType*>(aliased)->name.last().symbol));
+            if (last.size() < 8 || last.compare(last.size() - 8, 8, "iterator") != 0)
+              return false;
+          }
+          return true;
+        }
+      auto endsWith = [&](std::string_view suffix) { return name.size() >= suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0; };
+      return endsWith("It") || endsWith("Iter") || endsWith("Iterator");
+    }
     // A fixture test's body (UnitTest++'s TEST_FIXTURE, whose expansion ends with the
     // `Fixture##Name##Helper::Run()` of a class deriving from the fixture): the parse does not see it
     // (a macro's use with a block), so the names it uses of the fixture's members get their `this->`
@@ -3803,6 +3827,21 @@ namespace
           insert(toks[i + 3].offset, "(");
           insert(endOffset(i + 4), ")");
           counts.add("casts of a negative number parenthesized");
+        }
+        // `X::value_type` (reference, pointer, difference_type, iterator_category) of an iterator type
+        // X is IteratorTraits<X>'s, as std::iterator_traits gives them: CreatableEntityTypeIterator's
+        // `using value_type = ListIterator::value_type;` with ListIterator a std::vector's const_iterator,
+        // a pointer in Kpp.
+        static const std::set<std::string_view> iteratorMemberTypes = {"value_type", "reference", "pointer", "difference_type", "iterator_category"};
+        if (t.getKind() == TokenKind::Identifier && i + 2 < toks.size() && toks[i + 1].is(P::ColonColon) && iteratorMemberTypes.count(spelling(i + 2)) &&
+            !toks[i + 3].is(P::ColonColon) && !(i > 0 && (toks[i - 1].is(P::ColonColon) || toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow))) &&
+            namesIteratorType(std::string(spelling(i))))
+        {
+          insert(t.offset, "IteratorTraits<");
+          insert(endOffset(i), ">");
+          counts.add("iterator member types through IteratorTraits");
+          i += 2;
+          continue;
         }
         // A string macro or a macro that is a qualified name is its text wherever it is used: macros
         // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
