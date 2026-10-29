@@ -1,6 +1,5 @@
 // spec: an InitializerList written as a functional cast over a brace list (`InitializerList<Case>{{"a", 1}, {"bb", 20}}`, a range-for's range) is the list over its elements' array, which lives as long as the list object; and a class with an InitializerList constructor list-initialized from one brace list element its element type is not made from (`Vector<ID> ids{{ID(1), ID(2), ID(3)}}`) takes the inner list as the InitializerList (C++'s second phase)
 // factorio: tests/TestNoiseProgram.cpp's `for (const auto& testCase : InitializerList<OperationTestCase<...>>{{...}, ...})` (and TestUpgradeItem.cpp), tests/TestPump.cpp's `const Vector<FluidID> fluids{ { FluidID("water"), FluidID("crude-oil"), FluidID("lubricant") } };`
-// pending: InitializerList's constructors were tried with the elements ("a constructor of InitializerList taking 3 arguments"), and the inner list was taken for one element ("a constructor of ID taking 3 arguments"); owner: the templates thread (list-initialization)
 struct Case
 {
   String name;

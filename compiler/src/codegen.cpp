@@ -2357,6 +2357,12 @@ namespace
       const Ty* element = pt->args[0];
       for (Expr* a : list->args)
       {
+        // A list as an element (`Vector<ID> ids{{ID(1), ID(2), ID(3)}}`): one only when the element
+        // type is list-initialized from it; otherwise the list is the InitializerList itself, the
+        // argument of the second phase.
+        if (a && a->kind == NodeKind::BraceInitExpr && !types.isDependent(element))
+          if (const Ty* inner = braceListType(a, global.initializerListDecl(), types); inner && !global.converts(inner, element))
+            return false;
         if (!a || a->kind == NodeKind::BraceInitExpr || isPackExpansion(a) || !a->ty || !a->ty->isKnown())
           continue;
         const Ty* at = withCurrentArgs(a->ty);
@@ -2410,6 +2416,22 @@ namespace
     // AchievementId()` when no constructor takes the object itself.
     void directInitialize(const std::string& addr, const Ty* t, Span<Expr*> args, bool braced, Node* at, bool listElements)
     {
+      if (braced && isInitializerListType(types.unqualified(t)))
+      {
+        // `InitializerList<TestCase>{{...}, {...}}` (a range-for's range in the tests): the list
+        // over its elements' array, which lives as long as the object made here does.
+        if (!listElements && args.size() == 1 && args[0] && args[0]->kind == NodeKind::BraceInitExpr)
+        {
+          initializerListTemporary(types.unqualified(t), static_cast<BraceInitExpr*>(args[0]), at, addr);
+          return;
+        }
+        BraceInitExpr list{};
+        list.kind = NodeKind::BraceInitExpr;
+        list.token = at ? at->token : 0;
+        list.args = args;
+        initializerListTemporary(types.unqualified(t), &list, at, addr);
+        return;
+      }
       Expr* arg = args.size() == 1 && !braced ? args[0] : nullptr;
       const Ty* argTy = arg && arg->ty && arg->ty->isKnown() ? withCurrentArgs(types.unqualified(types.stripRef(arg->ty))) : nullptr;
       if (argTy && isClass(argTy) && !types.isDependent(argTy) && classKey(argTy) != classKey(t) && !baseInstantiation(argTy, classDef(t->decl, at), at) &&
