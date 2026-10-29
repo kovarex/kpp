@@ -5165,7 +5165,7 @@ namespace
         std::string params;
         for (size_t i = 0; i < callTy->args.size(); ++i)
           params += (i ? ", " : "") + irString(callTy->args[i]);
-        functionName = "@\"" + irString(t) + "::operator()(" + params + ")\"";
+        functionName = genericOperatorName(t, own, callTy);
         suffix = "(" + params + ")";
         bool firstUse;
         {
@@ -5220,6 +5220,20 @@ namespace
     }
 
     // Calls a closure value with arguments.
+    // The call operator of generic lambda t for its own arguments, one per set of them: named by
+    // those arguments and the parameter types they give (a template parameter no parameter
+    // mentions tells instances apart only by its argument: `[]<class T>(const char* name)`, called
+    // `runTest.operator()<CraftingMachine>(name)` and `runTest.operator()<RocketSilo>(name)`).
+    std::string genericOperatorName(const Ty* t, const TemplateArgs& own, const Ty* callTy)
+    {
+      std::string args, params;
+      for (size_t i = 0; i < own.pairs.size(); ++i)
+        args += (i ? ", " : "") + irString(own.pairs[i].second);
+      for (size_t i = 0; i < callTy->args.size(); ++i)
+        params += (i ? ", " : "") + irString(callTy->args[i]);
+      return "@\"" + irString(t) + "::operator()<" + args + ">(" + params + ")\"";
+    }
+
     Value callClosure(Value closure, Span<Expr*> callArgs, const std::string& sret, Node* at)
     {
       const Ty* t = types.unqualified(closure.ty); // a const lambda variable calls the same operator
@@ -5244,10 +5258,7 @@ namespace
         callTy = global.lambdaInstance(t, own, &instanceArgs, &genericBody);
         if (!callTy || !genericBody)
           unsupported(at, "a generic lambda whose body could not be typed for this call");
-        std::string params;
-        for (size_t i = 0; i < callTy->args.size(); ++i)
-          params += (i ? ", " : "") + irString(callTy->args[i]);
-        functionName = "@\"" + irString(t) + "::operator()(" + params + ")\"";
+        functionName = genericOperatorName(t, own, callTy);
       }
       else
       {
@@ -9354,6 +9365,22 @@ namespace
           if (isClass(objectTy))
             destroy(addr, objectTy, c);
           return {"", types.voidType()};
+        }
+        if (m->member.parts.size() == 1 && m->member.last().special == 2 && P(m->member.last().opToken) == P::LParen && isLambda(m->ty))
+        {
+          // `runTest.operator()<CraftingMachine>(name)`: a call of the lambda, its template arguments
+          // on the call as the type checker recorded them.
+          Value closure;
+          if (m->op == P::Arrow)
+          {
+            Value p = arrowOperand(rvalue(m->base), c);
+            if (p.ty->kind != TyKind::Pointer)
+              unsupported(c, "-> on something that is not a pointer");
+            closure = {p.text, p.ty->inner};
+          }
+          else
+            closure = rvalue(m->base);
+          return callClosure(closure, c->args, sret, c);
         }
         if ((!m->resolved || m->resolved->kind != NodeKind::FunctionDecl) && !m->member.empty() && m->member.last().special == 2 &&
             P(m->member.last().opToken) == P::Assign && c->args.size() == 1)

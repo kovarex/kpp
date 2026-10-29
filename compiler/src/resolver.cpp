@@ -14570,23 +14570,23 @@ struct GlobalScope::Impl
     // gives one argument per element of the pack, none for an empty one. Returns how many
     // arguments the list names: an expansion still dependent counts as none, since it may name
     // none.
-    size_t bindExplicitArgs(FunctionDecl* f, const NamePart& namePart, Span<Expr*> args, Subst& s, bool emptyPackWithoutArgs = true)
+    size_t bindExplicitArgs(Span<Decl*> templateParams, const NamePart& namePart, Span<Expr*> args, Subst& s, bool emptyPackWithoutArgs = true)
     {
-      size_t n = f->templateParams.size(), named = 0;
+      size_t n = templateParams.size(), named = 0;
       std::vector<const Ty*> given;
       // A parameter pack takes the written arguments from its position on, wherever it is
       // (`template<typename... Ts, typename InputT, typename... Args> dummyLoad(InputT&, Args&&...)`
       // called `dummyLoad<char, int>(input)`): the parameters after it are deduced.
       size_t firstPack = n;
       for (size_t i = 0; i < n; ++i)
-        if (static_cast<TemplateParamDecl*>(f->templateParams[i])->isPack)
+        if (static_cast<TemplateParamDecl*>(templateParams[i])->isPack)
         {
           firstPack = i;
           break;
         }
       for (Node* written : namePart.templateArgs)
       {
-        Decl* param = n ? f->templateParams[std::min(std::min(given.size(), n - 1), firstPack)] : nullptr;
+        Decl* param = n ? templateParams[std::min(std::min(given.size(), n - 1), firstPack)] : nullptr;
         const Ty* t = explicitArgument(written, param);
         bool expansion = written && written->kind == NodeKind::PackType;
         if (expansion && t && t->kind == TyKind::Pack)
@@ -14604,7 +14604,7 @@ struct GlobalScope::Impl
         return named;
       for (size_t i = 0; i < given.size() && i < n; ++i)
       {
-        auto* param = static_cast<TemplateParamDecl*>(f->templateParams[i]);
+        auto* param = static_cast<TemplateParamDecl*>(templateParams[i]);
         if (param->isPack)
         {
           std::vector<const Ty*> rest(given.begin() + i, given.end());
@@ -14615,11 +14615,15 @@ struct GlobalScope::Impl
       }
       if (namePart.hasTemplateArgs && args.empty() && emptyPackWithoutArgs)
       {
-        auto* last = static_cast<TemplateParamDecl*>(f->templateParams[n - 1]);
+        auto* last = static_cast<TemplateParamDecl*>(templateParams[n - 1]);
         if (last->isPack && !s.find(last))
           s.pairs.push_back({last, types.pack({})}); // `count<int>()`: nothing left for Args
       }
       return named;
+    }
+    size_t bindExplicitArgs(FunctionDecl* f, const NamePart& namePart, Span<Expr*> args, Subst& s, bool emptyPackWithoutArgs = true)
+    {
+      return bindExplicitArgs(f->templateParams, namePart, args, s, emptyPackWithoutArgs);
     }
 
     // Whether an explicit template argument is of its parameter's kind: a type for a type
@@ -15420,6 +15424,14 @@ struct GlobalScope::Impl
           record(m, types.function(types.voidType(), {}, false));
           return types.voidType();
         }
+        if (last.special == 2 && P(last.opToken) == P::LParen && m->member.parts.size() == 1 && types.stripRef(object)->kind == TyKind::Lambda)
+        {
+          // `runTest.operator()<CraftingMachine>(name)`: the lambda called, its template arguments
+          // those written, then those its parameters deduce.
+          ++stats.membersBound;
+          record(m, types.stripRef(object));
+          return callResultOfValue(object, c, &last);
+        }
         if (last.special == 3 && last.convType)
         {
           // `commands.operator AllowedCommands::Enum()`: the class's conversion function to that type.
@@ -15513,14 +15525,22 @@ struct GlobalScope::Impl
     // A call to a generic lambda: its template parameters are deduced from the arguments, its
     // body typed for them once per set of arguments (in the environment it was written in), and
     // the call has the result type found there. The deduced arguments are recorded on the call
-    // for the code generator, as for function templates.
-    const Ty* genericLambdaCall(const Ty* t, CallExpr* c)
+    // for the code generator, as for function templates. Written arguments (`f.operator()<T>(x)`)
+    // come first, the parameters deduce the rest.
+    const Ty* genericLambdaCall(const Ty* t, CallExpr* c, const NamePart* written = nullptr)
     {
       t = types.unqualified(t); // `(*this->f)(x)` with a `const F*` f: the closure type the lambda's environment is kept for
       LambdaExpr* l = Impl::lambdaOf(t);
       std::vector<const Ty*> argTypes = argTypesOf(c->args);
       Subst deduced;
-      impl.deduceParams(l->params, t->args, argTypes, deduced);
+      std::vector<const Ty*> patterns(t->args.begin(), t->args.end());
+      if (written && written->hasTemplateArgs)
+      {
+        bindExplicitArgs(l->templateParams, *written, c->args, deduced);
+        for (const Ty*& pattern : patterns)
+          pattern = impl.substitute(pattern, deduced);
+      }
+      impl.deduceParams(l->params, Span<const Ty*>{patterns.data(), uint32_t(patterns.size())}, argTypes, deduced);
       Subst own; // in parameter order: the instantiation's key
       for (Decl* p : l->templateParams)
       {
@@ -15540,8 +15560,9 @@ struct GlobalScope::Impl
       return callTy && callTy->kind == TyKind::Function ? callTy->inner : unknown(Why::AutoReturn);
     }
 
-    // Result of calling a value of type t: function pointers, lambdas, functors.
-    const Ty* callResultOfValue(const Ty* t, CallExpr* c)
+    // Result of calling a value of type t: function pointers, lambdas, functors (written: the
+    // template arguments of an explicit `operator()<...>`).
+    const Ty* callResultOfValue(const Ty* t, CallExpr* c, const NamePart* written = nullptr)
     {
       t = types.stripRef(t);
       if (!t || !t->isKnown())
@@ -15553,7 +15574,7 @@ struct GlobalScope::Impl
       if (t->kind == TyKind::Lambda)
       {
         if (c && Impl::isGenericLambda(t))
-          return genericLambdaCall(t, c);
+          return genericLambdaCall(t, c, written);
         return t->inner ? t->inner : unknown(Why::AutoReturn);
       }
       if (t->kind == TyKind::Class)

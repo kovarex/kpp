@@ -1,6 +1,5 @@
 // spec: a lambda with a template parameter list called through `.operator()<T>(...)` (or `->operator()<T>(...)`) takes the written template arguments, the rest deduced from the call's arguments; each set of arguments is its own instance, also when no parameter mentions the template parameter
 // found in tests/TestDeconstruction (`auto runTest = []<class T>(const char* name) { ... }`, called `runTest.operator()<CraftingMachine>("electric-furnace")` and three more)
-// pending: the parser reads `runTest.operator()<A>("first")` as comparisons and codegen rejects them (`an operator with a class on the right that no function defines`)
 struct A { int v = 1; static const char* kind() { return "A"; } };
 struct B { int v = 20; static const char* kind() { return "B"; } };
 int main()

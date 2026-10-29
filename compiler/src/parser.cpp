@@ -528,8 +528,10 @@ namespace
           parts.resize(partMark);
           return false;
         }
-        if ((part.special == 0 || part.special == 1) && at(P::Less))
-          tryParseTemplateArgs(part, typeContext); // `~Vector<int>`: the arguments name the class, the destructor needs none
+        // `~Vector<int>`: the arguments name the class, the destructor needs none; `runTest.operator()<CraftingMachine>(name)`:
+        // an operator function template's own (a conversion operator's type took any already).
+        if (part.special <= 2 && at(P::Less))
+          tryParseTemplateArgs(part, typeContext);
         parts.push_back(part);
         if (at(P::ColonColon) && !at(P::Star, 1) && (atIdent(1) || at(P::Tilde, 1) || at(Kw::operator_, 1) || at(Kw::template_, 1)))
         {
