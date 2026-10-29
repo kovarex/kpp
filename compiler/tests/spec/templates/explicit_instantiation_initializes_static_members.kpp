@@ -1,0 +1,33 @@
+// spec: an explicit instantiation (`template struct Registry<int>;`) instantiates the class's static data members, and one whose initializer is no constant runs it at startup as other globals do (`template<class T> bool Registry<T>::loaded = Registry<T>::staticInit();`)
+// factorio: the Lua bindings that are class templates register their metamethods so: LuaStruct<T> (game.map_settings, difficulty_settings, game_view_settings) and LuaFlowStatistics<T> (a force's statistics); without that their userdata has no __index, "attempt to index field 'map_settings' (a userdata value)", 30 of the unit tests' failed checks
+// pending: SILENT, the instantiations' initializers never run (prints 10); owner: the templates thread (explicit instantiation), with codegen for the initializers
+int counter = 0;
+template<class T>
+struct Registry
+{
+  static bool loaded;
+  static bool staticInit()
+  {
+    ++counter;
+    return true;
+  }
+};
+template<class T>
+bool Registry<T>::loaded = Registry<T>::staticInit();
+template struct Registry<int>;
+template struct Registry<double>;
+struct Plain
+{
+  static bool loaded;
+  static bool staticInit()
+  {
+    counter += 10;
+    return true;
+  }
+};
+bool Plain::loaded = Plain::staticInit();
+int main()
+{
+  println("{}", counter);
+  return 0;
+}
