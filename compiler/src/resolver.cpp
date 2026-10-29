@@ -439,6 +439,7 @@ struct GlobalScope::Impl
     std::thread::id owner;
     FunctionDecl* body = nullptr;
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
+    Expr* init = nullptr;              // for a variable: its initializer's copy (GlobalScope::instanceInitializer)
   };
   struct InstanceShard
   {
@@ -448,8 +449,9 @@ struct GlobalScope::Impl
   InstanceShard instanceShards[64];
 
   // The record of f's instantiation for subst with `this` of thisType (null: none), whatever the
-  // order of subst's pairs; producer: the caller just claimed it and builds it.
-  InstanceRecord* claimInstance(FunctionDecl* f, const Subst& subst, const Ty* thisType, bool& producer)
+  // order of subst's pairs; producer: the caller just claimed it and builds it. f: a function, or
+  // a variable whose initializer is instantiated.
+  InstanceRecord* claimInstance(const Decl* f, const Subst& subst, const Ty* thisType, bool& producer)
   {
     std::vector<std::pair<const void*, const void*>> pairs;
     pairs.reserve(subst.pairs.size());
@@ -9488,23 +9490,38 @@ bool GlobalScope::isExplicit(FunctionDecl* f, const TemplateArgs& args)
   return impl->isExplicit(f, args.empty() ? nullptr : &s);
 }
 
-void GlobalScope::retypeInitializerFor(VariableDecl* v, const TemplateArgs& args)
+Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args)
 {
-  if (!v->file || !v->file->tokens || !v->init)
-    return;
+  if (args.empty() || !v->init || !v->file || !v->file->tokens)
+    return v->init;
+  Impl& impl = *this->impl;
   Subst subst = toSubst(args);
+  bool producer;
+  Impl::InstanceRecord* record = impl.claimInstance(v, subst, nullptr, producer);
+  if (!producer)
+  {
+    if (record->state.load(std::memory_order_acquire) != 2 && record->owner != std::this_thread::get_id())
+      while (record->state.load(std::memory_order_acquire) != 2)
+        std::this_thread::yield();
+    return record->init ? record->init : v->init; // (on the producing thread while it types: the copy so far)
+  }
+  InstanceCopier copier(impl.instanceArena());
+  Expr* copy = copier.expression(v->init);
+  record->init = copy;
   ResolveStats scratch;
-  Impl::Walker w(*impl, scratch, *v->file->tokens, v->file->text);
+  Impl::Walker w(impl, scratch, *v->file->tokens, v->file->text);
   for (Decl* p = v; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
-  w.scope = impl->lexicalScopeOf(v);
+  w.scope = impl.lexicalScopeOf(v);
   if (v->name.parts.size() > 1)
     w.scope = w.semanticScopeFor(v->name);
-  w.activeSubst = subst.pairs.empty() ? nullptr : &subst;
+  w.activeSubst = &subst;
   if (Decl* cls = Impl::enclosingClassDecl(w.scope))
-    w.thisType = impl->types.pointer(impl->substitute(impl->selfType(cls), subst));
-  w.walkExpr(v->init);
+    w.thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
+  w.walkExpr(copy);
+  record->state.store(2, std::memory_order_release);
+  return copy;
 }
 
 std::optional<bool> GlobalScope::requirementsHold(RequiresExpr* r, Decl* owner, const TemplateArgs& args)

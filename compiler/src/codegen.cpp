@@ -1165,6 +1165,44 @@ namespace
       return nullptr;
     }
 
+    // Runs emit with the default member initializer of v, a member of the class t whose object is
+    // at addr: the initializer as typed for t's instantiation, with `this` the object, t the class
+    // of the moment and its arguments the current ones. A base's `Hook* next = this;` refers to the
+    // base subobject, also when a derived class's implicit constructor is emitted into a caller.
+    template<typename F>
+    void withMemberInitializer(const std::string& addr, const Ty* t, VariableDecl* v, F&& emit)
+    {
+      const Ty* cls = canonicalClass(t, v);
+      TemplateArgs classArgs = global.classArgsOf(cls);
+      Expr* init = global.instanceInitializer(v, classArgs);
+      std::string slot = "%v" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca ptr\n";
+      fn += "  store ptr " + addr + ", ptr " + slot + "\n";
+      struct Restore
+      {
+        Emitter& e;
+        std::optional<Local> self;
+        const Ty* classTy;
+        const TemplateArgs* args;
+        ParsedFile* file;
+        ~Restore()
+        {
+          if (self)
+            e.locals[nullptr] = *self;
+          else
+            e.locals.erase(nullptr);
+          e.currentClassTy = classTy;
+          e.currentArgs = args;
+          e.currentFile = file;
+        }
+      } restore{*this, locals.count(nullptr) ? std::optional<Local>(locals[nullptr]) : std::nullopt, currentClassTy, currentArgs, currentFile};
+      locals[nullptr] = {slot, nullptr, false};
+      currentClassTy = cls;
+      currentArgs = &classArgs;
+      currentFile = v->file;
+      emit(init);
+    }
+
     // A reference member bound to what source names: the field holds its address.
     void bindReferenceMember(const std::string& fieldAddr, Expr* source, Node* at)
     {
@@ -1230,7 +1268,12 @@ namespace
         if (const Ty* declared = global.typeOfDecl(v); ft->isReference() || (declared && declared->isReference()))
         {
           // A reference member: the field holds the address of what it refers to.
-          Expr* source = init && init->args.size() == 1 ? init->args[0] : init ? nullptr : v->init;
+          if (!init && v->init)
+          {
+            withMemberInitializer(addr, t, v, [&](Expr* source) { bindReferenceMember(fieldAddr, source, at); });
+            continue;
+          }
+          Expr* source = init && init->args.size() == 1 ? init->args[0] : nullptr;
           if (!source)
             unsupported(at, "a reference member without an initializer");
           bindReferenceMember(fieldAddr, source, at);
@@ -1250,12 +1293,7 @@ namespace
             unsupported(at, "this member initializer");
         }
         else if (v->init)
-        {
-          ParsedFile* saved = currentFile;
-          currentFile = v->file;
-          initializeFrom(fieldAddr, ft, v->init, v);
-          currentFile = saved;
-        }
+          withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
         else if (isClass(ft) && hasUserConstructors(classDef(ft->decl, at)))
           defaultConstruct(fieldAddr, ft, at);
         else if (isClass(ft))
@@ -1530,9 +1568,9 @@ namespace
             continue;
           auto* v = static_cast<VariableDecl*>(d);
           if (v->init && reference)
-            bindReferenceMember(fieldAddr, v->init, v);
+            withMemberInitializer(addr, t, v, [&](Expr* value) { bindReferenceMember(fieldAddr, value, v); });
           else if (v->init)
-            initializeFrom(fieldAddr, ft, v->init, v);
+            withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
           else if (isClass(ft))
             defaultConstruct(fieldAddr, ft, at);
           else if (ft->kind == TyKind::Array && needsDestruction(ft, at))
@@ -4070,9 +4108,8 @@ namespace
                 ParsedFile* saved = currentFile;
                 ConstContextScope context(*this, source);
                 currentFile = source->file;
-                global.retypeInitializerFor(source, specArgs);
                 ArgsScope scope(*this, &specArgs);
-                std::optional<int64_t> r = evalConst(source->init, depth + 1);
+                std::optional<int64_t> r = evalConst(global.instanceInitializer(source, specArgs), depth + 1);
                 currentFile = saved;
                 return r;
               }
@@ -4087,7 +4124,7 @@ namespace
               if (cls)
                 classArgs = global.definitionArgs(def, global.classArgsOf(cls));
               ArgsScope scope(*this, cls ? &classArgs : currentArgs);
-              std::optional<int64_t> r = evalConst(def->init, depth + 1);
+              std::optional<int64_t> r = evalConst(cls ? global.instanceInitializer(def, classArgs) : def->init, depth + 1);
               currentFile = saved;
               return r;
             }
@@ -5216,7 +5253,9 @@ namespace
     // constant): a function constructing it, registered in llvm.global_ctors of the module that
     // first uses the global. Order within a module follows first use; destructors at exit do not
     // run yet.
-    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Node* at)
+    // init: the global's initializer (for a static member of a class template, its instantiation's
+    // copy), or null.
+    void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at)
     {
       FunctionState saved = saveState();
       std::string savedOverride = funcletOverride;
@@ -5233,14 +5272,14 @@ namespace
       try
       {
         pushScope();
-        if (t->isReference() && def->init)
+        if (t->isReference() && init)
         {
           // The address of what the reference is bound to.
-          std::string target = isClass(types.stripRef(def->init->ty)) ? rvalue(def->init).text : lvalue(def->init);
+          std::string target = isClass(types.stripRef(init->ty)) ? rvalue(init).text : lvalue(init);
           fn += "  store ptr " + target + ", ptr " + name + "\n";
         }
-        else if (def->init)
-          initializeFrom(name, t, def->init, at);
+        else if (init)
+          initializeFrom(name, t, init, at);
         else if (isClass(t))
           defaultConstruct(name, t, at);
         else if (t->kind == TyKind::Array)
@@ -5446,8 +5485,8 @@ namespace
       bool constructed = false;
       const Ty* st = types.stripRef(t);
       VariableDecl* def = variableDefinition(v); // `static double scale;` in the class, `double Gui::scale = 1.0;` outside
-      if (classTy && def->init)
-        global.retypeInitializerFor(def, classArgs); // `static constexpr T ValuesPerOne = T(1) << Bits`: typed for this instantiation
+      // `static constexpr T ValuesPerOne = T(1) << Bits`: the initializer typed for this instantiation.
+      Expr* value = classTy ? global.instanceInitializer(def, classArgs) : def->init;
       ParsedFile* saved = currentFile;
       currentFile = def->file;
       if (t->isReference())
@@ -5455,37 +5494,37 @@ namespace
         // `static const Style& defaultWidgetStyle = getStyleStatic();`: a pointer, bound at startup.
         currentFile = saved;
         decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr global ptr null, comdat\n";
-        if (def->init)
-          emitGlobalConstructor(v, name, t, at);
+        if (value)
+          emitGlobalConstructor(v, name, t, value, at);
         return name;
       }
-      if (def->init)
+      if (value)
       {
         std::optional<int64_t> c;
         {
           ConstContextScope context(*this, def); // traits in the initializer resolve their names in the declaration's context
-          c = evalConst(def->init);
+          c = evalConst(value);
         }
         if (c && (st->kind == TyKind::Int || st->kind == TyKind::Char || st->kind == TyKind::Enum))
           init = std::to_string(*c);
         else if (c && st->kind == TyKind::Float)
           init = floatConstant(double(*c), st->bits);
-        else if (st->kind == TyKind::Float && def->init->kind == NodeKind::LiteralExpr &&
-                 static_cast<LiteralExpr*>(def->init)->literalKind == TokenKind::Number)
+        else if (st->kind == TyKind::Float && value->kind == NodeKind::LiteralExpr &&
+                 static_cast<LiteralExpr*>(value)->literalKind == TokenKind::Number)
         {
           std::string digits;
-          for (char ch : spelling(def->init->token))
+          for (char ch : spelling(value->token))
             if (ch != '\'' && ch != 'f' && ch != 'F' && ch != 'l' && ch != 'L')
               digits += ch;
           init = floatConstant(strtod(digits.c_str(), nullptr), st->bits);
         }
         else if (c && st->kind == TyKind::Bool)
           init = *c ? "true" : "false";
-        else if (st->kind == TyKind::Pointer && def->init->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(def->init)->keyword == Kw::nullptr_)
+        else if (st->kind == TyKind::Pointer && value->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(value)->keyword == Kw::nullptr_)
           init = "null";
-        else if (def->init->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(def->init)->literalKind == TokenKind::String &&
+        else if (value->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(value)->literalKind == TokenKind::String &&
                  st->kind == TyKind::Pointer)
-          init = stringConstant(static_cast<LiteralExpr*>(def->init));
+          init = stringConstant(static_cast<LiteralExpr*>(value));
         else
           constructed = true; // built at startup, see emitGlobalConstructor
       }
@@ -5496,7 +5535,7 @@ namespace
       decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr " + (t->isConst && !constructed ? "constant " : "global ") +
                llType(st, at) + " " + init + ", comdat\n";
       if (constructed)
-        emitGlobalConstructor(v, name, st, at);
+        emitGlobalConstructor(v, name, st, value, at);
       return name;
     }
 

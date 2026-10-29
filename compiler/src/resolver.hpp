@@ -180,9 +180,10 @@ public:
   Decl* enumFromStrDecl();                       // The library's enumFromStr<E>(const char*) template (E::fromStr lowers to it), or null.
   Decl* strongOrderingDecl();                    // The library's strong_ordering class (what `a <=> b` yields), or null.
   bool isExplicit(FunctionDecl* f, const TemplateArgs& args); // `explicit`, or `explicit(cond)` with cond true under args.
-  // Retypes the initializer of a static data member of a class template for one instantiation
-  // (`static constexpr T ValuesPerOne = T(1) << Bits` with T and Bits bound), in place like retypeFor.
-  void retypeInitializerFor(VariableDecl* v, const TemplateArgs& args);
+  // The initializer of v (a data member's default initializer, a static member's or a variable
+  // template's) for one instantiation: a copy typed under args once and kept, as instanceBody's
+  // copies of function bodies are; v's own initializer when args is empty. Thread-safe.
+  Expr* instanceInitializer(VariableDecl* v, const TemplateArgs& args);
   // The declaration a variable template takes its value from for these arguments (the
   // primary's parameters bound, defaults included): the most specialised matching partial or
   // full specialisation, its own parameters bound in specArgs, or the primary (specArgs = args).
