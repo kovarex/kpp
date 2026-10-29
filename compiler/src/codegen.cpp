@@ -1210,6 +1210,25 @@ namespace
       return r;
     }
 
+    // The type a data member has in the object's class as laid out (under the class's arguments:
+    // Holder<int&>'s `A value` is an int&), found in the class, its bases or its anonymous members;
+    // null when it is none of them.
+    const Ty* fieldTypeIn(const Ty* classTy, Decl* member, Node* at, int depth = 0)
+    {
+      if (!isClass(classTy) || depth > 16)
+        return nullptr;
+      StructInfo& info = structFor(classTy, at);
+      if (auto it = info.fieldIndex.find(member); it != info.fieldIndex.end())
+        return info.isUnion ? nullptr : info.fieldTypes[it->second];
+      for (auto& [base, index] : std::vector<std::pair<Decl*, uint32_t>>(info.bases))
+        if (const Ty* t = fieldTypeIn(structFor(classTy, at).fieldTypes[index], member, at, depth + 1))
+          return t;
+      for (auto& [anon, index] : std::vector<std::pair<Decl*, uint32_t>>(info.anonymous))
+        if (const Ty* t = fieldTypeIn(structFor(classTy, at).fieldTypes[index], member, at, depth + 1))
+          return t;
+      return nullptr;
+    }
+
     bool fieldAddress(const Ty* classTy, Decl* member, const std::string& objectAddr, std::string& out, Node* at)
     {
       StructInfo& info = structFor(classTy, at);
@@ -2393,14 +2412,31 @@ namespace
         {
           if (!currentClassTy)
             unsupported(e, "a member used outside a method");
-          std::string addr;
-          if (!fieldAddress(currentClassTy, d, thisPointer(e), addr, e))
-            unsupported(e, "a member that is not a field");
-          return addr;
+          return memberObject(currentClassTy, d, thisPointer(e), e);
         }
         return globalAddress(static_cast<VariableDecl*>(d), e, qualifierClass(e, e));
       }
       unsupported(e, "taking the address of " + qualifiedName(d) + " (" + nodeKindName(d->kind) + (packLocals.count(d) ? ", a parameter pack outside its expansion" : "") + ")");
+    }
+
+    // The object a data member of the object at `object` (of class classTy) is: its field, or for a
+    // reference member the object the field refers to (its address is what the field holds), also
+    // when a template argument makes the member a reference (Holder<int&>'s `A value`).
+    std::string memberObject(const Ty* classTy, Decl* d, const std::string& object, Node* e)
+    {
+      std::string addr;
+      if (!fieldAddress(classTy, d, object, addr, e))
+        unsupported(e, "a member that is not a field of the object's class");
+      const Ty* ft = fieldTypeIn(classTy, d, e);
+      if (!ft)
+        ft = d->kind == NodeKind::VariableDecl ? declType(d) : nullptr;
+      if (ft && ft->isReference())
+      {
+        std::string referenced = newTemp();
+        fn += "  " + referenced + " = load ptr, ptr " + addr + "\n";
+        return referenced;
+      }
+      return addr;
     }
 
     // Whether an expression is an xvalue: an rvalue reference to an object that may be moved from
@@ -5977,10 +6013,7 @@ namespace
             {
               if (!currentClassTy)
                 unsupported(e, "a member used outside a method");
-              std::string addr;
-              if (!fieldAddress(currentClassTy, d, thisPointer(e), addr, e))
-                unsupported(e, "a member that is not a field");
-              return addr;
+              return memberObject(currentClassTy, d, thisPointer(e), e); // `r = v` with r a reference member
             }
             return globalAddress(static_cast<VariableDecl*>(d), e, qualifierClass(e, e));
           }
@@ -6030,16 +6063,7 @@ namespace
             unsupported(e, "a member access that did not resolve to a field");
           if (d->flags & DF_Static)
             return globalAddress(static_cast<VariableDecl*>(d), e, baseTy);
-          std::string addr;
-          if (!fieldAddress(baseTy, d, object, addr, e))
-            unsupported(e, "a member that is not a field of the object's class");
-          if (const Ty* ft = global.typeOfDecl(d); ft && ft->isReference())
-          {
-            std::string referenced = newTemp();
-            fn += "  " + referenced + " = load ptr, ptr " + addr + "\n";
-            return referenced;
-          }
-          return addr;
+          return memberObject(baseTy, d, object, e);
         }
         case NodeKind::UnaryExpr:
         {

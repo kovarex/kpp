@@ -1,0 +1,35 @@
+// spec: a reference member named in its class's own methods (`r = v`, `return r;`, also `first += 10` where a template argument makes `A first` a reference) reads and writes the object it refers to, as `this->r` does
+// found with templates/reference_type_argument_member: a member named without `this->` was the field itself, so `r = v` overwrote the address it holds and `return r;` read that address as an int
+struct Ref
+{
+  int& r;
+  Ref(int& x) : r(x) {}
+  void set(int v) { r = v; }
+  void add(int v) { this->r += v; }
+  int get() const { return r; }
+};
+template<typename A, typename B>
+struct Two
+{
+  A first;
+  B second;
+  Two(A a, B b) : first(a), second(b) {}
+  void bump() { first += 10; this->second += 1; }
+  A& firstRef() { return this->first; }
+};
+int main()
+{
+  int a = 1;
+  Ref ref(a);
+  ref.set(7);
+  ref.add(2);
+  int b = 100;
+  int c = 50;
+  Two<int&, int> two(b, c);
+  two.bump();
+  two.firstRef() += 5;
+  Two<int&, int> copy = two;
+  copy.first += 1;
+  println("{} {} {} {} {} {}", a, ref.get(), b, two.second, c, copy.second);
+  return 0;
+}
