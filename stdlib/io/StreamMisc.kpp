@@ -3,18 +3,30 @@
 
 using StreamSize = long long;
 
+// IstreambufIterator<Char> (std::istreambuf_iterator<char>): an input iterator over the characters
+// of an InFileStream, one get() at a time. A default-constructed one is the end, which an iterator
+// equals once its stream has no more characters (`copy(IstreambufIterator<char>(in), {}, out)`).
+// Char is char: the library's streams are of chars.
+template<typename Char = char>
 struct IstreambufIterator
 {
-  InFileStream* stream = nullptr;
-  int current = -2;
+  static_assert(isSame<Char, char>, "IstreambufIterator reads the chars of an InFileStream");
+  using value_type = Char;
+  using difference_type = ptrdiff_t;
+  using pointer = const Char*;
+  using reference = Char;
+  using iterator_category = InputIteratorTag;
 
-  IstreambufIterator() : current(-1) {}
+  InFileStream* stream = nullptr;
+  int current = -1;
+
+  IstreambufIterator() {}
   explicit IstreambufIterator(InFileStream& s) : stream(&s)
   {
     this->current = s.get();
   }
 
-  char operator*() const { return (char)this->current; }
+  Char operator*() const { return (Char)this->current; }
   IstreambufIterator& operator++()
   {
     if (this->stream)

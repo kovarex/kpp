@@ -1,0 +1,22 @@
+// spec: IstreambufIterator<char> (std::istreambuf_iterator<char>) reads an InFileStream's characters as an input iterator, a default-constructed one (`{}`) being the end: copied into a String through backInserter, and counted with distance
+// factorio: the tests' ForkLogic.cpp reads a fork's XML report whole: `std::copy(std::istreambuf_iterator<char>(in), {}, std::back_inserter(buffer));`
+int main()
+{
+  const char* temp = getenv("TEMP");
+  String path = String(temp ? temp : ".") + "/kpp_istreambuf_iterator.txt";
+  {
+    OutFileStream out(path);
+    out << "<report tests=\"6\"/>";
+  }
+  String buffer;
+  {
+    InFileStream in(path);
+    copy(IstreambufIterator<char>(in), {}, backInserter(buffer));
+  }
+  InFileStream again(path);
+  ptrdiff_t count = distance(IstreambufIterator<>(again), IstreambufIterator<>());
+  again.close();
+  remove(path.c_str());
+  println("{} {} {}", buffer, buffer.size(), count);
+  return 0;
+}
