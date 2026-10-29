@@ -1,0 +1,38 @@
+// spec: a member type of a class whose base is a type trait (`struct Const : Conditional<isIntegral<T>, Value<T>, T>`) is the member of the class the trait picks (`Const<Map<String, int>>::mapped_type` is the Map's), as written and as a template parameter's member (`Container::mapped_type` with Container = Const<Map<String, int>>)
+// factorio: UtilityConstants::Const<T> over a Map (Util::getMapOrDefault<Const<Map<String, TinyVector>>, const char*> in EntityPrototype::postLoadSetup)
+// pending: the lookup searches Conditional's own scope and no member type is found ("the type ?::mapped_type", or the call's template arguments could not be deduced); owner: the templates thread (member types through bases)
+template <class T>
+struct Value
+{
+  T storage;
+};
+template <class T>
+struct Const : Conditional<isIntegral<T>, Value<T>, T>
+{
+};
+struct Plain : Conditional<false, int, Map<String, int>>
+{
+};
+template <typename Container, typename Key, typename V>
+V getOr(const Container& m, const Key& key, const V& def)
+{
+  auto it = m.find(key);
+  return it == m.end() ? def : it->second;
+}
+template <typename Container, typename Key>
+Container::mapped_type getOr(const Container& m, const Key& key)
+{
+  using V = Container::mapped_type;
+  return getOr(m, key, V{});
+}
+int main()
+{
+  Const<Map<String, int>> c;
+  c["a"] = 5;
+  Const<Map<String, int>>::mapped_type x = 3;
+  Plain::mapped_type y = 4;
+  const char* a = "a";
+  const char* b = "b";
+  println("{} {} {} {}", x, y, getOr(c, a), getOr(c, b));
+  return 0;
+}
