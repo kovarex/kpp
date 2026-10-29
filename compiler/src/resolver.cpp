@@ -9571,6 +9571,10 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
 {
   Impl::DeclContext dc;
   impl->declContextFor(context, dc);
+  // A type written inside a class (`super` in `using super::super;`, the base initializer of an
+  // inherited constructor): its members and the injected names of its bases are in scope.
+  if (context && (context->kind == NodeKind::ClassDecl || context->kind == NodeKind::EnumDecl) && context->ownScope)
+    dc.scope = context->ownScope;
   Subst s = toSubst(args);
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
