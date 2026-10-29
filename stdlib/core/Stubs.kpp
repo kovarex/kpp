@@ -1,12 +1,5 @@
-// Placeholder types for std:: names that converted code references but doesn't deeply use.
-// These let conversion compile without pulling in full implementations of filesystem, locale, etc.
-
-struct Locale
-{
-  Locale() {}
-  explicit Locale(const char* name) {}
-  explicit Locale(const String& name) {}
-};
+// Odds and ends for std:: names converted code uses: <codecvt>'s converters (over WString.kpp's
+// conversions), two concepts and std::numbers' constants.
 
 // Filesystem: moved to Filesystem.kpp
 
@@ -75,10 +68,6 @@ struct WStringConvert
   }
 };
 
-// getTime: manipulator for reading time from a stream — stub.
-struct GetTimeResult {};
-GetTimeResult getTime(tm* t, const char* format) { return GetTimeResult(); }
-
 // Concepts (std::convertible_to, std::equality_comparable). EqualityComparable is not checked yet
 // (it needs `requires (const T& a) { a == a; }`: spec templates/requires_expression_parameters);
 // docs/stdlib-conformance.md lists it.
@@ -91,5 +80,3 @@ struct Numbers
   template<typename T> static constexpr T pi_v = T(3.14159265358979323846);
   template<typename T> static constexpr T e_v = T(2.71828182845904523536);
 };
-struct Ranges {};
-struct Views {};

@@ -1,0 +1,250 @@
+// Kpp standard library: views, ranges computed on the fly from what they view (what std::views and
+// std::ranges::subrange convert to): Subrange (an iterator pair), iotaView (a run of numbers),
+// transformView (f of each element) and reverseView (backwards). A view is cheap to copy: it holds
+// iterators, numbers, a function, or a pointer to the container it views (a view of a view holds a
+// copy of it). Specified in docs/stdlib/views.md.
+
+// What views derive from: another view holds a view by value and a container by pointer.
+struct ViewBase
+{
+};
+
+// The range a view is made from: a container by pointer (it must outlive the view), a view by value.
+template<typename Range, bool isView = isBaseOf<ViewBase, Range>>
+struct ViewedRange
+{
+  Range* range = nullptr;
+
+  ViewedRange() {}
+  explicit ViewedRange(const Range& range) : range((Range*)&range) {}
+  Range& get() const { return *this->range; }
+};
+template<typename Range>
+struct ViewedRange<Range, true>
+{
+  Range range;
+
+  ViewedRange() {}
+  explicit ViewedRange(const Range& range) : range(range) {}
+  const Range& get() const { return this->range; }
+};
+
+// --- Subrange ---
+
+// [first, last) as a range (std::ranges::subrange).
+template<typename It>
+struct Subrange : ViewBase
+{
+  It first;
+  It last;
+
+  Subrange() {}
+  Subrange(It first, It last) : first(first), last(last) {}
+
+  It begin() const { return this->first; }
+  It end() const { return this->last; }
+  bool empty() const { return this->first == this->last; }
+  ptrdiff_t size() const { return distance(this->first, this->last); }
+};
+
+// --- iotaView ---
+
+template<typename T>
+struct IotaIterator
+{
+  using value_type = T;
+  using difference_type = ptrdiff_t;
+  using pointer = const T*;
+  using reference = T;
+  using iterator_category = RandomAccessIteratorTag;
+
+  T value;
+
+  IotaIterator() : value() {}
+  explicit IotaIterator(T value) : value(value) {}
+
+  const T& operator*() const { return this->value; }
+  T operator[](ptrdiff_t n) const { return (T)(this->value + n); }
+  IotaIterator<T>& operator++()
+  {
+    ++this->value;
+    return *this;
+  }
+  IotaIterator<T> operator++(int)
+  {
+    IotaIterator<T> before = *this;
+    ++this->value;
+    return before;
+  }
+  IotaIterator<T>& operator--()
+  {
+    --this->value;
+    return *this;
+  }
+  IotaIterator<T> operator--(int)
+  {
+    IotaIterator<T> before = *this;
+    --this->value;
+    return before;
+  }
+  IotaIterator<T>& operator+=(ptrdiff_t n)
+  {
+    this->value = (T)(this->value + n);
+    return *this;
+  }
+  IotaIterator<T>& operator-=(ptrdiff_t n)
+  {
+    this->value = (T)(this->value - n);
+    return *this;
+  }
+  IotaIterator<T> operator+(ptrdiff_t n) const { return IotaIterator<T>((T)(this->value + n)); }
+  IotaIterator<T> operator-(ptrdiff_t n) const { return IotaIterator<T>((T)(this->value - n)); }
+  ptrdiff_t operator-(const IotaIterator<T>& other) const { return (ptrdiff_t)this->value - (ptrdiff_t)other.value; }
+  bool operator==(const IotaIterator<T>& other) const { return this->value == other.value; }
+  bool operator!=(const IotaIterator<T>& other) const { return this->value != other.value; }
+  bool operator<(const IotaIterator<T>& other) const { return this->value < other.value; }
+  bool operator>(const IotaIterator<T>& other) const { return other.value < this->value; }
+  bool operator<=(const IotaIterator<T>& other) const { return !(other.value < this->value); }
+  bool operator>=(const IotaIterator<T>& other) const { return !(this->value < other.value); }
+};
+
+// The numbers first, first + 1, ... up to last, last excluded (std::views::iota(first, last)).
+template<typename T>
+struct IotaView : ViewBase
+{
+  T first;
+  T last;
+
+  IotaView() : first(), last() {}
+  IotaView(T first, T last) : first(first), last(last) {}
+
+  IotaIterator<T> begin() const { return IotaIterator<T>(this->first); }
+  IotaIterator<T> end() const { return IotaIterator<T>(this->last); }
+  bool empty() const { return !(this->first < this->last); }
+  ptrdiff_t size() const { return this->first < this->last ? (ptrdiff_t)this->last - (ptrdiff_t)this->first : 0; }
+};
+
+template<typename T, typename U>
+IotaView<T> iotaView(T first, U last) { return IotaView<T>(first, (T)last); }
+
+// --- transformView ---
+
+template<typename It, typename F>
+struct TransformIterator
+{
+  using value_type = typename IteratorTraits<It>::value_type;
+  using difference_type = ptrdiff_t;
+  using pointer = void;
+  using reference = void;
+  using iterator_category = typename IteratorTraits<It>::iterator_category;
+
+  It position;
+  const F* f = nullptr;
+
+  TransformIterator() {}
+  TransformIterator(It position, const F* f) : position(position), f(f) {}
+
+  // f of the element, with the reference f returns.
+  // (Called as f->operator()(...): spec language/call_operator_class_result.)
+  auto operator*() const { return this->f->operator()(*this->position); }
+  TransformIterator<It, F>& operator++()
+  {
+    ++this->position;
+    return *this;
+  }
+  TransformIterator<It, F>& operator--()
+  {
+    --this->position;
+    return *this;
+  }
+  TransformIterator<It, F>& operator+=(ptrdiff_t n)
+  {
+    advance(this->position, n);
+    return *this;
+  }
+  ptrdiff_t operator-(const TransformIterator<It, F>& other) const { return distance(other.position, this->position); }
+  bool operator==(const TransformIterator<It, F>& other) const { return this->position == other.position; }
+  bool operator!=(const TransformIterator<It, F>& other) const { return this->position != other.position; }
+};
+
+// f(x) for every element x of a range, computed when read (std::views::transform(range, f)).
+template<typename Range, typename F>
+struct TransformView : ViewBase
+{
+  ViewedRange<Range> base;
+  F f;
+
+  TransformView(const Range& range, F f) : base(range), f(f) {}
+
+  auto begin() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().begin(), &this->f); }
+  auto end() const { return TransformIterator<decltype(this->base.get().begin()), F>(this->base.get().end(), &this->f); }
+  bool empty() const { return this->base.get().begin() == this->base.get().end(); }
+  ptrdiff_t size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+};
+
+template<typename Range, typename F>
+TransformView<Range, F> transformView(const Range& range, F f) { return TransformView<Range, F>(range, f); }
+
+// `range | transformView(f)`: the adaptor that applies to the range on its left.
+template<typename F>
+struct TransformAdaptor
+{
+  F f;
+};
+template<typename F>
+TransformAdaptor<F> transformView(F f) { return TransformAdaptor<F>{f}; }
+template<typename Range, typename F>
+TransformView<Range, F> operator|(const Range& range, const TransformAdaptor<F>& adaptor) { return TransformView<Range, F>(range, adaptor.f); }
+
+// --- reverseView ---
+
+template<typename It>
+struct ReverseViewIterator
+{
+  using value_type = typename IteratorTraits<It>::value_type;
+  using difference_type = ptrdiff_t;
+  using pointer = void;
+  using reference = void;
+  using iterator_category = BidirectionalIteratorTag;
+
+  It position; // one past the element *this yields
+
+  ReverseViewIterator() {}
+  explicit ReverseViewIterator(It position) : position(position) {}
+
+  decltype(auto) operator*() const
+  {
+    It before = this->position;
+    --before;
+    return *before;
+  }
+  ReverseViewIterator<It>& operator++()
+  {
+    --this->position;
+    return *this;
+  }
+  ReverseViewIterator<It>& operator--()
+  {
+    ++this->position;
+    return *this;
+  }
+  bool operator==(const ReverseViewIterator<It>& other) const { return this->position == other.position; }
+  bool operator!=(const ReverseViewIterator<It>& other) const { return this->position != other.position; }
+};
+
+// The elements of a bidirectional range from the last to the first (std::views::reverse(range)).
+template<typename Range>
+struct ReverseView : ViewBase
+{
+  ViewedRange<Range> base;
+
+  explicit ReverseView(const Range& range) : base(range) {}
+
+  auto begin() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().end()); }
+  auto end() const { return ReverseViewIterator<decltype(this->base.get().end())>(this->base.get().begin()); }
+  bool empty() const { return this->base.get().begin() == this->base.get().end(); }
+  ptrdiff_t size() const { return distance(this->base.get().begin(), this->base.get().end()); }
+};
+
+template<typename Range>
+ReverseView<Range> reverseView(const Range& range) { return ReverseView<Range>(range); }

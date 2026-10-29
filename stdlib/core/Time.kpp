@@ -325,3 +325,89 @@ unsigned long waitMilliseconds(const Duration<Rep, Period>& d)
     return 0xFFFFFFFEul;
   return (unsigned long)ms;
 }
+
+// --- Reading a time from text ---
+
+// Reads text by a strftime-style format into the fields of result (what std::get_time does with a
+// stream): %Y (the year), %m (the month, 1-12), %d (the day), %H, %M and %S (hour, minute, second),
+// %% and plain characters, which must match; a space in the format matches any run of white space.
+// Numbers are read in decimal, at most as many digits as the field has (4 for %Y, 2 for the rest).
+// Returns whether the whole format matched; the fields read before a mismatch or a specifier it
+// does not know keep their values.
+bool parseTime(const char* text, const char* format, tm* result)
+{
+  auto number = [&](int maxDigits, int& value) -> bool
+  {
+    int digits = 0;
+    int n = 0;
+    while (digits < maxDigits && *text >= '0' && *text <= '9')
+    {
+      n = n * 10 + (*text - '0');
+      ++text;
+      ++digits;
+    }
+    if (digits == 0)
+      return false;
+    value = n;
+    return true;
+  };
+  for (; *format; ++format)
+  {
+    if (*format == ' ')
+    {
+      while (*text == ' ' || *text == '\t' || *text == '\n' || *text == '\r')
+        ++text;
+      continue;
+    }
+    if (*format != '%')
+    {
+      if (*text != *format)
+        return false;
+      ++text;
+      continue;
+    }
+    ++format;
+    int value = 0;
+    switch (*format)
+    {
+      case 'Y':
+        if (!number(4, value))
+          return false;
+        result->tm_year = value - 1900;
+        break;
+      case 'm':
+        if (!number(2, value) || value < 1 || value > 12)
+          return false;
+        result->tm_mon = value - 1;
+        break;
+      case 'd':
+        if (!number(2, value) || value < 1 || value > 31)
+          return false;
+        result->tm_mday = value;
+        break;
+      case 'H':
+        if (!number(2, value) || value > 23)
+          return false;
+        result->tm_hour = value;
+        break;
+      case 'M':
+        if (!number(2, value) || value > 59)
+          return false;
+        result->tm_min = value;
+        break;
+      case 'S':
+        if (!number(2, value) || value > 60)
+          return false;
+        result->tm_sec = value;
+        break;
+      case '%':
+        if (*text != '%')
+          return false;
+        ++text;
+        break;
+      default:
+        return false;
+    }
+  }
+  return true;
+}

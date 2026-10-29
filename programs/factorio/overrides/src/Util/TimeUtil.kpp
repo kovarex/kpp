@@ -1,0 +1,21 @@
+// Hand-written part of Util/TimeUtil: the two ISO date parsers, which read with std::get_time from a
+// std::stringstream. The library has neither (its strptime is parseTime, docs/stdlib/time.md). What
+// the game's code does is kept: the fields read until the first mismatch are used (it checks only
+// bad(), which a failed parse does not set; %f, which std::get_time does not know, ends the
+// date-time one after the seconds).
+namespace TimeUtil
+{
+  SystemClock::time_point fromISODate(const String& str)
+  {
+    tm t = {};
+    parseTime(str.c_str(), "%Y-%m-%d", &t);
+    return SystemClock::from_time_t(mkgmtime(&t));
+  }
+
+  SystemClock::time_point fromISODateTime(const String& str)
+  {
+    tm t = {};
+    parseTime(str.c_str(), "%Y-%m-%dT%H:%M:%S.%fZ", &t);
+    return SystemClock::from_time_t(mkgmtime(&t));
+  }
+}

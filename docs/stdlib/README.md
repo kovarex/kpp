@@ -22,6 +22,7 @@ Files:
 - [Atomic](atomic.md): values that threads share without locks; Atomic<SharedPtr<T>>.
 - [Limits](limits.md): the properties of the arithmetic types (std::numeric_limits).
 - [Time](time.md): Duration, TimePoint, SteadyClock, SystemClock (std::chrono).
+- [Views](views.md): Subrange, iotaView, transformView, reverseView (std::views, std::ranges::subrange).
 
 Not specified yet: Tuple, Pair beyond what the
 maps use, Span, Array, StringView, formatting, streams, threads and locks, and the C library wrappers.

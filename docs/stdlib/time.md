@@ -48,6 +48,14 @@ Each clock has the members `rep`, `period`, `duration`, `time_point`, `is_steady
 - `SystemClock`: the wall clock, UTC, in ticks of 100 ns since 1970-01-01; it jumps when the system
   time is set. `to_time_t(t)`: whole seconds since 1970, rounded down; `from_time_t(s)`: back.
 
+## Reading a time from text
+
+`parseTime(text, format, &tm)` (what std::get_time does with a stream): reads the text by a
+strftime-style format into the fields of a `tm`: `%Y`, `%m`, `%d`, `%H`, `%M`, `%S` and `%%`;
+plain characters must match, a space matches any run of white space. It returns whether the whole
+format matched; the fields read before a mismatch, or a specifier it does not know, keep their
+values.
+
 Waiting functions take any duration: `thisThread::sleepFor(d)`, a Future's `waitFor(d)`, a
 ConditionVariable's `waitFor(lock, d)`; they wait at least d, rounded up to whole milliseconds.
 

@@ -407,10 +407,9 @@ namespace
     {"convertible_to", "ConvertibleTo"}, {"equality_comparable", "EqualityComparable"},
     // misc C++
     {"sig_atomic_t", "::sig_atomic_t"}, {"isupper", "::isupper"},
-    {"get_time", "getTime"}, {"locale", "Locale"},
     {"ratio", "Ratio"}, {"nano", "Nano"}, {"micro", "Micro"}, {"milli", "Milli"}, {"centi", "Centi"}, {"deci", "Deci"}, {"kilo", "Kilo"}, {"mega", "Mega"},
     {"string_literals", "stringLiterals"},
-    {"numbers", "Numbers"}, {"ranges", "Ranges"}, {"views", "Views"},
+    {"numbers", "Numbers"},
     {"filesystem", "Filesystem"},
     {"error_code", "ErrorCode"}, {"errc", "Errc"},
     {"system_error", "SystemError"}, {"system_category", "systemCategory"},
@@ -1967,6 +1966,33 @@ namespace
             replace(t.offset, endOffset(i + 6) - t.offset, "caller");
             counts.add("source_location::current() to caller");
             i += 6;
+            continue;
+          }
+          if ((name == "views" || name == "ranges") && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && toks[i + 4].getKind() == TokenKind::Identifier)
+          {
+            // std::views and std::ranges::subrange are the library's views (Views.kpp, docs/stdlib/views.md).
+            static const std::map<std::string, std::string> viewNames = {
+              {"views::iota", "iotaView"}, {"views::transform", "transformView"}, {"views::reverse", "reverseView"},
+              {"ranges::subrange", "Subrange"}};
+            auto v = viewNames.find(name + "::" + std::string(spelling(i + 4)));
+            if (v != viewNames.end())
+            {
+              replace(t.offset, endOffset(i + 4) - t.offset, shadowedAt(v->second, t.offset) ? "::" + v->second : v->second);
+              counts.add("std::views renamed");
+              i += 4;
+              continue;
+            }
+            counts.add("std::" + name + "::" + std::string(spelling(i + 4)) + " (no mapping)");
+          }
+          if (name == "locale" && i + 13 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "global" && toks[i + 5].is(P::LParen) &&
+              spelling(i + 6) == "std" && spelling(i + 8) == "locale" && spelling(i + 10) == "classic" && toks[i + 11].is(P::LParen) &&
+              toks[i + 12].is(P::RParen) && toks[i + 13].is(P::RParen) && i + 14 < toks.size() && toks[i + 14].is(P::Semi))
+          {
+            // `std::locale::global(std::locale::classic());` (Main.cpp): the library's text conversion is
+            // the classic ("C") locale's always, so making it the global one changes nothing.
+            replace(t.offset, endOffset(i + 14) - t.offset, "/* std::locale::global(std::locale::classic()): Kpp converts text as the classic locale */");
+            counts.add("std::locale::global(classic) removed");
+            i += 14;
             continue;
           }
           if (name == "chrono" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && toks[i + 4].getKind() == TokenKind::Identifier)

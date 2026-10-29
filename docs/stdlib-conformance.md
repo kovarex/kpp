@@ -13,12 +13,8 @@ compile, loudly) last. State of 2026-10-28.
 - `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
 
-**Placeholders in Stubs.kpp**, which compile but do not do what the C++ names do: `Locale` (no
-locales; `std::locale::global` in Main.cpp does nothing), `getTime` (std::get_time; TimeUtil's
-timestamp parsing), `EqualityComparable` (always true until requires-expressions with
-parameters work), `Ranges` and `Views` (empty; std::views::transform/iota/reverse in
-TerritoryManager and ChunkLineByLineScan, std::ranges::subrange in ComplexNoiseExpressions
-fail to compile, loudly). Each needs a real implementation or a converter rewrite.
+**EqualityComparable** (std::equality_comparable) is always true until requires-expressions with
+parameters work (spec templates/requires_expression_parameters).
 
 **Optional** (docs/stdlib/optional.md): the value is stored as a T member, so an empty Optional
 holds a default-constructed T: T needs a default constructor, its constructor runs for an empty

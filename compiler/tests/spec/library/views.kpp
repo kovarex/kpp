@@ -1,0 +1,41 @@
+// spec: the views: iotaView piped into transformView, transformView of a container held by reference, reverseView of a view, Subrange of two pointers; and parseTime reading an ISO date-time
+// factorio: ChunkLineByLineScan (iota | transform), TerritoryManager (transform of the territories, reversed), ComplexNoiseExpressions (ranges::subrange), TimeUtil's fromISODate (get_time)
+struct Chunk { int x, y; };
+struct Territory { int id; };
+struct ToChunk
+{
+  int width;
+  Chunk operator()(const int& index) const { return Chunk{index % this->width, index / this->width}; }
+};
+struct Deref
+{
+  const Territory& operator()(const UniquePtr<Territory>& t) const { return *t; }
+};
+struct Manager
+{
+  Vector<UniquePtr<Territory>> territories;
+  TransformView<Vector<UniquePtr<Territory>>, Deref> all() const { return transformView(this->territories, Deref()); }
+};
+int main()
+{
+  auto positions = iotaView(0, 6) | transformView(ToChunk{3});
+  String text;
+  for (Chunk c : positions)
+    text += toString(c.x) + toString(c.y) + " ";
+  Manager m;
+  m.territories.push_back(makeUnique<Territory>(Territory{1}));
+  m.territories.push_back(makeUnique<Territory>(Territory{2}));
+  String ids;
+  for (const Territory& t : reverseView(m.all()))
+    ids += toString(t.id);
+  Vector<int> values = {5, 6, 7, 8};
+  Subrange<const int*> middle{values.data() + 1, values.data() + 3};
+  int sum = 0;
+  for (int v : middle)
+    sum += v;
+  tm t = {};
+  bool whole = parseTime("2026-10-28T23:57:42.123Z", "%Y-%m-%dT%H:%M:%S.%fZ", &t);
+  println("{}| {} {} {} {}", text, ids, sum, middle.size(), positions.size());
+  println("{} {} {} {} {} {} {}", whole, t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+  return 0;
+}
