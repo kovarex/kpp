@@ -1,0 +1,39 @@
+// spec: function parameter packs at compile time: a variadic function's or constructor's arguments bound as a pack, expanded in calls (`sum(forward<Args>(args)...)`), in a member initializer (none value-initializes, `value(forward<Args>(args)...)`), in a brace list (`Point{args...}`), folded over their values
+// factorio: the library's Pair(inPlaceSecond, key, args...) and the game's forwarding constructors, wherever a constant is made through one
+// pending: the interpreter ran no function with a parameter pack
+template<typename... Ts>
+constexpr int sum(Ts... values)
+{
+  return (values + ... + 0);
+}
+template<typename... Args>
+constexpr int forwardSum(Args&&... args)
+{
+  return sum(forward<Args>(args)...) * int(sizeof...(Args));
+}
+template<typename T>
+struct Holder
+{
+  T value;
+  template<typename... Args>
+  constexpr Holder(int, Args&&... args) : value(forward<Args>(args)...) {}
+};
+struct Point
+{
+  int x = 0;
+  int y = 0;
+};
+template<typename... Args>
+constexpr Point make(Args... args)
+{
+  return Point{args...};
+}
+static_assert(sum(1, 2, 3) == 6 && sum() == 0);
+static_assert(forwardSum(4, 5) == 18);
+static_assert(Holder<int>(0).value == 0 && Holder<int>(0, 5).value == 5);
+static_assert(make(3, 4).y == 4 && make(3).y == 0);
+int main()
+{
+  println("{} {} {} {}", sum(1, 2, 3), forwardSum(4, 5), Holder<int>(0, 7).value, make(1, 2).x);
+  return 0;
+}
