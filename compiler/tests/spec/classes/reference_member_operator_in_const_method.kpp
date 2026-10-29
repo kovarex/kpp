@@ -1,0 +1,45 @@
+// spec: an operator called on a reference member is the one the referred object's own type picks: in a const member function (`this->container[0] = id`), or on a const object (`constHolder.container[0] = id`), `Container& container` still names a non-const Container, so `Id& operator[](int)` is called, as the method call `this->container.at(0)` already does
+// factorio: MapGenerator::getRevertedTileID, a const member function, puts the double hidden tile back with `this->surface.hiddenTiles[position] = originalTile2;` (`Surface& surface;`): the assignment went to the const operator[]'s copy, so the water under landfill under concrete was lost: "Expected water but was landfill" in ManualMining, Deconstruction, UndoRedoTiles and ConstructionRobots' timeouts (9 failed checks)
+// pending: SILENT, the const operator[] is chosen and each assignment stores into its temporary (`0 0 0 4 5`); codegen's constObject (operatorCall's withCheckedConst) takes a member reached through a const `this` or a const object as const without looking at the member's type, where the checker types `this->container` as `Container&`; owner: the codegen thread
+struct Id
+{
+  int v = 0;
+};
+struct Container
+{
+  Id stored;
+  Id& operator[](int) { return this->stored; }
+  Id operator[](int) const { return this->stored; }
+  Id& at(int) { return this->stored; }
+  Id at(int) const { return this->stored; }
+};
+struct Holder
+{
+  Container& container;
+  Holder(Container& c) : container(c) {}
+  void put(Id id) const { this->container[0] = id; }
+  void putMember(int v) const { this->container[0].v = v; }
+  void putThroughAt(Id id) const { this->container.at(0) = id; }
+};
+int main()
+{
+  Container c;
+  Holder h(c);
+  Id id;
+  id.v = 1;
+  h.put(id);
+  print("{} ", c.stored.v);
+  h.putMember(2);
+  print("{} ", c.stored.v);
+  id.v = 3;
+  const Holder& constHolder = h;
+  constHolder.container[0] = id;
+  print("{} ", c.stored.v);
+  id.v = 4;
+  h.putThroughAt(id);
+  print("{} ", c.stored.v);
+  id.v = 5;
+  c[0] = id;
+  println("{}", c.stored.v);
+  return 0;
+}
