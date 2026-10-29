@@ -11359,6 +11359,7 @@ struct GlobalScope::Impl
     std::vector<int> ranks;
     int thisRank; // 0 exact constness, 1 const method on a non-const object, NotViable if const object/non-const method
     std::vector<bool> refs; // per rank: the parameter is a reference
+    std::vector<const Ty*> params; // per rank: the parameter's type (null for a variadic tail)
   };
 
   // The template parameters of d and of the templates around it, as locals of a context in d.
@@ -11971,6 +11972,7 @@ struct GlobalScope::Impl
         {
           c.ranks.push_back(3); // variadic tail
           c.refs.push_back(false);
+          c.params.push_back(nullptr);
           continue;
         }
         if (!f->templateParams.empty())
@@ -12004,6 +12006,7 @@ struct GlobalScope::Impl
               ok = false;
             c.ranks.push_back(r);
             c.refs.push_back(et && et->isReference());
+            c.params.push_back(et);
           }
           break;
         }
@@ -12012,6 +12015,7 @@ struct GlobalScope::Impl
           ok = false;
         c.ranks.push_back(r);
         c.refs.push_back(pt->isReference());
+        c.params.push_back(pt);
       }
       if (ok && f->requiresClause && !requiresHolds(f, deduced))
         ok = false; // `requires isIntegral<T>`: the constraint fails for these arguments
@@ -12029,6 +12033,12 @@ struct GlobalScope::Impl
         // Exact and const-qualified-reference bindings differ only between two references
         // (`T&` beats `const T&`); against a by-value parameter they are the same match.
         if (a.ranks[i] + b.ranks[i] == 1 && !(a.refs[i] && b.refs[i]))
+          continue;
+        // Two user-defined conversions to different types (a `const char*` made a StringView by
+        // one candidate, a String by the other) are indistinguishable (C++ compares only those
+        // through one conversion function): the other arguments and the object decide.
+        if (a.ranks[i] >= 4 && a.ranks[i] <= 5 && b.ranks[i] >= 4 && b.ranks[i] <= 5 && i < a.params.size() && i < b.params.size() &&
+            a.params[i] && b.params[i] && types.unqualified(types.stripRef(a.params[i])) != types.unqualified(types.stripRef(b.params[i])))
           continue;
         if (a.ranks[i] > b.ranks[i])
           return false;

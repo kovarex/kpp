@@ -1,6 +1,5 @@
 // spec: for a non-const object the non-const member overload wins when the arguments rank the same (`history[key]` with `const T& operator[](StringView) const` and `T& operator[](const String&)`, the key a `const char*`: both arguments are user-defined conversions, and the implicit object parameter decides)
 // factorio: ModManager::addHistoryForFont's `this->prototypeHistory[FontBank::type][name].add(...)` called PrototypesHistoryTemplate's const lookup instead of the inserting operator[], which aborted with "No history for the given key: font" in FontBank::setupDefaultFonts (the first crash of `factorio --dump-data`)
-// pending: the const overload is chosen, and the assignment through its const int& is accepted
 class History
 {
 public:
