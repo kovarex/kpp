@@ -1120,6 +1120,16 @@ namespace
       report("    %6u  %-28.*s first at %s:%u\n", top[i].second, int(symbols.name(top[i].first).size()),
              symbols.name(top[i].first).data(), files[w.file].path.string().c_str(), lineOf(files[w.file].text, t.offset));
     }
+    // Done: end the process without freeing what it built. The destructors of the syntax trees,
+    // the types, the instances and the IR text cost about 5 s on the full game (docs/compile-speed.md,
+    // "End to end"), and the operating system takes the memory back at once. Everything the run
+    // writes is closed by now.
+    if (!options.dumpTokens)
+    {
+      fflush(stdout);
+      fflush(stderr);
+      _exit(codegenExit);
+    }
   }
 
   double seconds(std::chrono::steady_clock::duration d)
