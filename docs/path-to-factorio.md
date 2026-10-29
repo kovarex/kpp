@@ -1434,6 +1434,30 @@ before the constants it is made of (language/auto_global_from_later_global). `(H
 written `(HANDLE)(-1)` by the converter (a subtraction from HANDLE to Kpp, which codegen turned into
 IR clang rejected, losing a whole module at link time; language/c_style_cast_of_negative_number).
 
+### UnitTest++ (2026-10-29)
+
+The game's tests (`C:\Factorio\tests`) are written in UnitTest++, Wube's copy in
+`libraries/UnitTest++` (suites with modpacks and dependencies, desync detection runs, a deferred
+XML reporter). It is converted with the tests, as cxxopts and StackWalker are with the game:
+convert.cmd's whole conversion, the one with the tests, takes `libraries/UnitTest++` (into
+`kpp/UnitTest++`), without its Posix directory, which the Windows build leaves out. Its macros
+(SUITE, TEST, TEST_FIXTURE, CHECK, CHECK_EQUAL, CHECK_CLOSE, ...) expand in the tests from its
+converted headers, as any converted header's macros do, and its classes (Test, TestList,
+TestDetails, TestReporter, TestRunner, ...) are converted ones. The headline's conversion does not
+take it: no game file uses it.
+
+What it needed besides: a line inside a block comment is no directive (TestSpellcheck.cpp
+comments out a test body with its `#ifdef WIN32` ... `#endif*/`); `using std::ostream;` goes and
+the file's uses become the library's OutStream, a new base of the library's output streams
+(XmlTestReporter writes its report to the stream it is given); WString::insert, setTerminate and
+throw_with_nested in the library; crtdbg.h's report settings as they are without _DEBUG.
+
+The tests package, measured with the game and its tests converted together and built the
+headline's way (CommonUtil, Agui, cxxopts, StackWalker, Lua, UnitTest++, src and tests), paired on
+12a7ee2: 213 error lines with 204 in the tests without UnitTest++ -> 155 with 137 in the tests
+(most of the templates thread's 218 were UnitTest++ not being there). With it, the tests' lines are
+about their own code, the test bodies the macros now expand into.
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
