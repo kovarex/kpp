@@ -4629,9 +4629,15 @@ struct GlobalScope::Impl
     if (pattern->kind == TyKind::Param)
     {
       // `T value` takes the decayed argument; inside a pointer or a class (`T*`, `Vector<T>`) T
-      // keeps the argument's qualifiers: `const int*` against `T*` makes T `const int`.
+      // keeps the argument's qualifiers: `const int*` against `T*` makes T `const int`, but
+      // against `const T*` int (the pattern's own qualifiers come off, as C++ deduces).
       if (!out.find(pattern->decl))
-        out.pairs.push_back({pattern->decl, depth == 0 ? types.decay(arg) : types.stripRef(arg)});
+      {
+        const Ty* bound = depth == 0 ? types.decay(arg) : types.stripRef(arg);
+        if (depth > 0 && bound && (pattern->isConst || pattern->isVolatile))
+          bound = types.qualified(types.unqualified(bound), bound->isConst && !pattern->isConst, bound->isVolatile && !pattern->isVolatile);
+        out.pairs.push_back({pattern->decl, bound});
+      }
       return;
     }
     if (pattern->isReference())
