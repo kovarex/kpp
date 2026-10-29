@@ -1,0 +1,22 @@
+// Kpp's container sizes are int (docs/stdlib/common.md) where C++'s are size_t, and the game hands
+// `vector.size()` to saveSpaceOptimizedSize, whose asserts want an unsigned input at least as wide
+// as FullType ("don't pre-cast the input value"). An int size is a count, never negative, that
+// widens to any FullType, so it is accepted as C++'s size_t is; every other input keeps the
+// asserts as written.
+class [[members]] Serialiser
+{
+public:
+  [[replaces]]
+  template<class ShortType, class FullType, class InputType>
+  void saveSpaceOptimizedSize(const InputType& size)
+  {
+    static_assert(isUnsigned<ShortType>);
+    static_assert(isUnsigned<FullType>);
+    static_assert(isUnsigned<InputType> || isSame<InputType, int>);
+    static_assert(isSame<InputType, int> || sizeof(InputType) >= sizeof(FullType), "Corrupt space optimized saving detected (don't pre-cast the input value)");
+    if (uint64_t(size) > uint64_t(Limits<FullType>::max()))
+      Logging::logAndAbortOrThrow("Serialiser.hpp", 47, LogLevel::Error, "Input value (%zu) is larger than the maximum (%zu) and can't be saved.",
+                                  size_t(size), size_t(Limits<FullType>::max()));
+    SerialiserHelper<Serialiser>::saveSpaceOptimized<ShortType, FullType>(*this, FullType(size));
+  }
+};

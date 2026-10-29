@@ -799,6 +799,7 @@ namespace
     std::string members; // the text between the braces
     uint32_t begin = 0, end = 0; // the class's text in the override file, from its `template` or class keyword
     bool used = false;   // a converted class took them
+    std::set<std::string> replaces; // the names of members marked `[[replaces]]`: the converted ones of that name go
   };
 
   // The `class [[members]]` classes of an override file (lexed into tk), by qualified name.
@@ -840,6 +841,23 @@ namespace
       if (last + 1 < tk.size() && tk[last + 1].is(P::Semi))
         ++last;
       m.end = tk[last].offset + tk[last].length;
+      // A member marked `[[replaces]]` (before its template header or type) takes the place of the
+      // converted members of its name, every overload; the others are added.
+      for (Decl* member : c->members)
+      {
+        if (member->kind != NodeKind::FunctionDecl || member->token <= open || member->token >= close)
+          continue;
+        uint32_t k = member->token;
+        while (k > open + 1 && !tk[k - 1].is(P::Semi) && !tk[k - 1].is(P::RBrace) && !tk[k - 1].is(P::LBrace) && !tk[k - 1].is(P::Colon))
+          --k;
+        for (; k + 4 < member->token; ++k)
+          if (tk[k].is(P::LBracket) && tk[k + 1].is(P::LBracket) && text.substr(tk[k + 2].offset, tk[k + 2].length) == "replaces" &&
+              tk[k + 3].is(P::RBracket) && tk[k + 4].is(P::RBracket))
+          {
+            m.replaces.insert(nameText(static_cast<FunctionDecl*>(member)->name, symbols));
+            break;
+          }
+      }
       out[prefix + nameText(c->name, symbols)] = std::move(m);
     }
   }
@@ -2828,6 +2846,14 @@ namespace
                       insert(endOffset(end - 1), " = " + value);
                       counts.add("default template arguments carried from forward declarations");
                     }
+            if (memberOverrides)
+              if (auto mo = memberOverrides->find(prefix + nameText(c->name, symbols)); mo != memberOverrides->end() && !mo->second.replaces.empty())
+                for (Decl* member : c->members)
+                  if (member->kind == NodeKind::FunctionDecl && mo->second.replaces.count(nameText(static_cast<FunctionDecl*>(member)->name, symbols)))
+                  {
+                    removeDecl(member);
+                    counts.add("members replaced by hand-written ones");
+                  }
             classStack.push_back(c);
             convertDecls(c->members, false, prefix + nameText(c->name, symbols) + "::");
             classStack.pop_back();
