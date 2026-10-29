@@ -795,6 +795,10 @@ struct Map
   bool empty() const { return this->tree.count == 0; }
   RbIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
   RbIterator<Pair<K, V>> end() const { return this->tree.end(); }
+  RbIterator<Pair<K, V>> cbegin() const { return this->begin(); }
+  RbIterator<Pair<K, V>> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
   Compare key_comp() const { return this->tree.compare; }
 
   // The lookups by K, and by any other type: with a transparent comparator that key itself is
@@ -1010,6 +1014,10 @@ struct Set
   bool empty() const { return this->tree.count == 0; }
   RbIterator<T> begin() const { return this->tree.begin(); }
   RbIterator<T> end() const { return this->tree.end(); }
+  RbIterator<T> cbegin() const { return this->begin(); }
+  RbIterator<T> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
   Compare key_comp() const { return this->tree.compare; }
 
   // The lookups by T, and by any other type: with a transparent comparator that key itself is
@@ -1190,6 +1198,10 @@ struct MultiMap
   bool empty() const { return this->tree.count == 0; }
   RbIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
   RbIterator<Pair<K, V>> end() const { return this->tree.end(); }
+  RbIterator<Pair<K, V>> cbegin() const { return this->begin(); }
+  RbIterator<Pair<K, V>> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
   Compare key_comp() const { return this->tree.compare; }
 
   // The lookups by K, and by any other type as in Map.
@@ -1343,6 +1355,10 @@ struct MultiSet
   bool empty() const { return this->tree.count == 0; }
   RbIterator<T> begin() const { return this->tree.begin(); }
   RbIterator<T> end() const { return this->tree.end(); }
+  RbIterator<T> cbegin() const { return this->begin(); }
+  RbIterator<T> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
   Compare key_comp() const { return this->tree.compare; }
 
   // The lookups by T, and by any other type as in Set.

@@ -96,6 +96,8 @@ struct WString
   wchar_t* end() { return this->chars + this->unitCount; }
   const wchar_t* begin() const { return this->chars; }
   const wchar_t* end() const { return this->chars + this->unitCount; }
+  const wchar_t* cbegin() const { return this->begin(); }
+  const wchar_t* cend() const { return this->end(); }
 
   void reserve(int needed)
   {

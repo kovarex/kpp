@@ -58,7 +58,9 @@ operations invalidate what. "End" means the iterator returned by `end()`.
 
 Iterators of every container here are at least *forward*: `*it`, `it->member`, `++it`, `it++`,
 `==`, `!=`. *Bidirectional* iterators also have `--it` and `it--`. *Random access* iterators are
-pointers (`T*`) with all pointer arithmetic.
+pointers (`T*`) with all pointer arithmetic. Every container (and String, StringView, WString,
+Span) has `cbegin()` and `cend()`, which are `begin()` and `end()` of it as const, and those with
+`rbegin()` have `crbegin()` and `crend()` the same way.
 
 ## Complexity
 

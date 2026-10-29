@@ -105,6 +105,10 @@ struct Deque
   T& back() const { return *this->slotAt(this->start + this->length - 1); }
   DequeIterator<T> begin() const { return DequeIterator<T>((Deque<T>*)this, 0); }
   DequeIterator<T> end() const { return DequeIterator<T>((Deque<T>*)this, this->length); }
+  DequeIterator<T> cbegin() const { return this->begin(); }
+  DequeIterator<T> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
   ReverseIterator<DequeIterator<T>> rbegin() const { return ReverseIterator<DequeIterator<T>>(this->end()); }
   ReverseIterator<DequeIterator<T>> rend() const { return ReverseIterator<DequeIterator<T>>(this->begin()); }
   // Equal with the same elements in the same order, ordered lexicographically (common.md).

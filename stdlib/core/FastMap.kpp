@@ -599,6 +599,10 @@ struct FastMap
   bool empty() const { return this->tree.count == 0; }
   BTreeIterator<Pair<K, V>> begin() const { return this->tree.begin(); }
   BTreeIterator<Pair<K, V>> end() const { return this->tree.end(); }
+  BTreeIterator<Pair<K, V>> cbegin() const { return this->begin(); }
+  BTreeIterator<Pair<K, V>> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
 
   BTreeIterator<Pair<K, V>> find(const K& key) const { return this->tree.find(key); }
   bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
@@ -735,6 +739,10 @@ struct FastSet
   bool empty() const { return this->tree.count == 0; }
   BTreeIterator<T> begin() const { return this->tree.begin(); }
   BTreeIterator<T> end() const { return this->tree.end(); }
+  BTreeIterator<T> cbegin() const { return this->begin(); }
+  BTreeIterator<T> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
 
   BTreeIterator<T> find(const T& value) const { return this->tree.find(value); }
   bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }

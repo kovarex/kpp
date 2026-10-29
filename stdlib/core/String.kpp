@@ -105,6 +105,10 @@ struct String
   char& operator[](int index) { return this->data()[index]; }
   char* begin() { return this->data(); }
   char* end() { return this->data() + this->size(); }
+  const char* begin() const { return this->data(); }
+  const char* end() const { return this->data() + this->size(); }
+  const char* cbegin() const { return this->data(); }
+  const char* cend() const { return this->data() + this->size(); }
   char& back() { return this->data()[this->size() - 1]; }
   const char& back() const { return this->data()[this->size() - 1]; }
   char& front() { return this->data()[0]; }

@@ -134,6 +134,10 @@ struct List
   T& back() const { return ((ListNode<T>*)this->sentinel.prev)->value; }
   ListIterator<T> begin() const { return ListIterator<T>(this->sentinel.next); }
   ListIterator<T> end() const { return ListIterator<T>((ListLinks*)&this->sentinel); }
+  ListIterator<T> cbegin() const { return this->begin(); }
+  ListIterator<T> cend() const { return this->end(); }
+  auto crbegin() const { return this->rbegin(); }
+  auto crend() const { return this->rend(); }
   ReverseIterator<ListIterator<T>> rbegin() const { return ReverseIterator<ListIterator<T>>(this->end()); }
   ReverseIterator<ListIterator<T>> rend() const { return ReverseIterator<ListIterator<T>>(this->begin()); }
   // Equal with the same elements in the same order, ordered lexicographically (common.md).

@@ -1,0 +1,25 @@
+// spec: every container, String, StringView and Span has cbegin() and cend(), begin() and end() of it as const (and crbegin(), crend() where it has rbegin()); a const String is iterated by range-for
+// factorio: CommonUtil's containsNonEmpty, allNonEmpty and countNonEmpty call any_of/all_of/count_if on container.cbegin(), container.cend() of an Array, a Deque, a Vector
+int main()
+{
+  const Array<int, 3> a = {1, 0, 2};
+  Deque<int> d;
+  d.push_back(5);
+  d.push_back(0);
+  const Deque<int>& cd = d;
+  Map<int, int> m;
+  m[1] = 10;
+  m[2] = 20;
+  Set<int> s = {3, 4};
+  HashMap<int, int> h;
+  h[7] = 70;
+  List<int> l = {8, 9};
+  const String text("abc");
+  StringView view("xy");
+  int sum = 0;
+  for (char c : text)
+    sum += c - 'a';
+  println("{} {} {} {} {} {} {} {} {}", countIf(a.cbegin(), a.cend(), [](int x) { return x != 0; }), anyOf(cd.cbegin(), cd.cend(), [](int x) { return x == 0; }),
+          m.cbegin()->second, m.crbegin()->first, *s.crbegin(), h.cbegin()->second, *l.crbegin(), *(text.cend() - 1), sum + (view.cend() - view.cbegin()));
+  return 0;
+}

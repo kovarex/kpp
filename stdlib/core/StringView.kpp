@@ -29,6 +29,8 @@ struct StringView
   const char& operator[](int index) const { return this->chars[index]; }
   const char* begin() const { return this->chars; }
   const char* end() const { return this->chars + this->byteCount; }
+  const char* cbegin() const { return this->begin(); }
+  const char* cend() const { return this->end(); }
   char front() const { return this->chars[0]; }
   char back() const { return this->chars[this->byteCount - 1]; }
 

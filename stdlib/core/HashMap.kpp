@@ -464,6 +464,8 @@ struct HashMap
   bool empty() const { return this->table.count == 0; }
   HashIterator<Pair<K, V>, stable> begin() const { return this->table.begin(); }
   HashIterator<Pair<K, V>, stable> end() const { return this->table.end(); }
+  HashIterator<Pair<K, V>, stable> cbegin() const { return this->begin(); }
+  HashIterator<Pair<K, V>, stable> cend() const { return this->end(); }
 
   HashIterator<Pair<K, V>, stable> find(const K& key) const
   {
@@ -669,6 +671,8 @@ struct HashSet
   bool empty() const { return this->table.count == 0; }
   HashIterator<T, stable> begin() const { return this->table.begin(); }
   HashIterator<T, stable> end() const { return this->table.end(); }
+  HashIterator<T, stable> cbegin() const { return this->begin(); }
+  HashIterator<T, stable> cend() const { return this->end(); }
 
   HashIterator<T, stable> find(const T& value) const
   {
