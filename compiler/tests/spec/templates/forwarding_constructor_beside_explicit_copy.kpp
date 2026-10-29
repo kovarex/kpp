@@ -1,0 +1,37 @@
+// spec: a constructor template that forwards (`template<typename... Args> Str(Args&&... args)`) beside an explicit copy constructor: copy-initialization from an xvalue of the class (`Str b = move(a);`) takes the template as Str(Str&&), since an explicit constructor is no candidate there, and direct-initialization from a non-const lvalue (`Str d(b);`, `Str(b)`) takes it as Str(Str&), a better match than Str(const Str&) (the non-template preference decides only between equally good matches)
+// factorio: ImmutableStringTemplate (PropertyTree::StringType) has an explicit copy constructor and a variadic forwarding one: `PropertyTree::StringType key3 = std::move(key2);` copied key2 instead of moving it, so the shared string kept a third owner (PropertyTree SharedStringLogic: "Expected 2 but was 3"; every move of a property tree string key or value was a copy)
+// pending: SILENT, the explicit copy constructor is taken each time (`1 0 2 0 2 0`); owner: the templates thread (overload resolution)
+struct Str
+{
+  int copies = 0;
+  int moves = 0;
+  explicit Str() {}
+  explicit Str(const Str& other);
+  template<typename... Args>
+  Str(Args&&... args);
+  void setInternal(Str&& other)
+  {
+    this->copies = other.copies;
+    this->moves = other.moves + 1;
+  }
+  void setInternal(const Str& other)
+  {
+    this->copies = other.copies + 1;
+    this->moves = other.moves;
+  }
+};
+Str::Str(const Str& other) : copies(other.copies + 1), moves(other.moves) {}
+template<typename... Args>
+Str::Str(Args&&... args)
+{
+  this->setInternal(forward<Args>(args)...);
+}
+int main()
+{
+  Str a;
+  Str b = move(a);
+  Str c = Str(b);
+  Str d(b);
+  println("{} {} {} {} {} {}", b.copies, b.moves, c.copies, c.moves, d.copies, d.moves);
+  return 0;
+}
