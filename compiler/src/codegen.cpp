@@ -87,6 +87,7 @@ namespace
     std::vector<const Ty*> fieldTypes; // pointee type for references and `this`
     const Ty* enclosingClass = nullptr;
     std::string functionName;
+    std::string writtenIn; // the function the lambda is written in (its call operator's requester in diagnostics)
     bool laidOut = false; // captures and fields known (read where the lambda is written); before that only the struct's name exists
   };
 
@@ -163,6 +164,14 @@ namespace
       std::lock_guard lock(s.mutex);
       return s.names.count(name) != 0;
     }
+  };
+
+  // A request for an instantiation: by which function (its IR name), and the instantiation depth
+  // through it (the requested one included).
+  struct Request
+  {
+    std::string by;
+    unsigned depth = 0;
   };
 
   // What the emitters of one program share, under `mutex` (recursive: laying out a class lays out
@@ -900,13 +909,19 @@ namespace
         std::string descriptor = "$" + ti.substr(1) + " = comdat any\n" + ti + " = linkonce_odr constant { ptr, ptr } { ptr " + nameConstant +
                                  ", ptr " + baseDescriptor + " }, comdat\n";
         std::string entries = "ptr " + ti;
-        for (size_t i = 0; i < impls2.size(); ++i)
         {
-          FunctionDecl* f = impls2[i];
-          std::string entry = "ptr null";
-          if (f && !(f->flags & DF_Pure))
-            entry = "ptr " + useFunction(f, global.classArgsOf(owners2[i]), owners2[i]);
-          entries += ", " + entry;
+          // The vtable asks for its functions, not whichever function happened to need the layout
+          // first (the requester the diagnostics name, the same in every run).
+          struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = std::move(saved); } } restore{currentFunctionName, currentFunctionName};
+          currentFunctionName = "the vtable of " + types.toString(key, &symbols);
+          for (size_t i = 0; i < impls2.size(); ++i)
+          {
+            FunctionDecl* f = impls2[i];
+            std::string entry = "ptr null";
+            if (f && !(f->flags & DF_Pure))
+              entry = "ptr " + useFunction(f, global.classArgsOf(owners2[i]), owners2[i]);
+            entries += ", " + entry;
+          }
         }
         structs[key].vtableText = descriptor + "$" + vt.substr(1) + " = comdat any\n" + vt + " = linkonce_odr constant [" +
                                   std::to_string(impls2.size() + 1) + " x ptr] [" + entries + "], comdat\n";
@@ -2017,7 +2032,7 @@ namespace
       }
       TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
       FunctionDecl* copy = nullptr;
-      bool hasMove = false;
+      bool hasMove = false, defaultedCopy = false;
       {
         ArgsScope scope(*this, &args);
         for (Decl* m : c->members)
@@ -2031,7 +2046,12 @@ namespace
           if (!pt || !pt->isReference() || !isClass(pt->inner) || classKey(pt->inner) != classKey(t))
             continue;
           if (f->flags & DF_Default)
-            continue; // `T(const T&) = default`: the memberwise copy below
+          {
+            // `T(const T&) = default`: the memberwise copy below, whatever else the class declares
+            // (BuildResult: a move constructor and a destructor of its own besides).
+            defaultedCopy = defaultedCopy || pt->kind == TyKind::LRef;
+            continue;
+          }
           if (pt->kind == TyKind::LRef)
             copy = f; // `T(const T&)`; the move constructor `T(T&&)` would empty the source
           else
@@ -2040,14 +2060,14 @@ namespace
       }
       if (copy && (copy->flags & DF_Delete))
         unsupported(at, "copying " + qualifiedName(c) + ", whose copy constructor is deleted (move it instead)");
-      if (!copy && hasMove)
+      if (!copy && hasMove && !defaultedCopy)
         unsupported(at, "copying " + qualifiedName(c) + ", which has a move constructor but no copy constructor");
       if (copy)
       {
         emitCall("", "void " + useFunction(copy, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
         return;
       }
-      if (findDestructor(c))
+      if (findDestructor(c) && !defaultedCopy)
         unsupported(at, "copying " + qualifiedName(c) + ", which has a destructor but no copy constructor");
       memberwiseConstruct(dst, src, t, at, move);
     }
@@ -2654,6 +2674,7 @@ namespace
       ClosureInfo& info = closures[t];
       info.laidOut = true;
       info.enclosingClass = currentClassTy;
+      info.writtenIn = currentFunctionName;
       bool usesThis = false;
       std::vector<Decl*> explicitDecls;
       bool thisCaptured = false;
@@ -2936,6 +2957,10 @@ namespace
       std::string savedName = currentFunctionName;
       struct NameRestore { std::string& name; std::string saved; ~NameRestore() { name = saved; } } nameRestore{currentFunctionName, savedName};
       currentFunctionName = name; // what the operator's own statics and filters are named after
+      // Its diagnostics name the function it is written in as the requester, not the function that
+      // happened to emit it first.
+      NameRestore requesterRestore{currentRequestedBy, currentRequestedBy};
+      currentRequestedBy = info.writtenIn;
       resetFunctionState();
       if (args)
         currentArgs = args;
@@ -3384,15 +3409,39 @@ namespace
     // growing with every step. The whole Factorio source needs 12. See docs/design.md.
     static constexpr unsigned maxInstantiationDepth = 64;
 
+    // The instantiations this emitter asked for while the current level was emitted, each with
+    // its first requester by name: the driver takes the first over all emitters as the
+    // instantiation's requester (which the diagnostics name, and whose depth it inherits), the same
+    // in every run, where the first to ask depends on timing. Every request counts, cached or not.
+    std::unordered_map<std::string, Request> levelRequests;
+    void noteRequest(const std::string& name)
+    {
+      auto [it, first] = levelRequests.try_emplace(name, Request{currentFunctionName, currentDepth + 1});
+      if (!first && currentFunctionName < it->second.by)
+        it->second = {currentFunctionName, currentDepth + 1};
+    }
+    bool lastUseInstantiates = false; // the last useFunctionOnce asked for an instantiation
+
+    // Asks for the instantiation `name`: true for the first request, which queues it.
+    bool claimInstantiation(const std::string& name)
+    {
+      noteRequest(name);
+      lastUseInstantiates = true;
+      return requested.claim(name);
+    }
+
+    // An instantiation whose chain of requests is longer than the limit is an error, reported
+    // instead of emitting it (with its requester as the level settled it, the same in every run).
+    void reportTooDeep(const Instantiation& item)
+    {
+      auto shortened = [](const std::string& s) { return s.size() <= 300 ? s : s.substr(0, 300) + "..."; };
+      currentFile = item.f->file;
+      error(item.f, "template instantiations nested more than " + std::to_string(maxInstantiationDepth) + " deep: " + shortened(item.name) +
+                        " requested by " + shortened(item.requestedBy));
+    }
+
     void queueInstantiation(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& name)
     {
-      if (currentDepth >= maxInstantiationDepth)
-      {
-        auto shortened = [](const std::string& s) { return s.size() <= 300 ? s : s.substr(0, 300) + "..."; };
-        error(currentFunction, "template instantiations nested more than " + std::to_string(maxInstantiationDepth) + " deep: " +
-                                   shortened(name) + " requested by " + shortened(currentFunctionName));
-        throw Unsupported{};
-      }
       // In the module its name hashes to: spread evenly, and the same module whoever asks first (the
       // first requester's module piled most of the library's instantiations into one module that
       // clang then took 7 s at -O0 and 224 s at -O2 on, alone).
@@ -3402,16 +3451,26 @@ namespace
 
     // Makes a function usable from the current function: declares external ones, queues
     // instantiations. Returns its IR name.
-    std::unordered_map<std::string, std::string> usedFunctions; // what useFunction answered this emitter (its shared part done)
+    struct UsedFunction
+    {
+      std::string name;
+      bool instantiation; // asked for as an instantiation: each use is a request (noteRequest)
+    };
+    std::unordered_map<std::string, UsedFunction> usedFunctions; // what useFunction answered this emitter (its shared part done)
     std::string useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
     {
       if (f->builtin == BUILTIN_EnumFromStr)
         return useFunctionOnce(f, args, classTy);
       std::string key = functionName(f, args, classTy);
       if (auto mine = usedFunctions.find(key); mine != usedFunctions.end())
-        return mine->second;
+      {
+        if (mine->second.instantiation)
+          noteRequest(mine->second.name);
+        return mine->second.name;
+      }
+      lastUseInstantiates = false;
       std::string name = useFunctionOnce(f, args, classTy);
-      usedFunctions.emplace(std::move(key), name);
+      usedFunctions.emplace(std::move(key), UsedFunction{name, lastUseInstantiates});
       return name;
     }
 
@@ -3441,13 +3500,13 @@ namespace
       {
         // `= default`: the compiler's memberwise function, defined where first needed (a vtable
         // slot or a function pointer wants a real function; calls inline the body).
-        if (requested.claim(name))
+        if (claimInstantiation(name))
           queueInstantiation(f, args, classTy, name);
         return name;
       }
       if (def->body && templated)
       {
-        if (requested.claim(name))
+        if (claimInstantiation(name))
         {
           // A definition separate from the declaration has its own parameter declarations:
           // `template<typename Policy> ScrollBar<Policy>::ScrollBar(...)` names the class's
@@ -5407,8 +5466,7 @@ namespace
       if (++recursionDepth > 128)
       {
         recursionDepth = 0;
-        error(e, "expression nested too deeply");
-        throw Unsupported{};
+        fail(e, "expression nested too deeply");
       }
       struct DepthGuard { int& d; ~DepthGuard() { --d; } } dg{recursionDepth};
       switch (e->kind)
@@ -7190,8 +7248,7 @@ namespace
       if (++recursionDepth > 128)
       {
         recursionDepth = 0;
-        error(e, "expression nested too deeply");
-        throw Unsupported{};
+        fail(e, "expression nested too deeply");
       }
       struct DepthGuard { int& d; ~DepthGuard() { --d; } } dg{recursionDepth};
       switch (e->kind)
@@ -9019,8 +9076,7 @@ namespace
       if (++recursionDepth > 128)
       {
         recursionDepth = 0;
-        error(s, "statement nested too deeply");
-        throw Unsupported{};
+        fail(s, "statement nested too deeply");
       }
       struct DepthGuard { int& d; ~DepthGuard() { --d; } } dg{recursionDepth};
       if (blockTerminated)
@@ -9445,18 +9501,11 @@ namespace
         if (types.unqualified(alternativeType(c, t, i, at)) == v)
           found.push_back(i);
       auto name = [&](size_t i) { return sym(static_cast<EnumeratorDecl*>(static_cast<EnumDecl*>(c->tagEnum)->enumerators[i])->name); };
-      std::string where = currentFunctionName.empty() ? std::string() : " (in " + currentFunctionName + ")";
       if (found.empty())
-      {
-        error(at, "the typed union " + qualifiedName(c) + " has no alternative of type " + types.toString(v, &symbols) + where);
-        throw Unsupported{};
-      }
+        fail(at, "the typed union " + qualifiedName(c) + " has no alternative of type " + types.toString(v, &symbols));
       if (found.size() > 1)
-      {
-        error(at, "a " + types.toString(v, &symbols) + " is ambiguous for the typed union " + qualifiedName(c) + ": its alternatives " +
-                  name(found[0]) + " and " + name(found[1]) + " both have that type (set one by name: u[" + name(found[0]) + "] = value)" + where);
-        throw Unsupported{};
-      }
+        fail(at, "a " + types.toString(v, &symbols) + " is ambiguous for the typed union " + qualifiedName(c) + ": its alternatives " +
+                     name(found[0]) + " and " + name(found[1]) + " both have that type (set one by name: u[" + name(found[0]) + "] = value)");
       return found[0];
     }
     // The index among c's alternatives of the one a descriptor of `alternatives(U)` names, or -1.
@@ -10354,6 +10403,20 @@ namespace
       {
         if (d->kind == NodeKind::NamespaceDecl)
           settleDefinitionFlags(static_cast<NamespaceDecl*>(d)->decls);
+        if (d->kind == NodeKind::ClassDecl)
+        {
+          // `Flow(Flow&&) noexcept;` in the class and `Flow::Flow(Flow&&) noexcept = default;`
+          // outside: the declaration is defaulted too. Found from the declaration, as useFunction
+          // finds the definition (declarationOf finds no constructor or destructor), so that
+          // useFunction never has to write the flag while other threads read it.
+          for (Decl* m : static_cast<ClassDecl*>(d)->members)
+            if (m->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(m)->body && !(m->flags & DF_Default))
+              if (Decl* def = global.definitionOf(m);
+                  def && def != m && def->kind == NodeKind::FunctionDecl && (def->flags & DF_Default) && !static_cast<FunctionDecl*>(def)->body)
+                m->flags |= DF_Default;
+          settleDefinitionFlags(static_cast<ClassDecl*>(d)->members); // nested classes
+          continue;
+        }
         if (d->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(d)->name.parts.size() <= 1)
           continue;
         auto* def = static_cast<FunctionDecl*>(d);
@@ -10551,6 +10614,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // goes out through a fixed buffer and the process ends.
   struct EmitCall { Emitter* e; const Instantiation* item; };
   auto emitOne = [&](Emitter& em, const Instantiation& item) {
+    if (item.depth > Emitter::maxInstantiationDepth)
+    {
+      em.reportTooDeep(item);
+      return;
+    }
     em.currentModule = item.module;
     em.currentRequestedBy = item.requestedBy;
     em.currentDepth = item.depth;
@@ -10573,6 +10641,34 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     em.currentRequestedBy.clear();
     em.currentDepth = 0;
   };
+  // The next level: what the emitters asked for (each function once: the names were claimed), in
+  // the order of their names, each with its first requester by name over all emitters
+  // (Emitter::levelRequests).
+  auto nextLevel = [&]() {
+    level.clear();
+    for (auto& em : emitters)
+    {
+      for (Instantiation& item : em->worklist)
+        level.push_back(std::move(item));
+      em->worklist.clear();
+    }
+    std::unordered_map<std::string, Request*> first;
+    for (const Instantiation& item : level)
+      first.emplace(item.name, nullptr);
+    for (auto& em : emitters)
+      for (auto& [name, r] : em->levelRequests)
+        if (auto it = first.find(name); it != first.end() && (!it->second || r.by < it->second->by))
+          it->second = &r;
+    for (Instantiation& item : level)
+      if (Request* r = first[item.name])
+      {
+        item.requestedBy = r->by;
+        item.depth = r->depth;
+      }
+    for (auto& em : emitters)
+      em->levelRequests.clear();
+    std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
+  };
   std::atomic<bool> outOfMemory{false};
   size_t emitted = 0;
   std::set<std::pair<StaticAssertDecl*, std::string>> layoutAssertsChecked;
@@ -10594,10 +10690,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         }
       if (!checked)
         break;
-      for (Instantiation& item : e.worklist)
-        level.push_back(std::move(item));
-      e.worklist.clear();
-      std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
+      nextLevel();
       continue;
     }
     std::atomic<size_t> next{0};
@@ -10614,16 +10707,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     };
     onThreads(level.size() < 64 ? 1 : threads, work);
     emitted += level.size();
-    // The next level: what this one asked for (each function once: the names were claimed), in
-    // the order of their names, whichever emitter asked.
-    level.clear();
-    for (auto& em : emitters)
-    {
-      for (Instantiation& item : em->worklist)
-        level.push_back(std::move(item));
-      em->worklist.clear();
-    }
-    std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
+    nextLevel();
   }
   e.finishAssertRuntime();
   e.finishExceptionRuntime();

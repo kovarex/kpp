@@ -1,0 +1,28 @@
+// spec: a class whose copy constructor is `= default` copies member by member, also when it declares a move constructor and a destructor that are defaulted out of line
+// found in src/BuildResult.kpp (copied by NonEmpty's conversion operator): the defaulted copy was passed over, and the copy reported "which has a move constructor but no copy constructor" or "which has a destructor but no copy constructor", depending on which thread first settled the out-of-line `= default`
+class Result
+{
+public:
+  Result() : value(1) {}
+  Result(Result&&) noexcept;
+  Result(const Result&) noexcept = default;
+  ~Result();
+  int value;
+};
+Result::Result(Result&&) noexcept = default;
+Result::~Result() = default;
+class Holder
+{
+public:
+  Result result;
+  implicit operator Result() { return this->result; }
+};
+int main()
+{
+  Holder h;
+  h.result.value = 7;
+  Result r = h;
+  Result moved = static_cast<Result&&>(r);
+  println("{} {}", r.value, moved.value);
+  return 0;
+}
