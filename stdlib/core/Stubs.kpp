@@ -68,11 +68,9 @@ struct WStringConvert
   }
 };
 
-// Concepts (std::convertible_to, std::equality_comparable). EqualityComparable is not checked yet
-// (it needs `requires (const T& a) { a == a; }`: spec templates/requires_expression_parameters);
-// docs/stdlib-conformance.md lists it.
+// Concepts (std::convertible_to, std::equality_comparable).
 template<typename From, typename To> constexpr bool ConvertibleTo = isConvertible<From, To>;
-template<typename T> constexpr bool EqualityComparable = true;
+template<typename T> constexpr bool EqualityComparable = requires (const T& a, const T& b) { a == b; a != b; };
 
 // Namespace-like stubs for rarely-used sub-namespaces.
 struct Numbers

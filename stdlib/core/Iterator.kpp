@@ -122,35 +122,37 @@ template<typename Container>
 InsertIterator<Container> inserter(Container& c, typename Container::iterator pos) { return InsertIterator<Container>(c, pos); }
 
 // The free forms of a container's begin(), end(), size() and the rest (std::begin and friends), for
-// generic code that calls them on any range. Built-in arrays wait for the compiler to deduce an
-// array's bound from a `const T (&)[N]` parameter (spec templates/array_reference_parameter).
-template<typename C>
+// generic code that calls them on any range. Each takes part only for a type that has the member
+// (a class with its own free begin, like a reverse wrapper, keeps it). Built-in arrays wait for the
+// compiler to deduce an array's bound from a `const T (&)[N]` parameter (spec
+// templates/array_reference_parameter).
+template<typename C> requires requires (C& c) { c.begin(); }
 auto begin(C& c) { return c.begin(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.begin(); }
 auto begin(const C& c) { return c.begin(); }
-template<typename C>
+template<typename C> requires requires (C& c) { c.end(); }
 auto end(C& c) { return c.end(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.end(); }
 auto end(const C& c) { return c.end(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.begin(); }
 auto cbegin(const C& c) { return c.begin(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.end(); }
 auto cend(const C& c) { return c.end(); }
-template<typename C>
+template<typename C> requires requires (C& c) { c.rbegin(); }
 auto rbegin(C& c) { return c.rbegin(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.rbegin(); }
 auto rbegin(const C& c) { return c.rbegin(); }
-template<typename C>
+template<typename C> requires requires (C& c) { c.rend(); }
 auto rend(C& c) { return c.rend(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.rend(); }
 auto rend(const C& c) { return c.rend(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.size(); }
 auto size(const C& c) { return c.size(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.size(); }
 ptrdiff_t ssize(const C& c) { return (ptrdiff_t)c.size(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.empty(); }
 auto empty(const C& c) { return c.empty(); }
-template<typename C>
+template<typename C> requires requires (C& c) { c.data(); }
 auto data(C& c) { return c.data(); }
-template<typename C>
+template<typename C> requires requires (const C& c) { c.data(); }
 auto data(const C& c) { return c.data(); }
