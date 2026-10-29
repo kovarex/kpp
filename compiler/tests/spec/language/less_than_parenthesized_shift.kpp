@@ -1,0 +1,14 @@
+// spec: `a < (...)` with a `>>` inside the parentheses is a comparison: inside parentheses `>` and `>>` are operators, whatever came before the `(`
+// factorio: Lua's ldebug.c (`if (b < GETARG_A(i))`, GETARG_A expanding to `(((int)(((i)>>POS_A) & MASK1(SIZE_A,0))))`), in getobjname
+// pending: the parser reads the `>>` as the end of template arguments ("expected ')' (at '>')"); owner: the parser
+int main()
+{
+  int b = 1;
+  unsigned i = 0x300u;
+  bool less = b < ((i >> 8) & 3);
+  if (b < (((int)(((i) >> 8) & 3))))
+    println("{} less", less);
+  else
+    println("{} not less", less);
+  return 0;
+}

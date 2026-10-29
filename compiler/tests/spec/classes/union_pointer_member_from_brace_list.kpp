@@ -1,0 +1,29 @@
+// spec: a brace list initializes a union's first member, here a pointer from nullptr (`{{nullptr}, 0}` for a struct of a union and an int), in a global, a static and a local
+// factorio: Lua's `const TValue luaO_nilobject_ = {NILCONSTANT};` (lobject.c, NILCONSTANT is `{NULL}, LUA_TNIL`) and ltable.c's dummynode_, TValue holding a union Value whose first member is `GCObject *gc` (the Lua conversion's trial: 28 error lines use them)
+// pending: the value is converted to the union's storage ("a conversion from nullptr_t to int64"); owner: codegen
+struct GCObject
+{
+  int marked = 0;
+};
+typedef int (*CFunction)(void* state);
+union Value
+{
+  GCObject* gc;
+  void* p;
+  int b;
+  CFunction f;
+  double n;
+};
+struct TValue
+{
+  Value value_;
+  int tt_;
+};
+const TValue nilObject = {{nullptr}, 0};
+static const TValue dummy = {{nullptr}, 3};
+int main()
+{
+  TValue local = {{nullptr}, 5};
+  println("{} {} {} {}", nilObject.value_.gc == nullptr, nilObject.tt_, dummy.tt_, local.tt_);
+  return 0;
+}
