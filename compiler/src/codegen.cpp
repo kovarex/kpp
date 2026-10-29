@@ -1819,6 +1819,13 @@ namespace
       t = types.stripRef(t);
       if (t->kind == TyKind::Array)
         return needsDestruction(t->inner, at);
+      if (isLambda(t))
+      {
+        for (auto& [index, ft] : closureValueFields(t, at))
+          if (needsDestruction(ft, at))
+            return true;
+        return false;
+      }
       if (!isClass(t))
         return false;
       if (auto mine = destructionCache.find(t); mine != destructionCache.end())
@@ -1869,6 +1876,15 @@ namespace
           fn += "  " + e + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(i) + "\n";
           destroy(e, t->inner, at);
         }
+        return;
+      }
+      if (isLambda(t))
+      {
+        std::vector<std::pair<uint32_t, const Ty*>> fields = closureValueFields(t, at);
+        std::string structName = closureFor(t, at).structName;
+        for (size_t i = fields.size(); i-- > 0;)
+          if (needsDestruction(fields[i].second, at))
+            destroy(gep(structName, addr, fields[i].first), fields[i].second, at);
         return;
       }
       if (!isClass(t))
@@ -3295,6 +3311,8 @@ namespace
           moveConstruct(to, from, ft, at);
         else if (isClass(ft))
           copyConstruct(to, from, ft, at);
+        else if (isLambda(ft))
+          copyClosure(to, from, ft, at, move); // FunctionImpl<F>'s `F f`
         else if (ft->kind == TyKind::Array)
           transferArray(to, from, ft, at, move, false);
         else
@@ -3479,12 +3497,7 @@ namespace
           init = list->args[0];
       if (isLambda(t))
       {
-        Value v = rvalue(init);
-        if (!isLambda(v.ty))
-          unsupported(at, "initialising a lambda variable from something else");
-        std::string tmp = newTemp();
-        fn += "  " + tmp + " = load " + llType(t, at) + ", ptr " + v.text + "\n";
-        fn += "  store " + llType(t, at) + " " + tmp + ", ptr " + addr + "\n";
+        initializeClosure(addr, t, init, at);
         return;
       }
       if (isClass(t) && init && init->kind == NodeKind::BraceInitExpr && isInitializerListType(t))
@@ -3688,6 +3701,13 @@ namespace
       t = types.unqualified(types.stripRef(t));
       while (t->kind == TyKind::Array && t->inner)
         t = types.unqualified(t->inner);
+      if (isLambda(t) && depth <= 32)
+      {
+        for (auto& [index, ft] : closureValueFields(t, at))
+          if (!relocatesBitwise(ft, at, depth + 1))
+            return false;
+        return true;
+      }
       if (!isClass(t) || depth > 32)
         return true;
       const Ty* key = canonicalClass(t, at);
@@ -4576,8 +4596,89 @@ namespace
       }
     }
 
-    // Builds the closure object of a lambda expression in a fresh slot and emits its function.
-    Value makeClosure(LambdaExpr* l)
+    // A closure's captures by value, as (field index, type): what copying, moving and destroying
+    // the closure copy, move and destroy one by one (a capture by reference, and `this`, is a pointer).
+    std::vector<std::pair<uint32_t, const Ty*>> closureValueFields(const Ty* t, Node* at)
+    {
+      ClosureInfo& info = closureFor(t, at);
+      std::vector<std::pair<uint32_t, const Ty*>> fields;
+      for (size_t i = 0; i < info.captured.size(); ++i)
+        if (info.captured[i] && !info.byRef[i])
+          fields.push_back({uint32_t(i), info.fieldTypes[i]});
+      return fields;
+    }
+
+    // Copies (move: moves) the closure at src into dst capture by capture, each through its own copy
+    // or move constructor: EntityWithOwner's `[entity = Targeter<EntityWithOwner>(this)]` copied
+    // bitwise into a load helper left the copy out of the entity's targeters and the stack's closure
+    // in them, never destroyed.
+    void copyClosure(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move)
+    {
+      ClosureInfo& info = closureFor(t, at);
+      for (size_t i = 0; i < info.captured.size(); ++i)
+      {
+        std::string to = gep(info.structName, dst, uint32_t(i)), from = gep(info.structName, src, uint32_t(i));
+        const Ty* ft = info.fieldTypes[i];
+        bool byValue = info.captured[i] && !info.byRef[i];
+        if (byValue && isClass(ft))
+        {
+          if (move)
+            moveConstruct(to, from, ft, at);
+          else
+            copyConstruct(to, from, ft, at);
+          continue;
+        }
+        if (byValue && isLambda(ft))
+        {
+          copyClosure(to, from, ft, at, move);
+          continue;
+        }
+        if (byValue && ft->kind == TyKind::Array)
+        {
+          transferArray(to, from, ft, at, move, false);
+          continue;
+        }
+        std::string llt = byValue ? llType(ft, at) : std::string("ptr"); // a scalar, or a pointer: by reference, `this`
+        std::string v = newTemp();
+        fn += "  " + v + " = load " + llt + ", ptr " + from + "\n";
+        fn += "  store " + llt + " " + v + ", ptr " + to + "\n";
+      }
+    }
+
+    // Initialises the closure at addr from init, a closure value: a lambda expression is built in
+    // place, a temporary moved from (and destroyed with the statement), anything else copied (moved
+    // for `move(f)`).
+    void initializeClosure(const std::string& addr, const Ty* t, Expr* init, Node* at)
+    {
+      Expr* inner = init;
+      while (inner && inner->kind == NodeKind::ParenExpr)
+        inner = static_cast<ParenExpr*>(inner)->inner;
+      if (inner && inner->kind == NodeKind::LambdaExpr && types.unqualified(inner->ty) == types.unqualified(t))
+      {
+        makeClosure(static_cast<LambdaExpr*>(inner), addr);
+        return;
+      }
+      Value v = rvalue(init);
+      if (!isLambda(v.ty))
+        unsupported(at, "initialising a lambda variable from something else");
+      if (v.isTemporary && relocatesBitwise(t, at))
+      {
+        // Its bytes are the closure now: the statement no longer destroys the temporary.
+        for (size_t i = statementTemps.size(); i-- > 0;)
+          if (statementTemps[i].addr == v.text)
+            statementTemps.erase(statementTemps.begin() + i);
+        std::string tmp = newTemp();
+        fn += "  " + tmp + " = load " + llType(t, at) + ", ptr " + v.text + "\n";
+        fn += "  store " + llType(t, at) + " " + tmp + ", ptr " + addr + "\n";
+        return;
+      }
+      copyClosure(addr, v.text, t, at, v.isTemporary || isXvalue(init));
+    }
+
+    // Builds the closure object of a lambda expression in a fresh slot (into: in that object) and
+    // emits its function. One in a fresh slot is a temporary: the statement destroys it unless it
+    // is moved out (a parameter by value, a variable), when its captures need destruction.
+    Value makeClosure(LambdaExpr* l, const std::string& into = "")
     {
       const Ty* t = l->ty;
       if (!isLambda(t))
@@ -4601,7 +4702,7 @@ namespace
       std::vector<CaptureSlot> slots = captureList(l);
       if (slots.size() != info.captured.size())
         unsupported(l, "a lambda whose captures differ from its closure's");
-      std::string slot = newObjectSlot(t, l);
+      std::string slot = into.empty() ? newObjectSlot(t, l) : into;
       for (size_t i = 0; i < info.captured.size(); ++i)
       {
         std::string field = gep(info.structName, slot, uint32_t(i));
@@ -4640,11 +4741,7 @@ namespace
           if (isClass(info.fieldTypes[i]))
             copyConstruct(field, addr, info.fieldTypes[i], l);
           else
-          {
-            std::string v = newTemp();
-            fn += "  " + v + " = load " + llType(info.fieldTypes[i], l) + ", ptr " + addr + "\n";
-            fn += "  store " + llType(info.fieldTypes[i], l) + " " + v + ", ptr " + field + "\n";
-          }
+            copyClosure(field, addr, info.fieldTypes[i], l, false); // `[f]` of a closure
         }
         else
           store(load(addr, info.fieldTypes[i], l), field, info.fieldTypes[i], l);
@@ -4657,7 +4754,11 @@ namespace
       }
       if (first)
         emitLambda(l, t, types.function(t->inner ? t->inner : types.voidType(), t->args, false), info.functionName, nullptr);
-      return {slot, t, false};
+      if (!into.empty())
+        return {slot, t, false};
+      if (needsDestruction(t, l))
+        statementTemps.push_back({slot, t});
+      return {slot, t, true};
     }
 
     struct FunctionState
@@ -6254,13 +6355,20 @@ namespace
         }
         if (isClass(v.ty) && isClass(pt) && classKey(v.ty) != classKey(pt))
           v = convert(v, types.unqualified(pt), at); // a base, or a conversion operator
+        if (isLambda(pt) && v.isTemporary)
+        {
+          // The closure the lambda expression built is the parameter (the callee destroys it).
+          for (size_t i = statementTemps.size(); i-- > 0;)
+            if (statementTemps[i].addr == v.text)
+            {
+              statementTemps.erase(statementTemps.begin() + i);
+              break;
+            }
+          return "ptr " + v.text;
+        }
         std::string copy = newObjectSlot(pt, at);
         if (isLambda(pt))
-        {
-          std::string tmp = newTemp();
-          fn += "  " + tmp + " = load " + llType(pt, at) + ", ptr " + v.text + "\n";
-          fn += "  store " + llType(pt, at) + " " + tmp + ", ptr " + copy + "\n";
-        }
+          copyClosure(copy, v.text, pt, at, isXvalue(arg));
         else if (v.isTemporary && isClass(v.ty) && classKey(v.ty) == classKey(pt) && !isLambda(pt))
         {
           // `byValue(Tracker(5))`, `f(makeT())`: the temporary is the parameter, not moved (C++17
@@ -11169,6 +11277,20 @@ namespace
             }
             destroy(p.text, p.ty->inner, e, true);
             emitCall("", "void @free(ptr " + block + ")", false);
+            emitBranch(endL);
+            startBlock(endL);
+            return {"", types.voidType()};
+          }
+          if (isLambda(p.ty->inner) && needsDestruction(p.ty->inner, e))
+          {
+            // FunctionImpl's `delete (F*)target` of a closure: its captures by value are destroyed.
+            std::string isNull = newTemp(), objectL = newLabel("delete.object"), endL = newLabel("delete.end");
+            fn += "  " + isNull + " = icmp eq ptr " + p.text + ", null\n";
+            fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + objectL + "\n";
+            blockTerminated = true;
+            startBlock(objectL);
+            destroy(p.text, p.ty->inner, e);
+            emitCall("", "void @free(ptr " + p.text + ")", false);
             emitBranch(endL);
             startBlock(endL);
             return {"", types.voidType()};

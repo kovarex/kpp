@@ -1,0 +1,39 @@
+// spec: a closure that captures objects by value copies them through their copy constructors when it is copied, moves them when moved, and destroys them when it dies: as a variable, a temporary, a parameter by value, and inside a Function
+// factorio: EntityWithOwner's loading constructor pushes `SimpleLoadHelper::Setup([entity = Targeter<EntityWithOwner>(this)] { ... })`: the closure was copied bitwise into the helper and the one on the stack was never destroyed, so its targeter stayed in the entity's list after the constructor returned, and loading the menu maps crashed in Targeters::clearTargetersWithType walking into the dead stack
+int live = 0;
+int copies = 0;
+struct Tracker
+{
+  Tracker() { ++live; }
+  Tracker(const Tracker&) { ++live; ++copies; }
+  Tracker(Tracker&&) { ++live; }
+  ~Tracker() { --live; }
+};
+static void store(Function<void()> f) { f(); }
+int main()
+{
+  {
+    Tracker t;
+    auto byCopy = [t]() {};
+  }
+  print("a {} ", live);
+  {
+    Tracker t2;
+    auto byCopy2 = [t2]() {};
+    auto copied = byCopy2;
+  }
+  print("b {} ", live);
+  {
+    auto initCapture = [u = Tracker()]() {};
+    Function<void()> fn = initCapture;
+  }
+  print("c {} ", live);
+  store([w = Tracker()]() {});
+  print("d {} ", live);
+  {
+    Function<void()> fn = [w = Tracker()]() {};
+    Function<void()> copy = fn;
+  }
+  println("e {} copies {}", live, copies);
+  return 0;
+}
