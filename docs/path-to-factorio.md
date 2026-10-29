@@ -1195,7 +1195,7 @@ against the game's Lua headers compiled as C++.
 All of this goes when Lua itself is converted: the game's code then uses Lua's types and macros as
 Kpp code, and kpp_lua_internals.h, lua_internals.c and the `included` lines are deleted.
 
-### Converting Lua: the plan (2026-10-29, step 2 under way)
+### Converting Lua: the plan (2026-10-29, step 2 done; step 3's gate passes)
 
 **What.** `libraries/Lua`: 59 files, 21,449 lines (lua.c and luac.c, the standalone interpreter
 and compiler, left out as the game's build leaves them out). fbuild.bff compiles it as C++ (`/TP`)
@@ -1259,6 +1259,62 @@ The converter's part was C's macros as the preprocessor reads them (member lists
 words, aliases, statement arguments, constants over several lines), C's parenthesized declarator
 names, assert where an expression stands, and file-local names the library has too (ltablib.c's
 sort).
+
+Later the same day the trial reached 0 error lines and no parse errors, once the five gaps had
+landed (resolver: offsetof, sizeof of a literal, the parse; codegen: the union's brace list,
+va_arg) and the converter kept the backslashes of a local macro's literals (llex.c's
+currIsNewline) and the known macros' rewrites inside written-out macros (NILCONSTANT's LUA_TNIL).
+The #if evaluator does C's arithmetic now, so luaconf.h is configured as the C++ build has it:
+LUAI_BITSINT 32, LUAI_MAXSTACK 1000000, LUAI_UMEM size_t, and lopcodes.h's MAXARG_Bx
+`(1<<SIZE_Bx)-1` (with `INT_MAX-20` read as INT_MAX, Lua had the 16-bit configuration and
+compiled other bytecode). The compatibility check runs: tests\lua_compat.lua (number formatting
+through trio, pairs in insertion order, the game's math functions to the bit, string.pack, bit32,
+error messages, metatables, the __gc order) under the converted Lua must print
+tests\lua_compat.expected, the same script's output under the game's lua.lib (tests\lua_compat.cpp,
+the C++ twin). It passes since 2026-10-29: the converted Lua prints the C++ build's output byte
+for byte. The last gap was codegen's: a global made from another global's address was no
+constant once that global had been declared extern, and was initialized in file order
+(language/global_address_constant_after_extern_declaration, fixed in 097f296; lapi.c's
+NONVALIDVALUE had stayed null and lua_type read through it).
+
+**Step 3, the switch, wired.** Once `lua-trial.cmd` prints "Lua compatibility: output as
+expected", one commit switches the game from Lua as C to the converted Lua:
+1. *Inputs.* The conversion takes the directory `C:\Factorio\libraries\Lua` instead of
+   LuaCPPUtilities.hpp alone, with `--ext .cpp,.hpp,.h,.kpp,.c` (no other input has `.c` files):
+   convert.cmd's two conversions, measure's, and the headline command in this document. The
+   builds (headline, link.cmd, run.cmd) already take kpp\Lua. The converter's Lua rules for
+   converting it stay: lua.c and luac.c left out, override_printf.h seen first, trio imported for
+   Lua's files only, LUA_CORE, LUA_LIB and the file names luaconf.h tests defined.
+2. *The game's includes.* The 25 files that include Lua's headers (lua.hpp 13, lapi.h 6, lua.h 5,
+   lobject.h, ltable.h and lauxlib.h 4 each, lgc.h, lstate.h, luaconf.h, LuaCPPUtilities.hpp)
+   then reach converted files, and those includes go as any converted header's do. The rule
+   that made them imports goes (convert.cpp: `header.rfind("Lua/", 0)` and luaInternals), and
+   knownMacros' LUA_T* numbers go too, since lua.h's constants are converted. The function-like
+   macros the game uses (lua_pop, lua_tostring, hvalue, ttisnil, setobj, ...) come from the
+   converted headers as every included header's do. overrides\expand-macros.txt loses its Lua
+   lines: luaconf.h, lua.h, lauxlib.h and the seven `included` internals.
+3. *native.* include\kpp_lua_internals.h and lua_internals.c are deleted, with build.cmd's
+   lua_internals.obj: the game reaches Lua's internals as Kpp code, under Kpp names, so there is
+   no C++ mangling left to bridge. link-settings.cmd drops lua.lib and keeps trio.lib.
+4. *Tests.* convert.cmd's Lua internals smoke test is replaced by the compatibility check on
+   kpp\Lua, the same tests\lua_compat.kpp built with the game's kpp\Lua; the old test checked the
+   import's layout against the C++ build's and has nothing left to check, so
+   lua_internals_smoke.* is deleted. lua-trial.cmd stays, as the check that Lua converts on its
+   own.
+5. *Errors.* Lua raises its errors as C++ exceptions (ldo.c's LUAI_THROW: `throw(c)` caught by
+   `catch(...)`, as the C++ build compiles it). Today lua.lib's MSVC exceptions cross the converted
+   game's frames. After the switch they are Kpp exceptions through Kpp frames, including the
+   game's own calls of lua_error and luaL_error. The check covers pcall, error, xpcall and the
+   messages.
+6. *Measuring.* The headline and the link before and after, paired: kpp\Lua then holds Lua's own
+   files too (37 in the trial), and the trial at 0 says they add no lines. The C++ build compiles with /fp:strict
+   and win_fp_flags.hpp for determinism. The check compares the math functions, the formatting
+   and a float loop bit for bit, and it is the gate for every later codegen change that touches
+   floating point.
+7. *Order.* lua-trial.cmd passes (it does since 2026-10-29), then the switch commit lands
+   (converter, programs/factorio and this document, with the paired numbers), and factorio-in-kpp
+   is re-converted (kpp\Lua gains Lua's sources). The game's own Lua tests come after, with the
+   game running.
 
 ### What the parse of the C++ does not see (2026-10-29)
 
