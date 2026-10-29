@@ -1,0 +1,89 @@
+// spec: class operators at compile time: a member operator==, a free operator<, `!=` rewritten from `==`, a defaulted `<=>` comparing member by member (and the `==` it implies), a class's own operator+=, an explicit operator bool in a condition, a derived object given to a base reference, a virtual function the object's class overrides, references to locals read and written through
+// factorio: BoundingBox::emptyValue().isZeroSize() (MapPosition's defaulted <=>, GameOptional's operator bool and operator==)
+// pending: the interpreter ran no class operators, no virtual calls and no references
+struct Fixed
+{
+  int raw = 0;
+  constexpr auto operator<=>(const Fixed&) const = default;
+};
+struct Point
+{
+  Fixed x, y;
+  constexpr auto operator<=>(const Point&) const = default;
+};
+struct Money
+{
+  int cents = 0;
+  constexpr bool operator==(const Money& o) const { return cents == o.cents; }
+  constexpr Money& operator+=(const Money& o)
+  {
+    cents += o.cents;
+    return *this;
+  }
+};
+constexpr bool operator<(const Money& a, const Money& b) { return a.cents < b.cents; }
+struct Maybe
+{
+  int value = -1;
+  constexpr explicit operator bool() const { return value >= 0; }
+};
+struct Shape
+{
+  constexpr virtual int sides() const { return 0; }
+  constexpr int doubled() const { return sides() * 2; }
+};
+struct Square : Shape
+{
+  constexpr int sides() const override { return 4; }
+};
+constexpr int sidesOf(const Shape& s) { return s.sides(); }
+constexpr int bump(int& n)
+{
+  ++n;
+  return n;
+}
+constexpr int references()
+{
+  int a = 1;
+  int& r = a;
+  r += 10;
+  bump(a);
+  const int& c = a;
+  a = a * 2;
+  return c;
+}
+constexpr int game()
+{
+  Money m{5};
+  m += Money{7};
+  Maybe nothing;
+  Maybe some{3};
+  int score = 0;
+  if (!nothing)
+    score += 1;
+  if (some)
+    score += 10;
+  if (m == Money{12})
+    score += 100;
+  if (Money{1} < m)
+    score += 1000;
+  if (m != Money{1})
+    score += 10000;
+  return score;
+}
+template<int N>
+struct Show
+{
+  static constexpr int value = N;
+};
+constexpr Point origin{};
+static_assert(Point{Fixed{1}, Fixed{2}} == Point{Fixed{1}, Fixed{2}});
+static_assert(Point{Fixed{1}, Fixed{2}} < Point{Fixed{1}, Fixed{3}} && !(Point{Fixed{2}, Fixed{0}} < Point{Fixed{1}, Fixed{9}}));
+static_assert(origin == Point{} && origin != Point{Fixed{0}, Fixed{1}});
+static_assert(sidesOf(Square{}) == 4 && Square{}.doubled() == 8 && Shape{}.doubled() == 0);
+static_assert(references() == 24 && game() == 11111);
+int main()
+{
+  println("{} {}", Show<game()>::value, Show<references()>::value);
+  return 0;
+}

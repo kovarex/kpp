@@ -1,0 +1,42 @@
+// spec: a constant computed many calls deep: a type (`sizeof(T)` in a class template's static member function), a member read and a constructed object at the end of the chain are evaluated as written, however many calls reached them
+// factorio: static_assert(BoundingBox::emptyValue().isZeroSize()) (Limits<T>::max() six calls deep, through GameOptional and FixedPointNumber)
+// pending: the evaluator handed its own nesting depth to the type walker, which gives up past 40 levels
+template<class T>
+struct Wrap
+{
+  static constexpr int bytes() { return sizeof(T); }
+};
+struct Couple
+{
+  int a = 0;
+  int b = 0;
+  constexpr Couple(int x, int y) : a(x), b(y) {}
+  constexpr int sum() const { return this->a + this->b; }
+};
+constexpr int d0() { return Wrap<long long>::bytes() + Couple(1, 2).sum(); }
+constexpr int d1() { return d0(); }
+constexpr int d2() { return d1(); }
+constexpr int d3() { return d2(); }
+constexpr int d4() { return d3(); }
+constexpr int d5() { return d4(); }
+constexpr int d6() { return d5(); }
+constexpr int d7() { return d6(); }
+constexpr int d8() { return d7(); }
+constexpr int d9() { return d8(); }
+constexpr int d10() { return d9(); }
+constexpr int d11() { return d10(); }
+constexpr int d12() { return d11(); }
+constexpr int d13() { return d12(); }
+constexpr int d14() { return d13(); }
+constexpr int d15() { return d14(); }
+constexpr int d16() { return d15(); }
+constexpr int d17() { return d16(); }
+constexpr int d18() { return d17(); }
+constexpr int d19() { return d18(); }
+static_assert(d19() == 11);
+static_assert(Limits<int32_t>::max() == d19() * 0 + 2147483647);
+int main()
+{
+  println("{}", d19());
+  return 0;
+}
