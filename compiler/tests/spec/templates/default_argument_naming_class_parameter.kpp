@@ -1,0 +1,23 @@
+// spec: a default argument of a class template's constructor that names the class's parameter in a call (`V maximum = Limits<V>::max()`) is evaluated under the instance's arguments where the call leaves it out, also from a member initializer
+// factorio: CharacterModifier<double>'s `ModifierValueType maximumValue = Limits<ModifierValueType>::max()` from CharacterModifiers' constructors: "a conversion from a value of unknown type to double", Limits<<unknown>>::max()
+template<typename V>
+class Mod
+{
+public:
+  Mod(int type, V def = 0, V maximum = Limits<V>::max()) : def(def), maximum(maximum) {}
+  V def, maximum;
+};
+class Mods
+{
+public:
+  Mods() : speed(1), reach(2, 5.0) {}
+  Mod<double> speed;
+  Mod<double> reach;
+};
+int main()
+{
+  Mods m;
+  Mod<double> direct(3);
+  println("{} {} {} {}", m.speed.maximum > 1e300, m.reach.def, m.reach.maximum > 1e300, direct.maximum > 1e300);
+  return 0;
+}

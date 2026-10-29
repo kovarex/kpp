@@ -1,0 +1,19 @@
+// spec: inside a fold over a type pack (`(one<Ts>(lists[...]), ...)`), a parameter whose type depends on the whole pack (`Array<int, size>` with `size = sizeof...(Ts)`) keeps that type for every element
+// factorio: EntityOrderList<...68 entities...>::update and ::getTimes in Surface/ActiveEntitiesOrder.kpp:77, :85: "the layout of Array<ActiveEntitiesEntry, <unknown>>: the argument for N is a constant the compiler could not evaluate"
+// pending: the code generator expands the fold with Ts bound to one element at a time, and re-deriving lists' type under that binding makes sizeof...(Ts) unevaluable; without the fold the same body compiles; owner: codegen (fold expansion)
+template<class... Ts>
+struct OrderList
+{
+  static constexpr size_t size = sizeof...(Ts);
+  template<class T> static constexpr size_t getIndex() { return sizeof(T); }
+  template<class T> static void one(int& slot) { slot += int(sizeof(T)); }
+  static void update(Array<int, size>& lists) { (OrderList::one<Ts>(lists[OrderList::getIndex<Ts>() % size]), ...); }
+};
+using Order = OrderList<int, double, char>;
+int main()
+{
+  Array<int, 3> lists = {};
+  Order::update(lists);
+  println("{} {} {}", lists[0], lists[1], lists[2]);
+  return 0;
+}
