@@ -5869,6 +5869,10 @@ namespace
       }
       if (fk == TyKind::Pointer && tk == TyKind::Int)
       {
+        // Only a cast turns a pointer into an integer (`(uintptr_t)p`, reinterpret_cast); `int y =
+        // &x;` is an error in C++, and was a silently truncated address here.
+        if (!explicitCast)
+          fail(at, "error: a pointer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
         fn += "  " + r + " = ptrtoint ptr " + v.text + " to " + toT + "\n";
         return {r, to};
       }
@@ -6989,11 +6993,11 @@ namespace
             if (count != 1)
               unsupported(c, "a scalar built from a pack of several elements");
             Value v;
-            forEachPackElement(pattern, c, [&](size_t) { v = convert(rvalue(pattern), t, c); });
+            forEachPackElement(pattern, c, [&](size_t) { v = explicitConvert(rvalue(pattern), t, c); });
             return v;
           }
           if (c->args.size() == 1)
-            return convert(rvalue(c->args[0]), t, c);
+            return explicitConvert(rvalue(c->args[0]), t, c); // `uintptr_t(&x)` is the cast `(uintptr_t)&x`
           if (c->args.empty())
             return {t->kind == TyKind::Float ? "0.0" : t->kind == TyKind::Pointer ? "null" : "0", t};
           unsupported(c, "this functional cast");

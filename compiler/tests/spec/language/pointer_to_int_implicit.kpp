@@ -1,0 +1,34 @@
+// spec: a pointer does not convert to an integer without a cast (C++ rejects it): initialising an int from `&x`, an aggregate's member from `{&x}` and `P p{&x}` are errors; a cast converts it
+// found by the resolver thread: `int y = &x;` compiled and y held the truncated address, a silent wrong value
+// error: pointer_to_int_implicit.kpp:10: error: a pointer (int32*) does not convert to int32 without a cast (in @"direct()")
+// error: pointer_to_int_implicit.kpp:16: error: a pointer (int32*) does not convert to int32 without a cast (in @"aggregate()")
+// error: pointer_to_int_implicit.kpp:22: error: a pointer (int32*) does not convert to int32 without a cast (in @"braced()")
+struct P { int v; };
+int direct()
+{
+  int x = 3;
+  int y = &x;
+  return y;
+}
+int aggregate()
+{
+  int x = 3;
+  P p = {&x};
+  return p.v;
+}
+int braced()
+{
+  int x = 3;
+  P p{&x};
+  return p.v;
+}
+int cast()
+{
+  int x = 3;
+  return int(uintptr_t(&x) != 0);
+}
+int main()
+{
+  println("{} {} {} {}", direct(), aggregate(), braced(), cast());
+  return 0;
+}
