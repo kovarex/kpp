@@ -36,6 +36,18 @@ struct InFileStream
   bool operator!() const { return !this->good(); }
 
   int get() { return this->handle ? fgetc(this->handle) : -1; }
+  // Skips up to count bytes, through the first delimiter met (std::istream::ignore; the tests'
+  // ForkLogic skips an XML declaration with `in.ignore(Limits<StreamSize>::max(), '>')`).
+  InFileStream& ignore(long long count = 1, int delimiter = -1)
+  {
+    for (long long i = 0; i < count && this->handle; ++i)
+    {
+      int c = fgetc(this->handle);
+      if (c == -1 || c == delimiter)
+        break;
+    }
+    return *this;
+  }
   InFileStream& read(char* buffer, int count)
   {
     if (this->handle)

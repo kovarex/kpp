@@ -1,0 +1,38 @@
+// spec: holdsAlternative<T>(u), get<T>(u) and getIf<T>(&u) by type on a converted std::variant (a typed union with the converter's holds<T>, get<T> and getIf<T>), beside get<I> of a Tuple and a Pair by index
+// factorio: the tests' TestSegmentedUnit, `CHECK_EQUAL(std::get<SegmentedUnitAI::Attacking>(ai.getState()).target.get(), belt)` and std::holds_alternative on the AI's state, in test bodies the converter does not parse (UnitTest++'s macros make them)
+struct Patrolling
+{
+  int waypoint = 0;
+};
+struct Attacking
+{
+  int target = 0;
+};
+union enum AIState
+{
+  { {::Patrolling, Patrolling}, {::Attacking, Attacking} }
+  template<typename T>
+  T& get() { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return (*this)[a]; }
+  template<typename T>
+  const T& get() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return (*this)[a]; }
+  template<typename T>
+  bool holds() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return *this == a.tag; return false; }
+  template<typename T>
+  T* getIf() { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }
+  template<typename T>
+  const T* getIf() const { for constexpr (auto a : alternatives(AIState)) if constexpr (isSame<a.type, T>) return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }
+};
+int main()
+{
+  AIState state;
+  state[AIState::Attacking] = Attacking{7};
+  const AIState& constState = state;
+  println("{} {}", holdsAlternative<Attacking>(state), holdsAlternative<Patrolling>(state));
+  get<Attacking>(state).target = 9;
+  println("{} {}", get<Attacking>(constState).target, getIf<Patrolling>(&state) == nullptr);
+  println("{}", getIf<Attacking>(&constState)->target);
+  Tuple<int, char> tuple(4, 'x');
+  Pair<int, int> pair(5, 6);
+  println("{} {} {}", get<0>(tuple), get<1>(tuple), get<1>(pair));
+  return 0;
+}
