@@ -1,0 +1,23 @@
+// spec: a const reference initialised from a value of another type binds to a temporary that an implicit converting constructor makes, and the temporary lives as long as the reference (destroyed once, when the reference goes out of scope)
+// factorio: ZipPackage's std::map<SortedPath, PathData>::lower_bound(path) with a Filesystem::Path (SortedPath(const Path&) converts): the library's lookups convert a key of another type once, `const K& converted = key;`
+// pending: "a conversion from Path to Sorted" (a function argument converts this way; the local reference does not)
+struct Path { int v = 0; };
+int destroyed = 0;
+struct Sorted
+{
+  int v = 0;
+  implicit Sorted(const Path& p) : v(p.v * 10) {}
+  Sorted(const Sorted&) = delete;
+  ~Sorted() { ++destroyed; }
+};
+int main()
+{
+  Path p{4};
+  int seen = 0;
+  {
+    const Sorted& r = p;
+    seen = r.v + destroyed;
+  }
+  println("{} {}", seen, destroyed);
+  return 0;
+}
