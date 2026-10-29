@@ -1,0 +1,24 @@
+// spec: a constructor converts implicitly at compile time wherever the walk lets it convert (an argument `Flags::Enum::Mip` given for a Flags parameter): the interpreter follows the walk's choice
+// factorio: SpriteOptions' Decal and TransportBelt ({SpriteFlags::ForcedFlags, SpriteGroup::Decal}: the BITFIELD flags' constructor from Enum)
+// pending: the interpreter took only constructors marked implicit, so a conversion the walk made was no constant
+enum class Group { None, Decal };
+struct Flags
+{
+  enum class Enum { Forced, Mip };
+  constexpr Flags() = default;
+  constexpr Flags(Enum value) : bits(1u << int(value)) {}
+  uint32_t bits = 0;
+};
+struct Option
+{
+  constexpr Option(Flags flags, Group group) : flags(flags), group(group) {}
+  Flags flags;
+  Group group;
+};
+constexpr Option decal{Flags::Enum::Mip, Group::Decal};
+static_assert(decal.flags.bits == 2 && decal.group == Group::Decal);
+int main()
+{
+  println("{}", decal.flags.bits);
+  return 0;
+}

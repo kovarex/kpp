@@ -1,0 +1,21 @@
+// spec: a lambda called where it is written at compile time (`constexpr Shape shape = []() -> Shape { ... }();`), with and without parameters
+// factorio: CargoPodPrototype's FogMaskShapeDefinition, built by a lambda called in its initializer
+// pending: the interpreter ran no lambdas
+struct Shape
+{
+  int w = 0;
+  int h = 0;
+};
+constexpr Shape shape = []() -> Shape {
+  Shape s;
+  s.w = 3;
+  s.h = s.w * 2;
+  return s;
+}();
+constexpr int twice = [](int v) { return v * 2; }(21);
+static_assert(shape.h == 6 && twice == 42);
+int main()
+{
+  println("{} {}", shape.h, twice);
+  return 0;
+}
