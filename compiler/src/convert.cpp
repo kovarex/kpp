@@ -119,6 +119,9 @@ namespace
     // and the names of the files that luaconf.h and llimits.h define a macro for (lobject.c's and
     // lvm.c's luai_nummod, ltable.c's luai_hashnum), only expanded there
     {"lobject_c", ""}, {"lvm_c", ""}, {"ltable_c", ""},
+    // the C runtime's limits.h, which luaconf.h includes and tests (`#if INT_MAX-20 < 32760`: Lua's
+    // LUAI_BITSINT, and with it LUAI_MAXSTACK and the types Lua counts its memory in)
+    {"INT_MAX", "2147483647"},
     // MSVC for x64, C++ with the standard library (<optional> defines __cpp_lib_optional)
     {"_WIN32", "1"}, {"_WIN64", "1"}, {"_MSC_VER", "1944"}, {"_M_X64", "100"}, {"_M_AMD64", "100"}, {"__cplusplus", "199711L"},
     {"__cpp_lib_optional", "202110L"},
@@ -166,8 +169,10 @@ namespace
   // Object-like macros by name, with their bodies (empty for `#define NAME`).
   using MacroTable = std::map<std::string, std::string>;
 
-  // Evaluates an #if expression: defined(X), X (its body, evaluated in turn), __has_include,
-  // numbers, ! (or `not`), the comparisons, && and || (`and`, `or`), with parentheses. A name the
+  // Evaluates an #if expression as C's preprocessor does, in long long: defined(X), X (its body,
+  // evaluated in turn), __has_include, numbers, the unary ! (or `not`), - + ~, then * / %, + -,
+  // << >>, the comparisons, & ^ |, && and || (`and`, `or`), with C's precedence and parentheses
+  // (luaconf.h's `#if INT_MAX-20 < 32760`, lopcodes.h's `#if SIZE_Bx < LUAI_BITSINT-1`). A name the
   // table does not have is 0; those neither in undefinedOnPurpose nor in `known` (the names some
   // converted file defines, in a branch this build drops) are collected in `undefined`.
   struct IfEval
@@ -223,6 +228,12 @@ namespace
         ++p;
         return !primary();
       }
+      if (p < s.size() && (s[p] == '-' || s[p] == '+' || s[p] == '~'))
+      {
+        char op = s[p++];
+        long long v = primary();
+        return op == '-' ? -v : op == '~' ? ~v : v;
+      }
       if (p < s.size() && s[p] == '(')
       {
         ++p;
@@ -273,45 +284,122 @@ namespace
       }
       return symbol(name);
     }
-    long long cmpExpr()
+    // Whether the operator op comes next (and not a longer one it starts: `<` is not `<<` or `<=`,
+    // `&` not `&&`); taken when it does.
+    bool next(const char* op)
+    {
+      skipSpace();
+      size_t n = strlen(op);
+      if (s.compare(p, n, op) != 0)
+        return false;
+      char after = p + n < s.size() ? s[p + n] : 0;
+      if ((n == 1 && (op[0] == '<' || op[0] == '>') && (after == op[0] || after == '=')) || (n == 1 && (op[0] == '&' || op[0] == '|') && after == op[0]) ||
+          (n == 1 && op[0] == '!' && after == '=') || (n == 2 && (op[0] == '<' || op[0] == '>') && op[1] == op[0] && after == '='))
+        return false;
+      p += n;
+      return true;
+    }
+    long long mulExpr()
     {
       long long l = primary();
-      skipSpace();
-      if (s.compare(p, 2, "==") == 0)
+      for (;;)
       {
-        p += 2;
-        return l == primary();
+        if (next("*"))
+          l *= primary();
+        else if (next("/"))
+        {
+          long long r = primary();
+          l = r == 0 ? 0 : l / r;
+        }
+        else if (next("%"))
+        {
+          long long r = primary();
+          l = r == 0 ? 0 : l % r;
+        }
+        else
+          return l;
       }
-      if (s.compare(p, 2, "!=") == 0)
+    }
+    long long addExpr()
+    {
+      long long l = mulExpr();
+      for (;;)
       {
-        p += 2;
-        return l != primary();
+        if (next("+"))
+          l += mulExpr();
+        else if (next("-"))
+          l -= mulExpr();
+        else
+          return l;
       }
-      if (s.compare(p, 2, ">=") == 0)
+    }
+    long long shiftExpr()
+    {
+      long long l = addExpr();
+      for (;;)
       {
-        p += 2;
-        return l >= primary();
+        if (next("<<"))
+          l <<= addExpr();
+        else if (next(">>"))
+          l >>= addExpr();
+        else
+          return l;
       }
-      if (s.compare(p, 2, "<=") == 0)
+    }
+    long long relExpr()
+    {
+      long long l = shiftExpr();
+      for (;;)
       {
-        p += 2;
-        return l <= primary();
+        if (next("<="))
+          l = l <= shiftExpr();
+        else if (next(">="))
+          l = l >= shiftExpr();
+        else if (next("<"))
+          l = l < shiftExpr();
+        else if (next(">"))
+          l = l > shiftExpr();
+        else
+          return l;
       }
-      if (p < s.size() && s[p] == '>')
+    }
+    long long cmpExpr()
+    {
+      long long l = relExpr();
+      for (;;)
       {
-        ++p;
-        return l > primary();
+        if (next("=="))
+          l = l == relExpr();
+        else if (next("!="))
+          l = l != relExpr();
+        else
+          return l;
       }
-      if (p < s.size() && s[p] == '<')
-      {
-        ++p;
-        return l < primary();
-      }
+    }
+    long long bitAndExpr()
+    {
+      long long l = cmpExpr();
+      while (next("&"))
+        l &= cmpExpr();
+      return l;
+    }
+    long long bitXorExpr()
+    {
+      long long l = bitAndExpr();
+      while (next("^"))
+        l ^= bitAndExpr();
+      return l;
+    }
+    long long bitExpr()
+    {
+      long long l = bitXorExpr();
+      while (next("|"))
+        l |= bitXorExpr();
       return l;
     }
     long long andExpr()
     {
-      long long l = cmpExpr();
+      long long l = bitExpr();
       for (;;)
       {
         skipSpace();
@@ -321,7 +409,7 @@ namespace
           p += 3;
         else
           return l;
-        long long r = cmpExpr();
+        long long r = bitExpr();
         l = l && r;
       }
     }
