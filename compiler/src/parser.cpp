@@ -404,6 +404,19 @@ namespace
           pendingAlignment = parseExpression();
           expect(P::RParen, "expected ')' after alignas");
         }
+        else if (atIdent() && spelling() == "__declspec" && at(P::LParen, 1) && atIdent(2) && spelling(2) == "align" && at(P::LParen, 3))
+        {
+          // `__declspec(align(16))`, winnt.h's DECLSPEC_ALIGN (CONTEXT, M128A, XSAVE_FORMAT): the
+          // alignment of the class or variable declared next, as alignas. RtlCaptureContext stores
+          // into a CONTEXT with aligned SSE moves; one aligned to 8 crashed StackWalker.
+          advance();
+          advance();
+          advance();
+          advance();
+          pendingAlignment = parseExpression();
+          expect(P::RParen, "expected ')' after __declspec(align(...)");
+          expect(P::RParen, "expected ')' after __declspec(align(...)");
+        }
         else if (atIdent() && (spelling() == "__declspec" || spelling() == "__attribute__" || spelling() == "__pragma" ||
                                spelling() == "alignas") && at(P::LParen, 1))
         {

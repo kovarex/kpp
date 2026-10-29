@@ -990,7 +990,30 @@ anonymous member of a named type, `MONITORINFO;` inside MONITORINFOEXW, was read
 statement and dropped, so the struct had 64 bytes instead of 104 and GetMonitorInfo would have
 written past it (interop/c_anonymous_member_of_named_type). Inventory's `sizeof(Inventory) <= 40`
 fails for another reason: the library's UniqueArray holds its count beside the pointer (16 bytes
-where std::unique_ptr<T[]> has 8), which makes Inventory 48.
+where std::unique_ptr<T[]> has 8), which makes Inventory 48 (the converter thread's b0f3cb4 makes
+UniqueArray one pointer).
+
+6. **`factorio --version` runs** (master 42199d3, 122 stubs): "Version: 2.1.0 (build 85837, win64,
+   full)", the binary and map versions, exit 0, as Main.cpp prints them.
+7. `--dump-data` starts up into headless mode (system and memory info through WMI, "Audio is
+   disabled") and crashes. The log said "Operating system: Windows 8 <running in compatibility
+   mode>": the executable had no manifest. native/factorio.rc now gives it the game's manifest
+   (fastbuild/win/Factorio.manifest) and icons as a resource (fbuild.bff's /MANIFEST:EMBED needs
+   mt.exe, which the link does not see), and the log says Windows 10.
+8. The game's crash handler then hung ("Generating symbolized stacktrace, please wait ..."). For
+   bring-up, run.cmd links with `/DEBUG /MAP` (a PDB of the functions' names: the objects carry no
+   debug information) and native/crash_report.c, an unhandled-exception filter that prints the
+   exception and the stack named from that PDB and ends the process; the game runs with
+   `--no-crash-handler`. `run.cmd --no-build ...` runs the last build again.
+9. What it showed: the crash handler itself died in `RtlCaptureContext`, because the import
+   ignored winnt.h's `__declspec(align(16))` and StackWalker's local CONTEXT was aligned to 8
+   (`__declspec(align(N))` is the struct's alignment now; interop/c_declspec_align). Underneath:
+   `ModManager::addHistoryForFont`'s `prototypeHistory[FontBank::type][name]` calls
+   PrototypesHistoryTemplate's const lookup `operator[](StringView) const`, which aborts with "No
+   history for the given key: font", instead of the inserting `T& operator[](const String&)` that
+   C++ chooses for the non-const object (the arguments rank the same, the implicit object parameter
+   decides; language/non_const_member_overload_for_non_const_object, pending, for the resolver).
+   The next stop of `--dump-data`.
 
 ### dear imgui through a generated C interface (2026-10-29)
 
