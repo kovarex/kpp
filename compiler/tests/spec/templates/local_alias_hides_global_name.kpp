@@ -1,0 +1,31 @@
+// spec: a local alias hides every other declaration of its name where it is in scope, the library's class template List included: `using List = TypeList<int, Small, Large>;` then `List::forEach(...)` calls TypeList's; an alias of an inner block hides the outer one only inside that block
+// factorio: not seen in a function body of the game yet (its `using List = IntrusiveList<UpdatableEntity>;` is a class member); found writing the fold-over-type-pack test
+template<class... Args>
+class TypeList
+{
+public:
+  template<class Functor>
+  static void forEach(Functor&& func)
+  {
+    (func(Args()), ...);
+  }
+  static size_t totalSize()
+  {
+    return (sizeof(Args) + ... + 0);
+  }
+};
+struct Small { int8_t a = 1; };
+struct Large { int64_t b = 2; int64_t c = 3; };
+int main()
+{
+  using List = TypeList<int, Small, Large>;
+  int calls = 0;
+  List::forEach([&](auto value) { calls += int(sizeof(value)); });
+  println("{} {}", calls, List::totalSize());
+  {
+    using List = TypeList<Small>;
+    println("{}", List::totalSize());
+  }
+  println("{}", List::totalSize());
+  return 0;
+}

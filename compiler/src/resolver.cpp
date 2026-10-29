@@ -999,47 +999,79 @@ struct GlobalScope::Impl
   // names stay out of the enclosing scope: the function's locals carry them (declareLocal). The
   // scope's parent is the function's, its class for a member function (finishIndex moves an
   // out-of-line member's ones under its class).
-  // The aliases a function body declares (`using nl = Limits<T1>;`, typedefs), anywhere in it.
-  void collectLocalAliases(Stmt* s, LocalStack& out, int depth = 0)
+  // The aliases and typedefs of a function body in scope at token `at` (`using nl = Limits<T1>;`
+  // before `nl::min()`): those declared before it in the blocks around it, in declaration order,
+  // so that an inner one comes later and hides an outer one of its name.
+  void collectVisibleLocalAliases(Stmt* s, uint32_t at, LocalStack& out, int depth = 0)
   {
-    if (!s || depth > 64)
+    if (!s || s->token > at || depth > 64)
       return;
-    auto each = [&](Stmt* inner) { collectLocalAliases(inner, out, depth + 1); };
+    auto declared = [&](Stmt* st)
+    {
+      if (st && st->kind == NodeKind::DeclStmt)
+        for (Decl* d : static_cast<DeclStmt*>(st)->decls)
+          if (d->endToken && d->endToken <= at)
+          {
+            if (d->kind == NodeKind::UsingAliasDecl)
+              out.push(static_cast<UsingAliasDecl*>(d)->name, d);
+            else if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef) && !static_cast<VariableDecl*>(d)->name.empty())
+              out.push(static_cast<VariableDecl*>(d)->name.last().symbol, d);
+          }
+    };
+    // Of statements in source order, the one `at` is in: the last that starts at or before it.
+    auto enclosing = [&](std::initializer_list<Stmt*> candidates)
+    {
+      Stmt* found = nullptr;
+      for (Stmt* c : candidates)
+        if (c && c->token <= at)
+          found = c;
+      return found;
+    };
+    auto inner = [&](Stmt* st) { collectVisibleLocalAliases(st, at, out, depth + 1); };
     switch (s->kind)
     {
       case NodeKind::BlockStmt:
-        for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
-          each(inner);
+      {
+        Span<Stmt*> stmts = static_cast<BlockStmt*>(s)->stmts;
+        for (size_t i = 0; i < stmts.size(); ++i)
+        {
+          if (!stmts[i] || stmts[i]->token > at)
+            break;
+          declared(stmts[i]);
+          if (i + 1 == stmts.size() || !stmts[i + 1] || stmts[i + 1]->token > at)
+            inner(stmts[i]);
+        }
         break;
-      case NodeKind::DeclStmt:
-        for (Decl* d : static_cast<DeclStmt*>(s)->decls)
-          if (d->kind == NodeKind::UsingAliasDecl)
-            out.push(static_cast<UsingAliasDecl*>(d)->name, d);
-          else if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef) && !static_cast<VariableDecl*>(d)->name.empty())
-            out.push(static_cast<VariableDecl*>(d)->name.last().symbol, d);
-        break;
+      }
       case NodeKind::IfStmt:
-        each(static_cast<IfStmt*>(s)->init);
-        each(static_cast<IfStmt*>(s)->then);
-        each(static_cast<IfStmt*>(s)->else_);
+      {
+        auto* i = static_cast<IfStmt*>(s);
+        declared(i->init);
+        inner(enclosing({i->then, i->else_}));
         break;
+      }
       case NodeKind::ForStmt:
-        each(static_cast<ForStmt*>(s)->init);
-        each(static_cast<ForStmt*>(s)->body);
+        declared(static_cast<ForStmt*>(s)->init);
+        inner(static_cast<ForStmt*>(s)->body);
         break;
-      case NodeKind::RangeForStmt: each(static_cast<RangeForStmt*>(s)->body); break;
-      case NodeKind::ForConstexprStmt: each(static_cast<ForConstexprStmt*>(s)->body); break;
-      case NodeKind::WhileStmt: each(static_cast<WhileStmt*>(s)->body); break;
-      case NodeKind::DoStmt: each(static_cast<DoStmt*>(s)->body); break;
+      case NodeKind::RangeForStmt: inner(static_cast<RangeForStmt*>(s)->body); break;
+      case NodeKind::ForConstexprStmt: inner(static_cast<ForConstexprStmt*>(s)->body); break;
+      case NodeKind::WhileStmt: inner(static_cast<WhileStmt*>(s)->body); break;
+      case NodeKind::DoStmt: inner(static_cast<DoStmt*>(s)->body); break;
       case NodeKind::SwitchStmt:
-        each(static_cast<SwitchStmt*>(s)->init);
-        each(static_cast<SwitchStmt*>(s)->body);
+        declared(static_cast<SwitchStmt*>(s)->init);
+        inner(static_cast<SwitchStmt*>(s)->body);
         break;
       case NodeKind::TryStmt:
-        each(static_cast<TryStmt*>(s)->body);
-        for (const TryStmt::Handler& h : static_cast<TryStmt*>(s)->handlers)
-          each(h.body);
+      {
+        auto* t = static_cast<TryStmt*>(s);
+        Stmt* found = t->body && t->body->token <= at ? t->body : nullptr;
+        for (const TryStmt::Handler& h : t->handlers)
+          if (h.body && h.body->token <= at)
+            found = h.body;
+        inner(found);
         break;
+      }
       default:
         break;
     }
@@ -11268,20 +11300,16 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
   for (const Subst::Pair& p : s.pairs)
     if (p.param && p.param->kind == NodeKind::TemplateParamDecl && !dc.params.find(static_cast<TemplateParamDecl*>(p.param)->name))
       dc.params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+  // A type written in the function's body (`nl::min()` after `using nl = Limits<T1>;`, `List::forEach`
+  // after `using List = TypeList<int, Small>;`): the body's aliases in scope there, which the walk
+  // had as locals and which hide any other declaration of their name (the library's List).
+  if (context && context->kind == NodeKind::FunctionDecl && t)
+    if (Stmt* body = static_cast<FunctionDecl*>(context)->body; body && body->token < t->token && (!context->endToken || t->token < context->endToken))
+      impl->collectVisibleLocalAliases(body, t->token, dc.params);
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
-  Impl::TypeContext ctx{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
-  const Ty* r = impl->convertType(t, ctx, 0);
-  if (Impl::mentionsUnknown(r) && context && context->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(context)->body)
-  {
-    // `nl::min()` with `using nl = Limits<T1>;` in the function's body: its own aliases, which
-    // the walk had as locals.
-    size_t before = dc.params.items.size();
-    impl->collectLocalAliases(static_cast<FunctionDecl*>(context)->body, dc.params);
-    if (dc.params.items.size() != before)
-      r = impl->convertType(t, ctx, 0);
-  }
-  return r;
+  return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, s.empty() ? nullptr : &s, file ? file->tokens : nullptr,
+                                                file ? file->text : std::string_view()}, 0);
 }
 
 std::optional<bool> GlobalScope::typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args)
