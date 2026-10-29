@@ -1,0 +1,36 @@
+// spec: deduction guides: a guide gives the class's arguments where the constructors would give others (`Box(const char*) -> Box<String>;`), a template guide deduces its own parameters (`template<class T> Holder(T*) -> Holder<T*>;` for an aggregate), on a tie with a constructor the guide wins, and an explicit guide is not one for copy-initialisation
+// factorio: the game's one guide is make_overload's (templates/deduction_guides); the language has them as C++ does
+template<class T>
+struct Box
+{
+  T value;
+  Box(T v) : value(v) {}
+};
+Box(const char*) -> Box<String>;
+
+template<class T>
+struct Holder
+{
+  T value;
+};
+template<class T> Holder(T*) -> Holder<T*>;
+
+template<class T>
+struct Tagged
+{
+  T value;
+  implicit Tagged(T v) : value(v) {}
+};
+explicit Tagged(const char*) -> Tagged<String>;
+
+int main()
+{
+  Box b("hi");
+  Box n(5);
+  int x = 3;
+  Holder h{&x};
+  Tagged direct("abc");
+  Tagged copied = "abc";
+  println("{} {} {} {} {}", b.value.size(), n.value, *h.value, direct.value.size(), copied.value);
+  return 0;
+}

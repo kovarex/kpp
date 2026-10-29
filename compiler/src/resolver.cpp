@@ -316,6 +316,11 @@ struct GlobalScope::Impl
   std::vector<std::pair<Decl*, Scope*>> deferredQualified; // Out-of-line class/enum definitions.
   std::vector<std::pair<FunctionDecl*, Scope*>> deferredFunctions; // Out-of-line member function definitions.
   std::vector<std::pair<VariableDecl*, Scope*>> deferredVariables; // Out-of-line static data member definitions.
+  std::vector<std::pair<DeductionGuideDecl*, Scope*>> deferredGuides; // Deduction guides, attached to their class templates by finishIndex.
+  // A class template's deduction guides, each as a function (template) returning the class it
+  // deduces: built by finishIndex (single-threaded), only read after.
+  std::unordered_map<Decl*, std::vector<FunctionDecl*>> guidesOf;
+  std::vector<std::unique_ptr<FunctionDecl>> guideFunctions;
   std::unordered_map<FunctionDecl*, std::vector<Scope*>> localTypesOfOutOfLine; // Scopes of classes and enums declared in their bodies.
   std::vector<Scope*> scopesWithUsingEnums; // `using enum E;` in them: resolved once by finishIndex, before parallel lookups
   std::unordered_map<Decl*, VariableDecl*> variableDefinitions;    // Static data member -> its `T C::x = ...;` definition.
@@ -954,6 +959,13 @@ struct GlobalScope::Impl
           scope->add(simpleName(static_cast<NameExpr*>(b)->name), v, nullptr);
           ++entries;
         }
+        break;
+      }
+      case NodeKind::DeductionGuideDecl:
+      {
+        // Not a name of its own: the class template it guides is found by finishIndex.
+        std::lock_guard lock(deferredMutex);
+        deferredGuides.push_back({static_cast<DeductionGuideDecl*>(d), scope});
         break;
       }
       case NodeKind::UsingAliasDecl:
@@ -4597,20 +4609,30 @@ struct GlobalScope::Impl
     ParsedFile* file = cls->owner->file;
     TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
     for (Type* b : cls->baseTypes)
-    {
-      const Ty* bt = convertType(b, ctx, depth + 1);
-      if (!bt || bt->kind != TyKind::Class || !bt->decl)
-        continue;
-      Scope* bs = bt->decl->ownScope;
-      if (!bs)
+      for (const Ty* bt : baseInstances(b, ctx, depth + 1))
       {
-        Entry e{bt->decl, nullptr};
-        bs = scopeOfEntry(e, 0);
+        if (!bt || bt->kind != TyKind::Class || !bt->decl)
+          continue;
+        Scope* bs = bt->decl->ownScope;
+        if (!bs)
+        {
+          Entry e{bt->decl, nullptr};
+          bs = scopeOfEntry(e, 0);
+        }
+        if (const Ty* found = instantiationOfBase(bt, bs, in, depth + 1))
+          return found;
       }
-      if (const Ty* found = instantiationOfBase(bt, bs, in, depth + 1))
-        return found;
-    }
     return nullptr;
+  }
+
+  // The classes a base written as b names under ctx: itself, or each element of the pack a base
+  // like `Ts...` expands to (`struct Overload : Ts...` with Ts = (F, G) has the bases F and G).
+  std::vector<const Ty*> baseInstances(Type* b, const TypeContext& ctx, int depth)
+  {
+    const Ty* bt = convertType(b, ctx, depth);
+    if (bt && bt->kind == TyKind::Pack)
+      return std::vector<const Ty*>(bt->args.begin(), bt->args.end());
+    return {bt};
   }
 
   // A constant argument has its parameter's type, read with the arguments before it (`template<
@@ -4657,19 +4679,19 @@ struct GlobalScope::Impl
     ParsedFile* file = cls->owner->file;
     TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
     for (Type* b : cls->baseTypes)
-    {
-      const Ty* bt = convertType(b, ctx, depth + 1);
-      if (!bt || bt->kind != TyKind::Class || !bt->decl)
-        continue;
-      Scope* bs = bt->decl->ownScope;
-      if (!bs)
+      for (const Ty* bt : baseInstances(b, ctx, depth + 1))
       {
-        Entry e{bt->decl, nullptr};
-        bs = scopeOfEntry(e, 0);
+        if (!bt || bt->kind != TyKind::Class || !bt->decl)
+          continue;
+        Scope* bs = bt->decl->ownScope;
+        if (!bs)
+        {
+          Entry e{bt->decl, nullptr};
+          bs = scopeOfEntry(e, 0);
+        }
+        if (derivesFromInstance(bt, bs, base, depth + 1))
+          return true;
       }
-      if (derivesFromInstance(bt, bs, base, depth + 1))
-        return true;
-    }
     return false;
   }
 
@@ -4966,8 +4988,82 @@ struct GlobalScope::Impl
         return false;
     return true;
   }
-  // The class's arguments deduced from a constructor taking these argument types, or null.
-  const Ty* deduceClassArgs(const Ty* primary, const std::vector<const Ty*>& argTypes)
+  // Whether a function's parameters can take this many arguments (defaults and a pack counted).
+  static bool takesArgumentCount(const FunctionDecl* f, size_t count)
+  {
+    size_t required = 0;
+    bool pack = false;
+    for (Decl* p : f->params)
+    {
+      auto* pd = static_cast<ParamDecl*>(p);
+      if (pd->isPack)
+        pack = true;
+      else if (!pd->defaultValue)
+        ++required;
+    }
+    return count >= required && (pack || count <= f->params.size());
+  }
+
+  // The class's arguments a deduction guide gives for these argument types (finishIndex made each
+  // guide a function returning the class): `Overload{f, g}` with `template<typename... Ts>
+  // Overload(Ts...) -> Overload<Ts...>;` is Overload<F, G>. ranks: each argument's conversion to
+  // the chosen guide's parameter. Null when no guide takes them; of several, the one with the
+  // better conversions (C++'s ranking), the first on a tie. An explicit guide is none for
+  // copy-initialisation (`Overload o = {f, g};`).
+  const Ty* deduceFromGuides(ClassDecl* cls, const std::vector<const Ty*>& argTypes, bool copyInit, std::vector<int>& ranks)
+  {
+    auto it = guidesOf.find(cls);
+    if (it == guidesOf.end())
+      return nullptr;
+    const Ty* best = nullptr;
+    for (FunctionDecl* g : it->second)
+    {
+      if ((copyInit && (g->flags & DF_Explicit)) || !takesArgumentCount(g, argTypes.size()))
+        continue;
+      const Ty* ft = declaredTypeOf(g, nullptr, 0);
+      if (!ft || ft->kind != TyKind::Function)
+        continue;
+      Subst d;
+      deduceCall(g, ft, argTypes, d);
+      bool all = true;
+      for (Decl* p : g->templateParams)
+        all = all && d.find(p);
+      if (!all)
+        continue;
+      const Ty* inst = substitute(ft, d);
+      const Ty* result = inst ? types.unqualified(inst->inner) : nullptr;
+      if (!result || result->kind != TyKind::Class || result->decl != cls || !result->isKnown() || types.isDependent(result))
+        continue;
+      std::vector<int> r;
+      for (size_t i = 0; i < argTypes.size() && i < inst->args.size(); ++i)
+        r.push_back(conversionRank(argTypes[i], inst->args[i]));
+      if (std::any_of(r.begin(), r.end(), [](int x) { return x >= NotViable; }))
+        continue;
+      if (best && !strictlyBetter(r, ranks))
+        continue;
+      best = result;
+      ranks = std::move(r);
+    }
+    return best;
+  }
+
+  // Whether conversions a are better than b: better for one argument, worse for none.
+  static bool strictlyBetter(const std::vector<int>& a, const std::vector<int>& b)
+  {
+    bool better = false;
+    for (size_t i = 0; i < a.size() && i < b.size(); ++i)
+    {
+      if (a[i] > b[i])
+        return false;
+      better = better || a[i] < b[i];
+    }
+    return better;
+  }
+
+  // The class's arguments deduced from a constructor or a deduction guide taking these argument
+  // types, or null. Both are C++'s candidates: the constructor wins only with better conversions,
+  // the user's guide on a tie.
+  const Ty* deduceClassArgs(const Ty* primary, const std::vector<const Ty*>& argTypes, bool copyInit = false)
   {
     Scope* s = classScopeOf(primary);
     if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
@@ -4978,6 +5074,8 @@ struct GlobalScope::Impl
     if (argTypes.size() == 1 && argTypes[0])
       if (const Ty* a = types.unqualified(types.stripRef(argTypes[0])); a && a->kind == TyKind::Class && a->decl == cls && !a->args.empty())
         return a;
+    std::vector<int> guideRanks;
+    const Ty* fromGuide = deduceFromGuides(cls, argTypes, copyInit, guideRanks);
     for (Decl* m : cls->members)
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
@@ -5027,27 +5125,30 @@ struct GlobalScope::Impl
       if (!all)
         continue;
       bool ok = true;
+      std::vector<int> ranks;
       for (size_t i = 0; i < argTypes.size() && i < ft->args.size() && ok; ++i)
-        if (conversionRank(argTypes[i], substitute(ft->args[i], d)) >= NotViable)
-          ok = false;
+      {
+        ranks.push_back(conversionRank(argTypes[i], substitute(ft->args[i], d)));
+        ok = ranks.back() < NotViable;
+      }
       if (ok)
-        return types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())});
+        return fromGuide && !strictlyBetter(ranks, guideRanks) ? fromGuide : types.classType(cls, Span<const Ty*>{args.data(), uint32_t(args.size())});
     }
-    return nullptr;
+    return fromGuide;
   }
 
   // The arguments of a class template without constructors deduced from a brace list, as C++20
-  // does for an aggregate: the data members take the elements in order. A last member that is an
-  // array with a parameter bound (`T items[N]`) takes all the remaining elements, N their count, as
-  // std::array's deduction guide has it: `Array a = {x, y, z}`, `Pair{name, &Record::field}`.
+  // does for an aggregate: its bases, then its data members take the elements in order, a base
+  // that is a pack (`struct Overload : Ts...`) all the remaining ones, one base each. A last member
+  // that is an array with a parameter bound (`T items[N]`) takes all the remaining elements, N
+  // their count, as std::array's deduction guide has it: `Array a = {x, y, z}`, `Pair{name,
+  // &Record::field}`, `Overload{f, g}`.
   const Ty* deduceAggregateArgs(const Ty* primary, const std::vector<const Ty*>& argTypes)
   {
     Scope* s = classScopeOf(primary);
     if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl || argTypes.empty())
       return nullptr;
     auto* cls = static_cast<ClassDecl*>(s->owner);
-    if (!cls->bases.empty())
-      return nullptr;
     std::vector<VariableDecl*> fields;
     for (Decl* m : cls->members)
     {
@@ -5059,6 +5160,34 @@ struct GlobalScope::Impl
     Subst d;
     std::vector<std::pair<const Ty*, const Ty*>> checks; // (argument, the member type it initializes)
     size_t next = 0;
+    LocalStack own;
+    for (Decl* p : cls->templateParams)
+      own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    for (size_t i = 0; i < cls->bases.size() && next < argTypes.size(); ++i)
+    {
+      const ClassDecl::Base& b = cls->bases[i];
+      if (b.isVirtual || b.access == Access::Private || b.access == Access::Protected || (b.access == Access::Default && cls->keyword == Kw::class_))
+        return nullptr; // not an aggregate
+      const Ty* baseTy = convertType(b.type, TypeContext{lexicalScopeOf(cls), &own, nullptr}, 1);
+      if (!baseTy || !baseTy->isKnown())
+        return nullptr;
+      if (!b.isPack)
+      {
+        deduce(baseTy, argTypes[next], d);
+        checks.push_back({argTypes[next++], baseTy});
+        continue;
+      }
+      if (i + 1 != cls->bases.size() || !fields.empty() || baseTy->kind != TyKind::Param || !baseTy->decl || d.find(baseTy->decl))
+        return nullptr; // a pack of bases before other elements: not deduced here
+      std::vector<const Ty*> elements;
+      for (; next < argTypes.size(); ++next)
+      {
+        if (!argTypes[next] || !argTypes[next]->isKnown() || argTypes[next]->isBraceList())
+          return nullptr;
+        elements.push_back(types.decay(argTypes[next]));
+      }
+      d.pairs.push_back({baseTy->decl, types.pack(Span<const Ty*>{elements.data(), uint32_t(elements.size())})});
+    }
     for (size_t i = 0; i < fields.size() && next < argTypes.size(); ++i)
     {
       const Ty* fieldTy = declaredTypeOf(fields[i], nullptr, 0);
@@ -8392,15 +8521,19 @@ struct GlobalScope::Impl
       ++instantiatedBaseDepth;
       for (Type* b : cls->baseTypes)
       {
-        const Ty* bt = impl.convertType(b, ctx, 1);
-        if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
-          continue;
-        MemberResult r = memberOf(bt, symbol, nullptr, token, false);
-        if (r.decl)
+        for (const Ty* bt : impl.baseInstances(b, ctx, 1))
         {
-          result = std::move(r);
-          break;
+          if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
+            continue;
+          MemberResult r = memberOf(bt, symbol, nullptr, token, false);
+          if (r.decl)
+          {
+            result = std::move(r);
+            break;
+          }
         }
+        if (result)
+          break;
       }
       --instantiatedBaseDepth;
       return result;
@@ -10228,7 +10361,9 @@ struct GlobalScope::Impl
             else
               copyInit = initTy && initTy->isKnown();
             std::vector<const Ty*> argTypes = copyInit ? std::vector<const Ty*>{argumentType(v->init, initTy, types)} : argTypesOf(args);
-            const Ty* deduced = impl.deduceClassArgs(declared, argTypes);
+            // `T x = ...` and `T x = {...}` copy-initialise: an explicit deduction guide is none for them.
+            bool direct = (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type) || v->bracedInit;
+            const Ty* deduced = impl.deduceClassArgs(declared, argTypes, !direct);
             if (!deduced && v->init->kind == NodeKind::BraceInitExpr)
               deduced = impl.deduceAggregateArgs(declared, argTypes);
             if (deduced)
@@ -11178,6 +11313,31 @@ void GlobalScope::finishIndex()
   });
   for (Scope* s : withUsings)
     impl->ensureUsing(s, 0);
+  // Deduction guides, by the class template each names: a function (template) of the guide's
+  // parameters returning the class it gives, for class template argument deduction to try.
+  std::stable_sort(impl->deferredGuides.begin(), impl->deferredGuides.end(), byDecl);
+  for (auto& [g, context] : impl->deferredGuides)
+  {
+    Lookup l = impl->lookupQualified(g->name, context, nullptr, 0);
+    Decl* cls = l.overloads ? Impl::primaryOf(*l.overloads) : l.decl;
+    if (!cls || cls->kind != NodeKind::ClassDecl || cls->templateParams.empty() || !g->target)
+      continue;
+    auto f = std::make_unique<FunctionDecl>();
+    f->kind = NodeKind::FunctionDecl;
+    f->token = g->token;
+    f->endToken = g->endToken;
+    f->file = g->file;
+    f->parent = g->parent;
+    f->templateParams = g->templateParams;
+    f->isTemplate = g->isTemplate;
+    f->flags = g->flags & DF_Explicit;
+    f->name = g->name;
+    f->params = g->params;
+    f->trailingReturn = g->target;
+    impl->guidesOf[cls].push_back(f.get());
+    impl->guideFunctions.push_back(std::move(f));
+  }
+  impl->deferredGuides.clear();
 }
 
 std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()

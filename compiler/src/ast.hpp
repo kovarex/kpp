@@ -86,7 +86,7 @@ struct Span
   /* declarations */ \
   X(NamespaceDecl) X(ClassDecl) X(EnumDecl) X(EnumeratorDecl) X(FunctionDecl) X(ParamDecl) \
   X(VariableDecl) X(UsingAliasDecl) X(UsingDirectiveDecl) X(UsingNameDecl) X(TemplateParamDecl) \
-  X(StaticAssertDecl) X(MacroDecl) X(ErrorDecl) X(EmptyDecl) X(AsmDecl) X(FriendDecl) X(ImportDecl) \
+  X(StaticAssertDecl) X(MacroDecl) X(ErrorDecl) X(EmptyDecl) X(AsmDecl) X(FriendDecl) X(DeductionGuideDecl) X(ImportDecl) \
   /* statements */ \
   X(BlockStmt) X(ExprStmt) X(DeclStmt) X(IfStmt) X(AssertStmt) X(ForStmt) X(RangeForStmt) X(ForConstexprStmt) X(WhileStmt) \
   X(DoStmt) X(SwitchStmt) X(CaseStmt) X(DefaultStmt) X(ReturnStmt) X(BreakStmt) X(ContinueStmt) \
@@ -264,7 +264,10 @@ struct UsingNameDecl : Decl { QualifiedName name; bool isEnum = false; };
 struct StaticAssertDecl : Decl { Expr* cond; Expr* message = nullptr; };
 struct MacroDecl : Decl { uint32_t name; uint32_t endToken; };
 struct ErrorDecl : Decl { uint32_t endToken; };
-struct EmptyDecl : Decl { bool isDeductionGuide = false; }; // isDeductionGuide: `template<...> Name(args) -> Name<...>;`, skipped (Kpp deduces from constructors)
+struct EmptyDecl : Decl {};
+// `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;`: class template argument deduction
+// from arguments of these parameter types gives target (DF_Explicit: not for copy-initialisation).
+struct DeductionGuideDecl : Decl { QualifiedName name; Span<Decl*> params; Type* target = nullptr; };
 struct AsmDecl : Decl {};
 struct FriendDecl : Decl { Type* type; Decl* decl; };
 struct ImportDecl : Decl { uint32_t pathToken; }; // extern "C" import "header.h"; (the string token)

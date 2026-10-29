@@ -1591,18 +1591,24 @@ namespace
             finishFunction(start, nullptr, d, flags, templ, scope);
             return;
           }
-          if (templ.present && deductionGuideAhead())
+          if ((templ.present || scope == Scope::Namespace) && deductionGuideAhead())
           {
-            // `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;`: a deduction guide.
-            // Kpp deduces class arguments from constructors; the converter drops these.
-            skipBalanced();
-            while (!at(P::Semi) && !at(TokenKind::End))
-              advance();
-            accept(P::Semi);
-            EmptyDecl* e = decl<EmptyDecl>(start);
-            e->isDeductionGuide = true;
-            e->endToken = pos;
-            pushDecl(e);
+            // `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;`: a deduction guide,
+            // which class template argument deduction tries beside the constructors.
+            DeductionGuideDecl* g = decl<DeductionGuideDecl>(start);
+            g->name = name;
+            g->templateParams = templ.params;
+            g->isTemplate = templ.present;
+            g->flags |= flags & DF_Explicit;
+            Declarator d;
+            d.name = name;
+            parseFunctionSuffix(d);
+            g->params = d.params;
+            g->target = d.trailingReturn;
+            if (!g->target)
+              error("expected the class type the deduction guide gives");
+            expect(P::Semi, "expected ';' after the deduction guide");
+            pushDecl(g);
             return;
           }
         }
@@ -4794,6 +4800,7 @@ namespace
   template<> constexpr NodeKind Parser::nodeKindOf<MacroDecl>() { return NodeKind::MacroDecl; }
   template<> constexpr NodeKind Parser::nodeKindOf<ErrorDecl>() { return NodeKind::ErrorDecl; }
   template<> constexpr NodeKind Parser::nodeKindOf<EmptyDecl>() { return NodeKind::EmptyDecl; }
+  template<> constexpr NodeKind Parser::nodeKindOf<DeductionGuideDecl>() { return NodeKind::DeductionGuideDecl; }
   template<> constexpr NodeKind Parser::nodeKindOf<AsmDecl>() { return NodeKind::AsmDecl; }
   template<> constexpr NodeKind Parser::nodeKindOf<FriendDecl>() { return NodeKind::FriendDecl; }
   template<> constexpr NodeKind Parser::nodeKindOf<ImportDecl>() { return NodeKind::ImportDecl; }

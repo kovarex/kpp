@@ -762,6 +762,15 @@ The smallest language that is still Kpp, as the target of the first code generat
   invent a qualification for each such call, a language rule hidden in the converter. Not yet:
   functions declared only as friends inside a class, associated classes, operators found
   through argument types. Spec: language/argument_dependent_lookup.
+- **Class template argument deduction, as in C++** (resolver thread, 2026-10-29, for kovarex's
+  review). `Box b("hi")` deduces the class's arguments from a constructor, from a deduction guide
+  (`Box(const char*) -> Box<String>;`, `template<typename... Ts> Overload(Ts...) ->
+  Overload<Ts...>;`), or, for an aggregate, from its bases and data members in order (C++20; a
+  pack of bases, `struct Overload : Ts...`, takes the remaining elements). A guide competes with
+  the constructors by its conversions and wins a tie; an explicit guide is no candidate for
+  copy-initialisation (`T x = ...`). Why: guides are part of C++'s deduction, and dropping one
+  (as the parser did) deduces other arguments than the code says, silently. Spec:
+  templates/deduction_guide_target, templates/deduction_guides.
 - **Grammar parseable without name lookup.** Three rules replace C++'s dependence on knowing
   what a name is:
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
@@ -774,6 +783,10 @@ The smallest language that is still Kpp, as the target of the first code generat
      parameter list or an array bound follows: `R (*f)(int)`, `T (&a)[3]`. Pointer and reference
      variables are written `T* p;`, never `T (*p);` (decided 2026-10-23, when `windows.h` showed
      that the C++ reading turns every `QueryPerformanceFrequency(&f);` into a declaration).
+  5. `(f)(x)` is a call. `(T)(U)x` is two casts when `(U)` can only be a type (a builtin, a
+     pointer, reference or const type, a template's instance): `(HANDLE)(long long)-1`, since no
+     argument list is a bare type (2026-10-29). Imported C headers know their typedef names, so
+     there `(HANDLE)(LONG_PTR)-1` is two casts as well.
   No `typename` or `template` disambiguators (as in the proposal).
 - **Types.** `bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64`, `f32/f64`, `char` (UTF-8 code unit),
   pointers, references, arrays, `const`. `int` is an alias of `i32`, `size_t`/`usize` of `u64`

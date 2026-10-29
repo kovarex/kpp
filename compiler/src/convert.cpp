@@ -3331,7 +3331,7 @@ namespace
           counts.add("friend declarations removed");
           continue;
         }
-        if (d->kind == NodeKind::EmptyDecl && static_cast<EmptyDecl*>(d)->isDeductionGuide)
+        if (d->kind == NodeKind::DeductionGuideDecl)
         {
           removeDecl(d); // Kpp deduces class arguments from constructors
           counts.add("deduction guides removed");

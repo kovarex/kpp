@@ -1,6 +1,6 @@
 // spec: deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;`
 // found in src/Util (Util.hpp make_overload, used with std::visit)
-// pending: deduction guides and pack using-declarations are not parsed
+// pending: the arguments are deduced (Overload<L1, L2>, through the guide or as an aggregate), but a call through the lambda bases (`using Ts::operator()...`) is not typed yet, and the code generator lays out no pack of bases
 template<typename... Ts> struct Overload : Ts... { using Ts::operator()...; };
 template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 int main()
