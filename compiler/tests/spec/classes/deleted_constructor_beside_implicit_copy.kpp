@@ -1,6 +1,5 @@
 // spec: a class with a deleted constructor from an rvalue of another type (`Ref(const int&&) = delete`, no reference to a temporary) is still copied and moved by its implicit constructors
 // factorio: std::reference_wrapper<const std::string> in a Vector (WrappedFont's allFontsData, FontStashFont), whose constructor from T&& is deleted
-// pending: a copy or move of the class picks the deleted constructor (codegen: constructing Ref with a deleted constructor)
 struct Ref
 {
   const int* pointer;

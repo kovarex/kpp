@@ -1779,11 +1779,11 @@ namespace
       }
       const Ty* firstTy = args.size() == 1 ? args[0]->ty : nullptr;
       FunctionDecl* ctor = findConstructor(t, argTypesOf(args), at);
-      if (ctor && (ctor->flags & DF_Delete))
-        unsupported(at, "constructing " + types.toString(t, &symbols) + " with a deleted constructor (copying a move-only object?)");
       if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t) && ctor->params.size() == 1)
       {
-        // The same class: a copy, unless the chosen constructor is a copy constructor itself.
+        // The same class: a copy, unless the chosen constructor is a copy constructor itself (a
+        // converting one, deleted or not, reached through a conversion of the class, loses to
+        // the implicit copy: `Ref(const int&&) = delete` beside Ref's `operator const int&()`).
         TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
         const Ty* pt;
         {
@@ -1793,6 +1793,8 @@ namespace
         if (!pt || !isClass(types.stripRef(pt)) || classKey(pt) != classKey(t))
           ctor = nullptr; // a converting constructor of another class: not for a copy
       }
+      if (ctor && (ctor->flags & DF_Delete))
+        unsupported(at, "constructing " + types.toString(t, &symbols) + " with a deleted constructor (copying a move-only object?)");
       if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) != classKey(t) && ctor->params.size() == 1)
       {
         TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
@@ -1822,6 +1824,22 @@ namespace
           global.deduceArgs(ctor, argTypesOf(args), ctorArgs); // `template<typename F> Function(F)`: F from the argument
         callFunction(ctor, ctorArgs, canonicalClass(t, at), addr, "", args, at);
         return;
+      }
+      if (args.size() == 1 && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) != classKey(t))
+      {
+        // A value of a class derived from t, no constructor of t taking it as written (t's copy
+        // and move constructors are implicit, or t is an aggregate): its t part, copied or moved
+        // (`Name(const Name& n) : Text(n)`, `: Plain(d)`).
+        std::vector<std::pair<std::string, uint32_t>> path;
+        if (const Ty* from = withCurrentArgs(types.unqualified(types.stripRef(firstTy))); !types.isDependent(from) && basePath(from, t, path, at))
+        {
+          Value src = convert(rvalue(args[0]), types.unqualified(t), at);
+          if (isXvalue(args[0]))
+            moveConstruct(addr, src.text, t, at);
+          else
+            copyConstruct(addr, src.text, t, at);
+          return;
+        }
       }
       if (args.size() == 1 && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) != classKey(t) &&
           conversionOperator(types.stripRef(firstTy), t, at))
@@ -2005,6 +2023,21 @@ namespace
 
     // `return result;` naming a local object or a by-value parameter of the returned class: it is
     // moved into the result, not copied (C++'s implicit move on return).
+    // The class of the local object (not a reference) e names, when it is not the function's
+    // result class (whose own `return obj;` is a move: returnedLocalObject); null otherwise.
+    const Ty* localObjectOfOtherClass(Expr* e)
+    {
+      if (!e || e->kind != NodeKind::NameExpr)
+        return nullptr;
+      Decl* d = static_cast<NameExpr*>(e)->resolved;
+      if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::ParamDecl) || (d->flags & DF_Static))
+        return nullptr;
+      auto it = locals.find(d);
+      if (it == locals.end() || it->second.isRef || !isClass(it->second.ty) || classKey(it->second.ty) == classKey(currentReturn))
+        return nullptr;
+      return types.unqualified(it->second.ty);
+    }
+
     Decl* returnedLocalObject(Expr* e)
     {
       if (!e || e->kind != NodeKind::NameExpr)
@@ -4121,6 +4154,22 @@ namespace
       {
         if (args.size() != 1)
           unsupported(at, "a defaulted function with " + std::to_string(args.size()) + " arguments");
+        // A value of another type, neither t nor a class derived from it, for an assignment or a
+        // comparison (`n = "abc"`, `m = String("def")` through Name's implicit constructors,
+        // `fixedPoint == 0`): made a temporary of t first, the value evaluated once.
+        const Ty* argTy = args[0]->ty ? withCurrentArgs(types.unqualified(types.stripRef(args[0]->ty))) : nullptr;
+        std::vector<std::pair<std::string, uint32_t>> path;
+        bool related = argTy && isClass(argTy) && !types.isDependent(argTy) &&
+                       (canonicalClass(argTy, at) == canonicalClass(t, at) || basePath(argTy, t, path, at));
+        if (argTy && argTy->isKnown() && !related && argTy->kind != TyKind::Vector && !(f->flags & (DF_Constructor | DF_Destructor)) && isClass(t))
+        {
+          std::string tmp = newObjectSlot(t, at);
+          Expr* one = args[0];
+          constructInto(tmp, t, Span<Expr*>{&one, 1}, at);
+          if (needsDestruction(t, at))
+            statementTemps.push_back({tmp, t}); // destroyed with the statement's other temporaries
+          return defaultedOperation(f, t, thisArg, tmp, at);
+        }
         Value v = rvalue(args[0]);
         if (!isClass(v.ty))
         {
@@ -9729,6 +9778,19 @@ namespace
               unsupported(s, "return without a value");
             if (returnedLocalObject(r->value))
               moveConstruct(sretAddr, lvalue(r->value), currentReturn, s); // `return result;`: the local is moved, as in C++
+            else if (const Ty* local = localObjectOfOtherClass(r->value); local && findConstructor(currentReturn, {types.rref(local)}, s))
+            {
+              // `return obj;` with obj a local of another class (UniquePtr<Derived> returned as
+              // UniquePtr<Base>): C++ takes the local as an rvalue first, for the converting
+              // constructor that takes one.
+              NamedCastExpr moved{};
+              moved.kind = NodeKind::NamedCastExpr;
+              moved.token = r->value->token;
+              moved.castKind = Kw::static_cast_;
+              moved.operand = r->value;
+              moved.ty = types.rref(local);
+              initializeFrom(sretAddr, currentReturn, &moved, s);
+            }
             else
               initializeFrom(sretAddr, currentReturn, r->value, s);
           }

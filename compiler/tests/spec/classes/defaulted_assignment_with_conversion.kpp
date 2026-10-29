@@ -1,6 +1,5 @@
 // spec: a defaulted copy or move assignment given another type that an implicit constructor converts (`name = "abc"` with `implicit Name(const char*)` and `Name& operator=(Name&&) = default`)
 // factorio: Filesystem::Path's defaulted assignments given a String (`endingInfo.imagePath = info.getDefault<std::string>(...)`, FileUtil's `path = name + ".zip"`), through Path's implicit constructor from a string
-// pending: codegen passes the argument to the defaulted function unconverted (a defaulted function given an unrelated class)
 struct Name
 {
   String text;

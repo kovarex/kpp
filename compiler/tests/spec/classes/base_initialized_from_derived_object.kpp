@@ -1,6 +1,5 @@
 // spec: a base-class initializer given an object of the derived class (`Name(const Name& n) : Text(n)`, `: Plain(d)`) copies or moves the base part through the base's own copy or move constructor, the derived-to-base conversion of the argument
 // factorio: Filesystem::Path's copy and move constructors (`Path(Path&& p) : path(std::move(p))`, `explicit Path(const Path& p) : path(p)`), over std::filesystem::path
-// pending: codegen looks for a constructor of the base taking the derived class (a constructor of Text taking 1 arguments; for an aggregate base, a conversion from Derived to its first field)
 struct Text
 {
   String value;
