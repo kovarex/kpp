@@ -1,0 +1,28 @@
+// spec: a lambda written inside a lambda with template parameters names them in its own parameters (`[&](Button<IDType>*)` in `[&]<class IDType>(IDType value)`): in each instance the parameter is of that instance's type, so the lambda converts to the Function<bool(Button<int>*)> a call with written template arguments asks for
+// found in tests/TestCustomGui (`scenario.clickSelect<ChooseButton<IDType>>([&](ChooseButton<IDType>*) { return true; })` in `[&]<class IDType>(IDType value, const char* type)`)
+// pending: the inner lambda's parameter reads IDType as an undeclared class (`Button<?>*`), so no overload takes the lambda (`a member access that did not resolve to a field`)
+template<class T>
+struct Button { T id; };
+template<class T>
+int pick(Function<bool(T*)> selector) { T probe{}; return selector(&probe) ? int(sizeof(probe.id)) : -1; }
+struct Control
+{
+  int clicks = 0;
+  template<class T>
+  void clickSelect(Function<bool(T*)> selector = nullptr, int button = 1) { T probe{}; if (selector && selector(&probe)) clicks += button; }
+};
+int main()
+{
+  int seen = 0;
+  auto test = [&]<class IDType>(IDType value, const char* type)
+  {
+    Control control;
+    control.clickSelect<Button<IDType>>([&](Button<IDType>*) { ++seen; return true; });
+    auto inner = [](Button<IDType>* b) { return b->id == IDType(); };
+    println("{} {} {} {}", type, control.clicks, pick<Button<IDType>>(inner), int(value));
+  };
+  test(3, "int");
+  test(short(4), "short");
+  println("{}", seen);
+  return 0;
+}
