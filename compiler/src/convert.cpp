@@ -63,6 +63,36 @@ namespace
 
   bool isIdentChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
 
+  // Whether the `'` at i separates a number's digits (`0b1111'0000`, C++14) rather than starting a
+  // character literal: the run of letters, digits, dots and quotes before it starts with a digit.
+  bool isDigitSeparator(std::string_view text, size_t i)
+  {
+    size_t start = i;
+    while (start > 0 && (isIdentChar(text[start - 1]) || text[start - 1] == '.' || text[start - 1] == '\''))
+      --start;
+    return start < i && isdigit((unsigned char)text[start]);
+  }
+
+  // Where the raw string literal whose `"` is at i ends (after its closing quote), or npos when the
+  // `"` starts none: `R"(game.print(... "doesn't" ...))"` (the tests' TestAudioGeneral.cpp, inside a
+  // CHECK_EQUAL) holds quotes and parentheses that end nothing.
+  size_t rawStringEnd(std::string_view text, size_t i)
+  {
+    if (i == 0 || text[i] != '"' || text[i - 1] != 'R')
+      return std::string_view::npos;
+    size_t prefix = i - 1;
+    while (prefix > 0 && (text[prefix - 1] == 'L' || text[prefix - 1] == 'u' || text[prefix - 1] == 'U' || text[prefix - 1] == '8'))
+      --prefix;
+    if (prefix > 0 && isIdentChar(text[prefix - 1]))
+      return std::string_view::npos;
+    size_t open = text.find('(', i + 1);
+    if (open == std::string_view::npos || open - i - 1 > 16)
+      return std::string_view::npos;
+    std::string closing = ")" + std::string(text.substr(i + 1, open - i - 1)) + "\"";
+    size_t end = text.find(closing, open + 1);
+    return end == std::string_view::npos ? std::string_view::npos : end + closing.size();
+  }
+
   // A macro's text with its line continuations (a backslash ending a line, or the text: Agui's
   // Transform.cpp continues `#define E(x, y)` onto an empty line) and its line ends as spaces.
   // Every other backslash stays: an escape in a literal (llex.c's `#define currIsNewline(ls)
@@ -99,7 +129,7 @@ namespace
         open = false;
         i = close + 1;
       }
-      else if (text[i] == '"' || text[i] == '\'')
+      else if (text[i] == '"' || (text[i] == '\'' && !isDigitSeparator(text, i)))
       {
         char quote = text[i];
         for (++i; i < text.size() && text[i] != quote && text[i] != '\n'; ++i)
@@ -180,7 +210,7 @@ namespace
   // linux`), StacktraceToStream.cpp the stack trace printer of the other platforms, and UnitTest++'s
   // Posix directory, which the unit-test library's Windows build excludes. Not converted.
   const std::set<std::string> filesForOtherPlatforms = {"src/Graphics/PngLoad.cpp", "src/Util/StacktraceToStream.cpp",
-                                                        "UnitTest++/Posix/SignalTranslator.cpp"};
+                                                        "UnitTest++/Posix/SignalTranslator.cpp", "UnitTest++/Posix/SignalTranslator.h"};
   // The library files the game's build leaves out (fbuild.bff's .CompilerInputExcludedFiles): Lua's
   // standalone interpreter and compiler, by their directory and name.
   const std::set<std::string> filesNotBuilt = {"Lua/lua.c", "Lua/luac.c"};
@@ -1128,7 +1158,7 @@ namespace
     for (size_t i = 0; i < s.size();)
     {
       char c = s[i];
-      if (c == '"' || c == '\'')
+      if (c == '"' || (c == '\'' && !isDigitSeparator(s, i)))
       {
         size_t j = i + 1;
         while (j < s.size() && s[j] != c)
@@ -1929,7 +1959,7 @@ namespace
     // Declarations, a braced initializer, a list (lobject.h's `#define NILCONSTANT {NULL}, LUA_TNIL`).
     int depth = 0;
     for (size_t i = 0; i < body.size(); ++i)
-      if (body[i] == '"' || body[i] == '\'')
+      if (body[i] == '"' || (body[i] == '\'' && !isDigitSeparator(body, i)))
         for (char quote = body[i++]; i < body.size() && body[i] != quote; ++i)
           i += body[i] == '\\';
       else if (body[i] == ';' || body[i] == '{' || (body[i] == ',' && depth == 0))
@@ -1996,6 +2026,53 @@ namespace
     return (keyword && identifiers <= 1) || (identifiers == 1 && last.size() > 2 && last.compare(last.size() - 2, 2, "_t") == 0);
   }
 
+  // Whether an object-like macro's body calls a function, a name followed by `(` that is no
+  // function-like macro (functionMacroNames: every one the converted files define) and no operator
+  // of the language: UnitTest++'s `#define BREAK_UNDER_DEBUGGER (IsDebuggerPresent() &&
+  // (DebugBreak(), true))`. Such a macro is written out at its uses, as the preprocessor writes it:
+  // a constant would call the functions once, when the program starts.
+  bool callsFunction(const std::string& body, const std::set<std::string>& functionMacroNames)
+  {
+    static const std::set<std::string> notCalls = {"sizeof", "alignof", "decltype", "static_cast", "reinterpret_cast", "const_cast",
+                                                   "dynamic_cast", "noexcept", "alignas", "__declspec", "__attribute__", "__pragma",
+                                                   "defined", "typeid", "L", "u8"};
+    for (size_t i = 0; i < body.size();)
+    {
+      if (body[i] == '"' || (body[i] == '\'' && !isDigitSeparator(body, i)))
+      {
+        char quote = body[i];
+        for (++i; i < body.size() && body[i] != quote; ++i)
+          if (body[i] == '\\')
+            ++i;
+        ++i;
+      }
+      else if (body.compare(i, 2, "/*") == 0)
+      {
+        size_t e = body.find("*/", i + 2);
+        i = e == std::string::npos ? body.size() : e + 2;
+      }
+      else if (body.compare(i, 2, "//") == 0)
+        return false;
+      else if (isalpha((unsigned char)body[i]) || body[i] == '_')
+      {
+        size_t e = i;
+        while (e < body.size() && (isIdentChar(body[e]) || (body[e] == ':' && e + 1 < body.size() && body[e + 1] == ':')))
+          e += body[e] == ':' ? 2 : 1;
+        std::string name = body.substr(i, e - i);
+        size_t after = e;
+        while (after < body.size() && (body[after] == ' ' || body[after] == '\t'))
+          ++after;
+        std::string last = name.substr(name.rfind(':') == std::string::npos ? 0 : name.rfind(':') + 1);
+        if (after < body.size() && body[after] == '(' && !notCalls.count(last) && !functionMacroNames.count(name))
+          return true;
+        i = e;
+      }
+      else
+        ++i;
+    }
+    return false;
+  }
+
   // Whether `#define name body` makes name another name for a function or variable, written out at
   // its uses as the preprocessor does: override_printf.h's `#define sprintf trio_sprintf`, which
   // Lua's C++ build is force-included with so that it formats as trio does (a constant of it would
@@ -2025,7 +2102,7 @@ namespace
     std::string out;
     for (size_t i = 0; i < body.size();)
     {
-      if (body[i] == '"' || body[i] == '\'')
+      if (body[i] == '"' || (body[i] == '\'' && !isDigitSeparator(body, i)))
       {
         size_t e = i + 1;
         while (e < body.size() && body[e] != body[i])
@@ -2351,6 +2428,9 @@ namespace
     // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
     // std::ostream;`), by their Kpp names: its later unqualified uses are the library's.
     std::map<std::string, std::string> stdUsingNames;
+    // Every function-like macro's name (callsFunction): an object-like macro that calls something else
+    // is written out at its uses.
+    const std::set<std::string>* functionMacroNames = nullptr;
     // The C libraries this file's library keeps calling, by include path prefix, imported where it
     // includes them (Lua's override_printf.h includes trio.h; the game's own calls of trio are the
     // C runtime's, and its includes of trio.h go).
@@ -2672,7 +2752,8 @@ namespace
       if (!functionLike && !isStringLiterals(body) && objectMacros.count(name) &&
           (isStringLiterals(objectMacros.at(name)) || isSplicedMacroBody(objectMacros.at(name))))
         body = objectMacros.at(name);
-      if (!functionLike && (isSplicedMacroBody(body) || (isAliasMacro(name, body) && !localMacroAt(body, offset))))
+      if (!functionLike && (isSplicedMacroBody(body) || (isAliasMacro(name, body) && !localMacroAt(body, offset)) ||
+                            (functionMacroNames && callsFunction(body, *functionMacroNames))))
       {
         // Written out at its uses (convertTokens, objectMacros): declarations, a type, storage words,
         // another name.
@@ -3048,9 +3129,11 @@ namespace
         if (space)
           out += ' ';
         space = false;
-        if (c == '"' || c == '\'')
+        if (c == '"' || (c == '\'' && !isDigitSeparator(argument, i)))
         {
           size_t j = i + 1;
+          if (size_t raw = rawStringEnd(argument, i); raw != std::string_view::npos)
+            j = raw - 1;
           while (j < argument.size() && argument[j] != c && argument[j] != '\n')
             j += argument[j] == '\\' && j + 1 < argument.size() ? 2 : 1;
           size_t end = std::min(j + 1, argument.size());
@@ -3140,9 +3223,11 @@ namespace
           i = j;
           continue;
         }
-        if (c == '"' || c == '\'')
+        if (c == '"' || (c == '\'' && !isDigitSeparator(b, i)))
         {
           size_t j = i + 1;
+          if (size_t raw = rawStringEnd(b, i); raw != std::string_view::npos)
+            j = raw - 1;
           while (j < b.size() && b[j] != c)
           {
             if (b[j] == '\\')
@@ -3167,7 +3252,9 @@ namespace
       int depth = 0;
       for (size_t k = open; k < s.size(); ++k)
       {
-        if (s[k] == '"' || s[k] == '\'')
+        if (size_t raw = rawStringEnd(s, k); raw != std::string_view::npos)
+          k = raw - 1;
+        else if (s[k] == '"' || (s[k] == '\'' && !isDigitSeparator(s, k)))
         {
           char quote = s[k];
           for (++k; k < s.size() && s[k] != quote; ++k)
@@ -3251,6 +3338,8 @@ namespace
                   innerArgs.push_back(result.substr(argStart, k - argStart));
                   argStart = k + 1;
                 }
+                else if (size_t raw = rawStringEnd(result, k); raw != std::string_view::npos)
+                  k = raw - 1;
                 else if (result[k] == '"')
                 {
                   ++k;
@@ -3299,7 +3388,9 @@ namespace
               for (size_t k = j + 1; k <= close; ++k)
               {
                 char c = result[k];
-                if (c == '"' || c == '\'')
+                if (size_t raw = rawStringEnd(result, k); raw != std::string_view::npos)
+                  k = raw - 1;
+                else if (c == '"' || (c == '\'' && !isDigitSeparator(result, k)))
                   for (++k; k < close && result[k] != c; ++k)
                     k += result[k] == '\\';
                 else if (c == '(' || c == '[' || c == '{')
@@ -3350,10 +3441,12 @@ namespace
             i = j;
             continue;
           }
-          if (result[i] == '"' || result[i] == '\'')
+          if (result[i] == '"' || (result[i] == '\'' && !isDigitSeparator(result, i)))
           {
             // A string or character literal goes as it is: no macro is used inside it.
             size_t k = i + 1;
+            if (size_t raw = rawStringEnd(result, i); raw != std::string_view::npos)
+              k = raw - 1;
             while (k < result.size() && result[k] != result[i])
               k += result[k] == '\\' ? 2 : 1;
             k = std::min(k + 1, result.size());
@@ -5856,7 +5949,7 @@ namespace
           for (size_t i = 0; i < rendered.size();)
           {
             char c = rendered[i];
-            if (c == '"' || c == '\'')
+            if (c == '"' || (c == '\'' && !isDigitSeparator(rendered, i)))
             {
               size_t j = i + 1;
               while (j < rendered.size() && rendered[j] != c)
@@ -5980,7 +6073,7 @@ static void blankForParse(Preprocessed& p)
     int depth = 0;
     for (size_t k = open; k < t.size(); ++k)
     {
-      if (t[k] == '"' || t[k] == '\'')
+      if (t[k] == '"' || (t[k] == '\'' && !isDigitSeparator(t, k)))
       {
         char quote = t[k];
         for (++k; k < t.size() && t[k] != quote; ++k)
@@ -6040,7 +6133,7 @@ static void blankForParse(Preprocessed& p)
         continue;
       }
     }
-    if (c == '"' || c == '\'')
+    if (c == '"' || (c == '\'' && !isDigitSeparator(t, i)))
     {
       for (++i; i < t.size() && t[i] != c && t[i] != '\n'; ++i)
         i += t[i] == '\\';
@@ -6154,7 +6247,8 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
                                                                                        const SourceConfiguration* configuration,
                                                                                        std::map<std::string, std::string>* aliases,
                                                                                        std::map<std::string, std::string>* objects = nullptr,
-                                                                                       std::map<std::string, std::string>* definedObjects = nullptr)
+                                                                                       std::map<std::string, std::string>* definedObjects = nullptr,
+                                                                                       const std::set<std::string>* functionMacroNames = nullptr)
 {
   std::map<std::string, std::pair<std::vector<std::string>, std::string>> macros;
   for (const std::filesystem::path& path : paths)
@@ -6187,7 +6281,7 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
         while (i < raw.size() && raw[i] != '\n')
           ++i;
       }
-      else if (raw[i] == '"' || raw[i] == '\'')
+      else if (raw[i] == '"' || (raw[i] == '\'' && !isDigitSeparator(raw, i)))
       {
         char quote = raw[i];
         text += raw[i++];
@@ -6292,9 +6386,13 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
               body = literals;
           if (!isStringLiterals(body) && !isQualifiedName(body) && isSplicedMacroBody(body) && objects)
             body = splicedMacroText(body, *objects);
+          // One that calls a function (callsFunction) is written out too.
+          if (functionMacroNames && objects && !isStringLiterals(body) && callsFunction(body, *functionMacroNames))
+            body = splicedMacroText(body, *objects);
           // (An alias of a function-like macro, lobject.h's `#define setobj2s setobj`, is that macro, above.)
           if (isStringLiterals(body) || isQualifiedName(body) || isSplicedMacroBody(body) ||
-              (isAliasMacro(line.substr(p, nameEnd - p), body) && !macros.count(body)))
+              (isAliasMacro(line.substr(p, nameEnd - p), body) && !macros.count(body)) ||
+              (functionMacroNames && callsFunction(body, *functionMacroNames)))
           {
             if (objects)
               (*objects)[line.substr(p, nameEnd - p)] = body;
@@ -6570,6 +6668,34 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     for (const auto& path : paths)
       includedHeaderDirectory[path.filename().string()] = directory;
   }
+  // Every function-like macro the converted files and the expanded C headers define, by name: what
+  // callsFunction takes for no function.
+  std::set<std::string> functionMacroNames;
+  for (const auto& [name, macro] : headerMacros)
+    functionMacroNames.insert(name);
+  for (const auto& [directory, macros] : includedHeaderMacros)
+    for (const auto& [name, macro] : macros)
+      functionMacroNames.insert(name);
+  for (const auto& [key, k] : inputByPath)
+  {
+    std::string_view t = inputs[k].text;
+    for (size_t at = t.find("define"); at != std::string_view::npos; at = t.find("define", at + 6))
+    {
+      size_t hash = at;
+      while (hash > 0 && (t[hash - 1] == ' ' || t[hash - 1] == '\t'))
+        --hash;
+      if (hash == 0 || t[hash - 1] != '#')
+        continue;
+      size_t n = at + 6;
+      while (n < t.size() && (t[n] == ' ' || t[n] == '\t'))
+        ++n;
+      size_t e = n;
+      while (e < t.size() && isIdentChar(t[e]))
+        ++e;
+      if (e > n && e < t.size() && t[e] == '(')
+        functionMacroNames.insert(std::string(t.substr(n, e - n)));
+    }
+  }
   std::map<size_t, MacroMap> ownMacros; // a header's macros it leaves defined, read once
   std::map<size_t, std::map<std::string, std::string>> ownObjects; // and its string and name macros
   std::map<size_t, std::map<std::string, std::string>> definedObjects; // every string or name macro it defines
@@ -6577,7 +6703,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   {
     auto it = ownMacros.find(k);
     if (it == ownMacros.end())
-      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration, nullptr, &ownObjects[k], &definedObjects[k])).first;
+      it = ownMacros.emplace(k, readHeaderMacros({inputs[k].path}, configuration, nullptr, &ownObjects[k], &definedObjects[k], &functionMacroNames))
+             .first;
     return it->second;
   };
   // The string and name macros an input sees: all of its own (TestLuaTerritory.cpp #undefs its
@@ -6933,6 +7060,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
     fc.leftOutFiles = &leftOutFiles;
+    fc.functionMacroNames = &functionMacroNames;
     if (auto kept = keptCLibraries.find(in.path.parent_path().filename().string()); kept != keptCLibraries.end())
       fc.keptCLibraries = &kept->second;
     fc.scopeNames = &scopeNames;
