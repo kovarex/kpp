@@ -1,0 +1,26 @@
+// spec: an object whose conversion operator gives an lvalue reference to a class (`implicit operator HorizontalLine&() const`) binds a non-const reference to that class or to a base of it (`Frame& operator<<(Widget& other)`), a user-defined conversion, as C++ binds it; a conversion operator giving a value binds no non-const reference
+// found in the converted game: agui's `frame << agui::horizontalLine << widget` and `<< agui::vFlow` helpers (16 GUI constructors: "an operator with a class on the right that no function defines")
+// pending: the non-const reference binds only an object of its own class ("an operator with a class on the right")
+struct Widget { int id = 0; virtual ~Widget() {} };
+struct HorizontalLine : Widget { HorizontalLine() { this->id = 7; } };
+HorizontalLine theLine;
+struct LineHelper
+{
+  implicit operator HorizontalLine&() const { return theLine; }
+};
+inline LineHelper horizontalLine;
+struct Frame : Widget
+{
+  int sum = 0;
+  Frame& operator<<(Widget& other) { this->sum += other.id; return *this; }
+  Frame& operator<<(Widget* other) { this->sum += other->id * 100; return *this; }
+};
+int main()
+{
+  Frame f;
+  Widget w;
+  w.id = 2;
+  f << horizontalLine << w;
+  println("{}", f.sum);
+  return 0;
+}
