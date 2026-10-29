@@ -9745,11 +9745,12 @@ struct GlobalScope::Impl
               return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
         }
         if (containsAuto(t) && v->init && !v->init->ty && v->init->kind != NodeKind::BraceInitExpr &&
-            (!subst || subst->empty()) && !(v->parent && v->parent->kind == NodeKind::FunctionDecl) && !hasLambda(v->init))
+            (!subst || subst->empty() || !v->parent || v->parent->kind == NodeKind::NamespaceDecl) && !(v->parent && v->parent->kind == NodeKind::FunctionDecl) && !hasLambda(v->init))
         {
           // `const auto CONTEXT_FULL = (CONTEXT_CONTROL | ...);` naming `const auto` globals the
           // walk has not reached yet: theirs from their initializers now, in any order (no lambda
           // among them, whose copy would be another closure type than the walk's).
+          // Also inside a template instance: a namespace-scope variable's type depends on no arguments.
           if (const Ty* init = typeOfSignatureExpression(v->init, ctx); init && init->isKnown() && !types.isDependent(init))
             if (const Ty* deduced = deduceAuto(t, init); deduced && deduced->isKnown() && !containsAuto(deduced))
               return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;

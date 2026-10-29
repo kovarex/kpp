@@ -1,0 +1,15 @@
+// spec: a namespace-scope `const auto` variable named in a member of a class template instance has the type its initializer deduces, also when the instance is checked before the walk reaches the variable's declaration
+// factorio: Vector2<double, Vector2D>::signedOrientationTo's `this->angleTo(other) * M_1_2_PI` with Math.kpp's `const auto M_1_2_PI = 0.159...;`: untyped in the full build ("the type <unknown> of NameExpr")
+template<typename T>
+struct Turn
+{
+  T value;
+  T fraction() const { return T(this->value * HALF_TURN_INVERSE); }
+};
+int main()
+{
+  Turn<double> t{3.0};
+  println("{}", t.fraction());
+  return 0;
+}
+const auto HALF_TURN_INVERSE = 0.5;
