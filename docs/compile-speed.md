@@ -80,6 +80,79 @@ one-line edit) needs both of them to stop being proportional to the program:
 Memory: the front end peaks at 1.6 GB of working set, front end and one-module codegen at 2.0 GB,
 so a process that keeps all of it between builds fits easily.
 
+## Design: inlining trivial functions in kppc (proposed 2026-10-29, for the coordinator's OK)
+
+**Why.** A debug build compiles its 64 modules at -O0, where clang inlines only `alwaysinline`
+functions and only within a module. A template instance lands in the module its name hashes to,
+a plain function in its file's module, so nearly every call to a library accessor crosses
+modules and stays a call. Reading through a UniquePtr costs 2.5 to 2.7 times a raw pointer in a
+debug build (unique-pointer-research.md 1.5): with `[[forceinline]]` it was still 2.60x, and only
+`--modules 1` brought it down to 1.20x. The same holds for every small accessor. In the game's IR,
+249,485 of its 2,166,822 call sites (11.5%) call a trivial function: one basic block of at most
+12 instructions and no call (`python compiler/bench/trivial_calls.py headline.ll`, master 819c0fb).
+The most called are `forward` 19,771 and `move` 16,574, the two owners' `operator->` 9,931 and
+8,983, Vector's `end`/`begin` 5,577/5,343, `[]` 3,993 and `size` 3,861, and the NamedBool and ID
+constructors 5,577 and 5,184. design.md section 2 chose this fix on 2026-10-28 as option (4):
+kppc inlines them itself when it emits IR. ThinLTO, option (1), already serves release builds.
+
+**What qualifies.** It is decided once per function instance, from its typed body, and cached in
+the shared state. The decision depends on nothing but the body, so the IR stays deterministic.
+- `move` and `forward` always: they are identity casts, a pointer in and the same pointer out.
+  codegen already does that in one narrow case. Step 1 makes it every call.
+- A direct call: no virtual dispatch, no function pointer. The callee is not `[[noinline]]`, not
+  imported from C, not variadic, and not on the current inlining stack (depth at most 3).
+- Its parameters are scalars, pointers or references, and so is its result, or it returns void.
+  A class by value needs a copy and a destruction, and a class result needs the caller's slot.
+- Its body is one statement, `return E;` or `E;`, with no locals.
+- E holds only these: parameters, `this`, fields reached from them (`this->items`,
+  `this->p->x`), constants, built-in operators on scalars and pointers, built-in subscripts,
+  scalar and pointer casts, and calls to functions that qualify themselves. It holds no
+  overloaded operator that does not qualify, no temporary that needs destroying, and nothing
+  that can throw.
+- Step 3 adds constructors whose body is empty and whose member initializers copy parameters or
+  constants into scalar members, of a class with no base or member that needs constructing
+  (NamedBool, ID).
+
+**Where.** In codegen's callFunction, which every direct call goes through, before the call is
+emitted. The callee's expression is emitted in the caller as its default arguments are emitted
+today: under the callee's template arguments and class (ArgsScope, currentClassTy), and with its
+names looked up in the callee's own context (typingContext). The arguments are evaluated first,
+in order, exactly once, then bound to the parameters as values, a reference parameter as its
+address. `this` is bound to the object's address, adjusted to the declaring base as for a call.
+No alloca and no store are needed, since a parameter that qualifies is only read. The callee's
+function is still emitted when its address is taken or a call to it does not inline. A
+`--no-inline` switch keeps every call, for comparisons and to bisect a suspected miscompile.
+
+**With `--release` (ThinLTO).** LLVM inlines these anyway, importing across modules. kppc's
+expansion comes before LLVM in both builds, so the IR has one shape and there is one code path.
+LLVM has less to import and inline, which should cost a little less link time; run time should
+be the same within noise. Both are measured below. No debug information is emitted today, since
+the PDB carries function names only, so an inlined accessor drops out of a crash stack, as it
+does in a release build. If line information comes later, the inlined expression keeps the
+caller's line.
+
+**How to measure each step** (A/B against a base built at the same master):
+1. Static: trivial_calls.py on the headline's IR. Its 249,485 call sites should fall by those the
+   rule accepts, and the IR bytes and the function count are reported next to them.
+2. A micro-benchmark: `compiler/bench/uniqueptr/deref.kpp` in a debug build. The read is 2.5 to
+   2.7x a raw pointer today and should come close to the 1.2x of `--modules 1`.
+3. Containers: `compiler/bench/stdlib/run.cmd` in debug and release builds, against std
+   (stdlib-performance.md's table).
+4. Compile time: the headline's codegen seconds and wall time, and the release link. Inlining
+   adds work at call sites, and the emitted functions do not get fewer.
+5. The game: a menu simulation's update time in a debug build,
+   `factorio.exe --benchmark <data/base/menu-simulations/X.zip> --benchmark-ticks N`, with and
+   without `--no-inline`.
+6. Correctness:
+   - a spec of inlined accessors (argument order and side effects, reference parameters, `this`
+     through a second base, a call that does not inline next to one that does);
+   - the spec suite and the determinism check;
+   - `--dump-data` still gives the C++ checksums.
+
+**Order.** Step 1 is `move` and `forward` (over 44,000 call sites with all their instances, which then go too).
+Step 2 is one-expression getters and setters. Step 3 is trivial constructors. Each lands
+measured. Codegen owns callFunction, so the work is codegen's or done with its review.
+
 ## Design: the persistent compiler (approved 2026-10-29; step 1 landed)
 
 Goal: a one-line edit costs what the edit touches, not what the program is, with output
