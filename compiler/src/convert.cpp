@@ -296,6 +296,14 @@ namespace
     }
   };
 
+  // The length of the UTF-8 byte order mark a source file starts with (a few of the game's files
+  // have one), or 0. The lexer skips it; the line scans here treat it as space, and the converted
+  // text leaves it out (after the header comment it would read as a name).
+  size_t byteOrderMarkLength(std::string_view text)
+  {
+    return text.size() >= 3 && (unsigned char)text[0] == 0xEF && (unsigned char)text[1] == 0xBB && (unsigned char)text[2] == 0xBF ? 3 : 0;
+  }
+
   // A file as the configuration preprocesses it.
   struct Preprocessed
   {
@@ -376,7 +384,7 @@ namespace
           end = text.size();
       }
       pos = end + 1;
-      size_t p = start;
+      size_t p = start == 0 ? byteOrderMarkLength(text) : start;
       while (p < end && (text[p] == ' ' || text[p] == '\t'))
         ++p;
       if (p >= end || text[p] != '#')
@@ -2099,7 +2107,7 @@ namespace
         for (; nextNote < decided.notes.size() && decided.notes[nextNote].first == offset; ++nextNote)
           todo(offset, decided.notes[nextNote].second);
         std::string line(text.substr(offset, length));
-        size_t p = 0;
+        size_t p = offset == 0 ? byteOrderMarkLength(text) : 0;
         while (p < line.size() && isspace((unsigned char)line[p]))
           ++p;
         bool directive = p < line.size() && line[p] == '#';
@@ -4825,6 +4833,7 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
       fprintf(stderr, "convert: cannot read the macro header %s\n", path.string().c_str());
       continue;
     }
+    raw.erase(0, byteOrderMarkLength(raw));
     // The dropped #if branches are blank; comments out (they may hold a #define or span lines).
     std::string text;
     for (size_t i = 0; i < raw.size();)
@@ -5396,7 +5405,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     text += " by kppc --convert; see CONVERSION.md.\n\n";
     for (const Piece& p : pieces)
     {
-      text += p.text;
+      text += std::string_view(p.text).substr(byteOrderMarkLength(p.text));
       if (text.empty() || text.back() != '\n')
         text += '\n';
       text += '\n';
