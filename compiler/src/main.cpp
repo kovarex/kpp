@@ -774,7 +774,9 @@ namespace
     const char* level = options.debug ? "-O0" : thinLTO ? "-O2 -flto=thin" : "-O2";
     // Every function in its own section, so that the linker drops the ones nobody calls (and
     // the libraries they would need): a program pays only for what it uses.
-    const char* compileFlags = "-ffunction-sections -fdata-sections";
+    // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
+    // /fp:strict, design.md section 2)
+    const char* compileFlags = "-ffunction-sections -fdata-sections -ffp-contract=off";
     // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
     // linked; the functions errors left out are listed next to the executable for the link's report.
     bool stop = codegenExit && !options.keepGoing;

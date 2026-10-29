@@ -52,6 +52,10 @@ This file records decisions that have been made. When a decision changes, update
   chunks, (4) kppc inlining trivial functions itself when it emits IR. kovarex: (1) or (4); (2)
   rejected, since the copies grow with the number of chunks. One chunk (`--modules 1`) remains the
   manual extreme for a release build.
+- **Floating point is strict IEEE** (the game builds with /fp:strict for its determinism): kppc
+  emits no fast-math flags and no `contract`, and clang compiles the modules with
+  `-ffp-contract=off` for the baseline x86-64 target (no FMA), so no multiply-add is fused and
+  every operation rounds as written.
 
 Expected limit: once headers and duplicate instantiations are gone, LLVM optimization
 dominates release builds. The big wins are debug builds and incremental rebuilds; release
