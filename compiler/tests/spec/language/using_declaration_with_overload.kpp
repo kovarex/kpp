@@ -1,6 +1,5 @@
 // spec: a using-declaration brings another namespace's function in beside an overload of the same name declared there (`using lib::size; int size(int a)`): calls choose among both, inside the namespace and qualified from outside
 // factorio: Filesystem.hpp's `using __fs::file_size;` ("don't hide the file_size(const path&, error_code&) overload") next to its own file_size(const Path&)
-// pending: a call of the name is not a call (codegen: taking the address of size)
 namespace lib
 {
   int size(int a, int b) { return a + b; }

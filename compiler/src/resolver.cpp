@@ -1612,6 +1612,53 @@ struct GlobalScope::Impl
     return out;
   }
 
+  // `using lib::size;` in namespace wrap beside wrap's own size(int) (Filesystem's `using
+  // __fs::file_size;`): the functions the namespace's using-declarations of the name stand for and
+  // its own, as one overload set (kept for the run); l itself when none of its entries is such a
+  // using-declaration, or when one of them is no function.
+  std::mutex usingOverloadsMutex;
+  std::map<const void*, std::unique_ptr<std::vector<Entry>>> usingOverloads;
+  Lookup withNamespaceUsings(const Lookup& l, int depth)
+  {
+    if (!l.overloads || !l.foundIn || l.foundIn->kind != ScopeKind::Namespace || depth > 8)
+      return l;
+    auto isUsing = [](const Decl* d) { return d && d->kind == NodeKind::UsingNameDecl && !static_cast<const UsingNameDecl*>(d)->isEnum; };
+    if (std::none_of(l.overloads->begin(), l.overloads->end(), [&](const Entry& e) { return isUsing(e.decl); }))
+      return l;
+    std::vector<Entry> merged;
+    for (const Entry& e : *l.overloads)
+    {
+      if (e.decl && e.decl->kind == NodeKind::FunctionDecl)
+        merged.push_back(e);
+      else if (isUsing(e.decl))
+      {
+        Lookup target = lookupQualified(static_cast<UsingNameDecl*>(e.decl)->name, lexicalScopeOf(e.decl), nullptr, depth + 1);
+        if (!target.decl || target.decl->kind != NodeKind::FunctionDecl)
+          return l;
+        if (target.overloads)
+        {
+          for (const Entry& te : *target.overloads)
+            if (te.decl && te.decl->kind == NodeKind::FunctionDecl)
+              merged.push_back(te);
+        }
+        else
+          merged.push_back(Entry{target.decl, nullptr});
+      }
+      else
+        return l;
+    }
+    if (merged.empty())
+      return l;
+    std::lock_guard lock(usingOverloadsMutex);
+    std::unique_ptr<std::vector<Entry>>& kept = usingOverloads[l.overloads];
+    if (!kept)
+      kept = std::make_unique<std::vector<Entry>>(std::move(merged));
+    Lookup out = l;
+    out.decl = kept->front().decl;
+    out.overloads = kept.get();
+    return out;
+  }
+
   // The using-directives among a body's locals (LocalStack::usingDirective items), innermost first.
   bool lookupInLocalUsings(uint32_t symbol, const LocalStack& locals, Lookup& out, int depth)
   {
@@ -9261,6 +9308,8 @@ struct GlobalScope::Impl
             return trait;
           }
         Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+        if (l.found == Found::Global)
+          l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
         // Argument-dependent lookup, as C++ has it: an unqualified call also finds the functions of
         // its name in the namespaces of its arguments' classes and enumerations
         // (`shortNumberFormat(time, StringUtil::Compactness::Loose)` from namespace TimeUtil),
