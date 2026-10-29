@@ -1,0 +1,26 @@
+// spec: a lambda captures structured bindings, by name and by a default capture, by value and by reference (C++20)
+// found in src/Fluid/FluidSegmentManager.kpp: `for (const auto& [mixingFluidBox, mixingConnection] : ...)` with `Util::contains(..., [mixingConnection](const FluidBoxConnection& c) { ... })` ("a capture that is not a local variable (mixingConnection)", 4 closures)
+struct Connection { int id; bool mixing; };
+struct Mixing { int box; const Connection* connection; };
+int main()
+{
+  Connection a{1, true}, b{2, false};
+  Vector<Mixing> mixings;
+  mixings.push_back(Mixing{10, &a});
+  mixings.push_back(Mixing{20, &b});
+  Vector<const Connection*> stored;
+  stored.push_back(&a);
+  int found = 0, sums = 0;
+  for (const auto& [box, connection] : mixings)
+  {
+    auto matches = [connection](const Connection* c) { return c == connection; };
+    auto both = [box, connection] { return box + connection->id; };
+    auto byRef = [&] { return box * 2; };
+    for (const Connection* c : stored)
+      if (matches(c))
+        ++found;
+    sums += both() + byRef();
+  }
+  println("{} {}", found, sums);
+  return 0;
+}

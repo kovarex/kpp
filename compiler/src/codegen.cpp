@@ -1038,11 +1038,11 @@ namespace
           if (a->count == 0 && !(c->file && c->file->isImported))
             fail(at, "error: the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) +
                          " is an array whose length is no constant the compiler could evaluate");
-        // A lambda held by value (FunctionImpl<F>'s `F f`): its closure must be laid out, by the
-        // function the lambda is written in, before a class can contain it.
+        // A lambda held by value (FunctionImpl<F>'s `F f`, TransformView's): its closure, laid out
+        // from the lambda's AST whoever asks first; one that cannot be laid out fails this class.
         for (const Ty* held = types.unqualified(ft); held; held = held->kind == TyKind::Array ? types.unqualified(held->inner) : nullptr)
-          if (isLambda(held) && !(closures.count(held) && closures[held].laidOut))
-            layoutError("the member " + memberName(m) + " holds a lambda whose closure is not built yet (the function it is written in failed or comes later)");
+          if (isLambda(held))
+            closureFor(held, at);
         if (Expr* widthExpr = static_cast<VariableDecl*>(m)->bitfield)
         {
           // `unsigned level : 3;`: consecutive bit fields of one type share a storage unit of that
@@ -3691,11 +3691,15 @@ namespace
         }
         Decl* d = nullptr;
         for (Decl* u : used)
-          if (localNamed(u, cap.symbol))
+          if (localNamed(u, cap.symbol) || bindsName(u, cap.symbol))
             d = d ? d : u;
         if (!d)
           d = unusedCapture(l, cap.symbol);
-        out.push_back({d, cap.byRef, nullptr});
+        // `[mixingConnection]` of a structured binding: the object it names a part of, captured
+        // the same way (the body reaches the part through it, as outside the lambda); once for
+        // several of its bindings.
+        if (std::none_of(out.begin(), out.end(), [&](const CaptureSlot& s) { return s.decl == d && !s.init; }))
+          out.push_back({d, cap.byRef, nullptr});
       }
       if (l->defaultCapture != 0)
       {
@@ -3707,6 +3711,17 @@ namespace
       if (thisCaptured)
         out.push_back({nullptr, true, nullptr});
       return out;
+    }
+
+    // Whether d is the hidden object of a structured binding declaration that names symbol.
+    static bool bindsName(Decl* d, uint32_t symbol)
+    {
+      if (!d || d->kind != NodeKind::VariableDecl)
+        return false;
+      for (Node* b : static_cast<VariableDecl*>(d)->structuredBindings)
+        if (b && b->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(b)->name.empty() && static_cast<NameExpr*>(b)->name.last().symbol == symbol)
+          return true;
+      return false;
     }
 
     // An explicit capture the body does not use (`[guard]` kept alive): the one local of that name
@@ -6301,6 +6316,21 @@ namespace
         // RealOrientation; RealOrientation's constructor from a Direction is.)
         return exact ? 2 : isClass(ret) || isClass(to) ? 0 : 1;
       }, to, opArgs);
+    }
+
+    // A class value through its (non-explicit) conversion operator to a pointer, own or inherited,
+    // or nothing when it has none: what `*` and `delete` of such an object work on.
+    std::optional<Value> toPointer(const Value& object, Node* at)
+    {
+      const Ty* owner = nullptr;
+      TemplateArgs opArgs;
+      FunctionDecl* op = findConversion(object.ty, at, &owner, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
+      {
+        return !global.isExplicit(f, args) && ret->kind == TyKind::Pointer ? 2 : 0;
+      }, nullptr, &opArgs);
+      if (!op)
+        return std::nullopt;
+      return callConversion(op, object.ty, owner, object.text, at, &opArgs);
     }
 
     // A class's (non-explicit) conversion operator to an enum or an integer, own or inherited, or
@@ -9940,6 +9970,9 @@ namespace
         {
           auto* d = static_cast<DeleteExpr*>(e);
           Value p = rvalue(d->operand);
+          if (isClass(p.ty))
+            if (std::optional<Value> pointer = toPointer(p, e))
+              p = *pointer; // `delete image` of a ValueComparePointer: what its conversion to a pointer gives, as C++ has it
           if (p.ty->kind != TyKind::Pointer)
             unsupported(e, "delete of a non-pointer");
           ensureMalloc();
@@ -10229,7 +10262,16 @@ namespace
       {
         Value p = rvalue(u->operand);
         if (isClass(p.ty))
-          return callRvalue(operatorCall(p, operatorName(P::Star), {}, u, true), u);
+        {
+          // No operator* of its own: the class's conversion to a pointer, dereferenced
+          // (`*this->undoFiller` through UndoItemFiller's `operator UndoItem*()`).
+          const Ty* foundIn = nullptr;
+          if (!findMemberFunction(p.ty, operatorName(P::Star), {}, p.ty, u, &foundIn, true))
+            if (std::optional<Value> pointer = toPointer(p, u))
+              p = *pointer;
+          if (isClass(p.ty))
+            return callRvalue(operatorCall(p, operatorName(P::Star), {}, u, true), u);
+        }
         if (p.ty->kind != TyKind::Pointer)
           unsupported(u, "* on something that is not a pointer");
         return load(p.text, p.ty->inner, u);

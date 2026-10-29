@@ -1,0 +1,33 @@
+// spec: `*` on a class without an operator* of its own, and `delete` of a class value, go through the class's conversion to a pointer
+// found in the converted game: EntityMiningHandler's `tempUndoItem.transferTo(*this->undoFiller)` through UndoItemFiller's `operator UndoItem*()` ("UndoItemFiller has no operator*", 5 uses), and BorderImageSet's `delete this->aguiImageSet->verticalLine` of a ValueComparePointer<Image> ("delete of a non-pointer", 3)
+struct UndoItem { int actions = 3; void clear() { this->actions = 0; } };
+class UndoItemFiller
+{
+public:
+  UndoItem* undoItem;
+  UndoItemFiller(UndoItem* item) : undoItem(item) {}
+  UndoItem* operator->() { return this->undoItem; }
+  implicit operator UndoItem*() { return this->undoItem; }
+};
+struct Image { int id = 9; ~Image() { println("~Image {}", this->id); } };
+template<class T>
+class ValueComparePointer
+{
+public:
+  T* pointer = nullptr;
+  ValueComparePointer() = default;
+  ValueComparePointer(T* p) : pointer(p) {}
+  implicit operator T*() const { return this->pointer; }
+};
+int count(const UndoItem& item) { return item.actions; }
+int main()
+{
+  UndoItem item;
+  UndoItemFiller filler(&item);
+  int before = count(*filler);
+  filler->clear();
+  ValueComparePointer<Image> image(new Image());
+  println("{} {}", before, count(*filler));
+  delete image;
+  return 0;
+}
