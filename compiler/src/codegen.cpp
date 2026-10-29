@@ -9158,6 +9158,12 @@ namespace
       auto* m = static_cast<MemberExpr*>(e);
       if (!m->resolved || m->resolved->kind != NodeKind::VariableDecl || (m->resolved->flags & (DF_Mutable | DF_Static)))
         return false;
+      // A reference member names the object it refers to, const only as that object's type is (the
+      // checker's type, above): MapGenerator's `this->surface.hiddenTiles[position] = tile` in a
+      // const member function, with `Surface& surface`, called the const operator[] and assigned
+      // to its copy.
+      if (const Ty* ft = declType(m->resolved); ft && ft->isReference())
+        return false;
       if (m->op != P::Arrow)
         return constObject(m->base, depth + 1);
       if (m->base && m->base->kind == NodeKind::ThisExpr && currentFunction && (currentFunction->flags & DF_Const))
