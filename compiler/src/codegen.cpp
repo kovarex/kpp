@@ -1023,7 +1023,7 @@ namespace
       for (size_t i = 0; i < baseKeys.size(); ++i)
         info.bases.push_back({baseKeys[i]->decl, baseIndex[i]});
       int bitUnitIndex = -1;    // the storage field the current run of bit fields shares
-      const Ty* bitUnitType = nullptr;
+      uint32_t bitUnitBits = 0; // its size in bits
       uint32_t bitUsed = 0;
       for (Decl* m : c->members)
       {
@@ -1061,8 +1061,9 @@ namespace
             closureFor(held, at);
         if (Expr* widthExpr = static_cast<VariableDecl*>(m)->bitfield)
         {
-          // `unsigned level : 3;`: consecutive bit fields of one type share a storage unit of that
-          // type while their widths fit; each remembers its shift and width.
+          // `unsigned level : 3;`: consecutive bit fields share a storage unit while their types
+          // have one size and their widths fit (MSVC: `uint8_t x : 5; bool on : 1;` share a byte,
+          // `int a : 3; unsigned b : 4;` four bytes); each remembers its shift and width.
           // The width under the class's arguments, in its context: not the arguments of whichever
           // function asked for the layout first.
           ParsedFile* savedFile = currentFile;
@@ -1082,10 +1083,10 @@ namespace
           if (unit->kind == TyKind::Bool)
             unit = types.intType(8, true);
           uint32_t unitBits = uint32_t(sizeOf(unit, m) * 8), width = uint32_t(*w);
-          if (bitUnitIndex < 0 || bitUnitType != unit || bitUsed + width > unitBits)
+          if (bitUnitIndex < 0 || bitUnitBits != unitBits || bitUsed + width > unitBits)
           {
             bitUnitIndex = int(info.fieldTypes.size());
-            bitUnitType = unit;
+            bitUnitBits = unitBits;
             bitUsed = 0;
             info.fieldTypes.push_back(unit);
             info.fieldDecls.push_back(m); // the first field of the unit stands for the unit in memberwise work

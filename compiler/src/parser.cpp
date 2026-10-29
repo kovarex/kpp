@@ -124,6 +124,7 @@ namespace
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
   private:
     std::unordered_set<uint32_t> cTypedefNames; // in cMode: the typedef names declared so far (what `(Name)` casts to)
+    size_t classMembersMark = 0; // where the members of the class being parsed start in scratch
     bool conditionMode = false; // Declarations inside `if (...)` end at ')' instead of ';'.
     bool inRequires = false;    // Inside a requires-clause names are always template-ids.
     std::vector<std::pair<uint32_t, Token>> splits; // '>>' tokens split in place, for undo on backtrack.
@@ -1112,6 +1113,44 @@ namespace
             cTypedefNames.insert(d->name.parts[0].symbol);
     }
 
+    // MS C's anonymous member of a named struct type, `MONITORINFO;` in winuser.h's MONITORINFOEXW
+    // (its C++ version is `struct tagMONITORINFOEXW : public tagMONITORINFO`), whose members are
+    // the enclosing struct's. As the first data member it is what C++ makes it, a base at offset 0:
+    // the same layout, and its members found as a base's. Anywhere else a member of a name of its
+    // own: the layout stays right, and a use of its members by their names is an error.
+    void anonymousMemberOfNamedType(ClassDecl* c, uint32_t start)
+    {
+      NamedType* type = node<NamedType>(start);
+      NamePart part;
+      part.symbol = tok().id;
+      type->name.parts = makeSpanOf(std::vector<NamePart>{part});
+      advance();
+      advance(); // ;
+      bool first = true;
+      for (size_t i = classMembersMark; i < scratch.size() && first; ++i)
+      {
+        Decl* m = static_cast<Decl*>(scratch[i]);
+        if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
+          first = false;
+        else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
+          first = false;
+      }
+      if (first && c->bases.empty())
+      {
+        ClassDecl::Base base{};
+        base.type = type;
+        base.access = Access::Public;
+        c->bases = makeSpanOf(std::vector<ClassDecl::Base>{base});
+        return;
+      }
+      VariableDecl* v = decl<VariableDecl>(start);
+      v->type = type;
+      NamePart name;
+      name.symbol = symbols.intern("__anonymous" + std::to_string(start));
+      v->name.parts = makeSpanOf(std::vector<NamePart>{name});
+      pushDecl(v);
+    }
+
     Decl* lastPushedDecl(size_t mark) const
     {
       return scratch.size() > mark ? static_cast<Decl*>(scratch.back()) : nullptr;
@@ -1420,6 +1459,12 @@ namespace
       uint32_t start = pos;
       if (at(TokenKind::End))
         return;
+      if (cMode && scope == Scope::Class && atIdent() && at(P::Semi, 1) && cTypedefNames.count(tok().id) &&
+          currentParent && currentParent->kind == NodeKind::ClassDecl)
+      {
+        anonymousMemberOfNamedType(static_cast<ClassDecl*>(currentParent), start);
+        return;
+      }
       if (accept(P::Semi))
       {
         pushDecl(decl<EmptyDecl>(start));
@@ -2977,8 +3022,11 @@ namespace
       currentAccess = keyword == Kw::class_ ? Access::Private : Access::Public;
       currentClassName = c->name.empty() ? UINT32_MAX : c->name.last().symbol;
       size_t mark = scratch.size();
+      size_t savedMembersMark = classMembersMark;
+      classMembersMark = mark;
       while (!at(P::RBrace) && !at(TokenKind::End))
         parseDeclaration(Scope::Class);
+      classMembersMark = savedMembersMark;
       c->members = makeSpan<Decl*>(mark);
       currentParent = savedParent;
       currentAccess = savedAccess;
@@ -3023,6 +3071,8 @@ namespace
             c->name = d.name;
             selfType->name = d.name;
             synthetic = false;
+            if (cMode)
+              cTypedefNames.insert(d.name.parts[0].symbol); // a type name, as a typedef's
             if (!accept(P::Comma))
               break;
             continue;

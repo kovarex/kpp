@@ -1,0 +1,41 @@
+// spec: consecutive bit fields share a storage unit while their types have one size, whatever the types (MSVC's layout): `uint8_t x : 5; bool on : 1; uint8_t pad : 2;` share a byte, `int a : 3; unsigned b : 4;` four bytes; a type of another size starts a new unit
+// factorio: Decorative's `struct { uint8_t tileY : 5; uint8_t amount : 3; uint8_t tileX : 5; bool isDecal : 1; uint8_t padding : 2; } data;` next to a uint16_t id, static_assert(sizeof(Decorative) == 4): the bool started a byte of its own
+struct Data
+{
+  uint8_t tileY : 5;
+  uint8_t amount : 3;
+  uint8_t tileX : 5;
+  bool isDecal : 1;
+  uint8_t padding : 2;
+};
+struct Mixed
+{
+  int a : 3;
+  unsigned b : 4;
+  int c : 25;
+};
+struct Sizes
+{
+  uint8_t small : 4;
+  uint16_t wide : 4;
+  uint8_t after : 4;
+};
+static_assert(sizeof(Data) == 2);
+static_assert(sizeof(Mixed) == 4);
+static_assert(sizeof(Sizes) == 6);
+int main()
+{
+  Data d;
+  d.tileY = 31;
+  d.amount = 5;
+  d.tileX = 17;
+  d.isDecal = true;
+  d.padding = 2;
+  Mixed m;
+  m.a = -3;
+  m.b = 9;
+  m.c = -1000;
+  println("{} {} {} {} {} | {} {} {} | {} {} {}", int(d.tileY), int(d.amount), int(d.tileX), int(d.isDecal), int(d.padding), int(m.a), int(m.b), int(m.c),
+          sizeof(Data), sizeof(Mixed), sizeof(Sizes));
+  return 0;
+}

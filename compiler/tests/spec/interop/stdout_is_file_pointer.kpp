@@ -1,0 +1,18 @@
+// spec: stdin, stdout and stderr are FILE*, as in C: stdout passes to a FILE* parameter (a stream class built from it) and to the C functions that take FILE*
+// factorio: StdoutWriteStream's `: FileWriteStream(stdout)` through the protected `FileWriteStream(FILE* fp)`: the library's stdout was a void*, no constructor took it, and the first run of the converted game stopped at the stub of StdoutWriteStream's constructor (built at startup for `StdoutWriteStream::instance`)
+extern "C" import "stdio.h";
+class Stream
+{
+public:
+  FILE* fp = nullptr;
+  implicit Stream(FILE* fp) : fp(fp) {}
+};
+int main()
+{
+  Stream out(stdout);
+  fputs("to stdout through FILE*\n", out.fp);
+  fflush(out.fp);
+  Stream err(stderr);
+  println("{}", err.fp != out.fp ? 1 : 0);
+  return 0;
+}

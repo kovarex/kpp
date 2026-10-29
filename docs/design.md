@@ -138,6 +138,11 @@ builds win less unless machine code is cached per function.
   anonymous struct/union members, `typedef struct { ... } Name;`, `(void)` parameter lists,
   MSVC's `__intN`, calling conventions and `__declspec`. Imported declarations never appear in
   parse statistics or diagnostics unless `--errors` is given.
+- MS C's anonymous member of a named struct type (`MONITORINFO;` inside winuser.h's
+  MONITORINFOEXW, whose C++ version derives from it): as a struct's first data member it becomes a
+  base at offset 0, as C++ has it, so the layout is C's and its members are the struct's; anywhere
+  else it is a member with a name of its own (the layout stays right; its members by their names
+  are an error). (2026-10-29, spec interop/c_anonymous_member_of_named_type.)
 
 ### 6. Language changes from the proposal (not yet scheduled)
 Real enum class with methods/str()/iteration, `this` as a reference, required `this->`,
@@ -373,6 +378,10 @@ the switch they cost nothing. Fixtures are ordinary classes constructed in the t
   object (found with the offset in slot -2), and `catch` takes any base of the thrown class. Until
   the layout file exists (the compile-time evaluation section), the code generator lays classes out
   under its shared lock.
+- Bit fields are laid out as MSVC does: consecutive bit fields share a storage unit while their
+  declared types have one size and their widths fit (`uint8_t x : 5; bool on : 1;` share a byte,
+  `int a : 3; unsigned b : 4;` four bytes); a type of another size starts a new unit, aligned to
+  that type (2026-10-29, spec classes/bitfields_of_one_size_share_a_unit).
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`

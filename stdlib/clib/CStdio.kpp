@@ -1,5 +1,7 @@
 // C stdio beyond what core/Format.kpp declares (printf, snprintf are already there).
-// FILE is an opaque handle; the C runtime defines it, we only pass pointers.
+// FILE is the C runtime's, as the UCRT's stdio.h defines it (an import of stdio.h then agrees); the
+// functions here take it as void*. stdin, stdout and stderr are FILE*, as in C, so that they pass
+// to a FILE* parameter (a class holding `FILE* fp` built from stdout).
 extern "C" void* fopen(const char* filename, const char* mode);
 extern "C" int fclose(void* stream);
 extern "C" size_t fread(void* buffer, size_t size, size_t count, void* stream);
@@ -21,7 +23,9 @@ extern "C" int remove(const char* filename);
 extern "C" int rename(const char* oldname, const char* newname);
 extern "C" void* tmpfile();
 
-extern "C" void* __acrt_iob_func(unsigned index);
-void* stdin  = __acrt_iob_func(0);
-void* stdout = __acrt_iob_func(1);
-void* stderr = __acrt_iob_func(2);
+struct _iobuf { void* _Placeholder; };
+using FILE = _iobuf;
+extern "C" FILE* __acrt_iob_func(unsigned index);
+FILE* stdin  = __acrt_iob_func(0);
+FILE* stdout = __acrt_iob_func(1);
+FILE* stderr = __acrt_iob_func(2);

@@ -970,10 +970,27 @@ What the first runs found, each with its spec:
    a function that reads allActionsSortedByAction, defined just before it. They are now one
    llvm.global_ctors list in module 0, in definition order within a file, the files in the
    driver's order with the library first (design.md section 2; language/startup_in_definition_order).
-3. Next stop: the stub of `TimeStatisticsBuffer::generateProperties` (TimeStatistics.kpp:82), which
+3. Then the stub of `TimeStatisticsBuffer::generateProperties` (TimeStatistics.kpp:82), which
    `properties = generateProperties()` calls at startup: its definitions are explicit member
    specializations written through an alias of the instance, `template<> Vector<...>
-   UpdateBuffer::generateProperties()`, which the code generator never found.
+   UpdateBuffer::generateProperties()`, which master's ef6f81c now attaches.
+4. On master 0d842b2 (headline 162 with these, 143 stubs) the link missed WMI's
+   CLSID_WbemLocator and IID_IWbemLocator and winerror.h's inline HRESULT_FROM_WIN32: run.cmd had
+   its own copy of link.cmd's libraries (now both call `link-settings.cmd`), and native/inline_c.c
+   emits HRESULT_FROM_WIN32 too.
+5. Then the stub of StdoutWriteStream's constructor, built at startup for
+   `StdoutWriteStream::instance`: `: FileWriteStream(stdout)` found no constructor, because the
+   library's stdout was a `void*` and FileWriteStream takes a `FILE*`. stdin, stdout and stderr are
+   `FILE*` now, FILE being the UCRT's own struct (interop/stdout_is_file_pointer).
+
+Found on the way, from the coordinator's list of layout asserts: Decorative's bit fields (`uint8_t`
+and `bool` ones in one byte, MSVC's rule: one storage unit while the types have one size;
+classes/bitfields_of_one_size_share_a_unit), and a silent layout bug of the C import: MS C's
+anonymous member of a named type, `MONITORINFO;` inside MONITORINFOEXW, was read as a macro
+statement and dropped, so the struct had 64 bytes instead of 104 and GetMonitorInfo would have
+written past it (interop/c_anonymous_member_of_named_type). Inventory's `sizeof(Inventory) <= 40`
+fails for another reason: the library's UniqueArray holds its count beside the pointer (16 bytes
+where std::unique_ptr<T[]> has 8), which makes Inventory 48.
 
 ### dear imgui through a generated C interface (2026-10-29)
 

@@ -13,12 +13,7 @@ setlocal
 cd /d "%~dp0"
 set GAME=C:\factorio-in-kpp
 call native\build.cmd >nul || exit /b 1
-set KPPC=..\..\compiler\build\kppc.exe
-set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude native\include
-set L=C:\Factorio\vs2022\Releasex64
-set LIBS=--lib native\build\factorio-native.lib --lib C:\Factorio\libraries\Logitech\x64\LogitechLEDLib.lib
-for %%l in (lua sdl sdl-mixer curl zlib zstd minizip ogg vorbis opus opusfile re2 crc32fast stb fontstash glad imgui trio open-vcdiff) do call set LIBS=%%LIBS%% --lib %L%\%%l.lib
-for %%l in (dnsapi iphlpapi wldap32 gdi32 comdlg32 ole32 winmm psapi opengl32 gdiplus shell32 shlwapi user32 imm32 oleaut32 setupapi dxguid uuid windowscodecs version) do call set LIBS=%%LIBS%% --lib -l%%l
+call "%~dp0link-settings.cmd"
 if not exist kpp\run mkdir kpp\run
 if exist kpp\run\factorio.exe del kpp\run\factorio.exe
 %KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% --exe kpp\run\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\run\build.txt 2> kpp\run\build-errors.txt

@@ -10,4 +10,5 @@
 void* const kpp_inline_c_functions[] = {
   (void*)gai_strerrorW,       /* SocketAddress's error texts */
   (void*)IsWindows8OrGreater, /* the DX11 renderer's feature checks */
+  (void*)HRESULT_FROM_WIN32,  /* SpriteLoaders' WIC errors (winerror.h) */
 };
