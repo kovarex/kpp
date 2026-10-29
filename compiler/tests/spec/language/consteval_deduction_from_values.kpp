@@ -1,6 +1,5 @@
 // spec: a function template called at compile time with the running function's parameters and locals deduces its arguments from their values (Math::isNaN(d) in a class template's constexpr member)
 // factorio: FixedPointNumberTemplate(double) -> assertInRange(d) -> Math::isNaN(d), behind BoundingBox(-0.7, -0.99, 0.7, 0.99) and the other constant boxes
-// pending: the interpreter deduced only from the types the walk gave the arguments, and an instance's parameters have none there
 template<typename T>
 constexpr bool isNaN(T value) { return value != value; }
 template<typename T>

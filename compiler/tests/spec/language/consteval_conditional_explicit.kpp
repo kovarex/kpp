@@ -1,6 +1,5 @@
 // spec: a constructor marked explicit(cond) converts implicitly at compile time where cond is false, as the walk lets it (`Fixed<int, false> three = 3;`)
 // factorio: static inline MapPosition::CoordinateType size = 0; (FixedPointNumberTemplate's explicit(Explicit) constructors, Explicit = false)
-// pending: the interpreter took only constructors marked implicit for an implicit conversion
 template<class T, bool Explicit>
 struct Fixed
 {

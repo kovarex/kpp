@@ -722,7 +722,7 @@ struct GlobalScope::Impl
   std::atomic<size_t> entries{0};
   uint32_t symStd, symValue;
   uint32_t opSymbols[size_t(P::Count)]; // "operator+" etc., so operators can be looked up by name.
-  uint32_t symBegin, symFirst, symSecond;
+  uint32_t symBegin, symEnd, symFirst, symSecond;
   std::vector<std::pair<std::string, uint32_t>> whyAt; // --why-at: trace the expressions typed on these (file suffix, line)s
   struct BuiltinName
   {
@@ -735,6 +735,7 @@ struct GlobalScope::Impl
   {
     symStd = symbols.intern("std");
     symBegin = symbols.intern("begin");
+    symEnd = symbols.intern("end");
     symFirst = symbols.intern("first");
     symSecond = symbols.intern("second");
     symValue = symbols.intern("value");
@@ -3972,6 +3973,20 @@ struct GlobalScope::Impl
     const Ty* vt = v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
     if (v.isPointer() && vt && vt->kind == TyKind::Pointer && vt->inner && types.unqualified(vt->inner) == want)
       return ConstValue::pointer(t, v.parts, v.i);
+    if (v.isAddress() && vt && vt->kind == TyKind::Pointer && vt->inner)
+    {
+      // `const Point* p = &origin;`, `void* p = &x;`, `Base* b = &derived;` (the base's part)
+      const Ty* have = types.unqualified(vt->inner);
+      if (have == want || want->kind == TyKind::Void)
+        return ConstValue::address(t, *v.target);
+      if (std::optional<std::vector<size_t>> base = have->kind == TyKind::Class && want->kind == TyKind::Class ? constBasePath(have, want, 0) : std::nullopt)
+      {
+        ConstTarget part = *v.target;
+        part.path.insert(part.path.end(), base->begin(), base->end());
+        return ConstValue::address(t, std::move(part));
+      }
+      return std::nullopt;
+    }
     if (v.isObject() && vt && vt->kind == TyKind::Array && vt->inner && types.unqualified(vt->inner) == want)
       return ConstValue::pointer(t, v.parts, 0);
     return std::nullopt;
@@ -3998,7 +4013,9 @@ struct GlobalScope::Impl
           return std::nullopt;
         return v;
       }
-      case TyKind::Function: case TyKind::Lambda: case TyKind::MemberPointer: case TyKind::Void: case TyKind::Vector:
+      case TyKind::MemberPointer:
+        return v->isMemberPointer() ? std::optional<ConstValue>(ConstValue::address(u, *v->target, ConstValue::Kind::MemberPointer)) : std::nullopt;
+      case TyKind::Function: case TyKind::Lambda: case TyKind::Void: case TyKind::Vector:
         return std::nullopt;
       case TyKind::Pointer: case TyKind::Nullptr:
         return constPointerTo(*v, u);
@@ -4128,11 +4145,19 @@ struct GlobalScope::Impl
         }
         if (l->literalKind == TokenKind::String)
           return constString(l, ctx); // an array of chars
-        const std::vector<Token>* toks = ctx.tokens ? ctx.tokens : fallbackTokens;
-        std::string_view text = ctx.tokens ? ctx.text : fallbackText;
-        if ((l->literalKind != TokenKind::Number && l->literalKind != TokenKind::Char) || !toks || toks->empty())
+        // Spelled by the tokens of the file it was parsed from: the context's may be another file's
+        // (a template argument written in one file, typed in another's walk).
+        const std::vector<Token>* toks = l->file && l->file->tokens ? l->file->tokens : ctx.tokens ? ctx.tokens : fallbackTokens;
+        std::string_view text = l->file && l->file->tokens ? l->file->text : ctx.tokens ? ctx.text : fallbackText;
+        if ((l->literalKind != TokenKind::Number && l->literalKind != TokenKind::Char) || !toks || l->token >= toks->size())
           return std::nullopt;
-        const Token& t = (*toks)[std::min<size_t>(l->token, toks->size() - 1)];
+        const Token& t = (*toks)[l->token];
+        if (t.getKind() != l->literalKind)
+        {
+          if (constWhy().empty())
+            constWhy() = "a literal read with another file's tokens (a compiler bug)"; // never a wrong value
+          return std::nullopt;
+        }
         return constArith().literal(l->literalKind, text.substr(t.offset, t.length));
       }
       case NodeKind::ParenExpr: return constValue(static_cast<ParenExpr*>(e)->inner, ctx, depth + 1);
@@ -4221,10 +4246,14 @@ struct GlobalScope::Impl
             return self && !self->value.isUnset() ? std::optional<ConstValue>(self->value) : std::nullopt; // `*this`
           }
           std::optional<ConstValue> p = constValue(u->operand, ctx, depth + 1);
+          if (p && p->isAddress())
+            return p->target->decl && p->target->decl->kind == NodeKind::FunctionDecl ? p : constReadTarget(*p, depth + 1); // `(*f)(5)`: the function
           return p ? constDeref(*p) : std::nullopt;
         }
+        if (op && *op == P::Amp && !u->postfix)
+          return constAddressOf(u->operand, ctx, depth + 1); // of a global, a function, a member; no local's
         if (!op || u->postfix || (*op != P::Bang && *op != P::Minus && *op != P::Plus && *op != P::Tilde))
-          return std::nullopt; // `&x`: no addresses of the interpreter's locals yet
+          return std::nullopt;
         std::optional<ConstValue> v = constValue(u->operand, ctx, depth + 1);
         if (v && v->isObject())
         {
@@ -4246,6 +4275,8 @@ struct GlobalScope::Impl
         // left operands is evaluated in a loop, not nested once per term.
         if (auto* b = static_cast<BinaryExpr*>(e); !b->isKeyword && isAssignmentOperator(P(b->op)))
           return constAssign(b, ctx, depth);
+        if (auto* b = static_cast<BinaryExpr*>(e); !b->isKeyword && (P(b->op) == P::DotStar || P(b->op) == P::ArrowStar))
+          return constMemberPointerRead(b, ctx, depth);
         auto chained = [](Expr* x) {
           if (!x || x->kind != NodeKind::BinaryExpr)
             return false;
@@ -4353,6 +4384,7 @@ struct GlobalScope::Impl
       }
       case NodeKind::FoldExpr: return constFold(static_cast<FoldExpr*>(e), ctx, depth);
       case NodeKind::IndexExpr: return constIndex(static_cast<IndexExpr*>(e), ctx, depth);
+      case NodeKind::BraceInitExpr: return constBraceList(static_cast<BraceInitExpr*>(e), ctx, depth); // its type decides later
       default:
         return std::nullopt;
     }
@@ -4569,6 +4601,16 @@ struct GlobalScope::Impl
                   n->resolved->parent->kind == NodeKind::FunctionDecl ? n->resolved : nullptr;
     if (local && l.found != Found::Local)
       return constValueOfDecl(local, ctx, 0);
+    // `thrice` where a pointer is wanted (`Fn ops[] = {&twice, thrice}`): the function's address,
+    // the overload the walk chose when the name has several.
+    if (Decl* f = n->resolved && n->resolved->kind == NodeKind::FunctionDecl ? n->resolved : l.decl; f && f->kind == NodeKind::FunctionDecl)
+    {
+      int functions = 0;
+      if (l.overloads && !n->resolved)
+        for (const Entry& entry : *l.overloads)
+          functions += entry.decl && entry.decl->kind == NodeKind::FunctionDecl;
+      return functions > 1 ? std::nullopt : constFunctionAddress(static_cast<FunctionDecl*>(f), n->name, ctx, 1);
+    }
     return constValueOfDecl(l.decl ? l.decl : n->resolved, ctx, 0);
   }
 
@@ -4578,10 +4620,22 @@ struct GlobalScope::Impl
   {
     if (c->callee && c->callee->kind == NodeKind::MemberExpr)
       return constMemberCall(c, ctx, depth);
-    if (!c->callee || c->callee->kind != NodeKind::NameExpr)
+    if (!c->callee)
       return std::nullopt;
+    if (c->callee->kind != NodeKind::NameExpr)
+    {
+      // `ops[0](5)`, `(*f)(5)`: through the function pointer the callee evaluates to.
+      std::optional<ConstValue> fn = constValue(c->callee, ctx, depth + 1);
+      return fn ? constCallThrough(*fn, c, ctx, depth) : std::nullopt;
+    }
     auto* callee = static_cast<NameExpr*>(c->callee);
     Decl* d = callee->resolved;
+    // `f(v)` with f a parameter, local or constant holding a function's address.
+    if (constLocal(callee, ctx) || (d && (d->kind == NodeKind::ParamDecl || (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef)))))
+    {
+      std::optional<ConstValue> fn = constValue(callee, ctx, depth + 1);
+      return fn ? constCallThrough(*fn, c, ctx, depth) : std::nullopt;
+    }
     if (!d || d->kind == NodeKind::TemplateParamDecl)
     {
       Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
@@ -4704,6 +4758,10 @@ struct GlobalScope::Impl
       for (size_t i = 0; i < c->args.size() && i < f->params.size(); ++i)
       {
         const Ty* argTy = typeOfSignatureExpression(c->args[i], ctx);
+        // `Math::isNaN(d)` in a function being run: d is a binding of the run, which nothing typed
+        // where it is written in an instance, so the value's type stands for the argument's.
+        if ((!argTy || !argTy->isKnown() || types.isDependent(argTy)) && i < values.size() && values[i].type && !values[i].type->isBraceList())
+          argTy = values[i].type;
         const Ty* pattern = convertType(static_cast<ParamDecl*>(f->params[i])->type, pctx, depth + 1);
         if (argTy && argTy->isKnown() && pattern && pattern->isKnown())
           deduce(pattern, argumentType(c->args[i], argTy, types), fromArgs);
@@ -4812,7 +4870,7 @@ struct GlobalScope::Impl
     {
       held = constValue(m->base, ctx, depth + 1);
       if (held && m->op == P::Arrow)
-        held = held->isPointer() ? constDeref(*held) : std::nullopt;
+        held = held->isAddress() ? constReadTarget(*held, depth + 1) : held->isPointer() ? constDeref(*held) : std::nullopt;
     }
     if (held && !held->isObject())
       held.reset();
@@ -4923,9 +4981,9 @@ struct GlobalScope::Impl
   // (or to an arithmetic type), explicit or not, its own or a base's.
   std::optional<bool> constTruth(const ConstValue& v, int depth)
   {
-    if (v.isScalar() || v.isPointer())
+    if (v.isScalar() || v.isPointer() || v.isAddress() || v.isMemberPointer())
       return v.truthy();
-    if (!v.isObject() || !v.type || types.unqualified(v.type)->kind != TyKind::Class || depth > 64)
+    if (!v.isObject() || !v.type || v.type->isBraceList() || types.unqualified(v.type)->kind != TyKind::Class || depth > 64)
       return std::nullopt;
     const Ty* t = types.unqualified(v.type);
     for (const Ty* cls = t; cls;)
@@ -5036,15 +5094,25 @@ struct GlobalScope::Impl
   {
     if (l.isUnset() || r.isUnset() || depth > 512)
       return std::nullopt;
-    if ((op == P::AndAnd || op == P::OrOr) && (l.isObject() || r.isObject()))
+    if ((op == P::AndAnd || op == P::OrOr) && (l.isObject() || r.isObject() || l.isAddress() || r.isAddress() || l.isMemberPointer() || r.isMemberPointer()))
     {
       std::optional<bool> a = constTruth(l, depth + 1), b = constTruth(r, depth + 1);
       if (!a || !b)
         return std::nullopt;
       return ConstValue::integer(op == P::AndAnd ? *a && *b : *a || *b, types.boolType());
     }
+    if (l.isAddress() || r.isAddress() || l.isMemberPointer() || r.isMemberPointer())
+      return constAddressArith(op, l, r, depth);
     if (l.isPointer() || r.isPointer())
       return constPointerArith(op, l, r);
+    // `this->items + N`: an array an operator meets is a pointer to its first element.
+    auto decayed = [this](const ConstValue& v) -> std::optional<ConstValue> {
+      const Ty* t = v.isObject() && v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
+      return t && t->kind == TyKind::Array && t->inner ? constPointerTo(v, types.pointer(t->inner)) : std::nullopt;
+    };
+    if (op == P::Plus || op == P::Minus || op == P::EqEq || op == P::NotEq)
+      if (std::optional<ConstValue> a = decayed(l), b = decayed(r); a || b)
+        return constPointerArith(op, a ? *a : l, b ? *b : r);
     if (!l.isObject() && !r.isObject())
       return constArith().binary(op, l, r);
     auto boolean = [this](bool b) { return ConstValue::integer(b, types.boolType()); };
@@ -5175,9 +5243,37 @@ struct GlobalScope::Impl
     std::vector<const Ty*> bases;
     std::vector<VariableDecl*> fields;
     std::vector<const Ty*> fieldTypes;
+    std::vector<uint8_t> fieldBits; // a bit field's width, 0 for a whole member
     std::vector<FunctionDecl*> constructors;
     bool ok = false;
   };
+
+  // A field no initializer of an aggregate names: an unnamed bit field (`int : 0;`), padding.
+  static bool constUnnamedField(const ConstClassLayout& layout, size_t i) { return layout.fields[i]->name.empty(); }
+
+  // An integer stored in a bit field of the given width: its low bits, read back sign-extended for
+  // a signed field type (an enumeration's by its underlying type), as the generated code reads it.
+  ConstValue constFitBits(ConstValue v, const Ty* fieldType, unsigned bits)
+  {
+    if (v.kind != ConstValue::Kind::Int || bits == 0 || bits >= 64)
+      return v;
+    const Ty* t = fieldType ? types.unqualified(types.stripRef(fieldType)) : nullptr;
+    if (t && t->kind == TyKind::Enum)
+      t = constArith().underlying ? constArith().underlying(t) : nullptr;
+    bool isSigned = !t || ((t->kind == TyKind::Int || t->kind == TyKind::Char) && !t->isUnsigned);
+    uint64_t mask = (uint64_t(1) << bits) - 1, u = uint64_t(v.i) & mask;
+    v.i = isSigned && (u >> (bits - 1)) ? int64_t(u | ~mask) : int64_t(u);
+    return v;
+  }
+
+  // The parts of an object of a class with this layout, each bit field's part fitted to its width.
+  void constFitBitFields(const ConstClassLayout& layout, std::vector<ConstValue>& parts)
+  {
+    size_t nb = layout.bases.size();
+    for (size_t i = 0; i < layout.fields.size() && nb + i < parts.size(); ++i)
+      if (layout.fieldBits[i])
+        parts[nb + i] = constFitBits(parts[nb + i], layout.fieldTypes[i], layout.fieldBits[i]);
+  }
   std::mutex constLayoutsMutex;
   std::unordered_map<const Ty*, std::shared_ptr<ConstClassLayout>> constLayouts;
   const ConstClassLayout* constLayoutOf(const Ty* t, int depth)
@@ -5222,8 +5318,18 @@ struct GlobalScope::Impl
         const Ty* ft = declaredTypeOf(m, sp, depth + 1);
         if (!ft || !ft->isKnown() || types.isDependent(ft))
           layout->ok = false;
+        uint8_t bits = 0;
+        if (Expr* width = static_cast<VariableDecl*>(m)->bitfield)
+        {
+          std::optional<int64_t> w = constEval(width, bctx, depth + 1);
+          if (w && *w >= 0 && *w <= 64)
+            bits = uint8_t(*w);
+          else
+            layout->ok = false;
+        }
         layout->fields.push_back(static_cast<VariableDecl*>(m));
         layout->fieldTypes.push_back(ft);
+        layout->fieldBits.push_back(bits);
       }
     }
     std::lock_guard lock(constLayoutsMutex);
@@ -5287,16 +5393,18 @@ struct GlobalScope::Impl
   {
     if (v.type)
       return v.type;
+    if (v.isObject())
+      return nullptr; // `{}`: a brace list of no type, which decides no overload
     return v.isFloat() ? types.floatType(64) : types.intType(64, false);
   }
 
   // A string literal (adjacent ones joined) as an array of its chars and a terminating zero.
   std::optional<ConstValue> constString(LiteralExpr* l, const TypeContext& ctx)
   {
-    const std::vector<Token>* toks = ctx.tokens ? ctx.tokens : fallbackTokens;
-    std::string_view text = ctx.tokens ? ctx.text : fallbackText;
-    if (!toks || l->token >= toks->size())
-      return std::nullopt;
+    const std::vector<Token>* toks = l->file && l->file->tokens ? l->file->tokens : ctx.tokens ? ctx.tokens : fallbackTokens;
+    std::string_view text = l->file && l->file->tokens ? l->file->text : ctx.tokens ? ctx.text : fallbackText;
+    if (!toks || l->token >= toks->size() || (*toks)[l->token].getKind() != TokenKind::String)
+      return std::nullopt; // another file's tokens: never a wrong string
     std::string bytes;
     for (size_t i = l->token; i < toks->size() && (*toks)[i].getKind() == TokenKind::String; ++i)
       if (!decodeNarrowString(text.substr((*toks)[i].offset, (*toks)[i].length), bytes))
@@ -5355,6 +5463,7 @@ struct GlobalScope::Impl
         return std::nullopt;
       parts.push_back(*part);
     }
+    constFitBitFields(*layout, parts);
     return ConstValue::object(t, std::move(parts));
   }
 
@@ -5454,11 +5563,14 @@ struct GlobalScope::Impl
     }
     for (size_t i = 0; i < layout->fields.size(); ++i)
     {
-      std::optional<ConstValue> part = next < values.size() ? element(layout->fieldTypes[i]) : constFieldDefault(*layout, i, true, depth);
+      std::optional<ConstValue> part = constUnnamedField(*layout, i) ? constEmpty(layout->fieldTypes[i], true, depth + 1)
+                                      : next < values.size()        ? element(layout->fieldTypes[i])
+                                                                    : constFieldDefault(*layout, i, true, depth);
       if (!part)
         return std::nullopt;
       parts.push_back(*part);
     }
+    constFitBitFields(*layout, parts);
     return ConstValue::object(t, std::move(parts));
   }
 
@@ -5499,17 +5611,13 @@ struct GlobalScope::Impl
           return std::nullopt;
         parts.push_back(*part);
       }
+      constFitBitFields(*layout, parts);
       return ConstValue::object(t, std::move(parts));
     }
-    std::vector<ConstValue> args;
-    for (Expr* a : b->args)
-    {
-      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
-      if (!v)
-        return std::nullopt;
-      args.push_back(*v);
-    }
-    return constConstruct(t, args, false, depth);
+    // Not an aggregate: an InitializerList, a class taking the list by an InitializerList
+    // constructor, or the constructor the elements choose.
+    std::optional<ConstValue> list = constBraceList(b, ctx, depth);
+    return list ? constFromBraceList(*list, t, depth) : std::nullopt;
   }
 
   // A value given type t where an initialization converts implicitly: an object of t as it is; to
@@ -5518,6 +5626,8 @@ struct GlobalScope::Impl
   {
     if (!v || !t)
       return v;
+    if (constIsBraceList(*v))
+      return constFromBraceList(*v, t, depth);
     const Ty* u = types.unqualified(types.stripRef(t));
     if (u->kind != TyKind::Class)
       return constAsDeclared(v, t);
@@ -5561,19 +5671,26 @@ struct GlobalScope::Impl
       }
       for (size_t i = 0; i < layout->fields.size(); ++i)
       {
-        std::optional<ConstValue> part = next < args.size() ? constConvertTo(args[next++], layout->fieldTypes[i], depth + 1)
-                                                            : constFieldDefault(*layout, i, true, depth);
+        std::optional<ConstValue> part = constUnnamedField(*layout, i) ? constEmpty(layout->fieldTypes[i], true, depth + 1)
+                                        : next < args.size()          ? constConvertTo(args[next++], layout->fieldTypes[i], depth + 1)
+                                                                      : constFieldDefault(*layout, i, true, depth);
         if (!part)
           return std::nullopt;
         parts.push_back(*part);
       }
       if (next < args.size())
         return std::nullopt;
+      constFitBitFields(*layout, parts);
       return ConstValue::object(t, std::move(parts));
     }
     std::vector<FunctionDecl*> candidates;
+    // An implicit conversion takes the constructors marked implicit, and those marked explicit(cond)
+    // whose cond is false for the class's arguments (FixedPointNumberTemplate's explicit(Explicit)).
+    auto converts = [&](FunctionDecl* c) {
+      return (c->flags & DF_Implicit) || (c->explicitCondition && !isExplicit(c, layout->subst.empty() ? nullptr : &layout->subst));
+    };
     for (FunctionDecl* c : layout->constructors)
-      if (!(c->flags & DF_Delete) && c->templateParams.empty() && (!implicitOnly || (c->flags & DF_Implicit)))
+      if (!(c->flags & DF_Delete) && c->templateParams.empty() && (!implicitOnly || converts(c)))
         candidates.push_back(c);
     std::vector<const Ty*> argTypes;
     for (const ConstValue& a : args)
@@ -5583,6 +5700,526 @@ struct GlobalScope::Impl
     if (!ctor || ambiguous)
       return std::nullopt;
     return constRunConstructor(ctor, t, args, depth + 1);
+  }
+
+  // ---- step 4: brace lists, InitializerList, range-for (design.md, "Compile-time evaluation") ----
+
+  // A brace list's value before it meets the type it initializes (an argument, `f({1, 2})`; an
+  // element of another list, `{{A, B}, 7}`): an object of the brace list type overload resolution
+  // sees (TypeTable::braceList of its first typed element's type), its parts the elements; `{}` an
+  // object of no type. A designated list is no value without its type.
+  static bool constIsBraceList(const ConstValue& v) { return v.isObject() && (!v.type || v.type->isBraceList()); }
+
+  std::optional<ConstValue> constBraceList(BraceInitExpr* b, const TypeContext& ctx, int depth)
+  {
+    if (!b->designators.empty() || !constMayMake(b->args.size()))
+      return std::nullopt;
+    std::vector<ConstValue> elements;
+    const Ty* first = nullptr;
+    for (Expr* a : b->args)
+    {
+      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      if (!first)
+        first = v->type;
+      elements.push_back(*v);
+    }
+    Decl* list = initializerListDecl();
+    if (!elements.empty() && (!first || !list))
+      return std::nullopt;
+    ConstValue v = ConstValue::object(nullptr, std::move(elements));
+    if (first)
+      v.type = types.braceList(list, first);
+    return v;
+  }
+
+  // A brace list value given the type it initializes: an InitializerList of its elements, an
+  // array's elements, a class's InitializerList constructor (C++'s list-initialization tries
+  // those first) or else the constructor the elements choose (an aggregate's members), a scalar's
+  // one element or zero.
+  std::optional<ConstValue> constFromBraceList(const ConstValue& list, const Ty* t, int depth)
+  {
+    const Ty* u = types.unqualified(types.stripRef(t));
+    const std::vector<ConstValue>& elements = *list.parts;
+    if (depth > 64)
+      return std::nullopt;
+    if (isInitializerList(u))
+      return constInitializerList(u, elements, depth);
+    if (u->kind == TyKind::Array)
+    {
+      size_t count = u->count ? u->count : elements.size();
+      if (elements.size() > count || !count || !constMayMake(count))
+        return std::nullopt;
+      std::vector<ConstValue> parts;
+      for (size_t i = 0; i < count; ++i)
+      {
+        std::optional<ConstValue> e = i < elements.size() ? constConvertTo(elements[i], u->inner, depth + 1) : constEmpty(u->inner, true, depth + 1);
+        if (!e)
+          return std::nullopt;
+        parts.push_back(*e);
+      }
+      return ConstValue::object(u->count ? u : types.array(u->inner, uint32_t(count)), std::move(parts));
+    }
+    if (elements.empty())
+      return constEmpty(u, true, depth + 1); // `{}`: value-initialized
+    if (u->kind == TyKind::Class)
+    {
+      if (std::optional<ConstValue> v = constByInitializerList(u, elements, depth))
+        return v;
+      return constConstruct(u, elements, false, depth + 1);
+    }
+    return elements.size() == 1 && !constIsBraceList(elements[0]) ? constAsDeclared(elements[0], t) : std::nullopt;
+  }
+
+  // An InitializerList<E> of these elements: a constant array of them converted to E (what the
+  // brace list makes) and the list's two fields, a pointer to its first element and the count
+  // (InitializerList.kpp keeps them first); an empty list's pointer is null.
+  std::optional<ConstValue> constInitializerList(const Ty* u, const std::vector<ConstValue>& elements, int depth)
+  {
+    const ConstClassLayout* layout = constLayoutOf(u, depth);
+    if (!layout || !layout->bases.empty() || layout->fields.size() != 2 || u->args.empty() || !constMayMake(elements.size()))
+      return std::nullopt;
+    const Ty* pt = types.unqualified(layout->fieldTypes[0]);
+    const Ty* nt = types.unqualified(layout->fieldTypes[1]);
+    if (pt->kind != TyKind::Pointer || !pt->inner || !nt->isArithmetic())
+      return std::nullopt;
+    std::vector<ConstValue> converted;
+    for (const ConstValue& e : elements)
+    {
+      std::optional<ConstValue> c = constConvertTo(e, u->args[0], depth + 1);
+      if (!c)
+        return std::nullopt;
+      converted.push_back(*c);
+    }
+    std::optional<ConstValue> count = constConverted(ConstValue::integer(int64_t(converted.size())), nt);
+    if (!count)
+      return std::nullopt;
+    ConstValue items = ConstValue::integer(0, pt);
+    if (!converted.empty())
+    {
+      ConstValue backing = ConstValue::object(types.array(pt->inner, uint32_t(converted.size())), std::move(converted));
+      items = ConstValue::pointer(pt, backing.parts, 0);
+    }
+    return ConstValue::object(u, {items, *count});
+  }
+
+  // `Flags f = {A, B};`: the object a class's constructor taking an InitializerList (its other
+  // parameters defaulted) makes of the elements; nullopt when the class has none, or the elements
+  // do not convert to its element type (the other constructors are tried then).
+  std::optional<ConstValue> constByInitializerList(const Ty* u, const std::vector<ConstValue>& elements, int depth)
+  {
+    const ConstClassLayout* layout = constLayoutOf(u, depth);
+    if (!layout)
+      return std::nullopt;
+    for (FunctionDecl* c : layout->constructors)
+    {
+      if (c->params.empty() || (c->flags & DF_Delete) || !c->templateParams.empty())
+        continue;
+      bool restDefaulted = true;
+      for (size_t i = 1; i < c->params.size(); ++i)
+        restDefaulted = restDefaulted && static_cast<ParamDecl*>(c->params[i])->defaultValue;
+      const Ty* ft = restDefaulted ? declaredTypeOf(c, layout->subst.empty() ? nullptr : &layout->subst, depth + 1) : nullptr;
+      const Ty* pt = ft && ft->kind == TyKind::Function && !ft->args.empty() && ft->args[0] ? types.unqualified(types.stripRef(ft->args[0])) : nullptr;
+      if (!pt || !isInitializerList(pt))
+        continue;
+      std::optional<ConstValue> list = constInitializerList(pt, elements, depth + 1);
+      return list ? constRunConstructor(c, u, {*list}, depth + 1) : std::nullopt;
+    }
+    return std::nullopt;
+  }
+
+  // ---- step 4: addresses of declarations and member pointers ----
+
+  // Whether a variable lives as long as the program (a global, a static member, a static local),
+  // so that its address is a constant; a reference variable's address is what it refers to's.
+  static bool constStaticStorage(Decl* d)
+  {
+    if (!d || d->kind != NodeKind::VariableDecl || (d->flags & (DF_Typedef | DF_Extern)))
+      return false;
+    if (d->flags & DF_Static)
+      return true;
+    for (Decl* p = d->parent; p; p = p->parent)
+      if (p->kind == NodeKind::FunctionDecl || p->kind == NodeKind::ClassDecl)
+        return false; // a local, a parameter, a data member
+    return true;
+  }
+
+  // The class template instance a member is named through: the qualifier's (`Table<int>::rows`), else
+  // the context's instance of the member's class; null for no member, a class that is no template,
+  // or no instance in sight.
+  const Ty* constInstanceOf(Decl* d, const QualifiedName& name, const TypeContext& ctx, int depth)
+  {
+    Decl* cls = d && d->parent && d->parent->kind == NodeKind::ClassDecl ? d->parent : nullptr;
+    Span<Decl*> params = cls ? effectiveParams(cls) : Span<Decl*>{};
+    if (params.empty())
+      return nullptr;
+    Subst s = name.parts.size() > 1 ? qualifierSubst(name, ctx, depth + 1, lexicalScopeOf(d)) : ctx.subst ? *ctx.subst : Subst{};
+    for (Decl* p : params)
+      if (!s.find(p))
+        return nullptr;
+    return substitute(selfType(cls), s);
+  }
+
+  // The type of the part of an object of type t that path leads to.
+  const Ty* constPartType(const Ty* t, const std::vector<size_t>& path, size_t count, int depth)
+  {
+    for (size_t k = 0; k < count && t; ++k)
+    {
+      t = types.unqualified(types.stripRef(t));
+      if (t->kind == TyKind::Array)
+        t = t->inner;
+      else if (const ConstClassLayout* layout = t->kind == TyKind::Class ? constLayoutOf(t, depth) : nullptr)
+        t = path[k] < layout->bases.size() ? layout->bases[path[k]]
+          : path[k] - layout->bases.size() < layout->fieldTypes.size() ? layout->fieldTypes[path[k] - layout->bases.size()] : nullptr;
+      else
+        return nullptr;
+    }
+    return t;
+  }
+
+  // The declaration's type of what an Address names, its arguments applied.
+  const Ty* constTargetType(const ConstTarget& t, int depth)
+  {
+    if (!t.decl)
+      return nullptr;
+    Subst s = t.owner ? substFor(t.owner) : Subst{};
+    for (const auto& [param, arg] : t.args)
+      s.pairs.push_back({param, arg});
+    const Ty* declared = declaredTypeOf(t.decl, s.empty() ? nullptr : &s, depth + 1);
+    return declared && declared->isKnown() && !types.isDependent(declared) ? declared : nullptr;
+  }
+
+  // What an lvalue of static storage designates (`origin`, `table[1]`, `box.leftTop`, `*where`,
+  // `where->y`): the target and the type of the object there.
+  struct ConstDesignated
+  {
+    ConstTarget target;
+    const Ty* type = nullptr;
+  };
+  std::optional<ConstDesignated> constDesignated(Expr* x, const TypeContext& ctx, int depth)
+  {
+    while (x && x->kind == NodeKind::ParenExpr)
+      x = static_cast<ParenExpr*>(x)->inner;
+    if (!x || depth > 64)
+      return std::nullopt;
+    auto pointee = [&](const ConstValue& p) -> std::optional<ConstDesignated> {
+      const Ty* pt = p.isAddress() && p.type ? types.unqualified(types.stripRef(p.type)) : nullptr;
+      if (!pt || pt->kind != TyKind::Pointer || !pt->inner)
+        return std::nullopt;
+      return ConstDesignated{*p.target, pt->inner};
+    };
+    switch (x->kind)
+    {
+      case NodeKind::NameExpr:
+      {
+        auto* n = static_cast<NameExpr*>(x);
+        if (constLocal(x, ctx))
+          return std::nullopt; // a local of the run: no address that outlives it
+        Decl* d = n->resolved;
+        if (!d || d->kind == NodeKind::TemplateParamDecl)
+          d = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+        if (!constStaticStorage(d))
+          return std::nullopt;
+        ConstDesignated a;
+        a.target.decl = d;
+        a.target.owner = constInstanceOf(d, n->name, ctx, depth);
+        a.type = constTargetType(a.target, depth);
+        if (!a.type || a.type->isReference())
+          return std::nullopt;
+        return a;
+      }
+      case NodeKind::MemberExpr:
+      {
+        auto* m = static_cast<MemberExpr*>(x);
+        if (m->dynamicMember || m->member.parts.size() != 1)
+          return std::nullopt;
+        std::optional<ConstDesignated> base;
+        if (m->op == P::Dot)
+          base = constDesignated(m->base, ctx, depth + 1);
+        else if (m->op == P::Arrow && m->base->kind != NodeKind::ThisExpr)
+          if (std::optional<ConstValue> p = constValue(m->base, ctx, depth + 1))
+            base = pointee(*p);
+        const Ty* cls = base ? types.unqualified(types.stripRef(base->type)) : nullptr;
+        if (!cls || cls->kind != TyKind::Class)
+          return std::nullopt;
+        Decl* d = constFieldNamed(m->resolved, m->member, cls);
+        std::optional<std::vector<size_t>> path = d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static) ? constFieldPath(cls, d, 0) : std::nullopt;
+        if (!path)
+          return std::nullopt;
+        base->target.path.insert(base->target.path.end(), path->begin(), path->end());
+        base->type = constPartType(cls, *path, path->size(), depth + 1);
+        if (!base->type || base->type->isReference())
+          return std::nullopt;
+        return base;
+      }
+      case NodeKind::IndexExpr:
+      {
+        auto* ix = static_cast<IndexExpr*>(x);
+        if (ix->args.size() != 1)
+          return std::nullopt;
+        std::optional<ConstValue> index = constValue(ix->args[0], ctx, depth + 1);
+        if (!index || index->kind != ConstValue::Kind::Int)
+          return std::nullopt;
+        if (std::optional<ConstDesignated> base = constDesignated(ix->base, ctx, depth + 1))
+        {
+          const Ty* at = types.unqualified(types.stripRef(base->type));
+          if (at->kind != TyKind::Array || !at->count || index->i < 0 || uint64_t(index->i) >= at->count)
+            return std::nullopt;
+          base->target.path.push_back(size_t(index->i));
+          base->type = at->inner;
+          return base;
+        }
+        std::optional<ConstValue> p = constValue(ix->base, ctx, depth + 1); // `second[1]`
+        std::optional<ConstValue> moved = p && p->isAddress() ? constAddressMove(*p, index->i, depth) : std::nullopt;
+        return moved && constAddressDereferenceable(*moved, depth) ? pointee(*moved) : std::nullopt;
+      }
+      case NodeKind::UnaryExpr:
+      {
+        auto* u = static_cast<UnaryExpr*>(x);
+        std::optional<P> op = constOperator(u->op, u->isKeyword);
+        if (!op || *op != P::Star || u->postfix)
+          return std::nullopt;
+        std::optional<ConstValue> p = constValue(u->operand, ctx, depth + 1);
+        return p ? pointee(*p) : std::nullopt;
+      }
+      default:
+        return std::nullopt;
+    }
+  }
+
+  // A function as a value (`&twice`, `thrice` where a pointer is wanted): its address; a member
+  // function that is not static named through its class (`&Calc::mul`) is a pointer to member.
+  std::optional<ConstValue> constFunctionAddress(FunctionDecl* f, const QualifiedName& name, const TypeContext& ctx, int depth)
+  {
+    ConstTarget target;
+    target.decl = f;
+    bool member = f->parent && f->parent->kind == NodeKind::ClassDecl && !(f->flags & DF_Static);
+    const NamePart& written = name.last();
+    if (written.templateArgs.size() != f->templateParams.size())
+      return std::nullopt; // a template's arguments are the target type's to deduce
+    for (size_t i = 0; i < f->templateParams.size(); ++i)
+    {
+      const Ty* t = templateArgument(written.templateArgs[i], f->templateParams[i], ctx, depth + 1);
+      if (!t || !t->isKnown() || types.isDependent(t))
+        return std::nullopt;
+      target.args.push_back({f->templateParams[i], t});
+    }
+    if (member)
+    {
+      if (name.parts.size() < 2)
+        return std::nullopt;
+      target.owner = constInstanceOf(f, name, ctx, depth);
+      if (!target.owner && effectiveParams(f->parent).empty())
+        target.owner = selfType(f->parent);
+      if (!target.owner)
+        return std::nullopt;
+    }
+    else
+      target.owner = constInstanceOf(f, name, ctx, depth);
+    const Ty* ft = constTargetType(target, depth);
+    if (!ft || ft->kind != TyKind::Function)
+      return std::nullopt;
+    if (member)
+      return ConstValue::address(types.memberPointer(ft, target.owner), std::move(target), ConstValue::Kind::MemberPointer);
+    return ConstValue::address(types.pointer(ft), std::move(target));
+  }
+
+  // `&x`: the address of what x designates (a variable of static storage, a part of one), of a
+  // function, or a pointer to a member (`&Point::y`); nullopt for the address of a local of the run.
+  std::optional<ConstValue> constAddressOf(Expr* operand, const TypeContext& ctx, int depth)
+  {
+    Expr* x = operand;
+    while (x && x->kind == NodeKind::ParenExpr)
+      x = static_cast<ParenExpr*>(x)->inner;
+    if (!x)
+      return std::nullopt;
+    if (x->kind == NodeKind::NameExpr && !constLocal(x, ctx))
+    {
+      auto* n = static_cast<NameExpr*>(x);
+      Decl* d = n->resolved;
+      Lookup l;
+      if (!d || d->kind == NodeKind::TemplateParamDecl)
+      {
+        l = lookupQualified(n->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+        d = l.decl;
+        if (d && d->kind == NodeKind::FunctionDecl && l.overloads)
+        {
+          int functions = 0;
+          for (const Entry& entry : *l.overloads)
+            functions += entry.decl && entry.decl->kind == NodeKind::FunctionDecl;
+          if (functions != 1)
+            return std::nullopt; // which overload is the target type's to choose
+        }
+      }
+      if (d && d->kind == NodeKind::FunctionDecl)
+        return constFunctionAddress(static_cast<FunctionDecl*>(d), n->name, ctx, depth);
+      if (d && d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::ClassDecl && !(d->flags & (DF_Static | DF_Typedef)))
+      {
+        if (n->name.parts.size() < 2)
+          return std::nullopt; // `&count` in a member function: a part of the run's object
+        ConstTarget target;
+        target.decl = d;
+        target.owner = constInstanceOf(d, n->name, ctx, depth);
+        if (!target.owner && effectiveParams(d->parent).empty())
+          target.owner = selfType(d->parent);
+        Subst s = target.owner ? substFor(target.owner) : Subst{};
+        const Ty* member = target.owner ? declaredTypeOf(d, s.empty() ? nullptr : &s, depth + 1) : nullptr;
+        if (!member || !member->isKnown() || types.isDependent(member))
+          return std::nullopt;
+        return ConstValue::address(types.memberPointer(member, target.owner), std::move(target), ConstValue::Kind::MemberPointer);
+      }
+    }
+    std::optional<ConstDesignated> a = constDesignated(x, ctx, depth);
+    if (!a)
+      return std::nullopt;
+    return ConstValue::address(types.pointer(a->type), std::move(a->target));
+  }
+
+  // An Address moved by n elements along the array it points into (`second - 1`); nullopt outside
+  // the array, one past its end allowed.
+  std::optional<ConstValue> constAddressMove(const ConstValue& p, int64_t n, int depth)
+  {
+    if (!p.isAddress() || !p.target || n == 0)
+      return p.isAddress() ? std::optional<ConstValue>(p) : std::nullopt;
+    const ConstTarget& t = *p.target;
+    if (t.path.empty())
+      return std::nullopt; // a whole variable: no array to move along
+    const Ty* array = constPartType(constTargetType(t, depth), t.path, t.path.size() - 1, depth);
+    array = array ? types.unqualified(types.stripRef(array)) : nullptr;
+    if (!array || array->kind != TyKind::Array || !array->count)
+      return std::nullopt;
+    int64_t index = int64_t(t.path.back()) + n;
+    if (index < 0 || uint64_t(index) > array->count)
+      return std::nullopt;
+    ConstTarget moved = t;
+    moved.path.back() = size_t(index);
+    return ConstValue::address(p.type, std::move(moved));
+  }
+
+  // Whether an Address names an object (not one past an array's end).
+  bool constAddressDereferenceable(const ConstValue& p, int depth)
+  {
+    const ConstTarget& t = *p.target;
+    if (t.path.empty())
+      return true;
+    const Ty* array = constPartType(constTargetType(t, depth), t.path, t.path.size() - 1, depth);
+    array = array ? types.unqualified(types.stripRef(array)) : nullptr;
+    return !array || array->kind != TyKind::Array || t.path.back() < array->count;
+  }
+
+  // The value an Address points at: the variable's constant value (a constexpr or const one; any
+  // other is no constant at compile time), the part its path leads to.
+  std::optional<ConstValue> constReadTarget(const ConstValue& p, int depth)
+  {
+    if (!p.isAddress() || !p.target || !p.target->decl || p.target->decl->kind != NodeKind::VariableDecl || !constAddressDereferenceable(p, depth))
+      return std::nullopt;
+    const ConstTarget& t = *p.target;
+    Subst s = t.owner ? substFor(t.owner) : Subst{};
+    TypeContext none{lexicalScopeOf(t.decl), nullptr, nullptr};
+    std::optional<ConstValue> v = constValueOfDecl(t.decl, none, 1, s.empty() ? nullptr : &s);
+    if (!v)
+      return std::nullopt;
+    return t.path.empty() ? v : constPart(*v, t.path);
+  }
+
+  // `==` and `!=` of addresses (the same declaration and part, or not), their order within one
+  // array, `p + n` and `p - n`, and an address given where a pointer is compared with null.
+  std::optional<ConstValue> constAddressArith(P op, const ConstValue& l, const ConstValue& r, int depth)
+  {
+    auto boolean = [this](bool b) { return ConstValue::integer(b, types.boolType()); };
+    bool equality = op == P::EqEq || op == P::NotEq;
+    if ((l.isAddress() || l.isMemberPointer()) && (r.isAddress() || r.isMemberPointer()))
+    {
+      bool same = l.kind == r.kind && *l.target == *r.target;
+      if (equality)
+        return boolean(op == P::EqEq ? same : !same);
+      const ConstTarget &a = *l.target, &b = *r.target;
+      bool siblings = l.isAddress() && r.isAddress() && a.decl == b.decl && a.owner == b.owner && a.args == b.args && !a.path.empty() &&
+                      a.path.size() == b.path.size() && std::equal(a.path.begin(), a.path.end() - 1, b.path.begin());
+      if (!siblings)
+        return std::nullopt; // addresses of different objects: no order
+      int64_t x = int64_t(a.path.back()), y = int64_t(b.path.back());
+      switch (op)
+      {
+        case P::Minus: return ConstValue::integer(x - y, types.ptrdiffType());
+        case P::Less: return boolean(x < y);
+        case P::Greater: return boolean(x > y);
+        case P::LessEq: return boolean(x <= y);
+        case P::GreaterEq: return boolean(x >= y);
+        default: return std::nullopt;
+      }
+    }
+    if (equality && ((l.isAddress() || l.isMemberPointer()) != (r.isAddress() || r.isMemberPointer())))
+    {
+      const ConstValue& other = l.isAddress() || l.isMemberPointer() ? r : l;
+      if ((other.kind == ConstValue::Kind::Int && other.i == 0) || other.isPointer())
+        return boolean(op == P::NotEq); // never null, never into an array the evaluation made
+      return std::nullopt;
+    }
+    if (l.isAddress() && r.kind == ConstValue::Kind::Int && (op == P::Plus || op == P::Minus))
+      return constAddressMove(l, op == P::Plus ? r.i : -r.i, depth);
+    if (r.isAddress() && l.kind == ConstValue::Kind::Int && op == P::Plus)
+      return constAddressMove(r, l.i, depth);
+    return std::nullopt;
+  }
+
+  // A function pointer's call (`f(v)` with f a parameter holding `&twice`, `ops[0](5)`): the
+  // function it points at, run with the arguments.
+  std::optional<ConstValue> constCallThrough(const ConstValue& fn, CallExpr* c, const TypeContext& ctx, int depth)
+  {
+    if (!fn.isAddress() || !fn.target->decl || fn.target->decl->kind != NodeKind::FunctionDecl)
+      return std::nullopt;
+    auto* f = static_cast<FunctionDecl*>(fn.target->decl);
+    if (!f->body || f->body->kind != NodeKind::BlockStmt || c->args.size() > f->params.size())
+      return std::nullopt;
+    std::vector<ConstValue> values;
+    std::vector<std::optional<ConstPlace>> places;
+    for (Expr* a : c->args)
+    {
+      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      values.push_back(*v);
+      places.push_back(constPlaceOf(a, ctx, depth + 1));
+    }
+    Subst bound = fn.target->owner ? substFor(fn.target->owner) : Subst{};
+    for (const auto& [param, arg] : fn.target->args)
+      bound.pairs.push_back({param, arg});
+    LocalStack params;
+    for (const Subst::Pair& p : bound.pairs)
+      params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+    TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
+                     f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    return constRun(f, values, fctx, depth, nullptr, &places);
+  }
+
+  // `object.*member`, `pointer->*member` of a pointer to a data member: that member of the object.
+  std::optional<ConstValue> constMemberPointerRead(BinaryExpr* b, const TypeContext& ctx, int depth)
+  {
+    std::optional<ConstValue> object = constValue(b->lhs, ctx, depth + 1);
+    if (object && P(b->op) == P::ArrowStar)
+      object = object->isAddress() ? constReadTarget(*object, depth + 1) : object->isPointer() ? constDeref(*object) : std::nullopt;
+    std::optional<ConstValue> member = object ? constValue(b->rhs, ctx, depth + 1) : std::nullopt;
+    if (!object || !object->isObject() || !member || !member->isMemberPointer() || member->target->decl->kind != NodeKind::VariableDecl)
+      return std::nullopt;
+    std::optional<std::vector<size_t>> path = constFieldPath(object->type, member->target->decl, 0);
+    return path ? constPart(*object, *path) : std::nullopt;
+  }
+
+  // The value of a range's begin() or end() (`for (auto v : flags)`), run on the object.
+  std::optional<ConstValue> constRangeEnd(const ConstValue& range, uint32_t symbol, int depth)
+  {
+    Subst subst;
+    std::vector<FunctionDecl*> candidates = constMembersNamed(range.type, symbol, subst, depth);
+    FunctionDecl* f = nullptr;
+    for (FunctionDecl* c : candidates)
+      if (c->params.empty() && (!f || (c->flags & DF_Const)))
+        f = c; // `begin() const` where there are both: the elements are only read
+    if (!f)
+      return std::nullopt;
+    std::optional<ConstValue> self = range;
+    return constCallOn(f, subst, {}, &self, depth + 1);
   }
 
   // Constructor ctor of class t run at compile time: the bases and members its initializers name
@@ -5656,6 +6293,18 @@ struct GlobalScope::Impl
             list.args = init.args;
             return constBraceInit(tu, &list, fctx, depth + 1);
           }
+          if (!init.braced && tu->kind == TyKind::Class && !target->isReference() && init.args[0]->kind != NodeKind::BraceInitExpr)
+          {
+            // `bits(toBits(values))`: a direct-initialization, which an explicit constructor takes
+            // too (SmallBitset(uint64_t)); an object of the class, or of one derived from it
+            // (sliced), is copied.
+            std::optional<ConstValue> v = constValue(init.args[0], fctx, depth + 1);
+            if (!v)
+              return std::nullopt;
+            if (v->isObject() && v->type && (types.unqualified(types.stripRef(v->type)) == tu || constBasePath(v->type, tu, 0)))
+              return constConvertTo(v, tu, depth + 1);
+            return constConstruct(tu, {*v}, false, depth + 1);
+          }
           return constInitialize(target, init.args[0], fctx, depth + 1);
         }
         std::vector<ConstValue> values;
@@ -5714,6 +6363,7 @@ struct GlobalScope::Impl
         return std::nullopt;
       object.push_back(*part);
     }
+    constFitBitFields(*layout, object);
     return constRunBody(ctor, t, ConstValue::object(t, std::move(object)), fctx, env, depth);
   }
 
@@ -5754,6 +6404,7 @@ struct GlobalScope::Impl
     std::vector<size_t> path;
     const Ty* type = nullptr; // the part's type, which a stored value is converted to
     bool readOnly = false;    // reached through something const (a reference to const)
+    uint8_t bits = 0;         // a bit field's width, which a stored value is fitted to
     ConstBinding& binding() const { return (*env)[index]; }
     bool writable() const { return !readOnly && binding().writable; }
   };
@@ -5848,6 +6499,7 @@ struct GlobalScope::Impl
           const ConstClassLayout* layout = constLayoutOf(object->type, 0);
           self->path.insert(self->path.end(), path->begin(), path->end());
           self->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+          self->bits = constBitsOf(object->type, d);
           return self;
         }
       }
@@ -5879,6 +6531,7 @@ struct GlobalScope::Impl
       base->path.insert(base->path.end(), path->begin(), path->end());
       const ConstClassLayout* layout = constLayoutOf(object->type, 0);
       base->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+      base->bits = constBitsOf(object->type, d);
       return base;
     }
     if (e->kind == NodeKind::IndexExpr)
@@ -5896,6 +6549,7 @@ struct GlobalScope::Impl
         return std::nullopt;
       base->path.push_back(size_t(index->i));
       base->type = at->inner;
+      base->bits = 0;
       return base;
     }
     return std::nullopt;
@@ -5911,10 +6565,25 @@ struct GlobalScope::Impl
   }
 
   // A value stored at a place (its parts on the way copied).
-  static bool constWrite(const ConstPlace& place, const ConstValue& v)
+  bool constWrite(const ConstPlace& place, const ConstValue& v)
   {
     ConstPlace p = constResolve(place);
-    return constSetPart(p.binding().value, p.path, 0, v);
+    return constSetPart(p.binding().value, p.path, 0, place.bits ? constFitBits(v, place.type, place.bits) : v);
+  }
+
+  // The width of field (a bit field's, else 0) in an object of class t, its bases searched.
+  uint8_t constBitsOf(const Ty* t, Decl* field, int depth = 0)
+  {
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout || depth > 16)
+      return 0;
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+      if (layout->fields[i] == field)
+        return layout->fieldBits[i];
+    for (const Ty* b : layout->bases)
+      if (uint8_t bits = constBitsOf(b, field, depth + 1))
+        return bits;
+    return 0;
   }
 
   // The element a pointer into an array points at (nullopt one past the end).
@@ -5989,9 +6658,11 @@ struct GlobalScope::Impl
   {
     if (std::optional<ConstPlace> place = constPlaceOf(m, ctx, depth + 1))
       return constRead(*place);
-    if (!m->base || m->op == P::Arrow || m->base->kind == NodeKind::ThisExpr)
+    if (!m->base || m->base->kind == NodeKind::ThisExpr)
       return std::nullopt;
     std::optional<ConstValue> object = constValue(m->base, ctx, depth + 1);
+    if (object && m->op == P::Arrow) // `where->x`: through the address of a constant
+      object = object->isAddress() ? constReadTarget(*object, depth + 1) : object->isPointer() ? constDeref(*object) : std::nullopt;
     if (!object || !object->isObject())
       return std::nullopt;
     Decl* d = constFieldNamed(m->resolved, m->member, object->type);
@@ -6015,6 +6686,11 @@ struct GlobalScope::Impl
     std::optional<ConstValue> index = constValue(x->args[0], ctx, depth + 1);
     if (!index || index->kind != ConstValue::Kind::Int)
       return std::nullopt;
+    if (base->isAddress()) // `second[1]`: the element of the global it points into
+    {
+      std::optional<ConstValue> moved = constAddressMove(*base, index->i, depth);
+      return moved ? constReadTarget(*moved, depth + 1) : std::nullopt;
+    }
     if (base->isPointer())
       return constPointerArith(P::Plus, *base, *index) ? constDeref(*constPointerArith(P::Plus, *base, *index)) : std::nullopt;
     if (!base->isObject() || index->i < 0 || uint64_t(index->i) >= base->parts->size())
@@ -6271,11 +6947,114 @@ struct GlobalScope::Impl
     }
   }
 
-  // One statement of a body run at compile time (design.md, "Compile-time evaluation", steps 1 and
-  // 2): blocks, returns, if and if constexpr, locals, assignments and ++/-- of them as expression
-  // statements, for, while and do loops with break and continue, switch with fallthrough and
-  // default, static_assert (checked where it is written) and assert. Anything else (a range-for,
-  // goto, try, a static local) makes the call no constant.
+  // `for (auto v : range)` run at compile time: the body once per element, v declared as a local of
+  // it would be (by value a copy, by reference the element). The range is an array (its elements
+  // are places: `for (int& v : items)` writes them, and each is read as the body reaches it), a
+  // brace list, or an object whose begin() and end() point into one array (InitializerList, Array,
+  // StringView); such an object changed by the body makes no constant, since what its pointers
+  // read is the array as it was.
+  static constexpr uint32_t constRangeSymbol = 0xFFFFFFFDu;
+  ConstFlow constRangeFor(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth)
+  {
+    if (!r->var || r->var->kind != NodeKind::VariableDecl || !r->range || !r->body)
+      return ConstFlow::Failed;
+    auto* v = static_cast<VariableDecl*>(r->var);
+    if (v->name.parts.size() != 1 || !v->structuredBindings.empty())
+      return ConstFlow::Failed;
+    uint32_t name = v->name.parts[0].symbol;
+    std::optional<ConstPlace> range = constPlaceOf(r->range, ctx, depth + 1);
+    if (!range)
+    {
+      std::optional<ConstValue> value = constValue(r->range, ctx, depth + 1);
+      if (!value || !value->isObject())
+        return ConstFlow::Failed;
+      env.push_back(constBinding(constRangeSymbol, *value, value->type)); // the temporary the loop holds
+      range = ConstPlace{&env, env.size() - 1, {}, value->type};
+    }
+    std::optional<ConstValue> held = constRead(*range);
+    if (!held || !held->isObject())
+      return ConstFlow::Failed;
+    const Ty* ht = held->type ? types.unqualified(held->type) : nullptr;
+    std::shared_ptr<const std::vector<ConstValue>> pointed; // the array begin() and end() point into
+    size_t from = 0, to = 0;
+    bool places = ht && ht->kind == TyKind::Array;
+    if (places)
+      to = held->parts->size();
+    else if (!ht || ht->isBraceList())
+    {
+      pointed = held->parts;
+      to = pointed->size();
+    }
+    else if (ht->kind == TyKind::Class)
+    {
+      std::optional<ConstValue> b = constRangeEnd(*held, symBegin, depth + 1), e = constRangeEnd(*held, symEnd, depth + 1);
+      bool empty = b && e && b->kind == ConstValue::Kind::Int && e->kind == ConstValue::Kind::Int && b->i == 0 && e->i == 0; // two nulls
+      if (!empty && (!b || !e || !b->isPointer() || !e->isPointer() || b->parts != e->parts || b->i > e->i))
+        return ConstFlow::Failed;
+      if (!empty)
+      {
+        pointed = b->parts;
+        from = size_t(b->i);
+        to = size_t(e->i);
+      }
+    }
+    else
+      return ConstFlow::Failed;
+    const Ty* declared = v->type ? convertType(v->type, ctx, depth + 1) : nullptr;
+    for (size_t i = from; i < to; ++i)
+    {
+      size_t bodyMark = env.size();
+      ConstPlace at = *range;
+      if (places)
+      {
+        at.path.push_back(i);
+        at.type = ht->inner;
+        at.bits = 0;
+      }
+      if (declared && declared->isReference() && places)
+      {
+        ConstPlace resolved = constResolve(at);
+        ConstBinding alias{name, ConstValue::unset(declared)};
+        alias.type = ht->inner;
+        alias.writable = !(declared->inner && declared->inner->isConst) && !resolved.readOnly;
+        alias.aliasEnv = at.env;
+        alias.aliasIndex = at.index;
+        alias.aliasPath = at.path;
+        env.push_back(std::move(alias));
+      }
+      else
+      {
+        std::optional<ConstValue> element = places ? constRead(at) : std::optional<ConstValue>((*pointed)[i]);
+        if (!element || element->isUnset())
+          return ConstFlow::Failed;
+        std::optional<ConstValue> value = declared && !containsAuto(declared) ? constConvertTo(element, declared, depth + 1) : element;
+        if (!value)
+          return ConstFlow::Failed;
+        env.push_back(constBinding(name, *value, declared));
+        if (declared && declared->isReference())
+          env.back().writable = false; // what begin() points at: a copy, which may only be read
+      }
+      ConstFlow flow = constStatement(r->body, ctx, env, result, depth + 1);
+      env.resize(bodyMark);
+      if (flow == ConstFlow::Returned || flow == ConstFlow::Failed)
+        return flow;
+      if (!places && pointed && ht && ht->kind == TyKind::Class)
+      {
+        std::optional<ConstValue> now = constRead(*range);
+        if (!now || now->parts != held->parts)
+          return ConstFlow::Failed; // the object iterated was changed: its pointers read the old array
+      }
+      if (flow == ConstFlow::Break)
+        break;
+    }
+    return ConstFlow::Next;
+  }
+
+  // One statement of a body run at compile time (design.md, "Compile-time evaluation", steps 1 to
+  // 4): blocks, returns, if and if constexpr, locals, assignments and ++/-- of them as expression
+  // statements, for, while, do and range-for loops with break and continue, switch with
+  // fallthrough and default, static_assert (checked where it is written) and assert. Anything else
+  // (goto, try, a static local) makes the call no constant.
   ConstFlow constStatement(Stmt* s, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth)
   {
     if (!s)
@@ -6433,6 +7212,11 @@ struct GlobalScope::Impl
             return flow; // a return, a failure, or a continue of the loop around the switch
         }
         return ConstFlow::Next;
+      }
+      case NodeKind::RangeForStmt:
+      {
+        LocalsEnd end{env, mark};
+        return constRangeFor(static_cast<RangeForStmt*>(s), ctx, env, result, depth);
       }
       case NodeKind::BreakStmt: return ConstFlow::Break;
       case NodeKind::ContinueStmt: return ConstFlow::Continue;
@@ -10168,6 +10952,14 @@ struct GlobalScope::Impl
       const Token& t = tokens[std::min<size_t>(token, tokens.size() - 1)];
       return text.substr(t.offset, t.length);
     }
+    // A literal's spelling, from the file it was parsed from (the walk may be another file's).
+    std::string_view spelling(const LiteralExpr* l) const
+    {
+      if (!l->file || !l->file->tokens || l->token >= l->file->tokens->size())
+        return spelling(l->token);
+      const Token& t = (*l->file->tokens)[l->token];
+      return l->file->text.substr(t.offset, t.length);
+    }
 
     // --- statistics helpers ---
 
@@ -12405,7 +13197,7 @@ struct GlobalScope::Impl
           return l->keyword == Kw::nullptr_ ? types.nullptrType() : types.boolType();
         case TokenKind::Char:
         {
-          std::string_view s = spelling(l->token);
+          std::string_view s = spelling(l);
           if (s.starts_with("u8")) return types.charType(8, true);
           if (s.starts_with("u")) return types.charType(16, true);
           if (s.starts_with("U")) return types.charType(32, true);
@@ -12414,7 +13206,7 @@ struct GlobalScope::Impl
         }
         case TokenKind::String:
         {
-          std::string_view s = spelling(l->token);
+          std::string_view s = spelling(l);
           const Ty* ch = types.charType(8, false);
           if (s.starts_with("u8")) ch = types.charType(8, true);
           else if (s.starts_with("u")) ch = types.charType(16, true);
@@ -12427,7 +13219,7 @@ struct GlobalScope::Impl
           // The type the compile-time evaluator gives the literal (consteval.cpp: C++'s rules for
           // suffixes and the first type that holds the value), so that the two agree.
           ConstArith arith{types};
-          if (std::optional<ConstValue> v = arith.literal(TokenKind::Number, spelling(l->token)); v && v->type)
+          if (std::optional<ConstValue> v = arith.literal(TokenKind::Number, spelling(l)); v && v->type)
             return v->type;
           return types.unknown();
         }
@@ -14401,6 +15193,13 @@ const Ty* GlobalScope::typeOfDeclIn(Decl* d, const TemplateArgs& args)
 
 std::optional<ConstValue> GlobalScope::evaluate(Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args, const ConstHooks& hooks)
 {
+  return evaluateInitializer(nullptr, e, file, context, args, hooks);
+}
+
+// t null: the value of e as an expression (evaluate).
+std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args,
+                                                           const ConstHooks& hooks)
+{
   if (!e)
     return std::nullopt;
   // The context as typeOfAstIn makes it for a type written there.
@@ -14427,7 +15226,7 @@ std::optional<ConstValue> GlobalScope::evaluate(Expr* e, ParsedFile* file, Decl*
     explicit Lent(const ConstHooks& h) { Impl::constHooks() = &h; }
     ~Lent() { Impl::constHooks() = saved; }
   } lent(hooks);
-  return impl->constValue(e, ctx, 0);
+  return t ? impl->constInitialize(t, e, ctx, 0) : impl->constValue(e, ctx, 0);
 }
 
 const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args)

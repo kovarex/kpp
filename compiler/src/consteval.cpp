@@ -384,7 +384,7 @@ std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view s
 
 std::optional<ConstValue> ConstArith::unary(P op, const ConstValue& v)
 {
-  if (op == P::Bang && (v.isScalar() || v.isPointer()))
+  if (op == P::Bang && (v.isScalar() || v.isPointer() || v.isAddress() || v.isMemberPointer()))
     return ConstValue::integer(!v.truthy(), types.boolType());
   if (!v.isScalar())
     return fail("an operator on an object or a pointer"); // the evaluator's own (pointer arithmetic, class operators)
@@ -410,7 +410,8 @@ std::optional<ConstValue> ConstArith::unary(P op, const ConstValue& v)
 std::optional<ConstValue> ConstArith::binary(P op, const ConstValue& l, const ConstValue& r)
 {
   bool comparison = op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq || op == P::EqEq || op == P::NotEq;
-  if ((op == P::AndAnd || op == P::OrOr) && (l.isScalar() || l.isPointer()) && (r.isScalar() || r.isPointer()))
+  auto truth = [](const ConstValue& v) { return v.isScalar() || v.isPointer() || v.isAddress() || v.isMemberPointer(); };
+  if ((op == P::AndAnd || op == P::OrOr) && truth(l) && truth(r))
     return ConstValue::integer(op == P::AndAnd ? l.truthy() && r.truthy() : l.truthy() || r.truthy(), types.boolType());
   if (!l.isScalar() || !r.isScalar())
     return fail("an operator on an object or a pointer");
@@ -506,8 +507,8 @@ std::optional<ConstValue> ConstArith::convert(const ConstValue& v, const Ty* to)
   if (!to)
     return std::nullopt;
   const Ty* t = types.unqualified(types.stripRef(to));
-  if (v.isPointer() && t->kind == TyKind::Bool)
-    return ConstValue::integer(1, types.boolType()); // a pointer into an array is never null
+  if ((v.isPointer() || v.isAddress() || v.isMemberPointer()) && t->kind == TyKind::Bool)
+    return ConstValue::integer(1, types.boolType()); // a pointer into an array, an address: never null
   if (!v.isScalar())
     return fail("a conversion of an object or a pointer to a number");
   switch (t->kind)

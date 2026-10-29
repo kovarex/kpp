@@ -309,7 +309,9 @@ struct MacroStmt : Stmt { uint32_t name; };
 
 struct Expr : Node { const Ty* ty = nullptr; }; // ty: filled by the type checker.
 struct NameExpr : Expr { QualifiedName name; Decl* resolved = nullptr; };
-struct LiteralExpr : Expr { TokenKind literalKind; Kw keyword; }; // keyword for true/false/nullptr
+// keyword for true/false/nullptr; file: the one it was parsed from, whose tokens spell it (an
+// expression may be evaluated in another file's context: a default argument, a template's)
+struct LiteralExpr : Expr { TokenKind literalKind; Kw keyword; ParsedFile* file = nullptr; };
 struct ThisExpr : Expr {};
 struct CallExpr : Expr
 {

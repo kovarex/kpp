@@ -275,6 +275,12 @@ public:
   // with the code generator's arithmetic mode, enumeration storage and layouts (hooks). Null when
   // e is no constant.
   std::optional<ConstValue> evaluate(Expr* e, ParsedFile* file, Decl* context, const TemplateArgs& args, const ConstHooks& hooks);
+  // The value init gives an object of type t when it initializes one (a global's or static
+  // member's initializer: `Flags f = {A, B};`, `Array<int, 3> a = {1, 2, 3}`, `Box b = Box(1, 2);`):
+  // a brace list's elements, a constructor's arguments, a conversion; context and hooks as for
+  // evaluate. Null when it is no constant (the object is then initialized at run time).
+  std::optional<ConstValue> evaluateInitializer(const Ty* t, Expr* init, ParsedFile* file, Decl* context, const TemplateArgs& args,
+                                                const ConstHooks& hooks);
   // Re-types the body of f for one instantiation (expression types and resolved callees are
   // rewritten in place). objectType: the instantiated class for members, or null.
   void retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);

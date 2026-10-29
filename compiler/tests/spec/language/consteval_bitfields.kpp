@@ -1,5 +1,4 @@
 // spec: a bit field at compile time holds its value at its own width: a store wraps to the width and a signed field reads sign-extended, as the generated code reads it
-// pending: the interpreter kept the whole value of the field's type, so a stored 13 read back as 13 from a 3-bit field (a wrong constant)
 struct Packed
 {
   uint8_t low : 3 = 0;

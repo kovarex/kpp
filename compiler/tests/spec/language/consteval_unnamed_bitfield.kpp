@@ -1,5 +1,4 @@
 // spec: an unnamed bit field (`int : 0;`, padding) takes no initializer of an aggregate at compile time: `{1, 2, 3}` gives the named members
-// pending: the interpreter gave the second value to the unnamed field, so b read the third (a wrong constant)
 struct Spaced
 {
   int a : 3;

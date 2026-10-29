@@ -786,12 +786,49 @@ language/consteval_reference_parameter, language/consteval_deep_calls,
 language/consteval_members_declared_later. Measured paired on 3100f7b: 22,035 -> 22,034, static
 assertions the compiler cannot evaluate 16 -> 15.
 
-Left: addresses of locals; objects and arrays as constant data and range-for over them (step 4);
-`sqrt` (the library's has no Kpp body yet); float template arguments. The library's gcd and lcm
-can go back to loops. The game's 15 static_asserts left need: VariantAlternative over a variant
-(SegmentedUnitAI), `sizeof` of a member through a reference (`maskUniform.uvTransform`) and of
-another class's static member, and checks inside pack instantiations (`sizeof...(Args)`,
-`(isFundamental<RemoveReference<Ts>> && ...)`, `typeID > 0`), which the code generator evaluates.
+*Step 4, the interpreter's half, done 2026-10-29.* Constant data is split with the code generator
+thread (agreed 2026-10-29): the interpreter computes a global's or static member's value as the
+type it initializes (GlobalScope::evaluateInitializer, the declared type given, so that `Flags f =
+{A, B};` is a Flags), the code generator lowers what it can to an LLVM constant
+(`constantText`, in globalForOnce) and builds the rest at startup as before. The values it may
+lower, and how they are laid out, are the contract written above ConstValue in consteval.hpp:
+Objects' parts bases then members in declaration order, bit fields each a part already fitted to
+its width, arrays one part per element, Pointers into arrays the evaluation made (string
+literals, a brace list's elements), and two new kinds: an Address of a declaration or of a part of
+a variable (`&origin`, `&table[1]`, a function, `thrice` decaying to a pointer: a ConstTarget of
+the declaration, the class template instance it belongs to, a function template's arguments and
+the path into the value), and a MemberPointer (`&Point::y`, `&Calc::mul`). What the interpreter
+gained for the game's tables: brace lists as values until their type is known (an argument, an
+element of another list), InitializerList (a constant array of the elements and the list's
+pointer and count), a class's InitializerList constructor first in list-initialization (the
+BITFIELD flags), range-for over arrays (their elements as places: `for (int& v : items)` writes
+them), brace lists and objects whose begin() and end() point into one array (a range changed by
+the body is no constant rather than a stale read), reads, indexing, arithmetic and comparison
+through Addresses, calls through function pointers, `.*` and `->*` on data members. And fixes
+that were wrong constants or failures: a bit field holds its value at its width (a 3-bit field
+given 13 read 13), an unnamed bit field takes no aggregate initializer (`{1, 2, 3}` gave it the
+2), a member initializer is a direct-initialization (an explicit constructor takes `bits(x)`),
+explicit(cond) with cond false converts, a function template called with the running function's
+parameters deduces from their values (`Math::isNaN(d)`), and a literal is read from the tokens of
+the file it was parsed from (LiteralExpr::file): 1,708 literal reads in the game used another
+file's tokens, failing or, where the token there was a number too, computing with it. Measured
+by evaluating every emitted global of class or array type as its type (a temporary probe in
+globalForOnce): 158 of 349 were objects, 212 now; of the 137 left, 95 are String, Vector, Map and
+the other containers that allocate, which never become constant data. The headline is neutral
+(21,826 = 21,826, paired on 6690f44): the code generator does not use objects yet. Specs
+language/consteval_initializer_lists, consteval_bitfields, consteval_unnamed_bitfield,
+consteval_addresses, consteval_direct_initialization, consteval_conditional_explicit,
+consteval_deduction_from_values.
+
+Left: addresses of the run's own locals (no use in the game's constant contexts); the code
+generator's lowering (its thread's); class template argument deduction in a constant (`Pair {
+"mask", SpriteOptions::Mask }`, `Array { ... }` tables), lambdas, a string literal's `sv`, member
+functions returning references (`result[i] = x` through an Array's operator[]); `sqrt` (the
+library's has no Kpp body yet); float template arguments. The library's gcd and lcm can go back
+to loops. The game's 9 static_asserts left need: VariantAlternative over a variant
+(SegmentedUnitAI, 5), `sizeof` of a member through a reference (`maskUniform.uvTransform`) and of
+another class's member (`GraphicsInterface::orthoProjectionMatrix`), and `typeID > 0` in
+RendererContainer's instances (2), which the code generator evaluates.
 
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`

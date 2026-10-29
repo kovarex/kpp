@@ -1,6 +1,5 @@
 // spec: addresses at compile time: of a global, of an element of one, of a function (written with & or decaying), and a pointer to a data member; read through, compared, indexed, called through
 // factorio: function pointer tables (zlib_filefunc64_def_s's fopen64_file_func), RailPrototype's constant accessor arrays of member pointers
-// pending: the interpreter had no addresses of declarations and no member pointers
 struct Point
 {
   int x = 0;

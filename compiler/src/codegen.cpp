@@ -4950,7 +4950,8 @@ namespace
       {
         auto* l = static_cast<LiteralExpr*>(e);
         if (l->literalKind == TokenKind::Number || l->literalKind == TokenKind::Char)
-          return foldArith().literal(l->literalKind, spelling(l->token));
+          if (!l->file || l->file == currentFile) // a literal of another file (a default argument's): the evaluator reads its own file's tokens
+            return foldArith().literal(l->literalKind, spelling(l->token));
       }
       TemplateArgs none;
       bool layoutFailed = false;
