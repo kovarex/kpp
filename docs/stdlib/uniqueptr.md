@@ -1,29 +1,40 @@
-# UniquePtr<T>, UniqueArray<T>
+# UniquePtr<T, D>, UniqueArray<T>
 
 ## UniquePtr
 
-Sole ownership of one object on the heap: the object is deleted (with `delete`, as T) when its
-UniquePtr is destroyed, reset, assigned another object or nullptr. A UniquePtr is moved, never
-copied; a moved-from UniquePtr is empty.
+Sole ownership of one object on the heap: the object is given to the deleter D when its
+UniquePtr is destroyed, reset, assigned another object or nullptr; the deleter is never called
+on null. The default deleter, `DefaultDelete<T>` (std::default_delete), deletes it with `delete`
+as T. A UniquePtr is moved, never copied; a moved-from UniquePtr is empty.
 
+- A UniquePtr is one pointer, with any deleter. The deleter is a class without state, callable
+  with a T* (`struct Closer { void operator()(T* object) const; }`): each call constructs one,
+  `D()(object)`.
 - Deleting through T*: when the object is of a class derived from T (it came from a
   `UniquePtr<Derived>` or `new Derived`), T's destructor must be virtual, or the program is wrong.
 - Nothing is thread-safe beyond what a plain pointer is.
 
 Members:
 - `UniquePtr()`, `UniquePtr(nullptr)`: empty.
-- `explicit UniquePtr(T* object)`: owns object (made with new), or nothing for null.
+- `explicit UniquePtr(T* object)`: owns object (made so that D may free it; with the default
+  deleter, made with new), or nothing for null.
 - move constructor and move assignment; the copy constructor and copy assignment are deleted.
-- From `UniquePtr<U>&&` (constructor and assignment) when a U* converts to T* (U derives from T,
-  or T is const U): takes the other's object, which is left empty. Not explicit, so a
-  `UniquePtr<Derived>` is passed where a `UniquePtr<Base>` parameter is expected.
-- `operator=(nullptr)`, `reset()`: delete the object; `reset(T* object)`: then own object (the
-  old one is deleted after the new one is stored).
-- `release()`: gives the object up without deleting it, returns it; the UniquePtr is empty.
+- From `UniquePtr<U, E>&&` (constructor and assignment) when a U* converts to T* (U derives from
+  T, or T is const U) and E converts to D: takes the other's object, which is left empty. Not
+  explicit, so a `UniquePtr<Derived>` is passed where a `UniquePtr<Base>` parameter is expected.
+- `operator=(nullptr)`, `reset()`: give the object to the deleter; `reset(T* object)`: then own
+  object (the old one goes to the deleter after the new one is stored).
+- `release()`: gives the object up without the deleter, returns it; the UniquePtr is empty.
+- `get_deleter()`: a deleter, by value.
 - `get()`, `*`, `->`, `explicit operator bool`, `!`; `==`, `!=` compare the pointers (with
   another UniquePtr, with nullptr, and with a plain pointer of the same class or a base).
 - `swap(other)`.
-- `element_type`: T.
+- `element_type`: T; `deleter_type`: D.
+
+*Difference from C++*: a deleter with state is not supported: there is no constructor taking a
+deleter object (`UniquePtr(object, deleter)` does not compile), and `get_deleter()` returns a new
+deleter rather than a reference to a stored one. For a deleter without state, which is what all of
+the game's deleters are, the behavior is C++'s.
 
 `makeUnique<T>(args...)`: `UniquePtr<T>(new T(args...))`, with the arguments forwarded.
 

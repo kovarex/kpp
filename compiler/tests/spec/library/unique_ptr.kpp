@@ -1,8 +1,18 @@
-// spec: UniquePtr (std::unique_ptr): makeUnique, move, release/reset, polymorphic delete, UniqueArray, makeUniqueArrayForOverwrite (std::make_unique_for_overwrite<T[]>)
+// spec: UniquePtr (std::unique_ptr): makeUnique, move, release/reset, polymorphic delete, a custom deleter called on the object (never on null, not on release; moved and swapped with it), UniqueArray, makeUniqueArrayForOverwrite (std::make_unique_for_overwrite<T[]>)
 // factorio: 3820 uses in 1049 files
 static int alive = 0;
 struct Res { int id; Res(int id) : id(id) { ++alive; } virtual ~Res() { --alive; } };
 struct Sub : Res { Sub() : Res(9) {} };
+static int closed = 0;
+struct Closer
+{
+  int* counter = &closed;
+  void operator()(Res* r) const
+  {
+    ++*this->counter;
+    delete r;
+  }
+};
 UniquePtr<Res> make(bool sub) { if (sub) return UniquePtr<Res>(new Sub()); return makeUnique<Res>(1); }
 int main()
 {
@@ -20,5 +30,16 @@ int main()
   buffer[15] = 'z';
   UniqueArray<String> names = makeUniqueArrayForOverwrite<String>(2);
   println("{} {} {}", buffer.size(), buffer[15], names[1].size());
+  {
+    UniquePtr<Res, Closer> d(new Res(1));
+    UniquePtr<Res, Closer> e = ::move(d);
+    e.reset(new Res(2));
+    Res* raw = e.release();
+    delete raw;
+    UniquePtr<Res, Closer> f(new Res(3));
+    f.swap(e);
+    UniquePtr<Res, Closer> empty;
+  }
+  println("{} {} {}", closed, alive, sizeof(UniquePtr<Res>));
   return 0;
 }
