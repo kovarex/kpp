@@ -21,6 +21,10 @@ This file records decisions that have been made. When a decision changes, update
 - **Order-independent.** Declaration order does not matter (except runtime static
   initialization order within a file). Circular dependencies that cannot be resolved
   (e.g. type A contains B by value and B contains A) are reported as errors.
+  Globals built at startup are built in definition order within a file (a global's
+  initializer may read, directly or through functions, the globals defined before it in its
+  file); files go in the driver's order, the library first, and a program must not depend on
+  that order across files (as C++ across translation units).
 - **One multithreaded compiler process** sharing one symbol table, instead of independent
   per-file processes:
   1. Index: parse all files in parallel, build the global symbol tree, record unresolved

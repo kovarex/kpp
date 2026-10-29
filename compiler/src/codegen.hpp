@@ -13,6 +13,7 @@ struct CodegenResult
   std::vector<std::string> modules; // or one module per group of files, each complete on its own
   std::vector<std::string> errors; // "file:line: message"
   std::vector<std::string> failedFunctions; // IR names of the functions an error left out
+  size_t stubs = 0;                 // with stubMissing: functions left out that are stubs aborting when called
   size_t functions = 0;
   size_t structs = 0;
 };
@@ -23,5 +24,9 @@ struct CodegenResult
 // despiteErrors: assemble the IR even when there are errors (--keep-going): the functions with
 // errors are left out and only declared, so that what remains can be compiled and linked.
 // threads: how many threads emit functions at once (the output does not depend on it).
+// stubMissing (with despiteErrors; a bring-up tool, never the default): every function an error
+// left out, and every one used without a definition, is defined as a stub that aborts with its
+// name and line when called, so that the program links and runs up to the first one it reaches.
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
-                           bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1);
+                           bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,
+                           bool stubMissing = false);

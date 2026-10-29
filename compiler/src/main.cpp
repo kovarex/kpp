@@ -65,6 +65,7 @@ namespace
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
     int repeat = 1;
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
+    bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
   };
 
   void usage()
@@ -93,6 +94,9 @@ namespace
             "  --codegen-threads N  threads emitting IR (default: --threads; the IR does not depend on it)\n"
             "  --keep-going  compile and link the IR codegen emitted even when it reported errors (functions with\n"
             "                errors are left out; the link lists what is missing)\n"
+            "  --stub-missing  with --keep-going, a bring-up tool: every function left out (or used without a\n"
+            "                definition) is a stub that prints its name and line and aborts when called, so the\n"
+            "                program links; the errors are still reported and the exit code is still 1\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n");
   }
 
@@ -730,13 +734,15 @@ namespace
       modules = 1;
     auto start = Clock::now();
     CodegenResult cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing,
-                                    options.codegenThreads ? options.codegenThreads : options.threads);
+                                    options.codegenThreads ? options.codegenThreads : options.threads, options.keepGoing && options.stubMissing);
     double t = seconds(Clock::now() - start);
     size_t irBytes = cg.ir.size();
     for (const std::string& m : cg.modules)
       irBytes += m.size();
     report("codegen: %.3f s, %zu functions, %zu structs, %zu bytes of IR in %zu module(s)\n", t, cg.functions, cg.structs, irBytes,
            std::max<size_t>(1, cg.modules.size()));
+    if (options.keepGoing && options.stubMissing)
+      printf("stubs: %zu functions left out are stubs that abort when called (--stub-missing)\n", cg.stubs);
     for (const std::string& e : cg.errors)
       fprintf(stderr, "%s\n", e.c_str());
     if (!cg.errors.empty())
@@ -1153,6 +1159,8 @@ int main(int argc, char** argv)
       options.cIncludeDirs.push_back(argv[++i]);
     else if (arg == "--keep-going")
       options.keepGoing = true;
+    else if (arg == "--stub-missing")
+      options.stubMissing = true;
     else if (arg == "--codegen-threads" && i + 1 < argc)
       options.codegenThreads = unsigned(atoi(argv[++i]));
     else if (arg == "--lib" && i + 1 < argc)

@@ -104,8 +104,8 @@ What it took, in the order it was found:
   and friends found from either operand; conversion operators (`explicit operator bool`
   in conditions); `->` through `operator->`; converting constructors for `const T&` and by-value
   class parameters (`f("text")` with `f(const String&)`); globals with constructors or
-  non-constant initializers (built at startup through `llvm.global_ctors`; destructors at exit
-  do not run yet); arrays from nested brace lists and unsized arrays sized by their initializer;
+  non-constant initializers (built at startup through `llvm.global_ctors`, in definition order
+  within a file; destructors at exit do not run yet); arrays from nested brace lists and unsized arrays sized by their initializer;
   `va_start`/`va_end`/`va_copy` and functions defined with `...`; array parameters as pointers;
   MSVC integer suffixes (`1i64`); `(DWORD)-11` folded as a constant; integer literals typed by
   value as in C++ (`0xffffffff` is unsigned; before, `ui & 0xffffffff` kept all 64 bits);
@@ -931,6 +931,49 @@ The link also takes the Logitech LED SDK now (fbuild.bff links `libraries/Logite
 LogitechLEDLib.lib`): its functions are C++, so `native/logitech_led_c.cpp` gives the six the game
 calls C names and `overrides/src/LED/Logitech/Includes/LogitechLEDLib.kpp` defines the header's
 functions on them; and iphlpapi for UDPSocket's GetIpAddrTable.
+
+### The first run (2026-10-29, afternoon)
+
+`programs/factorio/run.cmd [game arguments]` builds the converted tree as link.cmd does and runs
+it: `run.cmd --version`, `run.cmd --dump-data`, or no arguments for a normal start.
+
+- **Where it runs.** factorio.exe goes to `C:\factorio-in-kpp\bin\x64\`, where the C++ build puts its
+  own relative to the data, so the game's path discovery works unchanged and reads
+  `C:\factorio-in-kpp\data`. run.cmd writes `C:\factorio-in-kpp\config-path.cfg`
+  (`use-system-read-write-data-directories=false`) and `run\config\config.ini` when they are
+  missing, so config, log and saves go to `C:\factorio-in-kpp\run\`: never `%APPDATA%\Factorio`,
+  never C:\Factorio. bin\, run\ and config-path.cfg are not part of that repository.
+- **The reference** is the C++ FastDebug build's log, `C:\Factorio\factorio-current.log`; the
+  converted game's is `C:\factorio-in-kpp\run\factorio-current.log`.
+- **Stubs, a bring-up tool.** run.cmd compiles with `--keep-going --stub-missing`. Every function
+  the code generator left out (it failed, or it is used and nothing defines it) becomes a stub that
+  prints its qualified name and source line and aborts, so the game links and runs up to the first
+  one it reaches. The flag is opt-in, only works with --keep-going, and is never a default; the
+  compile still exits 1 and its errors stay in `kpp\run\build-errors.txt`; run.cmd prints the
+  stub count and the error count at the top of each run. Nothing ships with it.
+- **Inline C functions.** The import declares a C header's static inline functions but kppc
+  compiles no C bodies, so `native/inline_c.c` takes the addresses of the ones the game calls
+  (ws2tcpip.h's gai_strerrorW, versionhelpers.h's IsWindows8OrGreater) and clang emits them into
+  factorio-native.lib with the headers' own bodies.
+
+What the first runs found, each with its spec:
+
+1. The link failed on one stub-free name, `ScriptRenderBase::operator bool() const`: a pure virtual
+   conversion operator called directly, not through the vtable (an impure one would have run the
+   base's body). Conversion operators dispatch like other virtual functions now
+   (classes/virtual_conversion_operator). With that, on master b7d0ee8 plus this work, the game
+   links with 192 stubs and 220 error lines.
+2. `run.cmd --version` stopped in static initialization:
+   `InputActionList.kpp:130: assertion failed: !InputActionList::allActionsSortedByAction.empty()`.
+   The startup functions of globals ran in the order the code generator happened to reach them
+   (per module, by name hash), not in definition order; editableActionsSortedByAction is built by
+   a function that reads allActionsSortedByAction, defined just before it. They are now one
+   llvm.global_ctors list in module 0, in definition order within a file, the files in the
+   driver's order with the library first (design.md section 2; language/startup_in_definition_order).
+3. Next stop: the stub of `TimeStatisticsBuffer::generateProperties` (TimeStatistics.kpp:82), which
+   `properties = generateProperties()` calls at startup: its definitions are explicit member
+   specializations written through an alias of the instance, `template<> Vector<...>
+   UpdateBuffer::generateProperties()`, which the code generator never found.
 
 ### dear imgui through a generated C interface (2026-10-29)
 

@@ -37,6 +37,8 @@ static int callWithStackGuard(void(*fn)(void*), void* arg)
 //   emitted on first use from a worklist, after the type checker re-typed its body for the
 //   concrete arguments. All declaration types are read through declType(), which applies the
 //   arguments of the instantiation being emitted (or of the class whose metadata is inspected).
+static std::string stubText(const std::string& name, const std::string& ret, const std::string& params, const std::string& message);
+
 namespace
 {
   // One slot of a vtable: the function it calls (the final overrider), the class that function is
@@ -222,7 +224,10 @@ namespace
     SharedText shared; // definitions every module carries (linkonce_odr): enum str(), the assert handler
     std::vector<SharedText> bodies;                         // per module
     std::vector<SharedText> moduleDecls;                    // per module: its string constants and vtables
-    std::vector<std::vector<std::string>> moduleCtors;      // per module: startup functions for its globals
+    // The startup functions of the globals built at startup, each with where its global is
+    // defined (ctorsText runs them in that order).
+    struct Startup { uint32_t file; uint32_t token; std::string function; };
+    std::vector<Startup> startups;
     std::vector<std::unordered_set<std::string>> vtablesIn; // per module: the vtables it already has
     std::unordered_map<ParsedFile*, unsigned> fileModule;   // file -> module
     std::unordered_map<std::string, unsigned> definedIn;    // function name -> module
@@ -251,6 +256,8 @@ namespace
     std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
     std::map<std::string, FunctionDecl*> undefinedUses;  // Kpp functions used whose definition was not found (only declared)
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
+    bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
+    std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
 
     explicit Shared(CodegenResult& result) : result(result)
     {
@@ -264,7 +271,6 @@ namespace
       moduleDecls.resize(moduleCount);
       for (unsigned k = 0; k < moduleCount; ++k)
         bodies[k].mutex = moduleDecls[k].mutex = &mutex;
-      moduleCtors.resize(moduleCount);
       vtablesIn.resize(moduleCount);
       moduleConstants.resize(moduleCount);
     }
@@ -285,7 +291,7 @@ namespace
     unsigned& moduleCount = sh.moduleCount;
     std::vector<SharedText>& bodies = sh.bodies;
     std::vector<SharedText>& moduleDecls = sh.moduleDecls;
-    std::vector<std::vector<std::string>>& moduleCtors = sh.moduleCtors;
+    std::vector<Shared::Startup>& startups = sh.startups;
     std::vector<std::unordered_set<std::string>>& vtablesIn = sh.vtablesIn;
     std::unordered_map<ParsedFile*, unsigned>& fileModule = sh.fileModule;
     std::unordered_map<std::string, unsigned>& definedIn = sh.definedIn;
@@ -309,6 +315,7 @@ namespace
     std::vector<Instantiation> worklist;
     // Its errors and the functions they left out, gathered once all are emitted.
     std::vector<std::string> errors, failedFunctions;
+    std::unordered_map<std::string, std::string> failedAt; // failed function's IR name -> "qualified name at file:line"
     bool& mallocDeclared = sh.mallocDeclared;
     std::atomic<bool>& usesExceptions = sh.usesExceptions;
     std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
@@ -434,23 +441,26 @@ namespace
 
     void error(Node* at, const std::string& message)
     {
-      std::string where = "?";
-      if (currentFile && currentFile->tokens && at)
+      errors.push_back(locationOf(at, currentFile) + ": " + message);
+    }
+
+    // "file:line" of a node in a file, "?" when unknown.
+    std::string locationOf(Node* at, ParsedFile* file)
+    {
+      if (!file || !file->tokens || !at || file->tokens->empty())
+        return "?";
+      const std::vector<Token>& toks = *file->tokens;
+      const Token& t = toks[std::min<size_t>(at->token, toks.size() - 1)];
+      std::vector<uint32_t>& starts = lineStarts[file];
+      if (starts.empty())
       {
-        const std::vector<Token>& toks = *currentFile->tokens;
-        const Token& t = toks[std::min<size_t>(at->token, toks.size() - 1)];
-        std::vector<uint32_t>& starts = lineStarts[currentFile];
-        if (starts.empty())
-        {
-          starts.push_back(0);
-          for (uint32_t i = 0; i < currentFile->text.size(); ++i)
-            if (currentFile->text[i] == '\n')
-              starts.push_back(i + 1);
-        }
-        size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), t.offset) - starts.begin()); // lines starting at or before the token
-        where = currentFile->path + ":" + std::to_string(line);
+        starts.push_back(0);
+        for (uint32_t i = 0; i < file->text.size(); ++i)
+          if (file->text[i] == '\n')
+            starts.push_back(i + 1);
       }
-      errors.push_back(where + ": " + message);
+      size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), t.offset) - starts.begin()); // lines starting at or before the token
+      return file->path + ":" + std::to_string(line);
     }
 
     struct Unsupported
@@ -6333,6 +6343,37 @@ namespace
       return "declare " + text.substr(7, nameEnd - 7) + "(" + params + ")";
     }
 
+    // --stub-missing: a stub for a function used without a definition (ret and params from its
+    // declaration), saying which function and where it is declared.
+    std::string stubDefinition(const std::string& name, const std::string& ret, const std::string& params)
+    {
+      auto it = sh.stubMessages.find(name);
+      return stubText(name, ret, params, it != sh.stubMessages.end() ? it->second : name);
+    }
+
+    // The runtime of --stub-missing's stubs: what was left out, on stderr, and abort.
+    void finishStubRuntime()
+    {
+      if (!sh.stubMissing || !declaredNames.claim("@kpp_missing"))
+        return;
+      emittingShared = true;
+      std::string format = cStringConstant("kppc left this function out (it did not compile; see the compile's errors): %s\n");
+      emittingShared = false;
+      if (declaredNames.claim("@fprintf"))
+        decls += "declare i32 @fprintf(ptr, ptr, ...)\n";
+      if (declaredNames.claim("@__acrt_iob_func"))
+        decls += "declare ptr @__acrt_iob_func(i32)\n";
+      if (declaredNames.claim("@fflush"))
+        decls += "declare i32 @fflush(ptr)\n";
+      if (declaredNames.claim("@abort"))
+        decls += "declare void @abort()\n";
+      shared += sharedComdat("@kpp_missing") +
+                "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {\nentry:\n"
+                "  %f = call i32 @fflush(ptr null)\n" // (every stream first: the program's own output comes before the message)
+                "  %err = call ptr @__acrt_iob_func(i32 2)\n  %r = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %what)\n"
+                "  %f2 = call i32 @fflush(ptr %err)\n  call void @abort()\n  unreachable\n}\n";
+    }
+
     // Module k: the shared declarations, then declares for what it uses from other modules, then its bodies.
     // The shared declarations without those of functions this module defines: a `declare` next to
     // the `define` is a redefinition to LLVM (a call site whose definition was not found declares
@@ -6357,8 +6398,16 @@ namespace
             size_t nameEnd = line[at + 1] == '"' ? line.find('"', at + 2) + 1 : line.find('(', at);
             if (nameEnd != std::string_view::npos)
             {
-              auto it = definedIn.find(std::string(line.substr(at, nameEnd - at)));
+              std::string name(line.substr(at, nameEnd - at));
+              auto it = definedIn.find(name);
               skip = it != definedIn.end() && it->second == k;
+              // --stub-missing: a function of the program used without a definition is defined
+              // here as a stub (in every module: linkonce_odr), from its declaration.
+              if (!skip && sh.stubMissing && sh.undefinedUses.count(name) && !definedIn.count(name))
+              {
+                out += stubDefinition(name, std::string(line.substr(8, at - 8)), std::string(line.substr(nameEnd)));
+                skip = true;
+              }
             }
           }
         }
@@ -6394,7 +6443,8 @@ namespace
 
     std::string moduleText(unsigned k, const std::string& prefix)
     {
-      std::string text = moduleDecls[k].text + bodies[k].text + shared.text;
+      std::string ctors = ctorsText(k); // module 0 runs the startup functions of every module
+      std::string text = moduleDecls[k].text + bodies[k].text + shared.text + ctors;
       std::string decls = declsFor(k);
       if (sharedDeclared.empty())
         declaredIn(this->decls.text, sharedDeclared);
@@ -6440,7 +6490,7 @@ namespace
       for (const std::string& name : sharedReferences)
         if (definedIn[name] != k && !already.count(name) && seen.insert(name).second)
           declares += declareLines[name] + "\n";
-      return prefix + decls + moduleDecls[k].text + ctorsText(k) + "\n" + shared.text + declares + "\n" + bodies[k].text;
+      return prefix + decls + moduleDecls[k].text + ctors + "\n" + shared.text + declares + "\n" + bodies[k].text;
     }
     bool sharedReferencesFound = false;
     std::set<std::string> sharedReferences; // sorted: the same declare lines in every run
@@ -6592,7 +6642,13 @@ namespace
       if (owner != canonicalClass(objectTy, at) && !baseAddress(objectTy, owner, addr, self, at))
         unsupported(at, "a conversion operator of the base " + types.toString(owner, &symbols) + ", which the layout of " +
                             types.toString(objectTy, &symbols) + " does not have");
-      return callRvalue(callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, "", {}, at), at);
+      // A virtual one is the object's override (ScriptRenderBase's pure `virtual explicit operator
+      // bool() const`, which was called directly: a link error, or the base's body for an impure one).
+      std::string indirect;
+      if (op->templateParams.empty() && isClass(owner) && structFor(owner, at).polymorphic)
+        if (int slot = slotOf(owner, op, at); slot >= 0)
+          indirect = loadSlot(self, slot);
+      return callRvalue(callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, "", {}, at, indirect), at);
     }
 
     // explicitCast: the conversion an explicit cast asks for, which may use explicit conversion
@@ -7193,9 +7249,8 @@ namespace
     }
 
     // A global built at startup (a class with a constructor, or an initializer that is not a
-    // constant): a function constructing it, registered in llvm.global_ctors of the module that
-    // first uses the global. Order within a module follows first use; destructors at exit do not
-    // run yet.
+    // constant): a function constructing it, run from llvm.global_ctors in definition order (see
+    // ctorsText); destructors at exit do not run yet.
     // init: the global's initializer (for a static member of a class template, its instantiation's
     // copy), or null.
     void emitGlobalConstructor(VariableDecl* v, const std::string& name, const Ty* t, Expr* init, Node* at)
@@ -7248,7 +7303,8 @@ namespace
         popScope();
         fn += "  ret void\n";
         addDefinition(fnName, functionText("define void " + fnName + "() {\nentry:\n"));
-        moduleCtors[moduleCount <= 1 ? 0 : currentModule].push_back(fnName);
+        auto lock = sharedLock();
+        startups.push_back({def->file ? def->file->index : 0, def->token, fnName});
       }
       catch (Unsupported&)
       {
@@ -7266,14 +7322,21 @@ namespace
       emittingShared = savedShared;
     }
 
-    // The llvm.global_ctors array of module k.
+    // The llvm.global_ctors array, all of it in module 0: the globals built at startup in
+    // definition order within a file (design.md section 2: a global's initializer may read the ones
+    // defined before it in its file), the files in the driver's order, the library first. Not by
+    // module: which module a startup function lands in says nothing about the order.
     std::string ctorsText(unsigned k)
     {
-      if (k >= moduleCtors.size() || moduleCtors[k].empty())
+      if (k != 0 || startups.empty())
         return "";
-      std::string s = "@llvm.global_ctors = appending global [" + std::to_string(moduleCtors[k].size()) + " x { i32, ptr, ptr }] [";
-      for (size_t i = 0; i < moduleCtors[k].size(); ++i)
-        s += std::string(i ? ", " : "") + "{ i32, ptr, ptr } { i32 65535, ptr " + moduleCtors[k][i] + ", ptr null }";
+      std::vector<Shared::Startup> order = startups;
+      std::sort(order.begin(), order.end(), [](const Shared::Startup& a, const Shared::Startup& b) {
+        return std::tie(a.file, a.token, a.function) < std::tie(b.file, b.token, b.function);
+      });
+      std::string s = "@llvm.global_ctors = appending global [" + std::to_string(order.size()) + " x { i32, ptr, ptr }] [";
+      for (size_t i = 0; i < order.size(); ++i)
+        s += std::string(i ? ", " : "") + "{ i32, ptr, ptr } { i32 65535, ptr " + order[i].function + ", ptr null }";
       return s + "]\n";
     }
 
@@ -13369,6 +13432,7 @@ namespace
       catch (Unsupported&)
       {
         failedFunctions.push_back(currentFunctionName);
+        failedAt[currentFunctionName] = qualifiedName(original) + " at " + locationOf(original, original->file); // what --stub-missing's stub says
       }
       currentArgs = nullptr;
       currentClassTy = nullptr;
@@ -13469,7 +13533,7 @@ namespace
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads);
+                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -13512,10 +13576,35 @@ static void onThreads(unsigned n, F& work)
 #endif
 }
 
+// --stub-missing: the definition of a function that was left out, which reports it and aborts when
+// called (ret and params as its declaration has them, or `void` and `()` for one known by name only:
+// a call names it with its own type). In every module that uses it: linkonce_odr.
+static std::string stubText(const std::string& name, const std::string& ret, const std::string& params, const std::string& message)
+{
+  std::string inner = name.size() > 2 && name[1] == '"' ? name.substr(2, name.size() - 3) : name.substr(1);
+  std::string bytes = message + '\0', escaped;
+  for (unsigned char c : bytes)
+    if (c >= 0x20 && c < 0x7f && c != '"' && c != '\\')
+      escaped += char(c);
+    else
+    {
+      char buf[8];
+      snprintf(buf, sizeof buf, "\\%02X", c);
+      escaped += buf;
+    }
+  std::string constant = "@\"kpp.missing:" + inner + "\"";
+  return "$" + name.substr(1) + " = comdat any\n" + constant + " = private unnamed_addr constant [" + std::to_string(bytes.size()) + " x i8] c\"" +
+         escaped + "\"\ndefine linkonce_odr " + ret + " " + name + params + " comdat {\nentry:\n  call void @kpp_missing(ptr " + constant +
+         ")\n  unreachable\n}\n";
+}
+
 // The global names a module's text uses without a definition or declaration (functions an error
 // left out, with --keep-going), each declared as `declare void @name()`: with opaque pointers a
 // call may name a function of another type, so the module compiles and the link reports the name.
-static std::string declareUndefined(const std::string& text)
+// With stubs (--stub-missing), each is defined as a stub instead (stubText), its message the one
+// stubs gives it or its name.
+static std::string declareUndefined(const std::string& text, const std::unordered_map<std::string, std::string>* stubs = nullptr,
+                                    std::unordered_set<std::string>* stubbed = nullptr)
 {
   auto nameAt = [&](size_t i) -> std::string
   {
@@ -13568,12 +13657,20 @@ static std::string declareUndefined(const std::string& text)
   std::sort(sorted.begin(), sorted.end());
   std::string out = sorted.empty() ? "" : "\n; left out by codegen errors (--keep-going)\n";
   for (const std::string& name : sorted)
-    out += "declare void " + name + "()\n";
+    if (stubs)
+    {
+      auto it = stubs->find(name);
+      out += stubText(name, "void", "()", it != stubs->end() ? it->second : name);
+      if (stubbed)
+        stubbed->insert(name);
+    }
+    else
+      out += "declare void " + name + "()\n";
   return out;
 }
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                           unsigned moduleCount, bool despiteErrors, unsigned threads)
+                           unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -13587,12 +13684,13 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     unsigned moduleCount;
     bool despiteErrors;
     unsigned threads;
+    bool stubMissing;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
-    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads);
+    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -13602,15 +13700,26 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing);
+}
+
+// --stub-missing: the functions used without a definition that declsFor defines as stubs.
+static size_t countUndefinedStubs(Shared& sh)
+{
+  size_t n = 0;
+  if (sh.stubMissing)
+    for (auto& [name, f] : sh.undefinedUses)
+      n += !sh.definedIn.count(name);
+  return n;
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads)
+                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing)
 {
   CodegenResult result;
   Shared sh(result);
   sh.debug = debug;
+  sh.stubMissing = despiteErrors && stubMissing;
   sh.setModules(moduleCount);
   for (size_t i = 0; i < files.size(); ++i)
     sh.fileModule[files[i].get()] = unsigned(i % sh.moduleCount);
@@ -13737,6 +13846,18 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   }
   e.finishAssertRuntime();
   e.finishExceptionRuntime();
+  if (sh.stubMissing)
+  {
+    // --stub-missing: what each stub says, the function and where it is (a failed function's own
+    // line, a function used without a definition its declaration's).
+    for (auto& em : emitters)
+      for (auto& [name, where] : em->failedAt)
+        sh.stubMessages.emplace(name, where);
+    for (auto& [name, f] : sh.undefinedUses)
+      if (!sh.definedIn.count(name))
+        sh.stubMessages.emplace(name, e.qualifiedName(f) + " at " + e.locationOf(f, f->file) + " (used, but no definition of it was found)");
+    e.finishStubRuntime();
+  }
   // A closure that functions name but whose lambda was never laid out: the function it is written
   // in failed before it (an error), and so did those functions, but with --keep-going the modules
   // have to parse, so the type gets a placeholder. Without any error it is a closure nobody built.
@@ -13823,14 +13944,21 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     result.ir.append(e.shared.text);
     result.ir.append(std::move(e.body.text));
     if (!result.errors.empty())
-      result.ir += declareUndefined(result.ir);
+    {
+      std::unordered_set<std::string> stubbed;
+      result.ir += declareUndefined(result.ir, sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
+      result.stubs = stubbed.size() + countUndefinedStubs(sh);
+    }
     return result;
   }
+  std::unordered_set<std::string> stubbed;
   for (unsigned k = 0; k < e.moduleCount; ++k)
   {
     result.modules.push_back(e.moduleText(k, prefix));
     if (!result.errors.empty())
-      result.modules.back() += declareUndefined(result.modules.back());
+      result.modules.back() += declareUndefined(result.modules.back(), sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
   }
+  if (sh.stubMissing)
+    result.stubs = stubbed.size() + countUndefinedStubs(sh);
   return result;
 }

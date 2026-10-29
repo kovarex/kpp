@@ -1,0 +1,19 @@
+// spec: globals built at startup are built in definition order within their file, whatever order the code first names them in: `second` reads `first` through a function, and main names `third` first
+// factorio: InputActionList's `editableActionsSortedByAction = buildEditableActions()`, which asserts that `allActionsSortedByAction` (defined just before it) is not empty: the first run of the converted game stopped there, the startup functions having run in the order the code generator reached them
+class Table
+{
+public:
+  int size = 0;
+  Table(const char* name, int n) : size(n) { println("{} {}", name, n); }
+};
+int sizeOf(const Table& t) { return t.size; }
+int firstSize();
+const Table first("first", 3);
+const Table second("second", firstSize() * 2);
+const Table third("third", sizeOf(second) + 1);
+int main()
+{
+  println("{} {} {}", third.size, second.size, first.size);
+  return 0;
+}
+int firstSize() { return first.size; }

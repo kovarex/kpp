@@ -1,0 +1,25 @@
+// spec: a virtual conversion operator is the object's override, pure or not (`r ? int(r) : -1` through a base reference)
+// found linking the converted game: ScriptRendering's `if (object)` called ScriptRenderBase's pure `virtual explicit operator bool() const` directly (an unresolved external; an impure one would have run the base's body, silently)
+class RenderBase
+{
+public:
+  virtual ~RenderBase() {}
+  virtual explicit operator bool() const = 0;
+  virtual operator int() const { return 1; }
+};
+class Line : public RenderBase
+{
+public:
+  bool valid = true;
+  explicit operator bool() const override { return this->valid; }
+  operator int() const override { return 2; }
+};
+int check(const RenderBase& r) { return r ? int(r) * 10 : -1; }
+int main()
+{
+  Line a;
+  Line b;
+  b.valid = false;
+  println("{} {}", check(a), check(b));
+  return 0;
+}
