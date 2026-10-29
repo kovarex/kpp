@@ -8300,7 +8300,11 @@ struct GlobalScope::Impl
     {
       bool parameter = b->kind == NodeKind::NamedType && static_cast<NamedType*>(b)->name.parts.size() == 1 &&
                        !static_cast<NamedType*>(b)->name.parts[0].hasTemplateArgs;
-      if (!parameter)
+      // `struct Const : Conditional<isIntegral<T>, Value<T>, T>`: a type trait, the class it picks
+      // for these arguments (the lookup above searched the trait's own scope).
+      bool trait = b->kind == NodeKind::NamedType && static_cast<NamedType*>(b)->name.parts.size() == 1 &&
+                   static_cast<NamedType*>(b)->name.parts[0].hasTemplateArgs && isTypeTraitName(static_cast<NamedType*>(b)->name.parts[0].symbol);
+      if (!parameter && !trait)
         continue; // a written class's members were found by the lookup above
       for (const Ty* bt : baseInstances(b, ctx, depth + 1))
         if (bt && bt->kind == TyKind::Class && bt != t)

@@ -1,6 +1,5 @@
 // spec: a member type of a class whose base is a type trait (`struct Const : Conditional<isIntegral<T>, Value<T>, T>`) is the member of the class the trait picks (`Const<Map<String, int>>::mapped_type` is the Map's), as written and as a template parameter's member (`Container::mapped_type` with Container = Const<Map<String, int>>)
 // factorio: UtilityConstants::Const<T> over a Map (Util::getMapOrDefault<Const<Map<String, TinyVector>>, const char*> in EntityPrototype::postLoadSetup)
-// pending: the lookup searches Conditional's own scope and no member type is found ("the type ?::mapped_type", or the call's template arguments could not be deduced); owner: the templates thread (member types through bases)
 template <class T>
 struct Value
 {
