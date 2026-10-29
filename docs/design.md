@@ -312,6 +312,16 @@ the switch they cost nothing. Fixtures are ordinary classes constructed in the t
 - `dynamic_cast` and `typeid` exist for single-inheritance hierarchies: a type descriptor behind
   the vtable, with the chain of bases, which is what Factorio's 647 casts need. No
   cross-casts or virtual bases.
+- The vtable is MSVC's and COM's for single inheritance (2026-10-29): the object's first word
+  points at the first virtual function's slot, the slots follow in declaration order (an
+  override takes its base's slot), `this` is the first argument and a class result goes through
+  a hidden pointer after it. The type descriptor is the slot just before the first function
+  (where MSVC keeps its RTTI locator). So a COM interface (ID3D11Device) can be declared as a Kpp
+  class with its virtual functions in the header's order, and a C table of functions called
+  through one (spec interop/c_object_with_vtable). Not MSVC's: a virtual destructor's slot is a
+  plain destructor (MSVC's takes a flag; COM interfaces declare none), overloaded virtual
+  functions keep declaration order (MSVC groups them; COM has no overloads), and a class argument
+  is passed as a pointer to a copy where MSVC passes 1, 2, 4 and 8-byte structs in a register.
 - Implemented 2026-10-24 (throw, try/catch, rethrow; `dynamic_cast` not yet) on Windows SEH
   rather than the MSVC C++ ABI: `throw` builds the object on the heap and raises an SEH exception
   (code 0xE0000001) carrying the object, its type descriptor and its destructor; every `try`

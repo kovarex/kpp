@@ -54,7 +54,8 @@ namespace
     std::vector<const Ty*> vtableOwners;      // class type each implementation belongs to
     std::string vtableName;                   // @"vtable.Class"
     std::string vtableText;                   // its definition, emitted into every module that stores it
-    std::string typeInfoName;                 // @"typeinfo.Class": { ptr name, ptr base descriptor }, what slot 0 points to
+    std::string vptrValue;                    // what an object's vtable pointer holds: the address of the first function's slot
+    std::string typeInfoName;                 // @"typeinfo.Class": { ptr name, ptr base descriptor }, what slot -1 points to
     const Ty* primaryBase = nullptr;          // the polymorphic first base, whose descriptor the chain continues with
     bool isUnion = false;                     // all members at offset 0, storage sized for the largest
     std::vector<std::pair<Decl*, uint32_t>> anonymous; // anonymous struct/union members -> field index
@@ -896,8 +897,11 @@ namespace
         structs[key].vtableName = vt;
         std::vector<FunctionDecl*> impls2 = structs[key].vtable;
         std::vector<const Ty*> owners2 = structs[key].vtableOwners;
-        // Slot 0 is the class's descriptor: its name (typeid) and the primary base's descriptor
-        // (dynamic_cast walks that chain); the methods follow (loadSlot skips the descriptor).
+        // The vtable pointer points at the first function's slot, the functions following in
+        // declaration order (MSVC's layout and COM's: a C object's table of functions is called as
+        // a Kpp class's, and the reverse). Just before it, slot -1, is the class's descriptor (where
+        // MSVC keeps its RTTI locator): its name (typeid) and the primary base's descriptor, which
+        // dynamic_cast walks.
         std::string ti = "@\"typeinfo." + types.toString(key, &symbols) + "\"";
         structs[key].typeInfoName = ti;
         structs[key].primaryBase = primaryPolymorphic ? baseKeys[0] : nullptr;
@@ -923,8 +927,10 @@ namespace
             entries += ", " + entry;
           }
         }
-        structs[key].vtableText = descriptor + "$" + vt.substr(1) + " = comdat any\n" + vt + " = linkonce_odr constant [" +
-                                  std::to_string(impls2.size() + 1) + " x ptr] [" + entries + "], comdat\n";
+        std::string tableType = "[" + std::to_string(impls2.size() + 1) + " x ptr]";
+        structs[key].vtableText = descriptor + "$" + vt.substr(1) + " = comdat any\n" + vt + " = linkonce_odr constant " + tableType + " [" +
+                                  entries + "], comdat\n";
+        structs[key].vptrValue = "getelementptr inbounds (" + tableType + ", ptr " + vt + ", i64 0, i64 1)";
       }
       return structs[key];
     }
@@ -962,13 +968,13 @@ namespace
       return -1;
     }
 
-    // Loads the function pointer of a vtable slot from the object at addr.
+    // Loads a vtable slot of the object at addr: a function's (from 0), or the class descriptor (-1).
     std::string loadSlot(const std::string& addr, int slot)
     {
       std::string vptr = newTemp();
       fn += "  " + vptr + " = load ptr, ptr " + addr + "\n";
       std::string entry = newTemp();
-      fn += "  " + entry + " = getelementptr inbounds ptr, ptr " + vptr + ", i64 " + std::to_string(slot + 1) + "\n"; // after the name
+      fn += "  " + entry + " = getelementptr inbounds ptr, ptr " + vptr + ", i64 " + std::to_string(slot) + "\n";
       std::string fp = newTemp();
       fn += "  " + fp + " = load ptr, ptr " + entry + "\n";
       return fp;
@@ -1503,7 +1509,7 @@ namespace
       if (info.polymorphic)
       {
         useVtable(info);
-        fn += "  store ptr " + info.vtableName + ", ptr " + addr + "\n";
+        fn += "  store ptr " + info.vptrValue + ", ptr " + addr + "\n";
       }
       if (info.isUnion)
         return;
@@ -1754,7 +1760,7 @@ namespace
         if (info.polymorphic)
         {
           useVtable(info);
-          fn += "  store ptr " + info.vtableName + ", ptr " + addr + "\n";
+          fn += "  store ptr " + info.vptrValue + ", ptr " + addr + "\n";
         }
         if (info.fieldDecls.size() == 1 && info.bases.empty() && designators.empty() && args.size() > 1)
         {
@@ -2088,7 +2094,7 @@ namespace
       if (info.polymorphic)
       {
         useVtable(info);
-        fn += "  store ptr " + info.vtableName + ", ptr " + dst + "\n";
+        fn += "  store ptr " + info.vptrValue + ", ptr " + dst + "\n";
       }
       for (auto& [baseDef, index] : info.bases)
       {
@@ -4779,7 +4785,7 @@ namespace
         useVtable(structFor(info.primaryBase, nullptr)); // the descriptor chain refers to the base's descriptor
     }
 
-    // The name a class descriptor (slot 0 of a vtable) starts with.
+    // The name a class descriptor (slot -1 of a vtable) starts with.
     std::string descriptorName(const std::string& descriptor)
     {
       std::string n = newTemp();
@@ -4815,7 +4821,7 @@ namespace
         decls += "$kpp.dyncast = comdat any\n"
                  "define linkonce_odr ptr @kpp.dyncast(ptr %obj, ptr %target) comdat {\n"
                  "entry:\n  %isnull = icmp eq ptr %obj, null\n  br i1 %isnull, label %fail, label %start\n"
-                 "start:\n  %vt = load ptr, ptr %obj\n  %d0 = load ptr, ptr %vt\n  br label %loop\n"
+                 "start:\n  %vt = load ptr, ptr %obj\n  %dp = getelementptr inbounds ptr, ptr %vt, i64 -1\n  %d0 = load ptr, ptr %dp\n  br label %loop\n"
                  "loop:\n  %d = phi ptr [ %d0, %start ], [ %next, %step ]\n  %hit = icmp eq ptr %d, %target\n  br i1 %hit, label %ok, label %step\n"
                  "step:\n  %bp = getelementptr inbounds { ptr, ptr }, ptr %d, i32 0, i32 1\n  %next = load ptr, ptr %bp\n"
                  "  %end = icmp eq ptr %next, null\n  br i1 %end, label %fail, label %loop\n"
@@ -7493,7 +7499,7 @@ namespace
             else if (named && named->kind == NodeKind::EnumDecl)
               staticTy = types.enumType(named);
             else if (isClass(xt) && structFor(xt, e).polymorphic)
-              namePtr = descriptorName(loadSlot(lvalue(x), -1)); // the dynamic type: slot 0 of the object's vtable
+              namePtr = descriptorName(loadSlot(lvalue(x), -1)); // the dynamic type: slot -1 of the object's vtable
             else
               staticTy = xt;
           }
