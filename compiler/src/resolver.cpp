@@ -8588,6 +8588,34 @@ struct GlobalScope::Impl
     return out;
   }
 
+  // The class template t's arguments for variable v from its initializer, as the walk deduces them
+  // (CTAD: a constructor or deduction guide, else an aggregate's members); null when its values'
+  // types are not known here.
+  const Ty* deducedFromInitializer(const Ty* t, VariableDecl* v, const TypeContext& ctx)
+  {
+    Span<Expr*> args{&v->init, 1};
+    bool direct = v->bracedInit;
+    if (v->init->kind == NodeKind::BraceInitExpr)
+      args = static_cast<BraceInitExpr*>(v->init)->args;
+    else if (v->init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(v->init)->type == v->type)
+    {
+      args = static_cast<FunctionalCastExpr*>(v->init)->args; // the parser's `T x(args)`
+      direct = true;
+    }
+    std::vector<const Ty*> argTypes;
+    for (Expr* a : args)
+    {
+      const Ty* at = a && a->kind != NodeKind::BraceInitExpr ? typeOfSignatureExpression(a, ctx) : nullptr;
+      if (!at || !at->isKnown() || types.isDependent(at))
+        return nullptr;
+      argTypes.push_back(argumentType(a, at, types));
+    }
+    const Ty* deduced = deduceClassArgs(t, argTypes, !direct);
+    if (!deduced && v->init->kind == NodeKind::BraceInitExpr)
+      deduced = deduceAggregateArgs(t, argTypes);
+    return deduced;
+  }
+
   const Ty* computeDeclaredType(Decl* d, const Subst* subst, int depth)
   {
     DeclContext dc;
@@ -8613,6 +8641,12 @@ struct GlobalScope::Impl
                  static_cast<LiteralExpr*>(v->init)->literalKind == TokenKind::String)
           if (std::optional<ConstValue> s = constString(static_cast<LiteralExpr*>(v->init), ctx))
             t = types.array(t->inner, uint32_t(s->parts->size())); // `char s[] = "abc"`: its four chars
+        // `static constexpr Array accessors = {&S::a, &S::b};` used before the walk reaches the
+        // initializer (by a member function written above it): the class's arguments from the
+        // initializer (CTAD), as the walk deduces a local's.
+        if (v->init && isUndeducedClassTemplate(t) && !(v->parent && v->parent->kind == NodeKind::FunctionDecl))
+          if (const Ty* deduced = deducedFromInitializer(t, v, ctx))
+            t = deduced;
         // A constexpr variable is const (`decltype(COUNT)` is `const int`), an array of them of
         // const elements; one whose type is deduced stays as deduced.
         if ((v->flags & DF_Constexpr) && t && t->isKnown() && !t->isReference() && !containsAuto(t))
@@ -8624,7 +8658,7 @@ struct GlobalScope::Impl
           // this instance's arguments (the walker deduces it only for the template itself).
           if (const Ty* init = typeOfSignatureExpression(v->init, ctx); init && init->isKnown() && !types.isDependent(init))
             if (const Ty* deduced = deduceAuto(t, init); deduced && deduced->isKnown() && !containsAuto(deduced))
-              return deduced;
+              return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
         }
         if (types.isDependent(t) && containsAuto(t))
           return t; // Deduced from the initializer by the walker when it reaches the declaration.
@@ -13627,6 +13661,8 @@ struct GlobalScope::Impl
             const Ty* deduced = impl.deduceClassArgs(declared, argTypes, !direct);
             if (!deduced && v->init->kind == NodeKind::BraceInitExpr)
               deduced = impl.deduceAggregateArgs(declared, argTypes);
+            if (deduced && (v->flags & DF_Constexpr))
+              deduced = types.qualified(deduced, true, false); // `constexpr Array names = {...}` is const
             if (deduced)
             {
               v->cachedType.store(deduced, std::memory_order_release);
@@ -13645,6 +13681,8 @@ struct GlobalScope::Impl
               if (Expr* only = static_cast<BraceInitExpr*>(v->init)->args[0]; only && only->ty)
                 initTy = only->ty; // `auto x{e}`, the init-capture `[callback{::move(callback)}]`: e's type
             const Ty* deduced = v->init && initTy ? impl.deduceAuto(declared, initTy) : types.unknown();
+            if (deduced->isKnown() && (v->flags & DF_Constexpr) && !deduced->isReference())
+              deduced = types.qualified(deduced, true, false); // `constexpr auto limit = 5;` is a const int
             if (deduced->isKnown())
             {
               deducedLocal = deduced; // kept with the local by walkLocalDecl, per walk

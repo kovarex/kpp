@@ -1,0 +1,22 @@
+// spec: a class static member or a global whose class template arguments come from its initializer (`static constexpr Array accessors = {&S::a, &S::b};`) has them wherever it is used, also in a member function written above it; a deduced constexpr variable (by its initializer, or `auto`) is const
+// factorio: RailGraphicsAccessors' `static constexpr Array SpriteAccessors = { &RailPieceLayers::stonePathBackground, ... };` read by getSprite above it, `layers.*RailGraphicsAccessors::SpriteAccessors[index]`
+struct S { int a = 1; int b = 2; };
+struct Holder
+{
+  static int get(const S& s, int i) { return s.*Holder::accessors[i]; }
+  static constexpr Array accessors = { &S::a, &S::b };
+  static constexpr auto limit = 7;
+};
+static constexpr Array numbers = { 4, 5, 6 };
+int main()
+{
+  constexpr Array local = { 1, 2, 3 };
+  constexpr auto half = 0.5;
+  static_assert(isSame<decltype(local), const Array<int, 3>>);
+  static_assert(isSame<decltype(half), const double>);
+  static_assert(isSame<decltype(Holder::accessors), const Array<int S::*, 2>>);
+  static_assert(isSame<decltype(numbers), const Array<int, 3>>);
+  S s;
+  println("{} {} {} {} {} {}", Holder::get(s, 1), Holder::accessors.size(), local[2], numbers[0], half, Holder::limit);
+  return 0;
+}
