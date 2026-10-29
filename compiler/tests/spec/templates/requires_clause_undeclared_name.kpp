@@ -1,0 +1,12 @@
+// spec: a requires clause naming something not declared is a compile error, not a constraint that holds (C++: the name must be found where the template is written)
+// found by the converter thread: `requires (noSuchTrait<T>)` took the constrained overload over `pick(...)`, printing "constrained" without a word
+// error: requires_clause_undeclared_name.kpp:4: error: the requires clause of pick names 'noSuchTrait', which is not declared
+template<typename T> requires (noSuchTrait<T>)
+const char* pick(T) { return "constrained"; }
+const char* pick(...) { return "fallback"; }
+
+int main()
+{
+  println("{}", pick(5));
+  return 0;
+}

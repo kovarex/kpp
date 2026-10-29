@@ -5733,10 +5733,63 @@ struct GlobalScope::Impl
     return t;
   }
 
+  // The first name in a requires clause that names nothing (`requires (noSuchTrait<T>)`), or "".
+  std::string undeclaredNameIn(Expr* e, Decl* f, const LocalStack& own, int depth = 0)
+  {
+    if (!e || depth > 16)
+      return {};
+    switch (e->kind)
+    {
+      case NodeKind::ParenExpr: return undeclaredNameIn(static_cast<ParenExpr*>(e)->inner, f, own, depth + 1);
+      case NodeKind::UnaryExpr: return undeclaredNameIn(static_cast<UnaryExpr*>(e)->operand, f, own, depth + 1);
+      case NodeKind::BinaryExpr:
+      {
+        std::string l = undeclaredNameIn(static_cast<BinaryExpr*>(e)->lhs, f, own, depth + 1);
+        return l.empty() ? undeclaredNameIn(static_cast<BinaryExpr*>(e)->rhs, f, own, depth + 1) : l;
+      }
+      case NodeKind::NameExpr:
+      {
+        auto* n = static_cast<NameExpr*>(e);
+        if (n->name.empty() || (n->name.parts.size() == 1 && (isBoolTraitName(n->name.parts[0].symbol) || builtinByName(n->name.parts[0].symbol))))
+          return {};
+        Lookup l = lookupQualified(n->name, lexicalScopeOf(f), &own, depth + 1);
+        if (l.found != Found::No || l.decl)
+          return {};
+        std::string name;
+        for (const NamePart& part : n->name.parts)
+          name += (name.empty() ? "" : "::") + std::string(part.symbol == UINT32_MAX ? "" : symbols.name(part.symbol));
+        return name;
+      }
+      default:
+        return {};
+    }
+  }
+
+  // Whether f's requires clause holds for the deduced arguments. One that names something not
+  // declared (`requires (noSuchTrait<T>)`) is a compile error, and does not hold. One that cannot
+  // be told otherwise holds for now: while an argument is still dependent, and (until static
+  // constexpr members of class template instances evaluate, which the library's Duration
+  // constraints need) for known arguments too.
   bool requiresHolds(FunctionDecl* f, const Subst& deduced)
   {
     std::optional<bool> v = constraintValue(f->requiresClause, f, deduced);
-    return !v || *v;
+    if (v)
+      return *v;
+    for (Decl* p = f; p; p = p->parent)
+      for (Decl* tp : p->templateParams)
+      {
+        const Ty* t = deduced.find(tp);
+        if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+          return true;
+      }
+    LocalStack own;
+    pushEnclosingTemplateParams(f, own);
+    std::string undeclared = undeclaredNameIn(f->requiresClause, f, own);
+    if (undeclared.empty())
+      return true;
+    std::string name = f->name.empty() ? std::string("?") : debugName(f->name.last().symbol);
+    reportCheckerError(f->file, f->requiresClause->token, "the requires clause of " + name + " names '" + undeclared + "', which is not declared");
+    return false;
   }
 
   // The parameter type of f that a call's argument i binds, for partial ordering: a trailing
