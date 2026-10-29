@@ -374,6 +374,8 @@ namespace
               pendingAttributes |= ATTR_ForceInline;
             else if (a == "vectorcall")
               pendingAttributes |= ATTR_VectorCall;
+            else if (a == "packed")
+              pendingAttributes |= ATTR_Packed;
           }
           int level = 2;
           while (level > 0 && !at(TokenKind::End))
@@ -2720,6 +2722,7 @@ namespace
       c->flags |= flags;
       c->alignment = pendingAlignment;
       pendingAlignment = nullptr;
+      c->attributes |= pendingAttributes & ATTR_Packed; // `struct [[packed]] Tile`, `[[packed]] struct Tile`
       c->templateParams = templ.params;
       c->isTemplate = templ.present;
       if (templ.present && templ.params.empty())

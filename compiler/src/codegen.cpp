@@ -45,6 +45,12 @@ namespace
     std::unordered_map<Decl*, uint32_t> fieldIndex;
     std::vector<std::pair<Decl*, uint32_t>> bases; // base class definition -> field index
     std::vector<Decl*> fieldDecls;           // data members in layout order
+    // An empty class (no data members, no vtable, only empty bases) is one byte as an object of
+    // its own (`{ i8 }`) and none as a base: such a base's field is `[0 x i8]` (C++'s empty-base
+    // optimisation, which the game's size static_asserts count on).
+    bool empty = false;
+    std::vector<bool> zeroSize;              // per field: an empty base laid out without storage
+    bool packed = false;                     // [[packed]]: `<{ ... }>`, every member at alignment 1
     std::optional<bool> needsDestruction;
     // Virtual functions: a polymorphic class has a vtable pointer at offset 0 (its own, or the
     // one of its first base). Slots are shared with the base and extended in declaration order.
@@ -535,9 +541,12 @@ namespace
         ~Sizing() { flag = false; }
       } sizing(info.sizing);
       uint64_t size = 0, align = 1;
-      for (const Ty* f : info.fieldTypes)
+      for (size_t i = 0; i < info.fieldTypes.size(); ++i)
       {
-        uint64_t a = alignOf(f, at);
+        if (i < info.zeroSize.size() && info.zeroSize[i])
+          continue; // an empty base: no storage of its own
+        const Ty* f = info.fieldTypes[i];
+        uint64_t a = info.packed ? 1 : alignOf(f, at);
         size = (size + a - 1) / a * a + sizeOf(f, at);
         align = std::max(align, a);
       }
@@ -884,10 +893,25 @@ namespace
         info.fieldDecls.push_back(m);
         info.fieldTypes.push_back(ft);
       }
-      std::string line = info.name + " = type { ";
+      // Empty bases take no storage, unless the first member is of the same class (two objects of
+      // one type at one address: C++ gives the base a byte then).
+      info.zeroSize.assign(info.fieldTypes.size(), false);
+      const Ty* firstMember = info.fieldDecls.empty() ? nullptr : classKey(info.fieldTypes[fieldIndexOf(info, info.fieldDecls[0])]);
+      bool allBasesEmpty = true;
+      for (auto& [baseDef, index] : info.bases)
+      {
+        bool emptyBase = structs[info.fieldTypes[index]].empty;
+        allBasesEmpty = allBasesEmpty && emptyBase;
+        info.zeroSize[index] = emptyBase && classKey(info.fieldTypes[index]) != firstMember;
+      }
+      info.empty = !info.polymorphic && info.fieldDecls.empty() && allBasesEmpty;
+      info.packed = (c->attributes & ATTR_Packed) != 0;
+      std::string line = info.name + " = type " + (info.packed ? "<{ " : "{ ");
       for (size_t i = 0; i < info.fieldTypes.size(); ++i)
-        line += (i ? ", " : "") + llType(info.fieldTypes[i], c);
-      line += " }\n";
+        line += (i ? ", " : "") + (info.zeroSize[i] ? std::string("[0 x i8]") : llType(info.fieldTypes[i], c));
+      if (info.empty)
+        line += info.fieldTypes.empty() ? "i8" : ", i8"; // one byte of its own as an object
+      line += info.packed ? " }>\n" : " }\n";
       decls += line;
       ++result.structs;
       info.complete = true;
@@ -2084,6 +2108,8 @@ namespace
     {
       if (!needsDestruction(t, at))
       {
+        if (isClass(t) && structFor(t, at).empty)
+          return; // no bytes to copy (and as a base, none of its own: its byte is the next member's)
         std::string v = newTemp();
         fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
         fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";

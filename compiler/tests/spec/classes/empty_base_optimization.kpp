@@ -1,0 +1,37 @@
+// spec: an empty class is one byte as an object, an array element or a member, and none as a base (the empty-base optimisation): sizeof of a class with empty bases is that of its own members, also with two empty bases, a chain of them and a vtable; a base of the first member's own type keeps its byte; empty objects in an array have distinct addresses
+// found in the game's class-size static_asserts (CorpseSaveFlags : BitFieldBase is 1 byte, DrawingFlags, SamplingMode, SpriteDrawOrder), which count on it, as std's deleter-as-base UniquePtr does
+struct Empty {};
+struct Tag {};
+struct Flags : Empty { uint8_t bits = 3; };
+struct Two : Empty, Tag { int32_t value = 5; };
+struct Member { Empty e; uint8_t b = 1; };
+struct Same : Empty { Empty first; uint8_t b = 2; };
+struct Derived : Flags { uint8_t more = 4; };
+struct Poly : Empty { virtual ~Poly() {} int32_t x = 6; };
+struct Nested : Empty {};
+struct Deep : Nested { uint16_t v = 7; };
+static_assert(sizeof(Empty) == 1, "an empty object is one byte");
+static_assert(sizeof(Flags) == 1, "an empty base takes no space");
+static_assert(sizeof(Two) == 4, "nor do two");
+static_assert(sizeof(Member) == 2, "an empty member does");
+static_assert(sizeof(Same) == 3, "a base of the first member's type keeps its byte");
+static_assert(sizeof(Derived) == 2, "a base with an empty base");
+static_assert(sizeof(Poly) == 16, "with a vtable");
+static_assert(sizeof(Nested) == 1 && sizeof(Deep) == 2, "a chain of empty bases");
+int main()
+{
+  Flags f;
+  Two t;
+  Same s;
+  Deep d;
+  Empty array[3];
+  Empty* first = &array[0];
+  Empty* last = &array[2];
+  Flags copy = f;
+  copy.bits = 9;
+  Derived der;
+  der.bits = 8;
+  Derived derCopy = der;
+  println("{} {} {} {} {} {} {} {}", f.bits, t.value, s.b, d.v, int(last - first), copy.bits, derCopy.bits, derCopy.more);
+  return 0;
+}

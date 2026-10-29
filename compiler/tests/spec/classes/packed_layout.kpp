@@ -1,0 +1,29 @@
+// spec: [[packed]] lays a class out without padding (C++'s #pragma pack(push, 1), which the converter maps to it): members at any offset and alignment 1, so its size is the sum of its members'; reading and writing them works, in an array and as a member of an unpacked class too
+// found in the game's Tile, ImmutableString and PropertyTree (#pragma pack(push, 1)), whose sizeof == N asserts fail without it
+struct [[packed]] Packed
+{
+  uint8_t tag;
+  uint32_t value;
+  uint16_t small;
+};
+struct Holder
+{
+  uint8_t before;
+  Packed p;
+  uint8_t after;
+};
+static_assert(sizeof(Packed) == 7, "no padding");
+static_assert(alignof(Packed) == 1, "alignment 1");
+static_assert(sizeof(Holder) == 9, "a packed member at any offset");
+int main()
+{
+  Packed array[2];
+  array[1].tag = 1;
+  array[1].value = 0x12345678;
+  array[1].small = 513;
+  Holder h;
+  h.p = array[1];
+  h.after = 9;
+  println("{} {} {} {} {}", array[1].tag, array[1].value, array[1].small, h.p.value, h.after);
+  return 0;
+}
