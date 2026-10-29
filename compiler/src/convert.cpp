@@ -1300,13 +1300,15 @@ namespace
   }
 
   // ScopeNames from a scope's declarations; prefix is the scope's qualified name and `::` ("" at
-  // global scope, which is not recorded: library names are global ones).
+  // global scope). The global namespace's names are under "(global)" ("::" is an unnamed
+  // namespace's): its classes, aliases and variables, which a name a using-directive finds is
+  // ambiguous with, not its functions (one overload set with the directive's).
   void collectScopeNames(Span<Decl*> decls, const std::string& prefix, const SymbolTable& symbols, ScopeNames& out)
   {
     auto declare = [&](std::string_view name)
     {
-      if (!prefix.empty() && !name.empty())
-        out[prefix].insert(std::string(name));
+      if (!name.empty())
+        out[prefix.empty() ? "(global)" : prefix].insert(std::string(name));
     };
     for (Decl* d : decls)
     {
@@ -1357,7 +1359,7 @@ namespace
         case NodeKind::FunctionDecl:
         {
           auto* f = static_cast<FunctionDecl*>(d);
-          if (f->name.parts.size() == 1 && f->name.last().special == 0 && f->name.last().symbol != UINT32_MAX)
+          if (!prefix.empty() && f->name.parts.size() == 1 && f->name.last().special == 0 && f->name.last().symbol != UINT32_MAX)
             declare(symbols.name(f->name.last().symbol));
           break;
         }
@@ -2171,6 +2173,7 @@ namespace
     const CarriedDefaults* carriedDefaults = nullptr;
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
     const ScopeNames* scopeNames = nullptr;
+    const std::set<std::string>* libraryTypes = nullptr; // the library's global classes and aliases (libraryTypeNames)
     std::set<std::string>* opaqueKept = nullptr; // classes declared and defined nowhere, kept as declarations (once in the program)
     // The files the conversion leaves out: a class defined only in one of them is defined nowhere
     // (GraphicsInterface.hpp's `class ShaderProgram;` stays, as the game's files see it).
@@ -2246,17 +2249,26 @@ namespace
     }
     // The file's using-directives of the program's namespaces, by text range: from each to the end
     // of the block or namespace it is written in, the names of the namespace it names are found as
-    // if declared in the global namespace, beside the library's, so a library name the converter
+    // if declared in the global namespace, beside the library's. So a library name the converter
     // writes there is ambiguous unless qualified (TestMigrations' `std::set<std::string>` under
-    // `using namespace TestMigrationHelpers;`, whose own Set class template it would find: `::Set`).
+    // `using namespace TestMigrationHelpers;`, whose own Set class template it would find: `::Set`),
+    // and so is the namespace's own name of the library's (that Set, written `Set`:
+    // `TestMigrationHelpers::Set`). A directive outside any block of a source file (not a header)
+    // goes, its namespace's names written qualified instead: C++ limits it to its translation
+    // unit, Kpp has none, and the global namespace it is in is every file's (DeferredTestReporter's
+    // `using namespace UnitTest;` put UnitTest's TestReporter beside the tests' own everywhere).
     struct DirectiveRange
     {
-      uint32_t begin, end;
-      std::vector<std::string> keys; // the ScopeNames keys the name may stand for, the innermost first
+      uint32_t begin, end;  // the directive, to the end of its block (or of the file)
+      uint32_t lineEnd;     // the end of the directive's line (a removed one goes with it)
+      std::string key;      // the namespace's ScopeNames key
+      bool removed = false; // a source file's directive outside any block
     };
     std::vector<DirectiveRange> directiveRanges;
     void collectDirectiveRanges()
     {
+      if (!scopeNames)
+        return;
       std::vector<std::vector<size_t>> pending(1); // per open block: the directives written directly in it
       for (uint32_t i = 0; i < toks.size(); ++i)
       {
@@ -2274,32 +2286,50 @@ namespace
           uint32_t j = i + 2;
           for (; j < toks.size() && !toks[j].is(P::Semi); ++j)
             name += spelling(j);
-          if (name.empty() || name == "std" || name.compare(0, 5, "std::") == 0)
+          if (name.empty() || name == "std" || name.compare(0, 5, "std::") == 0 || j == toks.size())
             continue;
           if (name.compare(0, 2, "::") == 0)
             name = name.substr(2);
-          DirectiveRange r{toks[i].offset, UINT32_MAX, {}};
-          // A name written in a namespace may be one of that namespace's own (or an enclosing one's).
-          std::vector<const ScopeRange*> enclosing;
+          // A name written in a namespace may be one of that namespace's own (or an enclosing
+          // one's): the innermost that the program declares names in.
+          std::vector<std::string> keys;
           for (const ScopeRange& sr : scopeRanges)
-            if (!sr.classBody && sr.begin <= r.begin && r.begin < sr.end)
-              enclosing.push_back(&sr);
-          std::sort(enclosing.begin(), enclosing.end(), [](const ScopeRange* a, const ScopeRange* b) { return a->key.size() > b->key.size(); });
-          for (const ScopeRange* sr : enclosing)
-            r.keys.push_back(sr->key + name + "::");
-          r.keys.push_back(name + "::");
-          pending.back().push_back(directiveRanges.size());
-          directiveRanges.push_back(std::move(r));
+            if (!sr.classBody && sr.begin <= toks[i].offset && toks[i].offset < sr.end)
+              keys.push_back(sr.key + name + "::");
+          std::sort(keys.begin(), keys.end(), [](const std::string& a, const std::string& b) { return a.size() > b.size(); });
+          keys.push_back(name + "::");
+          for (const std::string& key : keys)
+            if (scopeNames->count(key))
+            {
+              pending.back().push_back(directiveRanges.size());
+              directiveRanges.push_back({toks[i].offset, UINT32_MAX, lineEndAfter(endOffset(j)), key, pending.size() == 1 && !isHeader()});
+              break;
+            }
           i = j;
         }
       }
     }
-    // Whether an unqualified `name` written at offset finds a declaration of the program before the
-    // global (library) one: a namespace's or class's member, a member of a namespace a
-    // using-directive names (as ambiguous: the library's needs `::` as well), or a local or
-    // parameter of the function around it declared before (`Layer::const_iterator next = std::next(current);`, whose
-    // initializer sees the variable being declared).
-    bool shadowedAt(const std::string& name, uint32_t offset) const
+    // Whether the program declares a class, alias or variable of the name in the global namespace.
+    bool globalNamed(const std::string& name) const
+    {
+      auto it = scopeNames->find("(global)");
+      return it != scopeNames->end() && it->second.count(name);
+    }
+    // The namespace (its ScopeNames key) through whose using-directive an unqualified `name`
+    // written at offset finds a declaration, and the directive, or none.
+    const DirectiveRange* directiveFinding(const std::string& name, uint32_t offset) const
+    {
+      for (const DirectiveRange& r : directiveRanges)
+        if (r.begin <= offset && offset < r.end)
+          if (auto it = scopeNames->find(r.key); it != scopeNames->end() && it->second.count(name))
+            return &r;
+      return nullptr;
+    }
+    // Whether an unqualified `name` written at offset finds a declaration of the program before a
+    // global one: a local or parameter of the function around it declared before, or a member of
+    // a namespace or class around it (an out-of-line member's class, `void
+    // DeferredTestReporter::f()` with that class UnitTest's through a directive, among them).
+    bool declaredCloser(const std::string& name, uint32_t offset) const
     {
       if (auto l = localNames.find(name); l != localNames.end())
         for (auto [declared, end] : l->second)
@@ -2313,17 +2343,24 @@ namespace
           auto it = scopeNames->find(r.key);
           if (it != scopeNames->end() && it->second.count(name))
             return true;
+          // (Not the class's own name, which its qualified declarator name is written with: the
+          // class it names is the directive's namespace's either way.)
+          if (it == scopeNames->end() && r.key.size() > name.size() + 2 && r.key.compare(r.key.size() - name.size() - 2, name.size(), name) != 0)
+            for (const DirectiveRange& d : directiveRanges)
+              if (d.begin <= offset && offset < d.end)
+                if (auto via = scopeNames->find(d.key + r.key); via != scopeNames->end() && via->second.count(name))
+                  return true;
         }
-      for (const DirectiveRange& r : directiveRanges)
-        if (r.begin <= offset && offset < r.end)
-          for (const std::string& key : r.keys)
-            if (auto it = scopeNames->find(key); it != scopeNames->end())
-            {
-              if (it->second.count(name))
-                return true;
-              break; // the innermost namespace of that name is the one the directive names
-            }
       return false;
+    }
+    // Whether an unqualified `name` written at offset finds a declaration of the program before the
+    // global (library) one: a namespace's or class's member, a member of a namespace a
+    // using-directive names (as ambiguous: the library's needs `::` as well), or a local or
+    // parameter of the function around it declared before (`Layer::const_iterator next = std::next(current);`, whose
+    // initializer sees the variable being declared).
+    bool shadowedAt(const std::string& name, uint32_t offset) const
+    {
+      return declaredCloser(name, offset) || (scopeNames && directiveFinding(name, offset));
     }
     // The locals and parameters of the file's functions by name: where each declaration starts and
     // where its function ends (the block it is in ends there or sooner: a `::` too many is harmless).
@@ -3852,6 +3889,27 @@ namespace
     // The name at token i is a member reached through `.`, or a method called through `->`
     // (`immediateContext->Map(...)`, a COM method): not the game's class of that name, so none of the
     // renames for those apply. (After `->` a name not called is a trailing return type, `-> Vector`.)
+    // Whether toks[i] is the name a declaration declares rather than one it uses: after a class
+    // key, `using`, `namespace` or `goto`, or after a type (a name, `>`, a pointer or reference)
+    // and before what follows a declarator (`Set set(...)`: set, not Set).
+    bool declaredNameAt(uint32_t i) const
+    {
+      if (i == 0)
+        return false;
+      const Token& before = toks[i - 1];
+      if (before.is(Kw::class_) || before.is(Kw::struct_) || before.is(Kw::union_) || before.is(Kw::enum_) || before.is(Kw::using_) ||
+          before.is(Kw::namespace_) || before.is(Kw::goto_))
+        return true;
+      bool afterType = before.getKind() == TokenKind::Identifier || before.is(P::Greater) || before.is(P::Shr) || before.is(P::Star) ||
+                       before.is(P::Amp) || before.is(P::AndAnd) ||
+                       (before.getKind() == TokenKind::Keyword &&
+                        (before.is(Kw::void_) || before.is(Kw::bool_) || before.is(Kw::char_) || before.is(Kw::char8_t_) || before.is(Kw::char16_t_) ||
+                         before.is(Kw::char32_t_) || before.is(Kw::wchar_t_) || before.is(Kw::short_) || before.is(Kw::int_) || before.is(Kw::long_) ||
+                         before.is(Kw::float_) || before.is(Kw::double_) || before.is(Kw::signed_) || before.is(Kw::unsigned_) || before.is(Kw::auto_)));
+      return afterType && i + 1 < toks.size() &&
+             (toks[i + 1].is(P::LParen) || toks[i + 1].is(P::Semi) || toks[i + 1].is(P::Assign) || toks[i + 1].is(P::LBrace) ||
+              toks[i + 1].is(P::LBracket) || toks[i + 1].is(P::Comma) || toks[i + 1].is(P::Colon) || toks[i + 1].is(P::RParen));
+    }
     bool memberAccessAt(uint32_t i) const
     {
       return i > 0 && (toks[i - 1].is(P::Dot) || (toks[i - 1].is(P::Arrow) && i + 1 < toks.size() && toks[i + 1].is(P::LParen)));
@@ -4173,6 +4231,35 @@ namespace
             counts.add("std names of using-declarations renamed");
             continue;
           }
+        if (t.is(Kw::using_) && toks[i + 1].is(Kw::namespace_) && !directiveRanges.empty())
+        {
+          auto removed = std::find_if(directiveRanges.begin(), directiveRanges.end(), [&](const DirectiveRange& r) { return r.begin == t.offset && r.removed; });
+          if (removed != directiveRanges.end())
+          {
+            remove(t.offset, removed->lineEnd - t.offset);
+            counts.add("file-scope using-directives replaced by qualified names");
+            while (i + 1 < toks.size() && !toks[i].is(P::Semi))
+              ++i;
+            continue;
+          }
+        }
+        if (t.getKind() == TokenKind::Identifier && !directiveRanges.empty() && !(i > 0 && (toks[i - 1].is(P::ColonColon) || toks[i - 1].is(P::Arrow))) &&
+            !memberAccessAt(i))
+        {
+          // A name a using-directive finds: qualified where the directive goes, and where a global
+          // class, alias or variable of the name would be found beside it, the library's or the
+          // program's (Lua's `Token` beside MathExpressions' in its tests: C++ never had both in one
+          // translation unit).
+          std::string name(spelling(i));
+          if (const DirectiveRange* via = directiveFinding(name, t.offset);
+              via && (via->removed || (libraryTypes && libraryTypes->count(name)) || globalNamed(name)) && !declaredCloser(name, t.offset) &&
+              !declaredNameAt(i))
+          {
+            insert(t.offset, via->key);
+            counts.add(via->removed ? "names of a removed using-directive qualified" : "names clashing with a global one qualified by their namespace");
+            continue;
+          }
+        }
         if (t.getKind() == TokenKind::Identifier &&
             (spelling(i) == "__FILE__" || spelling(i) == "__LINE__" || ((spelling(i) == "__FUNCTION__" || spelling(i) == "__func__") && functionNameAt(t.offset))))
         {
@@ -7003,6 +7090,78 @@ std::set<std::string> libraryFunctionNames(const std::filesystem::path& libraryD
   return names;
 }
 
+// The names of the standard library's global classes, unions, enums and aliases: a top-level
+// declaration line (no indentation), after a template header on it if any, `struct Set`,
+// `template<> struct AtomicWord<1> ...`, `using Byte = uint8_t;`.
+std::set<std::string> libraryTypeNames(const std::filesystem::path& libraryDir)
+{
+  std::set<std::string> names;
+  std::error_code ec;
+  if (libraryDir.empty() || !std::filesystem::is_directory(libraryDir, ec))
+    return names;
+  auto word = [](std::string_view line, size_t& at)
+  {
+    while (at < line.size() && line[at] == ' ')
+      ++at;
+    size_t b = at;
+    while (at < line.size() && (isalnum((unsigned char)line[at]) || line[at] == '_'))
+      ++at;
+    return line.substr(b, at - b);
+  };
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(libraryDir, ec))
+  {
+    if (!entry.is_regular_file() || entry.path().extension() != ".kpp")
+      continue;
+    std::string text;
+    if (!readFile(entry.path(), text))
+      continue;
+    for (size_t pos = 0; pos < text.size();)
+    {
+      size_t end = text.find('\n', pos);
+      if (end == std::string::npos)
+        end = text.size();
+      std::string_view line(text.data() + pos, end - pos);
+      pos = end + 1;
+      if (line.empty() || !isalpha((unsigned char)line[0]))
+        continue; // not at the top level
+      size_t at = 0;
+      if (line.rfind("template<", 0) == 0)
+      {
+        int depth = 0;
+        for (; at < line.size(); ++at)
+          if (line[at] == '<')
+            ++depth;
+          else if (line[at] == '>' && --depth == 0)
+            break;
+        ++at;
+      }
+      std::string_view first = word(line, at);
+      if (first == "using")
+      {
+        std::string_view name = word(line, at);
+        while (at < line.size() && line[at] == ' ')
+          ++at;
+        if (!name.empty() && name != "namespace" && at < line.size() && line[at] == '=')
+          names.insert(std::string(name));
+        continue;
+      }
+      if (first == "union" || first == "enum")
+      {
+        size_t next = at;
+        std::string_view second = word(line, next);
+        if (second == "class" || second == "struct" || second == "enum")
+          at = next;
+      }
+      else if (first != "class" && first != "struct")
+        continue;
+      std::string_view name = word(line, at);
+      if (!name.empty() && !isdigit((unsigned char)name[0]))
+        names.insert(std::string(name));
+    }
+  }
+  return names;
+}
+
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir, const SourceConfiguration* configuration,
@@ -7532,6 +7691,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   // `static int sort (lua_State *L)`, beside the library's sort): file-local in C and C++, a
   // program-wide name in Kpp, which the library's has already, so it gets its file's name after it.
   std::set<std::string> libraryNames = libraryFunctionNames(libraryDir);
+  std::set<std::string> libraryTypes = libraryTypeNames(libraryDir);
   for (const ConvertInput& in : inputs)
   {
     std::string ext = in.path.extension().string();
@@ -7618,6 +7778,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (auto kept = keptCLibraries.find(in.path.parent_path().filename().string()); kept != keptCLibraries.end())
       fc.keptCLibraries = &kept->second;
     fc.scopeNames = &scopeNames;
+    fc.libraryTypes = &libraryTypes;
     fc.opaqueKept = &opaqueKept;
     fc.headerMacros = &headerMacros;
     fc.headerAliases = &headerAliases;
