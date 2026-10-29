@@ -4069,12 +4069,14 @@ namespace
     // declared inside it (its parameters, its locals, nested lambdas' own), which is no capture;
     // C++ declares a name before its uses, so it is in inner before a use is reached.
     // useTypes, when given, gets the type of each used local's first name expression.
+    // keptBranches: an `if constexpr` its instance decided names only what the kept branch names
+    // (not in a generic lambda, whose one closure serves every call's instance of the body).
     void captureNames(Node* n, std::unordered_set<Decl*>& inner, std::vector<Decl*>& used, bool& usesThis,
-                      std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0)
+                      std::unordered_map<Decl*, const Ty*>* useTypes = nullptr, int depth = 0, bool keptBranches = false)
     {
       if (!n || depth > 96)
         return;
-      auto visit = [&](Node* c) { captureNames(c, inner, used, usesThis, useTypes, depth + 1); };
+      auto visit = [&](Node* c) { captureNames(c, inner, used, usesThis, useTypes, depth + 1, keptBranches); };
       auto visitExprs = [&](Span<Expr*> es) { for (Expr* e : es) visit(e); };
       switch (n->kind)
       {
@@ -4146,11 +4148,22 @@ namespace
         case NodeKind::BlockStmt: for (Stmt* s : static_cast<BlockStmt*>(n)->stmts) visit(s); break;
         case NodeKind::ExprStmt: visit(static_cast<ExprStmt*>(n)->expr); break;
         case NodeKind::IfStmt:
-          visit(static_cast<IfStmt*>(n)->init);
-          visit(static_cast<IfStmt*>(n)->cond);
-          visit(static_cast<IfStmt*>(n)->then);
-          visit(static_cast<IfStmt*>(n)->else_);
+        {
+          auto* i = static_cast<IfStmt*>(n);
+          visit(i->init);
+          if (keptBranches && i->isConstexpr && i->constexprKnown >= 0)
+          {
+            // An instance's `if constexpr`: only the branch it keeps, as C++ captures what the
+            // instantiated body uses (FluidBox::findOtherUndergroundEnd<BlueprintSurface>'s lambda
+            // names `surface` only in the branch it discards, where nothing types it).
+            visit(i->constexprKnown ? i->then : i->else_);
+            break;
+          }
+          visit(i->cond);
+          visit(i->then);
+          visit(i->else_);
           break;
+        }
         case NodeKind::ForStmt:
           visit(static_cast<ForStmt*>(n)->init);
           visit(static_cast<ForStmt*>(n)->cond);
@@ -4210,7 +4223,7 @@ namespace
           inner.insert(cap.decl);
       std::vector<Decl*> used;
       bool usesThis = false;
-      captureNames(l->body, inner, used, usesThis, useTypes);
+      captureNames(l->body, inner, used, usesThis, useTypes, 0, l->templateParams.empty());
       std::vector<CaptureSlot> out;
       bool thisCaptured = false;
       for (const LambdaCapture& cap : l->captures)
