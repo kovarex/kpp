@@ -7553,6 +7553,13 @@ namespace
           return {res, l.ty};
         }
       }
+      // C++ has no other arithmetic on pointers (`(LPWSTR)&msg` with LPWSTR read as a variable is
+      // `LPWSTR & msg`): an error, not an instruction LLVM rejects.
+      if (lp || rp)
+      {
+        std::string spelling(punctuatorSpelling(op));
+        unsupported(at, spelling + " on a pointer (" + types.toString(l.ty, &symbols) + " " + spelling + " " + types.toString(r.ty, &symbols) + ")");
+      }
       const Ty* ct = commonArithmetic(l.ty, r.ty);
       l = convert(l, ct, at);
       r = convert(r, ct, at);
