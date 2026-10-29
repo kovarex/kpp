@@ -1,0 +1,28 @@
+// spec: an anonymous union in a class template whose members name the template's own nested types and parameters (`union { Long longStr; char shortStr[N]; };` in Text<N>) is laid out with the instantiation's arguments
+// factorio: ImmutableStringTemplate<N> (`union { SharedString sharedStr; LongStr longStr; char shortStr[short_string_size]; }`), inside PropertyTree and everything holding one
+// pending: the code generator lays the union out as a class of its own with no arguments, so `Long` (Text<N>::Long) has no type: "the layout of ?: the member longStr has an unknown type"
+template<int N>
+struct Text
+{
+  struct Long
+  {
+    char* ptr;
+    uint32 len;
+  };
+  union
+  {
+    Long longStr;
+    char shortStr[N];
+  };
+  bool isShort = true;
+};
+int main()
+{
+  Text<16> t;
+  t.shortStr[0] = 'k';
+  t.shortStr[1] = 0;
+  println("{} {}", sizeof(t) >= 17, t.shortStr[0]);
+  t.longStr.len = 7;
+  println("{}", t.longStr.len);
+  return 0;
+}
