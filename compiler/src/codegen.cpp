@@ -13659,14 +13659,24 @@ namespace
               statementTemps.erase(statementTemps.begin() + i);
           scopes.back().push_back({range.text, range.ty});
         }
-        const Ty* in = nullptr;
-        FunctionDecl* begin = findMember(range.ty, "begin", f, &in);
-        FunctionDecl* end = findMember(range.ty, "end", f, &in);
+        const Ty* beginIn = nullptr;
+        const Ty* endIn = nullptr;
+        FunctionDecl* begin = findMember(range.ty, "begin", f, &beginIn);
+        FunctionDecl* end = findMember(range.ty, "end", f, &endIn);
         Value b, e;
         if (begin && end)
         {
-          b = callFunction(begin, global.classArgsOf(in), in, range.text, "", {}, f);
-          e = callFunction(end, global.classArgsOf(in), in, range.text, "", {}, f);
+          // On the base that declares them, where it is (`for (T* t : *this)` in TriggerList, a
+          // Vector<T*> after a polymorphic base: not at the object's address).
+          auto on = [&](const Ty* in)
+          {
+            std::string object = range.text;
+            if (canonicalClass(range.ty, f) != in)
+              baseAddress(range.ty, in, range.text, object, f);
+            return object;
+          };
+          b = callFunction(begin, global.classArgsOf(beginIn), beginIn, on(beginIn), "", {}, f);
+          e = callFunction(end, global.classArgsOf(endIn), endIn, on(endIn), "", {}, f);
         }
         else
         {
