@@ -37,7 +37,7 @@ hard each site is.
 | **Smaller gaps** | multiple inheritance beyond the first polymorphic base, init-captures, member pointers, bit fields, `goto` (15), stream operators (136), partial specialisations (about 6) | Each small; the converter's error list tells which to do first | S each |
 | **Macro replacements, the big four** | the X-macro lists, `ADD_VALUE` reflection, `InputAction`-style unions, UnitTest++ | design.md section 8: `for constexpr`, `members(T)`, `union enum`, `test` blocks (after review) | L in total |
 | **Resolver tail** | 22% of expressions untyped today | Most of it is `std::`; the rest is templated `using` aliases, dependent lookups and ADL, fixed as the converter exposes them. And the checker checks every member function of a class template instance whether the program uses it or not (GamePair::str, which its instances cannot compile): C++ instantiates a member only where it is used, and the eager checks put failures no program would see into the `--why` statistics (a static_assert in such a member already counts only when the function is emitted) | M, continuous |
-| **C libraries** | Lua (1,665 includes), SDL3 (69), curl, zlib, png, jpeg, opus, vorbis, zstd, openssl, minizip, stb_image, fontstash, nvapi, Logitech, CL | `extern "C" import` works. Lua is imported as C now and converted later (kovarex, 2026-10-28); the converter expands the function-like macros of lua.h, lauxlib.h and luaconf.h at their 642 uses (programs/factorio/overrides/expand-macros.txt). Left for Lua's own conversion: Factorio's copies of Lua's internal headers are C++ (`class LuaBindableObject*` in lobject.h's Udata, `extern "C"` in lapi.h), so the C import cannot take them, and with them go 61 uses of internal macros (hvalue 13, iscollectable 7, gcvalue 7, ttisnil 6, gval 6, ...) and 14 calls of index2addr in about 10 files | S |
+| **C libraries** | Lua (1,665 includes), SDL3 (69), curl, zlib, png, jpeg, opus, vorbis, zstd, openssl, minizip, stb_image, fontstash, nvapi, Logitech, CL | `extern "C" import` works. Lua is imported as C now and converted later (kovarex, 2026-10-28); the converter expands the function-like macros of lua.h, lauxlib.h and luaconf.h at their 642 uses (programs/factorio/overrides/expand-macros.txt). Lua's internals, which 12 of the game's files reach into (index2addr, TValue, Table, lobject.h's macros), are imported too, through a C bridge ("Lua's internals through a C bridge" below) | S |
 | **C++ libraries** | tracy (62), steam (62), glm (19), re2 (13), imgui (9), cxxopts, open-vcdiff, StackWalker; metal-cpp (193) is macOS only | Steam has a flat C API; tracy a C API; re2 and imgui need thin C wrappers; glm is a port (small); the rest are replaceable | M |
 | **DirectX 11** | 17 includes, COM interfaces | COM is C-callable through vtables; the importer must take the `lpVtbl` form of the headers, or a thin C wrapper does it | M |
 | **Debug info** | | `!dbg` metadata for CodeView so the game can be debugged in Visual Studio; not needed to run, needed to develop | M |
@@ -962,6 +962,37 @@ against the game's Lua headers compiled as C++.
 
 All of this goes when Lua itself is converted: the game's code then uses Lua's types and macros as
 Kpp code, and kpp_lua_internals.h, lua_internals.c and the `included` lines are deleted.
+
+### What the parse of the C++ does not see (2026-10-29)
+
+The front end parses the game's C++ to convert it, with the #if branches the configuration drops
+blanked. Since 2026-10-29 it also blanks, for the parse only, what is no C++ to it and what the
+conversion writes differently (convert.cpp, blankForParse), and the converter writes each one's
+replacement where it stood: the empty macros the converter drops (BEGIN_SUPPRESS_CONVERSIONS
+before a definition, END_FORCE_OPTIMIZE, FAR in `(VOID FAR* FAR*)&buffer`, FORMAT_ATTR(4, 5)),
+FORMAT_STRING( and its `)` around a parameter, and MSVC's structured exception handling. That took
+the parse errors in the converted C++ from 20 to 4; those four are X-macro lists the parse cannot
+read where they stand (a member initializer list built by CALL_ON_EVERY_STYLE_TYPE, an expression
+built by CALL_ON_EVERY_INPUT_ACTION_TYPE_WITH_DATA, two by CALL_ON_EVERY_ID_TYPE), whose
+expansions the converter writes all the same.
+
+### Structured exception handling (2026-10-29)
+
+Kpp has exceptions (design.md 9: try/catch on Windows SEH underneath) but no SEH filters, so
+`__try { A } __except (filter) { B }` becomes `try { A } catch (...) { B }` with the filter dropped
+(a todo per use). A `catch (...)` catches Kpp exceptions only (the try's filter looks for Kpp's
+exception code), not a crash in a C function, so the game's four uses get no protection from it:
+
+- SystemUtil's thread naming raises the debugger's MS_VC_EXCEPTION only on Windows before 10 and
+  only with a debugger attached, which takes the exception first: the dropped filter changes
+  nothing there.
+- The two calls into the D3D driver (createDeviceAndSwapChainExpectingCrash, dxgiSwapChainPresent
+  in GraphicsInterfaceDX11) caught a driver crash to restart with the blit presentation model or
+  ask the player to update the driver. A crashing driver now reaches the game's crash handler,
+  which writes a minidump and shows the plain crash message.
+- CrashHandler::createMinidumpAndTerminate threw to itself to get the exception pointers for its
+  minidump: overrides/src/Util/CrashHandler.kpp writes the dump without an exception record and
+  terminates as before.
 
 ### From emitted functions to an executable (2026-10-28, night)
 
