@@ -1,0 +1,32 @@
+// spec: a class with an implicit conversion operator to another class (`implicit operator IDType() const` in Connector) is assigned to and copy-initialises that class through it: `h.chosen = c;` and `ProtoID copy = c;`
+// factorio: IDConnector<IDType>'s `implicit operator IDType()` (`this->entityToBuild = randomElement(buildableEntities)`, `groupID = otherItemSubGroup->group`, 88 lines)
+// pending: the checker types both; the code generator looks for a constructor of ID taking the Connector instead of applying the conversion: "a constructor of ID taking 1 arguments"
+template<class P, class I>
+struct ID
+{
+  I index = 0;
+  ID() = default;
+  explicit ID(I i) : index(i) {}
+  bool operator==(const ID& other) const { return this->index == other.index; }
+};
+template<class IDType>
+class Connector
+{
+public:
+  explicit Connector(IDType id) : id(id) {}
+  implicit inline operator IDType() const { return this->id; }
+protected:
+  IDType id;
+};
+struct Proto {};
+using ProtoID = ID<Proto, uint16_t>;
+struct Holder { ProtoID chosen; };
+int main()
+{
+  Connector<ProtoID> c(ProtoID(uint16_t(5)));
+  Holder h;
+  h.chosen = c;
+  ProtoID copy = c;
+  println("{} {}", int(h.chosen.index), int(copy.index));
+  return 0;
+}
