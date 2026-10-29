@@ -15296,7 +15296,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing)
 {
   CodegenResult result;
-  Shared sh(result);
+  auto shared = std::make_unique<Shared>(result);
+  Shared& sh = *shared;
   sh.debug = debug;
   sh.stubMissing = despiteErrors && stubMissing;
   sh.setModules(moduleCount);
@@ -15307,6 +15308,23 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   std::vector<std::unique_ptr<Emitter>> emitters;
   for (unsigned i = 0; i < threads; ++i)
     emitters.push_back(std::make_unique<Emitter>(global, symbols, sh));
+  // The emitters' and the shared state are freed on a thread of their own once the result is
+  // returned (about 3 s for the game, on the build's critical path before): a build in its own
+  // process exits without waiting for it, the compile server answers meanwhile. Their destructors
+  // touch nothing but their own containers (not the result, not the program they point into).
+  struct FreeLater
+  {
+    std::unique_ptr<Shared>& shared;
+    std::vector<std::unique_ptr<Emitter>>& emitters;
+    ~FreeLater()
+    {
+      std::thread([shared = std::move(shared), emitters = std::move(emitters)]() mutable
+      {
+        emitters.clear();
+        shared.reset();
+      }).detach();
+    }
+  } freeLater{shared, emitters};
   Emitter& e = *emitters[0];
   std::vector<FunctionDecl*> functions;
   std::vector<VariableDecl*> startupGlobals;
