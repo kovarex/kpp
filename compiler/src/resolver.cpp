@@ -10294,12 +10294,20 @@ struct GlobalScope::Impl
         if (v->builtin == BUILTIN_EnumValues && v->parent && v->parent->kind == NodeKind::EnumDecl)
           return types.array(enumTypeIn(v->parent, subst), uint32_t(enumeratorCount(v->parent))); // E::values
         const Ty* t = convertType(v->type, ctx, depth + 1);
-        if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::BraceInitExpr)
-          t = types.array(t->inner, uint32_t(static_cast<BraceInitExpr*>(v->init)->args.size())); // `double a[] = {1, 2}`
-        else if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::LiteralExpr &&
-                 static_cast<LiteralExpr*>(v->init)->literalKind == TokenKind::String)
-          if (std::optional<ConstValue> s = constString(static_cast<LiteralExpr*>(v->init), ctx))
+        // A string literal initialising an array of characters may stand in braces (`uint8_t
+        // text[] = {"abc"}` is `= "abc"`, C++ [dcl.init.string]).
+        Expr* literal = v->init;
+        if (t && t->kind == TyKind::Array && literal && literal->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(literal)->args.size() == 1 &&
+            (types.unqualified(t->inner)->kind == TyKind::Char || types.unqualified(t->inner)->kind == TyKind::Int))
+          literal = static_cast<BraceInitExpr*>(literal)->args[0];
+        if (t && t->kind == TyKind::Array && t->count == 0 && literal && literal->kind == NodeKind::LiteralExpr &&
+            static_cast<LiteralExpr*>(literal)->literalKind == TokenKind::String)
+        {
+          if (std::optional<ConstValue> s = constString(static_cast<LiteralExpr*>(literal), ctx))
             t = types.array(t->inner, uint32_t(s->parts->size())); // `char s[] = "abc"`: its four chars
+        }
+        else if (t && t->kind == TyKind::Array && t->count == 0 && v->init && v->init->kind == NodeKind::BraceInitExpr)
+          t = types.array(t->inner, uint32_t(static_cast<BraceInitExpr*>(v->init)->args.size())); // `double a[] = {1, 2}`
         // A static data member declared without its bound (`static Type const types[];`) has the
         // bound of its out-of-line definition (`Highlights::types[] = {...}`), as in C++.
         if (t && t->kind == TyKind::Array && t->count == 0 && !v->init)

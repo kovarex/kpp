@@ -1,6 +1,5 @@
 // spec: a string literal in braces initialises an array of characters as one without them (C++ [dcl.init.string]): `uint8_t text[] = {"abc"}` has four elements, the literal's characters and its terminating zero; a brace list of one character is still one element, an array of pointers one pointer
 // found in tests/TestSHA1 (`uint8_t text1[] = {"abc"};`, hashed with `sizeof(text1) - 1`)
-// pending: the brace list counts as one element, and codegen rejects the literal (`a string literal of 3 characters initialises an array of 1`)
 int main()
 {
   uint8_t text[] = {"abc"};
