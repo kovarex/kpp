@@ -10461,7 +10461,29 @@ struct GlobalScope::Impl
         case NodeKind::EnumeratorDecl:
           return impl.declaredTypeOf(d, activeSubst, 0); // (of this instance's enum in a class template)
         case NodeKind::FunctionDecl:
+        {
+          // `getOrCreate<Expression, const NoiseExpression&>` as a value: the function template
+          // with its explicit arguments (a trailing pack takes the rest), once they bind all of
+          // its parameters.
+          auto* f = static_cast<FunctionDecl*>(d);
+          if (lastPart.hasTemplateArgs && !f->templateParams.empty() && (!l.overloads || l.overloads->size() <= 1))
+          {
+            Subst s;
+            bindExplicitArgs(f, lastPart, Span<Expr*>{}, s);
+            bool bound = true;
+            for (Decl* p : f->templateParams)
+              bound = bound && s.find(p);
+            if (bound)
+            {
+              if (activeSubst)
+                for (const Subst::Pair& p : activeSubst->pairs)
+                  if (!s.find(p.param))
+                    s.pairs.push_back(p); // the enclosing instance's (a member of a class template)
+              return impl.declaredTypeOf(f, &s, 0);
+            }
+          }
           return impl.declaredTypeOf(d, activeSubst, 0);
+        }
         case NodeKind::ClassDecl:
         case NodeKind::EnumDecl:
         case NodeKind::UsingAliasDecl:
@@ -13116,6 +13138,15 @@ struct GlobalScope::Impl
             return record(e, types.unqualified(b));
           if (a->kind == TyKind::Class && b->kind != TyKind::Class)
             return record(e, types.unqualified(a));
+          // Two classes: the one the other converts to, as C++ tries each way (`first && second ?
+          // Undo(first->start, second->end) : first` with first an Optional<Undo> is an Optional<Undo>).
+          if (a->kind == TyKind::Class && b->kind == TyKind::Class && types.unqualified(a) != types.unqualified(b))
+          {
+            bool toB = impl.conversionRank(then, types.unqualified(b)) < Impl::NotViable;
+            bool toA = impl.conversionRank(other, types.unqualified(a)) < Impl::NotViable;
+            if (toB != toA)
+              return record(e, types.unqualified(toB ? b : a));
+          }
           return record(e, then);
         }
         case NodeKind::CastExpr:

@@ -1,0 +1,30 @@
+// spec: a function template named as a value with explicit arguments (`make<One, const int&, const int&>`, `&make<...>`, `make<E, Args...>` in a template): a trailing pack takes all the remaining arguments, and the value is a pointer to that instance; `name<...>` before `}` or `:` is a template-id
+// factorio: NoiseExpressionParser's `BinaryFunction{getOrCreate<Expression, const NoiseExpression&, const NoiseExpression&>, ...}` (a function pointer member initialized with the instance)
+template<class E, typename... Args>
+int make(Args&&... args) { return int(sizeof...(Args)) * 10 + E::id; }
+struct One { static constexpr int id = 1; };
+struct Two { static constexpr int id = 2; };
+struct Unary
+{
+  template<class E>
+  static Unary create() { return Unary{make<E, const int&>}; }
+  int (*f)(const int&);
+};
+struct Binary
+{
+  template<class E, typename... Args>
+  static Binary create() { return Binary{make<E, Args...>}; }
+  int (*f)(const int&, const int&);
+};
+int main()
+{
+  int a = 4;
+  Binary direct{make<One, const int&, const int&>};
+  int (*single)(const int&) = make<Two, const int&>;
+  auto three = &make<One, const int&, const int&, const int&>;
+  int (*none)() = a > 0 ? make<Two> : make<One>;
+  Unary u = Unary::create<Two>();
+  Binary b = Binary::create<One, const int&, const int&>();
+  println("{} {} {} {} {} {}", direct.f(a, a), single(a), three(a, a, a), none(), u.f(a), b.f(a, a));
+  return 0;
+}

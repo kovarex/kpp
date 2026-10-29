@@ -7623,13 +7623,33 @@ namespace
             }
             const NamePart& last = n->name.last();
             size_t given = 0;
-            for (size_t i = 0; i < last.templateArgs.size() && i < f->templateParams.size(); ++i)
+            // A trailing pack takes the rest (`getOrCreate<Expression, const NoiseExpression&, const
+            // NoiseExpression&>`), and is empty when nothing is left for it.
+            bool packLast = !f->templateParams.empty() && static_cast<TemplateParamDecl*>(f->templateParams[f->templateParams.size() - 1])->isPack;
+            std::vector<const Ty*> packElements;
+            for (size_t i = 0; i < last.templateArgs.size(); ++i)
             {
               Node* arg = last.templateArgs[i];
               if (uint8_t(arg->kind) > uint8_t(NodeKind::PackType))
                 unsupported(e, "a non-type argument in the address of a function template");
               TemplateArgs none;
-              fargs.pairs.push_back({f->templateParams[i], global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none)});
+              const Ty* t = global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none);
+              if (packLast && i + 1 >= f->templateParams.size())
+              {
+                if (t && t->kind == TyKind::Pack)
+                  packElements.insert(packElements.end(), t->args.begin(), t->args.end()); // `Args...` of the enclosing instance
+                else
+                  packElements.push_back(t);
+                continue;
+              }
+              if (i >= f->templateParams.size())
+                break;
+              fargs.pairs.push_back({f->templateParams[i], t});
+              ++given;
+            }
+            if (packLast && given + 1 == f->templateParams.size())
+            {
+              fargs.pairs.push_back({f->templateParams[f->templateParams.size() - 1], types.pack(Span<const Ty*>{packElements.data(), uint32_t(packElements.size())})});
               ++given;
             }
             if (given < f->templateParams.size())

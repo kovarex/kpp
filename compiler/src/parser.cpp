@@ -638,9 +638,10 @@ namespace
       {
         // In expression context, `a < b > c` style ambiguities are resolved towards comparison
         // unless the continuation only makes sense for a template-id.
+        // (`Binary{make<E, Args...>}`, `c ? f<A> : g<B>`: no comparison ends before `}` or `:`.)
         bool plausible = at(P::LParen) || at(P::ColonColon) || at(P::LBrace) || at(P::RParen) || at(P::Comma) ||
                          at(P::Greater) || at(P::Semi) || at(P::RBracket) || at(P::Dot) || at(P::Arrow) ||
-                         at(P::Ellipsis) || at(P::Shr) || at(TokenKind::End);
+                         at(P::Ellipsis) || at(P::Shr) || at(P::RBrace) || at(P::Colon) || at(TokenKind::End);
         bool binaryOnly = at(P::EqEq) || at(P::NotEq) || at(P::AndAnd) || at(P::OrOr) || at(P::Question) ||
                           at(P::Slash) || at(P::Percent) || at(P::Pipe) || at(P::Caret) || at(P::Assign) ||
                           at(P::Less) || at(P::LessEq) || at(P::Shl) || at(P::Spaceship) || at(P::Elvis);
@@ -650,7 +651,7 @@ namespace
         // a comparison, so the arguments are a template-id's whatever follows.
         bool typeOnly = false;
         for (size_t i = mark; i < scratch.size(); ++i)
-          typeOnly = typeOnly || typeOnlyArgument(scratch[i]);
+          typeOnly = typeOnly || typeOnlyArgument(scratch[i]) || scratch[i]->kind == NodeKind::PackType; // nor is `b...` compared
         if (binaryOnly || typeOnly)
           ok = true;
         else if (!plausible || sawLogical)
