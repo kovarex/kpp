@@ -1,0 +1,34 @@
+// spec: a bit field with a default member initializer (C++20): the width is a constant expression and the initializer follows it; bit fields sharing a storage unit each get their own value, from a default member initializer, a constructor initializer or an aggregate's braces
+// factorio: AsteroidChunk (`bool reserved : 1 = false;`), 92 headline lines
+// pending: the width was parsed as the assignment `1 = false`, which lost the initializer; bit fields sharing a storage unit had their initializers written over each other
+struct Flags
+{
+  bool reserved : 1 = false;
+  bool known : 1 = true;
+  unsigned count : 6 = 33;
+  unsigned level : 3 = 5;
+};
+struct Packed
+{
+  unsigned a : 4;
+  unsigned b : 4;
+  int c;
+};
+struct WithConstructor
+{
+  bool on : 1 = false;
+  unsigned level : 3 = 2;
+  WithConstructor() : on(true) {}
+};
+int main()
+{
+  Flags f;
+  println("{} {} {} {}", (int)f.reserved, (int)f.known, (int)f.count, (int)f.level);
+  f.level += 1;
+  println("{}", (int)f.level);
+  Packed p{3, 5, 7};
+  println("{} {} {}", (int)p.a, (int)p.b, p.c);
+  WithConstructor w;
+  println("{} {}", (int)w.on, (int)w.level);
+  return 0;
+}
