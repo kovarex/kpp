@@ -1196,6 +1196,10 @@ the headers' C would be:
   `overrides/added/src/Util/ComBstr.kpp`: a BSTR the object owns, from a wide or a narrow string.
 - **crc32fast** (`libraries/crc32fast`) is C++, so its crc32_fast, which Util/Crc calls, has a C
   name in `native/crc32fast_c.cpp`, and `overrides/src/Util/Crc.kpp` defines crc32_fast on it.
+- **open-vcdiff** (`libraries/open-vcdiff`, the updater's patches) is C++ as well:
+  `native/open_vcdiff_c.cpp` decodes through its VCDiffDecoder into a block a C function returns,
+  and `overrides/added/src/OpenVcdiff.kpp` declares the game's `open_vcdiff::VCDiffDecoder` with
+  the one member Updater::processDiff calls, Decode, on it.
 - **stb_dxt's internals.** DXTCompression.hpp includes stb_dxt's implementation as static functions
   and calls them from its own SSE compressor (stb__InitDXT, stb__MatchColorsBlock, the stb__OMatch5
   and stb__OMatch6 tables, ...). native/header_only.c builds stb_dxt and gives those it calls C

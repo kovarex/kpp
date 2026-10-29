@@ -1,0 +1,25 @@
+// open-vcdiff's VCDiffDecoder, which Updater::processDiff applies a patch with (the game includes
+// the library's C++ header, google/vcdecoder.h), on native/open_vcdiff_c.cpp's C function, which
+// calls the library's (docs/path-to-factorio.md, "The libraries' C++ around C").
+extern "C" int kppVcdiffDecode(const char* dictionary, size_t dictionarySize, const char* encoding, size_t encodingSize, char** output,
+                               size_t* outputSize);
+
+namespace open_vcdiff
+{
+  class VCDiffDecoder
+  {
+  public:
+    // Replaces the contents of *target with the decoding of encoding against the dictionary; false
+    // when encoding is not a well-formed VCDIFF.
+    bool Decode(const char* dictionary, size_t dictionarySize, const String& encoding, String* target)
+    {
+      char* output = nullptr;
+      size_t outputSize = 0;
+      if (!kppVcdiffDecode(dictionary, dictionarySize, encoding.data(), size_t(encoding.size()), &output, &outputSize))
+        return false;
+      target->assign(output, int(outputSize));
+      free(output);
+      return true;
+    }
+  };
+}
