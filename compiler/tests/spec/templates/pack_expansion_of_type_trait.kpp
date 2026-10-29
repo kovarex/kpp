@@ -1,6 +1,5 @@
 // spec: a pack expansion whose pattern applies a type trait to each element, `Types<RemoveReference<Args>...>` or `Types<Decay<Args>...>` with Args deduced from a forwarding-reference pack (int& for an lvalue argument), gives each element's result: Types<int, double> for `(i, 2.5)`
 // factorio: the library's makeTuple, `Tuple<Decay<Args>...>` (std::make_tuple), which for an lvalue argument was another Tuple than Tuple<int, double>: `return makeTuple(i, i * 0.5);` from a function returning Tuple<int, double> found no constructor (PerformanceLogger, InfiniteBitset)
-// pending: the trait leaves the reference element as it is (the second and third asserts fail)
 template<typename... T>
 struct Types { static constexpr int count = int(sizeof...(T)); };
 template<typename... Args>

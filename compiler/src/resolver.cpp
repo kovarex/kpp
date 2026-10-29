@@ -9314,7 +9314,34 @@ struct GlobalScope::Impl
         const Ty* cls = convertType(m->classType, ctx, depth + 1);
         return types.memberPointer(convertType(m->pointee, ctx, depth + 1), cls);
       }
-      case NodeKind::PackType: return convertType(static_cast<PackType*>(t)->pattern, ctx, depth + 1);
+      case NodeKind::PackType:
+      {
+        // `RemoveReference<Args>...`, `typename Unwrapped<Args>::Type...` with Args bound: the
+        // pattern once per element, each pack it names bound to that element, as a pack (a bare
+        // `Args...` is the pack itself).
+        Type* pattern = static_cast<PackType*>(t)->pattern;
+        std::vector<Decl*> packs;
+        if (ctx.subst && !isBarePack(pattern))
+          packsNamedIn(pattern, *ctx.subst, packs);
+        if (packs.empty())
+          return convertType(pattern, ctx, depth + 1);
+        size_t n = ctx.subst->find(packs[0])->args.size();
+        for (Decl* pack : packs)
+          if (ctx.subst->find(pack)->args.size() != n)
+            return types.unknown(); // packs of different lengths in one expansion
+        std::vector<const Ty*> elements;
+        for (size_t i = 0; i < n; ++i)
+        {
+          Subst element = *ctx.subst;
+          for (Subst::Pair& pair : element.pairs)
+            if (std::find(packs.begin(), packs.end(), pair.param) != packs.end())
+              pair.type = pair.type->args[i];
+          TypeContext ectx = ctx;
+          ectx.subst = &element;
+          elements.push_back(convertType(pattern, ectx, depth + 1));
+        }
+        return types.pack(Span<const Ty*>{elements.data(), uint32_t(elements.size())});
+      }
       default: return types.unknown();
     }
   }
@@ -9747,6 +9774,80 @@ struct GlobalScope::Impl
     }
   }
 
+  // Whether a pack expansion's pattern is the pack alone (`Args...`).
+  static bool isBarePack(const Type* pattern)
+  {
+    if (!pattern || pattern->kind != NodeKind::NamedType)
+      return false;
+    const QualifiedName& name = static_cast<const NamedType*>(pattern)->name;
+    return name.parts.size() == 1 && !name.parts[0].hasTemplateArgs && !name.typeQualifier;
+  }
+
+  // The parameter packs that s binds to packs and the pattern n names (by name, in its names and
+  // template arguments, in types and expressions written in it), each once.
+  void packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>& out, int depth = 0)
+  {
+    if (!n || depth > 32)
+      return;
+    auto named = [&](uint32_t symbol)
+    {
+      for (const Subst::Pair& p : s.pairs)
+        if (p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->isPack &&
+            static_cast<TemplateParamDecl*>(p.param)->name == symbol && p.type && p.type->kind == TyKind::Pack &&
+            std::find(out.begin(), out.end(), p.param) == out.end())
+          out.push_back(p.param);
+    };
+    auto inName = [&](const QualifiedName& q)
+    {
+      packsNamedIn(q.typeQualifier, s, out, depth + 1);
+      for (const NamePart& part : q.parts)
+      {
+        if (part.symbol != UINT32_MAX)
+          named(part.symbol);
+        for (Node* a : part.templateArgs)
+          if (!a || a->kind != NodeKind::PackType) // an inner expansion expands its own packs
+            packsNamedIn(a, s, out, depth + 1);
+        packsNamedIn(part.convType, s, out, depth + 1);
+      }
+    };
+    switch (n->kind)
+    {
+      case NodeKind::NamedType: inName(static_cast<NamedType*>(n)->name); break;
+      case NodeKind::PointerType: packsNamedIn(static_cast<PointerType*>(n)->pointee, s, out, depth + 1); break;
+      case NodeKind::LRefType: packsNamedIn(static_cast<LRefType*>(n)->referenced, s, out, depth + 1); break;
+      case NodeKind::RRefType: packsNamedIn(static_cast<RRefType*>(n)->referenced, s, out, depth + 1); break;
+      case NodeKind::ConstType: packsNamedIn(static_cast<ConstType*>(n)->inner, s, out, depth + 1); break;
+      case NodeKind::ArrayType:
+        packsNamedIn(static_cast<ArrayType*>(n)->element, s, out, depth + 1);
+        packsNamedIn(static_cast<ArrayType*>(n)->size, s, out, depth + 1);
+        break;
+      case NodeKind::DecltypeType: packsNamedIn(static_cast<DecltypeType*>(n)->expr, s, out, depth + 1); break;
+      case NodeKind::FunctionType:
+        packsNamedIn(static_cast<FunctionType*>(n)->result, s, out, depth + 1);
+        for (Decl* p : static_cast<FunctionType*>(n)->params)
+          if (p && p->kind == NodeKind::ParamDecl)
+            packsNamedIn(static_cast<ParamDecl*>(p)->type, s, out, depth + 1);
+        break;
+      case NodeKind::NameExpr: inName(static_cast<NameExpr*>(n)->name); break;
+      case NodeKind::CallExpr:
+        packsNamedIn(static_cast<CallExpr*>(n)->callee, s, out, depth + 1);
+        for (Expr* a : static_cast<CallExpr*>(n)->args)
+          packsNamedIn(a, s, out, depth + 1);
+        break;
+      case NodeKind::SizeofExpr:
+        packsNamedIn(static_cast<SizeofExpr*>(n)->type, s, out, depth + 1);
+        packsNamedIn(static_cast<SizeofExpr*>(n)->operand, s, out, depth + 1);
+        break;
+      case NodeKind::UnaryExpr: packsNamedIn(static_cast<UnaryExpr*>(n)->operand, s, out, depth + 1); break;
+      case NodeKind::BinaryExpr:
+        packsNamedIn(static_cast<BinaryExpr*>(n)->lhs, s, out, depth + 1);
+        packsNamedIn(static_cast<BinaryExpr*>(n)->rhs, s, out, depth + 1);
+        break;
+      case NodeKind::ParenExpr: packsNamedIn(static_cast<ParenExpr*>(n)->inner, s, out, depth + 1); break;
+      default: break;
+    }
+  }
+
   // Whether a written type names something its generic conversion cannot keep for the
   // substitution to fill in later: a decltype, a built-in type trait (`RemoveReference<T>`), a
   // template argument computed from the parameters (`Conditional<(sizeof(A) < sizeof(B)), B,
@@ -9759,6 +9860,7 @@ struct GlobalScope::Impl
     switch (n->kind)
     {
       case NodeKind::DecltypeType: return !static_cast<DecltypeType*>(n)->isAuto;
+      case NodeKind::PackType: return !isBarePack(static_cast<PackType*>(n)->pattern); // `RemoveReference<Args>...`: per element
       case NodeKind::ConstType: return astNeedsArguments(static_cast<ConstType*>(n)->inner, scope, locals, depth + 1);
       case NodeKind::PointerType: return astNeedsArguments(static_cast<PointerType*>(n)->pointee, scope, locals, depth + 1);
       case NodeKind::LRefType: return astNeedsArguments(static_cast<LRefType*>(n)->referenced, scope, locals, depth + 1);

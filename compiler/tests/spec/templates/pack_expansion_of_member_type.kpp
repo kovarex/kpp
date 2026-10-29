@@ -1,6 +1,5 @@
 // spec: a pack expansion whose pattern is a member type of a template instance, `Types<typename Unwrapped<Args>::Type...>` or through an alias of one (`UnwrapRefDecay<Args>...`), is the instance of each element's member type: `Types<int, double>` for Args = int, double
 // factorio: the library's makeTuple, `Tuple<UnwrapRefDecay<Args>...>` (std::make_tuple's unwrap_ref_decay_t), whose result was another Tuple than Tuple<int, double>: `return makeTuple(i, d);` from a function returning Tuple<int, double> found no constructor (PerformanceLogger's 5 statistics, InfiniteBitset, ...)
-// pending: the expansion makes another type ("static assertion failed" on the second and third asserts)
 template<typename T>
 struct Unwrapped { using Type = T; };
 template<typename T>
