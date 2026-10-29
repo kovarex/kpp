@@ -1,0 +1,14 @@
+// spec: universal character names and octal escapes in string and character literals: `L"\u0054\u00d6"` is the units 0x54 0xD6, `"\u00e9"` is its UTF-8 bytes, `L'\u00d6'` and `L'\uFFFD'` are those code points, `"\101\60"` is the bytes 65 48
+// factorio: the tests' MultilingualStringHelpers writes its 104 words as `L"\u0054\u0048..."` (TestStringUtil's NonEnglishCaseCasting and TestLuaHelpersObject's MultilingualToLower: "Expected 55 but was 53"), and StringUtil::stringToUnicodeWString replaces a byte that is no UTF-8 with `wc = L'\uFFFD';` (TestStringUtil's AnsiTextToUTF8)
+// pending: SILENT, codegen's decodeString keeps `\u` as the letter u with its digits as text (`L"\u0054"` is the 5 units u0054) and of the octal escapes reads only \0; a character literal is the letter u too; owner: the codegen thread
+int main()
+{
+  WString word = L"\u0054\u00d6";
+  String narrow = "\u00e9";
+  wchar_t letter = L'\u00d6';
+  wchar_t replacement = L'\uFFFD';
+  String octal = "\101\60";
+  println("{} {} {} {} | {} {} {} | {} {}", word.size(), (int)word[0], (int)word[1], narrow.size(), (int)(unsigned char)narrow[0], (int)letter, (int)replacement,
+          (int)octal[0], (int)octal[1]);
+  return 0;
+}
