@@ -12,7 +12,8 @@ rem C++ build's log to compare with is C:\Factorio\factorio-current.log.
 rem
 rem A crash prints its stack (native\crash_report.c, named from the PDB this link writes) and ends
 rem the game: the game's own crash handler hangs in the converted game, so it runs with
-rem --no-crash-handler.
+rem --no-crash-handler. KPPC_EXTRA adds kppc options, as for an AddressSanitizer build:
+rem `set KPPC_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address`.
 setlocal
 cd /d "%~dp0"
 set GAME=C:\factorio-in-kpp
@@ -32,7 +33,7 @@ rem the crash report, which only this link pulls in.
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if not exist kpp\run mkdir kpp\run
 if exist kpp\run\factorio.exe del kpp\run\factorio.exe
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% --exe kpp\run\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\run\build.txt 2> kpp\run\build-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %KPPC_EXTRA% --exe kpp\run\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\run\build.txt 2> kpp\run\build-errors.txt
 echo == %GAME%\bin\x64\factorio.exe, built by kppc (exit %errorlevel%) with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" kpp\run\build.txt
 %SystemRoot%\System32\find.exe /c /v "" kpp\run\build-errors.txt

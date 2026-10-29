@@ -67,6 +67,7 @@ namespace
     int repeat = 1;
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
     bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
+    std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
   };
 
   void usage()
@@ -98,6 +99,8 @@ namespace
             "  --stub-missing  with --keep-going, a bring-up tool: every function left out (or used without a\n"
             "                definition) is a stub that prints its name and line and aborts when called, so the\n"
             "                program links; the errors are still reported and the exit code is still 1\n"
+            "  --clang-flags F  more flags clang compiles the modules with (`-fsanitize=address`; link with\n"
+            "                `--lib -fsanitize=address`); they are part of each module's cache key\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n");
   }
 
@@ -810,6 +813,8 @@ namespace
         h = (h ^ c) * 1099511628211ull;
       for (const char* c = level; *c; ++c)
         h = (h ^ (unsigned char)*c) * 1099511628211ull;
+      for (unsigned char c : options.clangFlags)
+        h = (h ^ c) * 1099511628211ull;
       std::string hashText = std::to_string(h);
       std::string hashPath = options.exe + "." + std::to_string(k) + ".hash";
       std::error_code ec;
@@ -823,7 +828,7 @@ namespace
         ++failures;
         return;
       }
-      std::string command = "\"\"" + clang + "\" " + level + " -w " + compileFlags + " -c \"" + llPath + "\" -o \"" + objects[k] + "\"\"";
+      std::string command = "\"\"" + clang + "\" " + level + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" + objects[k] + "\"\"";
       if (system(command.c_str()) != 0)
         ++failures;
       else
@@ -1163,6 +1168,8 @@ int main(int argc, char** argv)
       options.keepGoing = true;
     else if (arg == "--stub-missing")
       options.stubMissing = true;
+    else if (arg == "--clang-flags" && i + 1 < argc)
+      options.clangFlags = argv[++i];
     else if (arg == "--codegen-threads" && i + 1 < argc)
       options.codegenThreads = unsigned(atoi(argv[++i]));
     else if (arg == "--lib" && i + 1 < argc)

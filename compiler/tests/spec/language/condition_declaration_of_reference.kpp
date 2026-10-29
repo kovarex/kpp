@@ -1,0 +1,22 @@
+// spec: a condition that declares a reference, `if (const Connector& c = p.spoil)`, tests the object the reference names (its explicit operator bool), not the reference's address
+// factorio: RecipePrototype::addTrashRecursive's `if (const IDConnector<ItemID>& spoilResultID = itemID->spoilResult)`: always true, so it followed every item's empty spoil result and `--dump-data` crashed reading the prototype of an empty ID
+struct Connector
+{
+  int id = 0;
+  explicit constexpr operator bool() const { return this->id != 0; }
+};
+struct Proto { Connector spoil; };
+int follow(const Proto& p)
+{
+  if (const Connector& c = p.spoil)
+    return c.id;
+  return -1;
+}
+int main()
+{
+  Proto none;
+  Proto some;
+  some.spoil.id = 5;
+  println("{} {}", follow(none), follow(some));
+  return 0;
+}

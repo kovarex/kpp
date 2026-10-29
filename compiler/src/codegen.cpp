@@ -13714,6 +13714,15 @@ namespace
         auto* v = static_cast<VariableDecl*>(d->decls[0]);
         declareLocal(v);
         Local& l = locals[v];
+        if (l.isRef || l.ty->isReference())
+        {
+          // `if (const IDConnector<ItemID>& spoilResultID = itemID->spoilResult)`: the object the
+          // reference names is the condition (its operator bool), not the reference's address.
+          std::string object = newTemp();
+          fn += "  " + object + " = load ptr, ptr " + l.addr + "\n";
+          const Ty* objectTy = types.stripRef(l.ty);
+          return convert(isAggregate(objectTy) ? Value{object, objectTy} : load(object, objectTy, at), types.boolType(), at);
+        }
         return convert(load(l.addr, l.ty, at), types.boolType(), at);
       }
       return convert(rvalue(static_cast<Expr*>(cond)), types.boolType(), at);
