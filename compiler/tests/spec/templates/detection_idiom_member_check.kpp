@@ -1,0 +1,62 @@
+// spec: the detection idiom: a class template's `static constexpr bool value = decltype(check<T>(nullptr))::value`, with check overloaded on a trailing return type that substitution may fail (`-> IsSame<decltype(declval<Y>().getQualityID()), QualityID>`) and on `...`, is true exactly for a T with that member, as a static_assert, as a variable template over it in if constexpr, and written in a function template's body
+// factorio: IDWithQuality.hpp's has_get_quality_id_impl and has_get_quality_id (IDButton's paintQuality and getQualityPrototype, FlowDataFrame::supportsQuality: 99 of the full-src errors)
+// pending: the variable template is no constant: `decltype(...)::value` named the generic IntegralConstant's value (T unbound), and the generic walk's overload for check<T> (FalseType, the other's return type depending on T) stood for every T
+struct QualityID
+{
+  int v = 0;
+};
+struct WithQuality
+{
+  QualityID getQualityID() const { return QualityID(); }
+};
+struct Without
+{
+  int other() const { return 0; }
+};
+template<typename T>
+class has_get_quality_id_impl
+{
+  template<class Y>
+  static constexpr auto check(Y*) -> IsSame<decltype(declval<Y>().getQualityID()), QualityID>;
+  template<class>
+  static constexpr FalseType check(...);
+public:
+  static constexpr bool value = decltype(check<T>(nullptr))::value;
+};
+template<class T>
+constexpr bool has_get_quality_id = has_get_quality_id_impl<T>::value;
+static_assert(has_get_quality_id_impl<WithQuality>::value);
+static_assert(!has_get_quality_id_impl<Without>::value);
+static_assert(has_get_quality_id<WithQuality>);
+static_assert(!has_get_quality_id<Without>);
+
+template<class Y>
+constexpr auto check(Y*) -> IsSame<decltype(declval<Y>().getQualityID()), QualityID>;
+template<class>
+constexpr FalseType check(...);
+static_assert(decltype(check<WithQuality>(nullptr))::value);
+static_assert(!decltype(check<Without>(nullptr))::value);
+
+template<typename T>
+int probe()
+{
+  if constexpr (has_get_quality_id<T>)
+    return 1;
+  else
+    return 2;
+}
+template<typename T>
+int probeInBody()
+{
+  if constexpr (decltype(check<T>(nullptr))::value)
+    return 3;
+  else
+    return 4;
+}
+int main()
+{
+  bool local = decltype(check<WithQuality>(nullptr))::value;
+  println("{} {} {} {} {} {} {}", probe<WithQuality>(), probe<Without>(), probeInBody<WithQuality>(), probeInBody<Without>(), has_get_quality_id<WithQuality>,
+          has_get_quality_id<Without>, local);
+  return 0;
+}
