@@ -1,6 +1,5 @@
-// spec: an implicit conversion through a converting constructor whose parameter is a const reference of another type (`Constant(const double&)` given an int) binds the reference to a converted temporary, as a function's const reference parameter does
+// spec: an implicit conversion through a converting constructor whose parameter is a const reference of another type (`Constant(const double&)` given an int) binds the reference to a converted temporary, as a function's const reference parameter does (`byRef(two)`; `ref` would name the library's std::ref)
 // factorio: NoiseFunctionParameter's `{"output_scale", 1}` through `NoiseFunctionParameter(String&&, NoiseExpressionConstant&&)`, and every class built from a number its constructor takes as `const double&`
-// pending: the reference binds to the int itself, so the double read through it is the int's bits (get(2) prints 9.88131e-324)
 class Constant
 {
 public:
@@ -8,11 +7,11 @@ public:
   double value;
 };
 static double get(Constant c) { return c.value; }
-static double ref(const double& d) { return d; }
+static double byRef(const double& d) { return d; }
 int main()
 {
   int two = 2;
   Constant c = two;
-  println("{} {} {} {}", get(2), get(two), c.value, ref(two));
+  println("{} {} {} {}", get(2), get(two), c.value, byRef(two));
   return 0;
 }

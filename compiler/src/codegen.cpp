@@ -5979,6 +5979,19 @@ namespace
           fn += "  store ptr " + fp.text + ", ptr " + slot + "\n";
           return "ptr " + slot;
         }
+        // `const double&` given an int (`Constant(const double&)` built from 2): the reference
+        // binds a temporary of its own type holding the converted value, never the int itself.
+        const Ty* argTy = arg->ty && arg->ty->isKnown() && !types.isDependent(arg->ty) ? types.unqualified(types.stripRef(arg->ty)) : nullptr;
+        if (argTy && argTy->isKnown() && (referenced->isConst || pt->kind == TyKind::RRef) && types.unqualified(referenced)->isKnown() &&
+            !types.isDependent(referenced) && argTy != types.unqualified(referenced) && arg->kind != NodeKind::BraceInitExpr)
+        {
+          const Ty* to = types.unqualified(referenced);
+          Value v = convert(rvalue(arg), to, at);
+          std::string slot = "%v" + std::to_string(temp++);
+          allocas += "  " + slot + " = alloca " + llType(to, at) + "\n";
+          fn += "  store " + llType(to, at) + " " + v.text + ", ptr " + slot + "\n";
+          return "ptr " + slot;
+        }
         return "ptr " + lvalue(arg);
       }
       if (pt && isAggregate(pt))
