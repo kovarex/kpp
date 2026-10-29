@@ -1,0 +1,18 @@
+// spec: a program's free function with the parameters of a standard library function of the same name (`long long gcd(long long, long long)`, which UtilityExt.kpp has) is that function defined twice in the one global scope: a compile error naming both, not a clash in the generated code; declaring it again (`int printf(const char*, ...);`) and an overload with other parameters are fine
+// error: error: 'gcd' with these parameters is defined here and in the standard library
+long long gcd(long long a, long long b)
+{
+  while (b != 0)
+  {
+    long long t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+int gcd(int a, int b, int c) { return int(gcd(gcd(a, b), c)); }
+int main()
+{
+  println("{} {}", gcd(12, 18), gcd(4, 6, 8));
+  return 0;
+}

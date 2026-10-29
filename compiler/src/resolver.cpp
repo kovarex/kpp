@@ -3149,7 +3149,35 @@ struct GlobalScope::Impl
             return std::nullopt;
           env.push_back({static_cast<ParamDecl*>(f->params[i])->name, *v});
         }
-        TypeContext fctx{lexicalScopeOf(f), nullptr, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+        // `AreCreatedInOrder<EntityPrototypeList, AchievementPrototypeList>()`: a template's body
+        // with its parameters bound to the written arguments (and a class template member's to the
+        // instance it is named through); a parameter left unbound decides nothing.
+        Subst bound;
+        LocalStack params;
+        if (callee->name.parts.size() > 1)
+          bound = qualifierSubst(callee->name, ctx, depth + 1, lexicalScopeOf(f));
+        for (const Subst::Pair& p : bound.pairs)
+          params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+        const NamePart& written = callee->name.last();
+        for (size_t i = 0; i < f->templateParams.size(); ++i)
+        {
+          if (i >= written.templateArgs.size())
+            return std::nullopt;
+          const Ty* t = templateArgument(written.templateArgs[i], f->templateParams[i], ctx, depth + 1);
+          if (!t || !t->isKnown() || types.isDependent(t))
+            return std::nullopt;
+          bound.pairs.push_back({f->templateParams[i], t});
+          params.push(static_cast<TemplateParamDecl*>(f->templateParams[i])->name, f->templateParams[i]);
+        }
+        if (ctx.subst) // called from inside an instance: its class's arguments stay
+          for (const Subst::Pair& p : ctx.subst->pairs)
+            if (!bound.find(p.param))
+              bound.pairs.push_back(p);
+        for (Decl* p : effectiveParams(f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : nullptr))
+          if (!bound.find(p))
+            return std::nullopt; // a member of a class template named with no instance
+        TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
+                         f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
         fctx.env = &env;
         return constEval(static_cast<ReturnStmt*>(block->stmts[0])->value, fctx, depth + 1);
       }
@@ -9744,6 +9772,33 @@ std::vector<std::string> GlobalScope::topLevelClashes()
 {
   std::vector<std::string> out;
   Scope& root = impl->root;
+  // Whether two free functions take the same parameters (the same function declared twice): the
+  // same types, a template's parameters matched by position; never when a parameter type is
+  // unknown or either is constrained (constraints make overloads).
+  auto sameParameters = [&](FunctionDecl* a, FunctionDecl* b)
+  {
+    // Declaring a function again is fine (`int printf(const char*, ...);`); defining it twice is not.
+    if (!a->body || !b->body)
+      return false;
+    if (a->templateParams.size() != b->templateParams.size() || a->params.size() != b->params.size() || a->requiresClause ||
+        b->requiresClause)
+      return false;
+    const Ty* ta = impl->declaredTypeOf(a, nullptr, 0);
+    const Ty* tb = impl->declaredTypeOf(b, nullptr, 0);
+    if (!ta || !tb || ta->kind != TyKind::Function || tb->kind != TyKind::Function || ta->variadic != tb->variadic ||
+        ta->args.size() != tb->args.size())
+      return false;
+    Subst s;
+    for (size_t i = 0; i < a->templateParams.size(); ++i)
+      s.pairs.push_back({b->templateParams[i], impl->types.param(a->templateParams[i])});
+    for (size_t i = 0; i < ta->args.size(); ++i)
+    {
+      const Ty* pb = s.empty() ? tb->args[i] : impl->substitute(tb->args[i], s);
+      if (!ta->args[i] || !ta->args[i]->isKnown() || Impl::mentionsUnknown(ta->args[i]) || pb != ta->args[i])
+        return false;
+    }
+    return true;
+  };
   for (uint32_t i = 0; i < root.shardCount; ++i)
     for (const auto& [symbol, entries] : root.shards[i].map)
     {
@@ -9759,7 +9814,20 @@ std::vector<std::string> GlobalScope::topLevelClashes()
         if (!d->file || d->file->isLibrary || d->file->isImported || !claimsTopLevelName(d) || fileLocal(d))
           continue;
         if (library->kind == NodeKind::FunctionDecl && d->kind == NodeKind::FunctionDecl)
-          continue; // overloads of one function
+        {
+          // Overloads of one function; but the parameters of one of the library's is that function
+          // declared again (`gcd(long long, long long)`), which the program cannot have twice.
+          for (const Entry& l : entries)
+            if (l.decl->kind == NodeKind::FunctionDecl && l.decl->file && l.decl->file->isLibrary && claimsTopLevelName(l.decl) &&
+                !fileLocal(l.decl) && sameParameters(static_cast<FunctionDecl*>(l.decl), static_cast<FunctionDecl*>(const_cast<Decl*>(d))))
+            {
+              out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) +
+                            "' with these parameters is defined here and in the standard library (" + whereIs(l.decl) +
+                            "); top-level names are global, rename one of them");
+              break;
+            }
+          continue;
+        }
         out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) + "' is declared here and in the standard library (" +
                       whereIs(library) + "); top-level names are global, rename one of them");
       }
