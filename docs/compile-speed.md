@@ -14,6 +14,166 @@ for 10 minutes on half-written input), then
 powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tree <the copy>
 ```
 
+## End to end on the full game (2026-10-29, night)
+
+The whole game is built the way `programs\factorio\run.cmd` builds it, from a frozen copy of the
+converted tree: imports, front end, codegen into 64 modules, clang -O0 per module, and the link
+(MSVC link.exe through clang, with `/DEBUG /MAP` for the crash report's names, `/OPT:REF`). The
+machine was shared with other threads' builds the whole time (60 to 100% busy before most runs),
+so every number is a range over runs and the best of them is the closest to an idle machine.
+Master between aecd79b and c088f0d. Wall time is from start to process exit.
+
+| | clean (no objects) | no change | one-line edit, leaf body | one-line edit, widely used inline function | layout of a widely used class |
+|---|---:|---:|---:|---:|---:|
+| wall | 24 to 36 s | 17 to 22 s | 18 to 20 s | 19 to 29 s | 25 to 32 s |
+| read + imports + parse + index | 0.4 to 0.8 s | 0.4 to 0.6 s | same | same | same |
+| resolve | 1.3 to 2.3 s | 1.3 to 2.1 s | same | same | same |
+| codegen | 11 to 16 s | 11 to 15 s | 11 to 12 s | 12 to 16 s | 11 to 13 s |
+| clang -O0 (modules compiled) | 8 to 10 s (64) | 0.1 s (0) | 0.9 s (1 or 2) | 1.3 to 3.3 s (1) | 8 to 10 s (64) |
+| link | 3.4 to 6.4 s | 3.4 to 3.7 s | 3.5 to 4.4 s | 3.4 to 6.9 s | 3.8 to 6.4 s |
+
+The edits: a statement added to `BuildEntityAchievement::setup`, the operands of
+`MapPosition::operator+` swapped, a field added to `Entity`. The C++ build: 62 s clean, 16 s for
+an ordinary one-line edit, 55 s for one in a header the PCH includes (factorio-build-baseline.md).
+
+Until c088f0d no rebuild reused a single object: the IR named local classes and some struct types
+by the order they were reached, so every module's text changed from run to run ("0 unchanged");
+the codegen thread fixed that (408a881, 9102b77, c088f0d), and now the no-change rebuild compiles
+nothing and an edit compiles only the modules whose text changed. What an edit costs now is the
+front end and codegen run again in full (13 to 17 s) plus the link; the endgame (2.5 to 4.5 s for a
+one-line edit) needs both of them to stop being proportional to the program:
+
+- **Codegen, 11 to 16 s**, measured inside with temporary timers: about 7 s emitting functions on
+  all threads, 0.4 s finishing, **4.5 s assembling the 64 module texts on one thread**, and about
+  3 s freeing its own state before it returns. Single-threaded (`--codegen-threads 1`) it is 23 s,
+  so the parallel part scales only 1.7x so far.
+- **The IR is 1.75 GB in 64 modules against 0.6 GB in one**, and **843 MB of the 1.75 GB are
+  destructor helpers** (`kpp.dtor.*`): 2,598 distinct helpers defined 170 k times, in every module
+  that destroys such an object (13 MB in the one-module build). Defined once in a home module, as
+  instantiations are, the IR roughly halves, and with it clang's work and the serial assembly.
+- **One function is a quarter of clang's critical path.**
+  `ControlSettings::ControlSettings(const PropertyTree&, KeyboardLayout)` is 875 k lines of IR with
+  482 k calls of `String::~String`: every cleanup path destroys again every member built before it,
+  so the cleanups grow with the square of the members. Its module is 95 MB (the median module is
+  24 MB) and takes clang 7.5 s alone, most of the clean build's 8 to 10 s of clang. Chained cleanups
+  (each landing pad continuing into the previous one's) make it linear. (Reported to the codegen
+  thread with the two items above.)
+- **clang per module:** a median module (24 MB) compiles in 1.3 to 1.6 s at -O0 on a loaded
+  machine. That is the floor of an edit's compile with 64 modules; smaller modules (256, once the
+  destructor helpers are no longer copied into each) would put it near 0.3 to 0.4 s.
+- **The link, 3.4 to 6.9 s,** is the largest single item of an edit once the rest is incremental.
+  The same objects linked four ways on the loaded machine: link.exe as today 9.8 to 13.1 s,
+  link.exe without `/DEBUG /MAP` 6.0 to 8.5 s, lld without them 2.4 to 4.8 s, lld with `/DEBUG`
+  15.7 to 21.4 s. An incremental link (link.exe `/INCREMENTAL`, which `/OPT:REF` rules out) is the
+  next thing to measure for the edit loop; the names the crash report needs could come from the
+  map file alone.
+- **Process exit freed everything for about 5 s** after the link: aecd79b ends the process without
+  freeing (paired, three alternating runs: last output line to exit 4.6, 5.3, 4.8 s -> 0.3 s each;
+  wall median 30.3 -> 26.8 s). Codegen's own 3 s of freeing inside `generate` is the same fix there.
+- **Imports, 0.65 to 1.4 s before:** reading the cached import and checking the headers' stamps
+  took 0.02 s; lexing its 10 MB on one thread 0.3 to 0.6 s (34 MB/s: 119 k distinct identifiers to
+  intern); parsing 0.07 s. ecca9df lexes it in 256 KB pieces on all threads (tokens identical to
+  one lex: 1,287,194 tokens, 0 mismatches): imports **0.66 to 0.72 s -> 0.16 to 0.22 s**, four
+  paired runs. What is left: the parse of the import, 0.07 s on one thread, and the pieces'
+  interning.
+
+Memory: the front end peaks at 1.6 GB of working set, front end and one-module codegen at 2.0 GB,
+so a process that keeps all of it between builds fits easily.
+
+## Design: the persistent compiler (for review)
+
+Goal: a one-line edit costs what the edit touches, not what the program is, with output
+byte-identical to a clean build of the same sources. Today's edit costs 13 to 17 s of front end
+and codegen before clang and the link; the target is under 0.2 s for an edit inside a function
+body, so that clang's one module and the link are what is left.
+
+**The process.** `kppc` with the same arguments as today becomes a thin client: it finds a server
+for this (kppc binary, working directory, arguments) by a named pipe whose name is a hash of the
+three, starts one (`kppc --serve ...`, detached) if there is none, sends the request and streams
+back stdout, stderr and the exit code. `--no-server` builds in-process as today. The server holds
+everything a build makes: files (text, tokens, syntax trees), the symbol table, the global index,
+the resolved program (types on the nodes, bound declarations, class and function instances),
+codegen's per-function results, the module texts and their hashes. It exits after an idle hour,
+when its binary changes, or on `kppc --stop-server`. Anything the server cannot handle
+incrementally (a new or removed file, a changed option, stdlib or C headers changed, an error it
+did not expect) is a full rebuild inside the server, which is never slower than today.
+
+**What changed.** Each build stats every input (4,134 files: a few milliseconds; a directory
+watcher later) and re-reads files whose size or time changed; a file whose content hash is
+unchanged is unchanged. A changed file is lexed and parsed again (under 1 ms for a typical file),
+and its new tree is compared with the old one declaration by declaration, by a hash of each
+declaration's tokens with its body's tokens hashed apart. Every change is one of two kinds:
+
+- **Body-only:** only the bodies of functions changed, and none of those bodies can change
+  anything outside itself: not a template or a member of one, not a function whose return type is
+  deduced, not constexpr/consteval, no local class whose name escapes. This is the common edit,
+  and the fast path.
+- **Interface:** anything else (a signature, a class's members or bases, a template's body, a
+  global's initializer, a new or removed declaration, a using).
+
+**The fast path.** The new body's subtree is moved into the existing FunctionDecl, so every
+pointer the rest of the program holds (to the declaration, its parameters, its class) stays
+valid; the tokens after the edit shift by a known count and offset, and one walk over that
+file's tree moves their indices (the tree of one file: microseconds). Then:
+
+1. The resolver checks that one body again (the walk of one function in its file's scope; the
+   per-file state it needs, usings and the file's scopes, is kept), which claims any new
+   instances as today; the instance tasks run as in a clean build.
+2. Instances nobody requests any more are dropped: each request is recorded with its requester
+   (body or instance), and after the check the instances are marked from the program's own
+   functions; what is not reached is out of the program, as it would not exist in a clean build.
+3. Codegen emits that function again, and the functions of the new instances. Each function's
+   result is kept: its IR text, the functions and globals it asked for, the layouts it used. The
+   set of functions emitted is the closure of the requests from the program's functions, so it
+   is recomputed from the kept request lists without emitting anything else.
+4. The module of each changed function is assembled again from the kept texts (one module, not
+   64, and never on one thread for all), hashed, compiled by clang if its hash changed, linked.
+
+Expected for a leaf body edit: stat and re-parse 0.01 s, check 0.01 s, emit and assemble one
+module 0.05 to 0.1 s, then clang on one module (0.3 to 1.5 s by module size) and the link.
+
+**Interface changes.** The resolver records, per function body and per instance, what it looked
+up: each name as (scope, identifier), including the scopes that came up empty (a new declaration
+of that name could change the result, and with order-independent symbols it can come from any
+file), the classes whose members it searched, and the declarations whose definitions it used
+(a class's layout facts, a template's body, a deduced return type, a constant's value). Codegen
+records the layouts each function used. A changed declaration invalidates what recorded it or
+its name; invalidated bodies are checked again and invalidated instances rebuilt, transitively,
+and then everything continues as on the fast path. Declarations themselves change identity only
+when their file's declaration list changes; then that file is indexed again (its entries
+removed from the global index, the new ones inserted) and everything that recorded a name it
+declares or declared is checked again. A changed class layout invalidates every function that
+used it, so the layout edit above is close to a clean build in codegen and clang (C++: 55 s);
+that is expected, and the target there is a clean build's speed, not the fast path's.
+
+**Correctness, checked rather than trusted.**
+- Every incremental build can be checked against a clean one: `--verify-incremental` builds
+  clean in the same server after the incremental build and compares stdout, stderr and every
+  module's IR byte for byte, reporting the first difference.
+- A new test (tests/incremental.ps1, in run_tests) applies a fixed series of edits to the test
+  programs, and when present to the headline tree (body edits in 50 functions chosen by a fixed
+  seed, a signature change, a new overload in another file, a field added to a class, a file
+  added and removed), each through the server and with `--verify-incremental`.
+- The determinism check stays as it is: the clean output does not depend on threads or timing,
+  and the incremental output must equal it.
+
+**Order of work**, each step landed and measured on its own:
+
+1. The server and client, with a full rebuild for every request. No speed gained yet, except the
+   process start and the C import kept in memory; it fixes the protocol, the server's lifetime,
+   and `--verify-incremental` (trivially true at this step).
+2. Recording the dependencies (resolver lookups, instance requesters, codegen's per-function
+   results). Measured: the cost to a clean build, which must stay within a few percent.
+3. The fast path for body-only edits, with the incremental test's body edits.
+4. Interface edits through the recorded dependencies, starting with the cheap and common ones
+   (a new overload, a changed signature), the rest still a full rebuild in the server.
+5. Parallel module assembly and smaller modules (with codegen), and an incremental link.
+
+**Open questions for review.** Whether the server should be on by default from step 3 (with
+`--no-server` as the way out), or opt-in (`--server`) until the incremental test has run for a
+while; I would make it opt-in until step 4. And whether the client may start a server on its own
+or the user starts it (a long-lived process left running by a build command surprises people).
+
 ## Parallel front end: contention, not work (2026-10-29, evening)
 
 The front end on the headline tree had grown to about 4 s (read, imports, parse and index 1.1 s;
@@ -98,7 +258,7 @@ instance walk, and diffing a `-j 1` run against loaded `-j 32` runs:
 twice at `-j 32`. Under load (a second compile running beside it) master differed in about one run
 in six; after the fixes, 0 of 10.
 
-### Design: instantiation checks as tasks (steps 1 and 2 done, step 3 next)
+### Design: instantiation checks as tasks (done: steps 1 to 3)
 
 Today a walker that needs a class instance claims it and checks it inline: the instance's
 declarations and then every member body (`instantiateClass` -> `checkMemberBody`, 31% of the busy
