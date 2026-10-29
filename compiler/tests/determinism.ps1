@@ -10,13 +10,14 @@ $failed = 0
 
 # The report without what may differ from run to run by design: timings and rates, the thread
 # count, wait counts, the number of interned types (a cache: equivalent paths taken in another
-# order intern different intermediate types), and C import temp files (named with the process id).
+# order intern different intermediate types), C import temp files (named with the process id), and
+# whether the C imports came from the cache (the first run after a rebuild or with a fresh TMP fills it).
 function Normalize([string[]]$lines)
 {
   $lines | Where-Object { $_ -notmatch '^check:\s+[0-9]+ distinct types' } | ForEach-Object {
     $_ -replace '[0-9]+\.[0-9]+ s\b', '_ s' -replace '\([0-9.]+ MB/s[^)]*\)', '(_)' -replace '\([0-9.]+ M lines/s\)', '(_)' `
        -replace '^threads:.*', 'threads: _' -replace '\(([0-9]+) requests, ([0-9]+) waits\)', '(_ requests, _ waits)' `
-       -replace 'kpp-imports\\[0-9a-f]+\.[0-9]+\.c', 'kpp-imports\_.c'
+       -replace 'kpp-imports\\[0-9a-f]+\.[0-9]+\.c', 'kpp-imports\_.c' -replace ' \(cached\)$', ''
   }
 }
 
