@@ -1009,6 +1009,16 @@ The smallest language that is still Kpp, as the target of the first code generat
 - **Types.** `bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64`, `f32/f64`, `char` (UTF-8 code unit),
   pointers, references, arrays, `const`. `int` is an alias of `i32`, `size_t`/`usize` of `u64`
   (the short names exist in the compiler since 2026-10-24; `f32`/`f64` not yet).
+  The C spellings are sizes, not distinct types: `long` is `int` (x64 Windows, LLP64), `long long`
+  is `i64`, and `f(int)` beside `f(long)` is one function declared twice, where C++ has two
+  overloads (parked 2026-10-29, nothing converted needs them apart). Making them distinct would
+  touch the type table (an integer type keyed by spelling as well as size), conversion ranking
+  (int to long an integral conversion, not an identity), template argument identity
+  (`X<long>` and `X<int>` two instances) and codegen's function names (`f(int32)` for both).
+- **Grammar rules' specs:** rule 1 language/declaration_statement_by_first_tokens, rule 2
+  language/no_most_vexing_parse and language/object_declaration_from_variables, rule 3
+  templates/variable_template_id_before_operator and language/template_id_or_comparison, rule 4
+  language/call_statement_with_element_address, rule 5 language/cast_of_parenthesised_cast.
 - **Declarations.** Functions, `struct`/`class` with methods, bases, constructors and
   destructors, `enum class` with methods, `using` aliases, global and local variables, `auto`.
   Simple templates (type parameters, full specialisation, `if constexpr`).

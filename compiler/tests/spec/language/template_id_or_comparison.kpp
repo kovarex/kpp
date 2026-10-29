@@ -1,0 +1,15 @@
+// spec: design.md, "Grammar parseable without name lookup", rule 3: in an expression `name<...>` is a template-id when what follows the `>` cannot continue a comparison (`(`, `::`, `;`, `)`, `,`, `==`, ...), and comparisons otherwise: `a < b > c` compares twice, and `v<N> * 2` with a value as the argument reads as comparisons, so `(v<N>) * 2` is written for the template-id
+template<int N>
+constexpr int scaled = N * 10;
+template<typename T>
+T twice(T x) { return x + x; }
+int main()
+{
+  int a = 1, b = 2, c = 0;
+  bool chain = a < b > c;                  // (a < b) > c
+  int called = twice<int>(4);              // `(` follows: a template-id
+  bool equal = scaled<3> == 30;            // `==` follows: a template-id
+  int product = (scaled<2>) * 2;           // parenthesised: the template-id, then the product
+  println("{} {} {} {}", chain, called, equal, product);
+  return 0;
+}

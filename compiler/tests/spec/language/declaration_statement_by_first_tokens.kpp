@@ -1,0 +1,22 @@
+// spec: design.md, "Grammar parseable without name lookup", rule 1: a statement that starts with a (qualified) name, then `*`, `&` or `&&` chains, then an identifier is a declaration, whatever the name is; pointer, reference and rvalue-reference locals of a class, of a nested class and of a pointer to pointer
+struct Node
+{
+  struct Link
+  {
+    int weight = 2;
+  };
+  int value = 5;
+};
+int main()
+{
+  Node node;
+  Node* p = &node;
+  Node& r = node;
+  Node&& m = Node();
+  Node::Link link;
+  Node::Link* l = &link;
+  Node** pp = &p;
+  const Node* c = p;
+  println("{} {} {} {} {} {}", p->value, r.value, m.value, l->weight, (*pp)->value, c->value);
+  return 0;
+}
