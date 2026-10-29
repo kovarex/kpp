@@ -73,6 +73,7 @@ namespace
     // (align) above it: then its padding is written out as fields, and its objects get `align`.
     uint64_t llvmAlign = 1;
     bool overAligned = false;                 // align > llvmAlign
+    uint64_t tailPadding = 0;                 // the `[n x i8]` the struct's text ends with (after its byte of its own, when empty)
     bool sizing = false;                      // its size is being computed (a class that contains itself comes back here)
     bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
     std::string failedWhy;                    // what made it fail, which every use reports
@@ -1108,6 +1109,7 @@ namespace
       info.empty = !info.polymorphic && info.fieldDecls.empty() && allBasesEmpty;
       info.packed = (c->attributes & ATTR_Packed) != 0;
       uint64_t tailPadding = alignPadding(info, c, key, args, at);
+      info.tailPadding = tailPadding;
       std::string line = info.name + " = type " + (info.packed ? "<{ " : "{ ");
       for (size_t i = 0; i < info.fieldTypes.size(); ++i)
         line += (i ? ", " : "") + (info.zeroSize[i] ? std::string("[0 x i8]") : llType(info.fieldTypes[i], c));
@@ -5629,8 +5631,30 @@ namespace
         if (it != definedIn.end() && it->second != k && !sharedDeclared.count(name) && !already.count(name))
           declares += declareLines[name] + "\n"; // not when a declaration is in the module's text already
       }
+      // The functions the shared declarations name (a global's constant data: a table of function
+      // pointers), found once: every module but the defining one declares them.
+      if (!sharedReferencesFound)
+      {
+        sharedReferencesFound = true;
+        const std::string& shared = this->decls.text;
+        for (size_t i = shared.find("@\""); i != std::string::npos; i = shared.find("@\"", i + 1))
+        {
+          size_t end = shared.find('"', i + 2);
+          if (end == std::string::npos)
+            break;
+          std::string name = shared.substr(i, end + 1 - i);
+          if (definedIn.count(name) && !sharedDeclared.count(name))
+            sharedReferences.insert(name);
+          i = end;
+        }
+      }
+      for (const std::string& name : sharedReferences)
+        if (definedIn[name] != k && !already.count(name) && seen.insert(name).second)
+          declares += declareLines[name] + "\n";
       return prefix + decls + moduleDecls[k].text + ctorsText(k) + "\n" + shared.text + declares + "\n" + bodies[k].text;
     }
+    bool sharedReferencesFound = false;
+    std::set<std::string> sharedReferences; // sorted: the same declare lines in every run
 
     // The default assert handler, unless the program defines `extern "C" kpp_assert_failed`.
     void finishAssertRuntime()
@@ -6515,6 +6539,254 @@ namespace
       return p;
     }
 
+    // --- constant data (design.md, "Compile-time evaluation: one interpreter", step 4b) ---
+
+    static bool zeroText(const std::string& s) { return s == "0" || s == "false" || s == "null" || s == "zeroinitializer" || s == "0x0000000000000000"; }
+
+    // The data members of class c as the interpreter's Object parts list them (after the bases).
+    static std::vector<Decl*> valueMembers(ClassDecl* c)
+    {
+      std::vector<Decl*> members;
+      for (Decl* m : c->members)
+        if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+          members.push_back(m);
+      return members;
+    }
+
+    // The LLVM constant value v of type t is (a global's initializer, ConstValue's contract in
+    // consteval.hpp), or nothing when a part is none the IR can hold here: a polymorphic class, a
+    // union, a class with an anonymous member or a reference member, a member pointer, a part of a
+    // kind its type cannot take. Then the global is built at startup, as before.
+    std::optional<std::string> constantText(const ConstValue& v, const Ty* t, Node* at, int depth = 0)
+    {
+      if (!t || depth > 64)
+        return std::nullopt;
+      t = types.unqualified(t);
+      bool unset = v.kind == ConstValue::Kind::Unset; // static storage starts zero
+      switch (t->kind)
+      {
+        case TyKind::Bool:
+          if (unset)
+            return std::string("false");
+          return v.kind == ConstValue::Kind::Int ? std::optional<std::string>(v.i ? "true" : "false") : std::nullopt;
+        case TyKind::Char: case TyKind::Int: case TyKind::Enum:
+          if (unset)
+            return std::string("0");
+          return v.kind == ConstValue::Kind::Int ? std::optional<std::string>(std::to_string(v.i)) : std::nullopt;
+        case TyKind::Float:
+          if (unset)
+            return floatConstant(0.0, t->bits);
+          if (v.kind == ConstValue::Kind::Float)
+            return floatConstant(v.f, t->bits);
+          return v.kind == ConstValue::Kind::Int ? std::optional<std::string>(floatConstant(double(v.i), t->bits)) : std::nullopt;
+        case TyKind::Pointer:
+          // A null pointer only when no initializer set it: the interpreter's Int 0 of a pointer type
+          // is also what a function pointer template argument (`FOLD = fold` with fold = &add) comes
+          // as, so such a part is built at startup. (`T* p = nullptr;` itself is a null constant
+          // before constant data is asked for.)
+          if (unset)
+            return std::string("null");
+          if (v.kind == ConstValue::Kind::Pointer)
+            return evaluatedArrayElement(v, t, at, depth);
+          if (v.kind == ConstValue::Kind::Address && v.target)
+            return addressConstant(*v.target, at);
+          return std::nullopt;
+        case TyKind::Array:
+        {
+          if (unset)
+            return std::string("zeroinitializer");
+          if (v.kind != ConstValue::Kind::Object || !v.parts || v.parts->size() != t->count)
+            return std::nullopt;
+          std::string element = llType(t->inner, at), out = "[";
+          bool allZero = true;
+          for (size_t i = 0; i < v.parts->size(); ++i)
+          {
+            std::optional<std::string> e = constantText((*v.parts)[i], t->inner, at, depth + 1);
+            if (!e)
+              return std::nullopt;
+            allZero = allZero && zeroText(*e);
+            out += (i ? ", " : "") + element + " " + *e;
+          }
+          return allZero ? std::string("zeroinitializer") : out + "]";
+        }
+        case TyKind::Class:
+          return classConstant(v, t, at, depth);
+        default:
+          return std::nullopt;
+      }
+    }
+
+    std::optional<std::string> classConstant(const ConstValue& v, const Ty* t, Node* at, int depth)
+    {
+      StructInfo& info = structFor(t, at);
+      ClassDecl* c = classDef(t->decl, at);
+      if (info.isUnion || c->isTypedUnion || info.polymorphic || !info.anonymous.empty())
+        return std::nullopt;
+      if (v.kind == ConstValue::Kind::Unset)
+        return std::string("zeroinitializer");
+      std::vector<Decl*> members = valueMembers(c);
+      if (v.kind != ConstValue::Kind::Object || !v.parts || v.parts->size() != info.bases.size() + members.size())
+        return std::nullopt;
+      std::vector<const Ty*> fieldTypes = info.fieldTypes;
+      std::vector<bool> zeroSize = info.zeroSize;
+      std::vector<std::string> fields(fieldTypes.size());
+      std::vector<uint64_t> units(fieldTypes.size(), 0); // bit fields' storage units
+      std::vector<bool> unit(fieldTypes.size(), false);
+      for (size_t k = 0; k < info.bases.size(); ++k)
+      {
+        uint32_t index = info.bases[k].second;
+        if (zeroSize[index])
+          continue; // an empty base: no storage of its own
+        std::optional<std::string> b = constantText((*v.parts)[k], fieldTypes[index], at, depth + 1);
+        if (!b)
+          return std::nullopt;
+        fields[index] = *b;
+      }
+      for (size_t k = 0; k < members.size(); ++k)
+      {
+        const ConstValue& part = (*v.parts)[info.bases.size() + k];
+        auto it = info.fieldIndex.find(members[k]);
+        if (it == info.fieldIndex.end())
+          return std::nullopt;
+        uint32_t index = it->second;
+        if (auto bits = info.bitfields.find(members[k]); bits != info.bitfields.end())
+        {
+          if (part.kind != ConstValue::Kind::Int && part.kind != ConstValue::Kind::Unset)
+            return std::nullopt;
+          auto [shift, width] = bits->second;
+          uint64_t mask = width >= 64 ? ~0ull : (1ull << width) - 1;
+          units[index] |= ((part.kind == ConstValue::Kind::Int ? uint64_t(part.i) : 0) & mask) << shift;
+          unit[index] = true;
+          continue;
+        }
+        if (fieldTypes[index]->isReference())
+          return std::nullopt; // the interpreter holds the referred value there, not an address
+        std::optional<std::string> f = constantText(part, fieldTypes[index], at, depth + 1);
+        if (!f)
+          return std::nullopt;
+        fields[index] = *f;
+      }
+      std::string out = info.packed ? "<{ " : "{ ";
+      bool allZero = true;
+      for (size_t i = 0; i < fieldTypes.size(); ++i)
+      {
+        std::string value = unit[i] ? std::to_string(int64_t(units[i])) : fields[i].empty() ? "zeroinitializer" : fields[i]; // padding and empty bases: zero
+        allZero = allZero && zeroText(value);
+        out += (i ? ", " : "") + (zeroSize[i] ? std::string("[0 x i8]") : llType(fieldTypes[i], at)) + " " + value;
+      }
+      if (info.empty)
+        out += std::string(fieldTypes.empty() ? "" : ", ") + "i8 0"; // its byte of its own
+      if (info.tailPadding)
+        out += ", [" + std::to_string(info.tailPadding) + " x i8] zeroinitializer";
+      out += info.packed ? " }>" : " }";
+      return allZero ? std::string("zeroinitializer") : out;
+    }
+
+    // A Pointer value: into an array the evaluation made (a string literal's chars, a brace list's
+    // elements), which becomes a private constant (one per contents), and the element's address.
+    std::optional<std::string> evaluatedArrayElement(const ConstValue& v, const Ty* pointerTy, Node* at, int depth)
+    {
+      const Ty* element = types.unqualified(pointerTy->inner);
+      if (!v.parts || element->kind == TyKind::Void || !element->isKnown())
+        return std::nullopt;
+      const Ty* arrayTy = types.array(element, uint32_t(v.parts->size()));
+      std::optional<std::string> body = constantText(ConstValue::object(arrayTy, *v.parts), arrayTy, at, depth + 1);
+      if (!body)
+        return std::nullopt;
+      std::string contents = llType(arrayTy, at) + " " + *body;
+      auto [name, isNew] = constantName(emittingShared ? "@.sdata." : "@.data.", contents);
+      if (isNew)
+        (emittingShared ? decls : moduleDecls[currentModule]) += name + " = private unnamed_addr constant " + contents + "\n";
+      return "getelementptr inbounds (" + llType(arrayTy, at) + ", ptr " + name + ", i64 0, i64 " + std::to_string(v.i) + ")";
+    }
+
+    // An Address value: a function, or a global (a part of its value along the path).
+    std::optional<std::string> addressConstant(const ConstTarget& target, Node* at)
+    {
+      if (!target.decl)
+        return std::nullopt;
+      if (target.decl->kind == NodeKind::FunctionDecl)
+      {
+        auto* f = static_cast<FunctionDecl*>(target.decl);
+        if (!target.path.empty() || (global.owningClass(f) && !(f->flags & DF_Static)))
+          return std::nullopt; // a member function's address is a member pointer
+        TemplateArgs args;
+        for (auto& p : target.args)
+          args.pairs.push_back(p);
+        return useFunction(f, args, target.owner);
+      }
+      if (target.decl->kind != NodeKind::VariableDecl || (target.decl->parent && target.decl->parent->kind == NodeKind::FunctionDecl))
+        return std::nullopt; // a static local is laid out where its function is emitted
+      auto* var = static_cast<VariableDecl*>(target.decl);
+      std::string name = globalFor(var, at, target.owner);
+      if (target.path.empty())
+        return name;
+      const Ty* type = target.owner ? global.typeOfDeclIn(var, global.classArgsOf(target.owner)) : global.typeOfDecl(var);
+      std::string gep = "getelementptr inbounds (" + llType(types.stripRef(type), at) + ", ptr " + name + ", i64 0";
+      for (size_t step : target.path)
+      {
+        type = types.unqualified(types.stripRef(type));
+        if (type->kind == TyKind::Array)
+        {
+          gep += ", i64 " + std::to_string(step);
+          type = type->inner;
+          continue;
+        }
+        if (!isClass(type))
+          return std::nullopt;
+        StructInfo& info = structFor(type, at);
+        if (info.isUnion || !info.anonymous.empty())
+          return std::nullopt;
+        uint32_t index;
+        if (step < info.bases.size())
+          index = info.bases[step].second;
+        else
+        {
+          std::vector<Decl*> members = valueMembers(classDef(type->decl, at));
+          size_t k = step - info.bases.size();
+          if (k >= members.size() || !info.fieldIndex.count(members[k]) || info.bitfields.count(members[k]))
+            return std::nullopt;
+          index = info.fieldIndex[members[k]];
+        }
+        gep += ", i32 " + std::to_string(index);
+        type = info.fieldTypes[index];
+      }
+      return gep + ")";
+    }
+
+    // A class (or an array of them) with a mutable member: no constant memory for a const global.
+    bool hasMutableMember(const Ty* t, Node* at, int depth = 0)
+    {
+      t = types.unqualified(t);
+      while (t->kind == TyKind::Array)
+        t = types.unqualified(t->inner);
+      if (!isClass(t) || depth > 16)
+        return false;
+      StructInfo& info = structFor(t, at);
+      for (Decl* m : info.fieldDecls)
+        if (m->flags & DF_Mutable)
+          return true;
+      for (const Ty* ft : std::vector<const Ty*>(info.fieldTypes))
+        if (!ft->isReference() && hasMutableMember(ft, at, depth + 1))
+          return true;
+      return false;
+    }
+
+    // A global's initializer as constant data: the value the interpreter computes for it as type t,
+    // lowered (constantText), or nothing (it is built at startup).
+    std::optional<std::string> constantData(const Ty* t, Expr* value, VariableDecl* def, const TemplateArgs& args, Node* at)
+    {
+      bool layoutFailed = false;
+      std::optional<ConstValue> v;
+      {
+        ConstContextScope context(*this, def);
+        v = global.evaluateInitializer(t, value, def->file, def, args, foldHooks(at, layoutFailed));
+      }
+      if (!v)
+        return std::nullopt;
+      return constantText(*v, t, at);
+    }
+
     std::map<std::pair<Decl*, const Ty*>, std::string> globalCache; // globalFor's answers this emitter had
     std::string globalFor(VariableDecl* v, Node* at, const Ty* classTy = nullptr)
     {
@@ -6646,14 +6918,20 @@ namespace
         else if (value->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(value)->literalKind == TokenKind::String &&
                  st->kind == TyKind::Pointer)
           init = stringConstant(static_cast<LiteralExpr*>(value));
+        else if (std::optional<std::string> data =
+                   isClass(st) || st->kind == TyKind::Array || st->kind == TyKind::Pointer ? constantData(st, value, def, classArgs, at) : std::nullopt)
+          init = *data; // constant data: the object as the interpreter computes it
         else
           constructed = true; // built at startup, see emitGlobalConstructor
       }
       else if (needsConstruction(st, at))
         constructed = true;
       currentFile = saved;
-      // Defined in every module, merged by the linker (one instance per program).
-      decls += "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr " + (t->isConst && !constructed ? "constant " : "global ") +
+      // Defined in every module, merged by the linker (one instance per program). Two entries: the
+      // shared text is sorted, and the definition (an `@` line) has to come after the struct types
+      // (`%` lines) a constant initializer names; the comdat line (`$`) would sort first.
+      decls += "$" + name.substr(1) + " = comdat any\n";
+      decls += name + " = linkonce_odr " + (t->isConst && !constructed && !hasMutableMember(st, at) ? "constant " : "global ") +
                llType(st, at) + " " + init + ", comdat" + alignSuffix(st, variableAlignment(def, def, at), at) + "\n";
       if (constructed)
         emitGlobalConstructor(v, name, st, value, at);

@@ -1,0 +1,35 @@
+// spec: a global whose initializer the compiler evaluates is constant data, built by no startup code: a class with a constexpr constructor, bit fields, an aggregate holding an array of classes, a string and a double, a pointer to another global and to a function, an array, a pointer into it; each reads back its value
+// found with the interpreter's step 4 (design.md, "Compile-time evaluation: one interpreter"): 212 of the converted game's 349 class and array globals evaluate, and were all still built at startup
+struct Point
+{
+  int x;
+  int y;
+  constexpr Point(int x, int y) : x(x), y(y) {}
+};
+struct Flags
+{
+  unsigned a : 3;
+  unsigned b : 5;
+  bool on : 1;
+};
+struct Table
+{
+  Point corners[2];
+  const char* name;
+  double scale;
+};
+static const Point origin(3, 4);
+static const Flags flags = {5, 17, true};
+static const Table table = {{{1, 2}, {5, 6}}, "table", 2.5};
+static int counter = 7;
+static int twice(int v) { return 2 * v; }
+static int* const counterAddress = &counter;
+static int (*const doubler)(int) = &twice;
+static const int numbers[4] = {10, 20, 30, 40};
+static const int* const third = &numbers[2];
+int main()
+{
+  println("{} {} {} {} {}", origin.x, origin.y, flags.a, flags.b, flags.on);
+  println("{} {} {} {}", table.corners[1].y, table.name, table.scale, *counterAddress + doubler(5) + *third);
+  return 0;
+}
