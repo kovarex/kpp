@@ -1,0 +1,48 @@
+// spec: a function that is no template, returning `auto` with a lambda in it (`iotaView(...) | transformView([leftTop, width](const auto& index) {...})`), called before the walk reaches its definition (symbols are order-independent): its return type is typed then, and its lambda is the same type the definition's own walk gives it, so a template deduced from the call takes the object the function returns
+// factorio: chunkLineByLineScan (Map/ChunkLineByLineScan.hpp) passed to Util::anyOf in SegmentedUnitController::computeActivityMode
+// pending: the return type typed early has a copy of the closure, another type than the one the body returns ("binding an unrelated class to a reference (TransformView<IotaView<int32>, __lambda> to const TransformView<IotaView<int32>, __lambda>&)"); owner: the templates thread (instances of auto functions)
+struct Pos
+{
+  int x = 0;
+  int y = 0;
+  Pos() = default;
+  Pos(int x, int y) : x(x), y(y) {}
+  Pos operator+(const Pos& o) const { return Pos(this->x + o.x, this->y + o.y); }
+};
+struct Box
+{
+  Pos leftTop;
+  Pos rightBottom;
+};
+template <class ContainerType, class Pred>
+bool anyOf(const ContainerType& container, Pred pred)
+{
+  for (const auto& x : container)
+    if (pred(x))
+      return true;
+  return false;
+}
+struct Unit
+{
+  Box box;
+  bool check(int wanted) const
+  {
+    return anyOf(scan(this->box), [wanted](const Pos& p) { return p.x + p.y * 10 == wanted; });
+  }
+};
+inline auto scan(const Pos& leftTop, const Pos& rightBottom)
+{
+  return iotaView(0, (rightBottom.y + 1 - leftTop.y) * (rightBottom.x + 1 - leftTop.x)) |
+         transformView([leftTop, width = rightBottom.x + 1 - leftTop.x](const auto& index) { return leftTop + Pos(index % width, index / width); });
+}
+inline auto scan(const Box& box)
+{
+  return scan(box.leftTop, box.rightBottom);
+}
+int main()
+{
+  Unit u;
+  u.box.rightBottom = Pos(2, 1);
+  println("{} {}", u.check(12), u.check(13));
+  return 0;
+}
