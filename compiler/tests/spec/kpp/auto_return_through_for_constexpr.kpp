@@ -1,0 +1,47 @@
+// spec: an auto return type deduced from returns inside a `for constexpr` body, as if the body were written out once per element: `visitUnion(f, u)` over alternatives(U) returns f's result; a list of types (`sizeof(E)` of its type variable included) and a list of constants alike
+// design.md 8.2 and 8.5 (std::visit over a typed union written with alternatives(U)); the converter's std::variant mapping
+struct Patrolling { int steps; };
+struct Attacking { int target; };
+union enum AIState : uint8_t
+{
+  { {Patrolling, Patrol}, {Attacking, Attack} }
+};
+
+int describe(const Patrolling& p) { return p.steps; }
+int describe(const Attacking& a) { return 100 + a.target; }
+
+template<class F, class U>
+auto visitUnion(F&& f, const U& u)
+{
+  for constexpr (auto a : alternatives(U))
+    if (u == a.tag)
+      return f(u[a]);
+}
+
+template<class T>
+auto sizeOfFirstBig()
+{
+  for constexpr (typename E : types<char, T, double>)
+    if constexpr (sizeof(E) >= 4)
+      return sizeof(E);
+  return sizeof(char);
+}
+
+auto firstAbove(int limit)
+{
+  for constexpr (int v : {1, 5, 9})
+    if (v > limit)
+      return v * 2;
+  return 0;
+}
+
+int main()
+{
+  AIState s = Attacking{7};
+  println("{}", visitUnion([](const auto& x) { return describe(x); }, s));
+  s = Patrolling{3};
+  println("{}", visitUnion([](const auto& x) { return describe(x) * 2; }, s));
+  println("{} {}", sizeOfFirstBig<short>(), sizeOfFirstBig<int>());
+  println("{} {}", firstAbove(4), firstAbove(10));
+  return 0;
+}

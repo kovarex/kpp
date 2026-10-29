@@ -5878,6 +5878,73 @@ struct GlobalScope::Impl
       return impl.convertsByOperator(from, to, 0, 0, true) ? t : unknown(Why::Unsupported);
     }
 
+    int forConstexprDepth = 0; // for constexpr bodies this walk is inside (typed with the variable unbound)
+
+    // The elements of a for constexpr list under the current substitution: the types of
+    // `types<A, B>`, the constants of `{1, 2}`, the descriptors of `alternatives(U)` and of
+    // `members(T)` (a class without bases). False when one cannot be told yet.
+    bool forConstexprElements(ForConstexprStmt* f, std::vector<const Ty*>& out)
+    {
+      auto* v = static_cast<TemplateParamDecl*>(f->var);
+      Node* list = f->list;
+      if (list && list->kind == NodeKind::NamedType && isTypesList(static_cast<NamedType*>(list)))
+      {
+        for (Node* arg : static_cast<NamedType*>(list)->name.parts[0].templateArgs)
+        {
+          const Ty* t = arg && uint8_t(arg->kind) <= uint8_t(NodeKind::PackType) ? typeOf(static_cast<Type*>(arg)) : nullptr;
+          if (!t || !t->isKnown() || types.isDependent(t))
+            return false;
+          out.push_back(t);
+        }
+        return v->isType;
+      }
+      if (list && list->kind == NodeKind::BraceInitExpr)
+      {
+        const Ty* elementTy = v->valueType ? typeOf(v->valueType) : nullptr;
+        if (v->isType || !elementTy || !elementTy->isKnown() || types.isDependent(elementTy) || elementTy->kind == TyKind::Auto)
+          return false;
+        for (Expr* e : static_cast<BraceInitExpr*>(list)->args)
+        {
+          std::optional<int64_t> c = impl.constEval(e, ctx());
+          if (!c)
+            return false;
+          out.push_back(types.valueType(elementTy, *c));
+        }
+        return true;
+      }
+      bool alternatives = list && list->kind == NodeKind::CallExpr && static_cast<CallExpr*>(list)->callee &&
+                          static_cast<CallExpr*>(list)->callee->kind == NodeKind::NameExpr &&
+                          symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(list)->callee)->name.last().symbol) == "alternatives";
+      Expr* subject = reflectionSubject(list);
+      if (!subject || subject->kind != NodeKind::NameExpr || v->isType)
+        return false;
+      NamedType named{};
+      named.kind = NodeKind::NamedType;
+      named.token = subject->token;
+      named.name = static_cast<NameExpr*>(subject)->name;
+      const Ty* cls = typeOf(&named);
+      cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+      if (!cls || cls->kind != TyKind::Class || types.isDependent(cls))
+        return false;
+      Subst s = cls->args.empty() ? Subst{} : impl.substFor(cls);
+      if (alternatives)
+      {
+        ClassDecl* u = typedUnionOf(cls);
+        if (!u)
+          return false;
+        for (Decl* alt : u->alternatives)
+          out.push_back(types.member(impl.declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0), alt, cls));
+        return true;
+      }
+      ClassDecl* def = impl.classDefinition(cls);
+      if (!def || !def->bases.empty())
+        return false;
+      for (Decl* d : def->members)
+        if (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(d)->name.empty())
+          out.push_back(types.member(impl.declaredTypeOf(d, s.pairs.empty() ? nullptr : &s, 0), d, cls));
+      return true;
+    }
+
     // Per lambda / auto function this walk entered: whether it returns `decltype(auto)`, so that
     // its returns record their expression's decltype (`f(x)` returning int& stays int&).
     std::vector<bool> decltypeReturns;
@@ -8532,7 +8599,30 @@ struct GlobalScope::Impl
           else
             walkNode(f->list);
           locals.push(v->name, v);
+          ++forConstexprDepth;
           walkStmt(f->body);
+          --forConstexprDepth;
+          // In an instantiation of an auto function whose return type is still open (`visit(f, u)`
+          // returning f's result from inside the loop): the body once per element, the variable
+          // bound to it, as the code generator emits it, until a return gives the type.
+          std::vector<const Ty*> elements;
+          if (activeSubst && !returnFrames.empty() && !returnFrames.back() && forConstexprElements(f, elements))
+          {
+            Subst bound = *activeSubst;
+            bound.pairs.push_back({v, nullptr});
+            const Subst* saved = activeSubst;
+            activeSubst = &bound;
+            for (const Ty* element : elements)
+            {
+              bound.pairs.back().type = element;
+              size_t inner = locals.mark();
+              walkStmt(f->body);
+              locals.pop(inner);
+              if (returnFrames.back())
+                break;
+            }
+            activeSubst = saved;
+          }
           locals.pop(mark);
           break;
         }
@@ -8568,7 +8658,10 @@ struct GlobalScope::Impl
           const Ty* t = walkExpr(static_cast<ReturnStmt*>(s)->value);
           if (!decltypeReturns.empty() && decltypeReturns.back())
             t = decltypeOf(static_cast<ReturnStmt*>(s)->value, t);
-          if (!returnFrames.empty() && !returnFrames.back() && t && t->isKnown())
+          // Inside a for constexpr body of an instantiation, before the loop binds its variable,
+          // a return that depends on it gives no type (the per-element walk does).
+          bool open = forConstexprDepth > 0 && activeSubst && t && (types.isDependent(t) || impl.containsAuto(t));
+          if (!returnFrames.empty() && !returnFrames.back() && t && t->isKnown() && !open)
             returnFrames.back() = t;
           break;
         }
@@ -9576,6 +9669,11 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
   if (context && (context->kind == NodeKind::ClassDecl || context->kind == NodeKind::EnumDecl) && context->ownScope)
     dc.scope = context->ownScope;
   Subst s = toSubst(args);
+  // A parameter args binds that context does not declare: a for constexpr variable
+  // (`sizeof(E)` in `for constexpr (typename E : types<A, B>)`), found by its name too.
+  for (const Subst::Pair& p : s.pairs)
+    if (p.param && p.param->kind == NodeKind::TemplateParamDecl && !dc.params.find(static_cast<TemplateParamDecl*>(p.param)->name))
+      dc.params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
   ParsedFile* file = context ? context->file : nullptr;
   Impl::TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
   return impl->convertType(t, Impl::TypeContext{dc.scope, &dc.params, args.empty() ? nullptr : &s, file ? file->tokens : nullptr,
