@@ -892,6 +892,46 @@ names as functions (llvm.memcpy, llvm.sqrt, llvm.va_*, 14 llvm.x86.sse*), MSVC's
 _BitScanReverse, __cpuid and _mm_prefetch, ws2tcpip.h's inline gai_strerrorW, and two names
 that are no functions (`factorio.com`, `serialized`). Headline 22,321 -> 22,318.
 
+### What the link misses: the second number (2026-10-29)
+
+The headline counts the code generator's error lines; a function the game needs can also be
+missing from the link with no error line at all. So link.cmd's unresolved externals are tracked
+too, split by `programs/factorio/externals.py`, which link.cmd runs after the link:
+
+- **left out, codegen failed**: a function with an error in link-errors.txt, or one left out
+  because a function it asked for failed (a lambda in it, `requested by`). These follow the
+  headline, split by the owner of the error.
+- **never emitted, no error**: declared, used and never defined, and nothing says why. The
+  headline does not see these. Report this count next to the headline.
+- **C names**: a function of a C library the link line lacks, or an inline function of a C header,
+  which the import declares and does not define.
+
+On master cf27481 with the Logitech bridge and iphlpapi (below): headline 262, LNK1120 492 = 223
+left out + 266 never emitted with no error + 3 C names (_alloca, which codegen should lower;
+gai_strerrorW and IsWindows8OrGreater, inline functions of ws2tcpip.h and versionhelpers.h). The
+266, by cause, each a pending spec:
+
+- about 200: out-of-line definitions of class templates' members whose return type names the
+  class's member type through the class, `typename ID<T, I>::IndexType ID<T, I>::loadIndex(...)`
+  for `static IndexType loadIndex(...)`: the definition is not attached (ID::loadIndex,
+  Prototype::getLoader, SimpleSlot::getCount, ComplexExpression's compile*Arguments,
+  FlowDataFrame, LazyCreatedStatistics, BezierInterpolation;
+  templates/out_of_line_member_dependent_return_type);
+- about 44: out-of-line member templates of class templates, `template<class S> template<class F>
+  void Frame<S>::merged(F) const` (FlowDataFrame::getMergedValues, ImmutableStringTemplate's
+  operators; templates/out_of_line_member_template_of_class_template);
+- 4: out-of-line members of partial specializations (FallbackValueHolder;
+  templates/out_of_line_member_of_partial_specialization);
+- 2: MainLoop's `Atomic<HeavyMode> globalHeavyMode(HeavyMode::Disabled);`, read as a function
+  declaration (language/global_with_parenthesized_initializer);
+- the rest: function templates and two lambdas that templates' instances use and codegen never
+  instantiates (countsAsButtons, getSortedCounts; not reduced yet).
+
+The link also takes the Logitech LED SDK now (fbuild.bff links `libraries/Logitech/x64/
+LogitechLEDLib.lib`): its functions are C++, so `native/logitech_led_c.cpp` gives the six the game
+calls C names and `overrides/src/LED/Logitech/Includes/LogitechLEDLib.kpp` defines the header's
+functions on them; and iphlpapi for UDPSocket's GetIpAddrTable.
+
 ### dear imgui through a generated C interface (2026-10-29)
 
 The game's debug tools (DebugTools.cpp, ImguiSDL.cpp, DebugInfoRenderer.cpp; 891 `ImGui::`
@@ -1054,8 +1094,10 @@ needed:
 - A `#define` among a class's members (`#define MAX_MODULE_NAME32 255` in StackWalkerInternal)
   becomes a `static constexpr` member of the class, where it was a data member of each object.
 
-One line is left: USED_CONTEXT_FLAGS is CONTEXT_FULL, which the import writes before the constants
-it is made of (language/auto_global_from_later_global, pending).
+Its last line went with 1806a0d: USED_CONTEXT_FLAGS is CONTEXT_FULL, which the import writes
+before the constants it is made of (language/auto_global_from_later_global). `(HANDLE) -1` is
+written `(HANDLE)(-1)` by the converter (a subtraction from HANDLE to Kpp, which codegen turned into
+IR clang rejected, losing a whole module at link time; language/c_style_cast_of_negative_number).
 
 ### From emitted functions to an executable (2026-10-28, night)
 

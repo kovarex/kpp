@@ -1,0 +1,22 @@
+// Hand-written part of LED/Logitech/Includes/LogitechLEDLib: the SDK's functions the game calls,
+// defined on native/logitech_led_c.cpp's C functions, which call LogitechLEDLib.lib's C++ ones
+// (docs/path-to-factorio.md, "The Logitech LED SDK").
+extern "C" bool kppLogiLedInitWithName(const char* name);
+extern "C" bool kppLogiLedSetTargetDevice(int targetDevice);
+extern "C" bool kppLogiLedSetLightingFromBitmap(unsigned char* bitmap);
+extern "C" bool kppLogiLedSetLightingForKeyWithKeyName(int keyName, int redPercentage, int greenPercentage, int bluePercentage);
+extern "C" bool kppLogiLedSetLightingForTargetZone(int deviceType, int zone, int redPercentage, int greenPercentage, int bluePercentage);
+extern "C" void kppLogiLedShutdown();
+
+bool LogiLedInitWithName(const char name[]) { return kppLogiLedInitWithName(name); }
+bool LogiLedSetTargetDevice(int targetDevice) { return kppLogiLedSetTargetDevice(targetDevice); }
+bool LogiLedSetLightingFromBitmap(unsigned char bitmap[]) { return kppLogiLedSetLightingFromBitmap(bitmap); }
+bool LogiLedSetLightingForKeyWithKeyName(LogiLed::KeyName keyName, int redPercentage, int greenPercentage, int bluePercentage)
+{
+  return kppLogiLedSetLightingForKeyWithKeyName(int(keyName), redPercentage, greenPercentage, bluePercentage);
+}
+bool LogiLedSetLightingForTargetZone(LogiLed::DeviceType deviceType, int zone, int redPercentage, int greenPercentage, int bluePercentage)
+{
+  return kppLogiLedSetLightingForTargetZone(int(deviceType), zone, redPercentage, greenPercentage, bluePercentage);
+}
+void LogiLedShutdown() { kppLogiLedShutdown(); }
