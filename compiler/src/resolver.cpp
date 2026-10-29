@@ -11807,7 +11807,8 @@ struct GlobalScope::Impl
   }
 
   // Whether constructor f (of a class whose arguments s binds) takes these arguments: their count,
-  // and each converts to its parameter (one not known, or not deduced, is taken as converting).
+  // its template's deduction, and each converts to its parameter (one not known is taken as
+  // converting).
   bool constructorTakes(FunctionDecl* f, const std::vector<const Ty*>& argTypes, const Subst& s, int depth)
   {
     if (!takesArgumentCount(f, argTypes.size()))
@@ -11817,6 +11818,16 @@ struct GlobalScope::Impl
     {
       Subst d = s;
       deduceCall(f, ft, argTypes, d);
+      // Deduction fails when the arguments leave one of f's own parameters undeduced (one
+      // without a default; a pack that is not the last): a brace list deduces nothing, so
+      // `template<U1, U2> Pair(U1&&, U2&&)` takes no two lists (`{{1, false}, {2, true}}` is no
+      // Pair), nor `Pair(Tuple<Args1...>&, Tuple<Args2...>&, IndexSequence<I1...>, ...)` four.
+      for (size_t i = 0; i < f->templateParams.size(); ++i)
+      {
+        auto* param = static_cast<TemplateParamDecl*>(f->templateParams[i]);
+        if (!d.find(param) && !param->defaultArg && (!param->isPack || i + 1 < f->templateParams.size()))
+          return false;
+      }
       ft = substitute(ft, d);
     }
     if (!ft || ft->kind != TyKind::Function)

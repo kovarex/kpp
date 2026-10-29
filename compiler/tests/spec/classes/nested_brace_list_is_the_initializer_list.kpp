@@ -1,6 +1,5 @@
 // spec: `Vector<Pair<int, bool>> v{ { {1, false}, {2, true} } }`: the outer list's one element is a list that makes no Pair (no constructor takes two lists: a constructor template deduces nothing from a brace list), so the element list is the InitializerList argument, two Pairs; likewise with four
 // found in tests/TestSpacePlatform (`Vector<Pair<TilePosition, bool>> checks{ { { r.tilePosition(-1, 1), false}, ... } }`)
-// pending: Pair's `template<U1, U2> Pair(U1&&, U2&&)` counts as taking two lists, the outer list becomes a one-element InitializerList and codegen finds no Pair for the inner list (`a constructor of Pair taking 2 arguments`)
 struct Tile { int x, y; };
 Tile tileAt(int x, int y) { return Tile{x, y}; }
 int main()
