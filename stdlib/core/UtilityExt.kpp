@@ -60,27 +60,11 @@ unsigned long long rotr(unsigned long long value, int count)
   return (value >> count) | (value << (64 - count));
 }
 
-// Least common multiple.
-long long gcd(long long a, long long b)
-{
-  if (a < 0) a = -a;
-  if (b < 0) b = -b;
-  while (b != 0)
-  {
-    long long t = b;
-    b = a % b;
-    a = t;
-  }
-  return a;
-}
-
-long long lcm(long long a, long long b)
-{
-  if (a == 0 || b == 0)
-    return 0;
-  long long result = a / gcd(a, b) * b;
-  return result < 0 ? -result : result;
-}
+// The greatest common divisor of |a| and |b| (std::gcd), 0 when both are 0, and their least common
+// multiple (std::lcm), 0 when either is 0. Each is one return expression, so that it folds at
+// compile time as well (a Ratio's terms, the common period of two durations).
+constexpr long long gcd(long long a, long long b) { return b == 0 ? (a < 0 ? -a : a) : gcd(b, a % b); }
+constexpr long long lcm(long long a, long long b) { return a == 0 || b == 0 ? 0 : (a < 0 ? -a : a) / gcd(a, b) * (b < 0 ? -b : b); }
 
 // make_unique_for_overwrite: allocates uninitialized storage.
 template<typename T>

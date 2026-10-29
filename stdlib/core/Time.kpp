@@ -9,16 +9,13 @@ extern "C" void GetSystemTimePreciseAsFileTime(uint64_t* fileTime);
 
 // --- Ratio ---
 
-// The greatest common divisor of a and b, not negative (0 for two zeros); one return expression, so
-// that it folds at compile time (Ratio's terms, CommonDuration's period).
-constexpr long long ratioGcd(long long a, long long b) { return b == 0 ? (a < 0 ? -a : a) : ratioGcd(b, a % b); }
-
-// A fraction known at compile time (std::ratio): num and den are N/D in lowest terms, den positive.
+// A fraction known at compile time (std::ratio): num and den are N/D in lowest terms, den positive
+// (gcd folds at compile time).
 template<long long N, long long D = 1>
 struct Ratio
 {
-  static constexpr long long num = (D < 0 ? -N : N) / ratioGcd(N, D);
-  static constexpr long long den = (D < 0 ? -D : D) / ratioGcd(N, D);
+  static constexpr long long num = (D < 0 ? -N : N) / gcd(N, D);
+  static constexpr long long den = (D < 0 ? -D : D) / gcd(N, D);
 };
 using Nano = Ratio<1, 1000000000>;
 using Micro = Ratio<1, 1000000>;
@@ -146,7 +143,7 @@ Duration<ToRep, ToPeriod> convertDuration(const Duration<Rep, Period>& d, const 
   // The factor (Period::num / Period::den) / (ToPeriod::num / ToPeriod::den), reduced.
   long long multiplier = Period::num * ToPeriod::den;
   long long divisor = Period::den * ToPeriod::num;
-  long long common = ratioGcd(multiplier, divisor);
+  long long common = gcd(multiplier, divisor);
   multiplier /= common;
   divisor /= common;
   if constexpr (isFloatingPoint<ToRep> || isFloatingPoint<Rep>)
@@ -209,8 +206,8 @@ auto inCommonDuration(const Duration<R1, P1>& a, const Duration<R2, P2>& b)
     return Duration<decltype(a.ticks + b.ticks), P1>(a);
   else if constexpr ((P1::num * P2::den) % (P1::den * P2::num) == 0)
     return Duration<decltype(a.ticks + b.ticks), P2>(a);
-  else // (the call in parentheses: written bare, kppc reads it as a function type)
-    return Duration<decltype(a.ticks + b.ticks), Ratio<(ratioGcd(P1::num, P2::num)), P1::den / ratioGcd(P1::den, P2::den) * P2::den>>(a);
+  else
+    return Duration<decltype(a.ticks + b.ticks), Ratio<gcd(P1::num, P2::num), P1::den / gcd(P1::den, P2::den) * P2::den>>(a);
 }
 
 // The ticks of a and b in their common duration, compared.
