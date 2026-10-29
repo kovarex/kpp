@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**671 pass, 3 pending, 0 failing, 0 fixed** (674 snippets, 381.9 s).
+**672 pass, 3 pending, 0 failing, 0 fixed** (675 snippets, 20.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -238,6 +238,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/bitfields_of_one_size_share_a_unit.kpp` | consecutive bit fields share a storage unit while their types have one size, whatever the types (MSVC's layout): `uint8_t x : 5; bool on : 1; uint8_t pad : 2;` share a byte, `int a : 3; unsigned b : 4;` four bytes; a type of another size starts a new unit | pass | Decorative's `struct { uint8_t tileY : 5; uint8_t amount : 3; uint8_t tileX : 5; bool isDecal : 1; uint8_t padding : 2; } data;` next to a uint16_t id, static_assert(sizeof(Decorative) == 4): the bool started a byte of its own |  |
 | `classes/brace_init_assign.kpp` | brace-init on the right of assignment to a class object | pass | *this = {}; this->data = {a, b}; |  |
 | `classes/brace_list_argument_initializer_list.kpp` | a brace list passed for a class parameter, written at the call or as the parameter's default argument, initialises the parameter as a variable's would: through the class's InitializerList constructor when it has one (`take({Caps::Color, Caps::Light})`), else member by member | pass |  |  |
+| `classes/brace_list_through_inherited_constructors.kpp` | a brace list initializes a class through the constructors it inherits (`using Vector2::Vector2;`) as through its own, so `{1, 2}` is a Vec beside its own Vec(const double&, const Direction&), and a Pair<Vec, Vec> parameter takes `{{1, 2}, {3, 4}}` | pass | tests/TestSegmentIntersection.cpp's `testIntersection({{0, 0}, {1, 1}}, {{0, 1}, {1, 0}}, ...)` with Segment a Pair<Vector2D, Vector2D> (Vector2D inheriting Vector2's constructors), 13 lines of the tests package |  |
 | `classes/catch_by_second_base.kpp` | catch takes a thrown class by any of its bases, a second base included (the handler sees that base's subobject) | pass |  |  |
 | `classes/class_conversion_beside_scalar_conversion_operator.kpp` | a value of a class converts to another class through that class's converting constructor, also when the value's class has a conversion operator to a scalar (which would need a second user-defined conversion to reach the class) | pass |  |  |
 | `classes/class_operator_rhs.kpp` | class_operator_rhs | pass |  |  |

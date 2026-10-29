@@ -1,6 +1,5 @@
 // spec: a brace list initializes a class through the constructors it inherits (`using Vector2::Vector2;`) as through its own, so `{1, 2}` is a Vec beside its own Vec(const double&, const Direction&), and a Pair<Vec, Vec> parameter takes `{{1, 2}, {3, 4}}`
 // factorio: tests/TestSegmentIntersection.cpp's `testIntersection({{0, 0}, {1, 1}}, {{0, 1}, {1, 0}}, ...)` with Segment a Pair<Vector2D, Vector2D> (Vector2D inheriting Vector2's constructors), 13 lines of the tests package
-// pending: only the class's own constructors were tried for the list, so none took two ints ("a constructor of Pair taking 2 arguments"); owner: the templates thread (list-initialization)
 template <class T, class Derived>
 struct Vector2
 {

@@ -11563,6 +11563,41 @@ struct GlobalScope::Impl
   // list nested in another's elements is not judged: the conversions under it would run out of
   // conversionRank's depth and read as not viable (`{"x", {"input_scale", 1}}` for a
   // Vector<NoiseFunctionParameter>).
+  // The base classes (as instances, under p's arguments) whose constructors class def of type p
+  // inherits with `using Vector2::Vector2;`, and those they inherit in turn.
+  void inheritedConstructorSources(ClassDecl* def, const Ty* p, std::vector<const Ty*>& out, int depth, int level = 0)
+  {
+    if (!def || level > 8)
+      return;
+    Subst s = substFor(p);
+    for (Decl* m : def->members)
+    {
+      if (m->kind != NodeKind::UsingNameDecl)
+        continue;
+      const QualifiedName& un = static_cast<UsingNameDecl*>(m)->name;
+      if (un.parts.size() < 2 || un.last().symbol != un.parts[un.parts.size() - 2].symbol)
+        continue;
+      NamedType written{};
+      written.kind = NodeKind::NamedType;
+      written.token = m->token;
+      written.name = un;
+      written.name.parts.count -= 1;
+      LocalStack params;
+      for (Decl* tp : def->templateParams)
+        params.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+      ParsedFile* file = def->file;
+      Scope* inside = classScopeOf(p) ? classScopeOf(p) : def->ownScope;
+      TypeContext bctx{inside, &params, s.pairs.empty() ? nullptr : &s, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+      const Ty* bt = convertType(&written, bctx, depth + 1);
+      bt = bt ? types.unqualified(types.stripRef(bt)) : nullptr;
+      if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
+        continue;
+      out.push_back(bt);
+      if (ClassDecl* bd = classDefinition(bt))
+        inheritedConstructorSources(bd, bt, out, depth, level + 1);
+    }
+  }
+
   int listInitRank(const Ty* list, const Ty* p, int depth)
   {
     if (!list->inner || list->inner->kind != TyKind::Pack || depth > 1 || !p->isKnown() || types.isDependent(p))
@@ -11608,6 +11643,31 @@ struct GlobalScope::Impl
       }
       if (constructorTakes(f, elems, s, depth))
         return 4;
+    }
+    // `{0, 0}` for a Vector2D, whose constructors include Vector2's (`using Vector2::Vector2;`):
+    // those take the elements too, its copy and move ones aside.
+    std::vector<const Ty*> inherited;
+    inheritedConstructorSources(def, p, inherited, depth);
+    for (const Ty* bt : inherited)
+    {
+      ClassDecl* bd = classDefinition(bt);
+      if (!bd)
+        continue;
+      constructors = true;
+      Subst bs = substFor(bt);
+      for (Decl* m : bd->members)
+      {
+        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
+          continue;
+        auto* f = static_cast<FunctionDecl*>(m);
+        if ((f->flags & DF_Delete) || f->params.empty())
+          continue;
+        const Ty* first = declaredTypeOf(f->params[0], &bs, 0);
+        if (f->params.size() == 1 && first && types.unqualified(types.stripRef(first)) == bt)
+          continue; // the base's copy or move constructor is not inherited
+        if (constructorTakes(f, elems, bs, depth))
+          return 4;
+      }
     }
     if (constructors)
       return NotViable;
