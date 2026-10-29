@@ -1,0 +1,27 @@
+// spec: `c ? a : b` of arrays or pointers: the arrays decay to pointers (also against nullptr), and two pointers meet at their composite pointer type (to the more qualified pointee, to void, to the base class), whichever branch is first; two arrays of one type stay an lvalue of that array
+// factorio: ZipPackage's `unzGetCurrentFileInfo64(..., fileNameInfo ? fileNameInfo->buffer : nullptr, ...)` (a char array member against nullptr)
+struct Shape { int sides = 0; };
+struct Square : Shape { Square() { this->sides = 4; } };
+struct FileName { char buffer[8] = {'z', 'i', 'p', 0}; };
+int main()
+{
+  bool on = false;
+  const char* fallback = "none";
+  char buffer[8] = {'b', 'u', 'f', 0};
+  FileName fileName;
+  FileName* info = on ? nullptr : &fileName;
+  Square square;
+  Shape shape;
+  auto name = info ? info->buffer : nullptr;
+  auto text = on ? buffer : fallback;
+  Shape* base = on ? &square : &shape;
+  void* anything = on ? &square : (void*)&shape;
+  static_assert(isSame<decltype(name), char*>);
+  static_assert(isSame<decltype(text), const char*>);
+  static_assert(isSame<decltype(on ? &square : &shape), Shape*>);
+  char other[8] = {'o', 0};
+  auto& sameType = on ? other : buffer;
+  static_assert(sizeof(sameType) == 8);
+  println("{} {} {} {} {}", name, text, (const char*)sameType, base->sides, anything == (void*)&square);
+  return 0;
+}

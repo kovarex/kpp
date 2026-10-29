@@ -2439,6 +2439,27 @@ struct GlobalScope::Impl
     return t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Bool || t->kind == TyKind::Float || t->kind == TyKind::Enum;
   }
 
+  // C++'s composite pointer type of two pointers: to their pointee when that is one type up to
+  // qualifiers, to void when one is void, to the base when one points to a class derived from the
+  // other's; qualified as either pointee is. Null when the pointers have none.
+  const Ty* compositePointer(const Ty* a, const Ty* b)
+  {
+    if (a->kind != TyKind::Pointer || b->kind != TyKind::Pointer || !a->inner || !b->inner)
+      return nullptr;
+    const Ty* pa = types.unqualified(a->inner);
+    const Ty* pb = types.unqualified(b->inner);
+    const Ty* pointee = nullptr;
+    if (pa == pb || pb->kind == TyKind::Void)
+      pointee = pb;
+    else if (pa->kind == TyKind::Void)
+      pointee = pa;
+    else if (pa->kind == TyKind::Class && pb->kind == TyKind::Class && pa->decl != pb->decl)
+      pointee = derivesFrom(pa, pb) ? pb : derivesFrom(pb, pa) ? pa : nullptr;
+    if (!pointee)
+      return nullptr;
+    return types.pointer(types.qualified(pointee, a->inner->isConst || b->inner->isConst, a->inner->isVolatile || b->inner->isVolatile));
+  }
+
   // Whether `derived` is `base` or has it among its bases (classes only).
   bool derivesFrom(const Ty* derived, const Ty* base, int depth = 0)
   {
@@ -12522,12 +12543,18 @@ struct GlobalScope::Impl
             return record(e, b && b->isKnown() ? other : types.unknown());
           if (!b->isKnown())
             return record(e, then);
+          // `info ? info->buffer : nullptr`: the other branch's type, an array decayed to a pointer.
           if (a->kind == TyKind::Nullptr)
-            return record(e, other);
+            return record(e, b->kind == TyKind::Array ? types.decay(b) : other);
           if (b->kind == TyKind::Nullptr)
-            return record(e, then);
+            return record(e, a->kind == TyKind::Array ? types.decay(a) : then);
           if (a->isArithmetic() && b->isArithmetic() && a != b)
             return record(e, arithmetic(a, b));
+          // `on ? "true" : "false"`, `c ? buffer : fallback`, `c ? derived : base`: arrays decay to
+          // pointers, and two pointers meet at their composite pointer type.
+          if (a != b && (a->kind == TyKind::Array || a->kind == TyKind::Pointer) && (b->kind == TyKind::Array || b->kind == TyKind::Pointer))
+            if (const Ty* composite = impl.compositePointer(types.decay(a), types.decay(b)))
+              return record(e, composite);
           // `cond ? "_" : someString`: the class branch's type; the other converts to it.
           if (b->kind == TyKind::Class && a->kind != TyKind::Class)
             return record(e, types.unqualified(b));
