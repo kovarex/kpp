@@ -11752,6 +11752,11 @@ struct GlobalScope::Impl
     // (a fold over the pack, GlobalScope::retypeFor): its static_asserts were checked with the
     // whole pack, and a fold over the pack cannot be evaluated against one element.
     bool retypingElements = false;
+    // Of that re-typing for one element of a parameter pack (to emit its expansion's pattern): an
+    // if constexpr keeps the branch the instance took with the whole pack, which one element
+    // would decide anew (`isConstructible<T, Input&, Args&&...>`, false for each element alone).
+    // Not for a `for constexpr` element, whose body's if constexpr depends on it.
+    bool keepConstexprBranches = false;
     // Return statements inside lambdas / auto functions record their type here.
     std::vector<const Ty*> returnFrames;
     // Set on the scratch walkers that probe a requires-expression's requirements: an explicit
@@ -14965,6 +14970,12 @@ struct GlobalScope::Impl
           auto* i = static_cast<IfStmt*>(s);
           size_t mark = locals.mark();
           walkStmt(i->init);
+          if (i->isConstexpr && keepConstexprBranches && i->constexprKnown >= 0)
+          {
+            walkStmt(i->constexprKnown ? i->then : i->else_); // the instance's branch (keepConstexprBranches)
+            locals.pop(mark);
+            break;
+          }
           walkNode(i->cond);
           if (i->isConstexpr && activeSubst && i->cond && uint8_t(i->cond->kind) > uint8_t(NodeKind::PackType) &&
               uint8_t(i->cond->kind) >= uint8_t(NodeKind::NameExpr))
@@ -16498,7 +16509,8 @@ TemplateArgs GlobalScope::classArgsOf(const Ty* classType)
 }
 
 // f's template parameters bound to args, `this` of objectType.
-const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements)
+const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements,
+                                       bool keepBranches)
 {
   Impl& impl = *this->impl;
   if (!f->file || !f->file->tokens)
@@ -16507,6 +16519,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   ResolveStats scratch;
   Impl::Walker w(impl, scratch, *f->file->tokens, f->file->text);
   w.retypingElements = retypingElements;
+  w.keepConstexprBranches = keepBranches;
   for (Decl* p = f; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
@@ -16539,9 +16552,9 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   return impl.deducedShape(nodes->returnType && !nodes->trailingReturn ? w.typeOf(nodes->returnType) : nullptr, deduced);
 }
 
-void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)
+void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType, bool packElement)
 {
-  typeFunctionFor(f, f, args, objectType, true);
+  typeFunctionFor(f, f, args, objectType, true, packElement);
 }
 
 FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)

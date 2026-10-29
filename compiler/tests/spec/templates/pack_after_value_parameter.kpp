@@ -1,6 +1,5 @@
 // spec: a member function template whose parameter pack follows a value parameter (`template<class T, ZeroHandling Zeros, typename... Args>`) forwards the pack's elements in order: `new T(input, forward<Args>(args)...)` gets each element where its parameter is
 // found in src/Util/DeserialiserHelper.kpp: loadSTDUniquePtr<T, Zeros, Args...>'s `target.reset(new T(input, ::forward<Args>(args)...))` (14 instances with the push_back and emplace_back forms) passed the second element where the first goes ("binding an unrelated class to a reference (Params to Machine&)"); the snippet fails as it stands and passes without either the virtual destructor or the unused variable template, so some typing state leaks between instantiations
-// pending: the pack's elements are typed one off
 class Input { public: int pos = 1; };
 class Machine { public: int id = 2; };
 class Params { public: int flags = 3; };

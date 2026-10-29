@@ -3396,7 +3396,7 @@ namespace
           for (size_t k = 0; k < packs.size(); ++k)
             if (d == packs[k])
               t = bound[k]->args[i];
-        global.retypeFor(currentFunction, elementArgs, currentClassTy);
+        global.retypeFor(currentFunction, elementArgs, currentClassTy, true);
         locals[param] = elements[i];
         body(i);
       }
@@ -3496,7 +3496,7 @@ namespace
         for (auto& [d, t] : elementArgs.pairs)
           if (d == pack)
             t = bound->args[i];
-        global.retypeFor(currentFunction, elementArgs, currentClassTy);
+        global.retypeFor(currentFunction, elementArgs, currentClassTy, true);
         ArgsScope scope(*this, &elementArgs);
         body(i);
       }

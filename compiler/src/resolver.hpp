@@ -282,8 +282,10 @@ public:
   std::optional<ConstValue> evaluateInitializer(const Ty* t, Expr* init, ParsedFile* file, Decl* context, const TemplateArgs& args,
                                                 const ConstHooks& hooks);
   // Re-types the body of f for one instantiation (expression types and resolved callees are
-  // rewritten in place). objectType: the instantiated class for members, or null.
-  void retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);
+  // rewritten in place). objectType: the instantiated class for members, or null. packElement:
+  // args bind a parameter pack to one of its elements (to emit a pattern of its expansion), and
+  // the if constexpr branches the instance took with the whole pack stay taken.
+  void retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType, bool packElement = false);
   // The instantiation of f for args (objectType: the instantiated class for members, or null): a
   // copy of the nodes f owns, typed for these arguments once and kept, so that the template's own
   // nodes are never written for an instantiation (docs/design.md, "Instantiations own their typed
@@ -339,8 +341,9 @@ private:
   // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f;
   // returns what the body's returns deduced (an `auto` function's return type), or null.
   // retypingElements: a type pack bound to one element (retypeFor), whose static_asserts are not
-  // checked again.
-  const Ty* typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements = false);
+  // checked again; keepBranches: retypeFor's packElement.
+  const Ty* typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements = false,
+                            bool keepBranches = false);
   // The free function named symbol for these argument types, looked up from the namespaces of the
   // argument classes and enums and from context's (findFreeOperator, findFreeFunction).
   FunctionDecl* findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context);
