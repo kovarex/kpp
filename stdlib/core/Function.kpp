@@ -31,7 +31,7 @@ struct FunctionImpl
     : target(new F(move(callable))),
       invoke(&FunctionImpl<R, Args...>::call<F>),
       destroy(&FunctionImpl<R, Args...>::destroyAs<F>),
-      clone(&FunctionImpl<R, Args...>::cloneAs<F>)
+      clone(FunctionImpl<R, Args...>::cloneFor<F>())
   {}
   FunctionImpl(const FunctionImpl<R, Args...>& other)
     : target(other.target ? other.clone(other.target) : nullptr), invoke(other.invoke), destroy(other.destroy), clone(other.clone)
@@ -107,6 +107,18 @@ struct FunctionImpl
   static void destroyAs(void* target) { delete (F*)target; }
   template<typename F>
   static void* cloneAs(void* target) { return new F(*(F*)target); }
+  // A callable that cannot be copied (a lambda with a move-only capture, which async hands over) is
+  // held all the same and never copied: copying a Function that holds one throws BadFunctionCall (std::function
+  // takes copyable callables only).
+  template<typename F>
+  static auto cloneFor() -> void* (*)(void*)
+  {
+    if constexpr (isCopyConstructible<F>)
+      return &FunctionImpl<R, Args...>::cloneAs<F>;
+    else
+      return &FunctionImpl<R, Args...>::cannotClone;
+  }
+  static void* cannotClone(void*) { throw BadFunctionCall(); }
 };
 
 // A reference that is a value (std::reference_wrapper): it can be stored in containers, copied and

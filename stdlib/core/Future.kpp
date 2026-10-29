@@ -287,10 +287,12 @@ auto async(Launch policy, F callable) -> Future<decltype(callable())>
   using R = decltype(callable());
   auto state = makeShared<SharedState<R>>();
   SharedState<R>* raw = state.get(); // the state owns the deferred function, which only points back
+  // The callable is moved along, never copied: it may hold what cannot be copied
+  // (ThreadedChunkedZipPackageWriteStream's `[buffer = move(buffer)]`).
   if (policy == Launch::deferred)
-    state->deferred = [raw, callable]() { runInto<R>(raw, callable); };
+    state->deferred = [raw, callable = move(callable)]() mutable { runInto<R>(raw, move(callable)); };
   else
-    Thread([state, callable]() { runInto<R>(state.get(), callable); }).detach();
+    Thread([state, callable = move(callable)]() mutable { runInto<R>(state.get(), move(callable)); }).detach();
   return Future<R>(state);
 }
 

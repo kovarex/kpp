@@ -3355,7 +3355,24 @@ struct GlobalScope::Impl
         LambdaExpr* l = lambdaOf(u);
         if (!l)
           return std::nullopt;
-        return form != TraitForm::Trivially || l->captures.empty() ? std::optional<bool>(true) : std::nullopt;
+        if (form == TraitForm::Trivially && !l->captures.empty())
+          return std::nullopt;
+        // A closure copies (moves) its captures by value: an init-capture of a type that cannot be
+        // copied (`[buffer = move(buffer)]` of a UniquePtr) makes it move-only, as C++'s deleted
+        // implicit copy constructor does, and the library's Function then never copies it. (A capture
+        // by copy of a named variable, `[x]`, copies it already where the lambda is written.)
+        for (const LambdaCapture& cap : l->captures)
+        {
+          if (!cap.init || !cap.decl || cap.byRef)
+            continue;
+          const Ty* ct = cap.init->ty && cap.init->ty->isKnown() && !types.isDependent(cap.init->ty)
+                           ? types.decay(types.unqualified(types.stripRef(cap.init->ty))) : nullptr;
+          if (!ct)
+            continue; // (typed where the lambda's instance is: as before, copyable)
+          if (std::optional<bool> ok = constructibleFromSelf(ct, move, form, depth + 1); ok && !*ok)
+            return false;
+        }
+        return true;
       }
       case TyKind::Unknown: case TyKind::Param: case TyKind::DependentMember: case TyKind::Auto: case TyKind::Pack: return std::nullopt;
       default: return true; // scalars, pointers, enums
