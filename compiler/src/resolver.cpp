@@ -309,6 +309,7 @@ struct GlobalScope::Impl
   std::unordered_map<FunctionDecl*, std::vector<Scope*>> localTypesOfOutOfLine; // Scopes of classes and enums declared in their bodies.
   std::vector<Scope*> scopesWithUsingEnums; // `using enum E;` in them: resolved once by finishIndex, before parallel lookups
   std::unordered_map<Decl*, VariableDecl*> variableDefinitions;    // Static data member -> its `T C::x = ...;` definition.
+  std::unordered_map<Decl*, Scope*> specializationMembers;         // `int Flag<true>::value() {...}` -> Flag<true>'s scope (finishIndex).
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
   // scope tree so Phase 2 lookups remain lock-free. Keyed by (scope*, symbol).
@@ -502,6 +503,8 @@ struct GlobalScope::Impl
       auto* f = static_cast<FunctionDecl*>(d);
       if (f->name.parts.size() > 1)
       {
+        if (auto it = specializationMembers.find(f); it != specializationMembers.end())
+          return it->second->owner; // `int Flag<true>::value() {...}`: the specialisation's member
         QualifiedName qualifier = f->name;
         qualifier.parts.count -= 1;
         LocalStack params;
@@ -4489,6 +4492,28 @@ struct GlobalScope::Impl
     return t && t->kind == TyKind::Class && !types.isDependent(t) ? t : nullptr;
   }
 
+  // `int Flag<true>::counter = 100;`, `int Flag<true>::value() {...}`: the scope of the full
+  // specialisation the qualifier names, whose own members these define (C++ writes them without
+  // `template<>`); null when the qualifier names the template or no full specialisation.
+  // locals: the definition's own template parameters (`template<bool B> int Flag<B>::value()`
+  // names the template).
+  Scope* fullSpecializationScope(const QualifiedName& qualifier, Scope* context, const LocalStack* locals, const ParsedFile* file,
+                                 uint32_t token)
+  {
+    if (qualifier.empty() || !qualifier.last().hasTemplateArgs)
+      return nullptr;
+    NamedType written{};
+    written.kind = NodeKind::NamedType;
+    written.token = token;
+    written.name = qualifier;
+    TokenScope tokenScope(file ? file->tokens : nullptr, file ? file->text : std::string_view());
+    TypeContext ctx{context, locals, nullptr, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+    const Ty* t = convertType(&written, ctx, 0);
+    if (!t || t->kind != TyKind::Class || !t->decl || !(t->decl->flags & DF_Specialization) || !t->decl->templateParams.empty())
+      return nullptr;
+    return t->decl->ownScope;
+  }
+
   // Whether explicit member specialisation f is written for class instantiation classTy (the
   // same arguments for the class template's parameters).
   bool memberSpecializationIsFor(FunctionDecl* f, const Ty* classTy)
@@ -7690,6 +7715,9 @@ struct GlobalScope::Impl
       QualifiedName qualifier = name;
       qualifier.parts.count -= 1;
       Lookup l = impl.lookupQualified(qualifier, scope, &locals, 0);
+      if (l.scope && l.scope->kind == ScopeKind::Class)
+        if (Scope* special = impl.fullSpecializationScope(qualifier, scope, &locals, file, 0))
+          return special; // `int Flag<true>::value() {...}`: the body of the specialisation's member
       return l.scope ? l.scope : scope;
     }
 
@@ -8590,6 +8618,12 @@ void GlobalScope::finishIndex()
     for (Decl* p : f->templateParams)
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
     Lookup l = impl->lookupQualified(qualifier, context, &params, 0);
+    if (l.scope && l.scope->kind == ScopeKind::Class)
+      if (Scope* special = impl->fullSpecializationScope(qualifier, context, &params, f->file, f->token))
+      {
+        l.scope = special; // `int Flag<true>::value() {...}`: a member of the specialisation
+        impl->specializationMembers[f] = special;
+      }
     if (l.scope && (l.scope->kind == ScopeKind::Class || l.scope->kind == ScopeKind::Namespace))
       if (auto it = impl->localTypesOfOutOfLine.find(f); it != impl->localTypesOfOutOfLine.end())
         for (Scope* local : it->second)
@@ -8620,6 +8654,9 @@ void GlobalScope::finishIndex()
     for (Decl* p : v->templateParams)
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
     Lookup l = impl->lookupQualified(qualifier, context, &params, 0);
+    if (l.scope && l.scope->kind == ScopeKind::Class)
+      if (Scope* special = impl->fullSpecializationScope(qualifier, context, &params, v->file, v->token))
+        l.scope = special; // `int Flag<true>::counter = 100;`: the specialisation's member
     if (l.scope && l.scope->kind == ScopeKind::Class)
     {
       if (const std::vector<Entry>* entries = l.scope->find(v->name.last().symbol))

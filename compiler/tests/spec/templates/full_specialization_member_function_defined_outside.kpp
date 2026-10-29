@@ -1,0 +1,25 @@
+// spec: a member function of a full specialisation defined outside the class (`int Flag<true>::value() {...}`, no `template<>` in front, as C++ writes it) is that specialisation's member: its body sees the specialisation's own members, and the template's out-of-line member stays the template's
+// factorio: out-of-line members of fully specialised class templates (found with templates/full_specialization_static_member_defined_outside)
+template<bool B>
+struct Flag
+{
+  int base = 2;
+  int value();
+};
+template<>
+struct Flag<true>
+{
+  int extra = 5;
+  int value();
+};
+int Flag<true>::value() { return this->extra + 1; }
+template<bool B>
+int Flag<B>::value() { return this->base; }
+
+int main()
+{
+  Flag<true> t;
+  Flag<false> f;
+  println("{} {}", t.value(), f.value());
+  return 0;
+}
