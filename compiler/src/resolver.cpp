@@ -1610,6 +1610,7 @@ struct GlobalScope::Impl
     const std::vector<Token>* tokens = nullptr; // For evaluating array bounds written as literals.
     std::string_view text;
     const std::vector<ConstBinding>* env = nullptr; // Parameters bound to values inside a constexpr call.
+    FunctionDecl* function = nullptr; // Whose parameters a trailing return type names (`-> decltype(callable())`).
   };
 
   // A written template argument that names only types that exist under ctx's substitution,
@@ -4011,7 +4012,14 @@ struct GlobalScope::Impl
       case NodeKind::DecltypeType:
       {
         auto* d = static_cast<DecltypeType*>(t);
-        return d->expr && d->expr->ty ? d->expr->ty : types.unknown();
+        const Ty* generic = d->expr && d->expr->ty ? d->expr->ty : types.unknown();
+        // `-> Future<decltype(callable())>` under an instantiation's arguments: the generic type of
+        // a dependent expression (F) stands in for no call's result, so the expression is typed
+        // anew with them.
+        if (ctx.function && ctx.subst && !ctx.subst->empty() && d->expr && (!generic->isKnown() || types.isDependent(generic)))
+          if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown() && !types.isDependent(typed))
+            return typed;
+        return generic;
       }
       case NodeKind::MemberPointerType:
       {
@@ -4040,7 +4048,9 @@ struct GlobalScope::Impl
         // `int Box::f(const Terminal t) const` outside its class: the class scope, as C++ has it,
         // for the function and everything declared inside it.
         auto* f = static_cast<FunctionDecl*>(p);
-        if (f->name.parts.size() > 1)
+        if (auto it = specializationMembers.find(f); it != specializationMembers.end())
+          out.scope = it->second; // `int Flag<true>::f(Inner i)`: the specialisation's scope
+        else if (f->name.parts.size() > 1)
         {
           QualifiedName qualifier = f->name;
           qualifier.parts.count -= 1;
@@ -4112,7 +4122,11 @@ struct GlobalScope::Impl
         else if (f->flags & DF_Conversion)
           result = convertType(f->name.last().convType, ctx, depth + 1);
         else if (f->trailingReturn)
-          result = convertType(f->trailingReturn, ctx, depth + 1);
+        {
+          TypeContext rctx = ctx;
+          rctx.function = f;
+          result = convertType(f->trailingReturn, rctx, depth + 1);
+        }
         else
           result = convertType(f->returnType, ctx, depth + 1);
         std::vector<const Ty*> params;
@@ -4241,6 +4255,28 @@ struct GlobalScope::Impl
         case NodeKind::RRefType: t = static_cast<const RRefType*>(t)->referenced; break;
         default: return false;
       }
+    }
+  }
+
+  // Whether a written type has a `decltype(expr)` anywhere in it (`Future<decltype(callable())>`).
+  static bool astMentionsDecltype(Node* n, int depth = 0)
+  {
+    if (!n || depth > 16 || !isTypeNode(n))
+      return false;
+    switch (n->kind)
+    {
+      case NodeKind::DecltypeType: return !static_cast<DecltypeType*>(n)->isAuto;
+      case NodeKind::ConstType: return astMentionsDecltype(static_cast<ConstType*>(n)->inner, depth + 1);
+      case NodeKind::PointerType: return astMentionsDecltype(static_cast<PointerType*>(n)->pointee, depth + 1);
+      case NodeKind::LRefType: return astMentionsDecltype(static_cast<LRefType*>(n)->referenced, depth + 1);
+      case NodeKind::RRefType: return astMentionsDecltype(static_cast<RRefType*>(n)->referenced, depth + 1);
+      case NodeKind::NamedType:
+        for (const NamePart& part : static_cast<NamedType*>(n)->name.parts)
+          for (Node* arg : part.templateArgs)
+            if (astMentionsDecltype(arg, depth + 1))
+              return true;
+        return false;
+      default: return false;
     }
   }
 
@@ -5246,6 +5282,32 @@ struct GlobalScope::Impl
       dependent = dependent || types.isDependent(ty);
     }
     return dependent ? std::nullopt : std::optional<bool>(true);
+  }
+
+  // An expression in a function's signature (`decltype(callable())` in its trailing return type)
+  // typed under ctx's substitution, with the function's parameters in scope: a copy of it is
+  // walked, so that the template's own nodes keep their generic types. Null when it cannot be.
+  const Ty* typeOfSignatureExpression(Expr* e, const TypeContext& ctx)
+  {
+    static thread_local int nesting = 0;
+    FunctionDecl* f = ctx.function;
+    if (!f || !f->file || !f->file->tokens || nesting > 8)
+      return nullptr;
+    ++nesting;
+    InstanceCopier copier(instanceArena());
+    Expr* copy = copier.expression(e);
+    ResolveStats scratch;
+    Walker probe(*this, scratch, *f->file->tokens, f->file->text);
+    probe.file = f->file;
+    probe.scope = ctx.scope;
+    probe.activeSubst = ctx.subst;
+    if (ctx.locals)
+      probe.locals = *ctx.locals;
+    for (Decl* p : f->params)
+      probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
+    const Ty* t = probe.walkExpr(copy);
+    --nesting;
+    return t;
   }
 
   bool requiresHolds(FunctionDecl* f, const Subst& deduced)
@@ -6806,6 +6868,18 @@ struct GlobalScope::Impl
           }
         }
         const Ty* result = impl.substitute(fnTy->inner, subst);
+        if (f->trailingReturn && Impl::astMentionsDecltype(f->trailingReturn))
+        {
+          // `-> Future<decltype(callable())>`: typed again with the deduced arguments, since the
+          // generic type of the call (F) substituted is the closure, not what calling it gives.
+          Subst all = subst;
+          if (forType)
+            for (const Subst::Pair& p : forType->pairs)
+              if (!all.find(p.param))
+                all.pairs.push_back(p);
+          if (const Ty* full = impl.declaredTypeOf(f, &all, 0); full && full->kind == TyKind::Function && full->inner->isKnown())
+            result = full->inner;
+        }
         if (impl.dependsOn(result, f->templateParams))
           return unknown(Why::Deduction);
         if (!types.isDependent(result))

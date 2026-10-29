@@ -1,0 +1,29 @@
+// spec: a decltype in a trailing return type is the type of its expression under the instantiation's arguments: `-> decltype(f())` is what calling F gives (a lambda's result, a function's), `-> decltype(a + b)` follows the arithmetic conversions (short + short is int), `-> decltype(container[0])` keeps the reference
+// factorio: the library's async (`-> Future<decltype(callable())>`, library/async_launch) and generic helpers that return a callable's result
+template<typename F>
+auto call(F f) -> decltype(f())
+{
+  return f();
+}
+template<typename A, typename B>
+auto add(A a, B b) -> decltype(a + b)
+{
+  return a + b;
+}
+template<typename T>
+auto firstOf(T& container) -> decltype(container[0])
+{
+  return container[0];
+}
+int seven() { return 7; }
+int main()
+{
+  double d = call([]() -> double { return 2.5; });
+  int s = call(seven);
+  auto sum = add(short(1), short(2));
+  auto mixed = add(1, 0.5);
+  Vector<int> v = {4, 5};
+  firstOf(v) = 9;
+  println("{} {} {} {} {} {}", d, s, sizeof(sum), mixed, v[0], sizeof(call([]() -> char { return 'x'; })));
+  return 0;
+}
