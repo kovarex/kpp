@@ -1425,6 +1425,8 @@ namespace
         {
           // Through callFunction: `Style(const Style* parent = nullptr)` wants its default argument.
           TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+          if (!ctor->templateParams.empty())
+            global.deduceArgs(ctor, {}, args); // `template<typename... Args> OnHeap(Args&&...)`: Args is empty
           callFunction(ctor, args, canonicalClass(t, at), addr, "", {}, at);
           return;
         }
@@ -1655,6 +1657,20 @@ namespace
       }
       if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
       {
+        // `T x{y}` with y a T, or of a class derived from T: a copy or a move of y, before any
+        // initializer-list constructor (C++ DR 1467): `[names{::move(names)}]` moves the Vector.
+        auto* list = static_cast<BraceInitExpr*>(args[0]);
+        if (list->args.size() == 1 && list->designators.empty() && list->args[0]->kind != NodeKind::BraceInitExpr && list->args[0]->ty)
+        {
+          const Ty* et = withCurrentArgs(types.stripRef(list->args[0]->ty));
+          std::vector<std::pair<std::string, uint32_t>> path;
+          if (et && isClass(et) && !types.isDependent(et) &&
+              (canonicalClass(et, at) == canonicalClass(t, at) || basePath(et, t, path, at)))
+          {
+            constructInto(addr, t, list->args, at);
+            return;
+          }
+        }
         if (FunctionDecl* ctor = initializerListConstructor(c, t, at))
         {
           // `Vector<int> v = {1, 2, 3}`, `Poly p({1, 2, 3, 4})`: the list as one InitializerList argument.
@@ -2237,6 +2253,12 @@ namespace
     void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at)
     {
       t = types.stripRef(t);
+      // `[callback{::move(callback)}]`, `int x{5}`: one value in braces initialises what is not a
+      // class as the value itself would.
+      if (init && init->kind == NodeKind::BraceInitExpr && !isClass(t) && t->kind != TyKind::Array)
+        if (auto* list = static_cast<BraceInitExpr*>(init); list->args.size() == 1 && list->designators.empty() &&
+                                                            list->args[0]->kind != NodeKind::BraceInitExpr)
+          init = list->args[0];
       if (isLambda(t))
       {
         Value v = rvalue(init);

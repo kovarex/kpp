@@ -1,6 +1,5 @@
 // spec: an init-capture whose braced initializer is one value of a class type (`[callback{::move(callback)}]`, a closure; `[names{::move(names)}]`, a Vector) is initialised from that value (C++ DR 1467: a single element of the class's own type copies or moves it, before initializer-list constructors are considered)
 // factorio: FloatingGuiWindow::setDetachingCallback, PrototypeFilterHelpers::make_string_multi_equality_builder, ModPortalJob::processResult (7 lines)
-// pending: the code generator emits no braced initializer for a capture of a class type ("the expression kind BraceInitExpr"; a Vector capture tries String(Vector<String>&&) through the initializer-list constructor)
 template<class Callback>
 Function<int()> wrap(Callback callback)
 {

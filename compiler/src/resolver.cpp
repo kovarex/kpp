@@ -11336,7 +11336,11 @@ void GlobalScope::deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argT
   const Ty* ft = impl->declaredTypeOf(f, s.empty() ? nullptr : &s, 0);
   impl->deduceCall(f, ft, argTypes, s);
   for (Decl* p : f->templateParams)
-    if (const Ty* t = s.find(p))
+  {
+    const Ty* t = s.find(p);
+    if (!t && static_cast<TemplateParamDecl*>(p)->isPack)
+      t = impl->types.pack({}); // a pack no argument deduces is empty (`OnHeap(Args&&...)` default-constructing)
+    if (t)
     {
       bool known = false;
       for (auto& [d, ty] : args.pairs)
@@ -11344,6 +11348,7 @@ void GlobalScope::deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argT
       if (!known)
         args.pairs.push_back({p, t});
     }
+  }
 }
 
 FunctionDecl* GlobalScope::chooseOverload(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,

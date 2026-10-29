@@ -1,0 +1,27 @@
+// spec: a class whose constructor taking no arguments is a variadic template (`template<typename... Args> OnHeap(Args&&... args)`) is default-constructed through it with the pack empty: as a local, as a member, and as the elements Vector::resize makes
+// found in the game's OnHeap<T> (MapDeserialiser's members, Vector<OnHeap<...>>::resize): "a parameter pack that was not deduced", 4 lines
+template<typename InnerType>
+class OnHeap
+{
+public:
+  template<typename... Args>
+  OnHeap(Args&&... args) : value(new InnerType(::forward<Args>(args)...)) {}
+  ~OnHeap() { delete this->value; }
+  OnHeap(const OnHeap&) = delete;
+  OnHeap(OnHeap&& other) : value(other.value) { other.value = nullptr; }
+  InnerType& operator*() { return *this->value; }
+private:
+  InnerType* value;
+};
+struct Counter { int count = 7; };
+struct Holder { OnHeap<Counter> counter; };
+int main()
+{
+  OnHeap<Counter> local;
+  Holder holder;
+  OnHeap<Counter> given(Counter{3});
+  Vector<OnHeap<Counter>> many;
+  many.resize(2);
+  println("{} {} {} {}", (*local).count, (*holder.counter).count, (*given).count, (*many[1]).count);
+  return 0;
+}
