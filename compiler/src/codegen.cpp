@@ -10727,6 +10727,28 @@ namespace
         std::string addr;
         if (isClass(types.stripRef(t)))
         {
+          // `const Sorted& r = path;`, `const String& s = "text";`: a value of another type that is
+          // neither of a derived class nor converts by an operator binds to a temporary the class's
+          // converting constructor makes, which lives as long as the reference.
+          const Ty* target = types.unqualified(types.stripRef(t));
+          const Ty* initTy = init->ty ? withCurrentArgs(types.unqualified(types.stripRef(init->ty))) : nullptr;
+          if (initTy && initTy->isKnown() && !types.isDependent(initTy) && (!isClass(initTy) || canonicalClass(initTy, v) != canonicalClass(target, v)))
+          {
+            std::vector<std::pair<std::string, uint32_t>> path;
+            const Ty* owner = nullptr;
+            TemplateArgs opArgs;
+            bool converts = isClass(initTy) && (basePath(initTy, target, path, v) || conversionOperator(initTy, target, v, &owner, false, &opArgs));
+            if (!converts && findConstructor(target, {init->ty}, v))
+            {
+              std::string tmp = newObjectSlot(target, v);
+              Expr* one = init;
+              constructInto(tmp, target, Span<Expr*>{&one, 1}, v);
+              if (needsDestruction(target, v))
+                scopes.back().push_back({tmp, target});
+              fn += "  store ptr " + tmp + ", ptr " + slot + "\n";
+              return;
+            }
+          }
           Value o = rvalue(init);
           // `const Label& l = wrapper;`: an object of another class is converted, to its base or
           // through its conversion operator (reference_wrapper's `operator T&()`), never bound as
