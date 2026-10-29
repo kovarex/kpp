@@ -857,6 +857,40 @@ names as functions (llvm.memcpy, llvm.sqrt, llvm.va_*, 14 llvm.x86.sse*), MSVC's
 _BitScanReverse, __cpuid and _mm_prefetch, ws2tcpip.h's inline gai_strerrorW, and two names
 that are no functions (`factorio.com`, `serialized`). Headline 22,321 -> 22,318.
 
+### dear imgui through a generated C interface (2026-10-29)
+
+The game's debug tools (DebugTools.cpp, ImguiSDL.cpp, DebugInfoRenderer.cpp; 891 `ImGui::`
+uses) are built on its copy of imgui 1.53, which is C++: namespace ImGui with overloads and
+default arguments, structs with methods, the ImVector template, and structs imgui owns whose
+fields the game reads and writes (ImGuiIO, ImGuiStyle, the draw lists). In the manner of cimgui,
+`programs/factorio/native/generate_imgui.py` reads imgui.h and writes both sides of a thin C
+interface:
+
+- `native/imgui_c.cpp`: an extern "C" function for each of the 320 functions of namespace ImGui
+  and for the 127 methods, constructors and destructors of the 17 structs Kpp mirrors. Classes
+  cross by pointer (an ImVec2 argument, a reference, an ImVec2 result through an out pointer); a
+  variadic function (Text, TreeNode, ...) formats through imgui's va_list variant (LogText, which
+  has none, formats first and passes "%s"). It also asserts the layouts the script computes: every
+  mirrored struct's size and each field's offset, against imgui.h as clang compiles it.
+- `overrides/added/src/Debug/ImGui.kpp`: imgui's types with imgui's names: the typedefs, enums and
+  object-like macros (as constants), the structs with their fields in imgui's order, their methods
+  and namespace ImGui with imgui's signatures and default arguments, each calling its C function
+  (a variadic one is a template forwarding its pack to the C one); ImVec2, ImVec4, ImColor and
+  ImVector are imgui's inline code written in Kpp, and imgui_internal.h's ImVec2 operators are
+  there too. static_asserts check the sizes. Only declared, as only pointers to them cross:
+  ImDrawListSharedData, ImGuiContext, ImGuiStorage, ImGuiTextFilter, ImGuiTextBuffer and
+  ImGuiOnceUponAFrame. The va_list variants are left out (Kpp has no va_list).
+
+The converter needs nothing beyond `imgui.h` in `overrides/expand-macros.txt`, for IM_COL32 at its
+four uses. `native\build.cmd` builds the shim into factorio-native.lib, which link.cmd already
+links with the game's imgui.lib. The check is convert.cmd's fourth smoke test:
+`tests/imgui_smoke.kpp` runs three headless frames (font atlas, a window with text, widgets,
+columns, a tree and draw-list primitives) and prints the draw data, style and io counters, and
+`tests/imgui_smoke.cpp`, the same frames written in C++ against imgui.h, printed
+`tests/imgui_smoke.expected`: the outputs are equal, down to the vertex and index checksums. On the
+way, a char array initialised by a string literal stays empty (language/char_array_from_string_literal,
+pending).
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in

@@ -5,6 +5,7 @@ rem hand). Then converts the CommonUtil and Agui libraries and the game's Util m
 rem own (into kpp\, with the hand-written files kept there), checks that kppc compiles them, and runs
 rem the smoke tests against that result: the stubs in tests\stubs\ stand in for the modules a whole
 rem conversion pulls in (FloatCast.cpp merged into FloatCast.kpp needs global and Logging, for example).
+rem The last one runs imgui frames through the generated imgui interface (native\generate_imgui.py).
 rem Hand-written parts are in overrides\.
 setlocal
 cd /d "%~dp0"
@@ -62,3 +63,8 @@ for %%f in (kpp\Util\Container\*.kpp) do if not %%~nf==ExtendedBitBuffer set UFI
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\src\TypeTraitsExtensions.kpp kpp\src\Graphics\BitmapFormat.kpp kpp\src\Noise\NoiseRegisterIndex.kpp tests\util_smoke.kpp || exit /b 1
 kpp\util_smoke.exe > kpp\util_smoke.out.txt
 fc /w kpp\util_smoke.out.txt tests\util_smoke.expected > nul && echo util smoke test: output as expected || (echo util smoke test: OUTPUT DIFFERS & fc /w kpp\util_smoke.out.txt tests\util_smoke.expected & exit /b 1)
+echo == imgui smoke test: tests\imgui_smoke.kpp through kpp\src\Debug\ImGui.kpp and native\imgui_c.cpp with the game's imgui.lib (the same frames as tests\imgui_smoke.cpp, whose output is the expected one)
+call native\build.cmd >nul || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\imgui_smoke.exe kpp\src\Debug\ImGui.kpp tests\imgui_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\imgui.lib --lib -luser32 --lib -limm32 || exit /b 1
+kpp\imgui_smoke.exe > kpp\imgui_smoke.out.txt
+fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected > nul && echo imgui smoke test: output as expected || (echo imgui smoke test: OUTPUT DIFFERS & fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected & exit /b 1)

@@ -3,7 +3,10 @@
 # their macros. Lua's public API: lua_pop, lua_newtable, lua_isnil, ... (651 uses in the game).
 # An object-like macro that is another name is written as that name: glad's OpenGL functions
 # (`#define glGenTextures glad_glGenTextures`, the function pointers gladLoadGL fills).
+# imgui.h is C++, not imported (overrides/added/src/Debug/ImGui.kpp declares imgui for Kpp, with its
+# object-like macros as constants), but its function-like macros are C's: IM_COL32, IM_ARRAYSIZE.
 C:\Factorio\libraries\Lua\luaconf.h
 C:\Factorio\libraries\Lua\lua.h
 C:\Factorio\libraries\Lua\lauxlib.h
 C:\Factorio\libraries\glad\include\glad\glad.h
+C:\Factorio\libraries\imgui\imgui.h

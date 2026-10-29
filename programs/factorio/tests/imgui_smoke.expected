@@ -1,0 +1,13 @@
+font atlas 512x64, 4 bytes per pixel, sample sum 266220, 1 fonts
+frame 0: avail 384.0 -54.0, closest 220.0 341.0, hovered 0, width 400.0
+frame 1: avail 368.0 -54.0, closest 212.0 341.0, hovered 1, width 400.0
+frame 2: avail 368.0 -54.0, closest 212.0 341.0, hovered 1, width 400.0
+draw data: valid 1, 1 lists, 732 vertices, 1620 indices
+list 0 (Kpp window): 2 commands, 732 vertices, 1620 indices
+  command 0: 603 elements, clip 0.0 0.0 800.0 600.0, texture 7, callback 0
+  command 1: 1017 elements, clip 14.0 48.0 390.0 310.0, texture 7, callback 0
+  vertex checksum 1819759602, index checksum 3488312699
+scaled clip 1600.0 1200.0
+style: alpha 1.00, padding 8.0 8.0, button 0.350 0.400 0.610 0.620
+io: 732 vertices, 1620 indices, 1 windows, want mouse 1, slider 0.250, counter 3, check 1, text edit me
+color CC996633, hsv 0.583 0.667 0.600, version 1.53

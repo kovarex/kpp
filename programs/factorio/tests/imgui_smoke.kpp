@@ -1,0 +1,130 @@
+// Headless dear imgui frames through ImGui.kpp and native/imgui_c.cpp (convert.cmd links them with
+// the game's imgui.lib): the font atlas, three frames of a window with text, widgets and draw-list
+// primitives, then the draw data imgui hands a renderer, the style and the io counters.
+// imgui_smoke.cpp makes the same frames in C++; both print through printf, and imgui_smoke.expected
+// is its output.
+extern "C" import "stdio.h";
+extern "C" import "stdint.h";
+extern "C" import "string.h";
+
+static float sample(void* data, int idx) { return ((float*)data)[idx] * 2.0f; }
+static bool item(void* data, int idx, const char** out_text)
+{
+  static const char* names[] = {"first", "second", "third"};
+  *out_text = names[idx];
+  return true;
+}
+
+int main()
+{
+  ImGuiIO& io = ImGui::GetIO();
+  io.DisplaySize = ImVec2(800, 600);
+  io.DeltaTime = 1.0f / 60.0f;
+  io.IniFilename = nullptr;
+  unsigned char* pixels = nullptr;
+  int width = 0, height = 0, bytes = 0;
+  io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height, &bytes);
+  unsigned sum = 0;
+  for (int i = 0; i < width * height * bytes; i += 97)
+    sum += pixels[i];
+  printf("font atlas %dx%d, %d bytes per pixel, sample sum %u, %d fonts\n", width, height, bytes, sum, io.Fonts->Fonts.Size);
+  io.Fonts->TexID = (void*)(intptr_t)7;
+  float values[5] = {0.1f, 0.4f, 0.2f, 0.8f, 0.5f};
+  float slider = 0.25f;
+  int counter = 3;
+  bool check = true;
+  int current = 1;
+  char text[32] = {};
+  strcpy(text, "edit me"); // (not `= "edit me"`: language/char_array_from_string_literal)
+  for (int frame = 0; frame < 3; ++frame)
+  {
+    io.MousePos = ImVec2(40.0f + frame, 60.0f);
+    io.MouseDown[0] = frame == 1;
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(10, 10));
+    ImGui::SetNextWindowSize(ImVec2(400, 300));
+    bool open = true;
+    if (ImGui::Begin("Kpp window", &open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar))
+    {
+      ImGui::Text("Frame %d of %s, %.2f", frame, "imgui", 1.5f);
+      ImGui::TextColored(ImVec4(1, 0.5f, 0, 1), "colored %u", 42u);
+      ImGui::LabelText("label", "value %d", counter);
+      if (ImGui::Button("Button"))
+        ++counter;
+      ImGui::SameLine();
+      ImGui::Checkbox("check", &check);
+      ImGui::SliderFloat("slider", &slider, 0.0f, 1.0f);
+      ImGui::DragInt("drag", &counter, 1.0f, 0, 10);
+      ImGui::InputText("input", text, sizeof(text));
+      ImGui::Combo("combo", &current, item, nullptr, 3);
+      ImGui::PlotLines("plot", values, 5);
+      ImGui::PlotLines("plot2", sample, values, 5, 0, nullptr, 0.0f, 2.0f, ImVec2(100, 40));
+      if (ImGui::TreeNode("tree"))
+      {
+        ImGui::BulletText("inside %s", "the tree");
+        ImGui::TreePop();
+      }
+      if (ImGui::CollapsingHeader("header", ImGuiTreeNodeFlags_DefaultOpen))
+        ImGui::Separator();
+      ImGui::PushID(5);
+      ImGui::Columns(2, "columns");
+      ImGui::Text("left");
+      ImGui::NextColumn();
+      ImGui::Text("right");
+      ImGui::Columns(1);
+      ImGui::PopID();
+      ImDrawList* drawList = ImGui::GetWindowDrawList();
+      ImVec2 origin = ImGui::GetCursorScreenPos();
+      ImVec2 avail = ImGui::GetContentRegionAvail();
+      drawList->AddLine(origin, origin + ImVec2(50, 20), ImColor(255, 0, 0), 2.0f);
+      drawList->AddRect(origin, origin + avail * 0.5f, ImColor(0.0f, 1.0f, 0.0f, 1.0f));
+      drawList->AddRectFilledMultiColor(origin, origin + ImVec2(30, 30), ImColor(50, 50, 50), ImColor(50, 50, 60), ImColor(60, 60, 70), ImColor(50, 50, 50));
+      drawList->AddCircleFilled(origin + ImVec2(60, 10), 8.0f, ImColor(ImGui::GetStyle().Colors[ImGuiCol_Button]));
+      drawList->PushClipRect(origin, origin + ImVec2(20, 20), true);
+      drawList->AddText(origin, ImColor(255, 255, 255), "clipped");
+      drawList->PopClipRect();
+      ImVec2 closest = ImGui::CalcItemRectClosestPoint(io.MousePos, true, -2.0f);
+      printf("frame %d: avail %.1f %.1f, closest %.1f %.1f, hovered %d, width %.1f\n", frame, avail.x, avail.y, closest.x, closest.y,
+             ImGui::IsWindowHovered() ? 1 : 0, ImGui::GetWindowWidth());
+    }
+    ImGui::End();
+    ImGui::Render();
+  }
+  ImDrawData* data = ImGui::GetDrawData();
+  printf("draw data: valid %d, %d lists, %d vertices, %d indices\n", data->Valid ? 1 : 0, data->CmdListsCount, data->TotalVtxCount, data->TotalIdxCount);
+  for (int n = 0; n < data->CmdListsCount; n++)
+  {
+    const ImDrawList* list = data->CmdLists[n];
+    printf("list %d (%s): %d commands, %d vertices, %d indices\n", n, list->_OwnerName, list->CmdBuffer.Size, list->VtxBuffer.Size, list->IdxBuffer.Size);
+    for (int c = 0; c < list->CmdBuffer.Size; c++)
+    {
+      const ImDrawCmd* cmd = &list->CmdBuffer[c];
+      printf("  command %d: %u elements, clip %.1f %.1f %.1f %.1f, texture %d, callback %d\n", c, cmd->ElemCount, cmd->ClipRect.x, cmd->ClipRect.y,
+             cmd->ClipRect.z, cmd->ClipRect.w, (int)(intptr_t)cmd->TextureId, cmd->UserCallback ? 1 : 0);
+    }
+    unsigned checksum = 0;
+    for (int v = 0; v < list->VtxBuffer.Size; v++)
+    {
+      const ImDrawVert& vertex = list->VtxBuffer.Data[v];
+      checksum = checksum * 31 + (unsigned)(vertex.pos.x * 8) + (unsigned)(vertex.pos.y * 8) * 7 + (unsigned)(vertex.uv.x * 4096) + vertex.col;
+    }
+    unsigned indices = 0;
+    for (int i = 0; i < list->IdxBuffer.Size; i++)
+      indices = indices * 31 + list->IdxBuffer[i];
+    printf("  vertex checksum %u, index checksum %u\n", checksum, indices);
+  }
+  data->ScaleClipRects(ImVec2(2, 2));
+  printf("scaled clip %.1f %.1f\n", data->CmdLists[0]->CmdBuffer[0].ClipRect.z, data->CmdLists[0]->CmdBuffer[0].ClipRect.w);
+  ImGuiStyle& style = ImGui::GetStyle();
+  printf("style: alpha %.2f, padding %.1f %.1f, button %.3f %.3f %.3f %.3f\n", style.Alpha, style.WindowPadding.x, style.WindowPadding.y,
+         style.Colors[ImGuiCol_Button].x, style.Colors[ImGuiCol_Button].y, style.Colors[ImGuiCol_Button].z, style.Colors[ImGuiCol_Button].w);
+  printf("io: %d vertices, %d indices, %d windows, want mouse %d, slider %.3f, counter %d, check %d, text %s\n", io.MetricsRenderVertices,
+         io.MetricsRenderIndices, io.MetricsActiveWindows, io.WantCaptureMouse ? 1 : 0, slider, counter, check ? 1 : 0, text);
+  ImColor color(0.2f, 0.4f, 0.6f, 0.8f);
+  ImU32 packed = color;
+  float h, s, v;
+  ImGui::ColorConvertRGBtoHSV(0.2f, 0.4f, 0.6f, h, s, v);
+  printf("color %08X, hsv %.3f %.3f %.3f, version %s\n", packed, h, s, v, ImGui::GetVersion());
+  ImGui::Shutdown();
+  return 0;
+}
