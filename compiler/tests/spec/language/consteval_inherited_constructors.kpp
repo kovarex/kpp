@@ -1,6 +1,5 @@
 // spec: a constructor inherited by `using Base::Base;` at compile time: `Vec2D(0, -1)` builds the base part with the base's constructor
 // factorio: constexpr Vector2D UNIT_VECTOR = Vector2D(0, -1); (Vector2D : Vector2<double, Vector2D>, using Vector2::Vector2), BlueprintBook's preview offset
-// pending: the interpreter chose among the class's own constructors only
 template<class T, class Derived>
 struct Vec2
 {

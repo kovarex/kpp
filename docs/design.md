@@ -820,12 +820,35 @@ language/consteval_initializer_lists, consteval_bitfields, consteval_unnamed_bit
 consteval_addresses, consteval_direct_initialization, consteval_conditional_explicit,
 consteval_deduction_from_values.
 
+*More of the game's tables, 2026-10-29.* Class template argument deduction in constants (`Pair {
+"mask", SpriteOptions::Mask }`, `constexpr Array names = {...}`): the class the walk deduced, the
+expression's type or the variable's (cachedType), unless it depends on an instance's arguments.
+Writes through a member function's reference result (`result[i] = x` by an Array's operator[],
+`front().a = 7`): such a call asked for a place runs with `this` referring to the caller's object
+and its `return` giving the place it designates (TypeContext::returnPlace); only where the
+expression is not evaluated for its value too (an assignment's left side, `++`, a reference
+bound, a range, the object of a member call), so that no call runs twice. Constructors inherited
+by `using Base::Base;` (no aggregate then), constructor templates (their parameters deduced from
+the arguments: GamePair's forwarding constructor), casts to a reference type (`(T&&)value` in
+forward and move) keeping the object, lambdas called where they are written (capturing nothing),
+`"type"sv` as the chars it spells (as the walk types it), and implicit conversions by the
+constructors the walk converts with (isExplicit: all but those explicit), where the interpreter
+had taken only those marked implicit. Where the values' types leave two constructors equally
+good (`Pair(A&&, B&&)` and `Pair(const A&, B&&)` for a string literal), the types the walk gave
+the written arguments decide. The probe: 212 -> 227 of 347 evaluate; of the 120 left, 21 do not
+allocate. Headline neutral (21,682 = 21,682, paired on 062c7de). Specs
+language/consteval_class_template_deduction, consteval_reference_results,
+consteval_inherited_constructors, consteval_constructor_templates, consteval_called_lambdas,
+consteval_converting_constructors, consteval_sv_literals.
+
 Left: addresses of the run's own locals (no use in the game's constant contexts); the code
-generator's lowering (its thread's); class template argument deduction in a constant (`Pair {
-"mask", SpriteOptions::Mask }`, `Array { ... }` tables), lambdas, a string literal's `sv`, member
-functions returning references (`result[i] = x` through an Array's operator[]); `sqrt` (the
-library's has no Kpp body yet); float template arguments. The library's gcd and lcm can go back
-to loops. The game's 9 static_asserts left need: VariantAlternative over a variant
+generator's lowering (its thread's); lambdas that capture, and a table of lambdas as function
+pointers (TransportBelt's); the 21 non-allocating tables left are one of a kind (a default
+constructor that is not constant, Debug tools' values); `sqrt` (the library's has no Kpp body
+yet); float template arguments. The library's gcd and lcm can go back to loops. A namespace-scope
+`Pair<int, Mode> five(a, m);` with variables as arguments is parsed as a function declaration
+(the parser's guess there; the walk and the code generator see no variable either). The game's 9
+static_asserts left need: VariantAlternative over a variant
 (SegmentedUnitAI, 5), `sizeof` of a member through a reference (`maskUniform.uvTransform`) and of
 another class's member (`GraphicsInterface::orthoProjectionMatrix`), and `typeID > 0` in
 RendererContainer's instances (2), which the code generator evaluates.

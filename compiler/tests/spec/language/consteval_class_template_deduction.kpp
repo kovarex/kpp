@@ -1,6 +1,5 @@
 // spec: class template argument deduction in constants: `constexpr Array named = {Pair{"first", Mode::A}, ...}`, `constexpr auto infos = Array{Info{...}, ...}`, read at compile time
 // factorio: SpriteFlagHelpers::flagsList, allCraftingMachinePrototypeFlags, entityPrototypeFlagMapping, ModPortal's sortAttributes, DebugVisualizationRenderer's colorList
-// pending: the interpreter converted the written type, the template without its arguments, where the walk had deduced them
 enum class Mode { A, B, C };
 struct Info
 {

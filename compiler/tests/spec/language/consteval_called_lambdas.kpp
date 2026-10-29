@@ -1,6 +1,5 @@
 // spec: a lambda called where it is written at compile time (`constexpr Shape shape = []() -> Shape { ... }();`), with and without parameters
 // factorio: CargoPodPrototype's FogMaskShapeDefinition, built by a lambda called in its initializer
-// pending: the interpreter ran no lambdas
 struct Shape
 {
   int w = 0;

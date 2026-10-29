@@ -1,6 +1,5 @@
 // spec: writing through a member function's reference result at compile time: `result[i] = x` through Array's operator[], `result[2].b = 9`, `front().a = 7`, `back().a += 2`, a loop filling a table
 // factorio: Util's spreadBits table (Array<uint64_t, 256>), Base64's decode table, KeyIndex's LogiKeyIndex table, RenderLayer's Array<bool, 256>
-// pending: the interpreter ran a function returning a reference for a copy of the value, which no write reached
 struct Cell
 {
   int a = 0;
