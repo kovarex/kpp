@@ -1,0 +1,23 @@
+// spec: an enumerator converted to an integer by a type's name called with it (`RenderLayer::LayerType(RenderLayer::LAST)` through a member alias, `size_t(TileRenderGroup::Last) + 1`, `size_t(AlertType::ALERTS_COUNT)`) is a constant: a template argument and an array length
+// factorio: DrawQueue's `Array<SpritesVectorType, RenderLayer::LayerType(RenderLayer::LAST)> sprites`, TileBatchDrawOrder's renderGroupSizes, AlertCenter's per-type arrays (about 800 lines when these did not evaluate)
+class RenderLayer
+{
+public:
+  using LayerType = uint8_t;
+  enum Enum : LayerType { Ground, Object, Air, LAST };
+};
+class TileBatch
+{
+public:
+  enum class TileRenderGroup { Background, UnderWater, Foreground, Last = Foreground };
+  Array<uint32_t, size_t(TileRenderGroup::Last) + 1> renderGroupSizes;
+};
+enum class AlertType : uint8_t { EntityDestroyed, NoMaterial, NoPower, ALERTS_COUNT };
+int main()
+{
+  Array<int, RenderLayer::LayerType(RenderLayer::LAST)> sprites;
+  TileBatch batch;
+  int counts[size_t(AlertType::ALERTS_COUNT)] = {};
+  println("{} {} {}", sprites.size(), batch.renderGroupSizes.size(), int(sizeof(counts) / sizeof(int)));
+  return 0;
+}

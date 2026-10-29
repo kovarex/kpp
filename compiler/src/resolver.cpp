@@ -3609,10 +3609,11 @@ struct GlobalScope::Impl
               d = fits;
           }
         }
-        // `size_t(5)`, `uint8_t(x)`: a type's name called with one value converts it.
-        if (c->args.size() == 1 && callee->name.parts.size() == 1 && !callee->name.parts[0].hasTemplateArgs)
+        // `size_t(5)`, `uint8_t(x)`, `RenderLayer::LayerType(RenderLayer::LAST)`: a type's name
+        // called with one value converts it.
+        if (c->args.size() == 1 && !callee->name.last().hasTemplateArgs)
         {
-          const Ty* to = !d ? builtinByName(callee->name.parts[0].symbol) : nullptr;
+          const Ty* to = !d && callee->name.parts.size() == 1 ? builtinByName(callee->name.parts[0].symbol) : nullptr;
           if (d && (d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
           {
             NamedType named{};
@@ -3785,6 +3786,32 @@ struct GlobalScope::Impl
       case NodeKind::BinaryExpr:
       {
         auto* b = static_cast<BinaryExpr*>(e);
+        // `1 + 1 + ... + 0` (InputAction::inputActionCount, a term per action): a long chain to the
+        // left is evaluated in a loop, not nested once per term.
+        auto chained = [](Expr* x)
+        {
+          if (!x || x->kind != NodeKind::BinaryExpr || static_cast<BinaryExpr*>(x)->isKeyword)
+            return false;
+          P op = P(static_cast<BinaryExpr*>(x)->op);
+          return op == P::Plus || op == P::Minus || op == P::Pipe;
+        };
+        if (chained(b) && chained(b->lhs))
+        {
+          std::vector<BinaryExpr*> chain;
+          Expr* first = b;
+          for (; chained(first); first = static_cast<BinaryExpr*>(first)->lhs)
+            chain.push_back(static_cast<BinaryExpr*>(first));
+          std::optional<int64_t> sum = constEval(first, ctx, depth + 1);
+          for (size_t i = chain.size(); i-- > 0 && sum;)
+          {
+            std::optional<int64_t> r = constEval(chain[i]->rhs, ctx, depth + 1);
+            if (!r)
+              return std::nullopt;
+            P op = P(chain[i]->op);
+            sum = op == P::Plus ? *sum + *r : op == P::Minus ? *sum - *r : *sum | *r;
+          }
+          return sum;
+        }
         auto l = constEval(b->lhs, ctx, depth + 1);
         // Short-circuit: `true || <unknown>` is 1, `false && <unknown>` is 0.
         if (l && P(b->op) == P::OrOr && *l)
