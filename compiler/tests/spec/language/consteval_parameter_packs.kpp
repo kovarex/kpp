@@ -1,6 +1,5 @@
 // spec: function parameter packs at compile time: a variadic function's or constructor's arguments bound as a pack, expanded in calls (`sum(forward<Args>(args)...)`), in a member initializer (none value-initializes, `value(forward<Args>(args)...)`), in a brace list (`Point{args...}`), folded over their values
 // factorio: the library's Pair(inPlaceSecond, key, args...) and the game's forwarding constructors, wherever a constant is made through one
-// pending: the interpreter ran no function with a parameter pack
 template<typename... Ts>
 constexpr int sum(Ts... values)
 {
