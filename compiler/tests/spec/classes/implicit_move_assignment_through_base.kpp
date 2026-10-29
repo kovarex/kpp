@@ -1,6 +1,5 @@
 // spec: a class that declares no special members moves by assignment: its base through the base's move assignment and its members through theirs, also when the base deletes its copy assignment (the class is then move-only)
 // factorio: FlowStatistics::Precision::ElementUsageStatistics : IntrusiveListHook<...>, whose Hook deletes its copy assignment and defines its move assignment; removeIf moves them (`*out = move(*first);`), and the game static_asserts std::is_move_assignable_v<ElementUsageStatistics>
-// pending: the class's implicit move assignment calls the base's deleted copy assignment ("a call to the deleted function Hook::operator=")
 struct Hook
 {
   Hook* next = nullptr;

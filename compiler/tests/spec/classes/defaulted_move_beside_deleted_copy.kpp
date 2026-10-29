@@ -1,6 +1,5 @@
 // spec: a defaulted move constructor beside a deleted copy constructor moves the members, in a containing class's implicit move and when a Vector relocates its elements
 // factorio: Animation (`explicit Animation(Animation&&) = default`), Trigger, TriggerEffect, ProductPrototype, ResearchIngredient in Vectors and Pairs: ~45 headline lines "copying X, whose copy constructor is deleted"
-// pending: the defaulted move was taken for a copy, whose constructor is deleted ("copying Anim, whose copy constructor is deleted")
 struct Anim
 {
   Anim() = default;

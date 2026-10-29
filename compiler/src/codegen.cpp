@@ -2006,11 +2006,12 @@ namespace
       }
       const Ty* firstTy = args.size() == 1 ? args[0]->ty : nullptr;
       FunctionDecl* ctor = findConstructor(t, argTypesOf(args), at);
-      if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t) && ctor->params.size() == 1)
+      if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t) && !ctor->params.empty())
       {
         // The same class: a copy, unless the chosen constructor is a copy constructor itself (a
         // converting one, deleted or not, reached through a conversion of the class, loses to
-        // the implicit copy: `Ref(const int&&) = delete` beside Ref's `operator const int&()`).
+        // the implicit copy: `Ref(const int&&) = delete` beside Ref's `operator const int&()`;
+        // `ConvertingElement(const Tree&, uint32_t index = 0)` beside Tree's converting template).
         TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
         const Ty* pt;
         {
@@ -2457,6 +2458,7 @@ namespace
       ClassDecl* c = classDef(t->decl, at);
       TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
       FunctionDecl* move = nullptr;
+      bool defaultedMove = false;
       {
         ArgsScope scope(*this, &args);
         for (Decl* m : c->members)
@@ -2467,15 +2469,26 @@ namespace
           if (f->params.size() != 1)
             continue;
           const Ty* pt = declType(f->params[0]);
+          bool ownMove = pt && pt->kind == TyKind::RRef && isClass(pt->inner) && classKey(pt->inner) == classKey(t);
           if (f->flags & DF_Default)
-            continue; // `T(T&&) = default`: the memberwise move below
-          if (pt && pt->kind == TyKind::RRef && isClass(pt->inner) && classKey(pt->inner) == classKey(t))
+          {
+            defaultedMove = defaultedMove || ownMove; // `T(T&&) = default`: the memberwise move below
+            continue;
+          }
+          if (ownMove)
             move = f;
         }
       }
       if (move && !(move->flags & DF_Delete))
       {
         emitCall("", "void " + useFunction(move, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
+        return;
+      }
+      if (defaultedMove && !c->isTypedUnion)
+      {
+        // `explicit Animation(Animation&&) = default` beside a deleted copy constructor: the
+        // members moved, the copy constructor not looked at (a move is no copy).
+        memberwiseConstruct(dst, src, t, at, true);
         return;
       }
       copyConstruct(dst, src, t, at, true); // the user copy constructor if any, else memberwise moves
@@ -2591,8 +2604,9 @@ namespace
       const Ty* foundIn = nullptr;
       // From an lvalue: operator=(const T&). From a temporary or `move(x)`: operator=(T&&) if there is one.
       std::vector<const Ty*> argTypes{move ? types.rref(types.unqualified(t)) : types.lref(types.qualified(t, true, false))};
-      FunctionDecl* op = findMemberFunction(t, "operator=", argTypes, t, at, &foundIn);
-      if (op && (op->flags & DF_Default))
+      FunctionDecl* op = declaresAssignment(t, at) ? findMemberFunction(t, "operator=", argTypes, t, at, &foundIn) : nullptr;
+      bool defaulted = op && (op->flags & DF_Default);
+      if (defaulted)
         op = nullptr; // `operator=(const T&) = default`: the memberwise assignment below
       if (op)
       {
@@ -2621,9 +2635,32 @@ namespace
         fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
         return;
       }
-      if (findDestructor(classDef(t->decl, at)))
+      if (findDestructor(classDef(t->decl, at)) && !defaulted) // a defaulted one is memberwise, destructor or not (Trigger)
         unsupported(at, "assignment to " + qualifiedName(t->decl) + ", which has a destructor but no operator=");
       memberwiseAssign(dst, src, t, at, move);
+    }
+
+    // Whether class t declares an operator= of its own (`using Base::operator=;` included): one that
+    // does not has implicit ones (memberwise), which hide its bases'.
+    bool declaresAssignment(const Ty* t, Node* at)
+    {
+      ClassDecl* c = classDef(t->decl, at);
+      for (Decl* m : c->members)
+      {
+        if (m->kind == NodeKind::FunctionDecl)
+        {
+          auto* f = static_cast<FunctionDecl*>(m);
+          if (!f->name.empty() && f->name.last().special == 2 && P(f->name.last().opToken) == P::Assign)
+            return true;
+        }
+        else if (m->kind == NodeKind::UsingNameDecl)
+        {
+          const QualifiedName& name = static_cast<UsingNameDecl*>(m)->name;
+          if (!name.empty() && name.last().special == 2 && P(name.last().opToken) == P::Assign)
+            return true;
+        }
+      }
+      return false;
     }
 
     // Assigns the object at src to the one at dst base by base and member by member.
@@ -9837,7 +9874,10 @@ namespace
         Expr* rhsExpr = b->rhs;
         Span<Expr*> one{&rhsExpr, 1};
         const Ty* foundIn = nullptr;
-        if (isClass(lt) && findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
+        // `a = move(b)` of a class declaring no operator=: its implicit one (memberwise, below), not
+        // a base's, which it hides.
+        bool implicitAssignment = op == P::Assign && isClass(lt) && !declaresAssignment(types.unqualified(lt), b);
+        if (isClass(lt) && !implicitAssignment && findMemberFunction(types.unqualified(lt), name, argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
           return callRvalue(operatorCall(rvalue(b->lhs), name, one, b, true), b);
         // A free `operator+(const char*, const String&)` and the like, templates among them
         // (`template<class B, class E> bool operator!=(const Opt<B, E>&, const Opt<B, E>&)`).
