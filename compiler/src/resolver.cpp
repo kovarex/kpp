@@ -3401,7 +3401,14 @@ struct GlobalScope::Impl
     std::optional<int64_t> v = constEval(operand, ctx, depth + 1);
     if (!v || !type)
       return v;
-    const Ty* t = types.unqualified(convertType(type, ctx, depth + 1));
+    return castValue(types.unqualified(convertType(type, ctx, depth + 1)), *v);
+  }
+
+  // A constant converted to type t: to bool, or cut to a narrower integer type.
+  static std::optional<int64_t> castValue(const Ty* t, std::optional<int64_t> v)
+  {
+    if (!v || !t)
+      return v;
     if (t->kind == TyKind::Bool)
       return *v != 0 ? 1 : 0;
     if ((t->kind == TyKind::Int || t->kind == TyKind::Char) && t->bits > 0 && t->bits < 64)
@@ -3543,7 +3550,41 @@ struct GlobalScope::Impl
         auto* callee = static_cast<NameExpr*>(c->callee);
         Decl* d = callee->resolved;
         if (!d || d->kind == NodeKind::TemplateParamDecl)
-          d = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst).decl;
+        {
+          Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst);
+          d = l.decl;
+          // Not typed where it is written (a template argument, `Imm<max(a, b)>`): of the
+          // functions of the name, the one whose parameters the arguments fill, when one does.
+          if (d && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->params.size() != c->args.size() && l.overloads)
+          {
+            Decl* fits = nullptr;
+            int fitting = 0;
+            for (const Entry& entry : *l.overloads)
+              if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->params.size() == c->args.size() &&
+                  static_cast<FunctionDecl*>(entry.decl)->body)
+              {
+                fits = entry.decl;
+                ++fitting;
+              }
+            if (fitting == 1)
+              d = fits;
+          }
+        }
+        // `size_t(5)`, `uint8_t(x)`: a type's name called with one value converts it.
+        if (c->args.size() == 1 && callee->name.parts.size() == 1 && !callee->name.parts[0].hasTemplateArgs)
+        {
+          const Ty* to = !d ? builtinByName(callee->name.parts[0].symbol) : nullptr;
+          if (d && (d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+          {
+            NamedType named{};
+            named.kind = NodeKind::NamedType;
+            named.token = callee->token;
+            named.name = callee->name;
+            to = types.unqualified(convertType(&named, ctx, depth + 1));
+          }
+          if (to && (to->kind == TyKind::Int || to->kind == TyKind::Char || to->kind == TyKind::Bool))
+            return castValue(to, constEval(c->args[0], ctx, depth + 1));
+        }
         if (!d)
           return std::nullopt;
         if (d->kind == NodeKind::EnumDecl && c->args.size() == 1)
@@ -3592,11 +3633,25 @@ struct GlobalScope::Impl
         for (const Subst::Pair& p : bound.pairs)
           params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
         const NamePart& written = callee->name.last();
+        Subst fromArgs; // `max(sizeof(Key) + 1u, 2 * sizeof(void*) - 1)`: the parameters not written, deduced from the arguments' types
+        if (written.templateArgs.size() < f->templateParams.size())
+        {
+          LocalStack own;
+          for (Decl* p : f->templateParams)
+            own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+          TypeContext pctx{lexicalScopeOf(f), &own, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+          for (size_t i = 0; i < c->args.size() && i < f->params.size(); ++i)
+          {
+            const Ty* argTy = typeOfSignatureExpression(c->args[i], ctx);
+            const Ty* pattern = convertType(static_cast<ParamDecl*>(f->params[i])->type, pctx, depth + 1);
+            if (argTy && argTy->isKnown() && pattern && pattern->isKnown())
+              deduce(pattern, argumentType(c->args[i], argTy, types), fromArgs);
+          }
+        }
         for (size_t i = 0; i < f->templateParams.size(); ++i)
         {
-          if (i >= written.templateArgs.size())
-            return std::nullopt;
-          const Ty* t = templateArgument(written.templateArgs[i], f->templateParams[i], ctx, depth + 1);
+          const Ty* t = i < written.templateArgs.size() ? templateArgument(written.templateArgs[i], f->templateParams[i], ctx, depth + 1)
+                                                        : fromArgs.find(f->templateParams[i]);
           if (!t || !t->isKnown() || types.isDependent(t))
             return std::nullopt;
           bound.pairs.push_back({f->templateParams[i], t});
@@ -6335,8 +6390,8 @@ struct GlobalScope::Impl
   {
     static thread_local int nesting = 0;
     FunctionDecl* f = ctx.function;
-    const std::vector<Token>* tokens = f && f->file ? f->file->tokens : ctx.tokens; // an alias template's: its own
-    std::string_view text = f && f->file ? f->file->text : ctx.text;
+    const std::vector<Token>* tokens = f && f->file ? f->file->tokens : ctx.tokens ? ctx.tokens : fallbackTokens; // an alias template's: its own
+    std::string_view text = f && f->file ? f->file->text : ctx.tokens ? ctx.text : fallbackText;
     if (!tokens || nesting > 8)
       return nullptr;
     ++nesting;

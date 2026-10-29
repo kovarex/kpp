@@ -1,0 +1,19 @@
+// spec: a constant expression calling a function template without written template arguments (`max(a, b)`: deduced from the arguments' types), and a type's name called with one value (`size_t(5)` through an alias, `uint8_t(300)`), evaluate as template arguments and in static_asserts
+// factorio: PropertyTree's `using KeyType = ImmutableStringTemplate<::max(sizeof(SharedPtr<const String>) + 1u, 2 * sizeof(const char *) - 1)>`
+template<size_t N>
+struct Buffer
+{
+  char data[N];
+};
+template<class T>
+const T& biggest(const T& a, const T& b) { return a < b ? b : a; }
+using Small = Buffer<biggest(5, 15)>;
+using Sized = Buffer<max(sizeof(int) + 1u, 2 * sizeof(const char*) - 1)>;
+using Cast = Buffer<max(size_t(3), size_t(2))>;
+constexpr size_t limit = biggest(size_t(7), sizeof(short));
+static_assert(limit == 7 && uint8_t(300) == 44);
+int main()
+{
+  println("{} {} {} {}", sizeof(Small), sizeof(Sized), sizeof(Cast), limit);
+  return 0;
+}
