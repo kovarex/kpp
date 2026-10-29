@@ -19,6 +19,17 @@ pointers; Deque's are random access; Map, Set, MultiMap, MultiSet, List, FastMap
 are bidirectional; HashMap, HashSet and ForwardList's are forward; `backInserter(c)` and
 `inserter(c, it)` give output iterators.
 
+`ReverseIterator<It>` (std::reverse_iterator) walks a bidirectional iterator It (a pointer, or a
+class's iterator) backwards. `ReverseIterator(it)` refers to the element before it, so a range's
+`rbegin()` is `ReverseIterator(end())` and `rend()` is `ReverseIterator(begin())`; `base()` gives
+it back. `*`, `->`, `++` (one element towards the front), `--`; for a random access It also `+ n`,
+`- n`, `+=`, `-=`, `[n]`, the distance `a - b` and the orderings, all reversed (`a < b` when a is
+nearer the back). `==`, `!=` and the orderings compare with a ReverseIterator of another It as
+well, and a ReverseIterator converts to the one of an iterator its It converts to (a
+`const_reverse_iterator` from a `reverse_iterator`). Its member types are It's, through
+IteratorTraits; `iterator_type` is It. `makeReverseIterator(it)` (std::make_reverse_iterator)
+makes one. The containers' reverse iterators are ReverseIterators of their iterators.
+
 `less` is a callable taking two elements and returning bool, a strict weak ordering as in
 common.md; without it, `operator<` (`Less<>`). `same` is a callable telling whether two elements
 are equal; without it, `operator==`. Results that are counts or distances are `ptrdiff_t`.

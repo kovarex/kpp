@@ -769,8 +769,8 @@ struct Map
   using const_reference = const Pair<K, V>&;
   using pointer = Pair<K, V>*;
   using const_pointer = const Pair<K, V>*;
-  using reverse_iterator = ReverseOf<RbIterator<Pair<K, V>>>;
-  using const_reverse_iterator = ReverseOf<RbIterator<Pair<K, V>>>;
+  using reverse_iterator = ReverseIterator<RbIterator<Pair<K, V>>>;
+  using const_reverse_iterator = ReverseIterator<RbIterator<Pair<K, V>>>;
   using key_type = K;
   using mapped_type = V;
   using key_compare = Compare;
@@ -889,8 +889,8 @@ struct Map
   }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> position) { return this->tree.erase(position); }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> first, RbIterator<Pair<K, V>> last) { return this->tree.erase(first, last); }
-  ReverseOf<RbIterator<Pair<K, V>>> rbegin() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.end()); }
-  ReverseOf<RbIterator<Pair<K, V>>> rend() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.begin()); }
+  ReverseIterator<RbIterator<Pair<K, V>>> rbegin() const { return ReverseIterator<RbIterator<Pair<K, V>>>(this->tree.end()); }
+  ReverseIterator<RbIterator<Pair<K, V>>> rend() const { return ReverseIterator<RbIterator<Pair<K, V>>>(this->tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   RbIterator<Pair<K, V>> insert(RbIterator<Pair<K, V>> hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
@@ -983,8 +983,8 @@ struct Set
   using const_reference = const T&;
   using pointer = T*;
   using const_pointer = const T*;
-  using reverse_iterator = ReverseOf<RbIterator<T>>;
-  using const_reverse_iterator = ReverseOf<RbIterator<T>>;
+  using reverse_iterator = ReverseIterator<RbIterator<T>>;
+  using const_reverse_iterator = ReverseIterator<RbIterator<T>>;
   using key_type = T;
   using key_compare = Compare;
 
@@ -1066,8 +1066,8 @@ struct Set
   }
   RbIterator<T> erase(RbIterator<T> position) { return this->tree.erase(position); }
   RbIterator<T> erase(RbIterator<T> first, RbIterator<T> last) { return this->tree.erase(first, last); }
-  ReverseOf<RbIterator<T>> rbegin() const { return ReverseOf<RbIterator<T>>(this->tree.end()); }
-  ReverseOf<RbIterator<T>> rend() const { return ReverseOf<RbIterator<T>>(this->tree.begin()); }
+  ReverseIterator<RbIterator<T>> rbegin() const { return ReverseIterator<RbIterator<T>>(this->tree.end()); }
+  ReverseIterator<RbIterator<T>> rend() const { return ReverseIterator<RbIterator<T>>(this->tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   RbIterator<T> insert(RbIterator<T> hint, const T& entry) { return this->insert(hint, T(entry)); }
@@ -1160,8 +1160,8 @@ struct MultiMap
   using const_reference = const Pair<K, V>&;
   using pointer = Pair<K, V>*;
   using const_pointer = const Pair<K, V>*;
-  using reverse_iterator = ReverseOf<RbIterator<Pair<K, V>>>;
-  using const_reverse_iterator = ReverseOf<RbIterator<Pair<K, V>>>;
+  using reverse_iterator = ReverseIterator<RbIterator<Pair<K, V>>>;
+  using const_reverse_iterator = ReverseIterator<RbIterator<Pair<K, V>>>;
   using key_type = K;
   using mapped_type = V;
   using key_compare = Compare;
@@ -1234,8 +1234,8 @@ struct MultiMap
   }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> position) { return this->tree.erase(position); }
   RbIterator<Pair<K, V>> erase(RbIterator<Pair<K, V>> first, RbIterator<Pair<K, V>> last) { return this->tree.erase(first, last); }
-  ReverseOf<RbIterator<Pair<K, V>>> rbegin() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.end()); }
-  ReverseOf<RbIterator<Pair<K, V>>> rend() const { return ReverseOf<RbIterator<Pair<K, V>>>(this->tree.begin()); }
+  ReverseIterator<RbIterator<Pair<K, V>>> rbegin() const { return ReverseIterator<RbIterator<Pair<K, V>>>(this->tree.end()); }
+  ReverseIterator<RbIterator<Pair<K, V>>> rend() const { return ReverseIterator<RbIterator<Pair<K, V>>>(this->tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   RbIterator<Pair<K, V>> insert(RbIterator<Pair<K, V>> hint, const Pair<K, V>& entry) { return this->insert(hint, Pair<K, V>(entry)); }
@@ -1311,8 +1311,8 @@ struct MultiSet
   using const_reference = const T&;
   using pointer = T*;
   using const_pointer = const T*;
-  using reverse_iterator = ReverseOf<RbIterator<T>>;
-  using const_reverse_iterator = ReverseOf<RbIterator<T>>;
+  using reverse_iterator = ReverseIterator<RbIterator<T>>;
+  using const_reverse_iterator = ReverseIterator<RbIterator<T>>;
   using key_type = T;
   using key_compare = Compare;
 
@@ -1381,8 +1381,8 @@ struct MultiSet
   }
   RbIterator<T> erase(RbIterator<T> position) { return this->tree.erase(position); }
   RbIterator<T> erase(RbIterator<T> first, RbIterator<T> last) { return this->tree.erase(first, last); }
-  ReverseOf<RbIterator<T>> rbegin() const { return ReverseOf<RbIterator<T>>(this->tree.end()); }
-  ReverseOf<RbIterator<T>> rend() const { return ReverseOf<RbIterator<T>>(this->tree.begin()); }
+  ReverseIterator<RbIterator<T>> rbegin() const { return ReverseIterator<RbIterator<T>>(this->tree.end()); }
+  ReverseIterator<RbIterator<T>> rend() const { return ReverseIterator<RbIterator<T>>(this->tree.begin()); }
   // Inserts as insert(entry) does; hint, a position next to where the entry belongs, makes it
   // O(1) amortized when the entry goes right before hint.
   RbIterator<T> insert(RbIterator<T> hint, const T& entry) { return this->insert(hint, T(entry)); }

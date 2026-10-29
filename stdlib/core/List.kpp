@@ -134,8 +134,8 @@ struct List
   T& back() const { return ((ListNode<T>*)this->sentinel.prev)->value; }
   ListIterator<T> begin() const { return ListIterator<T>(this->sentinel.next); }
   ListIterator<T> end() const { return ListIterator<T>((ListLinks*)&this->sentinel); }
-  ReverseOf<ListIterator<T>> rbegin() const { return ReverseOf<ListIterator<T>>(this->end()); }
-  ReverseOf<ListIterator<T>> rend() const { return ReverseOf<ListIterator<T>>(this->begin()); }
+  ReverseIterator<ListIterator<T>> rbegin() const { return ReverseIterator<ListIterator<T>>(this->end()); }
+  ReverseIterator<ListIterator<T>> rend() const { return ReverseIterator<ListIterator<T>>(this->begin()); }
   void swap(List<T>& other)
   {
     List<T> held(move(other));

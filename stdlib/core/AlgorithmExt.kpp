@@ -382,5 +382,6 @@ void uninitializedCopy(const T* first, const T* last, T* dest)
     new (dest) T(*first);
 }
 
-template<typename T>
-ReverseIterator<T> makeReverseIterator(T* it) { return ReverseIterator<T>(it); }
+// The reverse of it (std::make_reverse_iterator).
+template<typename It>
+ReverseIterator<It> makeReverseIterator(It it) { return ReverseIterator<It>(it); }

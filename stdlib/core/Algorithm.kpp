@@ -644,119 +644,107 @@ void mergeRelocating(T* a, T* middle, T* end, T* out, F& less)
 
 // --- Reverse iterators ---
 
-// Walks a pointer range backwards: rbegin() of a vector is its end, and *it is the element before.
-template<typename T>
+// The reverse of a bidirectional iterator It (std::reverse_iterator<It>; It a pointer too): it
+// refers to the element before its base() position, so rbegin() of a range is ReverseIterator(end())
+// and rend() is ReverseIterator(begin()); ++ steps backwards, -- forwards. For a random-access It
+// (a pointer, a Vector's or a Deque's iterator) it has the random-access operations as well,
+// reversed: `it + n` is n elements nearer the front, `a < b` when a is nearer the back.
+template<typename It>
 struct ReverseIterator
 {
-  using value_type = RemoveConst<T>;
-  using difference_type = ptrdiff_t;
-  using pointer = T*;
-  using reference = T&;
-  using iterator_category = RandomAccessIteratorTag;
+  using iterator_type = It;
+  using value_type = typename IteratorTraits<It>::value_type;
+  using difference_type = typename IteratorTraits<It>::difference_type;
+  using pointer = typename IteratorTraits<It>::pointer;
+  using reference = typename IteratorTraits<It>::reference;
+  using iterator_category = typename IteratorTraits<It>::iterator_category;
 
-  T* position = nullptr; // one past the element *this yields
+  It current; // one past the element *this refers to
 
-  ReverseIterator() {}
-  explicit ReverseIterator(T* position) : position(position) {}
+  ReverseIterator() : current() {}
+  explicit ReverseIterator(It it) : current(it) {}
+  // From the reverse of an iterator that converts to It (a const_reverse_iterator from a reverse_iterator).
   template<typename U>
-  implicit ReverseIterator(ReverseIterator<U> other) : position(other.position) {} // const_reverse_iterator from reverse_iterator
+  implicit ReverseIterator(const ReverseIterator<U>& other) : current(other.current) {}
 
-  T& operator*() const { return *(this->position - 1); }
-  T* operator->() const { return this->position - 1; }
-  T& operator[](ptrdiff_t n) const { return *(this->position - 1 - n); }
-  T* base() const { return this->position; }
-  ReverseIterator<T>& operator++()
+  It base() const { return this->current; }
+  reference operator*() const
   {
-    --this->position;
-    return *this;
-  }
-  ReverseIterator<T> operator++(int)
-  {
-    ReverseIterator<T> before = *this;
-    --this->position;
-    return before;
-  }
-  ReverseIterator<T>& operator--()
-  {
-    ++this->position;
-    return *this;
-  }
-  ReverseIterator<T> operator--(int)
-  {
-    ReverseIterator<T> before = *this;
-    ++this->position;
-    return before;
-  }
-  ReverseIterator<T>& operator+=(ptrdiff_t n)
-  {
-    this->position -= n;
-    return *this;
-  }
-  ReverseIterator<T>& operator-=(ptrdiff_t n)
-  {
-    this->position += n;
-    return *this;
-  }
-  ReverseIterator<T> operator+(ptrdiff_t n) const { return ReverseIterator<T>(this->position - n); }
-  ReverseIterator<T> operator-(ptrdiff_t n) const { return ReverseIterator<T>(this->position + n); }
-  ptrdiff_t operator-(ReverseIterator<T> other) const { return other.position - this->position; }
-  bool operator==(ReverseIterator<T> other) const { return this->position == other.position; }
-  bool operator!=(ReverseIterator<T> other) const { return this->position != other.position; }
-  bool operator<(ReverseIterator<T> other) const { return other.position < this->position; }
-  bool operator>(ReverseIterator<T> other) const { return this->position < other.position; }
-  bool operator<=(ReverseIterator<T> other) const { return !(other.position > this->position); }
-  bool operator>=(ReverseIterator<T> other) const { return !(this->position > other.position); }
-};
-
-// The reverse of a bidirectional iterator It (rbegin()/rend() of the maps, sets and lists): it
-// refers to the element before its base position, and ++ steps backwards.
-template<typename It>
-struct ReverseOf
-{
-  using value_type = typename It::value_type;
-  using difference_type = ptrdiff_t;
-  using pointer = typename It::value_type*;
-  using reference = typename It::value_type&;
-  using iterator_category = BidirectionalIteratorTag;
-
-  It position;
-
-  ReverseOf() {}
-  explicit ReverseOf(It position) : position(position) {}
-
-  typename It::value_type& operator*() const
-  {
-    It before = this->position;
+    It before = this->current;
     --before;
     return *before;
   }
-  typename It::value_type* operator->() const { return &**this; }
-  It base() const { return this->position; }
-  ReverseOf<It>& operator++()
+  pointer operator->() const
   {
-    --this->position;
+    if constexpr (isPointer<It>)
+      return this->current - 1;
+    else
+      return &**this;
+  }
+  reference operator[](difference_type n) const { return *(*this + n); }
+
+  ReverseIterator<It>& operator++()
+  {
+    --this->current;
     return *this;
   }
-  ReverseOf<It> operator++(int)
+  ReverseIterator<It> operator++(int)
   {
-    ReverseOf<It> before = *this;
-    --this->position;
+    ReverseIterator<It> before = *this;
+    --this->current;
     return before;
   }
-  ReverseOf<It>& operator--()
+  ReverseIterator<It>& operator--()
   {
-    ++this->position;
+    ++this->current;
     return *this;
   }
-  ReverseOf<It> operator--(int)
+  ReverseIterator<It> operator--(int)
   {
-    ReverseOf<It> before = *this;
-    ++this->position;
+    ReverseIterator<It> before = *this;
+    ++this->current;
     return before;
   }
-  bool operator==(const ReverseOf<It>& other) const { return this->position == other.position; }
-  bool operator!=(const ReverseOf<It>& other) const { return this->position != other.position; }
+  ReverseIterator<It>& operator+=(difference_type n)
+  {
+    this->current -= n;
+    return *this;
+  }
+  ReverseIterator<It>& operator-=(difference_type n)
+  {
+    this->current += n;
+    return *this;
+  }
+  ReverseIterator<It> operator+(difference_type n) const { return ReverseIterator<It>(this->current - n); }
+  ReverseIterator<It> operator-(difference_type n) const { return ReverseIterator<It>(this->current + n); }
+  difference_type operator-(const ReverseIterator<It>& other) const { return other.current - this->current; }
+  template<typename U>
+  difference_type operator-(const ReverseIterator<U>& other) const { return other.current - this->current; }
+
+  // Comparisons with a reverse iterator of the same It, and of another (const and non-const).
+  bool operator==(const ReverseIterator<It>& other) const { return this->current == other.current; }
+  bool operator!=(const ReverseIterator<It>& other) const { return this->current != other.current; }
+  bool operator<(const ReverseIterator<It>& other) const { return other.current < this->current; }
+  bool operator>(const ReverseIterator<It>& other) const { return this->current < other.current; }
+  bool operator<=(const ReverseIterator<It>& other) const { return !(this->current < other.current); }
+  bool operator>=(const ReverseIterator<It>& other) const { return !(other.current < this->current); }
+  template<typename U>
+  bool operator==(const ReverseIterator<U>& other) const { return this->current == other.current; }
+  template<typename U>
+  bool operator!=(const ReverseIterator<U>& other) const { return this->current != other.current; }
+  template<typename U>
+  bool operator<(const ReverseIterator<U>& other) const { return other.current < this->current; }
+  template<typename U>
+  bool operator>(const ReverseIterator<U>& other) const { return this->current < other.current; }
+  template<typename U>
+  bool operator<=(const ReverseIterator<U>& other) const { return !(this->current < other.current); }
+  template<typename U>
+  bool operator>=(const ReverseIterator<U>& other) const { return !(other.current < this->current); }
 };
+
+// n + it, as it + n.
+template<typename It>
+ReverseIterator<It> operator+(typename ReverseIterator<It>::difference_type n, const ReverseIterator<It>& it) { return it + n; }
 
 // --- Comparator objects ---
 

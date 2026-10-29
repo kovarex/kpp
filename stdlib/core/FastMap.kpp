@@ -669,8 +669,8 @@ struct FastMap
     this->tree.erase(key);
     return this->tree.lowerBound(key);
   }
-  ReverseOf<BTreeIterator<Pair<K, V>>> rbegin() const { return ReverseOf<BTreeIterator<Pair<K, V>>>(this->tree.end()); }
-  ReverseOf<BTreeIterator<Pair<K, V>>> rend() const { return ReverseOf<BTreeIterator<Pair<K, V>>>(this->tree.begin()); }
+  ReverseIterator<BTreeIterator<Pair<K, V>>> rbegin() const { return ReverseIterator<BTreeIterator<Pair<K, V>>>(this->tree.end()); }
+  ReverseIterator<BTreeIterator<Pair<K, V>>> rend() const { return ReverseIterator<BTreeIterator<Pair<K, V>>>(this->tree.begin()); }
   // Inserts as insert(entry) does (the hint is not used: O(log n) either way).
   BTreeIterator<Pair<K, V>> insert(BTreeIterator<Pair<K, V>> hint, const Pair<K, V>& entry) { return this->insert(entry).first; }
   BTreeIterator<Pair<K, V>> insert(BTreeIterator<Pair<K, V>> hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
@@ -768,8 +768,8 @@ struct FastSet
     this->tree.erase(value);
     return this->tree.lowerBound(value);
   }
-  ReverseOf<BTreeIterator<T>> rbegin() const { return ReverseOf<BTreeIterator<T>>(this->tree.end()); }
-  ReverseOf<BTreeIterator<T>> rend() const { return ReverseOf<BTreeIterator<T>>(this->tree.begin()); }
+  ReverseIterator<BTreeIterator<T>> rbegin() const { return ReverseIterator<BTreeIterator<T>>(this->tree.end()); }
+  ReverseIterator<BTreeIterator<T>> rend() const { return ReverseIterator<BTreeIterator<T>>(this->tree.begin()); }
   // Inserts as insert(entry) does (the hint is not used: O(log n) either way).
   BTreeIterator<T> insert(BTreeIterator<T> hint, const T& entry) { return this->insert(entry).first; }
   BTreeIterator<T> insert(BTreeIterator<T> hint, T&& entry) { return this->insert(move(entry)).first; }

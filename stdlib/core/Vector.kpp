@@ -10,8 +10,8 @@ struct Vector
 
   using iterator = T*;
   using const_iterator = const T*;
-  using reverse_iterator = ReverseIterator<T>;
-  using const_reverse_iterator = ReverseIterator<const T>;
+  using reverse_iterator = ReverseIterator<T*>;
+  using const_reverse_iterator = ReverseIterator<const T*>;
   using value_type = T;
   using size_type = int;
   using difference_type = ptrdiff_t;
@@ -98,12 +98,12 @@ struct Vector
   const T* end() const { return this->items + this->length; }
   const T* cbegin() const { return this->items; }
   const T* cend() const { return this->items + this->length; }
-  ReverseIterator<T> rbegin() { return ReverseIterator<T>(this->items + this->length); }
-  ReverseIterator<T> rend() { return ReverseIterator<T>(this->items); }
-  ReverseIterator<const T> rbegin() const { return ReverseIterator<const T>(this->items + this->length); }
-  ReverseIterator<const T> rend() const { return ReverseIterator<const T>(this->items); }
-  ReverseIterator<const T> crbegin() const { return ReverseIterator<const T>(this->items + this->length); }
-  ReverseIterator<const T> crend() const { return ReverseIterator<const T>(this->items); }
+  ReverseIterator<T*> rbegin() { return ReverseIterator<T*>(this->items + this->length); }
+  ReverseIterator<T*> rend() { return ReverseIterator<T*>(this->items); }
+  ReverseIterator<const T*> rbegin() const { return ReverseIterator<const T*>(this->items + this->length); }
+  ReverseIterator<const T*> rend() const { return ReverseIterator<const T*>(this->items); }
+  ReverseIterator<const T*> crbegin() const { return ReverseIterator<const T*>(this->items + this->length); }
+  ReverseIterator<const T*> crend() const { return ReverseIterator<const T*>(this->items); }
 
   // Lets go of unused capacity: afterwards capacity() == size().
   void shrink_to_fit()
