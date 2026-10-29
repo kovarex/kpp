@@ -39,8 +39,14 @@ void ResolveStats::add(const ResolveStats& o)
   unresolvedMacroLike += o.unresolvedMacroLike;
   for (const auto& [symbol, count] : o.unresolvedSymbols)
     unresolvedSymbols[symbol] += count;
+  auto earliest = [](std::unordered_map<uint32_t, Where>& into, uint32_t symbol, const Where& where)
+  {
+    auto [it, inserted] = into.emplace(symbol, where);
+    if (!inserted && std::make_pair(where.file, where.token) < std::make_pair(it->second.file, it->second.token))
+      it->second = where; // the earliest occurrence, whatever order the statistics are added in
+  };
   for (const auto& [symbol, where] : o.unresolvedFirst)
-    unresolvedFirst.emplace(symbol, where);
+    earliest(unresolvedFirst, symbol, where);
   membersBound += o.membersBound;
   membersDependent += o.membersDependent;
   membersUnknownBase += o.membersUnknownBase;
@@ -48,7 +54,7 @@ void ResolveStats::add(const ResolveStats& o)
   for (const auto& [symbol, count] : o.missingMembers)
     missingMembers[symbol] += count;
   for (const auto& [symbol, where] : o.missingMembersFirst)
-    missingMembersFirst.emplace(symbol, where);
+    earliest(missingMembersFirst, symbol, where);
   for (const auto& [symbol, count] : o.unknownBaseMembers)
     unknownBaseMembers[symbol] += count;
   exprsTyped += o.exprsTyped;
@@ -72,7 +78,15 @@ void ResolveStats::add(const ResolveStats& o)
   {
     auto [it, inserted] = why.emplace(key, site);
     if (!inserted)
+    {
       it->second.count += site.count;
+      auto order = [](const WhySite& w) { return std::make_pair(w.file ? w.file->index : UINT32_MAX, w.token); };
+      if (order(site) < order(it->second))
+      {
+        it->second.file = site.file; // the earliest place, whatever order the statistics are added in
+        it->second.token = site.token;
+      }
+    }
   }
 }
 
@@ -81,11 +95,17 @@ std::string whyReport(const ResolveStats& total, SymbolTable& symbols, int perCa
   static const char* causes[] = {"none", "name", "object type", "member", "overload", "deduction", "auto return",
                                  "unsupported construct", "operator", "auto"};
   std::vector<std::pair<uint64_t, ResolveStats::WhySite>> sites(total.why.begin(), total.why.end());
-  std::sort(sites.begin(), sites.end(), [](auto& a, auto& b)
+  std::sort(sites.begin(), sites.end(), [&](auto& a, auto& b)
   {
     if ((a.first >> 55) != (b.first >> 55))
       return (a.first >> 55) < (b.first >> 55);
-    return a.second.count != b.second.count ? a.second.count > b.second.count : a.first < b.first;
+    if (a.second.count != b.second.count)
+      return a.second.count > b.second.count;
+    // Ties by node kind, then by the name's text: symbol ids depend on the threads that lexed.
+    if (((a.first >> 32) & 0xFF) != ((b.first >> 32) & 0xFF))
+      return ((a.first >> 32) & 0xFF) < ((b.first >> 32) & 0xFF);
+    auto name = [&](uint64_t key) { return uint32_t(key) == UINT32_MAX ? std::string_view("-") : symbols.name(uint32_t(key)); };
+    return name(a.first) < name(b.first);
   });
   std::string out;
   char line[512];
@@ -771,6 +791,16 @@ struct GlobalScope::Impl
   InstShard instShards[instShardCount];
   std::atomic<size_t> instClasses{0}, instFunctions{0}, instBodies{0}, instRequests{0}, instWaits{0};
   std::atomic<uint64_t> instNanos{0};
+  // Every instance walk's statistics (GlobalScope::instanceStats), not its asker's: an instance
+  // first asked for by a probe (a requires-expression's, whose statistics are dropped) would
+  // otherwise go uncounted in some runs and counted in others.
+  std::mutex instanceStatsMutex;
+  ResolveStats instanceStatsTotal;
+  void addInstanceStats(const ResolveStats& s)
+  {
+    std::lock_guard lock(instanceStatsMutex);
+    instanceStatsTotal.add(s);
+  }
 
   // ---- generic lambdas: where each was written, so that its body can be typed for every call ----
   // A lambda with template parameters (written, or invented for `auto` parameters) is a template
@@ -839,10 +869,17 @@ struct GlobalScope::Impl
     std::string key(reinterpret_cast<const char*>(&f), sizeof(f));
     if (extra)
       key.append(reinterpret_cast<const char*>(&extra), sizeof(extra));
+    // In parameter order whatever order the pairs were added in (as claimInstance's key): the same
+    // instantiation reached by two paths was otherwise checked twice, by whichever paths ran.
+    std::vector<std::pair<const void*, const void*>> pairs;
+    pairs.reserve(subst.pairs.size());
     for (const Subst::Pair& pair : subst.pairs)
+      pairs.push_back({pair.param, pair.type});
+    std::sort(pairs.begin(), pairs.end());
+    for (auto& [param, type] : pairs)
     {
-      key.append(reinterpret_cast<const char*>(&pair.param), sizeof(pair.param));
-      key.append(reinterpret_cast<const char*>(&pair.type), sizeof(pair.type));
+      key.append(reinterpret_cast<const char*>(&param), sizeof(param));
+      key.append(reinterpret_cast<const char*>(&type), sizeof(type));
     }
     InstShard& shard = instShards[(PointerKeyHash()(key) >> 58) % instShardCount]; // the top bits: the map inside buckets by the low ones
     std::lock_guard lock(shard.mutex);
@@ -13020,10 +13057,34 @@ struct GlobalScope::Impl
     }
 
     // Records the type of an expression node and counts it.
+    // A name of an `auto`-returning function (not a template, nor a member of one) has the type its
+    // body deduces, deduced now if its own file's walk has not done it yet: otherwise the name was
+    // `auto(...)` or the deduced type depending on which thread walked which file first.
+    const Ty* settledCalleeType(Expr* e, const Ty* t)
+    {
+      if (t->kind != TyKind::Function || !t->inner || !impl.containsAuto(t->inner) ||
+          (e->kind != NodeKind::NameExpr && e->kind != NodeKind::MemberExpr))
+        return t;
+      Decl* d = e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved : static_cast<MemberExpr*>(e)->resolved;
+      if (!d || d->kind != NodeKind::FunctionDecl || !d->templateParams.empty() || !static_cast<FunctionDecl*>(d)->body)
+        return t;
+      for (Decl* p = d->parent; p; p = p->parent)
+        if ((p->kind == NodeKind::ClassDecl || p->kind == NodeKind::FunctionDecl) && !p->templateParams.empty())
+          return t; // in a template: its instantiation's arguments decide
+      auto* f = static_cast<FunctionDecl*>(d);
+      const Ty* r = nullptr;
+      if (const Ty* cached = f->cachedType.load(std::memory_order_acquire); cached && cached->kind == TyKind::Function && !impl.containsAuto(cached->inner))
+        r = cached->inner;
+      else
+        r = instantiateFunction(f, Subst{}, true, nullptr);
+      return r && r->isKnown() && !impl.containsAuto(r) ? types.function(r, t->args, t->variadic) : t;
+    }
+
     const Ty* record(Expr* e, const Ty* t)
     {
       if (!t)
         t = types.unknown();
+      t = settledCalleeType(e, t);
       e->ty = t;
       if (!t->isKnown())
         ++stats.exprsUnknown;
@@ -13125,7 +13186,7 @@ struct GlobalScope::Impl
       local.instExprsTyped += local.exprsTyped;
       local.instExprsDependent += local.exprsDependent;
       local.instExprsUnknown += local.exprsUnknown;
-      stats.add(local);
+      impl.addInstanceStats(local); // counted once, whoever asked (Impl::instanceStatsTotal)
     }
 
     // Types the instantiation of member f for the class's arguments, in a copy of f's nodes kept
@@ -15857,7 +15918,10 @@ struct GlobalScope::Impl
             decltypeReturns.pop_back();
             if (deduced && !returnFrames.empty() && !returnFrames.back())
               returnFrames.back() = deduced; // an instantiation's frame around the body takes it
-            if (deduced && deduced->isKnown() && !types.isDependent(deduced))
+            // Not from a template's own (generic) walk: what its body deduces there is no
+            // instance's type (a closure of the generic body), and callers read it or not by which
+            // file was walked first.
+            if (deduced && deduced->isKnown() && !types.isDependent(deduced) && !inGenericTemplate())
             {
               // Cache the deduced signature for callers in other files.
               const Ty* fnTy = impl.declaredTypeOf(f, nullptr, 0);
@@ -16880,13 +16944,10 @@ struct GlobalScope::Impl
     sub.returnFrames.pop_back();
     if (!result)
       result = deduced ? types.decay(deduced) : types.voidType();
-    if (statsInto)
-    {
-      local.instExprsTyped += local.exprsTyped;
-      local.instExprsDependent += local.exprsDependent;
-      local.instExprsUnknown += local.exprsUnknown;
-      statsInto->add(local);
-    }
+    local.instExprsTyped += local.exprsTyped;
+    local.instExprsDependent += local.exprsDependent;
+    local.instExprsUnknown += local.exprsUnknown;
+    addInstanceStats(local); // counted once, whoever asked (instanceStatsTotal)
     const Ty* callTy = nullptr;
     bool known = result->isKnown() && !types.isDependent(result);
     for (const Ty* pt : params)
@@ -18109,6 +18170,12 @@ const Ty* GlobalScope::lambdaInstance(const Ty* lambdaTy, const TemplateArgs& ow
 size_t GlobalScope::scopeCount() const { return impl->scopes.load(); }
 size_t GlobalScope::entryCount() const { return impl->entries.load(); }
 size_t GlobalScope::typeCount() const { return impl->types.size(); }
+
+ResolveStats GlobalScope::instanceStats()
+{
+  std::lock_guard lock(impl->instanceStatsMutex);
+  return impl->instanceStatsTotal;
+}
 
 GlobalScope::InstantiationStats GlobalScope::instantiationStats() const
 {

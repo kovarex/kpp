@@ -1016,6 +1016,7 @@ namespace
     ResolveStats total;
     for (const ResolveStats& s : stats)
       total.add(s);
+    total.add(global.instanceStats()); // the instances', each once whoever asked first
     uint64_t types = total.typesResolved + total.typesDependent + total.typesUnresolved;
     uint64_t names = total.namesLocal + total.namesMember + total.namesGlobal + total.namesDependent + total.namesUnresolved;
     uint64_t project = total.typesUnresolved + total.namesUnresolved - total.qualifiedUnresolvedStd - total.unresolvedMacroLike;
@@ -1055,7 +1056,7 @@ namespace
            inst.bodies, (unsigned long long)instExprs, 100.0 * total.instExprsTyped / std::max<uint64_t>(1, instExprs),
            100.0 * total.instExprsDependent / std::max<uint64_t>(1, instExprs), 100.0 * total.instExprsUnknown / std::max<uint64_t>(1, instExprs));
     std::vector<std::pair<uint32_t, uint32_t>> missing(total.missingMembers.begin(), total.missingMembers.end());
-    std::sort(missing.begin(), missing.end(), [](auto& a, auto& b) { return a.second > b.second; });
+    std::sort(missing.begin(), missing.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
     if (!missing.empty() && options.showUnresolved > 0)
       report("  most common members not found in a known class:\n");
     for (size_t i = 0; i < missing.size() && int(i) < options.showUnresolved / 2; ++i)
@@ -1066,7 +1067,7 @@ namespace
              symbols.name(missing[i].first).data(), files[w.file].path.string().c_str(), lineOf(files[w.file].text, t.offset));
     }
     std::vector<std::pair<uint32_t, uint32_t>> unknownBase(total.unknownBaseMembers.begin(), total.unknownBaseMembers.end());
-    std::sort(unknownBase.begin(), unknownBase.end(), [](auto& a, auto& b) { return a.second > b.second; });
+    std::sort(unknownBase.begin(), unknownBase.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
     if (!unknownBase.empty() && options.showUnresolved > 0)
       report("  most common members accessed on an object of unknown type:\n");
     for (size_t i = 0; i < unknownBase.size() && int(i) < options.showUnresolved / 2; ++i)
@@ -1076,7 +1077,7 @@ namespace
     if (options.showUnresolved > 0)
       report("  most common unresolved names:\n");
     std::vector<std::pair<uint32_t, uint32_t>> top(total.unresolvedSymbols.begin(), total.unresolvedSymbols.end());
-    std::sort(top.begin(), top.end(), [](auto& a, auto& b) { return a.second > b.second; });
+    std::sort(top.begin(), top.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
     if (!options.emitLLVM.empty() || !options.exe.empty())
       runCodegen(parsed, global, symbols, options);
     else if (options.convertDir.empty())

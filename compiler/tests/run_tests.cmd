@@ -27,4 +27,10 @@ for %%f in (tests\run\*.kpp) do (
   )
 )
 echo %PASS% passed, %FAIL% failed
+rem The output must not depend on the thread count (tests\determinism.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
+if errorlevel 1 (
+  echo FAIL determinism
+  set /a FAIL+=1
+)
 if %FAIL% neq 0 exit /b 1

@@ -232,6 +232,9 @@ public:
     double seconds;
   };
   InstantiationStats instantiationStats() const;
+  // The statistics of the template instances' walks, each counted once whichever walk (a file's,
+  // another instance's, a probe's) asked for it first: added to the files' to make the totals.
+  ResolveStats instanceStats();
 
   // Queries for code generation (after resolveFile ran on every file).
   TypeTable& types();
