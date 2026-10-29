@@ -1,0 +1,24 @@
+// spec: the address of a function template named with a constant argument (`total<3>`, `Suite::scaled<4>`) is that instance's, the argument of its parameter's type
+// factorio: tests/TestNoiseProgram.cpp's `static constexpr auto checkArray = SuiteNoiseProgram::checkArray<16>;`
+// pending: "a non-type argument in the address of a function template"; owner: the templates thread
+template <uint32_t size>
+int total(const int* values, Array<int, size> expected)
+{
+  int sum = 0;
+  for (uint32_t i = 0; i < size; ++i)
+    sum += values[i] * expected[i];
+  return sum;
+}
+struct Suite
+{
+  template <uint32_t N>
+  static int scaled(int x) { return x * int(N); }
+};
+int main()
+{
+  static constexpr auto check = total<3>;
+  int (*times4)(int) = Suite::scaled<4>;
+  int values[3] = {1, 2, 3};
+  println("{} {}", check(values, {1, 1, 1}), times4(5));
+  return 0;
+}
