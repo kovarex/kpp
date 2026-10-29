@@ -1,0 +1,21 @@
+// spec: a pack expansion whose pattern applies a type trait to each element, `Types<RemoveReference<Args>...>` or `Types<Decay<Args>...>` with Args deduced from a forwarding-reference pack (int& for an lvalue argument), gives each element's result: Types<int, double> for `(i, 2.5)`
+// factorio: the library's makeTuple, `Tuple<Decay<Args>...>` (std::make_tuple), which for an lvalue argument was another Tuple than Tuple<int, double>: `return makeTuple(i, i * 0.5);` from a function returning Tuple<int, double> found no constructor (PerformanceLogger, InfiniteBitset)
+// pending: the trait leaves the reference element as it is (the second and third asserts fail)
+template<typename... T>
+struct Types { static constexpr int count = int(sizeof...(T)); };
+template<typename... Args>
+Types<Args...> asIs(Args&&... args) { return Types<Args...>(); }
+template<typename... Args>
+Types<RemoveReference<Args>...> stripped(Args&&... args) { return Types<RemoveReference<Args>...>(); }
+template<typename... Args>
+Types<Decay<Args>...> decayed(Args&&... args) { return Types<Decay<Args>...>(); }
+int main()
+{
+  int i = 3;
+  const char text[4] = "abc";
+  static_assert(isSame<decltype(asIs(i, 2.5)), Types<int&, double>>);
+  static_assert(isSame<decltype(stripped(i, 2.5)), Types<int, double>>);
+  static_assert(isSame<decltype(decayed(i, text)), Types<int, const char*>>);
+  println("{} {}", stripped(i, 2.5, 'c').count, decayed(text).count);
+  return 0;
+}

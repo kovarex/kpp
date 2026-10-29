@@ -1,0 +1,23 @@
+// spec: a partial specialization matches template arguments that are reference types: `Row<double&>` is `Row<H, T...>` with H = double&, `Two<double&, int>` is `Two<A, int>`, as any other type
+// factorio: the library's variadic Tuple<H, T...> of references, which tie(a, b) and forwardAsTuple(...) make (std::tie in SpiderUnit and SpiderVehicle, `tie(movementSpeed, stretchForce) = ...`)
+// pending: a reference argument takes the primary template instead ("1 0 0 0 1"), so `Tuple<double&, double&>(x, y)` finds no constructor
+template<typename... Types>
+struct Row { static constexpr int which = 0; };
+template<typename H, typename... T>
+struct Row<H, T...> { static constexpr int which = 1; };
+template<typename A, typename B>
+struct Two { static constexpr int which = 0; };
+template<typename A>
+struct Two<A, int> { static constexpr int which = 1; };
+template<typename T>
+struct Wrapped {};
+template<typename T>
+struct Unwrap { static constexpr int which = 0; };
+template<typename T>
+struct Unwrap<Wrapped<T>> { static constexpr int which = 1; };
+int main()
+{
+  println("{} {} {} {} {} {}", Row<double>::which, Row<double&>::which, Row<const double&, int>::which, Two<double&, int>::which, Row<double&&>::which,
+          Unwrap<Wrapped<int&>>::which);
+  return 0;
+}

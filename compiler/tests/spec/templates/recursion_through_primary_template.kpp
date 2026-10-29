@@ -1,0 +1,26 @@
+// spec: a member of a class template's primary definition may name another instance of the template with arguments computed from its own (`typename Nest<I - 1, T*>::Type`), recursing until a specialization ends it, as for a partial specialization
+// found with the library's variadic Tuple: the type at index I of a pack written as `PackElement<I, H, T...> { using Type = typename PackElement<I - 1, T...>::Type; }` with `PackElement<0, H, T...>` specialized (the same recursion through a partial specialization works: TupleElement<I, Tuple<H, T...>>)
+// pending: the member's type is unknown ("static assertion whose condition the compiler cannot evaluate yet")
+template<int I, typename T>
+struct Nest { using Type = typename Nest<I - 1, T*>::Type; };
+template<typename T>
+struct Nest<0, T> { using Type = T; };
+
+template<int I, typename H, typename... T>
+struct Element { using Type = typename Element<I - 1, T...>::Type; };
+template<typename H, typename... T>
+struct Element<0, H, T...> { using Type = H; };
+
+template<int N>
+struct Count { static constexpr int value = Count<N - 1>::value + 2; };
+template<>
+struct Count<0> { static constexpr int value = 0; };
+
+int main()
+{
+  static_assert(isSame<Nest<2, int>::Type, int**>);
+  static_assert(isSame<Element<1, int, char, double>::Type, char>);
+  Element<2, int, char, double>::Type d = 2.5;
+  println("{} {}", d, Count<3>::value);
+  return 0;
+}

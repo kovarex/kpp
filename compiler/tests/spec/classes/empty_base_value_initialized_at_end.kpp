@@ -1,0 +1,24 @@
+// spec: value-initializing an empty base in a constructor's initializer list (`Last(double v) : Leaf(), Empty()`) writes nothing outside the object: the empty base takes no bytes there (it is laid out with no size), so the byte after the object keeps its value
+// found with the library's variadic Tuple, whose last element's base is the empty EmptyTuple, `Rest(tail...)` with no tail: Tuple<int&, double&> overwrote the byte after it, and a program with one on the stack crashed on return
+// pending: the base is cleared with its class's size, one byte, past the end of the 8-byte object ("8 2.5 0", the byte after the object written to 0)
+struct Empty
+{
+  bool operator==(const Empty&) const { return true; }
+};
+struct Leaf
+{
+  double value = 0;
+};
+struct Last : Leaf, Empty
+{
+  explicit Last(double v) : Leaf(), Empty() { this->value = v; }
+};
+int main()
+{
+  alignas(8) unsigned char buffer[16];
+  for (int i = 0; i < 16; ++i)
+    buffer[i] = 171;
+  Last* last = new (buffer) Last(2.5);
+  println("{} {} {}", int(sizeof(Last)), last->value, int(buffer[8]));
+  return 0;
+}
