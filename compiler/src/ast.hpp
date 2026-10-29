@@ -219,6 +219,10 @@ struct ClassDecl : Decl
   bool isClosure = false;         // Synthetic class standing for a lambda's closure type.
   Expr* alignment = nullptr;      // `struct alignas(16) X`: the alignment written.
   LambdaExpr* lambda = nullptr;   // The lambda, for closures.
+  // A class template declared in a class template (`Heap<V, Tag>::IteratorBase<Value>`): the
+  // parameters its instances are made with, the enclosing template's then its own (set by the
+  // resolver when it indexes the class; empty for any other class).
+  Span<Decl*> instanceParams;
   // `union enum` (design.md 8.5): a tag and one live alternative. The parser desugars it to the
   // members below; the compiler adds the tag-aware operations.
   bool isTypedUnion = false;

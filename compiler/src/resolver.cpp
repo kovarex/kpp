@@ -8161,17 +8161,30 @@ struct GlobalScope::Impl
 
   // Type of a class or enum declaration as written inside it: template parameters stay dependent.
   // The template parameters a class is instantiated with: its own, or, for a class nested in a
-  // class template (`Holder<T>::Node`), the enclosing template's.
+  // class template (`Holder<T>::Node`), the enclosing template's, or, for a class template nested
+  // in one (`Heap<V, Tag>::IteratorBase<Value>`), the enclosing template's and then its own.
   static Span<Decl*> effectiveParams(Decl* cls)
   {
     for (Decl* d = cls; d; d = d->parent)
     {
       if (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl)
         break;
+      if (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->instanceParams.empty())
+        return static_cast<ClassDecl*>(d)->instanceParams;
       if (!d->templateParams.empty())
         return d->templateParams;
     }
     return {};
+  }
+
+  // How many of a class's effectiveParams are an enclosing template's, ahead of its own: those of
+  // `Heap<V, Tag>` for its member template IteratorBase<Value>; 0 for any class that is not a
+  // template declared in a class template.
+  static size_t enclosingParamCount(Decl* cls)
+  {
+    if (!cls || cls->kind != NodeKind::ClassDecl || static_cast<ClassDecl*>(cls)->instanceParams.empty())
+      return 0;
+    return static_cast<ClassDecl*>(cls)->instanceParams.size() - cls->templateParams.size();
   }
 
   // The type of an enum declaration. One declared in a class template is a type of each instance
@@ -9060,6 +9073,13 @@ struct GlobalScope::Impl
               return base;
           }
         }
+        // A class template declared in a class template (`IteratorBase<ValueType>` in a member of
+        // Heap<ValueType, Tag>): the instance has the enclosing instance's arguments first, as the
+        // context binds the enclosing template's parameters (the parameters themselves where it
+        // binds none: a mention in the template), then the ones written, its own.
+        size_t enclosing = noPrimary ? 0 : enclosingParamCount(def);
+        for (size_t i = 0; i < enclosing; ++i)
+          args.push_back(ctx.subst && ctx.subst->find(params[i]) ? ctx.subst->find(params[i]) : types.param(params[i]));
         if (lastPart.templateArgs.size() == 1 && lastPart.symbol == functionSymbolId())
         {
           // The library's `Function<R(Args...)>`: the compiler takes the signature apart, the
@@ -9079,8 +9099,8 @@ struct GlobalScope::Impl
         }
         for (size_t i = 0; i < lastPart.templateArgs.size(); ++i)
         {
-          Decl* param = i < params.size() ? params[i] : nullptr;
-          if (!param && !params.empty() && static_cast<TemplateParamDecl*>(params[params.size() - 1])->isPack)
+          Decl* param = enclosing + i < params.size() ? params[enclosing + i] : nullptr;
+          if (!param && params.size() > enclosing && static_cast<TemplateParamDecl*>(params[params.size() - 1])->isPack)
             param = params[params.size() - 1]; // the pack takes the rest
           const Ty* a = templateArgument(lastPart.templateArgs[i], param, ctx, depth);
           if (a && a->kind == TyKind::Pack)
@@ -9089,7 +9109,7 @@ struct GlobalScope::Impl
           else
             args.push_back(a);
         }
-        if (!args.empty() || (lastPart.hasTemplateArgs && !params.empty()))
+        if (args.size() > enclosing || (lastPart.hasTemplateArgs && params.size() > enclosing))
         {
           // Parameters not written take their defaults, which may use the earlier arguments
           // (`Less<>`: all of them).
@@ -9110,18 +9130,25 @@ struct GlobalScope::Impl
           }
         }
         // `Signal<>` of `template<typename... Args>`: written, its pack empty (no arguments at all).
-        bool emptyPack = lastPart.hasTemplateArgs && params.size() == 1 && static_cast<TemplateParamDecl*>(params[0])->isPack;
-        if (args.empty() && !params.empty() && !emptyPack && ctx.subst)
+        bool emptyPack = lastPart.hasTemplateArgs && params.size() == enclosing + 1 && static_cast<TemplateParamDecl*>(params[enclosing])->isPack;
+        if (args.size() == enclosing && params.size() > enclosing && !emptyPack)
         {
           // Injected class name inside its own template, or a dependent mention: keep parameters.
+          args.clear();
           for (Decl* p : params)
-            args.push_back(ctx.subst->find(p) ? ctx.subst->find(p) : types.param(p));
+            args.push_back(ctx.subst && ctx.subst->find(p) ? ctx.subst->find(p) : types.param(p));
         }
-        else if (args.empty() && !params.empty() && !emptyPack)
-          for (Decl* p : params)
-            args.push_back(types.param(p));
         normalizeValueArgs(params, args, def, depth);
-        if (!params.empty() || noPrimary)
+        if (enclosing)
+        {
+          // Specialisations of a member template would be matched by their own arguments, which
+          // this does not do yet: no class rather than the primary's.
+          if (l.overloads)
+            for (const Entry& e : *l.overloads)
+              if (e.decl && e.decl->kind == NodeKind::ClassDecl && (e.decl->flags & DF_Specialization))
+                return types.unknown();
+        }
+        else if (!params.empty() || noPrimary)
         {
           // `Nest<I - 1, T*>` in a member of Nest's primary: the injected class name, written with
           // arguments, names the template, whose specialisations they may pick (where it is declared).
@@ -9398,12 +9425,13 @@ struct GlobalScope::Impl
           return types.unknown();
         if ((n->name.parts.size() > 1 || n->name.typeQualifier) &&
             (l.decl->kind == NodeKind::UsingAliasDecl || (l.decl->kind == NodeKind::VariableDecl && (l.decl->flags & DF_Typedef)) ||
-             ((l.decl->kind == NodeKind::ClassDecl || l.decl->kind == NodeKind::EnumDecl) && l.decl->templateParams.empty() &&
-              !effectiveParams(l.decl).empty())))
+             ((l.decl->kind == NodeKind::ClassDecl || l.decl->kind == NodeKind::EnumDecl) &&
+              effectiveParams(l.decl).size() > l.decl->templateParams.size())))
         {
           // `Vector<int>::iterator`: the alias as the instantiation named by the qualifier has it;
-          // `Holder<int>::Node`, `Flag<A>::Enum`: the nested class or enum with the enclosing
-          // instantiation's arguments; `ItemPrototype::IDType`: the alias as the base it is declared in has it.
+          // `Holder<int>::Node`, `Flag<A>::Enum`, `Heap<Node>::IteratorBase<Node>`: the nested class
+          // or enum with the enclosing instantiation's arguments; `ItemPrototype::IDType`: the alias
+          // as the base it is declared in has it.
           const Ty* qualifier = nullptr;
           Subst qs = qualifierSubst(n->name, ctx, depth, l.foundIn, &qualifier);
           if (!qs.empty())

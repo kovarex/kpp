@@ -1,6 +1,5 @@
 // spec: a member class template of a class template uses the enclosing template's alias of its parameter (`using HookType = Hook<Tag>;` in Heap<ValueType, Tag>, `HookType* current` in its IteratorBase<Value>): each instance of the member template is laid out with the enclosing instance's arguments
 // factorio: IntrusivePairingHeap<ValueType, Compare, Tag>::IteratorBase<Value> (PathFindAlgorithm's open list of BaseNode: DebugVisualizationRenderer::renderPathfinderFringe, ChartRenderer::drawFringe)
-// pending: the instance is made without the enclosing Heap's arguments ("the layout of IteratorBase<Node>: the member current (`HookType* current = nullptr`) has an unknown type", requested as Heap::IteratorBase<Node>); owner: the templates thread (instances of member templates of class templates)
 template <typename Tag = void>
 struct Hook
 {

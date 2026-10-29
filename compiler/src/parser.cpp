@@ -2979,6 +2979,21 @@ namespace
       skipAttributes();
       if (templ.present && !c->name.empty() && c->name.last().hasTemplateArgs)
         c->flags |= DF_Specialization; // `template<typename T> struct Describe<T*>`: a partial specialisation
+      if (!c->templateParams.empty() && !(c->flags & DF_Specialization) && c->name.parts.size() == 1)
+      {
+        // A class template declared in a class template: its instances are made with the enclosing
+        // template's arguments, then its own (ClassDecl::instanceParams).
+        Span<Decl*> enclosing;
+        for (Decl* p = c->parent; p && (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl) && enclosing.empty(); p = p->parent)
+          enclosing = p->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(p)->instanceParams.empty() ? static_cast<ClassDecl*>(p)->instanceParams
+                                                                                                             : p->templateParams;
+        if (!enclosing.empty())
+        {
+          std::vector<Decl*> all(enclosing.begin(), enclosing.end());
+          all.insert(all.end(), c->templateParams.begin(), c->templateParams.end());
+          c->instanceParams = makeSpanOf(all);
+        }
+      }
       if (atIdent() && spelling() == "final")
       {
         advance();
