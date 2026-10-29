@@ -1,0 +1,33 @@
+// spec: the anonymous union and struct members of a class template are laid out under the instantiation's arguments: union { LongStr<N> longStr; char shortStr[8]; }; in Imm<16> holds a LongStr<16>, and its members are reached by name
+// factorio: ImmutableStringTemplate<N>'s union of a short and a LongStr<N> behind PropertyTree (1,857 headline lines)
+template<int N>
+struct LongStr
+{
+  char data[N];
+  int size;
+};
+template<int N>
+struct Imm
+{
+  union
+  {
+    LongStr<N> longStr;
+    char shortStr[8];
+  };
+  struct
+  {
+    int a;
+    LongStr<N> b;
+  };
+  bool isLong = false;
+};
+int main()
+{
+  Imm<16> s;
+  s.longStr.size = 5;
+  s.longStr.data[0] = 'a';
+  s.b.size = 7;
+  s.a = 3;
+  println("{} {} {} {} {}", sizeof(Imm<16>), s.longStr.size, s.longStr.data[0] == 'a', s.b.size, s.a);
+  return 0;
+}

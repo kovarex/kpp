@@ -499,7 +499,7 @@ namespace
           if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
             ft = global.typeOfDeclIn(m, args);
           else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
-            ft = types.classType(m, {});
+            ft = types.classType(m, key->args); // an anonymous struct takes the enclosing instantiation's arguments
           else
             continue;
           info.fieldIndex[m] = 0;
@@ -594,8 +594,10 @@ namespace
       {
         if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
         {
-          // Anonymous struct/union member: a field whose own members are reachable by name.
-          const Ty* ft = types.classType(m, {});
+          // Anonymous struct/union member: a field whose own members are reachable by name, laid
+          // out under the enclosing instantiation's arguments (ImmutableStringTemplate<N>'s union
+          // holding a LongStr<N>).
+          const Ty* ft = types.classType(m, key->args);
           structFor(ft, at);
           info.anonymous.push_back({m, uint32_t(info.fieldTypes.size())});
           info.fieldIndex[m] = uint32_t(info.fieldTypes.size());
@@ -777,10 +779,11 @@ namespace
       std::vector<const Ty*> fieldTypes = info.fieldTypes;
       bool isUnion = info.isUnion;
       std::string name = info.name;
+      Span<const Ty*> classArgs = canonicalClass(classTy, at)->args; // an anonymous member's: its class's arguments (buildStruct)
       for (auto& [anon, index] : anonymous)
       {
         std::string addr = isUnion ? objectAddr : gep(name, objectAddr, index);
-        if (fieldAddress(types.classType(anon, {}), member, addr, out, at))
+        if (fieldAddress(types.classType(anon, classArgs), member, addr, out, at))
           return true;
       }
       for (auto& [baseDef, index] : bases)
@@ -814,7 +817,7 @@ namespace
         }
         // Search anonymous struct/union members.
         if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
-          if (Decl* found = findFieldByName(types.classType(m, {}), nameSymbol, at, depth + 1))
+          if (Decl* found = findFieldByName(types.classType(m, classTy->args), nameSymbol, at, depth + 1))
             return found;
       }
       // Search base classes.
