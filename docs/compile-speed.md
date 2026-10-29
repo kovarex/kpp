@@ -271,6 +271,60 @@ record more than it needs in one run than in another, which costs invalidations,
 correctness; step 4 checks every incremental build against a clean one (`--verify-incremental`)
 before relying on the recorded uses.
 
+### Step 3 in three pieces, and what 3c needs from codegen
+
+- **3a** (resolver thread): the server keeps the previous build (files, trees, the resolved
+  program, codegen's result); a request whose inputs all hash as before reuses all of it, and
+  `--verify-incremental` builds clean in the same server afterwards and compares stdout, stderr
+  and the IR byte for byte.
+- **3b** (resolver thread): a body-only edit re-parses the changed file, moves the new bodies into
+  the kept declarations and checks only those bodies (and the instances they newly request); codegen
+  still runs in full.
+- **3c**: codegen keeps each function's result and rebuilds only what an edit changed. The codegen
+  thread owns codegen's half (its queued work on destructor helpers, cleanups and module assembly
+  reshapes the same structures); the interface the server needs:
+
+```
+// What emitting one function produced, kept between builds (one per emitted function: a function
+// of the program, an instance, a lambda's call operator, a destructor helper...).
+struct FunctionResult
+{
+  std::string ir;                          // its definition (and nothing that depends on other functions' order)
+  std::vector<FunctionKey> requested;      // the functions it asked for (calls, address-of, vtables it needs)
+  std::vector<const Ty*> layouts;          // the class layouts it used (fields, sizes, vtables)
+  std::vector<const Decl*> globals;        // the globals it read or defined
+  std::vector<std::string> errors;         // its errors, as a clean build reports them
+  uint32_t module;                         // where it goes
+};
+// FunctionKey: what names a function across builds. A FunctionDecl* of the program (the fast path
+// keeps the declaration objects, moving only the bodies), or the resolver's instance record (kept
+// too) for an instance; the server gives codegen these, never pointers it re-creates.
+
+class CodegenSession                       // lives in the server between builds
+{
+public:
+  CodegenResult build(...);                // today's generateLLVM, keeping every FunctionResult
+  // An incremental build: the functions whose bodies changed (re-emitted), the classes whose layout
+  // may have changed (every function that used one is re-emitted). The functions emitted are the
+  // closure of the requests from the program's functions, recomputed from the kept lists: new
+  // requests are emitted, functions nobody requests any more are dropped.
+  CodegenResult rebuild(const std::vector<FunctionKey>& changedBodies, const std::vector<const Ty*>& changedLayouts);
+};
+// CodegenResult as today, plus which modules changed: the server writes and compiles only those
+// (the object cache already skips a module whose text hash is unchanged; this skips assembling it).
+```
+
+  The requirement on all of it: a module's text is a function of the set of FunctionResults in it
+  and the types they use, in an order that does not depend on how they were reached, so that a
+  rebuilt module is byte-identical to the same module from a clean build (`--verify-incremental`
+  checks it on every incremental build in tests/incremental.ps1).
+
+  **Measured by:** the incremental test's edits, and on the full game through the server a leaf body
+  edit (`BuildEntityAchievement::setup`) and a widely used inline function's body
+  (`MapPosition::operator+`), each against a no-change rebuild: codegen's time (target under 0.1 s
+  for the leaf), the modules rebuilt (one), the wall time to a linked game, and
+  `--verify-incremental` byte-identical.
+
 ## Parallel front end: contention, not work (2026-10-29, evening)
 
 The front end on the headline tree had grown to about 4 s (read, imports, parse and index 1.1 s;
