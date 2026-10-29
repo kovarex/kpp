@@ -1,0 +1,27 @@
+// Probe (2026-10-29, master 89058a6): what kppc does with a converted std::unique_ptr<T, D>. The
+// library's UniquePtr has one template parameter; the extra argument raises no error and the deleter
+// is never called (prints "deleter called 0 time(s)"; C++ calls it once). Factorio's 12 custom
+// deleters convert to this. kppc --exe probe.exe probe_deleter_ignored.kpp
+extern "C" int printf(const char* format, ...);
+int deleted = 0;
+struct Thing
+{
+  int value = 7;
+};
+struct CountingDeleter
+{
+  void operator()(Thing* t) const
+  {
+    ++deleted;
+    delete t;
+  }
+};
+int main()
+{
+  {
+    UniquePtr<Thing, CountingDeleter> p(new Thing());
+    printf("%d\n", p->value);
+  }
+  printf("deleter called %d time(s)\n", deleted);
+  return 0;
+}

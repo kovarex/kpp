@@ -1,0 +1,109 @@
+// What a UniquePtr costs at run time next to a plain pointer: reading through it (`if (p) sum +=
+// p->value`) and making and destroying owners. Same loops over Vector<UniquePtr<Node>> and
+// Vector<Node*>; the Vector indexing is the same call in both.
+extern "C" int printf(const char* format, ...);
+extern "C" int QueryPerformanceCounter(i64* count);
+extern "C" int QueryPerformanceFrequency(i64* frequency);
+
+struct Node
+{
+  int value;
+  Node(int v) : value(v) {}
+  virtual ~Node() {}
+};
+
+i64 frequency = 0;
+double since(i64 start)
+{
+  i64 now = 0;
+  QueryPerformanceCounter(&now);
+  return double(now - start) / double(frequency);
+}
+
+int main()
+{
+  QueryPerformanceFrequency(&frequency);
+  const int n = 1000;
+  const int rounds = 20000;
+  Vector<UniquePtr<Node>> owned;
+  Vector<Node*> raw;
+  for (int i = 0; i < n; ++i)
+  {
+    owned.push_back(makeUnique<Node>(i));
+    raw.push_back(new Node(i));
+  }
+  i64 start = 0;
+  i64 sum = 0;
+  QueryPerformanceCounter(&start);
+  for (int r = 0; r < rounds; ++r)
+    for (int i = 0; i < n; ++i)
+    {
+      const UniquePtr<Node>& p = owned[i];
+      if (p)
+        sum += p->value;
+    }
+  double ownedRead = since(start);
+  QueryPerformanceCounter(&start);
+  for (int r = 0; r < rounds; ++r)
+    for (int i = 0; i < n; ++i)
+    {
+      Node* p = raw[i];
+      if (p)
+        sum += p->value;
+    }
+  double rawRead = since(start);
+
+  const int makes = 2000000;
+  QueryPerformanceCounter(&start);
+  for (int i = 0; i < makes; ++i)
+  {
+    UniquePtr<Node> p = makeUnique<Node>(i);
+    sum += p->value;
+  }
+  double ownedMake = since(start);
+  QueryPerformanceCounter(&start);
+  for (int i = 0; i < makes; ++i)
+  {
+    Node* p = new Node(i);
+    sum += p->value;
+    delete p;
+  }
+  double rawMake = since(start);
+
+  // Moving owners between two vectors and back (what containers and handovers do).
+  Vector<UniquePtr<Node>> other;
+  Vector<Node*> otherRaw;
+  QueryPerformanceCounter(&start);
+  for (int r = 0; r < 200; ++r)
+  {
+    for (int i = 0; i < n; ++i)
+      other.push_back(move(owned[i]));
+    for (int i = 0; i < n; ++i)
+      owned[i] = move(other[i]);
+    other.clear();
+  }
+  double ownedMove = since(start);
+  QueryPerformanceCounter(&start);
+  for (int r = 0; r < 200; ++r)
+  {
+    for (int i = 0; i < n; ++i)
+    {
+      otherRaw.push_back(raw[i]);
+      raw[i] = nullptr;
+    }
+    for (int i = 0; i < n; ++i)
+    {
+      raw[i] = otherRaw[i];
+      otherRaw[i] = nullptr;
+    }
+    otherRaw.clear();
+  }
+  double rawMove = since(start);
+  for (Node* p : raw)
+    delete p;
+  printf("read   %d x %d: UniquePtr %.1f ms, Node* %.1f ms (%.2fx)\n", rounds, n, ownedRead * 1000, rawRead * 1000, ownedRead / rawRead);
+  printf("make   %d:       UniquePtr %.1f ms, Node* %.1f ms (%.2fx)\n", makes, ownedMake * 1000, rawMake * 1000, ownedMake / rawMake);
+  printf("move   %d x %d:   UniquePtr %.1f ms, Node* %.1f ms (%.2fx)\n", 200, n, ownedMove * 1000, rawMove * 1000, ownedMove / rawMove);
+  printf("(checksum %lld)\n", sum);
+  return 0;
+}
