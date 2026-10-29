@@ -1,6 +1,5 @@
 // spec: a requires-expression in a generic lambda's body (`[]<class T>(T) { return requires(const T& v) { v.getIconSprite(); }; }`) is evaluated for the lambda's instance, as in a function template: true when the expression is valid for T, also through an alias of a member type of T
 // factorio: SpriteBank::getSprite goes over the prototype lists with `PrototypeListList::forEach([&]<class ListType>(ListType) { ... if constexpr (requires(const PrototypeType& value) { value.getIconSprite(); }) ... })`: no type had icons, "item/iron-plate" was an unknown type, so the [img=...] rich text, sprite buttons, is_valid_sprite_path and scenario GUIs failed (about 12 failed checks)
-// pending: SILENT, it is false in every lambda instance (prints `true true false | false false | false false`); owner: the templates thread
 struct WithIcon
 {
   int getIconSprite() const { return 1; }

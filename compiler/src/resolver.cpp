@@ -17656,7 +17656,16 @@ struct GlobalScope::Impl
           probe.thisType = thisType;
           probe.probing = true;
           for (Decl* p : r->params)
-            probe.locals.push(static_cast<ParamDecl*>(p)->name, p);
+          {
+            // As the walk sees its type (`requires(const T& value)` in `[]<class T>(T) { ... }`, or
+            // with `using T = L::ThePrototypeType;` in the lambda's body): the declaration's own
+            // context sees neither a lambda's template parameters nor its body's aliases.
+            auto* pd = static_cast<ParamDecl*>(p);
+            probe.walkParam(pd);
+            if (const Ty* walked = pd->type ? probe.typeOf(pd->type) : nullptr;
+                walked && walked->isKnown() && !impl.containsAuto(walked) && !Impl::mentionsUnknown(walked))
+              probe.locals.items.back().type = walked->kind == TyKind::Array ? types.decay(walked) : walked;
+          }
           bool satisfied = true;
           for (Type* t : r->typeRequirements)
             if (const Ty* ty = probe.typeOf(t); !ty || !ty->isKnown())
