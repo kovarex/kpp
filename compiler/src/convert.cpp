@@ -2244,9 +2244,60 @@ namespace
         }
       }
     }
+    // The file's using-directives of the program's namespaces, by text range: from each to the end
+    // of the block or namespace it is written in, the names of the namespace it names are found as
+    // if declared in the global namespace, beside the library's, so a library name the converter
+    // writes there is ambiguous unless qualified (TestMigrations' `std::set<std::string>` under
+    // `using namespace TestMigrationHelpers;`, whose own Set class template it would find: `::Set`).
+    struct DirectiveRange
+    {
+      uint32_t begin, end;
+      std::vector<std::string> keys; // the ScopeNames keys the name may stand for, the innermost first
+    };
+    std::vector<DirectiveRange> directiveRanges;
+    void collectDirectiveRanges()
+    {
+      std::vector<std::vector<size_t>> pending(1); // per open block: the directives written directly in it
+      for (uint32_t i = 0; i < toks.size(); ++i)
+      {
+        if (toks[i].is(P::LBrace))
+          pending.emplace_back();
+        else if (toks[i].is(P::RBrace) && pending.size() > 1)
+        {
+          for (size_t d : pending.back())
+            directiveRanges[d].end = toks[i].offset;
+          pending.pop_back();
+        }
+        else if (toks[i].is(Kw::using_) && i + 2 < toks.size() && toks[i + 1].is(Kw::namespace_))
+        {
+          std::string name;
+          uint32_t j = i + 2;
+          for (; j < toks.size() && !toks[j].is(P::Semi); ++j)
+            name += spelling(j);
+          if (name.empty() || name == "std" || name.compare(0, 5, "std::") == 0)
+            continue;
+          if (name.compare(0, 2, "::") == 0)
+            name = name.substr(2);
+          DirectiveRange r{toks[i].offset, UINT32_MAX, {}};
+          // A name written in a namespace may be one of that namespace's own (or an enclosing one's).
+          std::vector<const ScopeRange*> enclosing;
+          for (const ScopeRange& sr : scopeRanges)
+            if (!sr.classBody && sr.begin <= r.begin && r.begin < sr.end)
+              enclosing.push_back(&sr);
+          std::sort(enclosing.begin(), enclosing.end(), [](const ScopeRange* a, const ScopeRange* b) { return a->key.size() > b->key.size(); });
+          for (const ScopeRange* sr : enclosing)
+            r.keys.push_back(sr->key + name + "::");
+          r.keys.push_back(name + "::");
+          pending.back().push_back(directiveRanges.size());
+          directiveRanges.push_back(std::move(r));
+          i = j;
+        }
+      }
+    }
     // Whether an unqualified `name` written at offset finds a declaration of the program before the
-    // global (library) one: a namespace's or class's member, or a local or parameter of the
-    // function around it declared before (`Layer::const_iterator next = std::next(current);`, whose
+    // global (library) one: a namespace's or class's member, a member of a namespace a
+    // using-directive names (as ambiguous: the library's needs `::` as well), or a local or
+    // parameter of the function around it declared before (`Layer::const_iterator next = std::next(current);`, whose
     // initializer sees the variable being declared).
     bool shadowedAt(const std::string& name, uint32_t offset) const
     {
@@ -2263,6 +2314,15 @@ namespace
           if (it != scopeNames->end() && it->second.count(name))
             return true;
         }
+      for (const DirectiveRange& r : directiveRanges)
+        if (r.begin <= offset && offset < r.end)
+          for (const std::string& key : r.keys)
+            if (auto it = scopeNames->find(key); it != scopeNames->end())
+            {
+              if (it->second.count(name))
+                return true;
+              break; // the innermost namespace of that name is the one the directive names
+            }
       return false;
     }
     // The locals and parameters of the file's functions by name: where each declaration starts and
@@ -6194,6 +6254,7 @@ namespace
     {
       collectScopeRanges(in.parsed->decls, "");
       collectLocals(in.parsed->decls);
+      collectDirectiveRanges();
       seedHeaderMacros();
       convertPreprocessor();
       convertBlanked();
