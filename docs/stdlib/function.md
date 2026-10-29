@@ -40,3 +40,15 @@ Members:
 *Differences from C++*: T is an object type (no ReferenceWrapper to a function); a
 `ReferenceWrapper<const T>` can still be made from a temporary T, which C++ refuses (the deleted
 constructor waits for a compiler fix), and then refers to it only while the temporary lives.
+
+# invoke
+
+`invoke(f, args...)` calls f with args the way C++'s INVOKE does (what `std::invoke` converts to;
+Thread runs its function through it) and returns what that call returns:
+- f is a pointer to a member function of a class C: it is called on the first argument with the
+  rest. The first argument is an object of C or of a class derived from C (or a reference to
+  one), a `ReferenceWrapper` of one, or anything that `*` turns into one: a pointer, a UniquePtr,
+  a SharedPtr.
+- f is a pointer to a data member of C: the result is that member of the one argument, found the
+  same way, as a reference (assignable through when the object is).
+- Otherwise f is called with all the arguments, forwarded as they were given.

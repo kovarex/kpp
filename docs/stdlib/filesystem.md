@@ -168,10 +168,11 @@ trailing line break, as UTF-8), strerror's for a generic one. `==`, `!=` with an
 compare value and category.
 
 `Errc`: the portable conditions with their errno values (operation_not_permitted 1,
-no_such_file_or_directory 2, interrupted 4, io_error 5, permission_denied 13,
-device_or_resource_busy 16, file_exists 17, cross_device_link 18, no_such_device 19,
-not_a_directory 20, is_a_directory 21, invalid_argument 22, too_many_files_open 24,
-file_too_large 27, no_space_on_device 28, read_only_file_system 30, filename_too_long 38,
+no_such_file_or_directory 2, no_such_process 3, interrupted 4, io_error 5,
+resource_unavailable_try_again 11, permission_denied 13, device_or_resource_busy 16,
+file_exists 17, cross_device_link 18, no_such_device 19, not_a_directory 20, is_a_directory 21,
+invalid_argument 22, too_many_files_open 24, file_too_large 27, no_space_on_device 28,
+read_only_file_system 30, resource_deadlock_would_occur 36, filename_too_long 38,
 function_not_supported 40, directory_not_empty 41, not_supported 129,
 operation_not_supported 130, timed_out 138). `make_error_code(e)`: the ErrorCode of e in the
 generic category. `ec == e` (and `!=`) for an ErrorCode and an Errc: a generic code equals the

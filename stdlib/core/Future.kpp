@@ -74,10 +74,7 @@ struct SharedState
     if (this->deferred)
       return FutureStatus::deferred;
     UniqueLock<Mutex> lock(this->mutex);
-    if (this->ready)
-      return FutureStatus::ready;
-    this->cv.waitFor(lock, d);
-    return this->ready ? FutureStatus::ready : FutureStatus::timeout;
+    return this->cv.waitFor(lock, d, [this]() -> bool { return this->ready; }) ? FutureStatus::ready : FutureStatus::timeout;
   }
 };
 
@@ -136,10 +133,7 @@ struct SharedState<void>
     if (this->deferred)
       return FutureStatus::deferred;
     UniqueLock<Mutex> lock(this->mutex);
-    if (this->ready)
-      return FutureStatus::ready;
-    this->cv.waitFor(lock, d);
-    return this->ready ? FutureStatus::ready : FutureStatus::timeout;
+    return this->cv.waitFor(lock, d, [this]() -> bool { return this->ready; }) ? FutureStatus::ready : FutureStatus::timeout;
   }
 };
 
@@ -297,17 +291,6 @@ template<typename F>
 auto async(F callable) -> Future<decltype(callable())>
 {
   return async(Launch::async, move(callable));
-}
-
-// The calling thread (what std::this_thread converts to): `thisThread::yield()`.
-namespace thisThread
-{
-  template<typename Rep, typename Period>
-  void sleepFor(const Duration<Rep, Period>& d) { Thread::sleepFor(d); }
-  template<typename Rep, typename Period>
-  void sleep_for(const Duration<Rep, Period>& d) { Thread::sleepFor(d); }
-  void yield() { Thread::yield(); }
-  unsigned long get_id() { return Thread::currentId(); }
 }
 
 // Free-standing atomic operations (what std::atomic_load/store convert to).

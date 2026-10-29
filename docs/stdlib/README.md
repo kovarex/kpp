@@ -19,6 +19,8 @@ Files:
 - [Algorithms](algorithms.md): sorting and searching ranges.
 - [UniquePtr, UniqueArray](uniqueptr.md), [SharedPtr, WeakPtr, EnableSharedFromThis](sharedptr.md)
 - [Optional](optional.md), [Function](function.md)
+- [Thread](thread.md): threads, Thread::Id, thisThread, mutexes, locks and condition variables
+  (std::thread, std::mutex, std::unique_lock, std::condition_variable).
 - [Atomic](atomic.md): values that threads share without locks; Atomic<SharedPtr<T>>.
 - [Limits](limits.md): the properties of the arithmetic types (std::numeric_limits).
 - [Time](time.md): Duration, TimePoint, SteadyClock, SystemClock (std::chrono).
@@ -29,7 +31,7 @@ Files:
   they report with (std::error_code, std::errc, std::system_error).
 
 Not specified yet: Tuple, Pair beyond what the
-maps use, Array, StringView, formatting, streams, threads and locks, and the C library wrappers.
+maps use, Array, StringView, formatting, streams, futures and async, and the C library wrappers.
 
 Changing a rule here is a design decision (docs/design.md section 4): it needs to be explicit,
 recorded with its date and reason, and listed as a difference from C++ if it is one.

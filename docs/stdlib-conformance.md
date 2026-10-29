@@ -5,13 +5,19 @@ standard library's guarantees, which converted code relies on, and writes them o
 lists where the implementation in stdlib/ does not meet that specification yet. Each item is a bug
 to fix, or, if the rule should change instead, a decision to record in the specification and in
 design.md. Behaviour that differs silently comes first; API that is missing (a call then fails to
-compile, loudly) last. State of 2026-10-28.
+compile, loudly) last. State of 2026-10-29.
 
 ## Behaviour that differs
 
 **Compiler gaps that break library use** (pending spec snippets in compiler/tests/spec):
 - `map.insert({key, makeUnique<T>()})` picks the `const Pair&` overload over `Pair&&` and then
   cannot copy the move-only value (language/brace_argument_binds_rvalue).
+- A function passed by its name to a forwarding reference (`invoke(add, 1, 2)`) does not compile
+  (templates/forwarding_reference_to_function); a pointer to it does. Thread takes its function
+  and arguments by value, which decays the name to a pointer, so it is not affected.
+- A reference parameter bound through a conversion operator binds to a copy
+  (classes/reference_bound_through_conversion_operator): a `ref(x)` argument of a Thread for an
+  `int&` parameter reaches a copy of x, silently.
 
 **Optional** (docs/stdlib/optional.md): the value is stored as a T member, so an empty Optional
 holds a default-constructed T: T needs a default constructor, its constructor runs for an empty
@@ -45,4 +51,7 @@ BadFunctionCall on an empty call), Atomic (every size from 1 to 8 bytes moved as
 float, double and enums are exact; Atomic<SharedPtr<T>>). Until 2026-10-28 Atomic of a 1- or 2-byte
 type wrote 4 bytes (overwriting the fields after it) and Atomic<float>/<double> converted the value
 to an integer; both were silent. RecursiveMutex (re-entrant for its owning thread; until 2026-10-28 it was
-Mutex itself, which deadlocks when re-entered).
+Mutex itself, which deadlocks when re-entered). Thread, Thread::Id, thisThread, the mutexes, locks
+and ConditionVariable as docs/stdlib/thread.md specifies them (2026-10-29: Thread took only a
+callable and joined in its destructor, join and detach did nothing when not joinable, the timed
+waits returned a bool and Future's waitFor could report a timeout early on a spurious wake-up).

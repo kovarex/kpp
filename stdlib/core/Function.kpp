@@ -135,3 +135,53 @@ template<typename T>
 ReferenceWrapper<T> ref(T& value) { return ReferenceWrapper<T>(value); }
 template<typename T>
 ReferenceWrapper<const T> cref(const T& value) { return ReferenceWrapper<const T>(value); }
+
+template<typename T>
+struct IsReferenceWrapper { static constexpr bool value = false; };
+template<typename T>
+struct IsReferenceWrapper<ReferenceWrapper<T>> { static constexpr bool value = true; };
+
+// The class of a pointer to member, `R C::*` (a member function's too: its R is a function type).
+template<typename M>
+struct MemberPointerClass {};
+template<typename R, typename C>
+struct MemberPointerClass<R C::*> { using Type = C; };
+
+// Calls f with args the way C++'s INVOKE does (std::invoke; Thread runs its function so). A
+// pointer to a member function is called on the first argument and given the rest: that argument
+// is an object of the member's class or of a class derived from it (or a reference to one), a
+// ReferenceWrapper of one, or anything else `*` turns into one (a pointer, a UniquePtr, a
+// SharedPtr). A pointer to a data member gives that member of the one argument, found the same
+// way. Anything else is called with all the arguments. Specified in docs/stdlib/function.md.
+template<typename F, typename... Args>
+decltype(auto) invoke(F&& f, Args&&... args)
+{
+  if constexpr (isMemberPointer<Decay<F>>)
+    return invokeMember(f, forward<Args>(args)...);
+  else
+    return forward<F>(f)(forward<Args>(args)...);
+}
+
+template<typename M, typename T, typename... Args>
+decltype(auto) invokeMember(M member, T&& object, Args&&... args)
+{
+  using Class = typename MemberPointerClass<M>::Type;
+  if constexpr (isMemberFunctionPointer<M>)
+  {
+    if constexpr (isBaseOf<Class, Decay<T>>)
+      return (forward<T>(object).*member)(forward<Args>(args)...);
+    else if constexpr (IsReferenceWrapper<Decay<T>>::value)
+      return (object.get().*member)(forward<Args>(args)...);
+    else
+      return ((*forward<T>(object)).*member)(forward<Args>(args)...);
+  }
+  else
+  {
+    if constexpr (isBaseOf<Class, Decay<T>>)
+      return (forward<T>(object).*member);
+    else if constexpr (IsReferenceWrapper<Decay<T>>::value)
+      return (object.get().*member);
+    else
+      return ((*forward<T>(object)).*member);
+  }
+}

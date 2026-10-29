@@ -796,7 +796,9 @@ namespace
     {"atomic_store", "atomicStore"}, {"atomic_exchange", "atomicExchange"}, {"atomic_is_lock_free", "atomicIsLockFree"},
     {"async", "async"}, {"future", "Future"}, {"shared_future", "SharedFuture"},
     {"promise", "Promise"}, {"future_status", "FutureStatus"}, {"launch", "Launch"},
-    {"this_thread", "thisThread"},
+    {"this_thread", "thisThread"}, {"recursive_mutex", "RecursiveMutex"}, {"shared_mutex", "SharedMutex"},
+    {"shared_lock", "SharedLock"}, {"cv_status", "CvStatus"}, {"defer_lock", "deferLock"}, {"try_to_lock", "tryToLock"},
+    {"adopt_lock", "adoptLock"}, {"defer_lock_t", "DeferLock"}, {"try_to_lock_t", "TryToLock"}, {"adopt_lock_t", "AdoptLock"},
     // type traits
     {"source_location", "CallerLocation"},
     {"type_info", "TypeInfo"}, {"nullopt_t", "NulloptType"},

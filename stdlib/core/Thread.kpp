@@ -1,8 +1,10 @@
 // Kpp standard library: threads and what keeps them apart, on the Windows API (what std::thread,
-// std::mutex, std::lock_guard, std::condition_variable and std::atomic convert to). Mutex is an
-// SRW lock, ConditionVariable a CONDITION_VARIABLE, both one pointer of storage zeroed; Atomic<T>
-// holds a T of 1, 2, 4 or 8 bytes (integers, floating point, enums, pointers, small structs) and
-// works on its bits with the processor's atomic instructions; Atomic<SharedPtr<T>> takes a lock.
+// std::this_thread, std::mutex, std::lock_guard, std::unique_lock, std::condition_variable and
+// std::atomic convert to). Specified in docs/stdlib/thread.md (Atomic: docs/stdlib/atomic.md).
+// Mutex is an SRW lock, ConditionVariable a CONDITION_VARIABLE, both one pointer of storage zeroed;
+// Atomic<T> holds a T of 1, 2, 4 or 8 bytes (integers, floating point, enums, pointers, small
+// structs) and works on its bits with the processor's atomic instructions; Atomic<SharedPtr<T>>
+// takes a lock.
 extern "C" void* CreateThread(void* attributes, size_t stackSize, unsigned long (*start)(void*), void* parameter, unsigned long flags, unsigned long* threadId);
 extern "C" unsigned long WaitForSingleObject(void* handle, unsigned long milliseconds);
 extern "C" int CloseHandle(void* handle);
@@ -15,6 +17,7 @@ extern "C" void ReleaseSRWLockExclusive(void** lock);
 extern "C" unsigned char TryAcquireSRWLockExclusive(void** lock);
 extern "C" void AcquireSRWLockShared(void** lock);
 extern "C" void ReleaseSRWLockShared(void** lock);
+extern "C" unsigned char TryAcquireSRWLockShared(void** lock);
 extern "C" int SleepConditionVariableSRW(void** condition, void** lock, unsigned long milliseconds, unsigned long flags);
 extern "C" void WakeConditionVariable(void** condition);
 extern "C" void WakeAllConditionVariable(void** condition);
@@ -41,85 +44,170 @@ extern "C" long long kpp_atomic_cas64(long long* target, long long exchange, lon
 extern "C" long long kpp_atomic_load64(const long long* target);
 extern "C" void kpp_atomic_store64(long long* target, long long value);
 
-// The task a thread runs: a callable copied to the heap, called once on the new thread.
-struct ThreadTask
+// The arguments a Thread's function gets: the constructor's copies, given to the function as
+// rvalues by invoke, in order.
+template<typename... Ts>
+struct ThreadArguments
 {
-  FunctionImpl<void> run;
-  ThreadTask(FunctionImpl<void> run) : run(::move(run)) {}
+  ThreadArguments() {}
+  template<typename F, typename... Taken>
+  void invokeWith(F& function, Taken&&... taken) { invoke(move(function), forward<Taken>(taken)...); }
+};
+template<typename T, typename... Rest>
+struct ThreadArguments<T, Rest...>
+{
+  T value;
+  ThreadArguments<Rest...> rest;
+  ThreadArguments(T value, Rest... rest) : value(move(value)), rest(move(rest)...) {}
+  template<typename F, typename... Taken>
+  void invokeWith(F& function, Taken&&... taken) { this->rest.invokeWith(function, forward<Taken>(taken)..., move(this->value)); }
 };
 
-unsigned long kppThreadStart(void* parameter)
+// What a new thread runs, on the heap: the function and its arguments, called once on the thread,
+// then destroyed there.
+template<typename F, typename... Args>
+struct ThreadCall
 {
-  ThreadTask* task = (ThreadTask*)parameter;
-  task->run();
-  delete task;
-  return 0;
-}
+  F function;
+  ThreadArguments<Args...> arguments;
+  ThreadCall(F function, Args... arguments) : function(move(function)), arguments(move(arguments)...) {}
+  static unsigned long start(void* parameter)
+  {
+    ThreadCall<F, Args...>* call = (ThreadCall<F, Args...>*)parameter;
+    call->arguments.invokeWith(call->function);
+    delete call;
+    return 0;
+  }
+};
 
+// A thread of execution (std::thread): joinable from its start until join() or detach(), which
+// every Thread that started one must call; specified in docs/stdlib/thread.md.
 struct Thread
 {
+  // A thread's identity (std::thread::id): the system's id of a thread of execution, or, when
+  // default-constructed, no thread's. Equal for the same thread, ordered and hashable (hashOf).
+  struct Id
+  {
+    unsigned long value = 0;
+
+    Id() {}
+    explicit Id(unsigned long value) : value(value) {}
+    strong_ordering operator<=>(const Id& other) const = default;
+  };
+  using id = Id;
+
   void* handle = nullptr;
-  unsigned long id = 0;
+  Id threadId;
 
   Thread() {}
-  template<typename F>
-  explicit Thread(F callable)
+  // Runs invoke(function, arguments...) on a new thread, with copies of them made here (decayed: a
+  // function is its pointer, a reference argument a copy of the value; ref() passes a reference).
+  // A pointer to a member function takes the object, or a pointer to it, first. Throws SystemError
+  // (resource_unavailable_try_again) when the system cannot start a thread.
+  template<typename F, typename... Args>
+  explicit Thread(F function, Args... arguments)
   {
-    ThreadTask* task = new ThreadTask(FunctionImpl<void>(callable));
-    this->handle = CreateThread(nullptr, 0, &kppThreadStart, task, 0, &this->id);
+    ThreadCall<F, Args...>* call = new ThreadCall<F, Args...>(move(function), move(arguments)...);
+    unsigned long id = 0;
+    this->handle = CreateThread(nullptr, 0, &ThreadCall<F, Args...>::start, call, 0, &id);
+    if (!this->handle)
+    {
+      delete call;
+      throw SystemError(make_error_code(Errc::resource_unavailable_try_again), "Thread");
+    }
+    this->threadId = Id(id);
   }
   Thread(const Thread&) = delete;
-  Thread(Thread&& other) : handle(other.handle), id(other.id)
+  Thread(Thread&& other) : handle(other.handle), threadId(other.threadId)
   {
     other.handle = nullptr;
-    other.id = 0;
+    other.threadId = Id();
   }
   Thread& operator=(const Thread&) = delete;
+  // A Thread still joinable here ends the program (std::thread calls std::terminate).
   Thread& operator=(Thread&& other)
   {
-    if (this != &other)
-    {
-      if (this->handle)
-        this->join();
-      this->handle = other.handle;
-      this->id = other.id;
-      other.handle = nullptr;
-      other.id = 0;
-    }
+    release_assert(!this->joinable());
+    this->handle = other.handle;
+    this->threadId = other.threadId;
+    other.handle = nullptr;
+    other.threadId = Id();
     return *this;
   }
-  ~Thread()
-  {
-    if (this->handle)
-      this->join(); // std::thread aborts here; waiting is the kinder default
-  }
+  // A Thread still joinable here ends the program (std::thread calls std::terminate).
+  ~Thread() { release_assert(!this->joinable()); }
 
   bool joinable() const { return this->handle != nullptr; }
+  // Waits until the thread has finished; then the Thread is not joinable. Throws SystemError:
+  // invalid_argument when it is not joinable, resource_deadlock_would_occur when it is the
+  // calling thread.
   void join()
   {
-    if (!this->handle)
-      return;
+    if (!this->joinable())
+      throw SystemError(make_error_code(Errc::invalid_argument), "Thread::join");
+    if (this->threadId == thisThread::getId())
+      throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), "Thread::join");
     WaitForSingleObject(this->handle, 0xFFFFFFFFu);
     CloseHandle(this->handle);
     this->handle = nullptr;
+    this->threadId = Id();
   }
+  // Lets the thread run on its own; the Thread is not joinable any more. Throws SystemError
+  // (invalid_argument) when it is not joinable.
   void detach()
   {
-    if (this->handle)
-      CloseHandle(this->handle);
+    if (!this->joinable())
+      throw SystemError(make_error_code(Errc::invalid_argument), "Thread::detach");
+    CloseHandle(this->handle);
     this->handle = nullptr;
+    this->threadId = Id();
   }
-  unsigned long get_id() const { return this->id; }
-  static unsigned long currentId() { return GetCurrentThreadId(); }
-  // Blocks for at least d (rounded up to whole milliseconds; nothing for a negative d).
-  template<typename Rep, typename Period>
-  static void sleepFor(const Duration<Rep, Period>& d) { Sleep(waitMilliseconds(d)); }
-  static void yield() { SwitchToThread(); }
+  void swap(Thread& other)
+  {
+    ::swap(this->handle, other.handle);
+    ::swap(this->threadId, other.threadId);
+  }
+  // The thread's Id, or Id() when not joinable.
+  Id getId() const { return this->threadId; }
+  Id get_id() const { return this->threadId; }
+  // The system's handle of the thread (a Windows HANDLE), or null when not joinable.
+  void* nativeHandle() const { return this->handle; }
+  void* native_handle() const { return this->handle; }
   // How many threads can run at once: the machine's logical processors, in all its processor groups
   // (std::thread::hardware_concurrency, which may also say 0 for "not known"; this never does).
   static unsigned int hardwareConcurrency() { return (unsigned int)GetActiveProcessorCount(0xFFFF); }
+  static unsigned int hardware_concurrency() { return Thread::hardwareConcurrency(); }
 };
 
+size_t hashOf(Thread::Id id) { return hashOf((unsigned int)id.value); }
+
+// The calling thread (what std::this_thread converts to).
+namespace thisThread
+{
+  Thread::Id getId() { return Thread::Id(GetCurrentThreadId()); }
+  Thread::Id get_id() { return getId(); }
+  // Lets another thread run (std::this_thread::yield).
+  void yield() { SwitchToThread(); }
+  // Blocks until t has passed on t's clock (std::this_thread::sleep_until): at least until then,
+  // waking up early as Windows' timer may only to sleep again.
+  template<typename Clock, typename Dur>
+  void sleepUntil(const TimePoint<Clock, Dur>& t)
+  {
+    for (auto now = Clock::now(); now < t; now = Clock::now())
+      Sleep(waitMilliseconds(t - now));
+  }
+  template<typename Clock, typename Dur>
+  void sleep_until(const TimePoint<Clock, Dur>& t) { sleepUntil(t); }
+  // Blocks for at least d, on the steady clock (std::this_thread::sleep_for); a d of zero or less
+  // returns at once.
+  template<typename Rep, typename Period>
+  void sleepFor(const Duration<Rep, Period>& d) { sleepUntil(SteadyClock::now() + d); }
+  template<typename Rep, typename Period>
+  void sleep_for(const Duration<Rep, Period>& d) { sleepFor(d); }
+}
+
+// A mutex (std::mutex): lock, unlock, tryLock; not re-entrant (a thread locking it again waits
+// for itself forever).
 struct Mutex
 {
   void* lock_ = nullptr; // SRWLOCK
@@ -133,6 +221,7 @@ struct Mutex
   bool tryLock() { return TryAcquireSRWLockExclusive(&this->lock_) != 0; }
   bool try_lock() { return this->tryLock(); }
 };
+
 // A mutex its owning thread may lock again (std::recursive_mutex); every lock needs its unlock.
 struct RecursiveMutex
 {
@@ -181,6 +270,7 @@ struct RecursiveMutex
   }
 };
 
+// A mutex that many readers may hold at once, or one writer (std::shared_mutex).
 struct SharedMutex
 {
   void* lock_ = nullptr;
@@ -191,65 +281,220 @@ struct SharedMutex
 
   void lock() { AcquireSRWLockExclusive(&this->lock_); }
   void unlock() { ReleaseSRWLockExclusive(&this->lock_); }
+  bool tryLock() { return TryAcquireSRWLockExclusive(&this->lock_) != 0; }
+  bool try_lock() { return this->tryLock(); }
   void lockShared() { AcquireSRWLockShared(&this->lock_); }
   void unlockShared() { ReleaseSRWLockShared(&this->lock_); }
+  bool tryLockShared() { return TryAcquireSRWLockShared(&this->lock_) != 0; }
   void lock_shared() { this->lockShared(); }
   void unlock_shared() { this->unlockShared(); }
+  bool try_lock_shared() { return this->tryLockShared(); }
 };
 
+// How a lock takes its mutex (std::defer_lock, std::try_to_lock, std::adopt_lock): not yet, by a
+// try, or as already locked by the calling thread.
+struct DeferLock {};
+struct TryToLock {};
+struct AdoptLock {};
+const DeferLock deferLock;
+const TryToLock tryToLock;
+const AdoptLock adoptLock;
+
+// Holds a mutex locked for its scope (std::lock_guard; also std::scoped_lock of one mutex).
 template<typename M>
 struct LockGuard
 {
   M& mutex;
   explicit LockGuard(M& mutex) : mutex(mutex) { mutex.lock(); }
+  // Takes over a mutex the calling thread has locked.
+  LockGuard(M& mutex, AdoptLock) : mutex(mutex) {}
   LockGuard(const LockGuard<M>&) = delete;
+  LockGuard<M>& operator=(const LockGuard<M>&) = delete;
   ~LockGuard() { this->mutex.unlock(); }
 };
 template<typename M>
 using ScopedLock = LockGuard<M>;
 
+// A movable owner of a mutex's lock (std::unique_lock): it may own the lock or not, and unlocks
+// at its end only what it owns. lock() and unlock() throw SystemError: operation_not_permitted
+// without a mutex (unlock: without the lock), resource_deadlock_would_occur when the lock is
+// already owned.
 template<typename M>
 struct UniqueLock
 {
-  M* mutex = nullptr;
+  M* mutex_ = nullptr;
   bool owns = false;
 
   UniqueLock() {}
-  explicit UniqueLock(M& mutex) : mutex(&mutex), owns(true) { mutex.lock(); }
+  explicit UniqueLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lock(); }
+  UniqueLock(M& mutex, DeferLock) : mutex_(&mutex) {}
+  UniqueLock(M& mutex, TryToLock) : mutex_(&mutex) { this->owns = mutex.try_lock(); }
+  UniqueLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   UniqueLock(const UniqueLock<M>&) = delete;
-  UniqueLock(UniqueLock<M>&& other) : mutex(other.mutex), owns(other.owns)
+  UniqueLock<M>& operator=(const UniqueLock<M>&) = delete;
+  UniqueLock(UniqueLock<M>&& other) : mutex_(other.mutex_), owns(other.owns)
   {
-    other.mutex = nullptr;
+    other.mutex_ = nullptr;
     other.owns = false;
+  }
+  UniqueLock<M>& operator=(UniqueLock<M>&& other)
+  {
+    if (this != &other)
+    {
+      if (this->owns)
+        this->mutex_->unlock();
+      this->mutex_ = other.mutex_;
+      this->owns = other.owns;
+      other.mutex_ = nullptr;
+      other.owns = false;
+    }
+    return *this;
   }
   ~UniqueLock()
   {
     if (this->owns)
-      this->mutex->unlock();
+      this->mutex_->unlock();
   }
+
   void lock()
   {
-    this->mutex->lock();
+    this->checkLockable("UniqueLock::lock");
+    this->mutex_->lock();
     this->owns = true;
   }
+  bool tryLock()
+  {
+    this->checkLockable("UniqueLock::try_lock");
+    this->owns = this->mutex_->try_lock();
+    return this->owns;
+  }
+  bool try_lock() { return this->tryLock(); }
   void unlock()
   {
-    this->mutex->unlock();
+    if (!this->owns)
+      throw SystemError(make_error_code(Errc::operation_not_permitted), "UniqueLock::unlock");
+    this->mutex_->unlock();
     this->owns = false;
   }
+  // Lets go of the mutex without unlocking it, and returns it.
+  M* release()
+  {
+    M* mutex = this->mutex_;
+    this->mutex_ = nullptr;
+    this->owns = false;
+    return mutex;
+  }
+  void swap(UniqueLock<M>& other)
+  {
+    ::swap(this->mutex_, other.mutex_);
+    ::swap(this->owns, other.owns);
+  }
+  M* mutex() const { return this->mutex_; }
   bool ownsLock() const { return this->owns; }
   bool owns_lock() const { return this->owns; }
+  explicit operator bool() const { return this->owns; }
+
+  void checkLockable(const char* what) const
+  {
+    if (!this->mutex_)
+      throw SystemError(make_error_code(Errc::operation_not_permitted), what);
+    if (this->owns)
+      throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), what);
+  }
 };
 
+// A movable owner of a mutex's shared lock (std::shared_lock): UniqueLock's shape, through the
+// mutex's lockShared, tryLockShared and unlockShared.
 template<typename M>
 struct SharedLock
 {
-  M& mutex;
-  explicit SharedLock(M& mutex) : mutex(mutex) { mutex.lockShared(); }
+  M* mutex_ = nullptr;
+  bool owns = false;
+
+  SharedLock() {}
+  explicit SharedLock(M& mutex) : mutex_(&mutex), owns(true) { mutex.lockShared(); }
+  SharedLock(M& mutex, DeferLock) : mutex_(&mutex) {}
+  SharedLock(M& mutex, TryToLock) : mutex_(&mutex) { this->owns = mutex.tryLockShared(); }
+  SharedLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   SharedLock(const SharedLock<M>&) = delete;
-  ~SharedLock() { this->mutex.unlockShared(); }
+  SharedLock<M>& operator=(const SharedLock<M>&) = delete;
+  SharedLock(SharedLock<M>&& other) : mutex_(other.mutex_), owns(other.owns)
+  {
+    other.mutex_ = nullptr;
+    other.owns = false;
+  }
+  SharedLock<M>& operator=(SharedLock<M>&& other)
+  {
+    if (this != &other)
+    {
+      if (this->owns)
+        this->mutex_->unlockShared();
+      this->mutex_ = other.mutex_;
+      this->owns = other.owns;
+      other.mutex_ = nullptr;
+      other.owns = false;
+    }
+    return *this;
+  }
+  ~SharedLock()
+  {
+    if (this->owns)
+      this->mutex_->unlockShared();
+  }
+
+  void lock()
+  {
+    this->checkLockable("SharedLock::lock");
+    this->mutex_->lockShared();
+    this->owns = true;
+  }
+  bool tryLock()
+  {
+    this->checkLockable("SharedLock::try_lock");
+    this->owns = this->mutex_->tryLockShared();
+    return this->owns;
+  }
+  bool try_lock() { return this->tryLock(); }
+  void unlock()
+  {
+    if (!this->owns)
+      throw SystemError(make_error_code(Errc::operation_not_permitted), "SharedLock::unlock");
+    this->mutex_->unlockShared();
+    this->owns = false;
+  }
+  M* release()
+  {
+    M* mutex = this->mutex_;
+    this->mutex_ = nullptr;
+    this->owns = false;
+    return mutex;
+  }
+  void swap(SharedLock<M>& other)
+  {
+    ::swap(this->mutex_, other.mutex_);
+    ::swap(this->owns, other.owns);
+  }
+  M* mutex() const { return this->mutex_; }
+  bool ownsLock() const { return this->owns; }
+  bool owns_lock() const { return this->owns; }
+  explicit operator bool() const { return this->owns; }
+
+  void checkLockable(const char* what) const
+  {
+    if (!this->mutex_)
+      throw SystemError(make_error_code(Errc::operation_not_permitted), what);
+    if (this->owns)
+      throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), what);
+  }
 };
 
+// Whether a timed wait returned because its time ran out (std::cv_status).
+enum class CvStatus { no_timeout, timeout };
+
+// Waits of threads for a condition other threads make true (std::condition_variable), always
+// with the predicate checked again under the lock: a wait may return without a notify (a spurious
+// wake-up), so a wait without a predicate is followed by the caller's check. A timed wait returns
+// timeout when its time has passed on its clock (wait_for: the steady clock).
 struct ConditionVariable
 {
   void* condition = nullptr; // CONDITION_VARIABLE
@@ -258,24 +503,53 @@ struct ConditionVariable
   ConditionVariable(const ConditionVariable&) = delete;
   ConditionVariable& operator=(const ConditionVariable&) = delete;
 
-  void wait(UniqueLock<Mutex>& lock) { SleepConditionVariableSRW(&this->condition, &lock.mutex->lock_, 0xFFFFFFFFu, 0); }
+  void notifyOne() { WakeConditionVariable(&this->condition); }
+  void notifyAll() { WakeAllConditionVariable(&this->condition); }
+  void notify_one() { this->notifyOne(); }
+  void notify_all() { this->notifyAll(); }
+
+  // Unlocks lock's mutex and blocks until notified (or woken spuriously), then locks it again.
+  void wait(UniqueLock<Mutex>& lock) { SleepConditionVariableSRW(&this->condition, &lock.mutex_->lock_, 0xFFFFFFFFu, 0); }
   template<typename Predicate>
   void wait(UniqueLock<Mutex>& lock, Predicate ready)
   {
     while (!ready())
       this->wait(lock);
   }
-  template<typename Rep, typename Period>
-  bool waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d)
+
+  template<typename Clock, typename Dur>
+  CvStatus waitUntil(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t)
   {
-    return SleepConditionVariableSRW(&this->condition, &lock.mutex->lock_, waitMilliseconds(d), 0) != 0;
+    auto now = Clock::now();
+    if (now < t)
+      SleepConditionVariableSRW(&this->condition, &lock.mutex_->lock_, waitMilliseconds(t - now), 0);
+    return Clock::now() < t ? CvStatus::no_timeout : CvStatus::timeout;
   }
-  void notifyOne() { WakeConditionVariable(&this->condition); }
-  void notifyAll() { WakeAllConditionVariable(&this->condition); }
+  // Waits until ready() or until t has passed; returns ready() at the end.
+  template<typename Clock, typename Dur, typename Predicate>
+  bool waitUntil(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t, Predicate ready)
+  {
+    while (!ready())
+      if (this->waitUntil(lock, t) == CvStatus::timeout)
+        return ready();
+    return true;
+  }
   template<typename Rep, typename Period>
-  bool wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitFor(lock, d); }
-  void notify_one() { this->notifyOne(); }
-  void notify_all() { this->notifyAll(); }
+  CvStatus waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitUntil(lock, SteadyClock::now() + d); }
+  template<typename Rep, typename Period, typename Predicate>
+  bool waitFor(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d, Predicate ready)
+  {
+    return this->waitUntil(lock, SteadyClock::now() + d, move(ready));
+  }
+
+  template<typename Clock, typename Dur>
+  CvStatus wait_until(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t) { return this->waitUntil(lock, t); }
+  template<typename Clock, typename Dur, typename Predicate>
+  bool wait_until(UniqueLock<Mutex>& lock, const TimePoint<Clock, Dur>& t, Predicate ready) { return this->waitUntil(lock, t, move(ready)); }
+  template<typename Rep, typename Period>
+  CvStatus wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d) { return this->waitFor(lock, d); }
+  template<typename Rep, typename Period, typename Predicate>
+  bool wait_for(UniqueLock<Mutex>& lock, const Duration<Rep, Period>& d, Predicate ready) { return this->waitFor(lock, d, move(ready)); }
 };
 
 // The unsigned integer of each size the atomic instructions work on.
