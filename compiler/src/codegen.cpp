@@ -3239,6 +3239,8 @@ namespace
           moveConstruct(to, from, ft, at);
         else if (isClass(ft))
           copyConstruct(to, from, ft, at);
+        else if (ft->kind == TyKind::Array)
+          transferArray(to, from, ft, at, move, false);
         else
         {
           std::string v = newTemp();
@@ -3246,6 +3248,61 @@ namespace
           fn += "  store " + llType(ft, at) + " " + v + ", ptr " + to + "\n";
         }
       }
+    }
+
+    // Copies or moves the array of type t at src into the one at dst, constructing (assign: assigning)
+    // element by element, each through its own copy or move: a member `T items[N]` of a class whose
+    // copy or move is memberwise (the library's Array<Vector<T>, N> returned by value; bitwise, the
+    // vectors were freed twice). One after the other for a few, in a loop for more; an array of what
+    // needs no destruction is copied bitwise.
+    void transferArray(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move, bool assign)
+    {
+      t = types.unqualified(t);
+      if (!needsDestruction(t, at) || t->count == 0)
+      {
+        std::string v = newTemp();
+        fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
+        fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+        return;
+      }
+      auto transferAt = [&](const std::string& index)
+      {
+        std::string to = newTemp(), from = newTemp();
+        fn += "  " + to + " = getelementptr inbounds " + llType(t, at) + ", ptr " + dst + ", i64 0, i64 " + index + "\n";
+        fn += "  " + from + " = getelementptr inbounds " + llType(t, at) + ", ptr " + src + ", i64 0, i64 " + index + "\n";
+        const Ty* element = types.unqualified(t->inner);
+        if (element->kind == TyKind::Array)
+          transferArray(to, from, element, at, move, assign);
+        else if (assign)
+          assignObject(to, from, element, at, move);
+        else if (move)
+          moveConstruct(to, from, element, at);
+        else
+          copyConstruct(to, from, element, at);
+      };
+      if (t->count <= 8)
+      {
+        for (uint32_t i = 0; i < t->count; ++i)
+          transferAt(std::to_string(i));
+        return;
+      }
+      std::string slot = "%v" + std::to_string(temp++);
+      allocas += "  " + slot + " = alloca i64\n";
+      fn += "  store i64 0, ptr " + slot + "\n";
+      std::string loopL = newLabel("array.loop"), bodyL = newLabel("array.body"), endL = newLabel("array.end");
+      emitBranch(loopL);
+      startBlock(loopL);
+      std::string index = newTemp(), done = newTemp();
+      fn += "  " + index + " = load i64, ptr " + slot + "\n";
+      fn += "  " + done + " = icmp eq i64 " + index + ", " + std::to_string(t->count) + "\n";
+      fn += "  br i1 " + done + ", label %" + endL + ", label %" + bodyL + "\n";
+      startBlock(bodyL);
+      transferAt(index);
+      std::string next = newTemp();
+      fn += "  " + next + " = add i64 " + index + ", 1\n";
+      fn += "  store i64 " + next + ", ptr " + slot + "\n";
+      emitBranch(loopL);
+      startBlock(endL);
     }
 
     // Implicit copy assignment: user operator= where one exists, memberwise otherwise.
@@ -3342,6 +3399,8 @@ namespace
         std::string to = gep(info.name, dst, index), from = gep(info.name, src, index);
         if (isClass(ft))
           assignObject(to, from, ft, at, move);
+        else if (ft->kind == TyKind::Array)
+          transferArray(to, from, ft, at, move, true);
         else
         {
           std::string v = newTemp();

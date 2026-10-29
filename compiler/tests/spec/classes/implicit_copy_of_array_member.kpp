@@ -1,0 +1,61 @@
+// spec: a class's implicit copy and move, construction and assignment alike, copy or move a member array of objects element by element, each element through its own copy or move constructor or assignment (nested arrays too)
+// factorio: UnlockableRules::prepareRulesByDependency's `return buckets;` of an Array<Vector<const UnlockableRule*>, 317>: the vectors were copied bitwise into the result and then destroyed with the local, and `--dump-data` died of heap corruption after the prototype list checksum (AddressSanitizer: double free in UnlockableRules::postPrototypesSetup)
+int copies = 0;
+struct Tracked
+{
+  int* data = nullptr;
+  Tracked() = default;
+  Tracked(int v) : data(new int(v)) {}
+  Tracked(const Tracked& other) : data(other.data ? new int(*other.data) : nullptr) { ++copies; }
+  Tracked(Tracked&& other) : data(other.data) { other.data = nullptr; }
+  Tracked& operator=(const Tracked& other)
+  {
+    if (this != &other)
+    {
+      delete this->data;
+      this->data = other.data ? new int(*other.data) : nullptr;
+    }
+    ++copies;
+    return *this;
+  }
+  Tracked& operator=(Tracked&& other)
+  {
+    if (this != &other)
+    {
+      delete this->data;
+      this->data = other.data;
+      other.data = nullptr;
+    }
+    return *this;
+  }
+  ~Tracked() { delete this->data; }
+};
+struct Three { Tracked items[3]; };
+struct Grid { Tracked cells[2][2]; };
+struct Many { Tracked items[20]; };
+static Three make()
+{
+  Three t;
+  t.items[0] = Tracked(1);
+  t.items[2] = Tracked(3);
+  return t;
+}
+int main()
+{
+  Three a = make();
+  Three b = a;
+  Three c;
+  c = b;
+  Three d;
+  d = make();
+  Grid g;
+  g.cells[1][0] = Tracked(5);
+  Grid h = g;
+  Grid k = move(h);
+  Many m;
+  m.items[19] = Tracked(19);
+  Many n = m;
+  println("{} {} {} {} {} {} {} {} {}", *a.items[0].data, *b.items[2].data, *c.items[0].data, *d.items[2].data, *k.cells[1][0].data,
+          h.cells[1][0].data == nullptr, b.items[1].data == nullptr, *n.items[19].data, copies);
+  return 0;
+}
