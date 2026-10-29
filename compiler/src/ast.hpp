@@ -249,6 +249,9 @@ struct FunctionDecl : Decl
   Expr* requiresClause = nullptr;
   Expr* condition = nullptr; // conditional(expr): calls compile to nothing while expr is false.
   Expr* explicitCondition = nullptr; // explicit(expr): explicit only while expr (a template parameter, usually) is true.
+  // `Pair<int, Mode> five(a, m);` at namespace scope: the names as expressions. The resolver makes
+  // the declaration an object constructed from them when they are variables (design.md rule 2).
+  Span<Expr*> objectArgs;
 };
 struct VariableDecl : Decl
 {

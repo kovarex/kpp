@@ -317,6 +317,53 @@ struct GlobalScope::Impl
   std::vector<std::pair<FunctionDecl*, Scope*>> deferredFunctions; // Out-of-line member function definitions.
   std::vector<std::pair<VariableDecl*, Scope*>> deferredVariables; // Out-of-line static data member definitions.
   std::vector<std::pair<DeductionGuideDecl*, Scope*>> deferredGuides; // Deduction guides, attached to their class templates by finishIndex.
+  std::vector<std::pair<FunctionDecl*, Scope*>> objectCandidates; // `T five(a, m);`: an object when a and m are variables (finishIndex).
+
+  // `constexpr Pair<int, Mode> five(a, m);` at namespace scope, which the parser read as a function
+  // with unnamed parameters of the types a and m: when every name is a variable (or an enumerator
+  // or a function) instead, an object constructed from them (design.md rule 2: no most vexing
+  // parse), which replaces the function in its scope and among its file's or namespace's
+  // declarations. Run by finishIndex, when every name is known.
+  void objectFromFunctionDeclaration(FunctionDecl* f, Scope* scope)
+  {
+    for (Expr* a : f->objectArgs)
+    {
+      Decl* d = lookupQualified(static_cast<NameExpr*>(a)->name, scope, nullptr, 0).decl;
+      bool value = d && ((d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef)) || d->kind == NodeKind::EnumeratorDecl ||
+                         d->kind == NodeKind::FunctionDecl);
+      if (!value)
+        return; // a type (or nothing known): the function stands
+    }
+    Arena& arena = instanceArena();
+    auto* v = arena.make<VariableDecl>();
+    v->kind = NodeKind::VariableDecl;
+    v->token = f->token;
+    v->endToken = f->endToken;
+    v->file = f->file;
+    v->parent = f->parent;
+    v->access = f->access;
+    v->attributes = f->attributes;
+    v->flags = f->flags & (DF_Constexpr | DF_Static | DF_Extern | DF_Inline | DF_ThreadLocal);
+    v->type = f->returnType;
+    v->name = f->name;
+    auto* init = arena.make<FunctionalCastExpr>();
+    init->kind = NodeKind::FunctionalCastExpr;
+    init->token = f->token;
+    init->type = f->returnType; // the parser's `T x(args)`
+    init->args = f->objectArgs;
+    init->braced = false;
+    v->init = init;
+    uint32_t symbol = functionSymbol(f->name);
+    if (const std::vector<Entry>* entries = scope->find(symbol))
+      for (Entry& e : const_cast<std::vector<Entry>&>(*entries))
+        if (e.decl == f)
+          e.decl = v;
+    Span<Decl*> siblings = f->parent && f->parent->kind == NodeKind::NamespaceDecl ? static_cast<NamespaceDecl*>(f->parent)->decls
+                           : f->file ? f->file->decls : Span<Decl*>{};
+    for (Decl*& sibling : siblings)
+      if (sibling == f)
+        sibling = v;
+  }
   // A class template's deduction guides, each as a function (template) returning the class it
   // deduces: built by finishIndex (single-threaded), only read after.
   std::unordered_map<Decl*, std::vector<FunctionDecl*>> guidesOf;
@@ -924,6 +971,11 @@ struct GlobalScope::Impl
           {
             scope->add(symbol, f, nullptr);
             ++entries;
+          }
+          if (!f->objectArgs.empty() && !f->body)
+          {
+            std::lock_guard lock(deferredMutex);
+            objectCandidates.push_back({f, scope}); // `Pair<int, Mode> five(a, m);`: decided by finishIndex
           }
         }
         else if (f->name.parts.size() > 1 && (f->body || (f->flags & (DF_Default | DF_Delete))))
@@ -15009,6 +15061,11 @@ void GlobalScope::finishIndex()
     impl->guideFunctions.push_back(std::move(f));
   }
   impl->deferredGuides.clear();
+  // `constexpr Pair<int, Mode> five(a, m);`: an object when a and m are variables.
+  std::stable_sort(impl->objectCandidates.begin(), impl->objectCandidates.end(), byDecl);
+  for (auto& [f, context] : impl->objectCandidates)
+    impl->objectFromFunctionDeclaration(f, context);
+  impl->objectCandidates.clear();
 }
 
 std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()

@@ -913,6 +913,10 @@ The smallest language that is still Kpp, as the target of the first code generat
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
      an identifier is a declaration (`Foo* p;`); as an expression it would be useless anyway.
   2. `Type name(args)` is a declaration; `Type(args)` is an expression (no most vexing parse).
+     At namespace scope, `T name(a, m);` with only names in the parentheses is an object
+     constructed from them when they are variables (enumerators, functions), and a function with
+     unnamed parameters when they are types: the resolver decides once every name is indexed
+     (2026-10-29, spec language/object_declaration_from_variables).
   3. `name<...>` is a template-id in type positions always. In expression positions it is one
      when one of its arguments can only be a type (a type keyword, `const`, a pointer, reference,
      array or function type, `decltype`, `typename`), whatever follows: `pi_v<float> * x`

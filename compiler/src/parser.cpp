@@ -24,6 +24,7 @@ namespace
     Expr* bitfield = nullptr;
     Expr* requiresClause = nullptr;
     Span<Expr*> structuredBindings;
+    Span<Expr*> objectArgs; // FunctionDecl::objectArgs
   };
 
   class Parser
@@ -1975,6 +1976,8 @@ namespace
         // at the contents: a parameter list starts with a type or is empty.
         if (looksLikeParameterList(scope))
         {
+          if (scope == Scope::Namespace && !cMode)
+            d.objectArgs = bareNameArguments();
           d.isFunction = true;
           parseFunctionSuffix(d);
         }
@@ -2010,6 +2013,29 @@ namespace
         result = suffixes[i];
       }
       return result;
+    }
+
+    // At the `(` after a declarator's name, `(a, m);`: only names, then the declaration's end.
+    // Without knowing what the names are, a function with unnamed parameters of those types, or an
+    // object constructed from those variables; the names as expressions, for the resolver to
+    // decide (design.md rule 2), or none.
+    Span<Expr*> bareNameArguments()
+    {
+      int count = 0;
+      while (atIdent(1 + 2 * count) && at(P::Comma, 2 + 2 * count))
+        ++count;
+      if (!atIdent(1 + 2 * count) || !at(P::RParen, 2 + 2 * count) || !at(P::Semi, 3 + 2 * count))
+        return {};
+      size_t mark = scratch.size();
+      for (int k = 0; k <= count; ++k)
+      {
+        NameExpr* n = node<NameExpr>(pos + 1 + 2 * k);
+        NamePart part;
+        part.symbol = tok(1 + 2 * k).id;
+        n->name.parts = makeSpanOf(std::vector<NamePart>{part});
+        scratch.push_back(n);
+      }
+      return makeSpan<Expr*>(mark);
     }
 
     bool looksLikeParameterList(Scope scope)
@@ -2206,6 +2232,7 @@ namespace
       f->returnType = returnType;
       f->name = d.name;
       f->params = d.params;
+      f->objectArgs = d.objectArgs;
       for (Decl* p : d.params)
         p->parent = f; // Parameters belong to the function (its template parameters are in scope for them).
       f->flags |= flags | d.flags;

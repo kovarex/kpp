@@ -1,0 +1,17 @@
+// spec: at namespace scope `T name(a, m);` with only names in the parentheses is an object constructed from them when they are variables (design.md rule 2, no most vexing parse), and a function with unnamed parameters when they are types (`Point makePoint(Point, Point);`)
+// factorio: found by the templates thread in a compile-time test: `constexpr Pair<int, Mode> five(a, m);` read as a function, so `five.second` had no object and the evaluator no variable
+enum class Mode : uint8_t { Slow, Fast };
+struct Point { int x = 0; int y = 0; };
+constexpr int a = 5;
+constexpr Mode m = Mode::Fast;
+constexpr Pair<int, Mode> five(a, m);
+Point origin(a, a);
+Point makePoint(Point, Point);
+Point makePoint(Point first, Point second) { return Point{first.x + second.x, first.y + second.y}; }
+static_assert(five.first == 5);
+int main()
+{
+  Point p = makePoint(origin, origin);
+  println("{} {} {} {}", five.first, int(five.second), origin.y, p.x);
+  return 0;
+}
