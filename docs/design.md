@@ -559,6 +559,60 @@ file shorten them again, so the meaning of a short name depends on the file it i
 packages keep the hierarchy those systems give for browsing and drop the part that makes names
 contextual; clashes are prevented by the compiler refusing them instead.
 
+## struct and class (proposed 2026-10-29, not yet decided by kovarex)
+
+**The question** (kovarex): why are the standard library's types structs (`struct String`), and
+what do two keywords buy when the only difference is that a struct starts public? He uses
+`struct` as a hint to the reader that a type is small, mostly data, and `class` for a real object.
+
+**Today** the two differ only as in C++: a class's members and bases start private, a struct's
+public. Kpp records access but checks it nowhere (its one use is class argument deduction's
+aggregate test), so today the keywords mean the same thing. The library is written with
+`struct` because all its members were public anyway and `public:` would have been noise. Nobody
+decided that.
+
+**What the code does** (`python compiler/bench/struct_survey.py`, a regex survey, right in
+proportion):
+
+| | struct | class |
+|---|---|---|
+| The game's C++ (src, CommonUtil, Agui) | 982, median 3 members: 70% plain data (no constructor, access section or virtual), 29% with a constructor, 3% with a private or protected section, 1% with virtual functions | 5,115, median 9 members: 45% with virtual functions, 50% with public members only |
+| The standard library | 231 (String, Vector, Map, HashMap, Optional, UniquePtr, FunctionImpl...): none with a private section | none |
+
+kovarex's convention holds in the game. 96% of its structs are public data, at most with
+constructors and methods. The 35 exceptions (`struct_survey.py --offenders`) are 26 with a
+private or protected section (VulkanImpl, Filesystem's Path, InputState's KeyState...) and 9 with
+virtual functions (DebugTools' value structs, AsyncScenarioSaver's Observer). The library breaks
+the convention: its containers are objects with invariants, written as public structs.
+
+**Options.**
+1. *C++'s rule, as now.* Costs nothing. Without access checks it is no rule at all, and with them
+   the keyword still says nothing about what a type is.
+2. *One keyword.* Saves one choice per type. It loses the hint kovarex reads, rewrites 1,000 (or
+   5,000) of the game's definitions, and gains nothing at compile time.
+3. *Two keywords with a checked meaning (recommended).* `struct` is a public value type: every
+   member and base is public, and a `private:` or `protected:` section or a virtual function is
+   an error ("a struct has only public members and no virtual functions: make X a class").
+   Constructors, a destructor, methods and operators are fine. A struct without constructors is
+   initialised member by member from a brace list, an aggregate as now. `class` is everything
+   else, its members private until a `public:`. For `class` to mean something, access is checked
+   too, private and protected with `friend` as in C++. That is separate work in the resolver:
+   member lookup must know whose code it types and the friends, 442 `friend` declarations in the
+   game.
+
+**What option 3 costs.**
+- The converter turns the game's 35 rule-breaking structs into classes, mechanically, with
+  `public:` first.
+- The library's types with invariants become classes with their state private, about 40 of them
+  (String, Vector, Map, HashMap, Set, Deque, Optional, UniquePtr, Function and the like). Traits,
+  tags, Pair, Tuple and the iterators stay structs.
+- Declarations imported from C headers are structs of public data already.
+- Access checks run as warnings over the converted game first, to find what the conversion must
+  keep (tests reaching into the classes they test, for instance), and become errors once it is
+  clean.
+- The struct rule can come first: it is one check in the parser, and the game breaks it in 35
+  places.
+
 ## Instantiations own their typed bodies (decided 2026-10-28: a copy per instantiation)
 
 **Today.** A template's body exists once, in the parsed tree. Whatever types it for a set of
