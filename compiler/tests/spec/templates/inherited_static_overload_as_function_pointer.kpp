@@ -1,0 +1,41 @@
+// spec: an overloaded static member function of a class template's instance, defined out of line, taken as a function pointer through a class derived from that instance (`Expression::computeConstant` for a pointer of one overload's type): the overload of that type, defined with the instance's arguments
+// factorio: NoiseExpressionParser.cpp's NamedFunction::create<QuickMultioctaveNoise>, `NamedFunction(..., Expression::computeConstant)`, QuickMultioctaveNoise deriving ComplexExpressionWithOperation<QuickMultioctaveNoise, 2, 10>, whose computeConstant(const std::vector<NoiseExpressionConstant>&) is defined in ComplexNoiseExpressions.cpp (the link's one symbol never emitted)
+// pending: the function is referenced without the instance's arguments and never emitted (the link fails: "unresolved external symbol ...ComplexExpressionWithOperation::computeConstant(const Vector<int32>&)"); owner: templates
+template<class Operation, int variableCount, int constantCount>
+class ComplexExpressionWithOperation
+{
+public:
+  static int computeConstant(int variables, int constants) { return variables * 100 + constants + Operation::bias; }
+  static int computeConstant(const Vector<int>& args);
+};
+
+template<class Operation, int variableCount, int constantCount>
+int ComplexExpressionWithOperation<Operation, variableCount, constantCount>::computeConstant(const Vector<int>& args)
+{
+  return ComplexExpressionWithOperation::computeConstant(args[0] + variableCount, args[1] + constantCount);
+}
+
+class QuickMultioctaveNoise : public ComplexExpressionWithOperation<QuickMultioctaveNoise, 2, 10>
+{
+public:
+  static const int bias = 7;
+};
+
+struct NamedFunction
+{
+  int (*computeConstant)(const Vector<int>&) = nullptr;
+};
+
+template<class Expression>
+NamedFunction create()
+{
+  return NamedFunction{Expression::computeConstant};
+}
+
+int main()
+{
+  NamedFunction function = create<QuickMultioctaveNoise>();
+  Vector<int> args = {3, 4};
+  println("{}", function.computeConstant(args));
+  return 0;
+}
