@@ -1,6 +1,5 @@
 // spec: class operators at compile time: a member operator==, a free operator<, `!=` rewritten from `==`, a defaulted `<=>` comparing member by member (and the `==` it implies), a class's own operator+=, an explicit operator bool in a condition, a derived object given to a base reference, a virtual function the object's class overrides, references to locals read and written through
 // factorio: BoundingBox::emptyValue().isZeroSize() (MapPosition's defaulted <=>, GameOptional's operator bool and operator==)
-// pending: the interpreter ran no class operators, no virtual calls and no references
 struct Fixed
 {
   int raw = 0;

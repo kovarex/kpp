@@ -1,6 +1,5 @@
 // spec: a constant computed many calls deep: a type (`sizeof(T)` in a class template's static member function), a member read and a constructed object at the end of the chain are evaluated as written, however many calls reached them
 // factorio: static_assert(BoundingBox::emptyValue().isZeroSize()) (Limits<T>::max() six calls deep, through GameOptional and FixedPointNumber)
-// pending: the evaluator handed its own nesting depth to the type walker, which gives up past 40 levels
 template<class T>
 struct Wrap
 {

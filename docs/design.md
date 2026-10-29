@@ -589,7 +589,7 @@ are hashes of their contents, a lambda's mark in an instantiation is a hash of t
 printed, filters and function-local statics are named by where they are written, module texts
 are sorted, and every use of a failed layout or global reports the same error.
 
-## Compile-time evaluation: one interpreter (decided 2026-10-29; step 1 done)
+## Compile-time evaluation: one interpreter (decided 2026-10-29; steps 1 to 3 done)
 
 **Today.** Two evaluators compute constants: the checker's (constEval, for template arguments,
 `if constexpr`, requires clauses, static_assert) and the code generator's (evalConst, for the
@@ -682,7 +682,8 @@ constant data.
 *Who builds it* (settled 2026-10-29): compiler/src/consteval.cpp, owned by the templates thread,
 which also does step 1's cutover; constEval and evalConst become thin calls into it, the resolver
 and code generator threads reviewing. Kept from constEval (174c22e): each name's evaluation starts
-its own call depth, nesting is bounded (1024, and a check for stack room), and static members'
+its own call depth (and, since step 3, each called function's body), nesting is bounded (1024, and
+a check for stack room), and static members'
 values are memoised per class instance (specs templates/pack_recursion_depth and
 templates/variadic_partial_specialisation).
 
@@ -744,9 +745,33 @@ data (it builds them at startup). Specs language/consteval_objects,
 language/consteval_arrays_and_strings. Measured paired on ec5bcb1: 22,160 -> 22,156, the
 static_asserts on `variantNames[i]` and `layerNames[i]` evaluating.
 
-Left: class operators, virtual calls, addresses and references (the rest of step 3); objects and
-arrays as constant data and range-for over them (step 4); `sqrt` (the library's has no Kpp body
-yet); float template arguments. The library's gcd and lcm can go back to loops.
+*The rest of step 3, done 2026-10-29.* Class operators run as the class declares them: member and
+free operators (`a < b` by a free `operator<`), `!=` rewritten from `==` and the relational ones
+from `<=>`, a defaulted `==` or `<=>` comparing bases and members in order, a class's own `+=`
+and `=`, and an explicit `operator bool` in a condition. A virtual call runs the overrider of the
+object's own class (`s.sides()` on a Square given as a `const Shape&`): an object given to a base
+reference keeps its class, one given by value is sliced. References are aliases: a local
+reference, or a reference parameter given a local, a member or an element, reads and writes what
+it refers to (`int& r = a; r += 10;`, `bump(a)`), and a `const` reference to a temporary holds a
+copy. Two rules made the game's `BoundingBox::emptyValue().isZeroSize()` evaluate. A called
+function's body counts its own nesting from zero: how deep the calls go is bounded by the guard of
+512 nested calls and the check for stack room, so a `sizeof(T)` six calls deep converts its type as
+written (the type walker, which was handed the evaluator's depth, stops at 40 levels). And a member
+a body names (`this->leftTop`, `width` alone) is found by name in the class of the object the
+evaluation holds when no walk has typed that body yet: a constexpr member function of a class
+declared further down, or in a file walked later (BoundingBox.kpp after CameraWidgetUndoRedo.kpp),
+since symbols are order-independent. Not yet: addresses of locals (`&x`), objects as template
+arguments, objects as the code generator's constant data. Specs language/consteval_class_operators,
+language/consteval_reference_parameter, language/consteval_deep_calls,
+language/consteval_members_declared_later. Measured paired on 3100f7b: 22,035 -> 22,034, static
+assertions the compiler cannot evaluate 16 -> 15.
+
+Left: addresses of locals; objects and arrays as constant data and range-for over them (step 4);
+`sqrt` (the library's has no Kpp body yet); float template arguments. The library's gcd and lcm
+can go back to loops. The game's 15 static_asserts left need: VariantAlternative over a variant
+(SegmentedUnitAI), `sizeof` of a member through a reference (`maskUniform.uvTransform`) and of
+another class's static member, and checks inside pack instantiations (`sizeof...(Args)`,
+`(isFundamental<RemoveReference<Ts>> && ...)`, `typeID > 0`), which the code generator evaluates.
 
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`

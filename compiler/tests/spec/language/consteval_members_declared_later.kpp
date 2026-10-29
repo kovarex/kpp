@@ -1,6 +1,5 @@
 // spec: a compile-time call into a class declared further down: its member functions read the object's members (`this->width`, `height` alone) though nothing has typed their bodies yet
 // factorio: static_assert(BoundingBox::emptyValue().isZeroSize()) in CameraWidgetUndoRedo.kpp, walked before BoundingBox.kpp
-// pending: the interpreter read members only through the bindings the walk of their function leaves
 static_assert(Box(1, 1).isSquare());
 static_assert(Box(2, 3).area() == 6);
 int main()

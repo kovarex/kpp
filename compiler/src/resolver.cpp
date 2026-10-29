@@ -2181,7 +2181,12 @@ struct GlobalScope::Impl
     uint32_t symbol;
     ConstValue value;
     const Ty* type = nullptr; // what an assignment converts to
-    bool writable = true;     // false for a const one and for a reference to the caller's object
+    bool writable = true;     // false for a const one, a reference to const, a copy for a reference
+    // A reference bound to a place: the locals it is in (this function's or a caller's, which
+    // outlive it), the binding and the part; value then unused.
+    std::vector<ConstBinding>* aliasEnv = nullptr;
+    size_t aliasIndex = 0;
+    std::vector<size_t> aliasPath;
   };
   struct TypeContext
   {
@@ -3890,7 +3895,7 @@ struct GlobalScope::Impl
   std::optional<bool> constCondition(Expr* e, const TypeContext& ctx, int depth = 0)
   {
     std::optional<ConstValue> v = constValue(e, ctx, depth);
-    return v && (v->isScalar() || v->isPointer()) ? std::optional<bool>(v->truthy()) : std::nullopt;
+    return v ? constTruth(*v, depth) : std::nullopt;
   }
 
   // A value converted to type t as a cast converts it (consteval.hpp): to an arithmetic or
@@ -4038,6 +4043,9 @@ struct GlobalScope::Impl
         Decl* d = m->resolved;
         if (d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static))
           return constMemberRead(m, ctx, depth); // `point.x`, `this->count`
+        if (!d && m->base)
+          if (std::optional<ConstValue> field = constMemberRead(m, ctx, depth))
+            return field; // in a body no walk has typed yet (constFieldNamed)
         auto isConstant = [](Decl* x) {
           return x && ((x->kind == NodeKind::VariableDecl && (x->flags & DF_Static)) || x->kind == NodeKind::EnumeratorDecl);
         };
@@ -4141,11 +4149,12 @@ struct GlobalScope::Impl
         // that hold for every instance (`flag ? -1 : 0u` is unsigned).
         auto* c = static_cast<ConditionalExpr*>(e);
         std::optional<ConstValue> cond = constValue(c->cond, ctx, depth + 1);
-        if (!cond)
+        std::optional<bool> holds = cond ? constTruth(*cond, depth + 1) : std::nullopt;
+        if (!holds)
           return std::nullopt;
         if (!c->then)
-          return cond->truthy() ? cond : constValue(c->else_, ctx, depth + 1); // `a ?: b`
-        std::optional<ConstValue> v = constValue(cond->truthy() ? c->then : c->else_, ctx, depth + 1);
+          return *holds ? cond : constValue(c->else_, ctx, depth + 1); // `a ?: b`
+        std::optional<ConstValue> v = constValue(*holds ? c->then : c->else_, ctx, depth + 1);
         auto scalar = [this](const Ty* t) {
           t = t ? types.unqualified(types.stripRef(t)) : nullptr;
           return t && (t->isArithmetic() || t->kind == TyKind::Enum) && !types.isDependent(t) ? t : nullptr;
@@ -4173,6 +4182,18 @@ struct GlobalScope::Impl
         if (!op || u->postfix || (*op != P::Bang && *op != P::Minus && *op != P::Plus && *op != P::Tilde))
           return std::nullopt; // `&x`: no addresses of the interpreter's locals yet
         std::optional<ConstValue> v = constValue(u->operand, ctx, depth + 1);
+        if (v && v->isObject())
+        {
+          if (*op == P::Bang)
+          {
+            std::optional<bool> t = constTruth(*v, depth + 1); // `!optional`
+            return t ? std::optional<ConstValue>(ConstValue::integer(!*t, types.boolType())) : std::nullopt;
+          }
+          Subst subst;
+          FunctionDecl* f = v->type ? constClassOperator(v->type, *op, {}, subst, depth) : nullptr; // `-vector`
+          std::optional<ConstValue> self = v;
+          return f && f->body ? constCallOn(f, subst, {}, &self, depth + 1) : std::nullopt;
+        }
         return v ? constArith().unary(*op, *v) : std::nullopt;
       }
       case NodeKind::BinaryExpr:
@@ -4225,12 +4246,12 @@ struct GlobalScope::Impl
         {
           std::optional<P> op = constOperator(chain[i]->op, chain[i]->isKeyword);
           // Short-circuit: `true || <unknown>` is true, `false && <unknown>` is false.
-          if (!failed && op && (*op == P::OrOr || *op == P::AndAnd) && (value->isScalar() || value->isPointer()) &&
-              value->truthy() == (*op == P::OrOr))
-          {
-            value = ConstValue::integer(*op == P::OrOr, types.boolType());
-            continue;
-          }
+          if (!failed && op && (*op == P::OrOr || *op == P::AndAnd))
+            if (std::optional<bool> t = constTruth(*value, depth); t && *t == (*op == P::OrOr))
+            {
+              value = ConstValue::integer(*op == P::OrOr, types.boolType());
+              continue;
+            }
           if (!op || !isConstBinaryOperator(*op))
             return std::nullopt;
           // After an operand that is no constant the others are still evaluated: a class's size
@@ -4242,14 +4263,7 @@ struct GlobalScope::Impl
             failed = true;
             continue;
           }
-          if (*op == P::Comma)
-            value = r;
-          else if (value->isPointer() || r->isPointer())
-            value = constPointerArith(*op, *value, *r);
-          else if (value->isObject() || r->isObject() || value->isUnset() || r->isUnset())
-            value = std::nullopt; // a class's operator: not run yet
-          else
-            value = constArith().binary(*op, *value, *r);
+          value = *op == P::Comma ? r : constBinaryValues(*op, *value, *r, ctx, depth);
           failed = !value;
         }
         return failed ? std::nullopt : value;
@@ -4457,16 +4471,22 @@ struct GlobalScope::Impl
       for (size_t i = ctx.env->size(); i-- > 0;)
         if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
         {
+          if ((*ctx.env)[i].aliasEnv)
+            return constRead(ConstPlace{ctx.env, i, {}, (*ctx.env)[i].type}); // a reference: what it refers to now
           const ConstValue& v = (*ctx.env)[i].value; // a parameter or a local of the function being run
           return v.isUnset() ? std::nullopt : std::optional<ConstValue>(v);
         }
-    // `count` alone in a member function: the member of the object it runs on.
+    // `count` alone in a member function: the member of the object it runs on (found by name in a
+    // body no walk has typed yet, constFieldNamed).
     if (Decl* d = n->resolved; d && d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::ClassDecl &&
                                !(d->flags & DF_Static) && constThis(ctx))
     {
       std::optional<ConstPlace> place = constPlaceOf(n, ctx, 0);
       return place ? constRead(*place) : std::nullopt;
     }
+    if (!n->resolved && constThis(ctx))
+      if (std::optional<ConstPlace> place = constPlaceOf(n, ctx, 0))
+        return constRead(*place);
     NameEvaluation nested; // the calls below start at depth 0 (see nameEvaluations)
     if (!nested.ok)
       return std::nullopt;
@@ -4663,14 +4683,18 @@ struct GlobalScope::Impl
         return std::nullopt; // a member of a class template named with no instance
     TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                      f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
+    for (Expr* a : c->args)
+      places.push_back(constPlaceOf(a, ctx, depth + 1));
     // `size()` called in a member function: on the same object, whose changes stay.
-    ConstBinding* self = f->parent && f->parent->kind == NodeKind::ClassDecl && !(f->flags & (DF_Static | DF_Constructor)) ? constThis(ctx) : nullptr;
+    std::optional<ConstPlace> self = f->parent && f->parent->kind == NodeKind::ClassDecl && !(f->flags & (DF_Static | DF_Constructor)) ? constThisPlace(ctx)
+                                                                                                                                        : std::nullopt;
     if (!self)
-      return constRun(f, values, fctx, depth);
-    std::optional<ConstValue> object = self->value;
-    std::optional<ConstValue> r = constRun(f, values, fctx, depth, &object);
-    if (r && object && self->writable)
-      self->value = *object;
+      return constRun(f, values, fctx, depth, nullptr, &places);
+    std::optional<ConstValue> object = constRead(*self);
+    std::optional<ConstValue> r = object ? constRun(f, values, fctx, depth, &object, &places) : std::nullopt;
+    if (r && object && self->writable() && !(f->flags & DF_Const))
+      constWrite(*self, *object);
     return r;
   }
 
@@ -4712,12 +4736,14 @@ struct GlobalScope::Impl
     if (!f || f->body->kind != NodeKind::BlockStmt)
       return std::nullopt;
     std::vector<ConstValue> values;
+    std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
     for (Expr* a : c->args)
     {
       std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
       if (!v)
         return std::nullopt;
       values.push_back(*v);
+      places.push_back(constPlaceOf(a, ctx, depth + 1));
     }
     Subst bound = memberSubst(object, l.foundIn, depth + 1);
     LocalStack params;
@@ -4733,10 +4759,7 @@ struct GlobalScope::Impl
     std::optional<ConstPlace> place;
     std::optional<ConstValue> held;
     if (m->base->kind == NodeKind::ThisExpr && m->op == P::Arrow)
-    {
-      if (ConstBinding* self = constThis(ctx))
-        place = ConstPlace{self, {}, self->type};
-    }
+      place = constThisPlace(ctx);
     else if (m->op == P::Dot)
       place = constPlaceOf(m->base, ctx, depth + 1);
     if (place)
@@ -4750,10 +4773,10 @@ struct GlobalScope::Impl
     if (held && !held->isObject())
       held.reset();
     if (!held)
-      return constRun(f, values, fctx, depth); // what the object's type decides (Array::size of a run-time array)
-    std::optional<ConstValue> r = constRun(f, values, fctx, depth, &held);
-    if (r && held && place && place->binding->writable && !(f->flags & DF_Const))
-      constSetPart(place->binding->value, place->path, 0, *held);
+      return constRun(f, values, fctx, depth, nullptr, &places); // what the object's type decides (Array::size of a run-time array)
+    std::optional<ConstValue> r = constRun(f, values, fctx, depth, &held, &places);
+    if (r && held && place && place->writable() && !(f->flags & DF_Const))
+      constWrite(*place, *held);
     return r;
   }
 
@@ -4761,6 +4784,324 @@ struct GlobalScope::Impl
   // missing ones to their defaults) converted to the parameters' types; what it returns converted
   // to f's declared result type. A function returning void gives a value of type void.
   // ---- step 3: objects, arrays and pointers into them (design.md, "Compile-time evaluation") ----
+
+  // ---- step 3, second part: class operators, conversions, virtual calls, references ----
+
+  // The path from an object of class from to its base subobject of class to (`OptionalMapPosition`
+  // given where a `MapPosition` is wanted: slicing), or nullopt when to is no base of from.
+  std::optional<std::vector<size_t>> constBasePath(const Ty* from, const Ty* to, int depth)
+  {
+    from = types.unqualified(types.stripRef(from));
+    to = types.unqualified(types.stripRef(to));
+    if (from == to)
+      return std::vector<size_t>{};
+    const ConstClassLayout* layout = constLayoutOf(from, depth);
+    if (!layout || depth > 16)
+      return std::nullopt;
+    for (size_t b = 0; b < layout->bases.size(); ++b)
+      if (std::optional<std::vector<size_t>> inner = constBasePath(layout->bases[b], to, depth + 1))
+      {
+        inner->insert(inner->begin(), b);
+        return inner;
+      }
+    return std::nullopt;
+  }
+
+  // The candidates a class offers for a member function or operator named symbol, its own or a
+  // base's, and the arguments of the class they are found in for an object of type t.
+  std::vector<FunctionDecl*> constMembersNamed(const Ty* t, uint32_t symbol, Subst& subst, int depth)
+  {
+    std::vector<FunctionDecl*> out;
+    Scope* s = classScopeOf(t);
+    Lookup l;
+    if (!s || !lookupInScope(s, symbol, l, depth + 1))
+      return out;
+    subst = memberSubst(types.unqualified(types.stripRef(t)), l.foundIn, depth + 1);
+    if (l.overloads)
+    {
+      for (const Entry& entry : *l.overloads)
+        if (entry.decl && entry.decl->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(entry.decl)->templateParams.empty())
+          out.push_back(static_cast<FunctionDecl*>(entry.decl));
+    }
+    else if (l.decl && l.decl->kind == NodeKind::FunctionDecl && l.decl->templateParams.empty())
+      out.push_back(static_cast<FunctionDecl*>(l.decl));
+    return out;
+  }
+
+  // A free function named symbol (a free operator) visible from the scope and the arguments'
+  // classes' namespaces, the arguments choosing among them (GlobalScope::findFree's search).
+  FunctionDecl* constFreeFunction(uint32_t symbol, const std::vector<const Ty*>& argTypes, Scope* scope)
+  {
+    std::vector<Scope*> places;
+    for (const Ty* a : argTypes)
+      if (const Ty* t = a ? types.stripRef(a) : nullptr; t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) && t->decl)
+        places.push_back(lexicalScopeOf(t->decl));
+    places.push_back(scope);
+    for (Scope* place : places)
+      for (Scope* s = place; s; s = s->parent)
+      {
+        if (s->kind == ScopeKind::Class)
+          continue; // members are no free functions, and do not hide them
+        Lookup look;
+        if (!lookupInScope(s, symbol, look, 0))
+          continue;
+        std::vector<FunctionDecl*> candidates;
+        if (look.overloads)
+        {
+          for (const Entry& e : *look.overloads)
+            if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty())
+              candidates.push_back(static_cast<FunctionDecl*>(e.decl));
+        }
+        else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && look.decl->templateParams.empty())
+          candidates.push_back(static_cast<FunctionDecl*>(look.decl));
+        bool ambiguous = false;
+        if (FunctionDecl* f = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, nullptr, nullptr, ambiguous); f && !ambiguous)
+          return f;
+        break;
+      }
+    return nullptr;
+  }
+
+  // A function chosen for an object (or for none): run with these arguments, `this` the object.
+  std::optional<ConstValue> constCallOn(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, std::optional<ConstValue>* self, int depth)
+  {
+    if (!f->body)
+      return std::nullopt;
+    LocalStack params;
+    for (const Subst::Pair& p : subst.pairs)
+      params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+    TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
+                     f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    return constRun(f, args, fctx, depth, self);
+  }
+
+  // Whether an object is true in a condition (`if (optional)`, `!*this`): its conversion to bool
+  // (or to an arithmetic type), explicit or not, its own or a base's.
+  std::optional<bool> constTruth(const ConstValue& v, int depth)
+  {
+    if (v.isScalar() || v.isPointer())
+      return v.truthy();
+    if (!v.isObject() || !v.type || types.unqualified(v.type)->kind != TyKind::Class || depth > 64)
+      return std::nullopt;
+    const Ty* t = types.unqualified(v.type);
+    for (const Ty* cls = t; cls;)
+    {
+      Scope* s = classScopeOf(cls);
+      if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+        return std::nullopt;
+      Subst subst = substFor(cls);
+      for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+      {
+        if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !static_cast<FunctionDecl*>(m)->body)
+          continue;
+        const Ty* ft = declaredTypeOf(m, subst.empty() ? nullptr : &subst, 0);
+        const Ty* to = ft && ft->kind == TyKind::Function && ft->inner ? types.unqualified(types.stripRef(ft->inner)) : nullptr;
+        if (!to || !(to->isArithmetic() || to->kind == TyKind::Enum))
+          continue;
+        std::optional<ConstValue> self = v;
+        std::vector<size_t> base;
+        if (cls != t)
+        {
+          std::optional<std::vector<size_t>> path = constBasePath(t, cls, depth);
+          std::optional<ConstValue> part = path ? constPart(v, *path) : std::nullopt;
+          if (!part)
+            return std::nullopt;
+          self = part;
+        }
+        std::optional<ConstValue> r = constCallOn(static_cast<FunctionDecl*>(m), subst, {}, &self, depth + 1);
+        return r && r->isScalar() ? std::optional<bool>(r->truthy()) : std::nullopt;
+      }
+      ClassDecl* def = classDefinition(cls);
+      std::vector<const Ty*> bases;
+      if (!def || !directBases(cls, def, bases) || bases.size() != 1)
+        return std::nullopt;
+      cls = bases[0];
+    }
+    return std::nullopt;
+  }
+
+  // Whether the operator of a class is `= default` (`operator<=>`, `operator==`).
+  static bool constDefaulted(FunctionDecl* f) { return f && (f->flags & DF_Default) && !f->body; }
+
+  // An operator a class declares for op, or `= default` (a defaulted `<=>` implies `==`).
+  FunctionDecl* constClassOperator(const Ty* t, P op, const std::vector<const Ty*>& argTypes, Subst& subst, int depth)
+  {
+    std::vector<FunctionDecl*> candidates = constMembersNamed(t, opSymbols[uint32_t(op)], subst, depth);
+    if (candidates.empty())
+      return nullptr;
+    bool ambiguous = false;
+    FunctionDecl* f = chooseAmong(candidates, argTypes, subst.empty() ? nullptr : &subst, types.unqualified(t), ambiguous);
+    return f && !ambiguous ? f : nullptr;
+  }
+
+  // `a == b` of two objects of one class compared member by member (a defaulted `==`, or the one a
+  // defaulted `<=>` implies): bases, then members, each by its own `==`.
+  std::optional<bool> constMemberwiseEqual(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth)
+  {
+    if (!l.isObject() || !r.isObject() || l.parts->size() != r.parts->size() || depth > 64)
+      return std::nullopt;
+    for (size_t i = 0; i < l.parts->size(); ++i)
+    {
+      std::optional<ConstValue> same = constBinaryValues(P::EqEq, (*l.parts)[i], (*r.parts)[i], ctx, depth + 1);
+      std::optional<bool> b = same ? constTruth(*same, depth + 1) : std::nullopt;
+      if (!b)
+        return std::nullopt;
+      if (!*b)
+        return false;
+    }
+    return true;
+  }
+
+  // `a <=> b` of two objects of one class with a defaulted `<=>`: the first part that differs
+  // decides, as -1, 0 or 1; nullopt where a part's order is no number's (a class with an
+  // operator<=> of its own).
+  std::optional<int> constMemberwiseOrder(const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth)
+  {
+    if (depth > 64)
+      return std::nullopt;
+    if (l.isScalar() && r.isScalar())
+    {
+      std::optional<ConstValue> less = constArith().binary(P::Less, l, r), greater = constArith().binary(P::Greater, l, r);
+      if (!less || !greater)
+        return std::nullopt;
+      return less->i ? -1 : greater->i ? 1 : 0;
+    }
+    if (!l.isObject() || !r.isObject() || l.parts->size() != r.parts->size())
+      return std::nullopt;
+    if (l.type && types.unqualified(l.type)->kind == TyKind::Class)
+    {
+      Subst subst;
+      FunctionDecl* spaceship = constClassOperator(l.type, P::Spaceship, {r.type}, subst, depth);
+      if (!constDefaulted(spaceship))
+        return std::nullopt;
+    }
+    for (size_t i = 0; i < l.parts->size(); ++i)
+    {
+      std::optional<int> o = constMemberwiseOrder((*l.parts)[i], (*r.parts)[i], ctx, depth + 1);
+      if (!o || *o != 0)
+        return o;
+    }
+    return 0;
+  }
+
+  // An operator applied to values at least one of which is an object or a pointer: pointer
+  // arithmetic; a class's member operator, a free one, or what C++20 rewrites (`a != b` as `!(a
+  // == b)`, `b == a` reversed, `<` and the others by a defaulted `<=>`, `==` by memberwise
+  // comparison where `=` default).
+  std::optional<ConstValue> constBinaryValues(P op, const ConstValue& l, const ConstValue& r, const TypeContext& ctx, int depth)
+  {
+    if (l.isUnset() || r.isUnset() || depth > 512)
+      return std::nullopt;
+    if ((op == P::AndAnd || op == P::OrOr) && (l.isObject() || r.isObject()))
+    {
+      std::optional<bool> a = constTruth(l, depth + 1), b = constTruth(r, depth + 1);
+      if (!a || !b)
+        return std::nullopt;
+      return ConstValue::integer(op == P::AndAnd ? *a && *b : *a || *b, types.boolType());
+    }
+    if (l.isPointer() || r.isPointer())
+      return constPointerArith(op, l, r);
+    if (!l.isObject() && !r.isObject())
+      return constArith().binary(op, l, r);
+    auto boolean = [this](bool b) { return ConstValue::integer(b, types.boolType()); };
+    bool comparison = op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq;
+    // The class's own operator, run on the left object; then a free one.
+    auto direct = [&](P o, const ConstValue& a, const ConstValue& b) -> std::optional<std::optional<ConstValue>> {
+      if (a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
+      {
+        Subst subst;
+        if (FunctionDecl* f = constClassOperator(a.type, o, {constTypeOfValue(b)}, subst, depth))
+        {
+          if (constDefaulted(f))
+          {
+            if (o == P::EqEq || o == P::NotEq)
+            {
+              std::optional<bool> same = constMemberwiseEqual(a, b, ctx, depth + 1);
+              return same ? std::optional<ConstValue>(boolean(o == P::EqEq ? *same : !*same)) : std::optional<ConstValue>();
+            }
+            return std::optional<ConstValue>(); // a defaulted <=> as a value (a strong_ordering): not here
+          }
+          std::optional<ConstValue> self = a;
+          return constCallOn(f, subst, {b}, &self, depth + 1);
+        }
+      }
+      if (FunctionDecl* f = constFreeFunction(opSymbols[uint32_t(o)], {constTypeOfValue(a), constTypeOfValue(b)}, ctx.scope))
+        return constCallOn(f, Subst{}, {a, b}, nullptr, depth + 1);
+      return std::nullopt; // no such operator
+    };
+    if (std::optional<std::optional<ConstValue>> found = direct(op, l, r))
+      return *found;
+    if (op == P::EqEq || op == P::NotEq)
+    {
+      // `b == a` for `a == b`, `!(a == b)` for `a != b`, memberwise where `<=>` is defaulted.
+      for (int reversed = 0; reversed < 2; ++reversed)
+      {
+        const ConstValue& a = reversed ? r : l;
+        const ConstValue& b = reversed ? l : r;
+        if (op == P::NotEq || reversed)
+          if (std::optional<std::optional<ConstValue>> eq = direct(P::EqEq, a, b))
+          {
+            std::optional<bool> t = *eq ? constTruth(**eq, depth + 1) : std::nullopt;
+            return t ? std::optional<ConstValue>(boolean(op == P::EqEq ? *t : !*t)) : std::nullopt;
+          }
+        if (a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
+        {
+          Subst subst;
+          if (constDefaulted(constClassOperator(a.type, P::Spaceship, {constTypeOfValue(b)}, subst, depth)))
+          {
+            std::optional<bool> same = constMemberwiseEqual(a, b, ctx, depth + 1);
+            return same ? std::optional<ConstValue>(boolean(op == P::EqEq ? *same : !*same)) : std::nullopt;
+          }
+        }
+      }
+      return std::nullopt;
+    }
+    if (comparison)
+    {
+      std::optional<int> order = constMemberwiseOrder(l, r, ctx, depth + 1); // a defaulted `<=>`
+      if (!order)
+        return std::nullopt;
+      bool c = op == P::Less ? *order < 0 : op == P::Greater ? *order > 0 : op == P::LessEq ? *order <= 0 : *order >= 0;
+      return boolean(c);
+    }
+    return std::nullopt;
+  }
+
+  // The function a virtual call on an object of dynamic type t runs: the final overrider of f
+  // (the most derived class's function of its name and parameter types), or f.
+  FunctionDecl* constOverrider(FunctionDecl* f, const Ty* t, int depth)
+  {
+    if (!f || !(f->flags & (DF_Virtual | DF_Override)) || f->name.empty() || !t || depth > 16)
+      return f;
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    if (!layout)
+      return f;
+    if (layout->decl == f->parent)
+      return f;
+    for (Decl* m : layout->decl->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || m == f)
+        continue;
+      auto* g = static_cast<FunctionDecl*>(m);
+      if (g->name.empty() || g->name.last().symbol != f->name.last().symbol || g->params.size() != f->params.size() || (g->flags & DF_Static) ||
+          ((g->flags & DF_Const) != (f->flags & DF_Const)))
+        continue;
+      bool same = true;
+      for (size_t i = 0; i < g->params.size() && same; ++i)
+      {
+        const Ty* a = declaredTypeOf(g->params[i], layout->subst.empty() ? nullptr : &layout->subst, 0);
+        const Ty* b = declaredTypeOf(f->params[i], nullptr, 0);
+        same = a && b && types.unqualified(types.stripRef(a)) == types.unqualified(types.stripRef(b));
+      }
+      if (same)
+        return g;
+    }
+    for (const Ty* b : layout->bases)
+      if (FunctionDecl* g = constOverrider(f, b, depth + 1); g != f)
+        return g;
+    return f;
+  }
+
 
   // The binding a member function or constructor runs with as `this`: the object it works on.
   static constexpr uint32_t constThisSymbol = 0xFFFFFFFEu;
@@ -5138,6 +5479,13 @@ struct GlobalScope::Impl
       return constAsDeclared(v, t);
     if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == u)
       return v;
+    if (v->isObject() && v->type)
+      if (std::optional<std::vector<size_t>> base = constBasePath(v->type, u, 0); base && !base->empty())
+      {
+        if (t->isReference())
+          return v; // a reference to a base refers to the whole object: its virtual functions stay its class's
+        return constPart(*v, *base); // a copy of the base subobject (slicing)
+      }
     return constConstruct(u, {*v}, true, depth);
   }
 
@@ -5198,8 +5546,20 @@ struct GlobalScope::Impl
   // its body with `this` the object.
   std::optional<ConstValue> constRunConstructor(FunctionDecl* ctor, const Ty* t, const std::vector<ConstValue>& args, int depth)
   {
+    struct Call
+    {
+      bool ok = ++constCalls() <= 512 && stackRoomLeft();
+      ~Call() { --constCalls(); }
+    } call;
+    if (!call.ok)
+    {
+      if (constWhy().empty())
+        constWhy() = "calls nested more than 512 deep";
+      return std::nullopt;
+    }
+    depth = 0; // as a function's body (constRun): the call guard bounds the chain
     const ConstClassLayout* layout = constLayoutOf(t, depth);
-    if (!layout || depth > 512)
+    if (!layout)
       return std::nullopt;
     if (!ctor->body)
     {
@@ -5215,13 +5575,6 @@ struct GlobalScope::Impl
       params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
     TypeContext fctx{lexicalScopeOf(ctor), params.items.empty() ? nullptr : &params, layout->subst.empty() ? nullptr : &layout->subst,
                      ctor->file ? ctor->file->tokens : nullptr, ctor->file ? ctor->file->text : std::string_view()};
-    struct Call
-    {
-      bool ok = ++constCalls() <= 512 && stackRoomLeft();
-      ~Call() { --constCalls(); }
-    } call;
-    if (!call.ok)
-      return std::nullopt;
     std::vector<ConstBinding> env;
     fctx.env = &env;
     for (size_t i = 0; i < ctor->params.size(); ++i)
@@ -5347,14 +5700,84 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
-  // Where an assignment stores: a local (or parameter) of the function being run, or a part of
-  // one (`point.x`, `items[i]`, `this->count`, a member named alone in a member function).
+  // Where an assignment stores and a reference refers to: a local (or parameter) of a function
+  // being run, or a part of one (`point.x`, `items[i]`, `this->count`, a member named alone in a
+  // member function); a reference's place is what it refers to.
   struct ConstPlace
   {
-    ConstBinding* binding = nullptr;
+    std::vector<ConstBinding>* env = nullptr; // by index: the locals may grow meanwhile
+    size_t index = 0;
     std::vector<size_t> path;
     const Ty* type = nullptr; // the part's type, which a stored value is converted to
+    bool readOnly = false;    // reached through something const (a reference to const)
+    ConstBinding& binding() const { return (*env)[index]; }
+    bool writable() const { return !readOnly && binding().writable; }
   };
+
+  // A place with the references on the way followed to what they refer to.
+  static ConstPlace constResolve(ConstPlace p)
+  {
+    for (int n = 0; n < 64 && p.binding().aliasEnv; ++n)
+    {
+      const ConstBinding& b = p.binding();
+      std::vector<size_t> path = b.aliasPath;
+      path.insert(path.end(), p.path.begin(), p.path.end());
+      p.readOnly = p.readOnly || !b.writable;
+      p.env = b.aliasEnv;
+      p.index = b.aliasIndex;
+      p.path = std::move(path);
+    }
+    return p;
+  }
+
+  // The place of the local or parameter an expression names (`count`, `(count)`), or nullopt.
+  std::optional<ConstPlace> constLocal(Expr* e, const TypeContext& ctx)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    if (!e || e->kind != NodeKind::NameExpr || !ctx.env)
+      return std::nullopt;
+    auto* n = static_cast<NameExpr*>(e);
+    if (n->name.parts.size() != 1 || n->name.global || n->name.parts[0].hasTemplateArgs)
+      return std::nullopt;
+    for (size_t i = ctx.env->size(); i-- > 0;)
+      if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
+      {
+        ConstPlace p{ctx.env, i, {}, (*ctx.env)[i].type};
+        ConstPlace r = constResolve(p);
+        r.type = (*ctx.env)[i].type;
+        return r;
+      }
+    return std::nullopt;
+  }
+
+  std::optional<ConstPlace> constThisPlace(const TypeContext& ctx)
+  {
+    if (!ctx.env)
+      return std::nullopt;
+    for (size_t i = ctx.env->size(); i-- > 0;)
+      if ((*ctx.env)[i].symbol == constThisSymbol)
+        return constResolve(ConstPlace{ctx.env, i, {}, (*ctx.env)[i].type});
+    return std::nullopt;
+  }
+
+  // The data member a member access or a name alone in a member function names: the walk's
+  // binding, or, in a body no walk has typed yet (a constexpr member function of a class declared
+  // further down, BoundingBox::isZeroSize called from a file walked first), the non-static data
+  // member of that name in the class of the object the evaluation holds.
+  Decl* constFieldNamed(Decl* resolved, const QualifiedName& name, const Ty* objectType)
+  {
+    if (resolved)
+      return resolved;
+    if (name.parts.size() != 1 || name.global || name.parts[0].hasTemplateArgs)
+      return nullptr;
+    Scope* s = objectType ? classScopeOf(objectType) : nullptr;
+    Lookup l;
+    if (!s || !lookupInScope(s, name.parts[0].symbol, l, 1))
+      return nullptr;
+    return l.decl && l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & (DF_Static | DF_Typedef)) ? l.decl : nullptr;
+  }
+
   std::optional<ConstPlace> constPlaceOf(Expr* e, const TypeContext& ctx, int depth)
   {
     while (e && e->kind == NodeKind::ParenExpr)
@@ -5363,39 +5786,50 @@ struct GlobalScope::Impl
       return std::nullopt;
     if (e->kind == NodeKind::NameExpr)
     {
-      if (ConstBinding* b = constLocal(e, ctx))
-        return ConstPlace{b, {}, b->type};
+      if (std::optional<ConstPlace> local = constLocal(e, ctx))
+        return local;
       Decl* d = static_cast<NameExpr*>(e)->resolved;
-      ConstBinding* self = constThis(ctx);
+      std::optional<ConstPlace> self = constThisPlace(ctx);
+      std::optional<ConstValue> object = self && !d ? constRead(*self) : std::nullopt;
+      if (object && object->isObject())
+        d = constFieldNamed(nullptr, static_cast<NameExpr*>(e)->name, object->type);
       if (self && d && d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::ClassDecl && !(d->flags & DF_Static))
-        if (std::optional<std::vector<size_t>> path = constFieldPath(self->value.type, d, 0))
-          return ConstPlace{self, *path, declaredTypeOf(d, constLayoutOf(self->value.type, 0) ? &constLayoutOf(self->value.type, 0)->subst : nullptr, 0)};
+      {
+        if (!object)
+          object = constRead(*self);
+        if (!object || !object->isObject())
+          return std::nullopt;
+        if (std::optional<std::vector<size_t>> path = constFieldPath(object->type, d, 0))
+        {
+          const ConstClassLayout* layout = constLayoutOf(object->type, 0);
+          self->path.insert(self->path.end(), path->begin(), path->end());
+          self->type = declaredTypeOf(d, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+          return self;
+        }
+      }
       return std::nullopt;
     }
     if (e->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(e)->op) == P::Star && !static_cast<UnaryExpr*>(e)->isKeyword &&
         static_cast<UnaryExpr*>(e)->operand && static_cast<UnaryExpr*>(e)->operand->kind == NodeKind::ThisExpr)
-      if (ConstBinding* self = constThis(ctx))
-        return ConstPlace{self, {}, self->type}; // `*this`
+      return constThisPlace(ctx); // `*this`
     if (e->kind == NodeKind::MemberExpr)
     {
       auto* m = static_cast<MemberExpr*>(e);
       Decl* d = m->resolved;
-      if (!d || d->kind != NodeKind::VariableDecl || (d->flags & DF_Static) || m->dynamicMember)
+      if ((d && (d->kind != NodeKind::VariableDecl || (d->flags & DF_Static))) || m->dynamicMember)
         return std::nullopt;
       std::optional<ConstPlace> base;
       if (m->base && m->base->kind == NodeKind::ThisExpr && m->op == P::Arrow)
-      {
-        if (ConstBinding* self = constThis(ctx))
-          base = ConstPlace{self, {}, self->type};
-      }
+        base = constThisPlace(ctx);
       else if (m->op == P::Dot)
         base = constPlaceOf(m->base, ctx, depth + 1);
       if (!base)
         return std::nullopt;
-      std::optional<ConstValue> object = base->path.empty() ? std::optional<ConstValue>(base->binding->value) : constPart(base->binding->value, base->path);
+      std::optional<ConstValue> object = constRead(*base);
       if (!object || !object->isObject())
         return std::nullopt;
-      std::optional<std::vector<size_t>> path = constFieldPath(object->type, d, 0);
+      d = constFieldNamed(d, m->member, object->type);
+      std::optional<std::vector<size_t>> path = d ? constFieldPath(object->type, d, 0) : std::nullopt;
       if (!path)
         return std::nullopt;
       base->path.insert(base->path.end(), path->begin(), path->end());
@@ -5412,7 +5846,7 @@ struct GlobalScope::Impl
       std::optional<ConstValue> index = base ? constValue(x->args[0], ctx, depth + 1) : std::nullopt;
       if (!base || !index || index->kind != ConstValue::Kind::Int)
         return std::nullopt;
-      std::optional<ConstValue> array = base->path.empty() ? std::optional<ConstValue>(base->binding->value) : constPart(base->binding->value, base->path);
+      std::optional<ConstValue> array = constRead(*base);
       const Ty* at = array && array->type ? types.unqualified(array->type) : nullptr;
       if (!array || !array->isObject() || !at || at->kind != TyKind::Array || index->i < 0 || uint64_t(index->i) >= array->parts->size())
         return std::nullopt;
@@ -5424,11 +5858,19 @@ struct GlobalScope::Impl
   }
 
   // The value at a place, nullopt while unset.
-  static std::optional<ConstValue> constRead(const ConstPlace& p)
+  static std::optional<ConstValue> constRead(const ConstPlace& place)
   {
+    ConstPlace p = constResolve(place);
     if (p.path.empty())
-      return p.binding->value.isUnset() ? std::nullopt : std::optional<ConstValue>(p.binding->value);
-    return constPart(p.binding->value, p.path);
+      return p.binding().value.isUnset() ? std::nullopt : std::optional<ConstValue>(p.binding().value);
+    return constPart(p.binding().value, p.path);
+  }
+
+  // A value stored at a place (its parts on the way copied).
+  static bool constWrite(const ConstPlace& place, const ConstValue& v)
+  {
+    ConstPlace p = constResolve(place);
+    return constSetPart(p.binding().value, p.path, 0, v);
   }
 
   // The element a pointer into an array points at (nullopt one past the end).
@@ -5508,7 +5950,8 @@ struct GlobalScope::Impl
     std::optional<ConstValue> object = constValue(m->base, ctx, depth + 1);
     if (!object || !object->isObject())
       return std::nullopt;
-    std::optional<std::vector<size_t>> path = constFieldPath(object->type, m->resolved, 0);
+    Decl* d = constFieldNamed(m->resolved, m->member, object->type);
+    std::optional<std::vector<size_t>> path = d ? constFieldPath(object->type, d, 0) : std::nullopt;
     return path ? constPart(*object, *path) : std::nullopt;
   }
 
@@ -5588,9 +6031,18 @@ struct GlobalScope::Impl
   }
 
   // self: the object a member function runs on (`this`), the object it leaves after.
+  // places: the arguments' places, for reference parameters (a reference parameter given none
+  // gets a copy it may not write).
   std::optional<ConstValue> constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth,
-                                     std::optional<ConstValue>* self = nullptr)
+                                     std::optional<ConstValue>* self = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr)
   {
+    // A virtual function runs as the object's own class overrides it.
+    if (self && *self)
+      if (FunctionDecl* g = constOverrider(f, (*self)->type, 0); g != f && g->body)
+      {
+        Subst subst = memberSubst(types.unqualified((*self)->type), g->parent ? g->parent->ownScope : nullptr, 0);
+        return constCallOn(g, subst, args, self, depth + 1);
+      }
     struct Call
     {
       bool ok = ++constCalls() <= 512 && stackRoomLeft();
@@ -5602,6 +6054,10 @@ struct GlobalScope::Impl
         constWhy() = "calls nested more than 512 deep";
       return std::nullopt;
     }
+    // The body counts its own nesting from here: the calls that reached it are the call guard's to
+    // bound, and a type written in it converts as deep as it is written, not as deep as the chain
+    // (`sizeof(T)` in Limits<T>::max(), six calls into BoundingBox::emptyValue()).
+    depth = 0;
     std::vector<ConstBinding> env;
     fctx.env = &env;
     for (size_t i = 0; i < f->params.size(); ++i)
@@ -5610,6 +6066,19 @@ struct GlobalScope::Impl
       if (p->isPack)
         return std::nullopt;
       const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+      if (type && type->isReference() && places && i < places->size() && (*places)[i])
+      {
+        // `int& out`, `const Point& p` given a local: a reference to it.
+        const ConstPlace& at = *(*places)[i];
+        ConstBinding alias{p->name, ConstValue::unset(type)};
+        alias.type = (*places)[i]->type;
+        alias.writable = !(type->inner && type->inner->isConst) && !at.readOnly;
+        alias.aliasEnv = at.env;
+        alias.aliasIndex = at.index;
+        alias.aliasPath = at.path;
+        env.push_back(std::move(alias));
+        continue;
+      }
       std::optional<ConstValue> v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
                                   : p->defaultValue ? constInitialize(type, p->defaultValue, fctx, depth + 1) : std::nullopt;
       if (!v)
@@ -5649,22 +6118,6 @@ struct GlobalScope::Impl
     return b;
   }
 
-  // The binding of the local or parameter an expression names (`count`, `(count)`), or null.
-  ConstBinding* constLocal(Expr* e, const TypeContext& ctx)
-  {
-    while (e && e->kind == NodeKind::ParenExpr)
-      e = static_cast<ParenExpr*>(e)->inner;
-    if (!e || e->kind != NodeKind::NameExpr || !ctx.env)
-      return nullptr;
-    auto* n = static_cast<NameExpr*>(e);
-    if (n->name.parts.size() != 1 || n->name.global || n->name.parts[0].hasTemplateArgs)
-      return nullptr;
-    for (size_t i = ctx.env->size(); i-- > 0;)
-      if ((*ctx.env)[i].symbol == n->name.parts[0].symbol)
-        return &(*ctx.env)[i];
-    return nullptr;
-  }
-
   // `total += i`, `a = b`: the value stored in a local of the function being run, converted to its
   // type, which is the expression's value. A global, an object's member or what a reference
   // parameter refers to is no local of the run: no constant.
@@ -5672,12 +6125,31 @@ struct GlobalScope::Impl
   {
     std::optional<ConstValue> r = constValue(b->rhs, ctx, depth + 1); // the right operand first, as C++17 orders it
     std::optional<ConstPlace> place = r ? constPlaceOf(b->lhs, ctx, depth + 1) : std::nullopt;
-    if (!place || !place->binding->writable)
+    if (!place || !place->writable())
       return std::nullopt;
     std::optional<ConstValue> old = P(b->op) == P::Assign ? std::optional<ConstValue>(ConstValue{}) : constRead(*place);
     if (!old)
       return std::nullopt;
     P op = P(b->op);
+    // An object's own operator (`optional = position`, `total += amount`): run on it.
+    const Ty* target = place->type ? types.unqualified(types.stripRef(place->type)) : nullptr;
+    if (target && target->kind == TyKind::Class)
+    {
+      Subst subst;
+      FunctionDecl* f = constClassOperator(target, op, {constTypeOfValue(*r)}, subst, depth);
+      if (f && !constDefaulted(f) && f->body)
+      {
+        std::optional<ConstValue> self = constRead(*place);
+        if (!self)
+          return std::nullopt;
+        std::optional<ConstValue> result = constCallOn(f, subst, {*r}, &self, depth + 1);
+        if (!result || !self || !constWrite(*place, *self))
+          return std::nullopt;
+        return self;
+      }
+      if (op != P::Assign)
+        return std::nullopt; // `a += b` of a class without its operator+=
+    }
     std::optional<ConstValue> v = r;
     if (op != P::Assign)
     {
@@ -5694,7 +6166,7 @@ struct GlobalScope::Impl
       v = old->isPointer() ? constPointerArith(*base, *old, *r) : constArith().binary(*base, *old, *r);
     }
     v = v ? constConvertTo(v, place->type, depth + 1) : std::nullopt;
-    if (!v || !constSetPart(place->binding->value, place->path, 0, *v))
+    if (!v || !constWrite(*place, *v))
       return std::nullopt;
     return v;
   }
@@ -5704,7 +6176,7 @@ struct GlobalScope::Impl
   std::optional<ConstValue> constIncrement(UnaryExpr* u, bool increment, const TypeContext& ctx, int depth)
   {
     std::optional<ConstPlace> place = constPlaceOf(u->operand, ctx, depth + 1);
-    if (!place || !place->binding->writable)
+    if (!place || !place->writable())
       return std::nullopt;
     std::optional<ConstValue> old = constRead(*place);
     if (!old)
@@ -5713,7 +6185,7 @@ struct GlobalScope::Impl
     std::optional<ConstValue> v = old->isPointer() ? constPointerArith(increment ? P::Plus : P::Minus, *old, one)
                                                    : constArith().binary(increment ? P::Plus : P::Minus, *old, one);
     v = v ? constConvertTo(v, place->type, depth + 1) : std::nullopt;
-    if (!v || !constSetPart(place->binding->value, place->path, 0, *v))
+    if (!v || !constWrite(*place, *v))
       return std::nullopt;
     return u->postfix ? *old : *v;
   }
@@ -5783,7 +6255,7 @@ struct GlobalScope::Impl
       if (!c || uint8_t(c->kind) < uint8_t(NodeKind::NameExpr))
         return std::nullopt; // a declaration as the condition
       std::optional<ConstValue> v = constValue(static_cast<Expr*>(c), ctx, depth + 1);
-      return v ? std::optional<bool>(v->truthy()) : std::nullopt;
+      return v ? constTruth(*v, depth + 1) : std::nullopt;
     };
     switch (s->kind)
     {
@@ -5936,7 +6408,28 @@ struct GlobalScope::Impl
             return ConstFlow::Failed;
           const Ty* type = v->type ? convertType(v->type, ctx, depth + 1) : nullptr;
           if (type && type->isReference())
-            return ConstFlow::Failed; // a local reference: the interpreter's locals have no addresses yet
+          {
+            // `T& r = x;`: a reference to x's place; `const T& r = f();` keeps the temporary.
+            std::optional<ConstPlace> at = v->init ? constPlaceOf(v->init, ctx, depth + 1) : std::nullopt;
+            if (at)
+            {
+              ConstBinding alias{v->name.parts[0].symbol, ConstValue::unset(type)};
+              alias.type = at->type;
+              alias.writable = !(type->inner && type->inner->isConst) && !at->readOnly;
+              alias.aliasEnv = at->env;
+              alias.aliasIndex = at->index;
+              alias.aliasPath = at->path;
+              env.push_back(std::move(alias));
+              continue;
+            }
+            if (!(type->inner && type->inner->isConst) || !v->init)
+              return ConstFlow::Failed; // a reference to no place the run holds
+            std::optional<ConstValue> value = constInitialize(type, v->init, ctx, depth + 1);
+            if (!value)
+              return ConstFlow::Failed;
+            env.push_back(constBinding(v->name.parts[0].symbol, *value, type));
+            continue;
+          }
           if (type && types.unqualified(type)->kind == TyKind::Array && !types.unqualified(type)->count && !v->init)
             return ConstFlow::Failed;
           // `T x;`: default-initialized (a scalar unset until assigned, a class from its defaults).
@@ -5950,7 +6443,8 @@ struct GlobalScope::Impl
       {
         // A failing assert stops a constant evaluation, as C++'s does.
         std::optional<ConstValue> cond = constValue(static_cast<AssertStmt*>(s)->cond, ctx, depth + 1);
-        return cond && cond->truthy() ? ConstFlow::Next : ConstFlow::Failed;
+        std::optional<bool> holds = cond ? constTruth(*cond, depth + 1) : std::nullopt;
+        return holds && *holds ? ConstFlow::Next : ConstFlow::Failed;
       }
       case NodeKind::EmptyStmt:
         return ConstFlow::Next;
