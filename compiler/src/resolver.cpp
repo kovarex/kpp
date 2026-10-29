@@ -1151,7 +1151,19 @@ struct GlobalScope::Impl
       case NodeKind::RRefType: return scopeOfType(static_cast<RRefType*>(type)->referenced, context, locals, depth + 1);
       case NodeKind::NamedType:
       {
-        Lookup l = lookupQualified(static_cast<NamedType*>(type)->name, context, locals, depth + 1);
+        const QualifiedName& name = static_cast<NamedType*>(type)->name;
+        Lookup l = lookupQualified(name, context, locals, depth + 1);
+        // `struct S : IntegralConstant<bool, true>`: arguments that pick a specialisation name
+        // its scope, not the primary template's.
+        if (l.decl && l.decl->kind == NodeKind::ClassDecl && !name.empty() && name.last().hasTemplateArgs && l.overloads)
+          for (const Entry& e : *l.overloads)
+            if (e.decl && e.decl->kind == NodeKind::ClassDecl && (e.decl->flags & DF_Specialization))
+            {
+              const Ty* t = typeOfTypeDecl(l.decl, l, name.last(), TypeContext{context, locals, nullptr}, depth + 1);
+              if (t && t->kind == TyKind::Class && t->decl && t->decl->ownScope && !types.isDependent(t))
+                return t->decl->ownScope;
+              break;
+            }
         return l.scope;
       }
       default:
@@ -2963,7 +2975,8 @@ struct GlobalScope::Impl
   // Minimal constant evaluation for array bounds: literals and arithmetic on them.
   // The value of a declaration used as a constant: a const/constexpr variable with an
   // initializer, an enumerator, or a non-type template parameter under the substitution.
-  void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message)
+  // `path:line` of a token.
+  static std::string locationOf(const ParsedFile* file, uint32_t token)
   {
     std::string where = file ? file->path : std::string("?");
     if (file && file->tokens && !file->tokens->empty())
@@ -2971,6 +2984,12 @@ struct GlobalScope::Impl
       const Token& t = (*file->tokens)[std::min<size_t>(token, file->tokens->size() - 1)];
       where += ":" + std::to_string(1 + std::count(file->text.begin(), file->text.begin() + std::min<size_t>(t.offset, file->text.size()), '\n'));
     }
+    return where;
+  }
+
+  void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message)
+  {
+    std::string where = locationOf(file, token);
     std::lock_guard lock(checkerErrorsMutex);
     checkerErrorSet.insert(where + ": error: " + message);
   }
@@ -3952,6 +3971,11 @@ struct GlobalScope::Impl
         if (!v && l.decl->kind == NodeKind::TemplateParamDecl)
           return types.param(l.decl); // `Num<I>` in a template: the argument is still the parameter (dependent)
       }
+      else if (l.decl && l.decl->kind == NodeKind::ClassDecl && !l.decl->templateParams.empty() && !an.last().hasTemplateArgs && param &&
+               param->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(param)->innerParams.empty())
+        // `IsSpec<T, Box>`: a class template given to a template template parameter, the template
+        // itself (its class without arguments, as deduction binds such a parameter).
+        return types.classType(l.scope && l.scope->owner ? l.scope->owner : l.decl, {});
       else
         return convertType(static_cast<Type*>(arg), ctx, depth + 1);
     }
@@ -4987,8 +5011,26 @@ struct GlobalScope::Impl
         return;
       if (!out.find(pattern->decl))
         out.pairs.push_back({pattern->decl, types.classType(a->decl, {})});
-      for (size_t i = 0; i < pattern->args.size() && i < a->args.size(); ++i)
-        deduce(pattern->args[i], a->args[i], out, depth + 1);
+      std::vector<const Ty*> given; // the instance's arguments, a pack among them by its elements
+      for (const Ty* e : a->args)
+        if (!spliceIfPack(e, given))
+          given.push_back(e);
+      for (size_t i = 0; i < pattern->args.size(); ++i)
+      {
+        const Ty* p = pattern->args[i];
+        if (i + 1 == pattern->args.size() && isPackParam(p))
+        {
+          // `Spec<Args...>`: the pack takes the rest of the arguments.
+          if (!out.find(p->decl))
+          {
+            std::vector<const Ty*> rest(given.begin() + std::min(i, given.size()), given.end());
+            out.pairs.push_back({p->decl, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+          }
+          break;
+        }
+        if (i < given.size())
+          deduce(p, given[i], out, depth + 1);
+      }
       return;
     }
     if (pattern->kind == TyKind::Param)
@@ -5431,10 +5473,12 @@ struct GlobalScope::Impl
         {
           if (!t->args.empty() && r->kind == TyKind::Class && r->decl)
           {
-            // `Container<T>` with Container bound to a class template: that template with the arguments.
+            // `Container<T>` with Container bound to a class template: that template with the
+            // arguments (a pack's elements for `Spec<Args...>`).
             std::vector<const Ty*> args;
             for (const Ty* a : t->args)
-              args.push_back(substitute(a, s, depth + 1));
+              if (const Ty* sub = substitute(a, s, depth + 1); !spliceIfPack(sub, args))
+                args.push_back(sub);
             const Ty* applied = resolveSpecialization(types.classType(r->decl, Span<const Ty*>{args.data(), uint32_t(args.size())}), depth + 1);
             return types.qualified(applied, t->isConst, t->isVolatile);
           }
@@ -6534,6 +6578,10 @@ struct GlobalScope::Impl
     int instantiationDepth = 0;
     const ParsedFile* file = nullptr; // The file the tokens belong to (for --why sites).
     Expr* current = nullptr;          // The expression being typed (for --why sites).
+    // Of an instance's walk: where it was first asked for (the asking walk's expression), for the
+    // messages about it.
+    const ParsedFile* requestFile = nullptr;
+    uint32_t requestToken = UINT32_MAX;
     int instantiatedBaseDepth = 0;    // memberOfInstantiatedBases nesting
     Expr* const* walkedArgs = nullptr; // see WalkedArgs
     std::vector<const Ty*> walkedArgTypes;
@@ -6884,6 +6932,11 @@ struct GlobalScope::Impl
       sub.thisType = bodyThis;
       sub.activeSubst = &subst;
       sub.instantiationDepth = instantiationDepth + 1;
+      if (current && this->file)
+      {
+        sub.requestFile = this->file;
+        sub.requestToken = current->token;
+      }
       for (Decl* p : templ->templateParams)
         sub.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
       body(sub);
@@ -9187,7 +9240,12 @@ struct GlobalScope::Impl
           // are), nor in a branch of an instance's `if constexpr` left undecided (it may be the
           // discarded one).
           if (undecidedBranches == 0 && !inGenericTemplate() && !replacedBySpecialization(s))
-            impl.checkStaticAssert(s, ctx(), instanceDescription());
+          {
+            std::string instance = instanceDescription();
+            if (!instance.empty() && requestFile)
+              instance += ", asked for at " + Impl::locationOf(requestFile, requestToken);
+            impl.checkStaticAssert(s, ctx(), instance);
+          }
           break;
         }
         case NodeKind::FriendDecl: walkType(static_cast<FriendDecl*>(d)->type); break;

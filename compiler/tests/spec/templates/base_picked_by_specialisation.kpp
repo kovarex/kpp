@@ -1,0 +1,21 @@
+// spec: a base written with arguments that pick a specialisation (`struct S : IntegralConstant<bool, true>`, an alias of it, in a class template too) is that specialisation: its members are found there with their types (`value` from TrueType, a bool), not in the primary template as its parameter's type
+// factorio: TrueType/FalseType as IntegralConstant aliases under is_specialization<T, ID> and the other traits deriving from them (templates/partial_specialization_template_template_parameter)
+using Yes = IntegralConstant<bool, true>;
+using No = IntegralConstant<bool, false>;
+struct Direct : IntegralConstant<bool, true> {};
+struct ThroughAlias : No {};
+template<class T> struct InTemplate : Yes {};
+template<typename Test, template<typename...> class Spec>
+struct IsSpec : No {};
+template<template<typename...> class Spec, typename... Args>
+struct IsSpec<Spec<Args...>, Spec> : Yes {};
+template<typename T> struct Box { T v; };
+template<typename T>
+constexpr bool isBox = IsSpec<T, Box>::value;
+static_assert(isBox<Box<int>> && !isBox<int>);
+int main()
+{
+  auto direct = Direct::value;
+  println("{} {} {} {} {}", direct, ThroughAlias::value, InTemplate<int>::value, IsSpec<Box<char>, Box>::value, isBox<Vector<int>>);
+  return 0;
+}
