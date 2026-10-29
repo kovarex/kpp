@@ -68,3 +68,7 @@ call native\build.cmd >nul || exit /b 1
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\imgui_smoke.exe kpp\src\Debug\ImGui.kpp tests\imgui_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\imgui.lib --lib -luser32 --lib -limm32 || exit /b 1
 kpp\imgui_smoke.exe > kpp\imgui_smoke.out.txt
 fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected > nul && echo imgui smoke test: output as expected || (echo imgui smoke test: OUTPUT DIFFERS & fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected & exit /b 1)
+echo == glm smoke test: tests\glm_smoke.kpp through the glm port in kpp\src\API\glm.kpp (bit for bit what tests\glm_smoke.cpp computes with glm itself)
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\glm_smoke.exe kpp\src\API\glm.kpp tests\glm_smoke.kpp || exit /b 1
+kpp\glm_smoke.exe > kpp\glm_smoke.out.txt
+fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected > nul && echo glm smoke test: output as expected || (echo glm smoke test: OUTPUT DIFFERS & fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected & exit /b 1)

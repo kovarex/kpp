@@ -1,0 +1,447 @@
+// glm 0.9.9.0 (C:\Factorio\libraries\glm), the part of it the game uses, ported to Kpp: the float
+// vectors vec2, vec3 and vec4, the 4x4 float matrix mat4 (four vec4 columns, m[column][row]), and
+// the functions the game calls, with glm's semantics and glm's formulas: the same floating-point
+// operations in the same order, so the results are glm's to the bit (tests/glm_smoke.kpp checks
+// them against glm itself). Specified in docs/glm.md. glm is header-only C++ templates, so it is a
+// port rather than a C interface; what the game does not use is left out.
+extern "C" import "math.h";
+
+namespace glm
+{
+  using length_t = int;
+
+  struct vec3;
+  struct vec4;
+
+  // A vector of two floats. The default one is zero (glm leaves it uninitialized).
+  struct vec2
+  {
+    float x = 0.0f;
+    float y = 0.0f;
+
+    vec2() {}
+    explicit vec2(float scalar) : x(scalar), y(scalar) {}
+    vec2(float x, float y) : x(x), y(y) {}
+    // The first two components (glm's conversions between sizes are implicit).
+    implicit vec2(const vec3& v);
+    implicit vec2(const vec4& v);
+
+    float& operator[](length_t i) { return (&this->x)[i]; }
+    const float& operator[](length_t i) const { return (&this->x)[i]; }
+
+    vec2& operator+=(float s) { this->x += s; this->y += s; return *this; }
+    vec2& operator+=(const vec2& v) { this->x += v.x; this->y += v.y; return *this; }
+    vec2& operator-=(float s) { this->x -= s; this->y -= s; return *this; }
+    vec2& operator-=(const vec2& v) { this->x -= v.x; this->y -= v.y; return *this; }
+    vec2& operator*=(float s) { this->x *= s; this->y *= s; return *this; }
+    vec2& operator*=(const vec2& v) { this->x *= v.x; this->y *= v.y; return *this; }
+    vec2& operator/=(float s) { this->x /= s; this->y /= s; return *this; }
+    vec2& operator/=(const vec2& v) { this->x /= v.x; this->y /= v.y; return *this; }
+
+    vec2 operator+() const { return *this; }
+    vec2 operator-() const { return vec2(-this->x, -this->y); }
+    vec2 operator+(float s) const { return vec2(this->x + s, this->y + s); }
+    vec2 operator+(const vec2& v) const { return vec2(this->x + v.x, this->y + v.y); }
+    vec2 operator-(float s) const { return vec2(this->x - s, this->y - s); }
+    vec2 operator-(const vec2& v) const { return vec2(this->x - v.x, this->y - v.y); }
+    vec2 operator*(float s) const { return vec2(this->x * s, this->y * s); }
+    vec2 operator*(const vec2& v) const { return vec2(this->x * v.x, this->y * v.y); }
+    vec2 operator/(float s) const { return vec2(this->x / s, this->y / s); }
+    vec2 operator/(const vec2& v) const { return vec2(this->x / v.x, this->y / v.y); }
+    bool operator==(const vec2& v) const { return this->x == v.x && this->y == v.y; }
+    bool operator!=(const vec2& v) const { return !(*this == v); }
+  };
+
+  // A vector of three floats.
+  struct vec3
+  {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+
+    vec3() {}
+    explicit vec3(float scalar) : x(scalar), y(scalar), z(scalar) {}
+    vec3(float x, float y, float z) : x(x), y(y), z(z) {}
+    vec3(const vec2& xy, float z) : x(xy.x), y(xy.y), z(z) {}
+    vec3(float x, const vec2& yz) : x(x), y(yz.x), z(yz.y) {}
+    implicit vec3(const vec4& v);
+
+    float& operator[](length_t i) { return (&this->x)[i]; }
+    const float& operator[](length_t i) const { return (&this->x)[i]; }
+
+    vec3& operator+=(float s) { this->x += s; this->y += s; this->z += s; return *this; }
+    vec3& operator+=(const vec3& v) { this->x += v.x; this->y += v.y; this->z += v.z; return *this; }
+    vec3& operator-=(float s) { this->x -= s; this->y -= s; this->z -= s; return *this; }
+    vec3& operator-=(const vec3& v) { this->x -= v.x; this->y -= v.y; this->z -= v.z; return *this; }
+    vec3& operator*=(float s) { this->x *= s; this->y *= s; this->z *= s; return *this; }
+    vec3& operator*=(const vec3& v) { this->x *= v.x; this->y *= v.y; this->z *= v.z; return *this; }
+    vec3& operator/=(float s) { this->x /= s; this->y /= s; this->z /= s; return *this; }
+    vec3& operator/=(const vec3& v) { this->x /= v.x; this->y /= v.y; this->z /= v.z; return *this; }
+
+    vec3 operator+() const { return *this; }
+    vec3 operator-() const { return vec3(-this->x, -this->y, -this->z); }
+    vec3 operator+(float s) const { return vec3(this->x + s, this->y + s, this->z + s); }
+    vec3 operator+(const vec3& v) const { return vec3(this->x + v.x, this->y + v.y, this->z + v.z); }
+    vec3 operator-(float s) const { return vec3(this->x - s, this->y - s, this->z - s); }
+    vec3 operator-(const vec3& v) const { return vec3(this->x - v.x, this->y - v.y, this->z - v.z); }
+    vec3 operator*(float s) const { return vec3(this->x * s, this->y * s, this->z * s); }
+    vec3 operator*(const vec3& v) const { return vec3(this->x * v.x, this->y * v.y, this->z * v.z); }
+    vec3 operator/(float s) const { return vec3(this->x / s, this->y / s, this->z / s); }
+    vec3 operator/(const vec3& v) const { return vec3(this->x / v.x, this->y / v.y, this->z / v.z); }
+    bool operator==(const vec3& v) const { return this->x == v.x && this->y == v.y && this->z == v.z; }
+    bool operator!=(const vec3& v) const { return !(*this == v); }
+  };
+
+  // A vector of four floats; a mat4's column.
+  struct vec4
+  {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    float w = 0.0f;
+
+    vec4() {}
+    explicit vec4(float scalar) : x(scalar), y(scalar), z(scalar), w(scalar) {}
+    vec4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+    vec4(const vec3& xyz, float w) : x(xyz.x), y(xyz.y), z(xyz.z), w(w) {}
+    vec4(const vec2& xy, float z, float w) : x(xy.x), y(xy.y), z(z), w(w) {}
+
+    float& operator[](length_t i) { return (&this->x)[i]; }
+    const float& operator[](length_t i) const { return (&this->x)[i]; }
+
+    vec4& operator+=(float s) { this->x += s; this->y += s; this->z += s; this->w += s; return *this; }
+    vec4& operator+=(const vec4& v) { this->x += v.x; this->y += v.y; this->z += v.z; this->w += v.w; return *this; }
+    vec4& operator-=(float s) { this->x -= s; this->y -= s; this->z -= s; this->w -= s; return *this; }
+    vec4& operator-=(const vec4& v) { this->x -= v.x; this->y -= v.y; this->z -= v.z; this->w -= v.w; return *this; }
+    vec4& operator*=(float s) { this->x *= s; this->y *= s; this->z *= s; this->w *= s; return *this; }
+    vec4& operator*=(const vec4& v) { this->x *= v.x; this->y *= v.y; this->z *= v.z; this->w *= v.w; return *this; }
+    vec4& operator/=(float s) { this->x /= s; this->y /= s; this->z /= s; this->w /= s; return *this; }
+    vec4& operator/=(const vec4& v) { this->x /= v.x; this->y /= v.y; this->z /= v.z; this->w /= v.w; return *this; }
+
+    vec4 operator+() const { return *this; }
+    vec4 operator-() const { return vec4(-this->x, -this->y, -this->z, -this->w); }
+    vec4 operator+(float s) const { return vec4(this->x + s, this->y + s, this->z + s, this->w + s); }
+    vec4 operator+(const vec4& v) const { return vec4(this->x + v.x, this->y + v.y, this->z + v.z, this->w + v.w); }
+    vec4 operator-(float s) const { return vec4(this->x - s, this->y - s, this->z - s, this->w - s); }
+    vec4 operator-(const vec4& v) const { return vec4(this->x - v.x, this->y - v.y, this->z - v.z, this->w - v.w); }
+    vec4 operator*(float s) const { return vec4(this->x * s, this->y * s, this->z * s, this->w * s); }
+    vec4 operator*(const vec4& v) const { return vec4(this->x * v.x, this->y * v.y, this->z * v.z, this->w * v.w); }
+    vec4 operator/(float s) const { return vec4(this->x / s, this->y / s, this->z / s, this->w / s); }
+    vec4 operator/(const vec4& v) const { return vec4(this->x / v.x, this->y / v.y, this->z / v.z, this->w / v.w); }
+    bool operator==(const vec4& v) const { return this->x == v.x && this->y == v.y && this->z == v.z && this->w == v.w; }
+    bool operator!=(const vec4& v) const { return !(*this == v); }
+  };
+
+  vec2::vec2(const vec3& v) : x(v.x), y(v.y) {}
+  vec2::vec2(const vec4& v) : x(v.x), y(v.y) {}
+  vec3::vec3(const vec4& v) : x(v.x), y(v.y), z(v.z) {}
+
+  // A scalar on the left of a vector: the operation with each component.
+  vec2 operator+(float s, const vec2& v) { return vec2(s + v.x, s + v.y); }
+  vec2 operator-(float s, const vec2& v) { return vec2(s - v.x, s - v.y); }
+  vec2 operator*(float s, const vec2& v) { return vec2(s * v.x, s * v.y); }
+  vec2 operator/(float s, const vec2& v) { return vec2(s / v.x, s / v.y); }
+  vec3 operator+(float s, const vec3& v) { return vec3(s + v.x, s + v.y, s + v.z); }
+  vec3 operator-(float s, const vec3& v) { return vec3(s - v.x, s - v.y, s - v.z); }
+  vec3 operator*(float s, const vec3& v) { return vec3(s * v.x, s * v.y, s * v.z); }
+  vec3 operator/(float s, const vec3& v) { return vec3(s / v.x, s / v.y, s / v.z); }
+  vec4 operator+(float s, const vec4& v) { return vec4(s + v.x, s + v.y, s + v.z, s + v.w); }
+  vec4 operator-(float s, const vec4& v) { return vec4(s - v.x, s - v.y, s - v.z, s - v.w); }
+  vec4 operator*(float s, const vec4& v) { return vec4(s * v.x, s * v.y, s * v.z, s * v.w); }
+  vec4 operator/(float s, const vec4& v) { return vec4(s / v.x, s / v.y, s / v.z, s / v.w); }
+
+  // A 4x4 matrix of floats: four vec4 columns, m[c] the column c, m[c][r] its row r (glm's
+  // column-major layout: value_ptr gives the 16 floats column after column). The default one is
+  // zero (glm leaves it uninitialized); mat4(s) has s on the diagonal.
+  struct mat4
+  {
+    vec4 value[4];
+
+    mat4() {}
+    explicit mat4(float s)
+    {
+      this->value[0] = vec4(s, 0, 0, 0);
+      this->value[1] = vec4(0, s, 0, 0);
+      this->value[2] = vec4(0, 0, s, 0);
+      this->value[3] = vec4(0, 0, 0, s);
+    }
+    mat4(const vec4& c0, const vec4& c1, const vec4& c2, const vec4& c3)
+    {
+      this->value[0] = c0;
+      this->value[1] = c1;
+      this->value[2] = c2;
+      this->value[3] = c3;
+    }
+
+    vec4& operator[](length_t i) { return this->value[i]; }
+    const vec4& operator[](length_t i) const { return this->value[i]; }
+
+    mat4 operator*(float s) const { return mat4(this->value[0] * s, this->value[1] * s, this->value[2] * s, this->value[3] * s); }
+    // The matrix product, as glm sums it: each column of the result is the columns of this one
+    // weighted by the other's column, added in column order.
+    mat4 operator*(const mat4& m2) const
+    {
+      const vec4 SrcA0 = this->value[0];
+      const vec4 SrcA1 = this->value[1];
+      const vec4 SrcA2 = this->value[2];
+      const vec4 SrcA3 = this->value[3];
+      const vec4 SrcB0 = m2.value[0];
+      const vec4 SrcB1 = m2.value[1];
+      const vec4 SrcB2 = m2.value[2];
+      const vec4 SrcB3 = m2.value[3];
+      mat4 Result;
+      Result.value[0] = SrcA0 * SrcB0[0] + SrcA1 * SrcB0[1] + SrcA2 * SrcB0[2] + SrcA3 * SrcB0[3];
+      Result.value[1] = SrcA0 * SrcB1[0] + SrcA1 * SrcB1[1] + SrcA2 * SrcB1[2] + SrcA3 * SrcB1[3];
+      Result.value[2] = SrcA0 * SrcB2[0] + SrcA1 * SrcB2[1] + SrcA2 * SrcB2[2] + SrcA3 * SrcB2[3];
+      Result.value[3] = SrcA0 * SrcB3[0] + SrcA1 * SrcB3[1] + SrcA2 * SrcB3[2] + SrcA3 * SrcB3[3];
+      return Result;
+    }
+    // The matrix times a column vector, as glm adds it: (c0 v0 + c1 v1) + (c2 v2 + c3 v3).
+    vec4 operator*(const vec4& v) const
+    {
+      const vec4 Mov0(v[0]);
+      const vec4 Mov1(v[1]);
+      const vec4 Mul0 = this->value[0] * Mov0;
+      const vec4 Mul1 = this->value[1] * Mov1;
+      const vec4 Add0 = Mul0 + Mul1;
+      const vec4 Mov2(v[2]);
+      const vec4 Mov3(v[3]);
+      const vec4 Mul2 = this->value[2] * Mov2;
+      const vec4 Mul3 = this->value[3] * Mov3;
+      const vec4 Add1 = Mul2 + Mul3;
+      return Add0 + Add1;
+    }
+    bool operator==(const mat4& m) const
+    {
+      return this->value[0] == m.value[0] && this->value[1] == m.value[1] && this->value[2] == m.value[2] && this->value[3] == m.value[3];
+    }
+    bool operator!=(const mat4& m) const { return !(*this == m); }
+  };
+
+  static_assert(sizeof(vec2) == 8);
+  static_assert(sizeof(vec3) == 12);
+  static_assert(sizeof(vec4) == 16);
+  static_assert(sizeof(mat4) == 64);
+
+  // --- Functions of floats and of vectors (component by component), as glm computes them: the
+  // float ones through the C library's float functions (std::floor of a float is floorf), the
+  // double ones through its double ones. ---
+
+  float floor(float x) { return ::floorf(x); }
+  double floor(double x) { return ::floor(x); }
+  vec2 floor(const vec2& v) { return vec2(::floorf(v.x), ::floorf(v.y)); }
+  vec3 floor(const vec3& v) { return vec3(::floorf(v.x), ::floorf(v.y), ::floorf(v.z)); }
+  vec4 floor(const vec4& v) { return vec4(::floorf(v.x), ::floorf(v.y), ::floorf(v.z), ::floorf(v.w)); }
+
+  // x - floor(x).
+  float fract(float x) { return x - ::floorf(x); }
+  double fract(double x) { return x - ::floor(x); }
+  vec2 fract(const vec2& v) { return v - floor(v); }
+  vec3 fract(const vec3& v) { return v - floor(v); }
+  vec4 fract(const vec4& v) { return v - floor(v); }
+
+  // x - y * floor(x / y): the remainder with y's sign (GLSL's mod).
+  float mod(float x, float y) { return x - y * ::floorf(x / y); }
+  vec2 mod(const vec2& x, float y) { return x - vec2(y) * floor(x / vec2(y)); }
+  vec2 mod(const vec2& x, const vec2& y) { return x - y * floor(x / y); }
+  vec3 mod(const vec3& x, float y) { return x - vec3(y) * floor(x / vec3(y)); }
+  vec3 mod(const vec3& x, const vec3& y) { return x - y * floor(x / y); }
+  vec4 mod(const vec4& x, float y) { return x - vec4(y) * floor(x / vec4(y)); }
+  vec4 mod(const vec4& x, const vec4& y) { return x - y * floor(x / y); }
+
+  // x >= 0 ? x : -x.
+  float abs(float x) { return x >= 0.0f ? x : -x; }
+  double abs(double x) { return x >= 0.0 ? x : -x; }
+  vec2 abs(const vec2& v) { return vec2(abs(v.x), abs(v.y)); }
+  vec3 abs(const vec3& v) { return vec3(abs(v.x), abs(v.y), abs(v.z)); }
+  vec4 abs(const vec4& v) { return vec4(abs(v.x), abs(v.y), abs(v.z), abs(v.w)); }
+
+  // (x < y) ? y : x, and (y < x) ? y : x.
+  float max(float x, float y) { return (x < y) ? y : x; }
+  vec2 max(const vec2& x, const vec2& y) { return vec2(max(x.x, y.x), max(x.y, y.y)); }
+  vec2 max(const vec2& x, float y) { return max(x, vec2(y)); }
+  vec3 max(const vec3& x, const vec3& y) { return vec3(max(x.x, y.x), max(x.y, y.y), max(x.z, y.z)); }
+  vec3 max(const vec3& x, float y) { return max(x, vec3(y)); }
+  vec4 max(const vec4& x, const vec4& y) { return vec4(max(x.x, y.x), max(x.y, y.y), max(x.z, y.z), max(x.w, y.w)); }
+  vec4 max(const vec4& x, float y) { return max(x, vec4(y)); }
+  float min(float x, float y) { return (y < x) ? y : x; }
+  vec2 min(const vec2& x, const vec2& y) { return vec2(min(x.x, y.x), min(x.y, y.y)); }
+  vec2 min(const vec2& x, float y) { return min(x, vec2(y)); }
+  vec3 min(const vec3& x, const vec3& y) { return vec3(min(x.x, y.x), min(x.y, y.y), min(x.z, y.z)); }
+  vec3 min(const vec3& x, float y) { return min(x, vec3(y)); }
+  vec4 min(const vec4& x, const vec4& y) { return vec4(min(x.x, y.x), min(x.y, y.y), min(x.z, y.z), min(x.w, y.w)); }
+  vec4 min(const vec4& x, float y) { return min(x, vec4(y)); }
+
+  float sin(float x) { return ::sinf(x); }
+  double sin(double x) { return ::sin(x); }
+  vec2 sin(const vec2& v) { return vec2(::sinf(v.x), ::sinf(v.y)); }
+  vec3 sin(const vec3& v) { return vec3(::sinf(v.x), ::sinf(v.y), ::sinf(v.z)); }
+  float cos(float x) { return ::cosf(x); }
+  double cos(double x) { return ::cos(x); }
+  vec2 cos(const vec2& v) { return vec2(::cosf(v.x), ::cosf(v.y)); }
+  vec3 cos(const vec3& v) { return vec3(::cosf(v.x), ::cosf(v.y), ::cosf(v.z)); }
+  // The arc tangent of y_over_x.
+  float atan(float x) { return ::atanf(x); }
+  double atan(double x) { return ::atan(x); }
+  vec2 atan(const vec2& v) { return vec2(::atanf(v.x), ::atanf(v.y)); }
+  vec3 atan(const vec3& v) { return vec3(::atanf(v.x), ::atanf(v.y), ::atanf(v.z)); }
+  float pow(float base, float exponent) { return ::powf(base, exponent); }
+  double pow(double base, double exponent) { return ::pow(base, exponent); }
+  vec2 pow(const vec2& base, const vec2& exponent) { return vec2(::powf(base.x, exponent.x), ::powf(base.y, exponent.y)); }
+  vec3 pow(const vec3& base, const vec3& exponent) { return vec3(::powf(base.x, exponent.x), ::powf(base.y, exponent.y), ::powf(base.z, exponent.z)); }
+  float sqrt(float x) { return ::sqrtf(x); }
+  double sqrt(double x) { return ::sqrt(x); }
+  // 1 / sqrt(x).
+  float inversesqrt(float x) { return 1.0f / ::sqrtf(x); }
+
+  // The sum of the components' products, as glm adds them ((x + y) + (z + w) for four).
+  float dot(const vec2& a, const vec2& b)
+  {
+    vec2 tmp(a * b);
+    return tmp.x + tmp.y;
+  }
+  float dot(const vec3& a, const vec3& b)
+  {
+    vec3 tmp(a * b);
+    return tmp.x + tmp.y + tmp.z;
+  }
+  float dot(const vec4& a, const vec4& b)
+  {
+    vec4 tmp(a * b);
+    return (tmp.x + tmp.y) + (tmp.z + tmp.w);
+  }
+  float length(const vec2& v) { return ::sqrtf(dot(v, v)); }
+  float length(const vec3& v) { return ::sqrtf(dot(v, v)); }
+  // v * inversesqrt(dot(v, v)).
+  vec2 normalize(const vec2& v) { return v * inversesqrt(dot(v, v)); }
+  vec3 normalize(const vec3& v) { return v * inversesqrt(dot(v, v)); }
+  vec4 normalize(const vec4& v) { return v * inversesqrt(dot(v, v)); }
+
+  // --- Matrices (glm/gtc/matrix_transform and glm/gtx/transform) ---
+
+  // m with its fourth column moved by v: m * translate(v).
+  mat4 translate(const mat4& m, const vec3& v)
+  {
+    mat4 Result(m);
+    Result.value[3] = m.value[0] * v[0] + m.value[1] * v[1] + m.value[2] * v[2] + m.value[3];
+    return Result;
+  }
+  // m with its first three columns scaled by v's components: m * scale(v).
+  mat4 scale(const mat4& m, const vec3& v)
+  {
+    mat4 Result;
+    Result.value[0] = m.value[0] * v[0];
+    Result.value[1] = m.value[1] * v[1];
+    Result.value[2] = m.value[2] * v[2];
+    Result.value[3] = m.value[3];
+    return Result;
+  }
+  // m times the rotation by angle radians about the axis v (normalized here).
+  mat4 rotate(const mat4& m, float angle, const vec3& v)
+  {
+    const float a = angle;
+    const float c = cos(a);
+    const float s = sin(a);
+    vec3 axis(normalize(v));
+    vec3 temp((1.0f - c) * axis);
+    mat4 Rotate;
+    Rotate.value[0][0] = c + temp[0] * axis[0];
+    Rotate.value[0][1] = temp[0] * axis[1] + s * axis[2];
+    Rotate.value[0][2] = temp[0] * axis[2] - s * axis[1];
+    Rotate.value[1][0] = temp[1] * axis[0] - s * axis[2];
+    Rotate.value[1][1] = c + temp[1] * axis[1];
+    Rotate.value[1][2] = temp[1] * axis[2] + s * axis[0];
+    Rotate.value[2][0] = temp[2] * axis[0] + s * axis[1];
+    Rotate.value[2][1] = temp[2] * axis[1] - s * axis[0];
+    Rotate.value[2][2] = c + temp[2] * axis[2];
+    mat4 Result;
+    Result.value[0] = m.value[0] * Rotate.value[0][0] + m.value[1] * Rotate.value[0][1] + m.value[2] * Rotate.value[0][2];
+    Result.value[1] = m.value[0] * Rotate.value[1][0] + m.value[1] * Rotate.value[1][1] + m.value[2] * Rotate.value[1][2];
+    Result.value[2] = m.value[0] * Rotate.value[2][0] + m.value[1] * Rotate.value[2][1] + m.value[2] * Rotate.value[2][2];
+    Result.value[3] = m.value[3];
+    return Result;
+  }
+  mat4 translate(const vec3& v) { return translate(mat4(1.0f), v); }
+  mat4 scale(const vec3& v) { return scale(mat4(1.0f), v); }
+  mat4 rotate(float angle, const vec3& v) { return rotate(mat4(1.0f), angle, v); }
+
+  // The 2D orthographic projection of glm 0.9.9.0's four-argument ortho: x from [left, right] and
+  // y from [bottom, top] to [-1, 1]; z is kept as it is (this version leaves m[2][2] at 1).
+  mat4 ortho(float left, float right, float bottom, float top)
+  {
+    mat4 Result(1.0f);
+    Result.value[0][0] = 2.0f / (right - left);
+    Result.value[1][1] = 2.0f / (top - bottom);
+    Result.value[3][0] = -(right + left) / (right - left);
+    Result.value[3][1] = -(top + bottom) / (top - bottom);
+    return Result;
+  }
+
+  // The inverse of m, by glm's cofactor expansion (a singular m gives infinities).
+  mat4 inverse(const mat4& m)
+  {
+    float Coef00 = m[2][2] * m[3][3] - m[3][2] * m[2][3];
+    float Coef02 = m[1][2] * m[3][3] - m[3][2] * m[1][3];
+    float Coef03 = m[1][2] * m[2][3] - m[2][2] * m[1][3];
+
+    float Coef04 = m[2][1] * m[3][3] - m[3][1] * m[2][3];
+    float Coef06 = m[1][1] * m[3][3] - m[3][1] * m[1][3];
+    float Coef07 = m[1][1] * m[2][3] - m[2][1] * m[1][3];
+
+    float Coef08 = m[2][1] * m[3][2] - m[3][1] * m[2][2];
+    float Coef10 = m[1][1] * m[3][2] - m[3][1] * m[1][2];
+    float Coef11 = m[1][1] * m[2][2] - m[2][1] * m[1][2];
+
+    float Coef12 = m[2][0] * m[3][3] - m[3][0] * m[2][3];
+    float Coef14 = m[1][0] * m[3][3] - m[3][0] * m[1][3];
+    float Coef15 = m[1][0] * m[2][3] - m[2][0] * m[1][3];
+
+    float Coef16 = m[2][0] * m[3][2] - m[3][0] * m[2][2];
+    float Coef18 = m[1][0] * m[3][2] - m[3][0] * m[1][2];
+    float Coef19 = m[1][0] * m[2][2] - m[2][0] * m[1][2];
+
+    float Coef20 = m[2][0] * m[3][1] - m[3][0] * m[2][1];
+    float Coef22 = m[1][0] * m[3][1] - m[3][0] * m[1][1];
+    float Coef23 = m[1][0] * m[2][1] - m[2][0] * m[1][1];
+
+    vec4 Fac0(Coef00, Coef00, Coef02, Coef03);
+    vec4 Fac1(Coef04, Coef04, Coef06, Coef07);
+    vec4 Fac2(Coef08, Coef08, Coef10, Coef11);
+    vec4 Fac3(Coef12, Coef12, Coef14, Coef15);
+    vec4 Fac4(Coef16, Coef16, Coef18, Coef19);
+    vec4 Fac5(Coef20, Coef20, Coef22, Coef23);
+
+    vec4 Vec0(m[1][0], m[0][0], m[0][0], m[0][0]);
+    vec4 Vec1(m[1][1], m[0][1], m[0][1], m[0][1]);
+    vec4 Vec2(m[1][2], m[0][2], m[0][2], m[0][2]);
+    vec4 Vec3(m[1][3], m[0][3], m[0][3], m[0][3]);
+
+    vec4 Inv0(Vec1 * Fac0 - Vec2 * Fac1 + Vec3 * Fac2);
+    vec4 Inv1(Vec0 * Fac0 - Vec2 * Fac3 + Vec3 * Fac4);
+    vec4 Inv2(Vec0 * Fac1 - Vec1 * Fac3 + Vec3 * Fac5);
+    vec4 Inv3(Vec0 * Fac2 - Vec1 * Fac4 + Vec2 * Fac5);
+
+    vec4 SignA(+1, -1, +1, -1);
+    vec4 SignB(-1, +1, -1, +1);
+    mat4 Inverse(Inv0 * SignA, Inv1 * SignB, Inv2 * SignA, Inv3 * SignB);
+
+    vec4 Row0(Inverse[0][0], Inverse[1][0], Inverse[2][0], Inverse[3][0]);
+
+    vec4 Dot0(m[0] * Row0);
+    float Dot1 = (Dot0.x + Dot0.y) + (Dot0.z + Dot0.w);
+
+    float OneOverDeterminant = 1.0f / Dot1;
+
+    return Inverse * OneOverDeterminant;
+  }
+
+  // The first of a matrix's 16 floats, column after column (glm/gtc/type_ptr).
+  float* value_ptr(mat4& m) { return &m.value[0].x; }
+  const float* value_ptr(const mat4& m) { return &m.value[0].x; }
+  float* value_ptr(vec2& v) { return &v.x; }
+  const float* value_ptr(const vec2& v) { return &v.x; }
+  float* value_ptr(vec3& v) { return &v.x; }
+  const float* value_ptr(const vec3& v) { return &v.x; }
+  float* value_ptr(vec4& v) { return &v.x; }
+  const float* value_ptr(const vec4& v) { return &v.x; }
+}

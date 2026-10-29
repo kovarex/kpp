@@ -922,6 +922,16 @@ columns, a tree and draw-list primitives) and prints the draw data, style and io
 way, a char array initialised by a string literal stays empty (language/char_array_from_string_literal,
 pending).
 
+### glm through a port (2026-10-29)
+
+glm is C++ header-only templates, so the part of it the game uses (vec2, vec3, vec4, mat4, the
+component functions, translate, scale, rotate, ortho, inverse, value_ptr; 11 game files) is ported
+to Kpp instead of wrapped: `overrides/src/API/glm.kpp`, appended to the conversion of the game's
+`API/glm.hpp`, specified in [glm.md](glm.md). Its rule is glm's results to the bit (the same
+operations in the same order, and the C library's float functions for floats); convert.cmd's fifth
+smoke test, `tests/glm_smoke.kpp`, prints vector, noise and matrix results in hex, equal to
+`tests/glm_smoke.cpp` compiled against glm itself.
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in
