@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**713 pass, 4 pending, 0 failing, 0 fixed** (717 snippets, 441.3 s).
+**713 pass, 3 pending, 0 failing, 1 fixed** (717 snippets, 27.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -223,7 +223,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `classes/conversion_function_reference_prefers_exact_type.kpp` | binding a Base& to an object of a class that has both `operator Derived&()` and `operator Base&()` takes operator Base&() (an exact match), not operator Derived&() followed by a derived-to-base conversion; a Derived& takes operator Derived&() | pending | the tests' RailBuilder converts to RailChainSignal& and to RailSignalBase&: TestRailSignalBaseControlBehavior's `RailSignalBase& railSignal2 = builder1.left(2).railSignal()...rightStation("A");`, whose last signal is a plain rail signal, took the RailChainSignal& one, whose release_assert stopped the test (2 failed checks) | the conversion to Derived& is taken for the Base& too; owner: the templates thread (overload resolution); line 1: got `1 1 false`, expected `2 1 true` |
+| `classes/conversion_function_reference_prefers_exact_type.kpp` | binding a Base& to an object of a class that has both `operator Derived&()` and `operator Base&()` takes operator Base&() (an exact match), not operator Derived&() followed by a derived-to-base conversion; a Derived& takes operator Derived&() | fixed | the tests' RailBuilder converts to RailChainSignal& and to RailSignalBase&: TestRailSignalBaseControlBehavior's `RailSignalBase& railSignal2 = builder1.left(2).railSignal()...rightStation("A");`, whose last signal is a plain rail signal, took the RailChainSignal& one, whose release_assert stopped the test (2 failed checks) | passes now: remove the pending line |
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregate_reference_member.kpp` | an aggregate with reference members initialised from a braced list (`Ref r{x};`): the members refer to the objects given, reads and writes go to them, and copying the aggregate copies the references | pass | CommonUtil's ReversionWrapperByReference<T> { T& iterable; } behind every `for (x : reverse(container))`, and small reference holders across the game |  |
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
