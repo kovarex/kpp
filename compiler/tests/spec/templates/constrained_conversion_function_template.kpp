@@ -1,0 +1,40 @@
+// spec: a conversion function template with a constraint (`template<class T> requires isPointer<T> operator T()`) converts to the types its constraint allows, its argument deduced from the type wanted: initializing a class with constructors from nullptr_t and from T* takes the T* one (no conversion to nullptr_t), as copy-initialization and a function's argument take it
+// factorio: tests/TestScenario.hpp's constructEntity, `UniquePtr<T>(this->createEntity(data))` with createEntity returning a DynamicEntityPointer (tests/DynamicEntityPointer.hpp)
+// pending: the template's return type T is taken to convert to anything, so UniquePtr(nullptr_t) is viable as well and chosen ("passing a class (Handle) where a scalar is expected"); owner: the templates thread (conversion ranking)
+struct Entity
+{
+  virtual ~Entity() = default;
+  int id = 0;
+};
+struct Belt : Entity
+{
+  int speed = 3;
+};
+class Handle
+{
+public:
+  implicit Handle(Entity* entity) : entity(entity) {}
+  template <class T> requires isPointer<T>
+  implicit operator T() const { return dynamic_cast<T>(this->entity); }
+  Entity* entity = nullptr;
+};
+template <class T>
+struct Owner
+{
+  Owner() {}
+  implicit Owner(nullptr_t) {}
+  explicit Owner(T* e) : e(e) {}
+  T* e = nullptr;
+};
+Handle make(Entity* e) { return Handle(e); }
+int speedOf(Belt* b) { return b ? b->speed : -1; }
+int main()
+{
+  Belt belt;
+  belt.id = 5;
+  Owner<Entity> owner(make(&belt));
+  UniquePtr<Entity> owned(make(new Belt()));
+  Entity* plain = make(&belt);
+  println("{} {} {} {}", owner.e->id, owned ? 1 : 0, plain->id, speedOf(make(&belt)));
+  return 0;
+}
