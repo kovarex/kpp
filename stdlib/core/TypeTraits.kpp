@@ -55,33 +55,22 @@ using MakeUnsigned = typename MakeUnsignedHelper<T>::Type;
 template<typename...>
 using VoidT = void;
 
-template<bool B>
-using BoolConstant = typename Conditional<B, TrueType, FalseType>::Type;
-
-// A value as a type (std::integral_constant). IntegralConstant<bool, true> is a TrueType and
-// IntegralConstant<bool, false> a FalseType, so either passes where the other is expected
-// (`f(x, IntegralConstant<bool, isSigned>())` choosing between `f(T, TrueType)` and
-// `f(T, FalseType)`); in C++ they are the same type.
+// A value as a type (std::integral_constant): a static `value` and a conversion to it. TrueType and
+// FalseType, what traits derive from, are its two bool instances, as in C++ (std::true_type), so
+// `IntegralConstant<bool, isSigned<T>>()` passes where a TrueType or FalseType is expected.
 template<typename T, T V>
 struct IntegralConstant
 {
   using value_type = T;
+  using type = IntegralConstant<T, V>;
   static constexpr T value = V;
   constexpr operator T() const { return V; }
   constexpr T operator()() const { return V; }
 };
-template<>
-struct IntegralConstant<bool, true> : TrueType
-{
-  using value_type = bool;
-  constexpr bool operator()() const { return true; }
-};
-template<>
-struct IntegralConstant<bool, false> : FalseType
-{
-  using value_type = bool;
-  constexpr bool operator()() const { return false; }
-};
+using TrueType = IntegralConstant<bool, true>;
+using FalseType = IntegralConstant<bool, false>;
+template<bool B>
+using BoolConstant = IntegralConstant<bool, B>;
 
 // The type predicates are the compiler's (resolver.cpp, traitValue), not declared here: a
 // declaration of the same name would hide them. isClass, isAbstract, isPolymorphic, isFinal,

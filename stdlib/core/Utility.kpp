@@ -1,18 +1,5 @@
-// Kpp standard library: the small utilities everything uses.
-
-// Type-trait bases: derive from TrueType or FalseType to give a trait
-// a static `value` member and an implicit conversion to bool.
-struct TrueType
-{
-  static inline constexpr bool value = true;
-  constexpr operator bool() const { return true; }
-};
-
-struct FalseType
-{
-  static inline constexpr bool value = false;
-  constexpr operator bool() const { return false; }
-};
+// Kpp standard library: the small utilities everything uses. (TrueType and FalseType, the trait
+// bases, are IntegralConstant's bool instances in TypeTraits.kpp.)
 
 template<typename T>
 T&& move(T& value) { return (T&&)value; }
