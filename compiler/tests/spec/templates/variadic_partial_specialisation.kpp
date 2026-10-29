@@ -1,0 +1,27 @@
+// spec: partial specialisations with a pack expansion (`<T, T, R...>`, `<T, F, R...>`): the pack takes the rest of the arguments, a parameter written twice needs the same argument twice, and where several match the most specialised wins whatever their order; the primary template may have no definition
+// factorio: IndexInTemplateList (MplVector) behind PrototypeListList::getTypeIndex and the AreCreatedInOrder static_asserts
+template <typename...> struct IndexInTemplateList;
+// still looking (declared first: where both match, the one below is more specialised)
+template <typename T, typename F, typename... R>
+struct IndexInTemplateList<T, F, R...> : IntegralConstant<size_t, 1 + IndexInTemplateList<T, R...>::value> {};
+// found it
+template <typename T, typename... R>
+struct IndexInTemplateList<T, T, R...> : IntegralConstant<size_t, 0> {};
+
+template<typename... Ts> struct Count { static constexpr int value = 0; };
+template<typename T, typename... Rest> struct Count<T, Rest...> { static constexpr int value = 1 + Count<Rest...>::value; };
+
+template <class... Args>
+struct TypeList
+{
+  template<class T>
+  static constexpr size_t indexOf() { return IndexInTemplateList<T, Args...>::value; }
+};
+struct A {}; struct B {}; struct C {};
+using Order = TypeList<A, B, C>;
+static_assert(Order::indexOf<C>() == 2);
+int main()
+{
+  println("{} {} {} {}", Order::indexOf<A>(), Order::indexOf<B>(), IndexInTemplateList<C, A, B, C>::value, Count<int, char, A>::value);
+  return 0;
+}

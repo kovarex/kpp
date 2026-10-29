@@ -1414,11 +1414,6 @@ struct GlobalScope::Impl
     return false;
   }
 
-  // Among the entries a class template's name resolved to, the specialisation for `args`: a full
-  // one whose arguments are exactly `args` (its own class, without arguments), or else a partial
-  // one (`template<typename T> struct Describe<T*>`) whose patterns deduce from them (its class
-  // with the deduced arguments of its own parameters). Null when there is none or an argument is
-  // still dependent.
   // Whether two template arguments are the same: the same type, or constants of the same value
   // (`IntegralConstant<bool, isSigned<T>>` folds to a bool true, the specialisation's written
   // `true` is typed by its parameter `T V`: the same argument).
@@ -1429,14 +1424,156 @@ struct GlobalScope::Impl
     return a && b && a->kind == TyKind::Value && b->kind == TyKind::Value && a->value == b->value && a->decl == b->decl;
   }
 
-  const Ty* matchSpecialization(const Lookup& l, const std::vector<const Ty*>& args, int depth)
+  // Among a class template's entries, its primary template: the declaration that is no
+  // specialisation, its definition when it has one. Null when the program declares none.
+  static Decl* primaryOf(const std::vector<Entry>& entries)
   {
-    if (!l.overloads || args.empty() || depth > 24)
+    Decl* primary = nullptr;
+    for (const Entry& e : entries)
+      if (e.decl && e.decl->kind == NodeKind::ClassDecl && !(e.decl->flags & DF_Specialization))
+        if (!primary || (static_cast<ClassDecl*>(e.decl)->isDefinition && !static_cast<ClassDecl*>(primary)->isDefinition))
+          primary = e.decl;
+    return primary;
+  }
+
+  // The primary template's parameter that template argument i is for: its pack takes the rest.
+  static Decl* parameterFor(Decl* primary, size_t i)
+  {
+    if (!primary || primary->templateParams.empty())
       return nullptr;
+    if (i < primary->templateParams.size())
+      return primary->templateParams[i];
+    Decl* last = primary->templateParams[primary->templateParams.size() - 1];
+    return static_cast<TemplateParamDecl*>(last)->isPack ? last : nullptr;
+  }
+
+  static bool isPackParam(const Ty* t)
+  {
+    return t && t->kind == TyKind::Param && t->args.empty() && t->decl && t->decl->kind == NodeKind::TemplateParamDecl &&
+           static_cast<TemplateParamDecl*>(t->decl)->isPack;
+  }
+
+  // A partial specialisation's patterns (`<T, T, R...>`) as types, its own parameters standing for
+  // themselves; a pack expansion is its pack parameter. False when one does not convert.
+  bool specializationPatterns(ClassDecl* c, Decl* primary, std::vector<const Ty*>& out, int depth)
+  {
+    const NamePart& part = c->name.last();
+    LocalStack own;
+    for (Decl* p : c->templateParams)
+      own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    TypeContext sctx{lexicalScopeOf(c), &own, nullptr, c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
+    for (size_t i = 0; i < part.templateArgs.size(); ++i)
+    {
+      Node* a = part.templateArgs[i];
+      const Ty* t = a && a->kind == NodeKind::PackType ? convertType(static_cast<PackType*>(a)->pattern, sctx, depth + 1)
+                                                       : templateArgument(a, parameterFor(primary, i), sctx, depth);
+      if (!t || !t->isKnown())
+        return false;
+      out.push_back(t);
+    }
+    return true;
+  }
+
+  // Deduces partial specialisation c's parameters from the arguments: `<T, T, R...>` against
+  // <B, B, C> makes T = B and R = {C}, against <C, A, B> it does not match. A pack expansion
+  // among the patterns (the last one, as C++ requires) takes the rest of the arguments. An
+  // argument that is itself a pack parameter (the patterns of another specialisation, when
+  // ordering them) matches only a pack expansion. False when c does not match.
+  bool matchPatterns(ClassDecl* c, Decl* primary, const std::vector<const Ty*>& args, std::vector<const Ty*>& deduced, int depth)
+  {
+    const NamePart& part = c->name.last();
+    size_t n = part.templateArgs.size();
+    bool expansion = n > 0 && part.templateArgs[n - 1] && part.templateArgs[n - 1]->kind == NodeKind::PackType;
+    if (expansion ? args.size() < n - 1 : args.size() != n)
+      return false;
+    std::vector<const Ty*> patterns;
+    if (!specializationPatterns(c, primary, patterns, depth))
+      return false;
+    Subst s;
+    for (size_t i = 0; i < n; ++i)
+    {
+      const Ty* pattern = patterns[i];
+      if (expansion && i == n - 1)
+      {
+        if (!isPackParam(pattern))
+          return false; // `Ts*...`: a pattern around the pack, not deduced yet
+        std::vector<const Ty*> rest(args.begin() + i, args.end());
+        const Ty* pack = types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())});
+        if (const Ty* bound = s.find(pattern->decl))
+        {
+          if (bound != pack)
+            return false;
+        }
+        else
+          s.pairs.push_back({pattern->decl, pack});
+        break;
+      }
+      if (isPackParam(args[i]))
+        return false;
+      if (types.isDependent(pattern))
+      {
+        deduce(pattern, args[i], s, 1);
+        if (!sameArgument(substitute(pattern, s), args[i]))
+          return false;
+      }
+      else if (!sameArgument(pattern, args[i]))
+        return false;
+    }
+    for (Decl* p : c->templateParams)
+    {
+      const Ty* t = s.find(p);
+      if (!t)
+        return false;
+      deduced.push_back(t);
+    }
+    return true;
+  }
+
+  // Whether partial specialisation a is at least as specialised as b: b's patterns match a's,
+  // a's parameters standing for unique types (`<T, T, R...>` is, `<T, F, R...>` is not, either way).
+  bool atLeastAsSpecialized(ClassDecl* a, ClassDecl* b, Decl* primary, int depth)
+  {
+    std::vector<const Ty*> patterns;
+    if (!specializationPatterns(a, primary, patterns, depth))
+      return false;
+    std::vector<const Ty*> deduced;
+    return matchPatterns(b, primary, patterns, deduced, depth);
+  }
+
+  bool argsDependent(const std::vector<const Ty*>& args)
+  {
     for (const Ty* a : args)
       if (!a || !a->isKnown() || types.isDependent(a))
+        return true;
+    return false;
+  }
+
+  // Among the entries a class template's name resolved to, the specialisation for `args`: a full
+  // one whose arguments are exactly `args` (its own class, without arguments), or else the most
+  // specialised partial one (`template<typename T> struct Describe<T*>`) whose patterns deduce
+  // from them (its class with the deduced arguments of its own parameters). A pack among `args`
+  // stands for its elements. Null when there is none or an argument is still dependent.
+  const Ty* matchSpecialization(const Lookup& l, const std::vector<const Ty*>& written, int depth)
+  {
+    if (!l.overloads || written.empty() || depth > 24)
+      return nullptr;
+    std::vector<const Ty*> args;
+    for (const Ty* a : written)
+    {
+      if (!a || !a->isKnown() || types.isDependent(a))
         return nullptr;
-    const Ty* partial = nullptr;
+      if (a->kind == TyKind::Pack)
+        args.insert(args.end(), a->args.begin(), a->args.end());
+      else
+        args.push_back(a);
+    }
+    Decl* primary = primaryOf(*l.overloads);
+    struct Candidate
+    {
+      ClassDecl* decl;
+      std::vector<const Ty*> deduced;
+    };
+    std::vector<Candidate> partials;
     for (const Entry& e : *l.overloads)
     {
       if (!e.decl || e.decl->kind != NodeKind::ClassDecl || !(e.decl->flags & DF_Specialization))
@@ -1445,58 +1582,41 @@ struct GlobalScope::Impl
       if (!c->isDefinition || c->name.empty())
         continue;
       const NamePart& part = c->name.last();
-      if (part.templateArgs.size() != args.size())
-        continue;
-      LocalStack own;
-      for (Decl* p : c->templateParams)
-        own.push(static_cast<TemplateParamDecl*>(p)->name, p);
-      TypeContext sctx{lexicalScopeOf(c), c->templateParams.empty() ? nullptr : &own, nullptr,
-                       c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
       if (c->templateParams.empty())
       {
+        if (part.templateArgs.size() != args.size())
+          continue;
+        TypeContext sctx{lexicalScopeOf(c), nullptr, nullptr, c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
         bool same = true;
         for (size_t i = 0; i < args.size() && same; ++i)
-        {
-          Node* a = part.templateArgs[i];
-          Decl* param = l.decl && i < l.decl->templateParams.size() ? l.decl->templateParams[i] : nullptr;
-          same = sameArgument(templateArgument(a, param, sctx, depth), args[i]);
-        }
+          same = sameArgument(templateArgument(part.templateArgs[i], parameterFor(primary, i), sctx, depth), args[i]);
         if (same)
           return types.classType(c, {});
         continue;
       }
-      if (partial)
-        continue; // the first matching partial specialisation wins (no ordering yet)
-      Subst s;
-      bool ok = true;
-      for (size_t i = 0; i < args.size() && ok; ++i)
-      {
-        Node* a = part.templateArgs[i];
-        Decl* param = l.decl && i < l.decl->templateParams.size() ? l.decl->templateParams[i] : nullptr;
-        const Ty* pattern = templateArgument(a, param, sctx, depth);
-        if (!pattern || !pattern->isKnown())
-          ok = false;
-        else if (types.isDependent(pattern))
-        {
-          deduce(pattern, args[i], s, depth + 1);
-          ok = sameArgument(substitute(pattern, s), args[i]);
-        }
-        else
-          ok = sameArgument(pattern, args[i]);
-      }
-      std::vector<const Ty*> deduced;
-      for (Decl* p : c->templateParams)
-      {
-        const Ty* t = ok ? s.find(p) : nullptr;
-        if (!t)
-          ok = false;
-        else
-          deduced.push_back(t);
-      }
-      if (ok)
-        partial = types.classType(c, Span<const Ty*>{deduced.data(), uint32_t(deduced.size())});
+      Candidate m{c, {}};
+      if (matchPatterns(c, primary, args, m.deduced, depth))
+        partials.push_back(std::move(m));
     }
-    return partial;
+    if (partials.empty())
+      return nullptr;
+    // The most specialised: at least as specialised as every other match (`<T, T, R...>` over
+    // `<T, F, R...>` for <B, B, C>). When none is, the first (declaration order).
+    size_t best = 0;
+    if (partials.size() > 1)
+      for (size_t i = 0; i < partials.size(); ++i)
+      {
+        bool all = true;
+        for (size_t k = 0; k < partials.size() && all; ++k)
+          all = k == i || atLeastAsSpecialized(partials[i].decl, partials[k].decl, primary, depth);
+        if (all)
+        {
+          best = i;
+          break;
+        }
+      }
+    Candidate& m = partials[best];
+    return types.classType(m.decl, Span<const Ty*>{m.deduced.data(), uint32_t(m.deduced.size())});
   }
 
   Lookup lookupQualified(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr)
@@ -1585,15 +1705,23 @@ struct GlobalScope::Impl
         // `Limits<int>::max`: the specialisation for these arguments, when there is one.
         std::vector<const Ty*> args;
         TypeContext actx{context, locals, subst};
+        Decl* primary = step.overloads ? primaryOf(*step.overloads) : step.decl;
         for (size_t i = 0; i < part.templateArgs.size(); ++i)
-        {
-          Decl* param = i < step.decl->templateParams.size() ? step.decl->templateParams[i] : nullptr;
-          args.push_back(templateArgument(part.templateArgs[i], param, actx, depth + 1)); // types, and constants for value parameters
-        }
+          args.push_back(templateArgument(part.templateArgs[i], parameterFor(primary, i), actx, depth + 1)); // types, and constants for value parameters
         if (const Ty* spec = matchSpecialization(step, args, depth))
         {
           step.decl = spec->decl;
           step.scope = spec->decl->ownScope;
+        }
+        else if ((step.decl->flags & DF_Specialization) && !argsDependent(args))
+        {
+          // The name picked a specialisation for its scope, the primary template having no
+          // definition (`template<typename...> struct IndexInTemplateList;`), and none matches
+          // these arguments: an incomplete class, whose members are not found.
+          step.decl = primary;
+          step.scope = primary ? primary->ownScope : nullptr;
+          if (!primary)
+            return {};
         }
         if (const Ty* t = typeOfTypeDecl(step.decl, step, part, actx, depth + 1); t && t->kind == TyKind::Class && !types.isDependent(t))
           stepTy = t;
@@ -4027,8 +4155,19 @@ struct GlobalScope::Impl
       {
         // Use the definition (the scope owner) so that all mentions share one decl.
         Decl* def = l.scope && l.scope->owner && l.scope->kind == ScopeKind::Class ? l.scope->owner : d;
+        // A specialisation, picked for its scope because the primary template has no definition
+        // (`template<typename...> struct IndexInTemplateList;` beside partial specialisations):
+        // the arguments are the primary's, and they select the specialisation (or none).
+        bool noPrimary = false;
+        if ((def->flags & DF_Specialization) && lastPart.hasTemplateArgs && l.overloads)
+        {
+          if (Decl* primary = primaryOf(*l.overloads))
+            def = primary;
+          else
+            noPrimary = true;
+        }
         std::vector<const Ty*> args;
-        Span<Decl*> params = effectiveParams(def);
+        Span<Decl*> params = noPrimary ? Span<Decl*>{} : effectiveParams(def);
         if (lastPart.templateArgs.size() == 1 && lastPart.symbol == functionSymbolId())
         {
           // The library's `Function<R(Args...)>`: the compiler takes the signature apart, the
@@ -4048,7 +4187,10 @@ struct GlobalScope::Impl
         }
         for (size_t i = 0; i < lastPart.templateArgs.size(); ++i)
         {
-          const Ty* a = templateArgument(lastPart.templateArgs[i], i < params.size() ? params[i] : nullptr, ctx, depth);
+          Decl* param = i < params.size() ? params[i] : nullptr;
+          if (!param && !params.empty() && static_cast<TemplateParamDecl*>(params[params.size() - 1])->isPack)
+            param = params[params.size() - 1]; // the pack takes the rest
+          const Ty* a = templateArgument(lastPart.templateArgs[i], param, ctx, depth);
           if (a && a->kind == TyKind::Pack)
             for (const Ty* e : a->args)
               args.push_back(e); // `FunctionImpl<R, Args...>` inside the template: the elements
@@ -4087,9 +4229,11 @@ struct GlobalScope::Impl
           for (Decl* p : params)
             args.push_back(types.param(p));
         normalizeValueArgs(params, args, def, depth);
-        if (!params.empty())
+        if (!params.empty() || noPrimary)
           if (const Ty* spec = matchSpecialization(l, args, depth))
             return spec; // a full specialisation is its own class; a partial one keeps its own parameters' arguments
+        if (noPrimary && !argsDependent(args))
+          return types.unknown(); // specialisations only, none for these arguments: no class
         return types.classType(def, Span<const Ty*>{args.data(), uint32_t(args.size())});
       }
       case NodeKind::EnumDecl:
