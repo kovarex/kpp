@@ -1,0 +1,80 @@
+// spec: functions with loops, assignments and switch run at compile time: for, while and do with break and continue, ++ and --, compound assignment in the variable's type, switch with fallthrough and default, a void helper that checks
+// factorio: about 240 constexpr bodies with statements, 30 with loops; the library's gcd and lcm as loops
+// pending: only bodies of returns, if and constant locals ran
+constexpr int gcdLoop(int a, int b)
+{
+  while (b != 0)
+  {
+    int t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+constexpr int sumTo(int n)
+{
+  int total = 0;
+  for (int i = 1; i <= n; ++i)
+  {
+    if (i % 10 == 0)
+      continue;
+    total += i;
+    if (total > 1000)
+      break;
+  }
+  return total;
+}
+constexpr int digits(unsigned v)
+{
+  int count = 0;
+  do
+  {
+    count++;
+    v /= 10;
+  } while (v != 0);
+  return count;
+}
+constexpr int classify(int x)
+{
+  int r = 0;
+  switch (x)
+  {
+    case 1:
+      r += 1;
+      fallthrough;
+    case 2:
+      r += 10;
+      break;
+    case 3:
+      return 300;
+    default:
+      r = -1;
+  }
+  return r;
+}
+constexpr void expectPositive(int x)
+{
+  assert(x > 0);
+}
+constexpr uint8_t wrapAdd(uint8_t a, uint8_t b)
+{
+  uint8_t c = a;
+  c += b;
+  expectPositive(int(c) + 1);
+  return c;
+}
+template<int N>
+struct Show
+{
+  static constexpr int value = N;
+};
+static_assert(gcdLoop(84, 36) == 12);
+static_assert(sumTo(10) == 45 && sumTo(100) == 1028);
+static_assert(digits(0) == 1 && digits(12345) == 5);
+static_assert(classify(1) == 11 && classify(2) == 10 && classify(3) == 300 && classify(7) == -1);
+static_assert(wrapAdd(250, 10) == 4);
+int main()
+{
+  println("{} {} {}", Show<gcdLoop(1071, 462)>::value, Show<sumTo(20)>::value, Show<digits(4000000000u)>::value);
+  return 0;
+}
