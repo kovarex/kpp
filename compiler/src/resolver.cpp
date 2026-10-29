@@ -10282,6 +10282,7 @@ struct GlobalScope::Impl
 
     const Ty* typeOfMember(MemberExpr* m)
     {
+      checkPostfixAfterParenthesisedType(m->base, m->token);
       const Ty* base = walkExpr(m->base);
       if (m->dynamicMember)
       {
@@ -10851,8 +10852,45 @@ struct GlobalScope::Impl
         bindOverloadSets(sets, impl.declaredTypeOf(ctor, subst.empty() ? nullptr : &subst, 0));
     }
 
+    // `(ImU32)(255)`: a parenthesised name of a type before a parenthesised operand, which the
+    // parser reads as a call (it cannot tell types from functions). C++ reads a cast. The name
+    // inside, or null when it names no type.
+    NameExpr* parenthesisedTypeCallee(Expr* e)
+    {
+      if (!e || e->kind != NodeKind::CallExpr)
+        return nullptr;
+      auto* c = static_cast<CallExpr*>(e);
+      if (!c->callee || c->callee->kind != NodeKind::ParenExpr || c->args.size() != 1)
+        return nullptr;
+      Expr* inner = static_cast<ParenExpr*>(c->callee)->inner;
+      if (!inner || inner->kind != NodeKind::NameExpr || static_cast<NameExpr*>(inner)->name.empty())
+        return nullptr;
+      auto* n = static_cast<NameExpr*>(inner);
+      Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+      if (l.found == Found::No)
+        return n->name.parts.size() == 1 && !n->name.parts[0].hasTemplateArgs && impl.builtinByName(n->name.parts[0].symbol) ? n : nullptr;
+      Decl* d = l.decl;
+      bool type = d && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl ||
+                        (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)) ||
+                        (d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType));
+      return type ? n : nullptr;
+    }
+
+    // `(T)(x).m`, `(T)(x)[i]`, `(T)(x)(y)`: C++ casts the whole postfix expression, the parser read
+    // the cast as a call the postfix applies to; said, not compiled as the other one.
+    void checkPostfixAfterParenthesisedType(Expr* base, uint32_t token)
+    {
+      if (file && parenthesisedTypeCallee(base))
+        impl.reportCheckerError(file, token, "`(T)(x)` followed by `.`, `->`, `[` or `(` is a cast of the whole postfix expression in C++; "
+                                             "write `T(x)` or `(T)((x)...)` to say which");
+    }
+
     const Ty* typeOfCall(CallExpr* c)
     {
+      if (c->callee && c->callee->kind == NodeKind::CallExpr)
+        checkPostfixAfterParenthesisedType(c->callee, c->token);
+      if (NameExpr* typeName = parenthesisedTypeCallee(c); typeName && !probesSharedNodes())
+        c->callee = typeName; // `(ImU32)(255)` as the functional cast `ImU32(255)`, which means the same
       std::vector<const Ty*> walked;
       walked.reserve(c->args.size());
       for (Expr* a : c->args)
@@ -11027,6 +11065,7 @@ struct GlobalScope::Impl
       if (callee->kind == NodeKind::MemberExpr)
       {
         auto* m = static_cast<MemberExpr*>(callee);
+        checkPostfixAfterParenthesisedType(m->base, m->token);
         const Ty* base = walkExpr(m->base);
         for (const NamePart& part : m->member.parts)
           for (Node* arg : part.templateArgs)
@@ -12397,6 +12436,7 @@ struct GlobalScope::Impl
         case NodeKind::IndexExpr:
         {
           auto* i = static_cast<IndexExpr*>(e);
+          checkPostfixAfterParenthesisedType(i->base, i->token);
           const Ty* base = walkExpr(i->base);
           const Ty* firstIndex = nullptr;
           for (Expr* a : i->args)
