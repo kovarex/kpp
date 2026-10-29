@@ -1,6 +1,5 @@
 // spec: a partial specialization over a pack that derives from its own instance for the rest of the pack initializes that base by the base's constructor: Chain<Head, Tail...> : Chain<Tail...> with `Chain(const Head& head, const Tail&... tail) : Chain<Tail...>(tail...), value(head)`, down to Chain<>
 // factorio: a variadic Tuple laid out flat for structured bindings (std::tuple, 75 uses in the game) is such a chain of bases
-// pending: compiles, and the program stops before printing anything (a stack overflow, 0xC00000FD, in the spec run); written as a Tuple with a constructor taking `const Tail&... tail` it does not compile ("a constructor of VTuple taking 1 arguments")
 template<typename... Types>
 struct Chain;
 template<>

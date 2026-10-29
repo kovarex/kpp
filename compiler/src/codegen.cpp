@@ -1895,29 +1895,45 @@ namespace
       initializeMembers(addr, t, {}, at);
     }
 
-    // The constructor initializer that names base `baseTy` of class t through an alias
-    // (`using super = Conditional<...>; Const(const T& v) : super(v) {}`): its name converted as a
-    // type in the class under the class's arguments; null if none does.
-    const FunctionDecl::CtorInit* initializerNamingBase(const Ty* t, const Ty* baseTy, Span<FunctionDecl::CtorInit> inits, Node* at)
+    // The class a constructor initializer of class t names (`super(v)` with `using super = ...`,
+    // `Chain<Tail...>(tail...)`): its name converted as a type in the class under the class's
+    // arguments; null for a member's name or one that names no class there.
+    const Ty* initializerClass(const Ty* t, const FunctionDecl::CtorInit& init, Node* at)
     {
+      if (init.member.empty())
+        return nullptr;
       const Ty* cls = canonicalClass(t, at);
       ClassDecl* c = classDef(cls->decl, at);
-      TemplateArgs args = global.classArgsOf(cls);
+      NamedType named{};
+      named.kind = NodeKind::NamedType;
+      named.token = at ? at->token : 0;
+      named.name = init.member;
+      // Looked up from inside the class: from the constructor when it is the one being emitted.
+      Decl* context = currentFunction && global.owningClass(currentFunction) && classDef(global.owningClass(currentFunction), at) == c ? static_cast<Decl*>(currentFunction) : c;
+      const Ty* nt = global.typeOfAstIn(&named, context, global.classArgsOf(cls));
+      return nt && isClass(nt) && !types.isDependent(nt) ? canonicalClass(nt, at) : nullptr;
+    }
+
+    // Whether a constructor initializer written with template arguments names another class than
+    // cls: `Chain<Tail...>(tail...)` in Chain<Head, Tail...> (its base, an instance of the same
+    // template), `Holder<1, T>(b)` beside a base Holder<0, H>.
+    bool initializerNamesOther(const Ty* t, const FunctionDecl::CtorInit& init, const Ty* cls, Node* at)
+    {
+      if (init.member.empty() || !init.member.last().hasTemplateArgs)
+        return false;
+      const Ty* named = initializerClass(t, init, at);
+      return named && named != canonicalClass(cls, at);
+    }
+
+    // The constructor initializer that names base `baseTy` of class t by its type (through an
+    // alias, `using super = Conditional<...>; Const(const T& v) : super(v) {}`, or one of several
+    // instances of a template); null if none does.
+    const FunctionDecl::CtorInit* initializerNamingBase(const Ty* t, const Ty* baseTy, Span<FunctionDecl::CtorInit> inits, Node* at)
+    {
       const Ty* base = canonicalClass(baseTy, at);
       for (const FunctionDecl::CtorInit& init : inits)
-      {
-        if (init.member.empty())
-          continue;
-        NamedType named{};
-        named.kind = NodeKind::NamedType;
-        named.token = at ? at->token : 0;
-        named.name = init.member;
-        // Looked up from inside the class: from the constructor when it is the one being emitted.
-        Decl* context = currentFunction && global.owningClass(currentFunction) && classDef(global.owningClass(currentFunction), at) == c ? static_cast<Decl*>(currentFunction) : c;
-        const Ty* nt = global.typeOfAstIn(&named, context, args);
-        if (nt && isClass(nt) && !types.isDependent(nt) && canonicalClass(nt, at) == base)
+        if (initializerClass(t, init, at) == base)
           return &init;
-      }
       return nullptr;
     }
 
@@ -2039,9 +2055,10 @@ namespace
       };
       if (isClass(t) && t->decl)
       {
-        // `Frame(x) : Frame(x, "") {}`: a delegating constructor builds the whole object.
+        // `Frame(x) : Frame(x, "") {}`: a delegating constructor builds the whole object (not
+        // `Chain<Tail...>(tail...)` in Chain<Head, Tail...>, which initializes its base).
         const QualifiedName& own = classDef(t->decl, at)->name;
-        if (const FunctionDecl::CtorInit* self = own.empty() ? nullptr : initFor(own.last().symbol))
+        if (const FunctionDecl::CtorInit* self = own.empty() ? nullptr : initFor(own.last().symbol); self && !initializerNamesOther(t, *self, t, at))
         {
           constructInto(addr, t, self->args, at);
           return;
@@ -2053,6 +2070,8 @@ namespace
         std::string baseAddr = gep(info.name, addr, index);
         const QualifiedName& bn = static_cast<ClassDecl*>(baseDef)->name;
         const FunctionDecl::CtorInit* init = bn.empty() ? nullptr : initFor(bn.last().symbol);
+        if (init && initializerNamesOther(t, *init, bt, at))
+          init = nullptr; // `Holder<0, H>(a)` met first for the base Holder<1, T>: by the type each names
         if (!init)
           init = initializerNamingBase(t, bt, inits, at);
         if (init)
@@ -7847,6 +7866,18 @@ namespace
                 classTy = base;
               }
             }
+            else if (owner->kind == NodeKind::ClassDecl && classTy && n->name.parts.size() > 1)
+              if (const Ty* q = qualifierType(n, c); q && classDef(q->decl, c) == classDef(owner, c) && q != canonicalClass(currentClassTy, c))
+              {
+                // `Chain<Tail...>::count()` in Chain<Head, Tail...>: the member of the base the
+                // qualifier names, an instance of the same template as this class.
+                std::string addr;
+                if (!baseAddress(currentClassTy, q, thisArg, addr, c))
+                  unsupported(c, "a call of " + qualifiedName(f) + " through " + types.toString(q, &symbols) + ", which is no base of " +
+                                     types.toString(currentClassTy, &symbols));
+                thisArg = addr;
+                classTy = q;
+              }
           }
           std::string indirect;
           if (classTy && n->name.parts.size() == 1 && !thisArg.empty())

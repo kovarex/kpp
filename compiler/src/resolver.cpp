@@ -8176,6 +8176,41 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
+  // Every instantiation of the base class whose scope is `in` that class type t (scope cls) is or
+  // derives from, directly or not, each once: Holder<2, int>, Holder<1, double> and Holder<0,
+  // String> of a tuple built from such bases.
+  void instantiationsOfBase(const Ty* t, Scope* cls, Scope* in, int depth, std::vector<const Ty*>& out)
+  {
+    if (cls == in)
+    {
+      if (std::find(out.begin(), out.end(), t) == out.end())
+        out.push_back(t);
+      return;
+    }
+    if (!cls || depth > 16 || cls->baseTypes.empty() || !cls->owner)
+      return;
+    Subst own = substFor(t);
+    LocalStack params;
+    for (Decl* p : cls->templateParams)
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    pushEnclosingTemplateParams(cls->owner->parent, params);
+    ParsedFile* file = cls->owner->file;
+    TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+    for (Type* b : cls->baseTypes)
+      for (const Ty* bt : baseInstances(b, ctx, depth + 1))
+      {
+        if (!bt || bt->kind != TyKind::Class || !bt->decl)
+          continue;
+        Scope* bs = bt->decl->ownScope;
+        if (!bs)
+        {
+          Entry e{bt->decl, nullptr};
+          bs = scopeOfEntry(e, 0);
+        }
+        instantiationsOfBase(bt, bs, in, depth + 1, out);
+      }
+  }
+
   // The classes a base written as b names under ctx: itself, or each element of the pack a base
   // like `Ts...` expands to (`struct Overload : Ts...` with Ts = (F, G) has the bases F and G).
   std::vector<const Ty*> baseInstances(Type* b, const TypeContext& ctx, int depth)
@@ -9856,8 +9891,31 @@ struct GlobalScope::Impl
         else if (a->kind == TyKind::Class && a->decl && pattern->decl && pattern->decl->ownScope && !pattern->args.empty())
         {
           // `const Opt<T>&` given a class derived from Opt<int>: T from that base, as C++ has it.
-          if (const Ty* base = instantiationOfBase(a, classScopeOf(a), pattern->decl->ownScope, depth + 1); base && base != a)
-            deduceClassArgs(pattern->args, base->args, out, depth);
+          // Of several bases of the template, direct or not (Holder<2, int>, Holder<1, double> of
+          // a tuple), the one that the pattern with what is bound already matches
+          // (`holderOf<1>(t)`, `Holder<I, X>&` with I = 1); none when more than one does.
+          std::vector<const Ty*> bases;
+          instantiationsOfBase(a, classScopeOf(a), pattern->decl->ownScope, depth + 1, bases);
+          bases.erase(std::remove(bases.begin(), bases.end(), a), bases.end());
+          if (bases.size() == 1)
+            deduceClassArgs(pattern->args, bases[0]->args, out, depth);
+          else if (bases.size() > 1)
+          {
+            std::optional<Subst> only;
+            size_t matching = 0;
+            for (const Ty* base : bases)
+            {
+              Subst tried = out;
+              deduceClassArgs(pattern->args, base->args, tried, depth);
+              const Ty* deduced = substitute(pattern, tried);
+              if (deduced && !types.isDependent(deduced) && !sameArgument(types.unqualified(deduced), types.unqualified(base)))
+                continue; // another instance than the pattern names
+              if (matching++ == 0)
+                only = std::move(tried);
+            }
+            if (matching == 1)
+              out = std::move(*only);
+          }
         }
         break;
       case TyKind::Function:

@@ -1,0 +1,66 @@
+// spec: a parameter `Holder<I, X>&` deduces from whichever base of the argument's class is an instance of Holder, direct or not, and when several are (a tuple built from Holder<2, int>, Holder<1, double>, Holder<0, String>) from the one the arguments bound already pick (C++ deduces from the one base that matches, and fails when several do); a constructor initializer `Holder<1, double>(b)` initializes that base even when another instance of Holder comes first; together, a variadic tuple with get<I> and structured bindings
+// found by the templates thread with templates/pack_specialization_base_initializer (the converter's variadic Tuple): `holderOf<1>(t)` did not resolve, deduced from the first Holder base only
+template<int I, typename T>
+struct Holder
+{
+  T value;
+  Holder() {}
+  Holder(const T& v) : value(v) {}
+};
+template<int I, typename X>
+X& holderOf(Holder<I, X>& h)
+{
+  return h.value;
+}
+template<int I, typename X>
+const X& holderOf(const Holder<I, X>& h)
+{
+  return h.value;
+}
+
+template<typename... Types>
+struct Row;
+template<>
+struct Row<>
+{
+  Row() {}
+};
+template<typename H, typename... T>
+struct Row<H, T...> : Holder<sizeof...(T), H>, Row<T...>
+{
+  Row() {}
+  Row(const H& head, const T&... tail) : Holder<sizeof...(T), H>(head), Row<T...>(tail...) {}
+};
+template<typename... Types>
+struct TupleSize<Row<Types...>> { static constexpr int value = sizeof...(Types); };
+template<int I, typename... Types>
+auto& get(Row<Types...>& r)
+{
+  return holderOf<int(sizeof...(Types)) - 1 - I>(r);
+}
+template<int I, typename... Types>
+const auto& get(const Row<Types...>& r)
+{
+  return holderOf<int(sizeof...(Types)) - 1 - I>(r);
+}
+Row<int, double, String> make(int i) { return Row<int, double, String>(i, 2.5, String("three")); }
+
+struct Both : Holder<0, int>, Holder<1, double>
+{
+  Both() : Holder<1, double>(2.5), Holder<0, int>(7) {}
+};
+
+int main()
+{
+  Row<int, double, String> r(1, 2.5, String("three"));
+  println("{} {} {}", get<0>(r), get<1>(r), get<2>(r));
+  auto& [a, b, c] = r;
+  a = 10;
+  auto [x, y, z] = make(7);
+  const Row<int, double, String>& cr = r;
+  const auto& [ca, cb, cc] = cr;
+  println("{} {} {} {} {} {} {} {}", get<0>(r), b, c, x, y, z, ca + int(cb), cc.size());
+  Both both;
+  println("{} {}", holderOf<0>(both), holderOf<1>(both));
+  return 0;
+}
