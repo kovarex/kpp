@@ -1,0 +1,22 @@
+// spec: `{}` among a brace list's elements is an element value-initialized: `Vector<Mapping>({ {}, {}, {f, d} })` takes the InitializerList constructor with three elements, not Vector(int); and `{}` as an argument ranks as value-initialization, the identity for a scalar and the default constructor for a class (`pick({})` takes pick(int) over pick(const String&))
+// found in tests/gui/TestUpgradeItemGui (`UpgradeData::Mappings({ {}, {}, {updatedEntityFilter, updatedEntityDestination} })`)
+// pending: a list whose first element is `{}` presents no type, Vector(int) ties with the InitializerList constructor and is taken (`a brace list of 3 values as a value of int32`)
+struct Filter { int id = 0; };
+struct Destination { int id = 0; };
+struct Mapping
+{
+  Mapping() = default;
+  Mapping(Filter source, Destination destination) : source(source), destination(destination) {}
+  Filter source;
+  Destination destination;
+};
+int pick(const String&) { return 2; }
+int pick(int) { return 1; }
+int main()
+{
+  Filter f{5};
+  Destination d{6};
+  Vector<Mapping> mappings({ {}, {}, {f, d} });
+  println("{} {} {} {}", int(mappings.size()), mappings[0].source.id, mappings[2].destination.id, pick({}));
+  return 0;
+}
