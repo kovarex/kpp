@@ -1,0 +1,24 @@
+// spec: UnderlyingType<E> of an enumeration declared with a member alias of its class (`enum class Enum : InternalType` with `using InternalType = uint8_t;`), asked for in another class's member template: the alias as the enumeration's class declares it, not looked up where the trait is written
+// factorio: AlertType's `enum class Enum : InternalType` and RenderLayer's LayerType, read by DeserialiserHelper::loadEnum's `static_assert(sizeof(UnderlyingType<T>) == sizeof(uint8_t))`
+struct AlertType
+{
+  using InternalType = uint8_t;
+  enum class Enum : InternalType { A, B };
+};
+template<class Deserialiser>
+struct Helper
+{
+  template<class T>
+  static int loadEnum(T& target)
+  {
+    static_assert(sizeof(UnderlyingType<T>) == sizeof(uint8_t), "Unsafe enum loading.");
+    UnderlyingType<T> raw = UnderlyingType<T>(target);
+    return int(sizeof(raw)) * 10 + int(raw);
+  }
+};
+int main()
+{
+  AlertType::Enum e = AlertType::Enum::B;
+  println("{}", Helper<int>::loadEnum(e));
+  return 0;
+}

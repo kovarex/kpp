@@ -2311,12 +2311,24 @@ struct GlobalScope::Impl
     return args;
   }
 
+  // The type an enumeration is declared with, read where the enumeration is declared, not where
+  // UnderlyingType<E> is written (`enum class Enum : InternalType` with AlertType's `using
+  // InternalType = uint8_t;`, met in DeserialiserHelper's loadEnum); int when it names none.
   const Ty* enumUnderlyingType(const Ty* e, const TypeContext& ctx, int depth)
   {
     Decl* def = e->decl;
-    if (def && def->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(def)->underlying)
-      return convertType(static_cast<EnumDecl*>(def)->underlying, ctx, depth + 1);
-    return types.intType();
+    if (def && def->kind == NodeKind::EnumDecl && !def->ownScope)
+    {
+      Entry entry{def, nullptr};
+      if (Scope* s = scopeOfEntry(entry, 0))
+        def = s->owner;
+    }
+    if (!def || def->kind != NodeKind::EnumDecl || !static_cast<EnumDecl*>(def)->underlying)
+      return types.intType();
+    DeclContext dc;
+    declContextFor(def, dc);
+    TypeContext own{dc.scope, &dc.params, ctx.subst, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+    return convertType(static_cast<EnumDecl*>(def)->underlying, own, depth + 1);
   }
 
   bool isTypeTraitName(uint32_t symbol)
