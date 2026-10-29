@@ -1,0 +1,34 @@
+// spec: a function's name given for a template's `const Pred&` parameter binds the function itself (a function is an lvalue, and const has no say on a function type): `Util::sort(groups, Group::ascending)` with a static member function, and a free one, through a reference as through a value
+// found in the converted game: Util::sort(container, const Pred& pred) given AccumulatorGroup::ascendingIndexOrder, grouppingForMergeOrder, ElectricSubNetwork::ascendingIndexOrder and AlertCenter::lessAlertWithTypeForRender (4 calls did not resolve)
+// pending: the function is taken for an rvalue that a non-const reference cannot bind ("a call that did not resolve")
+bool less(int a, int b) { return a < b; }
+template<class P> int byRef(const P& p) { return p(1, 2) ? 1 : 0; }
+template<class P> int byValue(P p) { return p(2, 1) ? 1 : 0; }
+struct Group
+{
+  int index = 0;
+  static bool ascending(const Group* first, const Group* second) { return first->index < second->index; }
+};
+namespace Util
+{
+  template<class ContainerType, class Pred>
+  void sort(ContainerType& container, const Pred& pred)
+  {
+    ::sort(container.begin(), container.end(), pred);
+  }
+}
+int main()
+{
+  Group a, b, c;
+  a.index = 3;
+  b.index = 1;
+  c.index = 2;
+  Vector<Group*> v;
+  v.push_back(&a);
+  v.push_back(&b);
+  v.push_back(&c);
+  Util::sort(v, Group::ascending);
+  println("{} {}", byRef(less), byValue(less));
+  println("{} {} {}", v[0]->index, v[1]->index, v[2]->index);
+  return 0;
+}
