@@ -2058,6 +2058,42 @@ namespace
             i += 14;
             continue;
           }
+          if ((name == "in_place_type_t" || name == "in_place_type") && i > 0 && toks[i - 1].is(P::LParen) && i + 3 < toks.size() && toks[i + 3].is(P::Less))
+          {
+            // `f(std::in_place_type_t<T>(), a, b)`, a std::variant built in place as its alternative
+            // T (DrawCommandBatch's batches.emplace_back): the alternative's own constructor,
+            // `f(T(a, b))`, which sets the typed union's alternative from the value.
+            uint32_t j = i + 4;
+            int depth = 0;
+            for (; j < toks.size(); ++j)
+            {
+              if (toks[j].is(P::Less))
+                ++depth;
+              else if (toks[j].is(P::Greater) && depth-- == 0)
+                break;
+              else if (toks[j].is(P::Semi) || toks[j].getKind() == TokenKind::End)
+                break;
+            }
+            uint32_t after = j + 1;
+            if (j < toks.size() && toks[j].is(P::Greater) && name == "in_place_type_t" && after + 1 < toks.size() && toks[after].is(P::LParen) && toks[after + 1].is(P::RParen))
+              after += 2;
+            uint32_t close = closingParenToken(i - 1);
+            if (j < toks.size() && toks[j].is(P::Greater) && close != UINT32_MAX && after <= close && (toks[after].is(P::Comma) || after == close))
+            {
+              remove(t.offset, endOffset(i + 3) - t.offset); // `std::in_place_type_t<`
+              if (after == close)
+                replace(toks[j].offset, toks[close].offset - toks[j].offset, "()");
+              else
+              {
+                uint32_t next = after + 1;
+                replace(toks[j].offset, toks[next].offset - toks[j].offset, "(");
+                insert(toks[close].offset, ")");
+              }
+              counts.add("std::in_place_type to the alternative's constructor");
+              i = j;
+              continue;
+            }
+          }
           if (name == "thread" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "hardware_concurrency")
           {
             // A static member whose library name differs: std::thread::hardware_concurrency().
@@ -3216,6 +3252,22 @@ namespace
       remove(start, end - start);
     }
 
+    // The `)` that closes the `(` at token open, or UINT32_MAX.
+    uint32_t closingParenToken(uint32_t open) const
+    {
+      int depth = 0;
+      for (uint32_t k = open; k < toks.size(); ++k)
+      {
+        if (toks[k].is(P::LParen))
+          ++depth;
+        else if (toks[k].is(P::RParen) && --depth == 0)
+          return k;
+        else if (toks[k].getKind() == TokenKind::End)
+          break;
+      }
+      return UINT32_MAX;
+    }
+
     // The `,` or `>` that ends the template parameter starting at token `from`, or UINT32_MAX.
     uint32_t templateParameterEnd(uint32_t from) const
     {
@@ -3789,7 +3841,14 @@ namespace
             type = qualifiedAlternativeType(type, *v.info, v.memberStart);
             list += std::string(list.empty() ? "" : ", ") + "{" + type + ", " + v.info->alternatives[a].name + "}";
           }
-          std::string declaration = indent + "union enum " + v.info->unionName + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + indent + "};";
+          // std::variant's ==, the same alternative with equal values; a template, so that as for
+          // std::variant an alternative without == matters only where two unions are compared.
+          const std::string& u = v.info->unionName;
+          std::string equality = indent + "  template<typename Other> requires (isSame<Other, " + u + ">)\n" + indent +
+                                 "  bool operator==(const Other& other) const\n" + indent + "  {\n" + indent + "    for constexpr (auto a : alternatives(" + u +
+                                 "))\n" + indent + "      if (*this == a.tag)\n" + indent + "        return other == a.tag && (*this)[a] == other[a];\n" + indent +
+                                 "    return false;\n" + indent + "  }\n";
+          std::string declaration = indent + "union enum " + u + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + equality + indent + "};";
           if (v.member)
           {
             edits.push_back({v.memberStart, 0, declaration + "\n"});

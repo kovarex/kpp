@@ -1,0 +1,11 @@
+// A std::variant is a typed union in Kpp (design.md 8.5), so the game's is_std_variant<T> asks
+// whether T is one; it picks the variant save and load in SerialiserHelper and DeserialiserHelper.
+// Its own value and conversion rather than a BoolConstant base: the game reads it as
+// `is_std_variant<T>()`, which folds only for a value the class declares itself (spec
+// templates/trait_call_through_integral_constant_base).
+template<typename T>
+struct is_std_variant
+{
+  static constexpr bool value = isTypedUnion<T>;
+  constexpr operator bool() const { return value; }
+};

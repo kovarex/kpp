@@ -780,9 +780,13 @@ dropped, 7 declarations, and the overrides write it for typed unions with `for c
 alternatives(U))`. Those overrides add members to converted classes: an override file's `class
 [[members]] Name { ... }` puts its members into the converted class Name, whose other members stay
 as converted (a member that finds no such class is reported on stderr). `Util::visitVariant` is
-overridden for its one use (one lambda). 23,548 -> 23,546. What routes the 9 unions' save and
-load through these members is the game's is_std_variant<T> becoming `isTypedUnion<T>`, an override
-of TemplateHelpers that waits for the compiler to have that trait (spec kpp/typed_union_trait).
+overridden for its one use (one lambda). 23,548 -> 23,546. Then, on master e6120e0 (23,636): each
+converted union gets std::variant's `==` (the same alternative with equal values; a member
+template, so that an alternative without `==` matters only where unions are compared), and
+`f(std::in_place_type_t<T>(), args...)` becomes `f(T(args...))`: 23,634 (DrawCommandBatch's batch
+comparisons; its in-place emplace_back now waits on typed unions direct-initialized from a value,
+spec kpp/typed_union_direct_init). The game's is_std_variant<T> asks `isTypedUnion<T>` (an override
+of TemplateHelpers), which routes the 9 unions' save and load through the members above: 23,633.
 
 static_assert became a real check on master 89058a6 (the headline now includes kpp\Lua: 23,548).
 Until then the game's 470 static_asserts were parsed and never evaluated, so the step adds lines
