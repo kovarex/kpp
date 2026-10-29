@@ -92,7 +92,7 @@ Members, as String's of the same name but in units of wchar_t:
   `(const wchar_t*, count)`, from a `[first, last)` pair of `const wchar_t*`, `(count, c)`; copy
   and move; assignment from a WString or a `const wchar_t*`.
 - Access: `size()`, `length()`, `empty()`, `operator[](i)`, `at(i)` (throws OutOfRange), `front()`,
-  `back()`, `data()`, `c_str()`, `begin()`, `end()`.
+  `back()`, `data()`, `c_str()`, `begin()`, `end()`, `rbegin()`, `rend()`.
 - Changing: `append(text, count)`, `append(text)`, `append(other)`, `append(count, c)` (each
   returns the WString), `push_back(c)`, `pop_back()`, `+=` (a WString, a `const wchar_t*` or a
   wchar_t), `resize(n)`, `resize(n, c)`, `reserve(n)`, `clear()`, `erase(index, count)` (returns

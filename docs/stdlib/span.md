@@ -19,8 +19,12 @@ Members:
 - From another Span (of U to const U, or of another extent): implicit when the count is sure to
   fit (to any length, or between the same fixed extent), explicit from a span of any length to a
   fixed extent.
+- Deduction, as std::span's guides: `Span(vector)` is a `Span<T>` (`Span<const T>` of a const
+  Vector), `Span(array)` of an Array or a plain array a `Span<T, N>`, `Span(p, count)` and
+  `Span(first, last)` a `Span<T>`.
 - `size()`, `size_bytes()`, `empty()`; `operator[](i)`, `data()`, `begin()`, `end()` (pointers),
-  `front()`, `back()`. Accessing an element out of range is a program error, not checked.
+  `rbegin()`, `rend()` (from the last element to the first), `front()`, `back()`. Accessing an
+  element out of range is a program error, not checked.
 - `subspan(offset, count)`, `subspan(offset)`, `first(count)`, `last(count)`: Spans of any length
   over a part.
 - `element_type`, `value_type`: T; `size_type`: int; `iterator`, `pointer`: T*.

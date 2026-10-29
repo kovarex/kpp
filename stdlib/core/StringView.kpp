@@ -31,6 +31,10 @@ struct StringView
   const char* end() const { return this->chars + this->byteCount; }
   const char* cbegin() const { return this->begin(); }
   const char* cend() const { return this->end(); }
+  ReverseIterator<const char*> rbegin() const { return ReverseIterator<const char*>(this->end()); }
+  ReverseIterator<const char*> rend() const { return ReverseIterator<const char*>(this->begin()); }
+  ReverseIterator<const char*> crbegin() const { return this->rbegin(); }
+  ReverseIterator<const char*> crend() const { return this->rend(); }
   char front() const { return this->chars[0]; }
   char back() const { return this->chars[this->byteCount - 1]; }
 

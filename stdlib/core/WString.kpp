@@ -98,6 +98,10 @@ struct WString
   const wchar_t* end() const { return this->chars + this->unitCount; }
   const wchar_t* cbegin() const { return this->begin(); }
   const wchar_t* cend() const { return this->end(); }
+  ReverseIterator<const wchar_t*> rbegin() const { return ReverseIterator<const wchar_t*>(this->end()); }
+  ReverseIterator<const wchar_t*> rend() const { return ReverseIterator<const wchar_t*>(this->begin()); }
+  ReverseIterator<const wchar_t*> crbegin() const { return this->rbegin(); }
+  ReverseIterator<const wchar_t*> crend() const { return this->rend(); }
 
   void reserve(int needed)
   {

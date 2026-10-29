@@ -110,6 +110,8 @@ struct String
   ReverseIterator<char*> rend() { return ReverseIterator<char*>(this->begin()); }
   ReverseIterator<const char*> rbegin() const { return ReverseIterator<const char*>(this->end()); }
   ReverseIterator<const char*> rend() const { return ReverseIterator<const char*>(this->begin()); }
+  ReverseIterator<const char*> crbegin() const { return this->rbegin(); }
+  ReverseIterator<const char*> crend() const { return this->rend(); }
   const char* begin() const { return this->data(); }
   const char* end() const { return this->data() + this->size(); }
   const char* cbegin() const { return this->data(); }
