@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**347 pass, 5 pending, 0 failing, 0 fixed** (352 snippets, 8.7 s).
+**351 pass, 6 pending, 0 failing, 0 fixed** (357 snippets, 9.5 s).
 
 ## Language: statements, expressions, declarations
 
@@ -44,6 +44,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/enum_class_user_operator.kpp` | a user-defined operator on a scoped enum (`bool operator&(Flags, Flags)`); C++ has no built-in one | pass | NotificationData::Flags (PostTransferNotifiable.hpp) and other flag enums with their own | and & |  |
 | `language/exceptions.kpp` | exceptions: throw, catch by reference and base, rethrow, cleanup of locals | pass | 3118 throw sites in 853 files, 457 try blocks |  |
 | `language/explicit_operator_call.kpp` | an operator function called by name: `operator==(a, b)`, `a.operator[](i)` | pass |  |  |
+| `language/extern_variable_and_definition.kpp` | `extern T name;` and the definition `T name;` (or one with an initializer) in one namespace are one variable, whichever of the two a use names; a class-type definition is constructed once, with its initializer | pass |  |  |
 | `language/for_init_conditional.kpp` | a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)` | pass |  |  |
 | `language/generic_lambda_predicates.kpp` | a generic lambda called with lambda arguments that capture locals, other lambdas and this | pass |  |  |
 | `language/generic_lambdas.kpp` | generic lambdas (auto parameters) | pass | 330 uses in 168 files |  |
@@ -148,6 +149,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | deduction guides and pack using-declarations are not parsed; C:\kpp-templates\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support a local of unknown type (o) yet (in @kpp.main) |
+| `templates/trait_of_deduced_type_in_return_type.kpp` | a return type made by a type trait of a deduced parameter (std::move's `remove_reference_t<T>&&`), as the call's type | pending | std::move and std::forward, and the helpers declared through remove_reference_t or decay_t | the call's type substitutes T as if the trait were T itself (`T&&` with T = int& collapses to int&); line 1: got `false`, expected `true` |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -171,6 +173,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/class_templates.kpp` | class templates: members, nested typedefs, static constexpr functions, several instantiations | pass |  |  |
 | `templates/class_traits.kpp` | the traits that read a class's members: isClass, isPolymorphic, isAbstract, isFinal, isMove/CopyConstructible, isMove/CopyAssignable (plain, Trivially, Nothrow), isInvocable, isInvocableR | pass | static_assert(isMoveConstructible<T>) on 20 message types, FlatMap's requires (isClass<K>), if constexpr (isInvocable<F, Args>) in SaveLoadHelper and PtreeUtil, isPolymorphic in the prototype explorer |  |
 | `templates/compound_constexpr_trait.kpp` | compound_constexpr_trait | pass |  |  |
+| `templates/concept_with_pack_parameter.kpp` | a concept with a pack parameter (`template<typename T, typename D, typename... Args> concept has_load = requires(T& result, D& input, Args&&... args) { result.load(input, forward<Args>(args)...); }`) is evaluated for the arguments written, an expansion giving its elements (none for an empty pack) | pass |  |  |
 | `templates/conditional_in_return_type.kpp` | a function template's return type chosen by a specialization on a value computed from the template's parameters: `typename Conditional<(sizeof(A) < sizeof(B)), B, A>::Type`, directly or through an alias template, is the false alternative when the condition is false | pass | std::conditional_t in signatures and in the library's computed types (a common type of two reps, a common period of two durations) |  |
 | `templates/constant_parameter_bound_to_reference.kpp` | a constant template parameter passed to a reference parameter (`take(K)` with `take(Args&&...)`, `one(K)` with `one(const T&)`) binds a temporary holding its value, as an enumerator does; also inside a lambda in the template | pass |  |  |
 | `templates/constexpr_local_template_argument.kpp` | a constexpr local computed from the template's parameters as a template argument, `constexpr bool sign = isSigned<T>; pick(Flag<sign>())`, selecting the explicit specialisation it names | pass |  |  |
@@ -263,6 +266,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/sizeof_pack_template_argument.kpp` | `sizeof...(Pack)` as a constant template argument, of a type pack and of a function parameter pack, also in an expression and in a member alias | pass |  |  |
 | `templates/special_member_traits_through_bases.kpp` | the special-member traits of a class deriving an abstract class are decided by the base's constructors (an abstract class makes no object of its own, but is a base all the same), and a constructor taking a class of the same name from another namespace is a converting constructor, not the copy constructor | pass | static_assert(isMoveConstructible<...>, "Not movable.") on the network messages (abstract NetworkMessage) and synchronizer actions; uses_memcpy<Color> with Color(const agui::Color&) |  |
 | `templates/specialization_by_dependent_value.kpp` | inside a template, a class template argument computed from the template's parameter (a trait, a constexpr local) selects the explicit specialization it names: `IntegralConstant<bool, isSigned<T>>()` is the TrueType one for int | pass | cxxopts' integer parser (`checked_negate<T>(result, text, std::integral_constant<bool, is_signed>())` choosing the true_type or false_type overload), tag dispatch on traits across Util |  |
+| `templates/specialization_with_default_arguments.kpp` | a specialization written with fewer arguments than its primary has parameters takes the primary's defaults for the rest (`is_optional<Optional<T>>` of `template<typename T, typename Enable = void>`), a default that names an earlier parameter (`H = Vector<K>`) included, for partial and full specializations, as a type and through a qualified name | pass |  |  |
 | `templates/static_assert_in_unused_member.kpp` | a static_assert in a member function of a class template instance, or in a function template instance that only an unused function calls, counts only if the program uses the function it is in, as C++ instantiates only the members (and through them the templates) the program uses | pass | SavablePointer<T>::save asserts !isBaseOf<MovableTargetable, T> for the T it is used with only; UtilityConstants' Const<T> has a constructor for each kind of T, and PropertyTree::get<T> asserts isArithmetic<T> |  |
 | `templates/static_call_through_parameter_operator.kpp` | an operator between class-typed results of static member calls through a template parameter: `KeyOf::of(a) < KeyOf::of(b)` | pass |  |  |
 | `templates/static_constexpr_expression_template_argument.kpp` | a static constexpr member of a class template whose initializer depends on the template argument (sizeof(T), a trait of T), used as a template argument: `Array<ForceID, Limits<uint64_t>::digits + 1>` | pass | Surface/CloneAreaParameters (`std::array<ForceID, std::numeric_limits<uint64_t>::digits + 1>`), any size computed from a type |  |
@@ -387,6 +391,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `interop/c_structs_layout.kpp` | C-compatible layout: plain structs passed to and filled by C, sizeof agreement, arrays of structs | pass |  |  |
 | `interop/calling_convention_pointers.kpp` | function pointer types with a Windows calling convention: `BOOL(__stdcall*)(void)`, `VOID(NTAPI*)(DWORD)` (one convention on x64; the word is accepted and ignored) | pass |  |  |
 | `interop/extern_c_declarations.kpp` | hand-written extern "C" declarations, passing Strings and buffers to C | pass |  |  |
+| `interop/extern_c_variables.kpp` | a variable that an imported C header declares extern is the C library's variable: Kpp reads the library's values (an array of structs, an int, a const int) and its writes are seen by the library's own code | pass |  |  |
 | `interop/sdl_header.kpp` | importing SDL3's header (the game's platform layer) and using its types and constants without linking it | pass |  |  |
 
 ## expressions
