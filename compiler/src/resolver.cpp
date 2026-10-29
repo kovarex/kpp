@@ -1359,7 +1359,15 @@ struct GlobalScope::Impl
             std::lock_guard lock(deferredMutex);
             localTypesOfOutOfLine[f].push_back(own);
           }
+          if (d->kind == NodeKind::VariableDecl)
+            forEachLambda(static_cast<VariableDecl*>(d)->init, [&](LambdaExpr* l) { indexLocalTypes(l->body, scope, f); });
         }
+        break;
+      case NodeKind::ExprStmt:
+        forEachLambda(static_cast<ExprStmt*>(s)->expr, [&](LambdaExpr* l) { indexLocalTypes(l->body, scope, f); });
+        break;
+      case NodeKind::ReturnStmt:
+        forEachLambda(static_cast<ReturnStmt*>(s)->value, [&](LambdaExpr* l) { indexLocalTypes(l->body, scope, f); });
         break;
       case NodeKind::IfStmt:
       {
@@ -1391,6 +1399,45 @@ struct GlobalScope::Impl
       }
       default:
         break;
+    }
+  }
+
+  // Calls body with each lambda in expression n, not looking into the lambdas themselves (local
+  // types in a lambda's body are indexed with the body: GraphicsInterfaceDX11::logDeviceInfo's
+  // createDriverDescription declares an unnamed union).
+  template<typename F>
+  static void forEachLambda(Node* n, F&& body, int depth = 0)
+  {
+    if (!n || depth > 64)
+      return;
+    auto each = [&](Span<Expr*> list)
+    {
+      for (Expr* e : list)
+        forEachLambda(e, body, depth + 1);
+    };
+    switch (n->kind)
+    {
+      case NodeKind::LambdaExpr: body(static_cast<LambdaExpr*>(n)); break;
+      case NodeKind::CallExpr: forEachLambda(static_cast<CallExpr*>(n)->callee, body, depth + 1); each(static_cast<CallExpr*>(n)->args); break;
+      case NodeKind::MemberExpr: forEachLambda(static_cast<MemberExpr*>(n)->base, body, depth + 1); break;
+      case NodeKind::IndexExpr: forEachLambda(static_cast<IndexExpr*>(n)->base, body, depth + 1); each(static_cast<IndexExpr*>(n)->args); break;
+      case NodeKind::UnaryExpr: forEachLambda(static_cast<UnaryExpr*>(n)->operand, body, depth + 1); break;
+      case NodeKind::BinaryExpr:
+        forEachLambda(static_cast<BinaryExpr*>(n)->lhs, body, depth + 1);
+        forEachLambda(static_cast<BinaryExpr*>(n)->rhs, body, depth + 1);
+        break;
+      case NodeKind::ConditionalExpr:
+        forEachLambda(static_cast<ConditionalExpr*>(n)->cond, body, depth + 1);
+        forEachLambda(static_cast<ConditionalExpr*>(n)->then, body, depth + 1);
+        forEachLambda(static_cast<ConditionalExpr*>(n)->else_, body, depth + 1);
+        break;
+      case NodeKind::CastExpr: forEachLambda(static_cast<CastExpr*>(n)->operand, body, depth + 1); break;
+      case NodeKind::NamedCastExpr: forEachLambda(static_cast<NamedCastExpr*>(n)->operand, body, depth + 1); break;
+      case NodeKind::FunctionalCastExpr: each(static_cast<FunctionalCastExpr*>(n)->args); break;
+      case NodeKind::BraceInitExpr: each(static_cast<BraceInitExpr*>(n)->args); break;
+      case NodeKind::ParenExpr: forEachLambda(static_cast<ParenExpr*>(n)->inner, body, depth + 1); break;
+      case NodeKind::ThrowExpr: forEachLambda(static_cast<ThrowExpr*>(n)->operand, body, depth + 1); break;
+      default: break;
     }
   }
 
