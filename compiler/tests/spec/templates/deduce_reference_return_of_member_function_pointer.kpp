@@ -1,6 +1,5 @@
 // spec: a template parameter in a function type's return or parameter types is deduced as the argument's type is, a reference kept: `ValueType (Desc::*)() const` given `&Desc::getName` returning `const Name&` makes ValueType `const Name&`
 // factorio: tests/TestUndoActionDescription.cpp's `checkInversion(original, Type::REMOVE_ENTITY, &UndoActionDescription::getEntityID)` with getEntityID returning `const EntityWithQualityID&`
-// pending: the return type was deduced with its reference stripped, so the pattern did not match the argument ("a call that did not resolve"); owner: the templates thread (deduction)
 struct Name { int id = 0; };
 struct Desc
 {

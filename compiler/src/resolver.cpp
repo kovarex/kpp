@@ -11004,9 +11004,11 @@ struct GlobalScope::Impl
       case TyKind::Function:
         if (a->kind == TyKind::Function || a->kind == TyKind::Lambda)
         {
-          deduce(pattern->inner, a->inner, out, depth + 1);
+          // A function type's return and parameter types are deduced as they are, references kept
+          // (`ValueType (Desc::*)() const` given `&Desc::getName` returning `const Name&`).
+          deduceArgument(pattern->inner, a->inner, out, depth + 1);
           for (size_t i = 0; i < pattern->args.size() && i < a->args.size(); ++i)
-            deduce(pattern->args[i], a->args[i], out, depth + 1);
+            deduceArgument(pattern->args[i], a->args[i], out, depth + 1);
         }
         break;
       default:
