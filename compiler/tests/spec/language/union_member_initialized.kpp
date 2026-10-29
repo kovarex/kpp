@@ -1,0 +1,25 @@
+// spec: a union initializes one member: the designated one (`{.first = {3}}`, never overwritten by another member's default member initializer), else, with no value, the member that has a default member initializer (`U v = {};` and `U w;` with `long long raw = 5` not the first member), as C++ has it
+// found by the templates thread with language/designated_initializer_of_union_member: the game's SpriteEffectData (`int64_t raw = 0` beside structs) default-initialized held whatever was in its storage
+// pending: SILENT, the designated member is overwritten by the later default (`5`) and a default-initialized union is left as it was (`0` only by chance)
+union U
+{
+  struct
+  {
+    int a;
+  } first;
+  long long raw = 5;
+};
+struct Holder
+{
+  U u;
+  int after = 9;
+};
+int main()
+{
+  U u = {.first = {3}};
+  U v = {};
+  U w;
+  Holder h;
+  println("{} {} {} {} {}", u.first.a, v.raw, w.raw, h.u.raw, h.after);
+  return 0;
+}
