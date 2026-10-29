@@ -9409,6 +9409,17 @@ struct GlobalScope::Impl
         continue;
       Subst d;
       deduceCall(ctor, ft, argTypes, d);
+      // A constructor template whose own parameters the arguments leave undeduced (and without
+      // a default) failed deduction: no candidate. `template<class PrototypeType> Set(StringView,
+      // ValueT PrototypeType::*, ValueT)` given a Cast would read ValueT off the last argument.
+      bool undeduced = false;
+      for (Decl* tp : ctor->templateParams)
+      {
+        auto* param = static_cast<TemplateParamDecl*>(tp);
+        undeduced = undeduced || (!d.find(tp) && !param->defaultArg && !param->isPack);
+      }
+      if (undeduced)
+        continue;
       std::vector<const Ty*> args;
       bool all = true;
       LocalStack own; // the parameters by name, for defaults that name earlier ones

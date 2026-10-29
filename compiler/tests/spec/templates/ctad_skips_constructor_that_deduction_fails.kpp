@@ -1,6 +1,5 @@
 // spec: class template argument deduction takes no constructor whose own template parameters the arguments leave undeduced: `template<class Owner> Set(const char*, ValueT Owner::*, ValueT)` given a Holder deduces ValueT from the last argument alone, and is not the candidate; `template<class Tag> Set(const char*, Holder<ValueT, Tag>, int)` is
 // found in tests/TestInventory (`Set("stone-furnace", Cast(&FurnacePrototype::energySourcePrototype, &BurnerPrototype::fuelInventorySize), 0u)` beside TestMigrationHelpers::Set's member-pointer constructors)
-// pending: the member-pointer constructor deduces Set<int> from the last argument, and codegen finds no constructor of Set<int> for a Holder<short, Furnace> (`a constructor of Helpers::Set taking 3 arguments`)
 struct Furnace { short size = 3; };
 template<class T, class Tag>
 struct Holder
