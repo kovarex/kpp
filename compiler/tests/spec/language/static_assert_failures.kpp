@@ -3,7 +3,7 @@
 // error: static_assert_failures.kpp:9: error: static assertion failed: "one is two"
 // error: static_assert_failures.kpp:12: error: static assertion failed: "int is 64 bits"
 // error: static_assert_failures.kpp:17: error: static assertion failed: "no pointers in a Box" (in Box<int32*>)
-// error: static_assert_failures.kpp:26: error: static assertion failed: "describe needs a number" (in T = float)
+// error: static_assert_failures.kpp:26: error: static assertion failed: "describe needs a number" (in T = float, asked for at
 // error: static_assert_failures.kpp:31: error: static assertion failed: "in a function"
 // error: static_assert_failures.kpp:32: error: static assertion whose condition the compiler cannot evaluate yet: "a variable"
 static_assert(1 == 2, "one is two");

@@ -500,6 +500,8 @@ namespace
     }
     if (size_t waiting = global.layoutStaticAsserts().size())
       report("static_assert: %zu on a class's size or alignment, left to the code generator's layout\n", waiting);
+    if (size_t unused = global.unusedFailedAsserts())
+      report("static_assert: %zu failed in template instances' functions never emitted (unused, so not errors, as in C++)\n", unused);
   }
 
   void runCodegen(std::vector<std::unique_ptr<ParsedFile>>& parsed, GlobalScope& global, SymbolTable& symbols, const Options& options)

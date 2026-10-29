@@ -328,6 +328,10 @@ struct GlobalScope::Impl
     std::string instance;
   };
   std::vector<LayoutAssert> layoutAsserts;                          // (under checkerErrorsMutex) for the code generator
+  // (under checkerErrorsMutex) Failed static_asserts in template instances' function bodies, by
+  // that body, errors once the code generator emits it (GlobalScope::functionEmitted).
+  std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceAssertErrors;
+  std::unordered_set<const FunctionDecl*> emittedFunctions;
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
   // scope tree so Phase 2 lookups remain lock-free. Keyed by (scope*, symbol).
@@ -2180,12 +2184,34 @@ struct GlobalScope::Impl
         if (!def || def->kind != NodeKind::ClassDecl)
           return false;
         std::vector<FunctionDecl*> ctors;
+        Subst s = substFor(t);
         for (Decl* m : static_cast<ClassDecl*>(def)->members)
+        {
           if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Delete))
             ctors.push_back(static_cast<FunctionDecl*>(m));
+          if (m->kind != NodeKind::UsingNameDecl)
+            continue;
+          // `using Vector2::Vector2;`: the base's constructors, but its copy and move ones, are
+          // the class's too, under the base's arguments.
+          const QualifiedName& q = static_cast<UsingNameDecl*>(m)->name;
+          if (q.parts.size() < 2 || q.parts[q.parts.size() - 1].symbol != q.parts[q.parts.size() - 2].symbol)
+            continue;
+          QualifiedName baseName = q;
+          baseName.parts.count -= 1;
+          Lookup bl = lookupQualified(baseName, def->ownScope, nullptr, 0);
+          if (!bl.scope || bl.scope == def->ownScope || !bl.scope->owner || bl.scope->owner->kind != NodeKind::ClassDecl)
+            continue;
+          auto* base = static_cast<ClassDecl*>(bl.scope->owner);
+          for (const Subst::Pair& p : memberSubst(t, bl.scope, 0).pairs)
+            if (!s.find(p.param))
+              s.pairs.push_back(p);
+          for (Decl* bm : base->members)
+            if (bm->kind == NodeKind::FunctionDecl && (bm->flags & DF_Constructor) && !(bm->flags & DF_Delete))
+              if (auto* f = static_cast<FunctionDecl*>(bm); f->params.size() != 1 || selfParameter(f->params[0], base) == 0)
+                ctors.push_back(f);
+        }
         if (copy || ctors.empty())
           return copy || args.empty();
-        Subst s = substFor(t);
         bool ambiguous = false;
         return chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous) != nullptr;
       }
@@ -2997,8 +3023,9 @@ struct GlobalScope::Impl
   // A static_assert under ctx (an instance's arguments, when it is in a template): an error when
   // its condition is false, or is no constant the checker can evaluate (never a silent pass).
   // instance: which instance, for the message. One that needs a class's size or alignment waits
-  // for the code generator's layout (layoutAsserts).
-  void checkStaticAssert(StaticAssertDecl* s, const TypeContext& ctx, const std::string& instance)
+  // for the code generator's layout (layoutAsserts). inFunction: the template instance's function
+  // body it is in, whose use decides whether it counts (instanceAssertErrors).
+  void checkStaticAssert(StaticAssertDecl* s, const TypeContext& ctx, const std::string& instance, const FunctionDecl* inFunction = nullptr)
   {
     if (!s->cond)
       return;
@@ -3034,6 +3061,12 @@ struct GlobalScope::Impl
     // place, one error however many instances meet it.
     if (v && !instance.empty())
       message += " (in " + instance + ")";
+    if (inFunction)
+    {
+      std::lock_guard lock(checkerErrorsMutex);
+      instanceAssertErrors[inFunction].push_back(locationOf(s->file, s->token) + ": error: " + message);
+      return;
+    }
     reportCheckerError(s->file, s->token, message);
   }
 
@@ -6582,6 +6615,7 @@ struct GlobalScope::Impl
     // messages about it.
     const ParsedFile* requestFile = nullptr;
     uint32_t requestToken = UINT32_MAX;
+    FunctionDecl* bodyOf = nullptr;   // The function whose body is being walked.
     int instantiatedBaseDepth = 0;    // memberOfInstantiatedBases nesting
     Expr* const* walkedArgs = nullptr; // see WalkedArgs
     std::vector<const Ty*> walkedArgTypes;
@@ -9116,7 +9150,10 @@ struct GlobalScope::Impl
             thisType = nullptr;
           else if ((f->flags & DF_Const) && thisType && thisType->kind == TyKind::Pointer && !thisType->inner->isConst)
             thisType = impl.types.pointer(impl.types.qualified(thisType->inner, true, false)); // `const C* this` in a const method
+          FunctionDecl* savedBodyOf = bodyOf;
+          bodyOf = f;
           walkStmt(f->body);
+          bodyOf = savedBodyOf;
           if (autoReturn)
           {
             const Ty* deduced = returnFrames.back();
@@ -9244,7 +9281,9 @@ struct GlobalScope::Impl
             std::string instance = instanceDescription();
             if (!instance.empty() && requestFile)
               instance += ", asked for at " + Impl::locationOf(requestFile, requestToken);
-            impl.checkStaticAssert(s, ctx(), instance);
+            // In an instance's function, it counts if the program uses the function (C++ does not
+            // instantiate the members, or the calls in the branches, nobody uses).
+            impl.checkStaticAssert(s, ctx(), instance, activeSubst ? bodyOf : nullptr);
           }
           break;
         }
@@ -10135,9 +10174,30 @@ std::vector<std::string> GlobalScope::checkerErrors()
       return std::make_tuple(e, 0L, e);
     return std::make_tuple(e.substr(0, colon), std::strtol(e.c_str() + colon + 1, nullptr, 10), e);
   };
-  std::vector<std::string> out(impl->checkerErrorSet.begin(), impl->checkerErrorSet.end());
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  std::unordered_set<std::string> all = impl->checkerErrorSet;
+  for (const auto& [f, errors] : impl->instanceAssertErrors)
+    if (impl->emittedFunctions.count(f))
+      all.insert(errors.begin(), errors.end());
+  std::vector<std::string> out(all.begin(), all.end());
   std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) { return key(a) < key(b); });
   return out;
+}
+
+void GlobalScope::functionEmitted(const FunctionDecl* f)
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  impl->emittedFunctions.insert(f);
+}
+
+size_t GlobalScope::unusedFailedAsserts()
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  size_t n = 0;
+  for (const auto& [f, errors] : impl->instanceAssertErrors)
+    if (!impl->emittedFunctions.count(f))
+      n += errors.size();
+  return n;
 }
 
 void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats)

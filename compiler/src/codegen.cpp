@@ -10071,10 +10071,14 @@ namespace
       // nobody reading the instantiation's copy meanwhile (a caller's default arguments, on another
       // thread) sees the element's types.
       FunctionDecl* f = args.empty() ? original : global.instanceBody(original, args, classTy);
+      FunctionDecl* checked = f; // the body the checker typed, whose static_asserts count now (GlobalScope::functionEmitted)
       if (retypedPerElement(f))
         f = global.privateInstance(original, args, classTy);
       if (!conditionHolds(f))
         return; // conditional(false): the function does not exist in this build
+      global.functionEmitted(checked);
+      if (f != checked)
+        global.functionEmitted(f);
       currentFile = f->file;
       currentArgs = args.empty() ? nullptr : &args;
       currentClassTy = classTy;

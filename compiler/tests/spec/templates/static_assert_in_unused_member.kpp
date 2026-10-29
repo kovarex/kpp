@@ -1,0 +1,29 @@
+// spec: a static_assert in a member function of a class template instance, or in a function template instance that only an unused function calls, counts only if the program uses the function it is in, as C++ instantiates only the members (and through them the templates) the program uses
+// factorio: SavablePointer<T>::save asserts !isBaseOf<MovableTargetable, T> for the T it is used with only; UtilityConstants' Const<T> has a constructor for each kind of T, and PropertyTree::get<T> asserts isArithmetic<T>
+template<class T>
+T parse(int raw)
+{
+  static_assert(isArithmetic<T>, "parse needs a number");
+  return T(raw);
+}
+struct Point
+{
+  int x = 0;
+  int y = 0;
+};
+template<class T>
+struct Holder
+{
+  T value;
+  void save() const { static_assert(!isClass<T>, "only scalars are saved"); }
+  static T fromRaw(int raw) { return parse<T>(raw); }
+  int size() const { return int(sizeof(T)); }
+};
+int main()
+{
+  Holder<Point> h{Point{3, 4}};
+  Holder<int> n{parse<int>(5)};
+  n.save();
+  println("{} {} {}", h.value.y, h.size(), n.value);
+  return 0;
+}

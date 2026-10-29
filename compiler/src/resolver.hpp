@@ -161,6 +161,13 @@ public:
   // found are returned, `path:line: error: ...` one each, sorted. A static_assert whose condition
   // is false, or no constant the checker can evaluate, is one.
   std::vector<std::string> checkerErrors();
+  // A static_assert in the body of a template instance's function is checked only if the program
+  // uses that function, as C++ instantiates a member or function template only where it is used:
+  // the code generator says which instance bodies (GlobalScope::instanceBody) it emitted, and
+  // checkerErrors() has those functions' failed asserts. unusedFailedAsserts(): how many failed in
+  // functions it never emitted (all of them, when no code is generated).
+  void functionEmitted(const FunctionDecl* f);
+  size_t unusedFailedAsserts();
   // The static_asserts whose condition needs a class's size or alignment, which only the code
   // generator's layout knows: each with the arguments of the instance it is in (none outside
   // templates) and that instance for messages. The checker leaves them to the code generator.
