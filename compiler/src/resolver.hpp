@@ -242,6 +242,16 @@ public:
   // The statistics of the template instances' walks, each counted once whichever walk (a file's,
   // another instance's, a probe's) asked for it first: added to the files' to make the totals.
   ResolveStats instanceStats();
+  // What the units of the front end's work recorded they read (step 2 of the persistent compiler,
+  // docs/compile-speed.md): how many units of each kind, and their names and uses in all.
+  struct DependencyStats
+  {
+    size_t walks = 0, declaredTypes = 0, instances = 0, classInstances = 0, scopes = 0;
+    size_t names = 0, uses = 0;
+  };
+  DependencyStats dependencyStats();
+  // Whether the resolve records them (before resolveAll; a compile server's builds do).
+  static void recordDependencies(bool on);
 
   // Queries for code generation (after resolveFile ran on every file).
   TypeTable& types();

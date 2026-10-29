@@ -153,6 +153,146 @@ struct Entry
   Scope* scope; // Non-null when the declaration opens a scope (namespace, class or enum definition).
 };
 
+// --- Dependencies (docs/compile-speed.md, "Design: the persistent compiler", step 2) ----------
+// What one unit of the front end's work read: a function body's walk, an instance's, a
+// declaration's declared type, a scope's bases and using-directives. Every name it looked up,
+// found or not, in whichever scope (a new declaration of that name could change the answer, from
+// any file: invalidating by the name alone is coarser than by (scope, name) and recording it is
+// much cheaper, 1.3 -> 2.1 s of resolve with the scopes), and what it used that other units computed and cached (a declared type, a scope's relations, a
+// class or function instance). A later edit invalidates the units that read what it changed.
+enum : uint8_t { USE_DeclaredType = 1, USE_ScopeRelations, USE_ClassInstance, USE_Instance };
+
+struct DependencyList
+{
+  std::vector<uint32_t> names; // symbols
+  std::vector<std::pair<uint8_t, const void*>> uses;
+  void tidy()
+  {
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    std::sort(uses.begin(), uses.end());
+    uses.erase(std::unique(uses.begin(), uses.end()), uses.end());
+  }
+};
+
+// A unit's dependencies. Several threads may record into one (a declared type two threads compute
+// at once): each records into a list of its own, merged when its part of the work ends.
+struct Dependencies
+{
+  // A spin lock: a std::mutex is 80 bytes, in each of 400 k instance records, and the merges are short.
+  struct Lock
+  {
+    std::atomic<bool> held{false};
+    void lock() { while (held.exchange(true, std::memory_order_acquire)) std::this_thread::yield(); }
+    void unlock() { held.store(false, std::memory_order_release); }
+  } mutex;
+  DependencyList list;
+  void add(DependencyList& part)
+  {
+    if (part.names.empty() && part.uses.empty())
+      return;
+    std::lock_guard lock(mutex);
+    list.names.insert(list.names.end(), part.names.begin(), part.names.end());
+    list.uses.insert(list.uses.end(), part.uses.begin(), part.uses.end());
+    tidied = false; // tidied when read (a declared type nobody caches is computed, and merged, again and again)
+  }
+  bool tidied = true;
+  DependencyList& read()
+  {
+    if (!tidied)
+      list.tidy();
+    tidied = true;
+    return list;
+  }
+};
+
+// Whether this build records dependencies: a compile server's builds do (the incremental builds
+// after them use them), a build in its own process does not (it would only pay for them: 10 to 17%
+// of a single thread's resolve).
+static bool recordingDependencies = false;
+
+// The list this thread's lookups are recorded into (null: none).
+static thread_local DependencyList* recordingInto = nullptr;
+
+// A lookup visits a chain of scopes with one symbol, and a walk asks for one declaration's type
+// many times in a row: what was recorded last is not recorded again (tidy() drops the other
+// repeats). A unit starting or ending forgets it, so that nothing is taken as recorded that the
+// current unit did not record.
+static thread_local uint32_t lastName = UINT32_MAX;
+static thread_local const void* lastUse = nullptr;
+
+static void recordName(uint32_t symbol)
+{
+  DependencyList* r = recordingInto;
+  if (!r || symbol == lastName)
+    return;
+  lastName = symbol;
+  r->names.push_back(symbol);
+}
+
+// Uses repeat less in a row than names (a walk asks for the types of the declarations it meets in
+// turn): the last 4096 the current unit recorded are remembered, by address.
+struct RecentUses
+{
+  const void* what[4096] = {};
+  uint32_t unit[4096] = {};
+};
+static thread_local std::unique_ptr<RecentUses> recentUses;
+static thread_local uint32_t recordingUnit = 0, unitCounter = 0;
+
+static void recordUse(uint8_t kind, const void* what)
+{
+  DependencyList* r = recordingInto;
+  if (!r || what == lastUse)
+    return;
+  lastUse = what;
+  size_t slot = (reinterpret_cast<uintptr_t>(what) >> 4) % 4096;
+  if (recentUses->what[slot] == what && recentUses->unit[slot] == recordingUnit)
+    return;
+  recentUses->what[slot] = what;
+  recentUses->unit[slot] = recordingUnit;
+  r->uses.push_back({kind, what});
+}
+
+// Records what the enclosed work reads into target, or nothing (null): the reads of a cached
+// result's computation belong to that result, not to whoever happened to compute it first.
+struct RecordInto
+{
+  Dependencies* target;
+  DependencyList* saved;
+  DependencyList part;
+  explicit RecordInto(Dependencies* into) : target(into), saved(recordingInto)
+  {
+    if (!recordingDependencies)
+    {
+      target = nullptr; // nothing is recorded, and recordingInto stays null
+      return;
+    }
+    recordingInto = into ? &part : nullptr;
+    lastName = UINT32_MAX;
+    lastUse = nullptr;
+    if (into && !recentUses)
+      recentUses = std::make_unique<RecentUses>();
+    savedUnit = recordingUnit;
+    recordingUnit = ++unitCounter;
+  }
+  uint32_t savedUnit = 0;
+  ~RecordInto()
+  {
+    if (!recordingDependencies)
+      return;
+    recordingInto = saved;
+    lastName = UINT32_MAX;
+    lastUse = nullptr;
+    recordingUnit = ++unitCounter; // the outer unit's remembered uses may have been overwritten
+    (void)savedUnit;
+    if (target)
+      target->add(part);
+  }
+  RecordInto(const RecordInto&) = delete;
+  RecordInto& operator=(const RecordInto&) = delete;
+};
+
 struct Scope
 {
   ScopeKind kind;
@@ -182,6 +322,7 @@ struct Scope
   std::atomic<int> usingEnumState{0};
   Span<Decl*> templateParams; // Of the owning class template.
   std::vector<FunctionDecl*> outOfLineMembers; // `void Foo<T>::f() {}` definitions, attached by finishIndex.
+  Dependencies relationDeps; // what resolving the bases and using-directives read
 
   Scope(ScopeKind kind, Scope* parent, Decl* owner, uint32_t shardCount)
     : kind(kind), parent(parent), owner(owner), shards(new Shard[shardCount]), shardCount(shardCount)
@@ -200,6 +341,7 @@ struct Scope
   // Read-only lookup for phase 2.
   const std::vector<Entry>* find(uint32_t symbol)
   {
+    recordName(symbol);
     Shard& shard = shardFor(symbol);
     auto it = shard.map.find(symbol);
     return it == shard.map.end() ? nullptr : &it->second;
@@ -667,6 +809,7 @@ struct GlobalScope::Impl
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
     Expr* init = nullptr;              // for a variable: its initializer's copy (GlobalScope::instanceInitializer)
     LambdaExpr* lambda = nullptr;      // for a generic lambda's call operator: the copy of its body (checkLambdaInstance)
+    Dependencies deps;                 // what its walk read (step 2 of the persistent compiler)
   };
   struct InstanceShard
   {
@@ -698,12 +841,14 @@ struct GlobalScope::Impl
     if (slot)
     {
       producer = false;
+      recordUse(USE_Instance, slot.get());
       return slot.get();
     }
     slot = std::make_unique<InstanceRecord>();
     slot->owner = std::this_thread::get_id();
     slot->state.store(1, std::memory_order_relaxed);
     producer = true;
+    recordUse(USE_Instance, slot.get());
     return slot.get();
   }
 
@@ -819,6 +964,7 @@ struct GlobalScope::Impl
     std::atomic<int> state{0}; // 0 claimed-not-started is never visible: created in state 1 by the producer.
     std::thread::id owner;
     const Ty* deducedReturn = nullptr; // For function templates with `auto` return.
+    Dependencies deps; // what checking it read
   };
   struct InstShard
   {
@@ -840,6 +986,43 @@ struct GlobalScope::Impl
     std::lock_guard lock(instanceStatsMutex);
     instanceStatsTotal.add(s);
   }
+
+  // The dependencies of the units that are declarations: a function's or a variable's walk (its
+  // body, its initializer) and a declaration's declared type, keyed by the declaration and the
+  // kind. Instances keep theirs in their records, scopes theirs in the scope.
+  enum : uint8_t { UNIT_Walk = 1 };
+  struct DeclDependencyShard
+  {
+    std::mutex mutex;
+    std::unordered_map<uintptr_t, std::unique_ptr<Dependencies>> map;
+  };
+  DeclDependencyShard declDependencies[64];
+  Dependencies* dependenciesOf(const Decl* d, uint8_t unit)
+  {
+    uintptr_t key = reinterpret_cast<uintptr_t>(d) + unit; // a declaration is larger than the kinds
+    DeclDependencyShard& shard = declDependencies[(key >> 6) % std::size(declDependencies)];
+    std::lock_guard lock(shard.mutex);
+    std::unique_ptr<Dependencies>& slot = shard.map[key];
+    if (!slot)
+      slot = std::make_unique<Dependencies>();
+    return slot.get();
+  }
+  // A declaration's declared type's: on the declaration, made once (asked for constantly).
+  std::mutex typeDependenciesMutex;
+  std::vector<std::unique_ptr<Dependencies>> typeDependencies;
+  Dependencies* typeDependenciesOf(Decl* d)
+  {
+    if (Dependencies* own = d->typeDependencies.load(std::memory_order_acquire))
+      return own;
+    std::lock_guard lock(typeDependenciesMutex);
+    if (Dependencies* own = d->typeDependencies.load(std::memory_order_acquire))
+      return own;
+    typeDependencies.push_back(std::make_unique<Dependencies>());
+    d->typeDependencies.store(typeDependencies.back().get(), std::memory_order_release);
+    return typeDependencies.back().get();
+  }
+  std::mutex relationScopesMutex;
+  std::vector<const Scope*> relationScopes; // the scopes whose relations were resolved (their relationDeps)
 
   // ---- generic lambdas: where each was written, so that its body can be typed for every call ----
   // A lambda with template parameters (written, or invented for `auto` parameters) is a template
@@ -888,6 +1071,7 @@ struct GlobalScope::Impl
     if (it != shard.classes.end())
     {
       producer = false;
+      recordUse(USE_ClassInstance, it->second.get());
       return it->second.get();
     }
     auto inst = std::make_unique<Instantiation>();
@@ -897,6 +1081,7 @@ struct GlobalScope::Impl
     shard.classes.emplace(classTy, std::move(inst));
     producer = true;
     ++instClasses;
+    recordUse(USE_ClassInstance, result);
     return result;
   }
 
@@ -1684,13 +1869,22 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
+  void noteRelations(Scope* s)
+  {
+    std::lock_guard lock(relationScopesMutex);
+    relationScopes.push_back(s);
+  }
+
   void ensureBases(Scope* cls, int depth)
   {
+    recordUse(USE_ScopeRelations, cls);
     int state = cls->baseState.load(std::memory_order_acquire);
     if (state == 2)
       return;
     if (state == 0 && cls->baseState.compare_exchange_strong(state, 1))
     {
+      RecordInto into(&cls->relationDeps);
+      noteRelations(cls);
       cls->baseResolver = std::this_thread::get_id();
       std::vector<Scope*> bases;
       LocalStack params;
@@ -1714,11 +1908,14 @@ struct GlobalScope::Impl
 
   void ensureUsing(Scope* ns, int depth)
   {
+    recordUse(USE_ScopeRelations, ns);
     int state = ns->usingState.load(std::memory_order_acquire);
     if (state == 2)
       return;
     if (state == 0 && ns->usingState.compare_exchange_strong(state, 1))
     {
+      RecordInto into(&ns->relationDeps);
+      noteRelations(ns);
       std::vector<Scope*> scopes;
       for (UsingDirectiveDecl* u : ns->usingDirectives)
       {
@@ -1735,11 +1932,14 @@ struct GlobalScope::Impl
 
   void ensureUsingEnums(Scope* cls, int depth)
   {
+    recordUse(USE_ScopeRelations, cls);
     int state = cls->usingEnumState.load(std::memory_order_acquire);
     if (state == 2)
       return;
     if (state == 0 && cls->usingEnumState.compare_exchange_strong(state, 1))
     {
+      RecordInto into(&cls->relationDeps);
+      noteRelations(cls);
       std::vector<Scope*> scopes;
       for (UsingNameDecl* u : cls->usingEnums)
       {
@@ -10180,10 +10380,16 @@ struct GlobalScope::Impl
   {
     if (!d || depth > 40)
       return types.unknown();
+    recordUse(USE_DeclaredType, d);
     bool useCache = !subst || subst->empty();
     if (useCache)
       if (const Ty* cached = d->cachedType.load(std::memory_order_acquire))
         return cached;
+    // What computing it reads belongs to the declaration's type, which any later asker shares;
+    // seen through a substitution it is the asker's own (and not cached).
+    std::optional<RecordInto> into;
+    if (useCache && recordingDependencies)
+      into.emplace(typeDependenciesOf(d));
     const Ty* result = computeDeclaredType(d, subst, depth);
     // Only a known type, auto-free: an unknown one may come from the depth limit of whoever asked
     // first (or a deduction not possible yet), and kept it would answer every later asker, so
@@ -13560,6 +13766,7 @@ struct GlobalScope::Impl
       Impl::InstanceRecord* inst = impl.claimInstance(f, merged, sub.thisType, producer);
       if (!producer)
         return;
+      RecordInto into(&inst->deps); // what typing the instance reads is its own
       FunctionDecl* copy = impl.copyInstance(f, sub.scope, merged);
       inst->body = copy;
       sub.activeSubst = &merged;
@@ -13591,6 +13798,7 @@ struct GlobalScope::Impl
       Impl::Instantiation* inst = impl.claimClass(classTy, producer);
       if (!producer)
         return; // Done or being done by someone else; nothing here needs its result.
+      RecordInto into(&inst->deps); // what checking the instance reads is its own
       Scope* cls = classTy->decl->ownScope;
       if (impl.queueMemberBodies.load(std::memory_order_relaxed))
       {
@@ -13717,6 +13925,7 @@ struct GlobalScope::Impl
     // took over) on this thread, and publishes its body and deduced return.
     const Ty* runFunctionInstance(Impl::InstanceRecord* inst, const Impl::FunctionInstanceTask& t)
     {
+      RecordInto into(&inst->deps); // what typing the instance reads is its own
       inst->owner.store(std::this_thread::get_id());
       // At the depth of the walk that asked for it, whoever runs it (the depth limit decides what
       // is checked, so it must not depend on which walk took a queued check over).
@@ -16383,6 +16592,11 @@ struct GlobalScope::Impl
     {
       if (!d)
         return;
+      // A function's or a variable's walk outside any other unit (its body, its initializer) is a
+      // unit of its own; what is declared inside it belongs to it.
+      std::optional<RecordInto> unit;
+      if (!recordingInto && !activeSubst && (d->kind == NodeKind::FunctionDecl || d->kind == NodeKind::VariableDecl))
+        unit.emplace(recordingDependencies ? impl.dependenciesOf(d, Impl::UNIT_Walk) : nullptr);
       size_t mark = locals.mark();
       if (!d->templateParams.empty())
         pushTemplateParams(d->templateParams);
@@ -17487,6 +17701,9 @@ struct GlobalScope::Impl
       *fullOut = full;
     bool producer;
     InstanceRecord* inst = claimInstance(original->closure, own, lambdaTy, producer);
+    std::optional<RecordInto> into; // what typing the instance reads is its own
+    if (producer)
+      into.emplace(&inst->deps);
     if (!producer)
     {
       if (inst->state.load(std::memory_order_acquire) != 2)
@@ -18820,6 +19037,9 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
     thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
   bool producer;
   Impl::InstanceRecord* record = impl.claimInstance(f, subst, thisType, producer);
+  std::optional<RecordInto> into; // what typing the instance reads is its own
+  if (producer)
+    into.emplace(&record->deps);
   if (!producer)
   {
     if (record->state.load(std::memory_order_acquire) != 2)
@@ -18875,6 +19095,9 @@ Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args
   Subst subst = toSubst(args);
   bool producer;
   Impl::InstanceRecord* record = impl.claimInstance(v, subst, nullptr, producer);
+  std::optional<RecordInto> into; // what typing the instance reads is its own
+  if (producer)
+    into.emplace(&record->deps);
   if (!producer)
   {
     if (record->state.load(std::memory_order_acquire) != 2 && record->owner != std::this_thread::get_id())
@@ -18949,6 +19172,53 @@ const Ty* GlobalScope::lambdaInstance(const Ty* lambdaTy, const TemplateArgs& ow
 size_t GlobalScope::scopeCount() const { return impl->scopes.load(); }
 size_t GlobalScope::entryCount() const { return impl->entries.load(); }
 size_t GlobalScope::typeCount() const { return impl->types.size(); }
+
+void GlobalScope::recordDependencies(bool on) { recordingDependencies = on; }
+
+GlobalScope::DependencyStats GlobalScope::dependencyStats()
+{
+  DependencyStats out;
+  auto count = [&](Dependencies& d, size_t& units)
+  {
+    std::lock_guard lock(d.mutex);
+    DependencyList& list = d.list; // as recorded: tidying all of it would cost a second of resolve
+    if (list.names.empty() && list.uses.empty())
+      return;
+    ++units;
+    out.names += list.names.size();
+    out.uses += list.uses.size();
+  };
+  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, deps] : shard.map)
+      count(*deps, out.walks);
+  }
+  {
+    std::lock_guard lock(impl->typeDependenciesMutex);
+    for (auto& deps : impl->typeDependencies)
+      count(*deps, out.declaredTypes);
+  }
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+      count(record->deps, out.instances);
+  }
+  for (Impl::InstShard& shard : impl->instShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, inst] : shard.classes)
+      count(inst->deps, out.classInstances);
+  }
+  std::lock_guard lock(impl->relationScopesMutex);
+  std::vector<const Scope*> scopes = impl->relationScopes;
+  std::sort(scopes.begin(), scopes.end());
+  scopes.erase(std::unique(scopes.begin(), scopes.end()), scopes.end());
+  for (const Scope* s : scopes)
+    count(const_cast<Scope*>(s)->relationDeps, out.scopes);
+  return out;
+}
 
 ResolveStats GlobalScope::instanceStats()
 {

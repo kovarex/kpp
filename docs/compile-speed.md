@@ -223,6 +223,46 @@ alike, compiled one or two modules again: a temporary's number in one function d
 to run (`Vector<...ChunkSet...>::emplace_back`, reported to the codegen thread); the object cache
 recompiles those modules, the output is unaffected otherwise.
 
+### Step 2: the dependencies recorded (as built)
+
+A **unit** is one piece of the resolve whose result is kept: a function's or a global variable's
+walk outside any other unit (its body, its initializer), a declaration's declared type (what
+`declaredTypeOf` caches on the declaration), a function or member instance's walk (its
+InstanceRecord), a class instance's check, and a scope's relations (its bases, using-directives
+and using-enums). Each records, while it runs, into a list of its own (`RecordInto`, a thread-local
+pointer; nested units record into theirs, so that what a cached result's computation read belongs
+to that result, not to whoever computed it first):
+
+- **names:** every symbol looked up in any scope, found or not (`Scope::find`, the one place every
+  lookup passes). By symbol alone: invalidating by (scope, symbol) would be finer, but recording
+  the scopes too cost 1.3 -> 2.1 s of resolve at 32 threads. A lookup visiting a chain of scopes
+  is recorded once.
+- **uses:** the declarations whose declared types it read (cached or not), the scopes whose
+  relations it used, the instances it requested (claimed, built or not).
+
+Several threads may record into one unit (a declared type two threads compute at once): each into
+its own part, appended to the unit under a small lock when its part ends; the lists are deduplicated
+when read, not when recorded (sorting 10 M entries as they arrive cost about a second of resolve).
+
+Only a compile server's builds record (`GlobalScope::recordDependencies`, on when `servingBuild()`;
+`KPP_DEPENDENCY_STATS=1` records in any build and reports the counts): a build in its own process
+would only pay for them. Cost, master and the branch run at the same time (so that both see the
+same load from the rest of the machine), front end at `-j 1`, frozen tree:
+
+| | resolve, branch / master (median of the pairs) |
+|---|---:|
+| recording off (a build in its own process) | 1.011 (5 pairs: 0.995 to 1.033) |
+| recording (a server's build) | 1.108 (4 pairs) |
+
+Recorded on the headline tree: 264 k walks, 348 k declared types, 389 k instances, 2,972 scopes'
+relations; 3.8 M names and 6.0 M uses (before deduplication, after the repeats dropped as they
+come). Class instances record nothing of their own yet (their member bodies are instances, which
+do). The counts vary by a few hundred out of millions from run to run, as the instance requests
+do: probes and partial answers on the instance being built reach different reads. A unit may thus
+record more than it needs in one run than in another, which costs invalidations, never
+correctness; step 4 checks every incremental build against a clean one (`--verify-incremental`)
+before relying on the recorded uses.
+
 ## Parallel front end: contention, not work (2026-10-29, evening)
 
 The front end on the headline tree had grown to about 4 s (read, imports, parse and index 1.1 s;

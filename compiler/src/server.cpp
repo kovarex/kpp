@@ -397,6 +397,8 @@ namespace
   }
 }
 
+bool servingBuild() { return session != nullptr; }
+
 void buildDone(int exitCode)
 {
   if (session)

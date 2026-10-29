@@ -22,3 +22,6 @@ int stopServer(int argc, char** argv);
 // Called by the build when it is done and only freeing what it built is left: a process exits on
 // the spot (freeing costs seconds), a server answers its client first and frees afterwards.
 void buildDone(int exitCode);
+
+// Whether this build runs in a compile server (for its client).
+bool servingBuild();

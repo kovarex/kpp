@@ -1063,6 +1063,9 @@ namespace
     }
     // Class instances' member bodies as tasks, taken by the workers that run out of files
     // (docs/compile-speed.md, step 3), so that no file drags its instances onto one thread.
+    // What each unit of the resolve read, for a compile server's next, incremental, build
+    // (docs/compile-speed.md, step 2); KPP_DEPENDENCY_STATS records them anywhere and reports them.
+    GlobalScope::recordDependencies(servingBuild() || getenv("KPP_DEPENDENCY_STATS"));
     global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
     double resolveTime = seconds(Clock::now() - start);
     ResolveStats total;
@@ -1126,6 +1129,12 @@ namespace
     report("  %zu member bodies checked inside instantiations; %llu expressions there (%.1f%% typed, %.1f%% dependent, %.1f%% unknown)\n",
            inst.bodies, (unsigned long long)instExprs, 100.0 * total.instExprsTyped / std::max<uint64_t>(1, instExprs),
            100.0 * total.instExprsDependent / std::max<uint64_t>(1, instExprs), 100.0 * total.instExprsUnknown / std::max<uint64_t>(1, instExprs));
+    if (getenv("KPP_DEPENDENCY_STATS")) // not in the normal report: a server's build prints what a new process's does
+    {
+      GlobalScope::DependencyStats deps = global.dependencyStats();
+      report("dependencies: %zu walks, %zu declared types, %zu instances, %zu class instances, %zu scopes' relations; %zu names and %zu uses recorded\n",
+             deps.walks, deps.declaredTypes, deps.instances, deps.classInstances, deps.scopes, deps.names, deps.uses);
+    }
     std::vector<std::pair<uint32_t, uint32_t>> missing(total.missingMembers.begin(), total.missingMembers.end());
     std::sort(missing.begin(), missing.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
     if (!missing.empty() && options.showUnresolved > 0)
