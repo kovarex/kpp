@@ -6852,6 +6852,10 @@ struct GlobalScope::Impl
       return 2; // Unknown types never decide an overload.
     if (depth > 4)
       return NotViable;
+    // A prvalue of a scalar type is never const (C++'s [expr.type]): `c ? p.lineLength : p.frameCount`
+    // over const members binds an `Args&&`.
+    if (!arg->isReference() && arg->isConst && arg->kind != TyKind::Class && arg->kind != TyKind::Array)
+      arg = types.unqualified(arg);
     const Ty* a = types.stripRef(arg);
     if (a->isBraceList() && !isInitializerList(types.stripRef(param)) && param->kind == TyKind::LRef)
     {
@@ -8985,6 +8989,12 @@ struct GlobalScope::Impl
       {
         // `obj.method` used as a value is only meaningful in a call, which handles overloads.
       }
+      // A data member of a const object is const (`rectangle.data.begin()` with `const Rect&
+      // rectangle` calls the const begin()), unless it is mutable, static or a reference.
+      if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) &&
+          !r.type->isReference() && r.type->kind != TyKind::Array && r.type->isKnown() && !r.type->isConst)
+        if (const Ty* obj = types.stripRef(object); obj && obj->isConst)
+          return types.qualified(r.type, true, r.type->isVolatile);
       return r.type ? r.type : types.unknown();
     }
 

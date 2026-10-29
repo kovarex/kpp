@@ -1,0 +1,21 @@
+// spec: a data member read through a const object (a const reference, a pointer to const, `this` in a const member function) is const, so a call on it picks the const overload (`rectangle.data.begin()` with `const Rect& rectangle` gives a const_iterator); a mutable member stays modifiable
+// factorio: InfiniteRectangle's const_iterator (`column(rectangle.data.begin())`), 5 instances
+struct Items
+{
+  int begin() const { return 1; }
+  int begin() { return 2; }
+};
+struct Holder
+{
+  Items items;
+  mutable Items cache;
+  int viaThis() const { return this->items.begin() * 10 + this->cache.begin(); }
+};
+int main()
+{
+  Holder h;
+  const Holder& c = h;
+  const Holder* p = &h;
+  println("{} {} {} {}", h.items.begin(), c.items.begin(), p->items.begin(), h.viaThis());
+  return 0;
+}
