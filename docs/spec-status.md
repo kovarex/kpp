@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**653 pass, 7 pending, 0 failing, 0 fixed** (660 snippets, 21.3 s).
+**653 pass, 7 pending, 0 failing, 0 fixed** (660 snippets, 20.4 s).
 
 ## Language: statements, expressions, declarations
 
