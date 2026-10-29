@@ -1,6 +1,5 @@
 // spec: a member function template whose return type is deduced (`auto*`, `auto`), declared in the class and defined outside it after its callers: each instance's return type comes from its own definition's returns (here different types under `if constexpr`), as for one defined in the class
 // factorio: LogisticNetwork's `template<bool ForLogistics> auto* maybeGetRobotsEstimatedToFinishOnChunk(ChunkPosition) const`, defined after findBestBusyRobot<ForLogistics>, which calls it (five instances of findBestBusyRobot)
-// pending: defined in the class it works; defined outside, the call has no type ("a local of unknown type (list)"); owner: the resolver (return type deduction)
 struct LogisticList
 {
   int count = 3;
