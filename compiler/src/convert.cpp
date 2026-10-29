@@ -3424,8 +3424,9 @@ namespace
         if (t.getKind() == TokenKind::Identifier && i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)))
         {
           // The C headers' macros that name a member path (in_addr's `#define s_addr S_un.S_addr`,
-          // in6_addr's s6_addr): the import has the structs' own members, so a use gets the path.
-          static const std::map<std::string_view, std::string> memberMacros = {{"s_addr", "S_un.S_addr"}, {"s6_addr", "_S6_un._S6_u8"}};
+          // in6_addr's s6_addr, whose `_S6_un._S6_u8` are macros too): the import has the structs' own
+          // members, so a use gets the path.
+          static const std::map<std::string_view, std::string> memberMacros = {{"s_addr", "S_un.S_addr"}, {"s6_addr", "u.Byte"}};
           if (auto mm = memberMacros.find(spelling(i)); mm != memberMacros.end())
           {
             replace(t.offset, t.length, mm->second);
@@ -5136,7 +5137,11 @@ namespace
                                 "  template<typename T>\n" + indent + "  bool holds() const { " + loop + "return *this == a.tag; return false; }\n" + indent +
                                 "  template<typename T>\n" + indent + "  T* getIf() { " + loop + "return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }\n" +
                                 indent + "  template<typename T>\n" + indent + "  const T* getIf() const { " + loop +
-                                "return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }\n";
+                                "return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }\n" +
+                                // std::variant's emplace<T>(args...) and index().
+                                indent + "  template<typename T, typename... Args>\n" + indent + "  T& emplace(Args&&... args) { " + loop +
+                                "{ (*this)[a] = T(forward<Args>(args)...); return (*this)[a]; } }\n" + indent +
+                                "  int index() const { return int(this->tag()); }\n";
           std::string declaration = indent + "union enum " + u + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + equality + generic + indent + "};";
           if (v.member)
           {
