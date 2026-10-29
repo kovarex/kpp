@@ -13218,12 +13218,9 @@ struct GlobalScope::Impl
       for (Decl* p = d->parent; p; p = p->parent)
         if ((p->kind == NodeKind::ClassDecl || p->kind == NodeKind::FunctionDecl) && !p->templateParams.empty())
           return t; // in a template: its instantiation's arguments decide
-      auto* f = static_cast<FunctionDecl*>(d);
-      const Ty* r = nullptr;
-      if (const Ty* cached = f->cachedType.load(std::memory_order_acquire); cached && cached->kind == TyKind::Function && !impl.containsAuto(cached->inner))
-        r = cached->inner;
-      else
-        r = instantiateFunction(f, Subst{}, true, nullptr);
+      // Through the function's one instance, never through what its own file's walk cached: that is
+      // there or not by which file was walked first, and the instance then walked or not.
+      const Ty* r = instantiateFunction(static_cast<FunctionDecl*>(d), Subst{}, true, nullptr);
       return r && r->isKnown() && !impl.containsAuto(r) ? types.function(r, t->args, t->variadic) : t;
     }
 
@@ -14516,11 +14513,9 @@ struct GlobalScope::Impl
             return r;
           return unknown(Why::AutoReturn);
         }
-        if (const Ty* cached = f->cachedType.load(std::memory_order_acquire))
-          if (cached->kind == TyKind::Function && !impl.containsAuto(cached->inner))
-            return classSubst ? impl.substitute(cached->inner, *classSubst) : cached->inner;
-        // `renderParameters.getScreenPositionFunction()` before the file defining it was walked:
-        // its body is typed now, once, for the return type.
+        // The body's deduction through the function's one instance (checked once, whoever asks
+        // first), never through what its own file's walk cached: that was there or not by which
+        // file was walked first, and the instance walked or not with it.
         if (const Ty* r = instantiateFunction(f, Subst{}, true, classSubst))
           return r;
         return unknown(Why::AutoReturn);

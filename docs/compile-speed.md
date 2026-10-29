@@ -51,13 +51,47 @@ Errors, function counts and the canonical count are unchanged. Not done: startin
 files first (ValueToWidget.kpp, 0.7 MB, alone took 2.2 s and started late) made no difference at
 32 threads once contention dominated, and it changed the typed-expression count, so it was left out.
 
-**The front end is not deterministic.** Two runs of the same tree on 32 threads type a slightly
-different number of expressions (6,707,129 against 6,720,488 on master, about 0.2%); one thread is
-stable. Which thread instantiates first decides what an instance sees of others still being built
-(an instance asked for while its producer is still typing it gets "what exists so far"). Codegen's
-output is byte-identical on 1 or 32 threads; the front end's has to become so too.
+**The front end was not deterministic; it is now (step 2 below).** Two runs of the same tree on
+32 threads typed a slightly different number of expressions (6,707,129 against 6,720,488, about
+0.2%); one thread was stable. What differed, found by dumping every expression's type per file
+(the environment variable `KPP_DUMP_FILESTATS=path` writes each file's statistics) and every
+instance walk, and diffing a `-j 1` run against loaded `-j 32` runs:
 
-### Design: instantiation checks as tasks (proposed, not implemented)
+- **Different types, of one kind of expression: a name of an `auto` function.** A call
+  `f(x)` names f; the name's own type was `auto(...)` when f's file had not been walked yet and the
+  deduced type when it had, so it depended on which thread walked which file first. Worse, a
+  function template's own generic walk cached what its uninstantiated body deduced (a closure type
+  of the generic body, no instance's type) as the template's type, and names of the template then
+  read that. The *calls'* types were right in every run (a call's result always went through the
+  instance), and codegen takes a call's type from the call, so this produced no wrong code that we
+  know of; but it was a wrong type on a node, readable by anything that asks. Fixed: a name of a
+  non-template `auto` function gets the type its one instance deduces, deduced then if need be, and
+  a template's generic walk no longer caches its body's deduction.
+- **Instances checked twice or not at all.** The same function instance reached with its
+  substitution's pairs in another order had another claim key, so it was checked twice in some runs
+  (claimInstance sorted its pairs, claimFunction did not); and a non-template `auto` function was
+  checked as an instance by callers that came before its file's walk cached its return type, and
+  not by callers after. Fixed: both keys are ordered, and callers always go through the instance.
+- **Statistics counted by whoever asked.** An instance's walk added its counts to the walker that
+  asked for it first; when that was a probe (a requires-expression's, whose counts are dropped) the
+  instance went uncounted, and nested instances were counted again in every enclosing instance's
+  total (11.2 M "expressions inside instantiations" were 4.57 M). Fixed: each instance's counts go
+  to one total, once. "First seen at" places and the reports' ties are ordered by place and name
+  (symbol ids depend on which thread lexed what).
+- **Types interned.** The number of distinct types interned still differs by one or two: paths
+  that are equivalent but taken in another order intern different intermediate types. It is a
+  cache's size, so the determinism check leaves that line out.
+- **Requires-expressions** are probed per argument type on the concept's shared nodes, so those
+  nodes keep whichever probe wrote last; their types are never read for code, only each probe's
+  answer, which does not depend on order.
+
+`tests/determinism.ps1` (run by run_tests.cmd, failing it) builds three test programs at `-j 1`,
+`-j 8` and `-j 32` and requires byte-identical IR and reports, and when the converted game exists
+(after convert.cmd) requires the headline front end's report to be identical at `-j 1`, `-j 8` and
+twice at `-j 32`. Under load (a second compile running beside it) master differed in about one run
+in six; after the fixes, 0 of 10.
+
+### Design: instantiation checks as tasks (steps 1 and 2 done, step 3 next)
 
 Today a walker that needs a class instance claims it and checks it inline: the instance's
 declarations and then every member body (`instantiateClass` -> `checkMemberBody`, 31% of the busy
@@ -86,6 +120,13 @@ thread, and the waiting threads burn CPU.
 Expected: resolve close to `-j 1`'s 9 s divided by the workers that have work, so well under a
 second, and no CPU burnt waiting. Order of work: 1 (small, alone), then 3 with its check (it is
 the property the rest relies on), then 2.
+
+Done so far (numbered as landed: step 1 = item 1, step 2 = items 3 and 4):
+- Step 1 (cee6aa6): waits block. No measurable change (resolve median 1.05 -> 1.03 s): by then
+  waits were rare, so it removes a worst case rather than a cost.
+- Step 2 (932b4c4 and the follow-up): the output does not depend on the thread count, as above.
+  Cost: none measurable at 32 threads (median 1.07 -> 1.12 s, within the noise); `-j 1` 7.9 ->
+  7.5 s.
 
 ## Parallel codegen, first step (2026-10-29)
 
