@@ -1,0 +1,22 @@
+// spec: floating-point constants: literals, + - * /, comparisons and conversions, in static_assert, if constexpr and template arguments, with the host's IEEE arithmetic (what the program computes at run time)
+// pending: floating literals were no constants
+constexpr double half = 0.5;
+constexpr float third = 1.0f / 3.0f;
+static_assert(half * 4 == 2.0);
+static_assert(0.1 + 0.2 != 0.3);
+static_assert(third > 0.333f && third < 0.334f);
+static_assert(int(2.9) == 2 && int(-2.9) == -2);
+static_assert(1e3 == 1000 && 0x1p4 == 16.0 && 2.5e-1 == 0.25);
+template<int N>
+struct Show
+{
+  static constexpr int value = N;
+};
+int main()
+{
+  if constexpr (half > 0.25)
+    println("half is more than a quarter");
+  println("{}", Show<int(half * 10)>::value);
+  println("{}", Show<(third * 3 == 1.0f) ? 1 : 0>::value);
+  return 0;
+}

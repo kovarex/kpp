@@ -1,0 +1,27 @@
+// spec: compile-time arithmetic follows C++'s types: unsigned values wrap, narrower types promote to int, conversions are modular, shifts take the promoted left operand's type, character literals read their escapes, alignof is the alignment
+// pending: the checker computed every constant as a 64-bit integer, and alignof as sizeof
+struct Vec3 { float x, y, z; };
+static_assert(0xFFFFFFFFu + 1u == 0u);
+static_assert(uint8_t(250) + uint8_t(10) == 260);
+static_assert(uint8_t(uint8_t(250) + uint8_t(10)) == 4);
+static_assert((-1 < 0u) == false);
+static_assert(int8_t(200) == -56);
+static_assert((1u << 31) == 2147483648u);
+static_assert(~0u == 4294967295u && ~0ull == 18446744073709551615ull);
+static_assert(-7 / 2 == -3 && -7 % 2 == -1);
+static_assert('a' == 97 && '\n' == 10 && '\x41' == 65 && '\101' == 65 && '\0' == 0);
+static_assert(0x7FFFFFFF + 0 == 2147483647 && 0x80000000 == 2147483648u);
+template<uint64_t N>
+struct Bits
+{
+  static constexpr uint64_t value = N;
+};
+int main()
+{
+  println("{}", Bits<0xFFFFFFFFu + 2u>::value);
+  println("{}", Bits<uint8_t(300)>::value);
+  println("{}", Bits<alignof(Vec3)>::value);
+  println("{}", Bits<sizeof(Vec3)>::value);
+  println("{}", Bits<(unsigned short)70000>::value);
+  return 0;
+}
