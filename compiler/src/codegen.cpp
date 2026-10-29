@@ -4955,6 +4955,8 @@ namespace
           }
           if (d->kind == NodeKind::EnumeratorDecl)
             break; // an enumerator bound to a reference: its value goes to a temporary (below)
+          if (d->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(d)->isType)
+            break; // a constant template parameter bound to a reference (`take(K)`): the same
           unsupported(e, "taking the address of " + sym(n->name.last().symbol));
         }
         case NodeKind::MemberExpr:

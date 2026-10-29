@@ -1,6 +1,5 @@
 // spec: a constant template parameter passed to a reference parameter (`take(K)` with `take(Args&&...)`, `one(K)` with `one(const T&)`) binds a temporary holding its value, as an enumerator does; also inside a lambda in the template
 // found in the game's NoiseExpressionParser: `getOrCreate<VoronoiNoiseWrapper>(..., TYPE)` in `template<VoronoiType TYPE> create`, once overload resolution chose that create
-// pending: codegen takes the address of the parameter ("taking the address of K") instead of binding a temporary
 enum class Kind { A, B, C };
 
 template<class... Args> int take(Args&&... args) { return (int(args) + ...); }
