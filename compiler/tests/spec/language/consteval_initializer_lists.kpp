@@ -1,0 +1,53 @@
+// spec: brace lists at compile time: given to an InitializerList parameter or constructor (a flags class's toBits(InitializerList<Enum>)), nested in an aggregate's initializer, iterated by range-for; range-for over an array (by value, by reference to const, by reference written through) and over a class with begin and end
+// factorio: the BITFIELD flags (SpriteFlags, DrawingFlags) given as {A, B} in the constant SpriteOption tables
+// pending: the interpreter had no brace list values, no InitializerList and no range-for
+enum class Flag { A, B, C, D };
+struct Flags
+{
+  constexpr Flags(InitializerList<Flag> values) : bits(toBits(values)) {}
+  static constexpr uint64_t toBits(InitializerList<Flag> values)
+  {
+    uint64_t acc = 0;
+    for (auto value : values)
+      acc |= uint64_t(1) << int(value);
+    return acc;
+  }
+  constexpr bool has(Flag f) const { return ((this->bits >> int(f)) & 1) != 0; }
+  uint64_t bits;
+};
+struct Option
+{
+  Flags flags;
+  int group;
+};
+constexpr Flags common = {Flag::A, Flag::C};
+constexpr Option option{{Flag::B, Flag::D}, 7};
+constexpr int sum(InitializerList<int> values)
+{
+  int total = 0;
+  for (int v : values)
+    total += v;
+  return total;
+}
+constexpr int arrays()
+{
+  int items[4] = {1, 2, 3, 4};
+  for (int& v : items)
+    v *= 10;
+  int total = 0;
+  for (const int& v : items)
+    total += v;
+  Array<int, 3> more = {5, 6, 7};
+  for (auto v : more)
+    total += v;
+  return total;
+}
+static_assert(common.has(Flag::A) && !common.has(Flag::B) && common.has(Flag::C));
+static_assert(option.flags.has(Flag::D) && option.group == 7 && option.flags.bits == 10);
+static_assert(sum({1, 2, 3}) == 6);
+static_assert(arrays() == 118);
+int main()
+{
+  println("{} {} {}", common.bits, sum({4, 5}), arrays());
+  return 0;
+}

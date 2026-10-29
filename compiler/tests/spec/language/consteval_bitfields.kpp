@@ -1,0 +1,31 @@
+// spec: a bit field at compile time holds its value at its own width: a store wraps to the width and a signed field reads sign-extended, as the generated code reads it
+// pending: the interpreter kept the whole value of the field's type, so a stored 13 read back as 13 from a 3-bit field (a wrong constant)
+struct Packed
+{
+  uint8_t low : 3 = 0;
+  int8_t signedPart : 3 = 0;
+  bool flag : 1 = false;
+  uint16_t rest : 9 = 0;
+};
+constexpr Packed make()
+{
+  Packed p;
+  p.low = 13;
+  p.signedPart = 5;
+  p.flag = true;
+  p.rest = 1000;
+  return p;
+}
+constexpr Packed made = make();
+static_assert(made.low == 5 && made.signedPart == -3 && made.flag && made.rest == 488);
+int main()
+{
+  Packed p;
+  p.low = 13;
+  p.signedPart = 5;
+  p.flag = true;
+  p.rest = 1000;
+  println("{} {} {} {}", int(p.low), int(p.signedPart), p.flag, int(p.rest));
+  println("{} {} {} {}", int(made.low), int(made.signedPart), made.flag, int(made.rest));
+  return 0;
+}

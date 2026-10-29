@@ -1,0 +1,28 @@
+// spec: addresses at compile time: of a global, of an element of one, of a function (written with & or decaying), and a pointer to a data member; read through, compared, indexed, called through
+// factorio: function pointer tables (zlib_filefunc64_def_s's fopen64_file_func), RailPrototype's constant accessor arrays of member pointers
+// pending: the interpreter had no addresses of declarations and no member pointers
+struct Point
+{
+  int x = 0;
+  int y = 0;
+};
+constexpr Point origin{3, 4};
+constexpr int table[3] = {10, 20, 30};
+constexpr const Point* where = &origin;
+constexpr const int* second = &table[1];
+constexpr int twice(int v) { return 2 * v; }
+constexpr int thrice(int v) { return 3 * v; }
+using Fn = int (*)(int);
+constexpr Fn ops[2] = {&twice, thrice};
+constexpr int apply(Fn f, int v) { return f(v); }
+constexpr int Point::* member = &Point::y;
+static_assert(where->x == 3 && (*where).y == 4);
+static_assert(*second == 20 && second[1] == 30 && *(second - 1) == 10);
+static_assert(second == &table[1] && second != &table[0] && where == &origin);
+static_assert(apply(ops[0], 5) == 10 && apply(ops[1], 5) == 15 && ops[0] != ops[1]);
+static_assert(origin.*member == 4);
+int main()
+{
+  println("{} {} {} {}", where->y, *second, apply(ops[1], 2), origin.*member);
+  return 0;
+}
