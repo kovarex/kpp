@@ -1,6 +1,5 @@
 // spec: a lambda written inside a lambda with template parameters names them in its own parameters (`[&](Button<IDType>*)` in `[&]<class IDType>(IDType value)`): in each instance the parameter is of that instance's type, so the lambda converts to the Function<bool(Button<int>*)> a call with written template arguments asks for
 // found in tests/TestCustomGui (`scenario.clickSelect<ChooseButton<IDType>>([&](ChooseButton<IDType>*) { return true; })` in `[&]<class IDType>(IDType value, const char* type)`)
-// pending: the inner lambda's parameter reads IDType as an undeclared class (`Button<?>*`), so no overload takes the lambda (`a member access that did not resolve to a field`)
 template<class T>
 struct Button { T id; };
 template<class T>

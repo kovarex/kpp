@@ -17246,9 +17246,12 @@ struct GlobalScope::Impl
             const Ty* t = impl.declaredTypeOf(p, activeSubst, 0);
             // As this walk sees the type, its locals included: `const Layers::value_type&` with
             // `using Layers = ...;` in a function around the lambda, which the declaration's own
-            // context does not see. The parameter's uses take it from the local.
+            // context does not see, nor the template parameters of a lambda around this one
+            // (`[&](ChooseButton<IDType>*)` in `[&]<class IDType>(...)`, which it read as a draft
+            // class). The parameter's uses take it from the local.
             if (const Ty* walked = pd->type ? typeOf(pd->type) : nullptr;
-                walked && walked->isKnown() && !impl.containsAuto(walked) && (!t || !t->isKnown() || types.isDependent(t)) && !types.isDependent(walked))
+                walked && walked->isKnown() && !impl.containsAuto(walked) && !Impl::mentionsUnknown(walked) &&
+                (((!t || !t->isKnown() || types.isDependent(t)) && !types.isDependent(walked)) || (t && Impl::mentionsUnknown(t))))
             {
               t = walked->kind == TyKind::Array ? types.decay(walked) : walked;
               if (!locals.items.empty() && locals.items.back().decl == p)
