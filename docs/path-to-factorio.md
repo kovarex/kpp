@@ -1500,6 +1500,52 @@ headline's way (CommonUtil, Agui, cxxopts, StackWalker, Lua, UnitTest++, src and
 (most of the templates thread's 218 were UnitTest++ not being there). With it, the tests' lines are
 about their own code, the test bodies the macros now expand into.
 
+### The unit tests (2026-10-29, evening)
+
+`programs\factorio\tests.cmd` builds the tests from convert.cmd's whole conversion (the directory
+given, or C:\factorio-in-kpp\kpp) as run.cmd builds the game: link-settings.cmd's libraries,
+`--keep-going --stub-missing` (a function the code generator left out aborts when a test reaches
+it) and the crash report, into kpp\tests-run\factorio-test.exe. It runs them from a write directory
+of its own (kpp\tests-run\run, through `--config` and `--write-data`; never %APPDATA%) and reads the
+game's data and the tests' saves, images and mods from C:\Factorio, read only, as the C++ build's
+factorio-test.exe does. That binary, run the same way (`tests.cmd --baseline`, into
+kpp\tests-baseline): `Success: 9006 tests passed`, in 273 s.
+
+A run of everything stops at the first stub or failed assertion it reaches, so the converted tests
+are measured one suite per process. `python programs\factorio\suites.py [EXE] [OUT]` runs each
+`SUITE(Name)` of C:\Factorio\tests as `factorio-test.exe --suite Name`, 12 at a time, each in a write
+directory of its own and for at most 600 s, and keeps each suite's output (OUT\logs\<suite>.txt)
+and a line per suite (OUT\suites.tsv: exit code, the runner's test and failure counts, the stub that
+stopped it). `python programs\factorio\crashes.py [OUT\logs]` then tallies what stopped the suites
+that never print their summary line: the failed assertion, the stub, or the function a crash
+happened in and its caller (the frames after the exception's dispatch: the game's handler turns an
+access violation into abort(), and a function the linker folded with identical ones, like
+`ID<AchievementPrototype, uint16>::operator bool()`, says little alone).
+
+A test of what Kpp replaces by design is left out of the conversion rather than left to stop its
+suite at a stub: `programs\factorio\overrides\left-out-tests.txt` lists them, one per line as
+`Suite/Test: why`, and the converter writes a comment saying why in place of the test's block (it
+reports an entry that matches no test). The first: MapDeserialiser/SaveLoadStdVariant, the
+serialiser's save and load of generic std::variants, which typed unions replace (design.md 8.5).
+Besides, an iterator type's `X::value_type` (and `reference`, `pointer`, `difference_type`,
+`iterator_category`) is converted to `IteratorTraits<X>::value_type`, since a Vector's iterator is a
+pointer (CreatableEntityTypeIterator's `ListIterator::value_type`).
+
+The tally on 5eb7aeb (convert.cmd's whole conversion, tests.cmd, suites.py, crashes.py): of 554
+suites, 321 get to their summary line, with 2180 tests of which 2095 pass and 85 fail; 233 stop.
+The first tally, before dbd1c9b's signed shift, had 291 suites stop at one assertion
+(BoundingBox.kpp:719); none do now. What stops the 233:
+
+| Suites | What | Cause |
+|---|---|---|
+| 90 | assertion GenericTargetable.kpp:90 `this->first->target == this`, in a widget's destructor in the GUI's teardown (TestScenarioGui) or, in 20, ManualCrafter's | not found yet: 619cc61 (an implicit copy calls the bases' copy constructors) ended the menu maps' instance of this assertion, not these |
+| 52 | a fault under UpgradableEntity::getUpgradeTargetWithFallback | a union's own constructor dropped its member initializer (UpgradableEntity's WrappedValue): fixed since in 3f280db (spec classes/union_constructor_initializes_member) |
+| 28 | a fault in Targeters (addTargeter, clear, hasTargeterWithType) | not found yet |
+| 25 | a fault in IntrusiveSet's Hook::unlink, under RobotWithLogisticInterface::setup | not found yet |
+| 17 | a stub, each a different one (one of them SaveLoadStdVariant's, left out since) | functions the code generator leaves out |
+| 10 | assertion PrototypeList.kpp:89 `id.getIndex() < ...indexToPrototype.size()` | probably the union's too: 5 take the ID from UpgradableEntity::getUpgradeTargetWithFallback (BlueprintEntities::addEntity), 5 from upgrade data, Splitter::saveForBlueprint and getMaxHealth |
+| 11 | other faults, one to three suites each | not looked at |
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way

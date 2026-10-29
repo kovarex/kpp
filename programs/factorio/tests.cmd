@@ -9,9 +9,11 @@ rem (config, log, script output; never %APPDATA%, never C:\Factorio), and reads 
 rem the tests' saves, images and mods from C:\Factorio, as the C++ build's factorio-test.exe does
 rem (the tests open `read-data/../tests/...`): read only. Further arguments go to the tests (`--suite
 rem Lua`, `--test SomeTest`, `--exit-on-failure`). The runner's summary line is printed next to the C++
-rem build's: 9012 tests passed on 2026-10-29. `tests.cmd --baseline` runs the C++ build's own
+rem build's: 9006 tests passed (2026-10-29). `tests.cmd --baseline` runs the C++ build's own
 rem C:\Factorio\bin\Releasex64vs2022\factorio-test.exe the same way (its own write directory
-rem kpp\tests-baseline\run) to measure that again.
+rem kpp\tests-baseline\run) to measure that again. A stub or a failed assertion ends the run where it
+rem is reached: suites.py runs the built binary one suite per process instead, and crashes.py tallies
+rem what stopped each suite.
 setlocal
 cd /d "%~dp0"
 set CONVERSION=C:\factorio-in-kpp\kpp
@@ -57,5 +59,5 @@ set RESULT=%errorlevel%
 popd
 echo == factorio-test exit %RESULT%; its output: %OUT%\tests.txt
 %SystemRoot%\System32\findstr.exe /c:"Success:" /c:"FAILURE:" /c:"Test time:" %OUT%\tests.txt
-echo == the C++ build: Success: 9012 tests passed (2026-10-29; tests.cmd --baseline measures it again)
+echo == the C++ build: Success: 9006 tests passed (2026-10-29; tests.cmd --baseline measures it again)
 exit /b %RESULT%
