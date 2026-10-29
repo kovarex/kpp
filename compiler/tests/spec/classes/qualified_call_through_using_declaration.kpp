@@ -1,6 +1,5 @@
 // spec: a qualified call `super::transfer(move(data))` of a class that has `using Vehicle::transfer;` beside its own transfer(Fluid&) chooses among both sets, as an unqualified call in the class does: the inherited transfer(TransferData) takes the data (non-virtually, being qualified); also through a class template's using-declaration of its template base's members
 // found by the code generator thread in the converted game: FluidWagon's and ArtilleryWagon's `super::transfer(::move(data))` with RollingStock's `using Vehicle::transfer;` ("binding an unrelated class to a reference (TransferData to Fluid&)")
-// pending: the qualified call sees only RollingStock's own transfer(Fluid&)
 struct TransferData { int x = 1; };
 struct Fluid { int f = 0; };
 struct Entity

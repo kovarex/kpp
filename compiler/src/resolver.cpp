@@ -13557,6 +13557,23 @@ struct GlobalScope::Impl
             l.overloads = usingMerged.get();
           }
         }
+        else if (n->name.parts.size() > 1 && l.foundIn && l.foundIn->kind == ScopeKind::Class)
+        {
+          // `super::transfer(move(data))` with RollingStock's `using Vehicle::transfer;` beside its
+          // own transfer(Fluid&): both sets, of the class the qualifier names.
+          NamedType written{};
+          written.kind = NodeKind::NamedType;
+          written.token = n->token;
+          written.name = n->name;
+          written.name.parts.count -= 1;
+          const Ty* q = typeOf(&written);
+          q = q && q->isKnown() && !types.isDependent(q) ? types.unqualified(types.stripRef(q)) : nullptr;
+          if ((usingMerged = withUsingOverloads(l, q, q ? impl.classScopeOf(q) : nullptr, usingArgs)))
+          {
+            l.decl = usingMerged->front().decl;
+            l.overloads = usingMerged.get();
+          }
+        }
         Decl* d = l.decl;
         if (d && d->kind == NodeKind::FunctionDecl)
         {
@@ -13564,7 +13581,12 @@ struct GlobalScope::Impl
           // member named through an instantiation has that instantiation's arguments.
           Subst qualifier = usingArgs;
           if (n->name.parts.size() > 1 && l.foundIn && l.foundIn->kind == ScopeKind::Class)
+          {
             qualifier = impl.qualifierSubst(n->name, ctx(), 0, l.foundIn);
+            for (const Subst::Pair& p : usingArgs.pairs)
+              if (!qualifier.find(p.param))
+                qualifier.pairs.push_back(p); // the base instances the using-declarations reach
+          }
           else if (n->name.parts.size() == 1 && l.found == Found::Member && activeSubst && l.foundIn && l.foundIn->kind == ScopeKind::Class &&
                    l.foundIn->owner)
           {
