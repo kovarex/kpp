@@ -336,6 +336,10 @@ public:
   // conversion operator to a non-class type, its own or inherited; null when it has none or
   // several. The resolver types such operators by this.
   const Ty* scalarConversionOf(const Ty* classType);
+  // The class instances the explicit instantiations of a file name (`template struct
+  // Registry<int>;`, ParsedFile::explicitInstantiations), in order, each with the token it is
+  // written at; one naming no instance of a class template is left out.
+  std::vector<std::pair<const Ty*, uint32_t>> explicitInstantiationsOf(ParsedFile& file);
   // The user's free operator for `lhs op rhs` with an enumeration operand (`Flags operator|(Flags,
   // Flags)`), which wins over the built-in one; null when the built-in applies. The resolver types
   // the expression by the same rule.

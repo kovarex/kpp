@@ -402,6 +402,10 @@ struct ParsedFile
   // `(HANDLE) -1`, `(T) *p`, parsed as `(name) op x`, with the declaration it is in: a cast when the
   // name is a type, rewritten as one by the resolver's finishIndex.
   std::vector<std::pair<BinaryExpr*, Decl*>> castCandidates;
+  // `template struct Registry<int>;`: the class an explicit instantiation names, with the
+  // declaration it is written in. It declares nothing; the class's static data members are built
+  // at startup (GlobalScope::explicitInstantiationsOf).
+  std::vector<std::pair<NamedType*, Decl*>> explicitInstantiations;
   uint32_t declCount = 0; // All declaration nodes created.
   uint32_t functionBodies = 0;
   uint32_t nodeCount = 0;

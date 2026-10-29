@@ -18067,6 +18067,25 @@ FunctionDecl* GlobalScope::findFree(uint32_t symbol, const std::vector<const Ty*
 
 const Ty* GlobalScope::scalarConversionOf(const Ty* classType) { return impl->scalarConversionOf(classType); }
 
+std::vector<std::pair<const Ty*, uint32_t>> GlobalScope::explicitInstantiationsOf(ParsedFile& file)
+{
+  std::vector<std::pair<const Ty*, uint32_t>> out;
+  for (auto& [named, where] : file.explicitInstantiations)
+  {
+    // Written at namespace scope: the name looked up from that namespace (the file's top level
+    // when it is in none).
+    Impl::DeclContext dc;
+    dc.scope = where && where->ownScope ? where->ownScope : where ? impl->lexicalScopeOf(where) : &impl->root;
+    Impl::TokenScope tokenScope(file.tokens, file.text);
+    Impl::TypeContext ctx{dc.scope, &dc.params, nullptr, file.tokens, file.text};
+    const Ty* t = impl->convertType(named, ctx, 0);
+    t = t ? impl->types.unqualified(t) : nullptr;
+    if (t && t->kind == TyKind::Class && t->decl && !t->args.empty() && !impl->types.isDependent(t))
+      out.push_back({t, named->token});
+  }
+  return out;
+}
+
 void GlobalScope::traceLine(const std::string& fileSuffix, uint32_t line)
 {
   impl->whyAt.push_back({fileSuffix, line});

@@ -226,7 +226,9 @@ namespace
     std::vector<SharedText> moduleDecls;                    // per module: its string constants and vtables
     // The startup functions of the globals built at startup, each with where its global is
     // defined (ctorsText runs them in that order).
-    struct Startup { uint32_t file; uint32_t token; std::string function; };
+    // (An explicit instantiation's static data member is at the `template class` line, then in
+    // its definitions' order: member is the definition's token there, 0 for any other global.)
+    struct Startup { uint32_t file; uint32_t token; uint32_t member; std::string function; };
     std::vector<Startup> startups;
     std::unordered_map<std::string, std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
     std::vector<std::unordered_set<std::string>> vtablesIn; // per module: the vtables it already has
@@ -8378,7 +8380,8 @@ namespace
         if (perThread)
           threadLocalInits[name] = fnName;
         else
-          startups.push_back({def->file ? def->file->index : 0, def->token, fnName});
+          startups.push_back(startupAt ? Shared::Startup{startupAt->file, startupAt->token, def->token, fnName}
+                                       : Shared::Startup{def->file ? def->file->index : 0, def->token, 0, fnName});
       }
       catch (Unsupported&)
       {
@@ -8406,7 +8409,7 @@ namespace
         return "";
       std::vector<Shared::Startup> order = startups;
       std::sort(order.begin(), order.end(), [](const Shared::Startup& a, const Shared::Startup& b) {
-        return std::tie(a.file, a.token, a.function) < std::tie(b.file, b.token, b.function);
+        return std::tie(a.file, a.token, a.member, a.function) < std::tie(b.file, b.token, b.member, b.function);
       });
       std::string s = "@llvm.global_ctors = appending global [" + std::to_string(order.size()) + " x { i32, ptr, ptr }] [";
       for (size_t i = 0; i < order.size(); ++i)
@@ -14959,18 +14962,44 @@ namespace
       out.push_back(v);
     }
 
-    // A global collectStartupGlobals found: defined, and its startup function registered, as if a
-    // function had read it. Its errors are its own (globalFor reports them).
-    void emitStartupGlobal(VariableDecl* v)
+    // The static data members of class instance cls that an explicit instantiation builds at
+    // startup (`template struct Registry<int>;`, as C++ instantiates every member): those with an
+    // initializer that is no literal, or of a class type that needs constructing.
+    void collectInstanceStartupGlobals(const Ty* cls, std::vector<std::pair<VariableDecl*, const Ty*>>& out)
     {
+      Decl* d = global.definitionOf(cls->decl);
+      if (!d || d->kind != NodeKind::ClassDecl)
+        return;
+      for (Decl* m : static_cast<ClassDecl*>(d)->members)
+      {
+        if (m->kind != NodeKind::VariableDecl || !(m->flags & DF_Static))
+          continue;
+        auto* v = static_cast<VariableDecl*>(m);
+        VariableDecl* def = variableDefinition(v);
+        if ((v->flags & (DF_Typedef | DF_Constexpr | DF_ThreadLocal)) || (def->flags & (DF_Constexpr | DF_ThreadLocal)) || v->isTemplate)
+          continue;
+        if (def->init ? def->init->kind == NodeKind::LiteralExpr : !needsConstruction(global.typeOfDeclIn(v, global.classArgsOf(cls)), v))
+          continue;
+        out.push_back({v, cls});
+      }
+    }
+
+    // A global collectStartupGlobals found (or a static data member of the class instance classTy
+    // collectInstanceStartupGlobals did): defined, and its startup function registered, as if a
+    // function had read it. Its errors are its own (globalFor reports them).
+    std::optional<Shared::Startup> startupAt; // where the startup function of the global being defined runs, when not where it is defined
+    void emitStartupGlobal(VariableDecl* v, const Ty* classTy = nullptr, std::optional<Shared::Startup> at = std::nullopt)
+    {
+      struct AtRestore { std::optional<Shared::Startup>& a; ~AtRestore() { a.reset(); } } atRestore{startupAt};
+      startupAt = at;
       auto it = fileModule.find(v->file);
       currentModule = it == fileModule.end() ? 0 : it->second;
-      currentFunctionName = "@\"kpp.init." + qualifiedName(v) + "\"";
+      currentFunctionName = "@\"kpp.init." + (classTy ? irString(classTy) + "::" + sym(v->name.last().symbol) : qualifiedName(v)) + "\"";
       currentRequestedBy.clear();
       currentFile = v->file; // its errors point at its declaration
       try
       {
-        globalFor(v, v);
+        globalFor(v, v, classTy);
       }
       catch (Unsupported&)
       {
@@ -15211,10 +15240,24 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     if (!file->isImported)
       e.collectStartupGlobals(file->decls, startupGlobals);
   }
+  // `template struct Registry<int>;`: the instance's static data members too (the Lua bindings'
+  // LuaStruct<T> register their metamethods so), built where the explicit instantiation is
+  // written, in their definitions' order.
+  std::vector<std::pair<VariableDecl*, const Ty*>> instanceStartupGlobals;
+  std::vector<Shared::Startup> instanceStartupAt;
+  for (auto& file : files)
+    if (!file->isImported)
+      for (auto& [cls, token] : global.explicitInstantiationsOf(*file))
+      {
+        e.collectInstanceStartupGlobals(cls, instanceStartupGlobals);
+        instanceStartupAt.resize(instanceStartupGlobals.size(), Shared::Startup{file->index, token, 0, ""});
+      }
   // Every global built at startup is defined and built, read or not (C++ initialises them all);
   // what their initializers ask for joins the first level's requests.
   for (VariableDecl* v : startupGlobals)
     e.emitStartupGlobal(v);
+  for (size_t i = 0; i < instanceStartupGlobals.size(); ++i)
+    e.emitStartupGlobal(instanceStartupGlobals[i].first, instanceStartupGlobals[i].second, instanceStartupAt[i]);
   // Level 0: the functions the program writes. Each later level: the instantiations the previous
   // one asked for. The functions of a level are emitted on all threads at once.
   std::vector<Instantiation> level;

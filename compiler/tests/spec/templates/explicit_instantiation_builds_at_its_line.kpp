@@ -1,6 +1,5 @@
 // spec: an explicit instantiation's static data members are built where the explicit instantiation is written, among the file's other globals in definition order (design.md section 2), and an instance's members in the order of their definitions
 // factorio: the Lua bindings' `template class LuaStruct<MapSettings>;` and the others, each registering its metatable from `LuaStruct<T>::loaded`
-// pending: SILENT, an explicit instantiation builds no static data member (prints `3`)
 Vector<int> order;
 template<class T>
 struct Registry

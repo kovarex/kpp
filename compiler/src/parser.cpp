@@ -2662,7 +2662,8 @@ namespace
       // An explicit instantiation (`template Widget* countsAsButtons<ItemID, double>(...);`,
       // `template class X<int>;`) declares nothing: the whole program is compiled together, so what
       // is used is instantiated. Kept, it was a function of its own without a body that calls chose
-      // over the template, and only declared.
+      // over the template, and only declared. A class's is recorded (ParsedFile::explicitInstantiations):
+      // its static data members are built at startup, as C++ instantiates them all.
       struct DropExplicitInstantiation
       {
         std::vector<Node*>& scratch;
@@ -2672,8 +2673,19 @@ namespace
       } dropInstantiation{scratch, scratch.size(), !header.present && header.params.empty()};
       if (at(Kw::class_) || at(Kw::struct_) || at(Kw::union_))
       {
+        uint32_t classToken = pos;
         if (parseClassOrElaborated(scope, declFlags, header))
+        {
+          if (dropInstantiation.drop && !((flags | declFlags) & DF_Extern)) // (`extern template class X<int>;` instantiates nothing)
+            if (Decl* d = lastPushedDecl(dropInstantiation.mark); d && d->kind == NodeKind::ClassDecl)
+              if (auto* c = static_cast<ClassDecl*>(d); !c->isDefinition && !c->name.empty() && c->name.last().hasTemplateArgs)
+              {
+                NamedType* named = node<NamedType>(classToken);
+                named->name = c->name;
+                out.explicitInstantiations.push_back({named, currentParent});
+              }
           return;
+        }
       }
       if (at(Kw::using_))
       {

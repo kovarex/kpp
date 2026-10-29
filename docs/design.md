@@ -27,7 +27,10 @@ This file records decisions that have been made. When a decision changes, update
   that order across files (as C++ across translation units). Every one is built, whether
   anything reads it or not (an initializer that registers something, as C++ runs it): globals
   of namespaces and static data members of classes that are no templates; a static member of
-  a class template is built when an instance of it is used. A `thread_local` (a global, a
+  a class template is built when an instance of it is used, and every one of an instance an
+  explicit instantiation names (`template class LuaStruct<MapSettings>;`, as C++ instantiates
+  all its members), built where the explicit instantiation is written, in the order of the
+  members' definitions. A `thread_local` (a global, a
   static member or a local) is one object per thread, built by each thread at its first use
   (a local at its first pass), not at startup; none is destroyed at a thread's exit yet.
 - **One multithreaded compiler process** sharing one symbol table, instead of independent
