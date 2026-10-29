@@ -1,10 +1,11 @@
-// spec: constants over packs and layouts: fold expressions over a type pack and a value pack, sizeof of a local array, a type parameter converting a value (`U(2 * limit)`), a library function with if constexpr in a static_assert on a class's size
+// spec: constants over packs and layouts: fold expressions over a type pack and a value pack (unary and binary, left and right), sizeof of a local array, a type parameter converting a value (`U(2 * limit)`), a library function with if constexpr in a static_assert on a class's size
 // factorio: static_assert((isFundamental<RemoveReference<Ts>> && ...)), static_assert(sizeof(grid) == 9 * 2 && sizeof(TileID) == 2), static_assert(sizeof(EntityWorkingAreaData::WorkingArea) <= Limits<uint16_t>::max())
 struct Area { int32_t x, y, w, h; };
 template<typename... Ts>
 int countFundamental()
 {
   static_assert((isFundamental<RemoveReference<Ts>> && ...));
+  static_assert((true && ... && isFundamental<RemoveReference<Ts>>));
   return sizeof...(Ts);
 }
 template<int... Ns>
@@ -12,6 +13,8 @@ struct Sum
 {
   static constexpr int value = (Ns + ... + 0);
   static constexpr int leftDifference = (... - Ns);
+  static constexpr int leftWithInit = (100 - ... - Ns);
+  static constexpr int rightWithInit = (Ns - ... - 0);
 };
 template<typename U>
 U twice(U limit)
@@ -25,7 +28,8 @@ int main()
   static_assert(sizeof(grid) == 9 * 2 && sizeof(Area) == 16);
   static_assert(sizeof(Area) <= Limits<uint16_t>::max());
   println("{}", countFundamental<int, const double&, char>());
-  println("{} {}", Sum<1, 2, 3, 4>::value, Sum<10, 3, 2>::leftDifference);
+  println("{} {} {} {}", Sum<1, 2, 3, 4>::value, Sum<10, 3, 2>::leftDifference, Sum<10, 3, 2>::leftWithInit, Sum<10, 3, 2>::rightWithInit);
+  static_assert(Sum<10, 3, 2>::leftWithInit == 85 && Sum<10, 3, 2>::rightWithInit == 9);
   println("{} {}", int(twice<uint8_t>(200)), grid[1][1]);
   return 0;
 }

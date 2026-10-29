@@ -4023,84 +4023,142 @@ struct GlobalScope::Impl
     }
   }
 
-  // `(isFundamental<RemoveReference<Ts>> && ...)`, `(Ns + ... + 0)`: the pattern evaluated once per
-  // element of the packs ctx binds (each pack parameter bound to its element), the values combined
-  // in the fold's order; `&&` and `||` stop at the element that decides. Packs of values the
-  // function being run was given (`args...`) are no constants of step 1's.
+  // A template parameter pack s binds that n names (`Ts` in `isFundamental<RemoveReference<Ts>>`,
+  // `Ns` in `Ns * 2`), or null.
+  Decl* packNamedIn(Node* n, const Subst& s, int depth = 0)
+  {
+    if (!n || depth > 32)
+      return nullptr;
+    auto named = [&](const QualifiedName& name) -> Decl* {
+      if (name.parts.size() == 1 && !name.global)
+        for (const Subst::Pair& p : s.pairs)
+          if (p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->isPack && p.type &&
+              p.type->kind == TyKind::Pack && static_cast<TemplateParamDecl*>(p.param)->name == name.parts[0].symbol)
+            return p.param;
+      for (const NamePart& part : name.parts)
+        for (Node* a : part.templateArgs)
+          if (Decl* d = packNamedIn(a, s, depth + 1))
+            return d;
+      return nullptr;
+    };
+    auto first = [&](std::initializer_list<Node*> nodes) -> Decl* {
+      for (Node* x : nodes)
+        if (Decl* d = packNamedIn(x, s, depth + 1))
+          return d;
+      return nullptr;
+    };
+    switch (n->kind)
+    {
+      case NodeKind::NamedType: return named(static_cast<NamedType*>(n)->name);
+      case NodeKind::NameExpr: return named(static_cast<NameExpr*>(n)->name);
+      case NodeKind::PointerType: return first({static_cast<PointerType*>(n)->pointee});
+      case NodeKind::LRefType: return first({static_cast<LRefType*>(n)->referenced});
+      case NodeKind::RRefType: return first({static_cast<RRefType*>(n)->referenced});
+      case NodeKind::ConstType: return first({static_cast<ConstType*>(n)->inner});
+      case NodeKind::ParenExpr: return first({static_cast<ParenExpr*>(n)->inner});
+      case NodeKind::UnaryExpr: return first({static_cast<UnaryExpr*>(n)->operand});
+      case NodeKind::MemberExpr: return first({static_cast<MemberExpr*>(n)->base});
+      case NodeKind::BinaryExpr: return first({static_cast<BinaryExpr*>(n)->lhs, static_cast<BinaryExpr*>(n)->rhs});
+      case NodeKind::ConditionalExpr:
+        return first({static_cast<ConditionalExpr*>(n)->cond, static_cast<ConditionalExpr*>(n)->then, static_cast<ConditionalExpr*>(n)->else_});
+      case NodeKind::CastExpr: return first({static_cast<CastExpr*>(n)->type, static_cast<CastExpr*>(n)->operand});
+      case NodeKind::NamedCastExpr: return first({static_cast<NamedCastExpr*>(n)->type, static_cast<NamedCastExpr*>(n)->operand});
+      case NodeKind::SizeofExpr:
+        // `sizeof...(Ts)` counts the pack, it expands nothing.
+        return static_cast<SizeofExpr*>(n)->isPack ? nullptr : first({static_cast<SizeofExpr*>(n)->type, static_cast<SizeofExpr*>(n)->operand});
+      case NodeKind::FunctionalCastExpr:
+      {
+        auto* c = static_cast<FunctionalCastExpr*>(n);
+        if (Decl* d = first({c->type}))
+          return d;
+        for (Expr* a : c->args)
+          if (Decl* d = first({a}))
+            return d;
+        return nullptr;
+      }
+      case NodeKind::CallExpr:
+      {
+        auto* c = static_cast<CallExpr*>(n);
+        if (Decl* d = first({c->callee}))
+          return d;
+        for (Expr* a : c->args)
+          if (Decl* d = first({a}))
+            return d;
+        return nullptr;
+      }
+      default:
+        return nullptr;
+    }
+  }
+
+  // `(isFundamental<RemoveReference<Ts>> && ...)`, `(Ns + ... + 0)`, `(0 + ... + Ns)`: the pattern,
+  // the side that names a pack ctx binds (the two binary folds parse alike), evaluated once per
+  // element with the pack bound to it, the values combined in the fold's order; `&&` and `||`
+  // stop at the operand that decides. A pattern naming a second pack, or a pack of the values a
+  // function was given (`args...`), is no constant of step 1's.
   std::optional<ConstValue> constFold(FoldExpr* f, const TypeContext& ctx, int depth)
   {
     std::optional<P> op = constOperator(f->op, false);
-    Expr* pattern = f->lhs ? f->lhs : f->rhs;
-    Expr* init = f->lhs ? f->rhs : nullptr; // `(pack op ... op init)`
-    if (!op || !pattern || !ctx.subst || (!isConstBinaryOperator(*op) && *op != P::Comma))
+    if (!op || !ctx.subst || !isConstBinaryOperator(*op))
       return std::nullopt;
-    std::vector<const Subst::Pair*> packs;
-    for (const Subst::Pair& p : ctx.subst->pairs)
-      if (p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->isPack && p.type &&
-          p.type->kind == TyKind::Pack)
-        packs.push_back(&p);
-    if (packs.empty())
+    bool right = f->lhs && packNamedIn(f->lhs, *ctx.subst);
+    Expr* pattern = right ? f->lhs : f->rhs;
+    Expr* init = right ? f->rhs : f->lhs;
+    Decl* pack = pattern ? packNamedIn(pattern, *ctx.subst) : nullptr;
+    const Ty* bound = pack ? ctx.subst->find(pack) : nullptr;
+    if (!bound || bound->kind != TyKind::Pack)
       return std::nullopt;
-    size_t n = packs[0]->type->args.size();
-    for (const Subst::Pair* p : packs)
-      if (p->type->args.size() != n)
-        return std::nullopt; // packs of different lengths: which the pattern expands is not decided here
     auto element = [&](size_t i) -> std::optional<ConstValue> {
       Subst one = *ctx.subst;
       for (Subst::Pair& q : one.pairs)
-        for (const Subst::Pair* p : packs)
-          if (q.param == p->param)
-            q.type = p->type->args[i];
+        if (q.param == pack)
+          q.type = bound->args[i];
+      if (packNamedIn(pattern, one))
+        return std::nullopt; // a second pack in the pattern
       TypeContext ectx = ctx;
       ectx.subst = &one;
       return constValue(pattern, ectx, depth + 1);
     };
-    if (n == 0)
-    {
-      if (init)
-        return constValue(init, ctx, depth + 1);
-      if (*op == P::AndAnd || *op == P::OrOr)
-        return ConstValue::integer(*op == P::AndAnd, types.boolType()); // an empty `&&` fold is true, `||` false
-      return std::nullopt;
-    }
+    // The operands in the order C++ evaluates them: the elements, with init last (a right fold)
+    // or first (a left fold); -1 stands for init.
+    std::vector<int> order;
+    if (init && !right)
+      order.push_back(-1);
+    for (size_t i = 0; i < bound->args.size(); ++i)
+      order.push_back(int(i));
+    if (init && right)
+      order.push_back(-1);
+    auto operand = [&](int k) { return k < 0 ? constValue(init, ctx, depth + 1) : element(size_t(k)); };
     if (*op == P::AndAnd || *op == P::OrOr)
     {
-      for (size_t i = 0; i < n; ++i)
+      for (int k : order)
       {
-        std::optional<ConstValue> v = element(i);
+        std::optional<ConstValue> v = operand(k);
         if (!v)
           return std::nullopt;
         if (v->truthy() == (*op == P::OrOr))
           return ConstValue::integer(*op == P::OrOr, types.boolType());
       }
-      if (!init)
-        return ConstValue::integer(*op == P::AndAnd, types.boolType());
-      std::optional<ConstValue> v = constValue(init, ctx, depth + 1);
-      return v ? std::optional<ConstValue>(ConstValue::integer(v->truthy(), types.boolType())) : std::nullopt;
+      return ConstValue::integer(*op == P::AndAnd, types.boolType()); // an empty `&&` fold is true, `||` false
     }
+    if (order.empty())
+      return std::nullopt; // an empty fold of another operator is ill-formed
     std::vector<ConstValue> values;
-    for (size_t i = 0; i < n; ++i)
+    for (int k : order)
     {
-      std::optional<ConstValue> v = element(i);
+      std::optional<ConstValue> v = operand(k);
       if (!v)
         return std::nullopt;
       values.push_back(*v);
     }
-    if (init)
-    {
-      std::optional<ConstValue> v = constValue(init, ctx, depth + 1);
-      if (!v)
-        return std::nullopt;
-      values.push_back(*v);
-    }
-    // `(E op ...)` folds to the right, E1 op (E2 op ...); `(... op E)` to the left.
-    std::optional<ConstValue> value = f->lhs ? values.back() : values.front();
-    if (f->lhs)
+    // A right fold is E1 op (E2 op (... op En)), a left fold ((E1 op E2) op ...) op En.
+    std::optional<ConstValue> value = right ? values.back() : values.front();
+    if (right)
       for (size_t i = values.size() - 1; i-- > 0 && value;)
         value = *op == P::Comma ? value : constArith().binary(*op, values[i], *value);
     else
-      for (size_t i = 1; i < values.size() && value;)
-        value = *op == P::Comma ? std::optional<ConstValue>(values[i++]) : constArith().binary(*op, *value, values[i++]);
+      for (size_t i = 1; i < values.size() && value; ++i)
+        value = *op == P::Comma ? std::optional<ConstValue>(values[i]) : constArith().binary(*op, *value, values[i]);
     return value;
   }
 

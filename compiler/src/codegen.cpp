@@ -4875,77 +4875,71 @@ namespace
       }
     }
 
-    // `(Ns + ... + 0)`, `(isFundamental<Ts> && ...)`: the pattern folded once per element of the
-    // packs the current arguments bind (resolver.cpp's constFold: the same order and stops).
+    // `(Ns + ... + 0)`, `(0 + ... + Ns)`, `(isFundamental<Ts> && ...)`: the pattern, the side that
+    // names a pack the current arguments bind (typePackIn; the two binary folds parse alike),
+    // folded once per element with the pack bound to it (resolver.cpp's constFold: the same order
+    // and stops). A pattern naming a second pack is no constant here.
     std::optional<ConstValue> foldPack(FoldExpr* f, int depth)
     {
       std::optional<P> op = constOperator(f->op, false);
-      Expr* pattern = f->lhs ? f->lhs : f->rhs;
-      Expr* init = f->lhs ? f->rhs : nullptr; // `(pack op ... op init)`
-      if (!op || !pattern || !currentArgs || !isConstBinaryOperator(*op))
+      if (!op || !currentArgs || !isConstBinaryOperator(*op))
         return std::nullopt;
-      std::vector<size_t> packs;
-      for (size_t k = 0; k < currentArgs->pairs.size(); ++k)
-      {
-        auto& [p, t] = currentArgs->pairs[k];
-        if (p && p->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p)->isPack && t && t->kind == TyKind::Pack)
-          packs.push_back(k);
-      }
-      if (packs.empty())
+      bool right = f->lhs && typePackIn(f->lhs);
+      Expr* pattern = right ? f->lhs : f->rhs;
+      Expr* init = right ? f->rhs : f->lhs;
+      Decl* pack = pattern ? typePackIn(pattern) : nullptr;
+      const Ty* bound = nullptr;
+      for (auto& [p, t] : currentArgs->pairs)
+        if (p == pack)
+          bound = t;
+      if (!pack || !bound || bound->kind != TyKind::Pack)
         return std::nullopt;
-      size_t n = currentArgs->pairs[packs[0]].second->args.size();
-      for (size_t k : packs)
-        if (currentArgs->pairs[k].second->args.size() != n)
-          return std::nullopt;
       const TemplateArgs* all = currentArgs;
       auto element = [&](size_t i) -> std::optional<ConstValue> {
         TemplateArgs one = *all;
-        for (size_t k : packs)
-          one.pairs[k].second = all->pairs[k].second->args[i];
+        for (auto& [p, t] : one.pairs)
+          if (p == pack)
+            t = bound->args[i];
         ArgsScope scope(*this, &one);
+        if (typePackIn(pattern))
+          return std::nullopt; // a second pack in the pattern
         return foldConst(pattern, depth + 1);
       };
-      if (n == 0)
-      {
-        if (init)
-          return foldConst(init, depth + 1);
-        if (*op == P::AndAnd || *op == P::OrOr)
-          return ConstValue::integer(*op == P::AndAnd, types.boolType()); // an empty `&&` fold is true, `||` false
-        return std::nullopt;
-      }
+      // The operands in the order C++ evaluates them: the elements, with init last (a right fold)
+      // or first (a left fold); -1 stands for init.
+      std::vector<int> order;
+      if (init && !right)
+        order.push_back(-1);
+      for (size_t i = 0; i < bound->args.size(); ++i)
+        order.push_back(int(i));
+      if (init && right)
+        order.push_back(-1);
+      auto operand = [&](int k) { return k < 0 ? foldConst(init, depth + 1) : element(size_t(k)); };
       if (*op == P::AndAnd || *op == P::OrOr)
       {
-        for (size_t i = 0; i < n; ++i)
+        for (int k : order)
         {
-          std::optional<ConstValue> v = element(i);
+          std::optional<ConstValue> v = operand(k);
           if (!v)
             return std::nullopt;
           if (v->truthy() == (*op == P::OrOr))
             return ConstValue::integer(*op == P::OrOr, types.boolType());
         }
-        if (!init)
-          return ConstValue::integer(*op == P::AndAnd, types.boolType());
-        std::optional<ConstValue> v = foldConst(init, depth + 1);
-        return v ? std::optional<ConstValue>(ConstValue::integer(v->truthy(), types.boolType())) : std::nullopt;
+        return ConstValue::integer(*op == P::AndAnd, types.boolType()); // an empty `&&` fold is true, `||` false
       }
+      if (order.empty())
+        return std::nullopt;
       std::vector<ConstValue> values;
-      for (size_t i = 0; i < n; ++i)
+      for (int k : order)
       {
-        std::optional<ConstValue> v = element(i);
+        std::optional<ConstValue> v = operand(k);
         if (!v)
           return std::nullopt;
         values.push_back(*v);
       }
-      if (init)
-      {
-        std::optional<ConstValue> v = foldConst(init, depth + 1);
-        if (!v)
-          return std::nullopt;
-        values.push_back(*v);
-      }
-      // `(E op ...)` folds to the right, E1 op (E2 op ...); `(... op E)` to the left.
-      std::optional<ConstValue> value = f->lhs ? values.back() : values.front();
-      if (f->lhs)
+      // A right fold is E1 op (E2 op (... op En)), a left fold ((E1 op E2) op ...) op En.
+      std::optional<ConstValue> value = right ? values.back() : values.front();
+      if (right)
         for (size_t i = values.size() - 1; i-- > 0 && value;)
           value = *op == P::Comma ? value : foldArith().binary(*op, values[i], *value);
       else
