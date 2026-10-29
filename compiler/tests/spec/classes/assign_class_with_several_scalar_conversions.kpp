@@ -1,0 +1,28 @@
+// spec: a class with several conversions to scalars assigned to a scalar uses the conversion to that scalar's type (`recipeCopied = setupForCrafting(...)`, an ActionResult with `operator bool()` and `operator Enum()`)
+// factorio: AssemblingMachine::fastReplaceSetup's `recipeCopied = this->setupForCrafting(...)` and LuaEntity's rotate and flip, `result = this->entityTarget->rotate(...)`: "an operator with a class on the right that no function defines"
+class Result
+{
+public:
+  enum class Enum
+  {
+    Success, Ignorable, Fail
+  };
+  implicit constexpr Result(Enum value) : value(value) {}
+  implicit operator bool() const { return this->value == Enum::Success || this->value == Enum::Ignorable; }
+  implicit operator Enum() const { return this->value; }
+  Enum value;
+};
+Result attempt(int i) { return i == 0 ? Result::Enum::Success : i == 1 ? Result::Enum::Ignorable : Result::Enum::Fail; }
+int main()
+{
+  bool a = false;
+  bool b = true;
+  bool c = true;
+  a = attempt(0);
+  b = attempt(2);
+  c = attempt(1);
+  Result::Enum e = Result::Enum::Fail;
+  e = attempt(1);
+  println("{} {} {} {}", int(a), int(b), int(c), int(e));
+  return 0;
+}

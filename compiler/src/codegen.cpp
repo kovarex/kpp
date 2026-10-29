@@ -10902,8 +10902,10 @@ namespace
         }
       }
       // `area += limit` with a Const<float> and no function for it: the scalar assignment below, on
-      // the right operand's conversion to a scalar.
-      bool scalarAssignment = isAssignment(op) && lt && lt->isKnown() && !isClass(lt) && isClass(rt) && global.scalarConversionOf(rt) &&
+      // the right operand's conversion to a scalar; `recipeCopied = setupForCrafting(...)`, an
+      // ActionResult converting to bool and to its Enum: the conversion to the left side's type.
+      bool scalarAssignment = isAssignment(op) && lt && lt->isKnown() && !isClass(lt) && isClass(rt) &&
+                              (global.scalarConversionOf(rt) || (op == P::Assign && conversionOperator(rt, lt, b))) &&
                               !global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction);
       if ((isClass(lt) || isClass(rt)) && !scalarAssignment)
       {
@@ -10969,9 +10971,12 @@ namespace
             return l;
           }
           if (rt0 && isClass(rt0) && classKey(rt0) != classKey(lt0) && !baseInstantiation(rt0, classDef(lt0->decl, b), b) &&
-              (conversionOperator(rt0, lt0, b) || findConstructor(lt0, {argumentType(b->rhs, b->rhs->ty, types)}, b)))
+              (conversionOperator(rt0, lt0, b) || findConstructor(lt0, {argumentType(b->rhs, b->rhs->ty, types)}, b) ||
+               global.converts(argumentType(b->rhs, b->rhs->ty, types), lt0)))
           {
-            // `view = string`: StringView's converting constructor makes the temporary to assign from.
+            // `view = string`: StringView's converting constructor makes the temporary to assign from;
+            // also one inherited with `using Base::Base;` (`states[i] = createPipelineStateObject(spec)`
+            // into a SpritePipelineState built from PipelineStateHandle's UniquePtr constructor).
             std::string tmp = convertedTemporary(lt0, b->rhs, b);
             assignObject(l.text, tmp, l.ty, b, true);
             return l;
@@ -11031,7 +11036,7 @@ namespace
         Value rhs = op == P::Assign && b->rhs->kind == NodeKind::BraceInitExpr ? braceScalar(static_cast<BraceInitExpr*>(b->rhs), t, b) // `mod->id.crc = {};`
                                                                                 : rvalue(b->rhs);
         if (scalarAssignment)
-          rhs = convert(rhs, global.scalarConversionOf(rhs.ty), b);
+          rhs = convert(rhs, global.scalarConversionOf(rhs.ty) ? global.scalarConversionOf(rhs.ty) : t, b);
         const BitfieldInfo* bits = nullptr;
         if (b->lhs->kind == NodeKind::MemberExpr)
           if (Decl* d = static_cast<MemberExpr*>(b->lhs)->resolved)
@@ -11303,11 +11308,16 @@ namespace
       // C++20: a class whose operator<=> is defaulted has a defaulted operator==(const T&) too, which
       // takes a value of another type through T's converting constructor (`alertType ==
       // AlertType::ALERTS_COUNT` beside AlertType's `operator<=>(const Enum&)`, which is no ==).
-      auto implicitEquality = [&]() -> std::optional<Value>
+      // classOnRight: `this->value != MAX_TICK`, the scalar on the left converted to the MapTick on
+      // the right (C++20's reversed candidate of the implicit ==).
+      auto implicitEquality = [&](bool classOnRight) -> std::optional<Value>
       {
-        if (!isClass(lt) || !b->rhs->ty || !b->rhs->ty->isKnown())
+        Expr* classSide = classOnRight ? b->rhs : b->lhs;
+        Expr* otherSide = classOnRight ? b->lhs : b->rhs;
+        const Ty* classSideTy = classOnRight ? rt : lt;
+        if (!isClass(classSideTy) || !otherSide->ty || !otherSide->ty->isKnown())
           return std::nullopt;
-        const Ty* cls = canonicalClass(types.unqualified(lt), b);
+        const Ty* cls = canonicalClass(types.unqualified(classSideTy), b);
         bool defaulted = false;
         for (Decl* m : classDef(cls->decl, b)->members)
           if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Default) && !static_cast<FunctionDecl*>(m)->name.empty() &&
@@ -11315,22 +11325,29 @@ namespace
             defaulted = true;
         if (!defaulted)
           return std::nullopt;
-        const Ty* other = withCurrentArgs(types.unqualified(types.stripRef(b->rhs->ty)));
-        Value l = rvalue(b->lhs);
-        std::string r;
-        if (isClass(other) && classKey(other) == classKey(cls))
-          r = rvalue(b->rhs).text;
-        else if (findConstructor(cls, {argumentType(b->rhs, b->rhs->ty, types)}, b))
+        const Ty* other = withCurrentArgs(types.unqualified(types.stripRef(otherSide->ty)));
+        bool sameClass = isClass(other) && classKey(other) == classKey(cls);
+        if (!sameClass && !findConstructor(cls, {argumentType(otherSide, otherSide->ty, types)}, b))
+          return std::nullopt;
+        auto otherValue = [&]() -> std::string
         {
-          r = newObjectSlot(cls, b);
-          Expr* one = b->rhs;
+          if (sameClass)
+            return rvalue(otherSide).text;
+          std::string r = newObjectSlot(cls, b);
+          Expr* one = otherSide;
           constructInto(r, cls, Span<Expr*>{&one, 1}, b);
           if (needsDestruction(cls, b))
             statementTemps.push_back({r, cls});
+          return r;
+        };
+        // The operands in the order they are written.
+        if (classOnRight)
+        {
+          std::string l = otherValue();
+          return objectsEqual(l, rvalue(classSide).text, cls, b);
         }
-        else
-          return std::nullopt;
-        return objectsEqual(l.text, r, cls, b);
+        Value l = rvalue(classSide);
+        return objectsEqual(l.text, otherValue(), cls, b);
       };
       switch (op)
       {
@@ -11342,7 +11359,9 @@ namespace
           if (!eq)
             eq = reversed();
           if (!eq)
-            eq = implicitEquality();
+            eq = implicitEquality(false);
+          if (!eq)
+            eq = implicitEquality(true);
           if (!eq)
             return std::nullopt;
           std::string r = newTemp();
@@ -11354,7 +11373,9 @@ namespace
             return orderCompare(P::EqEq);
           if (std::optional<Value> eq = reversed())
             return eq;
-          return implicitEquality();
+          if (std::optional<Value> eq = implicitEquality(false))
+            return eq;
+          return implicitEquality(true);
         case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
           if (std::optional<Value> ordered = orderCompare(op))
             return ordered;

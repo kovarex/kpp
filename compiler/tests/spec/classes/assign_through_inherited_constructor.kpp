@@ -1,0 +1,28 @@
+// spec: an object assigned from a value that a constructor inherited with `using Base::Base;` converts: the temporary is built by the inherited constructor, then moved in
+// factorio: PipelineStateManager's `this->spritePipelineStatesByBlendMode[mode] = this->graphics.createPipelineStateObject(spec);`, SpritePipelineState inheriting PipelineStateHandle's constructor from UniquePtr<PipelineStateObject>: "assigning an unrelated class" (six setup functions)
+class Object
+{
+public:
+  int value = 5;
+};
+class Handle
+{
+public:
+  Handle() = default;
+  implicit Handle(UniquePtr<Object>&& o) : object(::move(o)) {}
+  UniquePtr<Object> object;
+};
+class SpriteState : public Handle
+{
+public:
+  using Handle::Handle;
+  int get() const { return this->object ? this->object->value : -1; }
+};
+UniquePtr<Object> make() { return makeUnique<Object>(); }
+int main()
+{
+  Array<SpriteState, 2> states;
+  states[1] = make();
+  println("{} {}", states[0].get(), states[1].get());
+  return 0;
+}
