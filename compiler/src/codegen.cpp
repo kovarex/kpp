@@ -677,6 +677,18 @@ namespace
       {
         fail(at, "error: the layout of " + types.toString(key, &symbols) + ": " + what + " names '" + global.draftName(draft->decl) + "', which is not declared");
       };
+      // `Imm<strlen("x")>`: an argument the checker could not work out (a constant it could not
+      // evaluate) is no argument to lay out with; taken for 0, `char data[N]` was an empty array
+      // that writes ran past.
+      for (size_t i = 0; i < key->args.size(); ++i)
+        if (!key->args[i] || !key->args[i]->isKnown())
+        {
+          Span<Decl*> params = key->decl->templateParams;
+          auto* p = i < params.size() ? static_cast<TemplateParamDecl*>(params[i]) : nullptr;
+          std::string which = p && p->name != UINT32_MAX ? "the argument for " + sym(p->name) : "argument " + std::to_string(i + 1);
+          fail(at, "error: the layout of " + types.toString(key, &symbols) + ": " + which +
+                       (p && p->isType ? " is a type the compiler could not resolve" : " is a constant the compiler could not evaluate"));
+        }
       TemplateArgs args = global.classArgsOf(key);
       if (c->keyword == Kw::union_)
       {
@@ -809,6 +821,12 @@ namespace
           layoutError("the member " + memberName(m) + " has an unknown type");
         if (const Ty* draft = draftHeld(ft))
           undeclared("the member " + memberName(m), draft);
+        // `char data[N]` with N no constant the checker could evaluate has the length 0; only a C
+        // struct's last member may be such an array (`char data[];`, a flexible array member).
+        for (const Ty* a = types.unqualified(ft); a && a->kind == TyKind::Array; a = types.unqualified(a->inner))
+          if (a->count == 0 && !(c->file && c->file->isImported))
+            fail(at, "error: the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) +
+                         " is an array whose length is no constant the compiler could evaluate");
         // A lambda held by value (FunctionImpl<F>'s `F f`): its closure must be laid out, by the
         // function the lambda is written in, before a class can contain it.
         for (const Ty* held = types.unqualified(ft); held; held = held->kind == TyKind::Array ? types.unqualified(held->inner) : nullptr)
@@ -8945,6 +8963,12 @@ namespace
       }
       if (!t || !t->isKnown() || types.isDependent(t))
         unsupported(v, "a local of unknown type (" + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) + ")");
+      // `char buffer[N]` with N no constant the checker could evaluate has the length 0 (writes
+      // would run past it).
+      for (const Ty* a = types.unqualified(t); a && a->kind == TyKind::Array; a = types.unqualified(a->inner))
+        if (a->count == 0)
+          fail(v, "error: the local " + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) +
+                      " is an array whose length is no constant the compiler could evaluate");
       if ((v->flags & DF_Static) && !(v->flags & DF_Typedef))
       {
         staticLocal(v, t);

@@ -696,6 +696,27 @@ picks for `Optional<X>` targets (silent before: the assert needs T's layout). Ab
 other errors went, from functions whose first error is now the undeclared name. One tree (the
 converter output of master eac68d2), master's compiler against this one.
 
+**Unknown constant arguments in layouts (2026-10-29): 24,143 -> 27,742.** Another correction: a
+class template instance whose constant argument the checker could not evaluate was laid out with
+the argument as 0, so `char data[N]` was an empty array that every write ran past (and a member
+or local array whose length was no evaluable constant had length 0 the same way). Now each is an
+error (`the layout of Imm<<unknown>>: the argument for N is a constant the compiler could not
+evaluate`, `... is an array whose length is no constant the compiler could evaluate`): 4,314
+lines, nearly all from four gaps of the checker's constant evaluator, for the interpreter
+(design.md, "Compile-time evaluation"):
+- **A call of the library's max**, `ImmutableStringTemplate<::max(sizeof(SharedPtr<const String>)
+  + 1u, 2 * sizeof(const char*) - 1)>`, PropertyTree's KeyType: 3,366 lines (every function that
+  touches a PropertyTree). `::max(size_t(3), size_t(5))` alone does not evaluate.
+- **A scoped enumerator cast to an integer**, `RenderLayer::LayerType(RenderLayer::LAST)` (DrawQueue's
+  sprites, 605 lines), `size_t(TileRenderLayer::LAST)`, `size_t(AlertType::ALERTS_COUNT)`,
+  `size_t(TileRenderGroup::Last) + 1`: the arrays of the draw queues and the alert center, about
+  800 lines in all.
+- **A constexpr static member computed by those**, InputAction::inputActionCount (Bitset<?>, 91).
+- **A constexpr member function called on a constexpr array**,
+  `ChunkGeneratedStatus::generationTaskStates.size()` (28).
+About 740 lines of other errors went, from functions that now fail first at such a layout. One
+tree (the converter output of master b2e6053), master 9909b71's compiler against this one.
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in

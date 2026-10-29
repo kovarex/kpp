@@ -1,0 +1,33 @@
+// spec: a class template instance whose constant argument the compiler cannot evaluate is a compile error where its layout is needed, never a layout that takes the argument for 0; so is a member or local array whose length it cannot evaluate
+// found by the resolver thread: PropertyTree::KeyType (an ImmutableString<N> with N from a constexpr function) got a wrong size silently, and writing its characters wrote past the object
+// error: unknown_constant_argument_layout.kpp:29: error: the layout of Imm<<unknown>>: the argument for N is a constant the compiler could not evaluate (in @kpp.main)
+// error: unknown_constant_argument_layout.kpp:16: error: the layout of Plain: the member data (`char data[strlen("abc")]`) is an array whose length is no constant the compiler could evaluate (in @"plain()")
+// error: unknown_constant_argument_layout.kpp:22: error: the local buffer is an array whose length is no constant the compiler could evaluate (in @"local()")
+extern "C" size_t strlen(const char* text);
+template<size_t N>
+struct Imm
+{
+  char data[N];
+};
+using Named = Imm<strlen("fifteen letters")>;
+struct Plain { int count; char data[strlen("abc")]; };
+int plain()
+{
+  Plain p;
+  p.count = 1;
+  return p.count;
+}
+int local()
+{
+  char buffer[strlen("abc")];
+  buffer[0] = 'a';
+  return 1;
+}
+int main()
+{
+  println("{} {} {}", sizeof(Imm<4>), plain(), local());
+  Named a;
+  a.data[3] = 'x';
+  println("{}", sizeof(Named));
+  return 0;
+}
