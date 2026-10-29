@@ -6289,9 +6289,17 @@ namespace
       return findConversion(from, at, foundIn, [&](FunctionDecl* f, const TemplateArgs& args, const Ty* ret) -> int
       {
         bool exact = ret == types.unqualified(to) || (isClass(ret) && isClass(to) && classKey(ret) == classKey(to));
+        // A class derived from `to` is as good: its `to` part (SignalIDConnector's `operator
+        // SignalID()` where an IDWithQuality, SignalID's base, is wanted).
+        std::vector<std::pair<std::string, uint32_t>> path;
+        if (!exact && isClass(ret) && isClass(to) && !types.isDependent(ret) && basePath(ret, to, path, at))
+          exact = true;
         if (global.isExplicit(f, args) && to->kind != TyKind::Bool && (!explicitCast || !exact))
           return 0;
-        return exact ? 2 : isClass(ret) ? 0 : 1;
+        // (A scalar is no way to a class: from it a converting constructor would be a second
+        // user-defined conversion. Direction's `operator Enum()` is not how a Direction becomes a
+        // RealOrientation; RealOrientation's constructor from a Direction is.)
+        return exact ? 2 : isClass(ret) || isClass(to) ? 0 : 1;
       }, to, opArgs);
     }
 

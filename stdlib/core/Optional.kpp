@@ -158,6 +158,28 @@ struct Optional : OptionalValue<T>
     new (this->slot()) T(move(v));
     this->present = true;
   }
+  // From a value of another type a T is built from (std::optional's converting constructor),
+  // explicit when only an explicit constructor of T takes it:
+  // `Optional<ActionData::SetupBlueprintData>(*parameters)` from a SetupBlueprintParameters.
+  template<typename U = T>
+  explicit(!isConvertible<U, T>) Optional(U&& v)
+    requires(!isSame<RemoveCvRef<U>, T> && !isSame<RemoveCvRef<U>, InPlaceTag> && !isSame<RemoveCvRef<U>, NullOpt> &&
+             !IsOptional<RemoveCvRef<U>>::value && isConstructible<T, U>)
+  {
+    new (this->slot()) T(forward<U>(v));
+    this->present = true;
+  }
+  // From an Optional of another type whose value converts (std::optional's converting
+  // constructor), empty from empty: an Optional<const Territory*> from an Optional<Territory*>.
+  template<typename U> requires(!isSame<U, T> && isConvertible<const U&, T>)
+  implicit Optional(const Optional<U>& other)
+  {
+    if (other.hasValue())
+    {
+      new (this->slot()) T(*other.slot());
+      this->present = true;
+    }
+  }
   // The value built from the arguments, in place (std::optional's in_place_t constructor).
   template<typename... Args>
   explicit Optional(InPlaceTag, Args&&... args)

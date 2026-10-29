@@ -1,0 +1,31 @@
+// spec: a value of a class converts to another class through that class's converting constructor, also when the value's class has a conversion operator to a scalar (which would need a second user-defined conversion to reach the class)
+// found in the converted game: a Direction passed as a RealOrientation (13 calls) went through Direction's `operator Enum()` and failed on "a conversion from Enum to RealOrientation", where RealOrientation's `implicit RealOrientation(const Direction&)` is the conversion
+class RealOrientation;
+class Direction
+{
+public:
+  enum class Enum : uint8_t { North = 0, East = 4, South = 8, West = 12, None = 16 };
+  using enum Enum;
+  constexpr Direction() : value(uint8_t(Direction::None)) {}
+  implicit Direction(const RealOrientation& orientation) = delete;
+  implicit constexpr Direction(Enum value) : value(uint8_t(value)) {}
+  implicit operator Enum() const { return Enum(this->value); }
+  explicit operator bool() const { return this->value != uint8_t(Enum::None); }
+  uint8_t value;
+};
+class RealOrientation
+{
+public:
+  float orientation = 0;
+  constexpr RealOrientation() = default;
+  constexpr explicit RealOrientation(float o) : orientation(o) {}
+  implicit RealOrientation(const Direction& direction) : orientation(float(direction.value) / 16.0f) {}
+};
+float use(RealOrientation o) { return o.orientation; }
+struct Collector { Direction direction = Direction::East; Direction getDirection() const { return this->direction; } };
+int main()
+{
+  Collector c;
+  println("{} {}", use(c.direction), use(c.getDirection()));
+  return 0;
+}

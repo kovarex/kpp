@@ -1,0 +1,25 @@
+// spec: std::optional's converting constructors: an Optional from an Optional of another type whose value converts (empty from empty), and from a value of another type T is built from, explicit when only an explicit constructor of T takes it
+// found in the converted game: `const Optional<const Territory*> territoryOptional = territoryManager->getTerritoryForChunk(chunk);` (an Optional<Territory*>) in Chart and ChartRenderer, and `Optional<ActionData::SetupBlueprintData>(*parameters)` through SetupBlueprintData's explicit constructor from SetupBlueprintParameters (SelectUpgradePlannerGui, PlayerInputSource)
+struct Territory { int id = 5; };
+Territory t;
+Optional<Territory*> find(bool any) { if (any) return &t; return nullopt; }
+struct Parameters { int size = 3; };
+struct SetupData
+{
+  int size = 0;
+  SetupData() = default;
+  explicit SetupData(const Parameters& p) : size(p.size * 2) {}
+};
+int main()
+{
+  const Optional<const Territory*> some = find(true);
+  const Optional<const Territory*> none = find(false);
+  Optional<double> widened = Optional<float>(1.5f);
+  Parameters p;
+  const Parameters* parameters = &p;
+  Optional<SetupData> setup = parameters ? Optional<SetupData>(*parameters) : Optional<SetupData>();
+  Optional<String> text = "abc";
+  Optional<double> fromInt = 4;
+  println("{} {} {} {} {} {}", some.hasValue() ? (*some)->id : -1, none.hasValue(), *widened, setup->size, text->size(), *fromInt);
+  return 0;
+}

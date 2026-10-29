@@ -16,6 +16,11 @@ allocation).
 Members:
 - `Optional()`, `Optional(nullopt)`: empty. `Optional(const T& value)`, `Optional(T&& value)`:
   holds a copy of value, or value moved in.
+- `Optional(U&& value)` for a value of another type a T can be constructed from (not an Optional,
+  nullopt or inPlace): holds a T constructed from it; explicit when U does not convert to T
+  implicitly (std::optional's converting constructor).
+- `Optional(const Optional<U>& other)` for a U that converts to T: empty when other is, otherwise
+  holds a T constructed from other's value (`Optional<const T*>` from `Optional<T*>`).
 - `Optional(inPlace, args...)` (explicit): holds a T constructed from args in place (std::in_place).
 - `= nullopt`: empty; `= value` (copy or move): holds value.
 - `emplace(args...)`: destroys the value held, if any, then constructs T from args in place;

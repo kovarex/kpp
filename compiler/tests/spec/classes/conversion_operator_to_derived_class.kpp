@@ -1,0 +1,34 @@
+// spec: a conversion operator yielding a class derived from the one wanted serves through that class's base part: a SignalID compared with a SignalIDConnector, whose `operator SignalID()` gives the value IDWithQuality's defaulted operator== takes as its base
+// found in the converted game: `this->redSignal != this->getOwner().getPrototype()->defaultRedSignal` in eleven control behaviors ("a constructor of IDWithQuality taking 1 arguments")
+template<class T>
+class WithQuality
+{
+public:
+  int base = 0;
+  int quality = 1;
+  WithQuality() = default;
+  explicit WithQuality(int b) : base(b) {}
+  bool operator==(const WithQuality& other) const = default;
+};
+class Signal : public WithQuality<char>
+{
+public:
+  using super = WithQuality<char>;
+  using super::super;
+};
+class Connector
+{
+public:
+  int v = 7;
+  Connector() {}
+  Connector(const Connector&) = delete;
+  implicit operator Signal() const { return Signal(this->v); }
+};
+struct Prototype { Connector defaultSignal; };
+int main()
+{
+  Prototype p;
+  Signal same(7), other(8);
+  println("{} {} {}", same != p.defaultSignal, other != p.defaultSignal, same == p.defaultSignal);
+  return 0;
+}
