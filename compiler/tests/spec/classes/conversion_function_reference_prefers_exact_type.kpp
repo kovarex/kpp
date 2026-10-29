@@ -1,0 +1,37 @@
+// spec: binding a Base& to an object of a class that has both `operator Derived&()` and `operator Base&()` takes operator Base&() (an exact match), not operator Derived&() followed by a derived-to-base conversion; a Derived& takes operator Derived&()
+// factorio: the tests' RailBuilder converts to RailChainSignal& and to RailSignalBase&: TestRailSignalBaseControlBehavior's `RailSignalBase& railSignal2 = builder1.left(2).railSignal()...rightStation("A");`, whose last signal is a plain rail signal, took the RailChainSignal& one, whose release_assert stopped the test (2 failed checks)
+// pending: the conversion to Derived& is taken for the Base& too; owner: the templates thread (overload resolution)
+struct Base
+{
+  virtual ~Base() {}
+  int id = 1;
+};
+struct Derived : Base
+{
+  int extra = 2;
+};
+struct Builder
+{
+  Derived derived;
+  Base base;
+  int picked = 0;
+  operator Derived&()
+  {
+    this->picked = 1;
+    return this->derived;
+  }
+  operator Base&()
+  {
+    this->picked = 2;
+    return this->base;
+  }
+};
+int main()
+{
+  Builder first;
+  Base& asBase = first;
+  Builder second;
+  Derived& asDerived = second;
+  println("{} {} {}", first.picked, second.picked, &asBase == &first.base && &asDerived == &second.derived);
+  return 0;
+}
