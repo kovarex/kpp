@@ -533,7 +533,7 @@ namespace
   const std::map<std::string, std::string> knownMacros = {
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"VCALL", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
-    {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"},
+    {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"}, {"NULL", "nullptr"},
     {"DEV_TOOL_VARIABLE", ""}, {"BEGIN_SUPPRESS_CONVERSIONS", ""}, {"END_SUPPRESS_CONVERSIONS", ""}, {"BEGIN_FORCE_OPTIMIZE", ""},
     {"END_FORCE_OPTIMIZE", ""}, {"SUPPRESS_UBSAN", ""}, {"PADDING_WARNING", ""}, {"errno", "(*_errno())"},
     // SDL_stdinc.h's format for an Sint64, which SDLWindow concatenates with a literal (Windows').
@@ -1553,6 +1553,20 @@ namespace
       ++i;
       any = true;
     }
+  }
+
+  // Whether name is in capitals (letters, digits and underscores, a letter among them), as C's
+  // macros and Windows' typedefs are.
+  bool isAllCapsName(std::string_view name)
+  {
+    bool letter = false;
+    for (char c : name)
+    {
+      if (c >= 'a' && c <= 'z')
+        return false;
+      letter = letter || (c >= 'A' && c <= 'Z');
+    }
+    return letter && name.size() > 1;
   }
 
   // Whether text is a qualified name, `A::b` (`#define vkCreateInstance VulkanImpl::CreateInstanceWrapper`).
@@ -2786,6 +2800,43 @@ namespace
             counts.add("file-local aliases renamed");
             continue;
           }
+        if (t.is(P::LParen) && i + 4 < toks.size() && toks[i + 1].getKind() == TokenKind::Identifier && isAllCapsName(spelling(i + 1)) &&
+            toks[i + 2].is(P::RParen) && (toks[i + 3].is(P::Amp) || toks[i + 3].is(P::Star)) && toks[i + 4].getKind() == TokenKind::Identifier &&
+            !(i > 0 && (toks[i - 1].getKind() == TokenKind::Identifier || toks[i - 1].is(P::RParen) || toks[i - 1].is(P::RBracket) ||
+                        toks[i - 1].is(P::Greater))))
+        {
+          // `(LPWSTR)&msg`, a C type's cast of an address or a dereference: Kpp reads `(NAME) & x`
+          // without knowing that NAME is a type, as a binary `&`, so the operand is parenthesized,
+          // `(LPWSTR)(&msg)`, which is a cast. A name in capitals is taken for a C type (the
+          // Windows typedefs), as C++ code does not write `(CONSTANT) & x`.
+          uint32_t end = i + 4;
+          for (;;)
+          {
+            if (end + 2 < toks.size() && (toks[end + 1].is(P::Dot) || toks[end + 1].is(P::Arrow) || toks[end + 1].is(P::ColonColon)) &&
+                toks[end + 2].getKind() == TokenKind::Identifier)
+              end += 2;
+            else if (end + 1 < toks.size() && (toks[end + 1].is(P::LBracket) || toks[end + 1].is(P::LParen)))
+            {
+              int depth = 0;
+              uint32_t k = end + 1;
+              for (; k < toks.size(); ++k)
+              {
+                if (toks[k].is(P::LBracket) || toks[k].is(P::LParen))
+                  ++depth;
+                else if ((toks[k].is(P::RBracket) || toks[k].is(P::RParen)) && --depth == 0)
+                  break;
+              }
+              if (k == toks.size())
+                break;
+              end = k;
+            }
+            else
+              break;
+          }
+          insert(toks[i + 3].offset, "(");
+          insert(endOffset(end), ")");
+          counts.add("casts of an address parenthesized");
+        }
         // A string macro or a macro that is a qualified name is its text wherever it is used: macros
         // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
         // namespace), and only literals concatenate (`"\n" UTF8_BULLET " "`).
