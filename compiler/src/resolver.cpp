@@ -10622,6 +10622,18 @@ void GlobalScope::finishIndex()
   for (Scope* s : impl->scopesWithUsingEnums)
     impl->ensureUsingEnums(s, 0);
   impl->scopesWithUsingEnums.clear();
+  // `using namespace X;` in namespaces likewise: resolved lazily, a lookup on another thread while
+  // they were being resolved went on without them (a name found in one run and not the next).
+  std::vector<Scope*> withUsings;
+  for (Scope* s : seen)
+    if (s->kind == ScopeKind::Namespace && !s->usingDirectives.empty())
+      withUsings.push_back(s);
+  std::sort(withUsings.begin(), withUsings.end(), [](Scope* a, Scope* b)
+  {
+    return a->owner && b->owner ? Impl::declaredBefore(a->owner, b->owner) : !a->owner && b->owner;
+  });
+  for (Scope* s : withUsings)
+    impl->ensureUsing(s, 0);
 }
 
 std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
