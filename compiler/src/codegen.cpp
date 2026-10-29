@@ -7441,7 +7441,25 @@ namespace
       tmp.token = n->token;
       tmp.name = n->name;
       tmp.name.parts.count -= 1;
-      return global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
+      const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
+      if (!q || !q->isKnown() || types.isDependent(q))
+        if (const Ty* bound = boundParameter(tmp.name))
+          return bound;
+      return q;
+    }
+
+    // A template parameter written as a qualifier (`T::loadExplicit(input)` in a generic lambda
+    // `[&]<class T>(T) { ... }`): its argument in the instance being emitted, by name. The lambda's
+    // own parameters are in no scope that a re-typing from the enclosing function looks in.
+    const Ty* boundParameter(const QualifiedName& q)
+    {
+      if (!currentArgs || q.parts.size() != 1 || q.parts[0].hasTemplateArgs || q.parts[0].symbol == UINT32_MAX)
+        return nullptr;
+      for (const auto& [param, type] : currentArgs->pairs)
+        if (param && param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(param)->name == q.parts[0].symbol &&
+            type && type->isKnown() && !types.isDependent(type))
+          return type;
+      return nullptr;
     }
 
     // `Counted<int>::instances`: the instantiation a qualified static member belongs to (null for
@@ -8276,6 +8294,9 @@ namespace
             tmp.name = qualifier;
             TemplateArgs none;
             const Ty* q = global.typeOfAstIn(&tmp, typingContext(), currentArgs ? *currentArgs : none);
+            if (!q || !q->isKnown() || types.isDependent(q))
+              if (const Ty* bound = boundParameter(qualifier))
+                q = bound;
             // `T::computeHash(args...)` with T a class deriving from the template that declares it
             // (ComplexExpressionWithOperation<BasisNoise> from ComplexExpression<BasisNoise, 2, 6>):
             // the member of that base instance, with its arguments.
@@ -10957,10 +10978,13 @@ namespace
           }
           if (b->rhs->kind == NodeKind::BraceInitExpr)
           {
-            // `*this = {}` or `this->data = {a, b}`: construct a temporary of the LHS type from the brace args.
-            auto* bi = static_cast<BraceInitExpr*>(b->rhs);
+            // `*this = {}`, `this->data = {a, b}`, `mode = {Mode::MinLinear, Mode::MagLinear}`: a
+            // temporary of the left side's class, list-initialised as `T tmp = {...};` would be (an
+            // InitializerList constructor first), moved from, and destroyed at the statement's end.
             std::string tmp = newObjectSlot(lt0, b);
-            constructInto(tmp, lt0, bi->args, b);
+            initializeFrom(tmp, lt0, b->rhs, b);
+            if (needsDestruction(lt0, b))
+              statementTemps.push_back({tmp, lt0});
             assignObject(l.text, tmp, lt0, b, true);
             return l;
           }

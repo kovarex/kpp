@@ -1,0 +1,32 @@
+// spec: a generic lambda's own template parameter as the qualifier of a static member call, `[&]<class T>(T) { return T::loadExplicit(input); }`, names the class the call binds it to, whose member (its return type, its class arguments) is that instance's
+// factorio: SignalIDBase::loadExplicit and migrateToUnknownType, `applyOrThrow(type, [&]<class T>(T) { return SignalIDBase(T::loadExplicit(input)); })`: the code generator read T from the enclosing function, found nothing, and laid out ID<P, I> itself (its member index of unknown type)
+template<class P, class I = uint16_t>
+class ID
+{
+public:
+  explicit ID(I index) : index(index) {}
+  ID() = default;
+  using IndexType = I;
+  using PrototypeType = P;
+  static I loadIndex(int input) { return I(input); }
+  static ID loadExplicit(int input);
+  static ID unknown() { return ID(I(99)); }
+  IndexType index = 0;
+};
+template<class P, class I>
+ID<P, I> ID<P, I>::loadExplicit(int input)
+{
+  return ID<P, I>(ID<PrototypeType, IndexType>::loadIndex(input));
+}
+struct Item {};
+struct Fluid {};
+template<class F>
+int apply(bool fluid, F op) { return fluid ? op(ID<Fluid, uint32_t>()) : op(ID<Item, uint16_t>()); }
+int main()
+{
+  int input = 7;
+  int a = apply(false, [&]<class T>(T) { return int(T::loadExplicit(input).index); });
+  int b = apply(true, [&]<class T>(T) { return int(T::unknown().index) + int(sizeof(typename T::IndexType)); });
+  println("{} {}", a, b);
+  return 0;
+}

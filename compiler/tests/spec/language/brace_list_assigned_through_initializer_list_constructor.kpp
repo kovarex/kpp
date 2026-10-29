@@ -1,6 +1,5 @@
 // spec: a brace list assigned to an object of a class with an InitializerList constructor and only the implicit assignment operators, `mode = {Mode::MinLinear, Mode::MagLinear};`: the list builds a Mode through the InitializerList constructor, as `Mode c = {...};` does, which is then assigned
 // factorio: LoadingSplashScreen::renderWubeLogo's `samplingMode = {SamplingMode::MinLinear, SamplingMode::MagLinear};`, SamplingMode a BITFIELD class (Util/Container/BitField.hpp: `Name(std::initializer_list<Enum> values)`)
-// pending: the declaration converts, the assignment does not ("a constructor of Mode taking 2 arguments"); owner: codegen (the assignment's temporary built from the list)
 class Mode
 {
 public:
