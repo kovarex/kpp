@@ -1099,6 +1099,40 @@ before the constants it is made of (language/auto_global_from_later_global). `(H
 written `(HANDLE)(-1)` by the converter (a subtraction from HANDLE to Kpp, which codegen turned into
 IR clang rejected, losing a whole module at link time; language/c_style_cast_of_negative_number).
 
+### The libraries' C++ around C, and more of Windows (2026-10-29)
+
+What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
+the headers' C would be:
+
+- **WIC and WMI.** The sprite loader decodes with WIC (IWICStream, IWICBitmapDecoder,
+  IWICBitmapFrameDecode, IWICFormatConverter over IWICBitmapSource) and SystemUtil reads the RAM
+  modules through WMI (IWbemLocator, IWbemServices, IEnumWbemClassObject, IWbemClassObject):
+  generate_com.py generates them with the DirectX interfaces, kpp_directx.h imports wbemidl.h,
+  the converter imports it for `<Wbemidl.h>`, and link.cmd takes wbemuuid for their ids.
+  comdef.h's `_bstr_t` (and its `bstr_t`), which the WMI query passes, is
+  `overrides/added/src/Util/ComBstr.kpp`: a BSTR the object owns, from a wide or a narrow string.
+- **crc32fast** (`libraries/crc32fast`) is C++, so its crc32_fast, which Util/Crc calls, has a C
+  name in `native/crc32fast_c.cpp`, and `overrides/src/Util/Crc.kpp` defines crc32_fast on it.
+- **stb_dxt's internals.** DXTCompression.hpp includes stb_dxt's implementation as static functions
+  and calls them from its own SSE compressor (stb__InitDXT, stb__MatchColorsBlock, the stb__OMatch5
+  and stb__OMatch6 tables, ...). native/header_only.c builds stb_dxt and gives those it calls C
+  names (kpp_stb__*, the tables through pointers to them), `native/include/kpp_stb_dxt.h` declares
+  them, and the converter imports that header for `<stb_image/stb_dxt.h>` and writes the names.
+- **The UCRT's handlers.** CrashHandler installs set_terminate and _set_new_handler, which eh.h
+  and new.h (C++ headers) declare and ucrtbase exports under C's names:
+  `overrides/src/Util/CrashHandler.kpp` declares them. They reach what runs on the C runtime only:
+  Kpp's own uncaught exceptions print and abort (design.md 9) and its new does not call the new
+  handler, so for Kpp code neither runs.
+- **Smaller ones**, in the converter's tables: d3d11.h's C++-only inline D3D11CalcSubresource
+  (`mip + slice * mipLevels`), luaconf.h's LUA_NUMBER_FMT (a string the import makes no constant
+  of), WriteConsoleInput as WriteConsoleInputA. The game's class names the converter renames (Map,
+  Vector, Optional, Pair, RuntimeError) are no longer renamed where they are members reached through
+  `.` or methods called through `->`: ID3D11DeviceContext's Map was being called as GameMap.
+- **std::get of a template's type** on a variant (TextDrawSection's `std::get<IDType>(this->extraData)`
+  in followingTextForID<IDType>): no alternative is spelled IDType, so each union the converter
+  writes has generic `get<T>()`, `holds<T>()` and `getIf<T>()`, which find the alternative of type T
+  through `alternatives(U)` when the instance is made, and the converter writes the use with them.
+
 ### From emitted functions to an executable (2026-10-28, night)
 
 The first run of the full src past IR (`kppc --keep-going --exe`, e7d4669; timings in

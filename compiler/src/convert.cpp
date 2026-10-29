@@ -546,13 +546,22 @@ namespace
     {"EXCEPTION_ACCESS_VIOLATION", "((DWORD)0xC0000005L)"}, {"EXCEPTION_STACK_OVERFLOW", "((DWORD)0xC00000FDL)"},
     {"EXCEPTION_ILLEGAL_INSTRUCTION", "((DWORD)0xC000001DL)"}, {"E_NOT_VALID_STATE", "((HRESULT)0x8007139FL)"},
     {"INIT_ONCE_STATIC_INIT", "{}"}, {"CURLOPT_XFERINFODATA", "CURLOPT_PROGRESSDATA"},
+    // luaconf.h's number format, a string the import does not make a constant (StringUtil formats
+    // numbers as Lua writes them).
+    {"LUA_NUMBER_FMT", "\"%.14g\""},
     // guiddef.h's reference to an interface id, which C (and so the import and the COM classes,
     // native/generate_com.py) has as a pointer (GDIPlus's IStream::QueryInterface).
     {"REFIID", "const IID*"},
     // Windows' functions with an A and a W form, as the game's narrow build has them.
     {"LoadLibrary", "LoadLibraryA"}, {"GetModuleHandle", "GetModuleHandleA"}, {"GetModuleHandleEx", "GetModuleHandleExA"},
     {"MapVirtualKey", "MapVirtualKeyA"}, {"GetModuleFileName", "GetModuleFileNameA"}, {"GetFileAttributes", "GetFileAttributesA"},
-    {"GetEnvironmentVariable", "GetEnvironmentVariableA"},
+    {"GetEnvironmentVariable", "GetEnvironmentVariableA"}, {"WriteConsoleInput", "WriteConsoleInputA"},
+    // stb_dxt's static internals, which DXTCompression calls: native/header_only.c gives them C names
+    // (native/include/kpp_stb_dxt.h).
+    {"stb__InitDXT", "kpp_stb__InitDXT"}, {"stb__EvalColors", "kpp_stb__EvalColors"}, {"stb__DitherBlock", "kpp_stb__DitherBlock"},
+    {"stb__MatchColorsBlock", "kpp_stb__MatchColorsBlock"}, {"stb__OptimizeColorsBlock", "kpp_stb__OptimizeColorsBlock"},
+    {"stb__RefineBlock", "kpp_stb__RefineBlock"}, {"stb__CompressAlphaBlock", "kpp_stb__CompressAlphaBlock"},
+    {"stb__OMatch5", "kpp_stb__OMatch5"}, {"stb__OMatch6", "kpp_stb__OMatch6"},
     // tchar.h's names, as the narrow build has them (StackWalker).
     {"_tcscat_s", "strcat_s"},
     // psapi.h's functions, which kernel32 has under K32 names (PSAPI_VERSION 2).
@@ -622,7 +631,9 @@ namespace
     // wingdi.h has `(DWORD)(BYTE)(x)`, which Kpp asks to have written out).
     {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
     {"MAKELANGID", "((((WORD)($2)) << 10) | (WORD)($1))"}, {"FD_ISSET", "__WSAFDIsSet((SOCKET)($1), (fd_set*)($2))"},
-    {"ZeroMemory", "memset(($1), 0, ($2))"}};
+    {"ZeroMemory", "memset(($1), 0, ($2))"},
+    // d3d11.h's inline function, which it has only for C++ (the import's C has none).
+    {"D3D11CalcSubresource", "((UINT)($1) + (UINT)($2) * (UINT)($3))"}};
 
   // The preprocessor's #: the spelling with each run of whitespace one space, `"` and `\` escaped.
   std::string stringize(std::string_view spelling)
@@ -1639,6 +1650,8 @@ namespace
       uint32_t begin, end, calleeToken;
       std::vector<std::pair<uint32_t, uint32_t>> args; // the call's arguments, as offsets
       std::string typeSpelling;                        // T, normalized
+      uint32_t typeBegin = 0, typeEnd = 0;             // T, as offsets
+      bool noAlternative = false;                      // T is no variant's alternative (a template's parameter)
     };
     std::vector<VariantUse> variantUses;
     std::map<uint32_t, const VariantInfo*> callVariant; // a use's callee token -> the variant its argument is declared as
@@ -2353,13 +2366,13 @@ namespace
               cLibrary = true;
           static const std::set<std::string> directXHeaders = {"d3d11.h", "d3d11_1.h", "d3d11sdklayers.h", "dxgi.h", "dxgi1_2.h", "dxgi1_3.h",
                                                                "dxgi1_4.h", "dxgi1_5.h", "dxgi1_6.h", "d3dcommon.h", "d3d9.h", "d3dcompiler.h",
-                                                               "wincodec.h", "objidl.h"};
+                                                               "wincodec.h", "objidl.h", "wbemidl.h", "wbemcli.h"};
           std::string lowered = base;
           for (char& ch : lowered)
             ch = (char)tolower((unsigned char)ch);
           if (directXHeaders.count(lowered))
           {
-            // DirectX, DXGI, WIC and the COM headers: programs/factorio/native/include/kpp_directx.h,
+            // DirectX, DXGI, WIC, WMI and the COM headers: programs/factorio/native/include/kpp_directx.h,
             // which leaves out the C structs of the interfaces Kpp declares as classes
             // (overrides/added/src/Graphics/DX11/ComInterfaces.kpp, generate_com.py). Once per file.
             if (importedDirectX)
@@ -2408,7 +2421,8 @@ namespace
             // A C library that the game configures with #defines before its include imports through a
             // header of programs/factorio/native/include that gives the import the same configuration
             // (jc_voronoi in double precision, as Triangulation.cpp has it).
-            static const std::map<std::string, std::string> configuredImports = {{"jc_voronoi/jc_voronoi.h", "kpp_jc_voronoi.h"}};
+            static const std::map<std::string, std::string> configuredImports = {{"jc_voronoi/jc_voronoi.h", "kpp_jc_voronoi.h"},
+                                                                                 {"stb_image/stb_dxt.h", "kpp_stb_dxt.h"}};
             auto configured = configuredImports.find(header);
             std::string imported = configured != configuredImports.end() ? configured->second : cLibrary ? header : lowered;
             std::string imports = "extern \"C\" import \"" + imported + "\";";
@@ -2781,6 +2795,14 @@ namespace
       return range == ownMacroRanges.end() || (range->second.first <= offset && offset < range->second.second);
     }
 
+    // The name at token i is a member reached through `.`, or a method called through `->`
+    // (`immediateContext->Map(...)`, a COM method): not the game's class of that name, so none of the
+    // renames for those apply. (After `->` a name not called is a trailing return type, `-> Vector`.)
+    bool memberAccessAt(uint32_t i) const
+    {
+      return i > 0 && (toks[i - 1].is(P::Dot) || (toks[i - 1].is(P::Arrow) && i + 1 < toks.size() && toks[i + 1].is(P::LParen)));
+    }
+
     void convertTokens()
     {
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
@@ -2999,35 +3021,35 @@ namespace
           counts.add("__FILE__, __LINE__, __FUNCTION__ replaced");
           continue;
         }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Vector" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Vector" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
           // The game's own 2D `Vector` class is Vector2D in Kpp, where Vector is the library's std::vector.
           replace(t.offset, endOffset(i) - t.offset, "Vector2D");
           counts.add("Vector renamed to Vector2D");
           continue;
         }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Map" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Map" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
           // The game's `class Map` is GameMap in Kpp, where Map<K,V> is the library's std::map.
           replace(t.offset, endOffset(i) - t.offset, "GameMap");
           counts.add("Map renamed to GameMap");
           continue;
         }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Optional" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Optional" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
           // The game's sentinel-based `Optional<T, empty>` is GameOptional in Kpp, where Optional<T> is the library's std::optional.
           replace(t.offset, endOffset(i) - t.offset, "GameOptional");
           counts.add("Optional renamed to GameOptional");
           continue;
         }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Pair" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "Pair" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
           // The game's `Pair<K,V>` is GamePair in Kpp, where Pair<A,B> is the library's std::pair.
           replace(t.offset, endOffset(i) - t.offset, "GamePair");
           counts.add("Pair renamed to GamePair");
           continue;
         }
-        if (t.getKind() == TokenKind::Identifier && spelling(i) == "RuntimeError" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std"))
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "RuntimeError" && !(i >= 2 && toks[i - 1].is(P::ColonColon) && spelling(i - 2) == "std") && !memberAccessAt(i))
         {
           // The game's `class RuntimeError : public std::runtime_error` is GameRuntimeError in Kpp,
           // where RuntimeError is the library's std::runtime_error.
@@ -4251,11 +4273,14 @@ namespace
         if (close >= toks.size() || close == open + 1)
           return;
         use.typeSpelling = normalizedSpelling(text.substr(toks[open + 1].offset, endOffset(close - 1) - toks[open + 1].offset));
+        use.typeBegin = toks[open + 1].offset;
+        use.typeEnd = endOffset(close - 1);
         bool anyAlternative = false;
         for (const VariantInfo& v : variants->all)
           anyAlternative = anyAlternative || alternativeFor(v, use.typeSpelling);
-        if (!anyAlternative)
-          return;
+        // `std::get<IDType>(this->extraData)` in a template: no alternative is spelled IDType, and
+        // the union's generic accessors serve it once the argument's variant is known (run()).
+        use.noAlternative = !anyAlternative;
         open = close + 1;
       }
       if (open >= toks.size() || !toks[open].is(P::LParen))
@@ -5037,7 +5062,16 @@ namespace
                                  "  bool operator==(const Other& other) const\n" + indent + "  {\n" + indent + "    for constexpr (auto a : alternatives(" + u +
                                  "))\n" + indent + "      if (*this == a.tag)\n" + indent + "        return other == a.tag && (*this)[a] == other[a];\n" + indent +
                                  "    return false;\n" + indent + "  }\n";
-          std::string declaration = indent + "union enum " + u + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + equality + indent + "};";
+          // std::get<T>, std::holds_alternative<T> and std::get_if<T> for a T only an instantiation
+          // knows (a template's parameter): the alternative of type T, by the union's alternatives.
+          std::string loop = "for constexpr (auto a : alternatives(" + u + ")) if constexpr (isSame<a.type, T>) ";
+          std::string generic = indent + "  template<typename T>\n" + indent + "  T& get() { " + loop + "return (*this)[a]; }\n" + indent +
+                                "  template<typename T>\n" + indent + "  const T& get() const { " + loop + "return (*this)[a]; }\n" + indent +
+                                "  template<typename T>\n" + indent + "  bool holds() const { " + loop + "return *this == a.tag; return false; }\n" + indent +
+                                "  template<typename T>\n" + indent + "  T* getIf() { " + loop + "return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }\n" +
+                                indent + "  template<typename T>\n" + indent + "  const T* getIf() const { " + loop +
+                                "return *this == a.tag ? &(*this)[a] : nullptr; return nullptr; }\n";
+          std::string declaration = indent + "union enum " + u + "\n" + indent + "{\n" + indent + "  { " + list + " }\n" + equality + generic + indent + "};";
           if (v.member)
           {
             edits.push_back({v.memberStart, 0, declaration + "\n"});
@@ -5050,6 +5084,22 @@ namespace
         {
           auto known = callVariant.find(use.calleeToken);
           const VariantInfo* info = known != callVariant.end() ? known->second : nullptr;
+          if (use.noAlternative)
+          {
+            // T is no alternative's spelling: through the union's generic accessors, when the
+            // argument is known to be one of the converted variants; left as written otherwise
+            // (std::get<T> of something else).
+            if (!info || use.args.empty() || use.typeSpelling.empty() || isdigit((unsigned char)use.typeSpelling[0]))
+              continue;
+            std::string arg = applyEdits(edits, use.args[0].first, use.args[0].second);
+            std::string type = applyEdits(edits, use.typeBegin, use.typeEnd);
+            std::string replacement = use.kind == "get"                 ? "(" + arg + ").template get<" + type + ">()"
+                                    : use.kind == "holds_alternative" ? "(" + arg + ").template holds<" + type + ">()"
+                                                                      : "((" + arg + ") ? (" + arg + ")->template getIf<" + type + ">() : nullptr)";
+            edits.push_back({use.begin, use.end - use.begin, replacement});
+            counts.add("std::" + use.kind + " of a template's type on a union enum");
+            continue;
+          }
           if (!info && use.kind != "visit")
             for (const VariantInfo& v : variants->all)
               if (alternativeFor(v, use.typeSpelling))
