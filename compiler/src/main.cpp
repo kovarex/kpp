@@ -830,8 +830,12 @@ namespace
         if (shown++ >= options.showErrors)
           break;
         const Token& t = lexed[i].tokens[std::min<size_t>(d.token, lexed[i].tokens.size() - 1)];
-        report("  %s:%u: %s (at '%.*s')\n", files[i].path.string().c_str(), lineOf(files[i].text, t.offset), d.message,
-               int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
+        if (quietOutput) // --quiet hides the statistics, not the program's errors
+          fprintf(stderr, "%s:%u: error: %s (at '%.*s')\n", files[i].path.string().c_str(), lineOf(files[i].text, t.offset), d.message,
+                  int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
+        else
+          report("  %s:%u: %s (at '%.*s')\n", files[i].path.string().c_str(), lineOf(files[i].text, t.offset), d.message,
+                 int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
       }
     runResolve(parsed, symbols, options, files, lexed);
   }

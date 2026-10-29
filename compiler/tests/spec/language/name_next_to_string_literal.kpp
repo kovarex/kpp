@@ -1,0 +1,11 @@
+// spec: only string literals concatenate (`"a" "b" "c"`); a name next to a literal (`"x" BULLET "y"` with BULLET a string constant, C's macro pasting) is an error, not a literal that silently drops the name's text
+// factorio: ModManager's `output += "\n" UTF8_BULLET " " + modName;`, ElectricPolePrototype's `ssprintf("%.f" UTF8_TIMES "%.f", ...)`: macros the converter now expands
+// error: a name next to a string literal (only string literals concatenate)
+static const char* const BULLET = "*";
+int main()
+{
+  const char* joined = "a" "b" "c";
+  const char* wrong = "x" BULLET "y";
+  println("{} {}", joined, wrong);
+  return 0;
+}

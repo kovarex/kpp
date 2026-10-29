@@ -4410,7 +4410,13 @@ namespace
           l->literalKind = TokenKind::String;
           l->keyword = Kw::Count;
           while (at(TokenKind::String) || (atMacroName() && !at(P::LParen, 1) && !at(P::ColonColon, 1)))
+          {
+            // Only literals concatenate: `"a" NAME "b"` with NAME a string constant is C's macro
+            // pasting, whose pieces the literal would lose.
+            if (!at(TokenKind::String))
+              error("a name next to a string literal (only string literals concatenate)");
             advance();
+          }
           return l;
         }
         case TokenKind::Keyword:
@@ -4537,6 +4543,7 @@ namespace
       }
       if (at(TokenKind::String) && n->name.parts.size() == 1 && isAllCaps(spelling(toks[start])))
       {
+        error("a name next to a string literal (only string literals concatenate)"); // `NAME "b"`, as above
         LiteralExpr* l = node<LiteralExpr>(start);
         l->literalKind = TokenKind::String;
         l->keyword = Kw::Count;
