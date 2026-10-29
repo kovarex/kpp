@@ -1,0 +1,54 @@
+// spec: a reference bound to what an overloaded operator* or operator[] returns by value (a pointer, an int: a prvalue) binds a temporary holding that value, as a call's `const K&` argument (Map's operator[] given `*targeter`) and as a local `const T&`; a returned reference still names the object itself
+// factorio: TrainManager::setup's `this->railPlaceMap[*connection.rail].add(railSignal)`: Targeter's operator* returns the rail by value and Map::operator[](const K&) was passed that pointer as the key's address, so every signal went to one bogus entry, no rail segment ended at a signal, and loading the train-junction menu map failed ("found rail (straight-rail on {-227, 305}) already connected to segment 3372")
+struct Target
+{
+  int id = 0;
+};
+struct Base
+{
+  virtual ~Base() {}
+  Target* target = nullptr;
+  Target* operator*() const { return this->target; }
+};
+template<typename T>
+struct Holder : Base
+{
+  T* operator*() const { return static_cast<T*>(this->target); }
+};
+struct Plain
+{
+  Target* target;
+  Target* operator*() const { return this->target; }
+};
+struct Tens
+{
+  int values[4] = {0, 0, 0, 0};
+  int operator[](int i) const { return i * 10; }
+  int& operator*() { return this->values[1]; }
+};
+bool same(Target* const& key, Target* expected)
+{
+  return key == expected;
+}
+int twice(const int& x)
+{
+  return x * 2;
+}
+int main()
+{
+  Target a;
+  Holder<Target> h;
+  h.target = &a;
+  Plain p{&a};
+  Map<Target*, int, Less<>> map;
+  map[*h] = 5;
+  map[*p] += 1;
+  Tens tens;
+  const int& local = tens[4];
+  Target* const& viaLocal = *h;
+  int& named = *tens;
+  named = 7;
+  println("{} {} {} {}", same(*h, &a), same(*p, &a), int(map.size()), map.find(&a) != map.end() ? map.find(&a)->second : -1);
+  println("{} {} {} {}", twice(tens[3]), local, viaLocal == &a, tens.values[1]);
+  return 0;
+}

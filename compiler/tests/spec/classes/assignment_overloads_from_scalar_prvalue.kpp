@@ -1,6 +1,5 @@
 // spec: an assignment from a scalar prvalue picks `operator=(char&&)` over `operator=(const char&)` and binds a temporary of the value to it: from a function's result, from a dereferenced iterator's char, and in a function template (std::copy's `*out = *first`); an lvalue takes the `const char&` one
 // factorio: the tests' ForkLogic.cpp `std::copy(std::istreambuf_iterator<char>(in), {}, std::back_inserter(buffer))`: copy's `*out = *first` assigns the iterator's char to BackInsertIterator<String>, whose operator=(value_type&&) was passed the char's value where its address belongs; clang rejects that module, which fails the whole build (blocks making IstreambufIterator a template as std's is)
-// pending: the call passes the value, not a temporary's address, and clang rejects the IR (`'%t0' defined with type 'i8' but expected 'ptr'`); a lone operator=(char&&) and member functions with both overloads are right; owner: the codegen thread
 struct Sink
 {
   int got = 0;

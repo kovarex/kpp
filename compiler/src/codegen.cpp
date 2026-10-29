@@ -8009,6 +8009,19 @@ namespace
       return op == P::LBracket ? "operator[]" : op == P::LParen ? "operator()" : "operator" + std::string(punctuatorSpelling(op));
     }
 
+    // The address of the object a call's result names: a returned reference's referent, a class
+    // result's object (its slot), and a scalar returned by value (a prvalue) in a temporary of its
+    // own. Never the scalar itself: Targeter's `T* operator*() const` bound to Map's
+    // `operator[](const K&)` passed the rail pointer as the key's address.
+    std::string resultAddress(const Value& v, Node* at)
+    {
+      if (isClass(v.ty) || isLambda(v.ty) || (v.ty && v.ty->isReference()))
+        return v.text;
+      std::string slot = newObjectSlot(v.ty, at);
+      fn += "  store " + llType(v.ty, at) + " " + v.text + ", ptr " + slot + "\n";
+      return slot;
+    }
+
     std::string lvalue(Expr* e)
     {
       if (++recursionDepth > 128)
@@ -8110,8 +8123,7 @@ namespace
               if (!findMemberFunction(p.ty, operatorName(P::Star), {}, p.ty, e, &foundIn, true))
                 if (std::optional<Value> pointer = toPointer(p, e))
                   return pointer->text;
-              Value v = operatorCall(p, operatorName(P::Star), {}, e, true);
-              return v.text;
+              return resultAddress(operatorCall(p, operatorName(P::Star), {}, e, true), e);
             }
             if (p.ty->kind != TyKind::Pointer)
               unsupported(e, "* on something that is not a pointer");
@@ -8133,10 +8145,7 @@ namespace
           if (ClassDecl* c = typedUnionOf(base.ty, e))
             return alternativeLvalue(c, base, i, e, true); // p[Integer]: the alternative, if held
           if (isClass(base.ty))
-          {
-            Value v = operatorCall(base, operatorName(P::LBracket), i->args, e, true);
-            return v.text;
-          }
+            return resultAddress(operatorCall(base, operatorName(P::LBracket), i->args, e, true), e);
           Value index = convert(rvalue(i->args[0]), types.intType(64), e);
           if (base.ty->kind != TyKind::Pointer)
             unsupported(e, "indexing a non-pointer");
@@ -8180,15 +8189,7 @@ namespace
           }
           break;
         }
-        case NodeKind::CallExpr:
-        {
-          Value v = callValue(static_cast<CallExpr*>(e), "");
-          if (isClass(v.ty) || (v.ty && v.ty->isReference()))
-            return v.text;
-          std::string slot = newObjectSlot(v.ty, e);
-          fn += "  store " + llType(v.ty, e) + " " + v.text + ", ptr " + slot + "\n";
-          return slot;
-        }
+        case NodeKind::CallExpr: return resultAddress(callValue(static_cast<CallExpr*>(e), ""), e);
         case NodeKind::ConditionalExpr:
         {
           auto* c = static_cast<ConditionalExpr*>(e);
