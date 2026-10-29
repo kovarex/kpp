@@ -4798,6 +4798,17 @@ namespace
       return currentFile->text.substr(t.offset, t.length);
     }
 
+    // A literal's own file (the parser's): a default argument, a default member initializer or an
+    // instance's body is emitted while another file is the current one.
+    ParsedFile* literalFile(const LiteralExpr* l) const { return l->file && l->file->tokens ? l->file : currentFile; }
+    std::string_view literalSpelling(const LiteralExpr* l, uint32_t token) const
+    {
+      const ParsedFile* f = literalFile(l);
+      const std::vector<Token>& toks = *f->tokens;
+      const Token& t = toks[std::min<size_t>(token, toks.size() - 1)];
+      return f->text.substr(t.offset, t.length);
+    }
+
     // `(Name)` where Name is a type: a C-style cast the parser could not tell from a parenthesis.
     bool isParenthesizedTypeName(Expr* e)
     {
@@ -4950,8 +4961,7 @@ namespace
       {
         auto* l = static_cast<LiteralExpr*>(e);
         if (l->literalKind == TokenKind::Number || l->literalKind == TokenKind::Char)
-          if (!l->file || l->file == currentFile) // a literal of another file (a default argument's): the evaluator reads its own file's tokens
-            return foldArith().literal(l->literalKind, spelling(l->token));
+          return foldArith().literal(l->literalKind, literalSpelling(l, l->token)); // from its own file's tokens
       }
       TemplateArgs none;
       bool layoutFailed = false;
@@ -5047,10 +5057,10 @@ namespace
     std::string stringConstant(LiteralExpr* l)
     {
       std::string bytes;
-      const std::vector<Token>& toks = *currentFile->tokens;
+      const std::vector<Token>& toks = *literalFile(l)->tokens;
       for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
-        bytes += decodeString(spelling(uint32_t(i)));
-      std::string_view first = spelling(l->token);
+        bytes += decodeString(literalSpelling(l, uint32_t(i)));
+      std::string_view first = literalSpelling(l, l->token);
       bool wide16 = first.starts_with("L") || (first.starts_with("u") && !first.starts_with("u8"));
       bool wide32 = first.starts_with("U");
       if (wide16 || wide32)
@@ -5063,10 +5073,10 @@ namespace
     size_t stringLiteralUnits(LiteralExpr* l, uint32_t& unitBytes)
     {
       std::string bytes;
-      const std::vector<Token>& toks = *currentFile->tokens;
+      const std::vector<Token>& toks = *literalFile(l)->tokens;
       for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
-        bytes += decodeString(spelling(uint32_t(i)));
-      std::string_view first = spelling(l->token);
+        bytes += decodeString(literalSpelling(l, uint32_t(i)));
+      std::string_view first = literalSpelling(l, l->token);
       bool wide16 = first.starts_with("L") || (first.starts_with("u") && !first.starts_with("u8"));
       unitBytes = wide16 ? 2 : first.starts_with("U") ? 4 : 1;
       if (unitBytes == 1)
@@ -7770,13 +7780,13 @@ namespace
             return {l->keyword == Kw::nullptr_ ? "null" : l->keyword == Kw::true_ ? "true" : "false", t};
           if (l->literalKind == TokenKind::Char)
           {
-            std::string s = decodeString(spelling(l->token));
+            std::string s = decodeString(literalSpelling(l, l->token));
             return {std::to_string(s.empty() ? 0 : (unsigned char)s[0]), t};
           }
           if (t->kind == TyKind::Float)
           {
             std::string digits;
-            for (char c : spelling(l->token))
+            for (char c : literalSpelling(l, l->token))
               if (c != '\'' && c != 'f' && c != 'F' && c != 'l' && c != 'L')
                 digits += c;
             double d = strtod(digits.c_str(), nullptr);
