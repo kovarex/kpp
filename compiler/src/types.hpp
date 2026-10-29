@@ -92,6 +92,9 @@ public:
   // pack of each element's type (a class the list initializes takes them one by one), or null
   // when one is not known.
   const Ty* braceList(Decl* initializerList, const Ty* element, Span<const Ty*> elements = {});
+  // `{}`: a brace list known to have no elements (an empty pack of them, its element type unknown:
+  // it deduces nothing).
+  const Ty* emptyBraceList(Decl* initializerList);
   // args: for an enum declared in a class template, the enclosing instance's arguments
   // (`Flag<A>::Enum` is not `Flag<B>::Enum`); none otherwise.
   const Ty* enumType(Decl* decl, Span<const Ty*> args = {});

@@ -1,6 +1,5 @@
-// spec: `{}` among a brace list's elements is an element value-initialized: `Vector<Mapping>({ {}, {}, {f, d} })` takes the InitializerList constructor with three elements, not Vector(int); and `{}` as an argument ranks as value-initialization, the identity for a scalar and the default constructor for a class (`pick({})` takes pick(int) over pick(const String&))
-// found in tests/gui/TestUpgradeItemGui (`UpgradeData::Mappings({ {}, {}, {updatedEntityFilter, updatedEntityDestination} })`)
-// pending: a list whose first element is `{}` presents no type, Vector(int) ties with the InitializerList constructor and is taken (`a brace list of 3 values as a value of int32`)
+// spec: `{}` among a brace list's elements is an element value-initialized: `Vector<Mapping>({ {}, {}, {f, d} })` takes the InitializerList constructor with three elements, not Vector(int); and `{}` as an argument ranks as value-initialization, the identity for a scalar and the default constructor for a class (`pick({})` takes pick(int) over pick(const String&)), a class's inherited default constructor included (`Pair<Vector2D, Vector2D> clamp = { {}, {} }`)
+// found in tests/gui/TestUpgradeItemGui (`UpgradeData::Mappings({ {}, {}, {updatedEntityFilter, updatedEntityDestination} })`); src/Util/AsteroidNavMesh (DirtyVertexRefreshSchedulerData's `Pair<Vector2D, Vector2D> optionalClamp = { {}, {} }`)
 struct Filter { int id = 0; };
 struct Destination { int id = 0; };
 struct Mapping
@@ -10,6 +9,18 @@ struct Mapping
   Filter source;
   Destination destination;
 };
+struct Vector2
+{
+  double x = 0, y = 0;
+  Vector2() = default;
+  Vector2(double x, double y) : x(x), y(y) {}
+};
+struct Vector2D : Vector2
+{
+  using Vector2::Vector2;
+  Vector2D(int both) : Vector2(both, both) {}
+};
+int clampOf(Pair<Vector2D, Vector2D> clamp = { {}, {} }) { return int(clamp.first.x + clamp.second.y); }
 int pick(const String&) { return 2; }
 int pick(int) { return 1; }
 int main()
@@ -17,6 +28,6 @@ int main()
   Filter f{5};
   Destination d{6};
   Vector<Mapping> mappings({ {}, {}, {f, d} });
-  println("{} {} {} {}", int(mappings.size()), mappings[0].source.id, mappings[2].destination.id, pick({}));
+  println("{} {} {} {} {} {}", int(mappings.size()), mappings[0].source.id, mappings[2].destination.id, pick({}), clampOf(), clampOf({{1.0, 2.0}, {3}}));
   return 0;
 }

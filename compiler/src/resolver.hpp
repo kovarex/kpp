@@ -95,7 +95,7 @@ inline const Ty* argumentType(const Expr* e, const Ty* t, TypeTable& types)
 
 // The type a brace list `{a, b, c}` presents to overload resolution: the brace list type
 // (TypeTable::braceList) of the first element's type, the first of a pack's for `{args...}` (null
-// when the elements are untyped or there is no such class). Only for ranking and deduction: the
+// when the elements are untyped or there is no such class); for `{}`, the empty brace list. Only for ranking and deduction: the
 // expression itself stays untyped, since a brace list also initialises aggregates and calls
 // constructors. Each element initialises one of the list's from what it is, so when every
 // element is an lvalue the element type is an lvalue reference: a converting constructor taking
@@ -105,7 +105,9 @@ inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& 
   if (!e || e->kind != NodeKind::BraceInitExpr || !initializerList)
     return nullptr;
   auto* b = static_cast<const BraceInitExpr*>(e);
-  if (b->args.empty() || !b->args[0])
+  if (b->args.empty())
+    return types.emptyBraceList(initializerList);
+  if (!b->args[0])
     return nullptr;
   // (A nested list, `{{a, b}}`, is a brace list itself.)
   const Ty* first = b->args[0]->kind == NodeKind::BraceInitExpr ? braceListType(b->args[0], initializerList, types) : b->args[0]->ty;

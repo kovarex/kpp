@@ -11744,7 +11744,11 @@ struct GlobalScope::Impl
         continue;
       constructors = true;
       auto* f = static_cast<FunctionDecl*>(m);
-      if ((f->flags & DF_Delete) || f->params.empty())
+      if (f->flags & DF_Delete)
+        continue;
+      if (elems.empty() && takesArgumentCount(f, 0))
+        return 4; // `{}`: value-initialized by the default constructor (C++ [dcl.init.list] 3.5)
+      if (f->params.empty())
         continue;
       // An InitializerList constructor takes the whole list; another, the elements as arguments.
       const Ty* first = declaredTypeOf(f->params[0], &s, 0);
@@ -11773,7 +11777,11 @@ struct GlobalScope::Impl
         if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
           continue;
         auto* f = static_cast<FunctionDecl*>(m);
-        if ((f->flags & DF_Delete) || f->params.empty())
+        if (f->flags & DF_Delete)
+          continue;
+        if (elems.empty() && takesArgumentCount(f, 0))
+          return 4; // `{}` for a Vector2D: value-initialized by Vector2's default constructor, which it inherits
+        if (f->params.empty())
           continue;
         const Ty* first = declaredTypeOf(f->params[0], &bs, 0);
         if (f->params.size() == 1 && first && types.unqualified(types.stripRef(first)) == bt)

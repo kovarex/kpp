@@ -245,6 +245,17 @@ const Ty* TypeTable::braceList(Decl* initializerList, const Ty* element, Span<co
   return intern(t);
 }
 
+const Ty* TypeTable::emptyBraceList(Decl* initializerList)
+{
+  Ty t{TyKind::Class};
+  t.decl = initializerList;
+  const Ty* element = unknown_;
+  t.args = Span<const Ty*>{&element, 1};
+  t.count = 1;
+  t.inner = pack({});
+  return intern(t);
+}
+
 const Ty* TypeTable::enumType(Decl* decl, Span<const Ty*> args)
 {
   Ty t{TyKind::Enum};
