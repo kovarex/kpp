@@ -23,4 +23,10 @@ void kppStbirFree(void* pointer, void* context);
 #define STB_RECT_PACK_IMPLEMENTATION
 #include <imgui/stb_rect_pack.h>
 
+// stb_image_write.h declares stbi_write_png_compression_level with a plain `extern`, so the game's
+// stb.lib, where stb_image.cpp compiles stb_image_write as C++, defines the variable under C++'s
+// name; the converted MemoryBitmap, through the C import of the header, uses C's. The linker
+// takes the one for the other (it is the same variable: the writer reads what the game sets).
+#pragma comment(linker, "/alternatename:stbi_write_png_compression_level=?stbi_write_png_compression_level@@3HA")
+
 // Triangulation.cpp's jc_voronoi is in jc_voronoi.cpp: the game's copy uses std::floor and std::ceil.
