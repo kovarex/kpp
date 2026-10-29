@@ -44,6 +44,9 @@ public:
 
 // overridesDir replaces the generated one: the hand-written conversion of what the tool cannot
 // do. `configuration` is the one the front end lexed the inputs with. Returns the conversion report.
+// libraryDir is the standard library's directory: a source file's static function named as one of
+// its free functions gets another name (Kpp's top-level names are the program's and the library's).
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
-                         const std::filesystem::path& overridesDir = {}, const SourceConfiguration* configuration = nullptr);
+                         const std::filesystem::path& overridesDir = {}, const SourceConfiguration* configuration = nullptr,
+                         const std::filesystem::path& libraryDir = {});

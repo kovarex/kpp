@@ -63,6 +63,32 @@ namespace
 
   bool isIdentChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
 
+  // Whether text leaves a block comment open: a `/*` without its `*/`, outside literals and line
+  // comments.
+  bool opensBlockComment(std::string_view text)
+  {
+    for (size_t i = 0; i < text.size(); ++i)
+    {
+      if (text[i] == '"' || text[i] == '\'')
+      {
+        char quote = text[i];
+        for (++i; i < text.size() && text[i] != quote && text[i] != '\n'; ++i)
+          if (text[i] == '\\')
+            ++i;
+      }
+      else if (text.compare(i, 2, "//") == 0)
+        return false;
+      else if (text.compare(i, 2, "/*") == 0)
+      {
+        size_t close = text.find("*/", i + 2);
+        if (close == std::string_view::npos)
+          return true;
+        i = close + 1;
+      }
+    }
+    return false;
+  }
+
   // --- the preprocessor configuration ---
 
   // The build the converter preprocesses the game as: Factorio's FastDebug configuration for
@@ -86,6 +112,13 @@ namespace
     {"NOMINMAX", ""}, {"BUILDING_WARNLESS_C", ""}, {"CURL_STATICLIB", ""}, {"SDL_MAIN_HANDLED", ""}, {"SDL_SENSOR_DISABLED", ""},
     // the lua project's .librarySpecificDefines (.luaConfig); only Lua's own files test it
     {"LUA_COMPAT_ALL", ""},
+    // what each of Lua's core and library files defines before its includes (lapi.c's `#define
+    // LUA_CORE`, lauxlib.c's `#define LUA_LIB`), together: luaconf.h's sections they open only
+    // define (luai_numeq, luai_writestring); only Lua's own files test them
+    {"LUA_CORE", ""}, {"LUA_LIB", ""},
+    // and the names of the files that luaconf.h and llimits.h define a macro for (lobject.c's and
+    // lvm.c's luai_nummod, ltable.c's luai_hashnum), only expanded there
+    {"lobject_c", ""}, {"lvm_c", ""}, {"ltable_c", ""},
     // MSVC for x64, C++ with the standard library (<optional> defines __cpp_lib_optional)
     {"_WIN32", "1"}, {"_WIN64", "1"}, {"_MSC_VER", "1944"}, {"_M_X64", "100"}, {"_M_AMD64", "100"}, {"__cplusplus", "199711L"},
     {"__cpp_lib_optional", "202110L"},
@@ -120,6 +153,9 @@ namespace
   // The headers a library's build force-includes (fbuild.bff: Lua's `/FI"override_printf.h"`), by
   // the library's directory name: its files see them before their own includes.
   const std::map<std::string, std::string> forcedIncludes = {{"Lua", "override_printf.h"}};
+  // The C libraries a library keeps calling, by the library's directory name (FileConverter's
+  // keptCLibraries): Lua formats through trio, as its C++ build does.
+  const std::map<std::string, std::set<std::string>> keptCLibraries = {{"Lua", {"trio"}}};
   // The standard headers `__has_include(<...>)` finds: the ones the game asks about, all in MSVC's
   // library (the experimental one is deprecated there, still present).
   const std::set<std::string> availableHeaders = {"filesystem", "experimental/filesystem", "optional", "variant", "string_view"};
@@ -2176,6 +2212,10 @@ namespace
     std::vector<const std::map<std::string, std::pair<std::vector<std::string>, std::string>>*> includedMacros;
     // The includes of this file that name a converted file beside it (siblingIncludes): removed.
     const std::set<std::string>* siblingIncludes = nullptr;
+    // The C libraries this file's library keeps calling, by include path prefix, imported where it
+    // includes them (Lua's override_printf.h includes trio.h; the game's own calls of trio are the
+    // C runtime's, and its includes of trio.h go).
+    const std::set<std::string>* keptCLibraries = nullptr;
     // The object-like macros of this file and the headers it reaches that are written out at their
     // uses: those whose body is string literals (UTF8_BULLET; constants in the conversion) where
     // C++ concatenates them with a literal (`"\n" UTF8_BULLET " "`, since only literals concatenate),
@@ -2479,8 +2519,25 @@ namespace
         counts.add("macros naming themselves");
         return "// macro naming itself: " + line;
       }
-      if (!functionLike && !isStringLiterals(body) && objectMacros.count(name) && isStringLiterals(objectMacros.at(name)))
-        body = objectMacros.at(name); // made of string macros (lua.h's LUA_RELEASE): their literals
+      if (const LocalMacro* aliased = functionLike || body == name ? nullptr : localMacroAt(body, offset))
+      {
+        // Another name for a function-like macro (lobject.h's `#define setobj2s setobj`): that macro
+        // under this name, expanded at its uses as the preprocessor expands it (a constant of it
+        // would name no value).
+        LocalMacro m = *aliased;
+        endLocalMacro(name, offset);
+        m.from = offset;
+        m.to = UINT32_MAX;
+        localMacros[name].push_back(m);
+        counts.add("local function-like macro");
+        return "";
+      }
+      // Made of string macros (lua.h's LUA_RELEASE): their literals; another name for a macro
+      // written out at its uses (luaconf.h's `#define LUALIB_API LUA_API`, LUA_API being `extern
+      // "C"`): its text.
+      if (!functionLike && !isStringLiterals(body) && objectMacros.count(name) &&
+          (isStringLiterals(objectMacros.at(name)) || isSplicedMacroBody(objectMacros.at(name))))
+        body = objectMacros.at(name);
       if (!functionLike && (isSplicedMacroBody(body) || (isAliasMacro(name, body) && !localMacroAt(body, offset))))
       {
         // Written out at its uses (convertTokens, objectMacros): declarations, a type, storage words,
@@ -2497,9 +2554,23 @@ namespace
       }
       if (!functionLike && !body.empty())
       {
+        // Continued over lines (lgc.c's `#define sweepphases \` with its value on the next line):
+        // the lines without their backslashes.
+        for (size_t k = body.find('\\'); k != std::string::npos; k = body.find('\\', k))
+        {
+          size_t e = k + 1;
+          while (e < body.size() && (body[e] == ' ' || body[e] == '\t' || body[e] == '\r'))
+            ++e;
+          if (e < body.size() && body[e] == '\n')
+            body.erase(k, 1);
+          else
+            k += 2; // an escape in a literal (`'\\'`)
+        }
         bool constant = true;
         int quotes = 0, depth = 0;
-        // Checked without its comments and with tabs as spaces (lstate.h's `#define CIST_LUA\t(1<<0)\t/* ... */`).
+        // Checked without its comments, with tabs and line ends as spaces (lstate.h's `#define
+        // CIST_LUA\t(1<<0)\t/* ... */`) and with what a character literal holds as `x`
+        // (lstrlib.c's `#define L_ESC '%'`).
         std::string checked = body;
         for (size_t c = checked.find("/*"); c != std::string::npos; c = checked.find("/*", c))
         {
@@ -2507,8 +2578,24 @@ namespace
           checked.replace(c, (e == std::string::npos ? checked.size() : e + 2) - c, " ");
         }
         for (char& c : checked)
-          if (c == '\t')
+          if (c == '\t' || c == '\r' || c == '\n')
             c = ' ';
+        for (size_t c = 0; c < checked.size(); ++c)
+          if (checked[c] == '"')
+          {
+            for (++c; c < checked.size() && checked[c] != '"'; ++c)
+              if (checked[c] == '\\')
+                ++c;
+          }
+          else if (checked[c] == '\'' && !(c > 0 && isalnum((unsigned char)checked[c - 1]))) // not a digit separator
+          {
+            for (++c; c < checked.size() && checked[c] != '\''; ++c)
+            {
+              if (checked[c] == '\\' && c + 1 < checked.size())
+                checked[c++] = 'x';
+              checked[c] = 'x';
+            }
+          }
         for (char c : checked)
         {
           if (c == '"')
@@ -2605,6 +2692,18 @@ namespace
           }
           break;
         }
+        // A directive whose block comment goes on past its line (lstate.h's `#define CIST_REENTRY
+        // (1<<2) /* call is running on same invocation of`, closed on the next line) ends where the
+        // comment does, as the preprocessor reads it.
+        size_t first = text.find_first_not_of(" \t", start);
+        if (first < end && text[first] == '#')
+          while (end < text.size() && opensBlockComment(text.substr(start, end - start)))
+          {
+            size_t close = text.find("*/", end);
+            end = close == std::string_view::npos ? text.size() : text.find('\n', close + 2);
+            if (end == std::string_view::npos)
+              end = text.size();
+          }
         lines.push_back({uint32_t(start), uint32_t(end - start)});
         pos = end + 1;
       }
@@ -2701,6 +2800,10 @@ namespace
           for (const char* prefix : cLibraries)
             if (header.rfind(prefix, 0) == 0)
               cLibrary = true;
+          if (keptCLibraries)
+            for (const std::string& prefix : *keptCLibraries)
+              if (header.rfind(prefix, 0) == 0)
+                cLibrary = true;
           static const std::set<std::string> directXHeaders = {"d3d11.h", "d3d11_1.h", "d3d11sdklayers.h", "dxgi.h", "dxgi1_2.h", "dxgi1_3.h",
                                                                "dxgi1_4.h", "dxgi1_5.h", "dxgi1_6.h", "d3dcommon.h", "d3d9.h", "d3dcompiler.h",
                                                                "wincodec.h", "objidl.h", "wbemidl.h", "wbemcli.h"};
@@ -3341,8 +3444,8 @@ namespace
                 args.push_back({argStart, j});
                 argStart = j + 1;
               }
-              else if (tj.is(P::Semi) || tj.getKind() == TokenKind::End)
-                break;
+              else if (tj.getKind() == TokenKind::End)
+                break; // (an argument may hold statements: lvm.c's `vmcase(OP_MOVE, setobjs2s(L, ra, RB(i));)`)
             }
             if (closed)
             {
@@ -6046,6 +6149,9 @@ std::map<std::string, std::pair<std::vector<std::string>, std::string>> readHead
           std::string body = line.substr(nameEnd);
           size_t a = body.find_first_not_of(" \t"), b = body.find_last_not_of(" \t");
           body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
+          // Another name for one of them (luaconf.h's `#define LUALIB_API LUA_API`): its text.
+          if (objects && objects->count(body))
+            body = objects->at(body);
           // Made of string macros and literals (lua.h's `#define LUA_RELEASE LUA_VERSION "."
           // LUA_VERSION_RELEASE`, luaconf.h's `#define LUA_QS LUA_QL("%s")`): their literals.
           if (!isStringLiterals(body) && objects)
@@ -6137,9 +6243,55 @@ SourceConfiguration::~SourceConfiguration() = default;
 
 const std::string& SourceConfiguration::configuredText(size_t i) const { return impl->results[i]->configured; }
 
+// The names of the standard library's free functions: a top-level declaration line (no
+// indentation) with a name before its parameter list, `void sort(It first, It last, F less)`.
+std::set<std::string> libraryFunctionNames(const std::filesystem::path& libraryDir)
+{
+  std::set<std::string> names;
+  std::error_code ec;
+  if (libraryDir.empty() || !std::filesystem::is_directory(libraryDir, ec))
+    return names;
+  static const std::set<std::string> notNames = {"if", "for", "while", "switch", "return", "sizeof", "decltype", "requires", "operator",
+                                                "alignof", "static_assert", "template"};
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(libraryDir, ec))
+  {
+    if (!entry.is_regular_file() || entry.path().extension() != ".kpp")
+      continue;
+    std::string text;
+    if (!readFile(entry.path(), text))
+      continue;
+    for (size_t pos = 0; pos < text.size();)
+    {
+      size_t end = text.find('\n', pos);
+      if (end == std::string::npos)
+        end = text.size();
+      std::string_view line(text.data() + pos, end - pos);
+      pos = end + 1;
+      if (line.empty() || !(isalpha((unsigned char)line[0]) || line[0] == '_') || line.rfind("//", 0) == 0)
+        continue;
+      size_t paren = line.find('(');
+      if (paren == std::string_view::npos || paren == 0)
+        continue;
+      size_t e = paren;
+      while (e > 0 && line[e - 1] == ' ')
+        --e;
+      size_t b = e;
+      while (b > 0 && (isalnum((unsigned char)line[b - 1]) || line[b - 1] == '_'))
+        --b;
+      if (b == e || b == 0 || line[b - 1] == ':' || line[b - 1] == '.')
+        continue; // no name, or a qualified one (an out-of-line member)
+      std::string name(line.substr(b, e - b));
+      if (!notNames.count(name))
+        names.insert(name);
+    }
+  }
+  return names;
+}
+
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
-                         const std::filesystem::path& overridesDir, const SourceConfiguration* configuration)
+                         const std::filesystem::path& overridesDir, const SourceConfiguration* configuration,
+                         const std::filesystem::path& libraryDir)
 {
   struct Piece
   {
@@ -6550,6 +6702,31 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         stem += c;
     fileAliasRenames[a.file][a.name] = a.name + "Of" + stem;
   }
+  // A source file's static function named as one of the library's free functions (ltablib.c's
+  // `static int sort (lua_State *L)`, beside the library's sort): file-local in C and C++, a
+  // program-wide name in Kpp, which the library's has already, so it gets its file's name after it.
+  std::set<std::string> libraryNames = libraryFunctionNames(libraryDir);
+  for (const ConvertInput& in : inputs)
+  {
+    std::string ext = in.path.extension().string();
+    if (!in.parsed || in.parsed->isImported || (ext != ".cpp" && ext != ".cc" && ext != ".c"))
+      continue;
+    for (Decl* d : in.parsed->decls)
+      if (d->kind == NodeKind::FunctionDecl && (d->flags & DF_Static))
+      {
+        auto* f = static_cast<FunctionDecl*>(d);
+        if (f->name.parts.size() != 1 || f->name.last().symbol == UINT32_MAX)
+          continue;
+        std::string name(symbols.name(f->name.last().symbol));
+        if (!libraryNames.count(name))
+          continue;
+        std::string stem;
+        for (char c : in.path.stem().string())
+          if (isIdentChar(c))
+            stem += c;
+        fileAliasRenames[&in][name] = name + "Of" + stem;
+      }
+  }
   for (const ConvertInput& in : inputs)
   {
     if (!in.parsed || in.parsed->isImported || in.path.string().rfind("<", 0) == 0)
@@ -6571,6 +6748,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     }
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
+    if (auto kept = keptCLibraries.find(in.path.parent_path().filename().string()); kept != keptCLibraries.end())
+      fc.keptCLibraries = &kept->second;
     fc.scopeNames = &scopeNames;
     fc.opaqueKept = &opaqueKept;
     fc.headerMacros = &headerMacros;

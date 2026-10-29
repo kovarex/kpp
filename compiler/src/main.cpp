@@ -51,6 +51,7 @@ namespace
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
     std::string stdDir;   // --std <dir>; default: <kppc dir>\..\..\stdlib when it exists
+    std::filesystem::path conversionLibrary; // the library --convert keeps the program's names apart from
     bool noStd = false;
     std::filesystem::path libraryRoot; // the standard library's directory, when it joins the program
     std::vector<std::string> cIncludeDirs; // --cinclude DIR, for imported C headers
@@ -1079,7 +1080,8 @@ namespace
       for (size_t i = 0; i < parsed.size(); ++i)
         inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get()});
       std::vector<std::filesystem::path> roots(options.roots.begin(), options.roots.end());
-      std::string summary = convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration);
+      std::string summary =
+        convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary);
       report("convert: %s\n%s", options.convertDir.c_str(), summary.c_str());
     }
     for (size_t i = 0; i < top.size() && int(i) < options.showUnresolved; ++i)
@@ -1198,6 +1200,12 @@ int main(int argc, char** argv)
   if (options.threads == 0)
     options.threads = 1;
   quietOutput = options.quiet;
+  if (!options.convertDir.empty())
+  {
+    std::error_code ec;
+    options.conversionLibrary = options.stdDir.empty() ? std::filesystem::absolute(argv[0], ec).parent_path() / ".." / ".." / "stdlib"
+                                                       : std::filesystem::path(options.stdDir);
+  }
   // The standard library joins the program for code generation, and whenever --std names it.
   if ((!options.exe.empty() || !options.emitLLVM.empty() || !options.stdDir.empty()) && !options.noStd)
   {
