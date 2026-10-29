@@ -1,0 +1,25 @@
+// spec: structured bindings of a class whose data members are all in one base (`auto [x, y] = sprite.getShift();` with Vector2D's x and y in its CRTP base Vector2), by value and by reference
+// found in src/Graphics/SpriteDrawOrder.kpp: SpriteDrawOrder::setup's `auto [x, y] = sprite.getShift();` (codegen now reaches the base's members; the bindings' types are still unknown to the checker)
+// pending: the checker types the bindings <unknown> ("the type <unknown> of NameExpr")
+template<class T, class Derived>
+struct Vector2
+{
+  T x = 0;
+  T y = 0;
+  Derived operator*(T s) const { return Derived(this->x * s, this->y * s); }
+};
+struct Vector2D : Vector2<double, Vector2D>
+{
+  Vector2D() = default;
+  Vector2D(double x, double y) { this->x = x; this->y = y; }
+};
+struct Sprite { Vector2D shift{1.5, -2.0}; const Vector2D& getShift() const { return this->shift; } };
+int main()
+{
+  Sprite s;
+  auto [x, y] = s.getShift();
+  auto& [rx, ry] = s.shift;
+  ry = 4;
+  println("{} {} {} {}", x, y, rx, s.shift.y);
+  return 0;
+}

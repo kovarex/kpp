@@ -2453,6 +2453,7 @@ namespace
             members.push_back(d);
         // Which value goes to which member: in order, or by name for `.x = 1` designators.
         std::vector<Expr*> valueOf(members.size(), nullptr);
+        std::vector<std::vector<Expr*>> elided(members.size()); // an array member's values without their braces
         size_t next = 0;
         for (size_t k = argIdx; k < args.size(); ++k)
         {
@@ -2476,12 +2477,40 @@ namespace
               break; // anonymous/incomplete class with no known fields — already zeroed
             unsupported(at, "more values than " + qualifiedName(c) + " has fields");
           }
+          // Brace elision: an array member takes its elements' values from the list itself when the
+          // value there is no list and no array (`GUID g = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, ... }`
+          // fills Data4[8] from the last eight).
+          if (members[next]->kind == NodeKind::VariableDecl && !bitfieldFor(members[next]))
+            if (const Ty* ft = types.unqualified(info.fieldTypes[fieldIndexOf(info, members[next])]); ft->kind == TyKind::Array && ft->count > 0)
+              if (Expr* a = args[k]; a->kind != NodeKind::BraceInitExpr && a->ty && a->ty->isKnown() &&
+                                     !(a->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(a)->literalKind == TokenKind::String) &&
+                                     types.unqualified(types.stripRef(a->ty))->kind != TyKind::Array)
+              {
+                size_t take = std::min<size_t>(ft->count, args.size() - k);
+                elided[next] = std::vector<Expr*>(args.begin() + k, args.begin() + k + take);
+                k += take - 1;
+                ++next;
+                continue;
+              }
           valueOf[next++] = args[k];
         }
         size_t i = 0;
         std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
         for (Decl* d : members)
         {
+          if (!elided[i].empty())
+          {
+            const Ty* ft = types.unqualified(info.fieldTypes[fieldIndexOf(info, d)]);
+            std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
+            for (size_t e = 0; e < elided[i].size(); ++e)
+            {
+              std::string element = newTemp();
+              fn += "  " + element + " = getelementptr inbounds " + llType(ft, at) + ", ptr " + fieldAddr + ", i64 0, i64 " + std::to_string(e) + "\n";
+              initializeFrom(element, ft->inner, elided[i][e], at);
+            }
+            ++i;
+            continue;
+          }
           Expr* value = valueOf[i++];
           if (d->kind == NodeKind::VariableDecl)
             if (const BitfieldInfo* bits = bitfieldFor(d))
@@ -2552,8 +2581,33 @@ namespace
       }
       if (!isClass(object))
         unsupported(e, "a structured binding of something that is neither a class nor an array");
-      const StructInfo& info = structFor(object, e);
-      if (index >= info.fieldDecls.size() || !fieldAddress(object, info.fieldDecls[index], base, out, e))
+      // The class whose direct members the bindings name: the object's own class, or, when that
+      // declares none, the one base that has them (C++'s rule: Vector2D's x and y are its CRTP
+      // base Vector2's).
+      const Ty* owner = object;
+      for (int depth = 0; depth < 16 && structFor(owner, e).fieldDecls.empty(); ++depth)
+      {
+        const Ty* withMembers = nullptr;
+        for (auto& [baseDef, baseIndex] : std::vector<std::pair<Decl*, uint32_t>>(structFor(owner, e).bases))
+        {
+          const Ty* bt = structFor(owner, e).fieldTypes[baseIndex];
+          if (!structFor(bt, e).fieldDecls.empty() || !structFor(bt, e).bases.empty())
+          {
+            if (withMembers)
+              unsupported(e, "a structured binding of a class whose data members are in several bases");
+            withMembers = bt;
+          }
+        }
+        if (!withMembers)
+          break;
+        std::string part;
+        if (!baseAddress(owner, withMembers, base, part, e))
+          unsupported(e, "a structured binding through a base the layout does not have");
+        base = part;
+        owner = withMembers;
+      }
+      const StructInfo& info = structFor(owner, e);
+      if (index >= info.fieldDecls.size() || !fieldAddress(owner, info.fieldDecls[index], base, out, e))
         unsupported(e, "a structured binding of a class without that many data members");
       return true;
     }
@@ -9860,11 +9914,16 @@ namespace
             statementTemps.push_back({addr, t});
             return {addr, t, true};
           }
-          if (c->args.size() == 1 && isPackExpansion(c->args[0]))
+          // `value_type{forward<Args>(args)...}` with a scalar value_type: as `T(...)` below.
+          Span<Expr*> args = c->args;
+          if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(args[0])->args.size() == 1 &&
+              isPackExpansion(static_cast<BraceInitExpr*>(args[0])->args[0]))
+            args = static_cast<BraceInitExpr*>(args[0])->args;
+          if (args.size() == 1 && isPackExpansion(args[0]))
           {
             // `T(forward<Args>(args)...)` with a scalar T: the pack's one element, re-typed for it
             // (so that `forward<Args>` means forward<that element>).
-            Expr* pattern = static_cast<UnaryExpr*>(c->args[0])->operand;
+            Expr* pattern = static_cast<UnaryExpr*>(args[0])->operand;
             size_t count = packElementCount(pattern, e);
             if (count == 0)
               return {t->kind == TyKind::Float ? "0.0" : t->kind == TyKind::Pointer ? "null" : "0", t};
