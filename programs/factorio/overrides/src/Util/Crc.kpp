@@ -1,0 +1,6 @@
+// Hand-written part of Util/Crc: crc32fast's crc32_fast, which the game includes from the library's
+// C++ header, on native/crc32fast_c.cpp's C function, which calls the library's
+// (docs/path-to-factorio.md, "What the link misses").
+extern "C" uint32_t kppCrc32Fast(const void* data, size_t length, uint32_t previousCrc32);
+
+uint32_t crc32_fast(const void* data, size_t length, uint32_t previousCrc32 = 0) { return kppCrc32Fast(data, length, previousCrc32); }

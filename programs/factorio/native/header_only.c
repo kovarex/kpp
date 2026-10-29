@@ -23,6 +23,28 @@ void kppStbirFree(void* pointer, void* context);
 #define STB_RECT_PACK_IMPLEMENTATION
 #include <imgui/stb_rect_pack.h>
 
+// DXTCompression.hpp: stb_dxt, whose static internals the game's own SSE compressor calls (it
+// includes the implementation into its header): those it calls get C names here, which
+// include/kpp_stb_dxt.h declares and the converter writes for them.
+#define STB_DXT_STATIC
+#define STB_DXT_IMPLEMENTATION
+#include <stb_image/stb_dxt.h>
+void kpp_stb__InitDXT(void) { stb__InitDXT(); }
+void kpp_stb__EvalColors(unsigned char* color, unsigned short c0, unsigned short c1) { stb__EvalColors(color, c0, c1); }
+void kpp_stb__DitherBlock(unsigned char* dest, unsigned char* block) { stb__DitherBlock(dest, block); }
+unsigned int kpp_stb__MatchColorsBlock(unsigned char* block, unsigned char* color, int dither) { return stb__MatchColorsBlock(block, color, dither); }
+void kpp_stb__OptimizeColorsBlock(unsigned char* block, unsigned short* pmax16, unsigned short* pmin16)
+{
+  stb__OptimizeColorsBlock(block, pmax16, pmin16);
+}
+int kpp_stb__RefineBlock(unsigned char* block, unsigned short* pmax16, unsigned short* pmin16, unsigned int mask)
+{
+  return stb__RefineBlock(block, pmax16, pmin16, mask);
+}
+void kpp_stb__CompressAlphaBlock(unsigned char* dest, unsigned char* src, int stride) { stb__CompressAlphaBlock(dest, src, stride); }
+unsigned char (*kpp_stb__OMatch5)[2] = stb__OMatch5;
+unsigned char (*kpp_stb__OMatch6)[2] = stb__OMatch6;
+
 // stb_image_write.h declares stbi_write_png_compression_level with a plain `extern`, so the game's
 // stb.lib, where stb_image.cpp compiles stb_image_write as C++, defines the variable under C++'s
 // name; the converted MemoryBitmap, through the C import of the header, uses C's. The linker

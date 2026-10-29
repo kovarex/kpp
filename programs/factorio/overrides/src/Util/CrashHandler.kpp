@@ -9,3 +9,13 @@ void CrashHandler::createMinidumpAndTerminate()
     CrashHandler::createMinidump(nullptr);
   TerminateProcess(GetCurrentProcess(), 1);
 }
+
+// The UCRT's set_terminate and _set_new_handler, which install() and setThreadExceptionHandlers()
+// call: eh.h and new.h are C++ headers, which the import does not take, and ucrtbase exports both
+// under C's names. They reach what runs on the C runtime: Kpp's own uncaught exceptions print and
+// abort (design.md 9) and Kpp's new does not call the new handler, so for Kpp code neither handler
+// runs (docs/path-to-factorio.md, "Structured exception handling").
+typedef void (*terminate_handler)();
+typedef int (*_PNH)(size_t);
+extern "C" terminate_handler set_terminate(terminate_handler handler);
+extern "C" _PNH _set_new_handler(_PNH handler);
