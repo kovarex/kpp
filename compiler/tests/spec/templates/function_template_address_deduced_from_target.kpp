@@ -1,0 +1,44 @@
+// spec: a function template named with some of its arguments where a pointer to a function of a known type is wanted (an aggregate's member, a variable, an InitializerList's element's member) is the instance whose remaining arguments, a trailing pack's included, are deduced from that type's parameters: `construct<Neg>` for a `const Expr& (*)(const Expr&)` is construct<Neg, const Expr&>
+// factorio: tests/TestNoiseProgram.cpp's `{"bitwise-not", constructExpression<NoiseExpressions::BitwiseNot>, constructUnaryOperation<...>, ...}` in an InitializerList<OperationTestCase<const NoiseExpression&(*)(const NoiseExpression&), 1>> (22 lines of the tests package)
+// pending: the pack was left empty (construct<Neg, >), whose body calls Neg::index without its argument; owner: the templates thread (deduction from a function pointer type)
+struct Expr
+{
+  int v = 0;
+};
+Expr storage[4];
+template <class T, class... Args>
+const Expr& construct(Args&&... args)
+{
+  return storage[T::index(args...)];
+}
+struct Neg
+{
+  static int index(const Expr& e) { return 1; }
+};
+struct Add
+{
+  static int index(const Expr& a, const Expr& b) { return 2; }
+};
+struct Case
+{
+  const char* name;
+  const Expr& (*constructor)(const Expr&);
+};
+template <class F>
+struct TestCase
+{
+  const char* name;
+  F constructor;
+};
+int main()
+{
+  storage[1].v = 10;
+  storage[2].v = 20;
+  Case c{"neg", construct<Neg>};
+  const Expr& (*binary)(const Expr&, const Expr&) = construct<Add>;
+  int sum = 0;
+  for (const auto& t : InitializerList<TestCase<const Expr& (*)(const Expr&)>>{{"a", construct<Neg>}, {"b", &construct<Neg>}})
+    sum += t.constructor(storage[0]).v;
+  println("{} {} {}", c.constructor(storage[0]).v, binary(storage[0], storage[0]).v, sum);
+  return 0;
+}
