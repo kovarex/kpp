@@ -24,9 +24,8 @@ auto getIf(V* variant) -> decltype(&variant->template get<I>())
 template<typename V>
 constexpr int variantSize = V::size;
 
-// VariantAlternative: the type of the I-th alternative.
-template<int I, typename V>
-using VariantAlternative = typename V::template Alternative<I>;
+// VariantAlternative<I, U>: the type of the typed union U's I-th alternative, a built-in of the
+// compiler's (design.md 8.5), as std::variant_alternative_t is.
 
 // visit: calls a visitor with the current value. Supports up to 8 alternatives.
 template<typename Visitor, typename V>

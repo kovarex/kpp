@@ -2439,7 +2439,7 @@ struct GlobalScope::Impl
     std::string_view name = symbols.name(symbol);
     return name == "RemoveConst" || name == "RemoveCv" || name == "RemoveReference" || name == "RemoveExtent" || name == "RemovePointer" ||
            name == "Decay" || name == "UnderlyingType" || name == "AddConst" || name == "AddPointer" || name == "RemoveCvRef" ||
-           name == "Conditional" || name == "EnableIf";
+           name == "Conditional" || name == "EnableIf" || name == "VariantAlternative";
   }
 
   // RemoveConst<T> and the other type-valued traits; null when `part` is not one.
@@ -2468,6 +2468,23 @@ struct GlobalScope::Impl
       if (part.templateArgs.size() == 1)
         return types.voidType();
       return isTypeNode(part.templateArgs[1]) ? convertType(static_cast<Type*>(part.templateArgs[1]), ctx, depth + 1) : types.unknown();
+    }
+    if (name == "VariantAlternative")
+    {
+      // VariantAlternative<I, U>: the type of the typed union U's I-th alternative (design.md 8.5),
+      // as std::variant_alternative_t<I, V> is of a variant.
+      if (part.templateArgs.size() != 2 || !isTypeNode(part.templateArgs[1]))
+        return types.unknown();
+      const Ty* index = templateArgument(part.templateArgs[0], nullptr, ctx, depth);
+      const Ty* u = convertType(static_cast<Type*>(part.templateArgs[1]), ctx, depth + 1);
+      if (!index || index->kind != TyKind::Value || !u || !u->isKnown() || types.isDependent(u))
+        return types.unknown(); // dependent still: settled under the instantiation
+      u = types.unqualified(types.stripRef(u));
+      ClassDecl* def = u->kind == TyKind::Class ? classDefinition(u) : nullptr;
+      if (!def || !def->isTypedUnion || index->value < 0 || uint64_t(index->value) >= def->alternatives.size())
+        return types.unknown();
+      Subst s = substFor(u);
+      return declaredTypeOf(def->alternatives[size_t(index->value)], s.empty() ? nullptr : &s, depth + 1);
     }
     if (part.templateArgs.size() != 1 || !isTypeNode(part.templateArgs[0]))
       return types.unknown();
