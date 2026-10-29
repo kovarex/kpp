@@ -619,6 +619,21 @@ void InstanceCopier::fix(Decl*& d) const
       d = it->second;
 }
 
+LambdaExpr* InstanceCopier::lambdaInstance(const LambdaExpr* l)
+{
+  for (const LambdaCapture& cap : l->captures)
+    if (cap.decl)
+      decls[cap.decl] = cap.decl; // kept: the closure holds these
+  if (l->closure)
+    decls[l->closure] = l->closure;
+  auto* c = raw(l);
+  c->params = declList(c->params);
+  c->returnType = type(c->returnType);
+  c->body = stmt(c->body);
+  fixReferences(c);
+  return c;
+}
+
 FunctionDecl* InstanceCopier::function(const FunctionDecl* f)
 {
   root = f;

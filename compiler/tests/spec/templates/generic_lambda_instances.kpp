@@ -1,0 +1,23 @@
+// spec: a generic lambda is a call operator instantiated per set of argument types, each instance with its own typed body: by-value, init- and by-reference captures seen alike from every instance, instances made through a function template and from inside another generic lambda
+struct Point
+{
+  int x = 1;
+  int y = 2;
+};
+template<typename F>
+int applyBoth(F f) { return f(3) + f(Point()); }
+int sizeOf(int v) { return v; }
+int sizeOf(const Point& p) { return p.x * 10 + p.y; }
+int main()
+{
+  int base = 100;
+  int counter = 0;
+  auto g = [base, extra = base * 2, &counter](const auto& v) { ++counter; return sizeOf(v) + base + extra; };
+  int a = g(5);
+  int b = g(Point());
+  int c = applyBoth(g);
+  auto twice = [&](auto x) { return g(x) + g(x); };
+  int d = twice(1);
+  println("{} {} {} {} {}", a, b, c, d, counter);
+  return 0;
+}

@@ -440,6 +440,7 @@ struct GlobalScope::Impl
     FunctionDecl* body = nullptr;
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
     Expr* init = nullptr;              // for a variable: its initializer's copy (GlobalScope::instanceInitializer)
+    LambdaExpr* lambda = nullptr;      // for a generic lambda's call operator: the copy of its body (checkLambdaInstance)
   };
   struct InstanceShard
   {
@@ -7352,27 +7353,9 @@ struct GlobalScope::Impl
       for (size_t i = 0; i < own.pairs.size(); ++i)
         c->templateArgs[i] = own.pairs[i].type;
       c->templateArgCount = uint8_t(own.pairs.size()); // the count last: other threads type the same call
-      bool producer;
-      Impl::Instantiation* inst = impl.claimFunction(l->closure, own, producer, t);
-      if (!producer)
-      {
-        if (inst->state.load(std::memory_order_acquire) != 2)
-        {
-          if (inst->owner == std::this_thread::get_id())
-            return unknown(Why::AutoReturn); // the lambda calling itself through a capture
-          ++impl.instWaits;
-          while (inst->state.load(std::memory_order_acquire) != 2)
-            std::this_thread::yield();
-        }
-      }
-      else
-      {
-        const Ty* callTy = instantiationDepth > 16 ? nullptr : impl.checkLambdaInstance(t, own, nullptr, &stats);
-        inst->deducedReturn = callTy; // for a lambda: the call operator's type for these arguments
-        inst->state.store(2, std::memory_order_release);
-        ++impl.instBodies;
-      }
-      const Ty* callTy = inst->deducedReturn;
+      // The instantiation's own copy of the body, typed once (null while the lambda calls itself
+      // through a capture).
+      const Ty* callTy = instantiationDepth > 16 ? nullptr : impl.checkLambdaInstance(t, own, nullptr, &stats);
       return callTy && callTy->kind == TyKind::Function ? callTy->inner : unknown(Why::AutoReturn);
     }
 
@@ -8803,11 +8786,12 @@ struct GlobalScope::Impl
     }
   };
 
-  // The call operator of a generic lambda for one set of its own template arguments: the body
-  // typed in the environment the lambda was written in, with the expression types written in
-  // place (as retypeFor does for function templates). Returns the operator's function type
-  // (parameters and result), or null when the environment is unknown or the result has no type.
-  const Ty* checkLambdaInstance(const Ty* lambdaTy, const Subst& own, Subst* fullOut, ResolveStats* statsInto)
+  // The call operator of a generic lambda for one set of its own template arguments: a copy of
+  // the lambda's parameters and body (InstanceCopier::lambdaInstance) typed in the environment the
+  // lambda was written in, once per (lambda type, arguments) and kept; body gets the copy.
+  // Returns the operator's function type (parameters and result), or null when the environment
+  // is unknown, the result has no type, or the lambda is asked for while it is being typed.
+  const Ty* checkLambdaInstance(const Ty* lambdaTy, const Subst& own, Subst* fullOut, ResolveStats* statsInto, LambdaExpr** body = nullptr)
   {
     LambdaEnv env;
     {
@@ -8817,13 +8801,34 @@ struct GlobalScope::Impl
         return nullptr;
       env = it->second;
     }
-    LambdaExpr* l = env.lambda;
-    if (!l || !env.tokens || env.depth > 16)
+    LambdaExpr* original = env.lambda;
+    if (!original || !env.tokens || env.depth > 16)
       return nullptr;
     Subst full = env.subst;
     for (const Subst::Pair& p : own.pairs)
       if (!full.find(p.param))
         full.pairs.push_back(p);
+    if (fullOut)
+      *fullOut = full;
+    bool producer;
+    InstanceRecord* inst = claimInstance(original->closure, own, lambdaTy, producer);
+    if (!producer)
+    {
+      if (inst->state.load(std::memory_order_acquire) != 2)
+      {
+        if (inst->owner == std::this_thread::get_id())
+          return nullptr; // the lambda calling itself through a capture
+        ++instWaits;
+        while (inst->state.load(std::memory_order_acquire) != 2)
+          std::this_thread::yield();
+      }
+      if (body)
+        *body = inst->lambda;
+      return inst->deducedReturn; // for a lambda: the call operator's type for these arguments
+    }
+    LambdaExpr* l = InstanceCopier(instanceArena()).lambdaInstance(original);
+    inst->lambda = l;
+    ++instBodies;
     ResolveStats local;
     if (statsInto)
     {
@@ -8866,14 +8871,17 @@ struct GlobalScope::Impl
       local.instExprsUnknown += local.exprsUnknown;
       statsInto->add(local);
     }
-    if (fullOut)
-      *fullOut = full;
-    if (!result->isKnown() || types.isDependent(result))
-      return nullptr;
+    const Ty* callTy = nullptr;
+    bool known = result->isKnown() && !types.isDependent(result);
     for (const Ty* pt : params)
-      if (!pt || !pt->isKnown())
-        return nullptr;
-    return types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, false);
+      known = known && pt && pt->isKnown();
+    if (known)
+      callTy = types.function(result, Span<const Ty*>{params.data(), uint32_t(params.size())}, false);
+    inst->deducedReturn = callTy;
+    inst->state.store(2, std::memory_order_release);
+    if (body)
+      *body = l;
+    return callTy;
   }
 
   // The deduced return type of an auto-returning function template for one instantiation,
@@ -9652,10 +9660,10 @@ VariableDecl* GlobalScope::variableTemplateFor(VariableDecl* primary, const Temp
   return v;
 }
 
-const Ty* GlobalScope::retypeLambdaFor(const Ty* lambdaTy, const TemplateArgs& own, TemplateArgs* fullArgs)
+const Ty* GlobalScope::lambdaInstance(const Ty* lambdaTy, const TemplateArgs& own, TemplateArgs* fullArgs, LambdaExpr** body)
 {
   Subst s = toSubst(own), full;
-  const Ty* callTy = impl->checkLambdaInstance(lambdaTy, s, &full, nullptr);
+  const Ty* callTy = impl->checkLambdaInstance(lambdaTy, s, &full, nullptr, body);
   if (fullArgs)
   {
     fullArgs->pairs.clear();

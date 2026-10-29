@@ -2803,6 +2803,7 @@ namespace
       const Ty* callTy = types.function(t->inner ? t->inner : types.voidType(), t->args, false);
       std::string functionName = info.functionName;
       TemplateArgs instanceArgs;
+      LambdaExpr* genericBody = nullptr; // a generic lambda's copy of its parameters and body for this call's arguments
       LambdaExpr* genericLambda = lambdaOf(t);
       if (genericLambda && genericLambda->templateParams.empty())
         genericLambda = nullptr;
@@ -2816,8 +2817,8 @@ namespace
         TemplateArgs own;
         for (size_t i = 0; i < l->templateParams.size(); ++i)
           own.pairs.push_back({l->templateParams[i], call->templateArgs[i]});
-        callTy = global.retypeLambdaFor(t, own, &instanceArgs);
-        if (!callTy)
+        callTy = global.lambdaInstance(t, own, &instanceArgs, &genericBody);
+        if (!callTy || !genericBody)
           unsupported(at, "a generic lambda whose body could not be typed for this call");
         std::string params;
         for (size_t i = 0; i < callTy->args.size(); ++i)
@@ -2868,7 +2869,7 @@ namespace
       // (its capture list) is built here, in the function that writes it, before the operator's
       // body calls it.
       if (genericLambda && lambdaInstances.insert(functionName).second)
-        emitLambda(genericLambda, t, callTy, functionName, &instanceArgs);
+        emitLambda(genericBody, t, callTy, functionName, &instanceArgs);
       if (hasSret || ret->kind == TyKind::Void)
       {
         emitCall("", sig + " " + functionName + "(" + argText + ")");

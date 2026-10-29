@@ -216,11 +216,13 @@ public:
   // nodes are never written for an instantiation (docs/design.md, "Instantiations own their typed
   // bodies"). Thread-safe; the same copy for the same arguments.
   FunctionDecl* instanceBody(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType);
-  // Re-types the body of a generic lambda (one with template parameters, written or invented for
-  // its `auto` parameters) for one set of its own arguments, in the environment the lambda was
-  // written in. Returns its call operator's type (parameters and result) or null; fullArgs gets
-  // the enclosing instantiation's arguments plus the lambda's own, for declarations in the body.
-  const Ty* retypeLambdaFor(const Ty* lambdaTy, const TemplateArgs& own, TemplateArgs* fullArgs);
+  // The call operator of a generic lambda (one with template parameters, written or invented for
+  // its `auto` parameters) for one set of its own arguments: its parameters and body copied and
+  // typed in the environment the lambda was written in, once, and kept (body gets the copy; its
+  // captures and closure are the lambda's). Returns the operator's type (parameters and result)
+  // or null; fullArgs gets the enclosing instantiation's arguments plus the lambda's own, for
+  // declarations in the body. Thread-safe.
+  const Ty* lambdaInstance(const Ty* lambdaTy, const TemplateArgs& own, TemplateArgs* fullArgs, LambdaExpr** body);
   TemplateArgs classArgsOf(const Ty* classType); // Parameters of the class template -> arguments of the type.
   // Overload resolution by conversion ranking among candidates (members: objectType is the
   // object they are called on, classArgs its instantiation). Null if none is viable.

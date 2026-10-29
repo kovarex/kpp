@@ -17,8 +17,19 @@ public:
   // calls, its template parameters) stays shared. The copy's parent is the original's.
   FunctionDecl* function(const FunctionDecl* f);
 
-  // One expression on its own (a default member initializer, a static member's initializer).
-  Expr* expression(const Expr* e) { return expr(e); }
+  // One expression on its own (a default member initializer, a static member's initializer), the
+  // references inside it to its own declarations (a lambda's parameters) pointed at the copies.
+  Expr* expression(const Expr* e)
+  {
+    Expr* copy = expr(e);
+    fixReferences(copy);
+    return copy;
+  }
+
+  // A generic lambda's parameters, return type and body for one instantiation of its call
+  // operator. The captures and the closure stay the lambda's own, so that the copy's body names
+  // the variables the closure was laid out with.
+  LambdaExpr* lambdaInstance(const LambdaExpr* l);
 
   // The copy of a declaration copied so far (a parameter, a local), or the original when it was not
   // part of the copy.
