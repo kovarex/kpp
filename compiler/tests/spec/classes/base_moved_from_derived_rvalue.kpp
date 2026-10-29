@@ -1,0 +1,20 @@
+// spec: a class deriving from UniquePtr<Entity> moves its base in its own move constructor, `Holder(Holder&& other) : UniquePtr<Entity>(::move(other))`: the derived rvalue binds to the base's move constructor (UniquePtr(UniquePtr&&)), the copy constructor being deleted
+// factorio: EntityBuildabilityCheckHolder(EntityBuildabilityCheckHolder&& other) : std::unique_ptr<Entity>(std::move(other)) {}
+// pending: the deleted copy constructor is chosen ("constructing UniquePtr<Entity, DefaultDelete<Entity>> with a deleted constructor (copying a move-only object?)"); owner: codegen (a base initializer's constructor)
+struct Entity
+{
+  int id = 3;
+};
+class Holder : public UniquePtr<Entity>
+{
+public:
+  Holder() : UniquePtr<Entity>(makeUnique<Entity>()) {}
+  Holder(Holder&& other) : UniquePtr<Entity>(::move(other)) {}
+};
+int main()
+{
+  Holder a;
+  Holder b(::move(a));
+  println("{} {}", a == nullptr, b->id);
+  return 0;
+}

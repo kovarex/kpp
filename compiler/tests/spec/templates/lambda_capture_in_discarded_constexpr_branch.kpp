@@ -1,0 +1,43 @@
+// spec: a lambda with `[&]` in a function template names a parameter only inside an `if constexpr` branch that an instance discards: in that instance the parameter is not captured (C++ captures what the instantiated body uses), and the closure is laid out without it
+// factorio: FluidBox::findOtherUndergroundEnd<BlueprintSurface>'s `CandidateType candidateType = [&] { ... if constexpr (std::is_same_v<std::remove_const_t<SurfaceType>, Surface>) { ConstTileProxy tileProxy(surface); ... } ... }();`
+// pending: the closure of the instance that discards the branch is not laid out ("a capture of a parameter whose type the code generator could not work out"); the instance that keeps it works; owner: codegen (closures)
+struct Surface
+{
+  int tiles = 4;
+};
+struct BlueprintSurface
+{
+  int entities = 7;
+};
+enum class CandidateType { Distant, Blocked, Fine };
+class FluidBox
+{
+public:
+  template<class SurfaceType>
+  int findOtherEnd(SurfaceType& surface, int distance) const;
+};
+template<class SurfaceType>
+int FluidBox::findOtherEnd(SurfaceType& surface, int distance) const
+{
+  int limit = 5;
+  CandidateType candidateType = [&]
+  {
+    if (distance > limit)
+      return CandidateType::Distant;
+    if constexpr (isSame<RemoveConst<SurfaceType>, Surface>)
+    {
+      if (surface.tiles < distance)
+        return CandidateType::Blocked;
+    }
+    return CandidateType::Fine;
+  }();
+  return int(candidateType);
+}
+int main()
+{
+  FluidBox box;
+  Surface surface;
+  BlueprintSurface blueprint;
+  println("{} {} {}", box.findOtherEnd(surface, 3), box.findOtherEnd(surface, 5), box.findOtherEnd(blueprint, 9));
+  return 0;
+}

@@ -1,0 +1,29 @@
+// spec: a local variable of an unnamed union with an anonymous struct member (`union { struct { uint16_t build, subVersion, version, product; }; uint64_t packedVersion; } version;`) declared in a lambda's body, as in a function's: the members read the bits of packedVersion
+// factorio: GraphicsInterfaceDX11::logDeviceInfo's createDriverDescription lambda, which unpacks a driver's packed version so
+// pending: in a function it works; in a lambda the union has no definition ("a class without a definition (__anon72_...)"); owner: codegen (closures)
+String describeDirect(uint64_t packedVersion)
+{
+  union
+  {
+    struct { uint16_t build, subVersion, version, product; };
+    uint64_t packedVersion;
+  } version;
+  version.packedVersion = packedVersion;
+  return format("{}.{}.{}.{}", version.product, version.version, version.subVersion, version.build);
+}
+int main()
+{
+  auto describe = [](uint64_t packedVersion)
+  {
+    union
+    {
+      struct { uint16_t build, subVersion, version, product; };
+      uint64_t packedVersion;
+    } version;
+    version.packedVersion = packedVersion;
+    return format("{}.{}.{}.{}", version.product, version.version, version.subVersion, version.build);
+  };
+  uint64_t packed = (uint64_t(31) << 48) | (uint64_t(0) << 32) | (uint64_t(101) << 16) | 4000;
+  println("{} {}", describeDirect(packed), describe(packed));
+  return 0;
+}

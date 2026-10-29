@@ -1,0 +1,21 @@
+// spec: an object of a trivially copyable class passed through a C function's `...`, as MSVC passes one (C++ allows it): a class of 1, 2, 4 or 8 bytes by value, any other by the address of a copy; the C function's va_arg of the same struct reads it
+// factorio: InputActionTestMaker's VariableToCode<QuickBarSetSlotParameters> and <QuickBarPickSlotParameters>, `ssprintf("...ItemStackIndex(%u))", param.targetQuickBarSlot)` with a 2-byte QuickBarSlotLocation, and PlatformBackdropCloud::parseCloudProjectionStyle's `ssprintf("\"%s\" is unknown ...", input)` with a std::string_view: wrong format arguments in the game (debug and error paths), which MSVC compiles
+// pending: the code generator refuses the class ("passing a class (SpecSlot) where a scalar is expected"); owner: codegen (C variadic calls)
+extern "C" import "c_class_through_varargs.h";
+int main()
+{
+  SpecSlot slot;
+  slot.page = 2;
+  slot.slot = 5;
+  SpecView view;
+  view.data = "xyz";
+  view.size = 3;
+  SpecSlot other;
+  other.page = 1;
+  other.slot = 1;
+  SpecView empty;
+  empty.data = "";
+  empty.size = 0;
+  println("{}", specReadVarargs(2, slot, view, other, empty));
+  return 0;
+}

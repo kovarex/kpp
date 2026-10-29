@@ -1,0 +1,24 @@
+// spec: `typename Container::mapped_type` of a class that inherits it from Map (`template<class T> struct Const : T` over a Map) is Map's mapped_type, in the return type and in an expression
+// factorio: EntityPrototype::postLoadSetup's `Util::getMapOrDefault(UtilityConstants::instance().defaultAlertIconShiftByType, this->getType())`, the constant a Const<std::map<std::string, Vector>> (UtilityConstants::Const derives from a non-arithmetic T), getMapOrDefault returning `typename Container::mapped_type`
+// pending: the member alias found in the base has no type ("a conversion from a value of unknown type to int32"); owner: the resolver (member types of a dependent class found in its bases)
+template<class T, bool exclude = false>
+struct Const : T
+{
+  Const(T value) : T(move(value)) {}
+};
+template<typename Container, typename Key>
+typename Container::mapped_type getMapOrDefault(const Container& theMap, const Key& keyToFind)
+{
+  auto it = theMap.find(keyToFind);
+  if (it == theMap.end())
+    return typename Container::mapped_type();
+  return it->second;
+}
+int main()
+{
+  Const<Map<String, int>> shifts(Map<String, int>{{"inserter", 4}});
+  int shift = 0;
+  shift = getMapOrDefault(shifts, "inserter");
+  println("{}", shift);
+  return 0;
+}
