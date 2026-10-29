@@ -9523,6 +9523,16 @@ struct GlobalScope::Impl
             if (const Ty* deduced = deduceAuto(t, init); deduced && deduced->isKnown() && !containsAuto(deduced))
               return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
         }
+        if (containsAuto(t) && v->init && !v->init->ty && v->init->kind != NodeKind::BraceInitExpr &&
+            (!subst || subst->empty()) && !(v->parent && v->parent->kind == NodeKind::FunctionDecl) && !hasLambda(v->init))
+        {
+          // `const auto CONTEXT_FULL = (CONTEXT_CONTROL | ...);` naming `const auto` globals the
+          // walk has not reached yet: theirs from their initializers now, in any order (no lambda
+          // among them, whose copy would be another closure type than the walk's).
+          if (const Ty* init = typeOfSignatureExpression(v->init, ctx); init && init->isKnown() && !types.isDependent(init))
+            if (const Ty* deduced = deduceAuto(t, init); deduced && deduced->isKnown() && !containsAuto(deduced))
+              return (v->flags & DF_Constexpr) && !deduced->isReference() ? types.qualified(deduced, true, false) : deduced;
+        }
         if (types.isDependent(t) && containsAuto(t))
           return t; // Deduced from the initializer by the walker when it reaches the declaration.
         return t;
@@ -9770,6 +9780,41 @@ struct GlobalScope::Impl
       case NodeKind::BraceInitExpr: return any(static_cast<BraceInitExpr*>(n)->args);
       case NodeKind::ParenExpr: return mentionsBound(static_cast<ParenExpr*>(n)->inner, s, depth + 1);
       case NodeKind::NewExpr: return mentionsBound(static_cast<NewExpr*>(n)->type, s, depth + 1) || any(static_cast<NewExpr*>(n)->args);
+      default: return true;
+    }
+  }
+
+  // Whether expression n has a lambda in it (true for a node it cannot look into).
+  static bool hasLambda(Node* n, int depth = 0)
+  {
+    if (!n)
+      return false;
+    if (depth > 32)
+      return true;
+    auto any = [&](Span<Expr*> list)
+    {
+      for (Expr* e : list)
+        if (hasLambda(e, depth + 1))
+          return true;
+      return false;
+    };
+    switch (n->kind)
+    {
+      case NodeKind::LambdaExpr: return true;
+      case NodeKind::NameExpr: case NodeKind::LiteralExpr: case NodeKind::ThisExpr: case NodeKind::SizeofExpr: return false;
+      case NodeKind::CallExpr: return hasLambda(static_cast<CallExpr*>(n)->callee, depth + 1) || any(static_cast<CallExpr*>(n)->args);
+      case NodeKind::MemberExpr: return hasLambda(static_cast<MemberExpr*>(n)->base, depth + 1);
+      case NodeKind::IndexExpr: return hasLambda(static_cast<IndexExpr*>(n)->base, depth + 1) || any(static_cast<IndexExpr*>(n)->args);
+      case NodeKind::UnaryExpr: return hasLambda(static_cast<UnaryExpr*>(n)->operand, depth + 1);
+      case NodeKind::BinaryExpr: return hasLambda(static_cast<BinaryExpr*>(n)->lhs, depth + 1) || hasLambda(static_cast<BinaryExpr*>(n)->rhs, depth + 1);
+      case NodeKind::ConditionalExpr:
+        return hasLambda(static_cast<ConditionalExpr*>(n)->cond, depth + 1) || hasLambda(static_cast<ConditionalExpr*>(n)->then, depth + 1) ||
+               hasLambda(static_cast<ConditionalExpr*>(n)->else_, depth + 1);
+      case NodeKind::CastExpr: return hasLambda(static_cast<CastExpr*>(n)->operand, depth + 1);
+      case NodeKind::NamedCastExpr: return hasLambda(static_cast<NamedCastExpr*>(n)->operand, depth + 1);
+      case NodeKind::FunctionalCastExpr: return any(static_cast<FunctionalCastExpr*>(n)->args);
+      case NodeKind::BraceInitExpr: return any(static_cast<BraceInitExpr*>(n)->args);
+      case NodeKind::ParenExpr: return hasLambda(static_cast<ParenExpr*>(n)->inner, depth + 1);
       default: return true;
     }
   }

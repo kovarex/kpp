@@ -1,6 +1,5 @@
 // spec: a `const auto` global whose initializer names `const auto` globals declared after it is typed from theirs, in any order (symbols are order-independent): `const auto FULL = (CONTROL | INTEGER);` before CONTROL and INTEGER
 // factorio: StackWalker's `CONTEXT_FULL`, which the C import writes as `const auto CONTEXT_FULL = (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT);` among the header's macro constants in name order, so before CONTEXT_INTEGER
-// pending: the later globals' types are not known yet when the first is typed ("a use of the global FULL, whose definition failed (codegen does not support the type const auto of NameExpr yet)")
 const auto FULL = (CONTROL | INTEGER | FLOATING_POINT);
 const long long AMD64 = 0x00100000L;
 const auto CONTROL = (AMD64 | 0x00000001L);
