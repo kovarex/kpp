@@ -1,0 +1,21 @@
+namespace Util
+{
+  // std::visit with the overload set of the given lambdas, for the typed unions std::variants
+  // become: the alternative held goes to the visitor. The game passes one lambda (the overload
+  // set of several waits on deduction guides and `using Ts::operator()...`, spec
+  // templates/deduction_guides).
+  template<typename U, typename Visitor> requires (isTypedUnion<U>)
+  decltype(auto) visitVariant(const U& variant, Visitor&& visitor)
+  {
+    for constexpr (auto a : alternatives(U))
+      if (variant == a.tag)
+        return visitor(variant[a]);
+  }
+  template<typename U, typename Visitor> requires (isTypedUnion<U>)
+  decltype(auto) visitVariant(U& variant, Visitor&& visitor)
+  {
+    for constexpr (auto a : alternatives(U))
+      if (variant == a.tag)
+        return visitor(variant[a]);
+  }
+}

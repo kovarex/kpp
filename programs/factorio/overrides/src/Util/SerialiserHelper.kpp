@@ -1,0 +1,17 @@
+// The typed unions the game's std::variants become are saved as std::variant was: the
+// alternative's index, then its value. This saveValue joins the converted SerialiserHelper, in
+// place of its saveValue for any std::variant<T...> (which the converter drops with the rest of the
+// code written for std::variant).
+template<typename SerialiserType>
+class [[members]] SerialiserHelper
+{
+private:
+  template<class U> requires (isTypedUnion<U>)
+  static void saveValue(SerialiserType& output, const U& target)
+  {
+    output.saveContainerSize(uint32_t(int(target.tag())));
+    for constexpr (auto a : alternatives(U))
+      if (target == a.tag)
+        output << target[a];
+  }
+};

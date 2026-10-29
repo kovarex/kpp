@@ -767,7 +767,22 @@ at a later, unrelated class layout error). Later that night, on master 9c965bd (
 and time points add, subtract and compare in their common duration as in C++ (docs/stdlib/time.md;
 `Util::sleep_for`'s two mixed-period calls): 23,971; `std::thread::hardware_concurrency()` as
 `Thread::hardwareConcurrency()` (8 functions get past the call; 3 of them stop at a later error):
-23,966.
+23,966. Then Vector's range insert from any input iterators (SmallVector's MoveIterator): 23,927;
+on master deca1f5 (23,720) macro parameters on continued lines (CALCULATE_VERTICES in the sprite
+drawing): 23,714; LuaCPPUtilities.hpp converted into kpp\Lua, which the headline now includes:
+23,548.
+
+std::variant (2026-10-29): the converter already turns the 9 std::variants the game declares into
+typed unions (`union enum`, design.md 8.5) and their get/holds_alternative/get_if/visit uses into
+the union's operations. Code written for any `std::variant<T...>` (SerialiserHelper's saveValue,
+DeserialiserHelper's loads that recurse over variant_size_v, the is_std_variant specialization) is
+dropped, 7 declarations, and the overrides write it for typed unions with `for constexpr (auto a :
+alternatives(U))`. Those overrides add members to converted classes: an override file's `class
+[[members]] Name { ... }` puts its members into the converted class Name, whose other members stay
+as converted (a member that finds no such class is reported on stderr). `Util::visitVariant` is
+overridden for its one use (one lambda). 23,548 -> 23,546. What routes the 9 unions' save and
+load through these members is the game's is_std_variant<T> becoming `isTypedUnion<T>`, an override
+of TemplateHelpers that waits for the compiler to have that trait (spec kpp/typed_union_trait).
 
 ### Error breakdown by root cause
 

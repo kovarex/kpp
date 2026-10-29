@@ -792,7 +792,60 @@ namespace
 
   bool isFunctionDefinition(FunctionDecl* f) { return f->body != nullptr || (f->flags & (DF_Default | DF_Delete)); }
 
-  void collectOverrideKeys(Span<Decl*> decls, const std::string& prefix, const SymbolTable& symbols, OverrideKeys& out)
+  // An override file's `class [[members]] Name { ... }`: members that join the converted class Name,
+  // whose other members stay as converted (the game's SerialiserHelper with the typed unions' save).
+  struct MemberOverride
+  {
+    std::string members; // the text between the braces
+    uint32_t begin = 0, end = 0; // the class's text in the override file, from its `template` or class keyword
+    bool used = false;   // a converted class took them
+  };
+
+  // The `class [[members]]` classes of an override file (lexed into tk), by qualified name.
+  void collectMemberOverrides(Span<Decl*> decls, const std::string& prefix, const std::vector<Token>& tk, std::string_view text,
+                              const SymbolTable& symbols, std::map<std::string, MemberOverride>& out)
+  {
+    for (Decl* d : decls)
+    {
+      if (d->kind == NodeKind::NamespaceDecl)
+      {
+        auto* n = static_cast<NamespaceDecl*>(d);
+        std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
+        collectMemberOverrides(n->decls, prefix + name + "::", tk, text, symbols, out);
+        continue;
+      }
+      auto* c = d->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(d) : nullptr;
+      if (!c || !c->isDefinition || c->name.empty() || c->endToken <= c->token || c->endToken > tk.size())
+        continue;
+      // The head: from the `template` keyword (or the class keyword) to the body's `{`.
+      uint32_t head = c->templateParams.empty() ? c->token : c->templateParams[0]->token;
+      while (head > 0 && !tk[head].is(Kw::template_) && !tk[head].is(Kw::class_) && !tk[head].is(Kw::struct_) && !tk[head].is(P::Semi) && !tk[head].is(P::RBrace))
+        --head;
+      uint32_t open = head;
+      while (open < c->endToken && !tk[open].is(P::LBrace))
+        ++open;
+      bool marked = false;
+      for (uint32_t k = head; k + 4 < open && !marked; ++k)
+        marked = tk[k].is(P::LBracket) && tk[k + 1].is(P::LBracket) && text.substr(tk[k + 2].offset, tk[k + 2].length) == "members" &&
+                 tk[k + 3].is(P::RBracket) && tk[k + 4].is(P::RBracket);
+      uint32_t close = c->endToken;
+      while (close > open && !tk[close - 1].is(P::RBrace))
+        --close;
+      if (!marked || open >= c->endToken || close <= open + 1)
+        continue;
+      MemberOverride m;
+      m.members = std::string(text.substr(tk[open].offset + 1, tk[close - 1].offset - tk[open].offset - 1));
+      m.begin = tk[head].offset;
+      uint32_t last = close - 1;
+      if (last + 1 < tk.size() && tk[last + 1].is(P::Semi))
+        ++last;
+      m.end = tk[last].offset + tk[last].length;
+      out[prefix + nameText(c->name, symbols)] = std::move(m);
+    }
+  }
+
+  void collectOverrideKeys(Span<Decl*> decls, const std::string& prefix, const SymbolTable& symbols, OverrideKeys& out,
+                           const std::map<std::string, MemberOverride>* memberClasses = nullptr)
   {
     for (Decl* d : decls)
       switch (d->kind)
@@ -801,7 +854,7 @@ namespace
         {
           auto* n = static_cast<NamespaceDecl*>(d);
           std::string name = !n->nested.empty() ? nameText(n->nested, symbols) : n->name == UINT32_MAX ? std::string() : std::string(symbols.name(n->name));
-          collectOverrideKeys(n->decls, prefix + name + "::", symbols, out);
+          collectOverrideKeys(n->decls, prefix + name + "::", symbols, out, memberClasses);
           break;
         }
         case NodeKind::FunctionDecl:
@@ -817,7 +870,7 @@ namespace
         case NodeKind::ClassDecl:
         {
           auto* c = static_cast<ClassDecl*>(d);
-          if (c->isDefinition && !c->name.empty())
+          if (c->isDefinition && !c->name.empty() && !(memberClasses && memberClasses->count(prefix + nameText(c->name, symbols))))
             out.classes.insert(prefix + nameText(c->name, symbols));
           break;
         }
@@ -830,6 +883,8 @@ namespace
   {
     std::string text;
     OverrideKeys keys;
+    std::map<std::string, MemberOverride> memberClasses;
+    std::string appended; // text without the member classes, which go into the converted classes
   };
 
   struct FileConverter
@@ -843,6 +898,7 @@ namespace
       return ext != ".cpp" && ext != ".cc";
     }
     const OverrideKeys* overrides = nullptr; // definitions a hand-written file replaces
+    std::map<std::string, MemberOverride>* memberOverrides = nullptr; // members a hand-written file adds to classes
     const CarriedDefaults* carriedDefaults = nullptr;
     const CarriedTemplateDefaults* carriedTemplateDefaults = nullptr;
     const ScopeNames* scopeNames = nullptr;
@@ -2661,6 +2717,15 @@ namespace
             }
           }
         }
+        if (isGenericVariantCode(d))
+        {
+          // Code for any std::variant<T...> (index recursion over variant_size_v): a std::variant
+          // becomes a typed union, which takes no such code; the game's generic save and load of
+          // them are hand-written with alternatives(U) (overrides, `[[members]]` classes).
+          removeDecl(d);
+          counts.add("generic std::variant code removed");
+          continue;
+        }
         dropAllocatorParameters(d);
         switch (d->kind)
         {
@@ -2704,6 +2769,21 @@ namespace
             classStack.push_back(c);
             convertDecls(c->members, false, prefix + nameText(c->name, symbols) + "::");
             classStack.pop_back();
+            if (memberOverrides)
+              if (auto mo = memberOverrides->find(prefix + nameText(c->name, symbols)); mo != memberOverrides->end())
+              {
+                // An override file's `class [[members]] Name { ... }`: its members join this class,
+                // before the closing brace.
+                uint32_t close = d->endToken;
+                while (close > d->token && !toks[close - 1].is(P::RBrace))
+                  --close;
+                if (close > d->token)
+                {
+                  insert(toks[close - 1].offset, "\n  // --- Hand-written members, from the override file ---\n" + mo->second.members + "\n");
+                  mo->second.used = true;
+                  counts.add("hand-written members added");
+                }
+              }
             break;
           }
           case NodeKind::EnumDecl:
@@ -3161,6 +3241,44 @@ namespace
           return UINT32_MAX;
       }
       return UINT32_MAX;
+    }
+
+    // Whether d is a template written for any std::variant<T...>: its signature (template header,
+    // requires clause, parameters, a partial specialization's arguments) names `std::variant<T...>`
+    // with a pack, variant_size_v or variant_alternative_t, or a function's requires clause asks
+    // for is_std_variant (not negated).
+    bool isGenericVariantCode(Decl* d)
+    {
+      if (!d->isTemplate || d->templateParams.empty() || (d->kind != NodeKind::FunctionDecl && d->kind != NodeKind::ClassDecl) ||
+          d->endToken <= d->token || d->endToken > toks.size())
+        return false;
+      uint32_t from = d->templateParams[0]->token;
+      while (from > 0 && !toks[from].is(Kw::template_) && !toks[from].is(P::Semi) && !toks[from].is(P::RBrace))
+        --from;
+      uint32_t to = d->endToken;
+      for (uint32_t k = d->token; k < d->endToken; ++k)
+        if (toks[k].is(P::LBrace) || toks[k].is(P::Semi))
+        {
+          to = k; // the body (a function's, a class's) or the end of a declaration
+          break;
+        }
+      if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body)
+        to = std::min(to, static_cast<FunctionDecl*>(d)->body->token);
+      for (uint32_t k = from; k < to; ++k)
+      {
+        if (toks[k].getKind() != TokenKind::Identifier)
+          continue;
+        std::string_view s = spelling(k);
+        if (s == "variant_size_v" || s == "variant_alternative_t")
+          return true;
+        if (s == "is_std_variant" && d->kind == NodeKind::FunctionDecl && !(k > 0 && toks[k - 1].is(P::Bang)))
+          return true;
+        if (s == "variant" && k >= 2 && toks[k - 1].is(P::ColonColon) && spelling(k - 2) == "std" && k + 1 < to && toks[k + 1].is(P::Less))
+          for (uint32_t j = k + 2; j < to && !toks[j].is(P::Greater) && !toks[j].is(P::Shr); ++j)
+            if (toks[j].is(P::Ellipsis))
+              return true;
+      }
+      return false;
     }
 
     // A template parameter that the declaration used only in allocator arguments, which convertTokens
@@ -4116,7 +4234,21 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     LexResult lexed = lex(slot->text, localSymbols);
     ParsedFile parsed;
     parseFile(lexed.tokens, slot->text, localSymbols, parsed, false, nullptr);
-    collectOverrideKeys(parsed.decls, "", localSymbols, slot->keys);
+    collectMemberOverrides(parsed.decls, "", lexed.tokens, slot->text, localSymbols, slot->memberClasses);
+    collectOverrideKeys(parsed.decls, "", localSymbols, slot->keys, &slot->memberClasses);
+    // What is appended to the converted file: the text without the `[[members]]` classes, which
+    // go into the converted classes instead.
+    uint32_t at = 0;
+    std::vector<std::pair<uint32_t, uint32_t>> cuts;
+    for (const auto& [name, m] : slot->memberClasses)
+      cuts.push_back({m.begin, m.end});
+    std::sort(cuts.begin(), cuts.end());
+    for (auto [begin, end] : cuts)
+    {
+      slot->appended += slot->text.substr(at, begin - at);
+      at = end;
+    }
+    slot->appended += slot->text.substr(at);
     // One definition of a name replaces every overload of it (the original's parameter list
     // may hide behind a macro); several definitions match by arity.
     for (const auto& [name, count] : slot->keys.functionCounts)
@@ -4302,7 +4434,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.carriedDefaults = &carriedDefaults;
     fc.carriedTemplateDefaults = &carriedTemplateDefaults;
     if (OverrideFile* ov = overrideFor(key))
+    {
       fc.overrides = &ov->keys;
+      fc.memberOverrides = &ov->memberClasses;
+    }
     Piece piece;
     piece.text = fc.run();
     piece.counts = fc.counts;
@@ -4336,10 +4471,17 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (ov)
     {
       // The hand-written part: appended, its definitions replaced the converted ones above.
-      text += "// --- Hand-written, from " + (overridesDir / key).generic_string() + " ---\n\n" + ov->text;
+      text += "// --- Hand-written, from " + (overridesDir / key).generic_string() + " ---\n\n" + ov->appended;
       if (text.back() != '\n')
         text += '\n';
       total.add("files with overrides");
+      for (const auto& [name, m] : ov->memberClasses)
+        if (!m.used)
+        {
+          // Members for a class this file does not define would be lost: say so.
+          fprintf(stderr, "convert: %s: the members of %s have no class to join\n", (overridesDir / key).generic_string().c_str(), name.c_str());
+          total.add("hand-written members with no class");
+        }
     }
     FILE* f = fopen(outPath.string().c_str(), "wb");
     if (f)

@@ -1,0 +1,47 @@
+// The typed unions the game's std::variants become are loaded as std::variant was: the
+// alternative's index, then its value, built from the input when it has such a constructor and
+// loaded into a default-constructed one otherwise. These join the converted DeserialiserHelper in
+// place of its loads of any std::variant<T...>, which recurse over the alternatives' indices with
+// variant_size_v (the converter drops those); here a `for constexpr` over alternatives(U) does it.
+template<class DeserialiserType>
+class [[members]] DeserialiserHelper
+{
+private:
+  template<class T> requires (isTypedUnion<T>)
+  static T loadSTDVariantIndirect(DeserialiserType& input)
+  {
+    const uint32_t alternativeIndex = loadContainerSize(input);
+    for constexpr (auto a : alternatives(T))
+      if (alternativeIndex == uint32_t(int(a.tag)))
+      {
+        if constexpr (should_construct<a.type, DeserialiserType&>)
+          return a.type(input);
+        else
+          return input.template load<a.type>();
+      }
+    throw DeserialiserException(ssprintf("Invalid alternative index (%ul) loaded from input file for variant (with size %ul)",
+                                         alternativeIndex,
+                                         uint32_t(int(T::Tag::count))));
+  }
+
+  template<class U> requires (isTypedUnion<U>)
+  static void loadSTDVariant(DeserialiserType& input, U& target)
+  {
+    const uint32_t alternativeIndex = loadContainerSize(input);
+    for constexpr (auto a : alternatives(U))
+      if (alternativeIndex == uint32_t(int(a.tag)))
+      {
+        if constexpr (should_construct<a.type, DeserialiserType&>)
+          target[a] = a.type(input);
+        else
+        {
+          target[a] = a.type();
+          input.template load<a.type>(target[a]);
+        }
+        return;
+      }
+    throw DeserialiserException(ssprintf("Invalid alternative index (%ul) loaded from input file for variant (with size %ul)",
+                                         alternativeIndex,
+                                         uint32_t(int(U::Tag::count))));
+  }
+};
