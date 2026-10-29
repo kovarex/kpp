@@ -8245,6 +8245,46 @@ struct GlobalScope::Impl
     return s;
   }
 
+  // The member type named symbol of class type t, with t's arguments (or those of the base it is
+  // declared in); null when t has none. A base that is a template parameter (`template<class T>
+  // struct Const : T` over a Map) is searched as the class it is for t: its scope has no such base.
+  const Ty* memberTypeOf(const Ty* t, uint32_t symbol, int depth)
+  {
+    Scope* inside = classScopeOf(t);
+    if (!inside || depth > 16)
+      return nullptr;
+    Lookup inner;
+    if (lookupInScope(inside, symbol, inner, depth + 1) && inner.decl)
+    {
+      Subst s2 = memberSubst(t, inner.foundIn, depth + 1); // a member of a base: that base's arguments
+      TypeContext c2{inside, nullptr, &s2};
+      NamePart part{};
+      part.symbol = symbol;
+      return typeOfTypeDecl(inner.decl, inner, part, c2, depth + 1);
+    }
+    if (types.isDependent(t) || inside->baseTypes.empty() || !inside->owner)
+      return nullptr;
+    Subst own = substFor(t);
+    LocalStack params;
+    for (Decl* p : inside->templateParams)
+      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+    pushEnclosingTemplateParams(inside->owner->parent, params);
+    ParsedFile* file = inside->owner->file;
+    TypeContext ctx{inside->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+    for (Type* b : inside->baseTypes)
+    {
+      bool parameter = b->kind == NodeKind::NamedType && static_cast<NamedType*>(b)->name.parts.size() == 1 &&
+                       !static_cast<NamedType*>(b)->name.parts[0].hasTemplateArgs;
+      if (!parameter)
+        continue; // a written class's members were found by the lookup above
+      for (const Ty* bt : baseInstances(b, ctx, depth + 1))
+        if (bt && bt->kind == TyKind::Class && bt != t)
+          if (const Ty* r = memberTypeOf(bt, symbol, depth + 1))
+            return r;
+    }
+    return nullptr;
+  }
+
   // The instantiation of the base class whose scope is `in` that class type t (scope cls)
   // derives from (`Prototype<ItemID>` for ItemPrototype and Prototype's scope), t itself when in
   // is cls; null when in is no base of it.
@@ -9203,6 +9243,22 @@ struct GlobalScope::Impl
             if (q && q->kind == TyKind::Class && types.isDependent(q))
               return types.dependentMember(q, n->name.parts[1].symbol);
           }
+        }
+        if (l.found == Found::No && n->name.parts.size() > 1 && !n->name.last().hasTemplateArgs && depth < 64)
+        {
+          // `typename C::value_type` with C a `Const<Base>` that is `template<class T> struct
+          // Const : T`: the member of the base the instance's argument makes, which the lookup in
+          // the class's own scope does not see.
+          NamedType prefix{};
+          prefix.kind = NodeKind::NamedType;
+          prefix.token = n->token;
+          prefix.name = n->name;
+          prefix.name.parts.count -= 1;
+          const Ty* q = convertType(&prefix, ctx, depth + 1);
+          q = q ? types.unqualified(q) : nullptr;
+          if (q && q->kind == TyKind::Class && q->decl && !types.isDependent(q))
+            if (const Ty* r = memberTypeOf(q, n->name.last().symbol, depth + 1))
+              return r;
         }
         if (l.found == Found::No)
         {
@@ -10832,19 +10888,8 @@ struct GlobalScope::Impl
         // whatever T becomes, its member is the primary's, under these arguments.)
         if (sub && sub->kind == TyKind::Class && sub->decl &&
             (!types.isDependent(sub) || sub == selfType(sub->decl) || !(sub->decl->attributes & ATTR_Specialized)))
-          if (Scope* inside = classScopeOf(sub))
-          {
-            Lookup inner;
-            if (lookupInScope(inside, uint32_t(t->value), inner, depth + 1) && inner.decl)
-            {
-              Subst s2 = memberSubst(sub, inner.foundIn, depth + 1); // a member of a base: that base's arguments
-              TypeContext c2{inside, nullptr, &s2};
-              NamePart part{};
-              part.symbol = uint32_t(t->value);
-              const Ty* r = typeOfTypeDecl(inner.decl, inner, part, c2, depth + 1);
-              return types.qualified(r, t->isConst || (r && r->isConst), t->isVolatile);
-            }
-          }
+          if (const Ty* r = memberTypeOf(sub, uint32_t(t->value), depth + 1))
+            return types.qualified(r, t->isConst || r->isConst, t->isVolatile);
         return sub == t->inner ? t : types.qualified(types.dependentMember(sub, uint32_t(t->value)), t->isConst, t->isVolatile);
       }
       case TyKind::Pointer: return types.qualified(types.pointer(substitute(t->inner, s, depth + 1)), t->isConst, t->isVolatile);
@@ -15854,11 +15899,20 @@ struct GlobalScope::Impl
           if (a != b && (a->kind == TyKind::Array || a->kind == TyKind::Pointer) && (b->kind == TyKind::Array || b->kind == TyKind::Pointer))
             if (const Ty* composite = impl.compositePointer(types.decay(a), types.decay(b)))
               return record(e, composite);
-          // `cond ? "_" : someString`: the class branch's type; the other converts to it.
-          if (b->kind == TyKind::Class && a->kind != TyKind::Class)
-            return record(e, types.unqualified(b));
-          if (a->kind == TyKind::Class && b->kind != TyKind::Class)
-            return record(e, types.unqualified(a));
+          // `cond ? "_" : someString`: the class branch's type; the other converts to it. Unless only
+          // the class converts to the other (`c ? modifier : 0.0` with `operator double()`): then the
+          // other's type, as C++ tries each way.
+          if ((a->kind == TyKind::Class) != (b->kind == TyKind::Class))
+          {
+            const Ty* object = a->kind == TyKind::Class ? then : other;
+            const Ty* value = a->kind == TyKind::Class ? other : then;
+            const Ty* cls = types.unqualified(types.stripRef(object));
+            const Ty* plain = types.unqualified(types.stripRef(value));
+            if (plain->kind != TyKind::Pointer && plain->kind != TyKind::Array &&
+                impl.conversionRank(object, plain) < Impl::NotViable && !(impl.conversionRank(value, cls) < Impl::NotViable))
+              return record(e, plain);
+            return record(e, cls);
+          }
           // Two classes: the one the other converts to, as C++ tries each way (`first && second ?
           // Undo(first->start, second->end) : first` with first an Optional<Undo> is an Optional<Undo>).
           if (a->kind == TyKind::Class && b->kind == TyKind::Class && types.unqualified(a) != types.unqualified(b))
@@ -15898,6 +15952,9 @@ struct GlobalScope::Impl
           const Ty* t = typeOf(n->type);
           if (t->kind == TyKind::Array)
             t = t->inner;
+          else if (impl.isUndeducedClassTemplate(t))
+            if (const Ty* deduced = impl.deduceClassArgs(t, argTypesOf(n->args)))
+              t = deduced; // `new DeleteHelper(old.release())`: the class's arguments from a constructor (CTAD)
           return record(e, t->isKnown() ? types.pointer(t) : t);
         }
         case NodeKind::DeleteExpr:

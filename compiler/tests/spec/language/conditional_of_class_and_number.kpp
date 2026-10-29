@@ -1,6 +1,5 @@
 // spec: `c ? object : number` where the object's class converts to a number (`operator double()`, an inherited `operator const T&()`) and the number converts to no object of the class: the conditional has the number's type (C++ tries each way and takes the one that works), the object's value converted, then the usual arithmetic conversions between the two numbers
 // factorio: FlyingRobotPrototype::addAdjustedEnergyConsumptionToDescription's `forceData ? forceData->workerRobotsBatteryModifier : 0.0` (SimpleModifierTarget's operator double), ClearCursorLogic::execute's `cursorID ? UtilityConstants::instance().clearCursorVolumeModifier : 1.0f` (Const<float>'s inherited operator const float&), MapPreviewGenerator's `threadCount == 0 ? global->otherSettings->maxMapPreviewThreads : threadCount` (SimpleConfigItem<uint8_t>'s operator const uint8_t& beside a uint32)
-// pending: the conditional gets the class type, so the number has to construct an object of it ("a constructor of Modifier taking 1 arguments"); owner: the resolver (typing of ?:)
 class Modifier
 {
 public:
