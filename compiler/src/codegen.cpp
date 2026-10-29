@@ -3240,7 +3240,10 @@ namespace
     // (bitwise when nothing needs destruction): copies, or moves with `move`.
     void memberwiseConstruct(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move)
     {
-      if (!needsDestruction(t, at))
+      // Bitwise when nothing needs destruction and no base or member has a copy or move constructor
+      // of its own (agui::GenericTargetable's copy targets nothing: a widget copied bitwise shared
+      // the original's targeters).
+      if (!needsDestruction(t, at) && relocatesBitwise(t, at))
       {
         if (isClass(t) && structFor(t, at).empty)
           return; // no bytes to copy (and as a base, none of its own: its byte is the next member's)
@@ -3373,7 +3376,7 @@ namespace
           emitCall(newTemp() + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + src + ")");
         return;
       }
-      if (!needsDestruction(t, at))
+      if (!needsDestruction(t, at) && assignsBitwise(t, at))
       {
         if (isClass(t) && structFor(t, at).empty)
           return; // no state, and as a base maybe no bytes of its own (the next member's)
@@ -3694,6 +3697,52 @@ namespace
             bitwise = false;
       }
       bitwiseRelocation[key] = bitwise;
+      return bitwise;
+    }
+
+    // Whether objects of type t are assigned bitwise: no copy or move assignment of its own (written,
+    // not defaulted) in the class, its bases or its members (GenericTargetable's `operator=` keeps
+    // the object's own targeters).
+    std::unordered_map<const Ty*, bool> bitwiseAssignment;
+    bool assignsBitwise(const Ty* t, Node* at, int depth = 0)
+    {
+      t = types.unqualified(types.stripRef(t));
+      while (t->kind == TyKind::Array && t->inner)
+        t = types.unqualified(t->inner);
+      if (!isClass(t) || depth > 32)
+        return true;
+      const Ty* key = canonicalClass(t, at);
+      if (auto it = bitwiseAssignment.find(key); it != bitwiseAssignment.end())
+        return it->second;
+      bitwiseAssignment[key] = true; // (a member pointing back at its class is no member by value)
+      ClassDecl* c = classDef(key->decl, at);
+      bool bitwise = !c->isTypedUnion;
+      if (bitwise)
+      {
+        TemplateArgs args = global.classArgsOf(key);
+        ArgsScope scope(*this, &args);
+        for (Decl* m : c->members)
+        {
+          if (m->kind != NodeKind::FunctionDecl || (m->flags & (DF_Default | DF_Delete)) || !m->templateParams.empty())
+            continue;
+          auto* f = static_cast<FunctionDecl*>(m);
+          bool isAssignment = !f->name.empty() && f->name.last().special == 2 && P(f->name.last().opToken) == P::Assign;
+          if (!isAssignment || f->params.size() != 1)
+            continue;
+          const Ty* pt = declType(f->params[0]);
+          if (pt && pt->isReference() && isClass(pt->inner) && classKey(pt->inner) == classKey(key))
+            bitwise = false;
+        }
+      }
+      if (bitwise)
+      {
+        const StructInfo& info = structFor(key, at);
+        std::vector<const Ty*> fields = info.fieldTypes;
+        for (const Ty* f : fields)
+          if (!assignsBitwise(f, at, depth + 1))
+            bitwise = false;
+      }
+      bitwiseAssignment[key] = bitwise;
       return bitwise;
     }
 

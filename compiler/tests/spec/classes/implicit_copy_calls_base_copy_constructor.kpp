@@ -1,0 +1,37 @@
+// spec: a class's implicit copy constructor and copy assignment call the user-written copy constructor and copy assignment of its bases and members, even when nothing in it needs destruction
+// factorio: agui::GenericTargetable's `GenericTargetable(const GenericTargetable&) : GenericTargetable() {}` (a copy targets nothing) under copied widgets, and the game's Targetable: the implicit copy of a class deriving from one copied its bytes, so the copy shared the original's list of targeters (GenericTargetable's assertion `this->first->target == this`, and Targeters::clearTargetersWithType following a dead list while the menu maps load)
+struct Targetable
+{
+  Targetable() = default;
+  Targetable(const Targetable&) : Targetable() {}
+  Targetable& operator=(const Targetable&) { return *this; }
+  int* first = nullptr;
+};
+struct Widget : Targetable
+{
+  int value = 3;
+};
+struct Holder
+{
+  Targetable member;
+  int value = 4;
+};
+int main()
+{
+  int x = 0;
+  Widget w;
+  w.first = &x;
+  w.value = 5;
+  Widget copy(w);
+  Widget assigned;
+  assigned = w;
+  Holder h;
+  h.member.first = &x;
+  h.value = 6;
+  Holder copiedHolder(h);
+  Holder assignedHolder;
+  assignedHolder = h;
+  println("{} {} {} {} {} {} {} {}", copy.first == nullptr, copy.value, assigned.first == nullptr, assigned.value,
+          copiedHolder.member.first == nullptr, copiedHolder.value, assignedHolder.member.first == nullptr, assignedHolder.value);
+  return 0;
+}
