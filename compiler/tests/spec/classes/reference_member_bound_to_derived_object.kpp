@@ -1,0 +1,39 @@
+// spec: a reference member to a base class bound to an object of a derived class (`UpdatableEntity& entity` initialised from an InfinityContainer) refers to the object's base subobject, wherever the base lies in it, in a constructor template's initializer as in a plain one
+// factorio: EntityAndIndex's `template<class T> EntityAndIndex(T& entity) : entity(entity)` with `UpdatableEntity& entity`: InfinityContainer derives from LogisticContainer and then UpdatableEntity, and the member pointed at the object's start, so ActiveEntitiesList::makeActive linked the container's own bytes as the UpdatableEntity's list hook ("Already linked" while loading the main menu's map)
+struct A
+{
+  int a = 1;
+  virtual ~A() = default;
+};
+struct B
+{
+  int b = 2;
+};
+struct C : A, B
+{
+  int c = 3;
+};
+struct Holder
+{
+  template<class T>
+  Holder(T& t) : ref(t) {}
+  B& ref;
+};
+struct ConstHolder
+{
+  ConstHolder(const C& c) : ref(c) {}
+  const B& ref;
+};
+struct BracedHolder
+{
+  B& ref;
+};
+int main()
+{
+  C c;
+  Holder held(c);
+  ConstHolder constHeld(c);
+  BracedHolder braced{c};
+  println("{} {} {}", held.ref.b, constHeld.ref.b, braced.ref.b);
+  return 0;
+}

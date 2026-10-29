@@ -2039,12 +2039,25 @@ namespace
       emit(init);
     }
 
-    // A reference member bound to what source names: the field holds its address.
-    void bindReferenceMember(const std::string& fieldAddr, Expr* source, Node* at)
+    // A reference member (of type refTy) bound to what source names: the field holds its address, of
+    // its base subobject for a reference to a base (EntityAndIndex's `UpdatableEntity& entity` from an
+    // InfinityContainer, whose UpdatableEntity comes after its LogisticContainer).
+    void bindReferenceMember(const std::string& fieldAddr, const Ty* refTy, Expr* source, Node* at)
     {
       withSingleElement(source, at, [&](Expr* one)
       {
-        std::string target = isClass(types.stripRef(one->ty)) ? rvalue(one).text : lvalue(one);
+        std::string target;
+        if (isClass(types.stripRef(one->ty)))
+        {
+          Value object = rvalue(one);
+          target = object.text;
+          const Ty* referenced = refTy ? types.unqualified(types.stripRef(refTy)) : nullptr;
+          if (referenced && isClass(referenced) && !types.isDependent(referenced) && isClass(object.ty) &&
+              canonicalClass(object.ty, at) != canonicalClass(referenced, at))
+            target = convert(object, referenced, at).text; // to the base, or through a conversion operator
+        }
+        else
+          target = lvalue(one);
         fn += "  store ptr " + target + ", ptr " + fieldAddr + "\n";
       });
     }
@@ -2200,13 +2213,13 @@ namespace
           // A reference member: the field holds the address of what it refers to.
           if (!init && v->init)
           {
-            withMemberInitializer(addr, t, v, [&](Expr* source) { bindReferenceMember(fieldAddr, source, at); });
+            withMemberInitializer(addr, t, v, [&](Expr* source) { bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, source, at); });
             continue;
           }
           Expr* source = init && init->args.size() == 1 ? init->args[0] : nullptr;
           if (!source)
             unsupported(at, "a reference member without an initializer");
-          bindReferenceMember(fieldAddr, source, at);
+          bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, source, at);
           continue;
         }
         if (init)
@@ -2810,7 +2823,7 @@ namespace
           if (value)
           {
             if (reference)
-              bindReferenceMember(fieldAddr, value, at); // `Ref r{x}`: the member refers to x
+              bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, at); // `Ref r{x}`: the member refers to x
             else
               initializeFrom(fieldAddr, ft, value, at);
             continue;
@@ -2819,7 +2832,7 @@ namespace
             continue;
           auto* v = static_cast<VariableDecl*>(d);
           if (v->init && reference)
-            withMemberInitializer(addr, t, v, [&](Expr* value) { bindReferenceMember(fieldAddr, value, v); });
+            withMemberInitializer(addr, t, v, [&](Expr* value) { bindReferenceMember(fieldAddr, ft->isReference() ? ft : declared, value, v); });
           else if (v->init)
             withMemberInitializer(addr, t, v, [&](Expr* value) { initializeFrom(fieldAddr, ft, value, v); });
           else if (isClass(ft))
