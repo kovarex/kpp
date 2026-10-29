@@ -22,8 +22,12 @@ struct FunctionImpl
 
   FunctionImpl() {}
   implicit FunctionImpl(nullptr_t) {}
+  // From a callable, never from what cannot be called (a number, a pointer to an object such as a
+  // string literal), so that another overload takes those, as std::function's constructor needs a
+  // callable: `use("text")` with use(const String&) and use(Function<void()>) takes the String one.
   template<typename F>
   implicit FunctionImpl(F callable)
+    requires(!isArithmetic<F> && !(isPointer<F> && !isFunction<RemovePointer<F>>))
     : target(new F(move(callable))),
       invoke(&FunctionImpl<R, Args...>::call<F>),
       destroy(&FunctionImpl<R, Args...>::destroyAs<F>),
