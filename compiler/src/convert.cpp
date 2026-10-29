@@ -4096,14 +4096,13 @@ namespace
       bool inTemplate = false;
       for (ClassDecl* c : classStack)
         inTemplate = inTemplate || c->isTemplate;
-      if (friendToken == UINT32_MAX || f->params.empty() || f->endToken <= f->token || cls->name.empty() || (nested && inTemplate))
+      if (friendToken == UINT32_MAX || f->params.empty() || f->endToken <= f->token || cls->name.empty())
       {
         todo(toks[f->token].offset, "a hidden friend the converter cannot place: left out");
         removeDecl(f);
         counts.add("friend declarations removed");
         return false;
       }
-      remove(toks[friendToken].offset, toks[friendToken + 1].offset - toks[friendToken].offset);
 
       auto* first = static_cast<ParamDecl*>(f->params[0]);
       Type* t = first->type;
@@ -4122,6 +4121,7 @@ namespace
         uint32_t close = parameterEndIn(toks, f->params[f->params.size() - 1]->token);
         if (comma != UINT32_MAX && toks[comma].is(P::Comma) && close != UINT32_MAX)
         {
+          remove(toks[friendToken].offset, toks[friendToken + 1].offset - toks[friendToken].offset);
           remove(toks[first->token].offset, toks[comma + 1].offset - toks[first->token].offset);
           if (isConst || !reference)
             insert(endOffset(close), " const");
@@ -4134,6 +4134,16 @@ namespace
           return true;
         }
       }
+      // Moved out, a friend of a class nested in a class template would be a function template
+      // whose parameters its signature cannot deduce (`RectangleUnionLogic<P>::IntervalPoint`).
+      if (nested && inTemplate)
+      {
+        todo(toks[f->token].offset, "a hidden friend the converter cannot place: left out");
+        removeDecl(f);
+        counts.add("friend declarations removed");
+        return false;
+      }
+      remove(toks[friendToken].offset, toks[friendToken + 1].offset - toks[friendToken].offset);
 
       MovedFriend moved;
       moved.begin = declStart(f);
