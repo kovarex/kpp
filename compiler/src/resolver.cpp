@@ -14370,6 +14370,20 @@ struct GlobalScope::Impl
         if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
           constructors.push_back(static_cast<FunctionDecl*>(m));
       Subst subst = impl.substFor(t);
+      if (constructors.empty())
+      {
+        // `NamedFunction{Expression::computeConstant}` of an aggregate: its data members take the
+        // arguments in order (a class with bases is left: they would come first).
+        auto* cls = static_cast<ClassDecl*>(s->owner);
+        if (!cls->bases.empty())
+          return;
+        std::vector<const Ty*> members;
+        for (Decl* m : cls->members)
+          if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+            members.push_back(impl.declaredTypeOf(m, subst.empty() ? nullptr : &subst, 0));
+        bindOverloadSets(sets, types.function(types.voidType(), Span<const Ty*>{members.data(), uint32_t(members.size())}, false));
+        return;
+      }
       bool ambiguous = false;
       std::vector<const Ty*> argTypes = argTypesOf(args);
       for (const OverloadSetArgument& set : sets)
@@ -16547,8 +16561,14 @@ struct GlobalScope::Impl
             else if (const Ty* aggregate = c->braced ? impl.deduceAggregateArgs(t, argTypes) : nullptr)
               t = aggregate;
           }
-          if (!c->braced && !c->args.empty())
-            bindOverloadSetsOfConstruction(t, c->args);
+          if (!c->args.empty())
+          {
+            // (`NamedFunction{set}`: the list's elements, for the aggregate's members or the constructor.)
+            Span<Expr*> args = c->args;
+            if (c->braced && args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr)
+              args = static_cast<BraceInitExpr*>(args[0])->args;
+            bindOverloadSetsOfConstruction(t, args);
+          }
           return record(e, t);
         }
         case NodeKind::TypeidExpr:

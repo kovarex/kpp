@@ -10462,6 +10462,12 @@ namespace
               }
               else if (currentClassTy)
                 classTy = canonicalClass(currentClassTy, e);
+              // `Expression::computeConstant` with Expression deriving from the class template
+              // instance that declares it (ComplexExpressionWithOperation<QuickMultioctaveNoise, 2,
+              // 10>): that instance's member, with its arguments.
+              if (classTy)
+                if (const Ty* declaring = instantiationIn(classTy, global.owningClass(f), e); declaring && !declaring->args.empty())
+                  classTy = declaring;
               if (!classTy)
                 unsupported(e, "taking the address of a member of an unknown instantiation");
               fargs = global.classArgsOf(classTy);
