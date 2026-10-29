@@ -1552,6 +1552,31 @@ into a Function bit by bit, its old place left in the list), and 62 under
 UpgradableEntity::getUpgradeTargetWithFallback (52 faults, 10 at PrototypeList.kpp:89 with the
 IDs it gave), a union's own constructor dropping its member initializer, fixed in 3f280db.
 
+#### The failing tests
+
+In the suites that finish, the tests that fail: `python programs\factorio\failures.py [OUT\logs]`
+lists each failed check (suite, test, file:line, message) and counts the messages. On ded1074 there
+were 185 failed checks. ea83927 took 48 of them: npos was -1, so the game's `Math::min(input.find(separator),
+input.size())` in LocaleStringReplacer was -1, a huge offset, and every localised text came out
+followed by its own suffixes (`0 minutes__inutes__nutes__...`): the Localisation suite, the text
+layout's "Unknown enum value", the GUI's "Expected under mouse ..." misses. On 4f2556b, 137 failed
+checks in 136 tests:
+
+| Checks | What fails | Cause | Kind, owner |
+|---|---|---|---|
+| 44 | a map saved and loaded through the multiplayer harness: `unknown Source value: 255` (RelativeItemStackLocation::source, 26 suites) | not found yet: save and load disagree before that field (the load's member initializers with a ternary over the stream are right, probed) | |
+| 30 | Lua: `game.map_settings`, a force's flow statistics: "attempt to index field 'map_settings' (a userdata value)", a LuaObject's userdata without an indexing metatable | not found yet | |
+| 11 | Lua: a precompiled chunk (string.dump) loaded back is "a text chunk" | not found yet | |
+| 8 | signals on elevated rails (RailBridges, RailSignalBaseControlBehavior) | not looked at | |
+| 4 | blueprints of rolling stock: `myRollingStocks.count(*locomotive)` | not looked at | |
+| 3 | StringUtil's AnsiTextToUTF8 and NonEnglishCaseCasting, LuaHelpersObject's MultilingualToLower | `\u` escapes in literals: codegen keeps `L"\u0054"` as the five characters u0054 | compiler: pending spec language/universal_character_names_in_literals, the codegen thread |
+| 2 | FloatingPoint's fmodFloat and ClampCast | the library had no float fmod and nextafter: computed in double, saved as doubles | library: fixed (math_float_overloads) |
+| 3 | RichText's `[img=...]` tags | not looked at | |
+| 3 | ManualMining's tiles (water, landfill) | not looked at | |
+| 3 | an empty prototype name (`Unknown entity name: `) | not looked at | |
+| 2 | a control behavior's `isSetup` | not looked at | |
+| 24 | one each: LuaRendering's "Unknown type", two TestSelector searches, two ItemOwnership and a Targeter address, RichText's caret over images (4), MapDeserialiser's map and FlatMap, PropertyTree's shared strings, ... | not looked at | |
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
