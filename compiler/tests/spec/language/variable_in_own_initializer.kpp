@@ -1,0 +1,13 @@
+// spec: a variable whose type is written is in scope in its own initializer (C++ declares it before the initializer): `void* self = &self;`, `Node head{&head}`; an `auto` variable is not (its type comes from there)
+// factorio: Gui.kpp's `Function<void(const agui::Widget*, size_t, String&)> recursiveAppendWidgets = [&](...) { ... recursiveAppendWidgets(child, ...); }` (calling itself: language/recursive_function_variable)
+struct Node
+{
+  Node* next;
+};
+int main()
+{
+  void* self = &self;
+  Node head{&head};
+  println("{} {}", self == (void*)&self, head.next == &head);
+  return 0;
+}

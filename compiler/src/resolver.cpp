@@ -9776,8 +9776,9 @@ struct GlobalScope::Impl
 
     void walkLocalDecl(Decl* d)
     {
-      // Resolve the declaration first (its type/initializer cannot see the name being declared,
-      // except for classes), then make the name visible.
+      // Classes are in scope in their own bodies. A variable whose type is written is in scope
+      // in its own initializer, as C++ declares it before that (`Function<void(int)> visit =
+      // [&](int n) { visit(n - 1); };`); an `auto` one is not, its type comes from there.
       if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl)
       {
         declareLocal(d);
@@ -9785,12 +9786,20 @@ struct GlobalScope::Impl
       }
       else
       {
+        auto* v = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
+        bool early = v && v->type && v->init && v->structuredBindings.empty() && !Impl::astMentionsAuto(v->type);
+        size_t declaredAt = locals.mark();
+        if (early)
+          declareLocal(d);
         deducedLocal = nullptr;
         walkDecl(d);
-        const Ty* deduced = d->kind == NodeKind::VariableDecl ? deducedLocal : nullptr;
+        const Ty* deduced = v ? deducedLocal : nullptr;
         deducedLocal = nullptr;
-        size_t declaredAt = locals.mark();
-        declareLocal(d);
+        if (!early)
+        {
+          declaredAt = locals.mark();
+          declareLocal(d);
+        }
         if (deduced)
           for (size_t i = declaredAt; i < locals.items.size(); ++i)
             locals.items[i].type = deduced; // `auto x = e;`: the type this walk deduced
