@@ -21,6 +21,8 @@ rem read through a wild pointer still shows only as "Received SIGSEGV"; a use af
 rem overflow gets ASan's report with the allocation and free stacks.
 setlocal
 cd /d "%~dp0"
+rem The script's own directory: the argument loop's shift shifts %0 too.
+set HERE=%~dp0
 set CONVERSION=C:\factorio-in-kpp\kpp
 set BASELINE=0
 set ASAN=0
@@ -32,10 +34,10 @@ if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--asan" (set ASAN=1) els
 shift
 goto arguments
 :argumentsDone
-set OUT=%~dp0kpp\tests-run
-if %BASELINE%==1 set OUT=%~dp0kpp\tests-baseline
+set OUT=%HERE%kpp\tests-run
+if %BASELINE%==1 set OUT=%HERE%kpp\tests-baseline
 set SANITIZE=
-if %ASAN%==1 set OUT=%~dp0kpp\tests-asan
+if %ASAN%==1 set OUT=%HERE%kpp\tests-asan
 if %ASAN%==1 set SANITIZE=--clang-flags -fsanitize=address --lib -fsanitize=address
 if %ASAN%==1 set "PATH=%ASANRUNTIME%;%PATH%"
 if not exist %OUT%\run mkdir %OUT%\run
@@ -48,7 +50,7 @@ rem The config the runner reads (--config): the game's data from C:\Factorio, th
 set EXE=C:\Factorio\bin\Releasex64vs2022\factorio-test.exe
 if %BASELINE%==1 goto run
 call native\build.cmd >nul || exit /b 1
-call "%~dp0link-settings.cmd"
+call "%HERE%link-settings.cmd"
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe
 %KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\CommonUtil %CONVERSION%\Agui %CONVERSION%\cxxopts %CONVERSION%\StackWalker %CONVERSION%\Lua %CONVERSION%\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt

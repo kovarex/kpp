@@ -16,6 +16,8 @@ rem --no-crash-handler. KPPC_EXTRA adds kppc options, as for an AddressSanitizer
 rem `set KPPC_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address`.
 setlocal
 cd /d "%~dp0"
+rem The script's own directory: the argument loop's shift shifts %0 too.
+set HERE=%~dp0
 set GAME=C:\factorio-in-kpp
 set BUILD=1
 set ARGS=
@@ -27,7 +29,7 @@ goto arguments
 :argumentsDone
 if %BUILD%==0 goto run
 call native\build.cmd >nul || exit /b 1
-call "%~dp0link-settings.cmd"
+call "%HERE%link-settings.cmd"
 rem The linker's map and a PDB of the functions' names (the objects carry no debug information), and
 rem the crash report, which only this link pulls in.
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
