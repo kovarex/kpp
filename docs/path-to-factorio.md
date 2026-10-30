@@ -1620,17 +1620,20 @@ to a bit-field (Tree, and LuaEntity's neighbour connections, whose `first` is a 
 structured binding of a reference member (BuildabilityChecks), a static_cast to a reference through
 a conversion function (TrainPriorities), the map deserialiser's key copies (stdlib, aa38d77).
 
-The tally on 62acb96: of 554 suites, 550 get to their summary line, with 8786 tests of which 8782 pass
-and 4 fail; 4 stop: 2 at stubs (CallerExpr in TestGui and TestMigrations), LatencyInputFixture (a
-desync report saving a ManualMiner's Targeter) and LuaBlueprint (a constructor that throws leaves its
-Entity base alive: pending spec classes/constructor_throw_destroys_built_parts; the tests' leak check
-aborts at exit). The build has 3 stubs and 3 error lines. The failed checks:
+Fixed between 62acb96 and e4c218a: an rvalue reference bound to the lvalue a conversion function
+returns (`push_back(lowercaseString)` moved the String out: the server's name in the multiplayer
+player list, interrupt names, so TrainGui's two interrupts synced into one), a conditional of a String
+and a const char* (LuaInventory), a throwing constructor's built parts (LuaBlueprint), a lambda's
+`caller` default argument (the two CallerExpr stubs). suites.py also found the two suites declared
+`SUITE (Name)`, with a space (Movement, TestUtil: 23 tests).
 
-| Checks | What fails | Cause | Kind, owner |
-|---|---|---|---|
-| 1 | LuaInventory LuaScriptInventoryOwnership (`get_script_inventories().core` nil) | `item.first ? item.first->id.name : Mod::CORE_MOD`, a String and a const char*, comes out empty | compiler: pending spec expressions/conditional_converts_pointer_operand_to_class, the templates thread |
-| 2 | Multiplayer: MultiplayerRandomConnections desyncs, MultiplayerLANGameUpdating's server name empty | not looked at | |
-| 1 | TrainGui TrainInterruptInteractionsUsingGui (dragging an interrupt does not reorder) | not looked at | |
+The tally on e4c218a: of 556 suites (the C++ build's 549, and 7 that run no tests in either), 555 get
+to their summary line, with 8998 tests, all passing. The C++ build runs 9006: the 5 of
+LatencyInputFixture, which stops (a declaration that is a statement's whole body is not a block of its
+own: pending spec language/declaration_as_statement_body_has_own_block, the codegen thread; its 5 tests
+pass with braces around TargeterBase::save's branches), and the 3 left out by left-out-tests.txt. The
+build has 1 error line and 1 stub, a closure with a brace init-capture of a UniquePtr taken as
+copyable (pending spec templates/brace_init_capture_keeps_closure_move_only, the resolver thread).
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
