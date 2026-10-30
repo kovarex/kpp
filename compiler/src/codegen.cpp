@@ -519,6 +519,11 @@ namespace
       bool isTemporary = false; // Class temporary owned by the current full-expression
     };
     std::unordered_map<Decl*, Local> locals;
+    // The last scalar assignment emitted and the place it stored to: an assignment used as an
+    // lvalue (`int& r = (a[i++] = v);`) is that place, its left operand not evaluated again.
+    const BinaryExpr* assignedAt = nullptr;
+    std::string assignedPlace;
+    const Expr* evaluatedFirst = nullptr; // the stand-in for an assignment's right operand evaluated before its left
     std::unordered_map<Decl*, std::vector<Local>> packLocals; // one local per element of a parameter pack
     // The `__range` of a range-for that calls free begin(__range) and end(__range): a variable of
     // the compiler's and the name of it passed to the calls (one each per such loop).
@@ -9355,7 +9360,11 @@ namespace
             Value v = rvalue(e);
             if (isClass(v.ty))
               return v.text;
-            return lvalue(b->lhs);
+            if (assignedAt == b)
+              return assignedPlace; // (its left operand evaluated once)
+            if (fixedPlace(b->lhs))
+              return lvalue(b->lhs); // (evaluating it again changes nothing)
+            unsupported(e, "a scalar assignment used as an lvalue whose place was not recorded");
           }
           if (!b->isKeyword && P(b->op) == P::Comma)
           {
@@ -10183,6 +10192,110 @@ namespace
         case P::ShrAssign: return P::Shr;
         default: return op;
       }
+    }
+
+    // Whether evaluating e may write what another operand of its expression reads: it calls (a
+    // function, a class's operator or constructor), assigns, steps (++, --), or news, deletes or
+    // throws. (A lambda's body runs when it is called, not here.)
+    bool mayWrite(Expr* e)
+    {
+      if (!e)
+        return false;
+      auto classOperand = [&](Expr* x) { return x && x->ty && isClass(types.unqualified(types.stripRef(x->ty))); };
+      auto any = [&](Span<Expr*> list) {
+        for (Expr* x : list)
+          if (mayWrite(x))
+            return true;
+        return false;
+      };
+      switch (e->kind)
+      {
+        case NodeKind::CallExpr: case NodeKind::NewExpr: case NodeKind::DeleteExpr: case NodeKind::ThrowExpr: case NodeKind::FunctionalCastExpr:
+          return true;
+        case NodeKind::BraceInitExpr: return classOperand(e) || any(static_cast<BraceInitExpr*>(e)->args);
+        case NodeKind::ParenExpr: return mayWrite(static_cast<ParenExpr*>(e)->inner);
+        case NodeKind::CastExpr: return classOperand(e) || mayWrite(static_cast<CastExpr*>(e)->operand);
+        case NodeKind::NamedCastExpr: return classOperand(e) || mayWrite(static_cast<NamedCastExpr*>(e)->operand);
+        case NodeKind::MemberExpr:
+        {
+          auto* m = static_cast<MemberExpr*>(e);
+          return (m->op == P::Arrow && classOperand(m->base)) || mayWrite(m->base) || mayWrite(m->dynamicMember); // (a class's operator->)
+        }
+        case NodeKind::IndexExpr:
+        {
+          auto* x = static_cast<IndexExpr*>(e);
+          return classOperand(x->base) || mayWrite(x->base) || any(x->args); // (a class's operator[])
+        }
+        case NodeKind::UnaryExpr:
+        {
+          auto* u = static_cast<UnaryExpr*>(e);
+          if (u->isKeyword)
+            return mayWrite(u->operand);
+          P op = P(u->op);
+          return op == P::PlusPlus || op == P::MinusMinus || classOperand(u->operand) || mayWrite(u->operand);
+        }
+        case NodeKind::BinaryExpr:
+        {
+          auto* b = static_cast<BinaryExpr*>(e);
+          return (!b->isKeyword && isAssignment(P(b->op))) || classOperand(b->lhs) || classOperand(b->rhs) || mayWrite(b->lhs) || mayWrite(b->rhs);
+        }
+        case NodeKind::ConditionalExpr:
+        {
+          auto* c = static_cast<ConditionalExpr*>(e);
+          return mayWrite(c->cond) || mayWrite(c->then) || mayWrite(c->else_);
+        }
+        case NodeKind::LambdaExpr:
+          for (const LambdaCapture& c : static_cast<LambdaExpr*>(e)->captures)
+            if (mayWrite(c.init))
+              return true;
+          return false;
+        default:
+          return false;
+      }
+    }
+
+    // Whether e designates a place no other operand's evaluation can move: a variable (a reference
+    // one is bound once), `this`, or a data member of one of those reached by `.` or `this->`, an
+    // element of an array among them at a constant index, or one's typed union's alternative
+    // (`target[a] = a.type(input)`: built in place, as before).
+    bool fixedPlace(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (e && e->kind == NodeKind::IndexExpr)
+      {
+        auto* x = static_cast<IndexExpr*>(e);
+        const Ty* bt = x->base && x->base->ty ? types.unqualified(types.stripRef(x->base->ty)) : nullptr;
+        if (!bt || x->args.size() != 1 || !fixedPlace(x->base))
+          return false;
+        if (typedUnionOf(bt, e))
+          return true;
+        return bt->kind == TyKind::Array && !mayWrite(x->args[0]) && evalConst(x->args[0]).has_value();
+      }
+      return fixedName(e);
+    }
+    bool fixedName(Expr* e)
+    {
+      if (!e)
+        return false;
+      if (e->kind == NodeKind::NameExpr)
+      {
+        Decl* d = static_cast<NameExpr*>(e)->resolved;
+        return d && (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::ParamDecl); // (a member named alone: `this->` it)
+      }
+      if (e->kind == NodeKind::UnaryExpr)
+      {
+        auto* u = static_cast<UnaryExpr*>(e);
+        return !u->isKeyword && P(u->op) == P::Star && u->operand && u->operand->kind == NodeKind::ThisExpr; // `*this`
+      }
+      if (e->kind != NodeKind::MemberExpr)
+        return false;
+      auto* m = static_cast<MemberExpr*>(e);
+      if (!m->resolved || m->resolved->kind != NodeKind::VariableDecl || m->dynamicMember)
+        return false;
+      if (m->op == P::Arrow)
+        return m->base && m->base->kind == NodeKind::ThisExpr;
+      return fixedPlace(m->base);
     }
 
     // Finds the best member with the given name (searching bases, nearest class wins) for the
@@ -13219,6 +13332,60 @@ namespace
       }
       const Ty* lt = types.stripRef(b->lhs->ty);
       const Ty* rt = b->rhs && b->rhs->ty ? types.stripRef(b->rhs->ty) : nullptr;
+      // C++17 evaluates an assignment's right operand, simple or compound, built-in or a class's
+      // operator, before its left ([expr.ass] 1, [over.match.oper] 2; design.md, "Evaluation
+      // order"). The scalar assignment below does; a class's operator takes its operands as a call
+      // does, the object first, so where the order can show (the right operand may write, the left
+      // one is no fixed place) the right one is evaluated first and stands for itself in the
+      // assignment, as the place it designates.
+      if (isAssignment(op) && (isClass(lt) || isClass(rt) || (op != P::Assign && lt && lt->kind == TyKind::Enum)) && b->rhs &&
+          b->rhs->kind != NodeKind::BraceInitExpr && b->rhs != evaluatedFirst && mayWrite(b->rhs) && !fixedPlace(b->lhs))
+      {
+        // An lvalue stands as a variable at its place; a temporary of a class, or an xvalue, as
+        // `static_cast<T&&>` of one (still an rvalue, for operator=(T&&)); a scalar prvalue as the
+        // value stored, cast back to a prvalue.
+        Expr* rhs = b->rhs;
+        const Ty* rty = rhs->ty ? types.stripRef(rhs->ty) : nullptr;
+        if (!rty || !rty->isKnown())
+          unsupported(b, "an assignment whose right operand, evaluated first (C++17), has no known type");
+        bool lvalueOperand = isLvalueExpression(rhs) || (rhs->ty && rhs->ty->kind == TyKind::LRef); // (`sourceRef()` returning T&)
+        bool object = isClass(rty) || isLambda(rty); // (a closure too: `fn = [q = move(p)]() {...}`)
+        std::string at;
+        if (lvalueOperand || isXvalue(rhs))
+          at = lvalue(rhs);
+        else if (object)
+          at = rvalue(rhs).text; // (a temporary, destroyed with the statement's)
+        else
+        {
+          at = newObjectSlot(rty, b);
+          store(rvalue(rhs), at, rty, b);
+        }
+        VariableDecl evaluated{};
+        evaluated.kind = NodeKind::VariableDecl;
+        evaluated.token = rhs->token;
+        NameExpr place{};
+        place.kind = NodeKind::NameExpr;
+        place.token = rhs->token;
+        place.resolved = &evaluated;
+        place.ty = rty;
+        locals[&evaluated] = {at, rty, false};
+        struct Forget { std::unordered_map<Decl*, Local>& locals; Decl* d; ~Forget() { locals.erase(d); } } forget{locals, &evaluated};
+        NamedCastExpr rvalueCast{};
+        rvalueCast.kind = NodeKind::NamedCastExpr;
+        rvalueCast.token = rhs->token;
+        rvalueCast.castKind = Kw::static_cast_;
+        rvalueCast.operand = &place;
+        rvalueCast.ty = object ? types.rref(rty) : rty;
+        Expr* standIn = lvalueOperand ? static_cast<Expr*>(&place) : &rvalueCast;
+        struct Restore { const Expr*& slot; const Expr* saved; ~Restore() { slot = saved; } } restore{evaluatedFirst, evaluatedFirst};
+        evaluatedFirst = standIn;
+        BinaryExpr assignment = *b;
+        assignment.rhs = standIn;
+        Value assigned = binary(&assignment);
+        if (assignedAt == &assignment)
+          assignedAt = b;
+        return assigned;
+      }
       if (op == P::Assign && b->lhs->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(b->lhs)->base->ty &&
           typedUnionOf(types.stripRef(static_cast<IndexExpr*>(b->lhs)->base->ty), b))
         return assignAlternative(static_cast<IndexExpr*>(b->lhs), b->rhs, b); // `p[Integer] = 5`: the tag and the value
@@ -13386,7 +13553,6 @@ namespace
       }
       if (isAssignment(op))
       {
-        std::string addr = lvalue(b->lhs);
         const Ty* t = types.stripRef(b->lhs->ty);
         if ((!t || !t->isKnown()) && b->lhs->kind == NodeKind::MemberExpr)
         {
@@ -13415,11 +13581,15 @@ namespace
           else
             unsupported(b, "an assignment to an expression of unknown type");
         }
+        // The right operand first, then the left one's place (C++17 [expr.ass] 1).
         Value rhs = op == P::Assign && b->rhs->kind == NodeKind::BraceInitExpr ? braceScalar(static_cast<BraceInitExpr*>(b->rhs), t, b) // `mod->id.crc = {};`
                                                                                 : rvalue(b->rhs);
         if (scalarAssignment)
           rhs = convert(rhs, global.scalarConversionOf(rhs.ty) ? global.scalarConversionOf(rhs.ty) : t, b);
+        std::string addr = lvalue(b->lhs);
         const BitfieldInfo* bits = bitfieldNamed(b->lhs);
+        assignedAt = bits ? nullptr : b; // (a bit field has no place to refer to)
+        assignedPlace = addr;
         if (op != P::Assign)
         {
           Value old = bits ? loadBitfield(addr, *bits, t, b) : load(addr, t, b);

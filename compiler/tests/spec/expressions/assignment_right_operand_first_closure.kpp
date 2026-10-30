@@ -1,0 +1,11 @@
+// spec: an assignment whose right operand, evaluated first, is a lambda's closure holding what cannot be copied (`h->fn = [q = move(p)]() mutable {...}`, the left operand a call of SharedPtr's operator->) moves the closure into the Function, never copies it
+// factorio: stdlib Future.kpp's async, `state->deferred = [raw, callable = move(callable)]() mutable {...}` (ForkTask, ThreadedChunkedZipPackageWriteStream): found making the right operand of an assignment evaluate first
+struct Holder { Function<int()> fn; };
+int main()
+{
+  SharedPtr<Holder> h = makeShared<Holder>();
+  UniquePtr<int> p = makeUnique<int>(3);
+  h->fn = [q = move(p)]() mutable { return *q; };
+  println("{}", h->fn());
+  return 0;
+}

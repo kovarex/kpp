@@ -1,40 +1,48 @@
-// spec: in an assignment, simple or compound, built-in or a class's operator, the right operand is evaluated before the left (C++17 [expr.ass]/1, [over.match.oper]/2); a subscript and a shift evaluate their left operand first
-// factorio: CompiledMapGenSettings::createContext's `ctx.numericConstants[key] = *value;` with value a pointer into the same FlatMap: the left operand's insertion shifted the entries before *value was read, so "numeric-constant" got its neighbour's 1 instead of starting_area_radius's 150 (CompiledMapGenSettings/NoiseExpressionCompilationContext, the one failing unit test of 4c178a5b915); the expected line is clang 19's
-// pending: kppc evaluates the left operand of an assignment first (12 where C++ has 21)
+// spec: C++17's sequencing (design.md, "Evaluation order"): an assignment's right operand, = and every compound one, built-in or a class's operator, is evaluated before its left ([expr.ass] 1, [over.match.oper] 2); a subscript, a shift, .* and ->*, and a call (the callee, the object of a member call) evaluate their left operand first ([expr.sub], [expr.shift], [expr.mptr.oper], [expr.call] 8); the expected line is clang 19's
+// factorio: CompiledMapGenSettings::createContext's `ctx.numericConstants[key] = *value;` with value a pointer into the same FlatMap: the left operand's insertion shifted the entries before *value was read, so "numeric-constant" got its neighbour's 1 instead of starting_area_radius's 150 (CompiledMapGenSettings/NoiseExpressionCompilationContext, the one failing unit test of 4c178a5b915)
 int order = 0;
 int stored = 0;
 int values[4] = {0, 0, 0, 0};
+void note(int step) { order = order * 10 + step; }
 struct Box
 {
   int value = 0;
   Box& operator=(int v) { this->value = v; return *this; }
   Box& operator+=(int v) { this->value += v; return *this; }
+  Box& operator<<(int v) { this->value = v; return *this; }
+  int operator[](int i) { return i; }
+  int get(int v) { return v; }
 };
 Box box;
-int& left() { order = order * 10 + 1; return stored; }
-Box& leftBox() { order = order * 10 + 1; return box; }
-int right() { order = order * 10 + 2; return 5; }
-int* array() { order = order * 10 + 1; return values; }
-int index() { order = order * 10 + 2; return 1; }
+Box* boxPointer = &box;
+int Box::* field = &Box::value;
+int& left() { note(1); return stored; }
+Box& leftBox() { note(1); return box; }
+Box* leftBoxPointer() { note(1); return boxPointer; }
+int right() { note(2); return 5; }
+int* array() { note(1); return values; }
+int index() { note(2); return 1; }
+int Box::* member() { note(2); return field; }
+int twice(int v) { return v * 2; }
+using Fn = int (*)(int);
+Fn callee() { note(1); return &twice; }
+int take() { order = 0; return 0; }
 int main()
 {
-  left() = right();
-  int simple = order;
-  order = 0;
-  left() += right();
-  int compound = order;
-  order = 0;
-  leftBox() = right();
-  int classAssign = order;
-  order = 0;
-  leftBox() += right();
-  int classCompound = order;
-  order = 0;
-  int at = array()[index()];
-  int subscript = order;
-  order = 0;
-  int shifted = left() << right();
-  int shift = order;
-  println("{} {} {} {} {} {}", simple, compound, classAssign, classCompound, subscript, shift);
+  take(); left() = right(); int a1 = order;
+  take(); left() += right(); int a2 = order;
+  take(); left() <<= right(); int a3 = order;
+  take(); leftBox() = right(); int a4 = order;
+  take(); leftBox() += right(); int a5 = order;
+  take(); int s1 = array()[index()]; s1 = order;
+  take(); int s2 = leftBox()[index()]; s2 = order;
+  take(); int h1 = left() << right(); h1 = order;
+  take(); int h2 = left() >> right(); h2 = order;
+  take(); leftBox() << right(); int h3 = order;
+  take(); int m1 = leftBox().*member(); m1 = order;
+  take(); int m2 = leftBoxPointer()->*member(); m2 = order;
+  take(); int c1 = callee()(right()); c1 = order;
+  take(); int c2 = leftBox().get(right()); c2 = order;
+  println("{} {} {} {} {} | {} {} | {} {} {} | {} {} | {} {}", a1, a2, a3, a4, a5, s1, s2, h1, h2, h3, m1, m2, c1, c2);
   return 0;
 }

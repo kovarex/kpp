@@ -461,6 +461,29 @@ qualified path through the same draft shares a single type chain.
 11.1% unresolved type names). Drafts give formerly-unknown types a stable `Ty*` identity,
 which downstream phases (codegen, template instantiation) can use when the definition appears.
 
+### 11. Evaluation order: C++17's rules (decided 2026-10-30)
+
+Kpp evaluates operands in the order C++17 sequences them, so that converted code means what it
+meant:
+
+- An assignment, `=` and every compound one, built-in or a class's or a free operator function,
+  evaluates its right operand before its left ([expr.ass] 1, [over.match.oper] 2): `table[key] =
+  *value` reads `*value` before `table[key]` inserts (CompiledMapGenSettings::createContext read a
+  moved FlatMap entry before this). The right operand keeps its value category: a temporary or an
+  xvalue is still moved from, an lvalue copied.
+- A subscript `E1[E2]`, a shift `E1 << E2` and `E1 >> E2`, and `E1.*E2` and `E1->*E2` evaluate
+  their left operand first; a call evaluates the callee (and a member call's object) before its
+  arguments ([expr.sub], [expr.shift], [expr.mptr.oper], [expr.call] 8). Overloaded operators
+  follow the built-in operator's order.
+- `new` allocates before it evaluates the initializer's arguments ([expr.new] 19). (A class's own
+  operator new is not called yet: classes/class_operator_new_is_called is pending.)
+- Otherwise C++ leaves the order unspecified (a call's arguments among themselves, the operands
+  of `+`), and so does Kpp: code must not depend on it.
+
+An assignment used as an lvalue (`int& r = (a[i++] = v);`) is the place it stored to; its left
+operand is evaluated once. Specs: expressions/assignment_evaluates_right_operand_first,
+expressions/assignment_right_operand_first_keeps_value_category.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find

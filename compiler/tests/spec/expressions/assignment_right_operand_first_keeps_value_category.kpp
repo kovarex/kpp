@@ -1,0 +1,64 @@
+// spec: an assignment's right operand evaluated before its left keeps what it is: a temporary or an xvalue is moved from (operator=(T&&)), an lvalue, a call returning T& included, is copied; a free operator+= and an enum's operator|= take it as well; an assignment used as an lvalue (`int& r = (values[nextIndex()] = right());`) evaluates its left operand once; and the left operand's evaluation sees what the right one did (an insertion at the front that moves the element the right operand read); the expected line is clang 19's
+// factorio: the pattern of CompiledMapGenSettings::createContext's `ctx.numericConstants[key] = *value;` (a FlatMap insertion moving the entry value points to)
+int order = 0;
+void note(int step) { order = order * 10 + step; }
+struct Tracked
+{
+  int value = 0;
+  int how = 0; // 1 copied, 2 moved
+  Tracked() {}
+  Tracked(int v) : value(v) {}
+  Tracked(const Tracked& o) : value(o.value) {}
+  Tracked& operator=(const Tracked& o) { this->value = o.value; this->how = 1; return *this; }
+  Tracked& operator=(Tracked&& o) { this->value = o.value; this->how = 2; return *this; }
+};
+struct Sum { int total = 0; };
+Sum& operator+=(Sum& s, int v) { s.total += v; return s; }
+enum class Flags : int { None = 0, A = 1, B = 2 };
+Flags& operator|=(Flags& f, Flags g) { f = Flags(int(f) | int(g)); return f; }
+Tracked slots[2];
+Sum sums[2];
+Flags flags[2] = {Flags::None, Flags::None};
+int values[4] = {0, 0, 0, 0};
+template<class T> T&& moved(T& x) { return static_cast<T&&>(x); }
+struct Table
+{
+  double items[4] = {0, 0, 0, 0};
+  int count = 0;
+  double& insertFront(double v)
+  {
+    for (int i = this->count; i > 0; --i)
+      this->items[i] = this->items[i - 1];
+    this->items[0] = v;
+    ++this->count;
+    return this->items[0];
+  }
+};
+Tracked source(7);
+Tracked& leftTracked() { note(1); return slots[0]; }
+Sum& leftSum() { note(1); return sums[0]; }
+Flags& leftFlags() { note(1); return flags[0]; }
+Tracked makeTracked() { note(2); return Tracked(9); }
+Tracked& sourceRef() { note(2); return source; }
+int right() { note(2); return 5; }
+Flags rightFlag() { note(2); return Flags::B; }
+int counter = 0;
+int nextIndex() { note(1); return counter++; }
+int main()
+{
+  order = 0; leftTracked() = makeTracked(); int t1 = order * 10 + slots[0].how;
+  order = 0; leftTracked() = moved(sourceRef()); int t2 = order * 10 + slots[0].how;
+  order = 0; leftTracked() = sourceRef(); int t3 = order * 10 + slots[0].how;
+  order = 0; leftSum() += right(); int t4 = order;
+  order = 0; leftFlags() |= rightFlag(); int t5 = order;
+  order = 0; int& r = (values[nextIndex()] = right()); r = 8; int t6 = order * 1000 + counter * 100 + values[0] * 10 + values[1];
+  Table shifted;
+  shifted.items[0] = 150;
+  shifted.items[1] = 1;
+  shifted.count = 2;
+  const double* at = &shifted.items[0];
+  shifted.insertFront(7) = *at;
+  int t7 = int(shifted.items[0]);
+  println("{} {} {} {} {} {} {}", t1, t2, t3, t4, t5, t6, t7);
+  return 0;
+}
