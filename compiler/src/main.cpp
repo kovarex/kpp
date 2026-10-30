@@ -5,6 +5,7 @@
 #include "parser.hpp"
 #include "resolver.hpp"
 #include "ast_walk.hpp"
+#include "run.hpp"
 #include "server.hpp"
 #include "source.hpp"
 #include <algorithm>
@@ -126,7 +127,9 @@ namespace
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
-            "  --stop-server stop the compile server of the other arguments\n");
+            "  --stop-server stop the compile server of the other arguments\n"
+            "  --run F ARGS  build F (a file or directory) with the options before --run and run it with ARGS;\n"
+            "                the exit code is the program's (docs/design.md, \"Running and testing Kpp code\")\n");
   }
 
   struct FileStats
@@ -2380,6 +2383,10 @@ int runDriver(int argc, char** argv)
   // stops the server of the same arguments, `--serve KEY` is the server a client started.
   if (argc == 3 && std::string(argv[1]) == "--serve")
     return runServer(argv[2], compile);
+  // `--run` (run.hpp): the arguments after its source are the program's.
+  for (int i = 1; i < argc; ++i)
+    if (std::string(argv[i]) == "--run")
+      return runProgram(argc, argv, i);
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--server" || std::string(argv[i]) == "--stop-server")
     {

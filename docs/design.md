@@ -1137,6 +1137,128 @@ machine (only the clang binaries exist here) and keeps every codegen decision in
 code; moving to the LLVM C++ API in-process is a later optimisation. Names in IR are the
 qualified Kpp names with parameter types, quoted, so there is no mangling scheme to design.
 
+## Running and testing Kpp code (proposed 2026-10-30, thread G; the open choices are kovarex's)
+The goal: write some Kpp and see it run, and write tests for Kpp code, with no ceremony. The test
+syntax is already decided (8.6: `test "name" { }`, `check`, `require`); what follows is the rest
+of the mechanism, what is done, and the choices left to kovarex (marked **Q**).
+
+### What exists (surveyed 2026-10-30 on 7f3e55c)
+- **Running a snippet** is two commands: `kppc --exe out.exe file.kpp`, then `out.exe`. The
+  program is built with the whole standard library (59 files; the front end takes 0.04 s of it).
+- **The spec suite** (`compiler/tests/spec.cmd`, `run_spec.py`): one program per construct,
+  compiled, run, stdout compared with `.expected`; headers `// spec:`, `// pending:`, `// error:`,
+  and now `// run:` / `// exit:` (built and run in one step through `kppc --run`). It checks
+  output, not assertions: it is the compiler's specification, not a test framework for Kpp code.
+- **`compiler/tests/run_tests.cmd`**: the same shape for `tests/run/*.kpp`, plus the access,
+  determinism and incremental checks.
+- **The converted game's unit tests** (`programs/factorio/tests.cmd`): UnitTest++ converted to Kpp
+  with the game, built into one `factorio-test.exe` with `--keep-going --stub-missing`, 9006
+  tests passing (2026-10-29); `suites.py` runs one suite per process because a stub or a failed
+  assertion ends the process.
+- **The standard library has no tests of its own**; the spec suite's `library` area exercises it.
+  `programs/kpplex` is a program with a timing script, no tests.
+- **8.6 is not implemented**: `test "name" { }` is a parse error, and a parse error at namespace
+  scope does not fail the build today (pending snippet
+  `language/namespace_scope_parse_error_fails_build`), which is why `kpp/tests_in_compiler`
+  shows as passing.
+
+### Latency today (2026-10-30, PC-PRACOVNA, other threads building at the same time: noisy)
+The 10-line program (`fib` into a `Vector<int>`, `println`), PowerShell `Measure-Command`, six
+rounds each, median (range):
+
+| From the edit to the output | `kppc --exe`, then the program | `kppc --run` | `kppc --server --run` |
+|---|---|---|---|
+| file edited | 0.33 s (0.29-0.38) + 0.07 s | 0.47 s (0.44-0.78) | 0.61 s (0.53-0.81) |
+| nothing changed | 0.30 s (0.28-0.33) + 0.07 s | 0.31 s (0.25-0.63) | 0.07 s (0.03-0.16) |
+
+Where an edited build's time goes (`kppc --exe` without `--quiet`): the front end 0.03-0.05 s over
+the 59 files, codegen 0.02 s, clang -O0 of the one changed module 0.12-0.27 s, the link
+0.17-0.39 s: clang and the link are 80-90% of it. Two findings for the owners of the server
+(thread A) and the link (thread B): the compile server's rebuild after an edit is slower than a
+new process's (0.42-0.60 s against 0.29-0.38 s for `--exe`; clang and the link both slower in the
+server), and a freshly linked 10-line executable takes 0.06-0.09 s to run (likely the virus
+scanner reading the new file). A small test costs the same build: until 8.6 exists a test is a
+snippet with asserts, 0.3-0.5 s from the edit to the result.
+
+### (a) `kppc --run` (done 2026-10-30)
+`kppc [options] --run SOURCE [program arguments]` builds SOURCE (a file or a directory) with the
+options before `--run`, runs it with the arguments after SOURCE, and returns the program's exit
+code; when the build fails, the compiler's errors and exit code. The executable and its module
+objects live in `%TEMP%\kpp-run\<name>-<hash of the source's path and the options>\`, so the next
+run rebuilds only the changed module and nothing is written next to the source. The build is a
+kppc process of its own (a build ends its process when done); `--server` before `--run` builds
+through the compile server instead, which wins when nothing changed (0.07 s against 0.31 s) and
+loses after an edit (above), so it is not the default. Spec snippet: `kpp/run_command`.
+**Q1**: should `kppc file.kpp args` with no output option mean `--run`, or a file starting with
+`#!` run as a script? Proposed: no; one explicit spelling.
+
+### (b) Native tests: the rest of 8.6
+- **Declaration** as 8.6: `test "name" { ... }` at namespace scope or in a class. The name is a
+  string; two tests of one name in one program are a compile error. A test's full name is its
+  file's path relative to the root given (later its package, "Code packages") and its name:
+  `core/Vector.kpp > push_back grows`.
+- **Checks.** `check(expr)` records a failure and continues; `require(expr)` records it and ends
+  the test. The message is in the compiler's error format, so editors jump to it:
+  `file:line:column: check failed: v.size() == 3 (2 == 3)`: the expression text and, for a
+  comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`), both operands' values when `format` can print
+  them (the text alone otherwise). The same values then go into `assert` messages (7.2's "operand
+  values: later"). Inside a test, a failing `assert` or `release_assert` fails the test (the
+  runner's `kpp_assert_failed` ends the test by throwing, section 9).
+- **One command.** `kppc [options] --test ROOTS... [-- runner arguments]` builds the tests under
+  ROOTS into one test executable (in `%TEMP%\kpp-run\`, as `--run` does) and runs it; `--tests`
+  (8.6) stays the build-only switch, with `--exe`, for a binary to keep or debug. In a test build
+  the program's `main` is left out and the runner is the entry point. The standard library's tests
+  run only when a root names it. Without `--tests` or `--test`, the parser skips test declarations:
+  they cost nothing.
+- **The runner** (its arguments after `--`, or on the test executable): `--filter TEXT` (a
+  substring of the full name, `*` matching anything; repeatable), `--list` (the tests, no run),
+  `--report FILE` (below), `--jobs N` (below). One line per failure, then a summary: `12 tests,
+  1 failed, 0.004 s`. The exit code is 0 when all pass, 1 when one failed, the compiler's when the
+  build failed. **Q2**: `--filter` as above instead of 8.6's `--run-test <name or file>`?
+- **Isolation and parallelism.** **Q3**, proposed: by default the tests run in one process, one
+  after another (the fastest; a crash ends the run and is reported as that test's); `--jobs N` runs
+  them in N processes of the same executable, each a share, and a crash fails only its test (the
+  process is started again for the rest of its share), which is what `suites.py` does by hand for
+  the converted UnitTest++. No threads inside one process: tests may use globals.
+- **The converted UnitTest++.** The game's tests stay UnitTest++, converted as they are: they are
+  the game's code, compared with the C++ build's run (9006 passing). **Q4**: should the converter
+  (thread C) later turn `SUITE`/`TEST`/`CHECK`/`CHECK_EQUAL` into `test` and `check`, so the game's
+  tests run under the native runner (a suite becomes a filter)? Proposed: not now; the native
+  runner first serves new Kpp code and the standard library.
+- **Spec snippets stay** output comparisons: they specify the compiler (the pass/pending table);
+  tests check Kpp code. Each test construct (declaration, check values, require, the failure
+  format, filtering) gets its spec snippet first, as every feature does.
+
+### (c) Visual Studio (thread E) and the IDE (thread F)
+Both drive the same command line and read the same machine-readable report; neither parses the
+human output.
+- **Discovery**: `kppc --test ROOTS -- --list --report -` writes one JSON object per line,
+  `{"test":"core/Vector.kpp > push_back grows","file":"C:/.../Vector.kpp","line":120}`. Listing
+  needs the front end only (no codegen, no link), so it can run on every save.
+- **Running**: `--report FILE` (`-` for stdout) writes per test `{"test":...,"file":...,"line":...,
+  "status":"pass"|"fail"|"crash","seconds":...,"failures":[{"file":...,"line":...,"column":...,
+  "kind":"check"|"require"|"assert","expression":"v.size() == 3","values":["2","3"]}],
+  "output":"..."}` and last `{"summary":{"tests":12,"failed":1,"seconds":0.004}}`. Running one
+  test from an editor's gutter is `--filter` with its full name.
+- **Visual Studio**: the Test Explorer needs a test adapter (thread E's extension) running the two
+  commands above; a failure's file, line and column open the source. A project's "Start Without
+  Debugging" is `kppc --run`; debugging builds with `--exe` (or `--tests --exe`) and starts the
+  executable under the debugger. **Q5**: should kppc print errors in MSVC's
+  `file(line,column): error:` form on request (`--msvc-errors`), so the Error List shows compile
+  errors and check failures without the adapter?
+- **The IDE (thread F)**: the same JSON; with the persistent compiler, the IDE's server answers
+  `--list` from the build it already holds.
+
+### Implementation plan (thread G; hunks in other threads' files announced to the coordinator)
+1. Done: `--run` (`compiler/src/run.cpp`, four lines in `main.cpp`).
+2. The parser (A's file): `test "name" { }` as a function declaration marked as a test, dropped
+   when the build has no `--tests`; `check` and `require` as kinds of the assert statement.
+3. Codegen (B's file): `check` calls `kpp_check_failed(file, line, column, text, values)` and
+   goes on, `require` also returns; comparison operands formatted.
+4. The driver generates the test table as it generates `<config>`: one more source file listing
+   the tests; the runner itself is Kpp (`stdlib/test/`, with thread C's agreement).
+5. `--test`, `--list`, `--report`, `--jobs`.
+
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
   or a template to parse `a * b;` or `f < a > (b)`. In the index-then-resolve model the parser
@@ -1155,6 +1277,10 @@ qualified Kpp names with parameter types, quoted, so there is no mangling scheme
 - **An own IDE** (proposed 2026-10-30, [ide.md](ide.md)): a query layer in the compile server and an
   LSP adapter first, then an editor written in Kpp with a DbgEng debugger and hot reload. Its eight
   decisions are listed at the end of ide.md.
+
+- **Running and testing Kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`, Q2
+  `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
+  converted UnitTest++ as native tests, Q5 MSVC-style error lines.
 
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
