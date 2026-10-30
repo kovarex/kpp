@@ -93,7 +93,7 @@ and a serial `collectNextLevel` (0.1 s each at most; 0.6 s in all); before and a
 there is little (0.15 s setup, 0.11 s finishing, module assembly 0.33 s on all threads). The levels
 are all threads busy to the end (the first thread done 0.04 s before the last), so the time went
 into what the threads do. A probe timing every acquisition of the shared recursive lock
-(`sharedLock()`, SharedText's appends, NameSet's shards; not landed), -j 32, fe547347:
+(`sharedLock()`, SharedText's appends, NameSet's shards; not landed), -j 32, bc010f0a:
 
 | | acquisitions | contended | waited (all threads) | held (outermost) |
 |---|---:|---:|---:|---:|
@@ -105,13 +105,19 @@ into what the threads do. A probe timing every acquisition of the shared recursi
 emitter's first use of a layout (structFor 342 k), a bit-field answer (173 k), needsDestruction
 (119 k), constants (81 k), every definition added (242 k), each taken by 32 emitters in turn, since
 each emitter caches what it learned for itself only. More threads, more first uses: 1.03 M
-acquisitions at -j 8, 1.30 M at -j 32. *Landed (af78e46b):* answers that are final once given
+acquisitions at -j 8, 1.30 M at -j 32. *Landed (b271e804):* answers that are final once given
 (complete layouts, sizes, needsDestruction, bit-fields, laid-out closures) are published in sharded
 maps wherever an emitter already caches them as final and looked up there first; a member without a
 width needs no bit-field lookup; thread_local inits and malloc's declaration are remembered per
 emitter; definitions, constants and each SharedText have locks of their own. 338 k acquisitions,
-45 s waited. Paired clean builds, interleaved (fe547347 and af78e46b): codegen at -j 32 5.63 and
-5.63 s -> 4.86 and 4.06 s, -j 16 5.19 -> 4.21 s, -j 8 5.32 and 5.43 -> 5.10 and 4.98 s; -j 1 18.3 -> 17.8 s;
+45 s waited. An answer is published only by an emitter that holds the shared lock once: the first
+try published from any depth, and buildStruct marks a layout complete before it makes its vtables,
+so a layout published from inside its own build gave another emitter no vtable slot and a virtual
+call became a direct one (`OutStream::writeBytes` unresolved in about 2% of the spec snippets'
+builds under load, never in the game's IR hashes). The gate's spec run found it;
+`tests\concurrency.ps1` (run_tests: six programs 160 times each at -j 32, 16 at once, against their
+-j 1 IR, 14 s) catches it in every program. Paired clean builds, interleaved (bc010f0a and b271e804): codegen at -j 32 5.70 and
+5.75 s -> 4.34 and 4.31 s (wall 12.27 and 12.23 -> 10.91 and 10.91 s), -j 16 5.36 -> 4.48 s, -j 8 5.57 -> 5.15 s;
 the IR byte-identical at 1, 8, 16 and 32 threads. What is left: the lock is still held about 2 s
 of the 3.6 s of levels, mostly building layouts the first time (structFor's 52 k, 0.9 s held), so a
 layout per class under a lock (or a once-flag) of its own is the next step, a design change in the
@@ -142,7 +148,7 @@ threads; clang is the one phase still gaining. Why, phase by phase (as measured 
   0.83 s**, wall 16.28 and 15.96 s -> 15.31 and 15.47 s; the front end alone, 8 runs, 0.83 to
   0.88 s against 1.35 s.
 - **Codegen** does 23.4 s of work and is no faster than 6.3 s from 8 threads on: serialised on
-  its shared lock (above: 4.1 to 4.9 s at -j 32 since af78e46b).
+  its shared lock (above: 4.3 s at -j 32 since b271e804).
 - **Clang** is bounded by its largest module: module 28, 37 MB of the 739 (the median is 10.8 MB),
   takes 2.92 s alone and about 4.5 s among 32 others (a median module 0.51 s). Starting the largest
   modules first (measured, 4 rounds interleaved: 4.54 to 4.66 s against 4.61 to 4.71 s) changes
@@ -153,7 +159,7 @@ threads; clang is the one phase still gaining. Why, phase by phase (as measured 
 
 | lever | today at -j 32 | estimate | owner |
 |---|---:|---:|---|
-| codegen scaling past 8 threads (23 s of work; 18 s since fe547347) | 6.7 s (4.1 to 4.9 s since af78e46b) | 1.5 to 2.5 s | codegen thread (layouts under locks of their own) |
+| codegen scaling past 8 threads (23 s of work; 18 s since bc010f0a) | 6.7 s (4.3 s since b271e804) | 1.5 to 2.5 s | codegen thread (layouts under locks of their own) |
 | clang: modules of balanced size (split module 28's content; more, smaller modules) | 4.6 s | 1.5 to 2 s | codegen thread |
 | resolve: the dependent overload resolutions in ValueToWidget's generic walks | 1.31 s | 0.4 s (next: LuaHelper.kpp, 0.29 s) | templates thread |
 | the link: lld for a clean build (1.0 s, no PDB) or the incremental first link | 1.66 s | 1.0 s | codegen thread |
