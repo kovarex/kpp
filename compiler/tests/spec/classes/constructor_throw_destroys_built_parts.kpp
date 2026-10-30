@@ -1,6 +1,5 @@
 // spec: a constructor that throws destroys what it had built, as C++ does: the bases and members constructed before the throw (in its body, or in a later member's initializer), for a local, for `new` (whose memory is freed too) and for a member of an enclosing object
 // factorio: after LuaBlueprintInvalidOptions, whose invalid entities make set_blueprint_entities throw while it builds them, 4 entities stay alive (Entity::count): the tests' leak check in fmain aborts at exit and LuaBlueprint stops, its output lost with the abort. Locals are destroyed in unwinding; only a throwing constructor's own parts are not
-// pending: SILENT, nothing built before the throw is destroyed (`local 11; new 22; member 43`, clang `local 0; new 0; member 0`); owner: the codegen thread
 int live = 0;
 struct Base
 {

@@ -491,6 +491,10 @@ namespace
       std::string addr;
       const Ty* ty;
       bool exception = false; // addr holds a caught exception record: ending it destroys the object
+      // Destroyed only by an exception leaving its scope (cleanup pads), never on a normal exit: a
+      // constructor's bases and members as it builds them, which outlive it when it returns.
+      bool unwindOnly = false;
+      bool freeMemory = false; // `new`'s allocation while its constructor runs: freed, not destroyed
     };
     std::vector<std::vector<Object>> scopes; // Objects to destroy, per open scope.
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
@@ -2320,9 +2324,21 @@ namespace
 
     // Initialises bases and members of the object at addr from constructor initializers (or
     // default member initializers / default construction when absent).
-    void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at)
+    // built: a constructor's own initialization: each base and member that needs destruction is
+    // destroyed if an exception leaves the constructor after it was built (a later member's
+    // initializer or the body throwing), as C++ does.
+    void initializeMembers(const std::string& addr, const Ty* t, Span<FunctionDecl::CtorInit> inits, Node* at, bool built = false)
     {
       const StructInfo& info = structFor(t, at);
+      auto builtPart = [&](const std::string& part, const Ty* pt)
+      {
+        if (built && needsDestruction(pt, at))
+        {
+          Object o{part, pt};
+          o.unwindOnly = true;
+          scopes.back().push_back(o);
+        }
+      };
       auto initFor = [&](uint32_t symbol) -> const FunctionDecl::CtorInit*
       {
         for (const FunctionDecl::CtorInit& init : inits)
@@ -2357,6 +2373,7 @@ namespace
           defaultConstruct(baseAddr, bt, at);
         else
           initializeMembers(baseAddr, bt, {}, at);
+        builtPart(baseAddr, bt);
       }
       storeVptrs(addr, info);
       if (info.isUnion)
@@ -2475,6 +2492,7 @@ namespace
           constructArray(fieldAddr, ft, at);
         else
           storeZero(ft, fieldAddr, at);
+        builtPart(fieldAddr, ft);
       }
     }
 
@@ -12167,7 +12185,19 @@ namespace
             r = newTemp();
             emitCall(r + " = ", "ptr @malloc(i64 " + std::to_string(sizeOf(t, e)) + ")", false);
           }
-          if (isClass(t))
+          if (isClass(t) && n->placement.empty())
+          {
+            // A constructor that throws gives the memory back, as C++'s new does: freed while the
+            // constructor runs if an exception leaves it, and only then.
+            Object allocation{r, t};
+            allocation.unwindOnly = true;
+            allocation.freeMemory = true;
+            statementTemps.push_back(allocation);
+            size_t at = statementTemps.size() - 1;
+            constructInto(r, t, n->args, e);
+            statementTemps.erase(statementTemps.begin() + at);
+          }
+          else if (isClass(t))
             constructInto(r, t, n->args, e);
           else if (isLambda(t) && n->args.size() == 1)
             initializeFrom(r, t, n->args[0], e); // `new F(callable)` with F a lambda type: the closure, copied
@@ -13278,7 +13308,7 @@ namespace
     void destroyTemps()
     {
       for (size_t i = statementTemps.size(); i-- > 0;)
-        destroyObject(statementTemps[i]);
+        destroyOnExit(statementTemps[i]);
       statementTemps.clear();
     }
 
@@ -13287,7 +13317,7 @@ namespace
     void destroyTempsFrom(size_t mark)
     {
       for (size_t i = statementTemps.size(); i-- > mark;)
-        destroyObject(statementTemps[i]);
+        destroyOnExit(statementTemps[i]);
       statementTemps.resize(mark);
     }
 
@@ -13295,8 +13325,21 @@ namespace
     {
       if (o.exception)
         fn += "  call void @kpp_eh_end(ptr " + o.addr + ")" + bundle() + "\n";
+      else if (o.freeMemory)
+      {
+        ensureMalloc();
+        fn += "  call void @free(ptr " + o.addr + ")" + bundle() + "\n";
+      }
       else
         destroy(o.addr, o.ty, nullptr);
+    }
+
+    // What a normal exit (the end of a scope or a statement, a return, a break) destroys: not what
+    // only an exception leaving does (Object::unwindOnly).
+    void destroyOnExit(const Object& o)
+    {
+      if (!o.unwindOnly)
+        destroyObject(o);
     }
 
     void pushScope() { scopes.emplace_back(); }
@@ -13305,7 +13348,7 @@ namespace
     {
       if (!blockTerminated)
         for (size_t i = scopes.back().size(); i-- > 0;)
-          destroyObject(scopes.back()[i]);
+          destroyOnExit(scopes.back()[i]);
       scopes.pop_back();
     }
 
@@ -13317,7 +13360,7 @@ namespace
     {
       for (size_t s = high; s-- > low;)
         for (size_t i = scopes[s].size(); i-- > 0;)
-          destroyObject(scopes[s][i]);
+          destroyOnExit(scopes[s][i]);
     }
 
     // Destroys the scopes above depth for a `return`, `break` or `continue`, leaving the catch
@@ -13428,7 +13471,7 @@ namespace
         return next;
       std::string key = next + "|" + parent;
       for (size_t i = from; i < objects.size(); ++i)
-        key += "|" + objects[i].addr;
+        key += "|" + objects[i].addr + (objects[i].freeMemory ? "~" : "") + (objects[i].exception ? "!" : "");
       auto it = cleanupPads.find(key);
       if (it != cleanupPads.end())
         return it->second;
@@ -15527,7 +15570,7 @@ namespace
         }
         if (f->flags & DF_Constructor)
         {
-          initializeMembers(thisPointer(f), currentClassTy, f->ctorInits, f);
+          initializeMembers(thisPointer(f), currentClassTy, f->ctorInits, f, true);
           destroyTemps();
         }
         bool destructor = (f->flags & DF_Destructor) && isClass(currentClassTy);
