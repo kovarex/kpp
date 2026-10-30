@@ -14301,7 +14301,9 @@ struct GlobalScope::Impl
         return;
       Impl::OrdinaryLayout ordinary;
       ResolveStats local;
-      local.fileIndex = stats.fileIndex;
+      // The places it records are the template's file's tokens (a statistic's "first at" names them):
+      // that file's, not the requester's.
+      local.fileIndex = file->index;
       local.collectWhy = stats.collectWhy;
       Walker sub(impl, local, *file->tokens, file->text);
       sub.file = file;
@@ -18405,7 +18407,7 @@ struct GlobalScope::Impl
     ResolveStats local;
     if (statsInto)
     {
-      local.fileIndex = statsInto->fileIndex;
+      local.fileIndex = env.file ? env.file->index : statsInto->fileIndex; // the lambda's file's tokens are what it records
       local.collectWhy = statsInto->collectWhy;
     }
     Walker sub(*this, local, *env.tokens, env.text);
