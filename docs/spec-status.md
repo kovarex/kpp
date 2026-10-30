@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**802 pass, 8 pending, 0 failing, 0 fixed** (810 snippets, 21.5 s).
+**803 pass, 8 pending, 0 failing, 0 fixed** (811 snippets, 22.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -472,6 +472,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/deduction_guide_target.kpp` | deduction guides: a guide gives the class's arguments where the constructors would give others (`Box(const char*) -> Box<String>;`), a template guide deduces its own parameters (`template<class T> Holder(T*) -> Holder<T*>;` for an aggregate), on a tie with a constructor the guide wins, and an explicit guide is not one for copy-initialisation | pass | the game's one guide is make_overload's (templates/deduction_guides); the language has them as C++ does |  |
 | `templates/deduction_strips_pattern_qualifiers.kpp` | deducing `const T*` from a `const X*` makes T X: the pattern's own qualifiers come off the argument's (`T*` from the same makes T `const X`), so a trait on T sees what C++ does | pass |  |  |
 | `templates/default_argument_naming_class_parameter.kpp` | a default argument of a class template's constructor that names the class's parameter in a call (`V maximum = Limits<V>::max()`) is evaluated under the instance's arguments where the call leaves it out, also from a member initializer | pass | CharacterModifier<double>'s `ModifierValueType maximumValue = Limits<ModifierValueType>::max()` from CharacterModifiers' constructors: "a conversion from a value of unknown type to double", Limits<<unknown>>::max() |  |
+| `templates/dependent_call_resolved_per_instance.kpp` | in a template, a call whose argument's type depends on a template parameter is resolved in each instance with that instance's types (C++ [temp.dep.candidate]): one<const char*> calls pick(const char*), one<double> pick(double), and choose<int>, whose int arguments fit pick(int, double) and pick(double, int) equally, is an ambiguous call there | pass |  |  |
 | `templates/dependent_member_typedef.kpp` | a member typedef of a dependent instantiation as a return type (typename Vector<T>::iterator) | pass |  |  |
 | `templates/dependent_names.kpp` | dependent names: T::Type, T::constant, this-> in templates, a dependent return type | pass |  |  |
 | `templates/dependent_return_in_variadic_call.kpp` | a call whose return type is dependent (typename T::Unit) used directly as a variadic argument | pass |  |  |

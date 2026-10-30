@@ -17095,6 +17095,25 @@ struct GlobalScope::Impl
           const Subst* classSubst = qualifier.empty() ? nullptr : &qualifier;
           std::vector<FunctionDecl*> tied;
           std::vector<const Ty*> argTypes = argTypesOf(c->args);
+          // In a template's own walk, a call of several functions (or of a template) with an argument
+          // whose type depends on the template's parameters, or that this walk cannot type
+          // (`ValueToWidget::make(*value)` with value a `const UniquePtr<T>&`), is resolved in each
+          // instance with the instance's types ([temp.dep.candidate]), not here: ranking the
+          // candidates against a type not known yet decides nothing, and costs the most of all in a
+          // set of hundreds.
+          if (!activeSubst && inGenericTemplate() && !onlyPlainCandidate(d, l.overloads))
+          {
+            bool dependentArgs = false;
+            for (const Ty* a : argTypes)
+              dependentArgs = dependentArgs || !a || !a->isKnown() || types.isDependent(a);
+            if (dependentArgs)
+            {
+              c->templateArgCount = 0;
+              n->resolved = nullptr;
+              record(n, types.unknown());
+              return unknown(Why::None);
+            }
+          }
           // A member called on the implicit object (`getSurface()`, `super::getStack(location)` in a
           // member of the class or of one derived from it): *this, whose const-ness chooses between
           // a const and a non-const overload as an explicit object's does.

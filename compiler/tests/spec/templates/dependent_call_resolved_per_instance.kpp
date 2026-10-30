@@ -1,0 +1,13 @@
+// spec: in a template, a call whose argument's type depends on a template parameter is resolved in each instance with that instance's types (C++ [temp.dep.candidate]): one<const char*> calls pick(const char*), one<double> pick(double), and choose<int>, whose int arguments fit pick(int, double) and pick(double, int) equally, is an ambiguous call there
+// error: dependent_call_resolved_per_instance.kpp:8: error: the call of pick with (int32&, int32&) is ambiguous
+int pick(int, double) { return 1; }
+int pick(double, int) { return 2; }
+int pick(const char*) { return 3; }
+int pick(double) { return 4; }
+template<class T> int one(T a) { return pick(a); }
+template<class T> int choose(T a, T b) { return pick(a, b); }
+int main()
+{
+  println("{} {}", one("x"), one(2.5));
+  return choose(1, 2);
+}
