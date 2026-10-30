@@ -140,10 +140,11 @@ namespace
   };
 
   // IR text several emitters append to (the shared declarations, a module's), one whole
-  // declaration or definition per append, in whatever order the emitters reach them.
+  // declaration or definition per append, in whatever order the emitters reach them. Under a lock of
+  // its own (only appended to while functions are emitted, read once they all are).
   struct SharedText
   {
-    std::recursive_mutex* mutex = nullptr;
+    std::unique_ptr<std::mutex> mutex = std::make_unique<std::mutex>();
     std::vector<std::string> entries;
     std::string text; // the entries, once finish() put them in order
     SharedText& operator+=(const std::string& s)
@@ -203,6 +204,39 @@ namespace
     }
   };
 
+  // Answers that do not change once given (a complete layout, a class's size, whether it needs
+  // destroying, a member's bit-field), published for every emitter in shards with a lock each. Each
+  // emitter keeps its own copy of the answers it used; one it has not used yet is looked up here, not
+  // under the shared lock: 32 emitters, each taking the shared lock for every layout and answer it
+  // used the first time (1.3 million times for the game), waited 103 s of their 172 s on it.
+  template<typename K, typename V>
+  struct FinalAnswers
+  {
+    struct Shard
+    {
+      std::mutex mutex;
+      std::unordered_map<K, V> answers;
+    };
+    Shard shards[64];
+    Shard& shardOf(const K& k) { return shards[std::hash<K>()(k) % std::size(shards)]; }
+    bool find(const K& k, V& v)
+    {
+      Shard& s = shardOf(k);
+      std::lock_guard lock(s.mutex);
+      auto it = s.answers.find(k);
+      if (it == s.answers.end())
+        return false;
+      v = it->second;
+      return true;
+    }
+    void publish(const K& k, const V& v)
+    {
+      Shard& s = shardOf(k);
+      std::lock_guard lock(s.mutex);
+      s.answers.emplace(k, v);
+    }
+  };
+
   // A request for an instantiation: by which function (its IR name), and the instantiation depth
   // through it (the requested one included).
   struct Request
@@ -253,6 +287,11 @@ namespace
     std::unordered_set<const Ty*> closuresEmitted;       // lambdas whose call operator is emitted (or being emitted)
     std::unordered_set<std::string> lambdaInstances;     // call operators of generic lambdas emitted so far, by IR name
     NameSet requested;                                   // instantiated names queued or emitted
+    FinalAnswers<const Ty*, StructInfo*> finalLayouts;   // complete (or failed) layouts, by any spelling of the class type
+    FinalAnswers<const Ty*, std::pair<uint64_t, uint64_t>> finalSizes; // classSizeAndAlign
+    FinalAnswers<const Ty*, bool> finalDestruction;      // needsDestruction of a class
+    FinalAnswers<Decl*, const BitfieldInfo*> finalBitfields; // bitfieldFor
+    FinalAnswers<const Ty*, ClosureInfo*> finalClosures; // laid-out closures (closureFor)
     bool mallocDeclared = false;
     std::atomic<bool> usesAssert{false};                 // some assert was emitted: the module needs kpp_assert_failed
     std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
@@ -281,6 +320,9 @@ namespace
     };
     static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
+    // Held to add a definition (definitions, definedIn, declareLines: only added to while functions
+    // are emitted, read once they all are), and to name a constant (constantName).
+    std::mutex definitionsMutex, constantsMutex;
     // A module declaration a function's emission adds every time it runs (a static local and its
     // guard, a static InitializerList's array), not once at a first use: it belongs to that function
     // (owner), and an incremental build replaces it with the function. Joins the module's
@@ -308,18 +350,13 @@ namespace
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
 
-    explicit Shared(CodegenResult& result) : result(result)
-    {
-      decls.mutex = body.mutex = shared.mutex = &mutex;
-    }
+    explicit Shared(CodegenResult& result) : result(result) {}
     // The per-module parts, for n modules.
     void setModules(unsigned n)
     {
       moduleCount = std::max(1u, n);
       bodies.resize(moduleCount);
       moduleDecls.resize(moduleCount);
-      for (unsigned k = 0; k < moduleCount; ++k)
-        bodies[k].mutex = moduleDecls[k].mutex = &mutex;
       vtablesIn.resize(moduleCount);
       moduleConstants.resize(moduleCount);
       definitions.resize(moduleCount);
@@ -459,7 +496,21 @@ namespace
     std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
     std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
     std::unordered_set<std::string>& sharedDeclared = sh.sharedDeclared;
-    std::unique_lock<std::recursive_mutex> sharedLock() { return std::unique_lock<std::recursive_mutex>(sh.mutex); }
+    // The shared lock, and how many times this emitter holds it. An answer is published for the
+    // other emitters (FinalAnswers) only while it holds the lock once: then no layout of its own is
+    // half built (buildStruct marks a layout complete before it makes its vtables, and a layout
+    // published from there had another emitter call a virtual function directly), and nobody else
+    // is building one (that is done under the lock).
+    int sharedDepth = 0;
+    struct SharedLock
+    {
+      std::unique_lock<std::recursive_mutex> lock;
+      int& depth;
+      SharedLock(std::recursive_mutex& m, int& depth) : lock(m), depth(depth) { ++depth; }
+      ~SharedLock() { --depth; }
+    };
+    SharedLock sharedLock() { return SharedLock(sh.mutex, sharedDepth); }
+    bool mayPublish() const { return sharedDepth == 1; }
     // A function's definition (addDefinition), counted in result.functions; an incremental build
     // takes the count of the ones it drops off again.
     void addFunction(const std::string& name, const std::string& text, bool ownItself = false)
@@ -791,11 +842,15 @@ namespace
     {
       if (auto mine = sizeCache.find(t); mine != sizeCache.end())
         return mine->second;
+      if (std::pair<uint64_t, uint64_t> known; sh.finalSizes.find(t, known))
+        return sizeCache.emplace(t, known).first->second;
       auto lock = sharedLock(); // the size is remembered in the shared layout
       StructInfo& info = structFor(t, at);
       if (info.align)
       {
         sizeCache.emplace(t, std::pair{info.size, info.align});
+        if (mayPublish())
+          sh.finalSizes.publish(t, {info.size, info.align});
         return {info.size, info.align};
       }
       if (info.sizing)
@@ -1056,6 +1111,8 @@ namespace
     {
       if (auto mine = layoutCache.find(classTy); mine != layoutCache.end())
         return checkedLayout(*mine->second, classTy, at);
+      if (StructInfo* known; sh.finalLayouts.find(classTy, known))
+        return checkedLayout(*layoutCache.emplace(classTy, known).first->second, classTy, at);
       auto lock = sharedLock();
       StructInfo* info = nullptr;
       if (auto known = structsByType.find(classTy); known != structsByType.end())
@@ -1084,13 +1141,19 @@ namespace
             structs[key].failed = true;
             structs[key].failedWhy = lastFailure;
             layoutCache.emplace(classTy, &structs[key]);
+            if (mayPublish())
+              sh.finalLayouts.publish(classTy, &structs[key]);
             errors.resize(errorsBefore);
             fail(at, structs[key].failedWhy);
           }
         }
       }
       if (info->complete || info->failed)
+      {
         layoutCache.emplace(classTy, info);
+        if (mayPublish())
+          sh.finalLayouts.publish(classTy, info);
+      }
       return checkedLayout(*info, classTy, at);
     }
 
@@ -2092,6 +2155,8 @@ namespace
         return false;
       if (auto mine = destructionCache.find(t); mine != destructionCache.end())
         return mine->second;
+      if (bool known; sh.finalDestruction.find(t, known))
+        return destructionCache.emplace(t, known).first->second;
       auto lock = sharedLock(); // remembered in the shared layout, computed under the lock
       StructInfo& info = structFor(t, at);
       if (info.needsDestruction)
@@ -2099,7 +2164,11 @@ namespace
         // Final unless this emitter is in the middle of computing it (the recursion guard below):
         // nobody else computes while the lock is held.
         if (destructionDepth == 0)
+        {
           destructionCache.emplace(t, *info.needsDestruction);
+          if (mayPublish())
+            sh.finalDestruction.publish(t, *info.needsDestruction);
+        }
         return *info.needsDestruction;
       }
       info.needsDestruction = false; // Guard against recursion.
@@ -4935,11 +5004,15 @@ namespace
       t = types.unqualified(t);
       if (auto mine = closureCache.find(t); mine != closureCache.end())
         return *mine->second;
+      if (ClosureInfo* known; sh.finalClosures.find(t, known))
+        return *closureCache.emplace(t, known).first->second;
       auto lock = sharedLock(); // a laid-out closure does not change, so its reference may be read after
       auto it = closures.find(t);
       if (it != closures.end() && it->second.laidOut)
       {
         closureCache.emplace(t, &it->second);
+        if (mayPublish())
+          sh.finalClosures.publish(t, &it->second);
         return it->second;
       }
       if (it != closures.end() && !it->second.failure.empty())
@@ -8048,7 +8121,7 @@ namespace
       char hex[17];
       snprintf(hex, sizeof hex, "%016llx", (unsigned long long)h);
       std::string base = std::string(prefix) + hex, name = base;
-      auto lock = sharedLock();
+      std::lock_guard lock(sh.constantsMutex);
       auto& defined = emittingShared ? sharedConstants : moduleConstants[currentModule];
       for (int n = 2;; ++n)
       {
@@ -8290,7 +8363,7 @@ namespace
       if (moduleCount <= 1)
       {
         body += text;
-        auto lock = sharedLock();
+        std::lock_guard lock(sh.definitionsMutex);
         definedIn[name] = 0; // (what generateLLVM's check of the functions used without a definition reads)
         return;
       }
@@ -8316,7 +8389,7 @@ namespace
         definition.emitted = std::make_unique<Instantiation>(
           onDemand ? Instantiation{onDemandNow.writer, {}, nullptr, currentModule, "", "", 0} : emittingNow);
       }
-      auto lock = sharedLock();
+      std::lock_guard lock(sh.definitionsMutex);
       sh.definitions[currentModule].push_back(std::move(definition));
       definedIn[name] = currentModule;
       declareLines[name] = std::move(declare);
@@ -10081,14 +10154,21 @@ namespace
     }
 
     // A thread_local global built per thread: its function, called before the use being emitted
-    // (it returns at once once this thread has built it).
+    // (it returns at once once this thread has built it). Known for good once the global is defined
+    // (globalFor asks after that): remembered by this emitter, as published answers are.
+    std::unordered_map<std::string, std::string> threadLocalCache;
     void buildThreadLocal(const std::string& name)
     {
       std::string init;
+      if (auto mine = threadLocalCache.find(name); mine != threadLocalCache.end())
+        init = mine->second;
+      else
       {
         auto lock = sharedLock();
         if (auto it = threadLocalInits.find(name); it != threadLocalInits.end())
           init = it->second;
+        if (mayPublish()) // (not while a global's definition is under way)
+          threadLocalCache.emplace(name, init);
       }
       if (!init.empty() && !currentFunctionName.empty() && currentFunctionName != init)
         fn += "  call void " + init + "()\n";
@@ -12923,12 +13003,18 @@ namespace
     std::unordered_map<Decl*, const BitfieldInfo*> bitfieldCache;
     const BitfieldInfo* bitfieldFor(Decl* d)
     {
+      if (d->kind != NodeKind::VariableDecl || !static_cast<VariableDecl*>(d)->bitfield)
+        return nullptr; // (buildStruct lays out only a member declared with a width as a bit-field)
       if (auto mine = bitfieldCache.find(d); mine != bitfieldCache.end())
         return mine->second;
+      if (const BitfieldInfo* known; sh.finalBitfields.find(d, known))
+        return bitfieldCache.emplace(d, known).first->second;
       auto lock = sharedLock();
       auto it = bitfieldOf.find(d);
       const BitfieldInfo* bits = it == bitfieldOf.end() ? nullptr : &it->second; // map nodes stay put: the pointer outlives the lock
       bitfieldCache.emplace(d, bits);
+      if (mayPublish())
+        sh.finalBitfields.publish(d, bits);
       return bits;
     }
 
@@ -12951,8 +13037,12 @@ namespace
       return bits;
     }
 
+    bool mallocKnown = false; // this emitter saw malloc declared (it stays declared)
     void ensureMalloc()
     {
+      if (mallocKnown)
+        return;
+      mallocKnown = true;
       auto lock = sharedLock();
       if (mallocDeclared)
         return;
