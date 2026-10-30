@@ -1,6 +1,7 @@
 #include "run.hpp"
 
 #include <windows.h>
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -8,8 +9,9 @@
 #include <thread>
 #include <vector>
 
-// The build is a kppc process of its own (`kppc OPTIONS --quiet --exe EXE SOURCE`, or a client of
-// the compile server when OPTIONS has --server), so that it ends the way every build ends (a build
+// The build is a kppc process of its own (`kppc OPTIONS --server --quiet --exe EXE SOURCE`: a client
+// of the compile server, which it starts when none runs; --no-server builds in that process instead),
+// so that it ends the way every build ends (a build
 // in this process exits on the spot when done, server.hpp's buildDone). The executable goes to
 // %TEMP%\kpp-run\<name>-<hash>\, one directory per source and options, where the objects of the
 // modules the next build finds unchanged stay.
@@ -152,6 +154,13 @@ int runProgram(int argc, char** argv, int runIndex)
   }
   if (test)
     options.push_back("--tests");
+  // Through the compile server unless --no-server: it is faster after an edit too since 6812a62
+  // (docs/design.md, "Running and testing Kpp code").
+  auto noServer = std::find(options.begin(), options.end(), "--no-server");
+  if (noServer != options.end())
+    options.erase(noServer);
+  else if (std::find(options.begin(), options.end(), "--server") == options.end())
+    options.push_back("--server");
   for (const std::string& o : options)
     mix(o);
   char hex[17];

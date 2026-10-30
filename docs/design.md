@@ -1187,7 +1187,9 @@ square` after a test that failed, and `1 test, 1 failed`. The exit code is 0 whe
 passed and 1 otherwise. Arguments after `--` go to the runner: `kppc --test src -- --filter
 square` (a part of "file > name"; `*` matches anything), `-- --list`, and `-- --report -` (a JSON
 line per test, for tools). Compiler options go before `--run` or `--test`: `--release`,
-`--server`, `--msvc-diagnostics`. When the build reports an error, nothing runs.
+`--msvc-diagnostics`, `--no-server` (build without the compile server, which both use by
+default). When the build reports an error, nothing runs. A small program or test takes about
+0.15-0.17 s from the edit to the result, under 0.02 s when nothing changed.
 
 ### What exists (surveyed 2026-10-30 on 7f3e55c)
 - **Running a snippet** is two commands: `kppc --exe out.exe file.kpp`, then `out.exe`. The
@@ -1234,9 +1236,22 @@ options before `--run`, runs it with the arguments after SOURCE, and returns the
 code; when the build fails, the compiler's errors and exit code. The executable and its module
 objects live in `%TEMP%\kpp-run\<name>-<hash of the source's path and the options>\`, so the next
 run rebuilds only the changed module and nothing is written next to the source. The build is a
-kppc process of its own (a build ends its process when done); `--server` before `--run` builds
-through the compile server instead, which wins when nothing changed (0.07 s against 0.31 s) and
-loses after an edit (above), so it is not the default. Spec snippet: `kpp/run_command`.
+kppc process of its own (a build ends its process when done), a client of the compile server: it
+starts the server when none runs, and the server stops after an hour idle (one per kppc binary,
+directory and argument list; 25-48 MB each for small programs). `--no-server` among the options
+builds in that process instead, which the spec suite does so that it leaves no servers behind.
+At first the server lost after an edit (above); since 6812a62 (thread A: the server's tools share
+one console) it wins every time, so it is the default since the same day. Paired, interleaved, 8
+rounds each, the 10-line program and the small test of (b), 2026-10-30 on a quiet machine:
+
+| From the edit to the result (median, range) | default (server) | `--no-server` |
+|---|---|---|
+| `--run`, file edited | 0.147 s (0.143-0.156) | 0.174 s (0.171-0.185) |
+| `--run`, nothing changed | 0.018 s (0.018-0.021) | 0.173 s (0.171-0.183) |
+| `--test`, file edited | 0.168 s (0.165-0.181) | 0.179 s (0.176-0.185) |
+| `--test`, nothing changed | 0.018 s (0.018-0.019) | 0.178 s (0.173-0.181) |
+
+Spec snippet: `kpp/run_command`.
 **Q1**: should `kppc file.kpp args` with no output option mean `--run`, or a file starting with
 `#!` run as a script? Proposed: no; one explicit spelling.
 

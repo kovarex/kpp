@@ -150,13 +150,13 @@ def run_command(path, info, libs, expected_path, result):
     A `// test:` snippet: `kppc --test` builds its tests and runs them, from the snippet's directory."""
     extra = EXTRA + shlex.split(info["kppc"])
     if info["test"] is not None:
-        command, cwd = [KPPC, *extra, *libs, "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
+        command, cwd = [KPPC, *extra, *libs, "--no-server", "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
     else:
-        command, cwd = [KPPC, *extra, *libs, "--run", path, *shlex.split(info["run"])], None
+        command, cwd = [KPPC, *extra, *libs, "--no-server", "--run", path, *shlex.split(info["run"])], None
     try:
         r = subprocess.run(command, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=360)
     except subprocess.TimeoutExpired:
-        result["status"] = "FAIL"; result["note"] = f"kppc {command[len(extra) + len(libs) + 1]} timed out"; return result
+        result["status"] = "FAIL"; result["note"] = f"kppc {command[len(extra) + len(libs) + 2]} timed out"; return result
     want = int(info["exit"]) if info["exit"] is not None else None
     if want is not None and r.returncode != want or want is None and r.returncode not in (0, 1):
         result["status"] = "FAIL"
