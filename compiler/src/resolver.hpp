@@ -279,7 +279,9 @@ public:
   // (to walk again), the declarations whose declared types did (forgotten here, with what they
   // cached, and followed: what read those types is found too); false when an instance, a class
   // instance or a scope's relations read one (a resolve from scratch could make them otherwise).
-  bool invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files);
+  // walks: the declarations whose walks read them (their functions' code changes with them).
+  bool invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
+                         std::vector<const Decl*>* walks = nullptr);
   uint32_t functionSymbolOf(const FunctionDecl* f);
   std::vector<FunctionDecl*> outOfLineDefinitions(const Decl* cls); // the out-of-line member definitions attached to a class
 

@@ -19549,7 +19549,8 @@ bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
   return whole;
 }
 
-bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files)
+bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
+                                    std::vector<const Decl*>* walks)
 {
   std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());
   std::unordered_set<const void*> types(decls.begin(), decls.end()); // declarations whose declared types are no more what was read
@@ -19564,20 +19565,41 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
         return true;
     return false;
   };
-  // The declared types that read them, and what read those, until nothing more is found.
-  for (bool more = true; more;)
+  // The declared types that read them, and what read those: one pass for who reads what, then
+  // followed from the names' readers and the given declarations.
   {
-    more = false;
     std::lock_guard lock(impl->typeDependenciesMutex);
+    std::unordered_map<const void*, std::vector<std::pair<const Decl*, Dependencies*>>> readersOf; // declaration -> declared types that read its type
+    std::vector<std::pair<const Decl*, Dependencies*>> pending;
     for (auto& [owner, deps] : impl->typeDependencyOwners)
-      if (!types.count(owner) && reads(*deps))
+    {
+      std::lock_guard l(deps->mutex);
+      bool direct = false;
+      for (uint32_t s : deps->list.names)
+        direct = direct || names.count(s);
+      for (auto& [kind, what] : deps->list.uses)
+        if (kind == USE_DeclaredType)
+        {
+          readersOf[what].push_back({owner, deps});
+          direct = direct || types.count(what);
+        }
+      if (direct)
+        pending.push_back({owner, deps});
+    }
+    while (!pending.empty())
+    {
+      auto [owner, deps] = pending.back();
+      pending.pop_back();
+      if (!types.insert(owner).second)
+        continue;
+      const_cast<Decl*>(owner)->cachedType.store(nullptr, std::memory_order_release);
       {
-        types.insert(owner);
-        const_cast<Decl*>(owner)->cachedType.store(nullptr, std::memory_order_release);
         std::lock_guard l(deps->mutex);
         deps->list = DependencyList{};
-        more = true;
       }
+      if (auto it = readersOf.find(owner); it != readersOf.end())
+        pending.insert(pending.end(), it->second.begin(), it->second.end());
+    }
   }
   for (Impl::InstanceShard& shard : impl->instanceShards)
   {
@@ -19605,7 +19627,12 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
     std::lock_guard lock(shard.mutex);
     for (auto& [key, deps] : shard.map)
       if (reads(*deps))
-        found.insert(reinterpret_cast<const Decl*>(key & ~uintptr_t(7))->file);
+      {
+        const Decl* d = reinterpret_cast<const Decl*>(key & ~uintptr_t(7));
+        found.insert(d->file);
+        if (walks)
+          walks->push_back(d);
+      }
   }
   files.assign(found.begin(), found.end());
   std::sort(files.begin(), files.end(), [](const ParsedFile* a, const ParsedFile* b) { return a->index < b->index; });
