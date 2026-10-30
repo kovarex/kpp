@@ -1,0 +1,6 @@
+// --msvc-diagnostics (docs/build.md, "Visual Studio"): errors in the form the Error List reads.
+int main()
+{
+  int x = "s";
+  return x;
+}

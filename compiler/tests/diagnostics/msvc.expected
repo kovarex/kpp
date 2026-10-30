@@ -1,0 +1,1 @@
+tests\diagnostics\msvc.kpp(4): error: a pointer (const char*) does not convert to int32 without a cast (in @kpp.main)

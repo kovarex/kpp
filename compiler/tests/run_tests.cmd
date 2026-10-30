@@ -38,6 +38,16 @@ if errorlevel 1 (
 ) else (
   echo ok   access warnings
 )
+rem --msvc-diagnostics (docs/build.md, "Visual Studio"): errors as path(line): error: ..., which Visual Studio reads.
+%KPPC% --quiet --msvc-diagnostics --exe build\tests\msvc.exe tests\diagnostics\msvc.kpp 2> build\tests\msvc.errors.txt > nul
+fc /w build\tests\msvc.errors.txt tests\diagnostics\msvc.expected > nul
+if errorlevel 1 (
+  echo FAIL msvc diagnostics: build\tests\msvc.errors.txt differs from tests\diagnostics\msvc.expected
+  fc /w build\tests\msvc.errors.txt tests\diagnostics\msvc.expected
+  set /a FAIL+=1
+) else (
+  echo ok   msvc diagnostics
+)
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
 if errorlevel 1 (

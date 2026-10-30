@@ -21,10 +21,13 @@
 #include <chrono>
 #include <cstdio>
 #include <string>
+#include <regex>
 #include <thread>
 #include <vector>
 #ifdef _WIN32
 #include <process.h> // _getpid
+#include <fcntl.h>   // --msvc-diagnostics: _pipe, _dup2
+#include <io.h>
 #endif
 
 namespace
@@ -2258,7 +2261,102 @@ namespace
 
 int compile(int argc, char** argv);
 
+// --msvc-diagnostics (docs/build.md, "Visual Studio"): the process's stdout and stderr go through a
+// pipe each, and a thread per stream rewrites every line that starts `path:N: ` into Visual Studio's
+// `path(N): error: ` (MSBuild's error format, which the Error List reads), keeping a `warning:` or
+// `note:` that follows and calling anything else an error. Everything kppc prints is rewritten, the
+// compile server's answer included: the option is taken off the arguments before the server sees
+// them, so the server is the same one a build without the option uses.
+namespace
+{
+  std::string msvcLine(const std::string& line)
+  {
+    static const std::regex located(R"(^(\s*)((?:[A-Za-z]:)?[^:]+):(\d+): (.*)$)");
+    std::smatch m;
+    if (!std::regex_match(line, m, located))
+      return line;
+    std::string rest = m[4];
+    bool labelled = rest.rfind("error:", 0) == 0 || rest.rfind("warning:", 0) == 0 || rest.rfind("note:", 0) == 0;
+    return std::string(m[1]) + std::string(m[2]) + "(" + std::string(m[3]) + "): " + (labelled ? "" : "error: ") + rest;
+  }
+
+  struct MsvcDiagnostics
+  {
+    int saved[2] = {-1, -1};
+    std::thread readers[2];
+
+    void start()
+    {
+      for (int fd = 1; fd <= 2; ++fd)
+      {
+        int ends[2];
+        if (_pipe(ends, 1 << 16, _O_BINARY | _O_NOINHERIT) != 0)
+          continue;
+        fflush(fd == 1 ? stdout : stderr);
+        saved[fd - 1] = _dup(fd);
+        _dup2(ends[1], fd);
+        _close(ends[1]);
+        int out = saved[fd - 1], in = ends[0];
+        readers[fd - 1] = std::thread([in, out]
+        {
+          std::string pending;
+          char buffer[1 << 14];
+          auto emit = [&](const std::string& line, bool newline)
+          {
+            std::string text = msvcLine(line) + (newline ? "\n" : "");
+            _write(out, text.data(), unsigned(text.size()));
+          };
+          for (int n; (n = _read(in, buffer, sizeof buffer)) > 0;)
+          {
+            pending.append(buffer, size_t(n));
+            for (size_t end; (end = pending.find('\n')) != std::string::npos; pending.erase(0, end + 1))
+              emit(pending.substr(0, end), true);
+          }
+          if (!pending.empty())
+            emit(pending, false);
+          _close(in);
+        });
+      }
+    }
+
+    // Puts the streams back, which closes the pipes' last write ends, and waits for the rewritten rest.
+    void finish()
+    {
+      fflush(stdout);
+      fflush(stderr);
+      for (int fd = 1; fd <= 2; ++fd)
+        if (saved[fd - 1] >= 0)
+        {
+          _dup2(saved[fd - 1], fd);
+          readers[fd - 1].join();
+          _close(saved[fd - 1]);
+        }
+    }
+  };
+}
+
+int runDriver(int argc, char** argv);
+
 int main(int argc, char** argv)
+{
+  std::vector<char*> rest;
+  bool msvc = false;
+  for (int i = 0; i < argc; ++i)
+    if (i > 0 && std::string(argv[i]) == "--msvc-diagnostics")
+      msvc = true;
+    else
+      rest.push_back(argv[i]);
+  if (!msvc)
+    return runDriver(argc, argv);
+  rest.push_back(nullptr);
+  MsvcDiagnostics diagnostics;
+  diagnostics.start();
+  int code = runDriver(int(rest.size()) - 1, rest.data());
+  diagnostics.finish();
+  return code;
+}
+
+int runDriver(int argc, char** argv)
 {
   setvbuf(stdout, nullptr, _IONBF, 0); // progress lines survive a crash
   std::set_terminate([]
