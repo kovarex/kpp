@@ -1,0 +1,11 @@
+postfix ++: 9 0 2 2
+prefix ++: 9 0 2 3
+postfix ++ of a byte's high field: 9 1 2 3
+postfix --: 9 1 2 2
+prefix --: 9 1 1 2
+postfix value: 2 then 3
+prefix value: 2 then 2
+wraps above: 9 2 1 0
+wraps below: 15 2 1 0
+through this->: 9 1 1 2
+wide: 6 1001 299999
