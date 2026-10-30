@@ -1716,6 +1716,39 @@ menu-checksums.txt keeps, together with the C++ run's prototype list checksum, s
 other mods reads as not comparable rather than different. `--baseline` measures the C++ build again
 (6 minutes); the release game's check takes 83 s.
 
+### A new Factorio source, and checking against an older one (2026-10-30)
+
+At 12:12 C:\Factorio moved from d0495ebfd8a (2026-04-21) to df1c9d1cd3c (2026-10-30), 2,008
+commits and 2,786 changed files under src, tests and the converted libraries; df1c9d1cd3c is the
+conversion's source from now on. Converted as it is, the full src build has 4,203 headline errors
+instead of 0: about 3,400 are NamedBool's new `using Enum::True;` (spec
+classes/using_declaration_of_member_enumerator, pending), 328 `std::atomic_int64_t` (the converter
+maps the fixed-width atomic names since eaad3565), the rest still to be sorted. The C++ Debug
+exe and menu-checksums.txt are of the old source until a C++ build of the new one exists.
+
+A change made meanwhile is checked against the old source from a snapshot: every script that reads
+the Factorio tree (convert.cmd, tests.cmd, run.cmd, link-settings.cmd, native\build.cmd, suites.py,
+menu-checksums.py) takes it from `FACTORIO` (C:\Factorio unless set), and run.cmd builds into
+`GAME` (C:\factorio-in-kpp unless set). The prebuilt libraries and executables (vs2022\, bin\)
+stay C:\Factorio's: those were still April's. What it takes:
+
+    git -C C:\Factorio archive d0495ebfd8a src tests libraries | tar -x -C SNAP
+    rem src\Info\BuildVersion.hpp is generated, not in git: BUILD_VERSION 85837, VERSION_STRING "2.1.0"
+    mklink /J SNAP\data C:\fik-convert\data          (the committed resources: the old data)
+    set FACTORIO=SNAP
+    convert.cmd C:\fik-convert\kpp   then   tests.cmd C:\fik-convert\kpp, suites.py, ...
+    set GAME=C:\fik-convert   run.cmd --version   then   menu-checksums.py C:\fik-convert
+
+Two traps. The game resolves the data junction, so `read-data/../tests`, where the tests read their
+saves and test mods, is C:\fik-convert	ests: a second junction there to SNAP	ests, removed
+again before the menu maps, which otherwise find test_mod twice. And the menu maps compare only
+in a game directory without run.cmd's test_mod (other prototypes: "not comparable").
+
+The stdlib C-declaration cleanup (104467d3) was checked so: headline 0, the seven smoke tests,
+9,005 of 9,005 tests in 556 suites, all 45 menu maps the C++ checksums. The same tally with master's
+stdlib stopped PlanetGeneration in 1 of its 6 runs, and with the cleanup 1 of 15: a deferred async's
+function taken by two threads at once (fixed, spec library/shared_future_deferred_runs_once_across_threads).
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
