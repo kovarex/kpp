@@ -7,7 +7,8 @@ hard each site is.
 
 ## Handoff: converter, stdlib and game tests (2026-10-30, evening)
 
-The source is Factorio df1c9d1cd3c since 2026-10-30 12:12 (before: d0495ebfd8a). The committed
+The source is C:\Factorio's current HEAD, whatever kovarex last pulled (decided 2026-10-30; CLAUDE.md
+"Rules"): 4c178a5b915 since 12:30, df1c9d1cd3c from 12:12, d0495ebfd8a before. The committed
 conversion in kovarex/factorio-in-kpp is still of the old source, and stays so until the new one's
 headline is 0 and the game links: the other threads run that one.
 
@@ -35,8 +36,8 @@ headline is 0 and the game links: the other threads run that one.
   then, at headline 0, the unit tests and the menu maps of the new source and the factorio-in-kpp
   push. Queue: `::Set` under a clashing using-directive (TestMigrations:1999) works in a minimal
   reproduction; confirm it in the new source's tests build.
-- **C:\fik-convert** is on branch reconvert-2026-10-30 (from origin/master d9080751) with the new
-  source's conversion uncommitted in kpp\: regenerate rather than commit it. C:\factorio-in-kpp
+- **C:\kpp-sandbox\fik-convert** (moved from C:\fik-convert) is on branch reconvert-2026-10-30
+  (from origin/master d9080751); the conversions of the current source are written there, uncommitted. C:\factorio-in-kpp
   (the main clone) is untouched: ~2,385 stale modified files, behind origin.
 
 ## Where kppc is
@@ -1753,13 +1754,17 @@ other mods reads as not comparable rather than different. `--baseline` measures 
 ### A new Factorio source, and checking against an older one (2026-10-30)
 
 At 12:12 C:\Factorio moved from d0495ebfd8a (2026-04-21) to df1c9d1cd3c (2026-10-30), 2,008
-commits and 2,786 changed files under src, tests and the converted libraries; df1c9d1cd3c is the
-conversion's source from now on. Converted as it is, the full src build has 4,203 headline errors
+commits and 2,786 changed files under src, tests and the converted libraries, and at 12:30 to
+4c178a5b915 (3 more files). The conversion's source is never pinned: it is C:\Factorio's HEAD,
+moving with each of kovarex's pulls, and every factorio-in-kpp commit message and measurement names
+the converted commit. Converted as it is, the full src build has 4,203 headline errors
 instead of 0: about 3,400 are NamedBool's new `using Enum::True;` (spec
 classes/using_declaration_of_member_enumerator, pending), 328 `std::atomic_int64_t` (the converter
 maps the fixed-width atomic names since eaad3565), the rest still to be sorted. The C++ Debug
 exe and menu-checksums.txt are of the old source until a C++ build of the new one exists.
 
+A snapshot is for checking a change against an older source (the one the committed conversion,
+the C++ Debug exe and the menu checksums are of), never for converting the current one.
 A change made meanwhile is checked against the old source from a snapshot: every script that reads
 the Factorio tree (convert.cmd, tests.cmd, run.cmd, link-settings.cmd, native\build.cmd, suites.py,
 menu-checksums.py) takes it from `FACTORIO` (C:\Factorio unless set), and run.cmd builds into
