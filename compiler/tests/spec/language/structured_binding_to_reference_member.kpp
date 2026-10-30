@@ -1,0 +1,37 @@
+// spec: a structured binding of a reference data member names the object the member refers to: `const auto& [location, surface] = pair;` with `Surface& second` reads the Surface, in a declaration and in a range-for over pairs, as `pair.second` does
+// factorio: TestBuildabilityChecks' `for (const auto& [testedLocation, surface] : surfacesWithLocation)` over a std::vector<Pair<Locations, Surface&>> (the game's Pair): surface was the member's own storage, the address it holds read as a Surface, and the entity built on it faulted in EntityWithOwner's constructor (BuildabilityChecks stops; its 64 tests pass with the loop reading .first and .second)
+// pending: SILENT, each binding reads the reference member's storage as the object (garbage numbers); owner: the codegen thread
+struct Surface
+{
+  int index = 0;
+};
+template<class KeyType, class ValueType>
+struct GamePair
+{
+  GamePair() = default;
+  template<class T1, class T2>
+  constexpr GamePair(T1&& key, T2&& value)
+    : first(forward<T1>(key))
+    , second(forward<T2>(value))
+  {}
+  KeyType first;
+  ValueType second;
+};
+int main()
+{
+  Surface nauvis;
+  nauvis.index = 7;
+  GamePair<int, Surface&> one(1, nauvis);
+  const auto& [location, surface] = one;
+  print("binding {}; ", surface.index);
+  auto& [l2, s2] = one;
+  print("non-const binding {}; ", s2.index);
+  Vector<GamePair<int, Surface&>> list = {{1, nauvis}};
+  print("vector {}; ", list[0].second.index);
+  for (const auto& entry : list)
+    print("loop {}; ", entry.second.index);
+  for (const auto& [l, s] : list)
+    print("loop binding {}; ", s.index);
+  println("");
+  return 0;
+}
