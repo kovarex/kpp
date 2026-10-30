@@ -1635,6 +1635,24 @@ pass with braces around TargeterBase::save's branches), and the 3 left out by le
 build has 1 error line and 1 stub, a closure with a brace init-capture of a UniquePtr taken as
 copyable (pending spec templates/brace_init_capture_keeps_closure_move_only, the resolver thread).
 
+### The release build (2026-10-30)
+
+`kppc --release` (config::debug false, the modules compiled as ThinLTO bitcode) had built the game
+but never run it: the executable answered its own command line with "Error opening '--benchmark'."
+That is opus_compare.c's main (opus's comparison tool, `fprintf(stderr,"Error opening '%s'.\n",
+_argv[1])`), whose object is in the game's opus.lib. The game defines wmain only. Left to infer the
+entry, lld-link said "found both wmain and main; using latter" when the program's objects were
+bitcode, took the archive's main and with it mainCRTStartup; the debug build's COFF objects let it
+infer wmainCRTStartup. Since the fix, kppc's driver names the entry itself when the program defines
+wmain and no main (`-Wl,/ENTRY:wmainCRTStartup`, main.cpp linkFlags).
+
+The release game then runs: `--version` prints the C++ build's version lines, and
+`--benchmark menu-simulation-train-junction.zip --benchmark-ticks 600` performs 600 updates in
+317.5 ms (avg 0.529 ms, min 0.127 ms, max 7.985 ms; the machine shared with a test run). The build:
+codegen 9.5 s, 732 MB of IR in 64 modules, clang 3.8 s (62 of 64 modules from the cache) and the
+ThinLTO link 156 s; the executable is 69,109,248 bytes (with --stub-missing and the crash report's
+/DEBUG link, as run.cmd links it).
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way

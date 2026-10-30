@@ -198,12 +198,38 @@ namespace
   // What the executable links against: legacy_stdio_definitions (the printf family the UCRT
   // headers define inline), the Windows libraries programs commonly reach, --lib files; unused
   // functions go (/OPT:REF).
-  std::string linkFlags(const Options& options)
+  // wideEntry: the program defines wmain and no main, so the link names wmainCRTStartup itself. Left to
+  // infer the entry, lld-link takes a main that any library has when the program's objects are
+  // bitcode (a ThinLTO release build): the game's opus.lib carries opus_compare.obj, and the release
+  // game ran opus_compare's main, "found both wmain and main; using latter" (docs/path-to-factorio.md,
+  // "The release build").
+  std::string linkFlags(const Options& options, bool wideEntry)
   {
     std::string flags = "-Wl,/OPT:REF -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
+    if (wideEntry)
+      flags += " -Wl,/ENTRY:wmainCRTStartup";
     for (const std::string& lib : options.libs)
       flags += " \"" + lib + "\"";
     return flags;
+  }
+
+  // Whether the program's files define a global wmain and no main (the game's entry on Windows).
+  bool definesWideEntryOnly(const std::vector<std::unique_ptr<ParsedFile>>& parsed, const SymbolTable& symbols)
+  {
+    bool wide = false;
+    for (const auto& file : parsed)
+      for (Decl* d : file->decls)
+        if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body)
+        {
+          const QualifiedName& name = static_cast<FunctionDecl*>(d)->name;
+          if (name.parts.size() != 1 || name.parts[0].special != 0 || name.parts[0].symbol == UINT32_MAX)
+            continue;
+          std::string_view spelled = symbols.name(name.parts[0].symbol);
+          if (spelled == "main")
+            return false;
+          wide = wide || spelled == "wmain";
+        }
+    return wide;
   }
 
   // Splits a flag string on spaces, keeping quoted paths whole (without the quotes).
@@ -927,7 +953,8 @@ namespace
       std::string llPath = options.emitLLVM.empty() ? options.exe + ".ll" : options.emitLLVM;
       if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
         return;
-      std::string command = "\"\"" + clang + "\" " + level + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " + linkFlags(options) + "\"";
+      std::string command = "\"\"" + clang + "\" " + level + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
+                            linkFlags(options, definesWideEntryOnly(parsed, symbols)) + "\"";
       start = Clock::now();
       int rc = system(command.c_str());
       report("clang:   %.3f s (%s, exit %d)\n", seconds(Clock::now() - start), level, rc);
@@ -1010,7 +1037,7 @@ namespace
       response += "-Wl,/opt:lldltojobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
       response += "\"-Wl,/lldltocache:" + slashes(options.exe) + ".ltocache\"\n";
     }
-    for (const std::string& flag : splitFlags(linkFlags(options)))
+    for (const std::string& flag : splitFlags(linkFlags(options, definesWideEntryOnly(parsed, symbols))))
     {
       // A library under "C:\Program Files (x86)\..." (the Windows SDK's) stays one argument.
       std::string one = slashes(flag);
