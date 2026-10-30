@@ -997,10 +997,16 @@ struct GlobalScope::Impl
   // otherwise go uncounted in some runs and counted in others.
   std::mutex instanceStatsMutex;
   ResolveStats instanceStatsTotal;
-  void addInstanceStats(const ResolveStats& s)
+  // A compile server's build keeps each walk's own statistics too, with the instance it typed (null:
+  // a class instance's check apart from its members'), so that one instance's can be replaced and
+  // the total made again (step 4: a template's body changed).
+  std::vector<std::pair<const void*, std::unique_ptr<ResolveStats>>> instanceContributions;
+  void addInstanceStats(const ResolveStats& s, const void* owner = nullptr)
   {
     std::lock_guard lock(instanceStatsMutex);
     instanceStatsTotal.add(s);
+    if (recordingDependencies)
+      instanceContributions.push_back({owner, std::make_unique<ResolveStats>(s)});
   }
 
   // The dependencies of the units that are declarations: a function's or a variable's walk (its
@@ -14294,7 +14300,7 @@ struct GlobalScope::Impl
     // Runs `body` as a sub-check with the given substitution, scope and this-type, in the
     // context of the template's own file. Expression statistics are merged into ours.
     template<typename F>
-    void subCheck(Decl* templ, const Subst& subst, Scope* bodyScope, const Ty* bodyThis, F&& body)
+    void subCheck(Decl* templ, const Subst& subst, Scope* bodyScope, const Ty* bodyThis, F&& body, const void* owner = nullptr)
     {
       ParsedFile* file = templ->file;
       if (!file || !file->tokens)
@@ -14322,7 +14328,7 @@ struct GlobalScope::Impl
       local.instExprsTyped += local.exprsTyped;
       local.instExprsDependent += local.exprsDependent;
       local.instExprsUnknown += local.exprsUnknown;
-      impl.addInstanceStats(local); // counted once, whoever asked (Impl::instanceStatsTotal)
+      impl.addInstanceStats(local, owner); // counted once, whoever asked (Impl::instanceStatsTotal)
     }
 
     // Types the instantiation of member f for the class's arguments, in a copy of f's nodes kept
@@ -14344,19 +14350,34 @@ struct GlobalScope::Impl
       RecordInto into(&inst->deps); // what typing the instance reads is its own
       FunctionDecl* copy = impl.copyInstance(f, sub.scope, merged);
       inst->body = copy;
-      sub.activeSubst = &merged;
-      size_t mark = sub.locals.mark();
+      // Walked by a walker of its own, as sub would walk it, so that its statistics are its own: a
+      // compile server checks an instance again when its template's body changes (step 4).
+      ResolveStats mine;
+      mine.fileIndex = sub.stats.fileIndex;
+      mine.collectWhy = sub.stats.collectWhy;
+      Walker member(impl, mine, sub.tokens, sub.text);
+      member.file = sub.file;
+      member.scope = sub.scope;
+      member.thisType = sub.thisType;
+      member.activeSubst = &merged;
+      member.instantiationDepth = sub.instantiationDepth;
+      member.requestFile = sub.requestFile;
+      member.requestToken = sub.requestToken;
+      member.current = sub.current;
+      member.locals.items = sub.locals.items;
       if (f->parent != cls)
         for (Decl* p : f->templateParams)
-          sub.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
-      sub.returnFrames.push_back(nullptr);
-      sub.walkDecl(copy);
-      const Ty* deduced = sub.returnFrames.back();
-      sub.returnFrames.pop_back();
+          member.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      member.returnFrames.push_back(nullptr);
+      member.walkDecl(copy);
+      const Ty* deduced = member.returnFrames.back();
+      member.returnFrames.pop_back();
       if (deduced)
-        inst->deducedReturn = impl.deducedShape(copy->returnType && !copy->trailingReturn ? sub.typeOf(copy->returnType) : nullptr, deduced);
-      sub.locals.pop(mark);
-      sub.activeSubst = &classSubst;
+        inst->deducedReturn = impl.deducedShape(copy->returnType && !copy->trailingReturn ? member.typeOf(copy->returnType) : nullptr, deduced);
+      mine.instExprsTyped += mine.exprsTyped;
+      mine.instExprsDependent += mine.exprsDependent;
+      mine.instExprsUnknown += mine.exprsUnknown;
+      impl.addInstanceStats(mine, inst); // counted once, whoever asked (Impl::instanceStatsTotal)
       ++impl.instBodies;
       inst->state.store(2, std::memory_order_release);
       inst->state.notify_all();
@@ -14531,7 +14552,7 @@ struct GlobalScope::Impl
         if (copy->returnType && !copy->trailingReturn)
           pattern = sub.typeOf(copy->returnType);
         ++impl.instBodies;
-      });
+      }, inst);
       inst->deducedReturn = deduced ? impl.deducedShape(pattern, deduced) : nullptr;
       impl.instNanos += uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
       inst->state.store(2, std::memory_order_release);
@@ -18442,7 +18463,7 @@ struct GlobalScope::Impl
     local.instExprsTyped += local.exprsTyped;
     local.instExprsDependent += local.exprsDependent;
     local.instExprsUnknown += local.exprsUnknown;
-    addInstanceStats(local); // counted once, whoever asked (instanceStatsTotal)
+    addInstanceStats(local, inst); // counted once, whoever asked (instanceStatsTotal)
     const Ty* callTy = nullptr;
     bool known = result->isKnown() && !types.isDependent(result);
     for (const Ty* pt : params)
