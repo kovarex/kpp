@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**735 pass, 4 pending, 0 failing, 0 fixed** (739 snippets, 114.0 s).
+**737 pass, 3 pending, 0 failing, 0 fixed** (740 snippets, 20.9 s).
 
 ## Language: statements, expressions, declarations
 
@@ -778,6 +778,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `expressions/static_cast_to_reference_through_conversion_function.kpp` | `static_cast<T&>(e)` with e of a class type that converts to T& calls the conversion function, as `T& t = e;` does (C++: the cast is valid when that declaration is): `&static_cast<TrainStop&>(builder.station())` is the address of the TrainStop the builder converts to | pending | TestTrainPriorities' `stop = &static_cast<TrainStop&>(leg.station("A"));` with RailBuilder's `operator TrainStop&()`: the cast took the RailBuilder itself as the TrainStop, so setPriority ran on the builder's stack memory and faulted in Rail::RailConnection::getRails (TrainPriorities stops; its 12 tests pass with `TrainStop& stop = leg.station("A");`) | SILENT, the cast reinterprets the object (`0 1 0` and a garbage id); owner: the codegen thread (casts); line 1: got `0 1 0 -329450496`, expected `1 1 1 42` |
+| `expressions/address_of_reference_cast_to_second_base.kpp` | the address of `static_cast<B&>(d)` with B a base of D that is not at offset 0 (D : A, B) is the address of d's B part, as `B& b = static_cast<B&>(d)` binds it; casting back down with `static_cast<D&>(b)` gives d again | pass |  |  |
 | `expressions/reference_bound_to_operator_prvalue.kpp` | a reference bound to what an overloaded operator* or operator[] returns by value (a pointer, an int: a prvalue) binds a temporary holding that value, as a call's `const K&` argument (Map's operator[] given `*targeter`) and as a local `const T&`; a returned reference still names the object itself | pass | TrainManager::setup's `this->railPlaceMap[*connection.rail].add(railSignal)`: Targeter's operator* returns the rail by value and Map::operator[](const K&) was passed that pointer as the key's address, so every signal went to one bogus entry, no rail segment ended at a signal, and loading the train-junction menu map failed ("found rail (straight-rail on {-227, 305}) already connected to segment 3372") |  |
 | `expressions/sizeof_consteval.kpp` | sizeof_consteval | pass |  |  |
+| `expressions/static_cast_to_reference_through_conversion_function.kpp` | `static_cast<T&>(e)` with e of a class type that converts to T& calls the conversion function, as `T& t = e;` does (C++: the cast is valid when that declaration is): `&static_cast<TrainStop&>(builder.station())` is the address of the TrainStop the builder converts to | pass | TestTrainPriorities' `stop = &static_cast<TrainStop&>(leg.station("A"));` with RailBuilder's `operator TrainStop&()`: the cast took the RailBuilder itself as the TrainStop, so setPriority ran on the builder's stack memory and faulted in Rail::RailConnection::getRails (TrainPriorities stops; its 12 tests pass with `TrainStop& stop = leg.station("A");`) |  |
