@@ -1,0 +1,14 @@
+// spec: a member named through a class whose bases its template arguments choose is looked up in all those bases, as C++'s member lookup is ([class.member.lookup] 6): a name two of them declare is ambiguous, an error, never the first base's (`&Acc::toText` with Acc deriving from Two<Bindable, Other>, both declaring toText)
+// error: the member toText is ambiguous: both bases Bindable and Other have one
+class Bindable { public: int toText() { return 7; } };
+class Other { public: int toText() { return 9; } };
+template<class A, class B>
+class Two : public A, public B { };
+class Acc : public Two<Bindable, Other> { };
+int main()
+{
+  Acc a;
+  int (Acc::*t)() = &Acc::toText;
+  println("{}", (a.*t)());
+  return 0;
+}

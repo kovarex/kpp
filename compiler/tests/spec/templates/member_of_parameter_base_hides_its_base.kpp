@@ -1,0 +1,19 @@
+// spec: a member named through a class whose base its template argument chooses is the one C++'s member lookup finds ([class.member.lookup]): the nearest declaration hides one further up (`&Acc::toText` with Behavior::toText hiding Bindable::toText), as `a.toText()` finds it too
+class Bindable { public: int toText() { return 7; } };
+class Behavior : public Bindable { public: int toText() { return 8; } };
+template<class Self, class Parent = Behavior>
+class BehaviorTemplate : public Parent { };
+class Acc : public BehaviorTemplate<Acc> { };
+template<class T>
+int viaPointer(T& object)
+{
+  int (T::*text)() = &T::toText;
+  return (object.*text)();
+}
+int main()
+{
+  Acc a;
+  int (Acc::*t)() = &Acc::toText;
+  println("{} {} {}", (a.*t)(), a.toText(), viaPointer(a));
+  return 0;
+}

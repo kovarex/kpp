@@ -15269,24 +15269,29 @@ struct GlobalScope::Impl
         params.push(static_cast<TemplateParamDecl*>(p)->name, p);
       ParsedFile* file = cls->owner->file;
       TypeContext ctx{cls->parent, &params, own.pairs.empty() ? nullptr : &own, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+      // Every base is searched: a name two bases declare (members of two different classes) is
+      // ambiguous, as C++'s member lookup says ([class.member.lookup] 6), never the first base's.
       std::optional<MemberResult> result;
+      const Ty* resultBase = nullptr;
       ++instantiatedBaseDepth;
       for (Type* b : cls->baseTypes)
-      {
         for (const Ty* bt : impl.baseInstances(b, ctx, 1))
         {
           if (!bt || bt->kind != TyKind::Class || !bt->decl || types.isDependent(bt))
             continue;
           MemberResult r = memberOf(bt, symbol, nullptr, token, false);
-          if (r.decl)
+          if (!r.decl)
+            continue;
+          if (!result)
           {
             result = std::move(r);
-            break;
+            resultBase = bt;
           }
+          else if (r.decl->parent != result->decl->parent && file && !probing && !inGenericTemplate())
+            impl.reportCheckerError(file, token,
+                                    "the member " + std::string(impl.symbols.name(symbol)) + " is ambiguous: both bases " +
+                                        types.toString(resultBase, &impl.symbols) + " and " + types.toString(bt, &impl.symbols) + " have one");
         }
-        if (result)
-          break;
-      }
       --instantiatedBaseDepth;
       return result;
     }
