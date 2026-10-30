@@ -19570,31 +19570,6 @@ bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
   return whole;
 }
 
-bool GlobalScope::instancesRead(const std::vector<uint32_t>& symbols)
-{
-  std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());
-  auto reads = [&](Dependencies& d)
-  {
-    std::lock_guard lock(d.mutex);
-    return std::any_of(d.list.names.begin(), d.list.names.end(), [&](uint32_t s) { return names.count(s) != 0; });
-  };
-  for (Impl::InstanceShard& shard : impl->instanceShards)
-  {
-    std::lock_guard lock(shard.mutex);
-    for (auto& [key, record] : shard.map)
-      if (reads(record->deps))
-        return true;
-  }
-  for (Impl::InstShard& shard : impl->instShards)
-  {
-    std::lock_guard lock(shard.mutex);
-    for (auto& [key, inst] : shard.classes)
-      if (reads(inst->deps))
-        return true;
-  }
-  return false;
-}
-
 std::vector<const Decl*> GlobalScope::walksReading(const std::vector<uint32_t>& symbols)
 {
   std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());

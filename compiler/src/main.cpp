@@ -2159,14 +2159,15 @@ namespace
     logBuildNote("incremental: " + std::to_string(changed.size() + functionEdits.size()) + " file(s) changed (" + std::to_string(functionEdits.size()) + " with whole functions), " + std::to_string(walked.size()) + " file(s) walked again");
     // Codegen follows through its kept session when every module's object is where the last build
     // left it (an unchanged module is not assembled again, so it has no text to compile now).
-    // An edited body may be in its callers' code too (codegen inlines trivial functions): the
-    // functions whose walks read an edited function's name are emitted again with it.
+    // The functions whose walks read an edited function's name are emitted again with it: an edit
+    // that makes the function trivial makes its callers inline it (codegen's record knows only the
+    // callers that inline it already).
     {
       std::vector<uint32_t> edited;
       for (FunctionDecl* f : kept.changedBodies)
         edited.push_back(global.functionSymbolOf(f));
-      if (global.instancesRead(edited))
-        codegenCanFollow = false; // an instance's code may hold the body too: emitted in full
+      // (An instance whose code holds an edited body, inlined or constant-folded, codegen finds itself:
+      // its inlined-body record, cef267b.)
       for (const Decl* d : global.walksReading(edited))
         if (d->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(d)->body)
           kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));

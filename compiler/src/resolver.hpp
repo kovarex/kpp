@@ -286,7 +286,6 @@ public:
   // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
   // function, whose code may hold its body (codegen inlines trivial functions).
   std::vector<const Decl*> walksReading(const std::vector<uint32_t>& symbols);
-  bool instancesRead(const std::vector<uint32_t>& symbols); // whether an instance or a class instance read one of the names
   std::vector<FunctionDecl*> outOfLineDefinitions(const Decl* cls); // the out-of-line member definitions attached to a class
 
   // Queries for code generation (after resolveFile ran on every file).
