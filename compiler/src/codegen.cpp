@@ -2176,7 +2176,54 @@ namespace
         emitCall("", "void " + useFunction(dtor, args, canonicalClass(t, at)) + "(ptr " + addr + ")", false);
         return;
       }
+      // A class whose destruction spells out more than a few calls is destroyed through its
+      // destructor helper (one definition, `@kpp.dtor.<class>`), not inline wherever one is
+      // destroyed: a constructor's cleanups destroy every member built so far, and inline each
+      // member's members (ControlSettings' constructor held 100,648 String destructor calls, 25.9 MB
+      // of IR, 70% of the game's largest module). The helper's own body spells them out.
+      if (t != destructorHelperFor && destructionCalls(t, at) > 8)
+      {
+        emitCall("", "void " + destructorThunk(t, at) + "(ptr " + addr + ")", false);
+        return;
+      }
       destroyMembers(addr, t, at);
+    }
+
+    // How many calls destroying an object of class type t spells out inline (destroy without a
+    // helper), at most 1000.
+    std::unordered_map<const Ty*, size_t> destructionCallCounts;
+    size_t destructionCalls(const Ty* t, Node* at, int depth = 0)
+    {
+      t = types.stripRef(t);
+      if (auto it = destructionCallCounts.find(t); it != destructionCallCounts.end())
+        return it->second;
+      size_t n = 0;
+      if (depth > 16)
+        n = 1000;
+      else if (t->kind == TyKind::Array)
+        n = needsDestruction(t->inner, at) ? std::min<size_t>(1000, size_t(t->count) * destructionCalls(t->inner, at, depth + 1)) : 0;
+      else if (isLambda(t))
+      {
+        for (const auto& [index, ft] : closureValueFields(t, at))
+          if (needsDestruction(ft, at))
+            n += destructionCalls(ft, at, depth + 1);
+      }
+      else if (isClass(t) && needsDestruction(t, at))
+      {
+        ClassDecl* c = classDef(t->decl, at);
+        if (c->isTypedUnion || findDestructor(c))
+          n = 1;
+        else
+        {
+          const StructInfo& info = structFor(t, at);
+          for (const Ty* ft : info.fieldTypes)
+            if (!ft->isReference() && needsDestruction(ft, at))
+              n += destructionCalls(ft, at, depth + 1);
+        }
+      }
+      n = std::min<size_t>(n, 1000);
+      destructionCallCounts.emplace(t, n);
+      return n;
     }
 
     void destroyMembers(const std::string& addr, const Ty* t, Node* at)
@@ -2436,8 +2483,13 @@ namespace
           return;
         }
       }
+      // Each base's and member's initializer is a full-expression of its own ([class.base.init] 7):
+      // the temporaries it made die when it is done, not when every member is (ControlSettings'
+      // constructor kept 980 temporaries alive to its end, and each member's cleanup destroyed all
+      // the earlier ones again: 97,512 destructor calls in 96,730 cleanup pads).
       for (auto& [baseDef, index] : info.bases)
       {
+        size_t partTemps = statementTemps.size();
         const Ty* bt = info.fieldTypes[index];
         std::string baseAddr = gep(info.name, addr, index);
         const QualifiedName& bn = static_cast<ClassDecl*>(baseDef)->name;
@@ -2452,6 +2504,7 @@ namespace
           defaultConstruct(baseAddr, bt, at);
         else
           initializeMembers(baseAddr, bt, {}, at);
+        destroyTempsFrom(partTemps);
         builtPart(baseAddr, bt);
       }
       storeVptrs(addr, info);
@@ -2508,6 +2561,7 @@ namespace
         if (d->kind != NodeKind::VariableDecl)
           continue;
         auto* v = static_cast<VariableDecl*>(d);
+        size_t partTemps = statementTemps.size();
         const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
         std::string fieldAddr = gep(info.name, addr, fieldIndexOf(info, d));
         const FunctionDecl::CtorInit* init = v->name.empty() ? nullptr : initFor(v->name.last().symbol);
@@ -2571,6 +2625,7 @@ namespace
           constructArray(fieldAddr, ft, at);
         else
           storeZero(ft, fieldAddr, at);
+        destroyTempsFrom(partTemps);
         builtPart(fieldAddr, ft);
       }
     }
@@ -14252,6 +14307,8 @@ namespace
 
     // The destructor slot of a class that declares no destructor: a function destroying its members
     // and bases (destructorThunk), or one doing nothing when none of them needs it.
+    const Ty* destructorHelperFor = nullptr; // the class whose destructor helper is being emitted (destructorThunk)
+
     std::string implicitDestructor(const Ty* t, Node* at)
     {
       std::string thunk = destructorThunk(t, at);
@@ -14278,6 +14335,8 @@ namespace
       emittedShared[name] = true;
       FunctionState saved = saveState();
       std::string savedOverride = funcletOverride;
+      const Ty* savedHelperFor = destructorHelperFor;
+      destructorHelperFor = types.stripRef(t); // (its own body spells its destruction out)
       funcletOverride.clear();
       resetFunctionState();
       try
@@ -14290,10 +14349,12 @@ namespace
       {
         restoreState(saved);
         funcletOverride = savedOverride;
+        destructorHelperFor = savedHelperFor;
         throw;
       }
       restoreState(saved);
       funcletOverride = savedOverride;
+      destructorHelperFor = savedHelperFor;
       return name;
     }
 

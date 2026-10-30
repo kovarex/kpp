@@ -57,6 +57,33 @@ and ends 0.63 s in). Paired, 8 rounds interleaved, front end at -j 32: 0.686 to 
 lever in resolve is those chains (an instance check that needs another's result waits for it on
 its own thread), not the files.
 
+**Clang's largest module: one constructor, and a semantic bug under it (2026-10-30, night).**
+Module 28, 37 MB, held `ControlSettings::ControlSettings(const PropertyTree&, KeyboardLayout)`:
+25.9 MB of IR, 485,071 lines, 100,648 calls of `String::~String` in 96,730 cleanup pads, for 196
+members initialized from default member initializers (`ControlInput toggleMenu{this, "...", ...}`).
+Two causes, both in codegen:
+
+- *Temporaries outlived their member's initializer.* `initializeMembers` destroyed the
+  temporaries of all bases' and members' initializers at the end of the last one (980 of them on
+  the normal path), where C++ makes each initializer a full-expression ([class.base.init] 7) whose
+  temporaries die before the next member is built. A destructor with an effect ran out of order
+  (spec classes/member_initializer_temporaries_die_per_member: master printed `built 1, built 2,
+  ~Noisy 2, ~Noisy 1`), and every member's cleanup chain carried all earlier members' temporaries:
+  the chains grew with the member's position, quadratically in all. Each base's and member's
+  temporaries are now destroyed when its initializer is done.
+- *A class without a destructor of its own was destroyed inline, member by member, wherever one
+  was destroyed*: a `ControlInput` (strings in nested values) spelled out about 200 calls in each
+  cleanup. A class whose destruction spells out more than 8 calls is now destroyed through its
+  destructor helper (`@kpp.dtor.<class>`, already emitted once for the exception runtime); the
+  helper's own body spells them out.
+
+The constructor after both: 196 helper calls instead of 100,648 destructor calls. Clean builds,
+paired, 2 rounds interleaved (master 0f9d932d and this): IR 739 -> 671 MB, the largest module 35.5
+-> 19.5 MB (the median 10.3 -> 9.7 MB), codegen 6.97 and 6.79 s -> 5.71 and 5.63 s, clang 4.74 and
+4.66 s -> 3.23 and 3.15 s, wall **15.13 and 14.89 s -> 12.32 and 12.07 s**. The determinism tests
+at 1, 8 and 32 threads pass; the game's `--dump-data` checksums are the same as master's build's
+(run from a scratch game directory, without test_mod).
+
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
 threads; clang is the one phase still gaining. Why, phase by phase (as measured on 089dcce5):

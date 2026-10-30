@@ -1,0 +1,37 @@
+// spec: each base's and member's initializer is a full-expression ([class.base.init] 7): the temporaries it makes are destroyed before the next base or member is initialized, for a default member initializer and a constructor's initializer list alike
+// factorio: ControlSettings' constructor kept its 980 member initializers' temporaries alive to its end (and each member's cleanup destroyed all the earlier ones again: 25.9 MB of IR)
+struct Noisy
+{
+  int id;
+  Noisy(int i) : id(i) {}
+  ~Noisy() { println("~Noisy {}", this->id); }
+  int value() const { return this->id; }
+};
+struct Logged
+{
+  int v;
+  Logged(int x) : v(x) { println("built {}", x); }
+};
+struct Base
+{
+  int b;
+  Base(int x) : b(x) { println("base {}", x); }
+};
+struct Defaults
+{
+  Logged a{Noisy(1).value()};
+  Logged b{Noisy(2).value()};
+};
+struct Listed : Base
+{
+  Logged c;
+  Logged d;
+  Listed() : Base(Noisy(3).value()), c(Noisy(4).value()), d(Noisy(5).value()) {}
+};
+int main()
+{
+  Defaults x;
+  Listed y;
+  println("{}", x.a.v + x.b.v + y.b + y.c.v + y.d.v);
+  return 0;
+}
