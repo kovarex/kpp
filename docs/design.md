@@ -1155,6 +1155,40 @@ The goal: write some Kpp and see it run, and write tests for Kpp code, with no c
 syntax is already decided (8.6: `test "name" { }`, `check`, `require`); what follows is the rest
 of the mechanism, what is done, and the choices left to kovarex (marked **Q**).
 
+### How to use it (works on master since 2026-10-30)
+Run a program: `kppc --run` builds it (only what changed since the last run) and runs it with
+the arguments after the file; the exit code is the program's.
+```
+// hello.kpp
+int main(int argc, char** argv)
+{
+  println("hello, {} arguments", argc - 1);
+  return 0;
+}
+```
+`compiler\build\kppc.exe --run hello.kpp a b` prints `hello, 2 arguments`.
+
+Test code: write `test` blocks next to the code (or in a file of their own) and run them with
+`kppc --test`, with the files or directories to build. A normal build skips the tests, and the
+file's `main` is left out of a test build.
+```
+// square.kpp
+int square(int x) { return x * x; }
+
+test "square"
+{
+  check(square(3) == 9);
+  check(square(-2) == 5);    // fails: square.kpp:7:3: check failed: square(-2) == 5 (4 == 5)
+  require(square(0) == 0);   // a failed require ends the test
+}
+```
+`compiler\build\kppc.exe --test square.kpp` prints each failure as above, `failed: square.kpp >
+square` after a test that failed, and `1 test, 1 failed`. The exit code is 0 when every test
+passed and 1 otherwise. Arguments after `--` go to the runner: `kppc --test src -- --filter
+square` (a part of "file > name"; `*` matches anything), `-- --list`, and `-- --report -` (a JSON
+line per test, for tools). Compiler options go before `--run` or `--test`: `--release`,
+`--server`, `--msvc-diagnostics`. When the build reports an error, nothing runs.
+
 ### What exists (surveyed 2026-10-30 on 7f3e55c)
 - **Running a snippet** is two commands: `kppc --exe out.exe file.kpp`, then `out.exe`. The
   program is built with the whole standard library (59 files; the front end takes 0.04 s of it).
@@ -1294,7 +1328,10 @@ Latency of a small test (one `test` with a loop and two checks, `kppc --test fib
 on 2026-10-30, other threads building): 0.34 s median from the edit to the summary (0.32-0.69 s),
 0.27 s with nothing changed (0.25-0.45 s). Again after `--test` began reading the build's output
 for errors, the machine quieter: 0.22 s median after an edit (0.20-0.40 s), 0.19 s with nothing
-changed (0.16-0.26 s).
+changed (0.16-0.26 s). Cold (the cached objects deleted before each round), on a heavily loaded
+machine: 2.3 s median (1.5-2.8 s); in the same rounds, warm after an edit 0.91 s (0.46-1.69 s) and
+warm unchanged 0.87 s (0.31-1.36 s). The load decides more than the build does; a cold run builds
+the standard library's modules once.
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
