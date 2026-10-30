@@ -1,0 +1,11 @@
+// spec: in a template's body, a name nothing declares that does not depend on the template's parameters is an error at the definition, the template instantiated or not (C++ [temp.res]: clang reports both below); a call whose argument depends on a parameter is looked up per instance (argument-dependent lookup), so `helper(value)` is no error until an instance finds no helper
+// error: undeclared_name_in_template_is_error_at_definition.kpp:4: error: 'undefinedThing' is not declared
+// error: undeclared_name_in_template_is_error_at_definition.kpp:5: error: 'undefinedCall' is not declared
+template<class T> int unused(T value) { return undefinedThing + int(value); }
+template<class T> struct Holder { int get() { return undefinedCall(1); } };
+template<class T> int deferred(T value) { return helper(value); }
+int main()
+{
+  println("{}", 1);
+  return 0;
+}

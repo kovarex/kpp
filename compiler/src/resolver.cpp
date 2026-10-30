@@ -768,6 +768,9 @@ struct GlobalScope::Impl
   // (under checkerErrorsMutex) Failed static_asserts in template instances' function bodies, by
   // that body, errors once the code generator emits it (GlobalScope::functionEmitted).
   std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceAssertErrors;
+  // (under checkerErrorsMutex) Names a template instance's function body uses that its arguments'
+  // lookup does not find either, by that body: errors once the code generator emits it.
+  std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceNameErrors;
   std::unordered_set<const FunctionDecl*> emittedFunctions;
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
@@ -14669,12 +14672,16 @@ struct GlobalScope::Impl
       stats.unresolvedFirst.emplace(key, ResolveStats::Where{stats.fileIndex, token});
     }
 
-    // A name nothing declares, in code that is no template's (a template's own walk may name what its
-    // arguments bring, and an instance's errors are its emission's): an error at the name.
+    // A name nothing declares: an error at the name. In a template, as C++'s two phases have it
+    // ([temp.res]): in its own walk when the name does not depend on its parameters, and a call
+    // whose argument does (argument-dependent lookup with the instance's types), or a name a base
+    // that is a parameter may declare, in each instance whose function the program emits.
+    // dependentCall: the name is called with an argument whose type depends on a parameter (or is
+    // not known).
     const NameExpr* undeclaredLater = nullptr; // a subscript's lone index name, judged by the subscript (a typed union's tag)
-    void reportUndeclared(const QualifiedName& name, uint32_t token, const NameExpr* at = nullptr)
+    void reportUndeclared(const QualifiedName& name, uint32_t token, const NameExpr* at = nullptr, bool dependentCall = false)
     {
-      if ((at && at == undeclaredLater) || !file || file->isImported || probing || activeSubst || inGenericTemplate() || name.parts.size() != 1 || name.parts[0].symbol == UINT32_MAX)
+      if ((at && at == undeclaredLater) || !file || file->isImported || probing || name.parts.size() != 1 || name.parts[0].symbol == UINT32_MAX)
         return; // (the C import's inline bodies name the C compiler's builtins: codegen's to judge, if emitted)
       // What the code generator implements by name, macros of the C headers: va_start and its kin,
       // the SSE intrinsics and their _MM_ helpers (one it does not implement is its error).
@@ -14682,7 +14689,39 @@ struct GlobalScope::Impl
       if (spelled == "va_start" || spelled == "va_end" || spelled == "va_copy" || spelled == "va_arg" || spelled.starts_with("_mm_") ||
           spelled.starts_with("_MM_"))
         return;
-      impl.reportCheckerError(file, token, "'" + std::string(symbols.name(name.parts[0].symbol)) + "' is not declared");
+      std::string message = "'" + std::string(spelled) + "' is not declared";
+      if (activeSubst)
+      {
+        // An instance: counts once its function is emitted (an `if constexpr` branch the walk could
+        // not decide may be the discarded one).
+        if (!bodyOf || undecidedBranches > 0)
+          return;
+        std::string instance = instanceDescription();
+        if (!instance.empty() && requestFile)
+          instance += ", asked for at " + Impl::locationOf(requestFile, requestToken);
+        if (!instance.empty())
+          message += " (in " + instance + ")";
+        std::lock_guard lock(impl.checkerErrorsMutex);
+        impl.instanceNameErrors[bodyOf].push_back(Impl::locationOf(file, token) + ": error: " + message);
+        return;
+      }
+      if (inGenericTemplate() && (dependentCall || inClassWithParameterBase()))
+        return;
+      impl.reportCheckerError(file, token, message);
+    }
+
+    // Whether a class the walk is in has a base no scope stands for until it is instantiated (a
+    // template parameter, `class Wrapper : public T`), which may declare any name.
+    bool inClassWithParameterBase()
+    {
+      for (Scope* s = scope; s; s = s->parent)
+        if (s->kind == ScopeKind::Class && !s->baseTypes.empty())
+        {
+          impl.ensureBases(s, 0);
+          if (s->baseScopes.size() < s->baseTypes.size())
+            return true;
+        }
+      return false;
     }
 
     enum class Why : uint8_t { None, Name, Base, Member, Overload, Deduction, AutoReturn, Unsupported, Operator, Auto };
@@ -16965,7 +17004,12 @@ struct GlobalScope::Impl
               }
             ++stats.namesUnresolved;
             countUnresolved(n->name, n->token);
-            reportUndeclared(n->name, n->token);
+            {
+              bool dependentCall = false;
+              for (const Ty* a : argTypesOf(c->args))
+                dependentCall = dependentCall || !a || !a->isKnown() || types.isDependent(a);
+              reportUndeclared(n->name, n->token, nullptr, dependentCall);
+            }
             record(n, unknown(Why::Name));
             return types.unknown();
           case Found::Local: ++stats.namesLocal; break;
@@ -19775,6 +19819,13 @@ std::vector<std::string> GlobalScope::checkerErrors()
   for (const auto& [f, errors] : impl->instanceAssertErrors)
     if (impl->emittedFunctions.count(f))
       all.insert(errors.begin(), errors.end());
+  // (one the template's own walk reported at the definition already is that error, whichever walk
+  // ran first)
+  for (const auto& [f, errors] : impl->instanceNameErrors)
+    if (impl->emittedFunctions.count(f))
+      for (const std::string& e : errors)
+        if (!impl->checkerErrorSet.count(e.substr(0, e.find(" (in "))))
+          all.insert(e);
   std::vector<std::string> out(all.begin(), all.end());
   std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) { return key(a) < key(b); });
   return out;
@@ -21073,7 +21124,10 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
     std::lock_guard lock(impl->checkerErrorsMutex);
     for (const Impl::InstanceRecord* r : drop)
       if (r->body)
+      {
         impl->instanceAssertErrors.erase(r->body);
+        impl->instanceNameErrors.erase(r->body);
+      }
   }
   std::sort(stale.begin(), stale.end());
   stale.erase(std::unique(stale.begin(), stale.end()), stale.end());
