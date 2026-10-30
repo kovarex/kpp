@@ -1073,8 +1073,9 @@ namespace
     {"forward_list", "ForwardList"}, {"multimap", "MultiMap"}, {"multiset", "MultiSet"},
     // concurrency
     {"atomic_bool", "Atomic<bool>"}, {"atomic_size_t", "Atomic<size_t>"},
-    {"atomic_uint8_t", "Atomic<u8>"}, {"atomic_uint32_t", "Atomic<u32>"},
-    {"atomic_uint64_t", "Atomic<u64>"}, {"atomic_load", "atomicLoad"},
+    {"atomic_uint8_t", "Atomic<u8>"}, {"atomic_uint16_t", "Atomic<u16>"}, {"atomic_uint32_t", "Atomic<u32>"},
+    {"atomic_uint64_t", "Atomic<u64>"}, {"atomic_int8_t", "Atomic<i8>"}, {"atomic_int16_t", "Atomic<i16>"},
+    {"atomic_int32_t", "Atomic<i32>"}, {"atomic_int64_t", "Atomic<i64>"}, {"atomic_load", "atomicLoad"},
     {"atomic_store", "atomicStore"}, {"atomic_exchange", "atomicExchange"}, {"atomic_is_lock_free", "atomicIsLockFree"},
     {"async", "async"}, {"future", "Future"}, {"shared_future", "SharedFuture"},
     {"promise", "Promise"}, {"future_status", "FutureStatus"}, {"launch", "Launch"},
