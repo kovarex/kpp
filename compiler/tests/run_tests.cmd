@@ -62,6 +62,12 @@ if errorlevel 1 (
   echo FAIL determinism: the output depends on the thread count
   set /a FAIL+=1
 )
+rem Nor on timing under load: hundreds of builds at -j 32, 16 at once (tests\concurrency.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\concurrency.ps1 -Kppc %KPPC%
+if errorlevel 1 (
+  echo FAIL concurrency: the output depends on timing
+  set /a FAIL+=1
+)
 rem The compile server must build what a new process builds, edit after edit (tests\incremental.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\incremental.ps1 -Kppc %KPPC%
 if errorlevel 1 (
