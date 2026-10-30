@@ -723,6 +723,21 @@ again, codegen in full, 5 modules compiled. Edit to linked game, 3 rounds interl
 codegen 7.6 to 7.9 s); master cddf99aa's server, from scratch, 16.3 to 17.7 s; a new process 10.47 to
 10.56 s. As for the signature edit, codegen in full is what is left.
 
+**Generic lambdas' call operators checked again; names by position (landed).** A generic lambda's
+call operator the resolve made keeps how it was made (its closure type and arguments, in a server's
+build), and one that read a change is copied from the lambda and walked again
+(`runLambdaInstance`), as a function instance is. Adding one to the edit test exposed an older gap:
+the code names a function's local types by their tokens (`f::__lambda_58_0@285`, `TypeTable::toString`),
+the parser numbers lambdas in the file's order (`__lambda_<file>_<n>`), and codegen names static
+locals, catch filters and static initializer lists by their tokens; an edit earlier in a file moves
+them, so a build from scratch names them otherwise, while the server kept the unchanged functions'
+code (`--verify-incremental` reported the module, master's server too). Now `remapKeptFile` gives a
+kept closure the name the new parse gives the lambda at its new place, emits again a kept
+non-template function whose position-named static locals, catch filters or initializer lists moved,
+and runs codegen in full when a kept local type moved or was renamed (codegen's session keeps the
+types' names) or a template's position-named entity moved (its instances are not emitted again
+alone). The edit test's lambdas.kpp: a lambda added before another moves and renumbers it.
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before

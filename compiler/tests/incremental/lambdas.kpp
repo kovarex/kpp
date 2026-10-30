@@ -1,0 +1,11 @@
+// Lambdas, which the code names by position (the parser numbers them in the file's order, and a
+// local type's name carries its token): an edit before one moves it, a lambda added before it
+// renumbers it, and the server must name it as a build from scratch does.
+int firstHelper() { int r = 2; return r; }
+
+// A generic lambda's call operator that reads `scale`: checked again when the overload is added.
+int viaLambda()
+{
+  auto scaled = [](auto v) { int r = scale(v); return r; };
+  return scaled(4.5);
+}

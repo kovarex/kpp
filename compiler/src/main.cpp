@@ -218,6 +218,11 @@ namespace
     // runs in full for them until it takes changed layouts (docs/compile-speed.md).
     std::vector<const Decl*> changedLayouts;
     bool rebuildCodegen = false;
+    // An incremental build moved a kept local type (a lambda's closure, a local class) or renamed a
+    // closure, or moved a template's position-named entity: names in the code are the position's
+    // (`f::__lambda_3_1@2045`, a static local's `.2051`), so codegen runs in full (its session keeps
+    // the types' names). See remapKeptFile.
+    bool positionalCodegenInFull = false;
     CodegenSessionPtr codegen;
   };
   std::mutex keptMutex;              // held by a server's build until it has kept its result
@@ -1678,13 +1683,113 @@ namespace
     return true;
   }
 
+  // A function a file declares outside any body, with the declaration it is a member of (null at
+  // the file's top level) and whether a template encloses it.
+  struct DeclaredFunction
+  {
+    FunctionDecl* f;
+    Decl* container;
+    bool templated;
+  };
+
+  // A class's data member (step 4's layout edits), with its class and whether a template encloses it.
+  struct DeclaredMember
+  {
+    VariableDecl* v;
+    ClassDecl* container;
+    bool templated;
+  };
+
+  void collectFunctions(Span<Decl*> decls, Decl* container, bool inTemplate, std::vector<DeclaredFunction>& out,
+                        std::vector<Decl*>& containers, std::vector<DeclaredMember>* members = nullptr)
+  {
+    for (Decl* d : decls)
+    {
+      if (!d)
+        continue;
+      bool templated = inTemplate || d->isTemplate || !d->templateParams.empty();
+      switch (d->kind)
+      {
+        case NodeKind::NamespaceDecl:
+          containers.push_back(d);
+          collectFunctions(static_cast<NamespaceDecl*>(d)->decls, d, inTemplate, out, containers, members);
+          break;
+        case NodeKind::ClassDecl:
+          containers.push_back(d);
+          collectFunctions(static_cast<ClassDecl*>(d)->members, d, templated, out, containers, members);
+          break;
+        case NodeKind::EnumDecl:
+          containers.push_back(d);
+          collectFunctions(static_cast<EnumDecl*>(d)->members, d, templated, out, containers, members);
+          break;
+        case NodeKind::FunctionDecl:
+          out.push_back({static_cast<FunctionDecl*>(d), container, templated});
+          break;
+        case NodeKind::VariableDecl:
+          if (members && container && container->kind == NodeKind::ClassDecl)
+            members->push_back({static_cast<VariableDecl*>(d), static_cast<ClassDecl*>(container), inTemplate});
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
   // Points every node of a kept file at its new tokens: its declarations' nodes, and the copies
   // instances made of them (they index the file's tokens too); skip: nodes dropped with the old
   // version, staleSources: the declarations whose instances are copied anew (their old copies
   // are dropped). False when a node's token has no place in the new version.
   bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& map, const std::unordered_set<Node*>& skip,
-                     const std::unordered_set<const Decl*>& staleSources)
+                     const std::unordered_set<const Decl*>& staleSources, const ParsedFile& fresh)
   {
+    // Names the code gives by position: a function's local types (`f::Local@2045`, its lambdas'
+    // closures, which the parser also numbers in the file's order, `__lambda_3_1`), its static
+    // locals, catch filters and static initializer lists (by their tokens). A build from scratch of
+    // the new text names them by their new places, so a kept function holding one that moves is
+    // emitted again (in full, for a local type: codegen's session keeps the types' names; and for a
+    // template's, whose instances it cannot emit again alone), and a kept closure takes the name the
+    // new parse gives the lambda at its new place.
+    std::unordered_map<uint32_t, ClassDecl*> freshClosures; // new token -> the new parse's closure there
+    forEachNode(fresh.decls, [&](Node* n)
+    {
+      if (n->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n)->lambda)
+        freshClosures[n->token] = static_cast<ClassDecl*>(n);
+    });
+    auto moved = [&](uint32_t t) { return t >= map.size() || map[t] != t; };
+    std::vector<DeclaredFunction> functions;
+    std::vector<Decl*> containers;
+    collectFunctions(file.decls, nullptr, false, functions, containers);
+    for (const DeclaredFunction& d : functions)
+    {
+      if (!d.f->body || skip.count(d.f->body))
+        continue;
+      bool localType = false, positional = false;
+      forEachNode(d.f->body, [&](Node* n)
+      {
+        if (skip.count(n))
+          return;
+        if (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl)
+        {
+          bool renamed = false;
+          if (auto* c = static_cast<ClassDecl*>(n); n->kind == NodeKind::ClassDecl && c->lambda && !c->name.empty() && c->token < map.size() &&
+                                                    map[c->token] != UINT32_MAX)
+            if (auto it = freshClosures.find(map[c->token]); it != freshClosures.end() && !it->second->name.empty() &&
+                                                             it->second->name.last().symbol != c->name.last().symbol)
+            {
+              const_cast<NamePart&>(c->name.parts[c->name.parts.size() - 1]).symbol = it->second->name.last().symbol;
+              renamed = true;
+            }
+          localType = localType || renamed || moved(n->token);
+        }
+        else if ((n->kind == NodeKind::VariableDecl && (static_cast<Decl*>(n)->flags & DF_Static)) || n->kind == NodeKind::TryStmt ||
+                 n->kind == NodeKind::BraceInitExpr)
+          positional = positional || moved(n->token);
+      });
+      if (localType || (positional && d.templated))
+        kept.positionalCodegenInFull = true;
+      else if (positional)
+        kept.changedBodies.push_back(d.f);
+    }
     bool lost = false;
     std::unordered_set<Node*> done;
     auto remap = [&](Node* n)
@@ -1728,7 +1833,7 @@ namespace
       forEachNode(c.oldBodies[k].f->body, [&](Node* n) { replaced.insert(n); });
       stale.insert(c.oldBodies[k].f);
     }
-    if (!remapKeptFile(kept, file, map, replaced, stale))
+    if (!remapKeptFile(kept, file, map, replaced, stale, *c.parsed))
       return why = "a kept node's token has no place in the new version", false;
     for (auto& [b, where] : c.parsed->castCandidates)
       if (where && where->kind == NodeKind::FunctionDecl)
@@ -1793,58 +1898,6 @@ namespace
   }
 
   // ---- Step 4, first kind: functions added, removed or changed (docs/compile-speed.md) ----
-
-  // A function a file declares outside any body, with the declaration it is a member of (null at
-  // the file's top level) and whether a template encloses it.
-  struct DeclaredFunction
-  {
-    FunctionDecl* f;
-    Decl* container;
-    bool templated;
-  };
-
-  // A class's data member (step 4's layout edits), with its class and whether a template encloses it.
-  struct DeclaredMember
-  {
-    VariableDecl* v;
-    ClassDecl* container;
-    bool templated;
-  };
-
-  void collectFunctions(Span<Decl*> decls, Decl* container, bool inTemplate, std::vector<DeclaredFunction>& out,
-                        std::vector<Decl*>& containers, std::vector<DeclaredMember>* members = nullptr)
-  {
-    for (Decl* d : decls)
-    {
-      if (!d)
-        continue;
-      bool templated = inTemplate || d->isTemplate || !d->templateParams.empty();
-      switch (d->kind)
-      {
-        case NodeKind::NamespaceDecl:
-          containers.push_back(d);
-          collectFunctions(static_cast<NamespaceDecl*>(d)->decls, d, inTemplate, out, containers, members);
-          break;
-        case NodeKind::ClassDecl:
-          containers.push_back(d);
-          collectFunctions(static_cast<ClassDecl*>(d)->members, d, templated, out, containers, members);
-          break;
-        case NodeKind::EnumDecl:
-          containers.push_back(d);
-          collectFunctions(static_cast<EnumDecl*>(d)->members, d, templated, out, containers, members);
-          break;
-        case NodeKind::FunctionDecl:
-          out.push_back({static_cast<FunctionDecl*>(d), container, templated});
-          break;
-        case NodeKind::VariableDecl:
-          if (members && container && container->kind == NodeKind::ClassDecl)
-            members->push_back({static_cast<VariableDecl*>(d), static_cast<ClassDecl*>(container), inTemplate});
-          break;
-        default:
-          break;
-      }
-    }
-  }
 
   // A file whose changes are whole functions (added, removed, or changed and so both): which, and
   // where each added one goes among the kept declarations.
@@ -2111,7 +2164,7 @@ namespace
       global.unindexMember(v);
       forEachNode(v, [&](Node* n) { dropped.insert(n); });
     }
-    if (!remapKeptFile(kept, file, c.map, dropped, {}))
+    if (!remapKeptFile(kept, file, c.map, dropped, {}, *c.parsed))
       return why = "a kept node's token has no place in the new version", false;
     // The added functions: the kept file's, members of the kept declarations.
     std::unordered_map<Decl*, std::vector<Decl*>> into;
@@ -2226,6 +2279,7 @@ namespace
     kept.addedFunctions.clear();
     kept.removedFunctions.clear();
     kept.changedLayouts.clear();
+    kept.positionalCodegenInFull = false;
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
     std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
     std::vector<const FunctionDecl*> constantBodies; // changed constexpr bodies: what the evaluator ran them for is checked again
@@ -2293,8 +2347,9 @@ namespace
     }
     std::sort(kept.changedLayouts.begin(), kept.changedLayouts.end());
     kept.changedLayouts.erase(std::unique(kept.changedLayouts.begin(), kept.changedLayouts.end()), kept.changedLayouts.end());
-    // Codegen does not take changed layouts yet (rebuildLLVM): it runs in full for them.
-    if (!kept.changedLayouts.empty())
+    // Codegen does not take changed layouts yet (rebuildLLVM): it runs in full for them, and for
+    // local types that moved (remapKeptFile).
+    if (!kept.changedLayouts.empty() || kept.positionalCodegenInFull)
       codegenCanFollow = false;
     if (!names.empty() || !constantBodies.empty())
     {

@@ -962,6 +962,7 @@ struct GlobalScope::Impl
       uint32_t requestToken = UINT32_MAX;
       uint32_t fileIndex = 0;
       bool collectWhy = false;
+      const Ty* lambdaTy = nullptr; // a generic lambda's call operator: its closure type (subst: its own arguments)
     };
     std::unique_ptr<Recheck> recheck;
     const Decl* of = nullptr; // what it is an instance of (claimInstance's f)
@@ -19098,6 +19099,20 @@ struct GlobalScope::Impl
         *body = inst->lambda;
       return inst->deducedReturn; // for a lambda: the call operator's type for these arguments
     }
+    if (recordingDependencies)
+    {
+      // How to check it again (recheckInstancesOf): its closure type and own arguments.
+      inst->recheck = std::make_unique<InstanceRecord::Recheck>();
+      inst->recheck->lambdaTy = lambdaTy;
+      inst->recheck->subst = own;
+    }
+    return runLambdaInstance(inst, env, full, statsInto, body);
+  }
+
+  // A generic lambda's call operator for the arguments full: its body copied and walked into inst.
+  const Ty* runLambdaInstance(InstanceRecord* inst, const LambdaEnv& env, const Subst& full, ResolveStats* statsInto, LambdaExpr** body = nullptr)
+  {
+    LambdaExpr* original = env.lambda;
     LambdaExpr* l = InstanceCopier(instanceArena()).lambdaInstance(original);
     inst->lambda = l;
     ++instBodies;
@@ -20877,6 +20892,29 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       mine.instExprsDependent += mine.exprsDependent;
       mine.instExprsUnknown += mine.exprsUnknown;
       impl->addInstanceStats(mine, r);
+    }
+    else if (rc.lambdaTy)
+    {
+      // A generic lambda's call operator: copied from the lambda as written and walked again (the
+      // lambda's own walk, if its file was walked again, registered it anew).
+      Impl::LambdaEnv env;
+      {
+        std::lock_guard lock(impl->lambdaEnvMutex);
+        auto it = impl->lambdaEnvs.find(rc.lambdaTy);
+        if (it == impl->lambdaEnvs.end())
+          return why = "a generic lambda's instance whose lambda is gone", false;
+        env = it->second;
+      }
+      if (!env.lambda || !env.tokens || !env.file || env.lambda->closure != r->of)
+        return why = "a generic lambda's instance whose lambda is gone", false;
+      Subst full = env.subst;
+      for (const Subst::Pair& p : rc.subst.pairs)
+        if (!full.find(p.param))
+          full.pairs.push_back(p);
+      RecordInto into(&r->deps);
+      ResolveStats stats;
+      stats.fileIndex = env.file->index;
+      impl->runLambdaInstance(r, env, full, &stats);
     }
     else
     {
