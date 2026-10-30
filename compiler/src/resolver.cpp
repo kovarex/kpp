@@ -12359,6 +12359,13 @@ struct GlobalScope::Impl
         return NotViable;
       if (r >= 4 && param->kind == TyKind::LRef)
         return 5; // the converted temporary binds better to `T&&` than to `const T&`
+      // An rvalue reference binds no lvalue that a conversion function gives, neither the lvalue
+      // itself nor a copy of it (C++ [over.ics.ref] 3, as clang applies it): take(String&&) given
+      // a class whose conversion is `operator const String&()` is no candidate, take(const
+      // String&) is called (UnitTest's names, moved out of their objects through try_emplace).
+      if (r >= 4 && param->kind == TyKind::RRef && a->kind == TyKind::Class && convertsByOperator(a, pt, depth + 1) &&
+          !convertsByOperator(a, pt, depth + 1, 0, false, true))
+        return NotViable;
       return std::max(r, 2);
     }
     a = types.decay(a);
@@ -12604,8 +12611,9 @@ struct GlobalScope::Impl
 
   // Whether a non-explicit conversion operator of class a, or of one of its bases (under a's
   // arguments: `Const<float> : Value<float>` with Value's `operator const T&()`), gives a value
-  // that converts to param by a standard conversion.
-  bool convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth = 0, bool allowExplicit = false)
+  // that converts to param by a standard conversion. With rvalues, only one that gives a value or
+  // an rvalue reference counts (what an rvalue reference binds), not one that gives an lvalue.
+  bool convertsByOperator(const Ty* a, const Ty* param, int depth, int baseDepth = 0, bool allowExplicit = false, bool rvalues = false)
   {
     if (baseDepth > 8)
       return false;
@@ -12637,6 +12645,8 @@ struct GlobalScope::Impl
           continue;
         result = substitute(result, own);
       }
+      if (rvalues && result->kind == TyKind::LRef && result->inner->kind != TyKind::Function)
+        continue;
       if (conversionRank(result, param, depth + 1) < 4)
         return true;
     }
@@ -12644,7 +12654,7 @@ struct GlobalScope::Impl
     std::vector<const Ty*> bases;
     if (def && directBases(a, def, bases))
       for (const Ty* b : bases)
-        if (b->kind == TyKind::Class && convertsByOperator(b, param, depth, baseDepth + 1, allowExplicit))
+        if (b->kind == TyKind::Class && convertsByOperator(b, param, depth, baseDepth + 1, allowExplicit, rvalues))
           return true;
     return false;
   }
