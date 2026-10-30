@@ -666,9 +666,9 @@ struct FastMap
       return Pair<BTreeIterator<Pair<K, V>>, bool>(at, false);
     return Pair<BTreeIterator<Pair<K, V>>, bool>(this->tree.insertNew(Pair<K, V>(key, RemoveConst<V>(forward<Args>(args)...))), true);
   }
-  // An rvalue key is moved into the new entry, not copied.
-  template<typename... Args>
-  Pair<BTreeIterator<Pair<K, V>>, bool> try_emplace(K&& key, Args&&... args)
+  // An rvalue key is moved into the new entry, not copied (only a K rvalue itself, as Map's).
+  template<typename KK, typename... Args> requires (isSame<KK, K>)
+  Pair<BTreeIterator<Pair<K, V>>, bool> try_emplace(KK&& key, Args&&... args)
   {
     BTreeIterator<Pair<K, V>> at = this->tree.find(key);
     if (at != this->tree.end())
@@ -681,8 +681,8 @@ struct FastMap
   {
     return this->try_emplace(key, forward<Args>(args)...).first;
   }
-  template<typename... Args>
-  BTreeIterator<Pair<K, V>> try_emplace(BTreeIterator<Pair<K, V>> hint, K&& key, Args&&... args)
+  template<typename KK, typename... Args> requires (isSame<KK, K>)
+  BTreeIterator<Pair<K, V>> try_emplace(BTreeIterator<Pair<K, V>> hint, KK&& key, Args&&... args)
   {
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }

@@ -913,9 +913,10 @@ struct Map
     return Pair<RbIterator<Pair<K, V>>, bool>(this->tree.emplaceEqual(inPlaceSecond, key, forward<Args>(args)...), true);
   }
   // An rvalue key is moved into the new entry, not copied (the map deserialiser's
-  // `target.try_emplace(move(index), input)`).
-  template<typename... Args>
-  Pair<RbIterator<Pair<K, V>>, bool> try_emplace(K&& key, Args&&... args)
+  // `target.try_emplace(move(index), input)`). Only a K rvalue itself: a key of another type is
+  // converted by the const K& overload.
+  template<typename KK, typename... Args> requires (isSame<KK, K>)
+  Pair<RbIterator<Pair<K, V>>, bool> try_emplace(KK&& key, Args&&... args)
   {
     RbIterator<Pair<K, V>> at = this->tree.find(key);
     if (at != this->tree.end())
@@ -929,8 +930,8 @@ struct Map
   {
     return this->try_emplace(key, forward<Args>(args)...).first;
   }
-  template<typename... Args>
-  RbIterator<Pair<K, V>> try_emplace(RbIterator<Pair<K, V>> hint, K&& key, Args&&... args)
+  template<typename KK, typename... Args> requires (isSame<KK, K>)
+  RbIterator<Pair<K, V>> try_emplace(RbIterator<Pair<K, V>> hint, KK&& key, Args&&... args)
   {
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }

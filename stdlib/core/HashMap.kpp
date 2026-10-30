@@ -581,9 +581,9 @@ struct HashMap
       this->table.emplaceAt(slot, hash, inPlaceSecond, key, forward<Args>(args)...);
     return Pair<HashIterator<Pair<K, V>, stable>, bool>(this->table.iteratorAt(slot), !found);
   }
-  // An rvalue key is moved into the new entry, not copied.
-  template<typename... Args>
-  Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(K&& key, Args&&... args)
+  // An rvalue key is moved into the new entry, not copied (only a K rvalue itself, as Map's).
+  template<typename KK, typename... Args> requires (isSame<KK, K>)
+  Pair<HashIterator<Pair<K, V>, stable>, bool> try_emplace(KK&& key, Args&&... args)
   {
     size_t hash = this->table.hashKey(key);
     bool found;
@@ -604,8 +604,8 @@ struct HashMap
   {
     return this->try_emplace(key, forward<Args>(args)...).first;
   }
-  template<typename... Args>
-  HashIterator<Pair<K, V>, stable> try_emplace(HashIterator<Pair<K, V>, stable> hint, K&& key, Args&&... args)
+  template<typename KK, typename... Args> requires (isSame<KK, K>)
+  HashIterator<Pair<K, V>, stable> try_emplace(HashIterator<Pair<K, V>, stable> hint, KK&& key, Args&&... args)
   {
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }

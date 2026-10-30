@@ -1,0 +1,22 @@
+// spec: a class whose conversion function returns `const String&`, passed where take(const String&) and take(String&&) are overloads, calls the const reference one (clang: `const& abc`), and an rvalue reference parameter never binds to the lvalue such a conversion function returns: the object keeps its value
+// factorio: UnitTest's TestList::Add, `this->index.try_emplace(test->details.name, test)` with Map<String, const Test*> and a LowercaseString name (`operator const String&()`): once Map had a try_emplace(K&&), the call took it and the map moved every test's name out of its details (the runner printed `[Suite/]`); the stdlib's rvalue-key overloads take only a K rvalue since
+// pending: SILENT, take(String&&) is called with the name's own String and moves it out (`&& abc; after: ''`); owner: the templates thread (overload resolution and reference binding)
+struct Name
+{
+  String value;
+  explicit Name(const char* v) : value(v) {}
+  implicit operator const String&() const { return this->value; }
+};
+void take(const String& s) { print("const& {}; ", s); }
+void take(String&& s)
+{
+  String moved = move(s);
+  print("&& {}; ", moved);
+}
+int main()
+{
+  Name name("abc");
+  take(name);
+  println("after: '{}'", name.value);
+  return 0;
+}
