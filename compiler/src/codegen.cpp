@@ -13377,6 +13377,21 @@ namespace
         destroyObject(o);
     }
 
+    // The body of an if, else or loop: in a block of its own when it is not one (C++ [stmt.pre]), so
+    // that a declaration as the whole body (TargeterBase::save's `if (entity) TagWriter _(...); else ...`)
+    // is built and destroyed in its branch or iteration, not at the end of the enclosing block.
+    void subStatement(Stmt* s)
+    {
+      if (!s || s->kind == NodeKind::BlockStmt)
+      {
+        statement(s);
+        return;
+      }
+      pushScope();
+      statement(s);
+      popScope();
+    }
+
     void pushScope() { scopes.emplace_back(); }
 
     void popScope()
@@ -14264,14 +14279,14 @@ namespace
           if (i->isConstexpr && i->constexprKnown >= 0)
           {
             // The resolver already folded this if constexpr during instantiation.
-            statement(i->constexprKnown ? i->then : i->else_);
+            subStatement(i->constexprKnown ? i->then : i->else_);
             break;
           }
           if (i->isConstexpr && !i->init && i->cond && i->cond->kind != NodeKind::VariableDecl && i->cond->kind != NodeKind::DeclStmt)
             if (std::optional<bool> known = evalCondition(static_cast<Expr*>(i->cond)))
             {
               // if constexpr with a known condition: only the taken branch exists.
-              statement(*known ? i->then : i->else_);
+              subStatement(*known ? i->then : i->else_);
               break;
             }
           pushScope();
@@ -14282,12 +14297,12 @@ namespace
           std::string tL = newLabel("if.then"), eL = newLabel("if.else"), jL = newLabel("if.end");
           fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + (i->else_ ? eL : jL) + "\n";
           startBlock(tL);
-          statement(i->then);
+          subStatement(i->then);
           emitBranch(jL);
           if (i->else_)
           {
             startBlock(eL);
-            statement(i->else_);
+            subStatement(i->else_);
             emitBranch(jL);
           }
           startBlock(jL);
@@ -14323,7 +14338,7 @@ namespace
           fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + eL + "\n";
           startBlock(bL);
           loops.push_back({eL, cL, scopes.size()});
-          statement(w->body);
+          subStatement(w->body);
           loops.pop_back();
           emitBranch(cL);
           startBlock(eL);
@@ -14336,7 +14351,7 @@ namespace
           emitBranch(bL);
           startBlock(bL);
           loops.push_back({eL, cL, scopes.size()});
-          statement(d->body);
+          subStatement(d->body);
           loops.pop_back();
           emitBranch(cL);
           startBlock(cL);
@@ -14365,7 +14380,7 @@ namespace
             fn += "  br label %" + bL + "\n";
           startBlock(bL);
           loops.push_back({eL, sL, scopes.size()});
-          statement(f->body);
+          subStatement(f->body);
           loops.pop_back();
           emitBranch(sL);
           startBlock(sL);
@@ -14550,7 +14565,7 @@ namespace
       destroyTemps();
       declareTupleBindings(v); // `for (auto& [a, b] : tuples)`: each element's get<i>
       loops.push_back({eL, sL, scopes.size()});
-      statement(f->body);
+      subStatement(f->body);
       loops.pop_back();
       popScope();
       emitBranch(sL);
@@ -15209,7 +15224,7 @@ namespace
       }
       declareTupleBindings(v); // `for (auto& [a, b] : tuples)`: each element's get<i>
       loops.push_back({eL, sL, scopes.size()});
-      statement(f->body);
+      subStatement(f->body);
       loops.pop_back();
       popScope();
       emitBranch(sL);

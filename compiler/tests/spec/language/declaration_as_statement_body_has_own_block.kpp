@@ -1,6 +1,5 @@
 // spec: a declaration that is the whole body of an if, else, for or while (no braces) is in a block of its own (C++ [stmt.pre]): its object is built and destroyed in that branch or iteration, and nothing is destroyed for a branch that did not run
 // factorio: TargeterBase::save's `if (entity) Serialiser::TagWriter _(output, "targeter", ...); else if (this->target) Serialiser::TagWriter _(output, "non-entity-targeter"); else ...`: the tags' destructors ran at the end of the function for every branch, the ones never built reading their garbage Serialiser reference; desync reports save maps for humans, so LatencyInputFixture's DesyncingTestFailsControlledly faulted in TagWriter's destructor (its 5 tests pass with the branches in braces)
-// pending: SILENT, the declarations live to the end of the enclosing block: unbuilt objects destroyed, an iteration's object kept (`+1 -1 | +3 -3 -0(never built) -1 | +10 +11 -11 end` and a garbage destruction after it); owner: the codegen thread
 struct Noisy
 {
   int id = 0;
