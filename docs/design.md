@@ -1204,11 +1204,11 @@ line per test, for tools). Compiler options go before `--run` or `--test`: `--re
   assertion ends the process.
 - **The standard library has no tests of its own**; the spec suite's `library` area exercises it.
   `programs/kpplex` is a program with a timing script, no tests.
-- **8.6 is not implemented**: `test "name" { }` is a parse error, and a parse error at namespace
-  scope does not fail the build today (pending snippet
-  `language/namespace_scope_parse_error_fails_build`, thread A's), which is why
-  `kpp/tests_in_compiler` showed as passing until 2026-10-30. It is pending now, and the spec
-  suite fails any snippet whose build printed an error, whatever its exit code.
+- **8.6 was not implemented**: `test "name" { }` was a parse error, and a parse error at namespace
+  scope did not fail the build, which is why `kpp/tests_in_compiler` showed as passing. Since
+  2026-10-30 the build fails (ad7671d, thread A; `language/namespace_scope_parse_error_fails_build`),
+  the spec suite fails any snippet whose build printed an error whatever its exit code, and so do
+  `--run` and `--test`.
 
 ### Latency today (2026-10-30, PC-PRACOVNA, other threads building at the same time: noisy)
 The 10-line program (`fib` into a `Vector<int>`, `println`), PowerShell `Measure-Command`, six
