@@ -572,7 +572,8 @@ namespace
     struct EHFrame
     {
       bool isHandler;            // false: an open try body; true: an open catch handler
-      std::string dispatchLabel; // try: the block of its catchswitch
+      std::string dispatchLabel; // try: the block of its catchswitch; handler: where an exception leaving
+                                 // it unwinds, its catchswitch's unwind destination ("": the caller)
       std::string parentFunclet; // the funclet token the try or handler is in ("" at top level)
       std::string funclet;       // handler: its catchpad token
       std::string exceptionSlot; // handler: the alloca holding the caught exception record
@@ -13951,13 +13952,16 @@ namespace
       for (size_t s = scopes.size(); s-- > limit;)
         for (size_t i = scopes[s].size(); i-- > 0;)
           objects.push_back(scopes[s][i]);
-      std::string next; // "" = out of the function or funclet
+      std::string next; // "" = out of the function
       if (!ehFrames.empty() && !ehFrames.back().isHandler)
       {
         next = ehFrames.back().dispatchLabel;
         if (objects.empty())
           return ehFrames.back().used = true, next;
       }
+      else if (!ehFrames.empty())
+        next = ehFrames.back().dispatchLabel; // out of a handler: on where its catchswitch unwinds (a call
+                                              // without objects there unwinds so implicitly)
       if (objects.empty())
         return "";
       markEH();
@@ -14205,7 +14209,7 @@ namespace
       fn += "  " + pad + " = catchpad within " + cs + " [ptr " + filter + "]\n";
       std::string slot = "%v" + std::to_string(temp++);
       allocas += "  " + slot + " = alloca [6 x i64]\n"; // object, typeinfo, destructor, handler, adjusted object, the handler around this one (kpp.eh.current)
-      ehFrames.push_back({true, "", frame.parentFunclet, pad, slot, scopes.size()});
+      ehFrames.push_back({true, outer, frame.parentFunclet, pad, slot, scopes.size()});
       fn += "  call void @kpp_eh_begin(ptr " + slot + ")" + bundle() + "\n";
       std::vector<std::string> handlerLabels;
       for (size_t i = 0; i < t->handlers.size(); ++i)

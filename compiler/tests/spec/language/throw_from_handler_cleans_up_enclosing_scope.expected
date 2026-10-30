@@ -1,0 +1,7 @@
+caught first
+~inner
+~outer
+main caught second
+~inner2
+~middle
+nested caught fourth
