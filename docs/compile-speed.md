@@ -635,6 +635,23 @@ the order of work:
    all 5 made by codegen with no `Recheck` (the next step, (a) above); still from scratch until then.
    The edit test's two classes with a member `reading` check: an edit of `Gauge::reading` checks
    nothing that reads `Meter::reading` again.
+   *Then the instances codegen made (landed):* one that read a change is taken out of the instance
+   table, with every instance codegen made whose check used it (transitively), its statistics and
+   its copy's failed static_asserts; codegen, which then runs in full, asks for it again and it is
+   made anew, as in a build from scratch. The old record is kept (`droppedInstances`), so that no
+   address a recorded read names becomes another record's. An instance that can be neither checked
+   again nor dropped now fails the incremental build before any file is walked again (the attempt
+   that failed this way after walking 3,383 readers' files took 18 s before the build from
+   scratch). The edit test's `Panel::scaled<int>` (a member template defined out of line, called with
+   explicit arguments: codegen makes it) is dropped and made anew when `Panel::base` changes.
+   The `getPrototype` signature edit and back on the game, paired, 3 rounds interleaved
+   (scratch\resolver\game-time.ps1; each through its own output directory): this kppc's server
+   **10.44 to 10.77 s** to a linked game (resolve 1.05 to 1.11 s, codegen in full 7.8 to 8.1 s, one
+   module compiled, the incremental link); master cddf99aa's server, which builds it from scratch
+   after the attempt, 31.8 to 34.9 s; a new process building from scratch 10.14 to 10.33 s (resolve
+   1.35 s, codegen 6.8 s). Every such build verified the same as from scratch. What is left is
+   codegen: it runs in full when an instance was checked again or dropped (its rebuild takes
+   program functions, not instances), and in the server 1 s slower than in a new process.
 2. **The resolver's half of a layout edit.** A changed file whose differences are data members of
    non-template classes (added, removed, a type or a default initialiser changed; no virtual, base,
    union or typed-union change): the members grafted and indexed as whole functions are; every

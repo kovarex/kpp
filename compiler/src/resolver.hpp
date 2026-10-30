@@ -322,8 +322,11 @@ public:
   // copied from the new body and checked again, their statistics replacing theirs; false when one
   // cannot be (only codegen made it, it deduces another return type). Between beginRewalk and
   // endRewalk, which tell whether the checks made instances anew.
-  // readers: instances invalidateReaders found reading a change, checked again likewise.
-  bool recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why);
+  // readers: instances invalidateReaders found reading a change, checked again likewise, or, made by
+  // codegen, taken out of the table with the codegen-made instances that used them (codegen, run in
+  // full, makes them anew); dropped: how many were taken out.
+  bool recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why,
+                          size_t* dropped = nullptr);
   // The instance statistics as the resolve counts them: every instance walk's but codegen's.
   ResolveStats instanceStatsAtResolveEnd();
   // The places in a file each instance walk's own statistics name ("first at"), to move with its tokens.

@@ -910,6 +910,9 @@ struct GlobalScope::Impl
     std::unordered_map<std::string, std::unique_ptr<InstanceRecord>, PointerKeyHash> map; // key: f, this type, sorted argument pointers
   };
   InstanceShard instanceShards[64];
+  // Instances codegen made that a compile server's edit took out of the table (recheckInstancesOf):
+  // kept, not freed, so that no address the recorded reads mention is ever another record's.
+  std::vector<std::unique_ptr<InstanceRecord>> droppedInstances;
 
   // The record of f's instantiation for subst with `this` of thisType (null: none), whatever the
   // order of subst's pairs; producer: the caller just claimed it and builds it. f: a function, or
@@ -20562,7 +20565,7 @@ ResolveStats GlobalScope::instanceStatsAtResolveEnd()
   return total;
 }
 
-bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why)
+bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why, size_t* dropped)
 {
   std::unordered_set<const FunctionDecl*> changed(sources.begin(), sources.end());
   std::vector<Impl::InstanceRecord*> stale;
@@ -20579,19 +20582,81 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
   }
   // The instances whose recorded reads met the change (invalidateReaders), checked again from their
   // templates' bodies as they are.
-  size_t late = 0, unrecorded = 0, unfinished = 0;
+  // One that codegen made (late) is taken out of the table instead, with the instances codegen made
+  // whose checks used it: codegen, which then runs in full, asks for them again and they are made
+  // anew, as in a build from scratch (where codegen makes them).
+  std::unordered_set<const Impl::InstanceRecord*> drop;
+  size_t unrecorded = 0, unfinished = 0;
   for (const void* r : readers)
   {
     auto* record = static_cast<Impl::InstanceRecord*>(const_cast<void*>(r));
-    late += record->late;
-    unrecorded += !record->recheck;
-    unfinished += record->state.load() != 2;
-    stale.push_back(record);
+    if (record->state.load() != 2)
+      ++unfinished;
+    else if (record->late)
+      drop.insert(record);
+    else if (!record->recheck)
+      ++unrecorded;
+    else
+      stale.push_back(record);
   }
-  if (late || unrecorded || unfinished)
-    return why = "instances read a change and cannot be checked again: " + std::to_string(late) + " only codegen made, " + std::to_string(unrecorded) +
-                 " with no record of how they were checked, " + std::to_string(unfinished) + " unfinished (of " + std::to_string(readers.size()) + ")",
+  if (unrecorded || unfinished)
+    return why = "instances read a change and cannot be checked again: " + std::to_string(unrecorded) + " with no record of how they were checked, " +
+                 std::to_string(unfinished) + " unfinished (of " + std::to_string(readers.size()) + ")",
            false;
+  if (!drop.empty())
+  {
+    // The late instances whose checks used a dropped one, transitively (only late ones can: an
+    // instance of the resolve that used a late one would be late itself).
+    std::unordered_map<const void*, std::vector<Impl::InstanceRecord*>> users;
+    for (Impl::InstanceShard& shard : impl->instanceShards)
+    {
+      std::lock_guard lock(shard.mutex);
+      for (auto& [key, record] : shard.map)
+        if (record->late)
+        {
+          std::lock_guard l(record->deps.mutex);
+          for (auto& [kind, what] : record->deps.list.uses)
+            if (kind == USE_Instance)
+              users[what].push_back(record.get());
+        }
+    }
+    std::vector<const Impl::InstanceRecord*> pending(drop.begin(), drop.end());
+    while (!pending.empty())
+    {
+      const Impl::InstanceRecord* r = pending.back();
+      pending.pop_back();
+      if (auto it = users.find(r); it != users.end())
+        for (Impl::InstanceRecord* u : it->second)
+          if (drop.insert(u).second)
+            pending.push_back(u);
+    }
+    for (Impl::InstanceShard& shard : impl->instanceShards)
+    {
+      std::lock_guard lock(shard.mutex);
+      for (auto it = shard.map.begin(); it != shard.map.end();)
+        if (drop.count(it->second.get()))
+        {
+          impl->droppedInstances.push_back(std::move(it->second));
+          it = shard.map.erase(it);
+          if (dropped)
+            ++*dropped;
+        }
+        else
+          ++it;
+    }
+    {
+      std::lock_guard lock(impl->instanceStatsMutex);
+      auto& list = impl->instanceContributions;
+      list.erase(std::remove_if(list.begin(), list.end(), [&](const Impl::InstanceContribution& c) { return drop.count(static_cast<const Impl::InstanceRecord*>(c.owner)); }),
+                 list.end());
+    }
+    // (and the static_asserts their copies failed, which count once the copy is emitted: the new
+    // copies check theirs)
+    std::lock_guard lock(impl->checkerErrorsMutex);
+    for (const Impl::InstanceRecord* r : drop)
+      if (r->body)
+        impl->instanceAssertErrors.erase(r->body);
+  }
   std::sort(stale.begin(), stale.end());
   stale.erase(std::unique(stale.begin(), stale.end()), stale.end());
   impl->rechecking = true;
@@ -20910,6 +20975,10 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
       {
         if (!instances)
           return fail("an instance read a changed function's name or ran a changed body");
+        // One that cannot be checked again fails the build here, before any file is walked again
+        // (recheckInstancesOf would refuse it after the walks).
+        if (record->state.load() != 2 || (!record->late && !record->recheck))
+          return fail("an instance read a change and cannot be checked again (no record of how it was checked, or unfinished)");
         instances->push_back(record.get()); // checked again (recheckInstancesOf)
       }
   }

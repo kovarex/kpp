@@ -22,6 +22,16 @@ struct Meter { int reading() const { return 4; } };
 template<typename T>
 int readTwice(const T& t) { int r = t.reading(); return r + r; }
 
+// A member template defined out of line and called with explicit arguments: codegen makes its
+// instance (scaled<int>). An edit of base() drops that instance, and codegen makes it anew.
+struct Panel
+{
+  int base() const { return 2; }
+  template<typename T> T scaled() const;
+  int show() const { return this->scaled<int>(); }
+};
+template<typename T> T Panel::scaled() const { T r = T(base() * 3); return r; }
+
 template<typename T>
 T twice(T v) { T r = v + v; return r; }
 

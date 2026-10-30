@@ -2227,7 +2227,8 @@ namespace
     }
     // A template's changed body: its instances copied anew and checked again, their statistics
     // replacing theirs (the kept total is made again from every instance walk's own).
-    bool rechecked = (templateBodies.empty() && readingInstances.empty()) || global.recheckInstancesOf(templateBodies, readingInstances, why);
+    size_t droppedInstances = 0; // codegen's, taken out (codegen makes them anew)
+    bool rechecked = (templateBodies.empty() && readingInstances.empty()) || global.recheckInstancesOf(templateBodies, readingInstances, why, &droppedInstances);
     // Codegen emits again the functions given and those that inlined one of them, not an instance
     // whose template's body changed or that read a change: such an instance's code is old, so
     // codegen runs in full.
@@ -2288,7 +2289,8 @@ namespace
       codegenExit = 1;
     }
     logBuildNote("incremental: " + std::to_string(changed.size() + functionEdits.size()) + " file(s) changed (" + std::to_string(functionEdits.size()) + " with whole functions), " + std::to_string(walked.size()) + " file(s) walked again" +
-                 (readingInstances.empty() ? std::string() : ", " + std::to_string(readingInstances.size()) + " instance(s) that read a change checked again"));
+                 (readingInstances.empty() ? std::string() : ", " + std::to_string(readingInstances.size()) + " instance(s) that read a change checked again") +
+                 (droppedInstances ? " (" + std::to_string(droppedInstances) + " made by codegen dropped, to be made anew)" : std::string()));
     // Codegen follows through its kept session when every module's object is where the last build
     // left it (an unchanged module is not assembled again, so it has no text to compile now).
     // The functions whose walks read an edited function's name are emitted again with it: an edit
