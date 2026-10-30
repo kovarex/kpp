@@ -42,15 +42,17 @@ function Edit([string]$file, [string]$old, [string]$new)
 }
 
 $steps = @(
-  @{ name = 'first build'; expect = '6 40 40 3 8'; edit = {} },
-  @{ name = 'body edit'; expect = '6 44 44 3 8'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
-  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
-  @{ name = 'signature edit'; expect = '7 44 44 103 8'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
-  @{ name = 'overload added'; expect = '7 44 7 103 8'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
-  @{ name = 'overload removed'; expect = '7 44 44 103 8'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
-  @{ name = 'layout edit'; expect = '7 44 44 103 12'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
-  @{ name = 'new file'; expect = '7 44 1 103 12'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
-  @{ name = 'file removed'; expect = '7 44 44 103 12'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
+  @{ name = 'first build'; expect = '6 40 40 3 8 10 6'; edit = {} },
+  @{ name = 'body edit'; expect = '6 44 44 3 8 10 6'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
+  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
+  @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
+  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
+  @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
+  @{ name = 'overload added'; expect = '7 44 7 103 8 11 7'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
+  @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
+  @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
+  @{ name = 'new file'; expect = '7 44 1 103 12 11 7'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
+  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
 )
 $n = 0
 foreach ($step in $steps)

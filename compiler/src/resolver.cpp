@@ -810,6 +810,27 @@ struct GlobalScope::Impl
     std::atomic<std::thread::id> owner; // who builds it (whoever takes a queued check over)
     std::atomic<int> queued{0};         // 1: its check is queued, not started; taken by whoever exchanges it to 0 first
     bool late = false;                  // made after the resolve (by codegen): a clean resolve may not make it (step 3b)
+    // How it was checked, for checking it again when its template's body changes (a compile
+    // server's build keeps it: step 4). A member of a class instance (member) or a function instance.
+    struct Recheck
+    {
+      bool member = false;
+      FunctionDecl* source = nullptr;          // the declaration whose body was copied
+      std::unique_ptr<FunctionInstanceTask> task; // a function instance's
+      // a member's walker, as set up
+      Scope* scope = nullptr;
+      const Ty* thisType = nullptr;
+      Subst subst;
+      std::vector<LocalStack::Item> locals;
+      const ParsedFile* file = nullptr; // the template's: walked in its tokens and text as they are now (a graft replaces them)
+      int depth = 0;
+      const ParsedFile* requestFile = nullptr;
+      uint32_t requestToken = UINT32_MAX;
+      uint32_t fileIndex = 0;
+      bool collectWhy = false;
+    };
+    std::unique_ptr<Recheck> recheck;
+    const Decl* of = nullptr; // what it is an instance of (claimInstance's f)
     std::unique_ptr<FunctionInstanceTask> task;
     FunctionDecl* body = nullptr;
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
@@ -854,6 +875,7 @@ struct GlobalScope::Impl
     }
     slot = std::make_unique<InstanceRecord>();
     slot->late = afterResolve.load(std::memory_order_relaxed);
+    slot->of = f;
     if (rewalking.load(std::memory_order_relaxed))
       ++rewalkCreated;
     slot->owner = std::this_thread::get_id();
@@ -1000,13 +1022,20 @@ struct GlobalScope::Impl
   // A compile server's build keeps each walk's own statistics too, with the instance it typed (null:
   // a class instance's check apart from its members'), so that one instance's can be replaced and
   // the total made again (step 4: a template's body changed).
-  std::vector<std::pair<const void*, std::unique_ptr<ResolveStats>>> instanceContributions;
+  struct InstanceContribution
+  {
+    const void* owner;
+    std::unique_ptr<ResolveStats> stats;
+    bool late; // added after the resolve (codegen's instances): not in the resolve's report
+  };
+  std::vector<InstanceContribution> instanceContributions;
+  bool rechecking = false; // an instance checked again counts as the resolve's (step 4)
   void addInstanceStats(const ResolveStats& s, const void* owner = nullptr)
   {
     std::lock_guard lock(instanceStatsMutex);
     instanceStatsTotal.add(s);
     if (recordingDependencies)
-      instanceContributions.push_back({owner, std::make_unique<ResolveStats>(s)});
+      instanceContributions.push_back({owner, std::make_unique<ResolveStats>(s), afterResolve.load() && !rechecking});
   }
 
   // The dependencies of the units that are declarations: a function's or a variable's walk (its
@@ -14368,6 +14397,23 @@ struct GlobalScope::Impl
       if (f->parent != cls)
         for (Decl* p : f->templateParams)
           member.locals.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      if (recordingDependencies)
+      {
+        auto r = std::make_unique<Impl::InstanceRecord::Recheck>();
+        r->member = true;
+        r->source = f;
+        r->scope = member.scope;
+        r->thisType = member.thisType;
+        r->subst = merged;
+        r->locals = member.locals.items;
+        r->file = member.file;
+        r->depth = member.instantiationDepth;
+        r->requestFile = member.requestFile;
+        r->requestToken = member.requestToken;
+        r->fileIndex = mine.fileIndex;
+        r->collectWhy = mine.collectWhy;
+        inst->recheck = std::move(r);
+      }
       member.returnFrames.push_back(nullptr);
       member.walkDecl(copy);
       const Ty* deduced = member.returnFrames.back();
@@ -14522,6 +14568,12 @@ struct GlobalScope::Impl
     const Ty* runFunctionInstance(Impl::InstanceRecord* inst, const Impl::FunctionInstanceTask& t)
     {
       RecordInto into(&inst->deps); // what typing the instance reads is its own
+      if (recordingDependencies)
+      {
+        inst->recheck = std::make_unique<Impl::InstanceRecord::Recheck>();
+        inst->recheck->source = t.def;
+        inst->recheck->task = std::make_unique<Impl::FunctionInstanceTask>(t);
+      }
       inst->owner.store(std::this_thread::get_id());
       // At the depth of the walk that asked for it, whoever runs it (the depth limit decides what
       // is checked, so it must not depend on which walk took a queued check over).
@@ -19887,6 +19939,171 @@ uint32_t GlobalScope::functionSymbolOf(const FunctionDecl* f) { return impl->fun
 std::vector<FunctionDecl*> GlobalScope::outOfLineDefinitions(const Decl* cls)
 {
   return cls && cls->ownScope ? cls->ownScope->outOfLineMembers : std::vector<FunctionDecl*>{};
+}
+
+void GlobalScope::forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit)
+{
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+    {
+      const Decl* source = record->recheck ? record->recheck->source : record->of;
+      if (record->body && record->body->file == &file)
+        visit(record->body, source);
+      if (record->init && record->of && record->of->file == &file)
+        visit(record->init, source);
+      if (record->lambda && record->of && record->of->file == &file)
+        visit(record->lambda, source);
+    }
+  }
+}
+
+void GlobalScope::forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile* file, const std::function<void(uint32_t& token)>& visit)
+{
+  std::lock_guard lock(impl->instanceStatsMutex);
+  for (Impl::InstanceContribution& c : impl->instanceContributions)
+  {
+    for (auto& [symbol, where] : c.stats->unresolvedFirst)
+      if (where.file == fileIndex)
+        visit(where.token);
+    for (auto& [symbol, where] : c.stats->missingMembersFirst)
+      if (where.file == fileIndex)
+        visit(where.token);
+    for (auto& [key, site] : c.stats->why)
+      if (site.file == file)
+        visit(site.token);
+  }
+}
+
+ResolveStats GlobalScope::instanceStatsAtResolveEnd()
+{
+  std::lock_guard lock(impl->instanceStatsMutex);
+  ResolveStats total;
+  for (const Impl::InstanceContribution& c : impl->instanceContributions)
+    if (!c.late)
+      total.add(*c.stats);
+  return total;
+}
+
+bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, std::string& why)
+{
+  std::unordered_set<const FunctionDecl*> changed(sources.begin(), sources.end());
+  std::vector<Impl::InstanceRecord*> stale;
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+      if (record->recheck && changed.count(record->recheck->source))
+      {
+        if (record->late || record->state.load() != 2)
+          return why = "an instance of a changed template that only codegen made", false;
+        stale.push_back(record.get());
+      }
+  }
+  std::sort(stale.begin(), stale.end());
+  impl->rechecking = true;
+  struct Done { bool& flag; ~Done() { flag = false; } } done{impl->rechecking};
+  std::unordered_set<const void*> requestedBefore; // the instances the old checks asked for
+  for (Impl::InstanceRecord* r : stale)
+  {
+    {
+      std::lock_guard lock(r->deps.mutex);
+      for (auto& [kind, what] : r->deps.list.uses)
+        if (kind == USE_Instance || kind == USE_ClassInstance)
+          requestedBefore.insert(what);
+    }
+    {
+      // Its old statistics go; what it reads is recorded anew.
+      std::lock_guard lock(impl->instanceStatsMutex);
+      auto& list = impl->instanceContributions;
+      list.erase(std::remove_if(list.begin(), list.end(), [&](const Impl::InstanceContribution& c) { return c.owner == r; }), list.end());
+    }
+    {
+      std::lock_guard lock(r->deps.mutex);
+      r->deps.list = DependencyList{};
+      r->deps.tidied = true;
+    }
+    const Ty* deducedBefore = r->deducedReturn;
+    Impl::InstanceRecord::Recheck& rc = *r->recheck;
+    if (rc.member)
+    {
+      RecordInto into(&r->deps);
+      FunctionDecl* copy = impl->copyInstance(rc.source, rc.scope, rc.subst);
+      r->body = copy;
+      ResolveStats mine;
+      mine.fileIndex = rc.fileIndex;
+      mine.collectWhy = rc.collectWhy;
+      Impl::Walker member(*impl, mine, *rc.file->tokens, rc.file->text);
+      member.file = rc.file;
+      member.scope = rc.scope;
+      member.thisType = rc.thisType;
+      member.activeSubst = &rc.subst;
+      member.instantiationDepth = rc.depth;
+      member.requestFile = rc.requestFile;
+      member.requestToken = rc.requestToken;
+      member.locals.items = rc.locals;
+      member.returnFrames.push_back(nullptr);
+      member.walkDecl(copy);
+      const Ty* deduced = member.returnFrames.back();
+      member.returnFrames.pop_back();
+      r->deducedReturn = deduced ? impl->deducedShape(copy->returnType && !copy->trailingReturn ? member.typeOf(copy->returnType) : nullptr, deduced)
+                                 : nullptr;
+      mine.instExprsTyped += mine.exprsTyped;
+      mine.instExprsDependent += mine.exprsDependent;
+      mine.instExprsUnknown += mine.exprsUnknown;
+      impl->addInstanceStats(mine, r);
+    }
+    else
+    {
+      Impl::FunctionInstanceTask task = *rc.task;
+      const ParsedFile* f = task.def ? task.def->file : nullptr;
+      if (!f || !f->tokens)
+        return why = "an instance of a changed template without its file", false;
+      ResolveStats scratch;
+      Impl::Walker w(*impl, scratch, *f->tokens, f->text);
+      w.file = f;
+      w.runFunctionInstance(r, task); // (the record keeps a new Recheck, the same)
+    }
+    if (r->deducedReturn != deducedBefore)
+      return why = "an instance of a changed template deduces another return type", false;
+  }
+  // An instance the old checks asked for and nothing asks for now would not be in a build from scratch.
+  if (!requestedBefore.empty())
+  {
+    auto drop = [&](Dependencies& d)
+    {
+      std::lock_guard lock(d.mutex);
+      for (auto& [kind, what] : d.list.uses)
+        requestedBefore.erase(what);
+    };
+    for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+    {
+      std::lock_guard lock(shard.mutex);
+      for (auto& [key, deps] : shard.map)
+        drop(*deps);
+    }
+    {
+      std::lock_guard lock(impl->typeDependenciesMutex);
+      for (auto& deps : impl->typeDependencies)
+        drop(*deps);
+    }
+    for (Impl::InstanceShard& shard : impl->instanceShards)
+    {
+      std::lock_guard lock(shard.mutex);
+      for (auto& [key, record] : shard.map)
+        drop(record->deps);
+    }
+    for (Impl::InstShard& shard : impl->instShards)
+    {
+      std::lock_guard lock(shard.mutex);
+      for (auto& [key, inst] : shard.classes)
+        drop(inst->deps);
+    }
+    if (!requestedBefore.empty())
+      return why = "an instance an old template body asked for that nothing asks for now", false;
+  }
+  return true;
 }
 
 namespace

@@ -3,6 +3,6 @@ extern "C" int printf(const char* format, ...);
 int main()
 {
   Shape s;
-  printf("%d %d %d %d %d\n", s.area(), scale(4), scale(4.5), combine(1, 2), int(sizeof(Shape)));
+  printf("%d %d %d %d %d %d %d\n", s.area(), scale(4), scale(4.5), combine(1, 2), int(sizeof(Shape)), twice(5), Box<int>{2}.tripled());
   return 0;
 }

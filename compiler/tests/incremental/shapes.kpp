@@ -10,3 +10,13 @@ struct Shape
 int scale(int v) { return v * 10; }
 
 int combine(int a, int b) { return a + b; }
+
+template<typename T>
+T twice(T v) { T r = v + v; return r; }
+
+template<typename T>
+struct Box
+{
+  T v;
+  T tripled() const { T r = v * 3; return r; }
+};

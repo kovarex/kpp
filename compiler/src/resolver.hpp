@@ -296,6 +296,18 @@ public:
   // function, whose code may hold its body (codegen inlines trivial functions).
   std::vector<const Decl*> walksReading(const std::vector<uint32_t>& symbols);
   std::vector<FunctionDecl*> outOfLineDefinitions(const Decl* cls); // the out-of-line member definitions attached to a class
+  // Step 4, a template's body changed: its instances (function instances, class instances' members)
+  // copied from the new body and checked again, their statistics replacing theirs; false when one
+  // cannot be (only codegen made it, it deduces another return type). Between beginRewalk and
+  // endRewalk, which tell whether the checks made instances anew.
+  bool recheckInstancesOf(const std::vector<FunctionDecl*>& sources, std::string& why);
+  // The instance statistics as the resolve counts them: every instance walk's but codegen's.
+  ResolveStats instanceStatsAtResolveEnd();
+  // The places in a file each instance walk's own statistics name ("first at"), to move with its tokens.
+  void forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile* file, const std::function<void(uint32_t& token)>& visit);
+  // The instances' own copies of a file's nodes (bodies, initializers, generic lambdas' operators),
+  // with the declaration each was copied from: they index the file's tokens too.
+  void forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit);
 
   // Queries for code generation (after resolveFile ran on every file).
   TypeTable& types();

@@ -162,6 +162,7 @@ namespace
     FunctionDecl* f;
     uint32_t open, close;
     bool eligible;
+    bool templated; // a template's or a class template's: its instances are checked again (step 4)
   };
   // Everything one build made, from the files read to the resolved program. A compile server keeps
   // it for the next request: a request that changes only function bodies is built from it, the
@@ -1456,11 +1457,11 @@ namespace
               break;
           if (close >= tokens.size())
             return false;
-          bool eligible = !templated && !(f->flags & (DF_Constexpr | DF_Consteval));
+          bool eligible = !(f->flags & (DF_Constexpr | DF_Consteval));
           for (uint32_t k = f->token; eligible && k < open; ++k)
             if (tokens[k].is(Kw::auto_) || tokens[k].is(Kw::decltype_))
               eligible = false; // a deduced return type: callers elsewhere are typed by the body
-          out.push_back({f, open, close, eligible});
+          out.push_back({f, open, close, eligible, templated});
           break;
         }
         default:
@@ -1619,6 +1620,36 @@ namespace
     return true;
   }
 
+  // Points every node of a kept file at its new tokens: its declarations' nodes, and the copies
+  // instances made of them (they index the file's tokens too); skip: nodes dropped with the old
+  // version, staleSources: the declarations whose instances are copied anew (their old copies
+  // are dropped). False when a node's token has no place in the new version.
+  bool remapKeptFile(Build& kept, ParsedFile& file, const std::vector<uint32_t>& map, const std::unordered_set<Node*>& skip,
+                     const std::unordered_set<const Decl*>& staleSources)
+  {
+    bool lost = false;
+    std::unordered_set<Node*> done;
+    auto remap = [&](Node* n)
+    {
+      if (skip.count(n) || !done.insert(n).second)
+        return;
+      remapNodeTokens(n, [&](uint32_t t)
+      {
+        if (t < map.size() && map[t] != UINT32_MAX)
+          return map[t];
+        lost = true;
+        return t;
+      });
+    };
+    forEachNode(file.decls, remap);
+    kept.global->forEachInstanceCopy(file, [&](Node* copy, const Decl* source)
+    {
+      if (!staleSources.count(source))
+        forEachNode(copy, remap);
+    });
+    return !lost;
+  }
+
   // Moves the new bodies into the kept declarations. The file takes its new tokens and text: every
   // node it keeps is pointed at the new tokens (through a diff of the two versions), and each
   // changed function takes its new body from the new parse, whose arena the kept build keeps. The
@@ -1633,22 +1664,13 @@ namespace
     if (!tokenMap(kept.lexed[i].tokens, kept.files[i].text, c.tokens, c.text, map))
       return why = "the two versions differ too much to pair their tokens", false;
     std::unordered_set<Node*> replaced; // the old bodies' nodes: dropped, not pointed anywhere
+    std::unordered_set<const Decl*> stale; // templates whose instances are copied anew
     for (size_t k : c.changed)
-      forEachNode(c.oldBodies[k].f->body, [&](Node* n) { replaced.insert(n); });
-    bool lost = false;
-    forEachNode(file.decls, [&](Node* n)
     {
-      if (replaced.count(n))
-        return;
-      remapNodeTokens(n, [&](uint32_t t)
-      {
-        if (t < map.size() && map[t] != UINT32_MAX)
-          return map[t];
-        lost = true;
-        return t;
-      });
-    });
-    if (lost)
+      forEachNode(c.oldBodies[k].f->body, [&](Node* n) { replaced.insert(n); });
+      stale.insert(c.oldBodies[k].f);
+    }
+    if (!remapKeptFile(kept, file, map, replaced, stale))
       return why = "a kept node's token has no place in the new version", false;
     for (auto& [b, where] : c.parsed->castCandidates)
       if (where && where->kind == NodeKind::FunctionDecl)
@@ -1687,7 +1709,9 @@ namespace
     file.arenaBytesReported = c.parsed->arena.bytesAllocated();
     kept.grafts.push_back(std::move(c.parsed)); // its arena holds the new bodies
     // The kept instance statistics' places in this file (an instance of a template it declares)
-    // move with its tokens; one in a replaced body cannot be told, and the build is from scratch.
+    // move with its tokens (and each instance walk's own, from which the total may be made again);
+    // one in a replaced body cannot be told, and the build is from scratch.
+    bool lost = false;
     auto moved = [&](uint32_t& token)
     {
       if (token < map.size() && map[token] != UINT32_MAX)
@@ -1704,6 +1728,7 @@ namespace
     for (auto& [key, site] : kept.instanceStats.why)
       if (site.file == &file)
         moved(site.token);
+    kept.global->forEachInstanceStatsPlace(uint32_t(i), &file, moved);
     if (lost)
       return why = "an instance's statistic names a place in a replaced body", false;
     return true;
@@ -1932,20 +1957,7 @@ namespace
       global.unindexFunction(f);
       forEachNode(f, [&](Node* n) { dropped.insert(n); });
     }
-    bool lost = false;
-    forEachNode(file.decls, [&](Node* n)
-    {
-      if (dropped.count(n))
-        return;
-      remapNodeTokens(n, [&](uint32_t t)
-      {
-        if (t < c.map.size() && c.map[t] != UINT32_MAX)
-          return c.map[t];
-        lost = true;
-        return t;
-      });
-    });
-    if (lost)
+    if (!remapKeptFile(kept, file, c.map, dropped, {}))
       return why = "a kept node's token has no place in the new version", false;
     // The added functions: the kept file's, members of the kept declarations.
     std::unordered_map<Decl*, std::vector<FunctionDecl*>> into;
@@ -2045,6 +2057,7 @@ namespace
     kept.addedFunctions.clear();
     kept.removedFunctions.clear();
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
+    std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
     for (size_t n = 0; n < changed.size(); ++n)
     {
       if (!graftBodies(kept, changed[n], why))
@@ -2053,7 +2066,11 @@ namespace
         return false;
       }
       for (size_t k : changed[n].changed)
+      {
         kept.changedBodies.push_back(changed[n].oldBodies[k].f);
+        if (changed[n].oldBodies[k].templated)
+          templateBodies.push_back(changed[n].oldBodies[k].f);
+      }
     }
     GlobalScope& global = *kept.global;
     GlobalScope::recordDependencies(true);
@@ -2136,8 +2153,18 @@ namespace
       global.resolveFile(*kept.parsed[index], kept.lexed[index].tokens, kept.files[index].text, s);
       kept.stats[index] = std::move(s);
     }
-    bool same = global.endRewalk();
-    if (!same)
+    // A template's changed body: its instances copied anew and checked again, their statistics
+    // replacing theirs (the kept total is made again from every instance walk's own).
+    bool rechecked = templateBodies.empty() || global.recheckInstancesOf(templateBodies, why);
+    // Codegen emits again the functions given and those that inlined one of them, not an instance
+    // whose template's body changed: such an instance's code is old, so codegen runs in full.
+    if (!templateBodies.empty())
+      codegenCanFollow = false;
+    bool walkedSame = global.endRewalk();
+    bool same = walkedSame && rechecked;
+    if (!templateBodies.empty() && rechecked)
+      kept.instanceStats = global.instanceStatsAtResolveEnd();
+    if (!walkedSame)
       why = "the new code instantiates what the old did not (or what only codegen had)";
     for (size_t n = 0; same && n < walked.size(); ++n)
     {
@@ -2210,7 +2237,7 @@ namespace
     }
     kept.rebuildCodegen = codegenCanFollow && kept.codegen && !kept.options.exe.empty();
     if (!kept.rebuildCodegen)
-      logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? "an instance, a global or a module's object needs it" : "no executable"));
+      logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? "a template's body, a global or a module's object needs it" : "no executable"));
     noteIncrementalBuild();
     reportResolve(kept);
     return true;
