@@ -322,12 +322,25 @@ struct Limits
     else
       return T();
   }
+  // The positive quiet NaN, as MSVC's (and clang's __builtin_nan): its bits, not 0.0 / 0.0, which the
+  // processor answers with its default NaN, the negative one, where an optimiser folds it to the
+  // positive (a debug build's save then differed from the release build's and the C++ build's:
+  // Train::lastSpeed starts as quiet_NaN()).
   static T quiet_NaN()
   {
-    if constexpr (isFloatingPoint<T>)
+    if constexpr (sizeof(T) == 4 && isFloatingPoint<T>)
     {
-      T zero = T();
-      return zero / zero;
+      uint32_t bits = 0x7FC00000u;
+      T value;
+      memcpy(&value, &bits, 4);
+      return value;
+    }
+    else if constexpr (isFloatingPoint<T>)
+    {
+      uint64_t bits = 0x7FF8000000000000ull;
+      T value;
+      memcpy(&value, &bits, 8);
+      return value;
     }
     else
       return T();
