@@ -1,0 +1,42 @@
+// spec: a typed union is trivially copyable or trivially destructible only when every alternative is: with an alternative holding a member whose copy constructor and destructor are user-provided, isTriviallyCopyable<State> and isTriviallyDestructible<State> are false, so Optional<State> keeps its value as an object, copied through the alternative's constructors and destroyed by its destructor, as std::optional<std::variant<...>> does
+// factorio: SegmentedUnitAI's `if (const Optional<AIState> newState = this->maybeEnrage())`, AIState a std::variant whose Attacking holds a Targeter<Entity>: the Optional took the union as trivially copyable and never destroyed its value, so the Targeter stayed in its target's list after the storage was gone, and the list broke later: faults in Targeters::clear, unlinkTargeter and notifyUndoActionsOfEntityDestroyed stopped Achievements, SegmentedUnit, LuaSegmentedUnit, LuaEventFilters and Simulations, all of which pass with the alternatives counted as the union's fields (fieldTypes)
+// pending: SILENT, both traits are true and the Optional's value is never destroyed (`true true false false`, `inside: live 2`, `live 1`); owner: the resolver thread (traitValue's triviallyCopyable and triviallyDestructible: a typed union's alternatives are no fields there)
+int live = 0;
+struct Tracked
+{
+  int id = 0;
+  explicit Tracked(int id) : id(id) { live += 1; }
+  explicit Tracked(const Tracked& other) : id(other.id) { live += 1; }
+  ~Tracked() { live -= 1; }
+};
+struct Patrolling
+{
+  int waypoint = 0;
+};
+struct Attacking
+{
+  Tracked target;
+  explicit Attacking(int id) : target(id) {}
+};
+union enum State : uint8_t
+{
+  { {Patrolling, Patrol}, {Attacking, Attack} }
+};
+Optional<State> maybe(int step)
+{
+  if (step == 1)
+    return State(Attacking(6));
+  return {};
+}
+int main()
+{
+  println("{} {} {} {}", isTriviallyCopyable<State>, isTriviallyDestructible<State>, isTriviallyCopyable<Attacking>, isTriviallyDestructible<Attacking>);
+  {
+    State state = Patrolling{0};
+    if (const Optional<State> s = maybe(1))
+      state = *s;
+    println("inside: live {}", live);
+  }
+  println("live {}", live);
+  return 0;
+}
