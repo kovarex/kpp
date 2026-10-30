@@ -12015,6 +12015,75 @@ namespace
       return nullptr;
     }
 
+    // The arguments of function template f whose address n (in e) takes, added to fargs (its
+    // class's): those written, then those the type the checker gave the address deduces, a
+    // trailing pack the rest. All of them, or the address is unsupported.
+    void addressedTemplateArgs(FunctionDecl* f, NameExpr* n, Expr* e, TemplateArgs& fargs)
+    {
+      const NamePart& last = n->name.last();
+      size_t given = 0;
+      // A trailing pack takes the rest (`getOrCreate<Expression, const NoiseExpression&, const
+      // NoiseExpression&>`), and is empty when nothing is left for it.
+      bool packLast = !f->templateParams.empty() && static_cast<TemplateParamDecl*>(f->templateParams[f->templateParams.size() - 1])->isPack;
+      std::vector<const Ty*> packElements;
+      for (size_t i = 0; i < last.templateArgs.size(); ++i)
+      {
+        Node* arg = last.templateArgs[i];
+        TemplateArgs none;
+        const Ty* t = nullptr;
+        if (uint8_t(arg->kind) > uint8_t(NodeKind::PackType))
+        {
+          // `checkArray<16>`: a constant argument, its parameter's type.
+          Decl* param = i < f->templateParams.size() ? f->templateParams[i] : nullptr;
+          std::optional<int64_t> v = evalConst(static_cast<Expr*>(arg));
+          if (!v)
+            unsupported(e, "a constant argument the compiler could not evaluate in the address of a function template");
+          t = types.valueType(valueParamType(param), *v);
+        }
+        else
+          t = global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none);
+        if (packLast && i + 1 >= f->templateParams.size())
+        {
+          if (t && t->kind == TyKind::Pack)
+            packElements.insert(packElements.end(), t->args.begin(), t->args.end()); // `Args...` of the enclosing instance
+          else
+            packElements.push_back(t);
+          continue;
+        }
+        if (i >= f->templateParams.size())
+          break;
+        fargs.pairs.push_back({f->templateParams[i], t});
+        ++given;
+      }
+      // The checker typed the name as the instance a function pointer of a known type wants
+      // (`construct<Neg>` for a `const Expr& (*)(const Expr&)`, the trailing pack deduced
+      // from its parameters): the arguments not written, deduced the same way.
+      const Ty* typed = e->ty ? withCurrentArgs(types.unqualified(types.stripRef(e->ty))) : nullptr;
+      if (typed && (typed->kind == TyKind::Pointer || typed->kind == TyKind::MemberPointer))
+        typed = typed->inner;
+      if (given < f->templateParams.size() && packElements.empty() && typed && typed->kind == TyKind::Function && typed->isKnown() &&
+          !types.isDependent(typed))
+      {
+        std::vector<const Ty*> paramTypes(typed->args.begin(), typed->args.end());
+        global.deduceArgs(f, paramTypes, fargs);
+        given = 0;
+        for (Decl* p : f->templateParams)
+          for (auto& [d, t] : fargs.pairs)
+            if (d == p)
+            {
+              ++given;
+              break;
+            }
+      }
+      if (packLast && given + 1 == f->templateParams.size())
+      {
+        fargs.pairs.push_back({f->templateParams[f->templateParams.size() - 1], types.pack(Span<const Ty*>{packElements.data(), uint32_t(packElements.size())})});
+        ++given;
+      }
+      if (given < f->templateParams.size())
+        unsupported(e, "taking the address of a function template without all its arguments");
+    }
+
     // Value of a call result for use as an rvalue (reference results are loaded).
     Value callRvalue(Value v, Node* at)
     {
@@ -12126,68 +12195,7 @@ namespace
                 unsupported(e, "taking the address of a member of an unknown instantiation");
               fargs = global.classArgsOf(classTy);
             }
-            const NamePart& last = n->name.last();
-            size_t given = 0;
-            // A trailing pack takes the rest (`getOrCreate<Expression, const NoiseExpression&, const
-            // NoiseExpression&>`), and is empty when nothing is left for it.
-            bool packLast = !f->templateParams.empty() && static_cast<TemplateParamDecl*>(f->templateParams[f->templateParams.size() - 1])->isPack;
-            std::vector<const Ty*> packElements;
-            for (size_t i = 0; i < last.templateArgs.size(); ++i)
-            {
-              Node* arg = last.templateArgs[i];
-              TemplateArgs none;
-              const Ty* t = nullptr;
-              if (uint8_t(arg->kind) > uint8_t(NodeKind::PackType))
-              {
-                // `checkArray<16>`: a constant argument, its parameter's type.
-                Decl* param = i < f->templateParams.size() ? f->templateParams[i] : nullptr;
-                std::optional<int64_t> v = evalConst(static_cast<Expr*>(arg));
-                if (!v)
-                  unsupported(e, "a constant argument the compiler could not evaluate in the address of a function template");
-                t = types.valueType(valueParamType(param), *v);
-              }
-              else
-                t = global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none);
-              if (packLast && i + 1 >= f->templateParams.size())
-              {
-                if (t && t->kind == TyKind::Pack)
-                  packElements.insert(packElements.end(), t->args.begin(), t->args.end()); // `Args...` of the enclosing instance
-                else
-                  packElements.push_back(t);
-                continue;
-              }
-              if (i >= f->templateParams.size())
-                break;
-              fargs.pairs.push_back({f->templateParams[i], t});
-              ++given;
-            }
-            // The checker typed the name as the instance a function pointer of a known type wants
-            // (`construct<Neg>` for a `const Expr& (*)(const Expr&)`, the trailing pack deduced
-            // from its parameters): the arguments not written, deduced the same way.
-            const Ty* typed = e->ty ? withCurrentArgs(types.unqualified(types.stripRef(e->ty))) : nullptr;
-            if (typed && typed->kind == TyKind::Pointer)
-              typed = typed->inner;
-            if (given < f->templateParams.size() && packElements.empty() && typed && typed->kind == TyKind::Function && typed->isKnown() &&
-                !types.isDependent(typed))
-            {
-              std::vector<const Ty*> paramTypes(typed->args.begin(), typed->args.end());
-              global.deduceArgs(f, paramTypes, fargs);
-              given = 0;
-              for (Decl* p : f->templateParams)
-                for (auto& [d, t] : fargs.pairs)
-                  if (d == p)
-                  {
-                    ++given;
-                    break;
-                  }
-            }
-            if (packLast && given + 1 == f->templateParams.size())
-            {
-              fargs.pairs.push_back({f->templateParams[f->templateParams.size() - 1], types.pack(Span<const Ty*>{packElements.data(), uint32_t(packElements.size())})});
-              ++given;
-            }
-            if (given < f->templateParams.size())
-              unsupported(e, "taking the address of a function template without all its arguments");
+            addressedTemplateArgs(f, n, e, fargs);
             std::string name = useFunction(f, fargs, classTy);
             ArgsScope scope(*this, &fargs);
             return {name, types.pointer(declType(f))};
@@ -12983,7 +12991,16 @@ namespace
             moved = moved || index != 0;
           int slot = f->templateParams.empty() ? slotOf(owner, f, u) : -1;
           if (slot < 0 && !moved)
-            return {useFunction(f, global.classArgsOf(owner), owner), mp};
+          {
+            // `&Bindable::debugChildren<Binder<T>>`: a member template's instance, its own
+            // arguments with its class's.
+            TemplateArgs fargs = global.classArgsOf(owner);
+            if (!f->templateParams.empty())
+              addressedTemplateArgs(f, n, u, fargs);
+            return {useFunction(f, fargs, owner), mp};
+          }
+          if (!f->templateParams.empty())
+            unsupported(u, "the address of a member function template of a base at another place in the object");
           return {memberFunctionThunk(key, owner, path, f, slot, u), mp};
         }
         if (!d || d->kind != NodeKind::VariableDecl || !cls || !isClass(cls))

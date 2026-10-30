@@ -13729,7 +13729,7 @@ struct GlobalScope::Impl
     for (Expr* requirement : r->requirements)
     {
       const Ty* ty = probe.walkExpr(requirement);
-      if (!ty || !ty->isKnown())
+      if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(requirement))
         return false;
       dependent = dependent || types.isDependent(ty);
     }
@@ -16414,6 +16414,50 @@ struct GlobalScope::Impl
         for (const Entry& e : *overloads)
           functions += e.decl->kind == NodeKind::FunctionDecl;
       return functions <= 1;
+    }
+
+    // Whether e, walked (under parentheses and a `&`), names a function template without template
+    // arguments, or several functions: with no target type to choose one by, C++ has no expression
+    // there ([over.over]), so a requirement on it is not satisfied (`requires() { &T::f; }` with
+    // T's f a member template it inherits: LuaBinder's luaDebugChildren). Nor is a non-static
+    // member function an object's member names without calling it (`requires(T t) { t.f; }`).
+    bool namesFunctionsWithoutTarget(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (e && e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->isKeyword && !static_cast<UnaryExpr*>(e)->postfix &&
+          P(static_cast<UnaryExpr*>(e)->op) == P::Amp)
+        e = static_cast<UnaryExpr*>(e)->operand;
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (e && e->kind == NodeKind::MemberExpr)
+      {
+        // `t.f` not called: a non-static member function is no expression unless called
+        // ([expr.ref]); static ones as a name of them.
+        auto* m = static_cast<MemberExpr*>(e);
+        if (!m->resolved || m->resolved->kind != NodeKind::FunctionDecl || m->member.empty())
+          return false;
+        if (!(m->resolved->flags & DF_Static))
+          return true;
+        if (m->member.last().hasTemplateArgs)
+          return false;
+        const Ty* object = m->base && m->base->ty ? types.unqualified(types.stripRef(m->base->ty)) : nullptr;
+        if (object && m->op == P::Arrow)
+          object = object->kind == TyKind::Pointer && object->inner ? types.unqualified(object->inner) : nullptr;
+        if (!object || object->kind != TyKind::Class)
+          return false;
+        MemberResult r = memberOf(object, m->member.last().symbol, nullptr, m->token, false);
+        return r.decl && r.decl->kind == NodeKind::FunctionDecl && !onlyPlainCandidate(r.decl, r.overloads);
+      }
+      if (!e || e->kind != NodeKind::NameExpr)
+        return false;
+      auto* n = static_cast<NameExpr*>(e);
+      if (!n->resolved || n->resolved->kind != NodeKind::FunctionDecl || n->name.empty() || n->name.last().hasTemplateArgs)
+        return false;
+      Lookup l = impl.lookupQualified(n->name, scope, &locals, 0, activeSubst);
+      if (l.found == Found::No && n->name.parts.size() > 1)
+        l = memberOfQualifierInstance(n);
+      return l.decl && l.decl->kind == NodeKind::FunctionDecl && !onlyPlainCandidate(l.decl, l.overloads);
     }
 
     // An argument naming several functions, alone or under `&` (`Expression::computeConstant` with
@@ -19147,7 +19191,7 @@ struct GlobalScope::Impl
             if (const Ty* ty = probe.typeOf(t); !ty || !ty->isKnown())
               satisfied = false;
           for (Expr* requirement : r->requirements)
-            if (const Ty* ty = probe.walkExpr(requirement); !ty || !ty->isKnown())
+            if (const Ty* ty = probe.walkExpr(requirement); !ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(requirement))
               satisfied = false;
           r->satisfied = satisfied;
           return record(e, types.boolType());

@@ -1,0 +1,16 @@
+// spec: `&C::f<Args>` of a non-static member function template is a pointer to that instance of it, called through `(object.*p)(...)`, as `&f<Args>` of a function template or a static member template is
+// factorio: the else branch of LuaBinder<T>::registerCommonMetaMethods, `&LuaBindableObject::luaDebugChildren<LuaBinder<T>>`: codegen named the template without its arguments (`@Bindable::debugChildren<?>(int32)` undefined)
+class Bindable
+{
+public:
+  template<class B>
+  int debugChildren(int x) { return B::scale * x; }
+};
+struct Ten { static constexpr int scale = 10; };
+int main()
+{
+  Bindable b;
+  int (Bindable::*p)(int) = &Bindable::debugChildren<Ten>;
+  println("{} {}", (b.*p)(3), (b.*(&Bindable::debugChildren<Ten>))(4));
+  return 0;
+}

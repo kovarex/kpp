@@ -1,6 +1,5 @@
 // spec: `requires() { &T::f; }` where T's f is only a member template it inherits is not satisfied (`&T::f` names a template with no arguments and no target type to deduce them from, so it is no expression), and the `else` of an `if constexpr` on it is the branch taken, as in C++; a T with a plain member f satisfies it
 // factorio: LuaBinder<T>::registerCommonMetaMethods's `if constexpr (requires() { &T::luaDebugChildren; })`, whose else takes &LuaBindableObject::luaDebugChildren<LuaBinder<T>> (61 errors in the tests build of 4c178a5b915: `@LuaBindableObject::luaDebugChildren<?>` undefined)
-// pending: the requirement is taken as satisfied, and the template's address is emitted without arguments
 class Bindable
 {
 public:

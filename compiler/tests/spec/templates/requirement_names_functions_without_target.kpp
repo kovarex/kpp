@@ -1,0 +1,41 @@
+// spec: a requirement that names functions with no target type to choose one by is not satisfied, as C++ has no expression there: `&T::f` or `T::f` of several overloads or of a function template without arguments ([over.over]), `t.f` of a non-static member function not called ([expr.ref]); one function, a template with its arguments, or a data member satisfies it
+// factorio: found checking the forms beside LuaBinder<T>'s `requires() { &T::luaDebugChildren; }` (templates/address_of_inherited_member_template_requirement): every one of these was satisfied, the first function of the name taken; the expected line is what clang 19 prints for the same C++
+struct Base { template<class B> int tmpl(int x) { return x; } };
+struct S : Base
+{
+  int one(int x) { return x; }
+  int two(int x) { return x; }
+  int two(double x) { return 2; }
+  template<class B> int own(int x) { return x; }
+  static int sone(int x) { return x; }
+  static int stwo(int x) { return x; }
+  static int stwo(double x) { return 2; }
+  template<class B> static int stmpl(int x) { return x; }
+  int field = 0;
+};
+int freeOne(int x) { return x; }
+int freeTwo(int x) { return x; }
+int freeTwo(double x) { return 2; }
+template<class B> int freeTmpl(int x) { return x; }
+template<class T> concept HasOne = requires { &T::one; };
+template<class T> concept HasTwo = requires { &T::two; };
+template<class T> constexpr bool inherited = requires { &T::tmpl; };
+template<class T> constexpr bool own = requires { &T::own; };
+template<class T> constexpr bool ownWithArgs = requires { &T::own<int>; };
+template<class T> constexpr bool staticOne = requires { T::sone; };
+template<class T> constexpr bool staticTwo = requires { T::stwo; };
+template<class T> constexpr bool staticTwoAddress = requires { &T::stwo; };
+template<class T> constexpr bool staticTmpl = requires { &T::stmpl; };
+template<class T> constexpr bool fieldAddress = requires { &T::field; };
+template<class T> constexpr bool freeOneAddress = requires(T t) { &freeOne; };
+template<class T> constexpr bool freeTwoAddress = requires(T t) { &freeTwo; };
+template<class T> constexpr bool freeTmplAddress = requires(T t) { &freeTmpl; };
+template<class T> constexpr bool memberUncalled = requires(T t) { t.one; };
+template<class T> constexpr bool staticMemberOne = requires(T t) { t.sone; };
+template<class T> constexpr bool staticMemberTwo = requires(T t) { t.stwo; };
+int main()
+{
+  println("{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}", int(HasOne<S>), int(HasTwo<S>), int(inherited<S>), int(own<S>), int(ownWithArgs<S>), int(staticOne<S>), int(staticTwo<S>),
+          int(staticTwoAddress<S>), int(staticTmpl<S>), int(fieldAddress<S>), int(freeOneAddress<S>), int(freeTwoAddress<S>), int(freeTmplAddress<S>), int(memberUncalled<S>), int(staticMemberOne<S>), int(staticMemberTwo<S>));
+  return 0;
+}
