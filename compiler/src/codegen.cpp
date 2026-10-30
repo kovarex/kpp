@@ -15867,8 +15867,26 @@ namespace
   };
 }
 
+// What a build keeps for the next (CodegenSessionPtr): the shared state the emitters wrote, the
+// emitters, and what assembling a module needs.
+struct CodegenSession
+{
+  CodegenResult result; // the build's counts (and the result Shared refers to)
+  std::unique_ptr<Shared> shared;
+  std::vector<std::unique_ptr<Emitter>> emitters;
+  std::string prefix;   // a module's first lines
+  unsigned threads = 1;
+  bool usable = false;  // a build of several modules without errors, its texts kept
+};
+
+void CodegenSessionDeleter::operator()(CodegenSession* session) const
+{
+  delete session;
+}
+
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial);
+                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
+                              CodegenSessionPtr* keep);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -16005,7 +16023,8 @@ static std::string declareUndefined(const std::string& text, const std::unordere
 }
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                           unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial)
+                           unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
+                           CodegenSessionPtr* keep)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -16021,12 +16040,14 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     unsigned threads;
     bool stubMissing;
     bool inlineTrivial;
+    CodegenSessionPtr* keep;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
-    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial);
+    j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial,
+                         j->keep);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -16036,7 +16057,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep);
 }
 
 // --stub-missing: the functions used without a definition that declsFor defines as stubs.
@@ -16047,6 +16068,71 @@ static size_t countUndefinedStubs(Shared& sh)
     for (auto& [name, f] : sh.undefinedUses)
       n += !sh.definedIn.count(name);
   return n;
+}
+
+// emitFunction with the stack overflow caught. With a 1 GB stack an overflow means recursion
+// without end; the fault may have struck inside the allocator, leaving the heap mid-update (a
+// later allocation then spins forever), so nothing is allocated after it: the function's name
+// goes out through a fixed buffer and the process ends.
+static void emitInstantiation(Emitter& em, const Instantiation& item)
+{
+  if (item.depth > Emitter::maxInstantiationDepth)
+  {
+    em.reportTooDeep(item);
+    return;
+  }
+  em.currentModule = item.module;
+  em.currentRequestedBy = item.requestedBy;
+  em.currentDepth = item.depth;
+  struct EmitCall { Emitter* e; const Instantiation* item; };
+  EmitCall call{&em, &item};
+#ifdef _WIN32
+  if (callWithStackGuard([](void* p) {
+    auto* c = static_cast<EmitCall*>(p);
+    c->e->emitFunction(c->item->f, c->item->args, c->item->classTy, c->item->name);
+  }, &call))
+  {
+    static char message[1024];
+    int n = snprintf(message, sizeof message, "codegen: out of stack (recursion without end) in %.900s\n", em.currentFunctionName.c_str());
+    DWORD written = 0;
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, DWORD(n > 0 ? std::min(n, int(sizeof message) - 1) : 0), &written, nullptr);
+    TerminateProcess(GetCurrentProcess(), 3);
+  }
+#else
+  em.emitFunction(item.f, item.args, item.classTy, item.name);
+#endif
+  em.currentRequestedBy.clear();
+  em.currentDepth = 0;
+}
+
+// The next level: what the emitters asked for (each function once: the names were claimed), in
+// the order of their names, each with its first requester by name over all emitters
+// (Emitter::levelRequests).
+static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, std::vector<Instantiation>& level)
+{
+  level.clear();
+  for (auto& em : emitters)
+  {
+    for (Instantiation& item : em->worklist)
+      level.push_back(std::move(item));
+    em->worklist.clear();
+  }
+  std::unordered_map<std::string, Request*> first;
+  for (const Instantiation& item : level)
+    first.emplace(item.name, nullptr);
+  for (auto& em : emitters)
+    for (auto& [name, r] : em->levelRequests)
+      if (auto it = first.find(name); it != first.end() && (!it->second || r.by < it->second->by))
+        it->second = &r;
+  for (Instantiation& item : level)
+    if (Request* r = first[item.name])
+    {
+      item.requestedBy = r->by;
+      item.depth = r->depth;
+    }
+  for (auto& em : emitters)
+    em->levelRequests.clear();
+  std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
 }
 
 // The destructor helper an entry of the shared definitions defines (`@kpp.dtor.<class>`, from
@@ -16063,9 +16149,13 @@ static std::string destructorHelperIn(const std::string& entry)
 }
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
-                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial)
+                              unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
+                              CodegenSessionPtr* keep)
 {
-  CodegenResult result;
+  // The build's state lives in a session (Shared refers to its result), kept for the next build
+  // when asked (keep) or freed.
+  CodegenSessionPtr session(new CodegenSession);
+  CodegenResult& result = session->result;
   auto shared = std::make_unique<Shared>(result);
   Shared& sh = *shared;
   sh.debug = debug;
@@ -16079,23 +16169,35 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   std::vector<std::unique_ptr<Emitter>> emitters;
   for (unsigned i = 0; i < threads; ++i)
     emitters.push_back(std::make_unique<Emitter>(global, symbols, sh));
+  session->threads = threads;
   // The emitters' and the shared state are freed on a thread of their own once the result is
   // returned (about 3 s for the game, on the build's critical path before): a build in its own
   // process exits without waiting for it, the compile server answers meanwhile. Their destructors
   // touch nothing but their own containers (not the result, not the program they point into).
+  // A session kept for the next build takes them instead.
   struct FreeLater
   {
     std::unique_ptr<Shared>& shared;
     std::vector<std::unique_ptr<Emitter>>& emitters;
+    CodegenSessionPtr& session;
+    CodegenSessionPtr* keep;
     ~FreeLater()
     {
-      std::thread([shared = std::move(shared), emitters = std::move(emitters)]() mutable
+      if (keep && session->usable)
+      {
+        session->shared = std::move(shared);
+        session->emitters = std::move(emitters);
+        *keep = std::move(session);
+        return;
+      }
+      std::thread([shared = std::move(shared), emitters = std::move(emitters), session = std::move(session)]() mutable
       {
         emitters.clear();
         shared.reset();
+        session.reset();
       }).detach();
     }
-  } freeLater{shared, emitters};
+  } freeLater{shared, emitters, session, keep};
   Emitter& e = *emitters[0];
   std::vector<FunctionDecl*> functions;
   std::vector<VariableDecl*> startupGlobals;
@@ -16132,67 +16234,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     auto it = sh.fileModule.find(f->file);
     level.push_back({f, {}, nullptr, it == sh.fileModule.end() ? 0 : it->second, "", "", 0});
   }
-  // emitFunction with the stack overflow caught. With a 1 GB stack an overflow means recursion
-  // without end; the fault may have struck inside the allocator, leaving the heap mid-update (a
-  // later allocation then spins forever), so nothing is allocated after it: the function's name
-  // goes out through a fixed buffer and the process ends.
-  struct EmitCall { Emitter* e; const Instantiation* item; };
-  auto emitOne = [&](Emitter& em, const Instantiation& item) {
-    if (item.depth > Emitter::maxInstantiationDepth)
-    {
-      em.reportTooDeep(item);
-      return;
-    }
-    em.currentModule = item.module;
-    em.currentRequestedBy = item.requestedBy;
-    em.currentDepth = item.depth;
-    EmitCall call{&em, &item};
-#ifdef _WIN32
-    if (callWithStackGuard([](void* p) {
-      auto* c = static_cast<EmitCall*>(p);
-      c->e->emitFunction(c->item->f, c->item->args, c->item->classTy, c->item->name);
-    }, &call))
-    {
-      static char message[1024];
-      int n = snprintf(message, sizeof message, "codegen: out of stack (recursion without end) in %.900s\n", em.currentFunctionName.c_str());
-      DWORD written = 0;
-      WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, DWORD(n > 0 ? std::min(n, int(sizeof message) - 1) : 0), &written, nullptr);
-      TerminateProcess(GetCurrentProcess(), 3);
-    }
-#else
-    em.emitFunction(item.f, item.args, item.classTy, item.name);
-#endif
-    em.currentRequestedBy.clear();
-    em.currentDepth = 0;
-  };
-  // The next level: what the emitters asked for (each function once: the names were claimed), in
-  // the order of their names, each with its first requester by name over all emitters
-  // (Emitter::levelRequests).
-  auto nextLevel = [&]() {
-    level.clear();
-    for (auto& em : emitters)
-    {
-      for (Instantiation& item : em->worklist)
-        level.push_back(std::move(item));
-      em->worklist.clear();
-    }
-    std::unordered_map<std::string, Request*> first;
-    for (const Instantiation& item : level)
-      first.emplace(item.name, nullptr);
-    for (auto& em : emitters)
-      for (auto& [name, r] : em->levelRequests)
-        if (auto it = first.find(name); it != first.end() && (!it->second || r.by < it->second->by))
-          it->second = &r;
-    for (Instantiation& item : level)
-      if (Request* r = first[item.name])
-      {
-        item.requestedBy = r->by;
-        item.depth = r->depth;
-      }
-    for (auto& em : emitters)
-      em->levelRequests.clear();
-    std::sort(level.begin(), level.end(), [](const Instantiation& a, const Instantiation& b) { return a.name < b.name; });
-  };
+  auto emitOne = [&](Emitter& em, const Instantiation& item) { emitInstantiation(em, item); };
+  auto nextLevel = [&]() { collectNextLevel(emitters, level); };
   std::atomic<bool> outOfMemory{false};
   size_t emitted = 0;
   std::set<std::pair<StaticAssertDecl*, std::string>> layoutAssertsChecked;
@@ -16342,7 +16385,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // n-th function of the program is emitted again in the kept state, as an edit of its body would
   // be, and the modules assembled again must be byte for byte the ones just built.
   const char* checkRebuild = getenv("KPP_CHECK_REBUILD");
-  bool keepTexts = checkRebuild && result.errors.empty() && sh.moduleCount > 1;
+  bool keepTexts = (checkRebuild || keep) && result.errors.empty() && sh.moduleCount > 1;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     // The definitions in the order SharedText puts entries: by their text.
@@ -16358,7 +16401,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
   if (!result.errors.empty() && !despiteErrors)
-    return result;
+    return std::move(result);
   std::string prefix = "; Kpp v0: generated by kppc\n"
                        "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\n"
                        "target triple = \"x86_64-pc-windows-msvc\"\n\n";
@@ -16382,7 +16425,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       result.ir += declareUndefined(result.ir, sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
       result.stubs = stubbed.size() + countUndefinedStubs(sh);
     }
-    return result;
+    return std::move(result);
   }
   // The modules are independent once the texts are finished: assembled on all the emitters'
   // threads at once (on one thread this was 4.5 s of the game's codegen), each module's own texts
@@ -16412,105 +16455,168 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     stubbed.insert(names.begin(), names.end());
   if (sh.stubMissing)
     result.stubs = stubbed.size() + countUndefinedStubs(sh);
-  if (keepTexts)
+  session->prefix = prefix;
+  if (keepTexts && checkRebuild)
   {
+    // Every n-th function of the program emitted again through rebuildLLVM, as the compile server
+    // will after an edit of their bodies; the modules it assembles again must be the ones just built.
     size_t every = std::max<size_t>(1, strtoul(checkRebuild, nullptr, 10));
-    // The functions again, as level 0 had them; what each one's emission added before goes first.
-    std::unordered_set<std::string> owners;
-    level.clear();
+    std::vector<FunctionDecl*> picked;
     for (size_t i = 0; i < functions.size(); i += every)
-    {
-      FunctionDecl* f = functions[i];
-      auto it = sh.fileModule.find(f->file);
-      level.push_back({f, {}, nullptr, it == sh.fileModule.end() ? 0 : it->second, "", "", 0});
-      owners.insert(e.functionName(f, {}, nullptr));
-    }
-    size_t dropped = 0;
-    std::vector<char> touched(sh.moduleCount, 0);
-    std::unordered_set<std::string> droppedNames;
-    for (unsigned k = 0; k < sh.moduleCount; ++k)
-    {
-      std::vector<Shared::Definition>& defs = sh.definitions[k];
-      size_t before = defs.size();
-      for (const Shared::Definition& d : defs)
-        if (owners.count(d.owner))
-          droppedNames.insert(d.name);
-      defs.erase(std::remove_if(defs.begin(), defs.end(), [&](const Shared::Definition& d) { return owners.count(d.owner) != 0; }), defs.end());
-      dropped += before - defs.size();
-      touched[k] = before != defs.size();
-    }
-    // Their lambdas' call operators went with them: emitted again with the function, not marked done.
-    for (auto& [t, info] : sh.closures)
-      if (droppedNames.count(info.functionName))
-        sh.closuresEmitted.erase(t);
-    for (const std::string& name : droppedNames)
-      sh.lambdaInstances.erase(name);
-    // And so did their own module declarations (static locals), added again as they are emitted.
-    for (unsigned k = 0; k < sh.moduleCount; ++k)
-    {
-      std::vector<Shared::OwnedEntry>& owned = sh.ownedEntries[k];
-      owned.erase(std::remove_if(owned.begin(), owned.end(), [&](const Shared::OwnedEntry& o) { return owners.count(o.owner) != 0; }), owned.end());
-    }
-    size_t entriesBefore = sh.decls.entries.size() + sh.shared.entries.size();
-    for (unsigned k = 0; k < sh.moduleCount; ++k)
-      entriesBefore += sh.moduleDecls[k].entries.size();
-    auto emitStart = std::chrono::steady_clock::now();
-    emitLevels();
-    double emitSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - emitStart).count();
-    size_t entriesAfter = sh.decls.entries.size() + sh.shared.entries.size();
-    for (unsigned k = 0; k < sh.moduleCount; ++k)
-      entriesAfter += sh.moduleDecls[k].entries.size();
-    size_t added = 0;
-    for (unsigned k = 0; k < sh.moduleCount; ++k)
-    {
-      std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
-                [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
-      added += sh.definitions[k].size();
-      // The module's declarations again: those kept, those added since (a first use), its functions' own.
-      std::vector<std::string> entries = sh.keptModuleEntries[k];
-      entries.insert(entries.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
-      for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
-        entries.push_back(o.text);
-      sh.moduleDecls[k].entries = std::move(entries);
-      sh.moduleDecls[k].text.clear();
-      sh.moduleDecls[k].finish();
-    }
-    size_t differ = 0;
+      picked.push_back(functions[i]);
+    session->shared = std::move(shared);
+    session->emitters = std::move(emitters);
+    session->usable = true;
+    auto start = std::chrono::steady_clock::now();
+    bool rebuilt = false;
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, rebuilt);
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    shared = std::move(session->shared);
+    emitters = std::move(session->emitters);
+    session->usable = false;
+    size_t changed = 0, differ = 0;
     std::string first;
-    double assembleSeconds = 0;
-    for (unsigned k = 0; k < sh.moduleCount; ++k)
-    {
-      auto assembleStart = std::chrono::steady_clock::now();
-      std::string again = e.moduleText(k, prefix);
-      if (touched[k])
-        assembleSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - assembleStart).count();
-      if (again != result.modules[k])
+    for (size_t k = 0; rebuilt && k < again.changedModules.size(); ++k)
+      if (again.changedModules[k])
       {
-        ++differ;
-        if (first.empty())
+        ++changed;
+        if (again.modules[k] != result.modules[k])
         {
-          size_t at = std::mismatch(again.begin(), again.end(), result.modules[k].begin(), result.modules[k].end()).first - again.begin();
-          size_t line = again.rfind('\n', at);
-          first = "module " + std::to_string(k) + ": " + again.substr(line == std::string::npos ? 0 : line + 1, 160);
+          ++differ;
+          if (first.empty())
+          {
+            size_t at = std::mismatch(again.modules[k].begin(), again.modules[k].end(), result.modules[k].begin(), result.modules[k].end()).first -
+                        again.modules[k].begin();
+            size_t line = again.modules[k].rfind('\n', at);
+            first = "module " + std::to_string(k) + ": " + again.modules[k].substr(line == std::string::npos ? 0 : line + 1, 160);
+          }
         }
       }
-    }
-    size_t touchedCount = size_t(std::count(touched.begin(), touched.end(), char(1)));
-    fprintf(stderr, "rebuild check: %zu functions emitted again (%zu definitions replaced) in %.3f s, %zu new shared entries, %zu modules touched "
-                    "(assembled again in %.3f s, one after another), %zu of %u modules differ%s%s\n",
-            owners.size(), dropped, emitSeconds, entriesAfter - entriesBefore, touchedCount, assembleSeconds, differ, sh.moduleCount,
-            first.empty() ? "" : "; first: ", first.c_str());
-    auto showNew = [&](const char* what, const SharedText& t)
-    {
-      for (const std::string& entry : t.entries)
-        fprintf(stderr, "rebuild check: new %s entry: %.200s\n", what, entry.c_str());
-    };
-    showNew("decls", sh.decls);
-    showNew("shared", sh.shared);
-    for (unsigned k = 0; k < sh.moduleCount; ++k)
-      showNew("module", sh.moduleDecls[k]);
-    (void)added;
-    (void)touched;
+    fprintf(stderr, "rebuild check: %zu functions emitted again by rebuildLLVM in %.3f s (%s), %zu modules assembled again, %zu of them differ%s%s\n",
+            picked.size(), seconds, rebuilt ? "rebuilt" : "declined", changed, differ, first.empty() ? "" : "; first: ", first.c_str());
   }
-  return result;
+  session->usable = keep && keepTexts && !checkRebuild;
+  return std::move(result);
+}
+
+CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
+                          const std::vector<FunctionDecl*>& removed, bool& rebuilt)
+{
+  rebuilt = false;
+  CodegenResult out;
+  if (!session.usable || !session.shared || session.emitters.empty())
+    return out;
+  session.usable = false; // until this rebuild is done: one that fails leaves the session to a build from scratch
+  Shared& sh = *session.shared;
+  std::vector<std::unique_ptr<Emitter>>& emitters = session.emitters;
+  Emitter& e = *emitters[0];
+  for (auto& em : emitters)
+    em->lineStarts.clear(); // the edited files' lines moved
+  // What the changed and removed functions' emissions added goes (their definitions, their
+  // lambdas' operators, their static locals); the changed and the added ones are emitted again,
+  // each in its file's module as a program function is.
+  std::unordered_set<std::string> owners;
+  std::vector<Instantiation> level;
+  auto programFunction = [&](FunctionDecl* f) -> Instantiation
+  {
+    auto it = sh.fileModule.find(f->file);
+    return {f, {}, nullptr, it == sh.fileModule.end() ? 0 : it->second, "", "", 0};
+  };
+  for (FunctionDecl* f : changedBodies)
+  {
+    owners.insert(e.functionName(f, {}, nullptr));
+    level.push_back(programFunction(f));
+  }
+  for (FunctionDecl* f : removed)
+    owners.insert(e.functionName(f, {}, nullptr));
+  for (FunctionDecl* f : added)
+    level.push_back(programFunction(f));
+  std::vector<char> touched(sh.moduleCount, 0);
+  std::unordered_set<std::string> droppedNames;
+  for (unsigned k = 0; k < sh.moduleCount; ++k)
+  {
+    std::vector<Shared::Definition>& defs = sh.definitions[k];
+    size_t before = defs.size();
+    for (const Shared::Definition& d : defs)
+      if (owners.count(d.owner))
+        droppedNames.insert(d.name);
+    defs.erase(std::remove_if(defs.begin(), defs.end(), [&](const Shared::Definition& d) { return owners.count(d.owner) != 0; }), defs.end());
+    std::vector<Shared::OwnedEntry>& owned = sh.ownedEntries[k];
+    size_t ownedBefore = owned.size();
+    owned.erase(std::remove_if(owned.begin(), owned.end(), [&](const Shared::OwnedEntry& o) { return owners.count(o.owner) != 0; }), owned.end());
+    touched[k] = before != defs.size() || ownedBefore != owned.size();
+  }
+  for (auto& [t, info] : sh.closures)
+    if (droppedNames.count(info.functionName))
+      sh.closuresEmitted.erase(t);
+  for (const std::string& name : droppedNames)
+  {
+    sh.lambdaInstances.erase(name);
+    sh.definedIn.erase(name);
+    sh.declareLines.erase(name);
+  }
+  sh.functions -= std::min<size_t>(sh.functions, droppedNames.size());
+  std::vector<size_t> counts(sh.moduleCount);
+  for (unsigned k = 0; k < sh.moduleCount; ++k)
+    counts[k] = sh.definitions[k].size() + sh.ownedEntries[k].size() + sh.moduleDecls[k].entries.size();
+  size_t sharedBefore = sh.decls.entries.size() + sh.shared.entries.size();
+  for (auto& em : emitters)
+  {
+    em->errors.clear();
+    em->failedFunctions.clear();
+  }
+  while (!level.empty())
+  {
+    std::atomic<size_t> next{0};
+    auto work = [&](unsigned i)
+    {
+      for (size_t k; (k = next++) < level.size();)
+        emitInstantiation(*emitters[i], level[k]);
+    };
+    onThreads(level.size() < 64 ? 1u : session.threads, work);
+    collectNextLevel(emitters, level);
+  }
+  // An error, or a first use that added to the shared declarations (in every module): from scratch.
+  for (auto& em : emitters)
+    if (!em->errors.empty())
+      return out;
+  if (sh.decls.entries.size() + sh.shared.entries.size() != sharedBefore)
+    return out;
+  std::vector<unsigned> which;
+  for (unsigned k = 0; k < sh.moduleCount; ++k)
+  {
+    if (counts[k] != sh.definitions[k].size() + sh.ownedEntries[k].size() + sh.moduleDecls[k].entries.size())
+      touched[k] = 1;
+    if (!touched[k])
+      continue;
+    which.push_back(k);
+    std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
+              [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
+    // The module's declarations again: those kept, those a first use added now (kept from here on),
+    // and its functions' own.
+    std::vector<std::string>& kept = sh.keptModuleEntries[k];
+    kept.insert(kept.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
+    std::vector<std::string> entries = kept;
+    for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+      entries.push_back(o.text);
+    sh.moduleDecls[k].entries = std::move(entries);
+    sh.moduleDecls[k].text.clear();
+    sh.moduleDecls[k].finish();
+  }
+  out.modules.resize(sh.moduleCount);
+  out.changedModules.assign(sh.moduleCount, false);
+  std::atomic<size_t> nextModule{0};
+  auto assemble = [&](unsigned t)
+  {
+    for (size_t i; (i = nextModule++) < which.size();)
+      out.modules[which[i]] = emitters[t]->moduleText(which[i], session.prefix);
+  };
+  onThreads(std::max(1u, std::min(session.threads, unsigned(which.size()))), assemble);
+  for (unsigned k : which)
+    out.changedModules[k] = true;
+  out.functions = sh.functions;
+  out.structs = session.result.structs;
+  session.usable = true;
+  rebuilt = true;
+  return out;
 }
