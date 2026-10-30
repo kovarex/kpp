@@ -40,11 +40,19 @@ threads; clang is the one phase still gaining. Why, phase by phase:
   own generic walks, 50 to 100 ms each, and in them 52 overload resolutions of
   `ValueToWidget::make(*value)` against an overload set of 455 `make`s, 5 to 95 ms each, 1.21 s in
   all (timed around `pickOverload`, temporary): the argument's type is no template parameter the
-  walk knows to be dependent, so every candidate, templates deduced, is ranked. Walking a file's
-  templates as tasks of their own took the phase to 0.84 s, but it is not sound: a later
-  namespace-scope static_assert evaluates a class template member whose generic walk has to have
-  run (two spec snippets failed), and the statistics depended on the order (the edit test's
-  "deduction" count, 17 against 18). Not landed.
+  walk knows to be dependent, so every candidate, templates deduced, is ranked. *Landed since:* a
+  template function's own walk is a task for any free worker (`Impl::DeclWalk`), its statistics
+  added to its file's once the workers are done. The first try was not sound: the evaluator ran
+  template nodes whose generic walk was still running elsewhere (the templates thread's f5787d23
+  runs instances' copies instead), and a signature typed by its walk (`async`'s
+  `-> Future<decltype(callable())>`, read by the other `async`'s walk) made the statistics depend on
+  the order (2 of 40 runs). A function whose signature has a decltype or a deduced auto is walked
+  in place. Checked: the game's report, `--why` and the unresolved names included, the same as
+  before in 8 runs; the 64 modules byte-identical; the determinism tests at 1, 8 and 32 threads;
+  the spec suite three times at `--jobs 32`; 60 runs of the edit test's program. Paired clean
+  builds (master f5787d23 and this, interleaved, 2 rounds): resolve 1.38 and 1.55 s -> **0.89 and
+  0.83 s**, wall 16.28 and 15.96 s -> 15.31 and 15.47 s; the front end alone, 8 runs, 0.83 to
+  0.88 s against 1.35 s.
 - **Codegen** does 23.4 s of work and is no faster than 6.3 s from 8 threads on: serial or
   serialised parts (to be profiled by the codegen thread).
 - **Clang** is bounded by its largest module: module 28, 37 MB of the 739 (the median is 10.8 MB),

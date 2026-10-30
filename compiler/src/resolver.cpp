@@ -14464,6 +14464,7 @@ struct GlobalScope::Impl
     // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
+    bool walkingQueued = false; // a queued walk (Impl::DeclWalk): its own declaration is walked here, not queued again
 
     // The type of an explicit conversion of operand to t (a cast) while probing: unknown when the
     // operand is a class with no conversion operator to t (explicit ones count), t otherwise.
@@ -17929,6 +17930,23 @@ struct GlobalScope::Impl
     bool probesSharedNodes() const { return probing && activeSubst; }
 
     // A template's own walk: a template parameter in scope that this walk binds to nothing.
+    // Whether a function's signature is typed by its walk: a decltype or a deduced auto in its
+    // return type or a parameter's.
+    static bool signatureFromWalk(FunctionDecl* f)
+    {
+      bool found = false;
+      auto look = [&](Node* t)
+      {
+        if (t)
+          forEachNode(t, [&](Node* n) { found = found || n->kind == NodeKind::DecltypeType || n->kind == NodeKind::AutoType; });
+      };
+      look(f->returnType);
+      look(f->trailingReturn);
+      for (Decl* p : f->params)
+        look(static_cast<ParamDecl*>(p)->type);
+      return found;
+    }
+
     bool inGenericTemplate() const
     {
       for (const LocalStack::Item& item : locals.items)
@@ -17992,6 +18010,21 @@ struct GlobalScope::Impl
     {
       if (!d)
         return;
+      // While the files are resolved, a template function's own walk (the generic one, outside any
+      // other unit) is a task for whichever worker is free: one file of heavy templates
+      // (ValueToWidget.kpp: 18 template functions of 50 to 100 ms each, 1.26 s of the game's 1.31 s
+      // resolve) no longer walks them all on one thread. Nothing outside the body reads what its walk
+      // leaves on its nodes (the evaluator runs instances' copies), except a signature the walk types
+      // (a decltype, a deduced auto: its callers read it), so such a function is walked in place.
+      if (d->kind == NodeKind::FunctionDecl && !walkingQueued && file && file->tokens && !recordingInto && !activeSubst && instantiationDepth == 0 &&
+          static_cast<FunctionDecl*>(d)->body && (!d->templateParams.empty() || inGenericTemplate()) &&
+          impl.queueMemberBodies.load(std::memory_order_relaxed) && !signatureFromWalk(static_cast<FunctionDecl*>(d)))
+      {
+        auto dw = std::make_shared<Impl::DeclWalk>(Impl::DeclWalk{static_cast<FunctionDecl*>(d), scope, thisType, locals.items, file, &stats});
+        Impl::MemberTask task{nullptr, nullptr, nullptr, 0, 0, nullptr, std::move(dw)};
+        impl.queueMemberBody(task);
+        return;
+      }
       // A declaration's walk outside any other unit (a function's body, a variable's initializer, a
       // static_assert, an alias, an enumeration's values) is a unit of its own; what is declared
       // inside it belongs to it. Not a namespace's or a class's: their members are units each.
@@ -19311,6 +19344,17 @@ struct GlobalScope::Impl
   // instead of checking it on the asking thread; every worker takes them after the files
   // (GlobalScope::checkQueuedMemberBodies). An instance's typing does not depend on when it is
   // checked (each instance is claimed once, its statistics and errors kept apart and sorted).
+  // A template function's own (generic) walk, queued by its file's walk (Walker::walkDecl): the
+  // walker's place there, and the file's statistics it adds to once the resolve is done.
+  struct DeclWalk
+  {
+    FunctionDecl* f;
+    Scope* scope;
+    const Ty* thisType;
+    std::vector<LocalStack::Item> locals;
+    const ParsedFile* file;
+    ResolveStats* into;
+  };
   struct MemberTask
   {
     const Ty* classTy;
@@ -19319,7 +19363,12 @@ struct GlobalScope::Impl
     uint32_t requestToken;
     int depth;
     InstanceRecord* functionInstance = nullptr; // or a function instance's queued check (its record holds the task)
+    std::shared_ptr<DeclWalk> declWalk;         // or a template function's own walk
   };
+  // The statistics of the queued walks, added to their files' once every worker is done (adding is
+  // order-independent: the counts sum, a first occurrence is the earliest place).
+  std::mutex deferredStatsMutex;
+  std::vector<std::pair<ResolveStats*, std::unique_ptr<ResolveStats>>> deferredStats;
   std::atomic<bool> queueMemberBodies{false};
   std::mutex memberTaskMutex;
   std::condition_variable memberTaskCv;
@@ -19335,6 +19384,22 @@ struct GlobalScope::Impl
   }
   void runMemberTask(const MemberTask& t)
   {
+    if (const DeclWalk* dw = t.declWalk.get())
+    {
+      auto local = std::make_unique<ResolveStats>();
+      local->fileIndex = dw->into->fileIndex;
+      local->collectWhy = dw->into->collectWhy;
+      Walker w(*this, *local, *dw->file->tokens, dw->file->text);
+      w.file = dw->file;
+      w.scope = dw->scope;
+      w.thisType = dw->thisType;
+      w.locals.items = dw->locals;
+      w.walkingQueued = true;
+      w.walkDecl(dw->f);
+      std::lock_guard lock(deferredStatsMutex);
+      deferredStats.push_back({dw->into, std::move(local)});
+      return;
+    }
     if (InstanceRecord* inst = t.functionInstance)
     {
       // A function instance's check, unless a walk that needed its result took it over first.
@@ -19747,6 +19812,9 @@ void GlobalScope::resolveAll(size_t count, unsigned threads, const std::function
   for (auto& t : pool)
     t.join();
   im.queueMemberBodies.store(false);
+  for (auto& [into, stats] : im.deferredStats)
+    into->add(*stats);
+  im.deferredStats.clear();
 }
 
 void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens, std::string_view text, ResolveStats& stats)
