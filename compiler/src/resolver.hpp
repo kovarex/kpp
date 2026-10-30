@@ -292,9 +292,17 @@ public:
   // bodies: function definitions whose bodies changed, for the units the compile-time evaluator ran
   // them in (a constexpr function's): such walks are found as the names' readers are; it is false
   // when one ran outside any unit, or a declared type ran one (an array bound, a constant template
-  // argument: what it typed may be a layout). why: the reason it is false.
+  // argument: what it typed may be a layout). why: the reason it is false. instances: the function
+  // and member instances that read them, to be checked again (recheckInstancesOf); without it such
+  // an instance makes it false. typedByWalk: the declarations among the reading walks whose type the
+  // walk gives (decltype, a deduced auto), to be compared after the walk (forgetTypesFromWalks);
+  // without it such a declaration makes it false.
   bool invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
-                         std::vector<const Decl*>* walks = nullptr, const std::vector<const FunctionDecl*>& bodies = {}, std::string* why = nullptr);
+                         std::vector<const Decl*>* walks = nullptr, const std::vector<const FunctionDecl*>& bodies = {}, std::string* why = nullptr,
+                         std::vector<const void*>* instances = nullptr, std::vector<const Decl*>* typedByWalk = nullptr);
+  // Their declared types as they are, then forgotten (with what computing them read): after their
+  // walks, typeOfDecl gives them anew, and a build that changed one is built from scratch.
+  std::vector<const Ty*> forgetTypesFromWalks(const std::vector<const Decl*>& decls);
   uint32_t functionSymbolOf(const FunctionDecl* f);
   // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
   // function, whose code may hold its body (codegen inlines trivial functions).
@@ -304,7 +312,8 @@ public:
   // copied from the new body and checked again, their statistics replacing theirs; false when one
   // cannot be (only codegen made it, it deduces another return type). Between beginRewalk and
   // endRewalk, which tell whether the checks made instances anew.
-  bool recheckInstancesOf(const std::vector<FunctionDecl*>& sources, std::string& why);
+  // readers: instances invalidateReaders found reading a change, checked again likewise.
+  bool recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why);
   // The instance statistics as the resolve counts them: every instance walk's but codegen's.
   ResolveStats instanceStatsAtResolveEnd();
   // The places in a file each instance walk's own statistics name ("first at"), to move with its tokens.

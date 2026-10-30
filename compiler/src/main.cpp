@@ -2140,6 +2140,8 @@ namespace
       rewalk.insert(c.index);
     std::vector<uint32_t> names;
     std::vector<const Decl*> gone;
+    std::vector<const void*> readingInstances; // instances that read a changed name, type or body: checked again
+    std::vector<const Decl*> typedByWalk;      // reading walks' declarations whose type the walk gives: compared after it
     size_t entriesBefore = global.entryCount();
     for (FunctionChange& c : functionEdits)
     {
@@ -2165,7 +2167,7 @@ namespace
     {
       std::vector<const ParsedFile*> readers;
       std::vector<const Decl*> readingWalks;
-      if (!global.invalidateReaders(names, gone, readers, &readingWalks, constantBodies, &why))
+      if (!global.invalidateReaders(names, gone, readers, &readingWalks, constantBodies, &why, &readingInstances, &typedByWalk))
       {
         logBuildNote("not incremental: " + why);
         return false;
@@ -2211,6 +2213,9 @@ namespace
       before[n] = global.instancesWalksUse(*kept.parsed[walked[n]]);
       global.forgetWalks(*kept.parsed[walked[n]]);
     }
+    // A reading walk's declaration typed by that walk (decltype, auto): its type before, compared
+    // with what the walk gives now (changed, what read it is out of date: from scratch).
+    std::vector<const Ty*> typesBefore = global.forgetTypesFromWalks(typedByWalk);
     global.beginRewalk();
     for (size_t index : walked)
     {
@@ -2222,14 +2227,20 @@ namespace
     }
     // A template's changed body: its instances copied anew and checked again, their statistics
     // replacing theirs (the kept total is made again from every instance walk's own).
-    bool rechecked = templateBodies.empty() || global.recheckInstancesOf(templateBodies, why);
+    bool rechecked = (templateBodies.empty() && readingInstances.empty()) || global.recheckInstancesOf(templateBodies, readingInstances, why);
     // Codegen emits again the functions given and those that inlined one of them, not an instance
-    // whose template's body changed: such an instance's code is old, so codegen runs in full.
-    if (!templateBodies.empty())
+    // whose template's body changed or that read a change: such an instance's code is old, so
+    // codegen runs in full.
+    if (!templateBodies.empty() || !readingInstances.empty())
       codegenCanFollow = false;
+    bool typesSame = true;
+    for (size_t n = 0; n < typedByWalk.size(); ++n)
+      typesSame = typesSame && global.typeOfDecl(const_cast<Decl*>(typedByWalk[n])) == typesBefore[n];
     bool walkedSame = global.endRewalk();
-    bool same = walkedSame && rechecked;
-    if (!templateBodies.empty() && rechecked)
+    bool same = walkedSame && rechecked && typesSame;
+    if (!typesSame)
+      why = "a declaration typed by its walk (decltype, auto) got another type";
+    if ((!templateBodies.empty() || !readingInstances.empty()) && rechecked)
       kept.instanceStats = global.instanceStatsAtResolveEnd();
     if (!walkedSame)
       why = "the new code instantiates what the old did not (or what only codegen had)";
@@ -2276,7 +2287,8 @@ namespace
       fprintf(stderr, "%s\n", clash.c_str());
       codegenExit = 1;
     }
-    logBuildNote("incremental: " + std::to_string(changed.size() + functionEdits.size()) + " file(s) changed (" + std::to_string(functionEdits.size()) + " with whole functions), " + std::to_string(walked.size()) + " file(s) walked again");
+    logBuildNote("incremental: " + std::to_string(changed.size() + functionEdits.size()) + " file(s) changed (" + std::to_string(functionEdits.size()) + " with whole functions), " + std::to_string(walked.size()) + " file(s) walked again" +
+                 (readingInstances.empty() ? std::string() : ", " + std::to_string(readingInstances.size()) + " instance(s) that read a change checked again"));
     // Codegen follows through its kept session when every module's object is where the last build
     // left it (an unchanged module is not assembled again, so it has no text to compile now).
     // The functions whose walks read an edited function's name are emitted again with it: an edit

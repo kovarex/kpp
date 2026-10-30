@@ -7,12 +7,16 @@ struct Holder
   int after = 2;
 };
 
+// A return type the body gives, reading `combine`: the signature edit leaves it int, so the edit
+// stays incremental (its type is compared after its walk).
+auto sumOf() { return combine(2, 3); }
+
 int main()
 {
   Shape s;
   constexpr int n = limit();
   static_assert(limit() < 10, "the checker runs limit's body in main's walk");
-  printf("%d %d %d %d %d %d %d %d %d\n", s.area(), scale(4), scale(4.5), int(combine(1, 2)), int(sizeof(Shape)), twice(5), Box<int>{2}.tripled(), n,
-         int(sizeof(Holder)));
+  printf("%d %d %d %d %d %d %d %d %d %d\n", s.area(), scale(4), scale(4.5), int(combine(1, 2)), int(sizeof(Shape)), twice(5), Box<int>{2}.tripled(), n,
+         int(sizeof(Holder)), viaScale(4.5));
   return 0;
 }

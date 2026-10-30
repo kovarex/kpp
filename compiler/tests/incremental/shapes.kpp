@@ -18,6 +18,10 @@ int measure() { return 1; }
 template<typename T>
 T twice(T v) { T r = v + v; return r; }
 
+// An instance that reads `scale`: the overload added and removed check it again.
+template<typename T>
+int viaScale(T v) { int r = scale(v); return r; }
+
 template<typename T>
 struct Box
 {

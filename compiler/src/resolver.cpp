@@ -19626,6 +19626,23 @@ FunctionDecl* GlobalScope::enumOperator(uint32_t punctuator, const Ty* lhs, cons
 
 const Ty* GlobalScope::typeOfDecl(Decl* d) { return impl->declaredTypeOf(d, nullptr, 0); }
 
+std::vector<const Ty*> GlobalScope::forgetTypesFromWalks(const std::vector<const Decl*>& decls)
+{
+  std::vector<const Ty*> before;
+  for (const Decl* d : decls)
+  {
+    before.push_back(impl->declaredTypeOf(const_cast<Decl*>(d), nullptr, 0));
+    const_cast<Decl*>(d)->cachedType.store(nullptr, std::memory_order_release);
+    if (Dependencies* deps = d->typeDependencies.load(std::memory_order_acquire))
+    {
+      std::lock_guard lock(deps->mutex);
+      deps->list = DependencyList{};
+      deps->tidied = true;
+    }
+  }
+  return before;
+}
+
 thread_local const std::vector<Token>* GlobalScope::Impl::fallbackTokens = nullptr;
 thread_local bool GlobalScope::Impl::exactLayoutOnly = false;
 thread_local bool GlobalScope::Impl::layoutNeeded = false;
@@ -20436,7 +20453,7 @@ ResolveStats GlobalScope::instanceStatsAtResolveEnd()
   return total;
 }
 
-bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, std::string& why)
+bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why)
 {
   std::unordered_set<const FunctionDecl*> changed(sources.begin(), sources.end());
   std::vector<Impl::InstanceRecord*> stale;
@@ -20451,7 +20468,23 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
         stale.push_back(record.get());
       }
   }
+  // The instances whose recorded reads met the change (invalidateReaders), checked again from their
+  // templates' bodies as they are.
+  size_t late = 0, unrecorded = 0, unfinished = 0;
+  for (const void* r : readers)
+  {
+    auto* record = static_cast<Impl::InstanceRecord*>(const_cast<void*>(r));
+    late += record->late;
+    unrecorded += !record->recheck;
+    unfinished += record->state.load() != 2;
+    stale.push_back(record);
+  }
+  if (late || unrecorded || unfinished)
+    return why = "instances read a change and cannot be checked again: " + std::to_string(late) + " only codegen made, " + std::to_string(unrecorded) +
+                 " with no record of how they were checked, " + std::to_string(unfinished) + " unfinished (of " + std::to_string(readers.size()) + ")",
+           false;
   std::sort(stale.begin(), stale.end());
+  stale.erase(std::unique(stale.begin(), stale.end()), stale.end());
   impl->rechecking = true;
   struct Done { bool& flag; ~Done() { flag = false; } } done{impl->rechecking};
   std::unordered_set<const void*> requestedBefore; // the instances the old checks asked for
@@ -20687,7 +20720,8 @@ std::vector<const Decl*> GlobalScope::walksReading(const std::vector<uint32_t>& 
 }
 
 bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
-                                    std::vector<const Decl*>* walks, const std::vector<const FunctionDecl*>& bodies, std::string* why)
+                                    std::vector<const Decl*>* walks, const std::vector<const FunctionDecl*>& bodies, std::string* why,
+                                    std::vector<const void*>* instances, std::vector<const Decl*>* typedByWalk)
 {
   std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());
   std::unordered_set<const void*> types(decls.begin(), decls.end()); // declarations whose declared types are no more what was read
@@ -20761,7 +20795,11 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
     std::lock_guard lock(shard.mutex);
     for (auto& [key, record] : shard.map)
       if (reads(record->deps))
-        return fail("an instance read a changed function's name or ran a changed body");
+      {
+        if (!instances)
+          return fail("an instance read a changed function's name or ran a changed body");
+        instances->push_back(record.get()); // checked again (recheckInstancesOf)
+      }
   }
   for (Impl::InstShard& shard : impl->instShards)
   {
@@ -20803,7 +20841,11 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
       {
         const Decl* d = reinterpret_cast<const Decl*>(key & ~uintptr_t(7));
         if (typeFromWalk(d))
-          return fail("a declaration whose type its walk gives (decltype, auto) read a changed function");
+        {
+          if (!typedByWalk)
+            return fail("a declaration whose type its walk gives (decltype, auto) read a changed function");
+          typedByWalk->push_back(d); // its type compared after the walk (forgetTypesFromWalks, typeOfDecl)
+        }
         found.insert(d->file);
         if (walks)
           walks->push_back(d);

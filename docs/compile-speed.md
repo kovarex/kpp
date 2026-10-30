@@ -598,6 +598,17 @@ the order of work:
    `InstanceRecord::Recheck` (as a changed template's instances are, `recheckInstancesOf`), with the
    same checks after (no new instance, none dropped, the same deduced return type). A class
    instance's check likewise, once it keeps how it was checked. This serves signature edits now.
+   *Landed for function and member instances:* `invalidateReaders` hands them to
+   `recheckInstancesOf`; and a reading walk whose declaration's type the walk gives (decltype, a
+   deduced `auto`) is compared after the walk (`forgetTypesFromWalks`, then `typeOfDecl`) instead of
+   being a build from scratch, which only a changed type now is. The edit test's overload added and
+   removed (an instance, `viaScale<double>`, calls `scale`) are checked again so, and its signature
+   edit stays incremental beside an `auto` function reading `combine`. On the game a signature edit
+   of `BuildEntityAchievement::getPrototype` is still from scratch: 1,826 instances read the symbol
+   `getPrototype`, 506 of them made by codegen (`late`) and 328 of kinds with no `Recheck` yet
+   (generic lambdas' call operators, functions codegen has typed through `typeFunctionFor`,
+   variable templates). Next, either those kinds checked again, or names recorded with the class
+   they were found in (most of the 1,826 read another class's `getPrototype`).
 2. **The resolver's half of a layout edit.** A changed file whose differences are data members of
    non-template classes (added, removed, a type or a default initialiser changed; no virtual, base,
    union or typed-union change): the members grafted and indexed as whole functions are; every
