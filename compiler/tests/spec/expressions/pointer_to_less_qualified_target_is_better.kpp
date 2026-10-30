@@ -1,0 +1,20 @@
+// spec: given a T*, an overload taking T* is better than one taking const T* (the same exact match, one qualification less: C++ [over.ics.rank] 3.2.5); ItemRequestProxy::getProxyForEntity(Entity*) beside getProxyForEntity(const Entity*) given &entity, also for static members and free functions
+struct Entity
+{
+  int id = 7;
+};
+int which(Entity* e) { return 1; }
+int which(const Entity* e) { return 2; }
+struct Proxy
+{
+  static int forEntity(const Entity* e) { return 20; }
+  static int forEntity(Entity* e) { return 10; }
+};
+int main()
+{
+  Entity entity;
+  Entity& ref = entity;
+  const Entity& view = entity;
+  println("{} {} {} {}", which(&ref), which(&view), Proxy::forEntity(&ref), Proxy::forEntity(&view));
+  return 0;
+}

@@ -13833,8 +13833,10 @@ struct GlobalScope::Impl
       for (size_t i = 0; i < a.ranks.size(); ++i)
       {
         // Exact and const-qualified-reference bindings differ only between two references
-        // (`T&` beats `const T&`); against a by-value parameter they are the same match.
-        if (a.ranks[i] + b.ranks[i] == 1 && !(a.refs[i] && b.refs[i]))
+        // (`T&` beats `const T&`); against a by-value parameter they are the same match. Between
+        // two by-value parameters the one is a qualification conversion (`const Entity*` given an
+        // Entity*), which the identity beats (C++ [over.ics.rank] 3.2.5).
+        if (a.ranks[i] + b.ranks[i] == 1 && a.refs[i] != b.refs[i])
           continue;
         // A brace list made an InitializerList beats one made anything else, whatever the other
         // rules say (C++ [over.ics.rank] 3.1): `FlatSet<ChunkPosition>({{-1, -1}, {0, -1}})` takes
