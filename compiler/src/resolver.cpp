@@ -15524,6 +15524,20 @@ struct GlobalScope::Impl
 
     // --- calls ---
 
+    // Whether target is cls or one of its bases, directly or not.
+    bool reachesClassScope(Scope* cls, Scope* target, int depth)
+    {
+      if (cls == target)
+        return true;
+      if (depth > 16 || cls->kind != ScopeKind::Class || cls->baseTypes.empty())
+        return false;
+      impl.ensureBases(cls, depth);
+      for (Scope* b : cls->baseScopes)
+        if (reachesClassScope(b, target, depth + 1))
+          return true;
+      return false;
+    }
+
     // Picks a function among overloads by argument count and conversion ranking.
     // An ambiguous call (tied: one of each function no other beats), a checker error when the
     // types are concrete (a template's own walk decides nothing; its instances do), C++'s
@@ -16543,7 +16557,14 @@ struct GlobalScope::Impl
           const Subst* classSubst = qualifier.empty() ? nullptr : &qualifier;
           std::vector<FunctionDecl*> tied;
           std::vector<const Ty*> argTypes = argTypesOf(c->args);
-          FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, nullptr, ambiguous, &n->name.last(), c->args, &tied);
+          // A member called on the implicit object (`getSurface()`, `super::getStack(location)` in a
+          // member of the class or of one derived from it): *this, whose const-ness chooses between
+          // a const and a non-const overload as an explicit object's does.
+          const Ty* implicitObject = nullptr;
+          if (thisType && thisType->kind == TyKind::Pointer && thisType->inner && l.foundIn && l.foundIn->kind == ScopeKind::Class)
+            if (Scope* self = impl.classScopeOf(types.unqualified(thisType->inner)); self && reachesClassScope(self, l.foundIn, 0))
+              implicitObject = thisType->inner;
+          FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, implicitObject, ambiguous, &n->name.last(), c->args, &tied);
           if (!f)
           {
             // No callee the code generator could trust: not the first of several overloads, nor a

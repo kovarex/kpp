@@ -1,0 +1,17 @@
+// spec: a member called on the implicit object, unqualified or through a base's name (`get()`, `Base::get()`, `super::getStack(location)`), takes the overload *this's const-ness chooses, as one called through `this->` does: a const member gets the const overload, a non-const one the non-const overload
+struct Base
+{
+  int get() { return 1; }
+  int get() const { return 2; }
+};
+struct Derived : Base
+{
+  int fromMutable() { return 10 * Base::get() + get(); }
+  int fromConst() const { return 10 * Base::get() + get(); }
+};
+int main()
+{
+  Derived d;
+  println("{} {}", d.fromMutable(), d.fromConst());
+  return 0;
+}
