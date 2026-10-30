@@ -1152,6 +1152,10 @@ qualified Kpp names with parameter types, quoted, so there is no mangling scheme
   shadowing library ones; or simply distinct names. Not decided; the test was renamed.
   The proposal in "Code packages" above answers it with distinct names checked by the compiler.
 
+- **An own IDE** (proposed 2026-10-30, [ide.md](ide.md)): a query layer in the compile server and an
+  LSP adapter first, then an editor written in Kpp with a DbgEng debugger and hot reload. Its eight
+  decisions are listed at the end of ide.md.
+
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
    lexer + parser + order-independent name resolution, benchmarked on Factorio. Whole front end
