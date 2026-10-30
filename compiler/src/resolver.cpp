@@ -448,6 +448,7 @@ namespace
     const std::vector<Entry>* overloads = nullptr; // All entries with that name in the scope where it was found.
     Scope* foundIn = nullptr;                      // Scope the name was found in.
     Decl* ambiguousWith = nullptr; // another entity the name equally names (through a using-directive): an error
+    Scope* ambiguousIn = nullptr;  // set with ambiguousWith when two bases of a class have the name: the other base's scope
   };
 
   // Template parameter -> type, for members seen through an instantiation like Vector<int>.
@@ -2119,6 +2120,15 @@ struct GlobalScope::Impl
     // here, and goes on without them.
   }
 
+  // Whether a member is one of each object (a non-static data member or member function): reached
+  // through two base subobjects, it is two members.
+  static bool isInstanceMember(const Decl* d)
+  {
+    if (!d || (d->flags & DF_Static))
+      return false;
+    return d->kind == NodeKind::FunctionDecl || (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef));
+  }
+
   // Looks a symbol up in one scope: its own entries, template parameters, using-enums, bases.
   bool lookupInScope(Scope* s, uint32_t symbol, Lookup& out, int depth, bool withUsing = true)
   {
@@ -2165,10 +2175,35 @@ struct GlobalScope::Impl
       }
       if (!s->baseTypes.empty())
       {
+        // Every base is searched ([class.member.lookup]): one member reached through two bases is
+        // one name for a static member, a type or an enumerator; anything else two bases have is
+        // ambiguous (ambiguousIn, reported where the name is used), never the first base's. (No
+        // base is virtual, so two bases are two subobjects and neither's members dominate the
+        // other's; hiding happens inside each base's own lookup.)
         ensureBases(s, depth);
+        bool any = false;
         for (Scope* b : s->baseScopes)
-          if (lookupInScope(b, symbol, out, depth + 1))
-            return true;
+        {
+          Lookup r;
+          if (!lookupInScope(b, symbol, r, depth + 1))
+            continue;
+          if (!any)
+          {
+            out = r;
+            any = true;
+            continue;
+          }
+          // (operator=: every class declares a copy assignment of its own, implicitly if not
+          // written, which hides the bases' ([class.copy.assign] 1): never ambiguous)
+          if (out.ambiguousWith || r.found == Found::Dependent || out.found == Found::Dependent || symbol == opSymbols[size_t(P::Assign)])
+            continue;
+          if (r.foundIn == out.foundIn && r.decl == out.decl && !isInstanceMember(r.decl))
+            continue;
+          out.ambiguousWith = r.decl;
+          out.ambiguousIn = r.foundIn;
+        }
+        if (any)
+          return true;
       }
     }
     else if (s->kind == ScopeKind::Namespace)
@@ -14847,11 +14882,31 @@ struct GlobalScope::Impl
     // as in C++, where the first was taken silently.
     void reportAmbiguity(const Lookup& l, const QualifiedName& name, uint32_t token)
     {
+      if (l.ambiguousIn && !name.empty())
+      {
+        reportBaseAmbiguity(l, name.last().symbol, token);
+        return;
+      }
       if (!l.ambiguousWith || !l.decl || !file || name.parts.size() != 1)
         return;
       std::string spelled(impl.symbols.name(name.parts[0].symbol));
       impl.reportCheckerError(file, token, "'" + spelled + "' is ambiguous: the one declared at " + impl.locationOf(l.decl->file, l.decl->token) + " and the one at " +
                                                impl.locationOf(l.ambiguousWith->file, l.ambiguousWith->token) + " (a using-directive puts both at one level)");
+    }
+
+    // A member two bases of a class have ([class.member.lookup] 6): an error where it is used.
+    void reportBaseAmbiguity(const Lookup& l, uint32_t symbol, uint32_t token)
+    {
+      if (!l.ambiguousIn || !l.foundIn || !file || probing || inGenericTemplate() || symbol == UINT32_MAX)
+        return;
+      auto className = [&](Scope* s)
+      {
+        if (s && s->owner && s->owner->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(s->owner)->name.empty())
+          return std::string(impl.symbols.name(static_cast<ClassDecl*>(s->owner)->name.last().symbol));
+        return std::string("?");
+      };
+      impl.reportCheckerError(file, token, "the member " + std::string(impl.symbols.name(symbol)) + " is ambiguous: both bases " + className(l.foundIn) +
+                                               " and " + className(l.ambiguousIn) + " have one");
     }
 
     void resolveTypeName(NamedType* t)
@@ -15434,6 +15489,7 @@ struct GlobalScope::Impl
       else
       {
         found = impl.lookupInScope(cls, symbol, l, 0);
+        reportBaseAmbiguity(l, symbol, token);
         // A class template's bases are linked to its scope once, without its arguments, so a base
         // the arguments choose (`struct X : BoolConstant<B>`, `Conditional<c, Value<T>, T>`) is
         // missing there or is some other class: an instantiation's members come from its own bases.

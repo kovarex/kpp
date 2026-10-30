@@ -1,5 +1,4 @@
 // spec: a member two bases of a class declare is ambiguous, an error, as C++'s member lookup says ([class.member.lookup] 6): `p.toText()` with P deriving from Bindable and Other, both declaring toText; also through a class template's base that is no template parameter
-// pending: SILENT, the first base's member is taken (`7`); owner: the resolver thread (lookup through bases)
 // error: toText is ambiguous
 class Bindable { public: int toText() { return 7; } };
 class Other { public: int toText() { return 9; } };

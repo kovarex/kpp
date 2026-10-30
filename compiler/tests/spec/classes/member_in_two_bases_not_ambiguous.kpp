@@ -1,0 +1,18 @@
+// spec: what two bases share is no ambiguity ([class.member.lookup]): a static member, a type and an enumerator of a common base reached through both bases are one name each; a member the class declares itself hides both bases' members; a member only one base has is found
+struct Root
+{
+  static int count() { return 3; }
+  using Id = int;
+  enum Kind { First = 5 };
+  int value = 1;
+};
+struct Left : Root { int left = 10; int both() { return 1; } };
+struct Right : Root { int right = 20; int both() { return 2; } };
+struct Joined : Left, Right { int both() { return 4; } };
+int main()
+{
+  Joined j;
+  Joined::Id id = Joined::count();
+  println("{} {} {} {} {}", id, int(Joined::First), j.both(), j.left, j.right);
+  return 0;
+}
