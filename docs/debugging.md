@@ -32,6 +32,26 @@ with `/DEBUG` already, for the crash report's function names).
 the lines of each of its functions in the PDB (llvm-pdbutil) against `lines.expected`;
 determinism.ps1 checks that the IR with `--debug-info` does not depend on the thread count.
 
+## What it costs
+
+The converted game (the d0495 snapshot's conversion), full builds as run.cmd builds it (64 modules,
+`--stub-missing --incremental-link`, a fresh output directory each), with and without
+`--debug-info`, interleaved, 2026-10-30 (scratch measure\build.cmd; other threads were using the
+machine, so the seconds are noisy):
+
+| | IR | codegen | clang | link | PDB |
+|---|---:|---|---|---|---:|
+| without | 739 MB | 7.9 8.5 10.0 s | 5.7 6.2 7.3 s | 2.4 2.5 2.4 s | 143 MB |
+| `--debug-info` | 1,084 MB | 9.1 10.9 9.8 s | 8.7 11.2 9.3 s | 2.2 4.1 2.2 s | 268 MB |
+
+The executable is the same size (147.6 MB), and with line tables its 45 menu maps end 600 ticks with
+the C++ build's checksums, as without.
+
+The first such build found invalid exception-handling IR that every build had: a handler's
+cleanups unwound to the caller instead of to where the handler's catchswitch unwinds. LLVM's
+verifier rejects that only when the module has debug info (51 of the 64 modules); spec
+language/throw_from_handler_cleans_up_enclosing_scope builds with `--debug-info` to keep it so.
+
 ## The crash report
 
 The game's crash report (programs\factorio\native\crash_report.c, linked by run.cmd) names each frame
