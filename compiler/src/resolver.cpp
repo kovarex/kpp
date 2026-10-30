@@ -15111,6 +15111,8 @@ struct GlobalScope::Impl
         return types.boolType();
       }
       Lookup l = impl.lookupQualified(e->name, scope, &locals, 0, activeSubst);
+      if (l.found == Found::No && e->name.parts.size() > 1)
+        l = memberOfQualifierInstance(e);
       reportAmbiguity(l, e->name, e->token);
       e->resolved = l.decl;
       for (const NamePart& part : e->name.parts)
@@ -15158,6 +15160,33 @@ struct GlobalScope::Impl
             return impl.declaredTypeOf(l.decl, &s, 0);
       }
       return typeOfResolvedName(l, e->name.last(), e);
+    }
+
+    // `Accumulator::kind` (`&T::kind` in an instance) with kind a member of a base that an
+    // instantiation's arguments choose (`class BehaviorTemplate : public Parent`, Parent =
+    // Behavior): the class template's scope links no such base, so the name is looked up as a
+    // member of the qualifier's type, through its instantiated bases.
+    Lookup memberOfQualifierInstance(NameExpr* e)
+    {
+      QualifiedName qualifier = e->name;
+      qualifier.parts.count -= 1;
+      NamedType written{};
+      written.kind = NodeKind::NamedType;
+      written.token = e->token;
+      written.name = qualifier;
+      const Ty* q = typeOf(&written);
+      q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+      if (!q || q->kind != TyKind::Class || types.isDependent(q))
+        return {};
+      MemberResult r = memberOf(q, e->name.last().symbol, nullptr, e->token, false);
+      if (!r.decl || !r.decl->parent || r.decl->parent->kind != NodeKind::ClassDecl || !r.decl->parent->ownScope)
+        return {};
+      Lookup l;
+      l.found = Found::Member;
+      l.decl = r.decl;
+      l.overloads = r.overloads;
+      l.foundIn = r.decl->parent->ownScope;
+      return l;
     }
 
     // --- member access through the object's type ---
