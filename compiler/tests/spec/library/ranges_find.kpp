@@ -1,0 +1,20 @@
+// spec: find(range, value) and findIf(range, predicate), std::ranges::find and std::ranges::find_if over a whole range: a container (its own iterator back, end() when nothing matches) or a C array (a pointer into it)
+// factorio: 14 uses: DebugAdapter's std::ranges::find_if over its maps and vectors, std::ranges::find over LuaDebugAdapter::threads and BlueprintChartRenderer's invalidColors array (4c178a5b915)
+// pending: no range forms of find and findIf
+int main()
+{
+  Vector<int> list;
+  for (int x : {4, 8, 15, 16})
+    list.push_back(x);
+  Vector<int>::iterator eight = ::find(list, 8);
+  Vector<int>::iterator none = ::find(list, 5);
+  Map<int, String> names;
+  names[1] = "one";
+  names[2] = "two";
+  auto two = ::findIf(names, [&](const Pair<const int, String>& item) { return item.second == "two"; });
+  auto missing = ::findIf(names, [&](const auto& item) { return item.first > 2; });
+  int colors[3] = {7, 9, 11};
+  int* nine = ::find(colors, 9);
+  println("{} {} {} {} {} {}", (int)(eight - list.begin()), none == list.end(), two->first, missing == names.end(), (int)(nine - colors), ::find(colors, 1) == end(colors));
+  return 0;
+}
