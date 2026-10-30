@@ -14,7 +14,57 @@ for 10 minutes on half-written input), then
 powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tree <the copy>
 ```
 
-## End to end on the full game (2026-10-29, night)
+## A clean build, phase by phase, and what scales (2026-10-30, night)
+
+A clean build of the game as run.cmd builds it, in a new process and a new output directory (no
+object cache, a full link), on a frozen copy of the converted tree (C:\factorio-in-kpp d9080751),
+master 089dcce5, the same work at every thread count (`--modules 64`):
+scratch\resolver\clean.ps1 -Threads N. The -j 1 time is each phase's work.
+
+| phase | -j 1 | -j 2 | -j 4 | -j 8 | -j 16 | -j 32 | speedup at 32 | efficiency |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| read, lex, imports (cached), parse, index | 1.77 s | 0.97 | 0.78 | 0.59 | 0.55 | 0.53 | 3.3x | 10% |
+| resolve | 7.61 s | 4.04 | 2.18 | 1.33 | 1.27 | 1.31 | 5.8x | 18% |
+| codegen | 23.36 s | 12.83 | 8.35 | 6.47 | 6.34 | 6.70 | 3.5x | 11% |
+| clang -O0, 64 modules | 39.35 s | 19.84 | 10.47 | 5.86 | 4.89 | 4.60 | 8.6x | 27% |
+| link (full) | 1.66 s | 1.64 | 1.65 | 1.64 | 1.59 | 1.66 | 1x | serial |
+| wall | 74.3 s | 40.0 | 23.8 | 16.3 | 15.1 | 15.2 | 4.9x | |
+
+(The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
+to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
+threads; clang is the one phase still gaining. Why, phase by phase:
+
+- **Resolve: one file is the critical path.** Every file but one is done 0.40 s into the resolve;
+  `ValueToWidget.kpp` (728 KB) is walked from 0.05 to 1.32 s, the whole phase (a per-file timeline,
+  temporary). Its time is not its instances (none is checked inline) but 18 template functions'
+  own generic walks, 50 to 100 ms each, and in them 52 overload resolutions of
+  `ValueToWidget::make(*value)` against an overload set of 455 `make`s, 5 to 95 ms each, 1.21 s in
+  all (timed around `pickOverload`, temporary): the argument's type is no template parameter the
+  walk knows to be dependent, so every candidate, templates deduced, is ranked. Walking a file's
+  templates as tasks of their own took the phase to 0.84 s, but it is not sound: a later
+  namespace-scope static_assert evaluates a class template member whose generic walk has to have
+  run (two spec snippets failed), and the statistics depended on the order (the edit test's
+  "deduction" count, 17 against 18). Not landed.
+- **Codegen** does 23.4 s of work and is no faster than 6.3 s from 8 threads on: serial or
+  serialised parts (to be profiled by the codegen thread).
+- **Clang** is bounded by its largest module: module 28, 37 MB of the 739 (the median is 10.8 MB),
+  takes 2.92 s alone and about 4.5 s among 32 others (a median module 0.51 s). Starting the largest
+  modules first (measured, 4 rounds interleaved: 4.54 to 4.66 s against 4.61 to 4.71 s) changes
+  nothing: it starts in the first wave already.
+- **The link**, full, 1.66 s; the edit loop's incremental relink is 0.5 s.
+
+**The levers, by size** (the endgame is 4 to 7.5 s for a debug clean build):
+
+| lever | today at -j 32 | estimate | owner |
+|---|---:|---:|---|
+| codegen scaling past 8 threads (23 s of work) | 6.7 s | 1.5 to 2.5 s | codegen thread |
+| clang: modules of balanced size (split module 28's content; more, smaller modules) | 4.6 s | 1.5 to 2 s | codegen thread |
+| resolve: the dependent overload resolutions in ValueToWidget's generic walks | 1.31 s | 0.4 s (next: LuaHelper.kpp, 0.29 s) | templates thread |
+| the link: lld for a clean build (1.0 s, no PDB) or the incremental first link | 1.66 s | 1.0 s | codegen thread |
+| the front end before resolve (index's out-of-line attach, 0.16 s serial) | 0.53 s | 0.4 s | resolver thread |
+
+Together about 4.5 to 6 s, in the endgame's range. The resolver thread's own share is small (the
+front end before resolve); its resolve lever is the templates thread's overload code.
 
 The whole game is built the way `programs\factorio\run.cmd` builds it, from a frozen copy of the
 converted tree: imports, front end, codegen into 64 modules, clang -O0 per module, and the link
