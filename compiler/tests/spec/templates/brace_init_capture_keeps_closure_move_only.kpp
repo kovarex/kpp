@@ -1,0 +1,27 @@
+// spec: an init-capture written with braces (`[properties { move(properties) }]`) has the type of its initializer, as `[properties = move(properties)]` does, so a closure holding a UniquePtr that way is not copy constructible: isCopyConstructible is false for both forms, and Function holds such a closure without a copy
+// factorio: ForkTask's `std::async(std::launch::async, [this, properties { std::move(properties) }]() mutable {...})` with a unique_ptr<ForkTaskInstance>: async's deferred Function took the closure as copyable and instantiated its copy, which codegen cannot build (the tests build's last error line, Function.kpp:115 "copying UniquePtr", and its last stub)
+// pending: SILENT, the brace form's closure is copy constructible (`true false 4`); owner: the resolver thread (traitValue over a closure's captures; the brace init-capture's type may be what differs)
+struct Instance
+{
+  int value = 4;
+};
+struct Task
+{
+  int done = 0;
+  void finish(UniquePtr<Instance> properties) { this->done = properties->value; }
+  void start()
+  {
+    auto properties = makeUnique<Instance>();
+    auto f = [this, properties { move(properties) }]() mutable { this->finish(move(properties)); };
+    auto g = [this, properties = makeUnique<Instance>()]() mutable { this->finish(move(properties)); };
+    print("{} {} ", isCopyConstructible<decltype(f)>, isCopyConstructible<decltype(g)>);
+    f();
+    println("{}", this->done);
+  }
+};
+int main()
+{
+  Task t;
+  t.start();
+  return 0;
+}
