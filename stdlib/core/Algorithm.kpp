@@ -305,6 +305,28 @@ It removeIf(It first, It last, F predicate)
     }
   return out;
 }
+// Erases the elements of container that predicate holds for and returns how many (std::erase_if):
+// a map's or set's (it has a key_type; the predicate takes the entry) and a List's one by one, the
+// iterators of the others staying valid; a sequence's (Vector, Deque, String) by removeIf and one
+// erase, the others keeping their order.
+template<typename Container, typename F>
+size_t eraseIf(Container& container, F predicate)
+{
+  size_t before = container.size();
+  if constexpr (requires { typename Container::key_type; })
+  {
+    for (auto it = container.begin(); it != container.end();)
+      if (predicate(*it))
+        it = container.erase(it);
+      else
+        ++it;
+  }
+  else if constexpr (requires { container.removeIf(predicate); })
+    container.removeIf(predicate);
+  else
+    container.erase(removeIf(container.begin(), container.end(), predicate), container.end());
+  return before - container.size();
+}
 
 // Keeps the first of every run of equal neighbours (equal by == or by same(a, b)), moved to the
 // front; returns the end of the kept ones.

@@ -1,0 +1,16 @@
+// spec: eraseIf(container, predicate) erases the elements the predicate holds for and returns how many, as std::erase_if does: a Vector's (the others keep their order), a List's, a Map's and a HashMap's (the predicate takes the entry)
+// factorio: the debug adapter since Factorio df1c9d1cd3c: `std::erase_if(instance->threads, ...)`, `std::erase_if(map, [&](EnvMap::const_reference p) { ... })`, VarRef's `std::erase_if(VarRef::getRefMap(), ...)`
+int main()
+{
+  Vector<int> numbers = {1, 2, 3, 4, 5, 6};
+  size_t odd = eraseIf(numbers, [](int n) { return n % 2 == 1; });
+  List<int> list = {1, 2, 3, 4};
+  size_t big = eraseIf(list, [](int n) { return n > 2; });
+  Map<int, String> names = {{1, "a"}, {2, "b"}, {3, "c"}};
+  size_t two = eraseIf(names, [](const Pair<const int, String>& entry) { return entry.first != 2; });
+  HashMap<int, int> squares = {{1, 1}, {2, 4}, {3, 9}};
+  size_t small = eraseIf(squares, [](const auto& entry) { return entry.second < 5; });
+  println("{} {} {} {} | {} {} | {} {} | {} {}", odd, numbers[0], numbers[1], numbers[2], big, list.size(), two, names.begin()->second, small,
+          squares.begin()->first);
+  return 0;
+}

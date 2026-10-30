@@ -860,6 +860,40 @@ namespace filesystem
     return size;
   }
 
+  // The identity of what p names, links followed: its volume's serial number and its index there.
+  bool identityOf(const path& p, Win32HandleInformation& out, ErrorCode& ec)
+  {
+    void* file = win32::CreateFileW(p.c_str(), 0x80, 7, nullptr, 3, 0x02000000, nullptr); // FILE_READ_ATTRIBUTES, share all, OPEN_EXISTING, BACKUP_SEMANTICS
+    if (file == invalidHandle)
+    {
+      ec = lastError();
+      return false;
+    }
+    bool ok = win32::GetFileInformationByHandle(file, (_BY_HANDLE_FILE_INFORMATION*)(void*)&out) != 0;
+    if (!ok)
+      ec = lastError();
+    win32::CloseHandle(file);
+    return ok;
+  }
+  // Whether a and b name the same file or directory, links followed; an error (and false) when
+  // either does not resolve.
+  bool equivalent(const path& a, const path& b, ErrorCode& ec)
+  {
+    Win32HandleInformation first, second;
+    if (!identityOf(a, first, ec) || !identityOf(b, second, ec))
+      return false;
+    ec.clear();
+    return first.volumeSerial == second.volumeSerial && first.indexHigh == second.indexHigh && first.indexLow == second.indexLow;
+  }
+  bool equivalent(const path& a, const path& b)
+  {
+    ErrorCode ec;
+    bool same = equivalent(a, b, ec);
+    if (ec)
+      throw filesystem_error(String("equivalent"), a, b, ec);
+    return same;
+  }
+
   // --- directories ---
 
   // A directory's entry: its path, and the status the listing gave (std::filesystem::directory_entry).

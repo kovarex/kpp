@@ -88,7 +88,9 @@ path). `symlink_status(p)`: the same without following: a reparse point is symli
 `is_character_file(s)`, `is_fifo(s)`, `is_socket(s)`; and each of these also for a path.
 `file_size(p)`: the size of the regular file p (links followed); an error for a directory
 (errc::is_a_directory) or a missing file. `is_empty(p)`: a file of size 0, or a directory
-without entries. `space(p)`: `space_info` {capacity, free, available} of the volume of p.
+without entries. `equivalent(a, b)`: whether a and b name the same file or directory (links
+followed: the same volume and file index); an error when either does not resolve (2026-10-30).
+`space(p)`: `space_info` {capacity, free, available} of the volume of p.
 
 ## Directories
 
@@ -150,7 +152,7 @@ the reason, as std's does); exists clears ec when the status is known.
 `: `, the error code's message, then the paths in brackets: `remove: Access is denied.
 [C:\x.txt]`. *Difference from C++*: the format of what() is Kpp's own.
 
-The following are not provided: `last_write_time` and `file_time_type`, `equivalent`,
+The following are not provided: `last_write_time` and `file_time_type`,
 `hard_link_count`, `resize_file`, links (`read_symlink`, `create_symlink`, ...),
 `recursive_directory_iterator`, `relative` and `proximate` against the file system (the lexical
 ones are), `hash_value`, and paths' stream operators.

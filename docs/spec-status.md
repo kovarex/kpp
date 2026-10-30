@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**751 pass, 10 pending, 0 failing, 0 fixed** (761 snippets, 19.6 s).
+**753 pass, 10 pending, 0 failing, 0 fixed** (763 snippets, 27.5 s).
 
 ## Language: statements, expressions, declarations
 
@@ -653,8 +653,10 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `library/deque_emplace_at.kpp` | Deque's emplace(position, args...) makes an element from args before position, as insert does, and returns its position (std::deque::emplace) | pass | the tests' TestCompactDeque compares the game's CompactDeque with a std::deque: `deq2.emplace(deq2.begin(), "begin")`, `deq2.emplace(deq2.begin() + index, toStr(n))` |  |
 | `library/emplace_scalar_rvalue.kpp` | emplace_back of a scalar rvalue (v.emplace_back(7)) through a forwarding pack | pass | emplace_back with literal arguments is everywhere |  |
 | `library/enable_shared_from_this.kpp` | EnableSharedFromThis (std::enable_shared_from_this), and SharedPtr from a derived class and from a UniquePtr | pass | HttpSharedState hands shared_from_this() to the curl thread |  |
+| `library/erase_if_containers.kpp` | eraseIf(container, predicate) erases the elements the predicate holds for and returns how many, as std::erase_if does: a Vector's (the others keep their order), a List's, a Map's and a HashMap's (the predicate takes the entry) | pass | the debug adapter since Factorio df1c9d1cd3c: `std::erase_if(instance->threads, ...)`, `std::erase_if(map, [&](EnvMap::const_reference p) { ... })`, VarRef's `std::erase_if(VarRef::getRefMap(), ...)` |  |
 | `library/exception_ptr_promise.kpp` | ExceptionPtr (std::make_exception_ptr) set on a Promise and thrown again by Future::get | pass | SteamContext hands "Couldn't get Steam auth ticket" errors to the waiting thread this way |  |
 | `library/exceptions_std.kpp` | the standard exception classes (Exception, RuntimeError, LogicError, OutOfRange, InvalidArgument) | pass | 410 std::exception / runtime_error uses in 216 files |  |
+| `library/filesystem_equivalent.kpp` | filesystem::equivalent(a, b): whether two paths name the same file or directory, links followed, whatever their spelling; with an ErrorCode, false and the error when either does not resolve, else it throws filesystem_error | pass | the debug adapter's BreakpointSource::isSameSource since Factorio df1c9d1cd3c, `Filesystem::equivalent(other.path, this->path, ec)` |  |
 | `library/filesystem_path.kpp` | filesystem::path (std::filesystem::path): its parts (root name and directory, filename, stem, extension, parent), its elements, `/` and its rules, lexically_normal and lexically_relative, and element-wise comparison; ErrorCode against Errc | pass | Filesystem::Path over std::filesystem::path (1,221 uses), Package::normalizedPath's loop over the elements, FileUtil's isSubdir |  |
 | `library/format_print.kpp` | format, print, println, toString for the common types | pass |  |  |
 | `library/free_begin_end.kpp` | the free begin, end, cbegin, cend, rbegin, size, ssize, empty and data of a container (std::begin and friends), also inside a template | pass | std::begin/std::end in CommonUtil's appendVector helpers and cxxopts' format_description, std::rbegin in the reverse wrappers, std::size in LuaHelper |  |

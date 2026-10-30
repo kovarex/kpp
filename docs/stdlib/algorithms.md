@@ -86,6 +86,10 @@ iterator included; the functions return the position after the last element writ
   the front, in order, and return the end of them; the elements after it are valid but unspecified
   (moved from). Erasing them is the container's job: `v.erase(removeIf(v.begin(), v.end(), p),
   v.end())`.
+- `eraseIf(container, predicate)`: erases the elements the predicate holds for and returns how
+  many (std::erase_if). A map's or set's (the predicate takes the entry) and a List's one by one,
+  the other elements' iterators staying valid; a Vector's, Deque's or String's by removeIf and one
+  erase, the others keeping their order. O(n) predicate calls (2026-10-30).
 - `unique(first, last [, same])`: keeps the first of every run of equal neighbours, moved to the
   front; returns the end of the kept ones.
 - `reverse(first, last)` (bidirectional).
