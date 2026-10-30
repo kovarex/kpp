@@ -311,19 +311,20 @@ struct String
   }
   int find_last_of(const String& set) const { return this->find_last_of(set.c_str()); }
   int find_last_of(char c) const { return this->rfind(c); }
-  // Negative, zero or positive as this string orders before, equal to or after other (byte-wise,
-  // as operator<).
-  uint64_t copy(char* dest, uint64_t count, uint64_t pos) const
+  // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
+  uint64_t copy(char* dest, uint64_t count, uint64_t pos = 0) const
   {
     int length = this->size();
     if (pos > (uint64_t)length)
-      pos = (uint64_t)length;
+      throwOutOfRange("String::copy: position out of range");
     uint64_t available = (uint64_t)length - pos;
     if (count > available)
       count = available;
     memcpy(dest, this->data() + pos, count);
     return count;
   }
+  // Negative, zero or positive as this string orders before, equal to or after other (byte-wise,
+  // as operator<).
   int compare(const String& other) const
   {
     int length = this->size(), otherLength = other.size();

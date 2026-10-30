@@ -35,3 +35,9 @@ All functions except the last three are `constexpr`.
 *Differences from C++*: `infinity()`, `quiet_NaN()` and `signaling_NaN()` cannot be used in
 constant expressions; `has_denorm`, `has_denorm_loss`, `round_style`, `traps` and
 `tinyness_before` are not provided.
+
+## Endian
+
+`Endian` (std::endian) is an enumeration of the byte orders of scalar types: `Endian::little`,
+`Endian::big` and `Endian::native`, the order of the target. Every target Kpp builds for is
+little-endian, so `native` equals `little`; it is a constant, usable in `static_assert`.

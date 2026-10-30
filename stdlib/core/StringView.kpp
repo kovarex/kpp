@@ -49,6 +49,17 @@ struct StringView
     return StringView(this->chars + start, count);
   }
   StringView substr(int start) const { return this->substr(start, npos); }
+  // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
+  uint64_t copy(char* dest, uint64_t count, uint64_t pos = 0) const
+  {
+    if (pos > (uint64_t)this->byteCount)
+      throwOutOfRange("StringView::copy: position out of range");
+    uint64_t available = (uint64_t)this->byteCount - pos;
+    if (count > available)
+      count = available;
+    memcpy(dest, this->chars + pos, count);
+    return count;
+  }
 
   int find(char c) const
   {

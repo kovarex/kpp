@@ -24,7 +24,7 @@ Files:
 - [Thread](thread.md): threads, Thread::Id, thisThread, mutexes, locks and condition variables
   (std::thread, std::mutex, std::unique_lock, std::condition_variable).
 - [Atomic](atomic.md): values that threads share without locks; Atomic<SharedPtr<T>>.
-- [Limits](limits.md): the properties of the arithmetic types (std::numeric_limits).
+- [Limits](limits.md): the properties of the arithmetic types (std::numeric_limits), and Endian (std::endian).
 - [Time](time.md): Duration, TimePoint, SteadyClock, SystemClock (std::chrono).
 - [Views](views.md): Subrange, iotaView, transformView, reverseView (std::views, std::ranges::subrange).
 - [Span](span.md): a view of contiguous elements, of a fixed extent or any length (std::span).

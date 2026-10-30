@@ -997,7 +997,7 @@ namespace
     {"deque", "Deque"}, {"list", "List"}, {"array", "Array"}, {"span", "Span"}, {"dynamic_extent", "dynamicExtent"}, {"unique_ptr", "UniquePtr"}, {"default_delete", "DefaultDelete"}, {"queue", "Queue"},
     {"replace", "replace"}, {"advance", "advance"}, {"make_optional", "makeOptional"}, {"clock", "::clock"}, {"abort", "::abort"},
     {"shared_ptr", "SharedPtr"}, {"weak_ptr", "WeakPtr"}, {"function", "Function"}, {"tuple", "Tuple"}, {"variant", "Variant"},
-    {"initializer_list", "InitializerList"}, {"numeric_limits", "Limits"}, {"runtime_error", "RuntimeError"},
+    {"initializer_list", "InitializerList"}, {"numeric_limits", "Limits"}, {"endian", "Endian"}, {"runtime_error", "RuntimeError"},
     {"strong_ordering", "strong_ordering"}, {"weak_ordering", "weak_ordering"}, {"partial_ordering", "partial_ordering"},
     {"logic_error", "LogicError"}, {"exception", "Exception"}, {"out_of_range", "OutOfRange"}, {"invalid_argument", "InvalidArgument"},
     {"move", "::move"}, {"forward", "::forward"}, {"swap", "::swap"}, {"min", "::min"}, {"max", "::max"}, {"clamp", "::clamp"},
@@ -2931,6 +2931,14 @@ namespace
       return best ? &best->name : nullptr;
     }
 
+    // Whether token is a keyword that a parenthesis after it belongs to, which makes `(NAME)` no
+    // cast: a functional cast to a builtin type (`float(M_PI) * x`), sizeof, alignof, decltype, noexcept.
+    bool callsWithParenthesis(uint32_t token) const
+    {
+      static const std::set<std::string_view> keywords = {"bool", "char", "char8_t", "char16_t", "char32_t", "wchar_t", "short", "int", "long", "signed",
+                                                          "unsigned", "float", "double", "sizeof", "alignof", "decltype", "noexcept"};
+      return toks[token].getKind() == TokenKind::Keyword && keywords.count(this->spelling(token));
+    }
     std::string_view spelling(uint32_t token) const
     {
       const Token& t = toks[token];
@@ -4012,7 +4020,7 @@ namespace
         if (t.is(P::LParen) && i + 4 < toks.size() && toks[i + 1].getKind() == TokenKind::Identifier && isAllCapsName(spelling(i + 1)) &&
             toks[i + 2].is(P::RParen) && (toks[i + 3].is(P::Amp) || toks[i + 3].is(P::Star)) && toks[i + 4].getKind() == TokenKind::Identifier &&
             !(i > 0 && (toks[i - 1].getKind() == TokenKind::Identifier || toks[i - 1].is(P::RParen) || toks[i - 1].is(P::RBracket) ||
-                        toks[i - 1].is(P::Greater))))
+                        toks[i - 1].is(P::Greater) || callsWithParenthesis(i - 1))))
         {
           // `(LPWSTR)&msg`, a C type's cast of an address or a dereference: Kpp reads `(NAME) & x`
           // without knowing that NAME is a type, as a binary `&`, so the operand is parenthesized,
@@ -4049,7 +4057,7 @@ namespace
         if (t.is(P::LParen) && i + 4 < toks.size() && toks[i + 1].getKind() == TokenKind::Identifier && isAllCapsName(spelling(i + 1)) &&
             toks[i + 2].is(P::RParen) && toks[i + 3].is(P::Minus) && toks[i + 4].getKind() == TokenKind::Number &&
             !(i > 0 && (toks[i - 1].getKind() == TokenKind::Identifier || toks[i - 1].is(P::RParen) || toks[i - 1].is(P::RBracket) ||
-                        toks[i - 1].is(P::Greater))))
+                        toks[i - 1].is(P::Greater) || callsWithParenthesis(i - 1))))
         {
           // `(HANDLE) -1`, a C type's cast of a negative number (StackWalker's invalid snapshot
           // handle), which Kpp reads as a subtraction from NAME, as above: `(HANDLE)(-1)`.

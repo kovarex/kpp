@@ -398,3 +398,12 @@ struct InvalidArgument : LogicError
   InvalidArgument() {}
   explicit InvalidArgument(const String& message) : LogicError(message) {}
 };
+
+// The byte order of scalar types (std::endian): every target Kpp builds for (x64 Windows) is
+// little-endian, so native is little.
+enum class Endian
+{
+  little = 0,
+  big = 1,
+  native = little
+};

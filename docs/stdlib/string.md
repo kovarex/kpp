@@ -73,6 +73,9 @@ Producing new strings:
 - `substr(start, count)`: count bytes from start (all the rest when count is negative or runs
   past the end). Throws OutOfRange when start > size(); start == size() gives an empty String.
 - `a + b` for any two of String, `const char*` (at least one String) and char.
+- `copy(dest, count, pos = 0)`: copies up to count bytes from pos into dest (as many as there are)
+  and returns the number copied; no terminating zero. Throws OutOfRange when pos > size(). StringView
+  has the same.
 
 `compare(other)`: negative, zero or positive as this string orders before, equal to or after
 other by `<`. `swap(other)`: exchanges the contents.
