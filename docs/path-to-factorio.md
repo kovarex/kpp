@@ -1615,18 +1615,22 @@ CargoBay, SpacePlatform, SpaceMap, BrowseHistory, AudioGui). The two that stoppe
 found with an instrumented conversion: a registry of live Targeters and a stack trace for each one
 added from a stack address, matched with the dangling list item at the crash.
 
-The tally on 9e9ab71: of 554 suites, 548 get to their summary line, with 8710 tests of which 8703 pass
-and 7 fail; 6 stop: 2 at stubs (CallerExpr in TestGui and TestMigrations), LatencyInputFixture (a
-desync report saving a ManualMiner's Targeter), BuildabilityChecks (EntityWithOwner's constructor,
-from Lab's), LuaBlueprint (an exception that leaves the test runner, then the leaked-entities check
-aborts) and TrainPriorities (Rail::RailConnection::getRails). The build has 3 stubs and 3 error lines.
-The failed checks:
+On 9e9ab71 7 checks failed and 6 suites stopped; fixed since (by 62acb96): a const reference bound
+to a bit-field (Tree, and LuaEntity's neighbour connections, whose `first` is a bit-field too), a
+structured binding of a reference member (BuildabilityChecks), a static_cast to a reference through
+a conversion function (TrainPriorities), the map deserialiser's key copies (stdlib, aa38d77).
+
+The tally on 62acb96: of 554 suites, 550 get to their summary line, with 8786 tests of which 8782 pass
+and 4 fail; 4 stop: 2 at stubs (CallerExpr in TestGui and TestMigrations), LatencyInputFixture (a
+desync report saving a ManualMiner's Targeter) and LuaBlueprint (a constructor that throws leaves its
+Entity base alive: pending spec classes/constructor_throw_destroys_built_parts; the tests' leak check
+aborts at exit). The build has 3 stubs and 3 error lines. The failed checks:
 
 | Checks | What fails | Cause | Kind, owner |
 |---|---|---|---|
-| 2 | MapDeserialiser SaveLoadMap and SaveLoadFlatMap (a key copied, a value moved twice) | Map's try_emplace had no rvalue-key overload; Vector::emplace at the end moved a temporary in | stdlib, fixed in aa38d77 |
-| 1 | Tree TreeStageIndexDoesNotDesync ("Expected 0 but was 3") | a const reference bound to a bit-field read the byte it shares | compiler: pending spec language/reference_bound_to_bit_field, the codegen thread |
-| 4 | LuaEntity, LuaInventory, Multiplayer, TrainGui, one each | not looked at | |
+| 1 | LuaInventory LuaScriptInventoryOwnership (`get_script_inventories().core` nil) | `item.first ? item.first->id.name : Mod::CORE_MOD`, a String and a const char*, comes out empty | compiler: pending spec expressions/conditional_converts_pointer_operand_to_class, the templates thread |
+| 2 | Multiplayer: MultiplayerRandomConnections desyncs, MultiplayerLANGameUpdating's server name empty | not looked at | |
+| 1 | TrainGui TrainInterruptInteractionsUsingGui (dragging an interrupt does not reorder) | not looked at | |
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
