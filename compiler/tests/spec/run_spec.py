@@ -10,6 +10,8 @@ snippet says what it is about:
     // error: static assertion failed            (the program must not compile, and the compiler's
                                                   output must say this; one line per expected error)
     // run: alpha "two words"                    (built and run in one step by `kppc --run snippet ARGS`)
+    // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
+                                                  the snippet's directory: the paths printed are its name)
     // exit: 3                                   (the program's exit code; 0 or 1 when not given)
 
 Statuses: pass, FAIL (a regression), pending (a known gap, still failing), fixed (a pending
@@ -49,10 +51,10 @@ AREA_TITLES = {
 
 
 def header(path):
-    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "run": None, "exit": None}
+    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "run": None, "test": None, "exit": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
-            m = re.match(r"//\s*(spec|factorio|pending|error|run|exit):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending|error|run|test|exit):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -91,7 +93,7 @@ def run_one(path):
         if cc.returncode != 0:
             result["status"] = "FAIL"; result["note"] = f"its C source did not compile: {first_complaint(cc.stderr)}"; return finish(result)
         libs = ["--lib", obj]
-    if info["run"] is not None:
+    if info["run"] is not None or info["test"] is not None:
         return finish(run_command(path, info, libs, expected_path, result))
     try:
         c = subprocess.run([KPPC, "--quiet", *EXTRA, *libs, "--exe", exe, path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
@@ -134,12 +136,16 @@ def run_one(path):
 
 
 def run_command(path, info, libs, expected_path, result):
-    """A `// run:` snippet: `kppc --run` builds and runs it in one step; its exit code is the program's."""
+    """A `// run:` snippet: `kppc --run` builds and runs it in one step; its exit code is the program's.
+    A `// test:` snippet: `kppc --test` builds its tests and runs them, from the snippet's directory."""
+    if info["test"] is not None:
+        command, cwd = [KPPC, *EXTRA, *libs, "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
+    else:
+        command, cwd = [KPPC, *EXTRA, *libs, "--run", path, *shlex.split(info["run"])], None
     try:
-        r = subprocess.run([KPPC, *EXTRA, *libs, "--run", path, *shlex.split(info["run"])], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=360)
+        r = subprocess.run(command, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=360)
     except subprocess.TimeoutExpired:
-        result["status"] = "FAIL"; result["note"] = "kppc --run timed out"; return result
+        result["status"] = "FAIL"; result["note"] = f"kppc {command[len(EXTRA) + len(libs) + 1]} timed out"; return result
     want = int(info["exit"]) if info["exit"] is not None else None
     if want is not None and r.returncode != want or want is None and r.returncode not in (0, 1):
         result["status"] = "FAIL"

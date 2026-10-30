@@ -1,0 +1,14 @@
+// spec: the runner's --report FILE (- for stdout) writes one JSON object per test and a summary, for editors and test explorers
+// pending: no native tests yet
+// test: --report - --filter "\"quoted\"" --filter fails
+// exit: 1
+test "fails"
+{
+  int x = 3;
+  check(x == 4);
+}
+
+test "a \"quoted\" name"
+{
+  check(true);
+}

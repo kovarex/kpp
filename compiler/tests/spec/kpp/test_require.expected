@@ -1,0 +1,7 @@
+test_require.kpp:14:3: check failed: x == 2 (1 == 2)
+guard destroyed
+failed: test_require.kpp > require
+test_require.kpp:21:3: assertion failed: x == 2
+failed: test_require.kpp > assert
+still running
+3 tests, 2 failed

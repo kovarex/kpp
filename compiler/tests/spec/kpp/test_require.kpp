@@ -1,0 +1,28 @@
+// spec: require ends the test when it fails, an assert failing inside a test fails that test, and the run goes on
+// pending: no native tests yet
+// test:
+// exit: 1
+struct Guard
+{
+  ~Guard() { println("guard destroyed"); }
+};
+
+test "require"
+{
+  Guard guard;
+  int x = 1;
+  require(x == 2);
+  println("not reached");
+}
+
+test "assert"
+{
+  int x = 1;
+  assert(x == 2);
+  println("not reached either");
+}
+
+test "after"
+{
+  println("still running");
+}

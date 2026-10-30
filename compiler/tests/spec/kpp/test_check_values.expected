@@ -1,0 +1,8 @@
+test_check_values.kpp:11:3: check failed: x + 1 == 4 (3 == 4)
+test_check_values.kpp:12:3: check failed: x < 1 (2 < 1)
+test_check_values.kpp:14:3: check failed: s == "abd" (abc == abd)
+test_check_values.kpp:15:3: check failed: Dir::North != Dir::North (North != North)
+test_check_values.kpp:16:3: check failed: Opaque{1} == Opaque{2}
+test_check_values.kpp:19:3: check failed: ready
+failed: test_check_values.kpp > fails
+2 tests, 1 failed

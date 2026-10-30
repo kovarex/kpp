@@ -1,0 +1,25 @@
+// spec: `kppc --test file.kpp` builds the file's `test "name" { }` declarations with a runner in place of main and runs them all
+// pending: no native tests yet
+// test:
+// exit: 0
+int square(int x) { return x * x; }
+// Outside a test, check is an ordinary name.
+int check(int x) { return x + 1; }
+
+test "square of three"
+{
+  check(square(3) == 9);
+}
+
+test "square of a negative"
+{
+  check(square(-2) == 4);
+  check(square(0) == 0);
+  check(check(1) == 2);
+}
+
+int main()
+{
+  println("main is not part of a test build");
+  return 3;
+}
