@@ -1768,15 +1768,16 @@ stay C:\Factorio's: those were still April's. What it takes:
 
     git -C C:\Factorio archive d0495ebfd8a src tests libraries | tar -x -C SNAP
     rem src\Info\BuildVersion.hpp is generated, not in git: BUILD_VERSION 85837, VERSION_STRING "2.1.0"
-    mklink /J SNAP\data C:\fik-convert\data          (the committed resources: the old data)
+    git -C C:\fik-convert archive d9080751 data | tar -x -C SNAP   (the committed resources: the old data)
     set FACTORIO=SNAP
     convert.cmd C:\fik-convert\kpp   then   tests.cmd C:\fik-convert\kpp, suites.py, ...
     set GAME=C:\fik-convert   run.cmd --version   then   menu-checksums.py C:\fik-convert
 
-Two traps. The game resolves the data junction, so `read-data/../tests`, where the tests read their
-saves and test mods, is C:\fik-convert	ests: a second junction there to SNAP	ests, removed
-again before the menu maps, which otherwise find test_mod twice. And the menu maps compare only
-in a game directory without run.cmd's test_mod (other prototypes: "not comparable").
+The shared one is C:\kpp-sandbox\scratch\convert\d0495 (read only: tests.cmd, suites.py and the
+menu maps write into the conversion's and the game's directories, not into it). Its data is a copy,
+not a junction: the game resolves a junction, and `read-data/../tests`, where the tests read their
+saves and test mods, would then be the tests next to the junction's target. The menu maps compare
+only in a game directory without run.cmd's test_mod (other prototypes: "not comparable").
 
 The stdlib C-declaration cleanup (104467d3) was checked so: headline 0, the seven smoke tests,
 9,005 of 9,005 tests in 556 suites, all 45 menu maps the C++ checksums. The same tally with master's
