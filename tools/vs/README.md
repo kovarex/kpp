@@ -9,7 +9,7 @@ Background and measurements: [docs/build.md](../../docs/build.md), "Visual Studi
   double-click one to open its line.
 - **Run, debug:** F5 builds, then starts the program under the debugger.
 - **Configurations:** Debug adds `--debug-info` (line tables and a PDB), unless the project sets
-  `KppDebugInfo` to false, as factorio.vcxproj does for now. Release adds `--release`.
+  `KppDebugInfo` to false. Release adds `--release`.
 - **Colouring:** run `tools\vs\install.cmd` once, then restart Visual Studio. It links the
   TextMate grammar `kpp\Syntaxes\kpp.tmLanguage.json` into `%USERPROFILE%\.vs\Extensions\kpp`.
 
