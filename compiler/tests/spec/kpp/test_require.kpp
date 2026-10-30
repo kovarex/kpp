@@ -1,4 +1,4 @@
-// spec: require ends the test when it fails, an assert failing inside a test fails that test, and the run goes on
+// spec: require ends the test when it fails, a failing release_assert (an assert in a debug build) inside a test fails that test, and the run goes on; check and require are never compiled out
 // test:
 // exit: 1
 struct Guard
@@ -17,7 +17,7 @@ test "require"
 test "assert"
 {
   int x = 1;
-  assert(x == 2);
+  release_assert(x == 2);
   println("not reached either");
 }
 
