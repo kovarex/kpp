@@ -14710,6 +14710,41 @@ struct GlobalScope::Impl
       impl.reportCheckerError(file, token, message);
     }
 
+    // An object's array bound (a variable's, a data member's) that is no constant, or is negative,
+    // is an error at the bound, as in C++ ([dcl.array] 1), never an array of no elements. Checked
+    // where its template parameters are known (not in a template's own walk: in its instances);
+    // `int a[] = {1, 2}` has its bound from the list, `new T[n]` a run-time one.
+    void checkArrayBounds(VariableDecl* v)
+    {
+      if (probing || !file || file->isImported || (v->flags & DF_Typedef) || (inGenericTemplate() && !activeSubst) || undecidedBranches > 0)
+        return;
+      for (Type* t = v->type; t;)
+      {
+        if (t->kind == NodeKind::ConstType)
+        {
+          t = static_cast<ConstType*>(t)->inner;
+          continue;
+        }
+        if (t->kind != NodeKind::ArrayType)
+          break;
+        auto* a = static_cast<ArrayType*>(t);
+        if (a->size)
+        {
+          Impl::constWhy().clear();
+          std::optional<int64_t> n = impl.constEval(a->size, ctx());
+          std::string name = v->name.empty() ? std::string("?") : impl.namePartText(v->name.last());
+          if (!n)
+          {
+            std::string why = Impl::constWhy();
+            impl.reportCheckerError(file, a->size->token, "the bound of the array " + name + " is no constant" + (why.empty() ? std::string() : ": " + why));
+          }
+          else if (*n < 0)
+            impl.reportCheckerError(file, a->size->token, "the bound of the array " + name + " is negative (" + std::to_string(*n) + ")");
+        }
+        t = a->element;
+      }
+    }
+
     // Whether a class the walk is in has a base no scope stands for until it is instantiated (a
     // template parameter, `class Wrapper : public T`), which may declare any name.
     bool inClassWithParameterBase()
@@ -18277,6 +18312,7 @@ struct GlobalScope::Impl
         {
           auto* v = static_cast<VariableDecl*>(d);
           walkType(v->type);
+          checkArrayBounds(v);
           walkExpr(v->bitfield);
           Scope* saved = scope;
           if (v->name.parts.size() > 1)

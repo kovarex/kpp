@@ -1,9 +1,14 @@
-// spec: an array's bound that is no constant expression (a division by zero in the function it calls) is an error at the declaration, as in C++, never an array of no elements
-// error: array_bound_that_is_no_constant_is_error.kpp:6: error:
-// factorio: found by the templates thread: convertType made `int sized[broken(3)]` an array of 0 elements when the bound did not evaluate (and so did a bound calling a function declared before its definition)
-// pending: an array bound that does not evaluate is silently 0
+// spec: an array's bound that is no constant expression (a division by zero in the function it calls), or is negative, is an error at the bound, as in C++ ([dcl.array] 1), never an array of no elements; one a template parameter decides is checked in each instance (Buffer<4> is fine)
+// error: array_bound_that_is_no_constant_is_error.kpp:9: error: the bound of the array sized is no constant: a division by zero
+// error: array_bound_that_is_no_constant_is_error.kpp:10: error: the bound of the array backwards is negative (-2)
+// factorio: found by the templates thread: convertType made `int sized[broken(3)]` an array of 0 elements when the bound did not evaluate (and so did a bound calling a function declared before its definition); the converted game and its tests have no such bound (0 errors, both sources)
 constexpr int broken(int v) { return v / 0; }
+constexpr int minus(int v) { return -v; }
+template<int N>
+struct Buffer { int items[N]; };
 int sized[broken(3)];
+int backwards[minus(2)];
+Buffer<4> fine;
 int main()
 {
   println("{}", int(sizeof(sized) / sizeof(int)));
