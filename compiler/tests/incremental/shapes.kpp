@@ -17,6 +17,10 @@ int measure() { return 1; }
 
 int unitWidth() { return 1; }
 
+// A trait in main.kpp reads Plain's member list by position (no member's name): adding a member
+// that is not trivially copyable fails it.
+struct Plain { int a = 0; };
+
 // Two classes with a member of one name: an edit of Gauge's is no change for what reads Meter's
 // (readTwice<Meter>), as lookups in a class are recorded with the class.
 struct Gauge { int reading() const { return 3; } };

@@ -1,6 +1,6 @@
 # The compile server must build exactly what a new kppc process builds (docs/compile-speed.md,
 # "The compile server"). A copy of tests\incremental\ is edited step by step (a function body, a
-# signature, a return type a data member is declared with, a class's layout, a file added, the file removed); after each edit it is built through
+# signature, a return type a data member is declared with, a class's layout (built from the kept program), a file added, the file removed); after each edit it is built through
 # one long-lived server and by a new process, and the IR, stdout and stderr (timings masked) must
 # be identical, and the program the server built must print what the step expects. run_tests.cmd
 # runs it.
@@ -59,6 +59,8 @@ $steps = @(
   @{ name = 'return type edit failing a static_assert at namespace scope in another file'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int unitWidth() { return 1; }' 'long long unitWidth() { return 1; }' } },
   @{ name = 'return type edit back'; expect = '7 44 44 103 8 11 7 6 16 44 5 8 15'; edit = { Edit 'shapes.kpp' 'long long unitWidth() { return 1; }' 'int unitWidth() { return 1; }' } },
   @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
+  @{ name = 'data member added that a trait in another file reads (its static_assert fails)'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'struct Plain { int a = 0; };' 'struct Plain { int a = 0; String s; };' } },
+  @{ name = 'data member removed again'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15'; edit = { Edit 'shapes.kpp' 'struct Plain { int a = 0; String s; };' 'struct Plain { int a = 0; };' } },
   @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
   @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
 )
@@ -123,6 +125,12 @@ $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmat
 $instances = @($ours | Where-Object { $_ -match 'instance\(s\) that read a change checked again' })
 if ($instances.Count -ne 6) { "FAIL incremental: $($instances.Count) builds checked instances that read a change again, 6 expected (the overload steps and Panel::base)"; $failed++ }
 else { "ok   incremental instances checked again only where they read the change (6)" }
+# The layout edit (a data member added to Shape) built from the kept program through each server
+# (codegen in full: it does not take changed layouts yet).
+$layouts = @($ours | Where-Object { $_ -match 'class layout\(s\) changed' })
+# (and the member added to Plain, which a trait in main.kpp reads by position: 4)
+if ($layouts.Count -lt 4) { "FAIL incremental: $($layouts.Count) layout edits built from the kept program, 4 expected"; $failed++ }
+else { "ok   incremental layout edits built from the kept program ($($layouts.Count))" }
 $dropped = @($ours | Where-Object { $_ -match 'made by codegen dropped' })
 if ($dropped.Count -ne 2) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 2 expected (Panel::base through each server)"; $failed++ }
 else { "ok   incremental instances codegen made dropped and made anew (2)" }

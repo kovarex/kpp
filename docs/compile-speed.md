@@ -700,6 +700,29 @@ build in its own process 1.323 to 1.345 s of resolve against 1.328 to 1.347 s, p
 1.894 to 1.978 s against 1.854 to 1.904 s, names 11.8 M -> 19.5 M (the caches' replays), uses
 7.2 M -> 8.4 M.
 
+**The resolver's half of a layout edit (landed, the second piece).** A changed file whose differences
+are whole functions and data members (`functionsOnly`): a kept data member whose tokens, its `;`
+included, all have places side by side at a new one's is the same, the others are removed and the
+new ones added, each of a plain class (no template, union, typed union or closure; not static, an
+alias or a friend; one declarator: `plainDataMember`). The members are taken out of the class's
+scope and the kept member list (`unindexMember`, with their walks' reads) and the added ones grafted
+in and indexed (`indexMembers`). What read them: their names in the class (and the classes derived
+from it), the removed members' declared types, and every unit that read the class's member list by
+position (`USE_ClassMembers`; a containing class's layout reads it through the replayed caches); a
+class whose list was read outside any unit, a class instance or a declared type that read it, is a
+build from scratch. The classes go to `Build::changedLayouts`, for codegen's
+`rebuildLLVM(changedLayouts)` once it exists; until then codegen runs in full for them. The edit
+test's layout step (a member added to `Shape`) and a member added to `Plain`, which a namespace-scope
+`isTriviallyCopyable<Plain>` static_assert in another file reads by position only (it fails then,
+as from scratch), are built from the kept program through each server.
+
+Full game: `uint32_t extraCount = 0;` added to `BuildEntityAchievement` and taken out, with
+`--verify-incremental`: each "the same as from scratch", resolve 0.75 and 0.77 s, one file walked
+again, codegen in full, 5 modules compiled. Edit to linked game, 3 rounds interleaved
+(scratch\resolver\game-time-layout.ps1): this kppc's server 10.32 to 10.61 s (resolve 0.76 to 0.81 s,
+codegen 7.6 to 7.9 s); master cddf99aa's server, from scratch, 16.3 to 17.7 s; a new process 10.47 to
+10.56 s. As for the signature edit, codegen in full is what is left.
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before

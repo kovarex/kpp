@@ -292,6 +292,12 @@ public:
   // definition matching no declaration, an object declaration to decide). Both forget the cached
   // overload sets that merged the names' entries.
   void unindexFunction(FunctionDecl* f);
+  // A class's data members taken out of its scope (with their walks' recorded reads) and indexed in
+  // it (their parents set): step 4's layout edits. membersReadOutsideUnits: whether the class's member
+  // list was read outside any recorded unit (an edit of it is then a build from scratch).
+  void unindexMember(VariableDecl* v);
+  void indexMembers(const std::vector<VariableDecl*>& added);
+  bool membersReadOutsideUnits(const Decl* cls);
   bool indexFunctions(const std::vector<FunctionDecl*>& added);
   // What read a name (by symbol) or a declaration's declared type: the files of the walks that did
   // (to walk again), the declarations whose declared types did (forgotten here, with what they
@@ -301,19 +307,22 @@ public:
   // bodies: function definitions whose bodies changed, for the units the compile-time evaluator ran
   // them in (a constexpr function's): such walks are found as the names' readers are; it is false
   // when one ran outside any unit, or a declared type ran one (an array bound, a constant template
-  // argument: what it typed may be a layout). why: the reason it is false. instances: the function
+  // argument: what it typed may be a layout). classes: the classes whose member lists changed, for
+  // what read them by position (USE_ClassMembers). why: the reason it is false. instances: the function
   // and member instances that read them, to be checked again (recheckInstancesOf); without it such
   // an instance makes it false. typedByWalk: the declarations among the reading walks whose type the
   // walk gives (decltype, a deduced auto), to be compared after the walk (forgetTypesFromWalks);
   // without it such a declaration makes it false.
   bool invalidateReaders(const std::vector<ChangedName>& changed, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
                          std::vector<const Decl*>* walks = nullptr, const std::vector<const FunctionDecl*>& bodies = {}, std::string* why = nullptr,
-                         std::vector<const void*>* instances = nullptr, std::vector<const Decl*>* typedByWalk = nullptr);
+                         std::vector<const void*>* instances = nullptr, std::vector<const Decl*>* typedByWalk = nullptr,
+                         const std::vector<const Decl*>& classes = {});
   // Their declared types as they are, then forgotten (with what computing them read): after their
   // walks, typeOfDecl gives them anew, and a build that changed one is built from scratch.
   std::vector<const Ty*> forgetTypesFromWalks(const std::vector<const Decl*>& decls);
   uint32_t functionSymbolOf(const FunctionDecl* f);
   ChangedName changedNameOf(const FunctionDecl* f);
+  ChangedName changedNameOf(const VariableDecl* v);
   // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
   // function, whose code may hold its body (codegen inlines trivial functions).
   std::vector<const Decl*> walksReading(const std::vector<ChangedName>& changed);

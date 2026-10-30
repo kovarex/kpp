@@ -214,6 +214,9 @@ namespace
     // Declared last: destroyed first, before the program it points into.
     std::vector<size_t> moduleBytes;
     std::vector<FunctionDecl*> changedBodies, addedFunctions, removedFunctions;
+    // The classes whose data members an incremental build changed (step 4's layout edits): codegen
+    // runs in full for them until it takes changed layouts (docs/compile-speed.md).
+    std::vector<const Decl*> changedLayouts;
     bool rebuildCodegen = false;
     CodegenSessionPtr codegen;
   };
@@ -1800,8 +1803,16 @@ namespace
     bool templated;
   };
 
+  // A class's data member (step 4's layout edits), with its class and whether a template encloses it.
+  struct DeclaredMember
+  {
+    VariableDecl* v;
+    ClassDecl* container;
+    bool templated;
+  };
+
   void collectFunctions(Span<Decl*> decls, Decl* container, bool inTemplate, std::vector<DeclaredFunction>& out,
-                        std::vector<Decl*>& containers)
+                        std::vector<Decl*>& containers, std::vector<DeclaredMember>* members = nullptr)
   {
     for (Decl* d : decls)
     {
@@ -1812,18 +1823,22 @@ namespace
       {
         case NodeKind::NamespaceDecl:
           containers.push_back(d);
-          collectFunctions(static_cast<NamespaceDecl*>(d)->decls, d, inTemplate, out, containers);
+          collectFunctions(static_cast<NamespaceDecl*>(d)->decls, d, inTemplate, out, containers, members);
           break;
         case NodeKind::ClassDecl:
           containers.push_back(d);
-          collectFunctions(static_cast<ClassDecl*>(d)->members, d, templated, out, containers);
+          collectFunctions(static_cast<ClassDecl*>(d)->members, d, templated, out, containers, members);
           break;
         case NodeKind::EnumDecl:
           containers.push_back(d);
-          collectFunctions(static_cast<EnumDecl*>(d)->members, d, templated, out, containers);
+          collectFunctions(static_cast<EnumDecl*>(d)->members, d, templated, out, containers, members);
           break;
         case NodeKind::FunctionDecl:
           out.push_back({static_cast<FunctionDecl*>(d), container, templated});
+          break;
+        case NodeKind::VariableDecl:
+          if (members && container && container->kind == NodeKind::ClassDecl)
+            members->push_back({static_cast<VariableDecl*>(d), static_cast<ClassDecl*>(container), inTemplate});
           break;
         default:
           break;
@@ -1843,7 +1858,35 @@ namespace
     std::vector<uint32_t> map;                          // the kept tokens' places in the new ones
     std::vector<std::pair<FunctionDecl*, Decl*>> removed; // kept functions, with the kept declaration they are members of
     std::vector<std::pair<FunctionDecl*, Decl*>> added; // new functions, with the kept declaration they belong to
+    std::vector<std::pair<VariableDecl*, ClassDecl*>> removedMembers; // kept data members, with their kept class
+    std::vector<std::pair<VariableDecl*, ClassDecl*>> addedMembers;   // new data members, with the kept class they go into
   };
+
+  // One past a data member's last token, its `;` included (the parser ends the declaration before it).
+  uint32_t memberEnd(const VariableDecl* v, const std::vector<Token>& tokens)
+  {
+    uint32_t e = v->endToken;
+    if (e < tokens.size() && tokens[e].is(P::Semi))
+      ++e;
+    return e;
+  }
+
+  // Whether a data member can come, go or change with what reads it found (its name's readers, its
+  // class's member list's, its declared type's): one of a plain class's (no template, no union, no
+  // typed union, no lambda's closure), not static (a global), no alias or friend, one declarator.
+  bool plainDataMember(const DeclaredMember& d, const std::vector<DeclaredMember>& all)
+  {
+    VariableDecl* v = d.v;
+    ClassDecl* c = d.container;
+    if (d.templated || c->isTemplate || !c->templateParams.empty() || c->keyword == Kw::union_ || c->isTypedUnion || c->lambda ||
+        !c->isDefinition || c->name.empty() || (v->flags & (DF_Static | DF_Typedef | DF_Friend)) || v->name.parts.size() != 1 ||
+        !v->structuredBindings.empty())
+      return false;
+    for (const DeclaredMember& o : all)
+      if (o.v != v && o.v->type == v->type)
+        return false; // `int a, b;`: declarators sharing their type's tokens
+    return true;
+  }
 
   // Whether a function can come or go without anything but its name's readers seeing it: no
   // template, no virtual or special member (layouts, vtables and traits read those without a
@@ -1894,8 +1937,9 @@ namespace
       return why = "the two versions differ too much to pair their tokens", false;
     std::vector<DeclaredFunction> oldFunctions, newFunctions;
     std::vector<Decl*> oldContainers, newContainers;
-    collectFunctions(old.decls, nullptr, false, oldFunctions, oldContainers);
-    collectFunctions(out.parsed->decls, nullptr, false, newFunctions, newContainers);
+    std::vector<DeclaredMember> oldMembers, newMembers;
+    collectFunctions(old.decls, nullptr, false, oldFunctions, oldContainers, &oldMembers);
+    collectFunctions(out.parsed->decls, nullptr, false, newFunctions, newContainers, &newMembers);
     // A kept function whose tokens all have places, side by side, at a new function's: the same.
     std::unordered_map<uint32_t, const DeclaredFunction*> newByToken;
     for (const DeclaredFunction& d : newFunctions)
@@ -1927,18 +1971,54 @@ namespace
         for (uint32_t k = d.f->token; k < d.f->endToken && k < newCovered.size(); ++k)
           newCovered[k] = true;
       }
-    if (removed.empty() && added.empty())
-      return why = "no function changed", false;
+    // Data members likewise (a class's layout edit): a kept member whose tokens all have places side
+    // by side at a new member's is the same, the others removed, the new ones not paired added.
+    std::unordered_map<uint32_t, const DeclaredMember*> newMemberByToken;
+    for (const DeclaredMember& d : newMembers)
+      newMemberByToken[d.v->token] = &d;
+    std::unordered_set<const VariableDecl*> pairedNewMembers;
+    std::vector<const DeclaredMember*> removedMembers, addedMembers;
+    for (const DeclaredMember& d : oldMembers)
+    {
+      uint32_t s = d.v->token, e = memberEnd(d.v, oldTokens);
+      bool same = e > s && e <= out.map.size() && out.map[s] != UINT32_MAX;
+      for (uint32_t k = s; same && k < e; ++k)
+        same = out.map[k] == out.map[s] + (k - s);
+      auto it = same ? newMemberByToken.find(out.map[s]) : newMemberByToken.end();
+      if (it != newMemberByToken.end() && memberEnd(it->second->v, out.tokens) == out.map[s] + (e - s))
+      {
+        pairedNewMembers.insert(it->second->v);
+        continue;
+      }
+      removedMembers.push_back(&d);
+      for (uint32_t k = s; k < e && k < oldCovered.size(); ++k)
+        oldCovered[k] = true;
+    }
+    for (const DeclaredMember& d : newMembers)
+      if (!pairedNewMembers.count(d.v))
+      {
+        addedMembers.push_back(&d);
+        for (uint32_t k = d.v->token; k < memberEnd(d.v, out.tokens) && k < newCovered.size(); ++k)
+          newCovered[k] = true;
+      }
+    if (removed.empty() && added.empty() && removedMembers.empty() && addedMembers.empty())
+      return why = "no function or data member changed", false;
     // Everything else the same: every token gone is a removed function's, every new one an added one's.
     std::vector<bool> reached(out.tokens.size(), false);
     for (size_t k = 0; k < out.map.size(); ++k)
       if (out.map[k] != UINT32_MAX)
         reached[out.map[k]] = true;
       else if (!oldCovered[k])
-        return why = "a change outside whole functions", false;
+        return why = "a change outside whole functions and data members", false;
     for (size_t k = 0; k < reached.size(); ++k)
       if (!reached[k] && !newCovered[k])
-        return why = "a change outside whole functions", false;
+        return why = "a change outside whole functions and data members", false;
+    for (const DeclaredMember* d : removedMembers)
+      if (!plainDataMember(*d, oldMembers))
+        return why = "a removed or changed data member of a template, a union, or static, an alias, several declarators", false;
+    for (const DeclaredMember* d : addedMembers)
+      if (!plainDataMember(*d, newMembers))
+        return why = "an added or changed data member of a template, a union, or static, an alias, several declarators", false;
     for (const DeclaredFunction* d : removed)
       if (!plainFunction(*d, oldTokens))
         return why = "a removed or changed function others may read without its name (a template, virtual, special, constexpr)", false;
@@ -1975,12 +2055,25 @@ namespace
           return why = "an added function has a cast to rewrite", false;
     for (const DeclaredFunction* d : removed)
       out.removed.push_back({d->f, d->container});
+    for (const DeclaredMember* d : addedMembers)
+    {
+      auto it = keptContainerAt.find(d->container->token);
+      if (it == keptContainerAt.end() || it->second->kind != NodeKind::ClassDecl)
+        return why = "an added data member's class is new", false;
+      out.addedMembers.push_back({d->v, static_cast<ClassDecl*>(it->second)});
+    }
+    for (const DeclaredMember* d : removedMembers)
+      out.removedMembers.push_back({d->v, d->container});
+    for (auto& [b, where] : out.parsed->castCandidates)
+      for (const DeclaredMember* d : addedMembers)
+        if (where == d->v)
+          return why = "an added data member has a cast to rewrite", false;
     return true;
   }
 
   // The list of a declaration's members (or the file's top level) with the removed functions taken
   // out and the added ones put in, in the order of their tokens.
-  Span<Decl*> withFunctions(Span<Decl*> list, const std::unordered_set<const Decl*>& removed, const std::vector<FunctionDecl*>& added,
+  Span<Decl*> withFunctions(Span<Decl*> list, const std::unordered_set<const Decl*>& removed, const std::vector<Decl*>& added,
                             Arena& arena)
   {
     std::vector<Decl*> out;
@@ -2012,32 +2105,52 @@ namespace
       global.unindexFunction(f);
       forEachNode(f, [&](Node* n) { dropped.insert(n); });
     }
+    for (auto& [v, container] : c.removedMembers)
+    {
+      removed.insert(v);
+      global.unindexMember(v);
+      forEachNode(v, [&](Node* n) { dropped.insert(n); });
+    }
     if (!remapKeptFile(kept, file, c.map, dropped, {}))
       return why = "a kept node's token has no place in the new version", false;
     // The added functions: the kept file's, members of the kept declarations.
-    std::unordered_map<Decl*, std::vector<FunctionDecl*>> into;
+    std::unordered_map<Decl*, std::vector<Decl*>> into;
     std::vector<FunctionDecl*> added;
-    for (auto& [f, container] : c.added)
+    std::vector<VariableDecl*> addedMembers;
+    auto ownNodes = [&](Node* root)
     {
-      forEachNode(f, [&](Node* n)
+      forEachNode(root, [&](Node* n)
       {
         if (n->kind > NodeKind::PackType && n->kind <= NodeKind::ImportDecl)
           static_cast<Decl*>(n)->file = &file;
         else if (n->kind == NodeKind::LiteralExpr)
           static_cast<LiteralExpr*>(n)->file = &file;
       });
+    };
+    for (auto& [f, container] : c.added)
+    {
+      ownNodes(f);
       f->parent = container;
       into[container].push_back(f);
       added.push_back(f);
     }
+    for (auto& [v, container] : c.addedMembers)
+    {
+      ownNodes(v);
+      v->parent = container;
+      into[container].push_back(v);
+      addedMembers.push_back(v);
+    }
     std::unordered_set<Decl*> touched;
     for (auto& [f, container] : c.removed)
+      touched.insert(container);
+    for (auto& [v, container] : c.removedMembers)
       touched.insert(container);
     for (auto& [container, list] : into)
       touched.insert(container);
     for (Decl* container : touched)
     {
-      const std::vector<FunctionDecl*>& in = into[container];
+      const std::vector<Decl*>& in = into[container];
       if (!container)
         file.decls = withFunctions(file.decls, removed, in, file.arena);
       else if (container->kind == NodeKind::NamespaceDecl)
@@ -2064,6 +2177,7 @@ namespace
     for (auto& [symbol, where] : kept.instanceStats.missingMembersFirst)
       if (where.file == i)
         return why = "an instance's statistic names a place in the file", false;
+    global.indexMembers(addedMembers);
     if (!global.indexFunctions(added))
       return why = "an added function needs the whole index (a definition matching no declaration, an object declaration)", false;
     return true;
@@ -2111,6 +2225,7 @@ namespace
     kept.changedBodies.clear();
     kept.addedFunctions.clear();
     kept.removedFunctions.clear();
+    kept.changedLayouts.clear();
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
     std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
     std::vector<const FunctionDecl*> constantBodies; // changed constexpr bodies: what the evaluator ran them for is checked again
@@ -2154,6 +2269,14 @@ namespace
       }
       for (auto& [f, container] : c.added)
         kept.addedFunctions.push_back(f);
+      // A data member removed or changed: its name in its class, its declared type, its class's
+      // member list (read by position) are what readers read.
+      for (auto& [v, cls] : c.removedMembers)
+      {
+        names.push_back(global.changedNameOf(v));
+        gone.push_back(v);
+        kept.changedLayouts.push_back(cls);
+      }
       if (!graftFunctions(kept, c, why))
       {
         logBuildNote("not incremental: " + kept.files[c.index].path.string() + ": " + why);
@@ -2162,12 +2285,22 @@ namespace
       // (once grafted: an added member's class is then the kept one, its lookups' scope)
       for (auto& [f, container] : c.added)
         names.push_back(global.changedNameOf(f));
+      for (auto& [v, cls] : c.addedMembers)
+      {
+        names.push_back(global.changedNameOf(v));
+        kept.changedLayouts.push_back(cls);
+      }
     }
+    std::sort(kept.changedLayouts.begin(), kept.changedLayouts.end());
+    kept.changedLayouts.erase(std::unique(kept.changedLayouts.begin(), kept.changedLayouts.end()), kept.changedLayouts.end());
+    // Codegen does not take changed layouts yet (rebuildLLVM): it runs in full for them.
+    if (!kept.changedLayouts.empty())
+      codegenCanFollow = false;
     if (!names.empty() || !constantBodies.empty())
     {
       std::vector<const ParsedFile*> readers;
       std::vector<const Decl*> readingWalks;
-      if (!global.invalidateReaders(names, gone, readers, &readingWalks, constantBodies, &why, &readingInstances, &typedByWalk))
+      if (!global.invalidateReaders(names, gone, readers, &readingWalks, constantBodies, &why, &readingInstances, &typedByWalk, kept.changedLayouts))
       {
         logBuildNote("not incremental: " + why);
         return false;
@@ -2290,7 +2423,8 @@ namespace
     }
     logBuildNote("incremental: " + std::to_string(changed.size() + functionEdits.size()) + " file(s) changed (" + std::to_string(functionEdits.size()) + " with whole functions), " + std::to_string(walked.size()) + " file(s) walked again" +
                  (readingInstances.empty() ? std::string() : ", " + std::to_string(readingInstances.size()) + " instance(s) that read a change checked again") +
-                 (droppedInstances ? " (" + std::to_string(droppedInstances) + " made by codegen dropped, to be made anew)" : std::string()));
+                 (droppedInstances ? " (" + std::to_string(droppedInstances) + " made by codegen dropped, to be made anew)" : std::string()) +
+                 (kept.changedLayouts.empty() ? std::string() : ", " + std::to_string(kept.changedLayouts.size()) + " class layout(s) changed"));
     // Codegen follows through its kept session when every module's object is where the last build
     // left it (an unchanged module is not assembled again, so it has no text to compile now).
     // The functions whose walks read an edited function's name are emitted again with it: an edit

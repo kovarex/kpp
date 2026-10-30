@@ -14,6 +14,7 @@ auto sumOf() { return combine(2, 3); }
 // A static_assert at namespace scope reads unitWidth: its walk is a unit of its own, so a return
 // type edit of unitWidth checks it again (and it fails).
 static_assert(sizeof(unitWidth()) == 4, "unitWidth returns an int");
+static_assert(isTriviallyCopyable<Plain>, "Plain is trivially copyable");
 
 int main()
 {

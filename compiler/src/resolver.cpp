@@ -20605,6 +20605,14 @@ std::vector<const void*> GlobalScope::instancesWalksUse(const ParsedFile& file)
 
 uint32_t GlobalScope::functionSymbolOf(const FunctionDecl* f) { return impl->functionSymbol(f->name); }
 
+GlobalScope::ChangedName GlobalScope::changedNameOf(const VariableDecl* v)
+{
+  ChangedName out{v->name.empty() ? UINT32_MAX : v->name.last().symbol, nullptr};
+  if (v->parent && v->parent->kind == NodeKind::ClassDecl)
+    out.classScope = v->parent->ownScope ? static_cast<const void*>(v->parent->ownScope) : ChangedName::anyClass;
+  return out;
+}
+
 GlobalScope::ChangedName GlobalScope::changedNameOf(const FunctionDecl* f)
 {
   ChangedName out{impl->functionSymbol(f->name), nullptr};
@@ -21014,6 +21022,45 @@ void GlobalScope::unindexFunction(FunctionDecl* f)
   impl->forgetMergedOverloads();
 }
 
+void GlobalScope::unindexMember(VariableDecl* v)
+{
+  if (v->name.parts.size() == 1)
+  {
+    uint32_t symbol = v->name.parts[0].symbol;
+    Scope* scope = containerScope(v->parent, impl->root);
+    Scope::Shard& shard = scope->shardFor(symbol);
+    std::lock_guard lock(shard.mutex);
+    if (auto it = shard.map.find(symbol); it != shard.map.end())
+    {
+      size_t before = it->second.size();
+      it->second.erase(std::remove_if(it->second.begin(), it->second.end(), [&](const Entry& e) { return e.decl == v; }), it->second.end());
+      impl->entries -= before - it->second.size();
+      if (it->second.empty())
+        shard.map.erase(it);
+    }
+  }
+  // Its walk's recorded reads go with it (its initializer's).
+  uintptr_t key = reinterpret_cast<uintptr_t>(v) + Impl::UNIT_Walk;
+  Impl::DeclDependencyShard& shard = impl->declDependencies[(key >> 6) % std::size(impl->declDependencies)];
+  std::lock_guard lock(shard.mutex);
+  shard.map.erase(key);
+}
+
+void GlobalScope::indexMembers(const std::vector<VariableDecl*>& added)
+{
+  for (VariableDecl* v : added)
+    impl->indexDecl(v, containerScope(v->parent, impl->root));
+  std::unordered_set<Scope*> seen;
+  impl->sortEntries(&impl->root, seen);
+  impl->forgetMergedOverloads();
+}
+
+bool GlobalScope::membersReadOutsideUnits(const Decl* cls)
+{
+  std::lock_guard lock(membersOutsideMutex);
+  return impl->membersReadOutside.count(cls) != 0;
+}
+
 bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
 {
   for (FunctionDecl* f : added)
@@ -21057,8 +21104,10 @@ std::vector<const Decl*> GlobalScope::walksReading(const std::vector<ChangedName
 
 bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
                                     std::vector<const Decl*>* walks, const std::vector<const FunctionDecl*>& bodies, std::string* why,
-                                    std::vector<const void*>* instances, std::vector<const Decl*>* typedByWalk)
+                                    std::vector<const void*>* instances, std::vector<const Decl*>* typedByWalk,
+                                    const std::vector<const Decl*>& classes)
 {
+  std::unordered_set<const void*> lists(classes.begin(), classes.end()); // classes whose member lists changed
   std::vector<const Scope*> relations;
   {
     std::lock_guard lock(impl->relationScopesMutex);
@@ -21086,10 +21135,13 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
     if (names.reads(d.list))
       return true;
     for (auto& [kind, what] : d.list.uses)
-      if ((kind == USE_DeclaredType && types.count(what)) || (kind == USE_RanBody && ran.count(what)))
+      if ((kind == USE_DeclaredType && types.count(what)) || (kind == USE_RanBody && ran.count(what)) || (kind == USE_ClassMembers && lists.count(what)))
         return true;
     return false;
   };
+  for (const Decl* c : classes)
+    if (membersReadOutsideUnits(c))
+      return fail("a changed class's member list was read outside any recorded unit");
   // The declared types that read them, and what read those: one pass for who reads what, then
   // followed from the names' readers and the given declarations.
   {
@@ -21108,6 +21160,8 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
         }
         else if (kind == USE_RanBody && ran.count(what))
           return fail("a declared type ran a changed body (an array bound, a constant template argument)");
+        else if (kind == USE_ClassMembers && lists.count(what))
+          return fail("a declared type read a changed class's member list");
       if (direct)
         pending.push_back({owner, deps});
     }
@@ -21158,9 +21212,11 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
   }
   // The cached answers that ran a changed body are computed again by whoever asks next (every
   // unit that read one recorded its bodies, and is found above or below).
-  if (!ran.empty())
+  if (!ran.empty() || !lists.empty() || !decls.empty())
   {
-    impl->forgetCachedAnswers([&](const CollectedUse& u) { return u.first == USE_RanBody && ran.count(u.second); });
+    impl->forgetCachedAnswers([&](const CollectedUse& u)
+                              { return (u.first == USE_RanBody && ran.count(u.second)) || (u.first == USE_ClassMembers && lists.count(u.second)) ||
+                                       (u.first == USE_DeclaredType && types.count(u.second)); });
   }
   std::unordered_set<const ParsedFile*> found;
   for (Impl::DeclDependencyShard& shard : impl->declDependencies)
