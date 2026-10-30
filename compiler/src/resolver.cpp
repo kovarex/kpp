@@ -3778,8 +3778,13 @@ struct GlobalScope::Impl
         {
           if (!cap.init || !cap.decl || cap.byRef)
             continue;
-          const Ty* ct = cap.init->ty && cap.init->ty->isKnown() && !types.isDependent(cap.init->ty)
-                           ? types.decay(types.unqualified(types.stripRef(cap.init->ty))) : nullptr;
+          // `[properties { move(properties) }]`: the variable has its one element's type (the
+          // brace list itself is typed as a list), as `[properties = move(properties)]`.
+          const Expr* init = cap.init;
+          if (init->kind == NodeKind::BraceInitExpr && static_cast<const BraceInitExpr*>(init)->args.size() == 1)
+            init = static_cast<const BraceInitExpr*>(init)->args[0];
+          const Ty* ct = init->ty && init->ty->isKnown() && !types.isDependent(init->ty)
+                           ? types.decay(types.unqualified(types.stripRef(init->ty))) : nullptr;
           if (!ct)
             continue; // (typed where the lambda's instance is: as before, copyable)
           if (std::optional<bool> ok = constructibleFromSelf(ct, move, form, depth + 1); ok && !*ok)
