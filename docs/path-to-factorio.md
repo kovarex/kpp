@@ -1653,6 +1653,11 @@ codegen 9.5 s, 732 MB of IR in 64 modules, clang 3.8 s (62 of 64 modules from th
 ThinLTO link 156 s; the executable is 69,109,248 bytes (with --stub-missing and the crash report's
 /DEBUG link, as run.cmd links it).
 
+No C++ number stands beside it yet: C:\Factorioin\Releasex64vs2022actorio-run.exe is Factorio
+2.0.67 (build 83883, 2025-09-07), older than the source the conversion reads (2.1.0, build 85837), and
+it stops at startup on the current C:\Factorio\data (run with `--config` on a scratch config whose
+write-data is outside C:\Factorio). The current C++ build on disk is the debug one.
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
