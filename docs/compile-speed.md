@@ -738,6 +738,14 @@ and runs codegen in full when a kept local type moved or was renamed (codegen's 
 types' names) or a template's position-named entity moved (its instances are not emitted again
 alone). The edit test's lambdas.kpp: a lambda added before another moves and renumbers it.
 
+**Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
+`runCodegen` freed the kept codegen session before generating anew, on the build's own time:
+1.01 to 1.07 s on the game (timed around `build.codegen.reset()`, 4 builds). The replaced session is
+now kept (`Build::retiredCodegen`) and freed once the build has answered its client. The layout edit
+above, edit to linked game, interleaved, 4 builds each: this kppc's server **9.03 to 9.15 s**
+(codegen in full 6.27 to 6.40 s) against a new process building from scratch 10.46 to 10.65 s
+(codegen 6.73 to 6.85 s): an incremental build with codegen in full now beats a build from scratch.
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before

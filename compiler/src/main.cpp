@@ -224,6 +224,9 @@ namespace
     // the types' names). See remapKeptFile.
     bool positionalCodegenInFull = false;
     CodegenSessionPtr codegen;
+    // The session a codegen in full replaced: freed once the build has answered its client
+    // (incrementalBuild), not on the build's own time (about 1 s on the game).
+    CodegenSessionPtr retiredCodegen;
   };
   std::mutex keptMutex;              // held by a server's build until it has kept its result
   std::unique_ptr<Build> keptBuild;  // a server's last build (under keptMutex)
@@ -948,7 +951,7 @@ namespace
     build.rebuildCodegen = false;
     if (!rebuilt)
     {
-      build.codegen.reset();
+      build.retiredCodegen = std::move(build.codegen);
       cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing, options.codegenThreads ? options.codegenThreads : options.threads,
                         options.keepGoing && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr,
                         options.debugInfo);
@@ -2510,6 +2513,7 @@ namespace
       logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? "a template's body, a global or a module's object needs it" : "no executable"));
     noteIncrementalBuild();
     reportResolve(kept);
+    kept.retiredCodegen.reset(); // (the client has its answer: reportResolve ends with buildDone)
     return true;
   }
 }
