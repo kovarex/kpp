@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Kpp",
+  "scopeName": "source.kpp",
+  "fileTypes": ["kpp"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.kpp", "match": "//.*$" },
+        { "name": "comment.block.kpp", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.raw.kpp", "begin": "(?:u8|u|U|L)?R\"([^(\\s]*)\\(", "end": "\\)\\1\"" },
+        {
+          "name": "string.quoted.double.kpp", "begin": "(?:u8|u|U|L)?\"", "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.kpp", "match": "\\\\." }]
+        },
+        {
+          "name": "string.quoted.single.kpp", "begin": "(?:u8|u|U|L)?'", "end": "'",
+          "patterns": [{ "name": "constant.character.escape.kpp", "match": "\\\\." }]
+        }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric.kpp",
+      "match": "\\b(?:0[xX][0-9a-fA-F']+|0[bB][01']+|[0-9][0-9']*(?:\\.[0-9']*)?(?:[eE][+-]?[0-9]+)?)[uUlLfF]*\\b"
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.kpp",
+          "match": "\\b(?:if|else|for|while|do|switch|case|default|break|continue|return|goto|try|catch|throw|co_await|co_return|co_yield)\\b"
+        },
+        {
+          "name": "keyword.other.kpp",
+          "match": "\\b(?:class|struct|union|enum|namespace|using|typedef|template|typename|concept|requires|operator|new|delete|this|sizeof|alignof|alignas|decltype|static_assert|static_cast|dynamic_cast|const_cast|reinterpret_cast|noexcept|friend|public|protected|private|virtual|override|final|explicit|implicit|inline|extern|static|thread_local|mutable|volatile|const|constexpr|consteval|constinit|register|offsetof)\\b"
+        },
+        { "name": "constant.language.kpp", "match": "\\b(?:true|false|nullptr)\\b" }
+      ]
+    },
+    "types": {
+      "name": "storage.type.kpp",
+      "match": "\\b(?:void|bool|char|char8_t|char16_t|char32_t|wchar_t|short|int|long|signed|unsigned|float|double|auto|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|ptrdiff_t|int8|int16|int32|int64|uint8|uint16|uint32|uint64)\\b"
+    },
+    "functions": {
+      "name": "entity.name.function.kpp",
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"
+    }
+  }
+}

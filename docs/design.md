@@ -1282,6 +1282,11 @@ human output.
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
   converted UnitTest++ as native tests.
 
+- **How a build is described** ([build.md](build.md), proposed 2026-10-30): the project file's
+  format (a list of kppc options with `[configuration]` sections, or a Kpp `project` declaration),
+  debug information in release builds, who builds the C libraries the game links (FASTBuild's
+  April build is 54 `libraries/` commits behind HEAD), and hand-written or generated `.vcxproj`.
+
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
    lexer + parser + order-independent name resolution, benchmarked on Factorio. Whole front end

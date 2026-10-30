@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A Kpp program as a Visual Studio project (tools/vs/README.md). A program's .vcxproj sets
+     KppSources (what kppc compiles: directories or files, relative to the project) and KppOutput
+     (the executable, relative to the project or absolute), optionally KppArguments (more kppc
+     options) and KppBuildScript (a script that builds instead of kppc, as for programs/factorio,
+     called with the executable's path and the configuration's kppc options), then
+     imports this file after Microsoft.Cpp.props. Build and F5 run kppc through its compile server
+     with its MSVC diagnostics option, so that its errors are in the Error List. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <KppRoot Condition="'$(KppRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))\</KppRoot>
+    <Kppc Condition="'$(Kppc)' == ''">$(KppRoot)compiler\build\kppc.exe</Kppc>
+    <KppOutputPath>$([System.IO.Path]::Combine('$(ProjectDir)', '$(KppOutput)'))</KppOutputPath>
+    <!-- The configurations (docs/build.md, "Configurations"): what kppc offers today. -->
+    <KppConfigurationArguments Condition="'$(Configuration)' == 'Release'">--release</KppConfigurationArguments>
+    <KppCommand>"$(Kppc)" --server --msvc-diagnostics --quiet $(KppConfigurationArguments) $(KppArguments) --exe "$(KppOutputPath)" $(KppSources)</KppCommand>
+    <KppBuild Condition="'$(KppBuildScript)' == ''">$(KppCommand)</KppBuild>
+    <KppBuild Condition="'$(KppBuildScript)' != ''">call "$(KppBuildScript)" "$(KppOutputPath)" "$(KppConfigurationArguments)"</KppBuild>
+    <!-- MSBuild's own files (the .tlog of the build) under build\, which git ignores. -->
+    <OutDir>$(ProjectDir)build\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)build\$(Configuration)\</IntDir>
+    <NMakeBuildCommandLine>cd /d "$(ProjectDir)" &amp;&amp; $(KppBuild)</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>$(NMakeBuildCommandLine)</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>if exist "$(KppOutputPath)" del "$(KppOutputPath)"</NMakeCleanCommandLine>
+    <NMakeOutput>$(KppOutputPath)</NMakeOutput>
+    <LocalDebuggerCommand Condition="'$(LocalDebuggerCommand)' == ''">$(KppOutputPath)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory Condition="'$(LocalDebuggerWorkingDirectory)' == ''">$(ProjectDir)</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+</Project>
