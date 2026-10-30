@@ -407,6 +407,20 @@ before relying on the recorded uses.
   wall time 17.5 to 26 s, now all codegen (10 to 16.5 s), clang (one module, 1 s) and the link
   (4.6 to 5.4 s): what 3c and the link are for. A body edit of `MapPosition::operator+` is not
   eligible (constexpr) and was built from scratch, as expected.
+
+### The link in the edit loop (2026-10-30, not changed)
+
+The same 64 objects of the full game linked several ways (scratchpad linkvariants.ps1, the
+machine shared with other builds, 40 to 100% busy): as kppc links today (link.exe, `/OPT:REF`,
+run.cmd's `/DEBUG /MAP`) 3.3 to 9.8 s in quiet moments; lld without `/DEBUG` 1.3 to 1.5 s; lld
+with `/DEBUG` 15.8 to 16.5 s (its PDB for 1.6 GB of objects); link.exe `/INCREMENTAL /OPT:NOREF`
+2.5 s for a full link and 0.6 to 1.4 s relinking after one object changed when measured alone, but
+3.6 to 7.3 s in the edit loop through the server (one module changed each time) and 1.3 to 10.4 s
+in repeated relinks of one object: no gain shown under this load, so no option was added. Two
+facts for whoever takes it up: run.cmd deletes factorio.exe before every build, which makes an
+incremental link impossible, and `/INCREMENTAL` needs `/OPT:NOREF` (the executable keeps the
+functions nobody calls). With 3c the link is what is left of an edit (3.4 to 7 s); measuring it
+needs a quieter machine or many more pairs.
 - **3c**: codegen keeps each function's result and rebuilds only what an edit changed. The codegen
   thread owns codegen's half (its queued work on destructor helpers, cleanups and module assembly
   reshapes the same structures); the interface the server needs:
