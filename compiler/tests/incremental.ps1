@@ -56,6 +56,8 @@ $steps = @(
   @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7 6 16 44 3 8 6'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
   @{ name = 'signature edit of a member another class shares the name of'; expect = '7 44 44 103 8 11 7 6 16 44 5 8 6'; edit = { Edit 'shapes.kpp' 'struct Gauge { int reading() const { return 3; } };' 'struct Gauge { int reading(int scale = 1) const { return 5 * scale; } };' } },
   @{ name = 'signature edit read by an instance codegen made (dropped, made anew)'; expect = '7 44 44 103 8 11 7 6 16 44 5 8 15'; edit = { Edit 'shapes.kpp' 'int base() const { return 2; }' 'int base(int k = 0) const { return 5 + k; }' } },
+  @{ name = 'return type edit failing a static_assert at namespace scope in another file'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int unitWidth() { return 1; }' 'long long unitWidth() { return 1; }' } },
+  @{ name = 'return type edit back'; expect = '7 44 44 103 8 11 7 6 16 44 5 8 15'; edit = { Edit 'shapes.kpp' 'long long unitWidth() { return 1; }' 'int unitWidth() { return 1; }' } },
   @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
   @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
   @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }

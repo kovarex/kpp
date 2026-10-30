@@ -675,6 +675,31 @@ the order of work:
    - Until it lands, the server runs codegen in full for a layout edit (the resolver's half alone
      already saves the resolve from scratch).
 
+**Member lists read by position, recorded (landed, the first piece of 2).** The 46 loops over a
+class's member list go through `membersRead`, which records `USE_ClassMembers(class)`. The caches
+computed from member lists or by the evaluator (`constLayouts`, the trait answers,
+`memberConstants`, the specialisation cache) keep everything their computation recorded, names and
+uses (`CollectUses`), and replay it into each asker they answer (`replayUses`): a cache hit was a
+read nobody recorded (the trait answers and `constLayouts` read members' declared types too). A
+change forgets the cached answers whose reads it meets (`forgetCachedAnswers`). Every declaration
+walked outside any unit is now a unit of its own, not only functions and variables: a namespace's
+or a class's static_assert, an alias, an enumeration with its values. Their reads were recorded by
+nobody, so an edit they read left them unchecked: the edit test's new step makes a namespace-scope
+static_assert in another file fail by a return type edit, and master's server answered it without
+the error (`err differs`). A member list read outside any unit while the files are resolved
+(`membersReadOutside`; class instances' member tasks read their templates' lists so) makes an edit of
+that class's data members a build from scratch.
+
+Measured on the game's recorded reads, the units reading a class's member list by position: none
+for BuildEntityAchievement and Inserter, 1 to 4 for Character, AssemblingMachine, Recipe,
+ElectricNetwork and AchievementStats, 3 walks for TransportLine and Chunk, 1,534 instances and 2,144
+walks for MapPosition (a value type every aggregate and constant builds); no class instance reads
+one. Cost, master 07b19720 and this interleaved, the front end at -j 32 on the frozen game tree: a
+build in its own process 1.323 to 1.345 s of resolve against 1.328 to 1.347 s, peak the same
+(1,707 to 1,710 MB: every recording helper returns on one static flag first); a recording build
+1.894 to 1.978 s against 1.854 to 1.904 s, names 11.8 M -> 19.5 M (the caches' replays), uses
+7.2 M -> 8.4 M.
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before

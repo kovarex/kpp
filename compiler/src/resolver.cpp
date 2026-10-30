@@ -167,7 +167,7 @@ struct Entry
 // class or function instance), and the function bodies the compile-time evaluator ran for it
 // (a constexpr function's body edit changes what they computed). A later edit invalidates the
 // units that read what it changed.
-enum : uint8_t { USE_DeclaredType = 1, USE_ScopeRelations, USE_ClassInstance, USE_Instance, USE_RanBody };
+enum : uint8_t { USE_DeclaredType = 1, USE_ScopeRelations, USE_ClassInstance, USE_Instance, USE_RanBody, USE_ClassMembers };
 
 // A recorded name: a symbol looked up in a namespace's or an enumeration's scope (or coarsely, by
 // the symbol alone), or a symbol looked up in a class's scope with that scope (memberName): an edit
@@ -231,6 +231,11 @@ static bool recordingDependencies = false;
 // The list this thread's lookups are recorded into (null: none).
 static thread_local DependencyList* recordingInto = nullptr;
 
+// A cached computation's reads, collected (CollectUses): kind 0 is a name (its RecordedName in
+// what's bits), else a use.
+using CollectedUse = std::pair<uint8_t, const void*>;
+static thread_local std::vector<CollectedUse>* usesCollector = nullptr;
+
 // A lookup visits a chain of scopes with one symbol, and a walk asks for one declaration's type
 // many times in a row: what was recorded last is not recorded again (tidy() drops the other
 // repeats). A unit starting or ending forgets it, so that nothing is taken as recorded that the
@@ -238,8 +243,17 @@ static thread_local DependencyList* recordingInto = nullptr;
 static thread_local uint32_t lastName = UINT32_MAX;
 static thread_local const void* lastUse = nullptr;
 
+static void collectName(RecordedName n)
+{
+  if (usesCollector)
+    usesCollector->push_back({0, reinterpret_cast<const void*>(uintptr_t(n))});
+}
+
 static void recordName(uint32_t symbol)
 {
+  if (!recordingDependencies) // (a build in its own process: nothing to look at, not even a thread's state)
+    return;
+  collectName(symbol);
   DependencyList* r = recordingInto;
   if (!r || symbol == lastName)
     return;
@@ -252,8 +266,11 @@ static void recordName(uint32_t symbol)
 static thread_local RecordedName lastMember = 0;
 static void recordMember(uint32_t scopeId, uint32_t symbol)
 {
+  if (!recordingDependencies)
+    return;
   DependencyList* r = recordingInto;
   RecordedName n = memberName(scopeId, symbol);
+  collectName(n);
   if (!r || n == lastMember)
     return;
   lastMember = n;
@@ -273,6 +290,10 @@ static thread_local uint32_t recordingUnit = 0, unitCounter = 0;
 
 static void recordUse(uint8_t kind, const void* what)
 {
+  if (!recordingDependencies)
+    return;
+  if (usesCollector)
+    usesCollector->push_back({kind, what});
   DependencyList* r = recordingInto;
   // (what is a declaration, a scope or a record: aligned, so the kind fits in its low bits)
   const void* key = reinterpret_cast<const char*>(what) + kind;
@@ -328,24 +349,71 @@ struct RecordInto
   RecordInto& operator=(const RecordInto&) = delete;
 };
 
-// The bodies the evaluator ran while a cached answer was computed (Impl::memberConstants, the
-// specialisation cache): a later asker the cache answers ran them too, as far as its dependencies
-// go. Nested: what an inner collection gathers belongs to the outer one as well.
-static thread_local std::vector<const FunctionDecl*>* ranCollector = nullptr;
-struct CollectRan
+// What a cached answer's computation recorded (the evaluator's caches, the trait answers, the
+// specialisation cache): a later asker the cache answers read it too, so it is replayed into the
+// asker's unit (replayUses). Nested: what an inner collection gathers belongs to the outer one as
+// well. Only while recording.
+struct CollectUses
 {
-  std::vector<const FunctionDecl*> ran;
-  std::vector<const FunctionDecl*>* saved = ranCollector;
-  CollectRan() { ranCollector = &ran; }
-  ~CollectRan()
+  std::vector<CollectedUse> uses;
+  std::vector<CollectedUse>* saved = usesCollector;
+  CollectUses()
   {
-    ranCollector = saved;
-    if (saved)
-      saved->insert(saved->end(), ran.begin(), ran.end());
+    if (recordingDependencies)
+      usesCollector = &uses;
   }
-  CollectRan(const CollectRan&) = delete;
-  CollectRan& operator=(const CollectRan&) = delete;
+  ~CollectUses()
+  {
+    if (!recordingDependencies)
+      return;
+    usesCollector = saved;
+    if (saved)
+      saved->insert(saved->end(), uses.begin(), uses.end());
+  }
+  CollectUses(const CollectUses&) = delete;
+  CollectUses& operator=(const CollectUses&) = delete;
 };
+
+// A cached answer's collected reads, replayed into the asker's unit (and an outer collection).
+// (Impl::replayUses: a body run tells the code generator's hooks too.)
+static void replayCollected(const std::vector<CollectedUse>& uses)
+{
+  if (!recordingInto && !usesCollector)
+    return;
+  for (const auto& [kind, what] : uses)
+    if (kind == 0)
+    {
+      RecordedName n = RecordedName(reinterpret_cast<uintptr_t>(what));
+      collectName(n);
+      if (recordingInto)
+        recordingInto->names.push_back(n);
+    }
+    else
+      recordUse(kind, what);
+}
+
+// A class's member list read by position (aggregate initialisation, traits, layouts, reflection,
+// implicit members), not through a name: recorded (USE_ClassMembers), so that an edit of the class's
+// data members finds what read it.
+// The classes whose member lists were read outside any unit while the files were resolved (or a
+// compile server's edit was checked again): the build's own set (Impl::membersReadOutside) while
+// its resolve runs, else none. An edit of one of their data members is built from scratch.
+static std::unordered_set<const void*>* membersOutsideSink = nullptr;
+static std::mutex membersOutsideMutex;
+
+template<typename C>
+static Span<Decl*> membersRead(C* c)
+{
+  if (!recordingDependencies)
+    return c->members;
+  recordUse(USE_ClassMembers, c);
+  if (!recordingInto && membersOutsideSink && recordingDependencies)
+  {
+    std::lock_guard lock(membersOutsideMutex);
+    membersOutsideSink->insert(c);
+  }
+  return c->members;
+}
 
 static std::atomic<uint32_t> nextScopeId{0};
 
@@ -401,7 +469,7 @@ struct Scope
     Shard& shard = shardFor(symbol);
     auto it = shard.map.find(symbol);
     const std::vector<Entry>* found = it == shard.map.end() ? nullptr : &it->second;
-    if (!recordingInto)
+    if (!recordingDependencies || (!recordingInto && !usesCollector))
       return found;
     // A class's lookup is recorded with the class, unless what it finds is a using-declaration (its
     // target is looked up elsewhere, and cached): then by the name alone, as every other scope's.
@@ -1149,6 +1217,7 @@ struct GlobalScope::Impl
   // it did): an edit of one is built from scratch.
   std::mutex ranOutsideMutex;
   std::unordered_set<const FunctionDecl*> ranOutside;
+  std::unordered_set<const void*> membersReadOutside; // (under membersOutsideMutex) see membersOutsideSink
 
   // ---- generic lambdas: where each was written, so that its body can be typed for every call ----
   // A lambda with template parameters (written, or invented for `auto` parameters) is a template
@@ -3459,6 +3528,9 @@ struct GlobalScope::Impl
   {
     std::shared_mutex mutex;
     std::unordered_map<std::string, bool, PointerKeyHash> answers;
+    // What computing an answer read (a recording build's, when it read anything): replayed to each
+    // asker it answers.
+    std::unordered_map<std::string, std::vector<CollectedUse>, PointerKeyHash> uses;
   };
   TraitShard traitShards[64];
 
@@ -3473,12 +3545,20 @@ struct GlobalScope::Impl
     {
       std::shared_lock lock(shard.mutex);
       if (auto it = shard.answers.find(key); it != shard.answers.end())
+      {
+        if (recordingDependencies)
+          if (auto u = shard.uses.find(key); u != shard.uses.end())
+            replayUses(u->second);
         return it->second;
+      }
     }
+    CollectUses collected;
     std::optional<bool> answer = traitValueUncached(name, a);
     if (answer)
     {
       std::unique_lock lock(shard.mutex);
+      if (!collected.uses.empty())
+        shard.uses.emplace(key, collected.uses);
       shard.answers.emplace(std::move(key), *answer);
     }
     return answer;
@@ -3525,7 +3605,7 @@ struct GlobalScope::Impl
           return false;
         std::vector<FunctionDecl*> ctors;
         Subst s = substFor(t);
-        for (Decl* m : static_cast<ClassDecl*>(def)->members)
+        for (Decl* m : membersRead(static_cast<ClassDecl*>(def)))
         {
           if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Delete))
             ctors.push_back(static_cast<FunctionDecl*>(m));
@@ -3545,7 +3625,7 @@ struct GlobalScope::Impl
           for (const Subst::Pair& p : memberSubst(t, bl.scope, 0).pairs)
             if (!s.find(p.param))
               s.pairs.push_back(p);
-          for (Decl* bm : base->members)
+          for (Decl* bm : membersRead(base))
             if (bm->kind == NodeKind::FunctionDecl && (bm->flags & DF_Constructor) && !(bm->flags & DF_Delete))
               if (auto* f = static_cast<FunctionDecl*>(bm); f->params.size() != 1 || selfParameter(f->params[0], base) == 0)
                 ctors.push_back(f);
@@ -3708,7 +3788,7 @@ struct GlobalScope::Impl
   bool fieldTypes(const Ty* t, ClassDecl* def, std::vector<const Ty*>& out)
   {
     Subst s = substFor(t);
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
     {
       if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)))
         continue;
@@ -3760,7 +3840,7 @@ struct GlobalScope::Impl
     ClassDecl* def = classDefinition(t);
     if (!def)
       return std::nullopt;
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
       if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Pure)))
         return true;
     std::vector<const Ty*> bases;
@@ -3787,7 +3867,7 @@ struct GlobalScope::Impl
     if (!def)
       return std::nullopt;
     std::vector<FunctionDecl*> pure;
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
       if (m->kind == NodeKind::FunctionDecl && !(m->flags & (DF_Static | DF_Constructor)) && m->templateParams.empty())
       {
         auto* f = static_cast<FunctionDecl*>(m);
@@ -3862,7 +3942,7 @@ struct GlobalScope::Impl
   SpecialMembers specialMembersOf(ClassDecl* def)
   {
     SpecialMembers s;
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
     {
       if (m->kind != NodeKind::FunctionDecl || !m->templateParams.empty())
         continue;
@@ -4116,7 +4196,7 @@ struct GlobalScope::Impl
     ClassDecl* def = classDefinition(s.cls);
     if (!def)
       return std::nullopt;
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
       if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) &&
           ((m->flags & DF_Delete) || !(m->flags & DF_Default) || (m->flags & (DF_Virtual | DF_Override))))
         return false;
@@ -4183,7 +4263,7 @@ struct GlobalScope::Impl
     if (!def)
       return std::nullopt;
     bool anyConstructor = false, defaultConstructor = false;
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
     {
       if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && static_cast<VariableDecl*>(m)->init)
         return false; // `int count = 0;`: the implicit constructor runs it
@@ -4299,7 +4379,7 @@ struct GlobalScope::Impl
         ClassDecl* def = classDefinition(classes[i]);
         if (!def)
           return std::nullopt;
-        for (Decl* m : def->members)
+        for (Decl* m : membersRead(def))
           if (m->kind == NodeKind::FunctionDecl)
             if (auto* fn = static_cast<FunctionDecl*>(m); !fn->name.empty() && fn->name.last().special == 2 && fn->name.last().opToken == uint32_t(P::LParen))
               candidates.push_back(fn);
@@ -4435,7 +4515,7 @@ struct GlobalScope::Impl
   {
     if (!c || depth > 8)
       return nullptr;
-    for (Decl* m : c->members)
+    for (Decl* m : membersRead(c))
     {
       if (m->kind != NodeKind::VariableDecl || !(m->flags & DF_Static))
         continue;
@@ -4536,7 +4616,7 @@ struct GlobalScope::Impl
   // does.
   Decl* grantingFriend(Decl* owner, FunctionDecl* fn, const std::vector<Scope*>& context)
   {
-    for (Decl* m : static_cast<ClassDecl*>(owner)->members)
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(owner)))
     {
       if (!m || !(m->flags & DF_Friend))
         continue;
@@ -4625,7 +4705,7 @@ struct GlobalScope::Impl
     if (!owner || owner->kind != NodeKind::ClassDecl || !owner->ownScope || static_cast<ClassDecl*>(owner)->isClosure)
       return;
     if (member != used && !static_cast<EnumDecl*>(member)->name.empty())
-      for (Decl* m : static_cast<ClassDecl*>(owner)->members)
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(owner)))
         if (m && m->kind == NodeKind::UsingNameDecl && static_cast<UsingNameDecl*>(m)->isEnum && !static_cast<UsingNameDecl*>(m)->name.empty() &&
             static_cast<UsingNameDecl*>(m)->name.last().symbol == static_cast<EnumDecl*>(member)->name.last().symbol && m->access == Access::Public)
           return; // `enum class Enum {...}; public: using enum Enum;`: the enumerators are public members
@@ -4726,7 +4806,7 @@ struct GlobalScope::Impl
 
   static bool declaresVirtual(ClassDecl* c)
   {
-    for (Decl* m : c->members)
+    for (Decl* m : membersRead(c))
       if (m && m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)))
         return true;
     return false;
@@ -4765,7 +4845,7 @@ struct GlobalScope::Impl
       auto* c = static_cast<ClassDecl*>(d);
       if (!c->isDefinition || c->isClosure || (c->flags & DF_Friend) || (c->file && c->file->isImported) || c->keyword == Kw::union_)
         continue;
-      for (Decl* m : c->members)
+      for (Decl* m : membersRead(c))
         if (m && (m->flags & DF_Friend))
         {
           ++counts.friends;
@@ -4789,7 +4869,7 @@ struct GlobalScope::Impl
       {
         ++n[0];
         bool privateMember = false, privateBase = false;
-        for (Decl* m : c->members)
+        for (Decl* m : membersRead(c))
           privateMember = privateMember || (m && !(m->flags & DF_Friend) && (m->access == Access::Private || m->access == Access::Protected));
         for (const ClassDecl::Base& b : c->bases)
           privateBase = privateBase || b.access == Access::Private || b.access == Access::Protected;
@@ -5124,7 +5204,7 @@ struct GlobalScope::Impl
             size = (size + *ba - 1) / *ba * *ba + *bs;
             align = std::max(align, *ba);
           }
-        for (Decl* m : cls->members)
+        for (Decl* m : membersRead(cls))
         {
           const Ty* ft = nullptr;
           if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
@@ -5213,7 +5293,7 @@ struct GlobalScope::Impl
         if (!ba) return std::nullopt;
         align = std::max(align, *ba);
       }
-      for (Decl* m : cls->members)
+      for (Decl* m : membersRead(cls))
       {
         const Ty* ft = nullptr;
         if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
@@ -5295,7 +5375,7 @@ struct GlobalScope::Impl
           return offset + *inner;
         offset += *bs;
       }
-    for (Decl* f : cls->members)
+    for (Decl* f : membersRead(cls))
     {
       if (f->kind != NodeKind::VariableDecl || (f->flags & (DF_Static | DF_Typedef | DF_Friend)))
         continue; // (an anonymous struct or union member: not walked into here)
@@ -5449,7 +5529,7 @@ struct GlobalScope::Impl
   struct MemberConstant
   {
     ConstValue value;
-    std::vector<const FunctionDecl*> ran; // the bodies computing it ran: an asker it answers ran them too
+    std::vector<CollectedUse> uses; // what computing it read: an asker it answers read it too
   };
   std::map<std::vector<const void*>, MemberConstant> memberConstants;
   std::optional<ConstValue> memberConstant(Decl* d, const TypeContext& ctx, const Subst& classSubst)
@@ -5466,17 +5546,16 @@ struct GlobalScope::Impl
       std::lock_guard lock(memberConstantsMutex);
       if (auto it = memberConstants.find(key); it != memberConstants.end())
       {
-        for (const FunctionDecl* f : it->second.ran)
-          ranBody(f);
+        replayUses(it->second.uses);
         return it->second.value;
       }
     }
-    CollectRan ran;
+    CollectUses collected;
     std::optional<ConstValue> v = constValueOfDecl(d, ctx, 0, &classSubst);
     if (v)
     {
       std::lock_guard lock(memberConstantsMutex);
-      memberConstants.emplace(std::move(key), MemberConstant{*v, ran.ran});
+      memberConstants.emplace(std::move(key), MemberConstant{*v, collected.uses});
     }
     return v;
   }
@@ -5511,15 +5590,61 @@ struct GlobalScope::Impl
   {
     if (const ConstHooks* h = constHooks(); h && h->ran)
       h->ran(def);
-    if (ranCollector)
-      ranCollector->push_back(def);
-    if (recordingInto)
-      recordUse(USE_RanBody, def);
-    else if (recordingDependencies && !constHooks())
+    recordUse(USE_RanBody, def); // (and into a cached answer's collection)
+    if (!recordingInto && recordingDependencies && !constHooks())
     {
       std::lock_guard lock(ranOutsideMutex);
       ranOutside.insert(def);
     }
+  }
+
+  // The cached answers whose collected reads meet a change (the evaluator's, the trait answers,
+  // the specialisation cache): forgotten, computed again by whoever asks next (every unit that read
+  // one had them replayed, and is found by its own record).
+  void forgetCachedAnswers(const std::function<bool(const CollectedUse&)>& changed)
+  {
+    auto meets = [&](const std::vector<CollectedUse>& uses)
+    {
+      for (const CollectedUse& u : uses)
+        if (changed(u))
+          return true;
+      return false;
+    };
+    {
+      std::lock_guard lock(memberConstantsMutex);
+      std::erase_if(memberConstants, [&](const auto& e) { return meets(e.second.uses); });
+    }
+    {
+      std::lock_guard lock(specializationCacheMutex);
+      std::erase_if(specializationCache, [&](const auto& e) { return meets(e.second.uses); });
+    }
+    {
+      std::lock_guard lock(constLayoutsMutex);
+      std::erase_if(constLayouts, [&](const auto& e) { return meets(e.second->uses); });
+    }
+    for (TraitShard& shard : traitShards)
+    {
+      std::unique_lock lock(shard.mutex);
+      for (auto it = shard.uses.begin(); it != shard.uses.end();)
+        if (meets(it->second))
+        {
+          shard.answers.erase(it->first);
+          it = shard.uses.erase(it);
+        }
+        else
+          ++it;
+    }
+  }
+
+  // A cached answer's collected reads replayed (replayCollected), its body runs through ranBody.
+  void replayUses(const std::vector<CollectedUse>& uses)
+  {
+    if (!recordingDependencies)
+      return;
+    for (const auto& [kind, what] : uses)
+      if (kind == USE_RanBody)
+        ranBody(static_cast<const FunctionDecl*>(what));
+    replayCollected(uses);
   }
 
   ConstArith constArith()
@@ -6972,7 +7097,7 @@ struct GlobalScope::Impl
       if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
         return std::nullopt;
       Subst subst = substFor(cls);
-      for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
       {
         if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !constDefinition(static_cast<FunctionDecl*>(m)))
           continue;
@@ -7180,7 +7305,7 @@ struct GlobalScope::Impl
       return f;
     if (layout->decl == f->parent)
       return f;
-    for (Decl* m : layout->decl->members)
+    for (Decl* m : membersRead(layout->decl))
     {
       if (m->kind != NodeKind::FunctionDecl || m == f)
         continue;
@@ -7236,6 +7361,7 @@ struct GlobalScope::Impl
     std::vector<uint8_t> fieldBits; // a bit field's width, 0 for a whole member
     std::vector<FunctionDecl*> constructors;
     bool ok = false;
+    std::vector<CollectedUse> uses; // what computing it read (a recording build's): replayed to each asker
   };
 
   // A field no initializer of an aggregate names: an unnamed bit field (`int : 0;`), padding.
@@ -7244,7 +7370,7 @@ struct GlobalScope::Impl
   // `using Vector2::Vector2;`: a class with a base's constructors (no aggregate, C++20).
   static bool constInheritsConstructors(const ConstClassLayout& layout)
   {
-    for (Decl* m : layout.decl->members)
+    for (Decl* m : membersRead(layout.decl))
       if (m->kind == NodeKind::UsingNameDecl)
       {
         const QualifiedName& name = static_cast<UsingNameDecl*>(m)->name;
@@ -7287,9 +7413,13 @@ struct GlobalScope::Impl
     {
       std::lock_guard lock(constLayoutsMutex);
       if (auto it = constLayouts.find(t); it != constLayouts.end())
+      {
+        replayUses(it->second->uses);
         return it->second->ok ? it->second.get() : nullptr;
+      }
     }
     auto layout = std::make_shared<ConstClassLayout>();
+    CollectUses collected;
     Scope* s = classScopeOf(t);
     if (s && s->owner && s->owner->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(s->owner)->isDefinition &&
         static_cast<ClassDecl*>(s->owner)->keyword != Kw::union_)
@@ -7310,7 +7440,7 @@ struct GlobalScope::Impl
           layout->ok = false;
         layout->bases.push_back(bt);
       }
-      for (Decl* m : cls->members)
+      for (Decl* m : membersRead(cls))
       {
         if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
           layout->constructors.push_back(static_cast<FunctionDecl*>(m));
@@ -7335,6 +7465,7 @@ struct GlobalScope::Impl
         layout->fieldBits.push_back(bits);
       }
     }
+    layout->uses = collected.uses;
     std::lock_guard lock(constLayoutsMutex);
     auto it = constLayouts.emplace(t, layout).first;
     return it->second->ok ? it->second.get() : nullptr;
@@ -7598,7 +7729,7 @@ struct GlobalScope::Impl
     const ConstClassLayout* layout = constLayoutOf(t, depth);
     if (!layout || !layout->constructors.empty() || constInheritsConstructors(*layout))
       return false;
-    for (Decl* m : layout->decl->members)
+    for (Decl* m : membersRead(layout->decl))
       if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Virtual))
         return false;
     return true;
@@ -7768,7 +7899,7 @@ struct GlobalScope::Impl
       return std::nullopt;
     // `using Vector2::Vector2;`: a base's constructor makes that base's part, the class's own
     // members coming from their defaults (an inherited constructor).
-    for (Decl* m : layout->decl->members)
+    for (Decl* m : membersRead(layout->decl))
     {
       if (m->kind != NodeKind::UsingNameDecl)
         continue;
@@ -9811,7 +9942,7 @@ struct GlobalScope::Impl
     Scope* cs = classScopeOf(t);
     if (!cs || !cs->owner || cs->owner->kind != NodeKind::ClassDecl || depth > 16)
       return nullptr;
-    for (Decl* m : static_cast<ClassDecl*>(cs->owner)->members)
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(cs->owner)))
       if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
         return t;
     Subst own = substFor(t);
@@ -10339,7 +10470,7 @@ struct GlobalScope::Impl
         return a;
     std::vector<int> guideRanks;
     const Ty* fromGuide = deduceFromGuides(cls, argTypes, copyInit, guideRanks);
-    for (Decl* m : cls->members)
+    for (Decl* m : membersRead(cls))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
         continue;
@@ -10424,7 +10555,7 @@ struct GlobalScope::Impl
       return nullptr;
     auto* cls = static_cast<ClassDecl*>(s->owner);
     std::vector<VariableDecl*> fields;
-    for (Decl* m : cls->members)
+    for (Decl* m : membersRead(cls))
     {
       if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
         return nullptr; // not an aggregate: its constructors decide
@@ -12403,7 +12534,7 @@ struct GlobalScope::Impl
   struct Specialization
   {
     const Ty* type;
-    std::vector<const FunctionDecl*> ran; // the bodies matching it ran (a constant argument's)
+    std::vector<CollectedUse> uses; // what matching it read (a constant argument's bodies run, ...)
   };
   std::unordered_map<const Ty*, Specialization> specializationCache; // resolveSpecialization's answers for known arguments
 
@@ -12422,12 +12553,11 @@ struct GlobalScope::Impl
       std::lock_guard lock(specializationCacheMutex);
       if (auto it = specializationCache.find(classTy); it != specializationCache.end())
       {
-        for (const FunctionDecl* f : it->second.ran)
-          ranBody(f);
+        replayUses(it->second.uses);
         return it->second.type;
       }
     }
-    CollectRan ran;
+    CollectUses collected;
     Lookup l;
     if (!lookupInScope(lexicalScopeOf(d), name.last().symbol, l, depth + 1) || !l.overloads)
       return classTy;
@@ -12437,7 +12567,7 @@ struct GlobalScope::Impl
     if (known && depth < 8)
     {
       std::lock_guard lock(specializationCacheMutex);
-      specializationCache.emplace(classTy, Specialization{result, ran.ran});
+      specializationCache.emplace(classTy, Specialization{result, collected.uses});
     }
     return result;
   }
@@ -12677,7 +12807,7 @@ struct GlobalScope::Impl
     if (!def || level > 8)
       return;
     Subst s = substFor(p);
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
     {
       if (m->kind != NodeKind::UsingNameDecl)
         continue;
@@ -12732,7 +12862,7 @@ struct GlobalScope::Impl
       return 2;
     Subst s = substFor(p);
     bool constructors = false;
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
         continue;
@@ -12766,7 +12896,7 @@ struct GlobalScope::Impl
         continue;
       constructors = true;
       Subst bs = substFor(bt);
-      for (Decl* m : bd->members)
+      for (Decl* m : membersRead(bd))
       {
         if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
           continue;
@@ -12790,7 +12920,7 @@ struct GlobalScope::Impl
     std::vector<const Ty*> members;
     if (!directBases(p, def, members))
       return 2;
-    for (Decl* m : def->members)
+    for (Decl* m : membersRead(def))
       if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
         members.push_back(declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0));
     auto elisionMayFill = [&](const Ty* member)
@@ -13069,7 +13199,7 @@ struct GlobalScope::Impl
         {
           auto converts = [&](ClassDecl* owner, const Ty* ownerTy, const Subst& s) -> bool
           {
-          for (Decl* m : owner->members)
+          for (Decl* m : membersRead(owner))
           {
             if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
               continue;
@@ -13126,7 +13256,7 @@ struct GlobalScope::Impl
             return true;
           if (level > 8)
             return false;
-          for (Decl* m : static_cast<ClassDecl*>(def)->members)
+          for (Decl* m : membersRead(static_cast<ClassDecl*>(def)))
           {
             if (m->kind != NodeKind::UsingNameDecl)
               continue;
@@ -13186,7 +13316,7 @@ struct GlobalScope::Impl
     if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
       return;
     Subst subst = substFor(cls);
-    for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || isExplicit(static_cast<FunctionDecl*>(m), &subst))
         continue;
@@ -13219,7 +13349,7 @@ struct GlobalScope::Impl
     if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
       return false;
     Subst subst = substFor(a);
-    for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || (!allowExplicit && isExplicit(static_cast<FunctionDecl*>(m), &subst)))
         continue;
@@ -13267,7 +13397,7 @@ struct GlobalScope::Impl
     if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
       return nullptr;
     Subst own = substFor(a);
-    for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+    for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion) || !m->templateParams.empty())
         continue;
@@ -14349,7 +14479,7 @@ struct GlobalScope::Impl
       ClassDecl* def = impl.classDefinition(cls);
       if (!def || !def->bases.empty())
         return false;
-      for (Decl* d : def->members)
+      for (Decl* d : membersRead(def))
         if (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(d)->name.empty())
           out.push_back(types.member(impl.declaredTypeOf(d, s.pairs.empty() ? nullptr : &s, 0), d, cls));
       return true;
@@ -14781,7 +14911,7 @@ struct GlobalScope::Impl
       subCheck(classTy->decl, subst, cls, types.pointer(classTy), [&](Walker& sub)
       {
         auto* c = static_cast<ClassDecl*>(classTy->decl);
-        for (Decl* m : c->members)
+        for (Decl* m : membersRead(c))
           if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->body && m->templateParams.empty())
             checkMemberBody(sub, static_cast<FunctionDecl*>(m), subst);
         for (FunctionDecl* f : cls->outOfLineMembers)
@@ -15080,7 +15210,7 @@ struct GlobalScope::Impl
       if (!cs || !cs->owner || cs->owner->kind != NodeKind::ClassDecl)
         return unknown(Why::Unsupported);
       size_t seen = 0;
-      for (Decl* m : static_cast<ClassDecl*>(cs->owner)->members)
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(cs->owner)))
       {
         if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)))
           continue;
@@ -16412,7 +16542,7 @@ struct GlobalScope::Impl
       FunctionDecl* taker = nullptr;
       int takers = 0;
       bool constructors = false;
-      for (Decl* m : cls->members)
+      for (Decl* m : membersRead(cls))
       {
         if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || (m->flags & DF_Delete))
           continue;
@@ -16441,7 +16571,7 @@ struct GlobalScope::Impl
       if (!cls->bases.empty())
         return;
       size_t i = 0;
-      for (Decl* m : cls->members)
+      for (Decl* m : membersRead(cls))
       {
         if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
           continue;
@@ -16507,7 +16637,7 @@ struct GlobalScope::Impl
       if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
         return;
       std::vector<FunctionDecl*> constructors;
-      for (Decl* m : static_cast<ClassDecl*>(s->owner)->members)
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
         if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
           constructors.push_back(static_cast<FunctionDecl*>(m));
       Subst subst = impl.substFor(t);
@@ -16519,7 +16649,7 @@ struct GlobalScope::Impl
         if (!cls->bases.empty())
           return;
         std::vector<const Ty*> members;
-        for (Decl* m : cls->members)
+        for (Decl* m : membersRead(cls))
           if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
             members.push_back(impl.declaredTypeOf(m, subst.empty() ? nullptr : &subst, 0));
         bindOverloadSets(sets, types.function(types.voidType(), Span<const Ty*>{members.data(), uint32_t(members.size())}, false));
@@ -17790,10 +17920,11 @@ struct GlobalScope::Impl
     {
       if (!d)
         return;
-      // A function's or a variable's walk outside any other unit (its body, its initializer) is a
-      // unit of its own; what is declared inside it belongs to it.
+      // A declaration's walk outside any other unit (a function's body, a variable's initializer, a
+      // static_assert, an alias, an enumeration's values) is a unit of its own; what is declared
+      // inside it belongs to it. Not a namespace's or a class's: their members are units each.
       std::optional<RecordInto> unit;
-      if (!recordingInto && !activeSubst && (d->kind == NodeKind::FunctionDecl || d->kind == NodeKind::VariableDecl))
+      if (!recordingInto && !activeSubst && d->kind != NodeKind::NamespaceDecl && d->kind != NodeKind::ClassDecl)
         unit.emplace(recordingDependencies ? impl.dependenciesOf(d, Impl::UNIT_Walk) : nullptr);
       size_t mark = locals.mark();
       if (!d->templateParams.empty())
@@ -19109,7 +19240,7 @@ struct GlobalScope::Impl
       }
       // The whole instance (one task per class instance: per member, the tasks' own setup cost
       // more than they spread).
-      for (Decl* m : c->members)
+      for (Decl* m : membersRead(c))
         if (m->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(m)->body && m->templateParams.empty())
           w.checkMemberBody(sub, static_cast<FunctionDecl*>(m), subst);
       for (FunctionDecl* f : c->ownScope->outOfLineMembers)
@@ -19120,8 +19251,21 @@ struct GlobalScope::Impl
   }
 };
 
-GlobalScope::GlobalScope(SymbolTable& symbols) : impl(new Impl(symbols)) {}
-GlobalScope::~GlobalScope() { delete impl; }
+GlobalScope::GlobalScope(SymbolTable& symbols) : impl(new Impl(symbols))
+{
+  std::lock_guard lock(membersOutsideMutex);
+  membersOutsideSink = &impl->membersReadOutside;
+}
+
+GlobalScope::~GlobalScope()
+{
+  {
+    std::lock_guard lock(membersOutsideMutex);
+    if (membersOutsideSink == &impl->membersReadOutside)
+      membersOutsideSink = nullptr;
+  }
+  delete impl;
+}
 
 void GlobalScope::indexFile(ParsedFile& file)
 {
@@ -19308,7 +19452,7 @@ void GlobalScope::finishIndex()
     const uint32_t special = DF_Constructor | DF_Destructor | DF_Conversion;
     bool declared = false;
     if (f->flags & special)
-      for (Decl* m : static_cast<ClassDecl*>(cls)->members)
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(cls)))
         if (!declared && m->kind == NodeKind::FunctionDecl && m != f && (m->flags & special) == (f->flags & special) &&
             !static_cast<FunctionDecl*>(m)->body)
           declared = (f->flags & DF_Destructor) ||
@@ -19360,7 +19504,7 @@ void GlobalScope::checkInstanceStaticAsserts()
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
     Impl::TypeContext ctx{c->ownScope ? c->ownScope : impl->lexicalScopeOf(c), &params, subst.empty() ? nullptr : &subst,
                           c->file ? c->file->tokens : nullptr, c->file ? c->file->text : std::string_view()};
-    for (Decl* m : c->members)
+    for (Decl* m : membersRead(c))
       if (m->kind == NodeKind::StaticAssertDecl)
         impl->checkStaticAssert(static_cast<StaticAssertDecl*>(m), ctx, impl->types.toString(cls, &impl->symbols));
   }
@@ -20387,10 +20531,20 @@ size_t GlobalScope::typeCount() const { return impl->types.size(); }
 
 void GlobalScope::recordDependencies(bool on) { recordingDependencies = on; }
 
-void GlobalScope::resolveDone() { impl->afterResolve = true; }
+void GlobalScope::resolveDone()
+{
+  impl->afterResolve = true;
+  std::lock_guard lock(membersOutsideMutex);
+  if (membersOutsideSink == &impl->membersReadOutside)
+    membersOutsideSink = nullptr; // (codegen's reads: a layout edit runs it in full)
+}
 
 void GlobalScope::beginRewalk()
 {
+  {
+    std::lock_guard lock(membersOutsideMutex);
+    membersOutsideSink = &impl->membersReadOutside;
+  }
   impl->rewalkCreated = 0;
   impl->rewalkTouchedLate = false;
   impl->rewalking = true;
@@ -20398,6 +20552,11 @@ void GlobalScope::beginRewalk()
 
 bool GlobalScope::endRewalk()
 {
+  {
+    std::lock_guard lock(membersOutsideMutex);
+    if (membersOutsideSink == &impl->membersReadOutside)
+      membersOutsideSink = nullptr;
+  }
   impl->rewalking = false;
   return impl->rewalkCreated == 0 && !impl->rewalkTouchedLate;
 }
@@ -20805,6 +20964,8 @@ namespace
         return true;
       look(v->type);
     }
+    else if (d->kind == NodeKind::UsingAliasDecl)
+      look(static_cast<const UsingAliasDecl*>(d)->type);
     else if (d->kind == NodeKind::FunctionDecl)
     {
       auto* f = static_cast<const FunctionDecl*>(d);
@@ -20999,19 +21160,7 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
   // unit that read one recorded its bodies, and is found above or below).
   if (!ran.empty())
   {
-    auto meets = [&](const std::vector<const FunctionDecl*>& list)
-    {
-      for (const FunctionDecl* f : list)
-        if (ran.count(f))
-          return true;
-      return false;
-    };
-    {
-      std::lock_guard lock(impl->memberConstantsMutex);
-      std::erase_if(impl->memberConstants, [&](const auto& e) { return meets(e.second.ran); });
-    }
-    std::lock_guard lock(impl->specializationCacheMutex);
-    std::erase_if(impl->specializationCache, [&](const auto& e) { return meets(e.second.ran); });
+    impl->forgetCachedAnswers([&](const CollectedUse& u) { return u.first == USE_RanBody && ran.count(u.second); });
   }
   std::unordered_set<const ParsedFile*> found;
   for (Impl::DeclDependencyShard& shard : impl->declDependencies)
