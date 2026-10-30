@@ -5054,7 +5054,13 @@ struct GlobalScope::Impl
         params.push(static_cast<TemplateParamDecl*>(p)->name, p);
       TypeContext ictx{lexicalScopeOf(v), classParams.empty() ? nullptr : &params, memberArgs, def->file ? def->file->tokens : nullptr,
                        def->file ? def->file->text : std::string_view()};
-      return constInitialize(constDeducedType(v, convertType(v->type, ictx, depth + 1)), def->init, ictx, depth + 1);
+      Subst ofClass; // (the record's key: the class's arguments alone)
+      if (memberArgs)
+        for (Decl* p : classParams)
+          if (const Ty* t = memberArgs->find(p))
+            ofClass.pairs.push_back({p, t});
+      return constInitialize(constDeducedType(v, convertType(v->type, ictx, depth + 1)), constInitializerOf(def, ofClass.empty() ? nullptr : &ofClass),
+                             ictx, depth + 1);
     }
     if (d->kind == NodeKind::EnumeratorDecl)
     {
@@ -5078,7 +5084,8 @@ struct GlobalScope::Impl
         auto* cur = static_cast<EnumeratorDecl*>(m);
         if (cur->value)
         {
-          std::optional<ConstValue> v = constConverted(constValue(cur->value, ectx, depth + 1), enumType);
+          // (its value as a walk of it typed it: constWalkedCopy)
+          std::optional<ConstValue> v = constConverted(constValue(constWalkedCopy(cur, cur->value, e->file, ectx.scope, e, nullptr), ectx, depth + 1), enumType);
           if (!v)
             return std::nullopt;
           next = *v;
@@ -6650,7 +6657,7 @@ struct GlobalScope::Impl
       if (VariableDecl* v = findStaticBoolValue(static_cast<ClassDecl*>(d), depth + 1))
       {
         TypeContext vctx{lexicalScopeOf(v), nullptr, nullptr, v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
-        return constAsDeclared(constInitValue(v->init, vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
+        return constAsDeclared(constInitValue(constInitializerOf(v, nullptr), vctx, depth + 1), v->type ? convertType(v->type, vctx, depth + 1) : nullptr);
       }
       if (const Ty* t = convertType(&named, ctx, depth + 1); t && t->kind == TyKind::Class)
         return constEmpty(t, true, depth + 1); // `Point()`: value-initialized
@@ -7636,7 +7643,7 @@ struct GlobalScope::Impl
       params.push(static_cast<TemplateParamDecl*>(p)->name, p);
     TypeContext fctx{layout.decl->ownScope ? layout.decl->ownScope : lexicalScopeOf(f), &params, layout.subst.empty() ? nullptr : &layout.subst,
                      f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-    return constInitialize(layout.fieldTypes[i], f->init, fctx, depth + 1);
+    return constInitialize(layout.fieldTypes[i], constInitializerOf(f, layout.subst.empty() ? nullptr : &layout.subst), fctx, depth + 1);
   }
 
   // The value an initializer gives an object of type t: a brace list (an aggregate's elements, a
@@ -19481,6 +19488,76 @@ struct GlobalScope::Impl
     if (!record || record->state.load(std::memory_order_acquire) != 2 || !record->body)
       return def;
     return record->body;
+  }
+
+  // The initializer a constant evaluation reads for v (a namespace-scope or static constant's
+  // definition, a trait's static value, a data member's default) under subst (the arguments of the
+  // class template it is a member of, or none): a copy of it as a walk of its own typed it, made now
+  // or waited for, through the kind of record GlobalScope::instanceInitializer keeps for variable
+  // templates; never v's own nodes, which its file's walk may not have reached yet or may be writing
+  // on another thread (a constant of another file read the overload set's first function, an array's
+  // bound 100 or 4 by the order the files were walked in). v->init itself when an argument is not
+  // known, or this thread is typing the copy.
+  Expr* constInitializerOf(VariableDecl* v, const Subst* subst)
+  {
+    if (!v->init)
+      return nullptr;
+    Scope* scope = lexicalScopeOf(v);
+    if (v->name.parts.size() > 1)
+    {
+      ResolveStats scratch;
+      if (v->file && v->file->tokens)
+        scope = Walker(*this, scratch, *v->file->tokens, v->file->text).semanticScopeFor(v->name);
+    }
+    return constWalkedCopy(v, v->init, v->file, scope, v, subst);
+  }
+
+  // e (an expression of key's: a constant's initializer, an enumerator's value) as constInitializerOf
+  // has it: a copy typed by a walk of its own in scope, with the template parameters of paramsOf and
+  // its parents, under subst; the record of key keeps it.
+  Expr* constWalkedCopy(const Decl* key, Expr* e, const ParsedFile* file, Scope* scope, Decl* paramsOf, const Subst* subst)
+  {
+    if (!e || !file || !file->tokens)
+      return e;
+    Subst s;
+    if (subst)
+      for (const Subst::Pair& p : subst->pairs)
+      {
+        if (!p.type || !p.type->isKnown() || types.isDependent(p.type) || mentionsUnknown(p.type))
+          return e;
+        s.pairs.push_back(p);
+      }
+    bool producer;
+    InstanceRecord* record = claimInstance(key, s, nullptr, producer);
+    if (!producer)
+    {
+      if (record->state.load(std::memory_order_acquire) != 2)
+      {
+        if (record->owner == std::this_thread::get_id())
+          return e; // (its own expression, while this thread types the copy)
+        for (int seen = record->state.load(std::memory_order_acquire); seen != 2; seen = record->state.load(std::memory_order_acquire))
+          record->state.wait(seen, std::memory_order_acquire);
+      }
+      return record->init ? record->init : e;
+    }
+    RecordInto into(&record->deps); // what typing the copy reads is its own
+    InstanceCopier copier(instanceArena());
+    Expr* copy = copier.expression(e);
+    record->init = copy;
+    ResolveStats scratch;
+    Walker w(*this, scratch, *file->tokens, file->text);
+    for (Decl* p = paramsOf; p; p = p->parent)
+      for (Decl* tp : p->templateParams)
+        w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+    w.scope = scope;
+    if (!s.empty())
+      w.activeSubst = &s;
+    if (Decl* cls = enclosingClassDecl(w.scope))
+      w.thisType = types.pointer(s.empty() ? selfType(cls) : substitute(selfType(cls), s));
+    w.walkExpr(copy);
+    record->state.store(2, std::memory_order_release);
+    record->state.notify_all();
+    return copy;
   }
 
   // ---- member bodies of class instances, checked as tasks (docs/compile-speed.md, step 3) ----

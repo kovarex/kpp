@@ -1,0 +1,19 @@
+// spec: a constant read before its definition, or from another file (Kpp's symbols are order-independent), is the value of its initializer as a walk of it types it: `pick(3)` in k's initializer is pick(int), in a lambda called there, in a data member's default and in an enumerator's value too, whatever order the files are walked in
+// factorio: found by the templates thread checking compile-time lambdas for thread A: with k = pick(3) in another file, `int sized[k]` had 100 or 4 elements by the order the files were walked in and the thread count; the evaluator read the initializer's own nodes, unresolved above their file's walk
+int sized[k];
+int doubled[viaLambda];
+struct Holder { int value = pick(3); };
+constexpr Holder held{};
+int heldSized[held.value];
+int enumSized[int(Size::Small)];
+constexpr int pick(double) { return 100; }
+constexpr int pick(int x) { return x + 1; }
+constexpr int k = pick(3);
+constexpr int viaLambda = [](int v) { return pick(v) * 2; }(3);
+enum class Size : int { Small = pick(5) };
+int main()
+{
+  println("{} {} {} {} {} {}", int(sizeof(sized) / sizeof(int)), k, int(sizeof(doubled) / sizeof(int)), viaLambda, int(sizeof(heldSized) / sizeof(int)),
+          int(sizeof(enumSized) / sizeof(int)));
+  return 0;
+}
