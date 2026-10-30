@@ -3609,6 +3609,14 @@ namespace
           i = j;
           continue;
         }
+        if (size_t end = commentEnd(b, i); end != std::string::npos)
+        {
+          // A comment the expansion keeps, as written: an apostrophe in it (DrawQueue's "I'm not
+          // sure") is no character literal that would hide the parameters after it.
+          out.append(b, i, end - i);
+          i = end;
+          continue;
+        }
         if (c == '"' || (c == '\'' && !isDigitSeparator(b, i)))
         {
           size_t j = i + 1;
@@ -3631,8 +3639,24 @@ namespace
       return out;
     }
 
-    // The `)` that closes the `(` at open in macro text, skipping string and character literals;
-    // npos when there is none.
+    // The end of the comment (`/* */` or `//` to the line's end) that starts at i in macro text;
+    // npos when none starts there.
+    static size_t commentEnd(const std::string& s, size_t i)
+    {
+      if (s[i] != '/' || i + 1 >= s.size())
+        return std::string::npos;
+      if (s[i + 1] == '*')
+      {
+        size_t close = s.find("*/", i + 2);
+        return close == std::string::npos ? s.size() : close + 2;
+      }
+      if (s[i + 1] == '/')
+        return std::min(s.find('\n', i), s.size());
+      return std::string::npos;
+    }
+
+    // The `)` that closes the `(` at open in macro text, skipping string and character literals and
+    // comments; npos when there is none.
     static size_t closingParen(const std::string& s, size_t open)
     {
       int depth = 0;
@@ -3640,6 +3664,8 @@ namespace
       {
         if (size_t raw = rawStringEnd(s, k); raw != std::string_view::npos)
           k = raw - 1;
+        else if (size_t end = commentEnd(s, k); end != std::string::npos)
+          k = end - 1;
         else if (s[k] == '"' || (s[k] == '\'' && !isDigitSeparator(s, k)))
         {
           char quote = s[k];
