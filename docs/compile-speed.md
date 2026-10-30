@@ -560,6 +560,67 @@ must be a function's, a parameter's, a template parameter's, an alias's or a fun
 them. The edit test's step "return type edit (a data member is declared with it)" fails with master's
 kppc and passes now.
 
+### Design: step 4 for class layouts (draft, 2026-10-30; codegen's half for the codegen thread's review)
+
+**What is recorded today.** Codegen's per-function record (`Shared::Definition`) keeps `inlined`
+(the bodies a function's text holds: inlined callees, constant folds' bodies) and `types` (the
+`%struct` names its text mentions). It does not keep the layouts it used: a size, a field's or a
+base's offset, a vtable slot are folded into constants without naming the struct. In the resolver,
+a class's member list is read by position (aggregate initialisation, traits, the evaluator's
+`constLayouts`, reflection) in about 43 loops, none recorded; by name, every member lookup is
+recorded (step 2, by symbol).
+
+**Measured first: who depends on a class.** A temporary probe over the headline tree's recorded
+reads (frozen game tree, `KPP_DEPENDENCY_STATS=1`), per class: the class instances whose arguments
+mention it, the function and member instances that read the class's name or one of its data
+members' names, and the walks and declared types that do:
+
+| class | class instances mentioning it | instances reading its names | walks | declared types |
+|---|---:|---:|---:|---:|
+| BuildEntityAchievement | 10 | 0 | 32 | 27 |
+| AchievementStats | 5 | 0 | 367 | 253 |
+| AssemblingMachine | 0 | 4 | 779 | 306 |
+| Inserter | 10 | 100 | 2,512 | 405 |
+| Character | 16 | 55 | 2,553 | 1,034 |
+| ElectricNetwork | 1 | 874 | 2,320 | 128 |
+| Recipe | 2 | 1,074 | 984 | 45 |
+| Chunk | 35 | 964 | 3,294 | 553 |
+| MapPosition | 140 | 1,509 | 6,327 | 3,221 |
+| TransportLine | 22 | 112,973 | 1,369 | 406 |
+
+Names are recorded by symbol, so a member named `position` or `type` is read by everything reading
+any `position`. With today's rule (an instance that read a changed name is a build from scratch),
+almost no layout edit, and few signature edits (`getPrototype`, above), could stay incremental. So
+the order of work:
+
+1. **Instances checked again instead of a build from scratch.** An instance whose recorded reads meet
+   a change (a name, a declared type, a body it ran) is copied and walked again through its
+   `InstanceRecord::Recheck` (as a changed template's instances are, `recheckInstancesOf`), with the
+   same checks after (no new instance, none dropped, the same deduced return type). A class
+   instance's check likewise, once it keeps how it was checked. This serves signature edits now.
+2. **The resolver's half of a layout edit.** A changed file whose differences are data members of
+   non-template classes (added, removed, a type or a default initialiser changed; no virtual, base,
+   union or typed-union change): the members grafted and indexed as whole functions are; every
+   unit that read the class's name, an old or new member's name, or a declared type mentioning the
+   class (or a class holding it by value or as a base, transitively) is walked or checked again
+   (1); the evaluator's caches keyed by a type mentioning those classes are dropped
+   (`constLayouts`, the trait answers, the specialisation cache, `memberConstants`); the positional
+   reads (the 43 loops) record `USE_ClassMembers(class)` so that a unit reading a member list
+   without a name is found too. The classes go to codegen as `changedLayouts`.
+3. **Codegen's half, `rebuildLLVM(..., changedLayouts)`.** Proposed for the codegen thread:
+   - `Emitter::structFor` is the one place a layout is used: while a function is emitted it notes
+     the canonical class (`layoutsNow`, as `inlinedNow`), kept in its `Definition` as `layouts`.
+     Constant folds through the layout hooks pass through it too.
+   - The closure of the changed classes: every `StructInfo` whose `fieldTypes` or `bases` hold one
+     (by value), transitively; their `StructInfo`s are dropped (`structs`, `structsByType`, the
+     emitters' `layoutCache`, the type lines).
+   - Emitted again: every definition whose `layouts` meets the closure, and the first-use items keyed
+     by those classes (vtables and their thunks, `vtablesIn`; typeinfo and descriptors,
+     `descriptorText`; destructor helpers, `emittedShared`; globals of those types). Until those
+     first-use items have owners, a changed class that has any of them is a decline (codegen in full).
+   - Until it lands, the server runs codegen in full for a layout edit (the resolver's half alone
+     already saves the resolve from scratch).
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before
