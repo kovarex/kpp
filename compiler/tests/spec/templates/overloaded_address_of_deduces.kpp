@@ -1,0 +1,28 @@
+// spec: `&x` of a class with its own unary operator& is that operator's result also where it is an argument a template deduces from (CComPtr<T>'s operator& gives T**, from which QueryInterface(Q** pp) deduces Q = T)
+// factorio: GraphicsInterfaceDX11::getRealVideoMemoryUsage's `this->dxgiAdapter->QueryInterface(&adapter)` with a CComPtr<IDXGIAdapter3> adapter (4c178a5b915)
+// pending: &x as a deduced argument is the built-in address of x
+struct Thing
+{
+  int value = 7;
+};
+template<typename T>
+struct Holder
+{
+  T* p = nullptr;
+  T** operator&() { return &this->p; }
+};
+Thing shared;
+template<typename Q>
+int fill(Q** pp)
+{
+  *pp = &shared;
+  return (*pp)->value;
+}
+int main()
+{
+  Holder<Thing> holder;
+  int got = fill(&holder);
+  Thing** plain = &holder;
+  println("{} {} {}", got, holder.p == &shared, *plain == &shared);
+  return 0;
+}
