@@ -3833,6 +3833,17 @@ namespace
             i = j;
             continue;
           }
+          if (result[i] == '/' && i + 1 < result.size() && (result[i + 1] == '*' || result[i + 1] == '/'))
+          {
+            // A comment goes as it is: no macro is used inside it, and its words are no literals
+            // (DrawQueue's `/* but I'm not sure ... */` took the rest of its expansion for a character
+            // literal, and the PUSH_TO_SPRITE_LIST after it stayed unexpanded).
+            size_t k = result[i + 1] == '*' ? result.find("*/", i + 2) : result.find('\n', i + 2);
+            k = k == std::string::npos ? result.size() : k + (result[i + 1] == '*' ? 2 : 0);
+            next.append(result, i, k - i);
+            i = k;
+            continue;
+          }
           if (result[i] == '"' || (result[i] == '\'' && !isDigitSeparator(result, i)))
           {
             // A string or character literal goes as it is: no macro is used inside it.
@@ -4060,6 +4071,24 @@ namespace
           counts.add("iterator member types through IteratorTraits");
           i += 2;
           continue;
+        }
+        // The same of a container's iterator named through the container, `WidgetArray::iterator::reference`
+        // (agui::Widget::visible_iterator, WidgetArray a Vector): IteratorTraits<WidgetArray::iterator>.
+        if (t.getKind() == TokenKind::Identifier && i >= 2 && i + 2 < toks.size() && toks[i - 1].is(P::ColonColon) &&
+            toks[i - 2].getKind() == TokenKind::Identifier && toks[i + 1].is(P::ColonColon) && iteratorMemberTypes.count(spelling(i + 2)) &&
+            !toks[i + 3].is(P::ColonColon) && spelling(i).size() >= 8 && spelling(i).substr(spelling(i).size() - 8) == "iterator")
+        {
+          uint32_t start = i - 2;
+          while (start >= 2 && toks[start - 1].is(P::ColonColon) && toks[start - 2].getKind() == TokenKind::Identifier)
+            start -= 2;
+          if (!(start > 0 && (toks[start - 1].is(P::ColonColon) || toks[start - 1].is(P::Greater) || toks[start - 1].is(P::Dot) || toks[start - 1].is(P::Arrow))))
+          {
+            insert(toks[start].offset, "IteratorTraits<");
+            insert(endOffset(i), ">");
+            counts.add("iterator member types through IteratorTraits");
+            i += 2;
+            continue;
+          }
         }
         // A string macro or a macro that is a qualified name is its text wherever it is used: macros
         // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
@@ -4441,6 +4470,29 @@ namespace
               continue;
             }
           }
+          if ((name == "memory_order" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && toks[i + 4].getKind() == TokenKind::Identifier) ||
+              name.rfind("memory_order_", 0) == 0)
+          {
+            // A memory order passed to an atomic operation (`value.load(std::memory_order::relaxed)`,
+            // TimeStatistics' AtomicNanoseconds): the library's Atomic takes none, every operation is
+            // sequentially consistent (docs/stdlib/atomic.md), which is at least as strong. The
+            // argument goes with its comma; elsewhere a memory order stays and fails to compile.
+            uint32_t last = name == "memory_order" ? i + 4 : i + 2;
+            bool before = i > 0 && (toks[i - 1].is(P::Comma) || toks[i - 1].is(P::LParen));
+            bool after = last + 1 < toks.size() && (toks[last + 1].is(P::Comma) || toks[last + 1].is(P::RParen));
+            if (before && after)
+            {
+              if (toks[i - 1].is(P::Comma))
+                remove(toks[i - 1].offset, endOffset(last) - toks[i - 1].offset);
+              else if (toks[last + 1].is(P::Comma))
+                remove(t.offset, toks[last + 2].offset - t.offset);
+              else
+                remove(t.offset, endOffset(last) - t.offset);
+              counts.add("memory order arguments dropped");
+              i = last;
+              continue;
+            }
+          }
           if (name == "thread" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "hardware_concurrency")
           {
             // A static member whose library name differs: std::thread::hardware_concurrency().
@@ -4817,7 +4869,10 @@ namespace
                 else if (toks[k].is(P::RParen) || toks[k].is(P::RBracket) || toks[k].is(P::RBrace))
                 {
                   if (d > 0) { --d; continue; }
-                  // closing RParen
+                  // closing RParen; after a trailing comma (`Unhandled, )`) the last argument is
+                  // empty: k is argStart, and endOffset(k - 1) would come before it.
+                  if (k == argStart)
+                    break;
                   std::string a(text.substr(toks[argStart].offset, endOffset(k - 1) - toks[argStart].offset));
                   while (!a.empty() && isspace((unsigned char)a.front())) a.erase(a.begin());
                   while (!a.empty() && isspace((unsigned char)a.back())) a.pop_back();
