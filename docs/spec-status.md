@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**748 pass, 3 pending, 0 failing, 0 fixed** (751 snippets, 25.1 s).
+**748 pass, 4 pending, 0 failing, 0 fixed** (752 snippets, 20.4 s).
 
 ## Language: statements, expressions, declarations
 
@@ -235,6 +235,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `classes/using_declaration_of_member_enumerator.kpp` | a using-declaration of a member enum's enumerator (`using Enum::True;`) names that enumerator as a member of the class: `NamedBool::True` is the enumerator's value | pending |  | a using-declaration of an enumerator in class scope is not a value yet; C:\kpp-codegen\compiler\tests\spec\classes\using_declaration_of_member_enumerator.kpp:13: codegen does not support taking the address of True yet (in @"NamedBool<FocusTag>::fromBool(bool)", requested by @kpp.main) |
 | `classes/aggregate_default_members.kpp` | aggregate initialisation leaves omitted members with their default member initializers | pass |  |  |
 | `classes/aggregate_reference_member.kpp` | an aggregate with reference members initialised from a braced list (`Ref r{x};`): the members refer to the objects given, reads and writes go to them, and copying the aggregate copies the references | pass | CommonUtil's ReversionWrapperByReference<T> { T& iterable; } behind every `for (x : reverse(container))`, and small reference holders across the game |  |
 | `classes/aggregates_and_brace_init.kpp` | aggregate initialisation, default member initializers, arrays of structs, nested braces | pass |  |  |
@@ -384,7 +385,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | the arguments are deduced (Overload<L1, L2>, through the guide or as an aggregate), but a call through the lambda bases (`using Ts::operator()...`) is not typed yet, and the code generator lays out no pack of bases; C:\kpp-resolver\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support the layout of Overload<__lambda_56_0, __lambda_56_1>: a base class whose type is unknown (__lambda_56_0, __lambda_56_1) yet (in @kpp.main) |
+| `templates/deduction_guides.kpp` | deduction guides and the overload-set idiom: `template<typename... Ts> Overload(Ts...) -> Overload<Ts...>;` with `using Ts::operator()...;` | pending |  | the arguments are deduced (Overload<L1, L2>, through the guide or as an aggregate), but a call through the lambda bases (`using Ts::operator()...`) is not typed yet, and the code generator lays out no pack of bases; C:\kpp-codegen\compiler\tests\spec\templates\deduction_guides.kpp:8: codegen does not support the layout of Overload<__lambda_56_0, __lambda_56_1>: a base class whose type is unknown (__lambda_56_0, __lambda_56_1) yet (in @kpp.main) |
 | `templates/abbreviated_function_templates.kpp` | abbreviated function templates: `auto` in a function's parameter is an invented template parameter, also a member pointer's member type in a pack, `auto PrototypeT::*... members` | pass |  |  |
 | `templates/alias_template_conditional.kpp` | an alias template over Conditional with a bool parameter (Conditional<Small, int16_t, int64_t>) | pass |  |  |
 | `templates/alias_template_member_access.kpp` | an alias template of a class template (template<typename T> using Ptr = UniquePtr<T>;) used as a variable type | pass | 7 alias templates in 6 files |  |
@@ -631,7 +632,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-resolver\compiler\tests\spec\library\variant.kpp:6: error: the type 'Variant' is not declared (in @kpp.main) |
+| `library/variant.kpp` | Variant (std::variant) | pending | 24 uses in 15 files (Kpp's answer is the typed union, design.md 8.5) | by decision there is no Variant class: a std::variant becomes a typed union (`union enum`, design.md 8.5); what is missing is the converter's mapping of the 24 uses; C:\kpp-codegen\compiler\tests\spec\library\variant.kpp:6: error: the type 'Variant' is not declared (in @kpp.main) |
 | `library/algorithms.kpp` | algorithms (std::sort, find_if, count_if, all_of/any_of, reverse, lower_bound, remove_if, min/max/clamp) | pass | 466 algorithm calls in 247 files |  |
 | `library/algorithms_iterators.kpp` | the algorithms over iterators of every category: sort, removeIf, stableSort on a Deque (random access, not pointers); find, count, reverse, rotate, merge on a List (bidirectional); lowerBound, upperBound, accumulate, setDifference on a Set; transform from a Map into a backInserter; upperBound over reverse iterators with Greater; unique, nextPermutation, isSorted, equal, maxElement with a comparator | pass | 108 sort, 74 find, 49 distance, 47 find_if, 37 stable_sort, 32 remove_if, 29 lower_bound, 22 is_sorted, ...; BlueprintLibrary's remove_if over a deque, GameSpeed's upper_bound over rbegin/rend with greater<double>, cxxopts' transform over a map |  |
 | `library/array_of_no_elements.kpp` | Array<T, 0> (std::array<T, 0>) holds nothing: size() 0, empty(), begin() == end(), at() throws OutOfRange, two of them are equal, and T needs no constructor | pass | the noise expressions' CompiledConstantArguments, std::array<NoiseExpressionConstant, constantCount>, for operations without constants (ComplexExpressionWithOperation<Clamp, 3, 0>, <Ridge, 3, 0>) |  |
