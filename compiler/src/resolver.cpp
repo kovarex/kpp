@@ -13714,10 +13714,13 @@ struct GlobalScope::Impl
     if (a == b)
       return true;
     if (a->params.size() != b->params.size() || a->name.empty() || b->name.empty() || functionSymbol(a->name) != functionSymbol(b->name) || !sameNamePart(a->name.last(), b->name.last()) ||
-        isCFunction(a) != isCFunction(b) || a->templateParams.size() != b->templateParams.size() ||
+        a->templateParams.size() != b->templateParams.size() ||
         (a->flags & (DF_Const | DF_RefQual | DF_Static)) != (b->flags & (DF_Const | DF_RefQual | DF_Static)))
       return false;
-    if (!isCFunction(a) && homeScope(a) != homeScope(b))
+    // A function declared `extern "C"` and then defined without it is one C function (C++
+    // [dcl.link] 5: the later declaration takes the earlier one's linkage), as Lua's
+    // lua_getnresults is in lua.kpp and ldebug.kpp.
+    if (!(isCFunction(a) && isCFunction(b)) && homeScope(a) != homeScope(b))
       return false;
     return typeAs(b, a) == matchedType(a);
   }
