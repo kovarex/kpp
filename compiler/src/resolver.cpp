@@ -1022,6 +1022,7 @@ struct GlobalScope::Impl
   // A declaration's declared type's: on the declaration, made once (asked for constantly).
   std::mutex typeDependenciesMutex;
   std::vector<std::unique_ptr<Dependencies>> typeDependencies;
+  std::vector<std::pair<const Decl*, Dependencies*>> typeDependencyOwners; // the same, with their declarations
   Dependencies* typeDependenciesOf(Decl* d)
   {
     if (Dependencies* own = d->typeDependencies.load(std::memory_order_acquire))
@@ -1030,6 +1031,7 @@ struct GlobalScope::Impl
     if (Dependencies* own = d->typeDependencies.load(std::memory_order_acquire))
       return own;
     typeDependencies.push_back(std::make_unique<Dependencies>());
+    typeDependencyOwners.push_back({d, typeDependencies.back().get()});
     d->typeDependencies.store(typeDependencies.back().get(), std::memory_order_release);
     return typeDependencies.back().get();
   }
@@ -1249,6 +1251,70 @@ struct GlobalScope::Impl
     if (part.special == 2 && part.opToken < uint32_t(P::Count))
       return opSymbols[part.opToken];
     return UINT32_MAX;
+  }
+
+  // The out-of-line member function definitions indexing deferred (deferredFunctions), attached to
+  // their classes (outOfLineMembers; out-of-line in a namespace: indexed there). finishIndex runs it,
+  // and a compile server's build that adds such definitions (step 4).
+  std::unordered_map<const FunctionDecl*, Scope*> outOfLineScope; // the class each out-of-line definition was attached to
+  void attachOutOfLine(std::vector<FunctionDecl*>& attached)
+  {
+    for (auto& [f, context] : deferredFunctions)
+    {
+      QualifiedName qualifier = f->name;
+      qualifier.parts.count -= 1;
+      LocalStack params;
+      for (Decl* p : f->templateParams)
+        params.push(static_cast<TemplateParamDecl*>(p)->name, p);
+      Lookup l = lookupQualified(qualifier, context, &params, 0);
+      if (l.scope && l.scope->kind == ScopeKind::Class)
+      {
+        if (Scope* special = fullSpecializationScope(qualifier, context, &params, f->file, f->token))
+        {
+          l.scope = special; // `int Flag<true>::value() {...}`: a member of the specialisation
+          specializationMembers[f] = special;
+        }
+        else if (Scope* partial = partialSpecializationScope(qualifier, l, context, f->templateParams, f->file))
+        {
+          l.scope = partial; // `template<typename T> int Holder<T, true>::load(int)`: of the partial specialisation
+          specializationMembers[f] = partial;
+        }
+        else if ((f->flags & DF_Specialization) && f->isTemplate && f->templateParams.empty() && !isMemberSpecialization(f) &&
+                 l.scope->owner && !effectiveParams(l.scope->owner).empty())
+        {
+          // `template<> Vector<int> UpdateBuffer::generate()` with `using UpdateBuffer =
+          // Buffer<Update>;`: that instance's member, as `Buffer<Update>::generate` writes it (not
+          // a definition of the template's member, which every instance would run).
+          TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());
+          if (const Ty* written = specializedClassOf(f); written && !written->args.empty())
+            f->attributes |= ATTR_MemberSpecialization;
+        }
+      }
+      if (l.scope && (l.scope->kind == ScopeKind::Class || l.scope->kind == ScopeKind::Namespace))
+        if (auto it = localTypesOfOutOfLine.find(f); it != localTypesOfOutOfLine.end())
+          for (Scope* local : it->second)
+            local->parent = l.scope; // a class declared in `void A::f() {...}` sees A's members
+      if (l.scope && l.scope->kind == ScopeKind::Class)
+      {
+        l.scope->outOfLineMembers.push_back(f);
+        outOfLineScope[f] = l.scope; // (a compile server's later build may take it out again)
+        attached.push_back(f);
+      }
+      else if (l.scope && l.scope->kind == ScopeKind::Namespace)
+      {
+        // `void StringUtil::f() {}` outside its namespace: the same as written inside it (its name
+        // is found there, its body sees the namespace), as C++ has it.
+        QualifiedName simple;
+        simple.parts.data = f->name.parts.data + (f->name.parts.size() - 1);
+        simple.parts.count = 1;
+        f->name = simple;
+        if (l.scope->owner)
+          f->parent = l.scope->owner;
+        indexDecl(f, l.scope);
+      }
+    }
+    deferredFunctions.clear();
+    localTypesOfOutOfLine.clear();
   }
 
   void indexDecls(Span<Decl*> decls, Scope* scope)
@@ -2239,6 +2305,22 @@ struct GlobalScope::Impl
   // `a` alone when either found something other than functions.
   std::mutex mergedOverloadsMutex;
   std::map<std::pair<const void*, const void*>, std::unique_ptr<std::vector<Entry>>> mergedOverloads;
+  // A compile server's build that changed the index (step 4): the merged sets are made again from
+  // the entries as they are now; the old ones stay allocated (a lookup result may still point at one).
+  std::vector<std::unique_ptr<std::vector<Entry>>> retiredOverloads;
+  void forgetMergedOverloads()
+  {
+    {
+      std::lock_guard lock(mergedOverloadsMutex);
+      for (auto& [key, set] : mergedOverloads)
+        retiredOverloads.push_back(std::move(set));
+      mergedOverloads.clear();
+    }
+    std::lock_guard lock(usingOverloadsMutex);
+    for (auto& [key, set] : usingOverloads)
+      retiredOverloads.push_back(std::move(set));
+    usingOverloads.clear();
+  }
   Lookup mergeOverloads(const Lookup& a, const Lookup& b)
   {
     auto functions = [](const Lookup& l)
@@ -18136,61 +18218,7 @@ void GlobalScope::finishIndex()
   }
   // Attach out-of-line member function definitions to their class scope.
   std::vector<FunctionDecl*> attached; // to a class: each must match a declaration (checked below)
-  for (auto& [f, context] : impl->deferredFunctions)
-  {
-    QualifiedName qualifier = f->name;
-    qualifier.parts.count -= 1;
-    LocalStack params;
-    for (Decl* p : f->templateParams)
-      params.push(static_cast<TemplateParamDecl*>(p)->name, p);
-    Lookup l = impl->lookupQualified(qualifier, context, &params, 0);
-    if (l.scope && l.scope->kind == ScopeKind::Class)
-    {
-      if (Scope* special = impl->fullSpecializationScope(qualifier, context, &params, f->file, f->token))
-      {
-        l.scope = special; // `int Flag<true>::value() {...}`: a member of the specialisation
-        impl->specializationMembers[f] = special;
-      }
-      else if (Scope* partial = impl->partialSpecializationScope(qualifier, l, context, f->templateParams, f->file))
-      {
-        l.scope = partial; // `template<typename T> int Holder<T, true>::load(int)`: of the partial specialisation
-        impl->specializationMembers[f] = partial;
-      }
-      else if ((f->flags & DF_Specialization) && f->isTemplate && f->templateParams.empty() && !Impl::isMemberSpecialization(f) &&
-               l.scope->owner && !Impl::effectiveParams(l.scope->owner).empty())
-      {
-        // `template<> Vector<int> UpdateBuffer::generate()` with `using UpdateBuffer =
-        // Buffer<Update>;`: that instance's member, as `Buffer<Update>::generate` writes it (not
-        // a definition of the template's member, which every instance would run).
-        Impl::TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());
-        if (const Ty* written = impl->specializedClassOf(f); written && !written->args.empty())
-          f->attributes |= ATTR_MemberSpecialization;
-      }
-    }
-    if (l.scope && (l.scope->kind == ScopeKind::Class || l.scope->kind == ScopeKind::Namespace))
-      if (auto it = impl->localTypesOfOutOfLine.find(f); it != impl->localTypesOfOutOfLine.end())
-        for (Scope* local : it->second)
-          local->parent = l.scope; // a class declared in `void A::f() {...}` sees A's members
-    if (l.scope && l.scope->kind == ScopeKind::Class)
-    {
-      l.scope->outOfLineMembers.push_back(f);
-      attached.push_back(f);
-    }
-    else if (l.scope && l.scope->kind == ScopeKind::Namespace)
-    {
-      // `void StringUtil::f() {}` outside its namespace: the same as written inside it (its name
-      // is found there, its body sees the namespace), as C++ has it.
-      QualifiedName simple;
-      simple.parts.data = f->name.parts.data + (f->name.parts.size() - 1);
-      simple.parts.count = 1;
-      f->name = simple;
-      if (l.scope->owner)
-        f->parent = l.scope->owner;
-      impl->indexDecl(f, l.scope);
-    }
-  }
-  impl->deferredFunctions.clear();
-  impl->localTypesOfOutOfLine.clear();
+  impl->attachOutOfLine(attached);
   // Attach out-of-line static data member definitions to the declarations in their classes.
   for (auto& [v, context] : impl->deferredVariables)
   {
@@ -19444,6 +19472,134 @@ std::vector<const void*> GlobalScope::instancesWalksUse(const ParsedFile& file)
   std::sort(out.begin(), out.end());
   out.erase(std::unique(out.begin(), out.end()), out.end());
   return out;
+}
+
+uint32_t GlobalScope::functionSymbolOf(const FunctionDecl* f) { return impl->functionSymbol(f->name); }
+
+std::vector<FunctionDecl*> GlobalScope::outOfLineDefinitions(const Decl* cls)
+{
+  return cls && cls->ownScope ? cls->ownScope->outOfLineMembers : std::vector<FunctionDecl*>{};
+}
+
+namespace
+{
+  // The scope a declaration's members are indexed in: its own (a namespace, a class, an enum), or
+  // the global one for the file's top level.
+  Scope* containerScope(Decl* container, Scope& root) { return container && container->ownScope ? container->ownScope : &root; }
+}
+
+void GlobalScope::unindexFunction(FunctionDecl* f)
+{
+  auto attachedTo = impl->outOfLineScope.find(f);
+  if (attachedTo != impl->outOfLineScope.end())
+  {
+    std::vector<FunctionDecl*>& members = attachedTo->second->outOfLineMembers;
+    members.erase(std::remove(members.begin(), members.end(), f), members.end());
+    impl->outOfLineScope.erase(attachedTo);
+  }
+  else if (f->name.parts.size() == 1)
+  {
+    uint32_t symbol = impl->functionSymbol(f->name);
+    Scope* scope = containerScope(f->parent, impl->root);
+    Scope::Shard& shard = scope->shardFor(symbol);
+    std::lock_guard lock(shard.mutex);
+    if (auto it = shard.map.find(symbol); it != shard.map.end())
+    {
+      size_t before = it->second.size();
+      it->second.erase(std::remove_if(it->second.begin(), it->second.end(), [&](const Entry& e) { return e.decl == f; }), it->second.end());
+      impl->entries -= before - it->second.size();
+      if (it->second.empty())
+        shard.map.erase(it);
+    }
+  }
+  // Its walk's recorded reads go with it.
+  uintptr_t key = reinterpret_cast<uintptr_t>(f) + Impl::UNIT_Walk;
+  Impl::DeclDependencyShard& shard = impl->declDependencies[(key >> 6) % std::size(impl->declDependencies)];
+  std::lock_guard lock(shard.mutex);
+  shard.map.erase(key);
+  impl->forgetMergedOverloads();
+}
+
+bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
+{
+  for (FunctionDecl* f : added)
+    impl->indexDecl(f, containerScope(f->parent, impl->root));
+  std::vector<FunctionDecl*> attached;
+  impl->attachOutOfLine(attached);
+  bool whole = impl->objectCandidates.empty() && impl->deferredQualified.empty() && impl->deferredVariables.empty();
+  impl->objectCandidates.clear();
+  for (FunctionDecl* f : attached)
+  {
+    Impl::TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());
+    whole = whole && impl->declarationOfDefinition(f);
+  }
+  std::unordered_set<Scope*> seen;
+  impl->sortEntries(&impl->root, seen); // in declaration order, as finishIndex leaves them
+  impl->forgetMergedOverloads();
+  return whole;
+}
+
+bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files)
+{
+  std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());
+  std::unordered_set<const void*> types(decls.begin(), decls.end()); // declarations whose declared types are no more what was read
+  auto reads = [&](Dependencies& d)
+  {
+    std::lock_guard lock(d.mutex);
+    for (uint32_t s : d.list.names)
+      if (names.count(s))
+        return true;
+    for (auto& [kind, what] : d.list.uses)
+      if (kind == USE_DeclaredType && types.count(what))
+        return true;
+    return false;
+  };
+  // The declared types that read them, and what read those, until nothing more is found.
+  for (bool more = true; more;)
+  {
+    more = false;
+    std::lock_guard lock(impl->typeDependenciesMutex);
+    for (auto& [owner, deps] : impl->typeDependencyOwners)
+      if (!types.count(owner) && reads(*deps))
+      {
+        types.insert(owner);
+        const_cast<Decl*>(owner)->cachedType.store(nullptr, std::memory_order_release);
+        std::lock_guard l(deps->mutex);
+        deps->list = DependencyList{};
+        more = true;
+      }
+  }
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+      if (reads(record->deps))
+        return false;
+  }
+  for (Impl::InstShard& shard : impl->instShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, inst] : shard.classes)
+      if (reads(inst->deps))
+        return false;
+  }
+  {
+    std::lock_guard lock(impl->relationScopesMutex);
+    for (const Scope* s : impl->relationScopes)
+      if (reads(const_cast<Scope*>(s)->relationDeps))
+        return false;
+  }
+  std::unordered_set<const ParsedFile*> found;
+  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, deps] : shard.map)
+      if (reads(*deps))
+        found.insert(reinterpret_cast<const Decl*>(key & ~uintptr_t(7))->file);
+  }
+  files.assign(found.begin(), found.end());
+  std::sort(files.begin(), files.end(), [](const ParsedFile* a, const ParsedFile* b) { return a->index < b->index; });
+  return true;
 }
 
 bool GlobalScope::usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file)

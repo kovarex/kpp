@@ -174,6 +174,8 @@ namespace
     std::vector<ResolveStats> stats;
     // What the reports print that a later build of the kept program cannot recompute.
     std::string importsLine, indexLine;
+    double indexTime = 0, finishTime = 0; // (the index line again, when a later build changed the entries)
+    size_t indexScopes = 0, indexEntries = 0; // as the index left them (the resolve adds instances' after)
     std::vector<std::string> clashes;
     double resolveTime = 0;
     GlobalScope::InstantiationStats instantiation{}; // at the end of the resolve (codegen instantiates more)
@@ -1123,6 +1125,10 @@ namespace
     snprintf(indexLine, sizeof indexLine, "index:   %.3f s  (+%.3f s for out-of-line class definitions): %zu scopes, %zu entries\n", indexTime,
              finishTime, global.scopeCount(), global.entryCount());
     build.indexLine = indexLine;
+    build.indexTime = indexTime;
+    build.indexScopes = global.scopeCount();
+    build.indexEntries = global.entryCount();
+    build.finishTime = finishTime;
     report("%s", indexLine);
     build.clashes = global.topLevelClashes();
     for (const std::string& clash : build.clashes)
@@ -1611,6 +1617,299 @@ namespace
     return true;
   }
 
+  // ---- Step 4, first kind: functions added, removed or changed (docs/compile-speed.md) ----
+
+  // A function a file declares outside any body, with the declaration it is a member of (null at
+  // the file's top level) and whether a template encloses it.
+  struct DeclaredFunction
+  {
+    FunctionDecl* f;
+    Decl* container;
+    bool templated;
+  };
+
+  void collectFunctions(Span<Decl*> decls, Decl* container, bool inTemplate, std::vector<DeclaredFunction>& out,
+                        std::vector<Decl*>& containers)
+  {
+    for (Decl* d : decls)
+    {
+      if (!d)
+        continue;
+      bool templated = inTemplate || d->isTemplate || !d->templateParams.empty();
+      switch (d->kind)
+      {
+        case NodeKind::NamespaceDecl:
+          containers.push_back(d);
+          collectFunctions(static_cast<NamespaceDecl*>(d)->decls, d, inTemplate, out, containers);
+          break;
+        case NodeKind::ClassDecl:
+          containers.push_back(d);
+          collectFunctions(static_cast<ClassDecl*>(d)->members, d, templated, out, containers);
+          break;
+        case NodeKind::EnumDecl:
+          containers.push_back(d);
+          collectFunctions(static_cast<EnumDecl*>(d)->members, d, templated, out, containers);
+          break;
+        case NodeKind::FunctionDecl:
+          out.push_back({static_cast<FunctionDecl*>(d), container, templated});
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  // A file whose changes are whole functions (added, removed, or changed and so both): which, and
+  // where each added one goes among the kept declarations.
+  struct FunctionChange
+  {
+    size_t index = 0;
+    std::string text;
+    LexResult lexed;
+    std::vector<Token> tokens;
+    std::unique_ptr<ParsedFile> parsed;
+    std::vector<uint32_t> map;                          // the kept tokens' places in the new ones
+    std::vector<std::pair<FunctionDecl*, Decl*>> removed; // kept functions, with the kept declaration they are members of
+    std::vector<std::pair<FunctionDecl*, Decl*>> added; // new functions, with the kept declaration they belong to
+  };
+
+  // Whether a function can come or go without anything but its name's readers seeing it: no
+  // template, no virtual or special member (layouts, vtables and traits read those without a
+  // lookup), not constexpr, no deduced return type, no class or enumeration in its body.
+  bool plainFunction(const DeclaredFunction& d, const std::vector<Token>& tokens)
+  {
+    FunctionDecl* f = d.f;
+    const uint32_t excluded = DF_Virtual | DF_Override | DF_Pure | DF_Constructor | DF_Destructor | DF_Conversion | DF_Friend | DF_Constexpr |
+                              DF_Consteval | DF_Specialization | DF_ExternC;
+    if (d.templated || f->isTemplate || !f->templateParams.empty() || (f->flags & excluded) || f->name.empty() || f->name.last().special ||
+        !f->objectArgs.empty())
+      return false;
+    uint32_t end = f->body ? f->body->token : f->endToken;
+    for (uint32_t k = f->token; k < end && k < tokens.size(); ++k)
+      if (tokens[k].is(Kw::auto_) || tokens[k].is(Kw::decltype_))
+        return false;
+    bool localType = false;
+    forEachNode(f->body, [&](Node* n)
+    {
+      if ((n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl)
+        localType = true;
+    });
+    return !localType;
+  }
+
+  bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out, std::string& why)
+  {
+    const ParsedFile& old = *kept.parsed[i];
+    const std::vector<Token>& oldTokens = kept.lexed[i].tokens;
+    std::string_view oldText = kept.files[i].text;
+    if (!old.diagnostics.empty() || kept.files[i].path.extension() != ".kpp")
+      return why = "parse errors, or not a .kpp file", false;
+    for (const std::string& e : kept.global->checkerErrors())
+      if (e.compare(0, old.path.size(), old.path) == 0)
+        return why = "the file has checker errors", false;
+    out.index = i;
+    out.text = std::move(text);
+    out.lexed = lex(out.text, *kept.symbols);
+    out.tokens = out.lexed.tokens;
+    out.parsed = std::make_unique<ParsedFile>();
+    out.parsed->path = old.path;
+    out.parsed->index = old.index;
+    out.parsed->isLibrary = old.isLibrary;
+    parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
+    if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
+      return why = "the new text has errors", false;
+    if (!tokenMap(oldTokens, oldText, out.tokens, out.text, out.map))
+      return why = "the two versions differ too much to pair their tokens", false;
+    std::vector<DeclaredFunction> oldFunctions, newFunctions;
+    std::vector<Decl*> oldContainers, newContainers;
+    collectFunctions(old.decls, nullptr, false, oldFunctions, oldContainers);
+    collectFunctions(out.parsed->decls, nullptr, false, newFunctions, newContainers);
+    // A kept function whose tokens all have places, side by side, at a new function's: the same.
+    std::unordered_map<uint32_t, const DeclaredFunction*> newByToken;
+    for (const DeclaredFunction& d : newFunctions)
+      newByToken[d.f->token] = &d;
+    std::unordered_set<const FunctionDecl*> pairedNew;
+    std::vector<bool> oldCovered(oldTokens.size(), false), newCovered(out.tokens.size(), false);
+    std::vector<const DeclaredFunction*> removed;
+    for (const DeclaredFunction& d : oldFunctions)
+    {
+      uint32_t s = d.f->token, e = d.f->endToken;
+      bool same = e > s && e <= out.map.size() && out.map[s] != UINT32_MAX;
+      for (uint32_t k = s; same && k < e; ++k)
+        same = out.map[k] == out.map[s] + (k - s);
+      auto it = same ? newByToken.find(out.map[s]) : newByToken.end();
+      if (it != newByToken.end() && it->second->f->endToken == out.map[s] + (e - s))
+      {
+        pairedNew.insert(it->second->f);
+        continue;
+      }
+      removed.push_back(&d);
+      for (uint32_t k = s; k < e && k < oldCovered.size(); ++k)
+        oldCovered[k] = true;
+    }
+    std::vector<const DeclaredFunction*> added;
+    for (const DeclaredFunction& d : newFunctions)
+      if (!pairedNew.count(d.f))
+      {
+        added.push_back(&d);
+        for (uint32_t k = d.f->token; k < d.f->endToken && k < newCovered.size(); ++k)
+          newCovered[k] = true;
+      }
+    if (removed.empty() && added.empty())
+      return why = "no function changed", false;
+    // Everything else the same: every token gone is a removed function's, every new one an added one's.
+    std::vector<bool> reached(out.tokens.size(), false);
+    for (size_t k = 0; k < out.map.size(); ++k)
+      if (out.map[k] != UINT32_MAX)
+        reached[out.map[k]] = true;
+      else if (!oldCovered[k])
+        return why = "a change outside whole functions", false;
+    for (size_t k = 0; k < reached.size(); ++k)
+      if (!reached[k] && !newCovered[k])
+        return why = "a change outside whole functions", false;
+    for (const DeclaredFunction* d : removed)
+      if (!plainFunction(*d, oldTokens))
+        return why = "a removed or changed function others may read without its name (a template, virtual, special, constexpr)", false;
+    for (const DeclaredFunction* d : added)
+      if (!plainFunction(*d, out.tokens))
+        return why = "an added or changed function others may read without its name (a template, virtual, special, constexpr)", false;
+    // A declaration taken out while its out-of-line definition stays: a build from scratch reports it.
+    for (const DeclaredFunction* d : removed)
+      if (!d->f->body && d->container && d->container->kind == NodeKind::ClassDecl && d->container->ownScope)
+        for (FunctionDecl* def : kept.global->outOfLineDefinitions(d->container))
+          if (kept.global->functionSymbolOf(def) == kept.global->functionSymbolOf(d->f) &&
+              std::none_of(removed.begin(), removed.end(), [&](const DeclaredFunction* r) { return r->f == def; }))
+            return why = "a declaration removed whose definition stays", false;
+    // Each added function's kept declaration to go into: the new one's, by its first token's place.
+    std::unordered_map<uint32_t, Decl*> keptContainerAt; // new token -> kept container there
+    for (Decl* c : oldContainers)
+      if (c->token < out.map.size() && out.map[c->token] != UINT32_MAX)
+        keptContainerAt[out.map[c->token]] = c;
+    for (const DeclaredFunction* d : added)
+    {
+      Decl* keptContainer = nullptr;
+      if (d->container)
+      {
+        auto it = keptContainerAt.find(d->container->token);
+        if (it == keptContainerAt.end() || it->second->kind != d->container->kind)
+          return why = "an added function's class or namespace is new", false;
+        keptContainer = it->second;
+      }
+      out.added.push_back({d->f, keptContainer});
+    }
+    for (auto& [b, where] : out.parsed->castCandidates)
+      for (const DeclaredFunction* d : added)
+        if (where == d->f)
+          return why = "an added function has a cast to rewrite", false;
+    for (const DeclaredFunction* d : removed)
+      out.removed.push_back({d->f, d->container});
+    return true;
+  }
+
+  // The list of a declaration's members (or the file's top level) with the removed functions taken
+  // out and the added ones put in, in the order of their tokens.
+  Span<Decl*> withFunctions(Span<Decl*> list, const std::unordered_set<const Decl*>& removed, const std::vector<FunctionDecl*>& added,
+                            Arena& arena)
+  {
+    std::vector<Decl*> out;
+    for (Decl* d : list)
+      if (!removed.count(d))
+        out.push_back(d);
+    out.insert(out.end(), added.begin(), added.end());
+    std::stable_sort(out.begin(), out.end(), [](const Decl* a, const Decl* b) { return a->token < b->token; });
+    Span<Decl*> span;
+    span.count = uint32_t(out.size());
+    span.data = static_cast<Decl**>(arena.allocate(sizeof(Decl*) * std::max<size_t>(1, out.size()), alignof(Decl*)));
+    std::copy(out.begin(), out.end(), span.data);
+    return span;
+  }
+
+  // Takes the removed functions out of the kept file and its index, points what it keeps at the
+  // new tokens, and grafts the added functions in (indexed, attached as finishIndex attaches them).
+  // False (the kept build is then unusable) when that needs what only a whole index gives.
+  bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
+  {
+    size_t i = c.index;
+    ParsedFile& file = *kept.parsed[i];
+    GlobalScope& global = *kept.global;
+    std::unordered_set<const Decl*> removed;
+    std::unordered_set<Node*> dropped;
+    for (auto& [f, container] : c.removed)
+    {
+      removed.insert(f);
+      global.unindexFunction(f);
+      forEachNode(f, [&](Node* n) { dropped.insert(n); });
+    }
+    bool lost = false;
+    forEachNode(file.decls, [&](Node* n)
+    {
+      if (dropped.count(n))
+        return;
+      remapNodeTokens(n, [&](uint32_t t)
+      {
+        if (t < c.map.size() && c.map[t] != UINT32_MAX)
+          return c.map[t];
+        lost = true;
+        return t;
+      });
+    });
+    if (lost)
+      return why = "a kept node's token has no place in the new version", false;
+    // The added functions: the kept file's, members of the kept declarations.
+    std::unordered_map<Decl*, std::vector<FunctionDecl*>> into;
+    std::vector<FunctionDecl*> added;
+    for (auto& [f, container] : c.added)
+    {
+      forEachNode(f, [&](Node* n)
+      {
+        if (n->kind > NodeKind::PackType && n->kind <= NodeKind::ImportDecl)
+          static_cast<Decl*>(n)->file = &file;
+        else if (n->kind == NodeKind::LiteralExpr)
+          static_cast<LiteralExpr*>(n)->file = &file;
+      });
+      f->parent = container;
+      into[container].push_back(f);
+      added.push_back(f);
+    }
+    std::unordered_set<Decl*> touched;
+    for (auto& [f, container] : c.removed)
+      touched.insert(container);
+    for (auto& [container, list] : into)
+      touched.insert(container);
+    for (Decl* container : touched)
+    {
+      const std::vector<FunctionDecl*>& in = into[container];
+      if (!container)
+        file.decls = withFunctions(file.decls, removed, in, file.arena);
+      else if (container->kind == NodeKind::NamespaceDecl)
+        static_cast<NamespaceDecl*>(container)->decls = withFunctions(static_cast<NamespaceDecl*>(container)->decls, removed, in, file.arena);
+      else if (container->kind == NodeKind::ClassDecl)
+        static_cast<ClassDecl*>(container)->members = withFunctions(static_cast<ClassDecl*>(container)->members, removed, in, file.arena);
+      else if (container->kind == NodeKind::EnumDecl)
+        static_cast<EnumDecl*>(container)->members = withFunctions(static_cast<EnumDecl*>(container)->members, removed, in, file.arena);
+    }
+    kept.files[i].text = std::move(c.text);
+    kept.lexed[i].tokens = std::move(c.tokens);
+    kept.lexed[i].lineCount = c.lexed.lineCount;
+    kept.lexed[i].errorCount = c.lexed.errorCount;
+    file.text = kept.files[i].text;
+    file.tokens = &kept.lexed[i].tokens;
+    file.declCount = c.parsed->declCount;
+    file.functionBodies = c.parsed->functionBodies;
+    file.nodeCount = c.parsed->nodeCount;
+    file.arenaBytesReported = c.parsed->arena.bytesAllocated();
+    kept.grafts.push_back(std::move(c.parsed));
+    for (auto& [symbol, where] : kept.instanceStats.unresolvedFirst)
+      if (where.file == i)
+        return why = "an instance's statistic names a place in the file", false;
+    for (auto& [symbol, where] : kept.instanceStats.missingMembersFirst)
+      if (where.file == i)
+        return why = "an instance's statistic names a place in the file", false;
+    if (!global.indexFunctions(added))
+      return why = "an added function needs the whole index (a definition matching no declaration, an object declaration)", false;
+    return true;
+  }
+
   // The kept build again with the files' new texts, when they changed inside eligible function
   // bodies only: those bodies parsed and checked again and nothing else, then the reports and
   // codegen as a build from scratch runs them. False when the request is no such build: it is built
@@ -1631,14 +1930,20 @@ namespace
       if (files[i].path != kept.files[i].path)
         return false;
     auto start = Clock::now();
-    std::vector<ChangedFile> changed;
+    std::vector<ChangedFile> changed;         // bodies only (3b)
+    std::vector<FunctionChange> functionEdits; // whole functions (step 4)
     for (size_t i = 0; i < files.size(); ++i)
       if (files[i].text != kept.files[i].text)
       {
         changed.emplace_back();
-        if (!bodiesOnly(kept, i, files[i].text, changed.back(), why))
+        if (bodiesOnly(kept, i, files[i].text, changed.back(), why))
+          continue;
+        changed.pop_back();
+        std::string bodiesWhy = why;
+        functionEdits.emplace_back();
+        if (!functionsOnly(kept, i, files[i].text, functionEdits.back(), why))
         {
-          logBuildNote("not incremental: " + files[i].path.string() + ": " + why);
+          logBuildNote("not incremental: " + files[i].path.string() + ": " + bodiesWhy + "; " + why);
           return false;
         }
       }
@@ -1650,32 +1955,77 @@ namespace
         logBuildNote("not incremental: " + kept.files[changed[n].index].path.string() + ": " + why);
         return false;
       }
-    // The changed files walked again: what they read recorded anew, and nothing instantiated that
-    // a resolve from scratch would count differently.
     GlobalScope& global = *kept.global;
     GlobalScope::recordDependencies(true);
     start = Clock::now();
-    std::vector<std::vector<const void*>> before(changed.size());
-    for (size_t n = 0; n < changed.size(); ++n)
+    // The files to walk again: the changed ones, and (whole functions changed) every file a walk
+    // of which read one of the functions' names or the declared type of a removed one.
+    std::set<size_t> rewalk;
+    for (const ChangedFile& c : changed)
+      rewalk.insert(c.index);
+    std::vector<uint32_t> names;
+    std::vector<const Decl*> gone;
+    size_t entriesBefore = global.entryCount();
+    for (FunctionChange& c : functionEdits)
     {
-      before[n] = global.instancesWalksUse(*kept.parsed[changed[n].index]);
-      global.forgetWalks(*kept.parsed[changed[n].index]);
+      rewalk.insert(c.index);
+      for (auto& [f, container] : c.removed)
+      {
+        names.push_back(global.functionSymbolOf(f));
+        gone.push_back(f);
+      }
+      for (auto& [f, container] : c.added)
+        names.push_back(global.functionSymbolOf(f));
+      if (!graftFunctions(kept, c, why))
+      {
+        logBuildNote("not incremental: " + kept.files[c.index].path.string() + ": " + why);
+        return false;
+      }
+    }
+    if (!names.empty())
+    {
+      std::vector<const ParsedFile*> readers;
+      if (!global.invalidateReaders(names, gone, readers))
+      {
+        logBuildNote("not incremental: an instance or a scope's relations read a changed function's name");
+        return false;
+      }
+      for (const ParsedFile* p : readers)
+        if (p && !p->isImported)
+          rewalk.insert(p->index);
+      // The index line counts the entries as the index has them now: what the functions added and
+      // took out (scopes none: no function with a class in its body is grafted).
+      kept.indexEntries += global.entryCount() - entriesBefore;
+      char line[256];
+      snprintf(line, sizeof line, "index:   %.3f s  (+%.3f s for out-of-line class definitions): %zu scopes, %zu entries\n", kept.indexTime,
+               kept.finishTime, kept.indexScopes, kept.indexEntries);
+      kept.indexLine = line;
+      kept.clashes = global.topLevelClashes();
+    }
+    // Walked again: what they read recorded anew, and nothing instantiated that a resolve from
+    // scratch would count differently.
+    std::vector<size_t> walked(rewalk.begin(), rewalk.end());
+    std::vector<std::vector<const void*>> before(walked.size());
+    for (size_t n = 0; n < walked.size(); ++n)
+    {
+      before[n] = global.instancesWalksUse(*kept.parsed[walked[n]]);
+      global.forgetWalks(*kept.parsed[walked[n]]);
     }
     global.beginRewalk();
-    for (const ChangedFile& c : changed)
+    for (size_t index : walked)
     {
       ResolveStats s;
-      s.fileIndex = uint32_t(c.index);
+      s.fileIndex = uint32_t(index);
       s.collectWhy = kept.options.showWhy > 0;
-      global.resolveFile(*kept.parsed[c.index], kept.lexed[c.index].tokens, kept.files[c.index].text, s);
-      kept.stats[c.index] = std::move(s);
+      global.resolveFile(*kept.parsed[index], kept.lexed[index].tokens, kept.files[index].text, s);
+      kept.stats[index] = std::move(s);
     }
     bool same = global.endRewalk();
     if (!same)
-      why = "the new bodies instantiate what the old did not (or what only codegen had)";
-    for (size_t n = 0; same && n < changed.size(); ++n)
+      why = "the new code instantiates what the old did not (or what only codegen had)";
+    for (size_t n = 0; same && n < walked.size(); ++n)
     {
-      const ParsedFile& file = *kept.parsed[changed[n].index];
+      const ParsedFile& file = *kept.parsed[walked[n]];
       std::vector<const void*> after = global.instancesWalksUse(file), dropped;
       std::set_difference(before[n].begin(), before[n].end(), after.begin(), after.end(), std::back_inserter(dropped));
       if (!dropped.empty() && !global.usedElsewhere(dropped, file))
@@ -1716,7 +2066,7 @@ namespace
       fprintf(stderr, "%s\n", clash.c_str());
       codegenExit = 1;
     }
-    logBuildNote("incremental: " + std::to_string(changed.size()) + " file(s) changed, their changed bodies checked again");
+    logBuildNote("incremental: " + std::to_string(changed.size() + functionEdits.size()) + " file(s) changed (" + std::to_string(functionEdits.size()) + " with whole functions), " + std::to_string(walked.size()) + " file(s) walked again");
     noteIncrementalBuild();
     reportResolve(kept);
     return true;

@@ -46,6 +46,8 @@ $steps = @(
   @{ name = 'body edit'; expect = '6 44 44 3 8'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
   @{ name = 'second body edit'; expect = '6 44 44 3 8'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a; }' } },
   @{ name = 'signature edit'; expect = '6 44 44 103 8'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
+  @{ name = 'overload added'; expect = '6 44 7 103 8'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
+  @{ name = 'overload removed'; expect = '6 44 44 103 8'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
   @{ name = 'layout edit'; expect = '6 44 44 103 12'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
   @{ name = 'new file'; expect = '6 44 1 103 12'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
   @{ name = 'file removed'; expect = '6 44 44 103 12'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
@@ -98,6 +100,9 @@ if (@($log).Count -lt $steps.Count) { "FAIL incremental: $(@($log).Count) replay
 else { "ok   incremental replays ($($steps.Count), each the same as from scratch)" }
 # The body edits (the second one of a file already edited) were built from the kept program, its changed body checked again (step 3b), and verified.
 $fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed' }
+$whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmatch '\(0 with whole functions\)' }
+if (@($whole).Count -lt 3) { "FAIL incremental: the signature edit and the overload added and removed were not built from the kept program ($(@($whole).Count) such builds)"; $failed++ }
+else { "ok   incremental whole-function edits built from the kept program ($(@($whole).Count))" }
 if (@($fast).Count -lt 2) { "FAIL incremental: the body edits were not built from the kept program (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }
 & $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null

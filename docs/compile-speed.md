@@ -416,6 +416,48 @@ before relying on the recorded uses.
   (4.6 to 5.4 s): what 3c and the link are for. A body edit of `MapPosition::operator+` is not
   eligible (constexpr) and was built from scratch, as expected.
 
+### Step 4: interface edits (first kind landed: whole functions)
+
+**What edits there are.** The game's own history (C:\Factorio, read only, scratchpad
+editkinds.ps1 and declkinds.ps1): of the last 400 commits, 360 change C++ sources; 37% change
+function bodies only (step 3b's kind), 56% change declarations, 7% add or remove files. Of the
+changed lines outside function bodies, function declarations are 28% and function definition heads
+12%, data members and variables 9%, class heads 3%, template lines 1% (braces and other lines the
+rest). So the first kind is whole functions: added, removed, or changed in their signature.
+
+**Through the server before step 4** (full game, frozen tree, machine loaded): a body edit
+resolved in 0.06 s; a new member function 2.2 to 2.4 s, a signature 2.6 to 4.0 s, a class layout
+3.3 to 4.4 s, a template body 3.1 to 3.2 s, a constexpr body 3.9 s, a new file 3.6 s: all built
+from scratch.
+
+**How whole functions are taken (landed).** A changed file that is not body-only is compared with
+the kept version through the token map: a kept function whose tokens all have places side by side
+at a new function's is the same; the others are removed, the new functions not paired are added,
+and every token gone or new must be a removed or added function's (anything else changed: from
+scratch). Each must be a plain function: no template or template's member, not virtual, no
+constructor, destructor, operator or conversion, not constexpr, no deduced return type, no class or
+enumeration in its body (what reads such functions without a lookup: layouts, vtables, traits). Then:
+- the removed functions are taken out of the index (`GlobalScope::unindexFunction`: their scope's
+  entry, or their class's out-of-line definitions) and their walks' records dropped;
+- the file's kept nodes are pointed at the new tokens (as in 3b), the added functions grafted into
+  the kept declarations they belong to (found by the token map; member lists rebuilt in token
+  order), and indexed (`indexFunctions`: out-of-line definitions attached by finishIndex's own code,
+  now `Impl::attachOutOfLine`; one matching no declaration, or an object declaration to decide, is
+  built from scratch); merged overload sets are made again from the entries as they are now;
+- what read the functions' names (step 2's records, by symbol) or a removed function's declared
+  type is found (`invalidateReaders`): declared types forgotten and followed, the files whose walks
+  read them walked again with the changed file; an instance, a class instance or a scope's relations
+  that read one makes it a build from scratch; the 3b checks follow (nothing instantiated anew).
+- The index line's entry count is the index's own plus what the functions added and took out.
+
+Full game through one server with `--verify-incremental`: a member function added to
+`BuildEntityAchievement` (and taken out again) built this way, "the same as from scratch", resolve
+0.9 to 1.0 s (finding the readers scans every recorded read; the walk itself is one file). A
+signature change of `BuildEntityAchievement::getPrototype` was built from scratch: instances read the
+name `getPrototype` (names are recorded by symbol, step 2, so every `getPrototype` counts). The edit
+test adds a signature change, an overload added (that changes which function another file calls)
+and taken out, each built this way and checked against a new process's build.
+
 ### The link in the edit loop (2026-10-30, not changed)
 
 The same 64 objects of the full game linked several ways (scratchpad linkvariants.ps1, the

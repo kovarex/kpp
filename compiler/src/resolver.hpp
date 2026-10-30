@@ -267,6 +267,22 @@ public:
   std::vector<const void*> instancesWalksUse(const ParsedFile& file);
   bool usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file);
 
+  // Step 4 (functions added, removed or changed in a kept file). unindexFunction: takes a function
+  // out of the index (its scope's entry, or its class's out-of-line definitions). indexFunctions:
+  // indexes functions grafted into a kept file (their parents set), out-of-line definitions
+  // attached as finishIndex attaches them; false when one needs what only a whole index gives (a
+  // definition matching no declaration, an object declaration to decide). Both forget the cached
+  // overload sets that merged the names' entries.
+  void unindexFunction(FunctionDecl* f);
+  bool indexFunctions(const std::vector<FunctionDecl*>& added);
+  // What read a name (by symbol) or a declaration's declared type: the files of the walks that did
+  // (to walk again), the declarations whose declared types did (forgotten here, with what they
+  // cached, and followed: what read those types is found too); false when an instance, a class
+  // instance or a scope's relations read one (a resolve from scratch could make them otherwise).
+  bool invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files);
+  uint32_t functionSymbolOf(const FunctionDecl* f);
+  std::vector<FunctionDecl*> outOfLineDefinitions(const Decl* cls); // the out-of-line member definitions attached to a class
+
   // Queries for code generation (after resolveFile ran on every file).
   TypeTable& types();
   const Ty* typeOfDecl(Decl* d);                 // Declared (or deduced) canonical type.
