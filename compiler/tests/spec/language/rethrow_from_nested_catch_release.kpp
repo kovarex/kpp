@@ -1,0 +1,13 @@
+// spec: a rethrow from a nested try's handler reaches the enclosing try's handler, in a release build too
+// kppc: --release
+// pending: the cleanup of a catch body unwinds to the caller instead of the enclosing try's dispatch; -O2 drops the outer handler (codegen)
+int main()
+{
+  try
+  {
+    try { throw RuntimeError(String("inner")); }
+    catch (const RuntimeError&) { println("rethrowing"); throw; }
+  }
+  catch (const Exception& e) { println("outer {}", e.what()); }
+  return 0;
+}

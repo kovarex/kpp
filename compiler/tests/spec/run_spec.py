@@ -7,6 +7,8 @@ snippet says what it is about:
     // spec: default arguments
     // factorio: 32235 uses in 4539 files        (from the construct survey, optional)
     // pending: no generic lambdas yet           (a known gap: the snippet is expected to fail)
+    // kppc: --release                           (kppc options this snippet is always built with: a
+                                                  gap that only one configuration shows)
     // error: static assertion failed            (the program must not compile, and the compiler's
                                                   output must say this; one line per expected error)
     // run: alpha "two words"                    (built and run in one step by `kppc --run snippet ARGS`)
@@ -21,7 +23,12 @@ specification of what kppc can and cannot do yet, with the first compiler compla
 A <name>.c next to a snippet is a C library of its own: compiled with clang and linked into the
 snippet's executable (`--lib`), for what only a real C object shows (the variables it defines).
 
-    python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc]
+    python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info]
+
+--release and --debug-info build every snippet with that kppc option too (the release and the
+debug-info configurations, docs/test-matrix.md), into build\\spec-release or build\\spec-debug-info,
+and write no spec-status.md, which is the debug build's. A snippet that prints its own configuration
+has the release build's output in <name>.release.expected.
 """
 import argparse, os, re, shlex, subprocess, sys, concurrent.futures, time
 
@@ -51,10 +58,10 @@ AREA_TITLES = {
 
 
 def header(path):
-    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "run": None, "test": None, "exit": None}
+    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "run": None, "test": None, "exit": None, "kppc": ""}
     with open(path, encoding="utf-8") as f:
         for line in f:
-            m = re.match(r"//\s*(spec|factorio|pending|error|run|test|exit):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending|error|run|test|exit|kppc):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -84,6 +91,9 @@ def run_one(path):
     info = header(path)
     exe = os.path.join(OUT, f"{area}.{name}.exe")
     expected_path = os.path.splitext(path)[0] + ".expected"
+    # A snippet that prints its own configuration has the release build's output next to the debug one's.
+    if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
+        expected_path = os.path.splitext(path)[0] + ".release.expected"
     result = {"area": area, "name": name, "info": info, "note": ""}
     libs = []
     c_source = os.path.splitext(path)[0] + ".c"
@@ -96,7 +106,7 @@ def run_one(path):
     if info["run"] is not None or info["test"] is not None:
         return finish(run_command(path, info, libs, expected_path, result))
     try:
-        c = subprocess.run([KPPC, "--quiet", *EXTRA, *libs, "--exe", exe, path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        c = subprocess.run([KPPC, "--quiet", *EXTRA, *shlex.split(info["kppc"]), *libs, "--exe", exe, path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
     if info["errors"]:
@@ -138,14 +148,15 @@ def run_one(path):
 def run_command(path, info, libs, expected_path, result):
     """A `// run:` snippet: `kppc --run` builds and runs it in one step; its exit code is the program's.
     A `// test:` snippet: `kppc --test` builds its tests and runs them, from the snippet's directory."""
+    extra = EXTRA + shlex.split(info["kppc"])
     if info["test"] is not None:
-        command, cwd = [KPPC, *EXTRA, *libs, "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
+        command, cwd = [KPPC, *extra, *libs, "--test", os.path.basename(path), "--", *shlex.split(info["test"])], os.path.dirname(path)
     else:
-        command, cwd = [KPPC, *EXTRA, *libs, "--run", path, *shlex.split(info["run"])], None
+        command, cwd = [KPPC, *extra, *libs, "--run", path, *shlex.split(info["run"])], None
     try:
         r = subprocess.run(command, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=360)
     except subprocess.TimeoutExpired:
-        result["status"] = "FAIL"; result["note"] = f"kppc {command[len(EXTRA) + len(libs) + 1]} timed out"; return result
+        result["status"] = "FAIL"; result["note"] = f"kppc {command[len(extra) + len(libs) + 1]} timed out"; return result
     want = int(info["exit"]) if info["exit"] is not None else None
     if want is not None and r.returncode != want or want is None and r.returncode not in (0, 1):
         result["status"] = "FAIL"
@@ -213,7 +224,16 @@ def main():
     ap.add_argument("--filter", default="")
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--no-doc", action="store_true")
+    ap.add_argument("--release", action="store_true")
+    ap.add_argument("--debug-info", action="store_true")
     args = ap.parse_args()
+    global OUT
+    for flag in ("release", "debug_info"):
+        if getattr(args, flag):
+            option = "--" + flag.replace("_", "-")
+            EXTRA.append(option)
+            OUT += option[1:]
+            args.no_doc = True
     if not os.path.exists(KPPC):
         print("no compiler at", KPPC); return 2
     os.makedirs(OUT, exist_ok=True)
