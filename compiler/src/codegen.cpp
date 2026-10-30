@@ -14291,6 +14291,12 @@ namespace
       std::string cont = newLabel("invoke.cont");
       fn += "  " + prefix + "invoke " + callee + bundle() + " to label %" + cont + " unwind label %" + dest + "\n";
       startBlock(cont);
+      // A nop at the return address, as MSVC puts one after a call in a __try: __C_specific_handler's
+      // scope entry for this call ends at its return address + 1, so where -O2 lays the next invoke
+      // right after this one (the Control Flow Optimizer folding the jump between them), their
+      // entries would share a byte and a throw from this call run the next one's cleanups too (a
+      // double free in LuaHelper::parseLocalisedString's loop).
+      fn += "  call void asm sideeffect \"nop\", \"\"()" + bundle() + "\n"; // (in a funclet, as its own)
     }
 
     // Where an exception thrown at this point unwinds to: a cleanup pad destroying the objects

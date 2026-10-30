@@ -1,6 +1,5 @@
 // spec: a call that throws runs only its own scope's cleanups, even when the next call's scope starts at its return address (release)
 // kppc: --release
-// pending: two invokes laid out back to back share an address in the __C_specific_handler scope table (the first ends at its return address + 1, the next begins there), so a throw from the first runs both entries' cleanups: `before` is destroyed twice and the temporary make() never built once; found in the release unit tests (LuaHelper::parseLocalisedString, a double free) (codegen)
 struct Item
 {
   int id;
