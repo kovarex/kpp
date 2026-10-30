@@ -13884,12 +13884,13 @@ struct GlobalScope::Impl
             }
           }
         }
-        // Two derived-to-base bindings of one rank: an rvalue binds a `T&&` better than a
-        // `const T&` (C++'s rvalue-reference rule; `Holder(Holder&& other) :
-        // UniquePtr<Entity>(move(other))` takes UniquePtr's move constructor, not its deleted copy).
-        if (a.ranks[i] == 3 && b.ranks[i] == 3 && i < a.params.size() && i < b.params.size() && i < argTypes.size() && a.params[i] &&
-            b.params[i] && argTypes[i] && argTypes[i]->kind != TyKind::LRef && a.params[i]->kind != b.params[i]->kind &&
-            a.params[i]->isReference() && b.params[i]->isReference())
+        // An rvalue reference beside an lvalue one of the same rank: the `T&&` binds an rvalue,
+        // the argument or the temporary it converts to (it takes no lvalue), which C++ prefers
+        // ([over.ics.rank] 3.2.3): `Holder(Holder&& other) : UniquePtr<Entity>(move(other))` takes
+        // UniquePtr's move constructor, not its deleted copy; take(const T&) beside take(T&&) given
+        // an Item* for T = const Item*, or an int32 for T = int64, takes T&&.
+        if (a.ranks[i] == b.ranks[i] && i < a.params.size() && i < b.params.size() && a.params[i] && b.params[i] &&
+            a.params[i]->kind != b.params[i]->kind && a.params[i]->isReference() && b.params[i]->isReference())
         {
           if (a.params[i]->kind == TyKind::RRef)
             someBetter = true;
