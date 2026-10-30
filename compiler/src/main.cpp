@@ -1205,7 +1205,9 @@ namespace
           fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset)).c_str(), d.message,
                   int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
         }
-    if (build.parseErrors)
+    // --convert reads C++, whose macro uses the parser does not expand (the converter expands them
+    // in the text it writes): its parse errors are shown, and the converted Kpp is what must parse.
+    if (build.parseErrors && options.convertDir.empty())
       codegenExit = 1;
     int shown = 0;
     for (size_t i = 0; i < files.size() && shown < options.showErrors; ++i)
