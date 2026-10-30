@@ -1604,20 +1604,29 @@ TestSelector, CircleIterator and Ghost ones), a requires-expression in a generic
 member function (MapGenerator's hidden tiles, 9), `super::operator==` over a defaulted <=> (InsertPlan,
 8). All fixed by 327e0dd.
 
-The tally on 327e0dd: of 554 suites, 538 get to their summary line, with 8101 tests of which 8088 pass
-and 13 fail; 16 stop: 7 in Targeters (4 in Targeters::clear from Targetable::clearTargetingMe, one
-calling a bad address from it, one in notifyUndoActionsOfEntityDestroyed, one in TargeterBase::save),
-3 faults with no frames of the program, 2 at stubs (CallerExpr in TestGui and TestMigrations), and one
-each in an RbTree of GameNotifications, LuaBlueprint's abort, agui::Widget's destructor (SpaceMap) and
-Rail::RailConnection::getRails (TrainPriorities). The build has 3 stubs and 3 error lines. The
-failed checks:
+On 327e0dd 13 checks failed and 16 suites stopped. The causes found since, each a pending spec
+first, fixed by 9e9ab71: the address of an overloaded member among several candidates (RemoveCables,
+3), a forwarding constructor beside an explicit copy one (PropertyTree), candidates through one
+conversion function ranked by the conversion after it (LuaForce), a typed union's triviality taken
+without its alternatives (an Optional<AIState> never destroyed its Targeter: Achievements,
+SegmentedUnit, LuaSegmentedUnit, LuaEventFilters, Simulations stopped in Targeters), a `return` in a
+destructor skipping its members and bases (CargoBayResizeHelper's Targeter, SpaceMapGui's widgets:
+CargoBay, SpacePlatform, SpaceMap, BrowseHistory, AudioGui). The two that stopped many suites were
+found with an instrumented conversion: a registry of live Targeters and a stack trace for each one
+added from a stack address, matched with the dangling list item at the crash.
+
+The tally on 9e9ab71: of 554 suites, 548 get to their summary line, with 8710 tests of which 8703 pass
+and 7 fail; 6 stop: 2 at stubs (CallerExpr in TestGui and TestMigrations), LatencyInputFixture (a
+desync report saving a ManualMiner's Targeter), BuildabilityChecks (EntityWithOwner's constructor,
+from Lab's), LuaBlueprint (an exception that leaves the test runner, then the leaked-entities check
+aborts) and TrainPriorities (Rail::RailConnection::getRails). The build has 3 stubs and 3 error lines.
+The failed checks:
 
 | Checks | What fails | Cause | Kind, owner |
 |---|---|---|---|
-| 3 | RemoveCables (CircuitNetwork, LatencyInput, UndoRedo) | `handlers.add(type, &InputActionHandler::removeCables)`, two functions of the name: the first add (a controller action) is taken, so the handler gets the player's Controller for its GameAdapter | compiler: pending spec language/overload_set_address_chooses_among_overloads, the templates thread |
-| 1 | PropertyTree SharedStringLogic | ImmutableStringTemplate's forwarding constructor loses to its explicit copy constructor: a move is a copy | compiler: pending spec templates/forwarding_constructor_beside_explicit_copy, the templates thread |
-| 1 | LuaForce LuaUnlockTravelToSpacePlatforms (`0` for false) | LuaHelper::push of a class with operator bool takes push(uint64_t), not push(const bool&) | compiler: pending spec classes/conversion_function_then_standard_conversion_ranks, the templates thread |
-| 8 | Tree, LuaEntity, LuaInventory, MapDeserialiser 2, Multiplayer 2, TrainGui | not looked at | |
+| 2 | MapDeserialiser SaveLoadMap and SaveLoadFlatMap (a key copied, a value moved twice) | Map's try_emplace had no rvalue-key overload; Vector::emplace at the end moved a temporary in | stdlib, fixed in aa38d77 |
+| 1 | Tree TreeStageIndexDoesNotDesync ("Expected 0 but was 3") | a const reference bound to a bit-field read the byte it shares | compiler: pending spec language/reference_bound_to_bit_field, the codegen thread |
+| 4 | LuaEntity, LuaInventory, Multiplayer, TrainGui, one each | not looked at | |
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
