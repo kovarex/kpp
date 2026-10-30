@@ -5531,7 +5531,10 @@ namespace
           unsupported(at, "a call to a lambda without an argument for its parameter " + (pd->name != UINT32_MAX ? sym(pd->name) : std::to_string(position + 1)));
         const Ty* pt = callTy->args[position];
         sig += ", " + std::string(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, at));
-        argText += ", " + argumentText(pt, pd->defaultValue, pd->defaultValue);
+        if (pd->defaultValue->kind == NodeKind::CallerExpr)
+          argText += ", ptr " + callerLocation(pt, at); // `CallerLocation here = caller`: this call's location, as for a function
+        else
+          argText += ", " + argumentText(pt, pd->defaultValue, pd->defaultValue);
       }
       sig += ")";
       // The instantiation's operator is emitted after the arguments: a lambda argument's closure

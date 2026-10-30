@@ -1,0 +1,10 @@
+// spec: `caller` as a lambda parameter's default argument is the call's location, as for a function: the line of each call of the lambda that leaves it out
+// factorio: the tests' GUI helpers (TestGui, TestMigrations) take a `CallerLocation location = caller` in lambdas they call from the test bodies; codegen left those functions out (`a call to a lambda` with `caller` unsupported), and both suites stopped at their stubs
+int main()
+{
+  auto where = [](int offset, CallerLocation here = caller) { return (int)here.line() + offset; };
+  int first = where(0);
+  int second = where(100);
+  println("{} {}", first, second);
+  return 0;
+}
