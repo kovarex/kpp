@@ -13295,6 +13295,30 @@ struct GlobalScope::Impl
             continue;
           }
         }
+        // Two user-defined conversions through the same conversion function: the standard
+        // conversion after it decides ([over.ics.rank] 3.3). A class whose one conversion to a
+        // non-class type is `operator bool()` takes push(const bool&) over push(uint64_t) and
+        // take(bool) over take(int64_t): bool's identity beats a conversion.
+        if (a.ranks[i] >= 4 && a.ranks[i] <= 5 && b.ranks[i] >= 4 && b.ranks[i] <= 5 && i < argTypes.size() && argTypes[i] && i < a.params.size() &&
+            i < b.params.size() && a.params[i] && b.params[i])
+        {
+          const Ty* from = types.unqualified(types.stripRef(argTypes[i]));
+          const Ty* pa = types.unqualified(types.stripRef(a.params[i]));
+          const Ty* pb = types.unqualified(types.stripRef(b.params[i]));
+          if (from->kind == TyKind::Class && !from->isBraceList() && pa != pb && pa->kind != TyKind::Class && pb->kind != TyKind::Class)
+            if (const Ty* result = scalarConversionOf(from))
+            {
+              result = types.unqualified(types.stripRef(result));
+              int ra = conversionRank(result, pa), rb = conversionRank(result, pb);
+              if (ra != rb)
+              {
+                if (ra > rb)
+                  return false;
+                someBetter = true;
+                continue;
+              }
+            }
+        }
         // Two user-defined conversions to different types (a `const char*` made a StringView by
         // one candidate, a String by the other) are indistinguishable (C++ compares only those
         // through one conversion function): the other arguments and the object decide.

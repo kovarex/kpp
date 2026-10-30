@@ -1,6 +1,5 @@
 // spec: candidates reached through the same conversion function rank by the standard conversion after it ([over.ics.rank] 3.3): a class with `operator bool()` passed to push(const bool&) beside push(const uint8_t&), push(uint64_t), push(const int32_t&), push(const double&) and the like calls the bool one (identity beats a promotion or a conversion), as take(bool) beats take(int64_t)
 // factorio: LuaHelper::push over a BoolModifierTarget (`LuaHelper::push(L, this->getForceData().travelToSpacePlatformsUnlocked)`, an operator bool): Lua read the number 0 instead of false (LuaForce LuaUnlockTravelToSpacePlatforms: "Expected false but was 0"); every bool-convertible class pushed to Lua is a number
-// pending: SILENT, `uint64 int64` (clang: `bool bool`); owner: the templates thread (overload resolution)
 struct Flag
 {
   bool value = false;
