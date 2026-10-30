@@ -13,20 +13,31 @@ rem build's: 9006 tests passed (2026-10-29). `tests.cmd --baseline` runs the C++
 rem C:\Factorio\bin\Releasex64vs2022\factorio-test.exe the same way (its own write directory
 rem kpp\tests-baseline\run) to measure that again. A stub or a failed assertion ends the run where it
 rem is reached: suites.py runs the built binary one suite per process instead, and crashes.py tallies
-rem what stopped each suite.
+rem what stopped each suite. `tests.cmd --asan` builds with AddressSanitizer (kppc's --clang-flags
+rem -fsanitize=address, the ASan runtime linked) into kpp\tests-asan\factorio-test.exe and runs it
+rem with the runtime's directory (VS 2022's clang 19) on PATH; to run that binary with suites.py, put
+rem the directory on PATH too. The game's own signal handler reports a segfault before ASan can, so a
+rem read through a wild pointer still shows only as "Received SIGSEGV"; a use after free or an
+rem overflow gets ASan's report with the allocation and free stacks.
 setlocal
 cd /d "%~dp0"
 set CONVERSION=C:\factorio-in-kpp\kpp
 set BASELINE=0
+set ASAN=0
+set ASANRUNTIME=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\lib\clang\19\lib\windows
 set ARGS=
 :arguments
 if "%~1"=="" goto argumentsDone
-if "%~1"=="--baseline" (set BASELINE=1) else if exist "%~1\tests" (set CONVERSION=%~1) else (set ARGS=%ARGS% %1)
+if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--asan" (set ASAN=1) else if exist "%~1\tests" (set CONVERSION=%~1) else (set ARGS=%ARGS% %1)
 shift
 goto arguments
 :argumentsDone
 set OUT=%~dp0kpp\tests-run
 if %BASELINE%==1 set OUT=%~dp0kpp\tests-baseline
+set SANITIZE=
+if %ASAN%==1 set OUT=%~dp0kpp\tests-asan
+if %ASAN%==1 set SANITIZE=--clang-flags -fsanitize=address --lib -fsanitize=address
+if %ASAN%==1 set "PATH=%ASANRUNTIME%;%PATH%"
 if not exist %OUT%\run mkdir %OUT%\run
 rem The config the runner reads (--config): the game's data from C:\Factorio, the writes in run\.
 (
@@ -40,7 +51,7 @@ call native\build.cmd >nul || exit /b 1
 call "%~dp0link-settings.cmd"
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% --exe %OUT%\factorio-test.exe %CONVERSION%\CommonUtil %CONVERSION%\Agui %CONVERSION%\cxxopts %CONVERSION%\StackWalker %CONVERSION%\Lua %CONVERSION%\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\CommonUtil %CONVERSION%\Agui %CONVERSION%\cxxopts %CONVERSION%\StackWalker %CONVERSION%\Lua %CONVERSION%\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
 echo == %OUT%\factorio-test.exe, built by kppc (exit %errorlevel%) from %CONVERSION% with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" %OUT%\build.txt
 %SystemRoot%\System32\find.exe /c /v "" %OUT%\build-errors.txt
