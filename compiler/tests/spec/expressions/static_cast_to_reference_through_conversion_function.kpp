@@ -1,0 +1,35 @@
+// spec: `static_cast<T&>(e)` with e of a class type that converts to T& calls the conversion function, as `T& t = e;` does (C++: the cast is valid when that declaration is): `&static_cast<TrainStop&>(builder.station())` is the address of the TrainStop the builder converts to
+// factorio: TestTrainPriorities' `stop = &static_cast<TrainStop&>(leg.station("A"));` with RailBuilder's `operator TrainStop&()`: the cast took the RailBuilder itself as the TrainStop, so setPriority ran on the builder's stack memory and faulted in Rail::RailConnection::getRails (TrainPriorities stops; its 12 tests pass with `TrainStop& stop = leg.station("A");`)
+// pending: SILENT, the cast reinterprets the object (`0 1 0` and a garbage id); owner: the codegen thread (casts)
+struct Rail
+{
+  int id = 1;
+};
+struct TrainStop
+{
+  int id = 2;
+};
+struct Builder
+{
+  TrainStop* lastStation = nullptr;
+  Rail* lastRail = nullptr;
+  Builder& station() { return *this; }
+  implicit operator TrainStop&() { return *this->lastStation; }
+  implicit operator TrainStop*() { return this->lastStation; }
+  implicit operator Rail&() { return *this->lastRail; }
+};
+int main()
+{
+  TrainStop stop;
+  stop.id = 42;
+  Rail rail;
+  rail.id = 7;
+  Builder builder;
+  builder.lastStation = &stop;
+  builder.lastRail = &rail;
+  TrainStop* a = &static_cast<TrainStop&>(builder.station());
+  TrainStop& b = builder.station();
+  Rail* c = &static_cast<Rail&>(builder);
+  println("{} {} {} {}", a == &stop ? 1 : 0, &b == &stop ? 1 : 0, c == &rail ? 1 : 0, a->id);
+  return 0;
+}
