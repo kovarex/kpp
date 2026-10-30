@@ -1,0 +1,11 @@
+// spec: a C function is one function whatever namespace declares it (C++ [dcl.link] 6), so two declarations of one C name with two types are an error, never two overloads a call chooses between: the library's C declarations as the headers have them (library/c_declarations_as_in_c_headers)
+// error: the C function kppSpecTwice is declared with two types
+extern "C" int kppSpecTwice(int value);
+namespace other
+{
+  extern "C" int kppSpecTwice(double value);
+}
+int main()
+{
+  return 0;
+}

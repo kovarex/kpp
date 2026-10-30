@@ -626,6 +626,7 @@ struct GlobalScope::Impl
   std::vector<std::pair<FunctionDecl*, Scope*>> objectCandidates; // `T five(a, m);`: an object when a and m are variables (finishIndex).
   std::vector<ParsedFile*> castFiles; // files with `(name) op x` candidates (ParsedFile::castCandidates), for finishIndex
   std::vector<std::pair<FunctionDecl*, FunctionDecl*>> externCRedeclarations; // (extern "C" declaration, a later one): sortEntries, decided by finishIndex
+  std::unordered_map<uint32_t, std::vector<FunctionDecl*>> cFunctions; // C functions by name, in every namespace: sortEntries, compared by finishIndex
 
   // `(HANDLE) -1` (also `(T) +x`, `(T) *p`, `(T) &x`), which the parser read as `(HANDLE) - 1`:
   // when the name is a type where it is written, the cast of the unary expression it reads as in
@@ -2044,6 +2045,10 @@ struct GlobalScope::Impl
                     static_cast<FunctionDecl*>(e.decl)->params.size() == static_cast<FunctionDecl*>(c.decl)->params.size())
                   externCRedeclarations.push_back({static_cast<FunctionDecl*>(c.decl), static_cast<FunctionDecl*>(e.decl)});
         }
+        if (scope->kind == ScopeKind::Namespace)
+          for (const Entry& e : entries)
+            if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty() && isCFunction(static_cast<FunctionDecl*>(e.decl)))
+              cFunctions[symbol].push_back(static_cast<FunctionDecl*>(e.decl));
         bool specialized = false; // a class template's specialisations among them: its instances may be one (resolveSpecialization)
         for (const Entry& e : entries)
         {
@@ -14005,6 +14010,49 @@ struct GlobalScope::Impl
 
   static bool isCFunction(const FunctionDecl* f) { return (f->flags & DF_ExternC) || (f->file && f->file->isImported); }
 
+  // Every C function (cFunctions) declared with the type of its first declaration: its result,
+  // its parameters (their own const aside) and whether it is variadic. A declaration whose type is
+  // not known yet is not compared.
+  void checkCFunctionTypes()
+  {
+    std::vector<std::pair<uint32_t, std::vector<FunctionDecl*>*>> names;
+    for (auto& [symbol, declarations] : cFunctions)
+      if (declarations.size() > 1)
+        names.push_back({symbol, &declarations});
+    std::sort(names.begin(), names.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    auto signature = [&](FunctionDecl* f) -> const Ty*
+    {
+      TokenScope tokenScope(f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view());
+      const Ty* t = declaredTypeOf(f, nullptr, 0);
+      return t && t->kind == TyKind::Function && t->isKnown() && !mentionsUnknown(t) ? t : nullptr;
+    };
+    for (auto& [symbol, declarations] : names)
+    {
+      FunctionDecl* first = nullptr;
+      const Ty* firstType = nullptr;
+      for (FunctionDecl* f : *declarations)
+      {
+        const Ty* t = signature(f);
+        if (!t)
+          continue;
+        if (!first)
+        {
+          first = f;
+          firstType = t;
+          continue;
+        }
+        bool same = t->inner == firstType->inner && t->variadic == firstType->variadic && t->args.size() == firstType->args.size();
+        for (size_t i = 0; same && i < t->args.size(); ++i)
+          same = types.unqualified(t->args[i]) == types.unqualified(firstType->args[i]);
+        if (!same)
+          reportCheckerError(f->file, f->token,
+                             "the C function " + std::string(symbols.name(symbol)) + " is declared with two types: " + types.toString(t, &symbols) +
+                                 " here and " + types.toString(firstType, &symbols) + " at " + locationOf(first->file, first->token));
+      }
+    }
+    cFunctions.clear();
+  }
+
   // Whether two candidates are one function declared twice: a declaration and its definition, a
   // member declared in its class and defined outside it, a function declared in two places of its
   // namespace (of one name, scope, type and qualifiers), or a C function of one name and type, which
@@ -19463,6 +19511,10 @@ void GlobalScope::finishIndex()
     }
   }
   impl->externCRedeclarations.clear();
+  // A C function is one function whatever namespace declares it (C++ [dcl.link] 6), so two
+  // declarations of one name with two types (a header's and the library's) are an error, never two
+  // overloads a call chooses between.
+  impl->checkCFunctionTypes();
   // An out-of-line member definition that matches no declaration of its class is an error, as in
   // C++: never a definition silently dropped (its calls would fail only at link time).
   for (FunctionDecl* f : attached)
@@ -21126,6 +21178,7 @@ bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
   }
   std::unordered_set<Scope*> seen;
   impl->sortEntries(&impl->root, seen); // in declaration order, as finishIndex leaves them
+  impl->cFunctions.clear();
   impl->forgetMergedOverloads();
   return whole;
 }
