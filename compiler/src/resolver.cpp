@@ -1577,6 +1577,19 @@ struct GlobalScope::Impl
     return l.decl && l.decl->kind != NodeKind::FunctionDecl ? l.decl : nullptr;
   }
 
+  // `using Enum::True;` in a class or namespace: the enumerator it names, which the name means as
+  // that enumerator's value (a constant, never an object); null for any other using-declaration.
+  Decl* usingEnumerator(Decl* d, int depth)
+  {
+    if (!d || d->kind != NodeKind::UsingNameDecl)
+      return nullptr;
+    auto* u = static_cast<UsingNameDecl*>(d);
+    if (u->isEnum || u->name.parts.size() < 2)
+      return nullptr;
+    Lookup l = lookupQualified(u->name, lexicalScopeOf(u), nullptr, depth + 1);
+    return l.decl && l.decl->kind == NodeKind::EnumeratorDecl ? l.decl : nullptr;
+  }
+
   // Those visible at token `at` in the body of the lambda whose closure is context (the code
   // generator types a lambda's body from its closure): a body's declarations belong to the function
   // around the lambda, whose statements do not reach into it.
@@ -2695,7 +2708,17 @@ struct GlobalScope::Impl
     return types.classType(m.decl, Span<const Ty*>{m.deduced.data(), uint32_t(m.deduced.size())});
   }
 
+  // A name as written, found from context: what lookupWritten finds, a using-declaration of an
+  // enumerator taken for that enumerator (usingEnumerator).
   Lookup lookupQualified(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr)
+  {
+    Lookup l = lookupWritten(name, context, locals, depth, subst);
+    if (Decl* en = usingEnumerator(l.decl, depth))
+      l.decl = en, l.overloads = nullptr, l.scope = nullptr;
+    return l;
+  }
+
+  Lookup lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr)
   {
     Lookup out;
     if (name.empty() || depth > 24)

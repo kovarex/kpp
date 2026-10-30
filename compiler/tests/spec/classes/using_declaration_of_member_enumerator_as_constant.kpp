@@ -1,0 +1,49 @@
+// spec: an enumerator a using-declaration names (`using Enum::True;`) is a constant wherever one is: unqualified in its class, a case label, a constant expression (static_assert), a conditional's operand; and the conditional over `static constexpr` members of an enum type, the form it replaced
+// found in kpp/CommonUtil/NamedBool.kpp at C:\Factorio df1c9d1cd3c (2026-10-30): the case label and the static_assert failed once the name was taken for the enumerator in expressions only
+template <class Tag>
+class NamedBool
+{
+public:
+  enum class Enum : uint8_t {False, True};
+  using Enum::True;
+  using Enum::False;
+  constexpr NamedBool() = default;
+  implicit constexpr NamedBool(Enum value) : value(value == Enum::True) {}
+  static constexpr NamedBool fromBool(bool value) { return value ? True : False; }
+  static int code(Enum e)
+  {
+    switch (e)
+    {
+      case True: return 7;
+      case NamedBool::False: return 3;
+    }
+    return 0;
+  }
+  constexpr bool asBool() const { return this->value; }
+private:
+  bool value = false;
+};
+template <class Tag>
+class OldBool
+{
+public:
+  enum class Enum : uint8_t {False, True};
+  static constexpr Enum True = Enum::True;
+  static constexpr Enum False = Enum::False;
+  implicit constexpr OldBool(Enum value) : value(value == Enum::True) {}
+  static OldBool fromBool(bool value) { return value ? OldBool::True : OldBool::False; }
+  bool asBool() const { return this->value; }
+private:
+  bool value = false;
+};
+class FocusTag {};
+using Focus = NamedBool<FocusTag>;
+static_assert(Focus(Focus::True).asBool());
+static_assert(!Focus::fromBool(false).asBool());
+bool take(Focus f) { return f.asBool(); }
+int main()
+{
+  const Focus::Enum& r = Focus::True;
+  println("{} {} {} {} {} {}", Focus::fromBool(true).asBool(), Focus::code(Focus::True), Focus::code(Focus::False), take(Focus::True), OldBool<FocusTag>::fromBool(true).asBool(), r == Focus::Enum::True);
+  return 0;
+}
