@@ -82,7 +82,41 @@ paired, 2 rounds interleaved (master 0f9d932d and this): IR 739 -> 671 MB, the l
 -> 19.5 MB (the median 10.3 -> 9.7 MB), codegen 6.97 and 6.79 s -> 5.71 and 5.63 s, clang 4.74 and
 4.66 s -> 3.23 and 3.15 s, wall **15.13 and 14.89 s -> 12.32 and 12.07 s**. The determinism tests
 at 1, 8 and 32 threads pass; the game's `--dump-data` checksums are the same as master's build's
-(run from a scratch game directory, without test_mod).
+(run from a scratch game directory, without test_mod). Of the game's constructors, 1,303 build
+temporaries in their member initializers; in 753 such a member is followed by another (its
+temporaries now die before the next is built), 383 have two or more (a probe in initializeMembers,
+not landed).
+
+**Codegen's scaling: one lock (2026-10-31).** Codegen emits level by level (the program's
+functions, then the instantiations they asked for, 17 levels), each on all threads with a barrier
+and a serial `collectNextLevel` (0.1 s each at most; 0.6 s in all); before and after the levels
+there is little (0.15 s setup, 0.11 s finishing, module assembly 0.33 s on all threads). The levels
+are all threads busy to the end (the first thread done 0.04 s before the last), so the time went
+into what the threads do. A probe timing every acquisition of the shared recursive lock
+(`sharedLock()`, SharedText's appends, NameSet's shards; not landed), -j 32, fe547347:
+
+| | acquisitions | contended | waited (all threads) | held (outermost) |
+|---|---:|---:|---:|---:|
+| sharedLock | 1,304,481 | 579,560 | 102.8 s | about 2.7 s |
+| SharedText (the same lock) | 125,711 | 25,985 | 4.2 s | |
+| NameSet shards | 512,456 | 7,313 | 0.2 s | |
+
+103 s of the threads' 172 s were waits on one lock held 2.7 s in all: a convoy of short holds, each
+emitter's first use of a layout (structFor 342 k), a bit-field answer (173 k), needsDestruction
+(119 k), constants (81 k), every definition added (242 k), each taken by 32 emitters in turn, since
+each emitter caches what it learned for itself only. More threads, more first uses: 1.03 M
+acquisitions at -j 8, 1.30 M at -j 32. *Landed (af78e46b):* answers that are final once given
+(complete layouts, sizes, needsDestruction, bit-fields, laid-out closures) are published in sharded
+maps wherever an emitter already caches them as final and looked up there first; a member without a
+width needs no bit-field lookup; thread_local inits and malloc's declaration are remembered per
+emitter; definitions, constants and each SharedText have locks of their own. 338 k acquisitions,
+45 s waited. Paired clean builds, interleaved (fe547347 and af78e46b): codegen at -j 32 5.63 and
+5.63 s -> 4.86 and 4.06 s, -j 16 5.19 -> 4.21 s, -j 8 5.32 and 5.43 -> 5.10 and 4.98 s; -j 1 18.3 -> 17.8 s;
+the IR byte-identical at 1, 8, 16 and 32 threads. What is left: the lock is still held about 2 s
+of the 3.6 s of levels, mostly building layouts the first time (structFor's 52 k, 0.9 s held), so a
+layout per class under a lock (or a once-flag) of its own is the next step, a design change in the
+codegen thread's layout code; and the threads' busy time at -j 32, waits taken out, is still over twice
+the levels' time at -j 1 (16 cores' SMT, the allocator), which a per-thread arena would show.
 
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
@@ -107,8 +141,8 @@ threads; clang is the one phase still gaining. Why, phase by phase (as measured 
   builds (master f5787d23 and this, interleaved, 2 rounds): resolve 1.38 and 1.55 s -> **0.89 and
   0.83 s**, wall 16.28 and 15.96 s -> 15.31 and 15.47 s; the front end alone, 8 runs, 0.83 to
   0.88 s against 1.35 s.
-- **Codegen** does 23.4 s of work and is no faster than 6.3 s from 8 threads on: serial or
-  serialised parts (to be profiled by the codegen thread).
+- **Codegen** does 23.4 s of work and is no faster than 6.3 s from 8 threads on: serialised on
+  its shared lock (above: 4.1 to 4.9 s at -j 32 since af78e46b).
 - **Clang** is bounded by its largest module: module 28, 37 MB of the 739 (the median is 10.8 MB),
   takes 2.92 s alone and about 4.5 s among 32 others (a median module 0.51 s). Starting the largest
   modules first (measured, 4 rounds interleaved: 4.54 to 4.66 s against 4.61 to 4.71 s) changes
@@ -119,7 +153,7 @@ threads; clang is the one phase still gaining. Why, phase by phase (as measured 
 
 | lever | today at -j 32 | estimate | owner |
 |---|---:|---:|---|
-| codegen scaling past 8 threads (23 s of work) | 6.7 s | 1.5 to 2.5 s | codegen thread |
+| codegen scaling past 8 threads (23 s of work; 18 s since fe547347) | 6.7 s (4.1 to 4.9 s since af78e46b) | 1.5 to 2.5 s | codegen thread (layouts under locks of their own) |
 | clang: modules of balanced size (split module 28's content; more, smaller modules) | 4.6 s | 1.5 to 2 s | codegen thread |
 | resolve: the dependent overload resolutions in ValueToWidget's generic walks | 1.31 s | 0.4 s (next: LuaHelper.kpp, 0.29 s) | templates thread |
 | the link: lld for a clean build (1.0 s, no PDB) or the incremental first link | 1.66 s | 1.0 s | codegen thread |
