@@ -1,0 +1,53 @@
+// spec: a call of a trivial function (one statement `return E;` or `E;` over its parameters, `this` and fields, built-in operators only) behaves exactly as the call: the arguments are evaluated once and in order, a reference parameter and a reference result stay references, `this` reached through a second base is that base's subobject, a setter and an increment write through, and a call that does not inline (an overloaded operator inside) sits beside them unchanged (docs/compile-speed.md, "Design: inlining trivial functions in kppc"; `--no-inline` keeps every call)
+struct Counter
+{
+  int count = 0;
+  int get() const { return this->count; }
+  void bump() { ++this->count; }
+  void set(int v) { this->count = v; }
+  int& ref() { return this->count; }
+  double half() const { return this->count / 2.0; }
+  bool same(const Counter& other) const { return this->count == other.count; }
+};
+struct Other { int pad = 7; virtual ~Other() {} };
+struct Both : Other, Counter { };
+template<class T>
+struct Holder
+{
+  T* items = nullptr;
+  int length = 0;
+  T& operator[](int i) { return this->items[i]; }
+  T* operator->() { return this->items; }
+  explicit operator bool() const { return this->items != nullptr; }
+  int size() const { return length; }
+  bool empty() const { return length == 0; }
+  String describe() const { return String("holder"); }
+};
+int order = 0;
+int next() { return ++order; }
+int pick(int a, int b) { return a * 10 + b; }
+void store(int& target, int value) { target = value; }
+int main()
+{
+  Counter c;
+  c.set(5);
+  c.bump();
+  c.ref() += 10;
+  Both both;
+  both.set(3);
+  both.bump();
+  int values[3] = {4, 5, 6};
+  Holder<int> h;
+  h.items = values;
+  h.length = 3;
+  h[1] = 50;
+  Counter cs[2];
+  Holder<Counter> hc;
+  hc.items = cs;
+  hc->set(9);
+  int target = 0;
+  store(target, h[2]);
+  println("{} {} {} {} {} {} {} {} {}", c.get(), c.half(), both.get(), both.pad, h[1] + h.size(), bool(h), h.empty(), cs[0].count, target);
+  println("{} {} {}", pick(next(), next()), c.same(both), h.describe());
+  return 0;
+}

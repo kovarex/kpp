@@ -5017,12 +5017,13 @@ namespace
       std::unordered_map<std::string, std::string> cleanupPads;
       bool usesEH;
       std::string returnLabel;
+      std::unordered_map<std::string, std::string> inlineSlots;
     };
 
     FunctionState saveState()
     {
       return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
-              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel};
+              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel, inlineSlots};
     }
 
     void restoreState(FunctionState& s)
@@ -5047,6 +5048,7 @@ namespace
       cleanupPads = s.cleanupPads;
       usesEH = s.usesEH;
       returnLabel = s.returnLabel;
+      inlineSlots = s.inlineSlots;
     }
 
     void resetFunctionState()
@@ -5063,6 +5065,7 @@ namespace
       ehBlocks.clear();
       cleanupPads.clear();
       usesEH = false;
+      inlineSlots.clear();
       temp = 0;
       label = 0;
       blockTerminated = false;
@@ -5819,6 +5822,37 @@ namespace
     }
 
 
+    // The arguments of f's instantiation as its definition def names them: a definition separate
+    // from the declaration has its own parameter declarations (`template<typename Policy>
+    // ScrollBar<Policy>::ScrollBar(...)` names the class's parameters first, then the member's own).
+    TemplateArgs definitionArguments(FunctionDecl* f, FunctionDecl* def, const TemplateArgs& args)
+    {
+      TemplateArgs defArgs = args;
+      if (def == f)
+        return defArgs;
+      Decl* owner = global.owningClass(f);
+      Span<Decl*> classParams; // a nested class's are the enclosing template's (`Outer<K, V>::Inner::load`)
+      for (Decl* o = owner; o && (o->kind == NodeKind::ClassDecl || o->kind == NodeKind::EnumDecl) && classParams.empty(); o = o->parent)
+        classParams = o->templateParams;
+      size_t classCount = def->templateParams.size() > f->templateParams.size() ? def->templateParams.size() - f->templateParams.size() : 0;
+      if (classCount == classParams.size() && classCount + f->templateParams.size() <= def->templateParams.size())
+      {
+        std::vector<std::pair<Decl*, const Ty*>> added;
+        for (auto& [d, t] : defArgs.pairs)
+        {
+          for (size_t i = 0; i < classCount; ++i)
+            if (d == classParams[i])
+              added.push_back({def->templateParams[i], t});
+          for (size_t i = 0; i < f->templateParams.size(); ++i)
+            if (d == f->templateParams[i])
+              d = def->templateParams[classCount + i];
+        }
+        for (auto& p : added)
+          defArgs.pairs.push_back(p);
+      }
+      return defArgs;
+    }
+
     std::string useFunctionOnce(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
     {
       if (f->builtin == BUILTIN_EnumFromStr)
@@ -5852,34 +5886,7 @@ namespace
       {
         if (claimInstantiation(name))
         {
-          // A definition separate from the declaration has its own parameter declarations:
-          // `template<typename Policy> ScrollBar<Policy>::ScrollBar(...)` names the class's
-          // parameters first, then the member's own.
-          TemplateArgs defArgs = args;
-          if (def != f)
-          {
-            Decl* owner = global.owningClass(f);
-            Span<Decl*> classParams; // a nested class's are the enclosing template's (`Outer<K, V>::Inner::load`)
-            for (Decl* o = owner; o && (o->kind == NodeKind::ClassDecl || o->kind == NodeKind::EnumDecl) && classParams.empty(); o = o->parent)
-              classParams = o->templateParams;
-            size_t classCount = def->templateParams.size() > f->templateParams.size() ? def->templateParams.size() - f->templateParams.size() : 0;
-            if (classCount == classParams.size() && classCount + f->templateParams.size() <= def->templateParams.size())
-            {
-              std::vector<std::pair<Decl*, const Ty*>> added;
-              for (auto& [d, t] : defArgs.pairs)
-              {
-                for (size_t i = 0; i < classCount; ++i)
-                  if (d == classParams[i])
-                    added.push_back({def->templateParams[i], t});
-                for (size_t i = 0; i < f->templateParams.size(); ++i)
-                  if (d == f->templateParams[i])
-                    d = def->templateParams[classCount + i];
-              }
-              for (auto& p : added)
-                defArgs.pairs.push_back(p);
-            }
-          }
-          queueInstantiation(def, defArgs, classTy, name);
+          queueInstantiation(def, definitionArguments(f, def, args), classTy, name);
         }
         return name;
       }
@@ -6083,6 +6090,269 @@ namespace
       return Value{text.substr(4), ret, false};
     }
 
+    std::unordered_map<FunctionDecl*, FunctionDecl*> trivialDefinitions; // a function's typed definition -> it, when trivial (or null)
+    std::unordered_set<FunctionDecl*> inlining;                            // the definitions being emitted in a caller now
+    std::unordered_map<std::string, std::string> inlineSlots;              // (inlining depth, parameter, type) -> its slot in this function
+
+    // Whether a value of type t is a scalar, a pointer or a reference: what a trivial function
+    // takes and gives (a class by value needs a copy and a destruction; a class result a slot).
+    bool inlineScalar(const Ty* t)
+    {
+      if (!t || !t->isKnown() || types.isDependent(t))
+        return false;
+      if (t->isReference())
+        return types.stripRef(t)->isKnown();
+      return t->isArithmetic() || t->kind == TyKind::Enum || t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr;
+    }
+
+    // Whether e may stand in a trivial function's body: its parameters, `this` and fields reached
+    // from them, constants and enumerators, combined by built-in operators on scalars and pointers,
+    // built-in subscripts and casts. No call, no overloaded operator, nothing that makes a temporary
+    // to destroy or can throw; a parameter is only read.
+    bool trivialExpression(Expr* e, FunctionDecl* def, int depth = 0)
+    {
+      if (!e || depth > 16 || !e->ty || !e->ty->isKnown() || types.isDependent(e->ty))
+        return false;
+      auto scalar = [&](Expr* x) { return x && x->ty && inlineScalar(types.unqualified(types.stripRef(x->ty))); };
+      auto parameter = [&](Expr* x) {
+        while (x && x->kind == NodeKind::ParenExpr)
+          x = static_cast<ParenExpr*>(x)->inner;
+        return x && x->kind == NodeKind::NameExpr && static_cast<NameExpr*>(x)->resolved &&
+               static_cast<NameExpr*>(x)->resolved->kind == NodeKind::ParamDecl;
+      };
+      switch (e->kind)
+      {
+        case NodeKind::ParenExpr:
+          return trivialExpression(static_cast<ParenExpr*>(e)->inner, def, depth + 1);
+        case NodeKind::LiteralExpr:
+        case NodeKind::ThisExpr:
+          return true;
+        case NodeKind::NameExpr:
+        {
+          Decl* d = static_cast<NameExpr*>(e)->resolved;
+          if (!d)
+            return false;
+          if (d->kind == NodeKind::ParamDecl)
+            return std::find(def->params.begin(), def->params.end(), d) != def->params.end() && !static_cast<ParamDecl*>(d)->isPack;
+          if (d->kind == NodeKind::EnumeratorDecl)
+            return true;
+          return d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)) && global.owningClass(d) &&
+                 static_cast<VariableDecl*>(d)->structuredBindings.empty(); // `items`: this->items
+        }
+        case NodeKind::MemberExpr:
+        {
+          auto* m = static_cast<MemberExpr*>(e);
+          if (m->dynamicMember || !m->resolved || m->resolved->kind != NodeKind::VariableDecl || (m->resolved->flags & (DF_Static | DF_Typedef)) ||
+              m->member.parts.size() != 1)
+            return false;
+          if ((m->op == P::Arrow || m->op == P::SafeArrow) &&
+              (m->op == P::SafeArrow || !m->base->ty || types.unqualified(types.stripRef(m->base->ty))->kind != TyKind::Pointer))
+            return false; // `->` of a class (its operator->), or `?->`
+          return trivialExpression(m->base, def, depth + 1);
+        }
+        case NodeKind::UnaryExpr:
+        {
+          auto* u = static_cast<UnaryExpr*>(e);
+          if (u->isKeyword || !scalar(u->operand))
+            return false;
+          P op = P(u->op);
+          if (op == P::PlusPlus || op == P::MinusMinus)
+            return !parameter(u->operand) && trivialExpression(u->operand, def, depth + 1); // `++this->count`
+          if (op == P::Amp)
+            return !parameter(u->operand) && trivialExpression(u->operand, def, depth + 1); // `&this->items[i]`
+          if (op != P::Bang && op != P::Minus && op != P::Plus && op != P::Tilde && op != P::Star)
+            return false;
+          return trivialExpression(u->operand, def, depth + 1);
+        }
+        case NodeKind::BinaryExpr:
+        {
+          auto* b = static_cast<BinaryExpr*>(e);
+          if (b->isKeyword || !scalar(b->lhs) || !scalar(b->rhs))
+            return false;
+          P op = P(b->op);
+          if (op == P::DotStar || op == P::ArrowStar || op == P::Comma)
+            return false;
+          if (isAssignment(op) && parameter(b->lhs))
+            return false; // a parameter is only read
+          return trivialExpression(b->lhs, def, depth + 1) && trivialExpression(b->rhs, def, depth + 1);
+        }
+        case NodeKind::IndexExpr:
+        {
+          auto* x = static_cast<IndexExpr*>(e);
+          if (x->args.size() != 1 || !x->base->ty || !scalar(x->args[0]))
+            return false;
+          const Ty* bt = types.unqualified(types.stripRef(x->base->ty));
+          if (bt->kind != TyKind::Pointer && bt->kind != TyKind::Array)
+            return false; // a class's operator[]
+          return trivialExpression(x->base, def, depth + 1) && trivialExpression(x->args[0], def, depth + 1);
+        }
+        case NodeKind::ConditionalExpr:
+        {
+          auto* c = static_cast<ConditionalExpr*>(e);
+          return c->then && scalar(c->cond) && scalar(c->then) && scalar(c->else_) && trivialExpression(c->cond, def, depth + 1) &&
+                 trivialExpression(c->then, def, depth + 1) && trivialExpression(c->else_, def, depth + 1);
+        }
+        case NodeKind::CastExpr:
+        case NodeKind::NamedCastExpr:
+        {
+          Expr* operand = e->kind == NodeKind::CastExpr ? static_cast<CastExpr*>(e)->operand : static_cast<NamedCastExpr*>(e)->operand;
+          if (e->kind == NodeKind::NamedCastExpr && static_cast<NamedCastExpr*>(e)->castKind == Kw::dynamic_cast_)
+            return false;
+          return inlineScalar(types.unqualified(e->ty)) && scalar(operand) && trivialExpression(operand, def, depth + 1);
+        }
+        default:
+          return false;
+      }
+    }
+
+    // The typed definition of the call's callee when it is trivial: one statement, `return E;` or
+    // `E;`, with E a trivialExpression, the parameters and the result scalars, pointers or
+    // references. Decided once per definition (it depends on the definition alone). Null otherwise.
+    FunctionDecl* trivialDefinition(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    {
+      if ((f->flags & (DF_Constructor | DF_Destructor | DF_Variadic | DF_Default | DF_Delete)) || (f->attributes & ATTR_NoInline) ||
+          f->builtin || global.isExternC(f))
+        return nullptr;
+      // The definition the call would emit (useFunctionOnce): an explicit specialisation for these
+      // arguments (`template<> const char* name<bool>()`), an out-of-line definition, the instance
+      // of either under its own parameters.
+      Decl* defined = global.definitionOf(f, args);
+      auto* chosen = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : f;
+      if (!chosen->body || (chosen->file && chosen->file->isImported))
+        return nullptr;
+      FunctionDecl* def = args.empty() ? chosen : global.instanceBody(chosen, definitionArguments(f, chosen, args), classTy);
+      if (!def || !def->body || def->body->kind != NodeKind::BlockStmt || inlining.count(def) || retypedPerElement(def))
+        return nullptr;
+      if (auto it = trivialDefinitions.find(def); it != trivialDefinitions.end())
+        return it->second;
+      FunctionDecl* result = nullptr;
+      auto* block = static_cast<BlockStmt*>(def->body);
+      Expr* e = nullptr;
+      if (block->stmts.size() == 1 && block->stmts[0]->kind == NodeKind::ReturnStmt)
+        e = static_cast<ReturnStmt*>(block->stmts[0])->value;
+      else if (block->stmts.size() == 1 && block->stmts[0]->kind == NodeKind::ExprStmt)
+        e = static_cast<ExprStmt*>(block->stmts[0])->expr;
+      if (e && def->params.size() == f->params.size() && trivialExpression(e, def))
+      {
+        ArgsScope scope(*this, &args);
+        Signature s = signatureOf(f);
+        const Ty* ret = declType(f)->inner;
+        bool ok = !s.hasSret && !s.variadic && ret && (ret->kind == TyKind::Void || inlineScalar(ret));
+        if (ok && block->stmts[0]->kind == NodeKind::ReturnStmt && ret->kind != TyKind::Void && ret->isReference())
+        {
+          // A reference result: the lvalue E is, of the referred type itself (no base adjustment).
+          const Ty* want = types.unqualified(types.stripRef(ret));
+          const Ty* got = types.unqualified(types.stripRef(e->ty));
+          ok = want == got || (isClass(want) && isClass(got) && classKey(want) == classKey(got));
+        }
+        for (size_t i = 0, slot = (s.hasThis ? 1 : 0); ok && i < f->params.size(); ++i, ++slot)
+          ok = slot < s.paramTys.size() && inlineScalar(s.paramTys[slot]) && !static_cast<ParamDecl*>(def->params[i])->isPack;
+        if (ok)
+          result = def;
+      }
+      trivialDefinitions.emplace(def, result);
+      return result;
+    }
+
+    // A call of a trivial function (trivialDefinition) emitted as its body: the arguments as the call
+    // passes them, in order, bound to the definition's parameters as its own prologue binds them (in
+    // slots this function's inlined calls share), `this` likewise, and E emitted under the callee's
+    // arguments, class and file (an error in it is the callee's line), its result as the callee's
+    // return statement makes it (docs/compile-speed.md, step 2). Null for any other call.
+    std::optional<Value> inlinedBody(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg,
+                                     const std::string& sret, Span<Expr*> callArgs, Node* at)
+    {
+      if (!sret.empty() || callArgs.size() != f->params.size())
+        return std::nullopt;
+      for (Expr* a : callArgs)
+        if (!a || isPackExpansion(a) || a->kind == NodeKind::BraceInitExpr)
+          return std::nullopt;
+      FunctionDecl* def = trivialDefinition(f, args, classTy);
+      if (!def)
+        return std::nullopt;
+      Signature s;
+      const Ty* ret;
+      {
+        ArgsScope scope(*this, &args);
+        s = signatureOf(f);
+        ret = declType(f)->inner;
+      }
+      if (s.hasThis && thisArg.empty())
+        return std::nullopt;
+      size_t first = s.hasThis ? 1 : 0;
+      std::vector<std::string> texts;
+      for (size_t i = 0; i < callArgs.size(); ++i)
+        texts.push_back(argumentText(s.paramTys[first + i], callArgs[i], at));
+      auto slotFor = [&](const std::string& key, const std::string& type) {
+        std::string& slot = inlineSlots[key + " " + type];
+        if (slot.empty())
+        {
+          slot = "%inl" + std::to_string(temp++);
+          allocas += "  " + slot + " = alloca " + type + "\n";
+        }
+        return slot;
+      };
+      std::vector<std::pair<Decl*, std::optional<Local>>> saved;
+      auto bind = [&](Decl* d, Local local) {
+        auto it = locals.find(d);
+        saved.push_back({d, it == locals.end() ? std::nullopt : std::optional<Local>(it->second)});
+        locals[d] = local;
+      };
+      size_t depth = inlining.size();
+      if (s.hasThis)
+      {
+        std::string slot = slotFor(std::to_string(depth) + ".this", "ptr");
+        fn += "  store ptr " + thisArg + ", ptr " + slot + "\n";
+        bind(nullptr, Local{slot, nullptr, false});
+      }
+      for (size_t i = 0; i < callArgs.size(); ++i)
+      {
+        const Ty* pt = s.paramTys[first + i];
+        bool isRef = pt->isReference();
+        std::string type = isRef ? std::string("ptr") : llType(pt, at);
+        size_t space = texts[i].find(' ');
+        std::string slot = slotFor(std::to_string(depth) + "." + std::to_string(i), type);
+        fn += "  store " + type + " " + texts[i].substr(space + 1) + ", ptr " + slot + "\n";
+        bind(def->params[i], Local{slot, pt, isRef});
+      }
+      inlining.insert(def);
+      ArgsScope argsScope(*this, &args);
+      struct Restore
+      {
+        Emitter& e;
+        const Ty* classTy;
+        Decl* initializerOf;
+        Decl* lambdaContext;
+        ParsedFile* file;
+        ~Restore() { e.currentClassTy = classTy; e.initializerOf = initializerOf; e.lambdaContext = lambdaContext; e.currentFile = file; }
+      } restore{*this, currentClassTy, initializerOf, lambdaContext, currentFile};
+      currentClassTy = classTy;
+      initializerOf = def;
+      lambdaContext = nullptr;
+      currentFile = def->file;
+      auto* statement = static_cast<BlockStmt*>(def->body)->stmts[0];
+      Value result{"", types.voidType(), false};
+      if (statement->kind == NodeKind::ExprStmt)
+        rvalue(static_cast<ExprStmt*>(statement)->expr);
+      else
+      {
+        Expr* e = static_cast<ReturnStmt*>(statement)->value;
+        if (ret->kind == TyKind::Void)
+          rvalue(e);
+        else if (ret->isReference())
+          result = {isAggregate(types.stripRef(ret)) ? rvalue(e).text : lvalue(e), ret, false};
+        else
+          result = {convert(rvalue(e), ret, e).text, ret, false};
+      }
+      inlining.erase(def);
+      for (auto it = saved.rbegin(); it != saved.rend(); ++it)
+        if (it->second)
+          locals[it->first] = *it->second;
+        else
+          locals.erase(it->first);
+      return result;
+    }
+
     Value callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg,
                        const std::string& sret, Span<Expr*> callArgs, Node* at, const std::string& indirect = "")
     {
@@ -6096,8 +6366,12 @@ namespace
       if (!conditionHolds(f))
         return {"", types.voidType(), false}; // conditional(false): no call, arguments not evaluated
       if (indirect.empty() && sh.inlineTrivial)
+      {
         if (std::optional<Value> v = inlinedIdentity(f, args, callArgs, at))
           return *v;
+        if (std::optional<Value> v = inlinedBody(f, args, classTy, thisArg, sret, callArgs, at))
+          return *v;
+      }
       std::string name = indirect.empty() ? useFunction(f, args, classTy) : indirect;
       Signature s;
       const Ty* ret;
