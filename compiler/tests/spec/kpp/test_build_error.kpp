@@ -1,0 +1,7 @@
+// spec: kppc --test runs nothing when the build printed an error, whatever its exit code (a test the parser could not read would silently not run)
+// test:
+// exit: 1
+test "fine" { check(1 == 1); }
+
+test "missing its braces"
+  check(1 == 2);

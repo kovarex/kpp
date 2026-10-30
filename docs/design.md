@@ -358,10 +358,12 @@ selection is the runner's `--filter TEXT` (repeatable, `*` matches anything) ins
 test's body only (elsewhere `check` is an ordinary name); a comparison's operand values are
 printed when `toString` or a `str()` method can say them. A failing `require`, or an `assert`
 inside a test, ends the test by throwing, so destructors run. The build has the constant
-`config::tests`, and the program's own `main` is renamed `__kpp_program_main`. Not yet: a
+`config::tests`, and the program's own `main` is renamed `__kpp_program_main`. `--test` and
+`--run` run nothing when the build printed an error, whatever its exit code: a test the parser
+could not read would otherwise silently not run (kpp/test_build_error). Not yet: a
 compile error for two tests of one name, `--jobs N`.
 Spec snippets: kpp/tests_in_compiler, kpp/test_runner, kpp/test_check_values, kpp/test_require,
-kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class.
+kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_build_error.
 
 ### 9. Exceptions and RTTI (decided 2026-10-24)
 - Kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
@@ -1290,7 +1292,9 @@ human output.
 
 Latency of a small test (one `test` with a loop and two checks, `kppc --test fib.kpp`, six rounds
 on 2026-10-30, other threads building): 0.34 s median from the edit to the summary (0.32-0.69 s),
-0.27 s with nothing changed (0.25-0.45 s).
+0.27 s with nothing changed (0.25-0.45 s). Again after `--test` began reading the build's output
+for errors, the machine quieter: 0.22 s median after an edit (0.20-0.40 s), 0.19 s with nothing
+changed (0.16-0.26 s).
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type

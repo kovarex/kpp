@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <vector>
 
 // The build is a kppc process of its own (`kppc OPTIONS --quiet --exe EXE SOURCE`, or a client of
@@ -39,21 +40,69 @@ namespace
 
   // Runs the program with the arguments, its standard handles this process's, and returns its exit
   // code (-1 when it cannot be started).
-  int runAndWait(const std::string& program, const std::vector<std::string>& args)
+  // With reportedError, the program's output and errors pass through pipes on their way, and
+  // reportedError says whether a line of them had ": error:".
+  int runAndWait(const std::string& program, const std::vector<std::string>& args, bool* reportedError = nullptr)
   {
     std::string command = quoted(program);
     for (const std::string& a : args)
       command += " " + quoted(a);
     STARTUPINFOA si{};
     si.cb = sizeof si;
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessA(program.c_str(), command.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi))
+    HANDLE reads[2] = {nullptr, nullptr}, writes[2] = {nullptr, nullptr};
+    std::string seen[2];
+    std::thread readers[2];
+    if (reportedError)
     {
-      fprintf(stderr, "kppc --run: cannot start %s (error %lu)\n", program.c_str(), GetLastError());
+      si.dwFlags = STARTF_USESTDHANDLES;
+      si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+      HANDLE* outputs[2] = {&si.hStdOutput, &si.hStdError};
+      for (int k = 0; k < 2; ++k)
+      {
+        *outputs[k] = GetStdHandle(k == 0 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
+        if (CreatePipe(&reads[k], &writes[k], nullptr, 1 << 16))
+        {
+          SetHandleInformation(writes[k], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+          *outputs[k] = writes[k];
+        }
+      }
+    }
+    PROCESS_INFORMATION pi{};
+    bool started = CreateProcessA(program.c_str(), command.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
+    DWORD startError = GetLastError();
+    for (int k = 0; k < 2; ++k)
+      if (writes[k])
+      {
+        CloseHandle(writes[k]);
+        readers[k] = std::thread([&, k]
+        {
+          char buffer[1 << 14];
+          DWORD n;
+          HANDLE to = GetStdHandle(k == 0 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
+          DWORD written;
+          while (ReadFile(reads[k], buffer, sizeof buffer, &n, nullptr) && n > 0)
+          {
+            seen[k].append(buffer, n);
+            WriteFile(to, buffer, n, &written, nullptr);
+          }
+          CloseHandle(reads[k]);
+        });
+      }
+    for (std::thread& t : readers)
+      if (t.joinable() && !started)
+        t.join();
+    if (!started)
+    {
+      fprintf(stderr, "kppc --run: cannot start %s (error %lu)\n", program.c_str(), startError);
       return -1;
     }
     CloseHandle(pi.hThread);
     WaitForSingleObject(pi.hProcess, INFINITE);
+    for (std::thread& t : readers)
+      if (t.joinable())
+        t.join();
+    if (reportedError)
+      *reportedError = seen[0].find(": error:") != std::string::npos || seen[1].find(": error:") != std::string::npos;
     DWORD code = 1;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess);
@@ -123,8 +172,16 @@ int runProgram(int argc, char** argv, int runIndex)
     build.push_back(a);
   build.push_back(exe);
   build.insert(build.end(), sources.begin(), sources.end());
-  int built = runAndWait(std::string(kppc, n), build);
+  // A build that printed an error does not run, whatever its exit code said: a declaration the
+  // parser could not read is left out of the program, and a test in it would silently not run.
+  bool reportedError = false;
+  int built = runAndWait(std::string(kppc, n), build, &reportedError);
   if (built != 0)
     return built < 0 ? 1 : built;
+  if (reportedError)
+  {
+    fprintf(stderr, "kppc %s: the build reported an error; not running it\n", argv[runIndex]);
+    return 1;
+  }
   return runAndWait(exe, programArgs);
 }
