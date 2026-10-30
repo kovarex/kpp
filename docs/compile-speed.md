@@ -66,7 +66,8 @@ one-line edit) needs both of them to stop being proportional to the program:
   link.exe without `/DEBUG /MAP` 6.0 to 8.5 s, lld without them 2.4 to 4.8 s, lld with `/DEBUG`
   15.7 to 21.4 s. An incremental link (link.exe `/INCREMENTAL`, which `/OPT:REF` rules out) is the
   next thing to measure for the edit loop; the names the crash report needs could come from the
-  map file alone.
+  map file alone. (Done: an incremental relink is 0.5 to 0.6 s with the PDB, "The link in the edit
+  loop" below.)
 - **Process exit freed everything for about 5 s** after the link: aecd79b ends the process without
   freeing (paired, three alternating runs: last output line to exit 4.6, 5.3, 4.8 s -> 0.3 s each;
   wall median 30.3 -> 26.8 s). Codegen's own 3 s of freeing inside `generate` is the same fix there.
@@ -565,19 +566,50 @@ server (scratchpad srvcheck.sh), the getStateInternal edit, its revert and the e
 0.132, 0.257 and 0.102 s, one module, each "the same as from scratch". The headline IR at -j 1 and
 -j 32 is the same; the game's --dump-data checksum is C++'s (486241314) and the 19 menu maps run.
 
-### The link in the edit loop (2026-10-30, not changed)
+### The link in the edit loop (2026-10-30: incremental, 3.8 s -> 0.5 s)
 
-The same 64 objects of the full game linked several ways (scratchpad linkvariants.ps1, the
-machine shared with other builds, 40 to 100% busy): as kppc links today (link.exe, `/OPT:REF`,
-run.cmd's `/DEBUG /MAP`) 3.3 to 9.8 s in quiet moments; lld without `/DEBUG` 1.3 to 1.5 s; lld
-with `/DEBUG` 15.8 to 16.5 s (its PDB for 1.6 GB of objects); link.exe `/INCREMENTAL /OPT:NOREF`
-2.5 s for a full link and 0.6 to 1.4 s relinking after one object changed when measured alone, but
-3.6 to 7.3 s in the edit loop through the server (one module changed each time) and 1.3 to 10.4 s
-in repeated relinks of one object: no gain shown under this load, so no option was added. Two
-facts for whoever takes it up: run.cmd deletes factorio.exe before every build, which makes an
-incremental link impossible, and `/INCREMENTAL` needs `/OPT:NOREF` (the executable keeps the
-functions nobody calls). With 3c the link is what is left of an edit (3.4 to 7 s); measuring it
-needs a quieter machine or many more pairs.
+A first try under load (the machine 40 to 100% busy) showed no gain from `/INCREMENTAL` and added
+nothing. Measured again on a quiet machine (1 to 36% busy), the game's 64 objects as run.cmd
+builds them, every variant in each round (scratchpad link\measure.ps1, measure2.ps1, measure3.ps1:
+response files differing only in the flags, run from programs\factorio). Seconds per round:
+
+| link | rounds | exe |
+|---|---|---:|
+| link.exe `/OPT:REF /DEBUG /MAP` (run.cmd until now) | 3.52 3.87 3.97 4.98 4.26, 3.56 to 3.99 | 67 MB |
+| the same with `/OPT:NOICF` | 2.37 2.42 2.30 2.54 2.55, 2.13 to 2.94 | 80 MB |
+| link.exe `/OPT:REF /OPT:NOICF /MAP`, no PDB | 1.79 1.89 2.19 2.03 2.42 | 80 MB |
+| lld `/OPT:REF /OPT:NOICF /MAP`, no PDB | 0.99 to 1.43 (13 runs) | 66 MB |
+| link.exe `/INCREMENTAL /OPT:NOREF /DEBUG /MAP`, full (no .ilk) | 2.16 1.94 2.20 2.43 2.21 | 113 MB |
+| the same, relinking after one object changed | **0.58 to 0.73** (8 runs, 1.19 the first) | 113 MB |
+| the same without `/MAP` | **0.44 to 0.63** (8 runs) | 113 MB |
+
+"One object changed": module 17 recompiled from its `.ll` with one function added, alternating
+with the original each round, so every relink saw a different object (touching the file's time
+alone relinks as fast). Identical-function folding was 1.5 s of the 3.8 s; a debug link no longer
+folds (`/OPT:NOICF`), which also keeps every function at an address of its own, so a crash report or
+a debugger never names a folded twin. The incremental relink beats lld without a PDB (1.0 s) and
+keeps the PDB, so the crash report keeps naming functions from it and the debugger has it: naming
+them from the map instead (the lld route) loses both and is slower. Copying the 113 MB executable
+to bin\x64 takes 0.04 s.
+
+What landed: `kppc --incremental-link` (a debug build's link with `/OPT:NOREF /INCREMENTAL`;
+`/INCREMENTAL` rules out `/OPT:REF`, so the executable keeps the functions nobody calls; a release
+build with it is an error). run.cmd links with it and without `/MAP` (nothing read the map), and no
+longer deletes kpp\run\factorio.exe before a build, which made every link a full one: whether the
+build linked is the link's own line in build.txt (`+ link ... (exit 0)`). The first build after a
+clean one is a full link (2.2 s); every later one relinks what changed.
+
+In the loop itself (run.cmd, a statement added to `BuildEntityAchievement::setup` and changed each
+time, the converted tree of 10-29 23:31, one module recompiled), every other link was a full one at
+first: 0.44, 2.43, 0.48, 2.03, 0.60, 1.75, 0.45, 2.31, 0.44 s. `/VERBOSE:INCR` said why: "10 (out
+of 1035) modules have changed", then "undefined symbol '_Avx2WmemEnabled' has alternate name;
+performing full link". run.cmd rebuilt native\factorio-native.lib on every build (3.0 s), and the
+library came out a few bytes different each time. native\build.cmd now builds nothing when its
+inputs are as at the last build (native\stamp.ps1: the C:\Factorio commit and a hash of every file
+in native\; 0.25 s): the links after that were 0.52, 0.47, 0.46, 0.42, 0.45 s (the first one,
+after the library changed, 1.84 s). Wall time of run.cmd for the edit, build and `--version` run:
+11.9 to 14.1 s (the front end and codegen in full are most of it; the compile server's
+incremental build is the way past that).
 - **3c**: codegen keeps each function's result and rebuilds only what an edit changed. The codegen
   thread owns codegen's half (its queued work on destructor helpers, cleanups and module assembly
   reshapes the same structures); the interface the server needs:

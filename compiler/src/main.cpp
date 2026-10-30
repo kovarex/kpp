@@ -75,6 +75,7 @@ namespace
     bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
     bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
+    bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
   };
 
   void usage()
@@ -113,6 +114,9 @@ namespace
             "                (docs/compile-speed.md, \"Design: inlining trivial functions in kppc\")\n"
             "  --clang-flags F  more flags clang compiles the modules with (`-fsanitize=address`; link with\n"
             "                `--lib -fsanitize=address`); they are part of each module's cache key\n"
+            "  --incremental-link  a debug build links incrementally (link.exe /INCREMENTAL): the next link redoes\n"
+            "                only the objects that changed, as long as the executable and its .ilk stay; every\n"
+            "                function is kept (/OPT:NOREF)\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
@@ -208,9 +212,17 @@ namespace
   // bitcode (a ThinLTO release build): the game's opus.lib carries opus_compare.obj, and the release
   // game ran opus_compare's main, "found both wmain and main; using latter" (docs/path-to-factorio.md,
   // "The release build").
+  // A debug build's link folds no identical functions (/OPT:NOICF): folding took 1.5 s of the game's
+  // 4.5 s link, and folded functions share an address, so a crash report or a debugger names one of
+  // them for the other. --incremental-link keeps every function instead (/OPT:NOREF, which
+  // /INCREMENTAL needs) and relinks only the objects that changed (docs/compile-speed.md, "The link in
+  // the edit loop").
   std::string linkFlags(const Options& options, bool wideEntry)
   {
-    std::string flags = "-Wl,/OPT:REF -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
+    std::string flags = !options.debug             ? "-Wl,/OPT:REF"
+                        : options.incrementalLink ? "-Wl,/OPT:NOREF -Wl,/INCREMENTAL"
+                                                  : "-Wl,/OPT:REF -Wl,/OPT:NOICF";
+    flags += " -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
     if (wideEntry)
       flags += " -Wl,/ENTRY:wmainCRTStartup";
     for (const std::string& lib : options.libs)
@@ -2328,6 +2340,8 @@ int compile(int argc, char** argv)
       options.noStd = true;
     else if (arg == "--cinclude" && i + 1 < argc)
       options.cIncludeDirs.push_back(argv[++i]);
+    else if (arg == "--incremental-link")
+      options.incrementalLink = true;
     else if (arg == "--keep-going")
       options.keepGoing = true;
     else if (arg == "--stub-missing")
@@ -2432,6 +2446,11 @@ int compile(int argc, char** argv)
     if (!options.configValues.count("platform"))
       options.configValues["platform"] = parseConfigValue("Windows");
     options.debug = options.configValues["debug"].number != 0;
+    if (options.incrementalLink && !options.debug)
+    {
+      fprintf(stderr, "--incremental-link is for a debug build: a release build links whole (ThinLTO)\n");
+      return 2;
+    }
     SourceFile config;
     config.path = "<config>";
     config.text = configSource(options.configValues);

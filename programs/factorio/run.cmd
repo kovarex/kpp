@@ -30,16 +30,18 @@ goto arguments
 if %BUILD%==0 goto run
 call native\build.cmd >nul || exit /b 1
 call "%HERE%link-settings.cmd"
-rem The linker's map and a PDB of the functions' names (the objects carry no debug information), and
-rem the crash report, which only this link pulls in.
-set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
+rem A PDB of the functions' names (the objects carry no debug information), and the crash report,
+rem which only this link pulls in. The link is incremental (docs/compile-speed.md, "The link in the
+rem edit loop"): kpp\run keeps factorio.exe and its .ilk between builds, and a build relinks only
+rem the objects that changed (0.6 s instead of 2.3). So the executable is never deleted first: the
+rem link's own line in build.txt ("+ link ... (exit 0)") says whether it linked.
+set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if not exist kpp\run mkdir kpp\run
-if exist kpp\run\factorio.exe del kpp\run\factorio.exe
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %KPPC_EXTRA% --exe kpp\run\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\run\build.txt 2> kpp\run\build-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing --incremental-link %LIBS% %KPPC_EXTRA% --exe kpp\run\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\run\build.txt 2> kpp\run\build-errors.txt
 echo == %GAME%\bin\x64\factorio.exe, built by kppc (exit %errorlevel%) with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" kpp\run\build.txt
 %SystemRoot%\System32\find.exe /c /v "" kpp\run\build-errors.txt
-if not exist kpp\run\factorio.exe (
+%SystemRoot%\System32\findstr.exe /r /b /c:"clang: .*+ link .*(exit 0)" kpp\run\build.txt >nul || (
   echo the link failed: kpp\run\factorio.exe.link.txt
   exit /b 1
 )

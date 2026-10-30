@@ -1024,8 +1024,8 @@ UniqueArray one pointer).
    (fastbuild/win/Factorio.manifest) and icons as a resource (fbuild.bff's /MANIFEST:EMBED needs
    mt.exe, which the link does not see), and the log says Windows 10.
 8. The game's crash handler then hung ("Generating symbolized stacktrace, please wait ..."). For
-   bring-up, run.cmd links with `/DEBUG /MAP` (a PDB of the functions' names: the objects carry no
-   debug information) and native/crash_report.c, an unhandled-exception filter that prints the
+   bring-up, run.cmd links with `/DEBUG` (a PDB of the functions' names: the objects carry no
+   debug information; incrementally since 10-30, docs/compile-speed.md, "The link in the edit loop") and native/crash_report.c, an unhandled-exception filter that prints the
    exception and the stack named from that PDB and ends the process; the game runs with
    `--no-crash-handler`. `run.cmd --no-build ...` runs the last build again.
 9. What it showed: the crash handler itself died in `RtlCaptureContext`, because the import
