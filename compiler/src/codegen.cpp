@@ -437,6 +437,7 @@ namespace
     std::unordered_map<std::string, std::string> cleanupPads; // destruction state -> cleanup block
     std::string funcletOverride;                              // the pad being emitted, for its calls
     bool usesEH = false;                                      // the current function has invokes or pads
+    std::string returnLabel; // a destructor's: where a `return` goes, the members and bases destroyed after the body
 
     Emitter(GlobalScope& global, const SymbolTable& symbols, Shared& sh) : global(global), types(global.types()), symbols(symbols), sh(sh) {}
 
@@ -4998,12 +4999,13 @@ namespace
       std::string ehBlocks;
       std::unordered_map<std::string, std::string> cleanupPads;
       bool usesEH;
+      std::string returnLabel;
     };
 
     FunctionState saveState()
     {
       return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
-              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH};
+              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel};
     }
 
     void restoreState(FunctionState& s)
@@ -5027,10 +5029,12 @@ namespace
       ehBlocks = s.ehBlocks;
       cleanupPads = s.cleanupPads;
       usesEH = s.usesEH;
+      returnLabel = s.returnLabel;
     }
 
     void resetFunctionState()
     {
+      returnLabel.clear();
       fn.clear();
       allocas.clear();
       locals.clear();
@@ -13640,7 +13644,9 @@ namespace
           }
           else
             leaveScopes(0);
-          if (retLl.empty())
+          if (retLl.empty() && !returnLabel.empty())
+            fn += "  br label %" + returnLabel + "\n"; // a destructor's: its members and bases are destroyed there
+          else if (retLl.empty())
             fn += "  ret void\n";
           else
             fn += "  ret " + retLl + " " + retText + "\n";
@@ -14985,13 +14991,27 @@ namespace
           initializeMembers(thisPointer(f), currentClassTy, f->ctorInits, f);
           destroyTemps();
         }
-        if ((f->flags & DF_Destructor) && isClass(currentClassTy))
-          storeVptrs(thisPointer(f), structFor(currentClassTy, f)); // virtual calls while it is destroyed reach this class's functions, as in C++
-        statement(f->body);
-        if (!blockTerminated)
+        bool destructor = (f->flags & DF_Destructor) && isClass(currentClassTy);
+        if (destructor)
         {
-          if (f->flags & DF_Destructor)
-            destroyMembers(thisPointer(f), currentClassTy, f);
+          storeVptrs(thisPointer(f), structFor(currentClassTy, f)); // virtual calls while it is destroyed reach this class's functions, as in C++
+          // The members and bases are destroyed after the body however it ends: falling off its end
+          // or at a `return` (CargoBayResizeHelper's `if (!this->surface) return;` left its targeter
+          // member in the hub's list, and destroying the hub faulted).
+          returnLabel = newLabel("dtor.members");
+        }
+        statement(f->body);
+        if (destructor)
+        {
+          popScope();
+          emitBranch(returnLabel);
+          startBlock(returnLabel);
+          returnLabel.clear();
+          destroyMembers(thisPointer(f), currentClassTy, f);
+          fn += "  ret void\n";
+        }
+        else if (!blockTerminated)
+        {
           popScope();
           if (currentReturn->kind == TyKind::Void || returnsInMemory(currentReturn))
             fn += "  ret void\n";
@@ -14999,12 +15019,6 @@ namespace
             fn += "  ret i32 0\n";
           else // falling off the end (after a throw, usually): a zero rather than `unreachable`, see emitThrow
             fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, f) + " zeroinitializer") + "\n";
-        }
-        else if (f->flags & DF_Destructor)
-        {
-          error(f, "codegen does not support return statements in destructors yet");
-          currentArgs = nullptr;
-          return;
         }
         addDefinition(name, functionText(header));
         countFunction();

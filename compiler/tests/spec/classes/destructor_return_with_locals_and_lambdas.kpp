@@ -1,0 +1,46 @@
+// spec: a destructor's `return` (in its last statement too) destroys its body's locals once and then the members, and a lambda's `return` inside a destructor's body is the lambda's own
+// factorio: with classes/destructor_return_destroys_members_and_bases: a destructor ending in `return;` was an error ("return statements in destructors"), and the member destruction moved behind the body's returns must not run a local's destructor twice or catch a lambda's returns
+int destroyed = 0;
+struct Member
+{
+  ~Member() { destroyed += 1; }
+};
+struct Local
+{
+  ~Local() { destroyed += 1000; }
+};
+struct Guard
+{
+  bool early = true;
+  Member a;
+  ~Guard()
+  {
+    Local l;
+    if (this->early)
+      return;
+    destroyed += 100;
+  }
+};
+struct Lambdas
+{
+  Member m;
+  ~Lambdas()
+  {
+    auto f = [](int x) { if (x > 0) return x * 2; return 0; };
+    destroyed += f(5);
+    return;
+  }
+};
+int main()
+{
+  {
+    Guard g;
+  }
+  print("{} ", destroyed);
+  destroyed = 0;
+  {
+    Lambdas l;
+  }
+  println("{}", destroyed);
+  return 0;
+}
