@@ -256,6 +256,17 @@ namespace
     std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
     std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
+    // A definition in a module (a function's, a helper's in its home module) with the names its text
+    // uses, found once on the thread that emitted it: module assembly reads these instead of scanning
+    // the module's text again (and they are what an incremental build will keep per function).
+    struct Definition
+    {
+      std::string text;
+      std::vector<std::pair<uint32_t, uint32_t>> names; // the `@names` in the text (offset, length), in order, as moduleText scans them
+      std::vector<std::pair<uint32_t, uint32_t>> types; // the `%struct...`/`%closure...` it names
+    };
+    static Definition definitionOf(std::string text);
+    std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
     std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
     std::set<std::string> sharedReferences;              // program functions `decls` names (sorted: the same declares in every run)
     struct TypeLine
@@ -285,8 +296,56 @@ namespace
         bodies[k].mutex = moduleDecls[k].mutex = &mutex;
       vtablesIn.resize(moduleCount);
       moduleConstants.resize(moduleCount);
+      definitions.resize(moduleCount);
     }
   };
+
+  // Calls found(offset, length) for each `@name` a text names, as module assembly has always scanned
+  // them: every '@', a quoted name to its closing quote, an unquoted one over [A-Za-z0-9-$._].
+  template<typename F>
+  static void irNamesIn(std::string_view text, F&& found)
+  {
+    for (size_t i = text.find('@'); i != std::string_view::npos; i = text.find('@', i + 1))
+    {
+      size_t end;
+      if (i + 1 < text.size() && text[i + 1] == '"')
+        end = text.find('"', i + 2) + 1;
+      else
+      {
+        end = i + 1;
+        while (end < text.size() && (isalnum((unsigned char)text[end]) || strchr("-$._", text[end])))
+          ++end;
+      }
+      found(i, std::min(end, text.size()) - i);
+    }
+  }
+
+  Shared::Definition Shared::definitionOf(std::string text)
+  {
+    Definition d;
+    d.text = std::move(text);
+    std::string_view t = d.text;
+    std::unordered_set<std::string_view> seen;
+    irNamesIn(t, [&](size_t at, size_t length)
+    {
+      if (seen.insert(t.substr(at, length)).second)
+        d.names.push_back({uint32_t(at), uint32_t(length)});
+    });
+    std::unordered_set<std::string_view> types;
+    for (size_t i = t.find('%'); i != std::string_view::npos; i = t.find('%', i + 1))
+    {
+      std::string_view rest = t.substr(i + 1);
+      if (!rest.starts_with("struct.") && !rest.starts_with("closure."))
+        continue;
+      size_t end = i + 1;
+      while (end < t.size() && (isalnum((unsigned char)t[end]) || t[end] == '.' || t[end] == '_'))
+        ++end;
+      if (types.insert(t.substr(i, end - i)).second)
+        d.types.push_back({uint32_t(i), uint32_t(end - i)});
+      i = end - 1;
+    }
+    return d;
+  }
 
   struct Emitter
   {
@@ -7782,8 +7841,9 @@ namespace
         return;
       }
       std::string declare = declareFromHeader(text);
+      Shared::Definition definition = Shared::definitionOf(text);
       auto lock = sharedLock();
-      bodies[currentModule] += text;
+      sh.definitions[currentModule].push_back(std::move(definition));
       definedIn[name] = currentModule;
       declareLines[name] = std::move(declare);
     }
@@ -7978,7 +8038,6 @@ namespace
     std::string moduleText(unsigned k, const std::string& prefix)
     {
       std::string ctors = ctorsText(k); // module 0 runs the startup functions of every module
-      std::string text = moduleDecls[k].text + bodies[k].text + shared.text + ctors;
       std::string decls = declsFor(k, false);
       std::unordered_set<std::string> already; // declarations the module carries (shared, or its own)
       declaredIn(moduleDecls[k].text, already);
@@ -7990,24 +8049,26 @@ namespace
         if (line != declareLines.end())
           declares += line->second + "\n";
       };
-      for (size_t i = text.find('@'); i != std::string::npos; i = text.find('@', i + 1))
+      // The names the module's texts use, in the order they appear (its declarations, its
+      // definitions as sorted, the shared definitions, the startup list): each function's names were
+      // found when it was emitted; the other texts are scanned here.
+      auto consider = [&](std::string_view nameView)
       {
-        size_t end;
-        if (i + 1 < text.size() && text[i + 1] == '"')
-          end = text.find('"', i + 2) + 1;
-        else
-        {
-          end = i + 1;
-          while (end < text.size() && (isalnum((unsigned char)text[end]) || strchr("-$._", text[end])))
-            ++end;
-        }
-        std::string name = text.substr(i, end - i);
+        std::string name(nameView);
         if (!seen.insert(name).second)
-          continue;
+          return;
         auto it = definedIn.find(name);
         if (it != definedIn.end() && it->second != k && !sharedDeclared.count(name) && !already.count(name))
           declare(name); // not when a declaration is in the module's text already
-      }
+      };
+      auto scan = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { consider(text.substr(at, length)); }); };
+      const std::vector<Shared::Definition>& definitions = sh.definitions[k];
+      scan(moduleDecls[k].text);
+      for (const Shared::Definition& d : definitions)
+        for (auto [at, length] : d.names)
+          consider(std::string_view(d.text).substr(at, length));
+      scan(shared.text);
+      scan(ctors);
       // The functions the shared declarations name: every module but the defining one declares them.
       for (const std::string& name : sh.sharedReferences)
         if (auto it = definedIn.find(name); it != definedIn.end() && it->second != k && !already.count(name) && seen.insert(name).second)
@@ -8029,7 +8090,12 @@ namespace
         if (auto it = sh.typeIndex.find(name); it != sh.typeIndex.end())
           mark(it->second);
       };
-      typeNamesIn(text, markName);
+      typeNamesIn(moduleDecls[k].text, markName);
+      for (const Shared::Definition& d : definitions)
+        for (auto [at, length] : d.types)
+          markName(std::string_view(d.text).substr(at, length));
+      typeNamesIn(shared.text, markName);
+      typeNamesIn(ctors, markName);
       typeNamesIn(decls, markName);
       typeNamesIn(declares, markName);
       while (!work.empty())
@@ -8046,7 +8112,23 @@ namespace
           types.append(sh.typeLines[t].line);
           types += '\n';
         }
-      return prefix + types + decls + moduleDecls[k].text + ctors + "\n" + shared.text + declares + "\n" + bodies[k].text;
+      size_t size = prefix.size() + types.size() + decls.size() + moduleDecls[k].text.size() + ctors.size() + 1 + shared.text.size() + declares.size() + 1;
+      for (const Shared::Definition& d : definitions)
+        size += d.text.size();
+      std::string out;
+      out.reserve(size);
+      out += prefix;
+      out += types;
+      out += decls;
+      out += moduleDecls[k].text;
+      out += ctors;
+      out += '\n';
+      out += shared.text;
+      out += declares;
+      out += '\n';
+      for (const Shared::Definition& d : definitions)
+        out += d.text;
+      return out;
     }
 
     // The default assert handler, unless the program defines `extern "C" kpp_assert_failed`.
@@ -13712,7 +13794,11 @@ namespace
       if (moduleCount <= 1)
         body += text;
       else
-        bodies[definedIn[mainName]] += text;
+      {
+        Shared::Definition definition = Shared::definitionOf(text);
+        auto lock = sharedLock();
+        sh.definitions[definedIn[mainName]].push_back(std::move(definition));
+      }
     }
 
     // `static T x = ...;` inside a function: a global of the program (in the module of the function),
@@ -16105,7 +16191,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       // missed the helpers the other modules declare).
       if (size_t at = entry.find("define linkonce_odr void " + name + "("); at != std::string::npos)
         entry.replace(at, std::string_view("define linkonce_odr").size(), "define weak_odr");
-      sh.bodies[home].entries.push_back(std::move(entry));
+      sh.definitions[home].push_back(Shared::definitionOf(std::move(entry)));
     }
     sh.shared.entries = std::move(everywhere);
   }
@@ -16114,7 +16200,9 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   sh.body.finish();
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
-    sh.bodies[k].finish();
+    // The definitions in the order SharedText puts entries: by their text.
+    std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
+              [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
     sh.moduleDecls[k].finish();
   }
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
@@ -16160,7 +16248,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     for (unsigned k = nextModule++; k < em.moduleCount; k = nextModule++)
     {
       result.modules[k] = em.moduleText(k, prefix);
-      std::string().swap(sh.bodies[k].text);
+      std::vector<Shared::Definition>().swap(sh.definitions[k]);
       std::string().swap(sh.moduleDecls[k].text);
       if (!result.errors.empty())
         result.modules[k] += declareUndefined(result.modules[k], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[k]);
