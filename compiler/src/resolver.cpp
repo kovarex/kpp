@@ -13665,10 +13665,49 @@ struct GlobalScope::Impl
   // (`T load(Args&&...)` is no candidate for `load(x)`, whose T nothing gives).
   // nullConstants: per argument, whether it is the literal 0, which converts to any pointer (C++'s
   // null pointer constant; design.md 4).
+  // ambiguousCallsAreErrors: a call that two functions take equally well is a checker error, as in
+  // C++ (expressions/ambiguous_call_is_error), and so are two declarations of one C function with
+  // two types; off until the standard library declares its C functions as the headers do.
+  static constexpr bool ambiguousCallsAreErrors = false;
+
+  // The scope a function belongs to: its class's, or the namespace its name names.
+  Scope* homeScope(FunctionDecl* f)
+  {
+    if (Decl* cls = owningClassOf(f); cls && cls->ownScope)
+      return cls->ownScope;
+    if (f->name.parts.size() > 1)
+    {
+      QualifiedName qualifier = f->name;
+      qualifier.parts.count -= 1;
+      if (Lookup l = lookupQualified(qualifier, lexicalScopeOf(f), nullptr, 0); l.scope)
+        return l.scope;
+    }
+    return lexicalScopeOf(f);
+  }
+
+  static bool isCFunction(const FunctionDecl* f) { return (f->flags & DF_ExternC) || (f->file && f->file->isImported); }
+
+  // Whether two candidates are one function declared twice: a declaration and its definition, a
+  // member declared in its class and defined outside it, a function declared in two places of its
+  // namespace (of one name, scope, type and qualifiers), or a C function of one name and type, which
+  // a header and the library both declare.
+  bool sameFunction(FunctionDecl* a, FunctionDecl* b)
+  {
+    if (a == b)
+      return true;
+    if (a->name.empty() || b->name.empty() || functionSymbol(a->name) != functionSymbol(b->name) || !sameNamePart(a->name.last(), b->name.last()) ||
+        isCFunction(a) != isCFunction(b) || a->templateParams.size() != b->templateParams.size() ||
+        (a->flags & (DF_Const | DF_RefQual | DF_Static)) != (b->flags & (DF_Const | DF_RefQual | DF_Static)))
+      return false;
+    if (!isCFunction(a) && homeScope(a) != homeScope(b))
+      return false;
+    return typeAs(b, a) == matchedType(a);
+  }
+
   FunctionDecl* chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
                             const Subst* classSubst, const Ty* objectTy, bool& ambiguous,
                             const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit = nullptr,
-                            const std::vector<bool>* nullConstants = nullptr)
+                            const std::vector<bool>* nullConstants = nullptr, std::vector<FunctionDecl*>* tiedOut = nullptr)
   {
     bool argsConcrete = true;
     for (const Ty* at : argTypes)
@@ -13918,13 +13957,36 @@ struct GlobalScope::Impl
       if (best)
         return c.f;
     }
-    ambiguous = viable.size() > 1;
-    // No clear winner: the smallest total rank, then non-template, then declaration order.
-    const Candidate* pick = &viable[0];
-    auto total = [](const Candidate& c) { int t = c.thisRank; for (int r : c.ranks) t += r; return t; };
+    // No candidate better than all the others: those that no other beats, which may be one
+    // function declared twice (sameFunction), then one candidate; otherwise the call is
+    // ambiguous, and tiedOut gets one of each function.
+    std::vector<const Candidate*> tied;
     for (const Candidate& c : viable)
-      if (total(c) < total(*pick) || (total(c) == total(*pick) && c.f->templateParams.empty() && !pick->f->templateParams.empty()))
-        pick = &c;
+    {
+      bool beaten = false;
+      for (const Candidate& o : viable)
+        beaten = beaten || (&o != &c && better(o, c));
+      if (!beaten)
+        tied.push_back(&c);
+    }
+    if (tied.empty())
+      for (const Candidate& c : viable)
+        tied.push_back(&c); // each beaten by another, around a circle: all of them
+    std::vector<const Candidate*> distinct;
+    for (const Candidate* c : tied)
+      if (std::none_of(distinct.begin(), distinct.end(), [&](const Candidate* d) { return sameFunction(c->f, d->f); }))
+        distinct.push_back(c);
+    ambiguous = distinct.size() > 1;
+    if (ambiguous && tiedOut)
+      for (const Candidate* c : distinct)
+        tiedOut->push_back(c->f);
+    // The one taken (the one function, or after an ambiguity that is no error, the choice that
+    // was): the smallest total rank, then non-template, then declaration order.
+    const Candidate* pick = tied[0];
+    auto total = [](const Candidate& c) { int t = c.thisRank; for (int r : c.ranks) t += r; return t; };
+    for (const Candidate* c : tied)
+      if (total(*c) < total(*pick) || (total(*c) == total(*pick) && c->f->templateParams.empty() && !pick->f->templateParams.empty()))
+        pick = c;
     return pick->f;
   }
 
@@ -15391,9 +15453,35 @@ struct GlobalScope::Impl
     // --- calls ---
 
     // Picks a function among overloads by argument count and conversion ranking.
+    // An ambiguous call (tied: one of each function no other beats), a checker error when the
+    // types are concrete (a template's own walk decides nothing; its instances do), C++'s
+    // `call is ambiguous`; behind Impl::ambiguousCallsAreErrors.
+    void reportAmbiguousCall(CallExpr* c, const NamePart& name, const std::vector<const Ty*>& argTypes, const std::vector<FunctionDecl*>& tied,
+                             const Subst* classSubst)
+    {
+      if (!Impl::ambiguousCallsAreErrors || tied.size() < 2 || inGenericTemplate() || probing)
+        return;
+      for (const Ty* a : argTypes)
+        if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a))
+          return;
+      std::vector<std::string> candidates;
+      for (FunctionDecl* f : tied)
+      {
+        const Ty* ft = impl.declaredTypeOf(f, classSubst, 0);
+        if (!ft || types.isDependent(ft))
+          return;
+        candidates.push_back(types.toString(ft, &impl.symbols) + " (" + Impl::locationOf(f->file, f->token) + ")");
+      }
+      std::sort(candidates.begin(), candidates.end());
+      std::string message = "the call of " + impl.namePartText(name) + " is ambiguous between " + candidates[0];
+      for (size_t i = 1; i < candidates.size(); ++i)
+        message += (i + 1 == candidates.size() ? " and " : ", ") + candidates[i];
+      impl.reportCheckerError(file, c->token, message);
+    }
+
     FunctionDecl* pickOverload(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes,
                                const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const NamePart* namePart = nullptr,
-                               Span<Expr*> callArgs = {})
+                               Span<Expr*> callArgs = {}, std::vector<FunctionDecl*>* tied = nullptr)
     {
       std::vector<FunctionDecl*> candidates;
       if (overloads)
@@ -15424,7 +15512,7 @@ struct GlobalScope::Impl
       }
       const std::vector<bool>* nulls = anyNull ? &nullConstants : nullptr;
       if (!namePart && !callSets)
-        return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, nullptr, nulls);
+        return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, nullptr, nulls, tied);
       // The explicit template arguments (`load<bool>()`): a candidate with fewer parameters than
       // the list names (`typeIndex<T, Tail...>` with Tail known), and no pack to take the rest,
       // is not one, nor one whose parameter is of another kind than its argument. An overload set
@@ -15445,7 +15533,7 @@ struct GlobalScope::Impl
             return false; // `create<Abs>` names no `template<VoronoiType TYPE> create`
         return true;
       };
-      return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind, nulls);
+      return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, &bind, nulls, tied);
     }
 
     // Argument types of a call; a pack expansion `args...` contributes one type per element.
@@ -16381,7 +16469,9 @@ struct GlobalScope::Impl
                 qualifier.pairs.push_back(p);
           }
           const Subst* classSubst = qualifier.empty() ? nullptr : &qualifier;
-          FunctionDecl* f = pickOverload(d, l.overloads, argTypesOf(c->args), classSubst, nullptr, ambiguous, &n->name.last(), c->args);
+          std::vector<FunctionDecl*> tied;
+          std::vector<const Ty*> argTypes = argTypesOf(c->args);
+          FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, nullptr, ambiguous, &n->name.last(), c->args, &tied);
           if (!f)
           {
             // No callee the code generator could trust: not the first of several overloads, nor a
@@ -16395,7 +16485,10 @@ struct GlobalScope::Impl
             return unknown(Why::Overload);
           }
           if (ambiguous)
+          {
             ++stats.callsAmbiguousArity;
+            reportAmbiguousCall(c, n->name.last(), argTypes, tied, classSubst);
+          }
           ++stats.callsResolved;
           n->resolved = f;
           const Ty* fnTy = impl.declaredTypeOf(f, classSubst, 0);
@@ -16528,7 +16621,9 @@ struct GlobalScope::Impl
         }
         if (r.decl->kind == NodeKind::FunctionDecl)
         {
-          FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(c->args), &r.subst, object, ambiguous, &last, c->args);
+          std::vector<FunctionDecl*> tied;
+          std::vector<const Ty*> argTypes = argTypesOf(c->args);
+          FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, object, ambiguous, &last, c->args, &tied);
           if (!f)
           {
             ++stats.membersBound;
@@ -16539,7 +16634,10 @@ struct GlobalScope::Impl
             return unknown(Why::Overload);
           }
           if (ambiguous)
+          {
             ++stats.callsAmbiguousArity;
+            reportAmbiguousCall(c, last, argTypes, tied, &r.subst);
+          }
           ++stats.callsResolved;
           m->resolved = f;
           const Ty* fnTy = impl.declaredTypeOf(f, &r.subst, 0);
