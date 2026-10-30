@@ -169,9 +169,19 @@ struct Entry
 // units that read what it changed.
 enum : uint8_t { USE_DeclaredType = 1, USE_ScopeRelations, USE_ClassInstance, USE_Instance, USE_RanBody };
 
+// A recorded name: a symbol looked up in a namespace's or an enumeration's scope (or coarsely, by
+// the symbol alone), or a symbol looked up in a class's scope with that scope (memberName): an edit
+// of one class's member is read by the lookups in that class and the classes derived from it, not by
+// every lookup of the name. One vector of both keeps a unit's record the size it was (a build in its
+// own process records nothing and pays nothing for it).
+using RecordedName = uint64_t;
+static RecordedName memberName(uint32_t scopeId, uint32_t symbol) { return (RecordedName(scopeId) + 1) << 32 | symbol; }
+static uint32_t recordedSymbol(RecordedName n) { return uint32_t(n); }
+static bool isMemberName(RecordedName n) { return (n >> 32) != 0; }
+
 struct DependencyList
 {
-  std::vector<uint32_t> names; // symbols
+  std::vector<RecordedName> names;
   std::vector<std::pair<uint8_t, const void*>> uses;
   void tidy()
   {
@@ -237,6 +247,19 @@ static void recordName(uint32_t symbol)
   r->names.push_back(symbol);
 }
 
+// A lookup in a class's scope: recorded with the scope (memberName). The last one is not recorded
+// again (a walk looks one member up in one class many times in a row).
+static thread_local RecordedName lastMember = 0;
+static void recordMember(uint32_t scopeId, uint32_t symbol)
+{
+  DependencyList* r = recordingInto;
+  RecordedName n = memberName(scopeId, symbol);
+  if (!r || n == lastMember)
+    return;
+  lastMember = n;
+  r->names.push_back(n);
+}
+
 // Uses repeat less in a row than names (a walk asks for the types of the declarations it meets in
 // turn): the last 4096 the current unit recorded are remembered, by address and kind (a function's
 // declared type and its body run are two uses of one address).
@@ -280,6 +303,7 @@ struct RecordInto
     }
     recordingInto = into ? &part : nullptr;
     lastName = UINT32_MAX;
+    lastMember = 0;
     lastUse = nullptr;
     if (into && !recentUses)
       recentUses = std::make_unique<RecentUses>();
@@ -293,6 +317,7 @@ struct RecordInto
       return;
     recordingInto = saved;
     lastName = UINT32_MAX;
+    lastMember = 0;
     lastUse = nullptr;
     recordingUnit = ++unitCounter; // the outer unit's remembered uses may have been overwritten
     (void)savedUnit;
@@ -322,12 +347,15 @@ struct CollectRan
   CollectRan& operator=(const CollectRan&) = delete;
 };
 
+static std::atomic<uint32_t> nextScopeId{0};
+
 struct Scope
 {
   ScopeKind kind;
   Scope* parent;
   Decl* owner; // Null for the global namespace; one of possibly several NamespaceDecls otherwise.
   uint32_t name = UINT32_MAX;
+  uint32_t id = nextScopeId.fetch_add(1, std::memory_order_relaxed); // what a lookup in it is recorded with (memberName)
 
   // Symbol table, sharded for the heavily shared namespace scopes.
   struct Shard
@@ -370,10 +398,22 @@ struct Scope
   // Read-only lookup for phase 2.
   const std::vector<Entry>* find(uint32_t symbol)
   {
-    recordName(symbol);
     Shard& shard = shardFor(symbol);
     auto it = shard.map.find(symbol);
-    return it == shard.map.end() ? nullptr : &it->second;
+    const std::vector<Entry>* found = it == shard.map.end() ? nullptr : &it->second;
+    if (!recordingInto)
+      return found;
+    // A class's lookup is recorded with the class, unless what it finds is a using-declaration (its
+    // target is looked up elsewhere, and cached): then by the name alone, as every other scope's.
+    bool coarse = kind != ScopeKind::Class;
+    if (found && !coarse)
+      for (const Entry& e : *found)
+        coarse = coarse || (e.decl && e.decl->kind == NodeKind::UsingNameDecl);
+    if (coarse)
+      recordName(symbol);
+    else
+      recordMember(id, symbol);
+    return found;
   }
 
   // Finds an existing child namespace or creates it (merging all NamespaceDecls of that name).
@@ -20403,6 +20443,75 @@ std::vector<const void*> GlobalScope::instancesWalksUse(const ParsedFile& file)
 
 uint32_t GlobalScope::functionSymbolOf(const FunctionDecl* f) { return impl->functionSymbol(f->name); }
 
+GlobalScope::ChangedName GlobalScope::changedNameOf(const FunctionDecl* f)
+{
+  ChangedName out{impl->functionSymbol(f->name), nullptr};
+  if (f->parent && f->parent->kind == NodeKind::ClassDecl)
+    out.classScope = f->parent->ownScope ? static_cast<const void*>(f->parent->ownScope) : ChangedName::anyClass;
+  else if (auto it = impl->outOfLineScope.find(f); it != impl->outOfLineScope.end())
+    out.classScope = it->second;
+  else if (f->name.parts.size() > 1)
+    out.classScope = ChangedName::anyClass; // `X::f` whose class is not known here: every class's f
+  return out;
+}
+
+namespace
+{
+  // Who read one of the changed names: a lookup of the symbol recorded by name alone (a namespace's
+  // scope, a using-declaration's), or in a changed member's class or a class derived from it (the
+  // lookups there reach the base), or in any class for a member whose class is not known.
+  struct NameReaders
+  {
+    std::unordered_set<uint32_t> symbols;
+    std::unordered_set<RecordedName> members;
+    std::unordered_set<uint32_t> anyClass;
+    bool reads(const DependencyList& l) const
+    {
+      for (RecordedName n : l.names)
+        if (!isMemberName(n) ? symbols.count(recordedSymbol(n)) != 0 : members.count(n) || anyClass.count(recordedSymbol(n)))
+          return true;
+      return false;
+    }
+  };
+
+  NameReaders nameReaders(const std::vector<GlobalScope::ChangedName>& changed, const std::vector<const Scope*>& relationScopes)
+  {
+    NameReaders out;
+    std::unordered_map<const Scope*, std::vector<const Scope*>> derived; // a class scope -> the classes naming it as a base
+    bool derivedKnown = false;
+    for (const GlobalScope::ChangedName& c : changed)
+    {
+      out.symbols.insert(c.symbol);
+      if (c.classScope == GlobalScope::ChangedName::anyClass)
+        out.anyClass.insert(c.symbol);
+      else if (c.classScope)
+      {
+        if (!derivedKnown)
+        {
+          for (const Scope* s : relationScopes)
+            if (s->baseState.load(std::memory_order_acquire) == 2)
+              for (const Scope* b : s->baseScopes)
+                derived[b].push_back(s);
+          derivedKnown = true;
+        }
+        std::vector<const Scope*> pending{static_cast<const Scope*>(c.classScope)};
+        std::unordered_set<const Scope*> seen;
+        while (!pending.empty())
+        {
+          const Scope* s = pending.back();
+          pending.pop_back();
+          if (!seen.insert(s).second)
+            continue;
+          out.members.insert(memberName(s->id, c.symbol));
+          if (auto it = derived.find(s); it != derived.end())
+            pending.insert(pending.end(), it->second.begin(), it->second.end());
+        }
+      }
+    }
+    return out;
+  }
+}
+
 std::vector<FunctionDecl*> GlobalScope::outOfLineDefinitions(const Decl* cls)
 {
   return cls && cls->ownScope ? cls->ownScope->outOfLineMembers : std::vector<FunctionDecl*>{};
@@ -20698,9 +20807,14 @@ bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
   return whole;
 }
 
-std::vector<const Decl*> GlobalScope::walksReading(const std::vector<uint32_t>& symbols)
+std::vector<const Decl*> GlobalScope::walksReading(const std::vector<ChangedName>& changed)
 {
-  std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());
+  std::vector<const Scope*> relations;
+  {
+    std::lock_guard lock(impl->relationScopesMutex);
+    relations = impl->relationScopes;
+  }
+  NameReaders names = nameReaders(changed, relations);
   std::vector<const Decl*> out;
   for (Impl::DeclDependencyShard& shard : impl->declDependencies)
   {
@@ -20708,22 +20822,23 @@ std::vector<const Decl*> GlobalScope::walksReading(const std::vector<uint32_t>& 
     for (auto& [key, deps] : shard.map)
     {
       std::lock_guard l(deps->mutex);
-      for (uint32_t s : deps->list.names)
-        if (names.count(s))
-        {
-          out.push_back(reinterpret_cast<const Decl*>(key & ~uintptr_t(7)));
-          break;
-        }
+      if (names.reads(deps->list))
+        out.push_back(reinterpret_cast<const Decl*>(key & ~uintptr_t(7)));
     }
   }
   return out;
 }
 
-bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
+bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
                                     std::vector<const Decl*>* walks, const std::vector<const FunctionDecl*>& bodies, std::string* why,
                                     std::vector<const void*>* instances, std::vector<const Decl*>* typedByWalk)
 {
-  std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());
+  std::vector<const Scope*> relations;
+  {
+    std::lock_guard lock(impl->relationScopesMutex);
+    relations = impl->relationScopes;
+  }
+  NameReaders names = nameReaders(changed, relations);
   std::unordered_set<const void*> types(decls.begin(), decls.end()); // declarations whose declared types are no more what was read
   std::unordered_set<const void*> ran(bodies.begin(), bodies.end());  // changed bodies the evaluator may have run
   auto fail = [&](const char* reason)
@@ -20742,9 +20857,8 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
   auto reads = [&](Dependencies& d)
   {
     std::lock_guard lock(d.mutex);
-    for (uint32_t s : d.list.names)
-      if (names.count(s))
-        return true;
+    if (names.reads(d.list))
+      return true;
     for (auto& [kind, what] : d.list.uses)
       if ((kind == USE_DeclaredType && types.count(what)) || (kind == USE_RanBody && ran.count(what)))
         return true;
@@ -20759,9 +20873,7 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
     for (auto& [owner, deps] : impl->typeDependencyOwners)
     {
       std::lock_guard l(deps->mutex);
-      bool direct = false;
-      for (uint32_t s : deps->list.names)
-        direct = direct || names.count(s);
+      bool direct = names.reads(deps->list);
       for (auto& [kind, what] : deps->list.uses)
         if (kind == USE_DeclaredType)
         {

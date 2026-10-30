@@ -15,6 +15,13 @@ constexpr int limit() { int r = 5; return r; }
 
 int measure() { return 1; }
 
+// Two classes with a member of one name: an edit of Gauge's is no change for what reads Meter's
+// (readTwice<Meter>), as lookups in a class are recorded with the class.
+struct Gauge { int reading() const { return 3; } };
+struct Meter { int reading() const { return 4; } };
+template<typename T>
+int readTwice(const T& t) { int r = t.reading(); return r + r; }
+
 template<typename T>
 T twice(T v) { T r = v + v; return r; }
 

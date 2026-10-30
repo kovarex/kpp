@@ -276,6 +276,15 @@ public:
   std::vector<const void*> instancesWalksUse(const ParsedFile& file);
   bool usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file);
 
+  // A changed function's name as lookups recorded it: its symbol, and for a member the class scope
+  // (lookups in a class are recorded with the class; anyClass: a member whose class is unknown, read
+  // by a lookup in any class; null: a namespace's function).
+  struct ChangedName
+  {
+    uint32_t symbol;
+    const void* classScope;
+    static inline const void* const anyClass = reinterpret_cast<const void*>(uintptr_t(1));
+  };
   // Step 4 (functions added, removed or changed in a kept file). unindexFunction: takes a function
   // out of the index (its scope's entry, or its class's out-of-line definitions). indexFunctions:
   // indexes functions grafted into a kept file (their parents set), out-of-line definitions
@@ -297,16 +306,17 @@ public:
   // an instance makes it false. typedByWalk: the declarations among the reading walks whose type the
   // walk gives (decltype, a deduced auto), to be compared after the walk (forgetTypesFromWalks);
   // without it such a declaration makes it false.
-  bool invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
+  bool invalidateReaders(const std::vector<ChangedName>& changed, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
                          std::vector<const Decl*>* walks = nullptr, const std::vector<const FunctionDecl*>& bodies = {}, std::string* why = nullptr,
                          std::vector<const void*>* instances = nullptr, std::vector<const Decl*>* typedByWalk = nullptr);
   // Their declared types as they are, then forgotten (with what computing them read): after their
   // walks, typeOfDecl gives them anew, and a build that changed one is built from scratch.
   std::vector<const Ty*> forgetTypesFromWalks(const std::vector<const Decl*>& decls);
   uint32_t functionSymbolOf(const FunctionDecl* f);
+  ChangedName changedNameOf(const FunctionDecl* f);
   // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
   // function, whose code may hold its body (codegen inlines trivial functions).
-  std::vector<const Decl*> walksReading(const std::vector<uint32_t>& symbols);
+  std::vector<const Decl*> walksReading(const std::vector<ChangedName>& changed);
   std::vector<FunctionDecl*> outOfLineDefinitions(const Decl* cls); // the out-of-line member definitions attached to a class
   // Step 4, a template's body changed: its instances (function instances, class instances' members)
   // copied from the new body and checked again, their statistics replacing theirs; false when one

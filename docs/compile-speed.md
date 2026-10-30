@@ -609,6 +609,32 @@ the order of work:
    (generic lambdas' call operators, functions codegen has typed through `typeFunctionFor`,
    variable templates). Next, either those kinds checked again, or names recorded with the class
    they were found in (most of the 1,826 read another class's `getPrototype`).
+   *Then names recorded with their class (landed):* a lookup in a class's scope records the symbol
+   with that scope (`memberName`: the scope's id and the symbol in one 64-bit entry of the unit's
+   `names`, so a unit's record is the size it was and a build in its own process pays nothing); a
+   lookup in a namespace's or an enumeration's scope, or one that finds a using-declaration (whose
+   target is looked up elsewhere and cached), records the symbol alone. A changed member of class X
+   is read by the symbol-alone records, and by the records of X and of every class derived from X
+   (`nameReaders`); a member whose class cannot be told (`X::f` not attached) by every class's.
+   Measured on the frozen game tree, the front end at -j 32, master's kppc (07b19720) and this one
+   interleaved, 4 rounds (scratch\resolver\memmeasure.ps1): a build in its own process 1.32 to 1.35
+   s of resolve and 1,705 to 1,708 MB peak, both alike; a recording build (a server's) 1.85 to 1.89
+   s with master, 1.86 to 1.91 s with this, 11.8 M names recorded against 16.9 M, peak 2,012 to
+   2,044 MB against 1,969 to 1,988 MB (sampled every 50 ms). Readers on the same recorded reads,
+   by symbol and by class:
+
+   | change | instances | walks |
+   |---|---:|---:|
+   | `BuildEntityAchievement::getPrototype` | 1,320 -> 0 | 3,383 -> 13 |
+   | TransportLine's 27 data members | 112,972 -> 2 | 1,271 -> 144 |
+   | Inserter's data members | 99 -> 5 | 2,415 -> 141 |
+   | MapPosition's data members | 172 -> 24 | 1,791 -> 451 |
+   | `Character::update` | 141 -> 0 | 413 -> 1 |
+
+   Through the server the `getPrototype` signature edit now meets 5 instances instead of 1,826,
+   all 5 made by codegen with no `Recheck` (the next step, (a) above); still from scratch until then.
+   The edit test's two classes with a member `reading` check: an edit of `Gauge::reading` checks
+   nothing that reads `Meter::reading` again.
 2. **The resolver's half of a layout edit.** A changed file whose differences are data members of
    non-template classes (added, removed, a type or a default initialiser changed; no virtual, base,
    union or typed-union change): the members grafted and indexed as whole functions are; every

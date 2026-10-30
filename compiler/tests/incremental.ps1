@@ -42,21 +42,22 @@ function Edit([string]$file, [string]$old, [string]$new)
 }
 
 $steps = @(
-  @{ name = 'first build'; expect = '6 40 40 3 8 10 6 5 8 40'; edit = {} },
-  @{ name = 'body edit'; expect = '6 44 44 3 8 10 6 5 8 44'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
-  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6 5 8 44'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
-  @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6 5 8 44'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
-  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7 5 8 44'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
-  @{ name = 'constexpr body edit (what the evaluator ran it for checked again)'; expect = '7 44 44 3 8 11 7 6 8 44'; edit = { Edit 'shapes.kpp' 'int r = 5; return r;' 'int r = 6; return r;' } },
+  @{ name = 'first build'; expect = '6 40 40 3 8 10 6 5 8 40 3 8'; edit = {} },
+  @{ name = 'body edit'; expect = '6 44 44 3 8 10 6 5 8 44 3 8'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
+  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6 5 8 44 3 8'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
+  @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6 5 8 44 3 8'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
+  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7 5 8 44 3 8'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
+  @{ name = 'constexpr body edit (what the evaluator ran it for checked again)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8'; edit = { Edit 'shapes.kpp' 'int r = 5; return r;' 'int r = 6; return r;' } },
   @{ name = 'constexpr body edit failing a static_assert in another file'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int r = 6; return r;' 'int r = 12; return r;' } },
-  @{ name = 'constexpr body edit back'; expect = '7 44 44 3 8 11 7 6 8 44'; edit = { Edit 'shapes.kpp' 'int r = 12; return r;' 'int r = 6; return r;' } },
-  @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7 6 8 44'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
-  @{ name = 'return type edit (a data member is declared with it)'; expect = '7 44 44 103 8 11 7 6 16 44'; edit = { Edit 'shapes.kpp' 'int measure()' 'long long measure()' } },
-  @{ name = 'overload added'; expect = '7 44 7 103 8 11 7 6 16 7'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
-  @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7 6 16 44'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
-  @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7 6 16 44'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
-  @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
-  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
+  @{ name = 'constexpr body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8'; edit = { Edit 'shapes.kpp' 'int r = 12; return r;' 'int r = 6; return r;' } },
+  @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7 6 8 44 3 8'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
+  @{ name = 'return type edit (a data member is declared with it)'; expect = '7 44 44 103 8 11 7 6 16 44 3 8'; edit = { Edit 'shapes.kpp' 'int measure()' 'long long measure()' } },
+  @{ name = 'overload added'; expect = '7 44 7 103 8 11 7 6 16 7 3 8'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
+  @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7 6 16 44 3 8'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
+  @{ name = 'signature edit of a member another class shares the name of'; expect = '7 44 44 103 8 11 7 6 16 44 5 8'; edit = { Edit 'shapes.kpp' 'struct Gauge { int reading() const { return 3; } };' 'struct Gauge { int reading(int scale = 1) const { return 5 * scale; } };' } },
+  @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7 6 16 44 5 8'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
+  @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
+  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
 )
 $n = 0
 foreach ($step in $steps)
@@ -112,9 +113,15 @@ $rebuilt = $ours | Where-Object { $_ -match 'codegen: [0-9]+ module\(s\) assembl
 if (@($rebuilt).Count -lt 3) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 3 (the server's log)"; $failed++ }
 else { "ok   incremental codegen rebuilt from its kept session ($(@($rebuilt).Count))" }
 $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmatch '\(0 with whole functions\)' }
-# (6: the signature edit and the overload added and removed, through each of two servers; the overload
+# Instances checked again because they read a change: the overload added and removed (viaScale<double>
+# reads scale), through each of two servers; not readTwice<Meter> for the edit of Gauge::reading
+# (lookups in a class are recorded with the class).
+$instances = @($ours | Where-Object { $_ -match 'instance\(s\) that read a change checked again' })
+if ($instances.Count -ne 4) { "FAIL incremental: $($instances.Count) builds checked instances that read a change again, 4 expected (the overload steps only)"; $failed++ }
+else { "ok   incremental instances checked again only where they read the change (4)" }
+# (8: the signature edits and the overload added and removed, through each of two servers; the overload
 # steps change what an instance, viaScale<double>, calls: it is checked again, not built from scratch)
-if (@($whole).Count -lt 6) { "FAIL incremental: the signature edit and the overload added and removed were not built from the kept program ($(@($whole).Count) such builds, 6 expected)"; $failed++ }
+if (@($whole).Count -lt 8) { "FAIL incremental: the signature edit and the overload added and removed were not built from the kept program ($(@($whole).Count) such builds, 8 expected)"; $failed++ }
 else { "ok   incremental whole-function edits built from the kept program ($(@($whole).Count))" }
 if (@($fast).Count -lt 10) { "FAIL incremental: $(@($fast).Count) body edits built from the kept program, 10 expected (5 through each of two servers) (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }

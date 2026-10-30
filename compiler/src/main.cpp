@@ -2138,7 +2138,7 @@ namespace
     std::set<size_t> rewalk;
     for (const ChangedFile& c : changed)
       rewalk.insert(c.index);
-    std::vector<uint32_t> names;
+    std::vector<GlobalScope::ChangedName> names;
     std::vector<const Decl*> gone;
     std::vector<const void*> readingInstances; // instances that read a changed name, type or body: checked again
     std::vector<const Decl*> typedByWalk;      // reading walks' declarations whose type the walk gives: compared after it
@@ -2148,20 +2148,20 @@ namespace
       rewalk.insert(c.index);
       for (auto& [f, container] : c.removed)
       {
-        names.push_back(global.functionSymbolOf(f));
+        names.push_back(global.changedNameOf(f));
         gone.push_back(f);
         kept.removedFunctions.push_back(f);
       }
       for (auto& [f, container] : c.added)
-      {
-        names.push_back(global.functionSymbolOf(f));
         kept.addedFunctions.push_back(f);
-      }
       if (!graftFunctions(kept, c, why))
       {
         logBuildNote("not incremental: " + kept.files[c.index].path.string() + ": " + why);
         return false;
       }
+      // (once grafted: an added member's class is then the kept one, its lookups' scope)
+      for (auto& [f, container] : c.added)
+        names.push_back(global.changedNameOf(f));
     }
     if (!names.empty() || !constantBodies.empty())
     {
@@ -2295,9 +2295,9 @@ namespace
     // that makes the function trivial makes its callers inline it (codegen's record knows only the
     // callers that inline it already).
     {
-      std::vector<uint32_t> edited;
+      std::vector<GlobalScope::ChangedName> edited;
       for (FunctionDecl* f : kept.changedBodies)
-        edited.push_back(global.functionSymbolOf(f));
+        edited.push_back(global.changedNameOf(f));
       // (An instance whose code holds an edited body, inlined or constant-folded, codegen finds itself:
       // its inlined-body record, cef267b.)
       for (const Decl* d : global.walksReading(edited))
