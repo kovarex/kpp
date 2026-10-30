@@ -73,3 +73,7 @@ default-constructed T). Thread, Thread::Id, thisThread, the mutexes, locks
 and ConditionVariable as docs/stdlib/thread.md specifies them (2026-10-29: Thread took only a
 callable and joined in its destructor, join and detach did nothing when not joinable, the timed
 waits returned a bool and Future's waitFor could report a timeout early on a spurious wake-up).
+A deferred async's function runs once when several threads get() its SharedFutures at once (until
+2026-10-30 two could both take it and the second called it empty, silently on a good run:
+library/shared_future_deferred_runs_once_across_threads; the game's PlanetGeneration suite stopped
+about 1 run in 10).

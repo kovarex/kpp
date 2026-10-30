@@ -1,0 +1,35 @@
+// spec: a deferred async's function runs exactly once, on the first get() or wait(), when several threads call get() on SharedFutures of it at once; the others wait for its result, as in C++
+// factorio: ThreadSafeSpotNoiseCache's deferred spots, gotten from map generation's worker threads (PlanetGeneration/NauvisIslandMapGeneration stopped on an empty Function about 1 run in 10)
+int main()
+{
+  const int rounds = 300;
+  const int threads = 8;
+  Atomic<int> runs = 0;
+  Atomic<int> wrong = 0;
+  Atomic<int> thrown = 0;
+  for (int round = 0; round < rounds; ++round)
+  {
+    SharedFuture<int> shared(async(Launch::deferred, [&runs]() -> int { runs.fetch_add(1); return 42; }));
+    Atomic<int> started = 0;
+    Vector<Thread> workers;
+    for (int i = 0; i < threads; ++i)
+      workers.push_back(Thread([shared, &started, &wrong, &thrown]() {
+        started.fetch_add(1);
+        while (started.load() < threads)
+          ;
+        try
+        {
+          if (shared.get() != 42)
+            wrong.fetch_add(1);
+        }
+        catch (...)
+        {
+          thrown.fetch_add(1);
+        }
+      }));
+    for (Thread& worker : workers)
+      worker.join();
+  }
+  println("{} {} {}", runs.load() == rounds, wrong.load(), thrown.load());
+  return 0;
+}

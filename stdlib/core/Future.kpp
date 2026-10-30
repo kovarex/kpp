@@ -17,12 +17,19 @@ struct SharedState
   bool ready = false;
   Function<void()> deferred; // async with Launch::deferred: runs on the first get() or wait()
 
+  // The deferred function runs once, on the thread that takes it first (under the lock); the
+  // threads that call get() or wait() beside it wait for the result it sets. Until 2026-10-30 each
+  // took it without the lock, and two at once could both take it: the second called it empty.
   void runDeferred()
   {
-    if (!this->deferred)
-      return;
-    Function<void()> run = move(this->deferred);
-    this->deferred = nullptr;
+    Function<void()> run;
+    {
+      LockGuard<Mutex> guard(this->mutex);
+      if (!this->deferred)
+        return;
+      run = move(this->deferred);
+      this->deferred = nullptr;
+    }
     run();
   }
 
@@ -71,9 +78,9 @@ struct SharedState
   template<typename Rep, typename Period>
   FutureStatus waitFor(const Duration<Rep, Period>& d)
   {
+    UniqueLock<Mutex> lock(this->mutex);
     if (this->deferred)
       return FutureStatus::deferred;
-    UniqueLock<Mutex> lock(this->mutex);
     return this->cv.waitFor(lock, d, [this]() -> bool { return this->ready; }) ? FutureStatus::ready : FutureStatus::timeout;
   }
 };
@@ -87,12 +94,19 @@ struct SharedState<void>
   bool ready = false;
   Function<void()> deferred; // async with Launch::deferred: runs on the first get() or wait()
 
+  // The deferred function runs once, on the thread that takes it first (under the lock); the
+  // threads that call get() or wait() beside it wait for the result it sets. Until 2026-10-30 each
+  // took it without the lock, and two at once could both take it: the second called it empty.
   void runDeferred()
   {
-    if (!this->deferred)
-      return;
-    Function<void()> run = move(this->deferred);
-    this->deferred = nullptr;
+    Function<void()> run;
+    {
+      LockGuard<Mutex> guard(this->mutex);
+      if (!this->deferred)
+        return;
+      run = move(this->deferred);
+      this->deferred = nullptr;
+    }
     run();
   }
 
@@ -130,9 +144,9 @@ struct SharedState<void>
   template<typename Rep, typename Period>
   FutureStatus waitFor(const Duration<Rep, Period>& d)
   {
+    UniqueLock<Mutex> lock(this->mutex);
     if (this->deferred)
       return FutureStatus::deferred;
-    UniqueLock<Mutex> lock(this->mutex);
     return this->cv.waitFor(lock, d, [this]() -> bool { return this->ready; }) ? FutureStatus::ready : FutureStatus::timeout;
   }
 };
