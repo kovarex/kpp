@@ -2222,8 +2222,14 @@ namespace
       const Ty* cls = canonicalClass(t, v);
       TemplateArgs classArgs = global.classArgsOf(cls);
       Expr* init = global.instanceInitializer(v, classArgs);
-      std::string slot = "%v" + std::to_string(temp++);
-      allocas += "  " + slot + " = alloca ptr\n";
+      std::string slot;
+      if (!inlining.empty())
+        slot = inlineSlot(std::to_string(inlining.size()) + ".member", "ptr"); // in a constructor inlined here: one slot for its members' initializers
+      else
+      {
+        slot = "%v" + std::to_string(temp++);
+        allocas += "  " + slot + " = alloca ptr\n";
+      }
       fn += "  store ptr " + addr + ", ptr " + slot + "\n";
       struct Restore
       {
@@ -6354,11 +6360,162 @@ namespace
       return result;
     }
 
-    // A call of a trivial function (trivialDefinition) emitted as its body: the arguments as the call
-    // passes them, in order, bound to the definition's parameters as its own prologue binds them (in
-    // slots this function's inlined calls share), `this` likewise, and E emitted under the callee's
-    // arguments, class and file (an error in it is the callee's line), its result as the callee's
-    // return statement makes it (docs/compile-speed.md, step 2). Null for any other call.
+    // The typed definition of a constructor call's callee when it is trivial: its body empty, its
+    // parameters scalars, pointers or references, and each of its member initializers giving a
+    // data member of the class at most one value, a trivialExpression; the class's data members
+    // scalars or pointers, each that it does not initialize with a trivial default member
+    // initializer or none, and no base, virtual function or union (NamedBool's, ID's). Decided
+    // once per definition. Null otherwise.
+    FunctionDecl* trivialConstructor(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at)
+    {
+      if (!(f->flags & DF_Constructor) || (f->flags & (DF_Variadic | DF_Default | DF_Delete)) || (f->attributes & ATTR_NoInline) || f->builtin ||
+          !classTy || !isClass(classTy))
+        return nullptr;
+      Decl* owner = global.owningClass(f);
+      ClassDecl* cls = classDef(classTy->decl, at);
+      if (!owner || global.definitionOf(owner) != cls || cls->isTypedUnion)
+        return nullptr;
+      Decl* defined = global.definitionOf(f, args);
+      auto* chosen = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : f;
+      if (!chosen->body || (chosen->file && chosen->file->isImported))
+        return nullptr;
+      FunctionDecl* def = args.empty() ? chosen : global.instanceBody(chosen, definitionArguments(f, chosen, args), classTy);
+      if (!def || !def->body || def->body->kind != NodeKind::BlockStmt || !static_cast<BlockStmt*>(def->body)->stmts.empty() || inlining.count(def) ||
+          retypedPerElement(def) || def->params.size() != f->params.size())
+        return nullptr;
+      if (auto it = trivialDefinitions.find(def); it != trivialDefinitions.end())
+        return it->second;
+      const StructInfo& info = structFor(classTy, at);
+      bool ok = info.bases.empty() && !info.polymorphic && !info.isUnion && info.anonymous.empty() && info.bitfields.empty();
+      auto initialized = [&](VariableDecl* v)
+      {
+        for (const FunctionDecl::CtorInit& init : def->ctorInits)
+          if (!init.member.empty() && init.member.last().symbol == v->name.last().symbol)
+            return true;
+        return false;
+      };
+      TemplateArgs classArgs = global.classArgsOf(canonicalClass(classTy, at));
+      for (Decl* d : info.fieldDecls)
+      {
+        if (!ok)
+          break;
+        auto* v = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
+        const Ty* declared = v ? global.typeOfDecl(v) : nullptr;
+        const Ty* ft = info.fieldTypes[fieldIndexOf(info, d)];
+        ok = v && !v->name.empty() && !ft->isReference() && !(declared && declared->isReference()) && inlineScalar(ft);
+        if (ok && v->init && !initialized(v))
+        {
+          Expr* init = global.instanceInitializer(v, classArgs);
+          ok = init && trivialExpression(init, def);
+        }
+      }
+      for (const FunctionDecl::CtorInit& init : def->ctorInits)
+      {
+        if (!ok)
+          break;
+        bool member = false;
+        if (init.member.parts.size() == 1 && !init.member.last().hasTemplateArgs && !init.isPack)
+          for (Decl* d : info.fieldDecls)
+            member = member || (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty() &&
+                                static_cast<VariableDecl*>(d)->name.last().symbol == init.member.last().symbol);
+        ok = member && init.args.size() <= 1 && (init.args.empty() || trivialExpression(init.args[0], def));
+      }
+      if (ok)
+      {
+        ArgsScope scope(*this, &args);
+        Signature s = signatureOf(f);
+        ok = s.hasThis && !s.hasSret && !s.variadic;
+        for (size_t i = 0, slot = 1; ok && i < f->params.size(); ++i, ++slot)
+          ok = slot < s.paramTys.size() && inlineScalar(s.paramTys[slot]) && !static_cast<ParamDecl*>(def->params[i])->isPack;
+      }
+      FunctionDecl* result = ok ? def : nullptr;
+      trivialDefinitions.emplace(def, result);
+      return result;
+    }
+
+    // A slot of this function for what an inlined call binds (inlineCall): one for each inlining
+    // depth, binding and type, shared by every call inlined at that depth.
+    std::string inlineSlot(const std::string& key, const std::string& type)
+    {
+      std::string& slot = inlineSlots[key + " " + type];
+      if (slot.empty())
+      {
+        slot = "%inl" + std::to_string(temp++);
+        allocas += "  " + slot + " = alloca " + type + "\n";
+      }
+      return slot;
+    }
+
+    // Runs emit as the body of a call of def, the typed definition of a trivial callee whose
+    // signature is s: the arguments as the call passes them, in order, bound to the definition's
+    // parameters as its own prologue binds them (in inlineSlots), `this` likewise, and emit run
+    // under the callee's arguments, class and file (an error in it is the callee's line). The
+    // bindings and the state are restored however emit ends.
+    template<typename F>
+    void inlineCall(FunctionDecl* def, const TemplateArgs& args, const Ty* classTy, const Signature& s, const std::string& thisArg,
+                    Span<Expr*> callArgs, Node* at, F&& emit)
+    {
+      size_t first = s.hasThis ? 1 : 0;
+      std::vector<std::string> texts;
+      for (size_t i = 0; i < callArgs.size(); ++i)
+        texts.push_back(argumentText(s.paramTys[first + i], callArgs[i], at));
+      struct Restore
+      {
+        Emitter& e;
+        FunctionDecl* def;
+        const Ty* classTy;
+        Decl* initializerOf;
+        Decl* lambdaContext;
+        ParsedFile* file;
+        std::vector<std::pair<Decl*, std::optional<Local>>> saved;
+        ~Restore()
+        {
+          e.inlining.erase(def);
+          for (auto it = saved.rbegin(); it != saved.rend(); ++it)
+            if (it->second)
+              e.locals[it->first] = *it->second;
+            else
+              e.locals.erase(it->first);
+          e.currentClassTy = classTy;
+          e.initializerOf = initializerOf;
+          e.lambdaContext = lambdaContext;
+          e.currentFile = file;
+        }
+      } restore{*this, def, currentClassTy, initializerOf, lambdaContext, currentFile, {}};
+      auto bind = [&](Decl* d, Local local) {
+        auto it = locals.find(d);
+        restore.saved.push_back({d, it == locals.end() ? std::nullopt : std::optional<Local>(it->second)});
+        locals[d] = local;
+      };
+      size_t depth = inlining.size();
+      if (s.hasThis)
+      {
+        std::string slot = inlineSlot(std::to_string(depth) + ".this", "ptr");
+        fn += "  store ptr " + thisArg + ", ptr " + slot + "\n";
+        bind(nullptr, Local{slot, nullptr, false});
+      }
+      for (size_t i = 0; i < callArgs.size(); ++i)
+      {
+        const Ty* pt = s.paramTys[first + i];
+        bool isRef = pt->isReference();
+        std::string type = isRef ? std::string("ptr") : llType(pt, at);
+        size_t space = texts[i].find(' ');
+        std::string slot = inlineSlot(std::to_string(depth) + "." + std::to_string(i), type);
+        fn += "  store " + type + " " + texts[i].substr(space + 1) + ", ptr " + slot + "\n";
+        bind(def->params[i], Local{slot, pt, isRef});
+      }
+      inlining.insert(def);
+      ArgsScope argsScope(*this, &args);
+      currentClassTy = classTy;
+      initializerOf = def;
+      lambdaContext = nullptr;
+      currentFile = def->file;
+      emit();
+    }
+
+    // A call of a trivial function (trivialDefinition) emitted as its body (inlineCall), its result
+    // as the callee's return statement makes it (docs/compile-speed.md, step 2). Null for any other
+    // call.
     std::optional<Value> inlinedBody(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg,
                                      const std::string& sret, Span<Expr*> callArgs, Node* at)
     {
@@ -6379,78 +6536,55 @@ namespace
       }
       if (s.hasThis && thisArg.empty())
         return std::nullopt;
-      size_t first = s.hasThis ? 1 : 0;
-      std::vector<std::string> texts;
-      for (size_t i = 0; i < callArgs.size(); ++i)
-        texts.push_back(argumentText(s.paramTys[first + i], callArgs[i], at));
-      auto slotFor = [&](const std::string& key, const std::string& type) {
-        std::string& slot = inlineSlots[key + " " + type];
-        if (slot.empty())
-        {
-          slot = "%inl" + std::to_string(temp++);
-          allocas += "  " + slot + " = alloca " + type + "\n";
-        }
-        return slot;
-      };
-      std::vector<std::pair<Decl*, std::optional<Local>>> saved;
-      auto bind = [&](Decl* d, Local local) {
-        auto it = locals.find(d);
-        saved.push_back({d, it == locals.end() ? std::nullopt : std::optional<Local>(it->second)});
-        locals[d] = local;
-      };
-      size_t depth = inlining.size();
-      if (s.hasThis)
-      {
-        std::string slot = slotFor(std::to_string(depth) + ".this", "ptr");
-        fn += "  store ptr " + thisArg + ", ptr " + slot + "\n";
-        bind(nullptr, Local{slot, nullptr, false});
-      }
-      for (size_t i = 0; i < callArgs.size(); ++i)
-      {
-        const Ty* pt = s.paramTys[first + i];
-        bool isRef = pt->isReference();
-        std::string type = isRef ? std::string("ptr") : llType(pt, at);
-        size_t space = texts[i].find(' ');
-        std::string slot = slotFor(std::to_string(depth) + "." + std::to_string(i), type);
-        fn += "  store " + type + " " + texts[i].substr(space + 1) + ", ptr " + slot + "\n";
-        bind(def->params[i], Local{slot, pt, isRef});
-      }
-      inlining.insert(def);
-      ArgsScope argsScope(*this, &args);
-      struct Restore
-      {
-        Emitter& e;
-        const Ty* classTy;
-        Decl* initializerOf;
-        Decl* lambdaContext;
-        ParsedFile* file;
-        ~Restore() { e.currentClassTy = classTy; e.initializerOf = initializerOf; e.lambdaContext = lambdaContext; e.currentFile = file; }
-      } restore{*this, currentClassTy, initializerOf, lambdaContext, currentFile};
-      currentClassTy = classTy;
-      initializerOf = def;
-      lambdaContext = nullptr;
-      currentFile = def->file;
-      auto* statement = static_cast<BlockStmt*>(def->body)->stmts[0];
       Value result{"", types.voidType(), false};
-      if (statement->kind == NodeKind::ExprStmt)
-        rvalue(static_cast<ExprStmt*>(statement)->expr);
-      else
+      inlineCall(def, args, classTy, s, thisArg, callArgs, at, [&]
       {
-        Expr* e = static_cast<ReturnStmt*>(statement)->value;
-        if (ret->kind == TyKind::Void)
-          rvalue(e);
-        else if (ret->isReference())
-          result = {isAggregate(types.stripRef(ret)) ? rvalue(e).text : lvalue(e), ret, false};
+        auto* statement = static_cast<BlockStmt*>(def->body)->stmts[0];
+        if (statement->kind == NodeKind::ExprStmt)
+          rvalue(static_cast<ExprStmt*>(statement)->expr);
         else
-          result = {convert(rvalue(e), ret, e).text, ret, false};
-      }
-      inlining.erase(def);
-      for (auto it = saved.rbegin(); it != saved.rend(); ++it)
-        if (it->second)
-          locals[it->first] = *it->second;
-        else
-          locals.erase(it->first);
+        {
+          Expr* e = static_cast<ReturnStmt*>(statement)->value;
+          if (ret->kind == TyKind::Void)
+            rvalue(e);
+          else if (ret->isReference())
+            result = {isAggregate(types.stripRef(ret)) ? rvalue(e).text : lvalue(e), ret, false};
+          else
+            result = {convert(rvalue(e), ret, e).text, ret, false};
+        }
+      });
       return result;
+    }
+
+    // A call of a trivial constructor (trivialConstructor) emitted as its member initializers on the
+    // object at thisArg (inlineCall), as the constructor initializes them before its empty body
+    // (docs/compile-speed.md, step 3). Null for any other call.
+    std::optional<Value> inlinedConstructor(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg,
+                                            const std::string& sret, Span<Expr*> callArgs, Node* at)
+    {
+      if (!(f->flags & DF_Constructor) || thisArg.empty() || !sret.empty() || callArgs.size() != f->params.size())
+        return std::nullopt;
+      for (Expr* a : callArgs)
+        if (!a || isPackExpansion(a) || a->kind == NodeKind::BraceInitExpr)
+          return std::nullopt;
+      FunctionDecl* def = trivialConstructor(f, args, classTy, at);
+      if (!def)
+        return std::nullopt;
+      Signature s;
+      {
+        ArgsScope scope(*this, &args);
+        s = signatureOf(f);
+      }
+      inlineCall(def, args, classTy, s, thisArg, callArgs, at, [&]
+      {
+        // The member initializers make no temporary (trivialConstructor), so nothing is destroyed
+        // after them as the constructor itself destroys its own: the caller's live on.
+        size_t temps = statementTemps.size();
+        initializeMembers(thisArg, classTy, def->ctorInits, def);
+        if (statementTemps.size() != temps)
+          unsupported(def, "an inlined constructor whose member initializers made a temporary");
+      });
+      return Value{"", types.voidType(), false};
     }
 
     Value callFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, const std::string& thisArg,
@@ -6470,6 +6604,8 @@ namespace
         if (std::optional<Value> v = inlinedIdentity(f, args, callArgs, at))
           return *v;
         if (std::optional<Value> v = inlinedBody(f, args, classTy, thisArg, sret, callArgs, at))
+          return *v;
+        if (std::optional<Value> v = inlinedConstructor(f, args, classTy, thisArg, sret, callArgs, at))
           return *v;
       }
       std::string name = indirect.empty() ? useFunction(f, args, classTy) : indirect;

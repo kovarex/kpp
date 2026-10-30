@@ -1,0 +1,102 @@
+// spec: a call of a trivial constructor (empty body, member initializers of scalar members over its parameters, a class of scalar members with no base or virtual function, as NamedBool's and ID's) behaves exactly as the call: the arguments are evaluated once and in order, a member initializer reads the members initialized before it, a default member initializer sees `this` as the object, a reference parameter is the object referred to, the values convert to the members' types, and it holds for a class template, a member of another class, a global, an array, `new` and a constructor that does not inline beside one that does
+enum class Answer : uint8_t {No, Yes};
+class Flag
+{
+public:
+  constexpr Flag() = default;
+  implicit constexpr Flag(Answer answer) : value(answer == Answer::Yes) {}
+  bool asBool() const { return this->value; }
+private:
+  bool value = false;
+};
+class Id
+{
+public:
+  constexpr Id() noexcept {}
+  explicit Id(uint16_t index) : index(index) {}
+  uint16_t getIndex() const { return this->index; }
+private:
+  uint16_t index = 0;
+};
+struct Two
+{
+  int a;
+  int b;
+  Two(int x, int y) : a(x), b(this->a + y) {}
+};
+struct Node
+{
+  int value;
+  Node* self = this;
+  Node(int v) : value(v) {}
+};
+struct Outer
+{
+  int pad = 1;
+  Node node;
+  Outer() : node(5) {}
+};
+struct Ref
+{
+  int value;
+  const int* address;
+  Ref(const int& r) : value(r), address(&r) {}
+};
+struct Narrow
+{
+  uint8_t small;
+  int64_t wide;
+  double real;
+  Narrow(int s, uint8_t w, int r) : small(s), wide(w), real(r) {}
+};
+template<class T>
+struct Box
+{
+  T value = T();
+  Box() {}
+  Box(T v) : value(v) {}
+};
+struct Counted
+{
+  int value;
+  Counted(int v) : value(v) { print("(counted {}) ", v); }
+};
+int counter = 0;
+int next() { return ++counter; }
+Id globalId(9);
+void show(Id id) { print("{} ", id.getIndex()); }
+int main()
+{
+  Flag yes = Answer::Yes;
+  Flag no(Answer::No);
+  Flag none;
+  println("{} {} {}", yes.asBool(), no.asBool(), none.asBool());
+  Id empty;
+  Id five(5);
+  show(Id(7));
+  show(empty);
+  println("{} {}", five.getIndex(), globalId.getIndex());
+  Two two(next(), next());
+  println("{} {} {}", two.a, two.b, counter);
+  Node node(3);
+  Outer outer;
+  println("{} {} {} {}", node.value, node.self == &node, outer.node.value, outer.node.self == &outer.node);
+  int x = 11;
+  Ref byVariable(x);
+  Ref byTemporary(x + 1);
+  println("{} {} {}", byVariable.value, byVariable.address == &x, byTemporary.value);
+  Narrow narrow(300, 200, 7);
+  println("{} {} {}", narrow.small, narrow.wide, narrow.real);
+  Box<int> boxed(4);
+  Box<double> real(2.5);
+  Box<int> zero;
+  println("{} {} {}", boxed.value, real.value, zero.value);
+  Counted counted(8);
+  Counted* onHeap = new Counted(9);
+  Id* heapId = new Id(12);
+  Id ids[3] = {Id(1), Id(2), Id(3)};
+  println("{} {} {} {}", counted.value, onHeap->value, heapId->getIndex(), ids[0].getIndex() + ids[1].getIndex() + ids[2].getIndex());
+  delete onHeap;
+  delete heapId;
+  return 0;
+}
