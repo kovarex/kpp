@@ -4157,15 +4157,17 @@ struct GlobalScope::Impl
     const Ty* c = types.unqualified(types.stripRef(f));
     if (c->kind == TyKind::Pointer && c->inner && c->inner->kind == TyKind::Function)
       c = c->inner;
-    auto accepts = [&](Span<const Ty*> params, bool variadic) -> std::optional<bool>
+    // Whether params take the arguments from the first-th on.
+    auto accepts = [&](Span<const Ty*> params, bool variadic, size_t first = 0) -> std::optional<bool>
     {
-      if (args.size() < params.size() || (!variadic && args.size() > params.size()))
+      size_t given = args.size() - first;
+      if (given < params.size() || (!variadic && given > params.size()))
         return false;
       for (size_t i = 0; i < params.size(); ++i)
       {
         if (!params[i] || !params[i]->isKnown() || types.isDependent(params[i]))
           return std::nullopt;
-        if (conversionRank(args[i], params[i]) >= NotViable)
+        if (conversionRank(args[first + i], params[i]) >= NotViable)
           return false;
       }
       return true;
@@ -4240,8 +4242,27 @@ struct GlobalScope::Impl
       }
       return true;
     }
+    if (c->kind == TyKind::MemberPointer && c->inner && c->inner->kind == TyKind::Function && !c->args.empty() && c->args[0])
+    {
+      // A pointer to a member function takes the object first (a reference to it, or a pointer),
+      // then the function's arguments, as std::invoke does: isInvocableR<bool, bool (W::*)(int),
+      // W&, int>. The function's own const-ness is not in its type here, so not checked.
+      if (args.empty())
+        return false;
+      const Ty* cls = types.unqualified(c->args[0]);
+      const Ty* object = types.unqualified(types.stripRef(args[0]));
+      if (object->kind == TyKind::Pointer && object->inner)
+        object = types.unqualified(object->inner);
+      if (cls->kind != TyKind::Class || object->kind != TyKind::Class)
+        return object->kind == TyKind::Class || object->kind == TyKind::Unknown ? std::nullopt : std::optional<bool>(false);
+      if (object != cls && !isBaseClass(cls, object))
+        return false;
+      if (result)
+        *result = c->inner->inner;
+      return accepts(c->inner->args, c->inner->variadic, 1);
+    }
     if (c->kind == TyKind::MemberPointer)
-      return std::nullopt; // invoked on an object: not decided here
+      return std::nullopt; // a pointer to a data member: not decided here
     return false; // a pointer to data, a number, an enumeration: nothing to call
   }
 

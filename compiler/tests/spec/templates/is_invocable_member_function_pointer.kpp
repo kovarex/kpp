@@ -1,6 +1,5 @@
 // spec: isInvocable and isInvocableR of a pointer to a member function take the object first (`isInvocableR<bool, bool (Widget::*)(int), Widget&, int>`), as std::is_invocable_r_v does, and are constants
 // factorio: ActionsTriggeredByInputs::invokeMember since Factorio df1c9d1cd3c, `if constexpr (std::is_invocable_r_v<bool, MethodPtr, ClassType&, const Event&, ControlBinding, Args...>)` (22 headline errors)
-// pending: codegen does not support an unresolved name (isInvocableR) yet
 struct Widget
 {
   bool click(int x) { return x > 0; }
