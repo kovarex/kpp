@@ -30,9 +30,29 @@ scratch\resolver\clean.ps1 -Threads N. The -j 1 time is each phase's work.
 | link (full) | 1.66 s | 1.64 | 1.65 | 1.64 | 1.59 | 1.66 | 1x | serial |
 | wall | 74.3 s | 40.0 | 23.8 | 16.3 | 15.1 | 15.2 | 4.9x | |
 
+The same on master 18cb68ba (a template's own walk a task of its own, ab2fcefa; dependent calls left
+to the instances, 18cb68ba), -j 32 twice:
+
+| phase | -j 1 | -j 2 | -j 4 | -j 8 | -j 16 | -j 32 | speedup at 32 | efficiency |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| read, lex, imports (cached), parse, index | 1.93 s | 1.18 | 0.76 | 0.58 | 0.54 | 0.53 | 3.6x | 11% |
+| resolve | 6.90 s | 3.66 | 2.00 | 1.13 | 0.76 | 0.69, 0.70 | 10x | 31% |
+| codegen | 23.24 s | 12.93 | 8.20 | 6.46 | 6.24 | 6.62, 6.58 | 3.5x | 11% |
+| clang -O0, 64 modules | 38.79 s | 19.86 | 10.43 | 6.01 | 4.78 | 4.59, 4.51 | 8.5x | 27% |
+| link (full) | 1.60 s | 1.71 | 1.62 | 1.61 | 1.61 | 1.59, 1.60 | 1x | serial |
+| wall | 72.9 s | 39.7 | 23.4 | 16.2 | 14.4 | 14.5, 14.5 | 5.0x | |
+
+Resolve's critical path is still ValueToWidget.kpp, now its 480 plain functions' walks (0.63 s in
+all, the two largest 0.11 and 0.06 s, the rest 20 ms or less; its templates are tasks and cheap):
+every other file is done 0.31 s in (the C import's walk, 0.2 s, the next longest). Walking plain
+functions as tasks too would take it to about 0.35 s, but the evaluator runs a plain function's own
+nodes (there is no instance copy), so a static_assert could read a function whose walk runs on
+another thread, the race f5787d23 removed for templates; that waits on the templates thread's
+answer (it may already happen across files).
+
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
-threads; clang is the one phase still gaining. Why, phase by phase:
+threads; clang is the one phase still gaining. Why, phase by phase (as measured on 089dcce5):
 
 - **Resolve: one file is the critical path.** Every file but one is done 0.40 s into the resolve;
   `ValueToWidget.kpp` (728 KB) is walked from 0.05 to 1.32 s, the whole phase (a per-file timeline,
