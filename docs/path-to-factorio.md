@@ -1680,6 +1680,42 @@ this->tagsByTagNumber.size()`, 4 bytes in Kpp where C++ writes a size_t: the con
 `size_t(...)` there since c97380f), and quiet_NaN() as 0.0 / 0.0, the processor's negative NaN in a
 debug build (Train::lastSpeed; the library now builds it from its bits).
 
+### The menu simulations against the C++ build (2026-10-30)
+
+Every menu simulation the game ships, 45 maps (base 19, space-age 23, elevated-rails 3), ran
+`--benchmark MAP --benchmark-ticks 600` in the Kpp release build and in the C++ Debug build above,
+and the checksums they print at the end were compared. 40 matched. Five did not: brutal-defeat,
+lab, mining-defense, nauvis-biolab and nauvis-rocket-factory. All five matched right after the
+load, and every run of a map gave the same checksum in either build.
+
+The method for a map that differs: bisect the tick count with --benchmark. Then both builds run a
+copy of the map to that map tick with `--load-game COPY --until-tick T`, which saves the map back
+to COPY. Unlike --benchmark, until-tick leaves entity updates paused, so a scratch mod in both
+write directories unpauses them (`script.on_configuration_changed(function() game.tick_paused =
+false end)`). The C++ build then tags both saves (`--add-tags`) and the two uncompressed level files
+are compared; the zips themselves differ even for the same state, because the compression does.
+
+The checksums first differ after 45 ticks (lab), 15 (mining-defense), 82 (nauvis-biolab), 91
+(nauvis-rocket-factory) and 103 (brutal-defeat). In the first four the two saves differ in one byte:
+a tree's TreeData, `uint8_t color : 4; uint8_t greyProgress : 4;`. In lab the byte was 0x12 before
+the tick, C++ wrote 0x22 and Kpp 0x13. In nauvis-biolab 0x45 became 0x55 against 0x46, in
+nauvis-rocket-factory 0x05 became 0x15 against 0x06, and in mining-defense 0x06 became 0x16 against
+0x07 (which the C++ loader wraps to color 0). The code is Tree::damageByPollution's
+`this->treeData.greyProgress++`: Kpp's code generator incremented the field's storage unit
+unshifted, so the tree's color changed instead of its grey progress. In brutal-defeat many trees
+change in that one tick (an explosion), and the differing grey progress takes the map's random
+generators and more trees apart within it (44 differing ranges). Spec
+language/bit_field_increment_and_decrement; the codegen thread fixed it in 4628d243, together with a
+bit-field named without `this->`, which was read and written as its whole unit. On master since
+then all 45 maps end 600 ticks with the C++ build's checksums in the release build (a scratch patch
+of the increment had shown the same before).
+
+`python -I programs\factorio\menu-checksums.py GAME_DIR` repeats the comparison for a build laid out
+as run.cmd lays it out: it runs the 45 maps and compares with the C++ build's checksums that
+menu-checksums.txt keeps, together with the C++ run's prototype list checksum, so that a run with
+other mods reads as not comparable rather than different. `--baseline` measures the C++ build again
+(6 minutes); the release game's check takes 83 s.
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way

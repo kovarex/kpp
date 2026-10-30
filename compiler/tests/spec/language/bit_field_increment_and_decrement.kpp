@@ -1,5 +1,5 @@
 // spec: ++ and --, prefix and postfix, on a bit-field change that field alone: its value plus or minus one, wrapped to the field's width, written back into the field's own bits; a postfix one's value is the field's old value and a prefix one's the new
-// factorio: Tree::damageByPollution's `this->treeData.greyProgress++` (Tree::TreeData's `uint8_t color : 4; uint8_t greyProgress : 4;`) added one to the whole byte, which is color's bits: a tree that pollution greys changed its color instead, and menu-simulation-lab's checksum left the C++ build's at its 45th tick (the save's one differing byte is that tree's, 0x13 where C++ writes 0x22)
+// factorio: Tree::damageByPollution's `this->treeData.greyProgress++` (Tree::TreeData's `uint8_t color : 4; uint8_t greyProgress : 4;`) added one to the whole byte, which is color's bits: a tree that pollution greys changed its color instead, and 5 of the 45 menu simulations ended 600 ticks with checksums other than the C++ build's (menu-simulation-lab from its 45th tick: the save's one differing byte is that tree's, 0x13 where C++ writes 0x22); with the field's bits incremented, all 45 match
 struct TreeData
 {
   uint8_t treeVariation : 4;
