@@ -476,7 +476,8 @@ meant:
   arguments ([expr.sub], [expr.shift], [expr.mptr.oper], [expr.call] 8). Overloaded operators
   follow the built-in operator's order.
 - `new` allocates before it evaluates the initializer's arguments ([expr.new] 19). (A class's own
-  operator new is not called yet: classes/class_operator_new_is_called is pending.)
+  operator new or operator delete is not supported yet, and declaring one is an error:
+  classes/class_operator_new_is_not_supported_yet.)
 - Otherwise C++ leaves the order unspecified (a call's arguments among themselves, the operands
   of `+`), and so does Kpp: code must not depend on it.
 

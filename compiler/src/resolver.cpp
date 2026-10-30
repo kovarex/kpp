@@ -18237,6 +18237,13 @@ struct GlobalScope::Impl
           auto* f = static_cast<FunctionDecl*>(d);
           if (activeSubst && (f->attributes & ATTR_InstanceCopy))
             impl.recordInstanceSubst(f, *activeSubst); // the classes of its body see these arguments
+          // A class's own operator new or operator delete (or a replacement of the global one): `new`
+          // and `delete` would allocate with the library's functions and silently pass it by, so its
+          // declaration is an error until they call it.
+          if (!activeSubst && !probing && file && !file->isImported && !f->name.empty() && f->name.last().special == 2 &&
+              (f->name.last().opToken == uint32_t(P::Count) + uint32_t(Kw::new_) || f->name.last().opToken == uint32_t(P::Count) + uint32_t(Kw::delete_)))
+            impl.reportCheckerError(file, f->token, std::string(impl.owningClassOf(f) ? "a class's own" : "a replacement of the global") +
+                                                        " operator new or operator delete is not supported yet");
           Scope* saved = scope;
           const Ty* savedThis = thisType;
           walkType(f->returnType);
