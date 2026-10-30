@@ -22,14 +22,16 @@ struct FunctionImpl
 
   FunctionImpl() {}
   implicit FunctionImpl(nullptr_t) {}
-  // From a callable, never from what cannot be called (a number, a pointer to an object such as a
-  // string literal), so that another overload takes those, as std::function's constructor needs a
-  // callable: `use("text")` with use(const String&) and use(Function<void()>) takes the String one.
+  // From a callable, never from what cannot be called with Args (a number, a pointer to an object
+  // such as a string literal, a String), so that another overload takes those, as std::function's
+  // constructor needs a callable: `use("text")` with use(const String&) and use(Function<void()>)
+  // takes the String one, and PrototypeList's get(name) with a String takes get(StringView), not
+  // get(const Function<bool(const T*)>&).
   // A null function pointer makes an empty Function, as std::function's constructor does
   // (SimulationWidget's `hasGradient ? GameViewWidgetLogic::drawGradient : nullptr`).
   template<typename F>
   implicit FunctionImpl(F callable)
-    requires(!isArithmetic<F> && !(isPointer<F> && !isFunction<RemovePointer<F>>))
+    requires(!isArithmetic<F> && !(isPointer<F> && !isFunction<RemovePointer<F>>) && isInvocable<F, Args...>)
   {
     if constexpr (isPointer<F>)
       if (callable == nullptr)
