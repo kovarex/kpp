@@ -257,6 +257,14 @@ namespace
     std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
     std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
+    std::set<std::string> sharedReferences;              // program functions `decls` names (sorted: the same declares in every run)
+    struct TypeLine
+    {
+      std::string_view line;      // `%struct.<hash> = type {...}`, in the finished `decls`
+      std::vector<uint32_t> uses; // the type lines it names
+    };
+    std::vector<TypeLine> typeLines;                     // the type definitions, in `decls` order (prepareModuleTexts)
+    std::unordered_map<std::string_view, uint32_t> typeIndex; // a type's name -> its line
     std::map<std::string, FunctionDecl*> undefinedUses;  // Kpp functions used whose definition was not found (only declared)
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
     bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
@@ -7535,7 +7543,9 @@ namespace
     // The shared declarations without those of functions this module defines: a `declare` next to
     // the `define` is a redefinition to LLVM (a call site whose definition was not found declares
     // the function as external).
-    std::string declsFor(unsigned k)
+    // The shared declarations as module k carries them; without the type definitions when types is
+    // false (moduleText writes those the module uses).
+    std::string declsFor(unsigned k, bool types = true)
     {
       std::string out;
       const std::string& decls = this->decls.text;
@@ -7546,7 +7556,7 @@ namespace
         if (end == std::string::npos)
           end = decls.size();
         std::string_view line(decls.data() + pos, end - pos);
-        bool skip = false;
+        bool skip = !types && isTypeLine(line);
         if (line.rfind("declare ", 0) == 0)
         {
           size_t at = line.find('@');
@@ -7598,17 +7608,82 @@ namespace
       }
     }
 
+    // A type definition line of the shared declarations (`%struct.<hash> = type {...}`, `%closure...`).
+    static bool isTypeLine(std::string_view line) { return !line.empty() && line[0] == '%' && line.find(" = type ") != std::string_view::npos; }
+
+    // Calls found(name) for each class or closure type a text names (`%struct.<hash>`, `%closure.<hash>`).
+    template<typename F>
+    static void typeNamesIn(std::string_view text, F&& found)
+    {
+      for (size_t i = text.find('%'); i != std::string_view::npos; i = text.find('%', i + 1))
+      {
+        std::string_view rest = text.substr(i + 1);
+        if (!rest.starts_with("struct.") && !rest.starts_with("closure."))
+          continue;
+        size_t end = i + 1;
+        while (end < text.size() && (isalnum((unsigned char)text[end]) || text[end] == '.' || text[end] == '_'))
+          ++end;
+        found(text.substr(i, end - i));
+        i = end - 1;
+      }
+    }
+
+    // What every module's assembly reads, filled once before the modules are assembled on all
+    // threads: the functions the shared declarations declare and those they name (a global's table
+    // of function pointers), and the type definitions with the types each names.
+    void prepareModuleTexts()
+    {
+      declaredIn(decls.text, sharedDeclared);
+      const std::string& shared = decls.text;
+      for (size_t i = shared.find("@\""); i != std::string::npos; i = shared.find("@\"", i + 1))
+      {
+        size_t end = shared.find('"', i + 2);
+        if (end == std::string::npos)
+          break;
+        std::string name = shared.substr(i, end + 1 - i);
+        if (definedIn.count(name) && !sharedDeclared.count(name))
+          sh.sharedReferences.insert(name);
+        i = end;
+      }
+      std::string_view text = decls.text;
+      for (size_t pos = 0; pos < text.size();)
+      {
+        size_t end = text.find('\n', pos);
+        if (end == std::string_view::npos)
+          end = text.size();
+        std::string_view line = text.substr(pos, end - pos);
+        if (isTypeLine(line))
+        {
+          sh.typeIndex.emplace(line.substr(0, line.find(" = type ")), uint32_t(sh.typeLines.size()));
+          sh.typeLines.push_back({line, {}});
+        }
+        pos = end + 1;
+      }
+      for (Shared::TypeLine& t : sh.typeLines)
+        typeNamesIn(t.line.substr(t.line.find(" = type ")), [&](std::string_view name)
+        {
+          if (auto it = sh.typeIndex.find(name); it != sh.typeIndex.end())
+            t.uses.push_back(it->second);
+        });
+    }
+
+    // Module k's text. Reads only what is finished (the texts) and prepareModuleTexts' lookups, so
+    // the modules are assembled on all threads at once.
     std::string moduleText(unsigned k, const std::string& prefix)
     {
       std::string ctors = ctorsText(k); // module 0 runs the startup functions of every module
       std::string text = moduleDecls[k].text + bodies[k].text + shared.text + ctors;
-      std::string decls = declsFor(k);
-      if (sharedDeclared.empty())
-        declaredIn(this->decls.text, sharedDeclared);
+      std::string decls = declsFor(k, false);
       std::unordered_set<std::string> already; // declarations the module carries (shared, or its own)
       declaredIn(moduleDecls[k].text, already);
       std::string declares;
       std::unordered_set<std::string> seen;
+      auto declare = [&](const std::string& name)
+      {
+        auto line = declareLines.find(name);
+        if (line != declareLines.end())
+          declares += line->second + "\n";
+      };
       for (size_t i = text.find('@'); i != std::string::npos; i = text.find('@', i + 1))
       {
         size_t end;
@@ -7625,32 +7700,48 @@ namespace
           continue;
         auto it = definedIn.find(name);
         if (it != definedIn.end() && it->second != k && !sharedDeclared.count(name) && !already.count(name))
-          declares += declareLines[name] + "\n"; // not when a declaration is in the module's text already
+          declare(name); // not when a declaration is in the module's text already
       }
-      // The functions the shared declarations name (a global's constant data: a table of function
-      // pointers), found once: every module but the defining one declares them.
-      if (!sharedReferencesFound)
+      // The functions the shared declarations name: every module but the defining one declares them.
+      for (const std::string& name : sh.sharedReferences)
+        if (auto it = definedIn.find(name); it != definedIn.end() && it->second != k && !already.count(name) && seen.insert(name).second)
+          declare(name);
+      // The type definitions the module names, and those they name in turn (every module had all of
+      // the game's 24 k), in the shared declarations' order.
+      std::vector<char> used(sh.typeLines.size(), 0);
+      std::vector<uint32_t> work;
+      auto mark = [&](uint32_t t)
       {
-        sharedReferencesFound = true;
-        const std::string& shared = this->decls.text;
-        for (size_t i = shared.find("@\""); i != std::string::npos; i = shared.find("@\"", i + 1))
+        if (!used[t])
         {
-          size_t end = shared.find('"', i + 2);
-          if (end == std::string::npos)
-            break;
-          std::string name = shared.substr(i, end + 1 - i);
-          if (definedIn.count(name) && !sharedDeclared.count(name))
-            sharedReferences.insert(name);
-          i = end;
+          used[t] = 1;
+          work.push_back(t);
         }
+      };
+      auto markName = [&](std::string_view name)
+      {
+        if (auto it = sh.typeIndex.find(name); it != sh.typeIndex.end())
+          mark(it->second);
+      };
+      typeNamesIn(text, markName);
+      typeNamesIn(decls, markName);
+      typeNamesIn(declares, markName);
+      while (!work.empty())
+      {
+        uint32_t t = work.back();
+        work.pop_back();
+        for (uint32_t u : sh.typeLines[t].uses)
+          mark(u);
       }
-      for (const std::string& name : sharedReferences)
-        if (definedIn[name] != k && !already.count(name) && seen.insert(name).second)
-          declares += declareLines[name] + "\n";
-      return prefix + decls + moduleDecls[k].text + ctors + "\n" + shared.text + declares + "\n" + bodies[k].text;
+      std::string types;
+      for (size_t t = 0; t < sh.typeLines.size(); ++t)
+        if (used[t])
+        {
+          types.append(sh.typeLines[t].line);
+          types += '\n';
+        }
+      return prefix + types + decls + moduleDecls[k].text + ctors + "\n" + shared.text + declares + "\n" + bodies[k].text;
     }
-    bool sharedReferencesFound = false;
-    std::set<std::string> sharedReferences; // sorted: the same declare lines in every run
 
     // The default assert handler, unless the program defines `extern "C" kpp_assert_failed`.
     void finishAssertRuntime()
@@ -15750,13 +15841,29 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     }
     return result;
   }
-  std::unordered_set<std::string> stubbed;
-  for (unsigned k = 0; k < e.moduleCount; ++k)
+  // The modules are independent once the texts are finished: assembled on all the emitters'
+  // threads at once (on one thread this was 4.5 s of the game's codegen), each module's own texts
+  // freed as soon as it is assembled.
+  e.prepareModuleTexts();
+  result.modules.resize(e.moduleCount);
+  std::vector<std::unordered_set<std::string>> stubbedIn(e.moduleCount);
+  std::atomic<unsigned> nextModule{0};
+  auto assemble = [&](unsigned thread)
   {
-    result.modules.push_back(e.moduleText(k, prefix));
-    if (!result.errors.empty())
-      result.modules.back() += declareUndefined(result.modules.back(), sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
-  }
+    Emitter& em = *emitters[thread];
+    for (unsigned k = nextModule++; k < em.moduleCount; k = nextModule++)
+    {
+      result.modules[k] = em.moduleText(k, prefix);
+      std::string().swap(sh.bodies[k].text);
+      std::string().swap(sh.moduleDecls[k].text);
+      if (!result.errors.empty())
+        result.modules[k] += declareUndefined(result.modules[k], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[k]);
+    }
+  };
+  onThreads(unsigned(emitters.size()), assemble);
+  std::unordered_set<std::string> stubbed;
+  for (const std::unordered_set<std::string>& names : stubbedIn)
+    stubbed.insert(names.begin(), names.end());
   if (sh.stubMissing)
     result.stubs = stubbed.size() + countUndefinedStubs(sh);
   return result;

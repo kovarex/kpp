@@ -581,7 +581,12 @@ machine); a different count is a different build (all modules new), as a differe
    call it, and the link missed it. ThinLTO release build of the game: link 130 -> 102 s, wall 154 ->
    125 s, the executable 52,862,976 -> 52,864,000 bytes (ThinLTO imports the helpers it inlines).
    (Both release executables stop at their command line, "Error opening '--benchmark'", before and
-   after: the release game has never run; to look at.)*
+   after: the release game has never run; to look at.)* *Then the modules assembled on all threads
+   (each module's own texts freed once assembled) and each module given only the type definitions
+   it names, and those they name: the IR 786 -> 668 MB; codegen 11.8, 11.1, 8.5 s -> 10.2, 9.3, 6.9 s;
+   clang 6.0, 7.0, 6.9 s -> 6.9, 5.0, 3.1 s; wall 28.9, 32.1, 23.7 s -> 28.8, 25.7, 17.6 s (clean
+   builds, interleaved, the machine shared). The declares still come from a scan of each module's
+   text (now on its own thread); step 4's recorded `uses` replace it.*
 4. Every emission recorded as Items (what step 3 placed by name, now with its `uses`, `requested`
    and `layouts`), and the modules assembled from the Items: byte-identical to step 3's output.
    Measured: the cost to a clean build (target: within a few percent).
