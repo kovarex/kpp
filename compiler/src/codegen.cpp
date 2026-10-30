@@ -7297,8 +7297,16 @@ namespace
     // binds a temporary holding its value.
     static bool namesBitField(Expr* e)
     {
-      while (e && e->kind == NodeKind::ParenExpr)
-        e = static_cast<ParenExpr*>(e)->inner;
+      for (;;) // `(x.f)`; `++x.f` and `x.f = v`, lvalues naming the field too
+        if (e && e->kind == NodeKind::ParenExpr)
+          e = static_cast<ParenExpr*>(e)->inner;
+        else if (e && e->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(e)->isKeyword && !static_cast<UnaryExpr*>(e)->postfix &&
+                 (P(static_cast<UnaryExpr*>(e)->op) == P::PlusPlus || P(static_cast<UnaryExpr*>(e)->op) == P::MinusMinus))
+          e = static_cast<UnaryExpr*>(e)->operand;
+        else if (e && e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword && isAssignment(P(static_cast<BinaryExpr*>(e)->op)))
+          e = static_cast<BinaryExpr*>(e)->lhs;
+        else
+          break;
       Decl* d = !e ? nullptr : e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved
                              : e->kind == NodeKind::NameExpr    ? static_cast<NameExpr*>(e)->resolved
                                                                 : nullptr;
@@ -12048,6 +12056,8 @@ namespace
           if ((!type || !type->isKnown()) && d)
             if (auto local = locals.find(d); local != locals.end() && local->second.ty && local->second.ty->isKnown())
               type = local->second.ty; // `auto xmm0 = _mm_loadu_si128(...)`: the type the code generator gave the local
+          if (const BitfieldInfo* bits = bitfieldNamed(e)) // a member bit-field named without `this->`
+            return loadBitfield(addr, *bits, types.stripRef(type ? type : declType(d)), e);
           return load(addr, type ? type : (d ? declType(d) : nullptr), e);
         }
         case NodeKind::ThisExpr:
@@ -12575,6 +12585,25 @@ namespace
       return bits;
     }
 
+    // The bit-field an lvalue names, or null: `x.f`, `this->data.f`, `f` in a member function, in
+    // parentheses or not (what an assignment, a compound assignment or an increment writes, its own
+    // bits of the storage unit alone). Asked once the lvalue's address is computed: its class is
+    // laid out then.
+    const BitfieldInfo* bitfieldNamed(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      Decl* d = !e ? nullptr : e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved
+                             : e->kind == NodeKind::NameExpr    ? static_cast<NameExpr*>(e)->resolved
+                                                                : nullptr;
+      if (!d || d->kind != NodeKind::VariableDecl || !static_cast<VariableDecl*>(d)->bitfield)
+        return nullptr;
+      const BitfieldInfo* bits = bitfieldFor(d);
+      if (!bits)
+        unsupported(e, "a bit-field whose place in its class is not known"); // never its whole storage unit
+      return bits;
+    }
+
     void ensureMalloc()
     {
       auto lock = sharedLock();
@@ -12874,8 +12903,16 @@ namespace
           return callRvalue(operatorCall(o, opName, {}, u, true), u);
         }
         std::string addr = lvalue(u->operand);
-        Value old = load(addr, ot, u);
+        // A bit-field: its own bits of the storage unit, read and written back as an assignment
+        // does them, a prefix one's value read back (wrapped to the field's width).
+        const BitfieldInfo* bits = bitfieldNamed(u->operand);
+        Value old = bits ? loadBitfield(addr, *bits, ot, u) : load(addr, ot, u);
         Value updated = arithmetic(op == P::PlusPlus ? P::Plus : P::Minus, old, Value{"1", types.intType(32)}, u);
+        if (bits)
+        {
+          storeBitfield(convert(updated, ot, u), addr, *bits, ot, u);
+          return u->postfix ? old : loadBitfield(addr, *bits, ot, u);
+        }
         store(updated, addr, ot, u);
         return u->postfix ? old : convert(updated, ot, u);
       }
@@ -13160,19 +13197,18 @@ namespace
                                                                                 : rvalue(b->rhs);
         if (scalarAssignment)
           rhs = convert(rhs, global.scalarConversionOf(rhs.ty) ? global.scalarConversionOf(rhs.ty) : t, b);
-        const BitfieldInfo* bits = nullptr;
-        if (b->lhs->kind == NodeKind::MemberExpr)
-          if (Decl* d = static_cast<MemberExpr*>(b->lhs)->resolved)
-            bits = bitfieldFor(d);
+        const BitfieldInfo* bits = bitfieldNamed(b->lhs);
         if (op != P::Assign)
         {
           Value old = bits ? loadBitfield(addr, *bits, t, b) : load(addr, t, b);
           rhs = arithmetic(baseOp(op), old, rhs, b);
         }
         if (bits)
+        {
           storeBitfield(convert(rhs, t, b), addr, *bits, t, b);
-        else
-          store(rhs, addr, t, b);
+          return loadBitfield(addr, *bits, t, b); // the field's value, wrapped to its width
+        }
+        store(rhs, addr, t, b);
         return convert(rhs, t, b);
       }
       Value l = rvalue(b->lhs);

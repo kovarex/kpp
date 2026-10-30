@@ -1,0 +1,62 @@
+// spec: a bit-field named without `this->` in a member function, or in parentheses, is read and written as that field alone (its own bits of the storage unit); an assignment's or a prefix increment's value is the field's new value, wrapped to its width
+// factorio: found beside Tree::damageByPollution's `this->treeData.greyProgress++` (language/bit_field_increment_and_decrement): only `x.f` and `this->x.f` were written as the field; `f` named in a member function was read and written as its whole storage unit (`progress = 3` set the byte's low field too), `(x.f) = v` likewise, and an assignment's or a prefix increment's value was the unwrapped one. Expected output from a C++ twin built with VS clang++
+struct TreeData
+{
+  uint8_t treeVariation : 4;
+  uint8_t progress : 4;
+  uint8_t color : 4;
+  uint8_t greyProgress : 4;
+  void implicitAssign() { progress = 3; }
+  void implicitCompound() { greyProgress += 2; }
+  void implicitIncrement()
+  {
+    greyProgress++;
+    ++progress;
+  }
+  int implicitRead() { return progress; }
+};
+struct Signed
+{
+  int low : 3;
+  int high : 5;
+};
+void show(const char* what, const TreeData& data)
+{
+  println("{}: {} {} {} {}", what, (int)data.treeVariation, (int)data.progress, (int)data.color, (int)data.greyProgress);
+}
+int main()
+{
+  TreeData data;
+  data.treeVariation = 9;
+  data.progress = 0;
+  data.color = 2;
+  data.greyProgress = 1;
+  data.implicitAssign();
+  show("implicit =", data);
+  data.implicitCompound();
+  show("implicit +=", data);
+  data.implicitIncrement();
+  show("implicit ++", data);
+  println("implicit read: {}", data.implicitRead());
+  (data.color) += 1;
+  show("parenthesized +=", data);
+  (data.color) = 7;
+  show("parenthesized =", data);
+  (data.color)++;
+  show("parenthesized ++", data);
+  int assigned = (data.greyProgress = 17);
+  println("assignment value: {} field {}", assigned, (int)data.greyProgress);
+  int added = (data.greyProgress += 15);
+  println("compound value: {} field {}", added, (int)data.greyProgress);
+  data.progress = 15;
+  int prefix = ++data.progress;
+  println("prefix value: {} field {}", prefix, (int)data.progress);
+  show("after", data);
+  Signed s;
+  s.low = 3;
+  s.high = -16;
+  s.low++;
+  --s.high;
+  println("signed: {} {}", (int)s.low, (int)s.high);
+  return 0;
+}

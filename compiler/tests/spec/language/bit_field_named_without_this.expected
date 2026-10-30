@@ -1,0 +1,12 @@
+implicit =: 9 3 2 1
+implicit +=: 9 3 2 3
+implicit ++: 9 4 2 4
+implicit read: 4
+parenthesized +=: 9 4 3 4
+parenthesized =: 9 4 7 4
+parenthesized ++: 9 4 8 4
+assignment value: 1 field 1
+compound value: 0 field 0
+prefix value: 0 field 0
+after: 9 0 8 0
+signed: -4 15
