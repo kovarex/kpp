@@ -5,6 +5,40 @@ are from the Factorio corpus (`src`, `tests`, `libraries/CommonUtil`, `libraries
 lines) with plain `grep` over use sites, so they say how much code touches each thing, not how
 hard each site is.
 
+## Handoff: converter, stdlib and game tests (2026-10-30, evening)
+
+The source is Factorio df1c9d1cd3c since 2026-10-30 12:12 (before: d0495ebfd8a). The committed
+conversion in kovarex/factorio-in-kpp is still of the old source, and stays so until the new one's
+headline is 0 and the game links: the other threads run that one.
+
+- **New source, headline 3,640** (`programs\factorio\convert.cmd C:\fik-convert\kpp`; it was 4,203 with
+  master of the morning). About 3,450 of it is NamedBool's `using Enum::True;`
+  (classes/using_declaration_of_member_enumerator, pending, to be assigned). With NamedBool
+  overridden locally to its old `static constexpr Enum True = Enum::True;` 199 remain (before the
+  equivalent/eraseIf additions): templates/member_of_base_of_parameter_base (~78,
+  LuaControlBehaviorTemplate), templates/is_invocable_member_function_pointer (22),
+  templates/class_template_static_function_to_reference (5), all pending; the rest is the
+  converter's and the library's (DebugAdapter, a few single errors) and not yet looked at one by one.
+  Do not commit such an override: the gap is the compiler's.
+- **The old source as the gate** for a change meanwhile: "A new Factorio source, and checking against
+  an older one" below. The snapshot of d0495ebfd8a, its BuildVersion.hpp and the junctions were in a
+  scratch directory of this thread; make them again from the recipe.
+- **Landed today**: the stdlib's C declarations with their headers' types (Win32 in
+  stdlib/core/Win32.kpp, namespace win32), the deferred SharedFuture race (PlanetGeneration),
+  filesystem::equivalent, eraseIf (std::erase_if), and the converter's BITFIELD trailing comma,
+  memory-order arguments, `Container::iterator::reference` and comments in macro expansions. Each
+  was checked on the old source: headline 0, 7 smoke tests, 9,005 of 9,005 tests in 556 suites; the
+  C declarations also with all 45 menu maps the C++ checksums.
+- **Next, in order**: the remaining converter and library errors of the new source (one by one from
+  kpp\full-errors.txt, with NamedBool overridden locally to see past it); once kovarex's C++ Debug
+  exe of the new source exists, `tests.cmd --baseline` and `menu-checksums.py --baseline` against it;
+  then, at headline 0, the unit tests and the menu maps of the new source and the factorio-in-kpp
+  push. Queue: `::Set` under a clashing using-directive (TestMigrations:1999) works in a minimal
+  reproduction; confirm it in the new source's tests build.
+- **C:\fik-convert** is on branch reconvert-2026-10-30 (from origin/master d9080751) with the new
+  source's conversion uncommitted in kpp\: regenerate rather than commit it. C:\factorio-in-kpp
+  (the main clone) is untouched: ~2,385 stale modified files, behind origin.
+
 ## Where kppc is
 
 - **Front end.** Parses 99.54% of Factorio's files and types 77% of the expressions and 78% of
