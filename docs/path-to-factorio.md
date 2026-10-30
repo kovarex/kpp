@@ -1666,8 +1666,13 @@ and the three Space Age ones; prototype list checksum 2335390327 in all three):
 | 2 | 433.8 ms (avg 0.723 ms) | 731.9 ms (avg 1.220 ms) | 258.4 ms (avg 0.431 ms) |
 | 3 | 401.4 ms (avg 0.669 ms) | 767.3 ms (avg 1.279 ms) | 258.7 ms (avg 0.431 ms) |
 
-The two debug builds are different things: the C++ one is the game's Debug configuration (its DEBUG
-checks among them), Kpp's is -O0 with config::debug's asserts. All three end with the same checksum
+None of the columns is a release number, and the two debug ones are not like for like. C++ debug is
+the game's Debug configuration (fbuild.bff's BuildDebug): /Od, no optimisation, and the debug
+runtime /MTd, so MSVC's library runs with _ITERATOR_DEBUG_LEVEL 2 (checked iterators, container
+debugging) and the debug heap. Kpp debug is -O0 with config::debug's asserts, and Kpp's containers
+check nothing (Vector's operator[] indexes unchecked). Both Kpp builds come from one conversion,
+which reads the game as FastDebug (_DEBUG, DEBUG, LUA_USE_APICHECK: the game's debug-only code is in
+all three columns), and Kpp release turns off only the asserts. All three end with the same checksum
 of the game's complete-mode save, 3172640117 after 600 ticks (2920833374 after 1, 2982388606 right
 after the load). Two differences from the C++ build had to go first, found by diffing the saves
 `--add-tags` writes: a std container's size() sent to a serialiser (`output <<
