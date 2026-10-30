@@ -157,6 +157,9 @@ struct ConstHooks
   // The byte offset of data member m (a VariableDecl) in an object of class t, which may declare it
   // in a base; nullopt when t has no such member.
   std::function<std::optional<int64_t>(const Ty* t, Decl* m)> offset;
+  // Each function body the evaluation runs (the definition it is written in): the code generator's
+  // text then depends on that body, and an incremental build emits it again after an edit of it.
+  std::function<void(const FunctionDecl*)> ran;
 };
 
 // The operator of a unary or binary expression (its op and isKeyword), `and`, `not` and `bitor`

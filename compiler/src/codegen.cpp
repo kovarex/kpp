@@ -267,6 +267,15 @@ namespace
       std::vector<std::pair<uint32_t, uint32_t>> names; // the `@names` in the text (offset, length), in order, as moduleText scans them
       std::vector<std::pair<uint32_t, uint32_t>> types; // the `%struct...`/`%closure...` it names
       bool counted = false; // one of the build's functions (result.functions): not a catch filter, nor a global's constructor
+      // The definitions (as written: an instance's template's) of the trivial callees whose bodies
+      // this function's emission holds, its lambdas' included (Emitter::noteInlined): an edit of one
+      // of those bodies changes this text, and rebuildLLVM emits it again as `emitted` says.
+      std::vector<const FunctionDecl*> inlined;
+      std::unique_ptr<Instantiation> emitted; // (set with inlined)
+      // A lambda's call operator its first caller emitted (Emitter::emitCallOperatorOnDemand): its
+      // closure and call types, to emit it again on its own once its writer's edit dropped it.
+      const Ty* closure = nullptr;
+      const Ty* callType = nullptr;
     };
     static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
@@ -5332,8 +5341,8 @@ namespace
       }
       if (!writer || !writer->templateParams.empty())
         return;
-      Decl* owner = global.owningClass(writer);
-      for (Decl* o = owner; o; o = o->parent)
+      Decl* ownerClass = global.owningClass(writer);
+      for (Decl* o = ownerClass; o; o = o->parent)
         if (!o->templateParams.empty() || (o->kind == NodeKind::FunctionDecl && o != writer))
           return; // a member of a class template, or of a local class (inside a function that may be one)
       {
@@ -5341,9 +5350,35 @@ namespace
         if (!sh.closuresEmitted.insert(t).second)
           return;
         ClosureInfo& shared = closures[types.unqualified(t)];
-        if (!shared.enclosingClass && owner && owner->kind == NodeKind::ClassDecl)
-          shared.enclosingClass = types.classType(owner, {}); // what `this` in the body points to
+        if (!shared.enclosingClass && ownerClass && ownerClass->kind == NodeKind::ClassDecl)
+          shared.enclosingClass = types.classType(ownerClass, {}); // what `this` in the body points to
       }
+      // Placed and owned as if its writer had made it, whichever caller needs it first (callers of one
+      // level are emitted at once): in the writer's module, belonging to the writer. An edit of the
+      // writer drops it, and rebuildLLVM emits it again on its own (Shared::Definition::closure);
+      // what it inlines is its own, not its first caller's.
+      auto* writerFunction = static_cast<FunctionDecl*>(writer);
+      struct Restore
+      {
+        Emitter& e;
+        unsigned module;
+        std::string owner;
+        std::vector<const FunctionDecl*> inlined;
+        OnDemand onDemand;
+        ~Restore()
+        {
+          e.currentModule = module;
+          e.owner = std::move(owner);
+          e.inlinedNow = std::move(inlined);
+          e.onDemandNow = std::move(onDemand);
+        }
+      } restore{*this, currentModule, owner, std::move(inlinedNow), onDemandNow};
+      inlinedNow.clear();
+      if (moduleCount > 1)
+        if (auto it = sh.fileModule.find(writer->file); it != sh.fileModule.end())
+          currentModule = it->second;
+      owner = functionName(writerFunction, {}, nullptr);
+      onDemandNow = {name, t, callTy, writerFunction};
       TemplateArgs none;
       emitLambda(l, t, callTy, name, &none);
     }
@@ -6314,7 +6349,8 @@ namespace
     // The typed definition of the call's callee when it is trivial: one statement, `return E;` or
     // `E;`, with E a trivialExpression, the parameters and the result scalars, pointers or
     // references. Decided once per definition (it depends on the definition alone). Null otherwise.
-    FunctionDecl* trivialDefinition(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    // written: set to the definition the body is written in (an instance's template's).
+    FunctionDecl* trivialDefinition(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, FunctionDecl** written = nullptr)
     {
       if ((f->flags & (DF_Constructor | DF_Destructor | DF_Variadic | DF_Default | DF_Delete)) || (f->attributes & ATTR_NoInline) ||
           f->builtin || global.isExternC(f))
@@ -6324,6 +6360,8 @@ namespace
       // of either under its own parameters.
       Decl* defined = global.definitionOf(f, args);
       auto* chosen = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : f;
+      if (written)
+        *written = chosen;
       if (!chosen->body || (chosen->file && chosen->file->isImported))
         return nullptr;
       FunctionDecl* def = args.empty() ? chosen : global.instanceBody(chosen, definitionArguments(f, chosen, args), classTy);
@@ -6366,7 +6404,8 @@ namespace
     // scalars or pointers, each that it does not initialize with a trivial default member
     // initializer or none, and no base, virtual function or union (NamedBool's, ID's). Decided
     // once per definition. Null otherwise.
-    FunctionDecl* trivialConstructor(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at)
+    // written: as trivialDefinition's.
+    FunctionDecl* trivialConstructor(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at, FunctionDecl** written = nullptr)
     {
       if (!(f->flags & DF_Constructor) || (f->flags & (DF_Variadic | DF_Default | DF_Delete)) || (f->attributes & ATTR_NoInline) || f->builtin ||
           !classTy || !isClass(classTy))
@@ -6377,6 +6416,8 @@ namespace
         return nullptr;
       Decl* defined = global.definitionOf(f, args);
       auto* chosen = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(defined) : f;
+      if (written)
+        *written = chosen;
       if (!chosen->body || (chosen->file && chosen->file->isImported))
         return nullptr;
       FunctionDecl* def = args.empty() ? chosen : global.instanceBody(chosen, definitionArguments(f, chosen, args), classTy);
@@ -6450,11 +6491,13 @@ namespace
     // signature is s: the arguments as the call passes them, in order, bound to the definition's
     // parameters as its own prologue binds them (in inlineSlots), `this` likewise, and emit run
     // under the callee's arguments, class and file (an error in it is the callee's line). The
-    // bindings and the state are restored however emit ends.
+    // bindings and the state are restored however emit ends. written: the definition the body is
+    // written in (an instance's template's), which the function being emitted depends on from here.
     template<typename F>
-    void inlineCall(FunctionDecl* def, const TemplateArgs& args, const Ty* classTy, const Signature& s, const std::string& thisArg,
-                    Span<Expr*> callArgs, Node* at, F&& emit)
+    void inlineCall(FunctionDecl* def, const FunctionDecl* written, const TemplateArgs& args, const Ty* classTy, const Signature& s,
+                    const std::string& thisArg, Span<Expr*> callArgs, Node* at, F&& emit)
     {
+      noteInlined(written);
       size_t first = s.hasThis ? 1 : 0;
       std::vector<std::string> texts;
       for (size_t i = 0; i < callArgs.size(); ++i)
@@ -6524,7 +6567,8 @@ namespace
       for (Expr* a : callArgs)
         if (!a || isPackExpansion(a) || a->kind == NodeKind::BraceInitExpr)
           return std::nullopt;
-      FunctionDecl* def = trivialDefinition(f, args, classTy);
+      FunctionDecl* written = nullptr;
+      FunctionDecl* def = trivialDefinition(f, args, classTy, &written);
       if (!def)
         return std::nullopt;
       Signature s;
@@ -6537,7 +6581,7 @@ namespace
       if (s.hasThis && thisArg.empty())
         return std::nullopt;
       Value result{"", types.voidType(), false};
-      inlineCall(def, args, classTy, s, thisArg, callArgs, at, [&]
+      inlineCall(def, written, args, classTy, s, thisArg, callArgs, at, [&]
       {
         auto* statement = static_cast<BlockStmt*>(def->body)->stmts[0];
         if (statement->kind == NodeKind::ExprStmt)
@@ -6567,7 +6611,8 @@ namespace
       for (Expr* a : callArgs)
         if (!a || isPackExpansion(a) || a->kind == NodeKind::BraceInitExpr)
           return std::nullopt;
-      FunctionDecl* def = trivialConstructor(f, args, classTy, at);
+      FunctionDecl* written = nullptr;
+      FunctionDecl* def = trivialConstructor(f, args, classTy, at, &written);
       if (!def)
         return std::nullopt;
       Signature s;
@@ -6575,7 +6620,7 @@ namespace
         ArgsScope scope(*this, &args);
         s = signatureOf(f);
       }
-      inlineCall(def, args, classTy, s, thisArg, callArgs, at, [&]
+      inlineCall(def, written, args, classTy, s, thisArg, callArgs, at, [&]
       {
         // The member initializers make no temporary (trivialConstructor), so nothing is destroyed
         // after them as the constructor itself destroys its own: the caller's live on.
@@ -7459,6 +7504,7 @@ namespace
           return std::nullopt;
         }
       };
+      hooks.ran = [this](const FunctionDecl* f) { noteInlined(f); }; // its body is in the folded value
       return hooks;
     }
 
@@ -8024,6 +8070,23 @@ namespace
       definition.name = name;
       definition.owner = ownItself || owner.empty() ? name : owner;
       definition.counted = counted;
+      bool onDemand = !onDemandNow.name.empty() && name == onDemandNow.name;
+      if (onDemand)
+      {
+        definition.closure = onDemandNow.closure;
+        definition.callType = onDemandNow.callType;
+      }
+      if (!ownItself && (name == owner || onDemand) && !inlinedNow.empty())
+      {
+        // The function's own definition, its emission done: what it and its lambdas inlined. (What
+        // an operator emitted on demand inlined emits its writer again, and the operator with it.)
+        std::sort(inlinedNow.begin(), inlinedNow.end());
+        inlinedNow.erase(std::unique(inlinedNow.begin(), inlinedNow.end()), inlinedNow.end());
+        definition.inlined = std::move(inlinedNow);
+        inlinedNow.clear();
+        definition.emitted = std::make_unique<Instantiation>(
+          onDemand ? Instantiation{onDemandNow.writer, {}, nullptr, currentModule, "", "", 0} : emittingNow);
+      }
       auto lock = sharedLock();
       sh.definitions[currentModule].push_back(std::move(definition));
       definedIn[name] = currentModule;
@@ -8032,6 +8095,23 @@ namespace
     // The function whose emission is running (set by emitFunction at the outermost level): what its
     // emission adds (its definition, its lambdas' call operators) belongs to it.
     std::string owner;
+    Instantiation emittingNow{}; // how that function is emitted (what rebuildLLVM emits again)
+    std::vector<const FunctionDecl*> inlinedNow; // the bodies its emission inlined so far
+    struct OnDemand
+    {
+      std::string name; // the call operator emitCallOperatorOnDemand is emitting, or empty
+      const Ty* closure = nullptr;
+      const Ty* callType = nullptr;
+      FunctionDecl* writer = nullptr;
+    } onDemandNow;
+    // A call emitted as the callee's body (inlinedBody; any other inlining of a body calls this
+    // too): `written` is the definition the body is written in, an instance's template's. The
+    // function being emitted then depends on that body (Shared::Definition::inlined).
+    void noteInlined(const FunctionDecl* written)
+    {
+      if (moduleCount > 1)
+        inlinedNow.push_back(written);
+    }
 
     // A module declaration that belongs to the function being emitted (Shared::OwnedEntry).
     void addOwnedEntry(const std::string& text)
@@ -9182,6 +9262,15 @@ namespace
       // What it adds (its static InitializerList arrays) belongs to it, not to its first user.
       struct OwnerRestore { std::string& owner; std::string saved; ~OwnerRestore() { owner = saved; } } ownerRestore{owner, owner};
       owner = fnName;
+      // Nor is what it inlines its first user's (a global's initializer that reads an edited name
+      // is the server's full codegen).
+      struct InlinedRestore
+      {
+        std::vector<const FunctionDecl*>& now;
+        std::vector<const FunctionDecl*> saved;
+        ~InlinedRestore() { now = std::move(saved); }
+      } inlinedRestore{inlinedNow, std::move(inlinedNow)};
+      inlinedNow.clear();
       struct NameRestore
       {
         std::string& name;
@@ -15664,7 +15753,11 @@ namespace
         }
       } ownerScope{owner, owner.empty()};
       if (ownerScope.outermost)
+      {
         owner = currentFunctionName;
+        emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth};
+        inlinedNow.clear();
+      }
       try
       {
         Signature s = signatureOf(original);
@@ -16653,13 +16746,20 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
           size_t line = texts[k].rfind('\n', at);
           first = "module " + std::to_string(k) + ": " + texts[k].substr(line == std::string::npos ? 0 : line + 1, 160);
         }
+        if (const char* dump = getenv("KPP_CHECK_REBUILD_DUMP")) // a directory: each such module as built and as assembled again
+          for (auto [what, text] : {std::pair<const char*, const std::string*>{"built", &result.modules[k]}, {"rebuilt", &texts[k]}})
+            if (FILE* out = fopen((std::string(dump) + "/" + what + "-" + std::to_string(k) + ".ll").c_str(), "wb"))
+            {
+              fwrite(text->data(), 1, text->size(), out);
+              fclose(out);
+            }
       }
     }
     fprintf(stderr,
-            "rebuild check: %zu functions emitted again by rebuildLLVM in %.3f s (%s), %zu modules assembled again; of all %zu "
+            "rebuild check: %zu functions given to rebuildLLVM, %zu emitted again in %.3f s (%s), %zu modules assembled again; of all %zu "
             "from its state %zu differ, %zu functions (the build's %zu)%s%s\n",
-            picked.size(), seconds, rebuilt ? "rebuilt" : "declined", changed, texts.size(), differ, again.functions, result.functions,
-            first.empty() ? "" : "; first: ", first.c_str());
+            picked.size(), again.emittedAgain, seconds, rebuilt ? "rebuilt" : "declined", changed, texts.size(), differ, again.functions,
+            result.functions, first.empty() ? "" : "; first: ", first.c_str());
   }
   session->usable = keep && keepTexts && !checkRebuild;
   return std::move(result);
@@ -16697,6 +16797,25 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     owners.insert(e.functionName(f, {}, nullptr));
   for (FunctionDecl* f : added)
     level.push_back(programFunction(f));
+  // Each emitter's verdicts on which callees are trivial (inlined) were taken on the old bodies:
+  // taken again. (A changed body that is trivial now is inlined by callers that only called it
+  // before, which codegen does not know: the server passes an edited function's callers too.)
+  for (auto& em : emitters)
+    em->trivialDefinitions.clear();
+  // The functions whose emission inlined a changed or removed body, or ran it in a constant fold
+  // (Shared::Definition::inlined), hold it: emitted again too, each as it was emitted (an instance
+  // in the module that asked for it).
+  std::unordered_set<const FunctionDecl*> edited(changedBodies.begin(), changedBodies.end());
+  edited.insert(removed.begin(), removed.end());
+  std::map<unsigned, std::vector<Instantiation>> holding; // by depth
+  for (unsigned k = 0; k < sh.moduleCount; ++k)
+    for (const Shared::Definition& d : sh.definitions[k])
+      if (d.emitted && !owners.count(d.owner) &&
+          std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0; }))
+      {
+        owners.insert(d.owner);
+        holding[d.emitted->depth].push_back(*d.emitted);
+      }
   // Per module, the texts dropped (sorted) and how many definitions and owned entries stayed: the
   // ones emitted now follow those, and a module whose new texts are the dropped ones again (an
   // edited function's callers, emitted again for what they inline, mostly are) is not assembled again.
@@ -16708,6 +16827,18 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   std::vector<Dropped> dropped(sh.moduleCount);
   std::unordered_set<std::string> droppedNames;
   size_t droppedFunctions = 0;
+  // The call operators emitted on demand whose writer is emitted again: emitted again on their own
+  // (the writer may never make their closure itself).
+  std::unordered_set<std::string> removedNames;
+  for (FunctionDecl* f : removed)
+    removedNames.insert(e.functionName(f, {}, nullptr));
+  struct Operator
+  {
+    std::string name;
+    const Ty* closure;
+    const Ty* callType;
+  };
+  std::vector<Operator> operators;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     Dropped& was = dropped[k];
@@ -16719,6 +16850,8 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       {
         droppedNames.insert(defs[i].name);
         droppedFunctions += defs[i].counted;
+        if (defs[i].closure && !removedNames.count(defs[i].owner))
+          operators.push_back({defs[i].name, defs[i].closure, defs[i].callType});
         was.definitions.push_back(std::move(defs[i].text));
         continue;
       }
@@ -16762,8 +16895,25 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     em->errors.clear();
     em->failedFunctions.clear();
   }
-  while (!level.empty())
+  // Level by level as the build emitted them: the functions of depth d with the first uses those of
+  // depth d - 1 asked for, after all of those (a closure's call operator goes to the function that
+  // uses it first, as the build decided it level by level).
+  for (unsigned depth = 0;; ++depth)
   {
+    if (auto it = holding.find(depth); it != holding.end())
+    {
+      for (Instantiation& item : it->second)
+        level.push_back(std::move(item));
+      holding.erase(it);
+    }
+    if (level.empty() && (depth > 0 || operators.empty()))
+    {
+      if (holding.empty())
+        break;
+      depth = holding.begin()->first - 1; // nothing asked for in between
+      continue;
+    }
+    out.emittedAgain += level.size();
     std::atomic<size_t> next{0};
     auto work = [&](unsigned i)
     {
@@ -16771,6 +16921,19 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
         emitInstantiation(*emitters[i], level[k]);
     };
     onThreads(level.size() < 64 ? 1u : session.threads, work);
+    if (depth == 0)
+      for (const Operator& o : operators) // (none made again by its writer meanwhile)
+      {
+        try
+        {
+          emitters[0]->emitCallOperatorOnDemand(o.closure, o.callType, o.name);
+        }
+        catch (Emitter::Unsupported&)
+        {
+          return out;
+        }
+        ++out.emittedAgain;
+      }
     collectNextLevel(emitters, level);
   }
   // An error, or a first use that added to the shared declarations (in every module): from scratch.

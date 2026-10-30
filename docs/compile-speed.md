@@ -508,6 +508,39 @@ read the name `setup` (names are recorded by symbol). The edit test verifies the
 builds too now, checks that codegen rebuilt from its session, and turns a trivial getter called from
 another file into two statements with a new value (an inlined body must not stay in its callers).
 
+### Codegen's record of the bodies a function holds (2026-10-30)
+
+Each function's definition in the session records the definitions (as written: an instance's
+template's) whose bodies its text holds besides its own, its lambdas' included: the trivial callees
+and constructors inlined into it (`inlineCall` calls `Emitter::noteInlined`), and every body the
+interpreter ran for one of codegen's constant folds (`ConstHooks::ran`, called by `constRun`); with
+it, how the function was emitted (its Instantiation: an instance in the module that asked for it).
+rebuildLLVM emits again every function whose record holds a changed or removed body, instances
+included, in the build's level order (the functions of depth d after all of depth d - 1, with the
+first uses those asked for), and takes the emitters' verdicts on which callees are trivial again (a
+stale one kept a getter edited into two statements inlined). `inlinedIdentity` (move, forward)
+records nothing: what it emits does not depend on the body. The server keeps passing an edited
+function's callers: one that only called it inlines it once an edit makes it trivial, and codegen
+knows only the callers that inline. With the record, the server's "an instance read an edited name"
+rule is no longer needed for inlining (an instance that holds the body is in the record); whether
+to narrow it is the resolver thread's call.
+
+A returned lambda's call operator that its first caller emits (`emitCallOperatorOnDemand`: the
+writer never makes the private copy's closure, RenderParameters::getScreenPositionFunction's) went
+into that caller's module and belonged to it; the callers of one level are emitted at once, so
+which one was first was a race, in the build as in a rebuild (KPP_CHECK_REBUILD=7 moved
+getScreenPositionFunction's operator from module 40 to 62). It is now placed in its writer's module
+and belongs to the writer, and rebuildLLVM emits it again on its own once its writer is emitted
+again.
+
+Measured on master 165b365 with this (full game, 240,101 functions after inlining step 3):
+KPP_CHECK_REBUILD every 50th program function (1,424) emits 1,884 again in 0.294 s, every 7th
+(10,168) 14,409 in 2.077 s, all 71,176 76,497 in 3.629 s; each time no module assembled again, all
+64 assembled from the kept state equal to the build's, the function count the build's. Through one
+server (scratchpad srvcheck.sh), the getStateInternal edit, its revert and the edit again: codegen
+0.132, 0.257 and 0.102 s, one module, each "the same as from scratch". The headline IR at -j 1 and
+-j 32 is the same; the game's --dump-data checksum is C++'s (486241314) and the 19 menu maps run.
+
 ### The link in the edit loop (2026-10-30, not changed)
 
 The same 64 objects of the full game linked several ways (scratchpad linkvariants.ps1, the

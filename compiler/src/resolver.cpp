@@ -8472,6 +8472,8 @@ struct GlobalScope::Impl
     FunctionDecl* def = constDefinition(f);
     if (!def || def->params.size() != f->params.size())
       return std::nullopt;
+    if (const ConstHooks* h = constHooks(); h && h->ran)
+      h->ran(def); // the code generator's text depends on this body now
     std::vector<ConstBinding> env;
     fctx.env = &env;
     for (size_t i = 0; i < def->params.size(); ++i)
