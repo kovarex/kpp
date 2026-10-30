@@ -42,17 +42,20 @@ function Edit([string]$file, [string]$old, [string]$new)
 }
 
 $steps = @(
-  @{ name = 'first build'; expect = '6 40 40 3 8 10 6'; edit = {} },
-  @{ name = 'body edit'; expect = '6 44 44 3 8 10 6'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
-  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
-  @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
-  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
-  @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
-  @{ name = 'overload added'; expect = '7 44 7 103 8 11 7'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
-  @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
-  @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
-  @{ name = 'new file'; expect = '7 44 1 103 12 11 7'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
-  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
+  @{ name = 'first build'; expect = '6 40 40 3 8 10 6 5'; edit = {} },
+  @{ name = 'body edit'; expect = '6 44 44 3 8 10 6 5'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
+  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6 5'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
+  @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6 5'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
+  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7 5'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
+  @{ name = 'constexpr body edit (what the evaluator ran it for checked again)'; expect = '7 44 44 3 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int r = 5; return r;' 'int r = 6; return r;' } },
+  @{ name = 'constexpr body edit failing a static_assert in another file'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int r = 6; return r;' 'int r = 12; return r;' } },
+  @{ name = 'constexpr body edit back'; expect = '7 44 44 3 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int r = 12; return r;' 'int r = 6; return r;' } },
+  @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
+  @{ name = 'overload added'; expect = '7 44 7 103 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
+  @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7 6'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
+  @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7 6'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
+  @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
+  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
 )
 $n = 0
 foreach ($step in $steps)
@@ -100,8 +103,9 @@ $ours = @($ours | Where-Object { $_ -match '\[(\d+)\]' -and $pids -contains $Mat
 $log = $ours | Where-Object { $_ -match 'verify-incremental: the same as from scratch' }
 if (@($log).Count -lt $steps.Count) { "FAIL incremental: $(@($log).Count) replays verified, $($steps.Count) expected (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental replays ($($steps.Count), each the same as from scratch)" }
-# The body edits (the second one of a file already edited) were built from the kept program, its changed body checked again (step 3b), and verified.
-$fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed' }
+# The body edits (a plain function's, twice in one file, a template's, a class template member's, a
+# constexpr function's) were built from the kept program, the changed bodies checked again, and verified.
+$fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed \(0 with whole functions\)' }
 # Codegen followed through its kept session (step 5b) on the executable's builds, verified.
 $rebuilt = $ours | Where-Object { $_ -match 'codegen: [0-9]+ module\(s\) assembled again' }
 if (@($rebuilt).Count -lt 3) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 3 (the server's log)"; $failed++ }
@@ -109,7 +113,7 @@ else { "ok   incremental codegen rebuilt from its kept session ($(@($rebuilt).Co
 $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmatch '\(0 with whole functions\)' }
 if (@($whole).Count -lt 3) { "FAIL incremental: the signature edit and the overload added and removed were not built from the kept program ($(@($whole).Count) such builds)"; $failed++ }
 else { "ok   incremental whole-function edits built from the kept program ($(@($whole).Count))" }
-if (@($fast).Count -lt 2) { "FAIL incremental: the body edits were not built from the kept program (the server's log, %TEMP%\kppc-server)"; $failed++ }
+if (@($fast).Count -lt 10) { "FAIL incremental: $(@($fast).Count) body edits built from the kept program, 10 expected (5 through each of two servers) (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }
 & $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
 & $Kppc --stop-server --verify-incremental --quiet --exe $exe $src | Out-Null

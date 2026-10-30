@@ -506,6 +506,41 @@ member, 6 explicit instances) and taken out again: resolve 0.67 and 0.65 s (2.0 
 codegen in full 9.9 and 15.9 s (7.1 s in the first build; the machine was shared), 5 modules
 compiled again, each "the same as from scratch".
 
+**A constexpr or consteval function's body (landed 2026-10-30).** What depends on such a body is
+what the compile-time evaluator computed by running it, so that is recorded: wherever the evaluator
+runs a body (a call, a member call for a place, a constructor's body), the current unit records a use
+of the definition (`USE_RanBody`, through `ranBody`, which also calls codegen's `ran` hook: the
+place calls and constructor bodies did not tell codegen before). Two caches answer without running
+anything (a class instance's static member's value, `memberConstants`, and the specialisation
+picked for known arguments): each entry keeps the bodies its computation ran and replays them to
+every asker it answers. A run outside any unit while recording is remembered (`ranOutside`). A
+changed constexpr body is then a body edit (3b) whose ran-readers go through `invalidateReaders` as a
+changed name's readers do: the walks that ran it are walked again (their files) and emitted again;
+it is a build from scratch when an instance, a class instance, a scope's relations or a declared type
+ran it (an array bound, a constant template argument: what it typed may be a layout), or the body
+ran outside a unit; the cache entries that ran it are dropped. A constexpr template's body takes
+both paths (its instances checked again too); a deduced return type is still a build from scratch.
+Two fixes on the way: a unit's repeated uses were dropped by address alone, so the run of a body
+right after its function's declared type (one address, two kinds) went unrecorded (now by address
+and kind); and a file walked again keeps the checker errors its old walk found (they are kept by
+text, not by unit), so a file with errors is no longer walked again here (a build from scratch:
+the edit test's static_assert made to fail and fixed again showed the stale error, and
+`--verify-incremental` reported it). The edit test edits `limit()`, run by a constexpr local and a
+static_assert in another file, then makes that static_assert fail and pass again.
+
+Full game (the converted tree of C:\factorio-in-kpp d9080751 frozen in scratch, run.cmd's
+arguments, scratch\resolver\game-verify.cmd), through one server with `--verify-incremental`, each
+"the same as from scratch": `oppositeSide` (CliffOrientation.kpp, a plain constexpr function) edited
+and back: 1 file walked again, codegen 4 functions, 1 module; `AreCreatedInOrder` (a constexpr
+template two achievements' static_asserts run) edited and back: 3 files walked again, codegen in full
+(a template's body); `BoundingBox::emptyValue` edited and back: 2 files walked again, codegen in full
+(a global's initializer reads it). Wall time of the `oppositeSide` edit and back twice without
+`--verify-incremental`: **3.6, 2.6, 2.6, 2.6 s** to a linked game (resolve 0.60 to 1.15 s, most of
+it finding the readers in every recorded read; codegen 0.12 to 0.26 s; clang 0.63 s; link 0.46 s).
+The same edits with master d98f13b9's kppc, which builds a constexpr body edit from scratch in the
+server: 12.8, 17.0, 19.9, 21.8 s (resolve 2.2 to 4.0 s, codegen 8.1 to 15.7 s), run one after the
+other on the shared machine.
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before

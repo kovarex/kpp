@@ -163,8 +163,10 @@ struct Entry
 // found or not, in whichever scope (a new declaration of that name could change the answer, from
 // any file: invalidating by the name alone is coarser than by (scope, name) and recording it is
 // much cheaper, 1.3 -> 2.1 s of resolve with the scopes), and what it used that other units computed and cached (a declared type, a scope's relations, a
-// class or function instance). A later edit invalidates the units that read what it changed.
-enum : uint8_t { USE_DeclaredType = 1, USE_ScopeRelations, USE_ClassInstance, USE_Instance };
+// class or function instance), and the function bodies the compile-time evaluator ran for it
+// (a constexpr function's body edit changes what they computed). A later edit invalidates the
+// units that read what it changed.
+enum : uint8_t { USE_DeclaredType = 1, USE_ScopeRelations, USE_ClassInstance, USE_Instance, USE_RanBody };
 
 struct DependencyList
 {
@@ -235,7 +237,8 @@ static void recordName(uint32_t symbol)
 }
 
 // Uses repeat less in a row than names (a walk asks for the types of the declarations it meets in
-// turn): the last 4096 the current unit recorded are remembered, by address.
+// turn): the last 4096 the current unit recorded are remembered, by address and kind (a function's
+// declared type and its body run are two uses of one address).
 struct RecentUses
 {
   const void* what[4096] = {};
@@ -247,13 +250,15 @@ static thread_local uint32_t recordingUnit = 0, unitCounter = 0;
 static void recordUse(uint8_t kind, const void* what)
 {
   DependencyList* r = recordingInto;
-  if (!r || what == lastUse)
+  // (what is a declaration, a scope or a record: aligned, so the kind fits in its low bits)
+  const void* key = reinterpret_cast<const char*>(what) + kind;
+  if (!r || key == lastUse)
     return;
-  lastUse = what;
-  size_t slot = (reinterpret_cast<uintptr_t>(what) >> 4) % 4096;
-  if (recentUses->what[slot] == what && recentUses->unit[slot] == recordingUnit)
+  lastUse = key;
+  size_t slot = (reinterpret_cast<uintptr_t>(key) >> 4) % 4096;
+  if (recentUses->what[slot] == key && recentUses->unit[slot] == recordingUnit)
     return;
-  recentUses->what[slot] = what;
+  recentUses->what[slot] = key;
   recentUses->unit[slot] = recordingUnit;
   r->uses.push_back({kind, what});
 }
@@ -295,6 +300,25 @@ struct RecordInto
   }
   RecordInto(const RecordInto&) = delete;
   RecordInto& operator=(const RecordInto&) = delete;
+};
+
+// The bodies the evaluator ran while a cached answer was computed (Impl::memberConstants, the
+// specialisation cache): a later asker the cache answers ran them too, as far as its dependencies
+// go. Nested: what an inner collection gathers belongs to the outer one as well.
+static thread_local std::vector<const FunctionDecl*>* ranCollector = nullptr;
+struct CollectRan
+{
+  std::vector<const FunctionDecl*> ran;
+  std::vector<const FunctionDecl*>* saved = ranCollector;
+  CollectRan() { ranCollector = &ran; }
+  ~CollectRan()
+  {
+    ranCollector = saved;
+    if (saved)
+      saved->insert(saved->end(), ran.begin(), ran.end());
+  }
+  CollectRan(const CollectRan&) = delete;
+  CollectRan& operator=(const CollectRan&) = delete;
 };
 
 struct Scope
@@ -1076,6 +1100,10 @@ struct GlobalScope::Impl
   }
   std::mutex relationScopesMutex;
   std::vector<const Scope*> relationScopes; // the scopes whose relations were resolved (their relationDeps)
+  // The bodies the checker's evaluator ran outside any unit while recording (nothing records that
+  // it did): an edit of one is built from scratch.
+  std::mutex ranOutsideMutex;
+  std::unordered_set<const FunctionDecl*> ranOutside;
 
   // ---- generic lambdas: where each was written, so that its body can be typed for every call ----
   // A lambda with template parameters (written, or invented for `auto` parameters) is a template
@@ -5321,7 +5349,12 @@ struct GlobalScope::Impl
   // the same ones over and over. Not while a static_assert is checked (its class layouts are the
   // code generator's, see exactLayoutOnly), and only values that were found.
   std::mutex memberConstantsMutex;
-  std::map<std::vector<const void*>, ConstValue> memberConstants;
+  struct MemberConstant
+  {
+    ConstValue value;
+    std::vector<const FunctionDecl*> ran; // the bodies computing it ran: an asker it answers ran them too
+  };
+  std::map<std::vector<const void*>, MemberConstant> memberConstants;
   std::optional<ConstValue> memberConstant(Decl* d, const TypeContext& ctx, const Subst& classSubst)
   {
     if (exactLayoutOnly)
@@ -5335,13 +5368,18 @@ struct GlobalScope::Impl
     {
       std::lock_guard lock(memberConstantsMutex);
       if (auto it = memberConstants.find(key); it != memberConstants.end())
-        return it->second;
+      {
+        for (const FunctionDecl* f : it->second.ran)
+          ranBody(f);
+        return it->second.value;
+      }
     }
+    CollectRan ran;
     std::optional<ConstValue> v = constValueOfDecl(d, ctx, 0, &classSubst);
     if (v)
     {
       std::lock_guard lock(memberConstantsMutex);
-      memberConstants.emplace(std::move(key), *v);
+      memberConstants.emplace(std::move(key), MemberConstant{*v, ran.ran});
     }
     return v;
   }
@@ -5366,6 +5404,25 @@ struct GlobalScope::Impl
   {
     static thread_local const ConstHooks* hooks = nullptr;
     return hooks;
+  }
+
+  // The evaluator runs a function's body (def: the definition it is written in): what the current
+  // unit computes depends on that body now (USE_RanBody), as does the code generator's text when it
+  // asked (its hooks' ran: an incremental build emits that text again after an edit of the body).
+  // A cached answer's bodies are replayed through here for each asker it answers.
+  void ranBody(const FunctionDecl* def)
+  {
+    if (const ConstHooks* h = constHooks(); h && h->ran)
+      h->ran(def);
+    if (ranCollector)
+      ranCollector->push_back(def);
+    if (recordingInto)
+      recordUse(USE_RanBody, def);
+    else if (recordingDependencies && !constHooks())
+    {
+      std::lock_guard lock(ranOutsideMutex);
+      ranOutside.insert(def);
+    }
   }
 
   ConstArith constArith()
@@ -6753,6 +6810,7 @@ struct GlobalScope::Impl
     fctx.returnPlace = &out;
     fctx.returnType = returns;
     std::optional<ConstValue> result;
+    ranBody(def);
     if (constStatement(def->body, fctx, env, result, 1) != ConstFlow::Returned || !out)
       return std::nullopt;
     out->type = returns->inner;
@@ -8429,6 +8487,7 @@ struct GlobalScope::Impl
     env.push_back(constBinding(constThisSymbol, object, t));
     size_t self = env.size() - 1;
     std::optional<ConstValue> result;
+    ranBody(ctor);
     ConstFlow flow = constStatement(ctor->body, fctx, env, result, depth + 1);
     if (flow != ConstFlow::Next && flow != ConstFlow::Returned)
       return std::nullopt;
@@ -8880,8 +8939,7 @@ struct GlobalScope::Impl
     FunctionDecl* def = constDefinition(f);
     if (!def || def->params.size() != f->params.size())
       return std::nullopt;
-    if (const ConstHooks* h = constHooks(); h && h->ran)
-      h->ran(def); // the code generator's text depends on this body now
+    ranBody(def);
     std::vector<ConstBinding> env;
     fctx.env = &env;
     for (size_t i = 0; i < def->params.size(); ++i)
@@ -12245,7 +12303,12 @@ struct GlobalScope::Impl
   // An instantiation of a primary class template whose arguments pick a specialisation: that
   // specialisation's type; otherwise the type as given.
   std::mutex specializationCacheMutex;
-  std::unordered_map<const Ty*, const Ty*> specializationCache; // resolveSpecialization's answers for known arguments
+  struct Specialization
+  {
+    const Ty* type;
+    std::vector<const FunctionDecl*> ran; // the bodies matching it ran (a constant argument's)
+  };
+  std::unordered_map<const Ty*, Specialization> specializationCache; // resolveSpecialization's answers for known arguments
 
   const Ty* resolveSpecialization(const Ty* classTy, int depth)
   {
@@ -12261,8 +12324,13 @@ struct GlobalScope::Impl
     {
       std::lock_guard lock(specializationCacheMutex);
       if (auto it = specializationCache.find(classTy); it != specializationCache.end())
-        return it->second;
+      {
+        for (const FunctionDecl* f : it->second.ran)
+          ranBody(f);
+        return it->second.type;
+      }
     }
+    CollectRan ran;
     Lookup l;
     if (!lookupInScope(lexicalScopeOf(d), name.last().symbol, l, depth + 1) || !l.overloads)
       return classTy;
@@ -12272,7 +12340,7 @@ struct GlobalScope::Impl
     if (known && depth < 8)
     {
       std::lock_guard lock(specializationCacheMutex);
-      specializationCache.emplace(classTy, result);
+      specializationCache.emplace(classTy, Specialization{result, ran.ran});
     }
     return result;
   }
@@ -20407,10 +20475,24 @@ std::vector<const Decl*> GlobalScope::walksReading(const std::vector<uint32_t>& 
 }
 
 bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
-                                    std::vector<const Decl*>* walks)
+                                    std::vector<const Decl*>* walks, const std::vector<const FunctionDecl*>& bodies, std::string* why)
 {
   std::unordered_set<uint32_t> names(symbols.begin(), symbols.end());
   std::unordered_set<const void*> types(decls.begin(), decls.end()); // declarations whose declared types are no more what was read
+  std::unordered_set<const void*> ran(bodies.begin(), bodies.end());  // changed bodies the evaluator may have run
+  auto fail = [&](const char* reason)
+  {
+    if (why)
+      *why = reason;
+    return false;
+  };
+  if (!ran.empty())
+  {
+    std::lock_guard lock(impl->ranOutsideMutex);
+    for (const FunctionDecl* f : bodies)
+      if (impl->ranOutside.count(f))
+        return fail("the evaluator ran a changed body outside any recorded unit");
+  }
   auto reads = [&](Dependencies& d)
   {
     std::lock_guard lock(d.mutex);
@@ -20418,7 +20500,7 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
       if (names.count(s))
         return true;
     for (auto& [kind, what] : d.list.uses)
-      if (kind == USE_DeclaredType && types.count(what))
+      if ((kind == USE_DeclaredType && types.count(what)) || (kind == USE_RanBody && ran.count(what)))
         return true;
     return false;
   };
@@ -20440,6 +20522,8 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
           readersOf[what].push_back({owner, deps});
           direct = direct || types.count(what);
         }
+        else if (kind == USE_RanBody && ran.count(what))
+          return fail("a declared type ran a changed body (an array bound, a constant template argument)");
       if (direct)
         pending.push_back({owner, deps});
     }
@@ -20463,20 +20547,38 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
     std::lock_guard lock(shard.mutex);
     for (auto& [key, record] : shard.map)
       if (reads(record->deps))
-        return false;
+        return fail("an instance read a changed function's name or ran a changed body");
   }
   for (Impl::InstShard& shard : impl->instShards)
   {
     std::lock_guard lock(shard.mutex);
     for (auto& [key, inst] : shard.classes)
       if (reads(inst->deps))
-        return false;
+        return fail("a class instance read a changed function's name or ran a changed body");
   }
   {
     std::lock_guard lock(impl->relationScopesMutex);
     for (const Scope* s : impl->relationScopes)
       if (reads(const_cast<Scope*>(s)->relationDeps))
-        return false;
+        return fail("a scope's relations read a changed function's name or ran a changed body");
+  }
+  // The cached answers that ran a changed body are computed again by whoever asks next (every
+  // unit that read one recorded its bodies, and is found above or below).
+  if (!ran.empty())
+  {
+    auto meets = [&](const std::vector<const FunctionDecl*>& list)
+    {
+      for (const FunctionDecl* f : list)
+        if (ran.count(f))
+          return true;
+      return false;
+    };
+    {
+      std::lock_guard lock(impl->memberConstantsMutex);
+      std::erase_if(impl->memberConstants, [&](const auto& e) { return meets(e.second.ran); });
+    }
+    std::lock_guard lock(impl->specializationCacheMutex);
+    std::erase_if(impl->specializationCache, [&](const auto& e) { return meets(e.second.ran); });
   }
   std::unordered_set<const ParsedFile*> found;
   for (Impl::DeclDependencyShard& shard : impl->declDependencies)

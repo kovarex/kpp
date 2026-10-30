@@ -289,8 +289,12 @@ public:
   // cached, and followed: what read those types is found too); false when an instance, a class
   // instance or a scope's relations read one (a resolve from scratch could make them otherwise).
   // walks: the declarations whose walks read them (their functions' code changes with them).
+  // bodies: function definitions whose bodies changed, for the units the compile-time evaluator ran
+  // them in (a constexpr function's): such walks are found as the names' readers are; it is false
+  // when one ran outside any unit, or a declared type ran one (an array bound, a constant template
+  // argument: what it typed may be a layout). why: the reason it is false.
   bool invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
-                         std::vector<const Decl*>* walks = nullptr);
+                         std::vector<const Decl*>* walks = nullptr, const std::vector<const FunctionDecl*>& bodies = {}, std::string* why = nullptr);
   uint32_t functionSymbolOf(const FunctionDecl* f);
   // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
   // function, whose code may hold its body (codegen inlines trivial functions).

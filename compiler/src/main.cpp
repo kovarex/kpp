@@ -167,15 +167,16 @@ namespace
   std::string lastImportStamps; // the C import's header stamps (importCHeaders), for a server's next build
   std::string lastImportsLine;  // the imports report of the build running (importCHeaders)
 
-  // A function's body in a file's tokens: its `{` and the matching `}`; eligible when nothing
-  // outside it can depend on what it says (not a template's or a class template's, not constexpr
-  // or consteval, no return type deduced from it).
+  // A function's body in a file's tokens: its `{` and the matching `}`; eligible when what depends
+  // on it outside it can be found: not when a return type is deduced from it (callers elsewhere are
+  // typed by it).
   struct Body
   {
     FunctionDecl* f;
     uint32_t open, close;
     bool eligible;
     bool templated; // a template's or a class template's: its instances are checked again (step 4)
+    bool constant;  // constexpr or consteval: what the evaluator computed by running it is found (step 4)
   };
   // Everything one build made, from the files read to the resolved program. A compile server keeps
   // it for the next request: a request that changes only function bodies is built from it, the
@@ -1481,11 +1482,11 @@ namespace
               break;
           if (close >= tokens.size())
             return false;
-          bool eligible = !(f->flags & (DF_Constexpr | DF_Consteval));
+          bool eligible = true;
           for (uint32_t k = f->token; eligible && k < open; ++k)
             if (tokens[k].is(Kw::auto_) || tokens[k].is(Kw::decltype_))
               eligible = false; // a deduced return type: callers elsewhere are typed by the body
-          out.push_back({f, open, close, eligible, templated});
+          out.push_back({f, open, close, eligible, templated, bool(f->flags & (DF_Constexpr | DF_Consteval))});
           break;
         }
         default:
@@ -1557,7 +1558,7 @@ namespace
       if (!same)
       {
         if (!ob.eligible || !nb.eligible)
-          return why = "a changed body others may depend on (a template's, constexpr, a deduced return type)", false;
+          return why = "a changed body with a deduced return type", false;
         // A class or enumeration declared in a body gets its scope when the file is indexed: one in
         // a new body would have none (a lambda's closure is no such declaration).
         bool localType = false;
@@ -2082,6 +2083,7 @@ namespace
     kept.removedFunctions.clear();
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
     std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
+    std::vector<const FunctionDecl*> constantBodies; // changed constexpr bodies: what the evaluator ran them for is checked again
     for (size_t n = 0; n < changed.size(); ++n)
     {
       if (!graftBodies(kept, changed[n], why))
@@ -2094,6 +2096,8 @@ namespace
         kept.changedBodies.push_back(changed[n].oldBodies[k].f);
         if (changed[n].oldBodies[k].templated)
           templateBodies.push_back(changed[n].oldBodies[k].f);
+        if (changed[n].oldBodies[k].constant)
+          constantBodies.push_back(changed[n].oldBodies[k].f);
       }
     }
     GlobalScope& global = *kept.global;
@@ -2127,13 +2131,13 @@ namespace
         return false;
       }
     }
-    if (!names.empty())
+    if (!names.empty() || !constantBodies.empty())
     {
       std::vector<const ParsedFile*> readers;
       std::vector<const Decl*> readingWalks;
-      if (!global.invalidateReaders(names, gone, readers, &readingWalks))
+      if (!global.invalidateReaders(names, gone, readers, &readingWalks, constantBodies, &why))
       {
-        logBuildNote("not incremental: an instance or a scope's relations read a changed function's name");
+        logBuildNote("not incremental: " + why);
         return false;
       }
       for (const ParsedFile* p : readers)
@@ -2162,6 +2166,15 @@ namespace
     // Walked again: what they read recorded anew, and nothing instantiated that a resolve from
     // scratch would count differently.
     std::vector<size_t> walked(rewalk.begin(), rewalk.end());
+    // A walk adds the errors it finds and cannot take back the old ones (they are kept by text,
+    // not by the unit that found them): a file with errors is not walked again here.
+    for (const std::string& e : global.checkerErrors())
+      for (size_t index : walked)
+        if (const std::string& path = kept.parsed[index]->path; e.compare(0, path.size(), path) == 0)
+        {
+          logBuildNote("not incremental: " + path + " is walked again and has checker errors");
+          return false;
+        }
     std::vector<std::vector<const void*>> before(walked.size());
     for (size_t n = 0; n < walked.size(); ++n)
     {

@@ -1,5 +1,5 @@
 // The program tests\incremental.ps1 edits between builds: a function body, a signature, a class's
-// layout, and a file added and removed.
+// layout, a constexpr function's body (run at compile time in main.kpp), and a file added and removed.
 struct Shape
 {
   int width = 2;
@@ -10,6 +10,8 @@ struct Shape
 int scale(int v) { return v * 10; }
 
 int combine(int a, int b) { return a + b; }
+
+constexpr int limit() { int r = 5; return r; }
 
 template<typename T>
 T twice(T v) { T r = v + v; return r; }
