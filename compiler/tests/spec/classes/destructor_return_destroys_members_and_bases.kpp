@@ -1,0 +1,39 @@
+// spec: a return in a destructor's body leaves the body, and the members and bases are destroyed after it as at its end: `~Guard() { if (this->early) return; ... }` still destroys Guard's members and its base
+// factorio: CargoBayResizeHelper's destructor returns early after `this->hub->recalculateInventorySize();`: its member `Targeter<SpacePlatformHub> hub` was never destroyed, so it stayed in the hub's list after the helper's stack frame was gone, and destroying the hub faulted in Targeters::clear (CargoBay and SpacePlatform stop; both pass with the destructor written without the returns)
+// pending: SILENT, the members and the base are destroyed only when the body runs to its end (`112 0`); owner: the codegen thread
+int destroyed = 0;
+struct Member
+{
+  int id = 0;
+  ~Member() { destroyed += 1; }
+};
+struct Base
+{
+  ~Base() { destroyed += 10; }
+};
+struct Guard : Base
+{
+  bool early = false;
+  Member a;
+  Member b;
+  ~Guard()
+  {
+    if (this->early)
+      return;
+    destroyed += 100;
+  }
+};
+int main()
+{
+  {
+    Guard g;
+  }
+  print("{} ", destroyed);
+  destroyed = 0;
+  {
+    Guard g;
+    g.early = true;
+  }
+  println("{}", destroyed);
+  return 0;
+}
