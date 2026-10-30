@@ -12999,7 +12999,22 @@ namespace
           static_cast<NameExpr*>(u->operand)->resolved->kind == NodeKind::FunctionDecl)
         return {rvalue(u->operand).text, u->ty}; // `&function`: the function itself is the pointer
       if (op == P::Amp)
+      {
+        // `&x` of a class with its own operator& (CComPtr's): the call, as the resolver typed it;
+        // the built-in address where the class has none, whose result is a pointer to it.
+        const Ty* ot = u->operand->ty ? types.stripRef(u->operand->ty) : nullptr;
+        if (ot && isClass(ot))
+        {
+          const Ty* cls = types.unqualified(ot);
+          const Ty* foundIn = nullptr;
+          if (findMemberFunction(cls, operatorName(P::Amp), {}, cls, u, &foundIn, true))
+            return callRvalue(operatorCall(rvalue(u->operand), operatorName(P::Amp), {}, u, true), u);
+          const Ty* rt = u->ty ? types.stripRef(u->ty) : nullptr;
+          if (!rt || rt->kind != TyKind::Pointer || !rt->inner || types.unqualified(rt->inner) != cls)
+            unsupported(u, "a unary operator& that is no member function");
+        }
         return {lvalue(u->operand), u->ty};
+      }
       if (op == P::Star)
       {
         Value p = rvalue(u->operand);

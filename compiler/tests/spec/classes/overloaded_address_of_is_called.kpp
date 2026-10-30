@@ -1,0 +1,27 @@
+// spec: `&x` of a class with its own unary operator& calls it, as C++ does, wherever the result goes (a local of the operator's result type, an argument): never the built-in address of x reinterpreted as that type; CComPtr<T>'s `T** operator&()` given to QueryInterface and CreateDevice
+// found with the new Factorio source's GraphicsInterfaceDX11 (`&adapter` with a CComPtr<IDXGIAdapter3>): the built-in address of the holder was taken and written through, over its other members
+struct Thing { int value = 7; };
+template<typename T>
+struct Holder
+{
+  int pad = 5;
+  T* p = nullptr;
+  T** operator&() { return &this->p; }
+};
+struct Plain
+{
+  int x = 3;
+};
+Thing shared;
+void store(Thing** where) { *where = &shared; }
+int main()
+{
+  Holder<Thing> holder;
+  Thing** plain = &holder;
+  *plain = nullptr;
+  store(&holder);
+  Plain object;
+  Plain* address = &object;
+  println("{} {} {}", holder.p == &shared, holder.pad, address->x);
+  return 0;
+}

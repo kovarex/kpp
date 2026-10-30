@@ -17628,8 +17628,15 @@ struct GlobalScope::Impl
         return op == P::Bang ? types.boolType() : op == P::Amp ? types.pointer(s) : s;
       if (s->kind == TyKind::Class)
       {
+        // `&x` of a class with its own unary operator& is that operator's result (CComPtr<T>'s
+        // gives T**), the built-in address only where the class has none.
         if (op == P::Amp)
+        {
+          if (!types.isDependent(s))
+            if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))
+              return r;
           return types.pointer(s);
+        }
         if (types.isDependent(s))
           return types.unknown();
         if (const Ty* r = overloadedOperator(op, t, nullptr, u->token, 1, false, argumentType(u->operand, t, types)))

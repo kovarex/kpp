@@ -40,7 +40,9 @@ public:
   CComPtr<T>& operator=(const CComPtr<T>& other) { return *this = other.p; }
   CComPtr<T>& operator=(CComPtr<T>&& other)
   {
-    if (this != &other)
+    // The pointers compared, as ATL's does: `&other` is the class's own operator&, which asserts
+    // other holds none.
+    if (this->p != other.p)
     {
       T* old = this->p;
       this->p = other.p;
