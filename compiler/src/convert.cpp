@@ -2824,6 +2824,7 @@ namespace
         it->second.back().to = offset;
     }
     std::set<std::string> replacedFunctions;  // qualified names whose definitions were found and removed
+    std::set<std::string> replacedVariables;  // the same, of variables
     std::vector<Edit> edits;
     // A use of an argument macro, expanded in run() once the edits inside its arguments are known.
     struct ArgumentMacroUse
@@ -5165,7 +5166,13 @@ namespace
         return c->isDefinition && !c->name.empty() && overrides->classes.count(prefix + nameText(c->name, symbols));
       }
       if (d->kind == NodeKind::VariableDecl)
-        return overrides->variables.count(prefix + nameText(static_cast<VariableDecl*>(d)->name, symbols)) != 0;
+      {
+        std::string q = prefix + nameText(static_cast<VariableDecl*>(d)->name, symbols);
+        if (!overrides->variables.count(q))
+          return false;
+        replacedVariables.insert(q);
+        return true;
+      }
       return false;
     }
 
@@ -6502,6 +6509,52 @@ namespace
           remove(uint32_t(lineStart), uint32_t(end - lineStart));
           counts.add("replaced by the override file (by text)");
           replacedFunctions.insert(qualified);
+          break;
+        }
+      }
+      // Variables likewise (a SUITE's `const char* address = "...";`): `... name =` (or `{`, `;`)
+      // after a type on the line, through the `;` that ends it.
+      for (const std::string& qualified : overrides->variables)
+      {
+        if (replacedVariables.count(qualified))
+          continue;
+        std::string name = qualified.substr(qualified.rfind(':') == std::string::npos ? 0 : qualified.rfind(':') + 1);
+        for (size_t p = text.find(name); p != std::string::npos; p = text.find(name, p + 1))
+        {
+          if (p > 0 && (isalnum((unsigned char)text[p - 1]) || text[p - 1] == '_' || text[p - 1] == ':' || text[p - 1] == '.' || text[p - 1] == '>'))
+            continue;
+          size_t q = p + name.size();
+          while (q < text.size() && text[q] == ' ')
+            ++q;
+          if (q >= text.size() || !(text[q] == '{' || text[q] == ';' || (text[q] == '=' && (q + 1 >= text.size() || text[q + 1] != '='))))
+            continue;
+          size_t lineStart = text.rfind('\n', p);
+          lineStart = lineStart == std::string::npos ? 0 : lineStart + 1;
+          std::string_view head = text.substr(lineStart, p - lineStart);
+          if (head.find_first_not_of(" ") == std::string_view::npos || head.find_first_of(";(=,") != std::string_view::npos || head.find("//") != std::string_view::npos ||
+              head.find("return") != std::string_view::npos)
+            continue; // not a declaration line
+          int depth = 0;
+          size_t end = q;
+          for (; end < text.size(); ++end)
+          {
+            if (text[end] == '{' || text[end] == '(')
+              ++depth;
+            else if (text[end] == '}' || text[end] == ')')
+              --depth;
+            else if (text[end] == ';' && depth == 0)
+              break;
+          }
+          if (end >= text.size())
+            break;
+          ++end;
+          while (end < text.size() && (text[end] == ' ' || text[end] == '\r'))
+            ++end;
+          if (end < text.size() && text[end] == '\n')
+            ++end;
+          remove(uint32_t(lineStart), uint32_t(end - lineStart));
+          counts.add("replaced by the override file (by text)");
+          replacedVariables.insert(qualified);
           break;
         }
       }
