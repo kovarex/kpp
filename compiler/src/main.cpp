@@ -2312,7 +2312,9 @@ namespace
           char buffer[1 << 14];
           auto emit = [&](const std::string& line, bool newline)
           {
-            std::string text = msvcLine(line) + (newline ? "\n" : "");
+            // (A child process's text-mode line ends "\r\n": kppc --run's build and program.)
+            bool cr = !line.empty() && line.back() == '\r';
+            std::string text = msvcLine(cr ? line.substr(0, line.size() - 1) : line) + (cr ? "\r" : "") + (newline ? "\n" : "");
             _write(out, text.data(), unsigned(text.size()));
           };
           for (int n; (n = _read(in, buffer, sizeof buffer)) > 0;)

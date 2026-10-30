@@ -1,6 +1,7 @@
 #include "run.hpp"
 
 #include <windows.h>
+#include <io.h>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -44,8 +45,18 @@ namespace
     std::string command = quoted(program);
     for (const std::string& a : args)
       command += " " + quoted(a);
+    // The standard handles explicitly, as the C runtime's descriptors have them: --msvc-diagnostics
+    // (main.cpp) points descriptors 1 and 2 at its rewriting pipes.
     STARTUPINFOA si{};
     si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    HANDLE* handles[3] = {&si.hStdInput, &si.hStdOutput, &si.hStdError};
+    for (int fd = 0; fd < 3; ++fd)
+    {
+      *handles[fd] = HANDLE(_get_osfhandle(fd));
+      if (*handles[fd] != INVALID_HANDLE_VALUE)
+        SetHandleInformation(*handles[fd], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+    }
     PROCESS_INFORMATION pi{};
     if (!CreateProcessA(program.c_str(), command.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi))
     {
