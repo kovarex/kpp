@@ -20737,6 +20737,7 @@ void GlobalScope::deduceArgs(FunctionDecl* f, const std::vector<const Ty*>& argT
   Subst s = toSubst(args);
   const Ty* ft = impl->declaredTypeOf(f, s.empty() ? nullptr : &s, 0);
   impl->deduceCall(f, ft, argTypes, s);
+  impl->fillDefaultTemplateArgs(f, s); // `template<typename = EnableIf<...>>`: the default, as C++ fills it
   for (Decl* p : f->templateParams)
   {
     const Ty* t = s.find(p);

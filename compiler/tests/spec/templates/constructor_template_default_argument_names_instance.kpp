@@ -1,0 +1,16 @@
+// spec: a constructor template whose parameter has a default (`template<typename = EnableIf<...>>`), called with nothing to deduce it from, is the instance the default makes: its name has every argument, as code generation never emits a function of a template without all of them (`@...<?>` would be no instance: an error at the use)
+// factorio: IDWithQualityFilter's `template <typename = EnableIf<!isSame<IDTypeParameter, SignalIDBase> && ...>> explicit IDWithQualityFilter(StringView name)`: 154 uses in the new source's game and tests (151 in the old) were emitted as `IDWithQualityFilter<?>`, linked only because every use spelled it the same
+template<class Id>
+struct Filter
+{
+  int value = 0;
+  template<typename = EnableIf<!isSame<Id, int>>>
+  explicit Filter(StringView name) : value(int(name.size())) {}
+};
+struct Item {};
+int main()
+{
+  Filter<Item> filter(StringView("abcd"));
+  println("{}", filter.value);
+  return 0;
+}

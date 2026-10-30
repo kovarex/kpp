@@ -6241,7 +6241,49 @@ namespace
       bool instantiation; // asked for as an instantiation: each use is a request (noteRequest)
     };
     std::unordered_map<std::string, UsedFunction> usedFunctions; // what useFunction answered this emitter (its shared part done)
-    std::string useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    // Why f under args (and classTy) is no instantiation a symbol can name: one of its own template
+    // parameters, or of the class template it is a member of, is unbound or bound to a type not known
+    // or still dependent (`@Bindable::debugChildren<?>(int32)`, undefined at the link). Empty when it is one.
+    std::string notAnInstance(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy)
+    {
+      std::function<bool(const Ty*, int)> unknownIn = [&](const Ty* t, int depth) {
+        if (!t || depth > 16)
+          return false;
+        if (!t->isKnown() || (t->kind == TyKind::Class && t->decl && (t->decl->attributes & ATTR_Draft)))
+          return true;
+        if (unknownIn(t->inner, depth + 1))
+          return true;
+        for (const Ty* a : t->args)
+          if (unknownIn(a, depth + 1))
+            return true;
+        return false;
+      };
+      // (A constant argument is its value: `ZeroHandling::KeepZeros`, whose enum is a class template's
+      // own, names the instance as 0.)
+      auto usable = [&](const Ty* t) {
+        return t && (t->kind == TyKind::Value ? t->inner && !unknownIn(t->inner, 0) : !types.isDependent(t) && !unknownIn(t, 0));
+      };
+      auto boundTo = [&](Decl* p) -> const Ty* {
+        for (auto& [d, t] : args.pairs)
+          if (d == p)
+            return t;
+        return nullptr;
+      };
+      for (Decl* p : f->templateParams)
+        if (!static_cast<TemplateParamDecl*>(p)->isPack && !usable(boundTo(p)))
+          return "the function template " + qualifiedName(f) + " without its argument " + sym(static_cast<TemplateParamDecl*>(p)->name) +
+                 (boundTo(p) ? " (" + types.toString(boundTo(p), &symbols) + ")" : std::string());
+      if (classTy && !usable(classTy))
+        return qualifiedName(f) + " of " + types.toString(classTy, &symbols) + ", a class not instantiated";
+      if (!classTy)
+        if (Decl* owner = global.owningClass(f); owner && owner->kind == NodeKind::ClassDecl && !(owner->flags & DF_Specialization))
+          for (Decl* p : owner->templateParams)
+            if (!usable(boundTo(p)))
+              return qualifiedName(f) + " of the class template " + qualifiedName(owner) + " without its argument " + sym(static_cast<TemplateParamDecl*>(p)->name);
+      return {};
+    }
+
+    std::string useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at = nullptr)
     {
       if (f->builtin == BUILTIN_EnumFromStr)
         return useFunctionOnce(f, args, classTy);
@@ -6252,6 +6294,10 @@ namespace
           noteRequest(mine->second.name);
         return mine->second.name;
       }
+      // Never a symbol for a template's function that is no instantiation: an error at the use,
+      // which the headline counts, not an undefined name at the link.
+      if (std::string why = notAnInstance(f, args, classTy); !why.empty())
+        unsupported(at ? at : f, "emitting " + why);
       lastUseInstantiates = false;
       std::string name = useFunctionOnce(f, args, classTy);
       usedFunctions.emplace(std::move(key), UsedFunction{name, lastUseInstantiates});
@@ -6949,7 +6995,7 @@ namespace
         if (std::optional<Value> v = inlinedConstructor(f, args, classTy, thisArg, sret, callArgs, at))
           return *v;
       }
-      std::string name = indirect.empty() ? useFunction(f, args, classTy) : indirect;
+      std::string name = indirect.empty() ? useFunction(f, args, classTy, at) : indirect;
       Signature s;
       const Ty* ret;
       {
@@ -12448,7 +12494,7 @@ namespace
               fargs = global.classArgsOf(classTy);
             }
             addressedTemplateArgs(f, n, e, fargs);
-            std::string name = useFunction(f, fargs, classTy);
+            std::string name = useFunction(f, fargs, classTy, e);
             ArgsScope scope(*this, &fargs);
             return {name, types.pointer(declType(f))};
           }
@@ -13261,7 +13307,7 @@ namespace
             TemplateArgs fargs = global.classArgsOf(owner);
             if (!f->templateParams.empty())
               addressedTemplateArgs(f, n, u, fargs);
-            return {useFunction(f, fargs, owner), mp};
+            return {useFunction(f, fargs, owner, u), mp};
           }
           if (!f->templateParams.empty())
             unsupported(u, "the address of a member function template of a base at another place in the object");
