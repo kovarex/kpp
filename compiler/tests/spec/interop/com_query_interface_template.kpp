@@ -1,4 +1,4 @@
-// spec: a COM interface class as generate_com.py writes them: IUnknown's virtual QueryInterface(const IID*, void**) next to unknwn.h's member template QueryInterface(Q** pp), which asks for Q's id (Q::iid(), each interface's static) and is found through a derived interface's pointer
+// spec: a COM interface class as generate_com.py writes them: IUnknown's virtual QueryInterface(const IID*, void**) next to unknwn.h's member template QueryInterface(Q** pp), which asks for Q's id (Q::iid(), each interface's static, a template so that only an interface asked for needs its id at link time) and is found through a derived interface's pointer
 // factorio: GraphicsInterfaceDX11's `this->dxgiAdapter->QueryInterface(&adapter)` with a CComPtr<IDXGIAdapter3> (4c178a5b915)
 struct IID { int id; };
 IID iidOfBase = {1};
@@ -6,6 +6,7 @@ IID iidOfDerived = {2};
 class IUnknownLike
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &iidOfBase; }
   virtual int QueryInterface(const IID* riid, void** object) = 0;
   template<typename Q>
@@ -14,6 +15,7 @@ public:
 class IDerived : public IUnknownLike
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &iidOfDerived; }
   virtual int value() = 0;
 };

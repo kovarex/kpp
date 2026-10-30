@@ -236,7 +236,9 @@ def main():
         lines.append(f'class {name}' + (f' : public {base}' if base else ''))
         lines.append('{')
         lines.append('public:')
-        # __uuidof(IFoo) as IFoo::iid(), for IUnknown's QueryInterface template.
+        # __uuidof(IFoo) as IFoo::iid(), for IUnknown's QueryInterface template; a template itself, so
+        # that only the interfaces asked for need their IIDs' libraries at link time.
+        lines.append('  template<int = 0>')
         lines.append(f'  static const IID* iid() {{ return &IID_{name}; }}')
         for result, method, params in own:
             lines.append(f'  virtual {result} {method}({", ".join(params)}) = 0;')

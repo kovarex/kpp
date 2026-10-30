@@ -8,6 +8,7 @@
 class IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IUnknown; }
   virtual HRESULT QueryInterface(const IID* riid, void** ppvObject) = 0;
   virtual ULONG AddRef() = 0;
@@ -19,6 +20,7 @@ public:
 class ID3D10Blob : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D10Blob; }
   virtual LPVOID GetBufferPointer() = 0;
   virtual SIZE_T GetBufferSize() = 0;
@@ -27,6 +29,7 @@ public:
 class ID3D11DeviceChild : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11DeviceChild; }
   virtual void GetDevice(ID3D11Device** ppDevice) = 0;
   virtual HRESULT GetPrivateData(const GUID* guid, UINT* pDataSize, void* pData) = 0;
@@ -37,6 +40,7 @@ public:
 class ID3D11Asynchronous : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Asynchronous; }
   virtual UINT GetDataSize() = 0;
 };
@@ -44,6 +48,7 @@ public:
 class ID3D11AuthenticatedChannel : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11AuthenticatedChannel; }
   virtual HRESULT GetCertificateSize(UINT* pCertificateSize) = 0;
   virtual HRESULT GetCertificate(UINT CertificateSize, BYTE* pCertificate) = 0;
@@ -53,6 +58,7 @@ public:
 class ID3D11BlendState : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11BlendState; }
   virtual void GetDesc(D3D11_BLEND_DESC* pDesc) = 0;
 };
@@ -60,6 +66,7 @@ public:
 class ID3D11BlendState1 : public ID3D11BlendState
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11BlendState1; }
   virtual void GetDesc1(D3D11_BLEND_DESC1* pDesc) = 0;
 };
@@ -67,6 +74,7 @@ public:
 class ID3D11Resource : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Resource; }
   virtual void GetType(D3D11_RESOURCE_DIMENSION* pResourceDimension) = 0;
   virtual void SetEvictionPriority(UINT EvictionPriority) = 0;
@@ -76,6 +84,7 @@ public:
 class ID3D11Buffer : public ID3D11Resource
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Buffer; }
   virtual void GetDesc(D3D11_BUFFER_DESC* pDesc) = 0;
 };
@@ -83,6 +92,7 @@ public:
 class ID3D11ClassInstance : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11ClassInstance; }
   virtual void GetClassLinkage(ID3D11ClassLinkage** ppLinkage) = 0;
   virtual void GetDesc(D3D11_CLASS_INSTANCE_DESC* pDesc) = 0;
@@ -93,6 +103,7 @@ public:
 class ID3D11ClassLinkage : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11ClassLinkage; }
   virtual HRESULT GetClassInstance(LPCSTR pClassInstanceName, UINT InstanceIndex, ID3D11ClassInstance** ppInstance) = 0;
   virtual HRESULT CreateClassInstance(LPCSTR pClassTypeName, UINT ConstantBufferOffset, UINT ConstantVectorOffset, UINT TextureOffset, UINT SamplerOffset, ID3D11ClassInstance** ppInstance) = 0;
@@ -101,6 +112,7 @@ public:
 class ID3D11CommandList : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11CommandList; }
   virtual UINT GetContextFlags() = 0;
 };
@@ -108,12 +120,14 @@ public:
 class ID3D11ComputeShader : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11ComputeShader; }
 };
 
 class ID3D11Counter : public ID3D11Asynchronous
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Counter; }
   virtual void GetDesc(D3D11_COUNTER_DESC* pDesc) = 0;
 };
@@ -121,6 +135,7 @@ public:
 class ID3D11CryptoSession : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11CryptoSession; }
   virtual void GetCryptoType(GUID* pCryptoType) = 0;
   virtual void GetDecoderProfile(GUID* pDecoderProfile) = 0;
@@ -132,6 +147,7 @@ public:
 class ID3D11Debug : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Debug; }
   virtual HRESULT SetFeatureMask(UINT Mask) = 0;
   virtual UINT GetFeatureMask() = 0;
@@ -147,6 +163,7 @@ public:
 class ID3D11DepthStencilState : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11DepthStencilState; }
   virtual void GetDesc(D3D11_DEPTH_STENCIL_DESC* pDesc) = 0;
 };
@@ -154,6 +171,7 @@ public:
 class ID3D11View : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11View; }
   virtual void GetResource(ID3D11Resource** ppResource) = 0;
 };
@@ -161,6 +179,7 @@ public:
 class ID3D11DepthStencilView : public ID3D11View
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11DepthStencilView; }
   virtual void GetDesc(D3D11_DEPTH_STENCIL_VIEW_DESC* pDesc) = 0;
 };
@@ -168,6 +187,7 @@ public:
 class ID3D11Device : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Device; }
   virtual HRESULT CreateBuffer(const D3D11_BUFFER_DESC* pDesc, const D3D11_SUBRESOURCE_DATA* pInitialData, ID3D11Buffer** ppBuffer) = 0;
   virtual HRESULT CreateTexture1D(const D3D11_TEXTURE1D_DESC* pDesc, const D3D11_SUBRESOURCE_DATA* pInitialData, ID3D11Texture1D** ppTexture1D) = 0;
@@ -214,6 +234,7 @@ public:
 class ID3D11Device1 : public ID3D11Device
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Device1; }
   virtual void GetImmediateContext1(ID3D11DeviceContext1** ppImmediateContext) = 0;
   virtual HRESULT CreateDeferredContext1(UINT ContextFlags, ID3D11DeviceContext1** ppDeferredContext) = 0;
@@ -227,6 +248,7 @@ public:
 class ID3D11DeviceContext : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11DeviceContext; }
   virtual void VSSetConstantBuffers(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers) = 0;
   virtual void PSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView* const* ppShaderResourceViews) = 0;
@@ -341,6 +363,7 @@ public:
 class ID3D11DeviceContext1 : public ID3D11DeviceContext
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11DeviceContext1; }
   virtual void CopySubresourceRegion1(ID3D11Resource* pDstResource, UINT DstSubresource, UINT DstX, UINT DstY, UINT DstZ, ID3D11Resource* pSrcResource, UINT SrcSubresource, const D3D11_BOX* pSrcBox, UINT CopyFlags) = 0;
   virtual void UpdateSubresource1(ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch, UINT CopyFlags) = 0;
@@ -366,24 +389,28 @@ public:
 class ID3D11DomainShader : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11DomainShader; }
 };
 
 class ID3D11GeometryShader : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11GeometryShader; }
 };
 
 class ID3D11HullShader : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11HullShader; }
 };
 
 class ID3D11InfoQueue : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11InfoQueue; }
   virtual HRESULT SetMessageCountLimit(UINT64 MessageCountLimit) = 0;
   virtual void ClearStoredMessages() = 0;
@@ -425,18 +452,21 @@ public:
 class ID3D11InputLayout : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11InputLayout; }
 };
 
 class ID3D11PixelShader : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11PixelShader; }
 };
 
 class ID3D11Query : public ID3D11Asynchronous
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Query; }
   virtual void GetDesc(D3D11_QUERY_DESC* pDesc) = 0;
 };
@@ -444,12 +474,14 @@ public:
 class ID3D11Predicate : public ID3D11Query
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Predicate; }
 };
 
 class ID3D11RasterizerState : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11RasterizerState; }
   virtual void GetDesc(D3D11_RASTERIZER_DESC* pDesc) = 0;
 };
@@ -457,6 +489,7 @@ public:
 class ID3D11RasterizerState1 : public ID3D11RasterizerState
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11RasterizerState1; }
   virtual void GetDesc1(D3D11_RASTERIZER_DESC1* pDesc) = 0;
 };
@@ -464,6 +497,7 @@ public:
 class ID3D11RefDefaultTrackingOptions : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11RefDefaultTrackingOptions; }
   virtual HRESULT SetTrackingOptions(UINT ResourceTypeFlags, UINT Options) = 0;
 };
@@ -471,6 +505,7 @@ public:
 class ID3D11RefTrackingOptions : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11RefTrackingOptions; }
   virtual HRESULT SetTrackingOptions(UINT uOptions) = 0;
 };
@@ -478,6 +513,7 @@ public:
 class ID3D11RenderTargetView : public ID3D11View
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11RenderTargetView; }
   virtual void GetDesc(D3D11_RENDER_TARGET_VIEW_DESC* pDesc) = 0;
 };
@@ -485,6 +521,7 @@ public:
 class ID3D11SamplerState : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11SamplerState; }
   virtual void GetDesc(D3D11_SAMPLER_DESC* pDesc) = 0;
 };
@@ -492,6 +529,7 @@ public:
 class ID3D11ShaderResourceView : public ID3D11View
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11ShaderResourceView; }
   virtual void GetDesc(D3D11_SHADER_RESOURCE_VIEW_DESC* pDesc) = 0;
 };
@@ -499,6 +537,7 @@ public:
 class ID3D11SwitchToRef : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11SwitchToRef; }
   virtual BOOL SetUseRef(BOOL UseRef) = 0;
   virtual BOOL GetUseRef() = 0;
@@ -507,6 +546,7 @@ public:
 class ID3D11Texture1D : public ID3D11Resource
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Texture1D; }
   virtual void GetDesc(D3D11_TEXTURE1D_DESC* pDesc) = 0;
 };
@@ -514,6 +554,7 @@ public:
 class ID3D11Texture2D : public ID3D11Resource
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Texture2D; }
   virtual void GetDesc(D3D11_TEXTURE2D_DESC* pDesc) = 0;
 };
@@ -521,6 +562,7 @@ public:
 class ID3D11Texture3D : public ID3D11Resource
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11Texture3D; }
   virtual void GetDesc(D3D11_TEXTURE3D_DESC* pDesc) = 0;
 };
@@ -528,6 +570,7 @@ public:
 class ID3D11TracingDevice : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11TracingDevice; }
   virtual HRESULT SetShaderTrackingOptionsByType(UINT ResourceTypeFlags, UINT Options) = 0;
   virtual HRESULT SetShaderTrackingOptions(IUnknown* pShader, UINT Options) = 0;
@@ -536,6 +579,7 @@ public:
 class ID3D11UnorderedAccessView : public ID3D11View
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11UnorderedAccessView; }
   virtual void GetDesc(D3D11_UNORDERED_ACCESS_VIEW_DESC* pDesc) = 0;
 };
@@ -543,12 +587,14 @@ public:
 class ID3D11VertexShader : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VertexShader; }
 };
 
 class ID3D11VideoContext : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoContext; }
   virtual HRESULT GetDecoderBuffer(ID3D11VideoDecoder* pDecoder, D3D11_VIDEO_DECODER_BUFFER_TYPE Type, UINT* pBufferSize, void** ppBuffer) = 0;
   virtual HRESULT ReleaseDecoderBuffer(ID3D11VideoDecoder* pDecoder, D3D11_VIDEO_DECODER_BUFFER_TYPE Type) = 0;
@@ -613,6 +659,7 @@ public:
 class ID3D11VideoContext1 : public ID3D11VideoContext
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoContext1; }
   virtual HRESULT SubmitDecoderBuffers1(ID3D11VideoDecoder* pDecoder, UINT NumBuffers, const D3D11_VIDEO_DECODER_BUFFER_DESC1* pBufferDesc) = 0;
   virtual HRESULT GetDataForNewHardwareKey(ID3D11CryptoSession* pCryptoSession, UINT PrivateInputSize, const void* pPrivatInputData, UINT64* pPrivateOutputData) = 0;
@@ -633,6 +680,7 @@ public:
 class ID3D11VideoDecoder : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoDecoder; }
   virtual HRESULT GetCreationParameters(D3D11_VIDEO_DECODER_DESC* pVideoDesc, D3D11_VIDEO_DECODER_CONFIG* pConfig) = 0;
   virtual HRESULT GetDriverHandle(HANDLE* pDriverHandle) = 0;
@@ -641,6 +689,7 @@ public:
 class ID3D11VideoDecoderOutputView : public ID3D11View
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoDecoderOutputView; }
   virtual void GetDesc(D3D11_VIDEO_DECODER_OUTPUT_VIEW_DESC* pDesc) = 0;
 };
@@ -648,6 +697,7 @@ public:
 class ID3D11VideoDevice : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoDevice; }
   virtual HRESULT CreateVideoDecoder(const D3D11_VIDEO_DECODER_DESC* pVideoDesc, const D3D11_VIDEO_DECODER_CONFIG* pConfig, ID3D11VideoDecoder** ppDecoder) = 0;
   virtual HRESULT CreateVideoProcessor(ID3D11VideoProcessorEnumerator* pEnum, UINT RateConversionIndex, ID3D11VideoProcessor** ppVideoProcessor) = 0;
@@ -671,6 +721,7 @@ public:
 class ID3D11VideoDevice1 : public ID3D11VideoDevice
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoDevice1; }
   virtual HRESULT GetCryptoSessionPrivateDataSize(const GUID* pCryptoType, const GUID* pDecoderProfile, const GUID* pKeyExchangeType, UINT* pPrivateInputSize, UINT* pPrivateOutputSize) = 0;
   virtual HRESULT GetVideoDecoderCaps(const GUID* pDecoderProfile, UINT SampleWidth, UINT SampleHeight, const DXGI_RATIONAL* pFrameRate, UINT BitRate, const GUID* pCryptoType, UINT* pDecoderCaps) = 0;
@@ -681,6 +732,7 @@ public:
 class ID3D11VideoProcessor : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoProcessor; }
   virtual void GetContentDesc(D3D11_VIDEO_PROCESSOR_CONTENT_DESC* pDesc) = 0;
   virtual void GetRateConversionCaps(D3D11_VIDEO_PROCESSOR_RATE_CONVERSION_CAPS* pCaps) = 0;
@@ -689,6 +741,7 @@ public:
 class ID3D11VideoProcessorEnumerator : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoProcessorEnumerator; }
   virtual HRESULT GetVideoProcessorContentDesc(D3D11_VIDEO_PROCESSOR_CONTENT_DESC* pContentDesc) = 0;
   virtual HRESULT CheckVideoProcessorFormat(DXGI_FORMAT Format, UINT* pFlags) = 0;
@@ -701,6 +754,7 @@ public:
 class ID3D11VideoProcessorEnumerator1 : public ID3D11VideoProcessorEnumerator
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoProcessorEnumerator1; }
   virtual HRESULT CheckVideoProcessorFormatConversion(DXGI_FORMAT InputFormat, DXGI_COLOR_SPACE_TYPE InputColorSpace, DXGI_FORMAT OutputFormat, DXGI_COLOR_SPACE_TYPE OutputColorSpace, BOOL* pSupported) = 0;
 };
@@ -708,6 +762,7 @@ public:
 class ID3D11VideoProcessorInputView : public ID3D11View
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoProcessorInputView; }
   virtual void GetDesc(D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC* pDesc) = 0;
 };
@@ -715,6 +770,7 @@ public:
 class ID3D11VideoProcessorOutputView : public ID3D11View
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3D11VideoProcessorOutputView; }
   virtual void GetDesc(D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC* pDesc) = 0;
 };
@@ -722,6 +778,7 @@ public:
 class ID3DDestructionNotifier : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3DDestructionNotifier; }
   virtual HRESULT RegisterDestructionCallback(PFN_DESTRUCTION_CALLBACK callbackFn, void* pData, UINT* pCallbackID) = 0;
   virtual HRESULT UnregisterDestructionCallback(UINT callbackID) = 0;
@@ -730,12 +787,14 @@ public:
 class ID3DDeviceContextState : public ID3D11DeviceChild
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3DDeviceContextState; }
 };
 
 class ID3DUserDefinedAnnotation : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ID3DUserDefinedAnnotation; }
   virtual INT BeginEvent(LPCWSTR Name) = 0;
   virtual INT EndEvent() = 0;
@@ -746,6 +805,7 @@ public:
 class IDXGIObject : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIObject; }
   virtual HRESULT SetPrivateData(const GUID* Name, UINT DataSize, const void* pData) = 0;
   virtual HRESULT SetPrivateDataInterface(const GUID* Name, const IUnknown* pUnknown) = 0;
@@ -756,6 +816,7 @@ public:
 class IDXGIAdapter : public IDXGIObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIAdapter; }
   virtual HRESULT EnumOutputs(UINT Output, IDXGIOutput** ppOutput) = 0;
   virtual HRESULT GetDesc(DXGI_ADAPTER_DESC* pDesc) = 0;
@@ -765,6 +826,7 @@ public:
 class IDXGIAdapter1 : public IDXGIAdapter
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIAdapter1; }
   virtual HRESULT GetDesc1(DXGI_ADAPTER_DESC1* pDesc) = 0;
 };
@@ -772,6 +834,7 @@ public:
 class IDXGIAdapter2 : public IDXGIAdapter1
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIAdapter2; }
   virtual HRESULT GetDesc2(DXGI_ADAPTER_DESC2* pDesc) = 0;
 };
@@ -779,6 +842,7 @@ public:
 class IDXGIAdapter3 : public IDXGIAdapter2
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIAdapter3; }
   virtual HRESULT RegisterHardwareContentProtectionTeardownStatusEvent(HANDLE hEvent, DWORD* pdwCookie) = 0;
   virtual void UnregisterHardwareContentProtectionTeardownStatus(DWORD dwCookie) = 0;
@@ -791,6 +855,7 @@ public:
 class IDXGIDecodeSwapChain : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDecodeSwapChain; }
   virtual HRESULT PresentBuffer(UINT BufferToPresent, UINT SyncInterval, UINT Flags) = 0;
   virtual HRESULT SetSourceRect(const RECT* pRect) = 0;
@@ -806,6 +871,7 @@ public:
 class IDXGIDevice : public IDXGIObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDevice; }
   virtual HRESULT GetAdapter(IDXGIAdapter** pAdapter) = 0;
   virtual HRESULT CreateSurface(const DXGI_SURFACE_DESC* pDesc, UINT NumSurfaces, DXGI_USAGE Usage, const DXGI_SHARED_RESOURCE* pSharedResource, IDXGISurface** ppSurface) = 0;
@@ -817,6 +883,7 @@ public:
 class IDXGIDevice1 : public IDXGIDevice
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDevice1; }
   virtual HRESULT SetMaximumFrameLatency(UINT MaxLatency) = 0;
   virtual HRESULT GetMaximumFrameLatency(UINT* pMaxLatency) = 0;
@@ -825,6 +892,7 @@ public:
 class IDXGIDevice2 : public IDXGIDevice1
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDevice2; }
   virtual HRESULT OfferResources(UINT NumResources, IDXGIResource* const* ppResources, DXGI_OFFER_RESOURCE_PRIORITY Priority) = 0;
   virtual HRESULT ReclaimResources(UINT NumResources, IDXGIResource* const* ppResources, BOOL* pDiscarded) = 0;
@@ -834,6 +902,7 @@ public:
 class IDXGIDevice3 : public IDXGIDevice2
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDevice3; }
   virtual void Trim() = 0;
 };
@@ -841,6 +910,7 @@ public:
 class IDXGIDevice4 : public IDXGIDevice3
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDevice4; }
   virtual HRESULT OfferResources1(UINT NumResources, IDXGIResource* const* ppResources, DXGI_OFFER_RESOURCE_PRIORITY Priority, UINT Flags) = 0;
   virtual HRESULT ReclaimResources1(UINT NumResources, IDXGIResource* const* ppResources, DXGI_RECLAIM_RESOURCE_RESULTS* pResults) = 0;
@@ -849,6 +919,7 @@ public:
 class IDXGIDeviceSubObject : public IDXGIObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDeviceSubObject; }
   virtual HRESULT GetDevice(const IID* riid, void** ppDevice) = 0;
 };
@@ -856,6 +927,7 @@ public:
 class IDXGIDisplayControl : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIDisplayControl; }
   virtual BOOL IsStereoEnabled() = 0;
   virtual void SetStereoEnabled(BOOL enabled) = 0;
@@ -864,6 +936,7 @@ public:
 class IDXGIFactory : public IDXGIObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIFactory; }
   virtual HRESULT EnumAdapters(UINT Adapter, IDXGIAdapter** ppAdapter) = 0;
   virtual HRESULT MakeWindowAssociation(HWND WindowHandle, UINT Flags) = 0;
@@ -875,6 +948,7 @@ public:
 class IDXGIFactory1 : public IDXGIFactory
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIFactory1; }
   virtual HRESULT EnumAdapters1(UINT Adapter, IDXGIAdapter1** ppAdapter) = 0;
   virtual BOOL IsCurrent() = 0;
@@ -883,6 +957,7 @@ public:
 class IDXGIFactory2 : public IDXGIFactory1
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIFactory2; }
   virtual BOOL IsWindowedStereoEnabled() = 0;
   virtual HRESULT CreateSwapChainForHwnd(IUnknown* pDevice, HWND hWnd, const DXGI_SWAP_CHAIN_DESC1* pDesc, const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc, IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain) = 0;
@@ -900,6 +975,7 @@ public:
 class IDXGIFactory3 : public IDXGIFactory2
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIFactory3; }
   virtual UINT GetCreationFlags() = 0;
 };
@@ -907,6 +983,7 @@ public:
 class IDXGIFactory4 : public IDXGIFactory3
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIFactory4; }
   virtual HRESULT EnumAdapterByLuid(LUID AdapterLuid, const IID* riid, void** ppvAdapter) = 0;
   virtual HRESULT EnumWarpAdapter(const IID* riid, void** ppvAdapter) = 0;
@@ -915,6 +992,7 @@ public:
 class IDXGIFactory5 : public IDXGIFactory4
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIFactory5; }
   virtual HRESULT CheckFeatureSupport(DXGI_FEATURE Feature, void* pFeatureSupportData, UINT FeatureSupportDataSize) = 0;
 };
@@ -922,6 +1000,7 @@ public:
 class IDXGIFactoryMedia : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIFactoryMedia; }
   virtual HRESULT CreateSwapChainForCompositionSurfaceHandle(IUnknown* pDevice, HANDLE hSurface, const DXGI_SWAP_CHAIN_DESC1* pDesc, IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain) = 0;
   virtual HRESULT CreateDecodeSwapChainForCompositionSurfaceHandle(IUnknown* pDevice, HANDLE hSurface, DXGI_DECODE_SWAP_CHAIN_DESC* pDesc, IDXGIResource* pYuvDecodeBuffers, IDXGIOutput* pRestrictToOutput, IDXGIDecodeSwapChain** ppSwapChain) = 0;
@@ -930,6 +1009,7 @@ public:
 class IDXGIKeyedMutex : public IDXGIDeviceSubObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIKeyedMutex; }
   virtual HRESULT AcquireSync(UINT64 Key, DWORD dwMilliseconds) = 0;
   virtual HRESULT ReleaseSync(UINT64 Key) = 0;
@@ -938,6 +1018,7 @@ public:
 class IDXGIOutput : public IDXGIObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIOutput; }
   virtual HRESULT GetDesc(DXGI_OUTPUT_DESC* pDesc) = 0;
   virtual HRESULT GetDisplayModeList(DXGI_FORMAT EnumFormat, UINT Flags, UINT* pNumModes, DXGI_MODE_DESC* pDesc) = 0;
@@ -956,6 +1037,7 @@ public:
 class IDXGIOutput1 : public IDXGIOutput
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIOutput1; }
   virtual HRESULT GetDisplayModeList1(DXGI_FORMAT EnumFormat, UINT Flags, UINT* pNumModes, DXGI_MODE_DESC1* pDesc) = 0;
   virtual HRESULT FindClosestMatchingMode1(const DXGI_MODE_DESC1* pModeToMatch, DXGI_MODE_DESC1* pClosestMatch, IUnknown* pConcernedDevice) = 0;
@@ -966,6 +1048,7 @@ public:
 class IDXGIOutput2 : public IDXGIOutput1
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIOutput2; }
   virtual BOOL SupportsOverlays() = 0;
 };
@@ -973,6 +1056,7 @@ public:
 class IDXGIOutput3 : public IDXGIOutput2
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIOutput3; }
   virtual HRESULT CheckOverlaySupport(DXGI_FORMAT EnumFormat, IUnknown* pConcernedDevice, UINT* pFlags) = 0;
 };
@@ -980,6 +1064,7 @@ public:
 class IDXGIOutput4 : public IDXGIOutput3
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIOutput4; }
   virtual HRESULT CheckOverlayColorSpaceSupport(DXGI_FORMAT Format, DXGI_COLOR_SPACE_TYPE ColorSpace, IUnknown* pConcernedDevice, UINT* pFlags) = 0;
 };
@@ -987,6 +1072,7 @@ public:
 class IDXGIOutput5 : public IDXGIOutput4
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIOutput5; }
   virtual HRESULT DuplicateOutput1(IUnknown* pDevice, UINT Flags, UINT SupportedFormatsCount, const DXGI_FORMAT* pSupportedFormats, IDXGIOutputDuplication** ppOutputDuplication) = 0;
 };
@@ -994,6 +1080,7 @@ public:
 class IDXGIOutputDuplication : public IDXGIObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIOutputDuplication; }
   virtual void GetDesc(DXGI_OUTDUPL_DESC* pDesc) = 0;
   virtual HRESULT AcquireNextFrame(UINT TimeoutInMilliseconds, DXGI_OUTDUPL_FRAME_INFO* pFrameInfo, IDXGIResource** ppDesktopResource) = 0;
@@ -1008,6 +1095,7 @@ public:
 class IDXGIResource : public IDXGIDeviceSubObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIResource; }
   virtual HRESULT GetSharedHandle(HANDLE* pSharedHandle) = 0;
   virtual HRESULT GetUsage(DXGI_USAGE* pUsage) = 0;
@@ -1018,6 +1106,7 @@ public:
 class IDXGIResource1 : public IDXGIResource
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGIResource1; }
   virtual HRESULT CreateSubresourceSurface(UINT index, IDXGISurface2** ppSurface) = 0;
   virtual HRESULT CreateSharedHandle(const SECURITY_ATTRIBUTES* pAttributes, DWORD dwAccess, LPCWSTR lpName, HANDLE* pHandle) = 0;
@@ -1026,6 +1115,7 @@ public:
 class IDXGISurface : public IDXGIDeviceSubObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISurface; }
   virtual HRESULT GetDesc(DXGI_SURFACE_DESC* pDesc) = 0;
   virtual HRESULT Map(DXGI_MAPPED_RECT* pLockedRect, UINT MapFlags) = 0;
@@ -1035,6 +1125,7 @@ public:
 class IDXGISurface1 : public IDXGISurface
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISurface1; }
   virtual HRESULT GetDC(BOOL Discard, HDC* phdc) = 0;
   virtual HRESULT ReleaseDC(RECT* pDirtyRect) = 0;
@@ -1043,6 +1134,7 @@ public:
 class IDXGISurface2 : public IDXGISurface1
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISurface2; }
   virtual HRESULT GetResource(const IID* riid, void** ppParentResource, UINT* pSubresourceIndex) = 0;
 };
@@ -1050,6 +1142,7 @@ public:
 class IDXGISwapChain : public IDXGIDeviceSubObject
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISwapChain; }
   virtual HRESULT Present(UINT SyncInterval, UINT Flags) = 0;
   virtual HRESULT GetBuffer(UINT Buffer, const IID* riid, void** ppSurface) = 0;
@@ -1066,6 +1159,7 @@ public:
 class IDXGISwapChain1 : public IDXGISwapChain
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISwapChain1; }
   virtual HRESULT GetDesc1(DXGI_SWAP_CHAIN_DESC1* pDesc) = 0;
   virtual HRESULT GetFullscreenDesc(DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pDesc) = 0;
@@ -1083,6 +1177,7 @@ public:
 class IDXGISwapChain2 : public IDXGISwapChain1
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISwapChain2; }
   virtual HRESULT SetSourceSize(UINT Width, UINT Height) = 0;
   virtual HRESULT GetSourceSize(UINT* pWidth, UINT* pHeight) = 0;
@@ -1096,6 +1191,7 @@ public:
 class IDXGISwapChain3 : public IDXGISwapChain2
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISwapChain3; }
   virtual UINT GetCurrentBackBufferIndex() = 0;
   virtual HRESULT CheckColorSpaceSupport(DXGI_COLOR_SPACE_TYPE ColorSpace, UINT* pColorSpaceSupport) = 0;
@@ -1106,6 +1202,7 @@ public:
 class IDXGISwapChain4 : public IDXGISwapChain3
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISwapChain4; }
   virtual HRESULT SetHDRMetaData(DXGI_HDR_METADATA_TYPE Type, UINT Size, void* pMetaData) = 0;
 };
@@ -1113,6 +1210,7 @@ public:
 class IDXGISwapChainMedia : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDXGISwapChainMedia; }
   virtual HRESULT GetFrameStatisticsMedia(DXGI_FRAME_STATISTICS_MEDIA* pStats) = 0;
   virtual HRESULT SetPresentDuration(UINT Duration) = 0;
@@ -1122,6 +1220,7 @@ public:
 class IDirect3D9 : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDirect3D9; }
   virtual HRESULT RegisterSoftwareDevice(void* pInitializeFunction) = 0;
   virtual UINT GetAdapterCount() = 0;
@@ -1142,6 +1241,7 @@ public:
 class IDirect3D9Ex : public IDirect3D9
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IDirect3D9Ex; }
   virtual UINT GetAdapterModeCountEx(UINT Adapter, const D3DDISPLAYMODEFILTER* pFilter) = 0;
   virtual HRESULT EnumAdapterModesEx(UINT Adapter, const D3DDISPLAYMODEFILTER* pFilter, UINT Mode, D3DDISPLAYMODEEX* pMode) = 0;
@@ -1153,6 +1253,7 @@ public:
 class IEnumWbemClassObject : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IEnumWbemClassObject; }
   virtual HRESULT Reset() = 0;
   virtual HRESULT Next(long lTimeout, ULONG uCount, IWbemClassObject** apObjects, ULONG* puReturned) = 0;
@@ -1164,6 +1265,7 @@ public:
 class ISequentialStream : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_ISequentialStream; }
   virtual HRESULT Read(void* pv, ULONG cb, ULONG* pcbRead) = 0;
   virtual HRESULT Write(const void* pv, ULONG cb, ULONG* pcbWritten) = 0;
@@ -1172,6 +1274,7 @@ public:
 class IStream : public ISequentialStream
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IStream; }
   virtual HRESULT Seek(LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER* plibNewPosition) = 0;
   virtual HRESULT SetSize(ULARGE_INTEGER libNewSize) = 0;
@@ -1187,6 +1290,7 @@ public:
 class IWICBitmapDecoder : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWICBitmapDecoder; }
   virtual HRESULT QueryCapability(IStream* pIStream, DWORD* pdwCapability) = 0;
   virtual HRESULT Initialize(IStream* pIStream, WICDecodeOptions cacheOptions) = 0;
@@ -1204,6 +1308,7 @@ public:
 class IWICBitmapSource : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWICBitmapSource; }
   virtual HRESULT GetSize(UINT* puiWidth, UINT* puiHeight) = 0;
   virtual HRESULT GetPixelFormat(WICPixelFormatGUID* pPixelFormat) = 0;
@@ -1215,6 +1320,7 @@ public:
 class IWICBitmapFrameDecode : public IWICBitmapSource
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWICBitmapFrameDecode; }
   virtual HRESULT GetMetadataQueryReader(IWICMetadataQueryReader** ppIMetadataQueryReader) = 0;
   virtual HRESULT GetColorContexts(UINT cCount, IWICColorContext** ppIColorContexts, UINT* pcActualCount) = 0;
@@ -1224,6 +1330,7 @@ public:
 class IWICFormatConverter : public IWICBitmapSource
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWICFormatConverter; }
   virtual HRESULT Initialize(IWICBitmapSource* pISource, REFWICPixelFormatGUID dstFormat, WICBitmapDitherType dither, IWICPalette* pIPalette, double alphaThresholdPercent, WICBitmapPaletteType paletteTranslate) = 0;
   virtual HRESULT CanConvert(REFWICPixelFormatGUID srcPixelFormat, REFWICPixelFormatGUID dstPixelFormat, BOOL* pfCanConvert) = 0;
@@ -1232,6 +1339,7 @@ public:
 class IWICImagingFactory : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWICImagingFactory; }
   virtual HRESULT CreateDecoderFromFilename(LPCWSTR wzFilename, const GUID* pguidVendor, DWORD dwDesiredAccess, WICDecodeOptions metadataOptions, IWICBitmapDecoder** ppIDecoder) = 0;
   virtual HRESULT CreateDecoderFromStream(IStream* pIStream, const GUID* pguidVendor, WICDecodeOptions metadataOptions, IWICBitmapDecoder** ppIDecoder) = 0;
@@ -1263,6 +1371,7 @@ public:
 class IWICStream : public IStream
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWICStream; }
   virtual HRESULT InitializeFromIStream(IStream* pIStream) = 0;
   virtual HRESULT InitializeFromFilename(LPCWSTR wzFileName, DWORD dwDesiredAccess) = 0;
@@ -1273,6 +1382,7 @@ public:
 class IWbemClassObject : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWbemClassObject; }
   virtual HRESULT GetQualifierSet(IWbemQualifierSet** ppQualSet) = 0;
   virtual HRESULT Get(LPCWSTR wszName, long lFlags, VARIANT* pVal, CIMTYPE* pType, long* plFlavor) = 0;
@@ -1303,6 +1413,7 @@ public:
 class IWbemLocator : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWbemLocator; }
   virtual HRESULT ConnectServer(const BSTR strNetworkResource, const BSTR strUser, const BSTR strPassword, const BSTR strLocale, long lSecurityFlags, const BSTR strAuthority, IWbemContext* pCtx, IWbemServices** ppNamespace) = 0;
 };
@@ -1310,6 +1421,7 @@ public:
 class IWbemServices : public IUnknown
 {
 public:
+  template<int = 0>
   static const IID* iid() { return &IID_IWbemServices; }
   virtual HRESULT OpenNamespace(const BSTR strNamespace, long lFlags, IWbemContext* pCtx, IWbemServices** ppWorkingNamespace, IWbemCallResult** ppResult) = 0;
   virtual HRESULT CancelAsyncCall(IWbemObjectSink* pSink) = 0;
