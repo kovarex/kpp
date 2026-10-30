@@ -24,6 +24,9 @@
     <LocalDebuggerCommandArguments>--no-crash-handler</LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>$(KppGame)\bin\x64\</LocalDebuggerWorkingDirectory>
     <KppBuildScript>$(ProjectDir)build.cmd</KppBuildScript>
+    <!-- Not yet: with debug info, clang rejects most of the game's modules ("Unwind edges out of
+         a catch must have the same unwind dest as the parent catchswitch"; docs/build.md). -->
+    <KppDebugInfo>false</KppDebugInfo>
   </PropertyGroup>
   <Import Project="..\Kpp.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

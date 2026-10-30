@@ -11,7 +11,9 @@
     <KppRoot Condition="'$(KppRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..'))\</KppRoot>
     <Kppc Condition="'$(Kppc)' == ''">$(KppRoot)compiler\build\kppc.exe</Kppc>
     <KppOutputPath>$([System.IO.Path]::Combine('$(ProjectDir)', '$(KppOutput)'))</KppOutputPath>
-    <!-- The configurations (docs/build.md, "Configurations"): what kppc offers today. -->
+    <!-- The configurations (docs/build.md, "Configurations"): what kppc offers today. Debug has
+         line tables for the debugger unless the project sets KppDebugInfo to false. -->
+    <KppConfigurationArguments Condition="'$(Configuration)' == 'Debug' and '$(KppDebugInfo)' != 'false'">--debug-info</KppConfigurationArguments>
     <KppConfigurationArguments Condition="'$(Configuration)' == 'Release'">--release</KppConfigurationArguments>
     <KppCommand>"$(Kppc)" --server --msvc-diagnostics --quiet $(KppConfigurationArguments) $(KppArguments) --exe "$(KppOutputPath)" $(KppSources)</KppCommand>
     <KppBuild Condition="'$(KppBuildScript)' == ''">$(KppCommand)</KppBuild>

@@ -7,10 +7,9 @@ Background and measurements: [docs/build.md](../../docs/build.md), "Visual Studi
 - **Build:** Ctrl+Shift+B runs `kppc --server --msvc-diagnostics` (Kpp.props). The first build
   starts the compile server, and later builds reuse it. Errors appear in the Error List;
   double-click one to open its line.
-- **Run, debug:** F5 builds, then starts the program under the debugger. Until kppc emits debug
-  information (`--debug-info`, in progress), only function names are shown: no source lines, no
-  breakpoints in .kpp files.
-- **Configurations:** Debug is kppc's default; Release adds `--release`.
+- **Run, debug:** F5 builds, then starts the program under the debugger.
+- **Configurations:** Debug adds `--debug-info` (line tables and a PDB), unless the project sets
+  `KppDebugInfo` to false, as factorio.vcxproj does for now. Release adds `--release`.
 - **Colouring:** run `tools\vs\install.cmd` once, then restart Visual Studio. It links the
   TextMate grammar `kpp\Syntaxes\kpp.tmLanguage.json` into `%USERPROFILE%\.vs\Extensions\kpp`.
 

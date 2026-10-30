@@ -40,7 +40,7 @@ only the choice of kppc's arguments.
 | `assert` | compiled in | compiles to nothing (`release_assert` stays) |
 | clang | `-O0` | `-O2`, ThinLTO when there are several modules (lld runs the back ends) |
 | link | link.exe, `--incremental-link` allowed | lld, whole program; `--incremental-link` is an error |
-| debug info | none (the modules carry none; B is adding opt-in `--debug-info`, CodeView) | none |
+| debug info | only with `--debug-info` (CodeView line tables, a PDB; ee17f9a8) | the same |
 | kppc inlining of trivial functions | on | on |
 
 **The compile server.** `--server` anywhere on the line makes kppc a client. The server is keyed by
@@ -207,10 +207,17 @@ dialog (a sign-in prompt) that only kovarex can answer. After he has signed in o
 powershell -File tools\vs\measure.ps1 -Project tools\vs\hello\hello.vcxproj -EditFile tools\vs\hello\hello.kpp
 ```
 
-**Debugging.** F5 starts the executable under Visual Studio's debugger. Today that gives call
-stacks with function names (programs/factorio links with `/DEBUG`), but no source lines or
-breakpoints in `.kpp` files, which need B's `--debug-info`. When it lands, it goes into the
-debug configuration in `Kpp.props`.
+**Debugging.** F5 starts the executable under Visual Studio's debugger. The Debug configuration
+builds with `--debug-info` (ee17f9a8, [debugging.md](debugging.md)): hello's PDB names
+`hello.kpp`. Stepping and breakpoints in Visual Studio have not been tried yet, for the same
+sign-in reason as the timings. programs/factorio builds Debug without it for now
+(`KppDebugInfo` false in factorio.vcxproj). With `--debug-info`, clang rejects most of the game's
+64 modules: "Unwind edges out of a catch must have the same unwind dest as the parent
+catchswitch", at catchpads of `MigrationList` in module 0, for example. Without the option, the
+same kppc (5581f746) builds all 64 modules and the game runs. `--quiet` hides the failed clang
+compiles, and `--keep-going` links what is left, so the link fails with 38,355 unresolved
+externals. That build only gets an error line in the Error List because factorio's `build.cmd`
+prints one when kppc's exit code is not 0.
 
 **Colouring.** `tools/vs/kpp/Syntaxes/kpp.tmLanguage.json`, a TextMate grammar: Visual Studio
 reads these from `%USERPROFILE%\.vs\Extensions\` when it starts, with no extension to build or

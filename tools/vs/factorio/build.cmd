@@ -16,9 +16,14 @@ call "%HERE%native\build.cmd" >nul 2>&1 || (echo error: programs\factorio\native
 cd /d "%HERE%"
 call "%HERE%link-settings.cmd"
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
+rem A debug build links incrementally, as run.cmd's; a release build links whole (ThinLTO).
+set LINK=--incremental-link
+if "%~2"=="--release" set LINK=
 if not exist "%OUT%" mkdir "%OUT%"
-%KPPC% --server --msvc-diagnostics --quiet %~2 --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing --incremental-link %LIBS% --exe "%EXE%" %FIK%\CommonUtil %FIK%\Agui %FIK%\cxxopts %FIK%\StackWalker %FIK%\Lua %FIK%\src
+%KPPC% --server --msvc-diagnostics --quiet %~2 --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LINK% %LIBS% --exe "%EXE%" %FIK%\CommonUtil %FIK%\Agui %FIK%\cxxopts %FIK%\StackWalker %FIK%\Lua %FIK%\src
 set CODE=%errorlevel%
+rem (--quiet hides a failed clang compile or link: this line puts one in the Error List.)
+if not %CODE%==0 echo error: kppc exited with %CODE%; the link's output: %EXE%.link.txt
 if not exist "%EXE%" exit /b 1
 if not exist "%GAME%\bin\x64" mkdir "%GAME%\bin\x64"
 copy /y "%EXE%" "%GAME%\bin\x64\factorio.exe" >nul || exit /b 1
