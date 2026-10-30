@@ -12807,7 +12807,25 @@ struct GlobalScope::Impl
         if (a->kind == TyKind::Float)
           return 3;
         if (a->kind == TyKind::Enum)
-          return static_cast<EnumDecl*>(a->decl)->isClass ? NotViable : (p->kind == TyKind::Int && p->bits == 32 ? 2 : 3);
+        {
+          if (static_cast<EnumDecl*>(a->decl)->isClass)
+            return NotViable;
+          // An unscoped enumeration promotes to int (C++ [conv.prom] 3), one with a fixed
+          // underlying type to that type and to the type that one promotes to ([conv.prom] 4):
+          // `enum LuaEventType : uint32_t` to uint32, `enum Small : uint8_t` to uint8 and to int.
+          bool toInt = p->kind == TyKind::Int && p->bits == 32 && !p->isUnsigned;
+          const Ty* u = declaredUnderlying(a);
+          if (u && !u->isKnown())
+            return p->kind == TyKind::Int && p->bits == 32 ? 2 : 3; // not known yet: as before it is
+          if (u)
+          {
+            if (p == u)
+              return 2;
+            bool uPromotes = u->kind == TyKind::Bool || u->kind == TyKind::Char || (u->kind == TyKind::Int && u->bits < 32);
+            return toInt && uPromotes ? 2 : 3;
+          }
+          return toInt ? 2 : 3;
+        }
         break;
       case TyKind::Float:
         if (a->kind == TyKind::Float)
@@ -13888,6 +13906,23 @@ struct GlobalScope::Impl
           return false;
         if (a.ranks[i] < b.ranks[i])
           someBetter = true;
+        // Two promotions of an enumeration with a fixed underlying type: the one to that type is
+        // better than the one to the type it promotes to (C++ [over.ics.rank] 4.2): take(uint8)
+        // over take(int32) given an `enum Small : uint8_t`.
+        if (a.ranks[i] == 2 && b.ranks[i] == 2 && i < argTypes.size() && argTypes[i] && i < a.params.size() && i < b.params.size() &&
+            a.params[i] && b.params[i])
+          if (const Ty* e = types.unqualified(types.stripRef(argTypes[i])); e->kind == TyKind::Enum)
+            if (const Ty* u = declaredUnderlying(e))
+            {
+              bool aU = types.unqualified(types.stripRef(a.params[i])) == u;
+              bool bU = types.unqualified(types.stripRef(b.params[i])) == u;
+              if (aU != bU)
+              {
+                if (bU)
+                  return false;
+                someBetter = true;
+              }
+            }
         // Two standard conversions of one rank to pointers (or to references) of related types, C++'s
         // tie-breakers: `pick(spider)` with a Spider* takes pick(Entity*) over pick(const Entity*)
         // (the same conversion and a qualification more), and pick(Unit*) over pick(Entity*) for
