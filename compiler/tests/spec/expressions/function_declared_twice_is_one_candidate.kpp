@@ -1,0 +1,18 @@
+// spec: a function declared more than once is one candidate, so a call of it is no ambiguity: a declaration and then its definition, a namespace's function declared in one block and defined in another, a member declared in its class and defined outside it, and a C function that a program declares again (the library declares strlen too)
+int twice(int x);
+int twice(int x) { return 2 * x; }
+namespace geometry { double area(double side); }
+namespace geometry { double area(double side) { return side * side; } }
+struct Box
+{
+  int size = 3;
+  int scaled(int by) const;
+};
+int Box::scaled(int by) const { return this->size * by; }
+extern "C" size_t strlen(const char* s);
+int main()
+{
+  Box box;
+  println("{} {} {} {}", twice(4), geometry::area(1.5), box.scaled(5), strlen("abcd"));
+  return 0;
+}

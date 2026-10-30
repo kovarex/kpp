@@ -1,0 +1,27 @@
+// spec: given take(const T&) and take(T&&), an argument that converts to T makes a temporary, which T&& binds better than const T& (C++ [over.ics.rank] 3.2.3), however the conversion ranks: an Item* for T = const Item* (a qualification conversion), an int32 for T = int64, a float for T = double
+// pending: SILENT, the two rank alike and the const T& overload is called (`copy copy copy`); owner: the templates thread (overload resolution)
+struct Item
+{
+  int value = 1;
+};
+template<class T>
+struct Sink
+{
+  void take(const T& v) { print("copy "); }
+  void take(T&& v) { print("move "); }
+};
+int main()
+{
+  Item item;
+  Item* pointer = &item;
+  Sink<const Item*> pointers;
+  pointers.take(pointer);
+  Sink<int64_t> wide;
+  int32_t small = 5;
+  wide.take(small);
+  Sink<double> reals;
+  float f = 1.5f;
+  reals.take(f);
+  println("");
+  return 0;
+}
