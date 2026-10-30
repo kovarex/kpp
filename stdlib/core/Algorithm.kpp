@@ -80,6 +80,13 @@ It findIf(It first, It last, F predicate)
   return last;
 }
 
+// Over a whole range (std::ranges::find, std::ranges::find_if): a container or a C array.
+template<typename R, typename V>
+auto find(R& range, const V& value) { return find(begin(range), end(range), value); }
+
+template<typename R, typename F>
+auto findIf(R& range, F predicate) { return findIf(begin(range), end(range), predicate); }
+
 template<typename It, typename F>
 It findIfNot(It first, It last, F predicate)
 {

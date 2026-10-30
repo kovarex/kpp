@@ -1,6 +1,5 @@
 // spec: toAddress (std::to_address) gives the address an iterator or fancy pointer points at: a raw pointer (a Vector's iterator) as it is, a class through its operator->, recursively; `*it` reads what both kinds point at. The converter writes C++'s explicit `it.operator*()` as `*it` and `it.operator->()` as `toAddress(it)`, which a Vector's pointer iterator has no member call for
 // factorio: agui::Widget::visible_iterator's `this->position.operator*()` and `this->position.operator->()` on a std::vector<Widget*>::iterator (Agui/Widget.hpp, 4c178a5b915)
-// pending: toAddress takes a raw pointer only
 struct Holder
 {
   int* value;

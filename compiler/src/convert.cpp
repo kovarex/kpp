@@ -4409,15 +4409,17 @@ namespace
           }
           if ((name == "views" || name == "ranges") && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && toks[i + 4].getKind() == TokenKind::Identifier)
           {
-            // std::views and std::ranges::subrange are the library's views (Views.kpp, docs/stdlib/views.md).
+            // std::views and std::ranges::subrange are the library's views (Views.kpp, docs/stdlib/views.md);
+            // std::ranges::find and find_if over a whole range its algorithms' range forms (algorithms.md).
             static const std::map<std::string, std::string> viewNames = {
               {"views::iota", "iotaView"}, {"views::transform", "transformView"}, {"views::reverse", "reverseView"},
-              {"ranges::subrange", "Subrange"}};
+              {"ranges::subrange", "Subrange"}, {"ranges::find", "::find"}, {"ranges::find_if", "::findIf"}};
             auto v = viewNames.find(name + "::" + std::string(spelling(i + 4)));
             if (v != viewNames.end())
             {
-              replace(t.offset, endOffset(i + 4) - t.offset, shadowedAt(v->second, t.offset) ? "::" + v->second : v->second);
-              counts.add("std::views renamed");
+              bool qualify = v->second[0] != ':' && shadowedAt(v->second, t.offset);
+              replace(t.offset, endOffset(i + 4) - t.offset, qualify ? "::" + v->second : v->second);
+              counts.add(name == "views" || v->second == "Subrange" ? "std::views renamed" : "std::ranges algorithms renamed");
               i += 4;
               continue;
             }
@@ -6263,6 +6265,23 @@ namespace
       walkExpr(static_cast<Expr*>(n), owner);
     }
 
+    // The first token of an expression: a postfix node's own token is its operator (`.`, `(`, `[`).
+    static uint32_t firstTokenOf(Expr* e)
+    {
+      for (;;)
+      {
+        if (e->kind == NodeKind::MemberExpr)
+          e = static_cast<MemberExpr*>(e)->base;
+        else if (e->kind == NodeKind::CallExpr)
+          e = static_cast<CallExpr*>(e)->callee;
+        else if (e->kind == NodeKind::IndexExpr)
+          e = static_cast<IndexExpr*>(e)->base;
+        else if (e->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(e)->postfix)
+          e = static_cast<UnaryExpr*>(e)->operand;
+        else
+          return e->token;
+      }
+    }
     void walkExprs(Span<Expr*> es, Decl* owner)
     {
       for (Expr* e : es)
@@ -6324,6 +6343,25 @@ namespace
               insert(toks[arg->token].offset, "&");
               counts.add("GUIDs passed by address");
             }
+          // `it.operator*()` and `it.operator->()` on an iterator: a std::vector's is a class in the
+          // game's library and a pointer in Kpp's, which has no member call for them (Agui's
+          // visible_iterator), so they are written `(*it)` and `toAddress(it)`, which C++ gives the
+          // same meaning for an iterator. The opening goes in at the base's first token before the
+          // base's own edits there (`this->`); a postfix node's token is its operator, the `.`.
+          if (call->args.empty() && call->callee->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(call->callee)->member.parts.size() == 1)
+          {
+            auto* m = static_cast<MemberExpr*>(call->callee);
+            const NamePart& name = m->member.parts[0];
+            bool star = name.opToken == uint32_t(P::Star), arrow = name.opToken == uint32_t(P::Arrow);
+            uint32_t dot = m->token;
+            if (m->op == P::Dot && name.special == 2 && (star || arrow) && dot + 4 < toks.size() &&
+                toks[dot + 3].is(P::LParen) && toks[dot + 4].is(P::RParen))
+            {
+              insert(toks[firstTokenOf(m->base)].offset, star ? "(*" : "toAddress(");
+              replace(toks[dot].offset, toks[dot + 4].offset + 1 - toks[dot].offset, ")");
+              counts.add(star ? "explicit operator*() calls written *x" : "explicit operator->() calls written toAddress(x)");
+            }
+          }
           walkExpr(call->callee, owner);
           walkExprs(call->args, owner);
           break;

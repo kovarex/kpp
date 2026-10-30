@@ -40,11 +40,16 @@ are equal; without it, `operator==`. Results that are counts or distances are `p
 - `advance(it, n)`: moves `it` n steps, back for a negative n (bidirectional); O(1) for random
   access iterators, O(|n|) otherwise. `next(it, n = 1)`, `prev(it, n = 1)`: a moved copy.
 - `iterSwap(a, b)`: `swap(*a, *b)`.
+- `toAddress(p)` (std::to_address): the address an iterator or fancy pointer refers to; a pointer
+  as it is, a class through `p.operator->()`, taken again until it is a pointer.
 
 ## Scans (input iterators)
 
 - `find(first, last, value)`, `findIf(first, last, predicate)`, `findIfNot`: the first position
-  whose element equals value (satisfies predicate, does not), or last.
+  whose element equals value (satisfies predicate, does not), or last. `find(range, value)` and
+  `findIf(range, predicate)` (std::ranges::find, find_if) do the same over a whole range, a
+  container or a C array taken by reference, from `begin(range)` to `end(range)`; without
+  std::ranges' projections, and an rvalue range does not bind.
 - `count(first, last, value)`, `countIf(first, last, predicate)`.
 - `allOf`, `anyOf`, `noneOf(first, last, predicate)`; allOf and noneOf are true for an empty range.
 - `forEach(first, last, f)`: calls f(x) for every element in order; returns f.

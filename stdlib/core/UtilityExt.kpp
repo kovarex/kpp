@@ -4,8 +4,16 @@
 template<typename T>
 const T& asConst(const T& value) { return value; }
 
-template<typename T>
-T* toAddress(T* ptr) { return ptr; }
+// std::to_address: a raw pointer as it is, a fancy pointer or class iterator through its
+// operator->, recursively (pointer_traits<P>::to_address is not consulted: no stdlib class has one).
+template<typename P>
+auto toAddress(const P& ptr)
+{
+  if constexpr (isPointer<P>)
+    return ptr;
+  else
+    return toAddress(ptr.operator->());
+}
 
 // mem_fn: wraps a member function pointer into a callable object.
 template<typename R, typename C>
