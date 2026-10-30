@@ -14048,6 +14048,16 @@ struct GlobalScope::Impl
               else if (isBaseClass(ua, ub))
                 return false;
             }
+            else if (ua->kind != ub->kind && (ua->kind == TyKind::Void || ub->kind == TyKind::Void) && aWeaker && bWeaker)
+            {
+              // A pointer to a class converted to its base's pointer is better than to void*
+              // ([over.ics.rank] 4.4.2): getPrototypeInfoStatic(const PrototypeBase*, ...) over
+              // getPrototypeInfoStatic(const void*, ...) given a const ItemPrototype*.
+              if (ub->kind == TyKind::Void && ua->kind == TyKind::Class)
+                someBetter = true;
+              else if (ua->kind == TyKind::Void && ub->kind == TyKind::Class)
+                return false;
+            }
           }
         }
         // An rvalue reference beside an lvalue one of the same rank: the `T&&` binds an rvalue,

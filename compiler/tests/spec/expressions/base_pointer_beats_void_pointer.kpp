@@ -1,0 +1,17 @@
+// spec: a pointer to a class converted to a pointer to its base is better than one converted to void* (C++ [over.ics.rank] 4.4.2): info(const Base*) over info(const void*) given a const Derived*, whichever is declared first, by value and by reference
+// factorio: OpenableObjectWrapper's getPrototypeInfoStatic(const PrototypeBase*, ...) beside getPrototypeInfoStatic(const void*, ...) given each prototype type (29 calls), and makeExtra(const Sprite*) beside makeExtra(const void*) given a const LayeredSprite*
+struct Base { int id = 1; };
+struct Derived : Base { int more = 2; };
+const char* info(const void* p) { return "void"; }
+const char* info(const Base* p) { return "base"; }
+const char* other(const Base* p) { return "base"; }
+const char* other(const void* p) { return "void"; }
+int main()
+{
+  Derived d;
+  const Derived* p = &d;
+  const Derived*& r = p;
+  int x = 3;
+  println("{} {} {} {}", info(p), other(r), info(&x), other(&d));
+  return 0;
+}
