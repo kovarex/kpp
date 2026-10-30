@@ -8569,6 +8569,12 @@ struct GlobalScope::Impl
       params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
     TypeContext fctx{lexicalScopeOf(declared ? declared : ctor), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
                      ctor->file ? ctor->file->tokens : nullptr, ctor->file ? ctor->file->text : std::string_view()};
+    // A class template's constructor: its instance's (constInstanceBody).
+    if (FunctionDecl* instance = constInstanceBody(ctor, fctx.subst); instance != ctor)
+    {
+      ranBody(ctor);
+      ctor = instance;
+    }
     std::vector<ConstBinding> env;
     fctx.env = &env;
     for (size_t i = 0; i < ctor->params.size(); ++i)
@@ -9174,6 +9180,7 @@ struct GlobalScope::Impl
     if (!def || def->params.size() != f->params.size())
       return std::nullopt;
     ranBody(def);
+    def = constInstanceBody(def, fctx.subst); // a template's function: its instance's
     std::vector<ConstBinding> env;
     fctx.env = &env;
     for (size_t i = 0; i < def->params.size(); ++i)
@@ -14978,8 +14985,10 @@ struct GlobalScope::Impl
 
     // Checks a function template body for one set of deduced arguments, once. Returns the
     // deduced return type when the function returns `auto` (waiting for another producer).
+    // record: the instance's record, when one was claimed or found (complete unless this thread
+    // is walking it).
     const Ty* instantiateFunction(FunctionDecl* f, const Subst& subst, bool needReturn, const Subst* classSubst = nullptr,
-                                  const Ty* objectType = nullptr)
+                                  const Ty* objectType = nullptr, Impl::InstanceRecord** record = nullptr)
     {
       for (Decl* p : f->templateParams)
         if (!subst.find(p) || types.isDependent(subst.find(p)) || !subst.find(p)->isKnown())
@@ -15037,6 +15046,8 @@ struct GlobalScope::Impl
       ++impl.instRequests;
       bool producer;
       Impl::InstanceRecord* inst = impl.claimInstance(f, full, bodyThis, producer);
+      if (record)
+        *record = inst;
       if (!producer)
       {
         if (!needReturn)
@@ -19244,6 +19255,55 @@ struct GlobalScope::Impl
     if (f->name.parts.size() > 1)
       w.scope = w.semanticScopeFor(f->name);
     return w.instantiateFunction(f, subst, true);
+  }
+
+  // The body a constant evaluation runs for def (a function's definition) under subst, when def
+  // is a template's (its own, or its class's): the instance's copy as the instance's walk typed
+  // it, made now or waited for, through the record the checker's instance checks use. There a
+  // call with a type-dependent argument names what the instance's types choose (C++
+  // [temp.dep.candidate]), never the template's own nodes, whose walk resolves such a call without
+  // them and may be writing them on another thread meanwhile. def itself when it is no
+  // template's, an argument is not known, or this thread is walking the instance (a call in its
+  // own body).
+  FunctionDecl* constInstanceBody(FunctionDecl* def, const Subst* subst)
+  {
+    if (!subst || !def->body || !def->file || !def->file->tokens)
+      return def;
+    Decl* cls = owningClassOf(def);
+    Span<Decl*> classParams = cls ? effectiveParams(cls) : Span<Decl*>{};
+    if (def->templateParams.empty() && classParams.empty())
+      return def;
+    Subst classSubst, own;
+    for (Decl* p : classParams)
+    {
+      const Ty* t = subst->find(p);
+      if (!t)
+        return def;
+      classSubst.pairs.push_back({p, t});
+    }
+    // An out-of-line member's own copy of its class's parameter list takes the class's arguments
+    // in order, as the class's check has it (checkMemberBody).
+    bool outOfLine = cls && def->parent != cls && def->templateParams.size() == cls->templateParams.size();
+    for (size_t i = 0; i < def->templateParams.size(); ++i)
+    {
+      const Ty* t = outOfLine ? classSubst.find(cls->templateParams[i]) : subst->find(def->templateParams[i]);
+      if (!t)
+        return def;
+      own.pairs.push_back({def->templateParams[i], t});
+    }
+    ResolveStats scratch;
+    Walker w(*this, scratch, *def->file->tokens, def->file->text);
+    for (Decl* p = def; p; p = p->parent)
+      for (Decl* tp : p->templateParams)
+        w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+    w.scope = lexicalScopeOf(def);
+    if (def->name.parts.size() > 1)
+      w.scope = w.semanticScopeFor(def->name);
+    InstanceRecord* record = nullptr;
+    w.instantiateFunction(def, own, true, classSubst.empty() ? nullptr : &classSubst, nullptr, &record);
+    if (!record || record->state.load(std::memory_order_acquire) != 2 || !record->body)
+      return def;
+    return record->body;
   }
 
   // ---- member bodies of class instances, checked as tasks (docs/compile-speed.md, step 3) ----

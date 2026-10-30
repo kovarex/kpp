@@ -1,0 +1,20 @@
+// spec: a function template evaluated at compile time runs its instance's body, where a call with a type-dependent argument is resolved with the instance's types (C++ [temp.dep.candidate], [temp.inst]): `pick(v)` with v a double calls pick(double), in a constant (an array's size, a static_assert) as at run time
+// factorio: found by the templates thread chasing a rare failure of language/object_declaration_from_variables: the interpreter ran Pair's constructor from the template's own nodes, which name the overload set's first `move` (the three-argument one) while the template's walk is choosing
+constexpr int pick(int) { return 1; }
+constexpr int pick(double) { return 2; }
+template<typename T> constexpr int which(T v) { return pick(v); }
+template<typename T> struct Holder
+{
+  T value;
+  constexpr int kind() const { return pick(this->value); }
+};
+static_assert(which(1.5) == 2);
+static_assert(which(1) == 1);
+constexpr Holder<double> held{2.5};
+static_assert(held.kind() == 2);
+int sized[which(1.5)];
+int main()
+{
+  println("{} {} {} {}", which(1.5), which(1), held.kind(), int(sizeof(sized) / sizeof(int)));
+  return 0;
+}
