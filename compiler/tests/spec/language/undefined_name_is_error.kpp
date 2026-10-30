@@ -1,0 +1,11 @@
+// spec: a name nothing declares is a front-end error at the name, in a variable's initializer and as a called function, and the build fails (--keep-going too)
+// error: undefined_name_is_error.kpp:7: error: 'undefinedThing' is not declared
+// error: undefined_name_is_error.kpp:8: error: 'undefinedCall' is not declared
+int square(int x) { return x * x; }
+int main()
+{
+  int a = undefinedThing + 1;
+  int b = undefinedCall(a);
+  println("{}", square(b));
+  return 0;
+}

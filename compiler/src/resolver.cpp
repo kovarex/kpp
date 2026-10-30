@@ -14435,6 +14435,22 @@ struct GlobalScope::Impl
       stats.unresolvedFirst.emplace(key, ResolveStats::Where{stats.fileIndex, token});
     }
 
+    // A name nothing declares, in code that is no template's (a template's own walk may name what its
+    // arguments bring, and an instance's errors are its emission's): an error at the name.
+    const NameExpr* undeclaredLater = nullptr; // a subscript's lone index name, judged by the subscript (a typed union's tag)
+    void reportUndeclared(const QualifiedName& name, uint32_t token, const NameExpr* at = nullptr)
+    {
+      if ((at && at == undeclaredLater) || !file || file->isImported || probing || activeSubst || inGenericTemplate() || name.parts.size() != 1 || name.parts[0].symbol == UINT32_MAX)
+        return; // (the C import's inline bodies name the C compiler's builtins: codegen's to judge, if emitted)
+      // What the code generator implements by name, macros of the C headers: va_start and its kin,
+      // the SSE intrinsics and their _MM_ helpers (one it does not implement is its error).
+      std::string_view spelled = symbols.name(name.parts[0].symbol);
+      if (spelled == "va_start" || spelled == "va_end" || spelled == "va_copy" || spelled == "va_arg" || spelled.starts_with("_mm_") ||
+          spelled.starts_with("_MM_"))
+        return;
+      impl.reportCheckerError(file, token, "'" + std::string(symbols.name(name.parts[0].symbol)) + "' is not declared");
+    }
+
     enum class Why : uint8_t { None, Name, Base, Member, Overload, Deduction, AutoReturn, Unsupported, Operator, Auto };
 
     const Ty* unknown(Why why)
@@ -15191,6 +15207,7 @@ struct GlobalScope::Impl
               return b; // `uint32_t(x)`
           ++stats.namesUnresolved;
           countUnresolved(e->name, e->token);
+          reportUndeclared(e->name, e->token, e);
           return unknown(Why::Name);
         case Found::Local: ++stats.namesLocal; break;
         case Found::Member: ++stats.namesMember; break;
@@ -16665,6 +16682,7 @@ struct GlobalScope::Impl
               }
             ++stats.namesUnresolved;
             countUnresolved(n->name, n->token);
+            reportUndeclared(n->name, n->token);
             record(n, unknown(Why::Name));
             return types.unknown();
           case Found::Local: ++stats.namesLocal; break;
@@ -18463,19 +18481,43 @@ struct GlobalScope::Impl
           checkPostfixAfterParenthesisedType(i->base, i->token);
           const Ty* base = walkExpr(i->base);
           const Ty* firstIndex = nullptr;
+          // `p[Integer]` names a typed union's alternative, which no lookup finds: a lone name as the
+          // index is judged undeclared once the subscript had its say (judged: its base is known).
+          struct TagLater
+          {
+            Walker& w;
+            NameExpr* tag;
+            const NameExpr* saved;
+            bool judged = false;
+            ~TagLater()
+            {
+              w.undeclaredLater = saved;
+              if (tag && judged && !tag->resolved)
+                w.reportUndeclared(tag->name, tag->token);
+            }
+          } later{*this,
+                  i->args.size() == 1 && i->args[0]->kind == NodeKind::NameExpr && static_cast<NameExpr*>(i->args[0])->name.parts.size() == 1
+                    ? static_cast<NameExpr*>(i->args[0]) : nullptr,
+                  undeclaredLater};
+          undeclaredLater = later.tag;
           for (Expr* a : i->args)
           {
             const Ty* at = walkExpr(a);
             if (a == i->args[0])
               firstIndex = at;
           }
+          undeclaredLater = later.saved;
           const Ty* b = types.stripRef(base);
           if (!b || !b->isKnown())
             return record(e, types.unknown());
           if (b->kind == TyKind::Pointer || b->kind == TyKind::Array)
+          {
+            later.judged = true;
             return record(e, types.lref(b->inner));
+          }
           if (b->kind == TyKind::Param)
             return record(e, b);
+          later.judged = true;
           if (b->kind == TyKind::Class)
           {
             if (ClassDecl* u = typedUnionOf(b); u && i->args.size() == 1)

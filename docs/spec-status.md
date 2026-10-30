@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**790 pass, 9 pending, 0 failing, 0 fixed** (799 snippets, 26.9 s).
+**791 pass, 9 pending, 0 failing, 0 fixed** (800 snippets, 24.4 s).
 
 ## Language: statements, expressions, declarations
 
@@ -220,6 +220,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/throw_from_handler_cleans_up_enclosing_scope.kpp` | exceptions: an exception thrown inside a handler, out of a scope with locals to destroy, destroys the locals around the try too | pass | ExportResultGui::loadAndAttachInternal (a handler's calls in a scope of their own, a FloatingGuiWindow local around the try) |  |
 | `language/throwing_call_result_temporary.kpp` | a call that throws built no result: the temporary its class result was to live in is not destroyed by the cleanup | pass |  |  |
 | `language/undeclared_type_name.kpp` | a type name declared nowhere is a compile error where the program needs the type's layout (a member, a base, a local, a sizeof), never an empty class that compiles | pass |  |  |
+| `language/undefined_name_is_error.kpp` | a name nothing declares is a front-end error at the name, in a variable's initializer and as a called function, and the build fails (--keep-going too) | pass |  |  |
 | `language/union_member_initialized.kpp` | a union initializes one member: the designated one (`{.first = {3}}`, never overwritten by another member's default member initializer), else, with no value, the member that has a default member initializer (`U v = {};` and `U w;` with `long long raw = 5` not the first member), as C++ has it | pass |  |  |
 | `language/unions.kpp` | unions | pass | 47 uses in 39 files |  |
 | `language/universal_character_names_in_literals.kpp` | universal character names and octal escapes in string and character literals: `L"\u0054\u00d6"` is the units 0x54 0xD6, `"\u00e9"` is its UTF-8 bytes, `L'\u00d6'` and `L'\uFFFD'` are those code points, `"\101\60"` is the bytes 65 48 | pass | the tests' MultilingualStringHelpers writes its 104 words as `L"\u0054\u0048..."` (TestStringUtil's NonEnglishCaseCasting and TestLuaHelpersObject's MultilingualToLower: "Expected 55 but was 53"), and StringUtil::stringToUnicodeWString replaces a byte that is no UTF-8 with `wc = L'\uFFFD';` (TestStringUtil's AnsiTextToUTF8); Lua's LUA_SIGNATURE is `"\033Lua"`, whose first byte was 0, so every precompiled chunk counted as text (TestLua's 11 bytecode tests: "attempt to load a text chunk") |  |
