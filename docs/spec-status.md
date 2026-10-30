@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**800 pass, 6 pending, 0 failing, 0 fixed** (806 snippets, 21.0 s).
+**800 pass, 7 pending, 0 failing, 0 fixed** (807 snippets, 26.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -836,6 +836,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `expressions/assignment_evaluates_right_operand_first.kpp` | in an assignment, simple or compound, built-in or a class's operator, the right operand is evaluated before the left (C++17 [expr.ass]/1, [over.match.oper]/2); a subscript and a shift evaluate their left operand first | pending | CompiledMapGenSettings::createContext's `ctx.numericConstants[key] = *value;` with value a pointer into the same FlatMap: the left operand's insertion shifted the entries before *value was read, so "numeric-constant" got its neighbour's 1 instead of starting_area_radius's 150 (CompiledMapGenSettings/NoiseExpressionCompilationContext, the one failing unit test of 4c178a5b915); the expected line is clang 19's | kppc evaluates the left operand of an assignment first (12 where C++ has 21); line 1: got `12 12 12 12 12 12`, expected `21 21 21 21 12 12` |
 | `expressions/function_pointer_of_other_type_is_error.kpp` | a pointer to a function initialises or assigns only a function pointer of its own type (no implicit conversion between function pointer types), as in C++ | pending | found checking the library's C declarations against windows.h: `void (*)(void**)` took the address of a `void (int*)` function | the initialisation compiles, and a call through the pointer passes arguments of the wrong type, silently; compiled, but the error `cannot initialize` was expected |
 | `expressions/address_of_reference_cast_to_second_base.kpp` | the address of `static_cast<B&>(d)` with B a base of D that is not at offset 0 (D : A, B) is the address of d's B part, as `B& b = static_cast<B&>(d)` binds it; casting back down with `static_cast<D&>(b)` gives d again | pass |  |  |
 | `expressions/ambiguous_call_is_error.kpp` | a call that two overloads take equally well is an error, as in C++, never one of them taken silently: pick(int64, int32) and pick(int32, int64) given two int32s | pass |  |  |

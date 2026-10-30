@@ -1,0 +1,40 @@
+// spec: in an assignment, simple or compound, built-in or a class's operator, the right operand is evaluated before the left (C++17 [expr.ass]/1, [over.match.oper]/2); a subscript and a shift evaluate their left operand first
+// factorio: CompiledMapGenSettings::createContext's `ctx.numericConstants[key] = *value;` with value a pointer into the same FlatMap: the left operand's insertion shifted the entries before *value was read, so "numeric-constant" got its neighbour's 1 instead of starting_area_radius's 150 (CompiledMapGenSettings/NoiseExpressionCompilationContext, the one failing unit test of 4c178a5b915); the expected line is clang 19's
+// pending: kppc evaluates the left operand of an assignment first (12 where C++ has 21)
+int order = 0;
+int stored = 0;
+int values[4] = {0, 0, 0, 0};
+struct Box
+{
+  int value = 0;
+  Box& operator=(int v) { this->value = v; return *this; }
+  Box& operator+=(int v) { this->value += v; return *this; }
+};
+Box box;
+int& left() { order = order * 10 + 1; return stored; }
+Box& leftBox() { order = order * 10 + 1; return box; }
+int right() { order = order * 10 + 2; return 5; }
+int* array() { order = order * 10 + 1; return values; }
+int index() { order = order * 10 + 2; return 1; }
+int main()
+{
+  left() = right();
+  int simple = order;
+  order = 0;
+  left() += right();
+  int compound = order;
+  order = 0;
+  leftBox() = right();
+  int classAssign = order;
+  order = 0;
+  leftBox() += right();
+  int classCompound = order;
+  order = 0;
+  int at = array()[index()];
+  int subscript = order;
+  order = 0;
+  int shifted = left() << right();
+  int shift = order;
+  println("{} {} {} {} {} {}", simple, compound, classAssign, classCompound, subscript, shift);
+  return 0;
+}
