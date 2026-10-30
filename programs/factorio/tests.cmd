@@ -20,6 +20,10 @@ rem the directory on PATH too. The game's own signal handler reports a segfault 
 rem read through a wild pointer still shows only as "Received SIGSEGV"; a use after free or an
 rem overflow gets ASan's report with the allocation and free stacks.
 setlocal
+rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
+rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
+rem (vs2022\, bin\) are always C:\Factorio's.
+if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 rem The script's own directory: the argument loop's shift shifts %0 too.
 set HERE=%~dp0
@@ -44,7 +48,7 @@ if not exist %OUT%\run mkdir %OUT%\run
 rem The config the runner reads (--config): the game's data from C:\Factorio, the writes in run\.
 (
   echo [path]
-  echo read-data=C:/Factorio/data
+  echo read-data=%FACTORIO:\=/%/data
   echo write-data=%OUT:\=/%/run
 ) > %OUT%\config.ini
 set EXE=C:\Factorio\bin\Releasex64vs2022\factorio-test.exe

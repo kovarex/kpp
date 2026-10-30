@@ -1,4 +1,8 @@
 @echo off
+rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
+rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
+rem (vs2022\, bin\) are always C:\Factorio's.
+if not defined FACTORIO set FACTORIO=C:\Factorio
 rem Builds the C and C++ shims the converted game links with into native\build\factorio-native.lib:
 rem re2_c.cpp, RE2's thin C interface (overrides/src/Util/RegexUtil.kpp is its Kpp side),
 rem imgui_c.cpp, dear imgui's (generate_imgui.py writes it and its Kpp side,
@@ -26,13 +30,13 @@ if exist build\factorio-native.lib if exist build\factorio.res if exist build\in
 if exist build\inputs.stamp del build\inputs.stamp
 set "PATH=%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\Installer"
 call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >nul
-clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I C:\Factorio\libraries\re2 re2_c.cpp /Fobuild\re2_c.obj || exit /b 1
-clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I C:\Factorio\libraries imgui_c.cpp /Fobuild\imgui_c.obj || exit /b 1
-clang-cl /nologo /c /O2 /MT /DNDEBUG /I C:\Factorio\libraries header_only.c /Fobuild\header_only.obj || exit /b 1
-clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I C:\Factorio\libraries jc_voronoi.cpp /Fobuild\jc_voronoi.obj || exit /b 1
-clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I C:\Factorio\src logitech_led_c.cpp /Fobuild\logitech_led_c.obj || exit /b 1
-clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I C:\Factorio\libraries crc32fast_c.cpp /Fobuild\crc32fast_c.obj || exit /b 1
-clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I C:\Factorio\libraries open_vcdiff_c.cpp /Fobuild\open_vcdiff_c.obj || exit /b 1
+clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\libraries\re2 re2_c.cpp /Fobuild\re2_c.obj || exit /b 1
+clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\libraries imgui_c.cpp /Fobuild\imgui_c.obj || exit /b 1
+clang-cl /nologo /c /O2 /MT /DNDEBUG /I %FACTORIO%\libraries header_only.c /Fobuild\header_only.obj || exit /b 1
+clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\libraries jc_voronoi.cpp /Fobuild\jc_voronoi.obj || exit /b 1
+clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\src logitech_led_c.cpp /Fobuild\logitech_led_c.obj || exit /b 1
+clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\libraries crc32fast_c.cpp /Fobuild\crc32fast_c.obj || exit /b 1
+clang-cl /nologo /c /O2 /MT /EHsc /std:c++17 /DNDEBUG /I %FACTORIO%\libraries open_vcdiff_c.cpp /Fobuild\open_vcdiff_c.obj || exit /b 1
 clang-cl /nologo /c /O2 /MT /DNDEBUG inline_c.c /Fobuild\inline_c.obj || exit /b 1
 clang-cl /nologo /c /O2 /MT /DNDEBUG crash_report.c /Fobuild\crash_report.obj || exit /b 1
 rc /nologo /fo build\factorio.res factorio.rc || exit /b 1

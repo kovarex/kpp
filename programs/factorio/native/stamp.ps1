@@ -6,6 +6,8 @@
 $here = $PSScriptRoot
 $lines = @("factorio " + (git -C C:\Factorio rev-parse HEAD))
 if ($LASTEXITCODE -ne 0) { throw "git -C C:\Factorio rev-parse HEAD failed" }
+# The tree the headers come from when FACTORIO names another (a snapshot of an older commit).
+if ($env:FACTORIO) { $lines += "tree " + $env:FACTORIO }
 $files = Get-ChildItem -Path $here -Recurse -File | Where-Object { $_.FullName -notlike "$here\build\*" } | Sort-Object FullName
 foreach ($f in $files) { $lines += (Get-FileHash -Algorithm SHA1 -LiteralPath $f.FullName).Hash + " " + $f.FullName.Substring($here.Length + 1) }
 $lines | Set-Content -Encoding ascii (Join-Path $here 'build\inputs.new')

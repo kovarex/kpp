@@ -15,10 +15,15 @@ rem the game: the game's own crash handler hangs in the converted game, so it ru
 rem --no-crash-handler. KPPC_EXTRA adds kppc options, as for an AddressSanitizer build:
 rem `set KPPC_EXTRA=--clang-flags -fsanitize=address --lib -fsanitize=address`.
 setlocal
+rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
+rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
+rem (vs2022\, bin\) are always C:\Factorio's.
+if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 rem The script's own directory: the argument loop's shift shifts %0 too.
 set HERE=%~dp0
-set GAME=C:\factorio-in-kpp
+rem The game's directory (its data\, bin\x64\ and run\): GAME names another.
+if not defined GAME set GAME=C:\factorio-in-kpp
 set BUILD=1
 set ARGS=
 :arguments
@@ -72,7 +77,7 @@ if not exist %GAME%\run\config\config.ini (
 ) > %GAME%\run\config\config.ini
 rem The C++ log loads the game's test_mod, so this run does too, from a copy (a mod the game finds
 rem new is enabled): then its checksums, the prototype list's 486241314 among them, are comparable.
-if not exist %GAME%\run\mods\test_mod_1.0.0 xcopy /e /i /q C:\Factorio\tests\mods\test_mod_1.0.0 %GAME%\run\mods\test_mod_1.0.0 >nul
+if not exist %GAME%\run\mods\test_mod_1.0.0 xcopy /e /i /q %FACTORIO%\tests\mods\test_mod_1.0.0 %GAME%\run\mods\test_mod_1.0.0 >nul
 echo == running %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%
 %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%
 echo == factorio exit %errorlevel%; the log: %GAME%\run\factorio-current.log

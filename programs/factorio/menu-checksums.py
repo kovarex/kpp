@@ -21,11 +21,14 @@ differs: bisect the ticks, then diff tagged saves of the first differing tick, a
 """
 import argparse, glob, os, re, subprocess, sys, time
 
+# The Factorio source tree (data, its menu simulations): C:\Factorio unless the environment's FACTORIO names another.
+FACTORIO = os.environ.get('FACTORIO', r'C:\Factorio')
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'kpp', 'menu-checksums')
 REFERENCE = os.path.join(HERE, 'menu-checksums.txt')
 CPP = r'C:\Factorio\bin\Debugx64vs2022\factorio-run.exe'
-MAPS = sorted(glob.glob(r'C:\Factorio\data\*\menu-simulations\*.zip'), key=lambda p: os.path.basename(p))
+MAPS = sorted(glob.glob(os.path.join(FACTORIO, 'data', '*', 'menu-simulations', '*.zip')), key=lambda p: os.path.basename(p))
 
 
 def name_of(path):
@@ -51,8 +54,8 @@ def baseline(ticks):
     os.makedirs(os.path.join(cpp, 'run'), exist_ok=True)
     config = os.path.join(cpp, 'config', 'config.ini')
     with open(config, 'w') as f:
-        f.write('; version=13\n[path]\nread-data=C:/Factorio/data\nwrite-data=%s\n\n[other]\ncheck-updates=false\n'
-                % os.path.join(cpp, 'run').replace('\\', '/'))
+        f.write('; version=13\n[path]\nread-data=%s/data\nwrite-data=%s\n\n[other]\ncheck-updates=false\n'
+                % (FACTORIO.replace('\\', '/'), os.path.join(cpp, 'run').replace('\\', '/')))
     lines, prototypes, version = [], set(), None
     for path in MAPS:
         checksum, protos, ver, seconds, code = run([CPP, '--config', config, '--benchmark', path, '--benchmark-ticks', str(ticks)],

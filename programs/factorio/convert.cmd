@@ -12,26 +12,30 @@ rem conversion), and the GDI+ classes (overrides\added\src\Graphics\GdiplusClass
 rem SDK's gdiplus.h.
 rem Hand-written parts are in overrides\.
 setlocal
+rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
+rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
+rem (vs2022\, bin\) are always C:\Factorio's.
+if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 set KPPC=..\..\compiler\build\kppc.exe
-set SRC=C:\Factorio\src
+set SRC=%FACTORIO%\src
 set WHOLE=C:\factorio-in-kpp\kpp
 if not "%~1"=="" set WHOLE=%~1
 rem Lua (libraries\Lua): its .c files as the C++ the game compiles them as, with the game's C++
 rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-factorio.md, "Converting
 rem Lua"). No other input has .c files.
-set LUA=C:\Factorio\libraries\Lua
+set LUA=%FACTORIO%\libraries\Lua
 set EXT=--ext .cpp,.hpp,.h,.kpp,.c
 rem Fresh every run, as kpp\ below: a file an older conversion wrote and this one does not (a header
 rem no file includes any more, as ShaderProgram.hpp) would stay in the tree and be built with it.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua src UnitTest++ tests) do if exist "%WHOLE%\%%d" rd /s /q "%WHOLE%\%%d"
-%KPPC% --no-std --quiet --convert %WHOLE% %EXT% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUA% %SRC% C:\Factorio\libraries\UnitTest++ C:\Factorio\tests || exit /b 1
+%KPPC% --no-std --quiet --convert %WHOLE% %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || exit /b 1
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
-set CINC=--cinclude C:\Factorio\libraries\SDL3\include --cinclude C:\Factorio\libraries\SDL_Mixer\include --cinclude C:\Factorio\libraries\Lua --cinclude C:\Factorio\libraries --cinclude C:\Factorio\libraries\curl\include --cinclude C:\Factorio\libraries\glad\include --cinclude C:\Factorio\libraries\trio --cinclude native\include
+set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
 rem any more) would still be compiled.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua src) do if exist kpp\%%d rd /s /q kpp\%%d
-%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides C:\Factorio\libraries\CommonUtil C:\Factorio\libraries\Agui C:\Factorio\libraries\cxxopts C:\Factorio\libraries\StackWalker %LUA% %SRC% || exit /b 1
+%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %SRC% || exit /b 1
 type kpp\CONVERSION.md | findstr /B "Files -"
 rem Remove stale top-level directories left by older conversions (the converter now writes src\
 rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).

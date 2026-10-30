@@ -1,0 +1,3 @@
+# cmd.exe finds labels (goto, call :label) unreliably in a batch file of LF line ends: CRLF in
+# the working tree, LF in the repository.
+*.cmd text eol=crlf

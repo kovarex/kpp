@@ -15,6 +15,9 @@ stopped the others. docs/path-to-factorio.md, "The unit tests".
 """
 import concurrent.futures, glob, os, queue, re, subprocess, sys, time
 
+# The Factorio source tree (tests, data): C:\Factorio unless the environment's FACTORIO names another.
+FACTORIO = os.environ.get('FACTORIO', r'C:\Factorio')
+
 here = os.path.dirname(os.path.abspath(__file__))
 args = [a for a in sys.argv[1:]]
 jobs, timeout, only = 12, 600, None
@@ -34,7 +37,7 @@ exe = os.path.abspath(args[0]) if len(args) > 0 else os.path.join(here, 'kpp', '
 out = os.path.abspath(args[1]) if len(args) > 1 else os.path.join(here, 'kpp', 'tests-suites')
 
 suites = set()
-for f in glob.glob('C:/Factorio/tests/**/*.cpp', recursive=True):
+for f in glob.glob(os.path.join(FACTORIO, 'tests', '**', '*.cpp'), recursive=True):
     text = open(f, encoding='utf-8', errors='replace').read()
     for m in re.finditer(r'^\s*SUITE\s*\(\s*(\w+)\s*\)', text, re.M):  # `SUITE (Movement)` too
         suites.add(m.group(1))
@@ -51,7 +54,7 @@ for w in range(jobs):
     run = os.path.join(wdir, 'run')
     os.makedirs(run, exist_ok=True)
     with open(os.path.join(wdir, 'config.ini'), 'w') as cfg:
-        cfg.write('[path]\nread-data=C:/Factorio/data\nwrite-data=%s\n' % run.replace('\\', '/'))
+        cfg.write('[path]\nread-data=%s/data\nwrite-data=%s\n' % (FACTORIO.replace('\\', '/'), run.replace('\\', '/')))
     workers.put(wdir)
 os.makedirs(os.path.join(out, 'logs'), exist_ok=True)
 
