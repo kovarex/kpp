@@ -6567,9 +6567,11 @@ namespace
         }
         // `const double&` given an int (`Constant(const double&)` built from 2): the reference
         // binds a temporary of its own type holding the converted value, never the int itself.
+        // A bit-field (UnitTest's `const Actual&` given TreeData's `progress : 4`) the same: it has no
+        // address of its own, and its storage unit's address read the neighbouring fields with it.
         const Ty* argTy = arg->ty && arg->ty->isKnown() && !types.isDependent(arg->ty) ? types.unqualified(types.stripRef(arg->ty)) : nullptr;
         if (argTy && argTy->isKnown() && (referenced->isConst || pt->kind == TyKind::RRef) && types.unqualified(referenced)->isKnown() &&
-            !types.isDependent(referenced) && argTy != types.unqualified(referenced) && arg->kind != NodeKind::BraceInitExpr)
+            !types.isDependent(referenced) && (argTy != types.unqualified(referenced) || namesBitField(arg)) && arg->kind != NodeKind::BraceInitExpr)
         {
           const Ty* to = types.unqualified(referenced);
           Value v = convert(rvalue(arg), to, at);
@@ -6727,6 +6729,18 @@ namespace
     // converted value, as C++ binds it and as argumentText binds a parameter (`const double& d =
     // count;`, a `const B* const&` given a `C*`): the value's own storage holds another
     // representation, and a double read through an int's address is 4 bytes of garbage.
+    // Whether e names a bit-field (`data.progress` with `uint8_t progress : 4`), to which a reference
+    // binds a temporary holding its value.
+    static bool namesBitField(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      Decl* d = !e ? nullptr : e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved
+                             : e->kind == NodeKind::NameExpr    ? static_cast<NameExpr*>(e)->resolved
+                                                                : nullptr;
+      return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield;
+    }
+
     std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at)
     {
       auto scalar = [](const Ty* t)
@@ -6737,6 +6751,15 @@ namespace
       const Ty* referenced = types.stripRef(refTy);
       const Ty* want = types.unqualified(referenced);
       const Ty* have = value->ty && value->ty->isKnown() && !types.isDependent(value->ty) ? types.unqualified(types.stripRef(value->ty)) : nullptr;
+      if (namesBitField(value) && want->isKnown() && !types.isDependent(want) && scalar(want))
+      {
+        // `const uint8_t& bound = data.progress;`: a temporary holding the bit-field's value, as C++
+        // binds it (the field has no address; its storage unit's holds its neighbours too).
+        Value converted = convert(rvalue(value), want, at);
+        std::string slot = newObjectSlot(want, at);
+        fn += "  store " + llType(want, at) + " " + converted.text + ", ptr " + slot + "\n";
+        return slot;
+      }
       if (!have || have == want || !have->isKnown() || !want->isKnown() || types.isDependent(want) || !scalar(want) || !scalar(have))
         return lvalue(value);
       if (refTy->kind == TyKind::LRef && !referenced->isConst)
