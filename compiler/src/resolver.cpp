@@ -13989,9 +13989,9 @@ struct GlobalScope::Impl
   // nullConstants: per argument, whether it is the literal 0, which converts to any pointer (C++'s
   // null pointer constant; design.md 4).
   // ambiguousCallsAreErrors: a call that two functions take equally well is a checker error, as in
-  // C++ (expressions/ambiguous_call_is_error), and so are two declarations of one C function with
-  // two types; off until the standard library declares its C functions as the headers do.
-  static constexpr bool ambiguousCallsAreErrors = false;
+  // C++ (expressions/ambiguous_call_is_error). Two declarations of one C function with two types are
+  // an error of their own (checkCFunctionTypes).
+  static constexpr bool ambiguousCallsAreErrors = true;
 
   // The scope a function belongs to: its class's, or the namespace its name names.
   Scope* homeScope(FunctionDecl* f)
