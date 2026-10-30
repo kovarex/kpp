@@ -1,6 +1,5 @@
 // spec: a static member function of a class template, named in an instance's member, binds to a reference parameter (`const auto& pred`, `const Pred& pred`) as that instance's function, as in C++
 // factorio: SetupModifiersBaseValue<...>'s `Util::stableSort(modifiersOfType, technologyDepthOrder)` since Factorio df1c9d1cd3c (5 headline errors)
-// pending: codegen does not support a function template bound to a reference (depthOrder) yet
 template<class Value>
 void sortWith(Vector<Value>& container, const auto& pred)
 {

@@ -9219,8 +9219,10 @@ namespace
             // A function bound to a reference (`call(add, 2, 3)` with `F&& f`): the function itself,
             // whose address the reference holds, as `&add` gives it.
             auto* f = static_cast<FunctionDecl*>(d);
+            // A function template, or a static member of a class template (`sortWith(all,
+            // depthOrder)` in Tech<AmmoTag>'s member): the instance, as its address names it.
             if (!f->templateParams.empty() || global.isTemplateContext(f))
-              unsupported(e, "a function template bound to a reference (" + sym(n->name.last().symbol) + ")");
+              return rvalue(e).text;
             return useFunction(f, {}, nullptr);
           }
           unsupported(e, "taking the address of " + sym(n->name.last().symbol));
