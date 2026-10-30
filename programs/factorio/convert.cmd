@@ -9,7 +9,7 @@ rem conversion pulls in (FloatCast.cpp merged into FloatCast.kpp needs global an
 rem Then imgui frames through the generated imgui interface (native\generate_imgui.py), the glm port
 rem against glm, the converted Lua against the C++ build's (tests\lua_compat.lua, the gate of Lua's
 rem conversion), and the GDI+ classes (overrides\added\src\Graphics\GdiplusClasses.kpp) against the
-rem SDK's gdiplus.h.
+rem SDK's gdiplus.h, and RE2 through the RegexUtil override (tests\regex_smoke.kpp) with the game's re2.lib.
 rem Hand-written parts are in overrides\.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -96,3 +96,7 @@ echo == GDI+ smoke test: tests\gdiplus_smoke.kpp through kpp\src\Graphics\Gdiplu
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\gdiplus_smoke.exe kpp\src\Graphics\GdiplusClasses.kpp kpp\src\Graphics\DX11\ComInterfaces.kpp tests\gdiplus_smoke.kpp --lib -lgdiplus --lib -lshlwapi || exit /b 1
 kpp\gdiplus_smoke.exe > kpp\gdiplus_smoke.out.txt
 fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected > nul && echo GDI+ smoke test: output as expected || (echo GDI+ smoke test: OUTPUT DIFFERS & fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected & exit /b 1)
+echo == regex smoke test: tests\regex_smoke.kpp through kpp\src\Util\RegexUtil.kpp and native\re2_c.cpp with the game's re2.lib (RE2's own results: skipped groups, typed targets, Consume, Replace)
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\regex_smoke.exe kpp\src\Util\RegexUtil.kpp tests\regex_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\re2.lib || exit /b 1
+kpp\regex_smoke.exe > kpp\regex_smoke.out.txt
+fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected > nul && echo regex smoke test: output as expected || (echo regex smoke test: OUTPUT DIFFERS & fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected & exit /b 1)

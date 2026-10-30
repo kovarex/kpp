@@ -139,6 +139,8 @@ public:
   template<typename T>
   static bool parseInto(StringView text, void* target) { return RE2::parse(text, (T*)target); }
 
+  // A nullptr target skips its group (RE2's Arg(nullptr)): ForkTask's `nullptr, nullptr, &time`.
+  static bool parse(StringView text, nullptr_t) { return true; }
   static bool parse(StringView text, re2::StringPiece* out)
   {
     *out = re2::StringPiece(text);

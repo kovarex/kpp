@@ -1,0 +1,36 @@
+// RE2 through the converted RegexUtil (overrides/src/Util/RegexUtil.kpp) and native/re2_c.cpp, which
+// convert.cmd links with the game's re2.lib: FullMatch and PartialMatch into typed targets, a
+// nullptr target that skips its group (RE2's Arg(nullptr); ForkTask's success pattern), a group that
+// took no part, Consume stepping through lines (LuaDebugAdapter's headers), Replace and
+// GlobalReplace. regex_smoke.expected is what RE2's own semantics give.
+int main()
+{
+  RE2 success(R"(\[(.*)\/(.*)\] \[TIME: ([0-9]*\.[0-9]*)s, ([0-9]*)\])", RE2::Latin1);
+  String time;
+  bool skipped = RE2::FullMatch("[3/7] [TIME: 1.25s, 9]", success, nullptr, nullptr, &time);
+  String done, total;
+  double seconds = 0;
+  int count = 0;
+  bool all = RE2::FullMatch("[3/7] [TIME: 1.25s, 9]", success, &done, &total, &seconds, &count);
+  int minor = 0;
+  bool partial = RE2::PartialMatch("version 2.1.25 here", RE2(R"((\d+)\.(\d+))"), nullptr, &minor);
+  int number = -1;
+  bool absent = RE2::FullMatch("x", RE2(R"(x(\d+)?)"), &number);
+  RE2 header(R"(^(.*)\r\n)", RE2::Latin1);
+  re2::StringPiece input("Content-Length: 12\r\n\r\nbody");
+  re2::StringPiece line;
+  int lines = 0;
+  String seen;
+  while (RE2::Consume(&input, header, &line))
+  {
+    ++lines;
+    seen += "<" + line.ToString() + ">";
+  }
+  String text = "a-b-c";
+  bool replaced = RE2::Replace(&text, RE2("-"), "+");
+  String words = "a-b-c";
+  int replacedCount = RE2::GlobalReplace(&words, RE2("(\\w)"), "[\\1]");
+  println("{} {} | {} {} {} {} {} | {} {} | {} {} | {} {} {} | {} {} {} {}", skipped, time, all, done, total, seconds, count, partial, minor, absent, number,
+          lines, seen, input.ToString(), replaced, text, replacedCount, words);
+  return 0;
+}
