@@ -631,8 +631,25 @@ machine); a different count is a different build (all modules new), as a differe
    text (now on its own thread); step 4's recorded `uses` replace it.*
 4. Every emission recorded as Items (what step 3 placed by name, now with its `uses`, `requested`
    and `layouts`), and the modules assembled from the Items: byte-identical to step 3's output.
-   Measured: the cost to a clean build (target: within a few percent).
-5. CodegenSession::rebuild with the resolver's 3b, measured as 3c says above.
+   Measured: the cost to a clean build (target: within a few percent). *First part landed
+   2096299: each definition carries the `@names` and types its text uses, found on the thread that
+   emitted it (Shared::Definition), and a module is assembled from those (no scan of its whole
+   text): all 64 of the game's modules byte-identical; codegen 8.3, 7.4, 9.6 s -> 7.1, 6.7, 6.1 s.*
+5. CodegenSession::rebuild with the resolver's 3b, measured as 3c says above. *In-process part
+   landed 638cf03: a definition records its owner (the function whose emission added it, or itself
+   for what is emitted once at a first use: a global's constructor, a lambda's function-pointer
+   thunk), and what a function adds on every emission (static locals and their guards, static
+   InitializerList arrays) is an owned entry joining its module's declarations when they are
+   finished. `KPP_CHECK_REBUILD=n` emits every n-th function again in the kept state and assembles
+   the modules again: on the game n=50 is 1,424 functions, n=7 is 10,168, and 0 of 64 modules
+   differ; one function is emitted again in 0.093 s and its module assembled in 0.027 s. What the
+   server's part needs: from 3b, the FunctionDecls whose bodies changed (their functions are
+   emitted again under their owners' names, their old definitions and owned entries dropped
+   first); the kept session (Shared and emitters, today freed on a detached thread) held by the
+   kept Build; then only the modules whose definitions or entries changed are assembled again, and
+   a first use that adds to the shared declarations (a new global or helper) assembles all.
+   Not yet: an item that only an edited body used stays (a clean build would not have it), which
+   --verify-incremental reports; to be dropped by use, as types already are.*
 
 ## Parallel front end: contention, not work (2026-10-29, evening)
 
