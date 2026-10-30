@@ -1435,6 +1435,18 @@ namespace
       {
         if (!ob.eligible || !nb.eligible)
           return why = "a changed body others may depend on (a template's, constexpr, a deduced return type)", false;
+        // A class or enumeration declared in a body gets its scope when the file is indexed: one in
+        // a new body would have none (a lambda's closure is no such declaration).
+        bool localType = false;
+        auto findLocalTypes = [&](Node* n)
+        {
+          if ((n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl)
+            localType = true;
+        };
+        forEachNode(nb.f->body, findLocalTypes);
+        forEachNode(ob.f->body, findLocalTypes); // (and the old body's would stay in the index)
+        if (localType)
+          return why = "a changed body declares a class or an enumeration", false;
         out.changed.push_back(k);
       }
       a = ob.close + 1;
