@@ -18,7 +18,8 @@ rem -fsanitize=address, the ASan runtime linked) into kpp\tests-asan\factorio-te
 rem with the runtime's directory (VS 2022's clang 19) on PATH; to run that binary with suites.py, put
 rem the directory on PATH too. The game's own signal handler reports a segfault before ASan can, so a
 rem read through a wild pointer still shows only as "Received SIGSEGV"; a use after free or an
-rem overflow gets ASan's report with the allocation and free stacks.
+rem overflow gets ASan's report with the allocation and free stacks. `tests.cmd --release` builds the
+rem tests as kppc --release builds (config::debug false, ThinLTO) into kpp\tests-release.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
 rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
@@ -30,11 +31,12 @@ set HERE=%~dp0
 set CONVERSION=C:\factorio-in-kpp\kpp
 set BASELINE=0
 set ASAN=0
+set RELEASE=0
 set ASANRUNTIME=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\lib\clang\19\lib\windows
 set ARGS=
 :arguments
 if "%~1"=="" goto argumentsDone
-if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--asan" (set ASAN=1) else if exist "%~1\tests" (set CONVERSION=%~1) else (set ARGS=%ARGS% %1)
+if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--asan" (set ASAN=1) else if "%~1"=="--release" (set RELEASE=1) else if exist "%~1\tests" (set CONVERSION=%~1) else (set ARGS=%ARGS% %1)
 shift
 goto arguments
 :argumentsDone
@@ -44,6 +46,8 @@ set SANITIZE=
 if %ASAN%==1 set OUT=%HERE%kpp\tests-asan
 if %ASAN%==1 set SANITIZE=--clang-flags -fsanitize=address --lib -fsanitize=address
 if %ASAN%==1 set "PATH=%ASANRUNTIME%;%PATH%"
+if %RELEASE%==1 set OUT=%HERE%kpp\tests-release
+if %RELEASE%==1 set SANITIZE=%SANITIZE% --release
 if not exist %OUT%\run mkdir %OUT%\run
 rem The config the runner reads (--config): the game's data from C:\Factorio, the writes in run\.
 (

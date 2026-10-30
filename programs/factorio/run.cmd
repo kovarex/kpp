@@ -7,7 +7,8 @@ rem errors stay in kpp\run\build-errors.txt and its exit code stays 1. factorio.
 rem build puts its own relative to the data, C:\factorio-in-kpp\bin\x64 (the game's path discovery
 rem works unchanged), and runs with a write directory of its own, C:\factorio-in-kpp\run (config,
 rem log, saves): never %APPDATA%\Factorio, never C:\Factorio. Arguments go to the game:
-rem `run.cmd --version`, `run.cmd --dump-data`; `--no-build` first runs the last build again. The
+rem `run.cmd --version`, `run.cmd --dump-data`; `--no-build` first runs the last build again;
+rem `--release` builds the release game (kppc --release, kpp\run-release) instead of the debug one. The
 rem C++ build's log to compare with is C:\Factorio\factorio-current.log.
 rem
 rem A crash prints its stack (native\crash_report.c, named from the PDB this link writes) and ends
@@ -26,9 +27,13 @@ rem The game's directory (its data\, bin\x64\ and run\): GAME names another.
 if not defined GAME set GAME=C:\factorio-in-kpp
 set BUILD=1
 set ARGS=
+rem The debug build links incrementally into kpp\run; --release (config::debug false, ThinLTO) links
+rem whole, into kpp\run-release.
+set MODE=--incremental-link
+set RUNDIR=kpp\run
 :arguments
 if "%~1"=="" goto argumentsDone
-if "%~1"=="--no-build" (set BUILD=0) else (set ARGS=%ARGS% %1)
+if "%~1"=="--no-build" (set BUILD=0) else if "%~1"=="--release" (set MODE=--release& set RUNDIR=kpp\run-release) else (set ARGS=%ARGS% %1)
 shift
 goto arguments
 :argumentsDone
@@ -41,18 +46,18 @@ rem edit loop"): kpp\run keeps factorio.exe and its .ilk between builds, and a b
 rem the objects that changed (0.6 s instead of 2.3). So the executable is never deleted first: the
 rem link's own line in build.txt ("+ link ... (exit 0)") says whether it linked.
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
-if not exist kpp\run mkdir kpp\run
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing --incremental-link %LIBS% %KPPC_EXTRA% --exe kpp\run\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\run\build.txt 2> kpp\run\build-errors.txt
+if not exist %RUNDIR% mkdir %RUNDIR%
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %MODE% %LIBS% %KPPC_EXTRA% --exe %RUNDIR%\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > %RUNDIR%\build.txt 2> %RUNDIR%\build-errors.txt
 echo == %GAME%\bin\x64\factorio.exe, built by kppc (exit %errorlevel%) with --stub-missing:
-%SystemRoot%\System32\findstr.exe /b /c:"stubs:" kpp\run\build.txt
-%SystemRoot%\System32\find.exe /c /v "" kpp\run\build-errors.txt
-%SystemRoot%\System32\findstr.exe /r /b /c:"clang: .*+ link .*(exit 0)" kpp\run\build.txt >nul || (
-  echo the link failed: kpp\run\factorio.exe.link.txt
+%SystemRoot%\System32\findstr.exe /b /c:"stubs:" %RUNDIR%\build.txt
+%SystemRoot%\System32\find.exe /c /v "" %RUNDIR%\build-errors.txt
+%SystemRoot%\System32\findstr.exe /r /b /c:"clang: .*+ link .*(exit 0)" %RUNDIR%\build.txt >nul || (
+  echo the link failed: %RUNDIR%\factorio.exe.link.txt
   exit /b 1
 )
 if not exist %GAME%\bin\x64 mkdir %GAME%\bin\x64
-copy /y kpp\run\factorio.exe %GAME%\bin\x64\factorio.exe >nul || exit /b 1
-if exist kpp\run\factorio.pdb copy /y kpp\run\factorio.pdb %GAME%\bin\x64\factorio.pdb >nul
+copy /y %RUNDIR%\factorio.exe %GAME%\bin\x64\factorio.exe >nul || exit /b 1
+if exist %RUNDIR%\factorio.pdb copy /y %RUNDIR%\factorio.pdb %GAME%\bin\x64\factorio.pdb >nul
 :run
 rem The config file the game looks for next to its root: the config, and from it the write
 rem directory, in run\ (use-system-read-write-data-directories=false: never %APPDATA%).
