@@ -16813,11 +16813,12 @@ struct GlobalScope::Impl
           }
         }
         MemberResult viaInstance; // keeps a merged overload set alive
-        if (l.found == Found::No && n->name.parts.size() > 1 && !n->name.last().hasTemplateArgs)
+        if (l.found == Found::No && n->name.parts.size() > 1)
         {
           // `super::paintBackgroundGlow(...)` with super a DragPaneWidget<agui::VerticalFlow, 1>
           // deriving from its parameter: the member of the instance, found in the base its
-          // arguments make, which the class template's own scope does not have.
+          // arguments make, which the class template's own scope does not have; a member template
+          // with its arguments too (`super::staticInitGenericOnOffControlBehaviorMembers<T>()`).
           NamedType written{};
           written.kind = NodeKind::NamedType;
           written.token = n->token;
