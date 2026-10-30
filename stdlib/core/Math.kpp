@@ -21,6 +21,16 @@ float sqrt(float value) { return (float)sqrt((double)value); }
 float floor(float value) { return (float)floor((double)value); }
 float ceil(float value) { return (float)ceil((double)value); }
 float round(float value) { return (float)round((double)value); }
+// Of an integer: taken as a double, as <cmath>'s overloads for integral types (no tie between the
+// float and the double form).
+template<typename T> requires isIntegral<T>
+double sqrt(T value) { return sqrt(double(value)); }
+template<typename T> requires isIntegral<T>
+double floor(T value) { return floor(double(value)); }
+template<typename T> requires isIntegral<T>
+double ceil(T value) { return ceil(double(value)); }
+template<typename T> requires isIntegral<T>
+double round(T value) { return round(double(value)); }
 // fmod and nextafter of two floats are the C runtime's float ones, as MSVC's std::fmod(float, float)
 // is fmodf: a float result (TestFloatingPoint's fmodFloat saves 10000 of them for a checksum) and
 // a float's next value (its ClampCast test: nextafter(2147483520.0f, FLT_MAX) is 2147483648.0f).
@@ -43,6 +53,12 @@ bool isinf(double value) { return value == value && value != 0.0 && value * 2.0 
 bool isinf(float value) { return value == value && value != 0.0f && value * 2.0f == value; }
 bool isfinite(double value) { return !isnan(value) && !isinf(value); }
 bool isfinite(float value) { return !isnan(value) && !isinf(value); }
+template<typename T> requires isIntegral<T>
+bool isnan(T value) { return false; }
+template<typename T> requires isIntegral<T>
+bool isinf(T value) { return false; }
+template<typename T> requires isIntegral<T>
+bool isfinite(T value) { return true; }
 bool signbit(double value) { return value < 0.0 || (value == 0.0 && 1.0 / value < 0.0); }
 
 // math.h defines these through compiler builtins, which the importer cannot bring over.

@@ -1,0 +1,13 @@
+// spec: sqrt, floor, ceil, round, isnan, isinf and isfinite of an integer take it as a double, as <cmath>'s overloads for integral types do (sqrt(2) is the double 1.4142..., not the float one); no tie between the float and double forms
+// factorio: TestBoundingBox:295, TestLightningRangeVisualisation:288, TestTipsAndTricks:1883 and VariablePersistenceMultioctaveNoise:123 call std::sqrt and std::ceil with integers (4c178a5b915)
+int main()
+{
+  auto root = sqrt(2);
+  double rootOfLong = sqrt(10000000000000001LL);
+  auto up = ceil(7);
+  auto down = floor((short)3);
+  auto nearest = round(5u);
+  println("{} {} {} {} {} {} {}", isSame<decltype(root), double>, root == sqrt(2.0), rootOfLong == 100000000.0, isSame<decltype(up), double>, up + down + nearest,
+          isnan(3) || isinf(3), isfinite(3));
+  return 0;
+}
