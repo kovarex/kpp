@@ -1243,9 +1243,9 @@ human output.
 - **Visual Studio**: the Test Explorer needs a test adapter (thread E's extension) running the two
   commands above; a failure's file, line and column open the source. A project's "Start Without
   Debugging" is `kppc --run`; debugging builds with `--exe` (or `--tests --exe`) and starts the
-  executable under the debugger. **Q5**: should kppc print errors in MSVC's
-  `file(line,column): error:` form on request (`--msvc-errors`), so the Error List shows compile
-  errors and check failures without the adapter?
+  executable under the debugger. Compile errors already reach the Error List through
+  `--msvc-diagnostics` (456eda1, docs/build.md); check failures are in the compiler's error
+  format, so the same option shows them there without the adapter.
 - **The IDE (thread F)**: the same JSON; with the persistent compiler, the IDE's server answers
   `--list` from the build it already holds.
 
@@ -1280,7 +1280,7 @@ human output.
 
 - **Running and testing Kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`, Q2
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
-  converted UnitTest++ as native tests, Q5 MSVC-style error lines.
+  converted UnitTest++ as native tests.
 
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
