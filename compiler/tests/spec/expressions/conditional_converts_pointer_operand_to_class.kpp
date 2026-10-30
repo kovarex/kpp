@@ -1,0 +1,22 @@
+// spec: a conditional expression whose operands are a String and a `const char*` converts the pointer operand to String (the only direction an implicit conversion goes, C++ [expr.cond]): `none ? none->name : Mod::CORE_MOD` is the String "core" when none is null, passed to a `const String&` or used to initialize a String
+// factorio: LuaGameScript::luaGetScriptInventories' `pushInventories(item.first ? item.first->id.name : Mod::CORE_MOD, &item.second)`: the core inventories went in under an empty name, so `game.get_script_inventories().core` was nil (LuaInventory LuaScriptInventoryOwnership)
+// pending: SILENT, the pointer operand comes out as an empty String (`[] [base] <> `); owner: the templates thread (conversions)
+struct Mod
+{
+  static inline const char* const CORE_MOD = "core";
+  String name = "base";
+};
+void show(const String& name) { print("[{}] ", name); }
+int main()
+{
+  Mod mod;
+  Mod* none = nullptr;
+  Mod* some = &mod;
+  show(none ? none->name : Mod::CORE_MOD);
+  show(some ? some->name : Mod::CORE_MOD);
+  String a = none ? none->name : Mod::CORE_MOD;
+  auto lambda = [&](const String& modName) { print("<{}> ", modName); };
+  lambda(none ? none->name : Mod::CORE_MOD);
+  println("{}", a);
+  return 0;
+}
