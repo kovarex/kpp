@@ -23,7 +23,7 @@ extern "C" int kppRe2ParseDouble(const char* s, size_t n, double* out);
 
 namespace re2
 {
-  // RE2's StringPiece: a view of text, with RE2's copy-outs (ToString, CopyToString,
+  // RE2's StringPiece: a view of text, with RE2's copy-outs (ToString, as_string, CopyToString,
   // AppendToString).
   struct StringPiece : StringView
   {
@@ -33,6 +33,7 @@ namespace re2
     implicit StringPiece(const String& text) : StringView(text) {}
     implicit StringPiece(StringView view) : StringView(view) {}
     String ToString() const { return String(this->data(), this->size()); }
+    String as_string() const { return String(this->data(), this->size()); }
     void CopyToString(String* target) const { *target = String(this->data(), this->size()); }
     void AppendToString(String* target) const { target->append(this->data(), this->size()); }
   };
