@@ -1,0 +1,27 @@
+// spec: the address of `static_cast<B&>(d)` with B a base of D that is not at offset 0 (D : A, B) is the address of d's B part, as `B& b = static_cast<B&>(d)` binds it; casting back down with `static_cast<D&>(b)` gives d again
+// found writing the spec of a reference cast through a conversion function (expressions/static_cast_to_reference_through_conversion_function): the lvalue of a reference cast was the operand's address whatever the classes
+// pending: SILENT, `&static_cast<B&>(d)` is d's own address, not its B part's (`2 1 2 1 0 0`)
+struct A
+{
+  int a = 1;
+  virtual ~A() {}
+};
+struct B
+{
+  int b = 2;
+};
+struct D : A, B
+{
+  int d = 3;
+};
+int main()
+{
+  D d;
+  B& b = static_cast<B&>(d);
+  D& back = static_cast<D&>(b);
+  const B& cb = static_cast<const B&>(d);
+  A& a = static_cast<A&>(d);
+  B* viaAddress = &static_cast<B&>(d);
+  println("{} {} {} {} {} {}", b.b, &back == &d ? 1 : 0, cb.b, a.a, viaAddress == &b ? 1 : 0, &static_cast<D&>(b) == &d ? 1 : 0);
+  return 0;
+}
