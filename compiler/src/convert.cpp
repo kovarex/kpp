@@ -5531,6 +5531,88 @@ namespace
       std::string_view name = symbols.name(symbol);
       return name == "GUID" || name == "IID" || name == "CLSID" || name == "WICPixelFormatGUID";
     }
+    // `output << this->tagsByTagNumber.size()`: a std container's size() is a size_t in C++ and an
+    // int in Kpp (docs/stdlib/common.md), which a serialiser's operator<< writes in 4 bytes instead
+    // of 8: the game's complete-mode saves (its CRCs, desync reports) came out other than the C++
+    // build's (TagManager::save, 4 bytes short per force). Written `size_t(...)` where it is the
+    // right operand of a <<, the one place where C++ code sends a size on by its type.
+    // A std container, written so or through an alias of one, or a class derived from one
+    // (ScheduleRecords : std::vector<ScheduleRecord>): whose size() is the library's int.
+    bool isStdContainerType(Type* type, int depth)
+    {
+      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType))
+        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner : static_cast<LRefType*>(type)->referenced;
+      if (!type || type->kind != NodeKind::NamedType || depth > 8)
+        return false;
+      auto* named = static_cast<NamedType*>(type);
+      const QualifiedName& name = named->name;
+      static const std::set<std::string_view> containers = {
+        "vector", "deque", "list", "map", "multimap", "set", "multiset", "unordered_map", "unordered_multimap", "unordered_set",
+        "unordered_multiset", "string", "wstring", "u16string", "u32string", "string_view", "wstring_view", "array", "bitset", "span",
+        "queue", "stack", "priority_queue"};
+      if (name.parts.size() == 2 && name.parts[0].symbol != UINT32_MAX && name.parts[1].symbol != UINT32_MAX &&
+          symbols.name(name.parts[0].symbol) == "std")
+        return containers.count(symbols.name(name.parts[1].symbol)) != 0;
+      Decl* d = named->resolved;
+      if (!d)
+        return false;
+      if (d->kind == NodeKind::UsingAliasDecl)
+        return isStdContainerType(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+      if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+        return isStdContainerType(static_cast<VariableDecl*>(d)->type, depth + 1);
+      if (d->kind == NodeKind::ClassDecl)
+        for (const ClassDecl::Base& b : static_cast<ClassDecl*>(d)->bases)
+          if (isStdContainerType(b.type, depth + 1))
+            return true;
+      return false;
+    }
+    void sizeAsSizeT(Expr* e)
+    {
+      if (!e || e->kind != NodeKind::CallExpr)
+        return;
+      auto* call = static_cast<CallExpr*>(e);
+      if (!call->args.empty() || call->callee->kind != NodeKind::MemberExpr)
+        return;
+      auto* member = static_cast<MemberExpr*>(call->callee);
+      if (member->member.parts.size() != 1 || member->member.parts[0].symbol == UINT32_MAX ||
+          symbols.name(member->member.parts[0].symbol) != "size")
+        return;
+      Expr* base = member->base;
+      while (base && base->kind == NodeKind::ParenExpr)
+        base = static_cast<ParenExpr*>(base)->inner;
+      Decl* d = !base ? nullptr : base->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(base)->resolved
+                              : base->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(base)->resolved
+                                                                   : nullptr;
+      Type* type = !d ? nullptr : d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d)->type
+                              : d->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(d)->type
+                                                               : nullptr;
+      if (!isStdContainerType(type, 0))
+        return;
+      // The call's first token is its base's leftmost one (a CallExpr's own token is its parenthesis),
+      // its last the `)` of the `size ( )` after the base.
+      Expr* leftmost = base;
+      while (leftmost)
+        if (leftmost->kind == NodeKind::MemberExpr)
+          leftmost = static_cast<MemberExpr*>(leftmost)->base;
+        else if (leftmost->kind == NodeKind::IndexExpr)
+          leftmost = static_cast<IndexExpr*>(leftmost)->base;
+        else if (leftmost->kind == NodeKind::CallExpr)
+          leftmost = static_cast<CallExpr*>(leftmost)->callee;
+        else
+          break;
+      if (!leftmost)
+        return;
+      uint32_t first = leftmost->token;
+      uint32_t close = first;
+      while (close + 2 < toks.size() && !(toks[close].getKind() == TokenKind::Identifier && spelling(close) == "size" &&
+                                          toks[close + 1].is(P::LParen) && toks[close + 2].is(P::RParen)))
+        ++close;
+      if (close + 2 >= toks.size())
+        return;
+      insert(toks[first].offset, "size_t(");
+      insert(endOffset(close + 2), ")");
+      counts.add("std container sizes written size_t");
+    }
     const VariantInfo* variantOfExpr(Expr* e)
     {
       if (!variants || !e)
@@ -6197,9 +6279,14 @@ namespace
         case NodeKind::MemberExpr: walkExpr(static_cast<MemberExpr*>(e)->base, owner); break;
         case NodeKind::UnaryExpr: walkExpr(static_cast<UnaryExpr*>(e)->operand, owner); break;
         case NodeKind::BinaryExpr:
-          walkExpr(static_cast<BinaryExpr*>(e)->lhs, owner);
-          walkExpr(static_cast<BinaryExpr*>(e)->rhs, owner);
+        {
+          auto* binary = static_cast<BinaryExpr*>(e);
+          if (P(binary->op) == P::Shl)
+            sizeAsSizeT(binary->rhs);
+          walkExpr(binary->lhs, owner);
+          walkExpr(binary->rhs, owner);
           break;
+        }
         case NodeKind::ConditionalExpr:
           walkExpr(static_cast<ConditionalExpr*>(e)->cond, owner);
           walkExpr(static_cast<ConditionalExpr*>(e)->then, owner);
