@@ -3091,6 +3091,15 @@ namespace
       const StructInfo& info = structFor(owner, e);
       if (index >= info.fieldDecls.size() || !fieldAddress(owner, info.fieldDecls[index], base, out, e))
         unsupported(e, "a structured binding of a class without that many data members");
+      // A reference member's binding names the object the member refers to, as `pair.second` does
+      // (TestBuildabilityChecks' `[testedLocation, surface]` over Pair<Locations, Surface&> read the
+      // member's own storage as the Surface).
+      if (const Ty* ft = fieldTypeIn(owner, info.fieldDecls[index], e); ft && ft->isReference())
+      {
+        std::string referenced = newTemp();
+        fn += "  " + referenced + " = load ptr, ptr " + out + "\n";
+        out = referenced;
+      }
       return true;
     }
 

@@ -1,6 +1,5 @@
 // spec: a structured binding of a reference data member names the object the member refers to: `const auto& [location, surface] = pair;` with `Surface& second` reads the Surface, in a declaration and in a range-for over pairs, as `pair.second` does
 // factorio: TestBuildabilityChecks' `for (const auto& [testedLocation, surface] : surfacesWithLocation)` over a std::vector<Pair<Locations, Surface&>> (the game's Pair): surface was the member's own storage, the address it holds read as a Surface, and the entity built on it faulted in EntityWithOwner's constructor (BuildabilityChecks stops; its 64 tests pass with the loop reading .first and .second)
-// pending: SILENT, each binding reads the reference member's storage as the object (garbage numbers); owner: the codegen thread
 struct Surface
 {
   int index = 0;
