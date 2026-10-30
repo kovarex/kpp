@@ -1,0 +1,37 @@
+// spec: a class template that derives from its template parameter (`template<class Self, class Parent = Behavior> class BehaviorTemplate : public Parent`) has, in each instance, the members of that base and of its bases: `&T::toText` of a class deriving from an instance names Bindable::toText, as in C++
+// factorio: LuaControlBehaviorTemplate<T, ParentType = LuaControlBehavior> since Factorio df1c9d1cd3c: LuaBinder<T>'s &T::luaToString and LuaControlBehavior's &T::luaReadControlBehaviorType for every control behavior (57 headline errors, and the staticInit calls of 70 more)
+// pending: codegen does not support an unresolved name (toText) yet
+class Bindable
+{
+public:
+  int toText() { return 7; }
+};
+class Behavior : public Bindable
+{
+public:
+  int kind() { return 3; }
+};
+template<class Self, class Parent = Behavior>
+class BehaviorTemplate : public Parent
+{
+public:
+  static void init() {}
+};
+class Accumulator : public BehaviorTemplate<Accumulator>
+{
+public:
+  int charge() { return 5; }
+};
+template<class T>
+int callThrough(T& object)
+{
+  int (T::*text)() = &T::toText;
+  int (T::*kind)() = &T::kind;
+  return (object.*text)() * 100 + (object.*kind)() * 10 + object.charge();
+}
+int main()
+{
+  Accumulator a;
+  println("{}", callThrough(a));
+  return 0;
+}
