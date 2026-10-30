@@ -410,4 +410,7 @@ struct ParsedFile
   uint32_t declCount = 0; // All declaration nodes created.
   uint32_t functionBodies = 0;
   uint32_t nodeCount = 0;
+  // A compile server's kept file whose bodies were replaced (step 3b): the arena holds the old
+  // bodies too, so the parse statistics report what a parse of the file as it is now allocates.
+  size_t arenaBytesReported = 0;
 };

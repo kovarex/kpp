@@ -43,3 +43,9 @@ bool replayDisabled();
 
 // The process's environment, as GetEnvironmentStringsW gives it (UTF-16 bytes).
 std::string environmentBlock();
+
+// A line in the compile server's log about the build running (nothing outside a server).
+void logBuildNote(const std::string& note);
+
+// The build running is the kept one with changed bodies checked again (step 3b): --verify-incremental checks it.
+void noteIncrementalBuild();

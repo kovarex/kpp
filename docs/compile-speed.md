@@ -371,9 +371,42 @@ before relying on the recorded uses.
   `--verify-incremental` 34 s (the replay and a build from scratch), "the same as from scratch".
   tests/incremental.ps1 repeats each of its six steps through the server with
   `--verify-incremental` and checks in the server's log that all six were replays, verified.
-- **3b** (resolver thread): a body-only edit re-parses the changed file, moves the new bodies into
-  the kept declarations and checks only those bodies (and the instances they newly request); codegen
-  still runs in full.
+- **3b** (resolver thread, landed): the server keeps the whole build (`Build` in main.cpp: files,
+  tokens, trees, the symbol table, the resolved program, the statistics; the report lines it cannot
+  recompute) instead of freeing it, and a request whose files changed inside function bodies only
+  is built from it. How:
+  1. **Which bodies changed.** Each changed file is lexed and parsed anew; its function bodies
+     (`{` to the matching `}`, in namespaces, classes and enums) are paired with the kept file's in
+     the text's order; outside the bodies the two token streams must be the same token for token,
+     and a body that differs must be eligible: not a template's or a class template's member, not
+     constexpr or consteval, no `auto` or `decltype` before it (a deduced return type types callers
+     elsewhere). The file must have no parse errors and no checker errors in the kept build.
+  2. **The splice.** Every node of the kept file indexes its tokens, so they keep their places and
+     take the new text's offsets; the changed bodies' new tokens are appended after them and parsed
+     there (`parseBlockAt`), and each new body replaces the old one in the kept FunctionDecl (the
+     declaration objects, which the rest of the program points at, stay). The file's current token
+     order and bodies are kept for its next edit. A new body with a `(name) op x` cast to rewrite
+     (finishIndex's work) is not spliced.
+  3. **The check.** The changed files are walked again (their recorded reads forgotten first). The
+     result is used only if the walk made no instance and reused none that only codegen had made
+     (`late` records), every instance the old bodies requested and the new ones do not is still
+     requested by some other unit (step 2's recorded uses), and no statistic's "first at" falls on
+     the appended tokens (their order is not the text's). Otherwise the request is built from
+     scratch, and the kept build (changed by then) is dropped.
+  4. **The reports** are what a build from scratch prints: the lexer's counts from lexing every
+     file again into a symbol table of its own (the kept one holds earlier versions' identifiers
+     too, 0.07 s), the parse counts the new parse gave, the resolve's statistics from the kept
+     per-file statistics with the changed files' replaced and the instance statistics as they were
+     at the end of the resolve (codegen instantiates more afterwards). Then codegen, in full.
+  `--verify-incremental` checks these builds as it checks replays. The edit test has two body
+  edits of one file in a row (the second through the kept token order) and checks in the server's
+  log that both were built this way and verified. Full game, frozen tree, through one server, each
+  edit verified "the same as from scratch": a statement added to `BuildEntityAchievement::setup`,
+  that file back, two conditions swapped in the same function, and back. Times without
+  `--verify-incremental`: **resolve 0.06 to 0.14 s** (1.3 to 2 s in a build from scratch), the
+  wall time 17.5 to 26 s, now all codegen (10 to 16.5 s), clang (one module, 1 s) and the link
+  (4.6 to 5.4 s): what 3c and the link are for. A body edit of `MapPosition::operator+` is not
+  eligible (constexpr) and was built from scratch, as expected.
 - **3c**: codegen keeps each function's result and rebuilds only what an edit changed. The codegen
   thread owns codegen's half (its queued work on destructor helpers, cleanups and module assembly
   reshapes the same structures); the interface the server needs:

@@ -58,6 +58,13 @@ namespace
       kwClassConst = symbols.intern("class_const");
       kwAccumulate = symbols.intern("accumulate");
     }
+
+    // One function body at tokens[start] (parseBlockAt).
+    Stmt* parseBlockFrom(uint32_t start)
+    {
+      pos = start;
+      return parseBlock();
+    }
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember;
@@ -5466,4 +5473,13 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
   parser.kppSource = !cMode && out.path.ends_with(".kpp"); // (the driver sets the path; the converter parses C++ without one)
   parser.config = config;
   parser.parseTranslationUnit();
+}
+
+Stmt* parseBlockAt(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols, ParsedFile& out, uint32_t start,
+                   const ConfigValues* config)
+{
+  Parser parser(tokens, text, symbols, out);
+  parser.kppSource = out.path.ends_with(".kpp");
+  parser.config = config;
+  return parser.parseBlockFrom(start);
 }

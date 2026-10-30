@@ -805,6 +805,7 @@ struct GlobalScope::Impl
     std::atomic<int> state{0}; // 1 being built (by owner), 2 built
     std::atomic<std::thread::id> owner; // who builds it (whoever takes a queued check over)
     std::atomic<int> queued{0};         // 1: its check is queued, not started; taken by whoever exchanges it to 0 first
+    bool late = false;                  // made after the resolve (by codegen): a clean resolve may not make it (step 3b)
     std::unique_ptr<FunctionInstanceTask> task;
     FunctionDecl* body = nullptr;
     const Ty* deducedReturn = nullptr; // what the body's returns deduced, for an `auto` function
@@ -842,10 +843,15 @@ struct GlobalScope::Impl
     if (slot)
     {
       producer = false;
+      if (rewalking.load(std::memory_order_relaxed) && slot->late)
+        rewalkTouchedLate = true;
       recordUse(USE_Instance, slot.get());
       return slot.get();
     }
     slot = std::make_unique<InstanceRecord>();
+    slot->late = afterResolve.load(std::memory_order_relaxed);
+    if (rewalking.load(std::memory_order_relaxed))
+      ++rewalkCreated;
     slot->owner = std::this_thread::get_id();
     slot->state.store(1, std::memory_order_relaxed);
     producer = true;
@@ -964,6 +970,7 @@ struct GlobalScope::Impl
   {
     std::atomic<int> state{0}; // 0 claimed-not-started is never visible: created in state 1 by the producer.
     std::thread::id owner;
+    bool late = false; // made after the resolve (by codegen)
     const Ty* deducedReturn = nullptr; // For function templates with `auto` return.
     Dependencies deps; // what checking it read
   };
@@ -977,6 +984,10 @@ struct GlobalScope::Impl
   InstShard instShards[instShardCount];
   std::atomic<size_t> instClasses{0}, instFunctions{0}, instBodies{0}, instRequests{0}, instWaits{0};
   std::atomic<uint64_t> instNanos{0};
+  // Step 3b (the compile server's fast path): the resolve is over (what is made from now on is
+  // codegen's), and a changed file's walk is being redone (what it makes or reuses of codegen's).
+  std::atomic<bool> afterResolve{false}, rewalking{false}, rewalkTouchedLate{false};
+  std::atomic<size_t> rewalkCreated{0};
   // Every instance walk's statistics (GlobalScope::instanceStats), not its asker's: an instance
   // first asked for by a probe (a requires-expression's, whose statistics are dropped) would
   // otherwise go uncounted in some runs and counted in others.
@@ -1072,12 +1083,17 @@ struct GlobalScope::Impl
     if (it != shard.classes.end())
     {
       producer = false;
+      if (rewalking.load(std::memory_order_relaxed) && it->second->late)
+        rewalkTouchedLate = true;
       recordUse(USE_ClassInstance, it->second.get());
       return it->second.get();
     }
     auto inst = std::make_unique<Instantiation>();
     inst->state.store(1);
     inst->owner = std::this_thread::get_id();
+    inst->late = afterResolve.load(std::memory_order_relaxed);
+    if (rewalking.load(std::memory_order_relaxed))
+      ++rewalkCreated;
     Instantiation* result = inst.get();
     shard.classes.emplace(classTy, std::move(inst));
     producer = true;
@@ -19288,6 +19304,101 @@ size_t GlobalScope::entryCount() const { return impl->entries.load(); }
 size_t GlobalScope::typeCount() const { return impl->types.size(); }
 
 void GlobalScope::recordDependencies(bool on) { recordingDependencies = on; }
+
+void GlobalScope::resolveDone() { impl->afterResolve = true; }
+
+void GlobalScope::beginRewalk()
+{
+  impl->rewalkCreated = 0;
+  impl->rewalkTouchedLate = false;
+  impl->rewalking = true;
+}
+
+bool GlobalScope::endRewalk()
+{
+  impl->rewalking = false;
+  return impl->rewalkCreated == 0 && !impl->rewalkTouchedLate;
+}
+
+namespace
+{
+  // The walk unit's declaration, from its key in Impl::declDependencies (its address and the
+  // unit's kind in the low bits a declaration's alignment leaves free).
+  const Decl* walkUnitDecl(uintptr_t key) { return reinterpret_cast<const Decl*>(key & ~uintptr_t(7)); }
+}
+
+void GlobalScope::forgetWalks(const ParsedFile& file)
+{
+  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, deps] : shard.map)
+      if (walkUnitDecl(key)->file == &file)
+      {
+        std::lock_guard l(deps->mutex);
+        deps->list = DependencyList{};
+        deps->tidied = true;
+      }
+  }
+}
+
+std::vector<const void*> GlobalScope::instancesWalksUse(const ParsedFile& file)
+{
+  std::vector<const void*> out;
+  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, deps] : shard.map)
+      if (walkUnitDecl(key)->file == &file)
+      {
+        std::lock_guard l(deps->mutex);
+        for (auto& [kind, what] : deps->list.uses)
+          if (kind == USE_Instance || kind == USE_ClassInstance)
+            out.push_back(what);
+      }
+  }
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
+}
+
+bool GlobalScope::usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file)
+{
+  std::unordered_set<const void*> left(instances.begin(), instances.end());
+  auto scan = [&](Dependencies& d)
+  {
+    std::lock_guard lock(d.mutex);
+    for (auto& [kind, what] : d.list.uses)
+      left.erase(what);
+  };
+  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, deps] : shard.map)
+      if (walkUnitDecl(key)->file != &file)
+        scan(*deps);
+  }
+  {
+    std::lock_guard lock(impl->typeDependenciesMutex);
+    for (auto& deps : impl->typeDependencies)
+      scan(*deps);
+  }
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+      if (!left.count(record.get())) // an instance's own requests count only while it is used itself
+        scan(record->deps);
+  }
+  for (Impl::InstShard& shard : impl->instShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, inst] : shard.classes)
+      if (!left.count(inst.get()))
+        scan(inst->deps);
+  }
+  return left.empty();
+}
 
 GlobalScope::DependencyStats GlobalScope::dependencyStats()
 {

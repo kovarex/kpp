@@ -253,6 +253,20 @@ public:
   // Whether the resolve records them (before resolveAll; a compile server's builds do).
   static void recordDependencies(bool on);
 
+  // Step 3b, the compile server's fast path (docs/compile-speed.md): a file whose function bodies
+  // alone changed is walked again in the kept program. resolveDone: what is instantiated from now
+  // on is codegen's. beginRewalk/endRewalk around the new walk: endRewalk is false when the walk
+  // made an instance, or reused one codegen made (a resolve from scratch would differ). forgetWalks:
+  // the file's walks' recorded reads, before they are walked again. instancesWalksUse: the
+  // instances the file's walks requested. usedElsewhere: whether every one of instances is
+  // requested by some unit other than the file's walks (else a resolve from scratch would not make it).
+  void resolveDone();
+  void beginRewalk();
+  bool endRewalk();
+  void forgetWalks(const ParsedFile& file);
+  std::vector<const void*> instancesWalksUse(const ParsedFile& file);
+  bool usedElsewhere(const std::vector<const void*>& instances, const ParsedFile& file);
+
   // Queries for code generation (after resolveFile ran on every file).
   TypeTable& types();
   const Ty* typeOfDecl(Decl* d);                 // Declared (or deduced) canonical type.

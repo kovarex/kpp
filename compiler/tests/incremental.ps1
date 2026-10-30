@@ -17,7 +17,8 @@ $started = Get-Date
 
 function Normalize([string[]]$lines)
 {
-  $lines | ForEach-Object { $_ -replace '[0-9]+\.[0-9]+ s\b', '_ s' -replace '\([0-9.]+ [MG]?B/s[^)]*\)', '(_)' -replace '\([0-9.]+ M lines/s\)', '(_)' -replace '\(([0-9]+) requests, ([0-9]+) waits\)', '(_ requests, _ waits)' }
+  # (and without the interned types' count: a cache, larger in a server that built earlier versions)
+  $lines | Where-Object { $_ -notmatch '^check:\s+[0-9]+ distinct types' } | ForEach-Object { $_ -replace '[0-9]+\.[0-9]+ s\b', '_ s' -replace '\([0-9.]+ [MG]?B/s[^)]*\)', '(_)' -replace '\([0-9.]+ M lines/s\)', '(_)' -replace '\(([0-9]+) requests, ([0-9]+) waits\)', '(_ requests, _ waits)' }
 }
 
 function Build([string[]]$arguments, [string]$label)
@@ -43,6 +44,7 @@ function Edit([string]$file, [string]$old, [string]$new)
 $steps = @(
   @{ name = 'first build'; expect = '6 40 40 3 8'; edit = {} },
   @{ name = 'body edit'; expect = '6 44 44 3 8'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
+  @{ name = 'second body edit'; expect = '6 44 44 3 8'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a; }' } },
   @{ name = 'signature edit'; expect = '6 44 44 103 8'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
   @{ name = 'layout edit'; expect = '6 44 44 103 12'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
   @{ name = 'new file'; expect = '6 44 1 103 12'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
@@ -57,7 +59,7 @@ foreach ($step in $steps)
   $fresh = Join-Path $work "fresh.$n.ll"
   $exe = Join-Path $work 'server.exe'
   # The server's IR is written to one path every step (its arguments, so its server, stay the same).
-  $s = Build @('--server', '--emit-llvm', (Join-Path $work 'server.ll'), $src) "server.$n"
+  $s = Build @('--server', '--verify-incremental', '--emit-llvm', (Join-Path $work 'server.ll'), $src) "server.$n"
   Copy-Item (Join-Path $work 'server.ll') $ir
   $f = Build @('--emit-llvm', (Join-Path $work 'fresh.ll'), $src) "fresh.$n"
   Copy-Item (Join-Path $work 'fresh.ll') $fresh
@@ -85,10 +87,19 @@ foreach ($step in $steps)
   if ($ok) { "ok   incremental $n ($($step.name))" } else { $failed++ }
 }
 # Each step's repeat was a replay, checked against a build from scratch (the server's log says so).
-$log = Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $started } |
-  ForEach-Object { Get-Content $_.FullName } | Where-Object { $_ -match 'verify-incremental: the same as from scratch' -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $started }
+# Only this run's servers' lines: other worktrees run this test at the same time, with servers of
+# their own (their build directories differ), logging to the same directory.
+$ours = Get-ChildItem (Join-Path $env:TEMP 'kppc-server\*.log') | Where-Object { $_.LastWriteTime -ge $started } |
+  ForEach-Object { Get-Content $_.FullName } | Where-Object { $_.Length -gt 23 -and [datetime]::ParseExact($_.Substring(0, 23), 'yyyy-MM-dd HH:mm:ss.fff', $null) -ge $started }
+$pids = @($ours | Where-Object { $_.Contains("the last $src") } | ForEach-Object { if ($_ -match '\[(\d+)\]') { $Matches[1] } } | Sort-Object -Unique)
+$ours = @($ours | Where-Object { $_ -match '\[(\d+)\]' -and $pids -contains $Matches[1] })
+$log = $ours | Where-Object { $_ -match 'verify-incremental: the same as from scratch' }
 if (@($log).Count -lt $steps.Count) { "FAIL incremental: $(@($log).Count) replays verified, $($steps.Count) expected (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental replays ($($steps.Count), each the same as from scratch)" }
+# The body edits (the second one of a file already edited) were built from the kept program, its changed body checked again (step 3b), and verified.
+$fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed' }
+if (@($fast).Count -lt 2) { "FAIL incremental: the body edits were not built from the kept program (the server's log, %TEMP%\kppc-server)"; $failed++ }
+else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }
 & $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
 & $Kppc --stop-server --quiet --exe $exe $src | Out-Null
 if ($failed -gt 0) { exit 1 }

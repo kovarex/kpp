@@ -240,6 +240,9 @@ namespace
     bool muted = false;          // --verify-incremental's own build: captured, not sent
     bool verifying = false;      // that build is running: its end does not answer the client
     bool replayed = false;       // this request was answered from the kept build
+    bool incremental = false;    // built from the kept build, its changed bodies checked again (step 3b)
+    bool verifyRequested = false; // --verify-incremental: the build's end does not answer, the check does
+    bool drained = false;        // its output is all captured (the forwarders have ended)
     bool keep = false;           // this build's result is kept (replayBuild found nothing to replay)
     uint64_t fingerprint = 0;
     std::vector<std::string> outputs;
@@ -359,12 +362,12 @@ namespace
       kept.stamps.push_back(stampOf(o));
   }
 
-  // Sends the build's exit code once everything it printed is through, and lets the client go.
-  void answer(Session& s, int exitCode)
+  // Ends the forwarding of the build's output once all of it is through (captured and sent).
+  void drain(Session& s)
   {
-    if (s.answered)
+    if (s.drained)
       return;
-    s.answered = true;
+    s.drained = true;
     fflush(stdout);
     fflush(stderr);
     int nul = _open("NUL", _O_WRONLY | _O_BINARY);
@@ -377,6 +380,15 @@ namespace
       s.errForward.join();
     CloseHandle(s.outRead);
     CloseHandle(s.errRead);
+  }
+
+  // Sends the build's exit code once everything it printed is through, and lets the client go.
+  void answer(Session& s, int exitCode)
+  {
+    if (s.answered)
+      return;
+    s.answered = true;
+    drain(s);
     if (s.keep)
       keepBuild(s, exitCode);
     sendFrame(s, exitFrame, &exitCode, 4);
@@ -543,12 +555,18 @@ namespace
 
   // --verify-incremental after a replayed build: builds the same arguments from scratch in this
   // server (its output into files, not to the client) and compares what both printed and wrote.
-  bool verifyReplay(Session& s, CompileFunction compile, std::vector<std::string> args, int replayedExit)
+  bool verifyReplay(Session& s, CompileFunction compile, std::vector<std::string> args, int builtExit)
   {
-    std::string before = writtenContents(kept.outputs);
+    // What the request's build printed: the kept build's when it was replayed, else its own (drained).
+    const std::string& printedOut = s.replayed ? kept.out : s.captured[0];
+    const std::string& printedErr = s.replayed ? kept.err : s.captured[1];
+    std::vector<std::string> outputs = s.replayed ? kept.outputs : s.outputs;
+    std::string before = writtenContents(outputs);
     fflush(stdout);
     fflush(stderr);
-    std::string dir = serverDirectory(), outPath = dir + "verify.out", errPath = dir + "verify.err";
+    // (Named by the server's process: other servers verify at the same time, in other threads' builds.)
+    std::string own = serverDirectory() + "verify." + std::to_string(GetCurrentProcessId());
+    std::string outPath = own + ".out", errPath = own + ".err";
     int savedOut = _dup(_fileno(stdout)), savedErr = _dup(_fileno(stderr));
     int out = _open(outPath.c_str(), _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
     int err = _open(errPath.c_str(), _O_CREAT | _O_TRUNC | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
@@ -578,11 +596,11 @@ namespace
       return text;
     };
     std::string problem;
-    std::string keptOut = normalized(kept.out), freshOut = normalized(slurp(outPath));
-    std::string keptErr = normalized(kept.err), freshErr = normalized(slurp(errPath));
-    std::string after = writtenContents(kept.outputs);
-    if (fresh != replayedExit)
-      problem = "exit code " + std::to_string(replayedExit) + " kept, " + std::to_string(fresh) + " from scratch";
+    std::string keptOut = normalized(printedOut), freshOut = normalized(slurp(outPath));
+    std::string keptErr = normalized(printedErr), freshErr = normalized(slurp(errPath));
+    std::string after = writtenContents(outputs);
+    if (fresh != builtExit)
+      problem = "exit code " + std::to_string(builtExit) + " kept, " + std::to_string(fresh) + " from scratch";
     else if (keptOut != freshOut)
       problem = "stdout differs: " + firstDifference(keptOut, freshOut);
     else if (keptErr != freshErr)
@@ -593,8 +611,7 @@ namespace
     if (problem.empty())
       return true;
     std::string message = "kppc: --verify-incremental: the server's build is not what a build from scratch gives: " + problem + "\n";
-    fwrite(message.data(), 1, message.size(), stderr);
-    fflush(stderr);
+    sendFrame(s, stderrFrame, message.data(), uint32_t(message.size())); // (the build's streams are drained)
     return false;
   }
 
@@ -637,7 +654,7 @@ namespace
       logLine("a client's request was cut short");
       return true;
     }
-    logLine("build %zu: %u arguments, in %s", ++builds, argc, cwd.c_str());
+    logLine("build %zu: %u arguments, in %s, the last %s", ++builds, argc, cwd.c_str(), args.back().c_str());
     applyEnvironment(environment);
     SetCurrentDirectoryA(cwd.c_str());
     if (!redirectOutput(s))
@@ -650,10 +667,15 @@ namespace
     }
     session = &s;
     bool verify = std::find(args.begin(), args.end(), "--verify-incremental") != args.end();
+    s.verifyRequested = verify;
     std::vector<std::string> again = args;
     int result = runBuild(compile, std::move(args), s);
-    if (verify && s.replayed && !verifyReplay(s, compile, std::move(again), result))
-      result = 1;
+    if (verify && (s.replayed || s.incremental))
+    {
+      drain(s);
+      if (!verifyReplay(s, compile, std::move(again), result))
+        result = 1;
+    }
     answer(s, result); // if the build did not answer itself (usage errors, --dump, a replay)
     session = nullptr;
     logLine("build %zu done, exit %d%s", builds, result, s.clientLost ? " (its client went away before the answer)" : "");
@@ -672,6 +694,18 @@ namespace
 bool servingBuild() { return session != nullptr; }
 
 bool replayDisabled() { return replayOff; }
+
+void noteIncrementalBuild()
+{
+  if (session)
+    session->incremental = true;
+}
+
+void logBuildNote(const std::string& note)
+{
+  if (session)
+    logLine("build %zu: %s", builds, note.c_str());
+}
 
 std::string environmentBlock()
 {
@@ -713,7 +747,7 @@ bool replayBuild(uint64_t fingerprint, const std::vector<std::string>& outputs, 
 
 void buildDone(int exitCode)
 {
-  if (session && session->verifying)
+  if (session && (session->verifying || session->verifyRequested))
   {
     fflush(stdout); // --verify-incremental's build from scratch: the request's own build answers
     fflush(stderr);

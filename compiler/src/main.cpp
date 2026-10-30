@@ -8,6 +8,8 @@
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
+#include <memory>
+#include <mutex>
 #include <cctype>
 #include <cstring>
 #include <exception>
@@ -144,6 +146,47 @@ namespace
   double seconds(std::chrono::steady_clock::duration d);
   int codegenExit = 0;
   std::string lastImportStamps; // the C import's header stamps (importCHeaders), for a server's next build
+  std::string lastImportsLine;  // the imports report of the build running (importCHeaders)
+
+  // A function's body in a file's tokens: its `{` and the matching `}`; eligible when nothing
+  // outside it can depend on what it says (not a template's or a class template's, not constexpr
+  // or consteval, no return type deduced from it).
+  struct Body
+  {
+    FunctionDecl* f;
+    uint32_t open, close;
+    bool eligible;
+  };
+  // Everything one build made, from the files read to the resolved program. A compile server keeps
+  // it for the next request: a request that changes only function bodies is built from it, the
+  // changed bodies checked again and nothing else (docs/compile-speed.md, step 3b).
+  struct Build
+  {
+    Options options;
+    std::vector<SourceFile> files;
+    std::vector<LexResult> lexed;
+    std::unique_ptr<SymbolTable> symbols;
+    std::unique_ptr<SourceConfiguration> configuration;
+    std::vector<std::unique_ptr<ParsedFile>> parsed;
+    std::unique_ptr<GlobalScope> global;
+    std::vector<ResolveStats> stats;
+    // What the reports print that a later build of the kept program cannot recompute.
+    std::string importsLine, indexLine;
+    std::vector<std::string> clashes;
+    double resolveTime = 0;
+    GlobalScope::InstantiationStats instantiation{}; // at the end of the resolve (codegen instantiates more)
+    ResolveStats instanceStats;
+    bool keepable = false; // the whole pipeline ran as one build of the files (not --repeat, --convert, --dump)
+    // A file whose bodies were replaced (step 3b): its tokens in the order of its text now (lexed
+    // holds them in the order its nodes index them, the new bodies' appended), each one's place in
+    // lexed, and its function bodies in the text's order. Empty for a file as first parsed.
+    std::vector<std::vector<Token>> currentTokens;
+    std::vector<std::vector<uint32_t>> nodeIndex;
+    std::vector<std::vector<Body>> currentBodies;
+    std::vector<uint32_t> firstAppended; // where the appended bodies' tokens begin in lexed
+  };
+  std::mutex keptMutex;              // held by a server's build until it has kept its result
+  std::unique_ptr<Build> keptBuild;  // a server's last build (under keptMutex)
 
   // What the executable links against: legacy_stdio_definitions (the printf family the UCRT
   // headers define inline), the Windows libraries programs commonly reach, --lib files; unused
@@ -761,9 +804,12 @@ namespace
       parsed[i]->tokens = &lexed[i].tokens;
       parsed[i]->text = files[i].text;
     }
-    report("imports: %zu header(s) -> %zu declarations, %zu parse errors (ignored), %.3f s%s\n", headers.size(),
-           size_t(parsed.back()->declCount), parsed.back()->diagnostics.size(), seconds(std::chrono::steady_clock::now() - importStart),
-           cacheHit ? " (cached)" : "");
+    char line[512];
+    snprintf(line, sizeof line, "imports: %zu header(s) -> %zu declarations, %zu parse errors (ignored), %.3f s%s\n", headers.size(),
+             size_t(parsed.back()->declCount), parsed.back()->diagnostics.size(), seconds(std::chrono::steady_clock::now() - importStart),
+             cacheHit ? " (cached)" : "");
+    lastImportsLine = line; // a compile server's incremental build prints it again (Build::importsLine)
+    report("%s", line);
   }
 
   // The errors the checker found itself (a static_assert that fails or cannot be evaluated).
@@ -945,8 +991,9 @@ namespace
       codegenExit = 1;
   }
 
-  void runResolve(std::vector<std::unique_ptr<ParsedFile>>& parsed, SymbolTable& symbols, const Options& options,
-                  std::vector<SourceFile>& files, std::vector<LexResult>& lexed);
+  void runResolve(Build& build);
+  void reportParse(Build& build, double parseTime);
+  void reportResolve(Build& build);
 
   uint32_t lineOf(const std::string& text, uint32_t offset)
   {
@@ -957,10 +1004,15 @@ namespace
     return line;
   }
 
-  void runParse(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, SymbolTable& symbols, const Options& options)
+  void runParse(Build& build)
   {
     using Clock = std::chrono::steady_clock;
-    std::vector<std::unique_ptr<ParsedFile>> parsed(files.size());
+    std::vector<SourceFile>& files = build.files;
+    std::vector<LexResult>& lexed = build.lexed;
+    SymbolTable& symbols = *build.symbols;
+    const Options& options = build.options;
+    std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
+    parsed.resize(files.size());
     double parseTime = 1e9;
     for (int round = 0; round < std::max(1, options.repeat); ++round)
     {
@@ -991,7 +1043,20 @@ namespace
           parsed[i]->tokens = &lexed[i].tokens;
         }
     }
+    lastImportsLine.clear();
     importCHeaders(files, lexed, parsed, symbols, options);
+    build.importsLine = lastImportsLine;
+    reportParse(build, parseTime);
+    runResolve(build);
+  }
+
+  // The parse statistics and the parse errors.
+  void reportParse(Build& build, double parseTime)
+  {
+    std::vector<SourceFile>& files = build.files;
+    std::vector<LexResult>& lexed = build.lexed;
+    const Options& options = build.options;
+    std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
     uint64_t decls = 0, bodies = 0, nodes = 0, errors = 0, filesWithErrors = 0, arenaBytes = 0, lines = 0;
     for (size_t i = 0; i < files.size(); ++i)
     {
@@ -1002,7 +1067,7 @@ namespace
       nodes += parsed[i]->nodeCount;
       errors += parsed[i]->diagnostics.size();
       filesWithErrors += !parsed[i]->diagnostics.empty();
-      arenaBytes += parsed[i]->arena.bytesAllocated();
+      arenaBytes += parsed[i]->arenaBytesReported ? parsed[i]->arenaBytesReported : parsed[i]->arena.bytesAllocated();
       lines += lexed[i].lineCount;
     }
     report("parse:   %.3f s  (%.1f M lines/s)\n", parseTime, lines / 1e6 / parseTime);
@@ -1026,14 +1091,18 @@ namespace
           report("  %s:%u: %s (at '%.*s')\n", files[i].path.string().c_str(), lineOf(files[i].text, t.offset), d.message,
                  int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
       }
-    runResolve(parsed, symbols, options, files, lexed);
   }
 
-  void runResolve(std::vector<std::unique_ptr<ParsedFile>>& parsed, SymbolTable& symbols, const Options& options,
-                  std::vector<SourceFile>& files, std::vector<LexResult>& lexed)
+  void runResolve(Build& build)
   {
     using Clock = std::chrono::steady_clock;
-    GlobalScope global(symbols);
+    std::vector<SourceFile>& files = build.files;
+    std::vector<LexResult>& lexed = build.lexed;
+    SymbolTable& symbols = *build.symbols;
+    const Options& options = build.options;
+    std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
+    build.global = std::make_unique<GlobalScope>(symbols);
+    GlobalScope& global = *build.global;
     for (size_t begin = 0; begin < options.whyAt.size();)
     {
       size_t end = std::min(options.whyAt.find(',', begin), options.whyAt.size());
@@ -1052,15 +1121,20 @@ namespace
     start = Clock::now();
     global.finishIndex();
     double finishTime = seconds(Clock::now() - start);
-    report("index:   %.3f s  (+%.3f s for out-of-line class definitions): %zu scopes, %zu entries\n", indexTime, finishTime,
-           global.scopeCount(), global.entryCount());
-    for (const std::string& clash : global.topLevelClashes())
+    char indexLine[256];
+    snprintf(indexLine, sizeof indexLine, "index:   %.3f s  (+%.3f s for out-of-line class definitions): %zu scopes, %zu entries\n", indexTime,
+             finishTime, global.scopeCount(), global.entryCount());
+    build.indexLine = indexLine;
+    report("%s", indexLine);
+    build.clashes = global.topLevelClashes();
+    for (const std::string& clash : build.clashes)
     {
       fprintf(stderr, "%s\n", clash.c_str());
       codegenExit = 1;
     }
 
-    std::vector<ResolveStats> stats(parsed.size());
+    std::vector<ResolveStats>& stats = build.stats;
+    stats.assign(parsed.size(), ResolveStats{});
     start = Clock::now();
     for (size_t i = 0; i < stats.size(); ++i)
     {
@@ -1073,11 +1147,29 @@ namespace
     // (docs/compile-speed.md, step 2); KPP_DEPENDENCY_STATS records them anywhere and reports them.
     GlobalScope::recordDependencies(servingBuild() || getenv("KPP_DEPENDENCY_STATS"));
     global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
-    double resolveTime = seconds(Clock::now() - start);
+    build.resolveTime = seconds(Clock::now() - start);
+    // What the reports count is the resolve's: codegen instantiates more afterwards.
+    global.resolveDone();
+    build.instantiation = global.instantiationStats();
+    build.instanceStats = global.instanceStats();
+    reportResolve(build);
+  }
+
+  // The resolve's statistics, then codegen (or the conversion), and the build is done.
+  void reportResolve(Build& build)
+  {
+    std::vector<SourceFile>& files = build.files;
+    std::vector<LexResult>& lexed = build.lexed;
+    SymbolTable& symbols = *build.symbols;
+    const Options& options = build.options;
+    std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
+    GlobalScope& global = *build.global;
+    std::vector<ResolveStats>& stats = build.stats;
+    double resolveTime = build.resolveTime;
     ResolveStats total;
     for (const ResolveStats& s : stats)
       total.add(s);
-    total.add(global.instanceStats()); // the instances', each once whoever asked first
+    total.add(build.instanceStats); // the instances', each once whoever asked first (at the end of the resolve)
     // KPP_DUMP_FILESTATS=path: each file's statistics and the instances', one line each, for finding
     // where two runs differ (tests/determinism.ps1 compares only the totals).
     if (const char* dumpPath = getenv("KPP_DUMP_FILESTATS"))
@@ -1094,7 +1186,7 @@ namespace
         };
         for (size_t i = 0; i < stats.size(); ++i)
           line(files[i].path.string(), stats[i]);
-        line("<instances>", global.instanceStats());
+        line("<instances>", build.instanceStats);
         fclose(f);
       }
     uint64_t types = total.typesResolved + total.typesDependent + total.typesUnresolved;
@@ -1128,7 +1220,7 @@ namespace
            (unsigned long long)total.unknownAuto, (unsigned long long)total.unknownOperator, (unsigned long long)total.unknownUnsupported);
     report("  calls resolved to a function: %llu (%llu still ambiguous after conversion ranking)\n", (unsigned long long)total.callsResolved,
            (unsigned long long)total.callsAmbiguousArity);
-    GlobalScope::InstantiationStats inst = global.instantiationStats();
+    GlobalScope::InstantiationStats inst = build.instantiation;
     uint64_t instExprs = total.instExprsTyped + total.instExprsDependent + total.instExprsUnknown;
     report("instantiate: %zu class and %zu function template instantiations checked once each (%zu requests, %zu waits), %.3f s of CPU\n",
            inst.classes, inst.functions, inst.requests, inst.waits, inst.seconds);
@@ -1196,6 +1288,392 @@ namespace
   double seconds(std::chrono::steady_clock::duration d)
   {
     return std::chrono::duration<double>(d).count();
+  }
+
+  void reportLex(size_t fileCount, const FileStats& total, size_t symbolCount, unsigned threads, double collectTime, double lexTime)
+  {
+    report("files:   %zu\n", fileCount);
+    report("bytes:   %llu (%.1f MB)\n", (unsigned long long)total.bytes, total.bytes / 1e6);
+    report("lines:   %llu\n", (unsigned long long)total.lines);
+    report("tokens:  %llu\n", (unsigned long long)total.tokens);
+    report("symbols: %zu distinct identifiers\n", symbolCount);
+    report("errors:  %llu\n", (unsigned long long)total.errors);
+    report("threads: %u\n", threads);
+    report("read:    %.3f s\n", collectTime);
+    report("lex:     %.3f s  (%.0f MB/s, %.1f M lines/s, %.1f M tokens/s)\n", lexTime, total.bytes / 1e6 / lexTime,
+           total.lines / 1e6 / lexTime, total.tokens / 1e6 / lexTime);
+  }
+
+  // ---- Step 3b: a request whose files changed only inside function bodies (docs/compile-speed.md) ----
+
+
+  // A token's identity for comparing two versions of a file: its kind, and its symbol or spelling.
+  bool sameToken(const Token& a, std::string_view ta, const Token& b, std::string_view tb)
+  {
+    if (a.kind != b.kind)
+      return false;
+    switch (a.getKind())
+    {
+      case TokenKind::Identifier: case TokenKind::Keyword: case TokenKind::Punctuator: case TokenKind::End:
+        return a.id == b.id;
+      default:
+        return ta.substr(a.offset, a.length) == tb.substr(b.offset, b.length);
+    }
+  }
+
+  // The bodies of the functions decls declare (members of namespaces, classes and enums included).
+  // False when one cannot be told apart (a body that is no `{...}`).
+  bool collectBodies(Span<Decl*> decls, const std::vector<Token>& tokens, bool inTemplate, std::vector<Body>& out)
+  {
+    for (Decl* d : decls)
+    {
+      if (!d)
+        continue;
+      bool templated = inTemplate || d->isTemplate || !d->templateParams.empty();
+      switch (d->kind)
+      {
+        case NodeKind::NamespaceDecl:
+          if (!collectBodies(static_cast<NamespaceDecl*>(d)->decls, tokens, inTemplate, out))
+            return false;
+          break;
+        case NodeKind::ClassDecl:
+          if (!collectBodies(static_cast<ClassDecl*>(d)->members, tokens, templated, out))
+            return false;
+          break;
+        case NodeKind::EnumDecl:
+          if (!collectBodies(static_cast<EnumDecl*>(d)->members, tokens, templated, out))
+            return false;
+          break;
+        case NodeKind::FunctionDecl:
+        {
+          auto* f = static_cast<FunctionDecl*>(d);
+          if (!f->body)
+            break;
+          uint32_t open = f->body->token;
+          if (open >= tokens.size() || !tokens[open].is(P::LBrace))
+            return false;
+          uint32_t close = open;
+          for (int depth = 0; close < tokens.size(); ++close)
+            if (tokens[close].is(P::LBrace))
+              ++depth;
+            else if (tokens[close].is(P::RBrace) && --depth == 0)
+              break;
+          if (close >= tokens.size())
+            return false;
+          bool eligible = !templated && !(f->flags & (DF_Constexpr | DF_Consteval));
+          for (uint32_t k = f->token; eligible && k < open; ++k)
+            if (tokens[k].is(Kw::auto_) || tokens[k].is(Kw::decltype_))
+              eligible = false; // a deduced return type: callers elsewhere are typed by the body
+          out.push_back({f, open, close, eligible});
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    return true;
+  }
+
+  // One changed file of the kept build, checked to have changed inside eligible function bodies
+  // only: its new text and tokens, and which bodies changed (indexes into the paired body lists).
+  struct ChangedFile
+  {
+    size_t index = 0;
+    std::string text;
+    LexResult lexed;              // the new text's, as the lexer gave them
+    std::vector<Token> tokens;    // as the parser left them (filtered, `>>` split)
+    std::unique_ptr<ParsedFile> parsed;
+    std::vector<Body> oldBodies, newBodies;
+    std::vector<size_t> changed;
+  };
+
+  bool bodiesOnly(Build& kept, size_t i, std::string text, ChangedFile& out, std::string& why)
+  {
+    const ParsedFile& old = *kept.parsed[i];
+    bool spliced = i < kept.currentTokens.size() && !kept.currentTokens[i].empty();
+    const std::vector<Token>& oldTokens = spliced ? kept.currentTokens[i] : kept.lexed[i].tokens;
+    std::string_view oldText = kept.files[i].text;
+    if (!old.diagnostics.empty() || kept.files[i].path.extension() != ".kpp")
+      return why = "parse errors, or not a .kpp file", false;
+    for (const std::string& e : kept.global->checkerErrors())
+      if (e.compare(0, old.path.size(), old.path) == 0)
+        return why = "the file has checker errors", false;
+    out.index = i;
+    out.text = std::move(text);
+    out.lexed = lex(out.text, *kept.symbols);
+    out.tokens = out.lexed.tokens;
+    out.parsed = std::make_unique<ParsedFile>();
+    out.parsed->path = old.path;
+    out.parsed->index = old.index;
+    out.parsed->isLibrary = old.isLibrary;
+    parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
+    if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
+      return why = "the new text has errors", false;
+    if (spliced)
+      out.oldBodies = kept.currentBodies[i];
+    else if (!collectBodies(old.decls, oldTokens, false, out.oldBodies))
+      return why = "the function bodies cannot be paired", false;
+    if (!collectBodies(out.parsed->decls, out.tokens, false, out.newBodies) || out.oldBodies.size() != out.newBodies.size())
+      return why = "the function bodies cannot be paired", false;
+    auto byOpen = [](const Body& a, const Body& b) { return a.open < b.open; };
+    std::sort(out.oldBodies.begin(), out.oldBodies.end(), byOpen);
+    std::sort(out.newBodies.begin(), out.newBodies.end(), byOpen);
+    // Outside the bodies the token streams must be the same; a body that differs is a change.
+    size_t a = 0, b = 0;
+    for (size_t k = 0; k <= out.oldBodies.size(); ++k)
+    {
+      size_t aEnd = k < out.oldBodies.size() ? out.oldBodies[k].open : oldTokens.size();
+      size_t bEnd = k < out.newBodies.size() ? out.newBodies[k].open : out.tokens.size();
+      if (aEnd < a || bEnd < b || aEnd - a != bEnd - b)
+        return why = "a change outside function bodies", false;
+      for (; a < aEnd; ++a, ++b)
+        if (!sameToken(oldTokens[a], oldText, out.tokens[b], out.text))
+          return why = "a change outside function bodies", false;
+      if (k == out.oldBodies.size())
+        break;
+      const Body& ob = out.oldBodies[k];
+      const Body& nb = out.newBodies[k];
+      bool same = ob.close - ob.open == nb.close - nb.open;
+      for (uint32_t x = 0; same && x <= ob.close - ob.open; ++x)
+        same = sameToken(oldTokens[ob.open + x], oldText, out.tokens[nb.open + x], out.text);
+      if (!same)
+      {
+        if (!ob.eligible || !nb.eligible)
+          return why = "a changed body others may depend on (a template's, constexpr, a deduced return type)", false;
+        out.changed.push_back(k);
+      }
+      a = ob.close + 1;
+      b = nb.close + 1;
+    }
+    return true;
+  }
+
+  // Moves the new bodies into the kept declarations. The kept tokens keep their places (every node
+  // of the file indexes them) and take the new text's offsets; the changed bodies' new tokens are
+  // appended after them and parsed there. False (the kept build is then unusable) when a new body
+  // needs what only indexing the whole file gives (a `(name) op x` cast to rewrite).
+  bool spliceBodies(Build& kept, ChangedFile& c, uint32_t& appendedFrom, std::string& why)
+  {
+    size_t i = c.index;
+    if (kept.currentTokens.size() < kept.files.size())
+    {
+      kept.currentTokens.resize(kept.files.size());
+      kept.nodeIndex.resize(kept.files.size());
+      kept.currentBodies.resize(kept.files.size());
+    }
+    std::vector<Token> merged = kept.lexed[i].tokens;
+    merged.pop_back(); // its End token: appended again after the new bodies
+    std::vector<uint32_t>& index = kept.nodeIndex[i];
+    size_t oldCount = kept.currentTokens[i].empty() ? kept.lexed[i].tokens.size() : kept.currentTokens[i].size();
+    if (index.empty())
+      for (uint32_t p = 0; p < oldCount; ++p)
+        index.push_back(p); // as first parsed: the nodes index the text's order
+    std::vector<uint32_t> newIndex(c.tokens.size(), UINT32_MAX);
+    std::vector<bool> changedBody(c.oldBodies.size(), false);
+    for (size_t k : c.changed)
+      changedBody[k] = true;
+    // The new bodies' tokens go after all the kept ones (their nodes, made next, index them there).
+    std::vector<uint32_t> starts(c.oldBodies.size(), 0);
+    if (kept.firstAppended.size() < kept.files.size())
+      kept.firstAppended.resize(kept.files.size(), UINT32_MAX);
+    if (kept.firstAppended[i] == UINT32_MAX)
+      kept.firstAppended[i] = uint32_t(merged.size());
+    appendedFrom = kept.firstAppended[i]; // what earlier edits appended is out of the text's order too
+    for (size_t k : c.changed)
+    {
+      starts[k] = uint32_t(merged.size());
+      merged.insert(merged.end(), c.tokens.begin() + c.newBodies[k].open, c.tokens.begin() + c.newBodies[k].close + 1);
+      for (uint32_t q = c.newBodies[k].open; q <= c.newBodies[k].close; ++q)
+        newIndex[q] = starts[k] + (q - c.newBodies[k].open);
+    }
+    merged.push_back(c.tokens.back()); // the End token
+    // The tokens that stay (all but the changed bodies') take the new text's offsets.
+    size_t a = 0, b = 0;
+    for (size_t k = 0; k <= c.oldBodies.size(); ++k)
+    {
+      size_t aEnd = k < c.oldBodies.size() ? c.oldBodies[k].open : oldCount - 1; // (not the End token)
+      for (; a < aEnd; ++a, ++b)
+      {
+        merged[index[a]].offset = c.tokens[b].offset;
+        merged[index[a]].length = c.tokens[b].length;
+        newIndex[b] = index[a];
+      }
+      if (k == c.oldBodies.size())
+        break;
+      const Body& ob = c.oldBodies[k];
+      const Body& nb = c.newBodies[k];
+      for (uint32_t x = 0; x <= ob.close - ob.open; ++x)
+        if (!changedBody[k])
+        {
+          merged[index[ob.open + x]].offset = c.tokens[nb.open + x].offset;
+          merged[index[ob.open + x]].length = c.tokens[nb.open + x].length;
+          newIndex[nb.open + x] = index[ob.open + x];
+        }
+        else
+        {
+          merged[index[ob.open + x]].offset = c.tokens[nb.open].offset; // the old body's: no node reads them any more
+          merged[index[ob.open + x]].length = 0;
+        }
+      a = ob.close + 1;
+      b = nb.close + 1;
+    }
+    newIndex.back() = uint32_t(merged.size() - 1);
+    for (uint32_t p : newIndex)
+      if (p == UINT32_MAX)
+        return why = "the file's tokens could not be paired", false;
+    kept.files[i].text = std::move(c.text);
+    kept.lexed[i].tokens = std::move(merged);
+    kept.lexed[i].lineCount = c.lexed.lineCount;
+    kept.lexed[i].errorCount = c.lexed.errorCount;
+    ParsedFile& file = *kept.parsed[i];
+    file.text = kept.files[i].text;
+    file.tokens = &kept.lexed[i].tokens;
+    size_t casts = file.castCandidates.size(), diagnostics = file.diagnostics.size();
+    for (size_t k : c.changed)
+      c.oldBodies[k].f->body = parseBlockAt(kept.lexed[i].tokens, file.text, *kept.symbols, file, starts[k], &kept.options.configValues);
+    if (file.castCandidates.size() != casts || file.diagnostics.size() != diagnostics)
+      return why = "a new body has a cast to rewrite or a parse error", false;
+    file.declCount = c.parsed->declCount;
+    file.functionBodies = c.parsed->functionBodies;
+    file.nodeCount = c.parsed->nodeCount;
+    file.arenaBytesReported = c.parsed->arena.bytesAllocated();
+    // The file as its text orders it now, for the next edit's comparison.
+    kept.currentBodies[i].clear();
+    for (size_t k = 0; k < c.oldBodies.size(); ++k)
+      kept.currentBodies[i].push_back({c.oldBodies[k].f, c.newBodies[k].open, c.newBodies[k].close, c.newBodies[k].eligible});
+    kept.nodeIndex[i] = std::move(newIndex);
+    kept.currentTokens[i] = std::move(c.tokens);
+    return true;
+  }
+
+  // Whether a file's statistics name a place among the appended tokens (their order there is not
+  // the text's, so a "first at" could differ from a build from scratch's).
+  bool namesAppendedTokens(const ResolveStats& s, uint32_t appendedFrom)
+  {
+    for (auto& [symbol, where] : s.unresolvedFirst)
+      if (where.token >= appendedFrom)
+        return true;
+    for (auto& [symbol, where] : s.missingMembersFirst)
+      if (where.token >= appendedFrom)
+        return true;
+    for (auto& [key, site] : s.why)
+      if (site.token >= appendedFrom)
+        return true;
+    return false;
+  }
+
+  // The kept build again with the files' new texts, when they changed inside eligible function
+  // bodies only: those bodies parsed and checked again and nothing else, then the reports and
+  // codegen as a build from scratch runs them. False when the request is no such build: it is built
+  // from scratch then (keptChanged: the kept build was changed on the way, and is dropped).
+  bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collectTime, bool& keptChanged)
+  {
+    using Clock = std::chrono::steady_clock;
+    keptChanged = false;
+    std::string why;
+    if (!kept.keepable || files.size() + 1 < kept.files.size() || !(lastImportStamps.empty() || headersUnchanged(lastImportStamps)))
+      return false;
+    size_t sources = 0; // the kept files without the C import, which the request's files have not yet
+    for (const auto& p : kept.parsed)
+      sources += !p->isImported;
+    if (files.size() != sources)
+      return false;
+    for (size_t i = 0; i < files.size(); ++i)
+      if (files[i].path != kept.files[i].path)
+        return false;
+    auto start = Clock::now();
+    std::vector<ChangedFile> changed;
+    for (size_t i = 0; i < files.size(); ++i)
+      if (files[i].text != kept.files[i].text)
+      {
+        changed.emplace_back();
+        if (!bodiesOnly(kept, i, files[i].text, changed.back(), why))
+        {
+          logBuildNote("not incremental: " + files[i].path.string() + ": " + why);
+          return false;
+        }
+      }
+    double parseTime = seconds(Clock::now() - start);
+    keptChanged = true;
+    std::vector<uint32_t> appendedFrom(changed.size());
+    for (size_t n = 0; n < changed.size(); ++n)
+      if (!spliceBodies(kept, changed[n], appendedFrom[n], why))
+      {
+        logBuildNote("not incremental: " + kept.files[changed[n].index].path.string() + ": " + why);
+        return false;
+      }
+    // The changed files walked again: what they read recorded anew, and nothing instantiated that
+    // a resolve from scratch would count differently.
+    GlobalScope& global = *kept.global;
+    GlobalScope::recordDependencies(true);
+    start = Clock::now();
+    std::vector<std::vector<const void*>> before(changed.size());
+    for (size_t n = 0; n < changed.size(); ++n)
+    {
+      before[n] = global.instancesWalksUse(*kept.parsed[changed[n].index]);
+      global.forgetWalks(*kept.parsed[changed[n].index]);
+    }
+    global.beginRewalk();
+    for (const ChangedFile& c : changed)
+    {
+      ResolveStats s;
+      s.fileIndex = uint32_t(c.index);
+      s.collectWhy = kept.options.showWhy > 0;
+      global.resolveFile(*kept.parsed[c.index], kept.lexed[c.index].tokens, kept.files[c.index].text, s);
+      kept.stats[c.index] = std::move(s);
+    }
+    bool same = global.endRewalk();
+    if (!same)
+      why = "the new bodies instantiate what the old did not (or what only codegen had)";
+    for (size_t n = 0; same && n < changed.size(); ++n)
+    {
+      const ParsedFile& file = *kept.parsed[changed[n].index];
+      std::vector<const void*> after = global.instancesWalksUse(file), dropped;
+      std::set_difference(before[n].begin(), before[n].end(), after.begin(), after.end(), std::back_inserter(dropped));
+      if (!dropped.empty() && !global.usedElsewhere(dropped, file))
+        same = false, why = "an old body's instance nobody else asks for";
+      else if (namesAppendedTokens(kept.stats[changed[n].index], appendedFrom[n]))
+        same = false, why = "a statistic's \"first at\" is in a new body";
+    }
+    if (!same)
+    {
+      logBuildNote("not incremental: " + why);
+      return false;
+    }
+    kept.resolveTime = seconds(Clock::now() - start);
+    // The reports a build from scratch prints. The lexer's counts come from lexing every file again
+    // into a table of its own (the kept table holds the old texts' identifiers too).
+    start = Clock::now();
+    SymbolTable fresh;
+    std::vector<LexResult> relexed(kept.files.size());
+    parallelFor(kept.files.size(), kept.options.threads, [&](size_t i)
+    {
+      if (!kept.parsed[i]->isImported)
+        relexed[i] = lex(kept.files[i].text, fresh);
+    });
+    double lexTime = seconds(Clock::now() - start);
+    FileStats total;
+    for (size_t i = 0; i < kept.files.size(); ++i)
+      if (!kept.parsed[i]->isImported)
+      {
+        total.bytes += kept.files[i].text.size();
+        total.tokens += relexed[i].tokens.size();
+        total.lines += relexed[i].lineCount;
+        total.errors += relexed[i].errorCount;
+      }
+    reportLex(sources, total, fresh.size(), kept.options.threads, collectTime, lexTime);
+    report("%s", kept.importsLine.c_str());
+    reportParse(kept, parseTime);
+    report("%s", kept.indexLine.c_str());
+    for (const std::string& clash : kept.clashes)
+    {
+      fprintf(stderr, "%s\n", clash.c_str());
+      codegenExit = 1;
+    }
+    logBuildNote("incremental: " + std::to_string(changed.size()) + " file(s) changed, their changed bodies checked again");
+    noteIncrementalBuild();
+    reportResolve(kept);
+    return true;
   }
 }
 
@@ -1360,7 +1838,15 @@ int compile(int argc, char** argv)
     auto found = collectFiles(root, options.extensions);
     paths.insert(paths.end(), found.begin(), found.end());
   }
-  std::vector<SourceFile> files(paths.size());
+  // A compile server's builds run one at a time up to the point each keeps what it made, so that a
+  // build finds its predecessor's kept (the predecessor answers its client before that point and
+  // frees the build before it afterwards, on its own thread).
+  std::unique_lock<std::mutex> keptLock(keptMutex, std::defer_lock);
+  if (servingBuild())
+    keptLock.lock();
+  auto build = std::make_unique<Build>();
+  build->files.resize(paths.size());
+  std::vector<SourceFile>& files = build->files;
   files.reserve(paths.size() + 2); // the configuration and the imported C headers
   std::atomic<uint64_t> totalBytes{0};
   parallelFor(paths.size(), options.threads, [&](size_t i)
@@ -1407,13 +1893,21 @@ int compile(int argc, char** argv)
     int replayed = 0;
     if (replayBuild(h, outputs, lastImportStamps.empty() || headersUnchanged(lastImportStamps), replayed))
       return replayed;
+    // Step 3b: the kept build with the changed function bodies checked again, when that is all
+    // that changed.
+    if (keptBuild && !replayDisabled() && options.repeat == 1 && !options.dumpTokens && options.parse) // (--verify-incremental's build is from scratch)
+    {
+      bool keptChanged = false;
+      if (incrementalBuild(*keptBuild, files, seconds(Clock::now() - startCollect), keptChanged))
+        return codegenExit;
+    }
     lastImportStamps.clear(); // this build's, if it imports any
   }
   // Converting, the front end lexes the C++ sources with the #if branches the converter drops
   // blanked, so that its rewrites reach the branches that are written out (offsets are unchanged:
   // tokens still index files[i].text).
   std::vector<std::string> configured(paths.size());
-  std::unique_ptr<SourceConfiguration> configuration;
+  std::unique_ptr<SourceConfiguration>& configuration = build->configuration;
   if (!options.convertDir.empty())
   {
     std::vector<std::filesystem::path> cppPaths;
@@ -1439,9 +1933,11 @@ int compile(int argc, char** argv)
   FileStats total;
   for (int round = 0; round < options.repeat; ++round)
   {
-    SymbolTable symbols;
+    build->symbols = std::make_unique<SymbolTable>();
+    SymbolTable& symbols = *build->symbols;
     std::vector<FileStats> stats(files.size());
-    std::vector<LexResult> results(files.size());
+    build->lexed.assign(files.size(), LexResult{});
+    std::vector<LexResult>& results = build->lexed;
     auto start = Clock::now();
     parallelFor(files.size(), options.threads, [&](size_t i)
     {
@@ -1465,16 +1961,7 @@ int compile(int argc, char** argv)
 
     if (round == options.repeat - 1)
     {
-      report("files:   %zu\n", files.size());
-      report("bytes:   %llu (%.1f MB)\n", (unsigned long long)total.bytes, total.bytes / 1e6);
-      report("lines:   %llu\n", (unsigned long long)total.lines);
-      report("tokens:  %llu\n", (unsigned long long)total.tokens);
-      report("symbols: %zu distinct identifiers\n", symbols.size());
-      report("errors:  %llu\n", (unsigned long long)total.errors);
-      report("threads: %u\n", options.threads);
-      report("read:    %.3f s\n", collectTime);
-      report("lex:     %.3f s  (%.0f MB/s, %.1f M lines/s, %.1f M tokens/s)\n", bestLex,
-             total.bytes / 1e6 / bestLex, total.lines / 1e6 / bestLex, total.tokens / 1e6 / bestLex);
+      reportLex(files.size(), total, symbols.size(), options.threads, collectTime, bestLex);
       if (total.errors)
       {
         unsigned shown = 0;
@@ -1485,7 +1972,11 @@ int compile(int argc, char** argv)
                      int(std::min<uint32_t>(t.length, 40)), files[i].text.data() + t.offset);
       }
       if (options.parse)
-        runParse(files, results, symbols, options);
+      {
+        build->options = options;
+        build->keepable = options.repeat == 1 && options.convertDir.empty() && !options.dumpTokens;
+        runParse(*build);
+      }
       if (options.dumpTokens)
         for (size_t i = 0; i < files.size(); ++i)
         {
@@ -1494,6 +1985,16 @@ int compile(int argc, char** argv)
             report("%-10s %.*s\n", tokenKindName(t.getKind()), int(t.length), files[i].text.data() + t.offset);
         }
     }
+  }
+  // A compile server keeps what this build made for the next request; the build kept before is
+  // freed (after this one answered its client, and outside the lock).
+  std::unique_ptr<Build> previous;
+  if (keptLock.owns_lock() && !replayDisabled())
+  {
+    previous = std::move(keptBuild);
+    if (build->keepable && build->global && !replayDisabled())
+      keptBuild = std::move(build);
+    keptLock.unlock();
   }
   return codegenExit;
 }
