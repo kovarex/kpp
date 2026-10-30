@@ -1,0 +1,11 @@
+// spec: an array's bound that is no constant expression (a division by zero in the function it calls) is an error at the declaration, as in C++, never an array of no elements
+// error: array_bound_that_is_no_constant_is_error.kpp:6: error:
+// factorio: found by the templates thread: convertType made `int sized[broken(3)]` an array of 0 elements when the bound did not evaluate (and so did a bound calling a function declared before its definition)
+// pending: an array bound that does not evaluate is silently 0
+constexpr int broken(int v) { return v / 0; }
+int sized[broken(3)];
+int main()
+{
+  println("{}", int(sizeof(sized) / sizeof(int)));
+  return 0;
+}

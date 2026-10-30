@@ -1,0 +1,12 @@
+// spec: a constant may call a plain function defined after it (Kpp's symbols are order-independent): the evaluator runs the function as a walk of it types it, made for the evaluation when its file's walk has not reached it yet (or is in it on another thread), so `pick(v)` is pick(int), never the first pick of the name
+// factorio: found by the templates thread answering thread A (are plain functions safe to evaluate while their file is walked?): before, the evaluator read the function's own nodes, unresolved above their walk, and ran the overload set's first pick, so `int sized[twice(3)]` had 200 elements while twice(3) is 6
+static_assert(twice(3) == 6);
+int sized[twice(3)];
+constexpr int pick(double) { return 100; }
+constexpr int pick(int x) { return x; }
+constexpr int twice(int v) { return pick(v) * 2; }
+int main()
+{
+  println("{} {}", int(sizeof(sized) / sizeof(int)), twice(3));
+  return 0;
+}

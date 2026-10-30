@@ -19397,21 +19397,22 @@ struct GlobalScope::Impl
     return w.instantiateFunction(f, subst, true);
   }
 
-  // The body a constant evaluation runs for def (a function's definition) under subst, when def
-  // is a template's (its own, or its class's): the instance's copy as the instance's walk typed
-  // it, made now or waited for, through the record the checker's instance checks use. There a
-  // call with a type-dependent argument names what the instance's types choose (C++
-  // [temp.dep.candidate]), never the template's own nodes, whose walk resolves such a call without
-  // them and may be writing them on another thread meanwhile. def itself when it is no
-  // template's, an argument is not known, or this thread is walking the instance (a call in its
-  // own body).
+  // The body a constant evaluation runs for def (a function's definition) under subst: the copy
+  // its instance's walk typed, made now or waited for, through the record the checker's instance
+  // checks use, never def's own nodes, which its file's walk may not have reached yet (Kpp's order
+  // independence: a constant above the function, or in a file walked first) or may be writing on
+  // another thread meanwhile. For a template's function (its own, or its class's) the instance's;
+  // there a call with a type-dependent argument names what the instance's types choose (C++
+  // [temp.dep.candidate]). For a plain function the one walk of it with no arguments, which an
+  // `auto` function's return deduced before its file's walk shares. def itself when an argument is
+  // not known, or this thread is walking the copy (a call in its own body).
   FunctionDecl* constInstanceBody(FunctionDecl* def, const Subst* subst)
   {
-    if (!subst || !def->body || !def->file || !def->file->tokens)
+    if (!def->body || !def->file || !def->file->tokens)
       return def;
     Decl* cls = owningClassOf(def);
     Span<Decl*> classParams = cls ? effectiveParams(cls) : Span<Decl*>{};
-    if (def->templateParams.empty() && classParams.empty())
+    if (!subst && (!def->templateParams.empty() || !classParams.empty()))
       return def;
     Subst classSubst, own;
     for (Decl* p : classParams)
