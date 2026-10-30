@@ -1646,17 +1646,34 @@ bitcode, took the archive's main and with it mainCRTStartup; the debug build's C
 infer wmainCRTStartup. Since the fix, kppc's driver names the entry itself when the program defines
 wmain and no main (`-Wl,/ENTRY:wmainCRTStartup`, main.cpp linkFlags).
 
-The release game then runs: `--version` prints the C++ build's version lines, and
-`--benchmark menu-simulation-train-junction.zip --benchmark-ticks 600` performs 600 updates in
-317.5 ms (avg 0.529 ms, min 0.127 ms, max 7.985 ms; the machine shared with a test run). The build:
-codegen 9.5 s, 732 MB of IR in 64 modules, clang 3.8 s (62 of 64 modules from the cache) and the
-ThinLTO link 156 s; the executable is 69,109,248 bytes (with --stub-missing and the crash report's
-/DEBUG link, as run.cmd links it).
+The release game then runs: `--version` prints the C++ build's version lines, and the train junction
+menu map runs. The build: codegen 9.5 s, 732 MB of IR in 64 modules, clang 3.8 s (62 of 64 modules
+from the cache) and the ThinLTO link 156 s, the machine shared; the executable is 69,109,248 bytes
+(with --stub-missing and the crash report's /DEBUG link, as run.cmd links it). Its debug build, for
+comparison: codegen 6.8 s, clang -O0 4.7 s, link 5.7 s.
 
-No C++ number stands beside it yet: C:\Factorioin\Releasex64vs2022actorio-run.exe is Factorio
+No current C++ release build is on disk: C:\Factorio\bin\Releasex64vs2022\factorio-run.exe is Factorio
 2.0.67 (build 83883, 2025-09-07), older than the source the conversion reads (2.1.0, build 85837), and
-it stops at startup on the current C:\Factorio\data (run with `--config` on a scratch config whose
-write-data is outside C:\Factorio). The current C++ build on disk is the debug one.
+it stops at startup on the current C:\Factorio\data. The current C++ build is the debug one
+(bin\Debugx64vs2022\factorio-run.exe, 2026-10-23, 2.1.0 build 85837), run with `--config` on a scratch
+config whose write-data is outside C:\Factorio. Paired runs, interleaved, `--benchmark
+menu-simulation-train-junction.zip --benchmark-ticks 600` (the same map file, the same mods: core, base
+and the three Space Age ones; prototype list checksum 2335390327 in all three):
+
+| Round | Kpp debug (-O0) | C++ debug | Kpp release (ThinLTO -O2) |
+|---|---|---|---|
+| 1 | 439.4 ms (avg 0.732 ms) | 729.6 ms (avg 1.216 ms) | 282.5 ms (avg 0.471 ms) |
+| 2 | 433.8 ms (avg 0.723 ms) | 731.9 ms (avg 1.220 ms) | 258.4 ms (avg 0.431 ms) |
+| 3 | 401.4 ms (avg 0.669 ms) | 767.3 ms (avg 1.279 ms) | 258.7 ms (avg 0.431 ms) |
+
+The two debug builds are different things: the C++ one is the game's Debug configuration (its DEBUG
+checks among them), Kpp's is -O0 with config::debug's asserts. All three end with the same checksum
+of the game's complete-mode save, 3172640117 after 600 ticks (2920833374 after 1, 2982388606 right
+after the load). Two differences from the C++ build had to go first, found by diffing the saves
+`--add-tags` writes: a std container's size() sent to a serialiser (`output <<
+this->tagsByTagNumber.size()`, 4 bytes in Kpp where C++ writes a size_t: the converter writes
+`size_t(...)` there since c97380f), and quiet_NaN() as 0.0 / 0.0, the processor's negative NaN in a
+debug build (Train::lastSpeed; the library now builds it from its bits).
 
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
