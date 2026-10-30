@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -303,6 +304,7 @@ namespace
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
     bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
+    bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
 
     explicit Shared(CodegenResult& result) : result(result)
@@ -324,6 +326,44 @@ namespace
       keptModuleEntries.resize(moduleCount);
     }
   };
+
+  // --debug-info: a definition's own metadata ids (Emitter::debugId: `!` and ten digits, after a
+  // space or at a line's start) become base + its own id, in place. Returns how many it used.
+  static uint32_t renumberDebugIds(char* text, size_t size, uint32_t base)
+  {
+    uint32_t used = 0;
+    for (char* at = (char*)memchr(text, '!', size); at; at = (char*)memchr(at + 1, '!', text + size - at - 1))
+    {
+      if (at + 11 > text + size || (at > text && at[-1] != ' ' && at[-1] != '\n') || (at + 11 < text + size && isdigit((unsigned char)at[11])))
+        continue;
+      uint32_t local = 0;
+      bool digits = true;
+      for (int k = 1; k <= 10 && digits; ++k)
+        if (isdigit((unsigned char)at[k]))
+          local = local * 10 + uint32_t(at[k] - '0');
+        else
+          digits = false;
+      if (!digits)
+        continue;
+      char buffer[16];
+      snprintf(buffer, sizeof buffer, "%010u", base + local);
+      memcpy(at + 1, buffer, 10);
+      used = std::max(used, local + 1);
+    }
+    return used;
+  }
+
+  // --debug-info: what every module's line tables refer to (the definitions' `unit: !0`, `type: !2`).
+  // The functions' own ids start after these.
+  static const char* const debugModuleTail = "!llvm.dbg.cu = !{!0}\n"
+                                             "!llvm.module.flags = !{!3, !4}\n"
+                                             "!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !1, producer: \"kppc\", "
+                                             "isOptimized: false, runtimeVersion: 0, emissionKind: LineTablesOnly)\n"
+                                             "!1 = !DIFile(filename: \"kpp\", directory: \"\")\n"
+                                             "!2 = !DISubroutineType(types: !{})\n"
+                                             "!3 = !{i32 2, !\"CodeView\", i32 1}\n"
+                                             "!4 = !{i32 2, !\"Debug Info Version\", i32 3}\n";
+  static const uint32_t debugFirstId = 16;
 
   // Calls found(offset, length) for each `@name` a text names, as module assembly has always scanned
   // them: every '@', a quoted name to its closing quote, an unquoted one over [A-Za-z0-9-$._].
@@ -431,6 +471,10 @@ namespace
     bool emittingShared = false; // string constants go to the shared decls
     std::string fn;      // current function text (after the allocas)
     std::string allocas; // entry-block allocas of the current function
+    // --debug-info: the declaration (a function or a lambda) whose definition is being emitted and its
+    // file, or null for a definition without line information (a global's startup function).
+    Node* debugAt = nullptr;
+    ParsedFile* debugFile = nullptr;
     uint32_t temp = 0;
     uint32_t label = 0;
     bool blockTerminated = false;
@@ -555,8 +599,15 @@ namespace
     // "file:line" of a node in a file, "?" when unknown.
     std::string locationOf(Node* at, ParsedFile* file)
     {
+      size_t line = lineOf(at, file);
+      return line ? file->path + ":" + std::to_string(line) : "?";
+    }
+
+    // The line a node starts on in its file (from 1), 0 when unknown.
+    size_t lineOf(Node* at, ParsedFile* file)
+    {
       if (!file || !file->tokens || !at || file->tokens->empty())
-        return "?";
+        return 0;
       const std::vector<Token>& toks = *file->tokens;
       const Token& t = toks[std::min<size_t>(at->token, toks.size() - 1)];
       std::vector<uint32_t>& starts = lineStarts[file];
@@ -567,8 +618,7 @@ namespace
           if (file->text[i] == '\n')
             starts.push_back(i + 1);
       }
-      size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), t.offset) - starts.begin()); // lines starting at or before the token
-      return file->path + ":" + std::to_string(line);
+      return size_t(std::upper_bound(starts.begin(), starts.end(), t.offset) - starts.begin()); // lines starting at or before the token
     }
 
     struct Unsupported
@@ -5132,12 +5182,14 @@ namespace
       bool usesEH;
       std::string returnLabel;
       std::unordered_map<std::string, std::string> inlineSlots;
+      Node* debugAt;
+      ParsedFile* debugFile;
     };
 
     FunctionState saveState()
     {
       return {fn, allocas, currentBlock, sretAddr, locals, labelBlocks, loops, scopes, statementTemps, temp, label, blockTerminated,
-              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel, inlineSlots};
+              currentFunction, currentReturn, currentClassTy, ehFrames, ehBlocks, cleanupPads, usesEH, returnLabel, inlineSlots, debugAt, debugFile};
     }
 
     void restoreState(FunctionState& s)
@@ -5163,6 +5215,8 @@ namespace
       usesEH = s.usesEH;
       returnLabel = s.returnLabel;
       inlineSlots = s.inlineSlots;
+      debugAt = s.debugAt;
+      debugFile = s.debugFile;
     }
 
     void resetFunctionState()
@@ -5180,6 +5234,8 @@ namespace
       cleanupPads.clear();
       usesEH = false;
       inlineSlots.clear();
+      debugAt = nullptr;
+      debugFile = nullptr;
       temp = 0;
       label = 0;
       blockTerminated = false;
@@ -5192,7 +5248,105 @@ namespace
     {
       if (usesEH)
         header.insert(header.rfind("{\nentry:"), "personality ptr @__C_specific_handler ");
+      if (size_t line = debugFile ? lineOf(debugAt, debugFile) : 0)
+        return debugLines(header, line);
       return header + allocas + fn + ehBlocks + "}\n\n";
+    }
+
+    // --debug-info: a metadata id in a function's text. Each function numbers its own from 0 (its
+    // DISubprogram), always ten digits wide, and module assembly (renumberDebugIds) makes them the
+    // module's, in place: the text does not depend on where the function lands.
+    static std::string debugId(uint32_t local)
+    {
+      char digits[16];
+      snprintf(digits, sizeof digits, "!%010u", local);
+      return digits;
+    }
+
+    std::unordered_map<const ParsedFile*, std::string> debugFiles; // a file's DIFile, its absolute path
+
+    const std::string& debugFileOf(const ParsedFile* file)
+    {
+      std::string& text = debugFiles[file];
+      if (text.empty())
+      {
+        std::error_code ec;
+        std::string path = std::filesystem::absolute(file->path, ec).string();
+        if (ec)
+          path = file->path;
+        std::string escaped;
+        for (char c : path)
+          if (c == '\\' || c == '"' || (unsigned char)c < 0x20)
+          {
+            char hex[4];
+            snprintf(hex, sizeof hex, "\\%02X", (unsigned char)c);
+            escaped += hex;
+          }
+          else
+            escaped += c;
+        text = "!DIFile(filename: \"" + escaped + "\", directory: \"\")";
+      }
+      return text;
+    }
+
+    // The definition with line information: every instruction gets the line of the statement whose
+    // marker (`  ;@LINE`, from statement()) precedes it, those before the first the declaration's
+    // line; then the function's DISubprogram and DILocations (one per line). A switch's case lines
+    // belong to the instruction they end with (`  ]`).
+    std::string debugLines(std::string header, size_t declLine)
+    {
+      size_t name = header.find('@');
+      size_t nameEnd = header[name + 1] == '"' ? header.find('"', name + 2) + 1 : header.find('(', name);
+      std::string spName = header[name + 1] == '"' ? header.substr(name + 2, nameEnd - name - 3) : header.substr(name + 1, nameEnd - name - 1);
+      header.insert(header.rfind("{\nentry:"), "!dbg " + debugId(0) + " ");
+      std::string out = std::move(header);
+      out.reserve(out.size() + (allocas.size() + fn.size() + ehBlocks.size()) * 5 / 4);
+      std::vector<size_t> lines{declLine};                 // local id - 1 -> its line
+      std::unordered_map<size_t, uint32_t> ids;
+      size_t current = declLine;
+      std::string currentRef;
+      auto refFor = [&](size_t line)
+      {
+        auto [it, isNew] = ids.emplace(line, uint32_t(ids.size() + 1));
+        if (isNew)
+          lines.push_back(line);
+        return ", !dbg " + debugId(it->second);
+      };
+      currentRef = refFor(current);
+      for (const std::string* part : {&allocas, &fn, &ehBlocks})
+      {
+        std::string_view text = *part;
+        for (size_t pos = 0; pos < text.size();)
+        {
+          size_t end = text.find('\n', pos);
+          if (end == std::string_view::npos)
+            end = text.size();
+          std::string_view l = text.substr(pos, end - pos);
+          pos = end + 1;
+          if (l.starts_with("  ;@"))
+          {
+            size_t line = strtoull(std::string(l.substr(4)).c_str(), nullptr, 10);
+            if (line != current)
+            {
+              current = line;
+              currentRef = refFor(line);
+            }
+            continue;
+          }
+          out.append(l);
+          if (l.starts_with("  ") && !l.starts_with("    ") && !l.starts_with("  ;") && !l.ends_with("["))
+            out += currentRef;
+          out += '\n';
+        }
+      }
+      out += "}\n";
+      const std::string& file = debugFileOf(debugFile);
+      out += debugId(0) + " = distinct !DISubprogram(name: \"" + spName + "\", scope: " + file + ", file: " + file + ", line: " +
+             std::to_string(declLine) + ", type: !2, scopeLine: " + std::to_string(declLine) + ", spFlags: DISPFlagDefinition, unit: !0)\n";
+      for (uint32_t k = 1; k < lines.size(); ++k)
+        out += debugId(k) + " = !DILocation(line: " + std::to_string(lines[k]) + ", scope: " + debugId(0) + ")\n";
+      out += '\n';
+      return out;
     }
 
     // Emits the lambda's function while another function is being emitted: the enclosing
@@ -5237,6 +5391,11 @@ namespace
         currentArgs = args;
       if (l->closure && l->closure->file)
         currentFile = l->closure->file;
+      if (sh.debugInfo)
+      {
+        debugAt = l;
+        debugFile = currentFile;
+      }
       currentReturn = callTy->inner ? callTy->inner : types.voidType();
       if (!currentReturn->isKnown())
         currentReturn = types.pointer(types.voidType());
@@ -8411,8 +8570,16 @@ namespace
       out += shared.text;
       out += declares;
       out += '\n';
+      uint32_t nextDebugId = debugFirstId;
       for (const Shared::Definition& d : definitions)
+      {
+        size_t at = out.size();
         out += d.text;
+        if (sh.debugInfo)
+          nextDebugId += renumberDebugIds(out.data() + at, d.text.size(), nextDebugId);
+      }
+      if (sh.debugInfo)
+        out += debugModuleTail;
       return out;
     }
 
@@ -14386,6 +14553,16 @@ namespace
         scopes.back().push_back({slot, t});
     }
 
+    // --debug-info: the instructions from here on are at the line `at` starts on (debugLines makes
+    // the marker their location): a statement's, a loop's step or condition emitted after its body.
+    // Not in a body inlined into its caller: those instructions are the call's.
+    void debugLine(Node* at)
+    {
+      if (debugFile && debugFile == currentFile && inlining.empty())
+        if (size_t line = lineOf(at, currentFile))
+          fn += "  ;@" + std::to_string(line) + "\n";
+    }
+
     void statement(Stmt* s)
     {
       if (!s)
@@ -14398,6 +14575,7 @@ namespace
       struct DepthGuard { int& d; ~DepthGuard() { --d; } } dg{recursionDepth};
       if (blockTerminated)
         startBlock(newLabel("dead"));
+      debugLine(s);
       switch (s->kind)
       {
         case NodeKind::BlockStmt:
@@ -14622,6 +14800,7 @@ namespace
           loops.pop_back();
           emitBranch(cL);
           startBlock(cL);
+          debugLine(d->cond);
           Value cond = convert(rvalue(d->cond), types.boolType(), s);
           destroyTemps();
           fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + eL + "\n";
@@ -14639,6 +14818,7 @@ namespace
           startBlock(cL);
           if (f->cond)
           {
+            debugLine(f->cond);
             Value cond = condition(f->cond, s);
             destroyTemps();
             fn += "  br i1 " + cond.text + ", label %" + bL + ", label %" + eL + "\n";
@@ -14653,6 +14833,7 @@ namespace
           startBlock(sL);
           if (f->step)
           {
+            debugLine(f->step);
             rvalue(f->step);
             destroyTemps();
           }
@@ -15496,6 +15677,7 @@ namespace
       popScope();
       emitBranch(sL);
       startBlock(sL);
+      debugLine(f);
       std::string cur = newTemp();
       fn += "  " + cur + " = load ptr, ptr " + itSlot + "\n";
       std::string next = newTemp();
@@ -15771,6 +15953,11 @@ namespace
       }
       resetFunctionState();
       currentFunction = f;
+      if (sh.debugInfo)
+      {
+        debugAt = f;
+        debugFile = currentFile;
+      }
       currentReturn = ft->inner;
       // If the return type is unknown, pretend it's ptr so the function body can be emitted;
       // return statements will try to convert their value to a pointer (and throw if they can't).
@@ -16183,7 +16370,7 @@ void CodegenSessionDeleter::operator()(CodegenSession* session) const
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep);
+                              CodegenSessionPtr* keep, bool debugInfo);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -16321,7 +16508,7 @@ static std::string declareUndefined(const std::string& text, const std::unordere
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                            unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                           CodegenSessionPtr* keep)
+                           CodegenSessionPtr* keep, bool debugInfo)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -16338,13 +16525,14 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     bool stubMissing;
     bool inlineTrivial;
     CodegenSessionPtr* keep;
+    bool debugInfo;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
     j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial,
-                         j->keep);
+                         j->keep, j->debugInfo);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -16354,7 +16542,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo);
 }
 
 // --stub-missing: the functions used without a definition that declsFor defines as stubs.
@@ -16447,7 +16635,7 @@ static std::string destructorHelperIn(const std::string& entry)
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep)
+                              CodegenSessionPtr* keep, bool debugInfo)
 {
   // The build's state lives in a session (Shared refers to its result), kept for the next build
   // when asked (keep) or freed.
@@ -16458,6 +16646,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   sh.debug = debug;
   sh.stubMissing = despiteErrors && stubMissing;
   sh.inlineTrivial = inlineTrivial;
+  sh.debugInfo = debugInfo;
   sh.setModules(moduleCount);
   for (size_t i = 0; i < files.size(); ++i)
     sh.fileModule[files[i].get()] = unsigned(i % sh.moduleCount);
@@ -16715,7 +16904,22 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     result.ir.append(ctors);
     result.ir.push_back('\n');
     result.ir.append(e.shared.text);
+    if (sh.debugInfo)
+    {
+      // One definition after another, each numbering its metadata from 0 (Emitter::debugLines).
+      std::string& body = e.body.text;
+      uint32_t nextDebugId = debugFirstId;
+      for (size_t at = 0; at < body.size();)
+      {
+        size_t next = body.find("\ndefine ", at);
+        next = next == std::string::npos ? body.size() : next + 1;
+        nextDebugId += renumberDebugIds(body.data() + at, next - at, nextDebugId);
+        at = next;
+      }
+    }
     result.ir.append(std::move(e.body.text));
+    if (sh.debugInfo)
+      result.ir += debugModuleTail;
     if (!result.errors.empty())
     {
       std::unordered_set<std::string> stubbed;

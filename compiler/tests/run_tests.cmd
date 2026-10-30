@@ -48,6 +48,9 @@ if errorlevel 1 (
 ) else (
   echo ok   msvc diagnostics
 )
+rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
+if errorlevel 1 set /a FAIL+=1
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
 if errorlevel 1 (

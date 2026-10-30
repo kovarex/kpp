@@ -67,6 +67,17 @@ foreach ($name in @('containers', 'templates', 'format'))
   if (Compare-Runs $runs $name $irs) { "ok   determinism $name" } else { $failed++ }
 }
 
+# --debug-info: each module numbers its metadata in the order of its definitions.
+$src = Join-Path $PSScriptRoot 'debuginfo\lines.kpp'
+$runs = @(); $irs = @()
+foreach ($j in @('1', '8', '32'))
+{
+  $ir = Join-Path $work "debuginfo.j$j.ll"
+  $runs += Run @('-j', $j, '--debug-info', '--emit-llvm', $ir, $src) "debuginfo -j $j"
+  $irs += $ir
+}
+if (Compare-Runs $runs 'debuginfo' $irs) { "ok   determinism debuginfo" } else { $failed++ }
+
 $tree = Join-Path $PSScriptRoot '..\..\programs\factorio\kpp'
 if (Test-Path (Join-Path $tree 'src'))
 {

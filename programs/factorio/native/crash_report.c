@@ -35,10 +35,22 @@ static void frame(HANDLE process, DWORD64 address, int index)
   char text[1400];
   DWORD64 displacement = 0;
   if (SymFromAddr(process, address, &displacement, symbol))
-    snprintf(text, sizeof text, "  %2d  %s!%s+0x%llx\n", index, name, symbol->Name, (unsigned long long)displacement);
+    snprintf(text, sizeof text, "  %2d  %s!%s+0x%llx", index, name, symbol->Name, (unsigned long long)displacement);
   else
-    snprintf(text, sizeof text, "  %2d  %s+0x%llx\n", index, name, (unsigned long long)(address - (DWORD64)module));
+    snprintf(text, sizeof text, "  %2d  %s+0x%llx", index, name, (unsigned long long)(address - (DWORD64)module));
   say(text);
+  /* The source line, when the objects carry line tables (kppc --debug-info, docs/debugging.md); a
+     caller's address is the return address, so its line is the one of the byte before (the call). */
+  IMAGEHLP_LINE64 line;
+  memset(&line, 0, sizeof line);
+  line.SizeOfStruct = sizeof line;
+  DWORD lineDisplacement = 0;
+  if (SymGetLineFromAddr64(process, index ? address - 1 : address, &lineDisplacement, &line))
+  {
+    snprintf(text, sizeof text, "  %s:%lu", line.FileName, (unsigned long)line.LineNumber);
+    say(text);
+  }
+  say("\n");
 }
 
 /* The stack from context, one frame per line. */
@@ -54,7 +66,7 @@ static void stack(CONTEXT context)
     char* slash = strrchr(directory, '\\');
     if (slash)
       *slash = 0;
-    SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_FAIL_CRITICAL_ERRORS);
+    SymSetOptions(SYMOPT_UNDNAME | SYMOPT_LOAD_LINES | SYMOPT_DEFERRED_LOADS | SYMOPT_FAIL_CRITICAL_ERRORS);
     SymInitialize(process, directory, TRUE); /* the executable's directory: no symbol server */
   }
   if (!context.Rip && context.Rsp)

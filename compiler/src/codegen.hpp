@@ -43,9 +43,12 @@ using CodegenSessionPtr = std::unique_ptr<CodegenSession, CodegenSessionDeleter>
 // inlineTrivial: calls of trivial functions are emitted as the callees' bodies (docs/compile-speed.md,
 // "Design: inlining trivial functions in kppc"); false (--no-inline) keeps every call.
 // keep: hand the session back (a build of several modules without errors) instead of freeing it.
+// debugInfo (--debug-info): line tables, each statement's instructions at its line, so that a
+// debugger steps through the Kpp source (docs/debugging.md).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,
-                           bool stubMissing = false, bool inlineTrivial = true, CodegenSessionPtr* keep = nullptr);
+                           bool stubMissing = false, bool inlineTrivial = true, CodegenSessionPtr* keep = nullptr,
+                           bool debugInfo = false);
 
 // An incremental build after the resolver checked the changed bodies again (its steps 3b and 4):
 // emits again the functions whose declarations got new bodies (or were walked again), emits the

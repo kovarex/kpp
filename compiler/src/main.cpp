@@ -79,6 +79,7 @@ namespace
     bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
+    bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
   };
 
   void usage()
@@ -120,6 +121,8 @@ namespace
             "  --incremental-link  a debug build links incrementally (link.exe /INCREMENTAL): the next link redoes\n"
             "                only the objects that changed, as long as the executable and its .ilk stay; every\n"
             "                function is kept (/OPT:NOREF)\n"
+            "  --debug-info  line tables in the objects (CodeView) and a .pdb next to the executable: a debugger\n"
+            "                steps through the Kpp source (docs/debugging.md)\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
@@ -228,6 +231,8 @@ namespace
     flags += " -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
     if (wideEntry)
       flags += " -Wl,/ENTRY:wmainCRTStartup";
+    if (options.debugInfo)
+      flags += " -Wl,/DEBUG";
     for (const std::string& lib : options.libs)
       flags += " \"" + lib + "\"";
     return flags;
@@ -927,7 +932,8 @@ namespace
     {
       build.codegen.reset();
       cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing, options.codegenThreads ? options.codegenThreads : options.threads,
-                        options.keepGoing && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr);
+                        options.keepGoing && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr,
+                        options.debugInfo);
       cg.changedModules.clear();
     }
     double t = seconds(Clock::now() - start);
@@ -2440,6 +2446,8 @@ int compile(int argc, char** argv)
       options.cIncludeDirs.push_back(argv[++i]);
     else if (arg == "--incremental-link")
       options.incrementalLink = true;
+    else if (arg == "--debug-info")
+      options.debugInfo = true;
     else if (arg == "--keep-going")
       options.keepGoing = true;
     else if (arg == "--stub-missing")

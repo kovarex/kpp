@@ -1,0 +1,51 @@
+// --debug-info (docs/debugging.md): each statement's instructions at its line. debuginfo.ps1 checks
+// the PDB's line table of every function here against lines.expected.
+extern "C" int printf(const char* format, ...);
+struct Counter
+{
+  int n = 0;
+  int get() const { return this->n; }
+  void add(int k)
+  {
+    this->n += k;
+  }
+};
+int classify(int x)
+{
+  switch (x)
+  {
+    case 0:
+      return 10;
+    case 1:
+      return 20;
+    default:
+      return 30;
+  }
+}
+int main()
+{
+  Counter c;
+  Vector<int> values;
+  values.push_back(1);
+  values.push_back(2);
+  for (int v : values)
+  {
+    c.add(v);
+  }
+  int i = 0;
+  while (i < 3)
+  {
+    ++i;
+  }
+  do
+  {
+    --i;
+  } while (i > 0);
+  auto twice = [](int x)
+  {
+    return x * 2;
+  };
+  int total = twice(c.get()) + classify(1);
+  printf("%d\n", total);
+  return 0;
+}
