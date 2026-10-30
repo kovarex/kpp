@@ -2734,13 +2734,19 @@ namespace
         // the implicit copy: `Ref(const int&&) = delete` beside Ref's `operator const int&()`;
         // `ConvertingElement(const Tree&, uint32_t index = 0)` beside Tree's converting template).
         TemplateArgs classArgs = global.classArgsOf(canonicalClass(t, at));
+        if (!ctor->templateParams.empty())
+          global.deduceArgs(ctor, argTypesOf(args), classArgs); // `template<typename... Args> Str(Args&&...)` as Str(Str&): as deduced
         const Ty* pt;
         {
           ArgsScope scope(*this, &classArgs);
           pt = declType(ctor->params[0]);
         }
+        if (pt && pt->kind == TyKind::Pack)
+          pt = pt->args.empty() ? nullptr : pt->args[0];
         if (!pt || !isClass(types.stripRef(pt)) || classKey(pt) != classKey(t))
           ctor = nullptr; // a converting constructor of another class: not for a copy
+        else if (!ctor->templateParams.empty() && implicitCopyOrMoveTakes(c, t, pt, at))
+          ctor = nullptr; // as good as the implicit copy or move constructor, which wins as no template
       }
       if (ctor && (ctor->flags & DF_Delete))
         unsupported(at, "constructing " + types.toString(t, &symbols) + " with a deleted constructor (copying a move-only object?)");
@@ -3309,6 +3315,39 @@ namespace
 
     // Move-constructs the object at src into dst: through the move constructor where the class has
     // one, as a copy otherwise.
+    // Whether class c (of type t) has an implicit copy or move constructor taking a parameter of
+    // type pt (T&& or const T&) as well as a constructor template given the same argument does:
+    // the tie goes to the implicit one, no template ([over.match.best]). The implicit move
+    // constructor is declared when c declares no copy constructor, copy or move assignment and no
+    // destructor; the implicit copy constructor when c declares none ([class.copy.ctor] 6 and 8).
+    bool implicitCopyOrMoveTakes(ClassDecl* c, const Ty* t, const Ty* pt, Node* at)
+    {
+      if (!pt || !pt->isReference() || !isClass(types.stripRef(pt)) || classKey(types.stripRef(pt)) != classKey(t))
+        return false;
+      bool copyCtor = false, moveCtor = false, assignment = false, destructor = false;
+      TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+      ArgsScope scope(*this, &args);
+      for (Decl* m : c->members)
+      {
+        if (m->kind != NodeKind::FunctionDecl)
+          continue;
+        auto* f = static_cast<FunctionDecl*>(m);
+        if (f->flags & DF_Destructor)
+          destructor = true;
+        else if (!f->name.empty() && f->name.last().special == 2 && P(f->name.last().opToken) == P::Assign)
+          assignment = true;
+        else if ((f->flags & DF_Constructor) && f->templateParams.empty() && f->params.size() == 1)
+        {
+          const Ty* q = declType(f->params[0]);
+          if (q && q->isReference() && isClass(types.stripRef(q)) && classKey(types.stripRef(q)) == classKey(t))
+            (q->kind == TyKind::RRef ? moveCtor : copyCtor) = true;
+        }
+      }
+      if (pt->kind == TyKind::RRef)
+        return !copyCtor && !moveCtor && !assignment && !destructor;
+      return !copyCtor && types.stripRef(pt)->isConst; // `const T&`; a non-const T& binds better than the copy's
+    }
+
     void moveConstruct(const std::string& dst, const std::string& src, const Ty* t, Node* at)
     {
       ClassDecl* c = classDef(t->decl, at);
@@ -3339,6 +3378,32 @@ namespace
       {
         emitCall("", "void " + useFunction(move, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
         return;
+      }
+      if (!move && !defaultedMove && !implicitCopyOrMoveTakes(c, t, types.rref(types.unqualified(t)), at))
+      {
+        // No move constructor, not even an implicit one: a constructor template taking the rvalue
+        // as a T&& is the one C++ chooses, over a copy constructor's const T& (`template<typename...
+        // Args> Str(Args&&...)` beside an explicit copy constructor: ImmutableStringTemplate's moves
+        // were copies).
+        const Ty* rvalueTy = types.rref(types.unqualified(t));
+        FunctionDecl* chosen = findConstructor(t, {rvalueTy}, at);
+        if (chosen && !chosen->templateParams.empty() && !(chosen->flags & DF_Delete) && !global.isExplicit(chosen, args))
+        {
+          TemplateArgs ctorArgs = args;
+          global.deduceArgs(chosen, {rvalueTy}, ctorArgs);
+          const Ty* pt;
+          {
+            ArgsScope scope(*this, &ctorArgs);
+            pt = declType(chosen->params[0]);
+          }
+          if (pt && pt->kind == TyKind::Pack)
+            pt = pt->args.size() == 1 ? pt->args[0] : nullptr;
+          if (pt && pt->kind == TyKind::RRef && isClass(pt->inner) && classKey(pt->inner) == classKey(t))
+          {
+            emitCall("", "void " + useFunction(chosen, ctorArgs, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
+            return;
+          }
+        }
       }
       if (defaultedMove && !c->isTypedUnion)
       {
