@@ -12961,6 +12961,10 @@ struct GlobalScope::Impl
         if (!d.find(param) && !param->defaultArg && (!param->isPack || i + 1 < f->templateParams.size()))
           return false;
       }
+      // Its constraint too: Vector's `template<InputIt> Vector(InputIt, InputIt) requires
+      // (!isIntegral<InputIt>)` takes no `{1, 2}`.
+      if (f->requiresClause && !requiresHolds(f, d))
+        return false;
       ft = substitute(ft, d);
     }
     if (!ft || ft->kind != TyKind::Function)
