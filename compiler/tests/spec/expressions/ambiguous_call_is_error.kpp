@@ -1,6 +1,6 @@
 // spec: a call that two overloads take equally well is an error, as in C++, never one of them taken silently: pick(int64, int32) and pick(int32, int64) given two int32s
 // pending: SILENT, the first declared is called (`first`); owner: the templates thread (overload resolution)
-// error: the call of pick is ambiguous
+// error: the call of pick with (int32, int32) is ambiguous
 void pick(int64_t a, int32_t b) { println("first"); }
 void pick(int32_t a, int64_t b) { println("second"); }
 int main()

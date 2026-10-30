@@ -15562,7 +15562,10 @@ struct GlobalScope::Impl
         candidates.push_back(types.toString(ft, &impl.symbols) + " (" + Impl::locationOf(f->file, f->token) + ")");
       }
       std::sort(candidates.begin(), candidates.end());
-      std::string message = "the call of " + impl.namePartText(name) + " is ambiguous between " + candidates[0];
+      std::string message = "the call of " + impl.namePartText(name) + " with (";
+      for (size_t i = 0; i < argTypes.size(); ++i)
+        message += (i ? ", " : "") + types.toString(argTypes[i], &impl.symbols);
+      message += ") is ambiguous between " + candidates[0];
       for (size_t i = 1; i < candidates.size(); ++i)
         message += (i + 1 == candidates.size() ? " and " : ", ") + candidates[i];
       impl.reportCheckerError(file, c->token, message);
