@@ -160,6 +160,29 @@ callee's line. `--no-inline` remains for a build that wants real calls in the de
 Step 2 is one-expression getters and setters. Step 3 is trivial constructors. Each lands
 measured. Codegen owns callFunction, so the work is codegen's or done with its review.
 
+**Measured** on one converted tree with the commands above, each step against a base built at
+its merge-base (the steps before it) and against `--no-inline`; game builds and benchmark runs
+interleaved between the builds compared, since the machine is shared.
+- Step 2 (1f2c533), against `--no-inline`: deref.kpp's read 1.17x a raw pointer in a debug build
+  (3.02x), the debug containers up to 0.76x, 32,474 fewer functions, the headline's codegen 5.5 s
+  (7.3 s), the game's build within noise, the menu simulation's fastest tick 0.33 to 0.38 ms
+  (0.46 to 0.51 ms).
+- Step 3, against step 2 (base e4c218a): the headline inlines 41,331 constructor calls of 6,260
+  constructors (ID<QualityPrototype> 1,553, MapTick 1,317, ID<ItemPrototype> 658, Vector2 578,
+  agui::GuiDirection 532); 6,390 constructors are no longer emitted (246,491 -> 240,101
+  functions; 278,965 with `--no-inline`), and 5,633 calls left the cleanup pads of the invokes the
+  inlined calls were. The IR grows 553.6 -> 556.4 MB. Call sites to a trivial function
+  (trivial_calls.py) 89,969 -> 65,138 (249,602 with `--no-inline`). Debug containers, interleaved
+  best of 7 against step 2: vector.push int 0.93x, string.find char 0.77x, hash.int insert 0.95x,
+  fasthash.String lookup 0.95x, the rest within 2% except string.concat 1.07x, whose IR did not
+  change (code placement); release within 2%; deref.kpp unchanged (1.29x against 1.27x). Game
+  builds, two interleaved rounds: codegen 6.81 and 6.65 s against 6.71 and 6.78 s (7.27 and
+  7.42 s with `--no-inline`), clang -O0 4.63 s against 4.53 s in the quiet round; the link (3.7 to
+  12.5 s) varied with the game directory more than with the compiler. The menu simulation
+  (train-junction, 300 ticks, three runs of each build) stayed within its run-to-run noise
+  (average 0.70 to 0.90 ms for all three). `--no-inline`'s IR is the base's byte for byte,
+  `--dump-data` gives the C++ checksums, and the unit tests package builds with the same 56 errors.
+
 ## Design: the persistent compiler (approved 2026-10-29; step 1 landed)
 
 Goal: a one-line edit costs what the edit touches, not what the program is, with output
