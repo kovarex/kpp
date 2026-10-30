@@ -3466,6 +3466,17 @@ struct GlobalScope::Impl
         return false;
       out.push_back(ft);
     }
+    // A typed union's alternatives live in an anonymous union, not among the members: they count
+    // (an alternative holding a class with a destructor makes the union's copy and destruction
+    // non-trivial, as std::variant's are).
+    if (def->isTypedUnion)
+      for (Decl* a : def->alternatives)
+      {
+        const Ty* at = declaredTypeOf(a, s.pairs.empty() ? nullptr : &s, 0);
+        if (!at || !at->isKnown() || types.isDependent(at))
+          return false;
+        out.push_back(at);
+      }
     return true;
   }
 

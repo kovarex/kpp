@@ -1,6 +1,5 @@
 // spec: a typed union is trivially copyable or trivially destructible only when every alternative is: with an alternative holding a member whose copy constructor and destructor are user-provided, isTriviallyCopyable<State> and isTriviallyDestructible<State> are false, so Optional<State> keeps its value as an object, copied through the alternative's constructors and destroyed by its destructor, as std::optional<std::variant<...>> does
 // factorio: SegmentedUnitAI's `if (const Optional<AIState> newState = this->maybeEnrage())`, AIState a std::variant whose Attacking holds a Targeter<Entity>: the Optional took the union as trivially copyable and never destroyed its value, so the Targeter stayed in its target's list after the storage was gone, and the list broke later: faults in Targeters::clear, unlinkTargeter and notifyUndoActionsOfEntityDestroyed stopped Achievements, SegmentedUnit, LuaSegmentedUnit, LuaEventFilters and Simulations, all of which pass with the alternatives counted as the union's fields (fieldTypes)
-// pending: SILENT, both traits are true and the Optional's value is never destroyed (`true true false false`, `inside: live 2`, `live 1`); owner: the resolver thread (traitValue's triviallyCopyable and triviallyDestructible: a typed union's alternatives are no fields there)
 int live = 0;
 struct Tracked
 {
