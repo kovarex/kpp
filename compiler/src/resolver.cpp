@@ -18201,7 +18201,19 @@ struct GlobalScope::Impl
           Scope* saved = scope;
           const Ty* savedThis = thisType;
           for (const ClassDecl::Base& b : c->bases)
+          {
             walkType(b.type);
+            // A virtual base would be laid out as an ordinary one (a diamond's shared base twice,
+            // silently): an error until it is supported.
+            if (b.isVirtual && b.type && !activeSubst && !probing && file && !file->isImported)
+            {
+              std::string base = b.type->kind == NodeKind::NamedType && !static_cast<NamedType*>(b.type)->name.empty()
+                                   ? impl.namePartText(static_cast<NamedType*>(b.type)->name.last())
+                                   : std::string("?");
+              std::string of = c->name.empty() ? std::string("a class") : impl.namePartText(c->name.last());
+              impl.reportCheckerError(file, b.type->token, "virtual base classes are not supported (" + base + ", a base of " + of + ")");
+            }
+          }
           if (c->ownScope)
             scope = c->ownScope;
           else if (c->name.parts.size() > 1)

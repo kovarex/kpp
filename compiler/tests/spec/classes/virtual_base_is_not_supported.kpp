@@ -1,0 +1,14 @@
+// spec: a virtual base class is a compile error at the base specifier until it is supported, never laid out as an ordinary base (a diamond would have two subobjects of the shared base, silently: `left.value` and `right.value` two variables where C++ has one)
+// error: virtual_base_is_not_supported.kpp:5: error: virtual base classes are not supported (Shared, a base of Left)
+// error: virtual_base_is_not_supported.kpp:6: error: virtual base classes are not supported (Shared, a base of Right)
+struct Shared { int value = 0; };
+struct Left : virtual Shared {};
+struct Right : public virtual Shared {};
+struct Both : Left, Right {};
+int main()
+{
+  Both both;
+  both.Left::value = 3;
+  println("{}", both.Right::value);
+  return 0;
+}
