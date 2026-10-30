@@ -1,6 +1,6 @@
 # The compile server must build exactly what a new kppc process builds (docs/compile-speed.md,
 # "The compile server"). A copy of tests\incremental\ is edited step by step (a function body, a
-# signature, a class's layout, a file added, the file removed); after each edit it is built through
+# signature, a return type a data member is declared with, a class's layout, a file added, the file removed); after each edit it is built through
 # one long-lived server and by a new process, and the IR, stdout and stderr (timings masked) must
 # be identical, and the program the server built must print what the step expects. run_tests.cmd
 # runs it.
@@ -42,20 +42,21 @@ function Edit([string]$file, [string]$old, [string]$new)
 }
 
 $steps = @(
-  @{ name = 'first build'; expect = '6 40 40 3 8 10 6 5'; edit = {} },
-  @{ name = 'body edit'; expect = '6 44 44 3 8 10 6 5'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
-  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6 5'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
-  @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6 5'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
-  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7 5'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
-  @{ name = 'constexpr body edit (what the evaluator ran it for checked again)'; expect = '7 44 44 3 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int r = 5; return r;' 'int r = 6; return r;' } },
+  @{ name = 'first build'; expect = '6 40 40 3 8 10 6 5 8'; edit = {} },
+  @{ name = 'body edit'; expect = '6 44 44 3 8 10 6 5 8'; edit = { Edit 'shapes.kpp' 'return v * 10;' 'return v * 11;' } },
+  @{ name = 'trivial getter made two statements (callers in another file)'; expect = '7 44 44 3 8 10 6 5 8'; edit = { Edit 'shapes.kpp' 'int area() const { return width * height; }' 'int area() const { int a = height * width; return a + 1; }' } },
+  @{ name = 'template body edit (its instance checked again)'; expect = '7 44 44 3 8 11 6 5 8'; edit = { Edit 'shapes.kpp' 'T r = v + v; return r;' 'T r = v + v; return r + 1;' } },
+  @{ name = 'class template member body edit (its instance checked again)'; expect = '7 44 44 3 8 11 7 5 8'; edit = { Edit 'shapes.kpp' 'T r = v * 3; return r;' 'T r = v * 3; return r + 1;' } },
+  @{ name = 'constexpr body edit (what the evaluator ran it for checked again)'; expect = '7 44 44 3 8 11 7 6 8'; edit = { Edit 'shapes.kpp' 'int r = 5; return r;' 'int r = 6; return r;' } },
   @{ name = 'constexpr body edit failing a static_assert in another file'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int r = 6; return r;' 'int r = 12; return r;' } },
-  @{ name = 'constexpr body edit back'; expect = '7 44 44 3 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int r = 12; return r;' 'int r = 6; return r;' } },
-  @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
-  @{ name = 'overload added'; expect = '7 44 7 103 8 11 7 6'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
-  @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7 6'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
-  @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7 6'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
-  @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
-  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
+  @{ name = 'constexpr body edit back'; expect = '7 44 44 3 8 11 7 6 8'; edit = { Edit 'shapes.kpp' 'int r = 12; return r;' 'int r = 6; return r;' } },
+  @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7 6 8'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
+  @{ name = 'return type edit (a data member is declared with it)'; expect = '7 44 44 103 8 11 7 6 16'; edit = { Edit 'shapes.kpp' 'int measure()' 'long long measure()' } },
+  @{ name = 'overload added'; expect = '7 44 7 103 8 11 7 6 16'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' "int scale(int v) { return v * 11; }`nint scale(double v) { return 7; }" } },
+  @{ name = 'overload removed'; expect = '7 44 44 103 8 11 7 6 16'; edit = { Edit 'shapes.kpp' "`nint scale(double v) { return 7; }" '' } },
+  @{ name = 'layout edit'; expect = '7 44 44 103 12 11 7 6 16'; edit = { Edit 'shapes.kpp' '  int height = 3;' "  int height = 3;`n  int depth = 4;" } },
+  @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
+  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
 )
 $n = 0
 foreach ($step in $steps)

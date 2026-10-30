@@ -541,6 +541,20 @@ The same edits with master d98f13b9's kppc, which builds a constexpr body edit f
 server: 12.8, 17.0, 19.9, 21.8 s (resolve 2.2 to 4.0 s, codegen 8.1 to 15.7 s), run one after the
 other on the shared machine.
 
+**A silent stale layout in the whole-function edits (fixed 2026-10-30).** `struct Holder {
+decltype(pick(1)) value; int after; }` and `pick`'s return type changed from int to long long: the
+server's build kept `Holder` as `{ i32, i32 }` and `sizeof(Holder)` 8, a build from scratch gives
+`{ i64, i32 }` and 16 (only `--verify-incremental` said so). Two holes. A `decltype(expr)` in a
+declaration's type takes expr's type from the declaration's own walk, so its declared-type unit
+records nothing and the walk's reads never reach the cached type; and a followed declared type could
+be a data member's or a global's, which codegen reads as a layout or a global without any recorded
+use. Now a reading walk whose declaration's type comes from it (`decltype`, a deduced `auto`, in a
+variable's type or a function's signature) is a build from scratch, and a followed declared type
+must be a function's, a parameter's, a template parameter's, an alias's or a function's local's
+(else from scratch); layouts that change go through codegen's `changedLayouts` once step 4 takes
+them. The edit test's step "return type edit (a data member is declared with it)" fails with master's
+kppc and passes now.
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before

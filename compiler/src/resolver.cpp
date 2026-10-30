@@ -20395,6 +20395,57 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
 
 namespace
 {
+  // Whether a declaration's declared type, changed, changes only what reads it through the recorded
+  // uses: a function's or a parameter's, a template parameter's, an alias's (whose readers are
+  // followed in turn), a local variable's of a function (not of a lambda or a local class). A data
+  // member's is a class layout, a global's or a static member's a global codegen defines: what
+  // uses those reads no declared type it records.
+  bool typeChangeFollowed(const Decl* d)
+  {
+    switch (d->kind)
+    {
+      case NodeKind::FunctionDecl:
+      case NodeKind::ParamDecl:
+      case NodeKind::TemplateParamDecl:
+      case NodeKind::UsingAliasDecl:
+        return true;
+      case NodeKind::VariableDecl:
+        return (d->flags & DF_Typedef) || (d->parent && d->parent->kind == NodeKind::FunctionDecl);
+      default:
+        return false;
+    }
+  }
+
+  // Whether a declaration's declared type is taken from its own walk: a `decltype(expr)` (the type
+  // the walk gave expr) or a deduced `auto` in a variable's type or a function's signature. Its
+  // declared-type unit records nothing of what the walk read, so a change its walk read cannot be
+  // followed to its declared type (and from there to a layout or to the callers' types).
+  bool typeFromWalk(const Decl* d)
+  {
+    bool found = false;
+    auto look = [&](Node* t)
+    {
+      if (t)
+        forEachNode(t, [&](Node* n) { found = found || n->kind == NodeKind::DecltypeType || n->kind == NodeKind::AutoType; });
+    };
+    if (d->kind == NodeKind::VariableDecl)
+    {
+      auto* v = static_cast<const VariableDecl*>(d);
+      if (!v->type)
+        return true;
+      look(v->type);
+    }
+    else if (d->kind == NodeKind::FunctionDecl)
+    {
+      auto* f = static_cast<const FunctionDecl*>(d);
+      look(f->returnType);
+      look(f->trailingReturn);
+      for (Decl* p : f->params)
+        look(static_cast<ParamDecl*>(p)->type);
+    }
+    return found;
+  }
+
   // The scope a declaration's members are indexed in: its own (a namespace, a class, an enum), or
   // the global one for the file's top level.
   Scope* containerScope(Decl* container, Scope& root) { return container && container->ownScope ? container->ownScope : &root; }
@@ -20531,6 +20582,8 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
       pending.pop_back();
       if (!types.insert(owner).second)
         continue;
+      if (!typeChangeFollowed(owner))
+        return fail("the declared type of a data member, a global or a class read a changed function (a layout may change)");
       const_cast<Decl*>(owner)->cachedType.store(nullptr, std::memory_order_release);
       {
         std::lock_guard l(deps->mutex);
@@ -20586,6 +20639,8 @@ bool GlobalScope::invalidateReaders(const std::vector<uint32_t>& symbols, const 
       if (reads(*deps))
       {
         const Decl* d = reinterpret_cast<const Decl*>(key & ~uintptr_t(7));
+        if (typeFromWalk(d))
+          return fail("a declaration whose type its walk gives (decltype, auto) read a changed function");
         found.insert(d->file);
         if (walks)
           walks->push_back(d);

@@ -1,10 +1,18 @@
 extern "C" int printf(const char* format, ...);
 
+// A data member declared with a function's return type: a return type edit changes this layout.
+struct Holder
+{
+  decltype(measure()) sum = 1;
+  int after = 2;
+};
+
 int main()
 {
   Shape s;
   constexpr int n = limit();
   static_assert(limit() < 10, "the checker runs limit's body in main's walk");
-  printf("%d %d %d %d %d %d %d %d\n", s.area(), scale(4), scale(4.5), combine(1, 2), int(sizeof(Shape)), twice(5), Box<int>{2}.tripled(), n);
+  printf("%d %d %d %d %d %d %d %d %d\n", s.area(), scale(4), scale(4.5), int(combine(1, 2)), int(sizeof(Shape)), twice(5), Box<int>{2}.tripled(), n,
+         int(sizeof(Holder)));
   return 0;
 }
