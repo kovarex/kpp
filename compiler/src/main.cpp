@@ -200,6 +200,7 @@ namespace
     double indexTime = 0, finishTime = 0; // (the index line again, when a later build changed the entries)
     size_t indexScopes = 0, indexEntries = 0; // as the index left them (the resolve adds instances' after)
     std::vector<std::string> clashes;
+    size_t parseErrors = 0; // in the program's files (not the C import's): the build stops before codegen
     double resolveTime = 0;
     GlobalScope::InstantiationStats instantiation{}; // at the end of the resolve (codegen instantiates more)
     ResolveStats instanceStats;
@@ -1191,11 +1192,28 @@ namespace
            (unsigned long long)bodies, (unsigned long long)nodes, arenaBytes / 1e6);
     report("  parse errors: %llu in %llu files (%.2f%% of files clean)\n", (unsigned long long)errors,
            (unsigned long long)filesWithErrors, 100.0 * (files.size() - filesWithErrors) / std::max<size_t>(1, files.size()));
+    // A parse error in the program's files is an error of the build, always shown (whatever --errors
+    // says) and on stderr: the parser recovers to see more of the file, but what it recovered to is no
+    // program, so nothing is generated from it (runResolve), --keep-going or not.
+    build.parseErrors = 0;
+    for (size_t i = 0; i < files.size(); ++i)
+      if (!parsed[i]->isImported)
+        for (const Diagnostic& d : parsed[i]->diagnostics)
+        {
+          ++build.parseErrors;
+          const Token& t = lexed[i].tokens[std::min<size_t>(d.token, lexed[i].tokens.size() - 1)];
+          fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset)).c_str(), d.message,
+                  int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
+        }
+    if (build.parseErrors)
+      codegenExit = 1;
     int shown = 0;
     for (size_t i = 0; i < files.size() && shown < options.showErrors; ++i)
       for (const Diagnostic& d : parsed[i]->diagnostics)
       {
-        if (parsed[i]->isImported && !options.showImportErrors)
+        if (!parsed[i]->isImported)
+          break; // on stderr, above
+        if (!options.showImportErrors)
           break; // reported in one line by importCHeaders
         if (shown++ >= options.showErrors)
           break;
@@ -1378,7 +1396,12 @@ namespace
       report("  most common unresolved names:\n");
     std::vector<std::pair<uint32_t, uint32_t>> top(total.unresolvedSymbols.begin(), total.unresolvedSymbols.end());
     std::sort(top.begin(), top.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
-    if (!options.emitLLVM.empty() || !options.exe.empty())
+    if (build.parseErrors && (!options.emitLLVM.empty() || !options.exe.empty()))
+    {
+      fprintf(stderr, "error: %zu parse error(s): no code generated\n", build.parseErrors);
+      reportCheckerErrors(global);
+    }
+    else if (!options.emitLLVM.empty() || !options.exe.empty())
       runCodegen(build);
     else if (options.convertDir.empty())
     {

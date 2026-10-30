@@ -1,5 +1,4 @@
 // spec: a parse error at namespace scope fails the build (no executable, exit code 1)
-// pending: the parser recovers to an ErrorDecl and the build writes an executable with exit code 0
 // error: expected ';' after declaration
 int square(int x) { return x * x; }
 unknownword "name"
