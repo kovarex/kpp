@@ -184,6 +184,9 @@ namespace
     // MSVC for x64, C++ with the standard library (<optional> defines __cpp_lib_optional)
     {"_WIN32", "1"}, {"_WIN64", "1"}, {"_MSC_VER", "1944"}, {"_M_X64", "100"}, {"_M_AMD64", "100"}, {"__cplusplus", "199711L"},
     {"__cpp_lib_optional", "202110L"},
+    // C++17's __has_include is a defined name too (`#if !defined (__has_include)`: TestCpp's
+    // HasInclude tests); the #if evaluator answers __has_include(<...>) from availableHeaders.
+    {"__has_include", ""},
     // the Windows SDK
     {"_WIN32_WINNT_NT4", "0x0400"}, {"_WIN32_WINNT_WIN2K", "0x0500"}, {"_WIN32_WINNT_WINXP", "0x0501"}, {"_WIN32_WINNT_WS03", "0x0502"},
     {"_WIN32_WINNT_VISTA", "0x0600"}, {"_WIN32_WINNT_LONGHORN", "0x0600"}, {"_WIN32_WINNT_WIN7", "0x0601"}, {"_WIN32_WINNT_WIN8", "0x0602"},
