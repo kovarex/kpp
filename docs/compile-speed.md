@@ -458,7 +458,7 @@ name `getPrototype` (names are recorded by symbol, step 2, so every `getPrototyp
 test adds a signature change, an overload added (that changes which function another file calls)
 and taken out, each built this way and checked against a new process's build.
 
-### Step 5b wired: codegen's kept session in the server (opt-in for now)
+### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before
 the program it points into), filled by a server's build from scratch (`generateLLVM(..., keep)`). An
@@ -474,10 +474,16 @@ assembled again; clang skips them.
 Full game, a body edit of `AchievementAccessor::getStateInternal` through one server: resolve
 0.071 s, **codegen 0.253 s**, clang 0.55 s (one module), link 4.3 s. `--verify-incremental` found
 the IR and the modules the same as from scratch but the report's function count lower (by 7 per
-rebuild: reported to the codegen thread), so the codegen rebuild is on only with
-`KPP_REBUILD_CODEGEN=1` until that is fixed; without it a server's incremental build runs codegen
-in full, as before. A body edit of `BuildEntityAchievement::setup` runs codegen in full either way:
-instances read the name `setup` (names are recorded by symbol).
+rebuild: reported to the codegen thread), so the codegen rebuild was first on only with
+`KPP_REBUILD_CODEGEN=1`. Codegen fixed the count and stopped assembling modules that come out the
+same (661f017); the rebuild is on by default since. The same edit then, the edit and back twice
+through one server: **wall 7.7, 6.5, 5.1, 5.5 s** to a linked game (resolve 0.08 to 0.13 s,
+codegen 0.10 to 0.12 s, one module assembled and compiled in 0.6 to 0.8 s, the link 3.7 to 5.7 s);
+with `--verify-incremental` each "the same as from scratch", 246,491 functions. The link is now
+most of a body edit. A body edit of `BuildEntityAchievement::setup` runs codegen in full: instances
+read the name `setup` (names are recorded by symbol). The edit test verifies the executable's
+builds too now, checks that codegen rebuilt from its session, and turns a trivial getter called from
+another file into two statements with a new value (an inlined body must not stay in its callers).
 
 ### The link in the edit loop (2026-10-30, not changed)
 

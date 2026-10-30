@@ -2180,10 +2180,9 @@ namespace
       std::string base = kept.options.exe + "." + std::to_string(k);
       codegenCanFollow = !kept.options.exe.empty() && std::filesystem::exists(base + ".o", ec) && std::filesystem::exists(base + ".hash", ec);
     }
-    // (Opt-in until rebuildLLVM's function count is a build from scratch's: KPP_REBUILD_CODEGEN=1.)
-    kept.rebuildCodegen = codegenCanFollow && kept.codegen && !kept.options.exe.empty() && getenv("KPP_REBUILD_CODEGEN");
+    kept.rebuildCodegen = codegenCanFollow && kept.codegen && !kept.options.exe.empty();
     if (!kept.rebuildCodegen)
-      logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? "an instance, a global or a module's object needs it" : kept.options.exe.empty() ? "no executable" : "KPP_REBUILD_CODEGEN not set"));
+      logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? "an instance, a global or a module's object needs it" : "no executable"));
     noteIncrementalBuild();
     reportResolve(kept);
     return true;
