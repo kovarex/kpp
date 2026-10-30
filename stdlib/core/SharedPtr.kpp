@@ -344,9 +344,9 @@ template<typename T>
 SharedPtr<T> atomicLoad(const SharedPtr<T>* p)
 {
   void** lock = sharedPtrLockFor(p);
-  AcquireSRWLockShared(lock);
+  win32::AcquireSRWLockShared(win32::srwLock(lock));
   SharedPtr<T> copy = *p;
-  ReleaseSRWLockShared(lock);
+  win32::ReleaseSRWLockShared(win32::srwLock(lock));
   return copy;
 }
 // The value p held before is released after the lock (its object may be destroyed then).
@@ -354,17 +354,17 @@ template<typename T>
 void atomicStore(SharedPtr<T>* p, SharedPtr<T> desired)
 {
   void** lock = sharedPtrLockFor(p);
-  AcquireSRWLockExclusive(lock);
+  win32::AcquireSRWLockExclusive(win32::srwLock(lock));
   p->swap(desired);
-  ReleaseSRWLockExclusive(lock);
+  win32::ReleaseSRWLockExclusive(win32::srwLock(lock));
 }
 template<typename T>
 SharedPtr<T> atomicExchange(SharedPtr<T>* p, SharedPtr<T> desired)
 {
   void** lock = sharedPtrLockFor(p);
-  AcquireSRWLockExclusive(lock);
+  win32::AcquireSRWLockExclusive(win32::srwLock(lock));
   p->swap(desired);
-  ReleaseSRWLockExclusive(lock);
+  win32::ReleaseSRWLockExclusive(win32::srwLock(lock));
   return desired;
 }
 template<typename T>
@@ -385,22 +385,22 @@ struct Atomic<SharedPtr<T>>
 
   SharedPtr<T> load() const
   {
-    AcquireSRWLockShared(&this->lock);
+    win32::AcquireSRWLockShared(win32::srwLock(&this->lock));
     SharedPtr<T> copy = this->value;
-    ReleaseSRWLockShared(&this->lock);
+    win32::ReleaseSRWLockShared(win32::srwLock(&this->lock));
     return copy;
   }
   void store(SharedPtr<T> desired)
   {
-    AcquireSRWLockExclusive(&this->lock);
+    win32::AcquireSRWLockExclusive(win32::srwLock(&this->lock));
     this->value.swap(desired);
-    ReleaseSRWLockExclusive(&this->lock);
+    win32::ReleaseSRWLockExclusive(win32::srwLock(&this->lock));
   }
   SharedPtr<T> exchange(SharedPtr<T> desired)
   {
-    AcquireSRWLockExclusive(&this->lock);
+    win32::AcquireSRWLockExclusive(win32::srwLock(&this->lock));
     this->value.swap(desired);
-    ReleaseSRWLockExclusive(&this->lock);
+    win32::ReleaseSRWLockExclusive(win32::srwLock(&this->lock));
     return desired;
   }
   // True when the value held the same object with the same ownership as expected (and now holds
@@ -408,7 +408,7 @@ struct Atomic<SharedPtr<T>>
   bool compareExchange(SharedPtr<T>& expected, SharedPtr<T> desired)
   {
     SharedPtr<T> previous; // what expected held, released after the lock
-    AcquireSRWLockExclusive(&this->lock);
+    win32::AcquireSRWLockExclusive(win32::srwLock(&this->lock));
     bool same = this->value.pointer == expected.pointer && this->value.control == expected.control;
     if (same)
       this->value.swap(desired);
@@ -417,7 +417,7 @@ struct Atomic<SharedPtr<T>>
       previous = move(expected);
       expected = this->value;
     }
-    ReleaseSRWLockExclusive(&this->lock);
+    win32::ReleaseSRWLockExclusive(win32::srwLock(&this->lock));
     return same;
   }
   bool compare_exchange_strong(SharedPtr<T>& expected, SharedPtr<T> desired) { return this->compareExchange(expected, move(desired)); }

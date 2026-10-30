@@ -2,31 +2,6 @@
 // std's names). Windows only, over the Win32 wide-character API; paths are UTF-16 as Windows
 // keeps them. Specified in docs/stdlib/filesystem.md.
 
-// The Win32 functions used, in namespace win32 with plain types (see Error.kpp).
-namespace win32
-{
-  extern "C" unsigned long GetFileAttributesW(const wchar_t* name);
-  extern "C" int GetFileAttributesExW(const wchar_t* name, int infoLevel, void* information);
-  extern "C" int SetFileAttributesW(const wchar_t* name, unsigned long attributes);
-  extern "C" int CreateDirectoryW(const wchar_t* name, void* security);
-  extern "C" int RemoveDirectoryW(const wchar_t* name);
-  extern "C" int DeleteFileW(const wchar_t* name);
-  extern "C" int MoveFileExW(const wchar_t* from, const wchar_t* to, unsigned long flags);
-  extern "C" int CopyFileW(const wchar_t* from, const wchar_t* to, int failIfExists);
-  extern "C" void* FindFirstFileW(const wchar_t* pattern, void* data);
-  extern "C" int FindNextFileW(void* find, void* data);
-  extern "C" int FindClose(void* find);
-  extern "C" unsigned long GetFullPathNameW(const wchar_t* name, unsigned long size, wchar_t* buffer, wchar_t** filePart);
-  extern "C" unsigned long GetCurrentDirectoryW(unsigned long size, wchar_t* buffer);
-  extern "C" int SetCurrentDirectoryW(const wchar_t* name);
-  extern "C" unsigned long GetTempPathW(unsigned long size, wchar_t* buffer);
-  extern "C" int GetDiskFreeSpaceExW(const wchar_t* directory, unsigned long long* available, unsigned long long* total, unsigned long long* free);
-  extern "C" void* CreateFileW(const wchar_t* name, unsigned long access, unsigned long share, void* security, unsigned long disposition,
-                               unsigned long flags, void* templateFile);
-  extern "C" int GetFileInformationByHandle(void* file, void* information);
-  extern "C" unsigned long GetFinalPathNameByHandleW(void* file, wchar_t* buffer, unsigned long size, unsigned long flags);
-}
-
 namespace filesystem
 {
   struct Win32FileTime
@@ -778,7 +753,7 @@ namespace filesystem
   bool attributesOf(const path& p, Win32HandleInformation& out, ErrorCode& ec)
   {
     Win32AttributeData data;
-    if (!win32::GetFileAttributesExW(p.c_str(), 0, &data))
+    if (!win32::GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &data))
     {
       ec = lastError();
       return false;
@@ -791,10 +766,10 @@ namespace filesystem
         ec = lastError();
         return false;
       }
-      bool ok = win32::GetFileInformationByHandle(file, &out) != 0;
+      bool ok = win32::GetFileInformationByHandle(file, (_BY_HANDLE_FILE_INFORMATION*)(void*)&out) != 0;
       if (!ok)
         ec = lastError();
-      CloseHandle(file);
+      win32::CloseHandle(file);
       if (!ok)
         return false;
       ec.clear();
@@ -1032,7 +1007,7 @@ namespace filesystem
       SharedPtr<DirectoryListing> state = makeShared<DirectoryListing>();
       state->directory = p;
       path pattern = p / path(L"*");
-      state->find = win32::FindFirstFileW(pattern.c_str(), &state->data);
+      state->find = win32::FindFirstFileW(pattern.c_str(), (_WIN32_FIND_DATAW*)(void*)&state->data);
       if (state->find == invalidHandle)
       {
         // ERROR_FILE_NOT_FOUND or ERROR_NO_MORE_FILES on a directory that is there: an empty
@@ -1054,7 +1029,7 @@ namespace filesystem
       ec.clear();
       while (this->listing)
       {
-        if (!win32::FindNextFileW(this->listing->find, &this->listing->data))
+        if (!win32::FindNextFileW(this->listing->find, (_WIN32_FIND_DATAW*)(void*)&this->listing->data))
         {
           int error = (int)win32::GetLastError();
           if (error != 18)
@@ -1158,7 +1133,7 @@ namespace filesystem
       ec = lastError();
     else
       ec.clear();
-    CloseHandle(file);
+    win32::CloseHandle(file);
     if (ec)
       return path();
     if (result.find(L"\\\\?\\UNC\\") == 0)
@@ -1260,7 +1235,7 @@ namespace filesystem
     unsigned long long available = 0;
     unsigned long long total = 0;
     unsigned long long free = 0;
-    if (!win32::GetDiskFreeSpaceExW(p.c_str(), &available, &total, &free))
+    if (!win32::GetDiskFreeSpaceExW(p.c_str(), (_ULARGE_INTEGER*)&available, (_ULARGE_INTEGER*)&total, (_ULARGE_INTEGER*)&free))
     {
       ec = lastError();
       result.capacity = (uint64_t)-1;
@@ -1446,7 +1421,7 @@ namespace filesystem
     ec.clear();
     Win32AttributeData source;
     Win32AttributeData target;
-    if (!win32::GetFileAttributesExW(from.c_str(), 0, &source))
+    if (!win32::GetFileAttributesExW(from.c_str(), GetFileExInfoStandard, &source))
     {
       ec = lastError();
       return false;
@@ -1456,7 +1431,7 @@ namespace filesystem
       ec = make_error_code(Errc::is_a_directory);
       return false;
     }
-    if (win32::GetFileAttributesExW(to.c_str(), 0, &target))
+    if (win32::GetFileAttributesExW(to.c_str(), GetFileExInfoStandard, &target))
     {
       if ((options & copy_options::skip_existing) != copy_options::none)
         return false;

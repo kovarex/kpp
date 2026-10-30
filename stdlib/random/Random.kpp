@@ -2,14 +2,12 @@
 // std::default_random_engine, std::random_device and std::uniform_int_distribution convert to.
 // The engine is a 64-bit xoshiro256**, fast and good enough for games and simulations.
 
-extern "C" int QueryPerformanceCounter(int64_t* count);
-
 struct RandomDevice
 {
   unsigned long long operator()()
   {
     int64_t counter = 0;
-    QueryPerformanceCounter(&counter);
+    win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
     unsigned long long x = (unsigned long long)counter;
     x ^= x >> 30;
     x *= 0xbf58476d1ce4e5b9ull;

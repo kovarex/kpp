@@ -17,6 +17,10 @@ classes/reference_bound_through_conversion_operator).
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().
 
+**printf, fprintf, snprintf, sprintf, sscanf**: declared as the UCRT declares them, but the
+specification snippets cannot check their types yet: a written variadic function pointer type loses
+its `...` (language/variadic_function_pointer_type, pending). 2026-10-30.
+
 **throw_with_nested** (core/Error.kpp): throws its argument without the exception being handled
 attached to it, since Kpp has no std::current_exception to capture that one (nor
 std::nested_exception and rethrow_if_nested, which no converted code uses). Its one user is

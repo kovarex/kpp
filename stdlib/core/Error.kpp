@@ -22,19 +22,6 @@ struct OverflowError : RuntimeError
 
 // --- Error codes (std::error_code, std::errc, std::system_error); specified in docs/stdlib/filesystem.md ---
 
-// The Win32 functions the library calls, declared in a namespace of their own with plain types, so
-// that a program's import of windows.h (whose declarations use its own types) does not meet them as
-// other overloads of the same names.
-namespace win32
-{
-  extern "C" unsigned long FormatMessageW(unsigned long flags, const void* source, unsigned long messageId, unsigned long languageId, wchar_t* buffer,
-                                          unsigned long size, void* arguments);
-  extern "C" int WideCharToMultiByte(unsigned int codePage, unsigned long flags, const wchar_t* wide, int wideCount, char* narrow, int narrowSize,
-                                     const char* defaultChar, int* usedDefault);
-  extern "C" int MultiByteToWideChar(unsigned int codePage, unsigned long flags, const char* narrow, int narrowCount, wchar_t* wide, int wideSize);
-  extern "C" unsigned long GetLastError();
-}
-
 // What an error code's value means (std::error_category): an errno value (generic) or a Windows
 // error code, what GetLastError returns (system).
 struct ErrorCategory

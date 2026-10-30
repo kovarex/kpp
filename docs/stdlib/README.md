@@ -33,7 +33,14 @@ Files:
   they report with (std::error_code, std::errc, std::system_error).
 
 Not specified yet: Pair beyond what the maps
-and Tuple use, Array, StringView, formatting, streams, futures and async, and the C library wrappers.
+and Tuple use, Array, StringView, formatting, streams, futures and async, and the C library wrappers
+beyond one rule (2026-10-30): every C function the library declares has the type its C header gives
+it (the UCRT's for the C runtime, windows.h's for Win32), so that a program importing that header
+declares the same function the same way. The C runtime's are global, as in C (`FILE*` streams,
+`char*` from strchr, strrchr and strstr); the Win32 ones are in namespace win32 (stdlib/core/Win32.kpp),
+called qualified, with windows.h's struct and union tags declared and the library's own storage of
+their layout cast to them. Checked by library/c_declarations_as_in_c_headers and
+interop/library_win32_declarations_as_in_windows_h.
 
 Changing a rule here is a design decision (docs/design.md section 4): it needs to be explicit,
 recorded with its date and reason, and listed as a difference from C++ if it is one.

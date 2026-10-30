@@ -3,9 +3,6 @@
 // a Duration since the clock's epoch. SteadyClock never goes back (QueryPerformanceCounter);
 // SystemClock is the wall clock (UTC, since 1970, in 100 ns ticks). Specified in
 // docs/stdlib/time.md.
-extern "C" int QueryPerformanceCounter(int64_t* count);
-extern "C" int QueryPerformanceFrequency(int64_t* frequency);
-extern "C" void GetSystemTimePreciseAsFileTime(uint64_t* fileTime);
 
 // --- Ratio ---
 
@@ -306,9 +303,9 @@ struct SteadyClock
   static TimePoint<SteadyClock> now()
   {
     if (steadyClockFrequency == 0)
-      QueryPerformanceFrequency(&steadyClockFrequency);
+      win32::QueryPerformanceFrequency((_LARGE_INTEGER*)&steadyClockFrequency);
     int64_t counter = 0;
-    QueryPerformanceCounter(&counter);
+    win32::QueryPerformanceCounter((_LARGE_INTEGER*)&counter);
     // Split to keep the multiplication within 64 bits for long uptimes.
     int64_t whole = counter / steadyClockFrequency;
     int64_t rest = counter % steadyClockFrequency;
@@ -330,7 +327,7 @@ struct SystemClock
   static TimePoint<SystemClock> now()
   {
     uint64_t fileTime = 0; // 100 ns ticks since 1601-01-01
-    GetSystemTimePreciseAsFileTime(&fileTime);
+    win32::GetSystemTimePreciseAsFileTime((_FILETIME*)&fileTime);
     return TimePoint<SystemClock>(Duration<long long, Ratio<1, 10000000>>((long long)fileTime - 116444736000000000ll));
   }
   // Whole seconds since 1970 (time_t), rounded toward negative infinity, and back.

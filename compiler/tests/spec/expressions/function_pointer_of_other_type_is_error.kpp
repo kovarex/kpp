@@ -1,0 +1,10 @@
+// spec: a pointer to a function initialises or assigns only a function pointer of its own type (no implicit conversion between function pointer types), as in C++
+// factorio: found checking the library's C declarations against windows.h: `void (*)(void**)` took the address of a `void (int*)` function
+// pending: the initialisation compiles, and a call through the pointer passes arguments of the wrong type, silently
+// error: cannot initialize
+void takesInt(int* x) {}
+int main()
+{
+  void (*p)(void**) = &takesInt;
+  return 0;
+}

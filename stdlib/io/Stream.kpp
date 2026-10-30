@@ -1,10 +1,9 @@
 // File streams: a thin wrapper over C stdio that gives the interface std::ifstream/ofstream
-// convert to. FILE* is declared in clib/CStdio.kpp.
-extern "C" void* __acrt_iob_func(unsigned index);
+// convert to. FILE and __acrt_iob_func are declared in clib/CStdio.kpp.
 
 struct InFileStream
 {
-  void* handle = nullptr;
+  FILE* handle = nullptr;
 
   InFileStream() {}
   explicit InFileStream(const char* filename) { this->open(filename); }
@@ -135,7 +134,7 @@ OutStream& operator<<(OutStream& s, EndlTag)
 
 struct OutFileStream : OutStream
 {
-  void* handle = nullptr;
+  FILE* handle = nullptr;
 
   void writeBytes(const char* data, int count) override { this->write(data, count); }
 
@@ -182,7 +181,7 @@ struct OutFileStream : OutStream
 // The << operator for streams, so `cerr << "text" << value << endl;` works.
 struct StderrStream
 {
-  void* handle()
+  FILE* handle()
   {
     return __acrt_iob_func(2);
   }

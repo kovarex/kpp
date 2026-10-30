@@ -1,0 +1,78 @@
+// Kpp standard library: the Win32 functions the library calls, in namespace win32 and called
+// qualified, so that a program which also imports windows.h does not meet them as other overloads
+// of its names. Their types are windows.h's own, so that both declare the same C function the same
+// way: its handles are void*, its BOOL int, its DWORD and ULONG unsigned long, its BOOLEAN
+// unsigned char, its LPCWSTR const wchar_t*, its va_list char* (vcruntime's on x64). The structs
+// and unions behind its pointer types are declared here by windows.h's tag names, and the library
+// passes its own storage of the same layout as them; the one enumeration taken by value is defined
+// as windows.h defines it.
+
+struct _SECURITY_ATTRIBUTES;
+struct _RTL_SRWLOCK;            // SRWLOCK: one pointer, zero when unlocked
+struct _RTL_CONDITION_VARIABLE; // CONDITION_VARIABLE: one pointer, zero when initialised
+struct _FILETIME;               // two 32-bit halves of a 64-bit count of 100 ns ticks since 1601
+struct _WIN32_FIND_DATAW;
+struct _BY_HANDLE_FILE_INFORMATION;
+union _LARGE_INTEGER;  // a 64-bit signed integer
+union _ULARGE_INTEGER; // a 64-bit unsigned integer
+enum _GET_FILEEX_INFO_LEVELS { GetFileExInfoStandard, GetFileExMaxInfoLevel };
+
+namespace win32
+{
+  // Errors and text (Error.kpp)
+  extern "C" unsigned long FormatMessageW(unsigned long flags, const void* source, unsigned long messageId, unsigned long languageId, wchar_t* buffer,
+                                          unsigned long size, char** arguments);
+  extern "C" int WideCharToMultiByte(unsigned int codePage, unsigned long flags, const wchar_t* wide, int wideCount, char* narrow, int narrowSize,
+                                     const char* defaultChar, int* usedDefault);
+  extern "C" int MultiByteToWideChar(unsigned int codePage, unsigned long flags, const char* narrow, int narrowCount, wchar_t* wide, int wideSize);
+  extern "C" unsigned long GetLastError();
+
+  // Threads, locks and condition variables (Thread.kpp, SharedPtr.kpp)
+  extern "C" void* CreateThread(_SECURITY_ATTRIBUTES* attributes, size_t stackSize, unsigned long (*start)(void*), void* parameter, unsigned long flags,
+                                unsigned long* threadId);
+  extern "C" unsigned long WaitForSingleObject(void* handle, unsigned long milliseconds);
+  extern "C" int CloseHandle(void* handle);
+  extern "C" unsigned long GetCurrentThreadId();
+  extern "C" void Sleep(unsigned long milliseconds);
+  extern "C" int SwitchToThread();
+  extern "C" unsigned long GetActiveProcessorCount(unsigned short groupNumber);
+  extern "C" void AcquireSRWLockExclusive(_RTL_SRWLOCK* lock);
+  extern "C" void ReleaseSRWLockExclusive(_RTL_SRWLOCK* lock);
+  extern "C" unsigned char TryAcquireSRWLockExclusive(_RTL_SRWLOCK* lock);
+  extern "C" void AcquireSRWLockShared(_RTL_SRWLOCK* lock);
+  extern "C" void ReleaseSRWLockShared(_RTL_SRWLOCK* lock);
+  extern "C" unsigned char TryAcquireSRWLockShared(_RTL_SRWLOCK* lock);
+  extern "C" int SleepConditionVariableSRW(_RTL_CONDITION_VARIABLE* condition, _RTL_SRWLOCK* lock, unsigned long milliseconds, unsigned long flags);
+  extern "C" void WakeConditionVariable(_RTL_CONDITION_VARIABLE* condition);
+  extern "C" void WakeAllConditionVariable(_RTL_CONDITION_VARIABLE* condition);
+  // The library keeps an SRW lock or a condition variable as one void* (zero: unlocked, initialised).
+  _RTL_SRWLOCK* srwLock(void** storage) { return (_RTL_SRWLOCK*)storage; }
+  _RTL_CONDITION_VARIABLE* conditionVariable(void** storage) { return (_RTL_CONDITION_VARIABLE*)storage; }
+
+  // Clocks (Time.kpp, Random.kpp)
+  extern "C" int QueryPerformanceCounter(_LARGE_INTEGER* count);
+  extern "C" int QueryPerformanceFrequency(_LARGE_INTEGER* frequency);
+  extern "C" void GetSystemTimePreciseAsFileTime(_FILETIME* fileTime);
+
+  // The file system (Filesystem.kpp)
+  extern "C" unsigned long GetFileAttributesW(const wchar_t* name);
+  extern "C" int GetFileAttributesExW(const wchar_t* name, _GET_FILEEX_INFO_LEVELS infoLevel, void* information);
+  extern "C" int SetFileAttributesW(const wchar_t* name, unsigned long attributes);
+  extern "C" int CreateDirectoryW(const wchar_t* name, _SECURITY_ATTRIBUTES* security);
+  extern "C" int RemoveDirectoryW(const wchar_t* name);
+  extern "C" int DeleteFileW(const wchar_t* name);
+  extern "C" int MoveFileExW(const wchar_t* from, const wchar_t* to, unsigned long flags);
+  extern "C" int CopyFileW(const wchar_t* from, const wchar_t* to, int failIfExists);
+  extern "C" void* FindFirstFileW(const wchar_t* pattern, _WIN32_FIND_DATAW* data);
+  extern "C" int FindNextFileW(void* find, _WIN32_FIND_DATAW* data);
+  extern "C" int FindClose(void* find);
+  extern "C" unsigned long GetFullPathNameW(const wchar_t* name, unsigned long size, wchar_t* buffer, wchar_t** filePart);
+  extern "C" unsigned long GetCurrentDirectoryW(unsigned long size, wchar_t* buffer);
+  extern "C" int SetCurrentDirectoryW(const wchar_t* name);
+  extern "C" unsigned long GetTempPathW(unsigned long size, wchar_t* buffer);
+  extern "C" int GetDiskFreeSpaceExW(const wchar_t* directory, _ULARGE_INTEGER* available, _ULARGE_INTEGER* total, _ULARGE_INTEGER* free);
+  extern "C" void* CreateFileW(const wchar_t* name, unsigned long access, unsigned long share, _SECURITY_ATTRIBUTES* security, unsigned long disposition,
+                               unsigned long flags, void* templateFile);
+  extern "C" int GetFileInformationByHandle(void* file, _BY_HANDLE_FILE_INFORMATION* information);
+  extern "C" unsigned long GetFinalPathNameByHandleW(void* file, wchar_t* buffer, unsigned long size, unsigned long flags);
+}

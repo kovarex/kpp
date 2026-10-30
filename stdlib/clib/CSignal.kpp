@@ -1,7 +1,7 @@
 // C signal handling.
 using sig_atomic_t = int;
 
-// signal() returns a function pointer; simplified as void* for Kpp.
+// A handler (signal.h's _crt_signal_t); signal() returns the one there was before.
 using SignalHandler = void (*)(int);
-extern "C" void* signal(int sig, SignalHandler handler);
+extern "C" SignalHandler signal(int sig, SignalHandler handler);
 extern "C" int raise(int sig);

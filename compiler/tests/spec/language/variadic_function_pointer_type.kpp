@@ -1,0 +1,19 @@
+// spec: a function pointer type written with `...` is the type of a pointer to a variadic function, distinct from the same type without it, as in C++
+// factorio: the library's printf, fprintf, snprintf, sprintf and sscanf against their pointer types (library/c_declarations_as_in_c_headers)
+// pending: a written `int (*)(const char*, ...)` is the same type as `int (*)(const char*)` and differs from the type of &printf; both silently
+extern "C" int printLike(const char* format, ...);
+using Variadic = int (*)(const char*, ...);
+using Fixed = int (*)(const char*);
+static_assert(isSame<decltype(&printLike), Variadic>, "a variadic function's pointer");
+static_assert(!isSame<Variadic, Fixed>, "with and without ...");
+// The library's variadic C functions, as the UCRT declares them:
+static_assert(isSame<decltype(&::fprintf), int (*)(FILE*, const char*, ...)>, "fprintf");
+static_assert(isSame<decltype(&::printf), int (*)(const char*, ...)>, "printf");
+static_assert(isSame<decltype(&::snprintf), int (*)(char*, size_t, const char*, ...)>, "snprintf");
+static_assert(isSame<decltype(&::sprintf), int (*)(char*, const char*, ...)>, "sprintf");
+static_assert(isSame<decltype(&::sscanf), int (*)(const char*, const char*, ...)>, "sscanf");
+int main()
+{
+  println("ok");
+  return 0;
+}

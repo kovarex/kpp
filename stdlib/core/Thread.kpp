@@ -4,23 +4,8 @@
 // Mutex is an SRW lock, ConditionVariable a CONDITION_VARIABLE, both one pointer of storage zeroed;
 // Atomic<T> holds a T of 1, 2, 4 or 8 bytes (integers, floating point, enums, pointers, small
 // structs) and works on its bits with the processor's atomic instructions; Atomic<SharedPtr<T>>
-// takes a lock.
-extern "C" void* CreateThread(void* attributes, size_t stackSize, unsigned long (*start)(void*), void* parameter, unsigned long flags, unsigned long* threadId);
-extern "C" unsigned long WaitForSingleObject(void* handle, unsigned long milliseconds);
-extern "C" int CloseHandle(void* handle);
-extern "C" unsigned long GetCurrentThreadId();
-extern "C" void Sleep(unsigned long milliseconds);
-extern "C" int SwitchToThread();
-extern "C" unsigned long GetActiveProcessorCount(unsigned short groupNumber);
-extern "C" void AcquireSRWLockExclusive(void** lock);
-extern "C" void ReleaseSRWLockExclusive(void** lock);
-extern "C" unsigned char TryAcquireSRWLockExclusive(void** lock);
-extern "C" void AcquireSRWLockShared(void** lock);
-extern "C" void ReleaseSRWLockShared(void** lock);
-extern "C" unsigned char TryAcquireSRWLockShared(void** lock);
-extern "C" int SleepConditionVariableSRW(void** condition, void** lock, unsigned long milliseconds, unsigned long flags);
-extern "C" void WakeConditionVariable(void** condition);
-extern "C" void WakeAllConditionVariable(void** condition);
+// takes a lock. The Win32 functions are in core/Win32.kpp.
+
 // The compiler turns these into atomic instructions (sequentially consistent); they are not
 // functions of any library.
 extern "C" uint8_t kpp_atomic_add8(uint8_t* target, uint8_t value);
@@ -109,7 +94,7 @@ struct Thread
   {
     ThreadCall<F, Args...>* call = new ThreadCall<F, Args...>(move(function), move(arguments)...);
     unsigned long id = 0;
-    this->handle = CreateThread(nullptr, 0, &ThreadCall<F, Args...>::start, call, 0, &id);
+    this->handle = win32::CreateThread(nullptr, 0, &ThreadCall<F, Args...>::start, call, 0, &id);
     if (!this->handle)
     {
       delete call;
@@ -147,8 +132,8 @@ struct Thread
       throw SystemError(make_error_code(Errc::invalid_argument), "Thread::join");
     if (this->threadId == thisThread::getId())
       throw SystemError(make_error_code(Errc::resource_deadlock_would_occur), "Thread::join");
-    WaitForSingleObject(this->handle, 0xFFFFFFFFu);
-    CloseHandle(this->handle);
+    win32::WaitForSingleObject(this->handle, 0xFFFFFFFFu);
+    win32::CloseHandle(this->handle);
     this->handle = nullptr;
     this->threadId = Id();
   }
@@ -158,7 +143,7 @@ struct Thread
   {
     if (!this->joinable())
       throw SystemError(make_error_code(Errc::invalid_argument), "Thread::detach");
-    CloseHandle(this->handle);
+    win32::CloseHandle(this->handle);
     this->handle = nullptr;
     this->threadId = Id();
   }
@@ -175,7 +160,7 @@ struct Thread
   void* native_handle() const { return this->handle; }
   // How many threads can run at once: the machine's logical processors, in all its processor groups
   // (std::thread::hardware_concurrency, which may also say 0 for "not known"; this never does).
-  static unsigned int hardwareConcurrency() { return (unsigned int)GetActiveProcessorCount(0xFFFF); }
+  static unsigned int hardwareConcurrency() { return (unsigned int)win32::GetActiveProcessorCount(0xFFFF); }
   static unsigned int hardware_concurrency() { return Thread::hardwareConcurrency(); }
 };
 
@@ -184,17 +169,17 @@ size_t hashOf(Thread::Id id) { return hashOf((unsigned int)id.value); }
 // The calling thread (what std::this_thread converts to).
 namespace thisThread
 {
-  Thread::Id getId() { return Thread::Id(GetCurrentThreadId()); }
+  Thread::Id getId() { return Thread::Id(win32::GetCurrentThreadId()); }
   Thread::Id get_id() { return getId(); }
   // Lets another thread run (std::this_thread::yield).
-  void yield() { SwitchToThread(); }
+  void yield() { win32::SwitchToThread(); }
   // Blocks until t has passed on t's clock (std::this_thread::sleep_until): at least until then,
   // waking up early as Windows' timer may only to sleep again.
   template<typename Clock, typename Dur>
   void sleepUntil(const TimePoint<Clock, Dur>& t)
   {
     for (auto now = Clock::now(); now < t; now = Clock::now())
-      Sleep(waitMilliseconds(t - now));
+      win32::Sleep(waitMilliseconds(t - now));
   }
   template<typename Clock, typename Dur>
   void sleep_until(const TimePoint<Clock, Dur>& t) { sleepUntil(t); }
@@ -216,9 +201,9 @@ struct Mutex
   Mutex(const Mutex&) = delete;
   Mutex& operator=(const Mutex&) = delete;
 
-  void lock() { AcquireSRWLockExclusive(&this->lock_); }
-  void unlock() { ReleaseSRWLockExclusive(&this->lock_); }
-  bool tryLock() { return TryAcquireSRWLockExclusive(&this->lock_) != 0; }
+  void lock() { win32::AcquireSRWLockExclusive(win32::srwLock(&this->lock_)); }
+  void unlock() { win32::ReleaseSRWLockExclusive(win32::srwLock(&this->lock_)); }
+  bool tryLock() { return win32::TryAcquireSRWLockExclusive(win32::srwLock(&this->lock_)) != 0; }
   bool try_lock() { return this->tryLock(); }
 };
 
@@ -235,7 +220,7 @@ struct RecursiveMutex
 
   void lock()
   {
-    unsigned long self = GetCurrentThreadId();
+    unsigned long self = win32::GetCurrentThreadId();
     if (this->owner.load() == self)
     {
       ++this->depth;
@@ -247,7 +232,7 @@ struct RecursiveMutex
   }
   bool tryLock()
   {
-    unsigned long self = GetCurrentThreadId();
+    unsigned long self = win32::GetCurrentThreadId();
     if (this->owner.load() == self)
     {
       ++this->depth;
@@ -279,13 +264,13 @@ struct SharedMutex
   SharedMutex(const SharedMutex&) = delete;
   SharedMutex& operator=(const SharedMutex&) = delete;
 
-  void lock() { AcquireSRWLockExclusive(&this->lock_); }
-  void unlock() { ReleaseSRWLockExclusive(&this->lock_); }
-  bool tryLock() { return TryAcquireSRWLockExclusive(&this->lock_) != 0; }
+  void lock() { win32::AcquireSRWLockExclusive(win32::srwLock(&this->lock_)); }
+  void unlock() { win32::ReleaseSRWLockExclusive(win32::srwLock(&this->lock_)); }
+  bool tryLock() { return win32::TryAcquireSRWLockExclusive(win32::srwLock(&this->lock_)) != 0; }
   bool try_lock() { return this->tryLock(); }
-  void lockShared() { AcquireSRWLockShared(&this->lock_); }
-  void unlockShared() { ReleaseSRWLockShared(&this->lock_); }
-  bool tryLockShared() { return TryAcquireSRWLockShared(&this->lock_) != 0; }
+  void lockShared() { win32::AcquireSRWLockShared(win32::srwLock(&this->lock_)); }
+  void unlockShared() { win32::ReleaseSRWLockShared(win32::srwLock(&this->lock_)); }
+  bool tryLockShared() { return win32::TryAcquireSRWLockShared(win32::srwLock(&this->lock_)) != 0; }
   void lock_shared() { this->lockShared(); }
   void unlock_shared() { this->unlockShared(); }
   bool try_lock_shared() { return this->tryLockShared(); }
@@ -503,13 +488,13 @@ struct ConditionVariable
   ConditionVariable(const ConditionVariable&) = delete;
   ConditionVariable& operator=(const ConditionVariable&) = delete;
 
-  void notifyOne() { WakeConditionVariable(&this->condition); }
-  void notifyAll() { WakeAllConditionVariable(&this->condition); }
+  void notifyOne() { win32::WakeConditionVariable(win32::conditionVariable(&this->condition)); }
+  void notifyAll() { win32::WakeAllConditionVariable(win32::conditionVariable(&this->condition)); }
   void notify_one() { this->notifyOne(); }
   void notify_all() { this->notifyAll(); }
 
   // Unlocks lock's mutex and blocks until notified (or woken spuriously), then locks it again.
-  void wait(UniqueLock<Mutex>& lock) { SleepConditionVariableSRW(&this->condition, &lock.mutex_->lock_, 0xFFFFFFFFu, 0); }
+  void wait(UniqueLock<Mutex>& lock) { win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.mutex_->lock_), 0xFFFFFFFFu, 0); }
   template<typename Predicate>
   void wait(UniqueLock<Mutex>& lock, Predicate ready)
   {
@@ -525,7 +510,7 @@ struct ConditionVariable
       auto now = Clock::now();
       if (!(now < t))
         return CvStatus::timeout;
-      if (SleepConditionVariableSRW(&this->condition, &lock.mutex_->lock_, waitMilliseconds(t - now), 0))
+      if (win32::SleepConditionVariableSRW(win32::conditionVariable(&this->condition), win32::srwLock(&lock.mutex_->lock_), waitMilliseconds(t - now), 0))
         return CvStatus::no_timeout; // woken: by a notify, or spuriously
       // The system's timer ended the wait, which can be a little before t on t's clock: the rest.
     }
