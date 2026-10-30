@@ -1,0 +1,40 @@
+// spec: `c ? both : alone` with lvalues of a class Both and of its second base Second (Both : First, Second) is an lvalue of Second: in the first branch, both's Second part, read and assigned through a `Second&` bound to the conditional; and `c ? none : undo` with an Optional<Undo> and an Undo lvalue is a new Optional<Undo>, the Undo converted to it (C++ [expr.cond] 4)
+// found with expressions/conditional_converts_pointer_operand_to_class: the conditional of two lvalues was the address of either, of whatever type
+// pending: SILENT, the Second is both's First part (`[1] [1] 20 30`), and the Optional is the Undo's bytes (`false -1`); owner: the templates thread (conversions)
+struct First
+{
+  int first = 1;
+};
+struct Second
+{
+  int second = 2;
+};
+struct Both : First, Second
+{
+  int own = 3;
+};
+struct Undo
+{
+  int start = 0;
+  int end = 0;
+};
+void show(const Second& s) { print("[{}] ", s.second); }
+int main()
+{
+  Both both;
+  both.second = 20;
+  Second alone;
+  alone.second = 30;
+  bool yes = true, no = false;
+  show(yes ? both : alone);
+  show(no ? alone : both);
+  Second& r = yes ? both : alone;
+  r.second = 21;
+  println("{} {}", both.second, alone.second);
+  Optional<Undo> none;
+  Undo undo{4, 5};
+  Optional<Undo> chosen = yes ? none : undo;
+  Optional<Undo> other = no ? none : undo;
+  println("{} {}", chosen.hasValue(), other.hasValue() ? other->end : -1);
+  return 0;
+}
