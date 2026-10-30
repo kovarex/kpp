@@ -1,0 +1,23 @@
+// spec: a forwarding constructor template beside the implicit copy and move constructors (the class declares none, nor an assignment or a destructor): a copy from a const lvalue and a move tie with the implicit ones, which win as no template ([over.match.best]); a copy from a non-const lvalue binds the template's Wrapper& better than the copy's const Wrapper&, so the template is taken, as C++ does
+// found in src (OutputInventories' `template<typename... Args> OutputInventories(Args&&... inventories)` moved as a value; OpenableObjectWrapper's `template<class T> OpenableObjectWrapper(const T& object)` copied)
+// pending: SILENT, a copy from a non-const lvalue takes the implicit copy, not the template (`5 0 5 0 5 0 5 0`)
+struct Wrapper
+{
+  int value = 0;
+  int via = 0;
+  Wrapper() = default;
+  template<typename... Args>
+  Wrapper(Args&&... args) : value(sizeof...(Args) == 0 ? -1 : 100), via(1) {}
+};
+int main()
+{
+  Wrapper a;
+  a.value = 5;
+  const Wrapper& constant = a;
+  Wrapper b(constant);
+  Wrapper c(move(a));
+  Wrapper d(a);
+  Wrapper e = move(c);
+  println("{} {} {} {} {} {} {} {}", b.value, b.via, c.value, c.via, d.value, d.via, e.value, e.via);
+  return 0;
+}
