@@ -261,12 +261,25 @@ namespace
     // the module's text again (and they are what an incremental build will keep per function).
     struct Definition
     {
+      std::string name;  // the IR name it defines (empty for a helper placed in its home module)
+      std::string owner; // the function whose emission added it: itself, or the function a lambda is written in
       std::string text;
       std::vector<std::pair<uint32_t, uint32_t>> names; // the `@names` in the text (offset, length), in order, as moduleText scans them
       std::vector<std::pair<uint32_t, uint32_t>> types; // the `%struct...`/`%closure...` it names
     };
     static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
+    // A module declaration a function's emission adds every time it runs (a static local and its
+    // guard, a static InitializerList's array), not once at a first use: it belongs to that function
+    // (owner), and an incremental build replaces it with the function. Joins the module's
+    // declarations when they are finished.
+    struct OwnedEntry
+    {
+      std::string owner;
+      std::string text;
+    };
+    std::vector<std::vector<OwnedEntry>> ownedEntries;   // per module
+    std::vector<std::vector<std::string>> keptModuleEntries; // KPP_CHECK_REBUILD: the module declarations, before they were finished
     std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
     std::set<std::string> sharedReferences;              // program functions `decls` names (sorted: the same declares in every run)
     struct TypeLine
@@ -297,6 +310,8 @@ namespace
       vtablesIn.resize(moduleCount);
       moduleConstants.resize(moduleCount);
       definitions.resize(moduleCount);
+      ownedEntries.resize(moduleCount);
+      keptModuleEntries.resize(moduleCount);
     }
   };
 
@@ -1869,7 +1884,7 @@ namespace
           unsupported(at, "an InitializerList in static storage of elements that need destruction");
         std::string owner = variable.substr(0, variable.size() - (variable.back() == '"' ? 1 : 0));
         array = owner + ".list." + std::to_string(b->token) + (variable.back() == '"' ? "\"" : "");
-        moduleDecls[currentModule] += array + " = internal global " + llType(arrayTy, at) + " zeroinitializer\n";
+        addOwnedEntry(array + " = internal global " + llType(arrayTy, at) + " zeroinitializer\n");
       }
       else
         array = newObjectSlot(arrayTy, at);
@@ -5391,7 +5406,7 @@ namespace
       else
         text += "  %r = call " + retType + " " + functionName + "(" + args + ")\n  ret " + retType + " %r\n";
       text += "}\n\n";
-      addDefinition(name, text);
+      addDefinition(name, text, true); // emitted once, at its first use: its own, not the user's
       countFunction();
       return name;
     }
@@ -7830,8 +7845,10 @@ namespace
       return s;
     }
 
-    // A finished function definition: into the single body, or into the current module.
-    void addDefinition(const std::string& name, const std::string& text)
+    // A finished function definition: into the single body, or into the current module. ownItself:
+    // one emitted once at its first use (a global's constructor, a lambda's function-pointer thunk),
+    // which belongs to no user; otherwise it belongs to the function being emitted.
+    void addDefinition(const std::string& name, const std::string& text, bool ownItself = false)
     {
       if (moduleCount <= 1)
       {
@@ -7842,10 +7859,27 @@ namespace
       }
       std::string declare = declareFromHeader(text);
       Shared::Definition definition = Shared::definitionOf(text);
+      definition.name = name;
+      definition.owner = ownItself || owner.empty() ? name : owner;
       auto lock = sharedLock();
       sh.definitions[currentModule].push_back(std::move(definition));
       definedIn[name] = currentModule;
       declareLines[name] = std::move(declare);
+    }
+    // The function whose emission is running (set by emitFunction at the outermost level): what its
+    // emission adds (its definition, its lambdas' call operators) belongs to it.
+    std::string owner;
+
+    // A module declaration that belongs to the function being emitted (Shared::OwnedEntry).
+    void addOwnedEntry(const std::string& text)
+    {
+      if (moduleCount <= 1)
+      {
+        moduleDecls[currentModule] += text;
+        return;
+      }
+      auto lock = sharedLock();
+      sh.ownedEntries[currentModule].push_back({owner.empty() ? currentFunctionName : owner, text});
     }
 
     // "declare RET NAME(TYPES)" from a "define RET NAME(TYPE %name, ...) attrs {" header.
@@ -8951,6 +8985,9 @@ namespace
       // and its errors are its own, not of the function that happened to use it first.
       struct ModuleRestore { unsigned& m; unsigned saved; ~ModuleRestore() { m = saved; } } moduleRestore{currentModule, currentModule};
       currentModule = moduleCount <= 1 ? 0 : unsigned(std::hash<std::string>()(fnName) % moduleCount);
+      // What it adds (its static InitializerList arrays) belongs to it, not to its first user.
+      struct OwnerRestore { std::string& owner; std::string saved; ~OwnerRestore() { owner = saved; } } ownerRestore{owner, owner};
+      owner = fnName;
       struct NameRestore
       {
         std::string& name;
@@ -8990,7 +9027,7 @@ namespace
         if (perThread)
           fn += "  br label %tls.done\ntls.done:\n";
         fn += "  ret void\n";
-        addDefinition(fnName, functionText("define void " + fnName + "() {\nentry:\n"));
+        addDefinition(fnName, functionText("define void " + fnName + "() {\nentry:\n"), true); // the global's, not its first user's
         auto lock = sharedLock();
         if (perThread)
           threadLocalInits[name] = fnName;
@@ -13830,10 +13867,10 @@ namespace
       std::string guard = name.substr(0, name.size() - 1) + ".guard\"";
       std::string storage = (v->flags & DF_ThreadLocal) ? " = internal thread_local global " : " = internal global ";
       if (isRef)
-        moduleDecls[currentModule] += name + storage + "ptr null\n";
+        addOwnedEntry(name + storage + "ptr null\n");
       else
-        moduleDecls[currentModule] += name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n";
-      moduleDecls[currentModule] += guard + storage + "i1 false\n";
+        addOwnedEntry(name + storage + llType(t, v) + " zeroinitializer" + alignSuffix(t, variableAlignment(v, typingContext(), v), v) + "\n");
+      addOwnedEntry(guard + storage + "i1 false\n");
       {
         auto lock = sharedLock();
         globals[v] = name;
@@ -15381,6 +15418,18 @@ namespace
         currentReturn = types.pointer(types.voidType());
       sretAddr.clear();
       currentFunctionName = nameOverride.empty() ? functionName(original, args, classTy) : nameOverride;
+      struct OwnerScope
+      {
+        std::string& owner;
+        bool outermost;
+        ~OwnerScope()
+        {
+          if (outermost)
+            owner.clear();
+        }
+      } ownerScope{owner, owner.empty()};
+      if (ownerScope.outermost)
+        owner = currentFunctionName;
       try
       {
         Signature s = signatureOf(original);
@@ -16069,43 +16118,49 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   std::atomic<bool> outOfMemory{false};
   size_t emitted = 0;
   std::set<std::pair<StaticAssertDecl*, std::string>> layoutAssertsChecked;
-  while (!outOfMemory)
+  // Emits `level` and every level it asks for, on all threads (also what an incremental build
+  // emits again: KPP_CHECK_REBUILD below).
+  auto emitLevels = [&]()
   {
-    if (level.empty())
+    while (!outOfMemory)
     {
-      // Everything is emitted: the static_asserts on a class's size or alignment, which the
-      // checker leaves to the layouts; those of class template instances once the functions
-      // that name the instances are emitted (and one in an instance's function if that is
-      // emitted). A layout they build can ask for functions (its vtable's), which go on.
-      global.checkInstanceStaticAsserts();
-      bool checked = false;
-      for (const GlobalScope::LayoutStaticAssert& a : global.layoutStaticAsserts())
-        if (layoutAssertsChecked.insert({a.decl, a.instance}).second)
+      if (level.empty())
+      {
+        // Everything is emitted: the static_asserts on a class's size or alignment, which the
+        // checker leaves to the layouts; those of class template instances once the functions
+        // that name the instances are emitted (and one in an instance's function if that is
+        // emitted). A layout they build can ask for functions (its vtable's), which go on.
+        global.checkInstanceStaticAsserts();
+        bool checked = false;
+        for (const GlobalScope::LayoutStaticAssert& a : global.layoutStaticAsserts())
+          if (layoutAssertsChecked.insert({a.decl, a.instance}).second)
+          {
+            e.checkLayoutAssert(a);
+            checked = true;
+          }
+        if (!checked)
+          break;
+        nextLevel();
+        continue;
+      }
+      std::atomic<size_t> next{0};
+      auto work = [&](unsigned i) {
+        try
         {
-          e.checkLayoutAssert(a);
-          checked = true;
+          for (size_t k; !outOfMemory && (k = next++) < level.size();)
+            emitOne(*emitters[i], level[k]);
         }
-      if (!checked)
-        break;
+        catch (const std::bad_alloc&)
+        {
+          outOfMemory = true;
+        }
+      };
+      onThreads(level.size() < 64 ? 1 : threads, work);
+      emitted += level.size();
       nextLevel();
-      continue;
     }
-    std::atomic<size_t> next{0};
-    auto work = [&](unsigned i) {
-      try
-      {
-        for (size_t k; !outOfMemory && (k = next++) < level.size();)
-          emitOne(*emitters[i], level[k]);
-      }
-      catch (const std::bad_alloc&)
-      {
-        outOfMemory = true;
-      }
-    };
-    onThreads(level.size() < 64 ? 1 : threads, work);
-    emitted += level.size();
-    nextLevel();
-  }
+  };
+  emitLevels();
   e.finishAssertRuntime();
   e.finishExceptionRuntime();
   if (sh.stubMissing)
@@ -16205,11 +16260,20 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   sh.decls.finish();
   sh.shared.finish();
   sh.body.finish();
+  // KPP_CHECK_REBUILD=n, a check of the incremental path (docs/compile-speed.md, step 5): every
+  // n-th function of the program is emitted again in the kept state, as an edit of its body would
+  // be, and the modules assembled again must be byte for byte the ones just built.
+  const char* checkRebuild = getenv("KPP_CHECK_REBUILD");
+  bool keepTexts = checkRebuild && result.errors.empty() && sh.moduleCount > 1;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     // The definitions in the order SharedText puts entries: by their text.
     std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
               [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
+    if (keepTexts)
+      sh.keptModuleEntries[k] = sh.moduleDecls[k].entries;
+    for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+      sh.moduleDecls[k].entries.push_back(o.text);
     sh.moduleDecls[k].finish();
   }
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
@@ -16255,8 +16319,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     for (unsigned k = nextModule++; k < em.moduleCount; k = nextModule++)
     {
       result.modules[k] = em.moduleText(k, prefix);
-      std::vector<Shared::Definition>().swap(sh.definitions[k]);
-      std::string().swap(sh.moduleDecls[k].text);
+      if (!keepTexts)
+      {
+        std::vector<Shared::Definition>().swap(sh.definitions[k]);
+        std::string().swap(sh.moduleDecls[k].text);
+      }
       if (!result.errors.empty())
         result.modules[k] += declareUndefined(result.modules[k], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[k]);
     }
@@ -16267,5 +16334,105 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     stubbed.insert(names.begin(), names.end());
   if (sh.stubMissing)
     result.stubs = stubbed.size() + countUndefinedStubs(sh);
+  if (keepTexts)
+  {
+    size_t every = std::max<size_t>(1, strtoul(checkRebuild, nullptr, 10));
+    // The functions again, as level 0 had them; what each one's emission added before goes first.
+    std::unordered_set<std::string> owners;
+    level.clear();
+    for (size_t i = 0; i < functions.size(); i += every)
+    {
+      FunctionDecl* f = functions[i];
+      auto it = sh.fileModule.find(f->file);
+      level.push_back({f, {}, nullptr, it == sh.fileModule.end() ? 0 : it->second, "", "", 0});
+      owners.insert(e.functionName(f, {}, nullptr));
+    }
+    size_t dropped = 0;
+    std::vector<char> touched(sh.moduleCount, 0);
+    std::unordered_set<std::string> droppedNames;
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+    {
+      std::vector<Shared::Definition>& defs = sh.definitions[k];
+      size_t before = defs.size();
+      for (const Shared::Definition& d : defs)
+        if (owners.count(d.owner))
+          droppedNames.insert(d.name);
+      defs.erase(std::remove_if(defs.begin(), defs.end(), [&](const Shared::Definition& d) { return owners.count(d.owner) != 0; }), defs.end());
+      dropped += before - defs.size();
+      touched[k] = before != defs.size();
+    }
+    // Their lambdas' call operators went with them: emitted again with the function, not marked done.
+    for (auto& [t, info] : sh.closures)
+      if (droppedNames.count(info.functionName))
+        sh.closuresEmitted.erase(t);
+    for (const std::string& name : droppedNames)
+      sh.lambdaInstances.erase(name);
+    // And so did their own module declarations (static locals), added again as they are emitted.
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+    {
+      std::vector<Shared::OwnedEntry>& owned = sh.ownedEntries[k];
+      owned.erase(std::remove_if(owned.begin(), owned.end(), [&](const Shared::OwnedEntry& o) { return owners.count(o.owner) != 0; }), owned.end());
+    }
+    size_t entriesBefore = sh.decls.entries.size() + sh.shared.entries.size();
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+      entriesBefore += sh.moduleDecls[k].entries.size();
+    auto emitStart = std::chrono::steady_clock::now();
+    emitLevels();
+    double emitSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - emitStart).count();
+    size_t entriesAfter = sh.decls.entries.size() + sh.shared.entries.size();
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+      entriesAfter += sh.moduleDecls[k].entries.size();
+    size_t added = 0;
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+    {
+      std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
+                [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
+      added += sh.definitions[k].size();
+      // The module's declarations again: those kept, those added since (a first use), its functions' own.
+      std::vector<std::string> entries = sh.keptModuleEntries[k];
+      entries.insert(entries.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
+      for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+        entries.push_back(o.text);
+      sh.moduleDecls[k].entries = std::move(entries);
+      sh.moduleDecls[k].text.clear();
+      sh.moduleDecls[k].finish();
+    }
+    size_t differ = 0;
+    std::string first;
+    double assembleSeconds = 0;
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+    {
+      auto assembleStart = std::chrono::steady_clock::now();
+      std::string again = e.moduleText(k, prefix);
+      if (touched[k])
+        assembleSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - assembleStart).count();
+      if (again != result.modules[k])
+      {
+        ++differ;
+        if (first.empty())
+        {
+          size_t at = std::mismatch(again.begin(), again.end(), result.modules[k].begin(), result.modules[k].end()).first - again.begin();
+          size_t line = again.rfind('\n', at);
+          first = "module " + std::to_string(k) + ": " + again.substr(line == std::string::npos ? 0 : line + 1, 160);
+        }
+      }
+    }
+    size_t touchedCount = size_t(std::count(touched.begin(), touched.end(), char(1)));
+    fprintf(stderr, "rebuild check: %zu functions emitted again (%zu definitions replaced) in %.3f s, %zu new shared entries, %zu modules touched "
+                    "(assembled again in %.3f s, one after another), %zu of %u modules differ%s%s\n",
+            owners.size(), dropped, emitSeconds, entriesAfter - entriesBefore, touchedCount, assembleSeconds, differ, sh.moduleCount,
+            first.empty() ? "" : "; first: ", first.c_str());
+    auto showNew = [&](const char* what, const SharedText& t)
+    {
+      for (const std::string& entry : t.entries)
+        fprintf(stderr, "rebuild check: new %s entry: %.200s\n", what, entry.c_str());
+    };
+    showNew("decls", sh.decls);
+    showNew("shared", sh.shared);
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+      showNew("module", sh.moduleDecls[k]);
+    (void)added;
+    (void)touched;
+  }
   return result;
 }
