@@ -266,6 +266,7 @@ namespace
       std::string text;
       std::vector<std::pair<uint32_t, uint32_t>> names; // the `@names` in the text (offset, length), in order, as moduleText scans them
       std::vector<std::pair<uint32_t, uint32_t>> types; // the `%struct...`/`%closure...` it names
+      bool counted = false; // one of the build's functions (result.functions): not a catch filter, nor a global's constructor
     };
     static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
@@ -409,7 +410,13 @@ namespace
     std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
     std::unordered_set<std::string>& sharedDeclared = sh.sharedDeclared;
     std::unique_lock<std::recursive_mutex> sharedLock() { return std::unique_lock<std::recursive_mutex>(sh.mutex); }
-    void countFunction() { ++sh.functions; }
+    // A function's definition (addDefinition), counted in result.functions; an incremental build
+    // takes the count of the ones it drops off again.
+    void addFunction(const std::string& name, const std::string& text, bool ownItself = false)
+    {
+      addDefinition(name, text, ownItself, true);
+      ++sh.functions;
+    }
 
     unsigned currentModule = 0;  // where the function being emitted goes
     bool emittingShared = false; // string constants go to the shared decls
@@ -5286,8 +5293,7 @@ namespace
           else
             fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, l) + " zeroinitializer") + "\n";
         }
-        addDefinition(name, functionText(header));
-        countFunction();
+        addFunction(name, functionText(header));
       }
       catch (Unsupported&)
       {
@@ -5424,8 +5430,7 @@ namespace
       else
         text += "  %r = call " + retType + " " + functionName + "(" + args + ")\n  ret " + retType + " %r\n";
       text += "}\n\n";
-      addDefinition(name, text, true); // emitted once, at its first use: its own, not the user's
-      countFunction();
+      addFunction(name, text, true); // emitted once, at its first use: its own, not the user's
       return name;
     }
 
@@ -7869,7 +7874,7 @@ namespace
     // A finished function definition: into the single body, or into the current module. ownItself:
     // one emitted once at its first use (a global's constructor, a lambda's function-pointer thunk),
     // which belongs to no user; otherwise it belongs to the function being emitted.
-    void addDefinition(const std::string& name, const std::string& text, bool ownItself = false)
+    void addDefinition(const std::string& name, const std::string& text, bool ownItself = false, bool counted = false)
     {
       if (moduleCount <= 1)
       {
@@ -7882,6 +7887,7 @@ namespace
       Shared::Definition definition = Shared::definitionOf(text);
       definition.name = name;
       definition.owner = ownItself || owner.empty() ? name : owner;
+      definition.counted = counted;
       auto lock = sharedLock();
       sh.definitions[currentModule].push_back(std::move(definition));
       definedIn[name] = currentModule;
@@ -15612,8 +15618,7 @@ namespace
             fn += "  ret ptr " + r.text + "\n";
           else
             fn += "  ret " + llType(currentReturn, f) + " " + r.text + "\n";
-          addDefinition(name, functionText(header));
-          countFunction();
+          addFunction(name, functionText(header));
           currentArgs = nullptr;
           currentClassTy = nullptr;
           return;
@@ -15652,8 +15657,7 @@ namespace
           else // falling off the end (after a throw, usually): a zero rather than `unreachable`, see emitThrow
             fn += "  ret " + (currentReturn->isReference() ? std::string("ptr null") : llType(currentReturn, f) + " zeroinitializer") + "\n";
         }
-        addDefinition(name, functionText(header));
-        countFunction();
+        addFunction(name, functionText(header));
       }
       catch (Unsupported&)
       {
@@ -16489,26 +16493,37 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
     session->usable = false;
+    // The modules it assembled (none, when every function came out the same), then all the others
+    // assembled from the state it left: each must be the build's.
+    std::vector<std::string> texts(rebuilt ? again.changedModules.size() : 0);
+    std::atomic<unsigned> nextCheck{0};
+    auto assembleAll = [&](unsigned t)
+    {
+      for (unsigned k; (k = nextCheck++) < texts.size();)
+        texts[k] = again.changedModules[k] ? std::move(again.modules[k]) : emitters[t]->moduleText(k, prefix);
+    };
+    onThreads(unsigned(emitters.size()), assembleAll);
     size_t changed = 0, differ = 0;
     std::string first;
-    for (size_t k = 0; rebuilt && k < again.changedModules.size(); ++k)
-      if (again.changedModules[k])
+    for (size_t k = 0; k < texts.size(); ++k)
+    {
+      changed += again.changedModules[k];
+      if (texts[k] != result.modules[k])
       {
-        ++changed;
-        if (again.modules[k] != result.modules[k])
+        ++differ;
+        if (first.empty())
         {
-          ++differ;
-          if (first.empty())
-          {
-            size_t at = std::mismatch(again.modules[k].begin(), again.modules[k].end(), result.modules[k].begin(), result.modules[k].end()).first -
-                        again.modules[k].begin();
-            size_t line = again.modules[k].rfind('\n', at);
-            first = "module " + std::to_string(k) + ": " + again.modules[k].substr(line == std::string::npos ? 0 : line + 1, 160);
-          }
+          size_t at = std::mismatch(texts[k].begin(), texts[k].end(), result.modules[k].begin(), result.modules[k].end()).first - texts[k].begin();
+          size_t line = texts[k].rfind('\n', at);
+          first = "module " + std::to_string(k) + ": " + texts[k].substr(line == std::string::npos ? 0 : line + 1, 160);
         }
       }
-    fprintf(stderr, "rebuild check: %zu functions emitted again by rebuildLLVM in %.3f s (%s), %zu modules assembled again, %zu of them differ%s%s\n",
-            picked.size(), seconds, rebuilt ? "rebuilt" : "declined", changed, differ, first.empty() ? "" : "; first: ", first.c_str());
+    }
+    fprintf(stderr,
+            "rebuild check: %zu functions emitted again by rebuildLLVM in %.3f s (%s), %zu modules assembled again; of all %zu "
+            "from its state %zu differ, %zu functions (the build's %zu)%s%s\n",
+            picked.size(), seconds, rebuilt ? "rebuilt" : "declined", changed, texts.size(), differ, again.functions, result.functions,
+            first.empty() ? "" : "; first: ", first.c_str());
   }
   session->usable = keep && keepTexts && !checkRebuild;
   return std::move(result);
@@ -16546,20 +16561,54 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     owners.insert(e.functionName(f, {}, nullptr));
   for (FunctionDecl* f : added)
     level.push_back(programFunction(f));
-  std::vector<char> touched(sh.moduleCount, 0);
+  // Per module, the texts dropped (sorted) and how many definitions and owned entries stayed: the
+  // ones emitted now follow those, and a module whose new texts are the dropped ones again (an
+  // edited function's callers, emitted again for what they inline, mostly are) is not assembled again.
+  struct Dropped
+  {
+    std::vector<std::string> definitions, owned;
+    size_t keptDefinitions = 0, keptOwned = 0;
+  };
+  std::vector<Dropped> dropped(sh.moduleCount);
   std::unordered_set<std::string> droppedNames;
+  size_t droppedFunctions = 0;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
+    Dropped& was = dropped[k];
     std::vector<Shared::Definition>& defs = sh.definitions[k];
-    size_t before = defs.size();
-    for (const Shared::Definition& d : defs)
-      if (owners.count(d.owner))
-        droppedNames.insert(d.name);
-    defs.erase(std::remove_if(defs.begin(), defs.end(), [&](const Shared::Definition& d) { return owners.count(d.owner) != 0; }), defs.end());
+    size_t kept = 0;
+    for (size_t i = 0; i < defs.size(); ++i)
+    {
+      if (owners.count(defs[i].owner))
+      {
+        droppedNames.insert(defs[i].name);
+        droppedFunctions += defs[i].counted;
+        was.definitions.push_back(std::move(defs[i].text));
+        continue;
+      }
+      if (kept != i)
+        defs[kept] = std::move(defs[i]);
+      ++kept;
+    }
+    defs.erase(defs.begin() + kept, defs.end()); // the kept ones still in order
+    was.keptDefinitions = kept;
     std::vector<Shared::OwnedEntry>& owned = sh.ownedEntries[k];
-    size_t ownedBefore = owned.size();
-    owned.erase(std::remove_if(owned.begin(), owned.end(), [&](const Shared::OwnedEntry& o) { return owners.count(o.owner) != 0; }), owned.end());
-    touched[k] = before != defs.size() || ownedBefore != owned.size();
+    kept = 0;
+    for (size_t i = 0; i < owned.size(); ++i)
+    {
+      if (owners.count(owned[i].owner))
+      {
+        was.owned.push_back(std::move(owned[i].text));
+        continue;
+      }
+      if (kept != i)
+        owned[kept] = std::move(owned[i]);
+      ++kept;
+    }
+    owned.erase(owned.begin() + kept, owned.end());
+    was.keptOwned = kept;
+    std::sort(was.definitions.begin(), was.definitions.end());
+    std::sort(was.owned.begin(), was.owned.end());
   }
   for (auto& [t, info] : sh.closures)
     if (droppedNames.count(info.functionName))
@@ -16570,10 +16619,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     sh.definedIn.erase(name);
     sh.declareLines.erase(name);
   }
-  sh.functions -= std::min<size_t>(sh.functions, droppedNames.size());
-  std::vector<size_t> counts(sh.moduleCount);
-  for (unsigned k = 0; k < sh.moduleCount; ++k)
-    counts[k] = sh.definitions[k].size() + sh.ownedEntries[k].size() + sh.moduleDecls[k].entries.size();
+  sh.functions -= std::min<size_t>(sh.functions, droppedFunctions);
   size_t sharedBefore = sh.decls.entries.size() + sh.shared.entries.size();
   for (auto& em : emitters)
   {
@@ -16600,13 +16646,30 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   std::vector<unsigned> which;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
-    if (counts[k] != sh.definitions[k].size() + sh.ownedEntries[k].size() + sh.moduleDecls[k].entries.size())
-      touched[k] = 1;
-    if (!touched[k])
+    Dropped& was = dropped[k];
+    std::vector<Shared::Definition>& defs = sh.definitions[k];
+    std::vector<Shared::OwnedEntry>& owned = sh.ownedEntries[k];
+    bool declared = !sh.moduleDecls[k].entries.empty(); // a first use declared something in this module
+    if (was.definitions.empty() && was.owned.empty() && defs.size() == was.keptDefinitions && owned.size() == was.keptOwned && !declared)
       continue;
+    // The new definitions sorted and merged in among the kept ones (as from scratch, all in order).
+    auto byText = [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; };
+    std::sort(defs.begin() + was.keptDefinitions, defs.end(), byText);
+    bool same = !declared && defs.size() - was.keptDefinitions == was.definitions.size() &&
+                std::equal(was.definitions.begin(), was.definitions.end(), defs.begin() + was.keptDefinitions,
+                           [](const std::string& a, const Shared::Definition& b) { return a == b.text; });
+    if (same)
+    {
+      std::vector<std::string> ownedNow;
+      for (size_t i = was.keptOwned; i < owned.size(); ++i)
+        ownedNow.push_back(owned[i].text);
+      std::sort(ownedNow.begin(), ownedNow.end());
+      same = ownedNow == was.owned;
+    }
+    std::inplace_merge(defs.begin(), defs.begin() + was.keptDefinitions, defs.end(), byText);
+    if (same)
+      continue; // its text would be the one it has
     which.push_back(k);
-    std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
-              [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
     // The module's declarations again: those kept, those a first use added now (kept from here on),
     // and its functions' own.
     std::vector<std::string>& kept = sh.keptModuleEntries[k];
