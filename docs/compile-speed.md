@@ -651,6 +651,37 @@ machine); a different count is a different build (all modules new), as a differe
    Not yet: an item that only an edited body used stays (a clean build would not have it), which
    --verify-incremental reports; to be dropped by use, as types already are.*
 
+#### Step 5b: what codegen proposes to the kept Build (codegen thread, for the resolver thread, 2026-10-30)
+
+The interface, in codegen.hpp:
+
+```
+struct CodegenSession;  // codegen's state between builds: the shared texts, layouts, names, per-module
+                        // definitions with their owners, the emitters; it points into the program
+                        // (GlobalScope, types, the parsed files), so it is destroyed before them
+
+// As today; with keep, the session is handed back instead of freed on a detached thread.
+CodegenResult generateLLVM(..., std::unique_ptr<CodegenSession>* keep = nullptr);
+
+// After 3b checked the changed bodies again: emits again the functions whose declarations got new
+// bodies (and what their emission newly asks for), drops what their old emission added (their
+// definitions, their lambdas' operators, their static locals), and assembles again the modules that
+// changed (all of them when a first use added to the shared declarations: a new global or helper).
+// Returns every module, as generateLLVM does, and which ones changed.
+CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies);
+```
+
+What the kept Build does with it: it holds `std::unique_ptr<CodegenSession> codegen` (declared after
+what the session points into, so it is destroyed first); a build from scratch fills it (`keep`);
+incrementalBuild hands rebuildLLVM the FunctionDecls 3b moved new bodies into, under 3b's own rules
+(non-template, nothing deduced from the body, the instance set unchanged), and builds from scratch
+when there is no session or 3b declines. `--verify-incremental` compares as today; until stale items
+are dropped by use (above), a body edit that stops using the only use of a constant or global shows
+there as a difference, never silently.
+
+Cost to a clean build in the server: the session is what codegen freed on a detached thread
+(about 1 GB for the game), kept instead; a build in its own process does not keep it.
+
 ## Parallel front end: contention, not work (2026-10-29, evening)
 
 The front end on the headline tree had grown to about 4 s (read, imports, parse and index 1.1 s;
