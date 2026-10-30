@@ -8849,7 +8849,14 @@ namespace
         case NodeKind::NamedCastExpr:
         {
           auto* c = static_cast<NamedCastExpr*>(e);
-          if (e->ty && e->ty->isReference() && c->castKind != Kw::dynamic_cast_)
+          // A reference to the operand's own type, or a reinterpret_cast or const_cast: the operand's
+          // address. Another class (a base or a derived one, or one the operand converts to with
+          // `operator TrainStop&()`) is the cast's value, as explicitConvert makes it.
+          const Ty* from = c->operand && c->operand->ty ? types.unqualified(types.stripRef(c->operand->ty)) : nullptr;
+          const Ty* to = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+          if (e->ty && e->ty->isReference() && c->castKind != Kw::dynamic_cast_ &&
+              (c->castKind == Kw::reinterpret_cast_ || c->castKind == Kw::const_cast_ || !from || !to || !isClass(from) || !isClass(to) ||
+               classKey(from) == classKey(to)))
             return lvalue(c->operand);
           break;
         }
