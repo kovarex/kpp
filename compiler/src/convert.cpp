@@ -225,6 +225,10 @@ namespace
   // includes no UnitTest++ header and uses CHECK_FAILED). Not TestCommon.hpp itself: the conversion
   // reads the game's Common.hpp's debug assert and Lua's printf override among its macros.
   const std::map<std::string, std::string> forcedMacroHeaders = {{"tests/", "tests/UnitTest.hpp"}};
+  // Headers that use macros of a header they do not include, which each of their includers includes
+  // before them: LuaPrototypeFixture.hpp's CHECK_LUA_NUMBER_EQUALS_SOURCELOCATION is
+  // LuaCheckMacros.hpp's (since 9c29b449ce4). The conversion checks that every includer does so.
+  const std::map<std::string, std::string> includerMacroHeaders = {{"tests/LuaPrototypeFixture.hpp", "tests/LuaCheckMacros.hpp"}};
   // The headers a library's build force-includes (fbuild.bff: Lua's `/FI"override_printf.h"`), by
   // the library's directory name: its files see them before their own includes.
   const std::map<std::string, std::string> forcedIncludes = {{"Lua", "override_printf.h"}};
@@ -7526,6 +7530,36 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       if (!converted)
         externalIncludes[k].insert(name.filename().string());
     }
+  }
+  // An includer macro header (includerMacroHeaders) comes first in the header that relies on it, once
+  // every file that includes that header has been seen to include the macro header before it.
+  for (const auto& [user, provider] : includerMacroHeaders)
+  {
+    size_t header = SIZE_MAX, macros = SIZE_MAX;
+    for (const auto& [key, k] : inputByPath)
+    {
+      std::string path = relativeTo(inputs[k].path, roots);
+      if (path == user)
+        header = k;
+      else if (path == provider)
+        macros = k;
+    }
+    if (header == SIZE_MAX || macros == SIZE_MAX)
+      continue;
+    bool everyIncluder = true;
+    for (const auto& [key, k] : inputByPath)
+    {
+      const std::vector<size_t>& included = includedInputs[k];
+      auto at = std::find(included.begin(), included.end(), header);
+      if (at != included.end() && std::find(included.begin(), at, macros) == at)
+      {
+        fprintf(stderr, "convert: %s includes %s without including %s before it, whose macros that header uses (includerMacroHeaders)\n",
+                relativeTo(inputs[k].path, roots).c_str(), user.c_str(), provider.c_str());
+        everyIncluder = false;
+      }
+    }
+    if (everyIncluder)
+      includedInputs[header].insert(includedInputs[header].begin(), macros);
   }
   // The headers that no file includes, directly or through other headers, from the sources the
   // build compiles, the files given alone and the force-included headers: the C++ build never
