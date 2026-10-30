@@ -17726,6 +17726,20 @@ struct GlobalScope::Impl
           // Undo(first->start, second->end) : first` with first an Optional<Undo> is an Optional<Undo>).
           if (a->kind == TyKind::Class && b->kind == TyKind::Class && types.unqualified(a) != types.unqualified(b))
           {
+            // One a base of the other (`negate ? unary : expression` with a UnaryExpression, which
+            // derives from NoiseExpression, and a NoiseExpression): the derived one converts to the
+            // base, the base never to the derived through a converting constructor (C++ [expr.cond]
+            // 4.3.1). Two lvalues, the base qualified at least as the derived, make an lvalue of the
+            // base (4.1).
+            bool aBase = impl.isBaseClass(types.unqualified(a), types.unqualified(b));
+            if (aBase || impl.isBaseClass(types.unqualified(b), types.unqualified(a)))
+            {
+              const Ty* base = aBase ? a : b;
+              const Ty* derived = aBase ? b : a;
+              bool lvalues = argumentType(c->then, then, types)->kind == TyKind::LRef && argumentType(c->else_, other, types)->kind == TyKind::LRef;
+              bool binds = (base->isConst || !derived->isConst) && (base->isVolatile || !derived->isVolatile);
+              return record(e, lvalues && binds ? types.lref(base) : types.unqualified(base));
+            }
             bool toB = impl.conversionRank(then, types.unqualified(b)) < Impl::NotViable;
             bool toA = impl.conversionRank(other, types.unqualified(a)) < Impl::NotViable;
             if (toB != toA)

@@ -8629,6 +8629,35 @@ namespace
       return r;
     }
 
+    // The type of the object a conditional's operand x names when the conditional, of type t, can
+    // be that object (C++'s lvalue conditional): x an lvalue or a reference of type t or, for a
+    // class, of a class derived from it (whose t part it is). Null when x converts to t, so that
+    // the conditional is a new value (`p ? p->name : Mod::CORE_MOD`, a String and a `const char*`).
+    const Ty* conditionalObject(Expr* x, const Ty* t, Node* at)
+    {
+      if (!x || !x->ty || !(isLvalueExpression(x) || x->ty->isReference()))
+        return nullptr;
+      const Ty* xt = withCurrentArgs(types.unqualified(types.stripRef(x->ty)));
+      const Ty* want = withCurrentArgs(types.unqualified(t));
+      if (!xt || !want || types.isDependent(xt))
+        return nullptr;
+      std::vector<std::pair<std::string, uint32_t>> path;
+      if (isClass(xt) && isClass(want))
+        return basePath(xt, want, path, at) ? xt : nullptr;
+      return xt == want ? xt : nullptr;
+    }
+
+    // The address of the object the operand x names (of type xt, conditionalObject's), as an
+    // object of t: its t part for a class derived from t.
+    std::string conditionalAddress(Expr* x, const Ty* xt, const Ty* t, Node* at)
+    {
+      std::string addr = lvalue(x);
+      std::string part = addr;
+      if (isClass(xt) && canonicalClass(xt, at) != canonicalClass(t, at) && !baseAddress(xt, t, addr, part, at))
+        unsupported(at, "a conditional operand of a class derived from the result's, without the base");
+      return part;
+    }
+
     bool baseAddress(const Ty* derived, const Ty* base, const std::string& addr, std::string& out, Node* at)
     {
       if (canonicalClass(derived, at) == canonicalClass(base, at))
@@ -8938,8 +8967,10 @@ namespace
         case NodeKind::ConditionalExpr:
         {
           auto* c = static_cast<ConditionalExpr*>(e);
-          auto namesObject = [&](Expr* x) { return x && (isLvalueExpression(x) || (x->ty && x->ty->isReference())); };
-          if (c->then && namesObject(c->then) && namesObject(c->else_))
+          const Ty* t = e->ty ? types.stripRef(e->ty) : nullptr;
+          const Ty* thenObject = c->then && t ? conditionalObject(c->then, t, e) : nullptr;
+          const Ty* elseObject = thenObject ? conditionalObject(c->else_, t, e) : nullptr;
+          if (thenObject && elseObject)
           {
             // `first ? a : b` with two lvalues is an lvalue: the address of the chosen one.
             Value cond = convert(rvalue(c->cond), types.boolType(), e);
@@ -8947,12 +8978,12 @@ namespace
             fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
             size_t temps = statementTemps.size();
             startBlock(tL);
-            std::string a = lvalue(c->then);
+            std::string a = conditionalAddress(c->then, thenObject, t, e);
             destroyTempsFrom(temps);
             std::string aEnd = currentBlock;
             emitBranch(jL);
             startBlock(eL);
-            std::string b = lvalue(c->else_);
+            std::string b = conditionalAddress(c->else_, elseObject, t, e);
             destroyTempsFrom(temps);
             std::string bEnd = currentBlock;
             emitBranch(jL);
@@ -12108,19 +12139,20 @@ namespace
           Value cond = convert(rvalue(c->cond), types.boolType(), e);
           std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
           fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
-          auto namesObject = [&](Expr* x) { return x && (isLvalueExpression(x) || (x->ty && x->ty->isReference())); };
-          if (isClass(t) && namesObject(c->then) && namesObject(c->else_))
+          const Ty* thenObject = isClass(t) ? conditionalObject(c->then, t, e) : nullptr;
+          const Ty* elseObject = isClass(t) ? conditionalObject(c->else_, t, e) : nullptr;
+          if (thenObject && elseObject)
           {
             // Both branches name objects (`cond ? a : b` with lvalues or references): the result
             // is one of them, not a copy.
             size_t temps = statementTemps.size();
             startBlock(tL);
-            std::string a = lvalue(c->then);
+            std::string a = conditionalAddress(c->then, thenObject, t, e);
             destroyTempsFrom(temps);
             std::string aEnd = currentBlock;
             emitBranch(jL);
             startBlock(eL);
-            std::string b = lvalue(c->else_);
+            std::string b = conditionalAddress(c->else_, elseObject, t, e);
             destroyTempsFrom(temps);
             std::string bEnd = currentBlock;
             emitBranch(jL);

@@ -1,6 +1,5 @@
-// spec: `c ? both : alone` with lvalues of a class Both and of its second base Second (Both : First, Second) is an lvalue of Second: in the first branch, both's Second part, read and assigned through a `Second&` bound to the conditional; and `c ? none : undo` with an Optional<Undo> and an Undo lvalue is a new Optional<Undo>, the Undo converted to it (C++ [expr.cond] 4)
+// spec: `c ? both : alone` with lvalues of a class Both and of its second base Second (Both : First, Second) is an lvalue of Second: in the first branch, both's Second part, read and assigned through a `Second&` bound to the conditional; and `c ? none : undo` with an Optional<Undo> and an Undo lvalue is a new Optional<Undo>, the Undo converted to it (C++ [expr.cond] 4); a base never converts to the derived class through the derived's converting constructor: `c ? negated : plain` with Negated deriving from Expression and `implicit Negated(const Expression&)` is plain itself when c is false (NoiseExpressions::Folding::subtract)
 // found with expressions/conditional_converts_pointer_operand_to_class: the conditional of two lvalues was the address of either, of whatever type
-// pending: SILENT, the Second is both's First part (`[1] [1] 20 30`), and the Optional is the Undo's bytes (`false -1`); owner: the templates thread (conversions)
 struct First
 {
   int first = 1;
@@ -12,6 +11,14 @@ struct Second
 struct Both : First, Second
 {
   int own = 3;
+};
+struct Expression
+{
+  int value = 0;
+};
+struct Negated : Expression
+{
+  implicit Negated(const Expression& operand) { this->value = -operand.value; }
 };
 struct Undo
 {
@@ -36,5 +43,11 @@ int main()
   Optional<Undo> chosen = yes ? none : undo;
   Optional<Undo> other = no ? none : undo;
   println("{} {}", chosen.hasValue(), other.hasValue() ? other->end : -1);
+  Expression plain;
+  plain.value = 7;
+  Negated negated(plain);
+  const Expression& first = yes ? negated : plain;
+  const Expression& picked = no ? negated : plain;
+  println("{} {} {}", first.value, picked.value, &picked == &plain);
   return 0;
 }
