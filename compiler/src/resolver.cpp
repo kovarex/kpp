@@ -14840,14 +14840,17 @@ struct GlobalScope::Impl
         anyNull = anyNull || zero;
       }
       const std::vector<bool>* nulls = anyNull ? &nullConstants : nullptr;
-      if (!namePart)
+      if (!namePart && !callSets)
         return impl.chooseAmong(candidates, argTypes, classSubst, objectTy, ambiguous, nullptr, nulls);
       // The explicit template arguments (`load<bool>()`): a candidate with fewer parameters than
       // the list names (`typeIndex<T, Tail...>` with Tail known), and no pack to take the rest,
-      // is not one, nor one whose parameter is of another kind than its argument.
+      // is not one, nor one whose parameter is of another kind than its argument. An overload set
+      // among the arguments: only a candidate that takes one of its functions (takesCallSets).
       std::function<bool(FunctionDecl*, Subst&)> bind = [&](FunctionDecl* f, Subst& s)
       {
-        if (!namePart->hasTemplateArgs || namePart->templateArgs.empty())
+        if (!takesCallSets(f, s))
+          return false;
+        if (!namePart || !namePart->hasTemplateArgs || namePart->templateArgs.empty())
           return true;
         size_t n = f->templateParams.size();
         size_t before = s.pairs.size();
@@ -15218,6 +15221,45 @@ struct GlobalScope::Impl
       Expr* address; // the `&name` around it, or null
       Lookup set;
     };
+    const std::vector<OverloadSetArgument>* callSets = nullptr; // the overload sets among the arguments of the call being typed
+
+    // Whether a function of overload set `set` has exactly the function type target (what a
+    // pointer to it as the argument needs: C++ [over.over]).
+    bool setHasFunctionOf(const OverloadSetArgument& set, const Ty* target)
+    {
+      Subst qs = set.name->name.parts.size() > 1 ? impl.qualifierSubst(set.name->name, ctx(), 0, set.set.foundIn) : Subst{};
+      for (const Entry& e : *set.set.overloads)
+        if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty() &&
+            impl.declaredTypeOf(e.decl, qs.empty() ? activeSubst : &qs, 0) == target)
+          return true;
+      return false;
+    }
+
+    // Whether candidate f (its class's and explicit arguments in s) can take each overload set
+    // among the call's arguments: a parameter that is a pointer to a function or a member function
+    // of a type no function of the set has makes it no candidate. One of a type still dependent
+    // (`template<class F> add(int, F)`) is decided when the set is bound.
+    bool takesCallSets(FunctionDecl* f, Subst& s)
+    {
+      if (!callSets)
+        return true;
+      const Ty* ft = impl.declaredTypeOf(f, s.pairs.empty() ? nullptr : &s, 0);
+      if (!ft || ft->kind != TyKind::Function)
+        return true;
+      for (const OverloadSetArgument& set : *callSets)
+      {
+        if (set.index >= ft->args.size() || !set.set.overloads)
+          continue;
+        const Ty* pt = types.unqualified(types.stripRef(ft->args[set.index]));
+        const Ty* target = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
+        if (!target || target->kind != TyKind::Function || types.isDependent(target))
+          continue;
+        if (!setHasFunctionOf(set, target))
+          return false;
+      }
+      return true;
+    }
+
     bool overloadSetArgument(Expr* a, size_t index, OverloadSetArgument& out)
     {
       while (a && a->kind == NodeKind::ParenExpr)
@@ -15545,6 +15587,13 @@ struct GlobalScope::Impl
           walked[i] = types.unknown();
         }
       WalkedArgs walkedArgsScope(*this, c->args, std::move(walked));
+      struct SetsScope
+      {
+        const std::vector<OverloadSetArgument>*& current;
+        const std::vector<OverloadSetArgument>* saved;
+        ~SetsScope() { current = saved; }
+      } setsScope{callSets, callSets};
+      callSets = sets.empty() ? nullptr : &sets;
       Expr* callee = c->callee;
       bool ambiguous = false;
       if (callee->kind == NodeKind::NameExpr)

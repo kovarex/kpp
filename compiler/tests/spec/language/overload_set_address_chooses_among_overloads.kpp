@@ -1,6 +1,5 @@
 // spec: the address of an overloaded member function passed to a call with several candidates makes viable only the candidates with a parameter type one of the functions has, and selects that function: `hs.add(1, &Handler::remove)` with add(int, ControllerAction) and add(int, CommonAction) and two functions named remove calls the second add with remove(int, const Adapter&), as a name of one function (`&Handler::other`, `&Handler::single`) already chooses
 // factorio: InputActionHandler::getHandlers' `handlers.add(InputActionType::RemoveCables, &InputActionHandler::removeCables)`, with removeCables(const InputAction&, const GameAdapter&) and removeCables(Entity*, const MapPosition&, const GameAdapter&): registered as a controller action, the handler was called with the player's Controller where its GameAdapter is, found no selected entity and removed no cable (CircuitNetwork, LatencyInput and UndoRedo: 3 failed checks, all passing with the handler named through a CommonAction variable)
-// pending: SILENT, the first add is called, the pointer converted to its parameter type (`1 0 2 0 2 1`); owner: the templates thread (overload resolution)
 struct Controller
 {
   int c = 1;
