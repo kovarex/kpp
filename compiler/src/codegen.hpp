@@ -18,6 +18,7 @@ struct CodegenResult
   size_t structs = 0;
   std::vector<bool> changedModules; // rebuildLLVM: which modules it assembled again (the others' texts are empty here)
   size_t emittedAgain = 0;          // rebuildLLVM: the functions it emitted (the changed and added ones, those that inlined a changed body, first uses)
+  std::string declined;             // rebuildLLVM: why it did not rebuild (rebuilt false), for the server's log
 };
 
 // Codegen's state kept between builds by the compile server (docs/compile-speed.md, step 5b): the
@@ -51,11 +52,12 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
 // added ones (plain program functions), drops what the removed ones' and the old bodies' emissions
 // added (their definitions, their lambdas' operators, their static locals), and assembles again the
 // modules that changed: result.changedModules says which, the others' texts are left empty. The
-// lists hold program FunctionDecls, never instances; the functions (instances included) whose
-// emission inlined a changed or removed body, or ran it in a constant fold, are emitted again too.
-// The callers of an edited function come in changedBodies (the server's walksReading): codegen knows
+// lists hold FunctionDecls, never instances: those of a template (or of a local class) are skipped,
+// what is emitted of them being their instances. The functions (instances included) whose emission
+// inlined a changed or removed body, or ran it in a constant fold, are emitted again too. The
+// callers of an edited function come in changedBodies (the server's walksReading): codegen knows
 // only the callers that inline, and one that only called it inlines it once it is trivial. rebuilt
-// is false when it cannot (an error, a change to the shared declarations): the session is then
-// unusable, and the caller builds from scratch.
+// is false when it cannot (an error, a change to the shared declarations; result.declined says
+// which): the session is then unusable, and the caller builds from scratch.
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
                           const std::vector<FunctionDecl*>& removed, bool& rebuilt);

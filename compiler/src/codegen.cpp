@@ -16112,6 +16112,19 @@ namespace
         }
       }
     }
+
+    // Whether the build emits f as one of the program's own functions (collectFunctions reaches it):
+    // a definition outside templates and outside function bodies (a local class's functions are
+    // emitted where they are used).
+    bool isProgramFunction(FunctionDecl* f)
+    {
+      if (!f->body || !f->templateParams.empty() || global.isTemplateContext(f) || (f->file && f->file->isImported))
+        return false;
+      for (Decl* p = f->parent; p; p = p->parent)
+        if (p->kind == NodeKind::FunctionDecl || (p->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(p)->templateParams.empty()))
+          return false;
+      return true;
+    }
   };
 }
 
@@ -16771,7 +16784,10 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   rebuilt = false;
   CodegenResult out;
   if (!session.usable || !session.shared || session.emitters.empty())
+  {
+    out.declined = "no session kept from the last build";
     return out;
+  }
   session.usable = false; // until this rebuild is done: one that fails leaves the session to a build from scratch
   Shared& sh = *session.shared;
   std::vector<std::unique_ptr<Emitter>>& emitters = session.emitters;
@@ -16780,7 +16796,9 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     em->lineStarts.clear(); // the edited files' lines moved
   // What the changed and removed functions' emissions added goes (their definitions, their
   // lambdas' operators, their static locals); the changed and the added ones are emitted again,
-  // each in its file's module as a program function is.
+  // each in its file's module as a program function is. A template's function (or a local class's)
+  // among them, a caller the server passes, is no program function: what it is in the program are
+  // its instances, emitted again below when they hold a changed body.
   std::unordered_set<std::string> owners;
   std::vector<Instantiation> level;
   auto programFunction = [&](FunctionDecl* f) -> Instantiation
@@ -16789,14 +16807,17 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     return {f, {}, nullptr, it == sh.fileModule.end() ? 0 : it->second, "", "", 0};
   };
   for (FunctionDecl* f : changedBodies)
-  {
-    owners.insert(e.functionName(f, {}, nullptr));
-    level.push_back(programFunction(f));
-  }
+    if (e.isProgramFunction(f))
+    {
+      owners.insert(e.functionName(f, {}, nullptr));
+      level.push_back(programFunction(f));
+    }
   for (FunctionDecl* f : removed)
-    owners.insert(e.functionName(f, {}, nullptr));
+    if (e.isProgramFunction(f))
+      owners.insert(e.functionName(f, {}, nullptr));
   for (FunctionDecl* f : added)
-    level.push_back(programFunction(f));
+    if (e.isProgramFunction(f))
+      level.push_back(programFunction(f));
   // Each emitter's verdicts on which callees are trivial (inlined) were taken on the old bodies:
   // taken again. (A changed body that is trivial now is inlined by callers that only called it
   // before, which codegen does not know: the server passes an edited function's callers too.)
@@ -16930,6 +16951,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
         }
         catch (Emitter::Unsupported&)
         {
+          out.declined = "the call operator " + o.name + " could not be emitted";
           return out;
         }
         ++out.emittedAgain;
@@ -16937,11 +16959,22 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     collectNextLevel(emitters, level);
   }
   // An error, or a first use that added to the shared declarations (in every module): from scratch.
+  // What it was goes to the server's log (the first one, cut).
+  auto cut = [](const std::string& text) { return text.substr(0, std::min(text.find('\n'), size_t(240))); };
   for (auto& em : emitters)
     if (!em->errors.empty())
+    {
+      out.declined = "an error: " + cut(em->errors.front());
       return out;
+    }
   if (sh.decls.entries.size() + sh.shared.entries.size() != sharedBefore)
+  {
+    std::vector<std::string> added = sh.decls.entries;
+    added.insert(added.end(), sh.shared.entries.begin(), sh.shared.entries.end());
+    std::sort(added.begin(), added.end());
+    out.declined = std::to_string(added.size()) + " first use(s) added to the shared declarations, the first: " + cut(added.front());
     return out;
+  }
   std::vector<unsigned> which;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {

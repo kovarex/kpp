@@ -883,8 +883,9 @@ namespace
     if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
     {
       cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, rebuilt);
-      logBuildNote(rebuilt ? "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) + " module(s) assembled again"
-                           : "codegen: rebuildLLVM declined, the program generated in full");
+      logBuildNote(rebuilt ? "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
+                               " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again"
+                           : "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full");
     }
     build.rebuildCodegen = false;
     if (!rebuilt)
