@@ -381,18 +381,26 @@ before relying on the recorded uses.
      and a body that differs must be eligible: not a template's or a class template's member, not
      constexpr or consteval, no `auto` or `decltype` before it (a deduced return type types callers
      elsewhere). The file must have no parse errors and no checker errors in the kept build.
-  2. **The splice.** Every node of the kept file indexes its tokens, so they keep their places and
-     take the new text's offsets; the changed bodies' new tokens are appended after them and parsed
-     there (`parseBlockAt`), and each new body replaces the old one in the kept FunctionDecl (the
-     declaration objects, which the rest of the program points at, stay). The file's current token
-     order and bodies are kept for its next edit. A new body with a `(name) op x` cast to rewrite
-     (finishIndex's work) is not spliced.
+  2. **The graft.** The kept file takes the new version's tokens and text. Every node it keeps is
+     pointed at them: a diff of the two token streams (Myers', between the common prefix and
+     suffix; given up past 4,000 edits) maps each old token to its new place, and a walk over every
+     node of the file (`forEachNode`, ast_walk.cpp, which follows what InstanceCopier copies)
+     rewrites each token index a node holds (`remapNodeTokens`). Each changed function then takes
+     its body from the new parse, whose arena the kept build keeps (`Build::grafts`); the body's
+     declarations and literals are made the kept file's, and their parent the kept function. The
+     declaration objects, which the rest of the program points at, stay; the kept instance
+     statistics' places in the file move with its tokens. A new body with a `(name) op x` cast to
+     rewrite (finishIndex's work) is not grafted. (The first version appended the new bodies'
+     tokens after the kept ones and parsed them there: a statistic's "first at" could then fall
+     out of the text's order, and the new bodies' declarations had no parent. The walk and the
+     token map are what step 4 builds on.)
   3. **The check.** The changed files are walked again (their recorded reads forgotten first). The
      result is used only if the walk made no instance and reused none that only codegen had made
-     (`late` records), every instance the old bodies requested and the new ones do not is still
-     requested by some other unit (step 2's recorded uses), and no statistic's "first at" falls on
-     the appended tokens (their order is not the text's). Otherwise the request is built from
-     scratch, and the kept build (changed by then) is dropped.
+     (`late` records) and every instance the old bodies requested and the new ones do not is still
+     requested by some other unit (step 2's recorded uses). Otherwise the request is built from
+     scratch, and the kept build (changed by then) is dropped. A crash in the server now logs its
+     stack (module offsets, and names when kppc has a PDB): the graft's first version crashed in
+     codegen, a literal still naming the new parse's file, found that way.
   4. **The reports** are what a build from scratch prints: the lexer's counts from lexing every
      file again into a symbol table of its own (the kept one holds earlier versions' identifiers
      too, 0.07 s), the parse counts the new parse gave, the resolve's statistics from the kept

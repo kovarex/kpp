@@ -1,6 +1,8 @@
 #include "server.hpp"
 
 #include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
 #include <fcntl.h>
 #include <io.h>
 #include <atomic>
@@ -60,6 +62,40 @@ namespace
       fprintf(f, "%04d-%02d-%02d %02d:%02d:%02d.%03d [%lu] %s\n", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds,
               GetCurrentProcessId(), text);
       fclose(f);
+    }
+  }
+
+  // The stack of a crash, a frame a line: the module and offset (resolvable with the module's map or
+  // PDB later) and the function's name when the module has symbols.
+  void logStack(CONTEXT* context)
+  {
+    HANDLE process = GetCurrentProcess(), thread = GetCurrentThread();
+    SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+    SymInitialize(process, nullptr, TRUE);
+    CONTEXT c = *context;
+    STACKFRAME64 frame{};
+    frame.AddrPC.Offset = c.Rip;
+    frame.AddrPC.Mode = AddrModeFlat;
+    frame.AddrFrame.Offset = c.Rbp;
+    frame.AddrFrame.Mode = AddrModeFlat;
+    frame.AddrStack.Offset = c.Rsp;
+    frame.AddrStack.Mode = AddrModeFlat;
+    for (int n = 0; n < 40 && StackWalk64(IMAGE_FILE_MACHINE_AMD64, process, thread, &frame, &c, nullptr, SymFunctionTableAccess64,
+                                          SymGetModuleBase64, nullptr) && frame.AddrPC.Offset; ++n)
+    {
+      DWORD64 address = frame.AddrPC.Offset;
+      char module[MAX_PATH] = "?";
+      HMODULE handle = nullptr;
+      if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)address, &handle))
+        GetModuleFileNameA(handle, module, sizeof module);
+      const char* base = strrchr(module, '\\');
+      char symbolBuffer[sizeof(SYMBOL_INFO) + 256] = {};
+      auto* symbol = reinterpret_cast<SYMBOL_INFO*>(symbolBuffer);
+      symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+      symbol->MaxNameLen = 255;
+      DWORD64 displacement = 0;
+      bool named = SymFromAddr(process, address, &displacement, symbol);
+      logLine("  %s+0x%llx %s", base ? base + 1 : module, (unsigned long long)(address - DWORD64(handle)), named ? symbol->Name : "");
     }
   }
 
@@ -867,6 +903,7 @@ int runServer(const char* key, CompileFunction compile)
   SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* e) -> LONG
   {
     logLine("crashed in build %zu: exception 0x%08lX at %p", builds, e->ExceptionRecord->ExceptionCode, e->ExceptionRecord->ExceptionAddress);
+    logStack(e->ContextRecord);
     return EXCEPTION_EXECUTE_HANDLER;
   });
   signal(SIGABRT, [](int) { logLine("aborted in build %zu", builds); });

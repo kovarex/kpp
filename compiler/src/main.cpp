@@ -4,12 +4,14 @@
 #include "convert.hpp"
 #include "parser.hpp"
 #include "resolver.hpp"
+#include "ast_walk.hpp"
 #include "server.hpp"
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <unordered_set>
 #include <cctype>
 #include <cstring>
 #include <exception>
@@ -177,13 +179,9 @@ namespace
     GlobalScope::InstantiationStats instantiation{}; // at the end of the resolve (codegen instantiates more)
     ResolveStats instanceStats;
     bool keepable = false; // the whole pipeline ran as one build of the files (not --repeat, --convert, --dump)
-    // A file whose bodies were replaced (step 3b): its tokens in the order of its text now (lexed
-    // holds them in the order its nodes index them, the new bodies' appended), each one's place in
-    // lexed, and its function bodies in the text's order. Empty for a file as first parsed.
-    std::vector<std::vector<Token>> currentTokens;
-    std::vector<std::vector<uint32_t>> nodeIndex;
-    std::vector<std::vector<Body>> currentBodies;
-    std::vector<uint32_t> firstAppended; // where the appended bodies' tokens begin in lexed
+    // The parses later versions of files were taken from (step 3b): their arenas hold the nodes
+    // grafted into the kept files.
+    std::vector<std::unique_ptr<ParsedFile>> grafts;
   };
   std::mutex keptMutex;              // held by a server's build until it has kept its result
   std::unique_ptr<Build> keptBuild;  // a server's last build (under keptMutex)
@@ -1390,8 +1388,7 @@ namespace
   bool bodiesOnly(Build& kept, size_t i, std::string text, ChangedFile& out, std::string& why)
   {
     const ParsedFile& old = *kept.parsed[i];
-    bool spliced = i < kept.currentTokens.size() && !kept.currentTokens[i].empty();
-    const std::vector<Token>& oldTokens = spliced ? kept.currentTokens[i] : kept.lexed[i].tokens;
+    const std::vector<Token>& oldTokens = kept.lexed[i].tokens;
     std::string_view oldText = kept.files[i].text;
     if (!old.diagnostics.empty() || kept.files[i].path.extension() != ".kpp")
       return why = "parse errors, or not a .kpp file", false;
@@ -1409,9 +1406,7 @@ namespace
     parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
     if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
       return why = "the new text has errors", false;
-    if (spliced)
-      out.oldBodies = kept.currentBodies[i];
-    else if (!collectBodies(old.decls, oldTokens, false, out.oldBodies))
+    if (!collectBodies(old.decls, oldTokens, false, out.oldBodies))
       return why = "the function bodies cannot be paired", false;
     if (!collectBodies(out.parsed->decls, out.tokens, false, out.newBodies) || out.oldBodies.size() != out.newBodies.size())
       return why = "the function bodies cannot be paired", false;
@@ -1448,118 +1443,160 @@ namespace
     return true;
   }
 
-  // Moves the new bodies into the kept declarations. The kept tokens keep their places (every node
-  // of the file indexes them) and take the new text's offsets; the changed bodies' new tokens are
-  // appended after them and parsed there. False (the kept build is then unusable) when a new body
-  // needs what only indexing the whole file gives (a `(name) op x` cast to rewrite).
-  bool spliceBodies(Build& kept, ChangedFile& c, uint32_t& appendedFrom, std::string& why)
+  // Where each of a file's old tokens is in its new tokens (UINT32_MAX: gone), by a diff of the two
+  // token streams (Myers', on the stretch between the common prefix and suffix). False when the
+  // versions differ too much for a diff worth keeping.
+  bool tokenMap(const std::vector<Token>& a, std::string_view ta, const std::vector<Token>& b, std::string_view tb, std::vector<uint32_t>& map)
+  {
+    size_t n = a.size(), m = b.size();
+    map.assign(n, UINT32_MAX);
+    size_t prefix = 0;
+    while (prefix < n && prefix < m && sameToken(a[prefix], ta, b[prefix], tb))
+      map[prefix] = uint32_t(prefix), ++prefix;
+    size_t suffix = 0;
+    while (suffix < n - prefix && suffix < m - prefix && sameToken(a[n - 1 - suffix], ta, b[m - 1 - suffix], tb))
+      map[n - 1 - suffix] = uint32_t(m - 1 - suffix), ++suffix;
+    int64_t N = int64_t(n - prefix - suffix), M = int64_t(m - prefix - suffix);
+    if (N == 0 || M == 0)
+      return true;
+    auto same = [&](int64_t x, int64_t y) { return sameToken(a[prefix + x], ta, b[prefix + y], tb); };
+    const int64_t maxD = std::min<int64_t>(N + M, 4000);
+    int64_t offset = maxD + 1;
+    std::vector<int64_t> v(size_t(2 * offset + 1), 0);
+    std::vector<std::vector<int64_t>> trace;
+    int64_t found = -1;
+    for (int64_t d = 0; d <= maxD && found < 0; ++d)
+    {
+      if (int64_t(trace.size()) * (2 * offset + 1) > 64'000'000)
+        return false;
+      trace.push_back(v);
+      for (int64_t k = -d; k <= d; k += 2)
+      {
+        int64_t x = (k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1])) ? v[offset + k + 1] : v[offset + k - 1] + 1;
+        int64_t y = x - k;
+        while (x < N && y < M && same(x, y))
+          ++x, ++y;
+        v[offset + k] = x;
+        if (x >= N && y >= M)
+        {
+          found = d;
+          break;
+        }
+      }
+    }
+    if (found < 0)
+      return false;
+    // Back through the trace: the diagonal moves are the tokens the two versions share.
+    int64_t x = N, y = M;
+    for (int64_t d = found; d > 0; --d)
+    {
+      const std::vector<int64_t>& pv = trace[size_t(d)];
+      int64_t k = x - y;
+      int64_t prevK = (k == -d || (k != d && pv[offset + k - 1] < pv[offset + k + 1])) ? k + 1 : k - 1;
+      int64_t prevX = pv[offset + prevK], prevY = prevX - prevK;
+      while (x > prevX && y > prevY)
+      {
+        --x, --y;
+        map[prefix + size_t(x)] = uint32_t(prefix + size_t(y));
+      }
+      x = prevX, y = prevY;
+    }
+    while (x > 0 && y > 0)
+    {
+      --x, --y;
+      map[prefix + size_t(x)] = uint32_t(prefix + size_t(y));
+    }
+    return true;
+  }
+
+  // Moves the new bodies into the kept declarations. The file takes its new tokens and text: every
+  // node it keeps is pointed at the new tokens (through a diff of the two versions), and each
+  // changed function takes its new body from the new parse, whose arena the kept build keeps. The
+  // declaration objects, which the rest of the program points at, stay. False (the kept build is
+  // then unusable) when a new body needs what only indexing the whole file gives (a `(name) op x`
+  // cast to rewrite) or a kept node's token has no place in the new version.
+  bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
   {
     size_t i = c.index;
-    if (kept.currentTokens.size() < kept.files.size())
-    {
-      kept.currentTokens.resize(kept.files.size());
-      kept.nodeIndex.resize(kept.files.size());
-      kept.currentBodies.resize(kept.files.size());
-    }
-    std::vector<Token> merged = kept.lexed[i].tokens;
-    merged.pop_back(); // its End token: appended again after the new bodies
-    std::vector<uint32_t>& index = kept.nodeIndex[i];
-    size_t oldCount = kept.currentTokens[i].empty() ? kept.lexed[i].tokens.size() : kept.currentTokens[i].size();
-    if (index.empty())
-      for (uint32_t p = 0; p < oldCount; ++p)
-        index.push_back(p); // as first parsed: the nodes index the text's order
-    std::vector<uint32_t> newIndex(c.tokens.size(), UINT32_MAX);
-    std::vector<bool> changedBody(c.oldBodies.size(), false);
+    ParsedFile& file = *kept.parsed[i];
+    std::vector<uint32_t> map;
+    if (!tokenMap(kept.lexed[i].tokens, kept.files[i].text, c.tokens, c.text, map))
+      return why = "the two versions differ too much to pair their tokens", false;
+    std::unordered_set<Node*> replaced; // the old bodies' nodes: dropped, not pointed anywhere
     for (size_t k : c.changed)
-      changedBody[k] = true;
-    // The new bodies' tokens go after all the kept ones (their nodes, made next, index them there).
-    std::vector<uint32_t> starts(c.oldBodies.size(), 0);
-    if (kept.firstAppended.size() < kept.files.size())
-      kept.firstAppended.resize(kept.files.size(), UINT32_MAX);
-    if (kept.firstAppended[i] == UINT32_MAX)
-      kept.firstAppended[i] = uint32_t(merged.size());
-    appendedFrom = kept.firstAppended[i]; // what earlier edits appended is out of the text's order too
-    for (size_t k : c.changed)
+      forEachNode(c.oldBodies[k].f->body, [&](Node* n) { replaced.insert(n); });
+    bool lost = false;
+    forEachNode(file.decls, [&](Node* n)
     {
-      starts[k] = uint32_t(merged.size());
-      merged.insert(merged.end(), c.tokens.begin() + c.newBodies[k].open, c.tokens.begin() + c.newBodies[k].close + 1);
-      for (uint32_t q = c.newBodies[k].open; q <= c.newBodies[k].close; ++q)
-        newIndex[q] = starts[k] + (q - c.newBodies[k].open);
-    }
-    merged.push_back(c.tokens.back()); // the End token
-    // The tokens that stay (all but the changed bodies') take the new text's offsets.
-    size_t a = 0, b = 0;
-    for (size_t k = 0; k <= c.oldBodies.size(); ++k)
-    {
-      size_t aEnd = k < c.oldBodies.size() ? c.oldBodies[k].open : oldCount - 1; // (not the End token)
-      for (; a < aEnd; ++a, ++b)
+      if (replaced.count(n))
+        return;
+      remapNodeTokens(n, [&](uint32_t t)
       {
-        merged[index[a]].offset = c.tokens[b].offset;
-        merged[index[a]].length = c.tokens[b].length;
-        newIndex[b] = index[a];
-      }
-      if (k == c.oldBodies.size())
-        break;
-      const Body& ob = c.oldBodies[k];
-      const Body& nb = c.newBodies[k];
-      for (uint32_t x = 0; x <= ob.close - ob.open; ++x)
-        if (!changedBody[k])
+        if (t < map.size() && map[t] != UINT32_MAX)
+          return map[t];
+        lost = true;
+        return t;
+      });
+    });
+    if (lost)
+      return why = "a kept node's token has no place in the new version", false;
+    for (auto& [b, where] : c.parsed->castCandidates)
+      if (where && where->kind == NodeKind::FunctionDecl)
+        for (size_t k : c.changed)
+          if (where == c.newBodies[k].f)
+            return why = "a new body has a cast to rewrite", false;
+    // The new bodies, their declarations (locals, lambdas' closures) now the kept file's and their
+    // parent the kept function where it was the new parse's.
+    for (size_t k : c.changed)
+    {
+      FunctionDecl* keptF = c.oldBodies[k].f;
+      FunctionDecl* newF = c.newBodies[k].f;
+      keptF->body = newF->body;
+      forEachNode(keptF->body, [&](Node* n)
+      {
+        if (n->kind > NodeKind::PackType && n->kind <= NodeKind::ImportDecl)
         {
-          merged[index[ob.open + x]].offset = c.tokens[nb.open + x].offset;
-          merged[index[ob.open + x]].length = c.tokens[nb.open + x].length;
-          newIndex[nb.open + x] = index[ob.open + x];
+          auto* d = static_cast<Decl*>(n);
+          d->file = &file;
+          if (d->parent == newF)
+            d->parent = keptF;
         }
-        else
-        {
-          merged[index[ob.open + x]].offset = c.tokens[nb.open].offset; // the old body's: no node reads them any more
-          merged[index[ob.open + x]].length = 0;
-        }
-      a = ob.close + 1;
-      b = nb.close + 1;
+        else if (n->kind == NodeKind::LiteralExpr)
+          static_cast<LiteralExpr*>(n)->file = &file; // its spelling is read from its file's tokens
+      });
     }
-    newIndex.back() = uint32_t(merged.size() - 1);
-    for (uint32_t p : newIndex)
-      if (p == UINT32_MAX)
-        return why = "the file's tokens could not be paired", false;
     kept.files[i].text = std::move(c.text);
-    kept.lexed[i].tokens = std::move(merged);
+    kept.lexed[i].tokens = std::move(c.tokens);
     kept.lexed[i].lineCount = c.lexed.lineCount;
     kept.lexed[i].errorCount = c.lexed.errorCount;
-    ParsedFile& file = *kept.parsed[i];
     file.text = kept.files[i].text;
     file.tokens = &kept.lexed[i].tokens;
-    size_t casts = file.castCandidates.size(), diagnostics = file.diagnostics.size();
-    for (size_t k : c.changed)
-      c.oldBodies[k].f->body = parseBlockAt(kept.lexed[i].tokens, file.text, *kept.symbols, file, starts[k], &kept.options.configValues);
-    if (file.castCandidates.size() != casts || file.diagnostics.size() != diagnostics)
-      return why = "a new body has a cast to rewrite or a parse error", false;
     file.declCount = c.parsed->declCount;
     file.functionBodies = c.parsed->functionBodies;
     file.nodeCount = c.parsed->nodeCount;
     file.arenaBytesReported = c.parsed->arena.bytesAllocated();
-    // The file as its text orders it now, for the next edit's comparison.
-    kept.currentBodies[i].clear();
-    for (size_t k = 0; k < c.oldBodies.size(); ++k)
-      kept.currentBodies[i].push_back({c.oldBodies[k].f, c.newBodies[k].open, c.newBodies[k].close, c.newBodies[k].eligible});
-    kept.nodeIndex[i] = std::move(newIndex);
-    kept.currentTokens[i] = std::move(c.tokens);
+    kept.grafts.push_back(std::move(c.parsed)); // its arena holds the new bodies
+    // The kept instance statistics' places in this file (an instance of a template it declares)
+    // move with its tokens; one in a replaced body cannot be told, and the build is from scratch.
+    auto moved = [&](uint32_t& token)
+    {
+      if (token < map.size() && map[token] != UINT32_MAX)
+        token = map[token];
+      else
+        lost = true;
+    };
+    for (auto& [symbol, where] : kept.instanceStats.unresolvedFirst)
+      if (where.file == i)
+        moved(where.token);
+    for (auto& [symbol, where] : kept.instanceStats.missingMembersFirst)
+      if (where.file == i)
+        moved(where.token);
+    for (auto& [key, site] : kept.instanceStats.why)
+      if (site.file == &file)
+        moved(site.token);
+    if (lost)
+      return why = "an instance's statistic names a place in a replaced body", false;
     return true;
-  }
-
-  // Whether a file's statistics name a place among the appended tokens (their order there is not
-  // the text's, so a "first at" could differ from a build from scratch's).
-  bool namesAppendedTokens(const ResolveStats& s, uint32_t appendedFrom)
-  {
-    for (auto& [symbol, where] : s.unresolvedFirst)
-      if (where.token >= appendedFrom)
-        return true;
-    for (auto& [symbol, where] : s.missingMembersFirst)
-      if (where.token >= appendedFrom)
-        return true;
-    for (auto& [key, site] : s.why)
-      if (site.token >= appendedFrom)
-        return true;
-    return false;
   }
 
   // The kept build again with the files' new texts, when they changed inside eligible function
@@ -1595,9 +1632,8 @@ namespace
       }
     double parseTime = seconds(Clock::now() - start);
     keptChanged = true;
-    std::vector<uint32_t> appendedFrom(changed.size());
     for (size_t n = 0; n < changed.size(); ++n)
-      if (!spliceBodies(kept, changed[n], appendedFrom[n], why))
+      if (!graftBodies(kept, changed[n], why))
       {
         logBuildNote("not incremental: " + kept.files[changed[n].index].path.string() + ": " + why);
         return false;
@@ -1632,8 +1668,6 @@ namespace
       std::set_difference(before[n].begin(), before[n].end(), after.begin(), after.end(), std::back_inserter(dropped));
       if (!dropped.empty() && !global.usedElsewhere(dropped, file))
         same = false, why = "an old body's instance nobody else asks for";
-      else if (namesAppendedTokens(kept.stats[changed[n].index], appendedFrom[n]))
-        same = false, why = "a statistic's \"first at\" is in a new body";
     }
     if (!same)
     {

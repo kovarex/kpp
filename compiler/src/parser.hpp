@@ -21,9 +21,3 @@ using ConfigValues = std::map<std::string, ConfigValue>;
 // cMode: the text is preprocessed C (imported headers): every declaration gets C linkage.
 void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols, ParsedFile& out, bool cMode = false,
                const ConfigValues* config = nullptr);
-
-// One function body, `{...}` at tokens[start], parsed into out's arena: a compile server's kept
-// file whose bodies alone changed gets the new bodies this way (docs/compile-speed.md, step 3b).
-// The tokens are already filtered as parseFile filters a file's.
-Stmt* parseBlockAt(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols, ParsedFile& out, uint32_t start,
-                   const ConfigValues* config = nullptr);
