@@ -36,7 +36,7 @@ out = os.path.abspath(args[1]) if len(args) > 1 else os.path.join(here, 'kpp', '
 suites = set()
 for f in glob.glob('C:/Factorio/tests/**/*.cpp', recursive=True):
     text = open(f, encoding='utf-8', errors='replace').read()
-    for m in re.finditer(r'^\s*SUITE\((\w+)\)', text, re.M):
+    for m in re.finditer(r'^\s*SUITE\s*\(\s*(\w+)\s*\)', text, re.M):  # `SUITE (Movement)` too
         suites.add(m.group(1))
 if only:
     unknown = only - suites
