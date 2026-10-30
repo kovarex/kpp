@@ -283,6 +283,10 @@ public:
   bool invalidateReaders(const std::vector<uint32_t>& symbols, const std::vector<const Decl*>& decls, std::vector<const ParsedFile*>& files,
                          std::vector<const Decl*>* walks = nullptr);
   uint32_t functionSymbolOf(const FunctionDecl* f);
+  // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
+  // function, whose code may hold its body (codegen inlines trivial functions).
+  std::vector<const Decl*> walksReading(const std::vector<uint32_t>& symbols);
+  bool instancesRead(const std::vector<uint32_t>& symbols); // whether an instance or a class instance read one of the names
   std::vector<FunctionDecl*> outOfLineDefinitions(const Decl* cls); // the out-of-line member definitions attached to a class
 
   // Queries for code generation (after resolveFile ran on every file).

@@ -458,6 +458,27 @@ name `getPrototype` (names are recorded by symbol, step 2, so every `getPrototyp
 test adds a signature change, an overload added (that changes which function another file calls)
 and taken out, each built this way and checked against a new process's build.
 
+### Step 5b wired: codegen's kept session in the server (opt-in for now)
+
+The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before
+the program it points into), filled by a server's build from scratch (`generateLLVM(..., keep)`). An
+incremental build hands `rebuildLLVM` what changed: the functions whose bodies 3b replaced, the
+functions step 4 added and removed, the functions whose walks read a changed name (step 4's
+readers), and every program function whose walk read an edited function's name (its callers:
+codegen inlines trivial bodies). It runs codegen in full instead when an instance read an edited
+name (an instance's code may hold the body), a global's initializer read one, a module's object or
+hash file is missing (an unchanged module is not assembled again, so it has no text to compile), or
+rebuildLLVM declines. The IR report counts each module's bytes as last built for the modules not
+assembled again; clang skips them.
+
+Full game, a body edit of `AchievementAccessor::getStateInternal` through one server: resolve
+0.071 s, **codegen 0.253 s**, clang 0.55 s (one module), link 4.3 s. `--verify-incremental` found
+the IR and the modules the same as from scratch but the report's function count lower (by 7 per
+rebuild: reported to the codegen thread), so the codegen rebuild is on only with
+`KPP_REBUILD_CODEGEN=1` until that is fixed; without it a server's incremental build runs codegen
+in full, as before. A body edit of `BuildEntityAchievement::setup` runs codegen in full either way:
+instances read the name `setup` (names are recorded by symbol).
+
 ### The link in the edit loop (2026-10-30, not changed)
 
 The same 64 objects of the full game linked several ways (scratchpad linkvariants.ps1, the

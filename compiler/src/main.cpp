@@ -184,6 +184,13 @@ namespace
     // The parses later versions of files were taken from (step 3b): their arenas hold the nodes
     // grafted into the kept files.
     std::vector<std::unique_ptr<ParsedFile>> grafts;
+    // Codegen's kept state (step 5b) and what the next build changes for it; each module's size in
+    // bytes as last built (the IR report counts the modules rebuildLLVM did not assemble again).
+    // Declared last: destroyed first, before the program it points into.
+    std::vector<size_t> moduleBytes;
+    std::vector<FunctionDecl*> changedBodies, addedFunctions, removedFunctions;
+    bool rebuildCodegen = false;
+    CodegenSessionPtr codegen;
   };
   std::mutex keptMutex;              // held by a server's build until it has kept its result
   std::unique_ptr<Build> keptBuild;  // a server's last build (under keptMutex)
@@ -829,8 +836,12 @@ namespace
       report("static_assert: %zu failed in template instances' functions never emitted (unused, so not errors, as in C++)\n", unused);
   }
 
-  void runCodegen(std::vector<std::unique_ptr<ParsedFile>>& parsed, GlobalScope& global, SymbolTable& symbols, const Options& options)
+  void runCodegen(Build& build)
   {
+    std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
+    GlobalScope& global = *build.global;
+    SymbolTable& symbols = *build.symbols;
+    const Options& options = build.options;
     using Clock = std::chrono::steady_clock;
     // --emit-llvm wants the whole program in one file; an executable is built from several modules
     // compiled in parallel (one per group of files), unless --modules 1.
@@ -838,13 +849,35 @@ namespace
     if (!options.emitLLVM.empty())
       modules = 1;
     auto start = Clock::now();
-    CodegenResult cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing,
-                                    options.codegenThreads ? options.codegenThreads : options.threads, options.keepGoing && options.stubMissing,
-                                    !options.noInline);
+    // A compile server's incremental build: codegen's kept session emits again only what changed
+    // (rebuildLLVM); it declines (an error, a change to the shared declarations) and the program is
+    // generated in full, as when nothing is kept.
+    CodegenResult cg;
+    bool rebuilt = false;
+    if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
+    {
+      cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, rebuilt);
+      logBuildNote(rebuilt ? "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) + " module(s) assembled again"
+                           : "codegen: rebuildLLVM declined, the program generated in full");
+    }
+    build.rebuildCodegen = false;
+    if (!rebuilt)
+    {
+      build.codegen.reset();
+      cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing, options.codegenThreads ? options.codegenThreads : options.threads,
+                        options.keepGoing && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr);
+      cg.changedModules.clear();
+    }
     double t = seconds(Clock::now() - start);
+    if (build.moduleBytes.size() != cg.modules.size())
+      build.moduleBytes.assign(cg.modules.size(), 0);
     size_t irBytes = cg.ir.size();
-    for (const std::string& m : cg.modules)
-      irBytes += m.size();
+    for (size_t k = 0; k < cg.modules.size(); ++k)
+    {
+      if (cg.changedModules.empty() || cg.changedModules[k])
+        build.moduleBytes[k] = cg.modules[k].size();
+      irBytes += build.moduleBytes[k];
+    }
     report("codegen: %.3f s, %zu functions, %zu structs, %zu bytes of IR in %zu module(s)\n", t, cg.functions, cg.structs, irBytes,
            std::max<size_t>(1, cg.modules.size()));
     if (options.keepGoing && options.stubMissing)
@@ -911,6 +944,11 @@ namespace
     {
       std::string llPath = options.exe + "." + std::to_string(k) + ".ll";
       objects[k] = options.exe + "." + std::to_string(k) + ".o";
+      if (!cg.changedModules.empty() && !cg.changedModules[k])
+      {
+        ++cached; // not assembled again: its text and object are the last build's (checked before rebuildLLVM ran)
+        return;
+      }
       // A module whose text (and optimisation level) did not change keeps its object file.
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : cg.modules[k])
@@ -1261,7 +1299,7 @@ namespace
     std::vector<std::pair<uint32_t, uint32_t>> top(total.unresolvedSymbols.begin(), total.unresolvedSymbols.end());
     std::sort(top.begin(), top.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
     if (!options.emitLLVM.empty() || !options.exe.empty())
-      runCodegen(parsed, global, symbols, options);
+      runCodegen(build);
     else if (options.convertDir.empty())
       reportCheckerErrors(global);
     if (!options.convertDir.empty())
@@ -1949,12 +1987,20 @@ namespace
       }
     double parseTime = seconds(Clock::now() - start);
     keptChanged = true;
+    kept.changedBodies.clear();
+    kept.addedFunctions.clear();
+    kept.removedFunctions.clear();
+    bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
     for (size_t n = 0; n < changed.size(); ++n)
+    {
       if (!graftBodies(kept, changed[n], why))
       {
         logBuildNote("not incremental: " + kept.files[changed[n].index].path.string() + ": " + why);
         return false;
       }
+      for (size_t k : changed[n].changed)
+        kept.changedBodies.push_back(changed[n].oldBodies[k].f);
+    }
     GlobalScope& global = *kept.global;
     GlobalScope::recordDependencies(true);
     start = Clock::now();
@@ -1973,9 +2019,13 @@ namespace
       {
         names.push_back(global.functionSymbolOf(f));
         gone.push_back(f);
+        kept.removedFunctions.push_back(f);
       }
       for (auto& [f, container] : c.added)
+      {
         names.push_back(global.functionSymbolOf(f));
+        kept.addedFunctions.push_back(f);
+      }
       if (!graftFunctions(kept, c, why))
       {
         logBuildNote("not incremental: " + kept.files[c.index].path.string() + ": " + why);
@@ -1985,7 +2035,8 @@ namespace
     if (!names.empty())
     {
       std::vector<const ParsedFile*> readers;
-      if (!global.invalidateReaders(names, gone, readers))
+      std::vector<const Decl*> readingWalks;
+      if (!global.invalidateReaders(names, gone, readers, &readingWalks))
       {
         logBuildNote("not incremental: an instance or a scope's relations read a changed function's name");
         return false;
@@ -1993,6 +2044,17 @@ namespace
       for (const ParsedFile* p : readers)
         if (p && !p->isImported)
           rewalk.insert(p->index);
+      // Their functions' code changes with what they read (a call bound to a new overload); a
+      // global's initializer that read one is no function codegen can emit again on its own.
+      std::unordered_set<const Decl*> removedSet(gone.begin(), gone.end());
+      for (const Decl* d : readingWalks)
+        if (d->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(d)->body)
+        {
+          if (!removedSet.count(d))
+            kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));
+        }
+        else if (!removedSet.count(d))
+          codegenCanFollow = false;
       // The index line counts the entries as the index has them now: what the functions added and
       // took out (scopes none: no function with a class in its body is grafted).
       kept.indexEntries += global.entryCount() - entriesBefore;
@@ -2067,6 +2129,34 @@ namespace
       codegenExit = 1;
     }
     logBuildNote("incremental: " + std::to_string(changed.size() + functionEdits.size()) + " file(s) changed (" + std::to_string(functionEdits.size()) + " with whole functions), " + std::to_string(walked.size()) + " file(s) walked again");
+    // Codegen follows through its kept session when every module's object is where the last build
+    // left it (an unchanged module is not assembled again, so it has no text to compile now).
+    // An edited body may be in its callers' code too (codegen inlines trivial functions): the
+    // functions whose walks read an edited function's name are emitted again with it.
+    {
+      std::vector<uint32_t> edited;
+      for (FunctionDecl* f : kept.changedBodies)
+        edited.push_back(global.functionSymbolOf(f));
+      if (global.instancesRead(edited))
+        codegenCanFollow = false; // an instance's code may hold the body too: emitted in full
+      for (const Decl* d : global.walksReading(edited))
+        if (d->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(d)->body)
+          kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));
+        else
+          codegenCanFollow = false; // (a global's initializer: no function codegen emits again on its own)
+    }
+    std::sort(kept.changedBodies.begin(), kept.changedBodies.end());
+    kept.changedBodies.erase(std::unique(kept.changedBodies.begin(), kept.changedBodies.end()), kept.changedBodies.end());
+    for (size_t k = 0; codegenCanFollow && k < kept.moduleBytes.size(); ++k)
+    {
+      std::error_code ec;
+      std::string base = kept.options.exe + "." + std::to_string(k);
+      codegenCanFollow = !kept.options.exe.empty() && std::filesystem::exists(base + ".o", ec) && std::filesystem::exists(base + ".hash", ec);
+    }
+    // (Opt-in until rebuildLLVM's function count is a build from scratch's: KPP_REBUILD_CODEGEN=1.)
+    kept.rebuildCodegen = codegenCanFollow && kept.codegen && !kept.options.exe.empty() && getenv("KPP_REBUILD_CODEGEN");
+    if (!kept.rebuildCodegen)
+      logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? "an instance, a global or a module's object needs it" : kept.options.exe.empty() ? "no executable" : "KPP_REBUILD_CODEGEN not set"));
     noteIncrementalBuild();
     reportResolve(kept);
     return true;
