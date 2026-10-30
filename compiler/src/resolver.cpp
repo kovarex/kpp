@@ -15183,6 +15183,35 @@ struct GlobalScope::Impl
       for (const Entry& e : *l.overloads)
         if (e.decl && e.decl->kind == NodeKind::FunctionDecl)
           merged->push_back(e);
+      size_t ownCount = merged->size();
+      // The class's own function hides the base's of the same parameter types and qualifiers
+      // (C++ [namespace.udecl] 15): ArtilleryTurret's `getInventory(uint8) override` beside `using
+      // super::getInventory;` is one candidate. Only where both are plain functions whose parameter
+      // types name no template parameter.
+      auto hidden = [&](FunctionDecl* base)
+      {
+        const uint32_t quals = DF_Const | DF_RefQual | DF_Static | DF_Variadic;
+        if (!base->templateParams.empty())
+          return false;
+        const Ty* bt = impl.declaredTypeOf(base, nullptr, 0);
+        if (!bt || bt->kind != TyKind::Function || types.isDependent(bt))
+          return false;
+        for (size_t i = 0; i < ownCount; ++i)
+        {
+          auto* own = static_cast<FunctionDecl*>((*merged)[i].decl);
+          if (!own->templateParams.empty() || (own->flags & quals) != (base->flags & quals) || own->params.size() != base->params.size())
+            continue;
+          const Ty* ot = impl.declaredTypeOf(own, nullptr, 0);
+          if (!ot || ot->kind != TyKind::Function || ot->args.size() != bt->args.size())
+            continue;
+          bool same = true;
+          for (size_t a = 0; a < ot->args.size() && same; ++a)
+            same = ot->args[a] == bt->args[a];
+          if (same)
+            return true;
+        }
+        return false;
+      };
       for (const Entry& e : *l.overloads)
       {
         if (!isUsing(e.decl))
@@ -15190,7 +15219,7 @@ struct GlobalScope::Impl
         Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(e.decl)->name, l.foundIn, nullptr, 0);
         if (target.overloads)
           for (const Entry& te : *target.overloads)
-            if (te.decl && te.decl->kind == NodeKind::FunctionDecl)
+            if (te.decl && te.decl->kind == NodeKind::FunctionDecl && !hidden(static_cast<FunctionDecl*>(te.decl)))
               merged->push_back(te);
         if (t && cls && target.foundIn && target.foundIn != l.foundIn && target.foundIn->kind == ScopeKind::Class)
           if (const Ty* base = instantiationOfBase(t, cls, target.foundIn, 0))
