@@ -13643,7 +13643,7 @@ struct GlobalScope::Impl
   {
     if (a == b)
       return true;
-    if (a->name.empty() || b->name.empty() || functionSymbol(a->name) != functionSymbol(b->name) || !sameNamePart(a->name.last(), b->name.last()) ||
+    if (a->params.size() != b->params.size() || a->name.empty() || b->name.empty() || functionSymbol(a->name) != functionSymbol(b->name) || !sameNamePart(a->name.last(), b->name.last()) ||
         isCFunction(a) != isCFunction(b) || a->templateParams.size() != b->templateParams.size() ||
         (a->flags & (DF_Const | DF_RefQual | DF_Static)) != (b->flags & (DF_Const | DF_RefQual | DF_Static)))
       return false;
@@ -13896,26 +13896,32 @@ struct GlobalScope::Impl
         return true; // `f(Vector<T>)` over `f(T&)`: C++'s partial ordering of function templates
       return someBetter;
     };
-    for (const Candidate& c : viable)
+    // beats[i * n + j]: whether viable[i] is better than viable[j], each pair compared once (a
+    // comparison costs: moreSpecialized deduces), kept for the ties below.
+    size_t n = viable.size();
+    char beatsSmall[256] = {};
+    std::vector<char> beatsLarge(n * n > sizeof(beatsSmall) ? n * n : 0, 0);
+    char* beats = beatsLarge.empty() ? beatsSmall : beatsLarge.data();
+    for (size_t i = 0; i < n; ++i)
     {
       bool best = true;
-      for (const Candidate& o : viable)
-        if (&o != &c && !better(c, o))
+      for (size_t j = 0; j < n; ++j)
+        if (j != i && !(beats[i * n + j] = better(viable[i], viable[j])))
           best = false;
       if (best)
-        return c.f;
+        return viable[i].f;
     }
     // No candidate better than all the others: those that no other beats, which may be one
     // function declared twice (sameFunction), then one candidate; otherwise the call is
     // ambiguous, and tiedOut gets one of each function.
     std::vector<const Candidate*> tied;
-    for (const Candidate& c : viable)
+    for (size_t i = 0; i < n; ++i)
     {
       bool beaten = false;
-      for (const Candidate& o : viable)
-        beaten = beaten || (&o != &c && better(o, c));
+      for (size_t j = 0; j < n; ++j)
+        beaten = beaten || (j != i && beats[j * n + i]);
       if (!beaten)
-        tied.push_back(&c);
+        tied.push_back(&viable[i]);
     }
     if (tied.empty())
       for (const Candidate& c : viable)
