@@ -61,7 +61,8 @@ O(n). `count` in a multi container: O(log n + number found).
   constructed from the arguments, `V(args...)`, in the new node; when present, does not touch the
   arguments. Returns `Pair<iterator, bool>`. Map only. Like operator[] and emplace, it neither
   copies nor moves the value, so V needs no copy or move constructor for them (`Map<Path, File>`
-  with File's move constructor deleted). `try_emplace(hint, key, args...)`: the same, returning
+  with File's move constructor deleted). An rvalue key (`try_emplace(move(key), args...)`) is moved
+  into the new entry, a const one copied. `try_emplace(hint, key, args...)`: the same, returning
   the entry's position (new or found); the hint is not used, O(log n).
 - `erase(key)`: removes the entry (in a multi container all entries) with an equivalent key;
   returns how many were removed. `key` may refer to an entry of this container.

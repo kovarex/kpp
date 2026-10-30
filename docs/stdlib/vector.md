@@ -66,7 +66,9 @@ Adding and removing:
   (O(size() - position + n)); a single-pass range goes in one element at a time.
   `insert(position, {a, b})`: the list's elements. `insert(position, count, value)`: count copies
   of value (which may be an element).
-- `emplace(position, args...)`: like insert, with an element built from the arguments.
+- `emplace(position, args...)`: like insert, with an element built from the arguments: at the end in
+  its place, as emplace_back builds it; before another element through a temporary that is moved
+  in (the arguments may be elements the insertion moves).
 - `erase(position)`, `erase(first, last)`: destroys the element(s) and relocates the following ones
   down; returns a pointer to the element after the removed ones (now at the removed position).
 - `clear()`: destroys all elements; the capacity stays.

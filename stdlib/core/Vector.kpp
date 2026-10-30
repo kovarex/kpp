@@ -265,9 +265,20 @@ struct Vector
     this->insert(index, move(value));
     return this->items + index;
   }
-  // `v.emplace(position, args...)`: the element built from args, before position (std::vector::emplace).
+  // `v.emplace(position, args...)`: the element built from args, before position (std::vector::emplace):
+  // in its place at the end, as emplace_back builds it; before another element through a
+  // temporary, since the arguments may be elements the insertion moves.
   template<typename... Args>
-  T* emplace(const T* position, Args&&... args) { return this->insert(position, T(forward<Args>(args)...)); }
+  T* emplace(const T* position, Args&&... args)
+  {
+    int index = int(position - this->items);
+    if (index == this->length)
+    {
+      this->emplace_back(forward<Args>(args)...);
+      return this->items + index;
+    }
+    return this->insert(position, T(forward<Args>(args)...));
+  }
   // Inserts count copies of value (which may be an element) before position; returns the
   // position of the first one.
   T* insert(const T* position, int count, const T& value)
