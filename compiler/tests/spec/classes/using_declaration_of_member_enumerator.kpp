@@ -1,0 +1,27 @@
+// spec: a using-declaration of a member enum's enumerator (`using Enum::True;`) names that enumerator as a member of the class: `NamedBool::True` is the enumerator's value
+// found in kpp/CommonUtil/NamedBool.kpp once C:\Factorio (at df1c9d1cd3c, 2026-10-30 11:57) replaced its `static constexpr Enum True = Enum::True;` with `using Enum::True;`: codegen reported "does not support taking the address of True" in every function that names it (101 errors in the Agui smoke build, 3149 stubs in the game)
+// pending: a using-declaration of an enumerator in class scope is not a value yet
+template <class Tag>
+class NamedBool
+{
+public:
+  enum class Enum : uint8_t {False, True};
+  using Enum::True;
+  using Enum::False;
+  constexpr NamedBool() = default;
+  implicit constexpr NamedBool(Enum value) : value(value == Enum::True) {}
+  static constexpr NamedBool fromBool(bool value) { return value ? NamedBool::True : NamedBool::False; }
+  constexpr bool asBool() const { return this->value; }
+private:
+  bool value = false;
+};
+class FocusTag {};
+using Focus = NamedBool<FocusTag>;
+int main()
+{
+  Focus a = Focus::fromBool(true);
+  Focus b = Focus::False;
+  Focus c = Focus::True;
+  println("{} {} {}", a.asBool(), b.asBool(), c.asBool());
+  return 0;
+}
