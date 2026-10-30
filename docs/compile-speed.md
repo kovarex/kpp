@@ -48,7 +48,14 @@ every other file is done 0.31 s in (the C import's walk, 0.2 s, the next longest
 functions as tasks too would take it to about 0.35 s, but the evaluator runs a plain function's own
 nodes (there is no instance copy), so a static_assert could read a function whose walk runs on
 another thread, the race f5787d23 removed for templates; that waits on the templates thread's
-answer (it may already happen across files).
+answer (it may already happen across files). *Tried once 0f9d932d removed that race:* plain
+functions' walks in files over 100 KB as tasks too (those with a lambda in place). Every file is
+then walked 0.29 s in, but the resolve still ends at about 0.67 s: its tail is the instance checks
+the walks asked for, chains of small tasks (the last, an instance of `makeContainer`, takes 0.03 s
+and ends 0.63 s in). Paired, 8 rounds interleaved, front end at -j 32: 0.686 to 0.717 s against
+0.698 to 0.731 s, medians 0.693 and 0.716 s: 3%, not worth the concurrency; not landed. The next
+lever in resolve is those chains (an instance check that needs another's result waits for it on
+its own thread), not the files.
 
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
