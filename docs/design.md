@@ -1159,8 +1159,9 @@ of the mechanism, what is done, and the choices left to kovarex (marked **Q**).
   `programs/kpplex` is a program with a timing script, no tests.
 - **8.6 is not implemented**: `test "name" { }` is a parse error, and a parse error at namespace
   scope does not fail the build today (pending snippet
-  `language/namespace_scope_parse_error_fails_build`), which is why `kpp/tests_in_compiler`
-  shows as passing.
+  `language/namespace_scope_parse_error_fails_build`, thread A's), which is why
+  `kpp/tests_in_compiler` showed as passing until 2026-10-30. It is pending now, and the spec
+  suite fails any snippet whose build printed an error, whatever its exit code.
 
 ### Latency today (2026-10-30, PC-PRACOVNA, other threads building at the same time: noisy)
 The 10-line program (`fib` into a `Vector<int>`, `println`), PowerShell `Measure-Command`, six

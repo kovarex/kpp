@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**756 pass, 10 pending, 0 failing, 0 fixed** (766 snippets, 23.3 s).
+**755 pass, 11 pending, 0 failing, 0 fixed** (766 snippets, 63.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -736,6 +736,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `kpp/tests_in_compiler.kpp` | `test "name" { check(...); }` declarations are accepted and cost nothing without --tests | pending |  | `test "name" { }` is not parsed yet (a parse error); it showed as passing only because a parse error at namespace scope does not fail the build (language/namespace_scope_parse_error_fails_build); the build exited 0 but reported error: expected ';' after declaration (at '"square"') |
 | `kpp/asserts_and_config.kpp` | assert and release_assert statements, config constants with if constexpr, conditional functions, CallerLocation | pass |  |  |
 | `kpp/attributes_inline.kpp` | [[noinline]] and [[forceinline]] attributes | pass |  |  |
 | `kpp/auto_return_through_for_constexpr.kpp` | an auto return type deduced from returns inside a `for constexpr` body, as if the body were written out once per element: `visitUnion(f, u)` over alternatives(U) returns f's result; a list of types (`sizeof(E)` of its type variable included) and a list of constants alike | pass |  |  |
@@ -753,7 +754,6 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/reflection_members.kpp` | members(T) with m.name, m.type and object.[m] | pass |  |  |
 | `kpp/requires_file.kpp` | `requires <condition>;` at the top of a file (compiled only when the config says so) | pass |  |  |
 | `kpp/run_command.kpp` | `kppc --run file.kpp args...` builds the program, runs it with the arguments and returns its exit code | pass |  |  |
-| `kpp/tests_in_compiler.kpp` | `test "name" { check(...); }` declarations are accepted and cost nothing without --tests | pass |  |  |
 | `kpp/typed_union_alternatives.kpp` | `alternatives(U)` reflection over a typed union: `a.name`, `a.type`, `a.tag`, `u[a]`, `u == a.tag`, and `u.tag()`, enough to save the alternative held and load one by its index | pass |  |  |
 | `kpp/typed_union_comparisons.kpp` | typed unions compare as std::variant does: == when both hold the same alternative and its values are equal; < (and the other orderings) by the alternative held, in declaration order, then by the values; a defaulted <=> of a class with a typed union member orders it so | pass | UndoActionDescription's defaulted <=> over its ValueVariant (std::variant converted to a typed union) |  |
 | `kpp/typed_union_direct_init.kpp` | a typed union direct-initialized from a value of exactly one alternative's type, as copy-initialization is: `U u(x)`, `U(x)`, a member initializer `state(x)`, and placement new `new (slot) U(x)` (what Vector::emplace_back(x) does) | pass | DrawCommandBatch's `batches.emplace_back(desc)` and `emplace_back(std::in_place_type_t<SpriteBatchDescription>(), ...)` (std::variant's converting constructor), ZoomSpecification's constructors initializing its variant member from a ZoomVariant or a ViewDistanceVariant |  |

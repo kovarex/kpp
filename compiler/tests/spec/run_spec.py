@@ -117,6 +117,11 @@ def run_one(path):
         else:
             result["note"] = first_complaint(c.stdout + c.stderr) or "compilation failed"
         return finish(result)
+    # A build that reported an error is no pass, whatever its exit code says.
+    reported = next((l.strip() for l in (c.stdout + c.stderr).splitlines() if ": error:" in l), None)
+    if reported:
+        result["status"] = "FAIL"; result["note"] = "the build exited 0 but reported " + reported[reported.find(": error:") + 2:]
+        return finish(result)
     try:
         r = subprocess.run([exe], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except subprocess.TimeoutExpired:
