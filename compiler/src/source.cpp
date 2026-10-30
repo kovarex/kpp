@@ -39,3 +39,10 @@ bool readFile(const std::filesystem::path& path, std::string& out)
   out.reserve(read + 1); // std::string guarantees the trailing '\0' sentinel.
   return true;
 }
+
+bool msvcDiagnostics = false;
+
+std::string sourceLocation(const std::string& path, size_t line)
+{
+  return msvcDiagnostics ? path + "(" + std::to_string(line) + ")" : path + ":" + std::to_string(line);
+}

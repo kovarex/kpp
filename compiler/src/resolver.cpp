@@ -2,6 +2,7 @@
 #include "consteval.hpp"
 #include "instance.hpp"
 #include "ast_walk.hpp"
+#include "source.hpp"
 #include <array>
 #include <cctype>
 #include <set>
@@ -4356,16 +4357,13 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
-  // `path:line` of a token.
+  // `path:line` of a token (sourceLocation).
   static std::string locationOf(const ParsedFile* file, uint32_t token)
   {
-    std::string where = file ? file->path : std::string("?");
-    if (file && file->tokens && !file->tokens->empty())
-    {
-      const Token& t = (*file->tokens)[std::min<size_t>(token, file->tokens->size() - 1)];
-      where += ":" + std::to_string(1 + std::count(file->text.begin(), file->text.begin() + std::min<size_t>(t.offset, file->text.size()), '\n'));
-    }
-    return where;
+    if (!file || !file->tokens || file->tokens->empty())
+      return file ? file->path : std::string("?");
+    const Token& t = (*file->tokens)[std::min<size_t>(token, file->tokens->size() - 1)];
+    return sourceLocation(file->path, 1 + std::count(file->text.begin(), file->text.begin() + std::min<size_t>(t.offset, file->text.size()), '\n'));
   }
 
   void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message)
@@ -19385,7 +19383,7 @@ namespace
       size_t offset = std::min<size_t>((*d->file->tokens)[d->token].offset, text.size());
       line = 1 + uint32_t(std::count(text.begin(), text.begin() + offset, '\n'));
     }
-    return (d->file ? d->file->path : std::string("?")) + ":" + std::to_string(line);
+    return sourceLocation(d->file ? d->file->path : std::string("?"), line);
   }
 }
 

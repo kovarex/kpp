@@ -1,0 +1,12 @@
+// Diagnostics (docs/build.md, "Visual Studio"): every one is labelled error, warning or note, a
+// code generator's gap too, at path:line, or at path(line) with --msvc-diagnostics.
+static_assert(1 == 2, "one is not two");
+int gap()
+{
+  return undefinedThing + 1;
+}
+int main()
+{
+  int x = "s";
+  return x + gap();
+}

@@ -38,15 +38,20 @@ if errorlevel 1 (
 ) else (
   echo ok   access warnings
 )
-rem --msvc-diagnostics (docs/build.md, "Visual Studio"): errors as path(line): error: ..., which Visual Studio reads.
-%KPPC% --quiet --msvc-diagnostics --exe build\tests\msvc.exe tests\diagnostics\msvc.kpp 2> build\tests\msvc.errors.txt > nul
-fc /w build\tests\msvc.errors.txt tests\diagnostics\msvc.expected > nul
-if errorlevel 1 (
-  echo FAIL msvc diagnostics: build\tests\msvc.errors.txt differs from tests\diagnostics\msvc.expected
-  fc /w build\tests\msvc.errors.txt tests\diagnostics\msvc.expected
-  set /a FAIL+=1
-) else (
-  echo ok   msvc diagnostics
+rem Diagnostics (docs/build.md, "Visual Studio"): each labelled error, a code generator's gap too, at
+rem path:line, and with --msvc-diagnostics at path(line), which Visual Studio reads. Sorted: codegen's
+rem errors come in the order its threads finish.
+for %%m in (plain msvc) do (
+  if %%m==msvc (set FORM=--msvc-diagnostics) else (set FORM=)
+  %KPPC% --quiet !FORM! --exe build\tests\diagnostics.exe tests\diagnostics\diagnostics.kpp 2>&1 | %SystemRoot%\System32\sort.exe > build\tests\%%m.errors.txt
+  fc /w build\tests\%%m.errors.txt tests\diagnostics\%%m.expected > nul
+  if errorlevel 1 (
+    echo FAIL %%m diagnostics: build\tests\%%m.errors.txt differs from tests\diagnostics\%%m.expected
+    fc /w build\tests\%%m.errors.txt tests\diagnostics\%%m.expected
+    set /a FAIL+=1
+  ) else (
+    echo ok   %%m diagnostics
+  )
 )
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%

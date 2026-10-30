@@ -46,9 +46,8 @@ only the choice of kppc's arguments.
 **The compile server.** `--server` anywhere on the line makes kppc a client. The server is keyed by
 kppc's path, the working directory and the argument list, so every distinct argument list has its
 own server. A server keeps the last build's program in memory, rebuilds only what an edit touched,
-and ends after an hour idle. `--stop-server` with the same arguments stops it.
-`--msvc-diagnostics` is removed from the arguments before the key is made, so the Visual Studio
-build and a command-line build of the same program share one server.
+and ends after an hour idle. `--stop-server` with the same arguments stops it. A Visual Studio
+build (`--msvc-diagnostics`) therefore has a server of its own, apart from the command line's.
 
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets
 `KPPC`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows
@@ -132,19 +131,26 @@ field.
 ### Named configurations
 
 `debug` and `release` are built in, so a project that defines neither still has both; a project's
-`[debug]` or `[release]` section adds options to the built-in set. Proposed contents:
+`[debug]` or `[release]` section adds options to the built-in set. The names and contents are
+thread H's (debug/release matrix), adopted:
 
 | | debug | release |
 |---|---|---|
-| `config::debug`, so `assert` | true: asserts in | false: asserts out |
+| `config::debug`, so `assert` | true: asserts in | false: `assert` compiles to nothing, `release_assert` stays |
 | kppc trivial-function inlining | on | on |
-| clang | `-O0` | `-O2` + ThinLTO |
-| debug info (B's `--debug-info`, CodeView PDB) | on | on (question 2) |
-| link | incremental | whole (lld) |
+| clang | `-O0` | `-O2` + ThinLTO, lld, its LTO cache |
+| link | incremental allowed | whole |
 
+`--debug-info` is not a configuration. It is an option either one may add, in its section (the
+Visual Studio projects add it to debug). Question 2 asks whether release should have it by default.
 Any further configuration (a profiling build, an AddressSanitizer build) is a `[name]` section with
 its options, such as `--clang-flags -fsanitize=address --lib -fsanitize=address`. `--release`
 stays as shorthand.
+
+The converted game has a second axis, apart from these: the Factorio defines the converter
+preprocesses with. `game-fastdebug` (_DEBUG, DEBUG, LUA_USE_APICHECK) is the only one today; a
+`game-release` would need a second conversion. It belongs to the conversion, not to kppc's
+configurations, and the two axes never share names.
 
 ### Libraries, C include directories, outputs
 
@@ -152,6 +158,26 @@ These are the `--lib`, `--cinclude` and `--exe` lines above, nothing more. The o
 `build\<configuration>\<project name>.exe` next to the project file, which keeps configurations
 from sharing an object cache. C sources the program compiles itself (programs/factorio/native)
 stay a script until question 3 is answered.
+
+### Dependencies and libraries
+
+These parts are for the library registry ([library-registry.md](library-registry.md), "What this
+needs from thread E"). In format (A) they are lines like the rest, one entry per line, so
+`kppc add` can edit the file without touching the author's comments:
+
+```
+--use sdl3 3.4            # registry name, minimum version
+--use lualib 5.4 path ..\lua             # a source override: a path,
+--use glm 1.0 git https://github.com/... 4c1f2e0     # a git URL at a commit, or another registry
+```
+
+A library is a project file without `--exe`. It carries the manifest fields that registry
+document lists, and its C parts are lines too: C sources, `--cinclude`, defines, system
+libraries, and prebuilt files per target. A library's C sources compile with the program's
+configuration, and its code reads the program's `config::` constants, since it is compiled as
+part of the program. The lockfile (`<project>.lock`) sits next to the project file and is
+written only by kppc. The registry's incompatibility mark and the C-source option are spelled
+out with the registry's phase 1, not here.
 
 ### What changes for Visual Studio
 
@@ -181,10 +207,13 @@ project needs no more files (one 25-line `.vcxproj` per program).
 **The Error List.** MSBuild reads errors from a tool's output only in the MSVC form,
 `file(line[,col]): error|warning [code]: text`. Verified with MSBuild 17 on a Makefile project:
 kppc's `path:line: error:` gave only `MSB3073 exited with code 1`, and `path(line): error:` gave
-an error with file and line. Hence `--msvc-diagnostics` (commit 456eda12; tested in
-run_tests.cmd). It rewrites every `path:N: ` line on stdout and stderr, and calls a line with no
-`warning:` or `note:` an error, since codegen's "does not support" lines carry no label. kppc's
-messages have no column, so the Error List shows lines only.
+an error with file and line. Hence `--msvc-diagnostics`. Every diagnostic's place comes from one
+formatter, `sourceLocation` (source.hpp), which gives `path:line`, or `path(line)` with the
+option. Every diagnostic carries its label: the code generator's gaps ("does not support ...
+yet") now print as `error:` too. run_tests.cmd checks both forms on tests/diagnostics: a parse,
+a checker, a codegen and a static_assert diagnostic. kppc's messages have no column, so the Error
+List shows lines only. (The first version, 456eda12, rewrote kppc's output through a pipe. That
+was replaced because it could misread a program's own output under `--run`.)
 
 **Measurements** (2026-10-30, the machine shared with seven other threads, so noisy):
 
@@ -232,6 +261,12 @@ install. `install.cmd` links it there.
    since, and `C:\Factorio` is read-only. Options: build them with FASTBuild into a directory
    outside `C:\Factorio` (if fbuild.bff allows an output root), build them with kppc's clang
    from a list of C sources in the project file, or accept prebuilt libraries and rebuild them by
-   hand when `libraries/` changes.
+   hand when `libraries/` changes. What is at stake (thread C's comparison of the headers at
+   4c178a5b915 with the .libs, built at d0495ebfd8a): SDL3 3.3.4 → 3.4.18 (sdl.lib), SDL_Mixer
+   3.1.2-pre → 3.2.4 (sdl-mixer.lib), zlib 1.2.7 → 1.3.2 (zlib.lib). Once the new source is
+   converted, the game compiles against SDL 3.4 headers and links SDL 3.3 code. Not mismatches:
+   crc32fast (code only), curl (its osx configuration), and Lua 5.2.1 (6 files; the game's Lua is
+   converted from source, and lua.lib is used only by the lua_compat check, which therefore
+   compares against the old Lua).
 4. **One `.vcxproj` per program, written by hand** (25 lines, recommended), or generated by
    `kppc --vcxproj` from the project file?

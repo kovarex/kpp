@@ -1,1 +1,3 @@
-tests\diagnostics\msvc.kpp(4): error: a pointer (const char*) does not convert to int32 without a cast (in @kpp.main)
+tests\diagnostics\diagnostics.kpp(10): error: a pointer (const char*) does not convert to int32 without a cast (in @kpp.main)
+tests\diagnostics\diagnostics.kpp(3): error: static assertion failed: "one is not two"
+tests\diagnostics\diagnostics.kpp(6): error: codegen does not support an unresolved name (undefinedThing) yet (in @"gap()")

@@ -1,5 +1,6 @@
 #include "codegen.hpp"
 #include "consteval.hpp"
+#include "source.hpp"
 #include <map>
 #include <set>
 #include <unordered_set>
@@ -593,14 +594,14 @@ namespace
 
     void error(Node* at, const std::string& message)
     {
-      errors.push_back(locationOf(at, currentFile) + ": " + message);
+      errors.push_back(locationOf(at, currentFile) + ": error: " + message); // every codegen error is labelled, the gaps too
     }
 
     // "file:line" of a node in a file, "?" when unknown.
     std::string locationOf(Node* at, ParsedFile* file)
     {
       size_t line = lineOf(at, file);
-      return line ? file->path + ":" + std::to_string(line) : "?";
+      return line ? sourceLocation(file->path, line) : "?";
     }
 
     // The line a node starts on in its file (from 1), 0 when unknown.
@@ -1129,10 +1130,10 @@ namespace
       // A type name declared nowhere is the resolver's placeholder class (a draft, so that checking
       // goes on): an error wherever a layout needs it, never an empty class that compiles.
       if (c->attributes & ATTR_Draft)
-        fail(at, "error: the type '" + global.draftName(c) + "' is not declared");
+        fail(at, "the type '" + global.draftName(c) + "' is not declared");
       auto undeclared = [&](const std::string& what, const Ty* draft)
       {
-        fail(at, "error: the layout of " + types.toString(key, &symbols) + ": " + what + " names '" + global.draftName(draft->decl) + "', which is not declared");
+        fail(at, "the layout of " + types.toString(key, &symbols) + ": " + what + " names '" + global.draftName(draft->decl) + "', which is not declared");
       };
       // `Imm<strlen("x")>`: an argument the checker could not work out (a constant it could not
       // evaluate) is no argument to lay out with; taken for 0, `char data[N]` was an empty array
@@ -1143,7 +1144,7 @@ namespace
           Span<Decl*> params = key->decl->templateParams;
           auto* p = i < params.size() ? static_cast<TemplateParamDecl*>(params[i]) : nullptr;
           std::string which = p && p->name != UINT32_MAX ? "the argument for " + sym(p->name) : "argument " + std::to_string(i + 1);
-          fail(at, "error: the layout of " + types.toString(key, &symbols) + ": " + which +
+          fail(at, "the layout of " + types.toString(key, &symbols) + ": " + which +
                        (p && p->isType ? " is a type the compiler could not resolve" : " is a constant the compiler could not evaluate"));
         }
       TemplateArgs args = global.classArgsOf(key);
@@ -1266,7 +1267,7 @@ namespace
         // struct's last member may be such an array (`char data[];`, a flexible array member).
         for (const Ty* a = types.unqualified(ft); a && a->kind == TyKind::Array; a = types.unqualified(a->inner))
           if (a->count == 0 && !(c->file && c->file->isImported))
-            fail(at, "error: the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) +
+            fail(at, "the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) +
                          " is an array whose length is no constant the compiler could evaluate");
         // A lambda held by value (FunctionImpl<F>'s `F f`, TransformView's): its closure, laid out
         // from the lambda's AST whoever asks first; one that cannot be laid out fails this class.
@@ -4020,9 +4021,9 @@ namespace
         uint32_t unitBytes = 1;
         size_t units = stringLiteralUnits(l, unitBytes);
         if (sizeOf(t->inner, at) != unitBytes)
-          fail(at, "error: an array of " + types.toString(t->inner, &symbols) + " initialised from a string literal of " + std::to_string(unitBytes * 8) + "-bit characters");
+          fail(at, "an array of " + types.toString(t->inner, &symbols) + " initialised from a string literal of " + std::to_string(unitBytes * 8) + "-bit characters");
         if (units > t->count)
-          fail(at, "error: a string literal of " + std::to_string(units) + " characters initialises an array of " + std::to_string(t->count));
+          fail(at, "a string literal of " + std::to_string(units) + " characters initialises an array of " + std::to_string(t->count));
         storeZero(t, addr, at);
         if (declaredNames.claim("@llvm.memcpy.p0.p0.i64"))
           decls += "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
@@ -8905,7 +8906,7 @@ namespace
         // Only a cast turns a pointer into an integer (`(uintptr_t)p`, reinterpret_cast); `int y =
         // &x;` is an error in C++, and was a silently truncated address here.
         if (!explicitCast)
-          fail(at, "error: a pointer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
+          fail(at, "a pointer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
         fn += "  " + result() + " = ptrtoint ptr " + v.text + " to " + toT + "\n";
         return {r, to};
       }
@@ -14470,7 +14471,7 @@ namespace
       // would run past it).
       for (const Ty* a = types.unqualified(t); a && a->kind == TyKind::Array; a = types.unqualified(a->inner))
         if (a->count == 0)
-          fail(v, "error: the local " + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) +
+          fail(v, "the local " + (v->name.empty() ? std::string("[bindings]") : sym(v->name.last().symbol)) +
                       " is an array whose length is no constant the compiler could evaluate");
       // (`thread_local SignalsVector signals;` is static too: the function returns a reference to it.)
       if ((v->flags & (DF_Static | DF_ThreadLocal)) && !(v->flags & DF_Typedef))
@@ -14672,7 +14673,7 @@ namespace
             {
               Value v = rvalue(r->value);
               if (v.text.empty() || !v.ty || v.ty->kind == TyKind::Void)
-                fail(r->value, "error: a function returning " + types.toString(currentReturn, &symbols) + " returns an expression without a value (of type void)");
+                fail(r->value, "a function returning " + types.toString(currentReturn, &symbols) + " returns an expression without a value (of type void)");
               // A derived object returned as a base's reference is that base's subobject:
               // `PendingRobotsSetHook& asPendingRobotsHook() { return *this; }` returned the robot's
               // start, and unlinking that "hook" walked the vtable as its tree.
@@ -16152,7 +16153,7 @@ namespace
       }
       if (v && !a.instance.empty())
         message += " (in " + a.instance + ")";
-      error(s, "error: " + message);
+      error(s, message);
     }
 
     // Out-of-line member definitions (`void Text::split(...) {}`, `Flow::~Flow() = default;`, those
@@ -16795,7 +16796,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         if (!anyErrors)
         {
           e.currentFile = t->decl->file;
-          e.error(t->decl, "error: the closure of " + e.irString(t) + " is used, but its lambda was never emitted");
+          e.error(t->decl, "the closure of " + e.irString(t) + " is used, but its lambda was never emitted");
         }
         sh.decls += info.structName + " = type { i8 } ; left out by codegen errors\n";
       }
@@ -16807,7 +16808,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     if (!sh.definedIn.count(name))
     {
       e.currentFile = f->file;
-      e.error(f, "error: " + e.qualifiedName(f) + " is used, but no definition of it was found (" + name + ")");
+      e.error(f, e.qualifiedName(f) + " is used, but no definition of it was found (" + name + ")");
     }
   // A lambda's call operator is emitted with the function the lambda is written in; one called
   // that never was is reported, unless that function failed (its own error says why).
@@ -16822,7 +16823,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         if (!writer.empty() && failed.count(writer))
           continue;
         e.currentFile = lambda->decl->file;
-        e.error(lambda->decl, "error: the call operator of a lambda written in " + (writer.empty() ? std::string("a function never emitted") : writer) +
+        e.error(lambda->decl, "the call operator of a lambda written in " + (writer.empty() ? std::string("a function never emitted") : writer) +
                                   " is used, but it was never emitted (" + name + ")");
       }
   }

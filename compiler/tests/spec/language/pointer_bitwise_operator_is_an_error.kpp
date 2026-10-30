@@ -1,6 +1,6 @@
 // spec: an arithmetic or bitwise operator other than + and - on a pointer is an error (C++ has none), never an instruction LLVM rejects
 // found linking the converted game: `(LPWSTR)&msg` with LPWSTR read as a variable became `LPWSTR & msg`, a bitwise and of two pointers, which reached clang as `and ptr` and failed two modules
-// error: pointer_bitwise_operator_is_an_error.kpp:8: codegen does not support & on a pointer (void* & char16_t*) yet (in @kpp.main)
+// error: pointer_bitwise_operator_is_an_error.kpp:8: error: codegen does not support & on a pointer (void* & char16_t*) yet (in @kpp.main)
 void* LPWSTR = nullptr;
 int main()
 {
