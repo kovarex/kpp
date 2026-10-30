@@ -15418,6 +15418,19 @@ static size_t countUndefinedStubs(Shared& sh)
   return n;
 }
 
+// The destructor helper an entry of the shared definitions defines (`@kpp.dtor.<class>`, from
+// destructorThunk), or empty for any other entry.
+static std::string destructorHelperIn(const std::string& entry)
+{
+  const std::string_view mark = "define linkonce_odr void @kpp.dtor.";
+  size_t at = entry.find(mark);
+  if (at == std::string::npos)
+    return {};
+  size_t start = at + mark.size() - std::string_view("@kpp.dtor.").size();
+  size_t end = entry.find('(', start);
+  return end == std::string::npos ? std::string() : entry.substr(start, end - start);
+}
+
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial)
 {
@@ -15658,6 +15671,33 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   if (outOfMemory)
     result.errors.push_back("codegen: out of memory after " + std::to_string(emitted) + " functions");
   result.functions = sh.functions;
+  // Each destructor helper is defined in one home module, hash(name) % moduleCount like a function,
+  // and declared by the modules that use it (moduleText's declares): in every module, they were 843
+  // of the game's 1,760 MB of IR. The home depends only on the helper's name (its class's IR type
+  // name) and the module count, so a helper does not move when other code changes.
+  if (sh.moduleCount > 1)
+  {
+    std::vector<std::string> everywhere;
+    for (std::string& entry : sh.shared.entries)
+    {
+      std::string name = destructorHelperIn(entry);
+      if (name.empty())
+      {
+        everywhere.push_back(std::move(entry));
+        continue;
+      }
+      unsigned home = unsigned(std::hash<std::string>()(name) % sh.moduleCount);
+      sh.definedIn[name] = home;
+      sh.declareLines[name] = "declare void " + name + "(ptr)";
+      // weak_odr, not linkonce_odr: the home module's copy is the only one, and a release build's
+      // optimizer drops a linkonce_odr definition its own module does not call (the link then
+      // missed the helpers the other modules declare).
+      if (size_t at = entry.find("define linkonce_odr void " + name + "("); at != std::string::npos)
+        entry.replace(at, std::string_view("define linkonce_odr").size(), "define weak_odr");
+      sh.bodies[home].entries.push_back(std::move(entry));
+    }
+    sh.shared.entries = std::move(everywhere);
+  }
   sh.decls.finish();
   sh.shared.finish();
   sh.body.finish();

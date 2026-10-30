@@ -540,17 +540,40 @@ cache already skips the others).
 `decl` and the instance's arguments in each Item and maps the server's keys to the Items of that
 declaration; inside codegen the IR name stays the key (stable while the declaration and its types
 are). Layouts are recorded as canonical class types (canonicalClass), the keys structFor uses.
-Errors stay per Item and are reported sorted, as now.
+Errors stay per Item and are reported sorted, as now. Inlining (the templates thread's design
+above, step 1 landed in callFunction as 9b36a63) copies a callee's body into its callers, so an Item
+also records the bodies it inlined (`inlined`, FunctionKeys): an edit of an inlined body re-emits
+its callers, as a layout change re-emits its users. move and forward, all step 1 inlines, are the
+library's, whose change is a full rebuild anyway.
+
+**Placement is stable across edits.** A function's or a home item's module is hash(IR name) %
+module count; the IR name is printed from the declaration and its types alone (never from the
+order anything was reached), so an unchanged function or helper stays in its module whatever else
+changes, and a module's object is reused unless one of its own items changed. The module count is
+fixed by the configuration (2 x the threads, at most the file count: 64 for the game on this
+machine); a different count is a different build (all modules new), as a different `-j` is today.
 
 **Order of work**, each step landed with its measurement and run_tests' byte-for-byte checks:
 1. Codegen's teardown skipped (its 3 s of freeing; the process exits, the server frees on its own
-   thread). Measured: codegen's wall time on the game.
+   thread). Measured: codegen's wall time on the game. *Landed 8280967: codegen 13.2, 12.5, 13.2,
+   18.3 s -> 10.1, 9.8, 11.5, 13.4 s, interleaved on the shared machine; output unchanged.*
 2. Chained cleanups: each landing pad continues into the previous one's instead of destroying again
    everything built before it (ControlSettings' constructor, 875 k lines, a quarter of clang's
-   critical path). Measured: that module's size and clang time.
+   critical path). Measured: that module's size and clang time. *Landed e243d6d: the constructor
+   875,042 -> 11,956 lines (481,670 -> 1,960 calls of ~String), its module 99 -> 25 MB and clang on
+   it 7.6 / 5.4 -> 1.7 / 1.2 s; the game's IR 1,759 -> 1,644 MB, clean clang 10.9, 11.1, 10.3 s ->
+   9.5, 5.1, 5.9 s.*
 3. Home modules for the helpers, per-module type definitions, declares from recorded `uses`
    instead of the text scan, and parallel assembly. The output changes once (smaller). Measured: IR
-   size, codegen's assembly time, clang's total and slowest module, the link.
+   size, codegen's assembly time, clang's total and slowest module, the link. *The destructor
+   helpers' home modules landed first: the game's IR 1,631 -> 785 MB; clean builds interleaved (the
+   machine shared): clang 5.0, 7.8, 7.9 s -> 6.4, 3.2, 3.5 s, codegen 8.6, 9.9, 9.2 s -> 8.5, 8.6,
+   8.9 s; --dump-data's checksums and the 19 menu maps unchanged. A home definition is `weak_odr`:
+   as linkonce_odr the release build's optimizer dropped it from its home module, which did not
+   call it, and the link missed it. ThinLTO release build of the game: link 130 -> 102 s, wall 154 ->
+   125 s, the executable 52,862,976 -> 52,864,000 bytes (ThinLTO imports the helpers it inlines).
+   (Both release executables stop at their command line, "Error opening '--benchmark'", before and
+   after: the release game has never run; to look at.)*
 4. Every emission recorded as Items (what step 3 placed by name, now with its `uses`, `requested`
    and `layouts`), and the modules assembled from the Items: byte-identical to step 3's output.
    Measured: the cost to a clean build (target: within a few percent).
