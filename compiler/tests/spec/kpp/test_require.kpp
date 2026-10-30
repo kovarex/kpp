@@ -1,5 +1,4 @@
 // spec: require ends the test when it fails, an assert failing inside a test fails that test, and the run goes on
-// pending: no native tests yet
 // test:
 // exit: 1
 struct Guard

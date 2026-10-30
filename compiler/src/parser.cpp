@@ -3,6 +3,7 @@
 // expression, template-id vs. less-than), this parser uses purely syntactic heuristics; the
 // resolver later checks the guesses. Unknown macros are recognised by their ALL_CAPS spelling.
 #include "parser.hpp"
+#include "tests.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -57,7 +58,14 @@ namespace
       kwBothConst = symbols.intern("both_const");
       kwClassConst = symbols.intern("class_const");
       kwAccumulate = symbols.intern("accumulate");
+      kwTest = symbols.intern("test");
+      kwCheck = symbols.intern("check");
+      kwRequire = symbols.intern("require");
+      kwMain = symbols.intern("main");
     }
+    uint32_t kwTest, kwCheck, kwRequire, kwMain;
+    bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
+    uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwText, kwTag, kwTagField,
              kwTagMethod, kwTypeMember;
@@ -99,6 +107,15 @@ namespace
         }
         parseDeclaration(Scope::Namespace);
       }
+      // A --tests build's main is the test runner's (compiler/src/tests.cpp): the program's is renamed.
+      if (testsEnabled() && out.path != testRunnerPath)
+        for (size_t i = mark; i < scratch.size(); ++i)
+          if (scratch[i]->kind == NodeKind::FunctionDecl)
+          {
+            auto* f = static_cast<FunctionDecl*>(scratch[i]);
+            if (f->name.parts.size() == 1 && f->name.parts[0].symbol == kwMain && !f->name.global)
+              f->name.parts[0].symbol = symbols.intern("__kpp_program_main");
+          }
       out.decls = makeSpan<Decl*>(mark);
     }
 
@@ -1483,6 +1500,11 @@ namespace
       if (accept(P::Semi))
       {
         pushDecl(decl<EmptyDecl>(start));
+        return;
+      }
+      if (kppSource && atIdent(kwTest) && at(TokenKind::String, 1) && at(P::LBrace, 2) && (scope == Scope::Namespace || scope == Scope::Class))
+      {
+        parseTest(scope, start);
         return;
       }
       if (atMacroName() && !at(P::LParen, 1) && !at(P::ColonColon, 1) && !at(P::Less, 1) &&
@@ -2957,6 +2979,91 @@ namespace
       return true;
     }
 
+    bool testsEnabled() const
+    {
+      auto it = config ? config->find("tests") : ConfigValues::const_iterator();
+      return config && it != config->end() && it->second.number != 0;
+    }
+
+    // `name(args)`, a call the parser writes itself.
+    CallExpr* syntheticCall(uint32_t token, const char* name, std::vector<Expr*> args)
+    {
+      CallExpr* c = node<CallExpr>(token);
+      NameExpr* callee = node<NameExpr>(token);
+      NamePart part;
+      part.symbol = symbols.intern(name);
+      callee->name.parts = makeSpanOf(std::vector<NamePart>{part});
+      c->callee = callee;
+      c->args = makeSpanOf(args);
+      return c;
+    }
+
+    // `test "name" { ... }` (design.md 8.6), at namespace scope or in a class. Without --tests
+    // (config::tests) it is skipped. With it, the body is a function `void __kpp_test_<file>_<n>()`
+    // (static in a class) and a variable registers it with the test runner (compiler/src/tests.cpp):
+    // `int __kpp_test_registered_<file>_<n> = __kppRegisterTest(&__kpp_test_<file>_<n>, "name");`,
+    // whose caller location is the test's.
+    void parseTest(Scope scope, uint32_t start)
+    {
+      advance();
+      uint32_t nameToken = pos;
+      advance();
+      if (!testsEnabled())
+      {
+        skipBalanced();
+        return;
+      }
+      if (scope == Scope::Class && currentParent && currentParent->isTemplate)
+        error("a test in a class template (a test belongs to one class)");
+      uint64_t h = 1469598103934665603ull;
+      for (unsigned char c : out.path)
+        h = (h ^ c) * 1099511628211ull;
+      char suffix[40];
+      snprintf(suffix, sizeof suffix, "%016llx_%u", (unsigned long long)h, testCount++);
+      std::string name = std::string("__kpp_test_") + suffix;
+
+      FunctionDecl* f = decl<FunctionDecl>(start);
+      BuiltinType* voidType = node<BuiltinType>(start);
+      voidType->keyword = Kw::void_;
+      f->returnType = voidType;
+      NamePart part;
+      part.symbol = symbols.intern(name);
+      f->name.parts = makeSpanOf(std::vector<NamePart>{part});
+      if (scope == Scope::Class)
+        f->flags |= DF_Static;
+      Decl* savedParent = currentParent;
+      currentParent = f;
+      bool savedInTest = inTest;
+      inTest = true;
+      f->body = parseBlock();
+      inTest = savedInTest;
+      currentParent = savedParent;
+      ++out.functionBodies;
+      pushDecl(f);
+
+      VariableDecl* v = decl<VariableDecl>(start);
+      BuiltinType* intType = node<BuiltinType>(start);
+      intType->keyword = Kw::int_;
+      v->type = intType;
+      NamePart varPart;
+      varPart.symbol = symbols.intern(std::string("__kpp_test_registered_") + suffix);
+      v->name.parts = makeSpanOf(std::vector<NamePart>{varPart});
+      if (scope == Scope::Class)
+        v->flags |= DF_Static;
+      NameExpr* function = node<NameExpr>(start);
+      function->name.parts = f->name.parts;
+      UnaryExpr* address = node<UnaryExpr>(start);
+      address->operand = function;
+      address->op = uint32_t(P::Amp);
+      address->isKeyword = false;
+      address->postfix = false;
+      LiteralExpr* text = node<LiteralExpr>(nameToken);
+      text->literalKind = TokenKind::String;
+      text->keyword = Kw::Count;
+      v->init = syntheticCall(start, "__kppRegisterTest", {address, text});
+      pushDecl(v);
+    }
+
     // The operator== a class declares implicitly when it defaults operator<=> and declares no
     // operator== of its own (C++ [class.compare.default]/5): `bool operator==(const X&) const =
     // default`, with the <=>'s parameters, constness and access, so that a qualified call names it
@@ -3580,6 +3687,30 @@ namespace
         advance();
         advance();
         return node<FallthroughStmt>(start);
+      }
+      if (inTest && (atIdent(kwCheck) || atIdent(kwRequire)) && at(P::LParen, 1))
+      {
+        // check(cond); and require(cond); in a test (design.md 8.6): a comparison is evaluated by
+        // the runner's __kppEqual (NotEqual, Less...), which keeps the operands for the message.
+        AssertStmt* s = node<AssertStmt>(start);
+        s->testKind = atIdent(kwCheck) ? 1 : 2;
+        advance();
+        advance();
+        s->startToken = pos;
+        s->cond = parseExpression();
+        s->endToken = pos;
+        expect(P::RParen, "expected ')' after the checked expression");
+        expect(P::Semi, "expected ';' after check or require");
+        if (s->cond->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(s->cond)->isKeyword)
+        {
+          auto* b = static_cast<BinaryExpr*>(s->cond);
+          const char* compare = P(b->op) == P::EqEq ? "__kppEqual" : P(b->op) == P::NotEq ? "__kppNotEqual" : P(b->op) == P::Less ? "__kppLess"
+                              : P(b->op) == P::LessEq ? "__kppLessEqual" : P(b->op) == P::Greater ? "__kppGreater"
+                              : P(b->op) == P::GreaterEq ? "__kppGreaterEqual" : nullptr;
+          if (compare)
+            s->cond = syntheticCall(b->token, compare, {b->lhs, b->rhs});
+        }
+        return s;
       }
       if ((atIdent(kwAssert) || atIdent(kwReleaseAssert)) && at(P::LParen, 1))
       {

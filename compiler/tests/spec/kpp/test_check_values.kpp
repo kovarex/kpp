@@ -1,5 +1,4 @@
 // spec: a failing check prints its location, its text and a comparison's operand values, and the test goes on
-// pending: no native tests yet
 // test:
 // exit: 1
 enum class Dir : u8 { { North, East } };

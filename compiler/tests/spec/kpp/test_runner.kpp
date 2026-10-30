@@ -1,5 +1,4 @@
 // spec: `kppc --test file.kpp` builds the file's `test "name" { }` declarations with a runner in place of main and runs them all
-// pending: no native tests yet
 // test:
 // exit: 0
 int square(int x) { return x * x; }

@@ -1,5 +1,4 @@
 // spec: the runner's --filter runs the tests whose full name ("file > name") contains the text, `*` matching anything
-// pending: no native tests yet
 // test: --filter "parse*number"
 // exit: 0
 test "parse a number" { println("ran: parse a number"); }

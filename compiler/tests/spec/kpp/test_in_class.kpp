@@ -1,0 +1,25 @@
+// spec: a test inside a class sees the class's private members; it is the class's static function
+// test:
+// exit: 0
+class Counter
+{
+  int count = 0;
+  void bump() { ++count; }
+public:
+  int value() const { return count; }
+
+  test "bump counts"
+  {
+    Counter c;
+    c.bump();
+    c.bump();
+    check(c.count == 2);
+    check(c.value() == 2);
+  }
+};
+
+namespace geometry
+{
+  int area(int w, int h) { return w * h; }
+  test "area" { check(area(2, 3) == 6); }
+}

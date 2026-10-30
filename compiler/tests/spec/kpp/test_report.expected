@@ -1,6 +1,6 @@
-test_report.kpp:8:3: check failed: x == 4 (3 == 4)
+test_report.kpp:7:3: check failed: x == 4 (3 == 4)
 failed: test_report.kpp > fails
-{"test":"test_report.kpp > fails","file":"test_report.kpp","line":5,"status":"fail","failures":[{"file":"test_report.kpp","line":8,"column":3,"kind":"check","expression":"x == 4","values":["3","4"]}]}
-{"test":"test_report.kpp > a \"quoted\" name","file":"test_report.kpp","line":11,"status":"pass","failures":[]}
+{"test":"test_report.kpp > fails","file":"test_report.kpp","line":4,"status":"fail","failures":[{"file":"test_report.kpp","line":7,"column":3,"kind":"check","expression":"x == 4","values":["3","4"]}]}
+{"test":"test_report.kpp > a \"quoted\" name","file":"test_report.kpp","line":10,"status":"pass","failures":[]}
 {"summary":{"tests":2,"failed":1}}
 2 tests, 1 failed

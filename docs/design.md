@@ -351,6 +351,17 @@ sees private members). `check(expr)` records a failure with the expression text,
 and the operand values and continues; `require(expr)` ends the test. Tests are compiled only
 with `kppc --tests`, which generates the runner (`--run-test <name or file>` selects); without
 the switch they cost nothing. Fixtures are ordinary classes constructed in the test.
+Done 2026-10-30 (thread G; the runner's details in "Running and testing Kpp code"): `kppc --test
+FILES [-- runner arguments]` builds and runs them, `--tests` builds them (with `--exe`). The
+selection is the runner's `--filter TEXT` (repeatable, `*` matches anything) instead of
+`--run-test`, plus `--list` and `--report FILE`. `check` and `require` are statements inside a
+test's body only (elsewhere `check` is an ordinary name); a comparison's operand values are
+printed when `toString` or a `str()` method can say them. A failing `require`, or an `assert`
+inside a test, ends the test by throwing, so destructors run. The build has the constant
+`config::tests`, and the program's own `main` is renamed `__kpp_program_main`. Not yet: a
+compile error for two tests of one name, `--jobs N`.
+Spec snippets: kpp/tests_in_compiler, kpp/test_runner, kpp/test_check_values, kpp/test_require,
+kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class.
 
 ### 9. Exceptions and RTTI (decided 2026-10-24)
 - Kpp has exceptions, with C++'s `throw`/`try`/`catch` semantics, implemented on LLVM's
@@ -1195,14 +1206,14 @@ loses after an edit (above), so it is not the default. Spec snippet: `kpp/run_co
 
 ### (b) Native tests: the rest of 8.6
 - **Declaration** as 8.6: `test "name" { ... }` at namespace scope or in a class. The name is a
-  string; two tests of one name in one program are a compile error. A test's full name is its
-  file's path relative to the root given (later its package, "Code packages") and its name:
+  string; two tests of one name in one program are a compile error (not yet). A test's full name
+  is its file's path as the build names it (later its package, "Code packages") and its name:
   `core/Vector.kpp > push_back grows`.
 - **Checks.** `check(expr)` records a failure and continues; `require(expr)` records it and ends
   the test. The message is in the compiler's error format, so editors jump to it:
   `file:line:column: check failed: v.size() == 3 (2 == 3)`: the expression text and, for a
-  comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`), both operands' values when `format` can print
-  them (the text alone otherwise). The same values then go into `assert` messages (7.2's "operand
+  comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`), both operands' values when `toString` or a
+  `str()` method can say them (the text alone otherwise). The same values then go into `assert` messages (7.2's "operand
   values: later"). Inside a test, a failing `assert` or `release_assert` fails the test (the
   runner's `kpp_assert_failed` ends the test by throwing, section 9).
 - **One command.** `kppc [options] --test ROOTS... [-- runner arguments]` builds the tests under
@@ -1213,9 +1224,10 @@ loses after an edit (above), so it is not the default. Spec snippet: `kpp/run_co
   they cost nothing.
 - **The runner** (its arguments after `--`, or on the test executable): `--filter TEXT` (a
   substring of the full name, `*` matching anything; repeatable), `--list` (the tests, no run),
-  `--report FILE` (below), `--jobs N` (below). One line per failure, then a summary: `12 tests,
-  1 failed, 0.004 s`. The exit code is 0 when all pass, 1 when one failed, the compiler's when the
-  build failed. **Q2**: `--filter` as above instead of 8.6's `--run-test <name or file>`?
+  `--report FILE` (below), `--jobs N` (below). One line per failure and `failed: <full name>`
+  after a failed test, then a summary: `12 tests, 1 failed`. The exit code is 0 when all pass, 1 when one failed, the compiler's when the
+  build failed. **Q2**: `--filter` as above instead of 8.6's `--run-test <name or file>`? (Built
+  as `--filter` on 2026-10-30, the coordinator's call, reversible.)
 - **Isolation and parallelism.** **Q3**, proposed: by default the tests run in one process, one
   after another (the fastest; a crash ends the run and is reported as that test's); `--jobs N` runs
   them in N processes of the same executable, each a share, and a crash fails only its test (the
@@ -1235,12 +1247,15 @@ Both drive the same command line and read the same machine-readable report; neit
 human output.
 - **Discovery**: `kppc --test ROOTS -- --list --report -` writes one JSON object per line,
   `{"test":"core/Vector.kpp > push_back grows","file":"C:/.../Vector.kpp","line":120}`. Listing
-  needs the front end only (no codegen, no link), so it can run on every save.
+  needs only the front end (no codegen, no link), so it can run on every save; today `--list`
+  runs in the built test executable, and a listing from the front end alone comes later.
 - **Running**: `--report FILE` (`-` for stdout) writes per test `{"test":...,"file":...,"line":...,
   "status":"pass"|"fail"|"crash","seconds":...,"failures":[{"file":...,"line":...,"column":...,
   "kind":"check"|"require"|"assert","expression":"v.size() == 3","values":["2","3"]}],
   "output":"..."}` and last `{"summary":{"tests":12,"failed":1,"seconds":0.004}}`. Running one
-  test from an editor's gutter is `--filter` with its full name.
+  test from an editor's gutter is `--filter` with its full name. Built on 2026-10-30: everything
+  above except `seconds`, `output` and the `crash` status; `kind` may also be `exception` (an
+  exception left the test). Spec snippet kpp/test_report.
 - **Visual Studio**: the Test Explorer needs a test adapter (thread E's extension) running the two
   commands above; a failure's file, line and column open the source. A project's "Start Without
   Debugging" is `kppc --run`; debugging builds with `--exe` (or `--tests --exe`) and starts the
@@ -1250,15 +1265,32 @@ human output.
 - **The IDE (thread F)**: the same JSON; with the persistent compiler, the IDE's server answers
   `--list` from the build it already holds.
 
-### Implementation plan (thread G; hunks in other threads' files announced to the coordinator)
-1. Done: `--run` (`compiler/src/run.cpp`, four lines in `main.cpp`).
-2. The parser (A's file): `test "name" { }` as a function declaration marked as a test, dropped
-   when the build has no `--tests`; `check` and `require` as kinds of the assert statement.
-3. Codegen (B's file): `check` calls `kpp_check_failed(file, line, column, text, values)` and
-   goes on, `require` also returns; comparison operands formatted.
-4. The driver generates the test table as it generates `<config>`: one more source file listing
-   the tests; the runner itself is Kpp (`stdlib/test/`, with thread C's agreement).
-5. `--test`, `--list`, `--report`, `--jobs`.
+### How it is built (done 2026-10-30, thread G)
+1. `--run` and `--test`: `compiler/src/run.cpp`; `main.cpp` hands them over before anything else.
+2. The parser (A's file, `parseTest`): with `config::tests` (set by `--tests`), `test "name" { }`
+   becomes a function `void __kpp_test_<file hash>_<n>()` (static in a class) and a variable
+   `int __kpp_test_registered_<...> = __kppRegisterTest(&__kpp_test_<...>, "name");`, whose
+   initializer registers the test at startup. Its caller location is the test's, which gives the
+   file and line. So there is no table to generate, and a test in a class or a namespace needs
+   no qualified name. In a test's body, `check(cond);` and `require(cond);` are assert statements
+   (`AssertStmt::testKind` 1 and 2). A comparison `a OP b` becomes `__kppEqual(a, b)` (or
+   `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual`); when the comparison fails, the
+   call keeps the operands' text for the message. The program's `main` is renamed. Without
+   `config::tests`, the parser skips the declaration.
+3. Codegen (B's file, a dozen lines): a failing check calls `kpp_check_failed(file, line, column,
+   text, kind)` and goes on. For a require, the call may throw (an invoke), so the test's objects
+   are destroyed.
+4. The runner is Kpp source the driver adds as one more file, `<tests>.kpp`
+   (`compiler/src/tests.cpp`), as it adds `<config>`: its `main`, `kpp_check_failed`, a
+   `kpp_assert_failed` that fails the running test, and the comparison templates. The standard
+   library is untouched.
+5. Not yet: `--jobs N` (the processes are kppc's, so the test executable stays simple), seconds
+   in the report, a compile error for two tests of one name, leaving the standard library's
+   tests out of a program's run (it has none yet).
+
+Latency of a small test (one `test` with a loop and two checks, `kppc --test fib.kpp`, six rounds
+on 2026-10-30, other threads building): 0.34 s median from the edit to the summary (0.32-0.69 s),
+0.27 s with nothing changed (0.25-0.45 s).
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type

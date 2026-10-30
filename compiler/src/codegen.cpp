@@ -14758,7 +14758,7 @@ namespace
         case NodeKind::AssertStmt:
         {
           auto* a = static_cast<AssertStmt*>(s);
-          if (!a->release && !debug)
+          if (!a->release && !a->testKind && !debug)
             break; // assert compiles to nothing outside debug builds
           Value cond = condition(a->cond, s);
           destroyTemps();
@@ -14766,6 +14766,17 @@ namespace
           fn += "  br i1 " + cond.text + ", label %" + okL + ", label %" + failL + "\n";
           startBlock(failL);
           auto [line, column] = lineColumnOf(a->token);
+          if (a->testKind)
+          {
+            // check and require in a test (design.md 8.6): the test runner records the failure; a
+            // require's call throws to end the test (compiler/src/tests.cpp).
+            emitCall("", "void @kpp_check_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
+                             std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ", i32 " +
+                             std::to_string(a->testKind) + ")", a->testKind == 2);
+            emitBranch(okL);
+            startBlock(okL);
+            break;
+          }
           emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(currentFile->path) + ", i32 " + std::to_string(line) + ", i32 " +
                            std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ")", false);
           fn += "  unreachable\n";

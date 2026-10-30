@@ -1,5 +1,4 @@
 // spec: the runner's --list prints every test's full name and location without running any
-// pending: no native tests yet
 // test: --list
 // exit: 0
 test "first" { println("not run"); }

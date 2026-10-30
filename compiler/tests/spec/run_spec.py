@@ -164,7 +164,7 @@ def compare(stdout, expected_path, result):
         result["status"] = "pass"
     else:
         result["status"] = "FAIL"
-        got, want = normalise(r.stdout).split("\n"), normalise(expected).split("\n")
+        got, want = normalise(stdout).split("\n"), normalise(expected).split("\n")
         for i in range(max(len(got), len(want))):
             g = got[i] if i < len(got) else "<end>"
             w = want[i] if i < len(want) else "<end>"

@@ -6,6 +6,7 @@
 #include "resolver.hpp"
 #include "ast_walk.hpp"
 #include "run.hpp"
+#include "tests.hpp"
 #include "server.hpp"
 #include "source.hpp"
 #include <algorithm>
@@ -128,7 +129,11 @@ namespace
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
             "  --stop-server stop the compile server of the other arguments\n"
             "  --run F ARGS  build F (a file or directory) with the options before --run and run it with ARGS;\n"
-            "                the exit code is the program's (docs/design.md, \"Running and testing Kpp code\")\n");
+            "                the exit code is the program's (docs/design.md, \"Running and testing Kpp code\")\n"
+            "  --tests       build the program's `test \"name\" { }` declarations with the test runner as main\n"
+            "                (config::tests is true; docs/design.md 8.6)\n"
+            "  --test F... [-- ARGS]  build the tests of F (files or directories) with the options before --test\n"
+            "                and run them; ARGS go to the runner: --filter TEXT, --list, --report FILE\n");
   }
 
   struct FileStats
@@ -2300,9 +2305,9 @@ int main(int argc, char** argv)
   // stops the server of the same arguments, `--serve KEY` is the server a client started.
   if (argc == 3 && std::string(argv[1]) == "--serve")
     return runServer(argv[2], compile);
-  // `--run` (run.hpp): the arguments after its source are the program's.
+  // `--run` and `--test` (run.hpp): the arguments after the sources are the program's.
   for (int i = 1; i < argc; ++i)
-    if (std::string(argv[i]) == "--run")
+    if (std::string(argv[i]) == "--run" || std::string(argv[i]) == "--test")
       return runProgram(argc, argv, i);
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--server" || std::string(argv[i]) == "--stop-server")
@@ -2398,6 +2403,8 @@ int compile(int argc, char** argv)
     }
     else if (arg == "--release")
       options.configValues["debug"] = parseConfigValue("false");
+    else if (arg == "--tests")
+      options.configValues["tests"] = parseConfigValue("true");
     else if (arg == "--modules" && i + 1 < argc)
       options.modules = unsigned(atoi(argv[++i]));
     else if (arg == "--convert" && i + 1 < argc)
@@ -2463,7 +2470,7 @@ int compile(int argc, char** argv)
   auto build = std::make_unique<Build>();
   build->files.resize(paths.size());
   std::vector<SourceFile>& files = build->files;
-  files.reserve(paths.size() + 2); // the configuration and the imported C headers
+  files.reserve(paths.size() + 3); // the configuration, the test runner and the imported C headers
   std::atomic<uint64_t> totalBytes{0};
   parallelFor(paths.size(), options.threads, [&](size_t i)
   {
@@ -2489,6 +2496,15 @@ int compile(int argc, char** argv)
     config.text = configSource(options.configValues);
     totalBytes += config.text.size();
     files.push_back(std::move(config));
+    // --tests: the runner is one more source file (tests.hpp).
+    if (options.configValues.count("tests") && options.configValues["tests"].number)
+    {
+      SourceFile runner;
+      runner.path = testRunnerPath;
+      runner.text = testRunnerSource();
+      totalBytes += runner.text.size();
+      files.push_back(std::move(runner));
+    }
   }
   // A compile server's build whose every input is as the previous one's (step 3a of the
   // persistent compiler, docs/compile-speed.md): the previous build's output again.
