@@ -689,4 +689,41 @@ struct Atomic
   T operator-=(T delta) { return this->fetchSub(delta) - delta; }
   bool operator==(T other) const { return this->load() == other; }
   bool operator!=(T other) const { return this->load() != other; }
+
+  // Blocks while the value's bits are old's (std::atomic::wait); a notify after a store that
+  // changed them wakes it. Waiters and notifiers meet at the lock and condition variable of
+  // atomicWaitSlot(this): the waiter checks the value and sleeps under the lock, the notifier
+  // wakes under it, so a store and notify between the check and the sleep cannot be missed.
+  void wait(T old) const
+  {
+    AtomicWaitSlot& slot = atomicWaitSlot(this);
+    Word oldWord = Atomic::wordOf(old);
+    win32::AcquireSRWLockExclusive(win32::srwLock(&slot.lock));
+    while (Atomic::wordOf(this->load()) == oldWord)
+      win32::SleepConditionVariableSRW(win32::conditionVariable(&slot.condition), win32::srwLock(&slot.lock), 0xFFFFFFFFu, 0);
+    win32::ReleaseSRWLockExclusive(win32::srwLock(&slot.lock));
+  }
+  // Wakes the waiters on this Atomic. notifyOne wakes all of the slot's waiters too (each checks
+  // its own value again and sleeps on), which C++'s "at least one" allows.
+  void notifyOne() { atomicNotify(this); }
+  void notifyAll() { atomicNotify(this); }
+  void notify_one() { atomicNotify(this); }
+  void notify_all() { atomicNotify(this); }
 };
+
+// The lock and condition variable that Atomic::wait sleeps on, one of 64 picked by the Atomic's
+// address; Atomics that share one wake each other's waiters, who check their values again.
+struct AtomicWaitSlot
+{
+  void* lock = nullptr;      // SRWLOCK
+  void* condition = nullptr; // CONDITION_VARIABLE
+};
+AtomicWaitSlot atomicWaitSlots[64];
+AtomicWaitSlot& atomicWaitSlot(const void* address) { return atomicWaitSlots[((uintptr_t)address >> 3) % 64]; }
+void atomicNotify(const void* address)
+{
+  AtomicWaitSlot& slot = atomicWaitSlot(address);
+  win32::AcquireSRWLockExclusive(win32::srwLock(&slot.lock));
+  win32::WakeAllConditionVariable(win32::conditionVariable(&slot.condition));
+  win32::ReleaseSRWLockExclusive(win32::srwLock(&slot.lock));
+}

@@ -26,6 +26,11 @@ Members:
 - Floating point: `fetchAdd`, `fetchSub`, `+=`, `-=` as for integers, each one indivisible.
 - `== value`, `!= value`: comparisons of the loaded value.
 - `is_lock_free()`: true.
+- `wait(old)`: blocks while the value's bytes equal old's; returns at once when they differ.
+  `notifyOne()` / `notify_one`, `notifyAll()` / `notify_all`: wake the threads waiting on this
+  Atomic, which return when a store has changed the value (a waiter may also wake when nothing
+  changed and then waits on; notifyOne may wake more than one). Waiting blocks in a lock and
+  condition variable chosen by the Atomic's address, not lock-free.
 
 ## Atomic<SharedPtr<T>>
 
@@ -44,4 +49,4 @@ The free functions on a plain SharedPtr (`atomicLoad`, `atomicStore`, `atomicExc
 sharedptr.md.
 
 *Differences from C++*: there are no memory-order arguments (every operation is sequentially
-consistent), no `wait`/`notify`, and no Atomic of a type larger than 8 bytes other than SharedPtr.
+consistent), and no Atomic of a type larger than 8 bytes other than SharedPtr.
