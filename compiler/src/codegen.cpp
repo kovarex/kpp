@@ -13140,6 +13140,22 @@ namespace
       }
     }
 
+    // Whether `a && b` or `a || b` calls an operator function (a member of the left operand's class
+    // or a free one), as the class-operand path of binary() finds it.
+    bool userLogicalOperator(BinaryExpr* b, P op)
+    {
+      const Ty* lt = b->lhs->ty ? types.stripRef(b->lhs->ty) : nullptr;
+      const Ty* rt = b->rhs->ty ? types.stripRef(b->rhs->ty) : nullptr;
+      if (!lt || !rt || !lt->isKnown() || !rt->isKnown() || (!isClass(lt) && !isClass(rt)))
+        return false;
+      Expr* rhsExpr = b->rhs;
+      Span<Expr*> one{&rhsExpr, 1};
+      const Ty* foundIn = nullptr;
+      if (isClass(lt) && findMemberFunction(types.unqualified(lt), operatorName(op), argTypesOf(one), types.unqualified(lt), b, &foundIn, true))
+        return true;
+      return global.findFreeOperator(uint32_t(op), argumentType(b->lhs, b->lhs->ty, types), argumentType(b->rhs, b->rhs->ty, types), currentFunction) != nullptr;
+    }
+
     Value binary(BinaryExpr* b)
     {
       if (b->isKeyword)
@@ -13150,7 +13166,10 @@ namespace
         unsupported(b, "this keyword operator");
       }
       P op = P(b->op);
-      if (op == P::AndAnd || op == P::OrOr)
+      // A class's own operator&& or operator|| is called like any overloaded operator (below), both
+      // operands evaluated (C++ [over.match.oper]): NamedBool's `guiCheck || GuiCheck::fromBool(x)`.
+      // The built-in, short-circuit one is for operands no such function takes.
+      if ((op == P::AndAnd || op == P::OrOr) && !userLogicalOperator(b, op))
         return logical(op == P::AndAnd, b->lhs, b->rhs, b);
       if (op == P::Comma)
       {

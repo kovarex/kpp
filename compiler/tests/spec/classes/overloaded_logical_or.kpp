@@ -1,6 +1,5 @@
 // spec: a class's own operator|| (and operator&&) is called for `a || b` of two of its objects, as any overloaded operator, both operands evaluated, and gives its own type; the built-in || (a bool, short-circuit) is only for operands that are not such classes
 // factorio: NamedBool's `constexpr NamedBool operator||(const NamedBool&& other) const`, called by ControlInput::isActive's `guiCheck || GuiCheck::fromBool(this->guiInput)` for a GuiCheck parameter (4c178a5b915)
-// pending: || of two class objects is the built-in one, a bool
 struct Flag
 {
   bool value;
