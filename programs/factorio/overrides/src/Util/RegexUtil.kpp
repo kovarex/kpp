@@ -100,6 +100,20 @@ public:
   static bool FullMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, ANCHOR_BOTH, args...); }
   template<typename... Args>
   static bool PartialMatch(StringView text, const RE2& re, Args... args) { return RE2::matchInto(text, re, UNANCHORED, args...); }
+  // The start of *input matches and the submatches parse (Consume); then *input begins after the
+  // match. Otherwise false and *input is unchanged.
+  template<typename... Args>
+  static bool Consume(re2::StringPiece* input, const RE2& re, Args... args)
+  {
+    if (re.NumberOfCapturingGroups() < (int)sizeof...(Args))
+      return false;
+    re2::StringPiece groups[sizeof...(Args) + 1];
+    if (!re.Match(*input, 0, (size_t)input->size(), ANCHOR_START, groups, (int)sizeof...(Args) + 1) || !RE2::parseAll(groups + 1, args...))
+      return false;
+    int consumed = (int)(groups[0].data() + groups[0].size() - input->data());
+    *input = re2::StringPiece(input->data() + consumed, input->size() - consumed);
+    return true;
+  }
 
   // Replaces the first match of re in *str (Replace, true when there was one) or every match
   // (GlobalReplace, the count) by rewrite.

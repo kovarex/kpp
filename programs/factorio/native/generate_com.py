@@ -236,8 +236,14 @@ def main():
         lines.append(f'class {name}' + (f' : public {base}' if base else ''))
         lines.append('{')
         lines.append('public:')
+        # __uuidof(IFoo) as IFoo::iid(), for IUnknown's QueryInterface template.
+        lines.append(f'  static const IID* iid() {{ return &IID_{name}; }}')
         for result, method, params in own:
             lines.append(f'  virtual {result} {method}({", ".join(params)}) = 0;')
+        if name == 'IUnknown':
+            # unknwn.h's C++ overload: the interface Q asked for by Q's own id.
+            lines.append('  template<typename Q>')
+            lines.append('  HRESULT QueryInterface(Q** pp) { return this->QueryInterface(Q::iid(), (void**)pp); }')
         lines.append('};')
         lines.append('')
     out = os.path.join(FACTORIO, 'overrides', 'added', 'src', 'Graphics', 'DX11', 'ComInterfaces.kpp')

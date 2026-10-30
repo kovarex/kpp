@@ -1,0 +1,42 @@
+// spec: a COM interface class as generate_com.py writes them: IUnknown's virtual QueryInterface(const IID*, void**) next to unknwn.h's member template QueryInterface(Q** pp), which asks for Q's id (Q::iid(), each interface's static) and is found through a derived interface's pointer
+// factorio: GraphicsInterfaceDX11's `this->dxgiAdapter->QueryInterface(&adapter)` with a CComPtr<IDXGIAdapter3> (4c178a5b915)
+struct IID { int id; };
+IID iidOfBase = {1};
+IID iidOfDerived = {2};
+class IUnknownLike
+{
+public:
+  static const IID* iid() { return &iidOfBase; }
+  virtual int QueryInterface(const IID* riid, void** object) = 0;
+  template<typename Q>
+  int QueryInterface(Q** pp) { return this->QueryInterface(Q::iid(), (void**)pp); }
+};
+class IDerived : public IUnknownLike
+{
+public:
+  static const IID* iid() { return &iidOfDerived; }
+  virtual int value() = 0;
+};
+class Object : public IDerived
+{
+public:
+  int asked = 0;
+  virtual int QueryInterface(const IID* riid, void** object) override
+  {
+    this->asked = riid->id;
+    *object = riid->id == 2 ? (void*)(IDerived*)this : nullptr;
+    return riid->id == 2 ? 0 : -1;
+  }
+  virtual int value() override { return 42; }
+};
+int main()
+{
+  Object object;
+  IUnknownLike* unknown = &object;
+  IDerived* derived = nullptr;
+  int result = unknown->QueryInterface(&derived);
+  IUnknownLike* base = nullptr;
+  int other = derived->QueryInterface(&base);
+  println("{} {} {} {}", result, derived->value(), object.asked, other);
+  return 0;
+}

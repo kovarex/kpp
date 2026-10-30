@@ -51,10 +51,10 @@ void swap(T& a, T& b)
 
 // Stores newValue and returns what was there.
 template<typename T, typename U>
-T exchange(T& slot, const U& newValue)
+T exchange(T& slot, U&& newValue)
 {
   T old = move(slot);
-  slot = newValue;
+  slot = forward<U>(newValue);
   return old;
 }
 

@@ -1,6 +1,5 @@
 // spec: exchange(slot, newValue) (std::exchange) moves newValue into slot when it is an rvalue (a move-only UniquePtr among them) and copies it when it is an lvalue, and returns the old value moved out
 // factorio: ThreadedChunkedZipPackageWriteStream's `std::exchange(buffer, this->allocateBuffer())` of a std::unique_ptr<DataBuffer> (4c178a5b915)
-// pending: exchange takes newValue by const reference and copies it
 UniquePtr<int> fresh(int value) { return makeUnique<int>(value); }
 int main()
 {
