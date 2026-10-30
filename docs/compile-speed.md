@@ -481,6 +481,30 @@ name `getPrototype` (names are recorded by symbol, step 2, so every `getPrototyp
 test adds a signature change, an overload added (that changes which function another file calls)
 and taken out, each built this way and checked against a new process's build.
 
+**A template's body (landed 2026-10-30).** A changed body of a function template or of a class
+template's member (inline or out of line; not constexpr, no deduced return type) is a body edit
+(3b) whose instances are checked again: in a server's build every instance record keeps how it was
+checked (`InstanceRecord::Recheck`: a function instance's task, or a class member's walker set-up)
+and every instance walk keeps statistics of its own (e9762e60). `recheckInstancesOf` copies each
+instance of a changed template from the new body and walks it again, its statistics and what it
+reads replacing its old ones; the kept total is made again from every walk's own. It is a build from
+scratch when an instance of the template is one only codegen made, when one deduces another return
+type, when the checks make an instance anew (endRewalk) or when an instance the old bodies asked for
+is asked for by nothing now. The kept file's instance copies are pointed at the new tokens with its
+nodes (`forEachInstanceCopy`), those of the changed templates excepted (they are replaced).
+Codegen then runs in full: rebuildLLVM emits again the functions it is given and those whose record
+holds a changed body, but an instance's record does not hold its own template's body, so an
+instance of a changed template kept its old code (the edit test's server-built program printed the
+old value until the driver sent such builds to full codegen). Proposed to the codegen thread: an
+instance's emission notes its template's definition (`noteInlined(original)`), after which the
+driver can let codegen follow. The edit test edits a function template's and a class template
+member's two-statement bodies (a trivial one is inlined into main and hid the stale instance).
+Full game through one server with `--verify-incremental` (frozen tree, the run.cmd arguments,
+scratchpad game-verify.cmd): a statement added to `OptionalFundamental<T>::load` (an out-of-line
+member, 6 explicit instances) and taken out again: resolve 0.67 and 0.65 s (2.0 s from scratch),
+codegen in full 9.9 and 15.9 s (7.1 s in the first build; the machine was shared), 5 modules
+compiled again, each "the same as from scratch".
+
 ### Step 5b wired: codegen's kept session in the server (on since 661f017)
 
 The kept Build holds codegen's session (`Build::codegen`, declared last so it is destroyed before
