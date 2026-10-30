@@ -28,6 +28,42 @@ simple templates, own standard library, C-only interop.
 - Several threads may work in this same clone (C:\kpp): commit small, push promptly, pull before
   committing.
 
+## Rules
+Decided by kovarex; every thread follows them.
+- Factorio source: always the latest pull. Convert from C:\Factorio's current HEAD, never a pinned
+  commit; when kovarex pulls, the next conversion moves to the new HEAD. Name the converted commit
+  in every factorio-in-kpp commit message and measurement. Push a new-source conversion only once
+  the headline is 0 and the game links.
+- No silent fallbacks, no silent wrong answers: an unsupported construct is a compile error. A silent
+  miscompile outranks every other task, the headline included.
+- Spec first: every feature and fix starts with a snippet in `compiler/tests/spec/`; a gap found in
+  converted code gets a pending snippet before it is fixed. A pending snippet that starts passing
+  fails the run.
+- One thread per worktree, under C:\kpp-sandbox (see its README.md). C:\kpp stays clean master.
+  Never create top-level directories in C:\. Rebase onto origin/master; push fast-forward only when
+  `run_tests.cmd` and `spec.cmd` pass (and the game still runs, for codegen). Commit small, push
+  promptly. Never `git stash`: the stash is shared across worktrees.
+- Ownership: A resolver, parser, compile speed, persistent compiler; B codegen, driver, layout,
+  cimport, linking, running the game; C convert.cpp, programs/factorio, the stdlib (sole owner),
+  interop, factorio-in-kpp pushes; D deduction, instantiation, overloads, checker, interpreter,
+  inlining. A small hunk in another thread's file is fine after telling the coordinator.
+- Threads cannot message each other: cross-thread notes go through the coordinator, who also gives
+  each pending spec exactly one owner.
+- Measure, don't guess: paired binaries on the same converted tree, interleaved rounds; every speed
+  claim names the command and the numbers.
+- Determinism: the front end and the whole IR are byte-identical at 1, 8 and 32 threads.
+  `--no-inline` output is byte-identical apart from inlining. Any inlining path outside `inlineCall`
+  calls `noteInlined(written)`.
+- The stdlib follows the C++ standard's guarantees; every deviation is listed in
+  docs/stdlib-conformance.md.
+- C:\Factorio is read-only. The game runs from C:\factorio-in-kpp or a thread's scratch game dir with
+  an isolated write dir; never write to %APPDATA%\Factorio.
+- Line endings: resolver.cpp LF, codegen.cpp CRLF.
+- Decisions go into docs/design.md; open questions stay listed there until kovarex answers.
+- Reports to kovarex give exact counts and commits and link docs on GitHub
+  (https://github.com/kovarex/kpp/blob/master/docs/...). kovarex never edits the repos; "solve X"
+  from him is an instruction.
+
 ## Current phase
 Front end (lexer, parser, resolver, type checker, template instantiation) is done and measured
 (docs/prototype-results.md). Code generation for the Kpp v0 subset works through textual LLVM IR
