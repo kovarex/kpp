@@ -27,6 +27,17 @@ for %%f in (tests\run\*.kpp) do (
   )
 )
 echo %PASS% passed, %FAIL% failed
+rem --access-warnings (docs/design.md, "struct and class"): the warnings and notes on tests\access\access.kpp.
+%KPPC% --quiet --access-warnings --exe build\tests\access.exe tests\access\access.kpp 2> build\tests\access.all.txt > nul
+%SystemRoot%\System32\findstr.exe /b /c:"tests\access\access.kpp" build\tests\access.all.txt > build\tests\access.warnings.txt
+fc /w build\tests\access.warnings.txt tests\access\access.expected > nul
+if errorlevel 1 (
+  echo FAIL access warnings: build\tests\access.warnings.txt differs from tests\access\access.expected
+  fc /w build\tests\access.warnings.txt tests\access\access.expected
+  set /a FAIL+=1
+) else (
+  echo ok   access warnings
+)
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
 if errorlevel 1 (

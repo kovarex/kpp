@@ -208,6 +208,15 @@ public:
   // found are returned, `path:line: error: ...` one each, sorted. A static_assert whose condition
   // is false, or no constant the checker can evaluate, is one.
   std::vector<std::string> checkerErrors();
+  // Access checking, warnings only, after enableAccessWarnings() before the resolve (kppc
+  // --access-warnings; design.md, "struct and class"): the uses of private and protected members
+  // outside their class, its derived classes (protected) and its friends, and the structs with a
+  // private or protected member, a base that is not public or a virtual function. accessReport()
+  // after the build: the warnings (`path:line: warning: ...`, each once, by file and line), with a
+  // note for each use a friend declaration allows and for each friend declaration, and in summary
+  // their counts.
+  void enableAccessWarnings();
+  std::vector<std::string> accessReport(const std::vector<ParsedFile*>& files, std::string& summary);
   // A static_assert in the body of a template instance's function is checked only if the program
   // uses that function, as C++ instantiates a member or function template only where it is used:
   // the code generator says which instance bodies (GlobalScope::instanceBody) it emitted, and

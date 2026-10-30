@@ -1,0 +1,51 @@
+// kppc --access-warnings (docs/design.md, "struct and class"), compared by run_tests with access.expected: a friend class and a friend function allow their uses, a derived class names a protected member, a static data member's definition is its class's code; outside them a private and a protected member, a private nested type and a lambda's use are warned of, as are the structs with a private member, a virtual function or a base that is not public (Leaf, polymorphic through a base only, is not)
+class Account
+{
+public:
+  Account(int b) : balance(b) {}
+  int get() const { return this->balance; }
+  friend class Auditor;
+  friend int peek(const Account& a);
+protected:
+  int fee = 1;
+private:
+  int balance;
+  struct Secret { int code = 7; };
+  static int count;
+  int helper() const { return this->balance * 2; }
+};
+int Account::count = Account(1).helper();
+class Auditor
+{
+public:
+  int audit(const Account& a) { return a.balance + a.helper(); }
+};
+int peek(const Account& a) { return a.balance; }
+class Premium : public Account
+{
+public:
+  Premium() : Account(5) {}
+  int myFee() { return this->fee; }
+};
+int thief(const Account& a) { return a.balance; }
+int thief2(Account& a) { return a.fee; }
+struct Plain
+{
+  int x = 0;
+private:
+  int y = 0;
+};
+struct Virt { virtual void f() {} };
+struct Hidden : private Plain {};
+struct Poly : Virt { void f() override {} };
+struct Leaf : Poly {};
+int main()
+{
+  Account a(3);
+  Auditor au;
+  Premium p;
+  println("{} {} {} {}", a.get(), au.audit(a), peek(a), p.myFee());
+  Account::Secret s;
+  auto lambda = [&]() { return a.balance; };
+  return thief(a) + thief2(a) + s.code + lambda() - 3 - 1 - 7 - 3;
+}

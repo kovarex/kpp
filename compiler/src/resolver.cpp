@@ -1,6 +1,10 @@
 #include "resolver.hpp"
 #include "consteval.hpp"
 #include "instance.hpp"
+#include "ast_walk.hpp"
+#include <array>
+#include <cctype>
+#include <set>
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
@@ -4283,6 +4287,352 @@ struct GlobalScope::Impl
     std::string where = locationOf(file, token);
     std::lock_guard lock(checkerErrorsMutex);
     checkerErrorSet.insert(where + ": error: " + message);
+  }
+
+  // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
+
+  bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
+  std::mutex accessMutex;
+  // A use of a private or protected member that its code may not name, by its warning (`path:line:
+  // warning: ...`), each once: a template's instances share the uses of their template.
+  struct AccessViolation
+  {
+    std::string group; // where the use is: tests, stdlib or game
+    bool isProtected = false;
+    const char* kind = "";
+  };
+  std::map<std::string, AccessViolation> accessViolations;
+  std::set<std::string> accessFriendUses;      // the uses a friend declaration allows, `path:line: note: ...`, each once
+  std::unordered_set<Decl*> accessFriendsUsed; // the friend declarations that allowed one
+
+  // The classes whose private members the code of d may name: the class d is a member of and the
+  // classes around it, also through the function d is local to (a local class's members, like a
+  // lambda's body, belong to their function), each by its scope.
+  void accessContext(Decl* d, std::vector<Scope*>& out)
+  {
+    for (int depth = 0; d && depth < 64; ++depth)
+    {
+      if (d->kind == NodeKind::ClassDecl && d->ownScope)
+      {
+        // With the classes its scope is nested in (`struct Button::Helper {...}` defined outside
+        // Button, whose declaration the index moved into it).
+        for (Scope* s = d->ownScope; s && s->kind == ScopeKind::Class; s = s->parent)
+          out.push_back(s);
+      }
+      Decl* owner = nullptr;
+      if (d->kind == NodeKind::FunctionDecl)
+        owner = owningClassOf(d);
+      else if (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::ClassDecl)
+      {
+        owner = d->kind == NodeKind::VariableDecl ? owningClassOf(d) : nullptr;
+        const QualifiedName& name = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d)->name : static_cast<ClassDecl*>(d)->name;
+        if (!owner && name.parts.size() > 1)
+        {
+          // `int Cache::limit = Cache::defaultLimit();`: a static data member's definition is the
+          // class's; `struct Button::Helper {...}` is nested in Button where it is defined.
+          QualifiedName qualifier = name;
+          qualifier.parts.count -= 1;
+          Lookup l = lookupQualified(qualifier, lexicalScopeOf(d), nullptr, 0);
+          if (l.scope && l.scope->kind == ScopeKind::Class)
+            owner = l.scope->owner;
+        }
+      }
+      d = owner ? owner : d->parent;
+    }
+  }
+
+  static bool sameNamePart(const NamePart& a, const NamePart& b)
+  {
+    return a.symbol == b.symbol && a.special == b.special && (a.special != 2 || a.opToken == b.opToken);
+  }
+
+  // The friend declaration of class owner that lets the code of fn, or of the classes whose scopes
+  // context holds, name owner's private members: a friend class one of them is, by name, or a
+  // friend function fn is, by name (one qualified by a class, `friend void A::f();`, names a member
+  // of a class named A, or a function outside classes; an unqualified one no member). Null if none
+  // does.
+  Decl* grantingFriend(Decl* owner, FunctionDecl* fn, const std::vector<Scope*>& context)
+  {
+    for (Decl* m : static_cast<ClassDecl*>(owner)->members)
+    {
+      if (!m || !(m->flags & DF_Friend))
+        continue;
+      if (m->kind == NodeKind::ClassDecl)
+      {
+        const QualifiedName& n = static_cast<ClassDecl*>(m)->name;
+        if (!n.empty())
+          for (Scope* s : context)
+            if (s->owner && s->owner->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(s->owner)->name.empty() &&
+                static_cast<ClassDecl*>(s->owner)->name.last().symbol == n.last().symbol)
+              return m;
+      }
+      else if (m->kind == NodeKind::FunctionDecl && fn && !fn->name.empty())
+      {
+        const QualifiedName& n = static_cast<FunctionDecl*>(m)->name;
+        if (n.empty() || !sameNamePart(n.last(), fn->name.last()))
+          continue;
+        // (`friend Data LightningUtil::getData(...)`: a qualifier that is no class names a namespace.)
+        Decl* cls = owningClassOf(fn);
+        if (n.parts.size() < 2 || !cls
+              ? !cls
+              : cls->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(cls)->name.empty() &&
+                  static_cast<ClassDecl*>(cls)->name.last().symbol == n.parts[n.parts.size() - 2].symbol)
+          return m;
+      }
+    }
+    return nullptr;
+  }
+
+  std::string namePartText(const NamePart& p) const
+  {
+    if (p.special == 1)
+      return "~" + debugName(p.symbol);
+    if (p.special == 2)
+      return "operator";
+    if (p.special == 3)
+      return "a conversion operator";
+    return debugName(p.symbol);
+  }
+
+  // A declaration's name for an access warning, with the classes around it (`Surface::Chunk::tiles`).
+  std::string accessName(Decl* d) const
+  {
+    std::string name;
+    switch (d->kind)
+    {
+      case NodeKind::ClassDecl: name = static_cast<ClassDecl*>(d)->name.empty() ? "(anonymous)" : namePartText(static_cast<ClassDecl*>(d)->name.last()); break;
+      case NodeKind::FunctionDecl: name = static_cast<FunctionDecl*>(d)->name.empty() ? "?" : namePartText(static_cast<FunctionDecl*>(d)->name.last()); break;
+      case NodeKind::VariableDecl: name = static_cast<VariableDecl*>(d)->name.empty() ? "?" : namePartText(static_cast<VariableDecl*>(d)->name.last()); break;
+      case NodeKind::EnumDecl: name = static_cast<EnumDecl*>(d)->name.empty() ? "(anonymous enum)" : namePartText(static_cast<EnumDecl*>(d)->name.last()); break;
+      case NodeKind::UsingAliasDecl: name = debugName(static_cast<UsingAliasDecl*>(d)->name); break;
+      case NodeKind::EnumeratorDecl: name = debugName(static_cast<EnumeratorDecl*>(d)->name); break;
+      default: name = "?"; break;
+    }
+    for (Decl* p = d->parent; p && p->kind == NodeKind::ClassDecl; p = p->parent)
+      name = (static_cast<ClassDecl*>(p)->name.empty() ? std::string("(anonymous)") : namePartText(static_cast<ClassDecl*>(p)->name.last())) + "::" + name;
+    return name;
+  }
+
+  // Where a use is, for the counts: the game's tests (and UnitTest++), the standard library, or the game.
+  static const char* accessGroup(const ParsedFile* file)
+  {
+    if (!file)
+      return "game";
+    if (file->isLibrary)
+      return "stdlib";
+    std::string path = file->path;
+    std::transform(path.begin(), path.end(), path.begin(), [](char c) { return c == '/' ? '\\' : char(std::tolower(uint8_t(c))); });
+    return path.find("\\tests\\") != std::string::npos || path.find("\\unittest++\\") != std::string::npos ? "tests" : "game";
+  }
+
+  // A use of the declaration used at node at, in the code of d (fn: the function it is in, if any)
+  // whose context classes are context: a warning when used is private or protected and the code
+  // is neither in its class (or one around the code), nor in a class derived from it (protected),
+  // nor a friend of its class or, for a protected member, of the class naming names it through
+  // (`stock->driver` with a RollingStock* names Vehicle's driver as RollingStock's, C++
+  // [class.access.base] 5).
+  void checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming)
+  {
+    Decl* member = used;
+    if (member->kind == NodeKind::EnumeratorDecl && member->parent && member->parent->kind == NodeKind::EnumDecl)
+      member = member->parent; // an enumerator is as accessible as its enum
+    if ((member->access != Access::Private && member->access != Access::Protected) || (member->flags & DF_Friend))
+      return;
+    Decl* owner = owningClassOf(member);
+    if (!owner || owner->kind != NodeKind::ClassDecl || !owner->ownScope || static_cast<ClassDecl*>(owner)->isClosure)
+      return;
+    if (member != used && !static_cast<EnumDecl*>(member)->name.empty())
+      for (Decl* m : static_cast<ClassDecl*>(owner)->members)
+        if (m && m->kind == NodeKind::UsingNameDecl && static_cast<UsingNameDecl*>(m)->isEnum && !static_cast<UsingNameDecl*>(m)->name.empty() &&
+            static_cast<UsingNameDecl*>(m)->name.last().symbol == static_cast<EnumDecl*>(member)->name.last().symbol && m->access == Access::Public)
+          return; // `enum class Enum {...}; public: using enum Enum;`: the enumerators are public members
+    for (Scope* s : context)
+      if (s == owner->ownScope)
+        return;
+    bool isProtected = member->access == Access::Protected;
+    if (isProtected)
+      for (Scope* s : context)
+      {
+        if (isBaseScope(owner->ownScope, s))
+          return;
+        // A base reached through a class template's instance, which the scopes do not link
+        // (`class ConditionDragPane : public DragPaneWidget<...>` naming Widget's members): as types.
+        if (s->owner && s->owner->kind == NodeKind::ClassDecl && s->owner->templateParams.empty() && owner->templateParams.empty() &&
+            isBaseClass(types.classType(owner, {}), types.classType(s->owner, {})))
+          return;
+      }
+    std::string where = locationOf(d->file, at->token);
+    std::string name = accessName(member);
+    Decl* f = grantingFriend(owner, fn, context);
+    if (!f && isProtected && naming && naming != owner->ownScope && naming->owner && naming->owner->kind == NodeKind::ClassDecl)
+      f = grantingFriend(naming->owner, fn, context);
+    // The code's name: a function with its class, also when defined outside the class.
+    std::string in = fn ? accessName(fn) : accessName(d);
+    if (Decl* cls = fn ? owningClassOf(fn) : nullptr; cls && fn->parent != cls && !fn->name.empty())
+      in = accessName(cls) + "::" + namePartText(fn->name.last());
+    else if (fn && !cls)
+      in = "the function " + in;
+    std::string use = name + " is " + (isProtected ? "protected" : "private") + ", named in " + in;
+    if (f)
+    {
+      std::lock_guard lock(accessMutex);
+      accessFriendUses.insert(where + ": note: " + use + ", which a friend " + (f->kind == NodeKind::ClassDecl ? "class" : "function") +
+                              " declaration allows");
+      accessFriendsUsed.insert(f);
+      return;
+    }
+    const char* kind = member->kind == NodeKind::VariableDecl     ? ((member->flags & DF_Static) ? "static data member" : "data member")
+                       : member->kind == NodeKind::FunctionDecl   ? "function"
+                       : member->kind == NodeKind::EnumDecl && used != member ? "enumerator"
+                                                                  : "type";
+    std::string message = where + ": warning: " + use;
+    std::lock_guard lock(accessMutex);
+    accessViolations.emplace(std::move(message), AccessViolation{accessGroup(d->file), isProtected, kind});
+  }
+
+  // After the walk of d, a function or a variable: every name, member and type name in it (in a
+  // function also its signature, member initializers and the lambdas and local classes of its
+  // body) checked against the access of what it names.
+  void checkAccessIn(Decl* d)
+  {
+    FunctionDecl* fn = d->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(d) : nullptr;
+    std::vector<Scope*> context;
+    accessContext(d, context);
+    std::unordered_set<const Node*> local; // the nodes of local classes: their members are checked as theirs
+    forEachNode(d, [&](Node* n)
+    {
+      if (local.count(n))
+        return;
+      if (n != d && n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->isClosure)
+      {
+        forEachNode(n, [&](Node* inner) { local.insert(inner); });
+        return;
+      }
+      Decl* used = nullptr;
+      Scope* naming = nullptr;
+      if (n->kind == NodeKind::NameExpr)
+        used = static_cast<NameExpr*>(n)->resolved;
+      else if (n->kind == NodeKind::MemberExpr)
+      {
+        auto* m = static_cast<MemberExpr*>(n);
+        used = m->resolved;
+        if (const Ty* object = used && m->base && m->base->ty && m->base->ty->isKnown() ? types.stripRef(m->base->ty) : nullptr)
+        {
+          if (m->op == P::Arrow && object->kind == TyKind::Pointer)
+            object = object->inner;
+          object = types.unqualified(types.stripRef(object));
+          if (object->kind == TyKind::Class && !types.isDependent(object))
+            naming = classScopeOf(object);
+        }
+      }
+      else if (n->kind == NodeKind::NamedType)
+        used = static_cast<NamedType*>(n)->resolved;
+      if (used)
+        checkAccessUse(used, n, d, fn, context, naming);
+    });
+  }
+
+  // The struct rule, counted over the program's class definitions: a struct is a public value type,
+  // so a private or protected member, a base that is not public or a virtual function makes it one
+  // that would have to be a class.
+  struct StructCounts
+  {
+    std::map<std::string, std::array<size_t, 6>> byGroup; // structs, classes, with a private member, a private base, a virtual function, polymorphic by a base only
+    size_t friends = 0;                                    // friend declarations
+  };
+
+  static bool declaresVirtual(ClassDecl* c)
+  {
+    for (Decl* m : c->members)
+      if (m && m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)))
+        return true;
+    return false;
+  }
+
+  bool polymorphicBase(ClassDecl* c, int depth)
+  {
+    if (depth > 16)
+      return false;
+    for (const ClassDecl::Base& b : c->bases)
+    {
+      Decl* d = b.type && b.type->kind == NodeKind::NamedType ? static_cast<NamedType*>(b.type)->resolved : nullptr;
+      if (!d || d->kind != NodeKind::ClassDecl)
+        continue;
+      if (Scope* s = scopeOfEntry(Entry{d, nullptr}, 0); s && s->owner && s->owner->kind == NodeKind::ClassDecl)
+        d = s->owner;
+      if (declaresVirtual(static_cast<ClassDecl*>(d)) || polymorphicBase(static_cast<ClassDecl*>(d), depth + 1))
+        return true;
+    }
+    return false;
+  }
+
+  void structRule(Span<Decl*> decls, std::vector<std::string>& out, StructCounts& counts)
+  {
+    for (Decl* d : decls)
+    {
+      if (!d)
+        continue;
+      if (d->kind == NodeKind::NamespaceDecl)
+      {
+        structRule(static_cast<NamespaceDecl*>(d)->decls, out, counts);
+        continue;
+      }
+      if (d->kind != NodeKind::ClassDecl)
+        continue;
+      auto* c = static_cast<ClassDecl*>(d);
+      if (!c->isDefinition || c->isClosure || (c->flags & DF_Friend) || (c->file && c->file->isImported) || c->keyword == Kw::union_)
+        continue;
+      for (Decl* m : c->members)
+        if (m && (m->flags & DF_Friend))
+        {
+          ++counts.friends;
+          // The friend, for comparing the warnings of a conversion with the C++ it read.
+          std::string named = "?";
+          if (m->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(m)->name.empty())
+            named = "class " + namePartText(static_cast<ClassDecl*>(m)->name.last());
+          else if (m->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(m)->name.empty())
+          {
+            const QualifiedName& n = static_cast<FunctionDecl*>(m)->name;
+            named = "function ";
+            for (size_t i = 0; i < n.parts.size(); ++i)
+              named += (i ? "::" : "") + namePartText(n.parts[i]);
+          }
+          out.push_back(locationOf(m->file, m->token) + ": note: " + accessName(c) + " has the friend " + named);
+        }
+      std::array<size_t, 6>& n = counts.byGroup[accessGroup(c->file)];
+      if (c->keyword == Kw::class_)
+        ++n[1];
+      else
+      {
+        ++n[0];
+        bool privateMember = false, privateBase = false;
+        for (Decl* m : c->members)
+          privateMember = privateMember || (m && !(m->flags & DF_Friend) && (m->access == Access::Private || m->access == Access::Protected));
+        for (const ClassDecl::Base& b : c->bases)
+          privateBase = privateBase || b.access == Access::Private || b.access == Access::Protected;
+        bool isVirtual = declaresVirtual(c);
+        bool byBase = !isVirtual && polymorphicBase(c, 0);
+        n[2] += privateMember;
+        n[3] += privateBase;
+        n[4] += isVirtual;
+        n[5] += byBase;
+        std::vector<const char*> why;
+        if (privateMember)
+          why.push_back("a private or protected member");
+        if (privateBase)
+          why.push_back("a base that is not public");
+        if (isVirtual)
+          why.push_back("a virtual function");
+        if (!why.empty())
+        {
+          std::string text = why[0];
+          for (size_t i = 1; i < why.size(); ++i)
+            text += std::string(i + 1 == why.size() ? " and " : ", ") + why[i];
+          out.push_back(locationOf(c->file, c->token) + ": warning: struct " + accessName(c) + " has " + text + " (a struct is a public value type: make it a class)");
+        }
+      }
+      structRule(c->members, out, counts);
+    }
   }
 
   // A static_assert under ctx (an instance's arguments, when it is in a template): an error when
@@ -17011,6 +17361,8 @@ struct GlobalScope::Impl
           bodyOf = f;
           walkStmt(f->body);
           bodyOf = savedBodyOf;
+          if (impl.accessWarnings && !probing && !retypingElements)
+            impl.checkAccessIn(f);
           if (autoReturn)
           {
             const Ty* deduced = returnFrames.back();
@@ -17044,6 +17396,8 @@ struct GlobalScope::Impl
             scope = semanticScopeFor(v->name);
           const Ty* initTy = walkExpr(v->init);
           scope = saved;
+          if (impl.accessWarnings && !probing && !retypingElements && !bodyOf && returnFrames.empty())
+            impl.checkAccessIn(v); // (a local, also a lambda's in a member initializer: with the function it is in)
           // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
           if (v->init && declared && declared->isKnown() && !impl.containsAuto(declared) && !probesSharedNodes())
@@ -19774,4 +20128,56 @@ GlobalScope::InstantiationStats GlobalScope::instantiationStats() const
 {
   return {impl->instClasses.load(), impl->instFunctions.load(), impl->instBodies.load(), impl->instRequests.load(),
           impl->instWaits.load(), impl->instNanos.load() / 1e9};
+}
+
+void GlobalScope::enableAccessWarnings() { impl->accessWarnings = true; }
+
+std::vector<std::string> GlobalScope::accessReport(const std::vector<ParsedFile*>& files, std::string& summary)
+{
+  std::vector<std::string> out;
+  Impl::StructCounts counts;
+  for (ParsedFile* f : files)
+    if (f)
+      impl->structRule(f->decls, out, counts);
+  size_t structWarnings = std::count_if(out.begin(), out.end(), [](const std::string& w) { return w.find(": warning: struct ") != std::string::npos; });
+  std::map<std::string, size_t> byGroup, byKind;
+  size_t protectedUses = 0;
+  {
+    std::lock_guard lock(impl->accessMutex);
+    out.insert(out.end(), impl->accessFriendUses.begin(), impl->accessFriendUses.end());
+    for (const auto& [message, v] : impl->accessViolations)
+    {
+      out.push_back(message);
+      ++byGroup[v.group];
+      ++byKind[v.kind];
+      protectedUses += v.isProtected;
+    }
+    auto list = [](const std::map<std::string, size_t>& m)
+    {
+      std::string text;
+      for (const auto& [name, n] : m)
+        text += (text.empty() ? "" : ", ") + std::to_string(n) + " " + name;
+      return text.empty() ? std::string("none") : text;
+    };
+    summary = "access: " + std::to_string(impl->accessViolations.size()) + " uses of private or protected members their code may not name (" +
+              list(byGroup) + "; " + std::to_string(impl->accessViolations.size() - protectedUses) + " private, " + std::to_string(protectedUses) +
+              " protected; " + list(byKind) + "), " + std::to_string(impl->accessFriendUses.size()) + " more that " +
+              std::to_string(impl->accessFriendsUsed.size()) + " of the " + std::to_string(counts.friends) + " friend declarations allow\n";
+  }
+  for (const auto& [group, n] : counts.byGroup)
+    summary += "structs (" + group + "): " + std::to_string(n[0]) + " structs and " + std::to_string(n[1]) + " classes; " +
+               std::to_string(n[2]) + " structs with a private or protected member, " + std::to_string(n[3]) + " with a base that is not public, " +
+               std::to_string(n[4]) + " with a virtual function, " + std::to_string(n[5]) + " more polymorphic through a base only\n";
+  summary += "  (" + std::to_string(structWarnings) + " structs would have to become classes; constructors are not checked yet)";
+  // By file, then line number, then text, as checkerErrors.
+  auto key = [](const std::string& w)
+  {
+    size_t kind = w.find(": warning: ") != std::string::npos ? w.find(": warning: ") : w.find(": note: ");
+    size_t colon = kind == std::string::npos || kind == 0 ? std::string::npos : w.rfind(':', kind - 1);
+    if (colon == std::string::npos || colon == 0)
+      return std::make_tuple(w, 0L, w);
+    return std::make_tuple(w.substr(0, colon), std::strtol(w.c_str() + colon + 1, nullptr, 10), w);
+  };
+  std::sort(out.begin(), out.end(), [&](const std::string& a, const std::string& b) { return key(a) < key(b); });
+  return out;
 }

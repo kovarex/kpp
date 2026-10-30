@@ -52,6 +52,7 @@ namespace
     int showUnresolved = 25;
     int showWhy = 0; // --why N
     std::string whyAt; // --why-at FILE:LINE[,FILE:LINE...]
+    bool accessWarnings = false; // --access-warnings
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
@@ -89,6 +90,9 @@ namespace
             "  --unresolved N show the N most common unresolved names (default 25)\n"
             "  --why N       per cause of unknown expression types, the N most common failing constructs\n"
             "  --why-at F:L  print every expression typed on line L of the file whose path ends with F (F:L,F:L,... for several)\n"
+            "  --access-warnings  warn of private and protected members named outside their class, its derived classes and\n"
+            "                its friends, and of structs with a private member, a non-public base or a virtual function\n"
+            "                (docs/design.md, \"struct and class\"); no error, no other change\n"
             "  --quiet       no statistics\n"
             "  --emit-llvm F write LLVM IR for the program to F\n"
             "  --exe F       compile the program to the executable F (needs clang)\n"
@@ -862,6 +866,21 @@ namespace
       report("static_assert: %zu failed in template instances' functions never emitted (unused, so not errors, as in C++)\n", unused);
   }
 
+  // --access-warnings: the warnings to stderr (no error: the exit code stays), the counts with the
+  // statistics.
+  void reportAccessWarnings(Build& build)
+  {
+    if (!build.options.accessWarnings)
+      return;
+    std::vector<ParsedFile*> files;
+    for (const std::unique_ptr<ParsedFile>& p : build.parsed)
+      files.push_back(p.get());
+    std::string summary;
+    for (const std::string& w : build.global->accessReport(files, summary))
+      fprintf(stderr, "%s\n", w.c_str());
+    report("%s\n", summary.c_str());
+  }
+
   void runCodegen(Build& build)
   {
     std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
@@ -914,6 +933,7 @@ namespace
     if (!cg.errors.empty())
       codegenExit = 1;
     reportCheckerErrors(global, true);
+    reportAccessWarnings(build);
     auto writeFile = [&](const std::string& path, const std::string& text)
     {
       FILE* out = fopen(path.c_str(), "wb");
@@ -1216,6 +1236,8 @@ namespace
     // What each unit of the resolve read, for a compile server's next, incremental, build
     // (docs/compile-speed.md, step 2); KPP_DEPENDENCY_STATS records them anywhere and reports them.
     GlobalScope::recordDependencies(servingBuild() || getenv("KPP_DEPENDENCY_STATS"));
+    if (options.accessWarnings)
+      global.enableAccessWarnings();
     global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
     build.resolveTime = seconds(Clock::now() - start);
     // What the reports count is the resolve's: codegen instantiates more afterwards.
@@ -1329,7 +1351,10 @@ namespace
     if (!options.emitLLVM.empty() || !options.exe.empty())
       runCodegen(build);
     else if (options.convertDir.empty())
+    {
       reportCheckerErrors(global);
+      reportAccessWarnings(build);
+    }
     if (!options.convertDir.empty())
     {
       std::vector<ConvertInput> inputs;
@@ -1339,6 +1364,7 @@ namespace
       std::string summary =
         convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary);
       report("convert: %s\n%s", options.convertDir.c_str(), summary.c_str());
+      reportAccessWarnings(build); // over the C++ the conversion read, its friends still declared
     }
     for (size_t i = 0; i < top.size() && int(i) < options.showUnresolved; ++i)
     {
@@ -2261,6 +2287,8 @@ int compile(int argc, char** argv)
       options.showWhy = atoi(argv[++i]);
     else if (arg == "--why-at" && i + 1 < argc)
       options.whyAt = argv[++i];
+    else if (arg == "--access-warnings")
+      options.accessWarnings = true;
     else if (arg == "--quiet")
       options.quiet = true;
     else if (arg == "--emit-llvm" && i + 1 < argc)

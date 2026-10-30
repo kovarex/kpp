@@ -613,6 +613,47 @@ the convention: its containers are objects with invariants, written as public st
 - The struct rule can come first: it is one check in the parser, and the game breaks it in 35
   places.
 
+**Measured with the checker (2026-10-30).** `kppc --access-warnings` runs option 3's rules as
+warnings only (off by default, no other change: the game's IR is the same byte for byte; on, it
+adds 0.06 s to the 1.4 s resolve of the converted game and its tests). It reports every use of a
+private or protected member outside its class and the classes around the use, the classes derived
+from it (protected) and its friends, and every struct with a private or protected member, a base
+that is not public or a virtual function. Constructors are not checked yet: the checker does not
+choose them, codegen does. Run over the converted game with its tests (scratch conversion of
+165b365) and, during a conversion, over the C++ it reads, whose friends are still declared:
+- *Structs.* The game has 1,016 structs and 5,220 classes; 26 structs would become classes, all
+  for a private or protected member (VulkanImpl, Filesystem's Path, InputState's KeyState,
+  ControllerButtonState and ControllerAxisState, the Backup of UndoItemStack and UndoRedoStack,
+  RailPlanFinder's SearchData and SupportTracker, ValueToWidget, the GUI helpers...). None has a
+  base that is not public or a virtual function of its own; 3 are polymorphic through a base only,
+  which the rule as written lets through (a decision: a struct deriving from a polymorphic class
+  is no value type either). The tests add 57 structs and 5 to change (their 17,131 classes are
+  UnitTest++'s, one per test). The standard library's 231 structs (no class) have no private
+  section; 4 would become classes for a virtual function: ExceptionHolderBase, ExceptionHolder,
+  OutStream and OutFileStream.
+- *Friends.* In the C++, 1,501 uses in 177 classes are legal only through a friend declaration:
+  250 of the 438 are used, as 259 relationships, all but 2 uses through a friend class. They are
+  implementation partners: EnergyStorage's members named by ElectricSubNetwork 97 times,
+  LogisticCell's by LogisticNetwork 53, TargeterBase's by Targeters 49, EditorController's by
+  GunLogic 47, LinkedContainer's by LinkedInventory 39, IntrusiveList's Hook by its List 32,
+  MinHeap's items by the heap 24. The converter removes every friend declaration today ("Kpp has
+  no friends"), so the converted program has 1,808 uses that `class` access checks would reject:
+  - 1,802 that a removed friend declaration allows: 1,765 through friend classes and 7 friend
+    functions in the game, 23 in the tests, which reach the privates of what they test only
+    through `friend class` declarations, and 7 the converter's `Map` -> `GameMap` rename hides
+    from the comparison (HeuristicCrcGenerator, StopLock);
+  - 2 converter artifacts: Optional's hidden friend operators, moved out to namespace scope;
+  - 4 gaps of the checker (a protected member through a friend of the class it is named in).
+  Over the C++ itself, which compiles, the checker flags 93 uses: 86 are one call the C++ input
+  resolves to the wrong overload (Style::propertyStatus given a member pointer; the converted code
+  resolves it right), 7 protected corner cases.
+- *What option 3 would make the converter rewrite:* the 31 structs (game and tests) as classes
+  with `public:` first; the library's 4 structs with virtual functions; and the friends. With
+  `friend` in Kpp (friend classes; friend functions are used twice) the converter keeps the 438
+  declarations as written and the program checks clean but for the 2 operators, which become
+  members. Without it, each of the 259 relationships becomes something else (public members, an
+  accessor, the partner nested in the class), in 177 classes, by hand.
+
 ## Instantiations own their typed bodies (decided 2026-10-28: a copy per instantiation)
 
 **Today.** A template's body exists once, in the parsed tree. Whatever types it for a set of
