@@ -1,0 +1,33 @@
+// spec: a const reference bound to a bit-field (`const uint8_t& bound = data.progress;`, a `const T&` parameter given `data.progress`) refers to a temporary holding the field's value, as C++ binds it, not to the storage unit the field shares with its neighbours
+// factorio: the tests' `CHECK_EQUAL(tree->treeData.progress, 0)` on Tree::TreeData's `uint8_t progress : 4` after `uint8_t treeVariation : 4`: UnitTest::CheckEqual's `const Actual&` read the whole byte, the variation 3 with it (Tree TreeStageIndexDoesNotDesync: "Expected 0 but was 3")
+// pending: SILENT, the reference reads the field's byte (`0 3 3 117` and `0 19`, clang `1 0 0 7` and `1 1`); owner: the codegen thread
+struct TreeData
+{
+  uint8_t treeVariation : 4;
+  uint8_t progress : 4;
+  uint8_t color : 4;
+  uint8_t greyProgress : 4;
+};
+template<typename Expected, typename Actual>
+bool checkEqual(const Expected& expected, const Actual& actual)
+{
+  return expected == actual;
+}
+template<typename T>
+int show(const T& value)
+{
+  return (int)value;
+}
+int main()
+{
+  TreeData data;
+  data.treeVariation = 3;
+  data.progress = 0;
+  data.color = 5;
+  data.greyProgress = 7;
+  const uint8_t& bound = data.progress;
+  println("{} {} {} {}", checkEqual(data.progress, 0) ? 1 : 0, show(data.progress), (int)bound, show(data.greyProgress));
+  data.progress = 1;
+  println("{} {}", checkEqual(data.progress, 1) ? 1 : 0, show(data.progress));
+  return 0;
+}
