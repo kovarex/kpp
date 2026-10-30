@@ -292,8 +292,13 @@ set (they are in its key, or hashed and checked per build).
   checked by hash on every build.
 - **Starting:** a client that finds no pipe copies kppc to `%TEMP%\kppc-server\KEY.exe` (Windows
   locks a running executable, and kppc must stay rebuildable) and starts the copy as
-  `KEY.exe --serve KEY`, detached, in the client's directory, inheriting no handles; it then waits
-  up to 20 s for the pipe. A second server for a key fails to create the pipe
+  `KEY.exe --serve KEY` in a new process group with a console of its own and no window
+  (CREATE_NO_WINDOW), in the client's directory, inheriting no handles; it then waits
+  up to 20 s for the pipe. (It was started without a console, DETACHED_PROCESS, until a small
+  program's edit through the server measured slower than a new process: every cmd, clang and link a
+  build starts was then given a console of its own, about 30 ms each. A 10-line program, a body
+  edit per round, 10 interleaved rounds (C:\kpp-sandbox\scratch\resolver\small): master d98f13b9's server 186 to
+  194 ms, with the console 116 to 128 ms; a new process 146 to 157 ms.) A second server for a key fails to create the pipe
   (FILE_FLAG_FIRST_PIPE_INSTANCE) and exits, so racing clients share one. A client that reaches no
   server, or loses it before the answer, says so on stderr and builds in its own process.
 - **Request:** `KPS1`, a u32 kind (1 build, 2 stop); for a build the kppc path the client ran

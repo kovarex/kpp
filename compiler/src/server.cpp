@@ -242,8 +242,12 @@ namespace
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
     // Out of the client's job if it may leave it: whatever waits for the client's process tree
-    // (PowerShell's Start-Process -Wait) must not wait for the server too.
-    const DWORD flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+    // (PowerShell's Start-Process -Wait) must not wait for the server too. A console of its own
+    // without a window, not none (DETACHED_PROCESS): every process a build starts through
+    // system() (cmd, clang, the linker) then shares it, where without one each was given a new
+    // console, about 30 ms apiece (a small program's edit: clang 61 to 69 ms instead of 35 to 39,
+    // the link 102 to 107 instead of 70 to 74).
+    const DWORD flags = CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
     if (!CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags | CREATE_BREAKAWAY_FROM_JOB, nullptr, cwd.c_str(), &si, &pi) &&
         !CreateProcessA(copy.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, cwd.c_str(), &si, &pi))
       return false;
