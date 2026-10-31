@@ -20,6 +20,7 @@
 #include <regex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <type_traits>
 #include <vector>
@@ -330,6 +331,7 @@ namespace
   // ---------------- transport ----------------
 
   HANDLE input = INVALID_HANDLE_VALUE, output = INVALID_HANDLE_VALUE, logHandle = INVALID_HANDLE_VALUE;
+  HANDLE logFile = INVALID_HANDLE_VALUE; // --lsp-log FILE
   std::mutex outputMutex;
 
   void writeHandle(HANDLE h, const std::string& bytes)
@@ -353,6 +355,8 @@ namespace
     va_end(args);
     std::lock_guard lock(outputMutex);
     writeHandle(logHandle, std::string("kppc --lsp: ") + text + "\n");
+    if (logFile != INVALID_HANDLE_VALUE)
+      writeHandle(logFile, std::string(text) + "\n");
   }
 
   void send(const Json& message)
@@ -692,8 +696,101 @@ namespace
 
   bool isDeclarationNode(const Node* n) { return n->kind >= NodeKind::NamespaceDecl && n->kind <= NodeKind::ImportDecl; }
 
+  // The token of each part of a qualified name, found in turn from `from` (UINT32_MAX for a part
+  // without one: `::`, an operator).
+  std::vector<uint32_t> partTokens(const std::vector<Token>& tokens, const QualifiedName& name, uint32_t from, uint32_t end)
+  {
+    std::vector<uint32_t> out;
+    end = std::min<uint32_t>(end, uint32_t(tokens.size()));
+    for (const NamePart& part : name.parts)
+    {
+      uint32_t k = from;
+      if (part.symbol != UINT32_MAX && part.special < 2)
+        while (k < end && !sameIdentifier(tokens[k], part.symbol))
+          ++k;
+      else
+        k = end;
+      out.push_back(k < end ? k : UINT32_MAX);
+      if (k < end)
+        from = k + 1;
+    }
+    return out;
+  }
+
+  // The namespace, class or enum a qualifier names: the nearest enclosing one of start so named.
+  Decl* scopeNamed(Decl* start, uint32_t symbol)
+  {
+    for (Decl* d = start; d; d = d->parent)
+      if ((d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && symbolOf(d) == symbol)
+        return d;
+    return nullptr;
+  }
+
+  // A qualified name's qualifiers as occurrences of the scopes they name (`Shape` in `Shape::area`),
+  // the scopes found from the declaration the whole name is (and its class, for an out-of-line member).
+  void addQualifiers(std::vector<Occurrence>& out, const std::vector<Token>& tokens, const QualifiedName& name, Node* node, Decl* named,
+                     GlobalScope* global, uint32_t from, uint32_t end)
+  {
+    if (name.parts.size() < 2 || !named)
+      return;
+    std::vector<uint32_t> at = partTokens(tokens, name, from, end);
+    Decl* start = named->parent;
+    if (global && (named->kind == NodeKind::FunctionDecl || named->kind == NodeKind::VariableDecl))
+      if (Decl* cls = global->owningClass(named))
+        start = cls;
+    for (size_t i = name.parts.size() - 1; i-- > 0;)
+    {
+      if (at[i] == UINT32_MAX)
+        continue;
+      Decl* scope = scopeNamed(start, name.parts[i].symbol);
+      if (!scope)
+        break; // (an alias, a using: left to the rename's check, which refuses what it cannot account for)
+      out.push_back({at[i], scope, node, false});
+      start = scope->parent;
+    }
+  }
+
+  // A constructor's member initializers: each names a data member of its class, or a base class.
+  void memberInitializers(std::vector<Occurrence>& out, const std::vector<Token>& tokens, FunctionDecl* f, GlobalScope& global)
+  {
+    if (f->ctorInits.empty())
+      return;
+    Decl* cls = global.owningClass(f);
+    if (cls)
+      if (Decl* defined = global.definitionOf(cls))
+        cls = defined;
+    if (!cls || cls->kind != NodeKind::ClassDecl)
+      return;
+    auto* c = static_cast<ClassDecl*>(cls);
+    uint32_t from = f->token, end = f->body ? f->body->token : f->endToken;
+    for (const FunctionDecl::CtorInit& init : f->ctorInits)
+    {
+      if (init.member.empty())
+        continue;
+      uint32_t symbol = init.member.last().symbol;
+      Decl* named = nullptr;
+      for (Decl* m : c->members)
+        if (!named && m->kind == NodeKind::VariableDecl && symbolOf(m) == symbol)
+          named = m;
+      for (const ClassDecl::Base& b : c->bases)
+        if (!named && b.type && b.type->kind == NodeKind::NamedType)
+          if (Decl* base = static_cast<NamedType*>(b.type)->resolved; base && symbolOf(base) == symbol)
+            named = base;
+      // Searched from the `:` on: the parameters come first and may be named as the members.
+      uint32_t colon = from;
+      while (colon < end && !(tokens[colon].is(P::Colon) && colon + 1 < tokens.size() && tokens[colon + 1].getKind() == TokenKind::Identifier))
+        ++colon;
+      for (uint32_t k = colon; named && k < end; ++k)
+        if (sameIdentifier(tokens[k], symbol) && k + 1 < end && (tokens[k + 1].is(P::LParen) || tokens[k + 1].is(P::LBrace) || tokens[k + 1].is(P::Less)))
+        {
+          out.push_back({k, named, f, false});
+          break;
+        }
+    }
+  }
+
   // Every name in a file the compiler resolved, and every declaration's own name, by token.
-  std::vector<Occurrence> occurrencesIn(const ParsedFile& file)
+  std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global)
   {
     std::vector<Occurrence> out;
     if (!file.tokens)
@@ -706,7 +803,13 @@ namespace
         Decl* d = static_cast<Decl*>(n);
         if (d->file == &file)
           if (uint32_t t = declarationNameToken(d); t != UINT32_MAX)
+          {
             out.push_back({t, d, n, true});
+            if (const QualifiedName* q = qualifiedNameOf(d))
+              addQualifiers(out, tokens, *q, n, d, global, d->token, t + 1);
+          }
+        if (d->kind == NodeKind::FunctionDecl && global && d->file == &file)
+          memberInitializers(out, tokens, static_cast<FunctionDecl*>(d), *global);
         return;
       }
       Decl* d = resolvedOf(n);
@@ -725,6 +828,8 @@ namespace
       {
         const QualifiedName& q = n->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(n)->name : static_cast<NamedType*>(n)->name;
         t = nameToken(tokens, q, n->token, n->token + 64);
+        if (t != UINT32_MAX)
+          addQualifiers(out, tokens, q, n, d, global, n->token, t + 1);
       }
       if (t != UINT32_MAX)
         out.push_back({t, d, n, false});
@@ -763,6 +868,8 @@ namespace
   {
     CompileFunction compile = nullptr;
     std::vector<std::string> explicitArguments; // `kppc --lsp OPTIONS SOURCES`
+    fs::path workspace;                         // the editor's root folder
+    ProjectCheck project;                       // initializationOptions and workspace/didChangeConfiguration (docs/editors.md)
     std::vector<std::string> checkArguments;    // what a check builds (empty: nothing to check)
     bool checkEachChange = false;
     bool initialized = false, shutdownRequested = false;
@@ -792,6 +899,7 @@ namespace
       bool symbolsKnown = false;
     };
     Cache cache;
+    GlobalScope* currentGlobal = nullptr; // the kept program's, while a query runs on it
 
     std::string uriOf(const std::string& key, const fs::path& path)
     {
@@ -824,7 +932,37 @@ namespace
 
     // What a check builds: the sources and options given after --lsp, else the workspace's build.kpp
     // project, else the workspace folder; always the front end alone, with columns in diagnostics.
-    void chooseArguments(const fs::path& workspace, const char* self)
+    // The keys of initializationOptions, or of didChangeConfiguration's `kpp` (docs/editors.md).
+    void readOptions(const Json& options)
+    {
+      if (options.kind != Json::Object)
+        return;
+      if (options["configuration"].kind == Json::String)
+        project.configuration = options["configuration"].text;
+      for (const auto& [name, value] : options.members)
+        if (name == "executable")
+          project.executable = value.kind == Json::String ? value.text : std::string();
+      if (options["settings"].kind == Json::Object)
+      {
+        project.settings.clear();
+        for (const auto& [name, value] : options["settings"].members)
+        {
+          std::string text;
+          if (value.kind == Json::String)
+            text = value.text;
+          else
+            write(value, text);
+          project.settings.push_back({name, text});
+        }
+      }
+      if (options["buildFile"].kind == Json::String)
+      {
+        fs::path fromUri = uriToPath(options["buildFile"].text);
+        project.buildFile = fromUri.empty() ? options["buildFile"].text : fromUri.string();
+      }
+    }
+
+    void chooseArguments(const char* self)
     {
       std::vector<std::string> args;
       if (!explicitArguments.empty())
@@ -832,10 +970,10 @@ namespace
         args.push_back(self);
         args.insert(args.end(), explicitArguments.begin(), explicitArguments.end());
       }
-      else if (!workspace.empty())
+      else if (!workspace.empty() || !project.buildFile.empty())
       {
         std::string error;
-        if (projectCheckArguments(workspace, args, error))
+        if (projectCheckArguments(workspace, project, args, error))
         {
           if (!error.empty())
           {
@@ -844,7 +982,8 @@ namespace
             checkArguments.clear();
             return;
           }
-          log("the project of %s (build.kpp)", workspace.string().c_str());
+          log("the project of %s (build.kpp), %s%s%s", workspace.string().c_str(), project.configuration.c_str(),
+              project.executable.empty() ? ", every executable" : ", executable ", project.executable.c_str());
         }
         else
         {
@@ -949,7 +1088,7 @@ namespace
       return Json::object()
         .set("range", range(text, starts, from, to))
         .set("severity", d.severity)
-        .set("source", "kppc")
+        .set("source", "kpp")
         .set("message", d.message);
     }
 
@@ -1008,6 +1147,17 @@ namespace
 
     // ---- queries (under withKeptProgram) ----
 
+    template<typename F>
+    void onProgram(F&& f)
+    {
+      withKeptProgram([&](const KeptProgram& program)
+      {
+        currentGlobal = program.global;
+        f(program);
+        currentGlobal = nullptr;
+      });
+    }
+
     const std::vector<size_t>& startsOf(const ParsedFile* f)
     {
       auto found = cache.starts.find(f);
@@ -1020,7 +1170,7 @@ namespace
     {
       auto found = cache.occurrences.find(f);
       if (found == cache.occurrences.end())
-        found = cache.occurrences.emplace(f, occurrencesIn(*f)).first;
+        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal)).first;
       return found->second;
     }
 
@@ -1197,7 +1347,7 @@ namespace
     Json hover(const Json& params)
     {
       Json result;
-      withKeptProgram([&](const KeptProgram& program)
+      onProgram([&](const KeptProgram& program)
       {
         const ParsedFile* file = nullptr;
         const Occurrence* o = occurrenceAt(program, params, &file);
@@ -1228,7 +1378,7 @@ namespace
     Json definition(const Json& params, bool declaration)
     {
       Json result;
-      withKeptProgram([&](const KeptProgram& program)
+      onProgram([&](const KeptProgram& program)
       {
         const Occurrence* o = occurrenceAt(program, params);
         if (!o)
@@ -1257,7 +1407,7 @@ namespace
       std::atomic<size_t> next{0};
       std::vector<std::thread> threads;
       for (unsigned t = 0; t < std::max(1u, std::thread::hardware_concurrency()); ++t)
-        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i]); });
+        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global); });
       for (std::thread& t : threads)
         t.join();
       for (size_t i = 0; i < files.size(); ++i)
@@ -1277,7 +1427,7 @@ namespace
     Json references(const Json& params)
     {
       Json result = Json::array();
-      withKeptProgram([&](const KeptProgram& program)
+      onProgram([&](const KeptProgram& program)
       {
         const Occurrence* o = occurrenceAt(program, params);
         if (!o)
@@ -1368,7 +1518,7 @@ namespace
     Json documentSymbols(const Json& params)
     {
       Json result = Json::array();
-      withKeptProgram([&](const KeptProgram& program)
+      onProgram([&](const KeptProgram& program)
       {
         if (ParsedFile* f = fileOf(program, params["textDocument"]["uri"].text); f && f->tokens)
           result = outline(program, f, f->decls);
@@ -1410,13 +1560,743 @@ namespace
       cache.symbolsKnown = true;
     }
 
+    // ---- completion ----
+
+    // The function whose tokens hold `token`, searched through namespaces and classes.
+    FunctionDecl* enclosingFunction(Span<Decl*> decls, uint32_t token)
+    {
+      for (Decl* d : decls)
+      {
+        if (token < d->token || (d->endToken && token >= d->endToken))
+          continue;
+        if (d->kind == NodeKind::FunctionDecl)
+          return static_cast<FunctionDecl*>(d);
+        if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ClassDecl)
+          if (FunctionDecl* f = enclosingFunction(childrenOf(d), token))
+            return f;
+      }
+      return nullptr;
+    }
+
+    // A class's definition with its bases', most derived first.
+    void classesOf(GlobalScope& global, Decl* c, std::vector<ClassDecl*>& out, int depth = 0)
+    {
+      if (!c || depth > 32)
+        return;
+      if (Decl* defined = global.definitionOf(c))
+        c = defined;
+      if (c->kind != NodeKind::ClassDecl || std::find(out.begin(), out.end(), c) != out.end())
+        return;
+      auto* cls = static_cast<ClassDecl*>(c);
+      out.push_back(cls);
+      for (const ClassDecl::Base& b : cls->bases)
+        if (b.type && b.type->kind == NodeKind::NamedType)
+          classesOf(global, static_cast<NamedType*>(b.type)->resolved, out, depth + 1);
+    }
+
+    // The type a declaration gives a name: its declared type, else the type of a use of it.
+    const Ty* typeOf(const Decl* d, const ParsedFile* f)
+    {
+      if (const Ty* t = d->cachedType.load())
+        return t;
+      for (const Occurrence& o : occurrencesOf(f))
+        if (o.decl == d && !o.declaration && (o.node->kind == NodeKind::NameExpr || o.node->kind == NodeKind::MemberExpr))
+          if (const Ty* t = static_cast<Expr*>(o.node)->ty)
+            return t;
+      return nullptr;
+    }
+
+    // The class a type is, through references, const, and (after `->`) one pointer.
+    Decl* classOfType(const Ty* t, bool arrow)
+    {
+      while (t && (t->isReference() || (arrow && t->kind == TyKind::Pointer)))
+      {
+        if (t->kind == TyKind::Pointer)
+          arrow = false;
+        t = t->inner;
+      }
+      if (t && t->kind == TyKind::Function)
+        t = t->inner;
+      while (t && t->isReference())
+        t = t->inner;
+      if (arrow && t && t->kind == TyKind::Pointer)
+        t = t->inner;
+      return t && (t->kind == TyKind::Class || t->kind == TyKind::Enum) ? t->decl : nullptr;
+    }
+
+    // The declaration a name before the cursor is: the nearest name spelled so before it in its
+    // function that the compiler resolved, else a member of the function's class, else a top-level name.
+    Decl* lookupBefore(const KeptProgram& program, const ParsedFile* f, uint32_t symbol, uint32_t before, FunctionDecl* function)
+    {
+      const std::vector<Token>& tokens = *f->tokens;
+      const std::vector<Occurrence>& list = occurrencesOf(f);
+      uint32_t from = function ? function->token : 0;
+      for (auto it = std::lower_bound(list.begin(), list.end(), before, [](const Occurrence& o, uint32_t t) { return o.token < t; }); it != list.begin();)
+      {
+        --it;
+        if (it->token < from)
+          break;
+        if (sameIdentifier(tokens[it->token], symbol))
+          return it->decl;
+      }
+      if (function)
+      {
+        std::vector<ClassDecl*> classes;
+        classesOf(*program.global, program.global->owningClass(function), classes);
+        for (ClassDecl* c : classes)
+          for (Decl* m : c->members)
+            if (symbolOf(m) == symbol)
+              return m;
+      }
+      knowSymbols(program);
+      std::string_view name = program.symbols->name(symbol);
+      for (const Cache::Symbol& s : cache.symbols)
+        if (s.name == name && s.container.empty())
+          return s.decl;
+      return nullptr;
+    }
+
+    // The class the expression before `.` or `->` (at token op) is: names, calls and indexing,
+    // chained with `.`, `->` and `this`.
+    Decl* classBefore(const KeptProgram& program, const ParsedFile* f, uint32_t op, FunctionDecl* function)
+    {
+      const std::vector<Token>& tokens = *f->tokens;
+      // The segments, last first: a name (or `this`) and whether a call or an index follows it.
+      struct Segment { uint32_t token; bool call; bool arrowAfter; };
+      std::vector<Segment> segments;
+      int32_t k = int32_t(op) - 1;
+      bool arrowAfter = tokens[op].is(P::Arrow);
+      for (;;)
+      {
+        bool call = false;
+        if (k >= 0 && (tokens[k].is(P::RParen) || tokens[k].is(P::RBracket)))
+        {
+          call = tokens[k].is(P::RParen);
+          int depth = 0;
+          for (; k >= 0; --k)
+          {
+            if (tokens[k].is(P::RParen) || tokens[k].is(P::RBracket))
+              ++depth;
+            else if ((tokens[k].is(P::LParen) || tokens[k].is(P::LBracket)) && --depth == 0)
+              break;
+          }
+          --k;
+        }
+        if (k < 0 || !(tokens[k].getKind() == TokenKind::Identifier || tokens[k].is(Kw::this_)))
+          return nullptr;
+        segments.push_back({uint32_t(k), call, arrowAfter});
+        if (k >= 1 && (tokens[k - 1].is(P::Dot) || tokens[k - 1].is(P::Arrow)))
+        {
+          arrowAfter = tokens[k - 1].is(P::Arrow);
+          k -= 2;
+          continue;
+        }
+        break;
+      }
+      Decl* cls = nullptr;
+      for (auto it = segments.rbegin(); it != segments.rend(); ++it)
+      {
+        const Token& t = tokens[it->token];
+        if (t.is(Kw::this_))
+        {
+          cls = function ? program.global->owningClass(function) : nullptr;
+          continue;
+        }
+        Decl* d = nullptr;
+        if (it == segments.rbegin())
+          d = lookupBefore(program, f, t.id, it->token, function);
+        else
+        {
+          std::vector<ClassDecl*> classes;
+          classesOf(*program.global, cls, classes);
+          for (ClassDecl* c : classes)
+            for (Decl* m : c->members)
+              if (!d && symbolOf(m) == t.id)
+                d = m;
+        }
+        if (!d)
+          return nullptr;
+        const Ty* ty = d->kind == NodeKind::ClassDecl ? nullptr : typeOf(d, f);
+        cls = d->kind == NodeKind::ClassDecl ? d : classOfType(ty, it->arrowAfter);
+        if (!cls)
+          return nullptr;
+      }
+      return cls;
+    }
+
+    int completionKind(const Decl* d)
+    {
+      switch (symbolKind(d))
+      {
+      case 3: return 9;   // namespace: module
+      case 5: return 7;   // class
+      case 23: return 22; // struct
+      case 10: return 13; // enum
+      case 22: return 20; // enumerator
+      case 9: return 4;   // constructor
+      case 6: return 2;   // method
+      case 12: return 3;  // function
+      case 8: return 5;   // field
+      default: return 6;  // variable
+      }
+    }
+
+    Json completionItem(const KeptProgram& program, Decl* d, const std::string& sortPrefix)
+    {
+      std::string name = declarationName(d, *program.symbols);
+      size_t colons = name.rfind("::");
+      if (colons != std::string::npos)
+        name = name.substr(colons + 2);
+      return Json::object()
+        .set("label", name)
+        .set("kind", completionKind(d))
+        .set("detail", declarationText(program, d))
+        .set("sortText", sortPrefix + name);
+    }
+
+    Json completion(const Json& params)
+    {
+      Json items = Json::array();
+      bool incomplete = false;
+      onProgram([&](const KeptProgram& program)
+      {
+        ParsedFile* f = fileOf(program, params["textDocument"]["uri"].text);
+        if (!f || !f->tokens || f->tokens->empty())
+          return;
+        const std::vector<Token>& tokens = *f->tokens;
+        size_t offset = offsetOf(f->text, startsOf(f), params["position"]);
+        // The token the cursor is in or after, and the prefix of a name typed so far.
+        auto it = std::upper_bound(tokens.begin(), tokens.end(), offset, [](size_t o, const Token& t) { return o < t.offset; });
+        if (it == tokens.begin())
+          return;
+        uint32_t k = uint32_t(it - tokens.begin()) - 1;
+        std::string prefix;
+        if (tokens[k].getKind() == TokenKind::Identifier && offset <= size_t(tokens[k].offset) + tokens[k].length)
+        {
+          prefix = std::string(f->text.substr(tokens[k].offset, offset - tokens[k].offset));
+          if (k == 0)
+            return;
+          --k;
+        }
+        else if (offset < size_t(tokens[k].offset) + tokens[k].length)
+          return; // inside a literal or an operator
+        for (char& c : prefix)
+          c = char(tolower((unsigned char)c));
+        auto matches = [&](std::string_view name)
+        {
+          if (name.size() < prefix.size())
+            return false;
+          for (size_t i = 0; i < prefix.size(); ++i)
+            if (tolower((unsigned char)name[i]) != prefix[i])
+              return false;
+          return true;
+        };
+        FunctionDecl* function = enclosingFunction(f->decls, k);
+        std::unordered_map<std::string, bool> seen;
+        auto add = [&](Decl* d, const char* sortPrefix)
+        {
+          std::string name = declarationName(d, *program.symbols);
+          size_t colons = name.rfind("::");
+          std::string own = colons == std::string::npos ? name : name.substr(colons + 2);
+          if (own.empty() || own == "(anonymous)" || !matches(own) || own.compare(0, 8, "operator") == 0 || own[0] == '~')
+            return;
+          if (d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->returnType && !static_cast<FunctionDecl*>(d)->name.empty() &&
+              static_cast<FunctionDecl*>(d)->name.last().special == 0)
+            return; // a constructor is not called by name
+          std::string key = own + "\n" + declarationText(program, d);
+          if (seen.emplace(key, true).second)
+            items.push(completionItem(program, d, sortPrefix));
+        };
+        // `>` and `:` are trigger characters for `->` and `::` only.
+        const std::string& trigger = params["context"]["triggerCharacter"].text;
+        if ((trigger == ">" && !tokens[k].is(P::Arrow)) || (trigger == ":" && !tokens[k].is(P::ColonColon)))
+          return;
+        // Members after `.` and `->`, a scope's names after `::`.
+        if (tokens[k].is(P::Dot) || tokens[k].is(P::Arrow))
+        {
+          Decl* cls = classBefore(program, f, k, function);
+          std::vector<ClassDecl*> classes;
+          classesOf(*program.global, cls, classes);
+          for (size_t c = 0; c < classes.size(); ++c)
+            for (Decl* m : classes[c]->members)
+              if (symbolKind(m))
+                add(m, c == 0 ? "0" : "1");
+          if (cls && cls->kind == NodeKind::EnumDecl)
+            for (Decl* m : static_cast<EnumDecl*>(cls)->members)
+              add(m, "0");
+          return;
+        }
+        if (tokens[k].is(P::ColonColon))
+        {
+          if (k == 0 || tokens[k - 1].getKind() != TokenKind::Identifier)
+            return;
+          std::string scope(program.symbols->name(tokens[k - 1].id));
+          knowSymbols(program);
+          for (const Cache::Symbol& s : cache.symbols)
+          {
+            size_t at = s.container.size() >= scope.size() ? s.container.size() - scope.size() : std::string::npos;
+            if (at != std::string::npos && s.container.compare(at, scope.size(), scope) == 0 && (at == 0 || s.container.compare(at - 2, 2, "::") == 0))
+              add(s.decl, "0");
+          }
+          // A scoped enum's enumerators (an unscoped one's are named without it).
+          for (const Cache::Symbol& s : cache.symbols)
+            if (s.name == scope && s.decl->kind == NodeKind::EnumDecl)
+              for (Decl* e : static_cast<EnumDecl*>(s.decl)->enumerators)
+                add(e, "0");
+          return;
+        }
+        // A name: the function's parameters and locals declared before, its class's members, then
+        // every top-level name.
+        if (function)
+        {
+          for (Decl* p : function->params)
+            add(p, "0");
+          for (const Occurrence& o : occurrencesOf(f))
+            if (o.declaration && o.token > function->token && o.token < k + 1 && o.decl->kind == NodeKind::VariableDecl)
+              add(o.decl, "0");
+          std::vector<ClassDecl*> classes;
+          classesOf(*program.global, program.global->owningClass(function), classes);
+          for (ClassDecl* c : classes)
+            for (Decl* m : c->members)
+              if (symbolKind(m))
+                add(m, "1");
+        }
+        if (prefix.empty())
+        {
+          incomplete = true; // every top-level name would be too many: they come with the first letter
+          return;
+        }
+        knowSymbols(program);
+        size_t added = 0;
+        for (const Cache::Symbol& s : cache.symbols)
+          if (s.container.empty() && matches(s.name))
+          {
+            if (++added > 300)
+            {
+              incomplete = true;
+              break;
+            }
+            add(s.decl, "2");
+          }
+      });
+      return Json::object().set("isIncomplete", incomplete).set("items", std::move(items));
+    }
+
+    // ---- rename ----
+
+    // Places in files, the files in the build's order (not by address: the answer is the same every run).
+    struct ByFileOrder
+    {
+      bool operator()(const ParsedFile* a, const ParsedFile* b) const { return a->index < b->index; }
+    };
+    using FilePlaces = std::map<const ParsedFile*, std::vector<uint32_t>, ByFileOrder>;
+
+    // Why a declaration cannot be renamed; empty when it can.
+    std::string notRenameable(const Decl* d)
+    {
+      if (!d->file || d->file->isImported)
+        return "it is declared in an imported C header";
+      if (d->file->isLibrary)
+        return "it is the standard library's";
+      if (d->file->path.empty() || d->file->path[0] == '<')
+        return "it is the compiler's";
+      switch (d->kind)
+      {
+      case NodeKind::ClassDecl: case NodeKind::EnumDecl: case NodeKind::EnumeratorDecl: case NodeKind::VariableDecl: case NodeKind::ParamDecl:
+      case NodeKind::UsingAliasDecl: case NodeKind::TemplateParamDecl:
+        break;
+      case NodeKind::FunctionDecl:
+        if (d->flags & (DF_Constructor | DF_Destructor))
+          return "it is a constructor or destructor: rename its class";
+        if (d->flags & (DF_Operator | DF_Conversion))
+          return "it is an operator";
+        if (d->flags & (DF_Virtual | DF_Override))
+          return "it is virtual: its overrides would keep the old name (not supported yet)";
+        if (d->flags & DF_ExternC)
+          return "it has C linkage: its name is its symbol";
+        break;
+      default:
+        return "renaming a declaration of this kind is not supported";
+      }
+      if (symbolOf(d) == UINT32_MAX)
+        return "it has no name of its own";
+      return {};
+    }
+
+    // Every place a declaration's name is written, the declaration's own included (its other
+    // declarations too), or why that cannot be told: every identifier spelled like it in the
+    // program's own files must be a use the compiler resolved, to it or to another declaration, or
+    // a qualifier naming it (in a template's instances too); a name it did not resolve (a
+    // template's dependent name never instantiated, a macro-like use) makes the answer unknown.
+    std::string placesOf(const KeptProgram& program, Decl* target, FilePlaces& places)
+    {
+      GlobalScope& global = *program.global;
+      knowReferences(program);
+      uint32_t symbol = symbolOf(target);
+      // A class's constructors and destructor are named by it.
+      auto meaning = [&](Decl* d) -> Decl*
+      {
+        d = canonical(global, d);
+        if (d->kind == NodeKind::FunctionDecl && (d->flags & (DF_Constructor | DF_Destructor)))
+          if (Decl* cls = global.owningClass(d); cls && canonical(global, cls) == target)
+            return target;
+        return d;
+      };
+      // What each token spelled so is: the declarations the original trees and the instances' copies resolve it to.
+      std::map<const ParsedFile*, std::map<uint32_t, std::vector<Decl*>>> meanings;
+      for (const ParsedFile* f : program.files)
+        for (const Occurrence& o : cache.occurrences[f])
+          if (o.token < f->tokens->size() && sameIdentifier((*f->tokens)[o.token], symbol))
+            meanings[f][o.token].push_back(meaning(o.decl));
+      global.forEachInstanceCopy([&](Node* copy, const Decl*, const ParsedFile& f)
+      {
+        if (!f.tokens)
+          return;
+        forEachNode(copy, [&](Node* n)
+        {
+          Decl* d = isDeclarationNode(n) ? nullptr : resolvedOf(n);
+          if (!d)
+            return;
+          const QualifiedName* q = n->kind == NodeKind::NameExpr ? &static_cast<NameExpr*>(n)->name
+                                   : n->kind == NodeKind::NamedType ? &static_cast<NamedType*>(n)->name
+                                   : n->kind == NodeKind::MemberExpr ? &static_cast<MemberExpr*>(n)->member : nullptr;
+          if (!q || q->empty() || q->last().symbol != symbol)
+            return;
+          uint32_t from = n->token;
+          if (n->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(n)->base)
+            forEachNode(static_cast<MemberExpr*>(n)->base, [&](Node* b) { from = std::max(from, b->token + 1); });
+          uint32_t t = nameToken(*f.tokens, *q, from, from + 64);
+          if (t == UINT32_MAX)
+            return;
+          // A copy's own declaration (a member of a class template's instance) is no declaration of the program's.
+          if (d->attributes & ATTR_InstanceCopy)
+            d = nullptr;
+          meanings[&f][t].push_back(d ? meaning(d) : nullptr);
+        });
+      });
+      auto where = [&](const ParsedFile* f, uint32_t token)
+      {
+        const std::vector<size_t>& starts = startsOf(f);
+        size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), size_t((*f->tokens)[token].offset)) - starts.begin());
+        return f->path + ":" + std::to_string(line);
+      };
+      for (const ParsedFile* f : program.files)
+      {
+        if (!f->tokens || f->path.empty() || f->path[0] == '<')
+          continue;
+        const std::map<uint32_t, std::vector<Decl*>>& known = meanings[f];
+        for (uint32_t k = 0; k < f->tokens->size(); ++k)
+        {
+          if (!sameIdentifier((*f->tokens)[k], symbol))
+            continue;
+          auto found = known.find(k);
+          bool isTarget = false, isOther = false;
+          if (found != known.end())
+            for (Decl* d : found->second)
+              (d == target ? isTarget : isOther) = true;
+          if (isTarget && isOther)
+            return "the name at " + where(f, k) + " means it in one instance of a template and something else in another";
+          if (isTarget && (f->isLibrary || f->isImported))
+            return "the standard library uses it (" + where(f, k) + ")";
+          if (isTarget)
+            places[f].push_back(k);
+          else if (!isOther && !f->isLibrary && !f->isImported)
+            return "the name at " + where(f, k) + " is one the compiler did not resolve (a template's name that depends on its parameters, never instantiated), so whether it means this cannot be told";
+        }
+      }
+      return {};
+    }
+
+    // Why newName would change what an existing name means, or would not be a name; empty when not.
+    std::string clashOf(const KeptProgram& program, Decl* target, const std::string& newName)
+    {
+      bool valid = !newName.empty() && (isalpha((unsigned char)newName[0]) || newName[0] == '_');
+      for (char c : newName)
+        valid = valid && (isalnum((unsigned char)c) || c == '_');
+      if (!valid)
+        return "'" + newName + "' is not a name";
+      if (lookupKeyword(newName) != UINT32_MAX)
+        return "'" + newName + "' is a keyword";
+      GlobalScope& global = *program.global;
+      auto spelled = [&](const Decl* d) { return declarationName(d, *program.symbols) == newName || (symbolOf(d) != UINT32_MAX && program.symbols->name(symbolOf(d)) == newName); };
+      // Locals and parameters: any name so spelled in the function, whatever it means there.
+      if (target->kind == NodeKind::ParamDecl || (target->kind == NodeKind::VariableDecl && target->parent && target->parent->kind == NodeKind::FunctionDecl) ||
+          (target->kind == NodeKind::VariableDecl && enclosingFunction(target->file->decls, target->token)))
+      {
+        FunctionDecl* f = target->kind == NodeKind::ParamDecl && target->parent && target->parent->kind == NodeKind::FunctionDecl
+                            ? static_cast<FunctionDecl*>(target->parent) : enclosingFunction(target->file->decls, target->token);
+        if (f)
+          for (uint32_t k = f->token; k < f->endToken && k < target->file->tokens->size(); ++k)
+            if ((*target->file->tokens)[k].getKind() == TokenKind::Identifier && program.symbols->name((*target->file->tokens)[k].id) == newName)
+              return "'" + newName + "' is already a name in " + declarationName(f, *program.symbols);
+        return {};
+      }
+      // Members: the class's and its bases' members.
+      if (Decl* cls = global.owningClass(target))
+      {
+        std::vector<ClassDecl*> classes;
+        classesOf(global, cls, classes);
+        for (ClassDecl* c : classes)
+          for (Decl* m : c->members)
+            if (spelled(m))
+              return "'" + newName + "' is already a member of " + declarationName(c, *program.symbols);
+        return {};
+      }
+      // Enumerators: the enum's (and an unscoped enum's names are its scope's too).
+      if (target->kind == NodeKind::EnumeratorDecl && target->parent && target->parent->kind == NodeKind::EnumDecl)
+        for (Decl* e : static_cast<EnumDecl*>(target->parent)->enumerators)
+          if (spelled(e))
+            return "'" + newName + "' is already an enumerator of it";
+      // Everything else: one global scope (design.md), so any declaration outside a function body so named.
+      knowSymbols(program);
+      for (const Cache::Symbol& sym : cache.symbols)
+        if (sym.name == newName)
+          return "'" + newName + "' is already declared (" + (sym.container.empty() ? "" : sym.container + "::") + newName + ")";
+      return {};
+    }
+
+    // prepareRename: the name's range, or an error saying why it cannot be renamed.
+    bool prepareRename(const Json& params, Json& result, std::string& error)
+    {
+      onProgram([&](const KeptProgram& program)
+      {
+        const ParsedFile* file = nullptr;
+        const Occurrence* o = occurrenceAt(program, params, &file);
+        if (!o)
+        {
+          error = "no name the compiler resolved is here";
+          return;
+        }
+        Decl* target = canonical(*program.global, o->decl);
+        if (std::string why = notRenameable(target); !why.empty())
+        {
+          error = "cannot rename " + declarationName(target, *program.symbols) + ": " + why;
+          return;
+        }
+        const Token& t = (*file->tokens)[o->token];
+        result = Json::object().set("range", tokenRange(file, o->token)).set("placeholder", std::string(file->text.substr(t.offset, t.length)));
+      });
+      return error.empty() && result.kind != Json::Null;
+    }
+
+    bool rename(const Json& params, Json& result, std::string& error)
+    {
+      std::string newName = params["newName"].text;
+      onProgram([&](const KeptProgram& program)
+      {
+        const Occurrence* o = occurrenceAt(program, params);
+        if (!o)
+        {
+          error = "no name the compiler resolved is here";
+          return;
+        }
+        Decl* target = canonical(*program.global, o->decl);
+        std::string oldName = std::string(program.symbols->name(symbolOf(target)));
+        if (std::string why = notRenameable(target); !why.empty())
+        {
+          error = "cannot rename " + oldName + ": " + why;
+          return;
+        }
+        if (std::string why = clashOf(program, target, newName); !why.empty())
+        {
+          error = "cannot rename " + oldName + " to " + newName + ": " + why;
+          return;
+        }
+        FilePlaces places;
+        if (std::string why = placesOf(program, target, places); !why.empty())
+        {
+          error = "cannot rename " + oldName + ": " + why;
+          return;
+        }
+        Json changes = Json::object();
+        for (const auto& [f, tokens] : places)
+        {
+          Json edits = Json::array();
+          for (uint32_t k : tokens)
+            edits.push(Json::object().set("range", tokenRange(f, k)).set("newText", newName));
+          changes.set(uriOf(overlayKey(f->path), f->path), std::move(edits));
+        }
+        result = Json::object().set("changes", std::move(changes));
+      });
+      return error.empty();
+    }
+
+    // ---- signature help ----
+
+    Json signatureHelp(const Json& params)
+    {
+      Json result;
+      onProgram([&](const KeptProgram& program)
+      {
+        ParsedFile* f = fileOf(program, params["textDocument"]["uri"].text);
+        if (!f || !f->tokens || f->tokens->empty())
+          return;
+        const std::vector<Token>& tokens = *f->tokens;
+        size_t offset = offsetOf(f->text, startsOf(f), params["position"]);
+        auto it = std::lower_bound(tokens.begin(), tokens.end(), offset, [](const Token& t, size_t o) { return size_t(t.offset) < o; });
+        // The call's `(` that the cursor is in, and the argument it is at.
+        int32_t k = int32_t(it - tokens.begin()) - 1;
+        int depth = 0;
+        uint32_t argument = 0;
+        for (; k >= 0; --k)
+        {
+          const Token& t = tokens[k];
+          if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::RBrace))
+            ++depth;
+          else if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::LBrace))
+          {
+            if (depth == 0)
+              break;
+            --depth;
+          }
+          else if (t.is(P::Semi) && depth == 0)
+            return;
+          else if (t.is(P::Comma) && depth == 0)
+            ++argument;
+        }
+        if (k < 1 || !tokens[k].is(P::LParen) || tokens[k - 1].getKind() != TokenKind::Identifier)
+          return;
+        uint32_t name = uint32_t(k - 1);
+        FunctionDecl* function = enclosingFunction(f->decls, name);
+        // The functions so named: a class's members after `.` and `->`, else the name's own and its overloads.
+        std::vector<Decl*> candidates;
+        uint32_t symbol = tokens[name].id;
+        auto addFunction = [&](Decl* d)
+        {
+          if (d && d->kind == NodeKind::FunctionDecl && symbolOf(d) == symbol && std::find(candidates.begin(), candidates.end(), d) == candidates.end())
+            candidates.push_back(d);
+        };
+        if (name >= 1 && (tokens[name - 1].is(P::Dot) || tokens[name - 1].is(P::Arrow)))
+        {
+          std::vector<ClassDecl*> classes;
+          classesOf(*program.global, classBefore(program, f, name - 1, function), classes);
+          for (ClassDecl* c : classes)
+            for (Decl* m : c->members)
+              addFunction(m);
+        }
+        else
+        {
+          addFunction(lookupBefore(program, f, symbol, name, function));
+          if (function)
+          {
+            std::vector<ClassDecl*> classes;
+            classesOf(*program.global, program.global->owningClass(function), classes);
+            for (ClassDecl* c : classes)
+              for (Decl* m : c->members)
+                addFunction(m);
+          }
+          knowSymbols(program);
+          std::string_view spelled = program.symbols->name(symbol);
+          std::string scope = name >= 2 && tokens[name - 1].is(P::ColonColon) && tokens[name - 2].getKind() == TokenKind::Identifier
+                                ? std::string(program.symbols->name(tokens[name - 2].id)) : std::string();
+          for (const Cache::Symbol& sym : cache.symbols)
+            if (sym.name == spelled &&
+                (scope.empty() ? sym.container.empty()
+                               : sym.container == scope || (sym.container.size() > scope.size() + 2 && sym.container.compare(sym.container.size() - scope.size() - 2, std::string::npos, "::" + scope) == 0)))
+              addFunction(sym.decl);
+        }
+        if (candidates.empty())
+          return;
+        Json signatures = Json::array();
+        uint32_t active = 0;
+        for (size_t c = 0; c < candidates.size(); ++c)
+        {
+          auto* fn = static_cast<FunctionDecl*>(candidates[c]);
+          std::string label = declarationText(program, fn);
+          // Each parameter's text in the label: between the outer parentheses, split at commas.
+          Json parameters = Json::array();
+          size_t open = label.find('(');
+          if (open != std::string::npos)
+          {
+            int level = 0;
+            size_t start = open + 1;
+            for (size_t i = open + 1; i < label.size(); ++i)
+            {
+              char ch = label[i];
+              if (ch == '(' || ch == '<' || ch == '[' || ch == '{')
+                ++level;
+              else if ((ch == ')' || ch == '>' || ch == ']' || ch == '}') && level > 0)
+                --level;
+              else if ((ch == ',' && level == 0) || (ch == ')' && level == 0))
+              {
+                size_t a = start, b = i;
+                while (a < b && label[a] == ' ')
+                  ++a;
+                if (b > a)
+                  parameters.push(Json::object().set("label", Json::array().push(utf16Units(label, 0, a)).push(utf16Units(label, 0, b))));
+                start = i + 1;
+                if (ch == ')')
+                  break;
+              }
+            }
+          }
+          if (active == 0 && fn->params.size() > argument)
+            active = uint32_t(c);
+          signatures.push(Json::object().set("label", label).set("parameters", std::move(parameters)));
+        }
+        result = Json::object().set("signatures", std::move(signatures)).set("activeSignature", active).set("activeParameter", argument);
+      });
+      return result;
+    }
+
+    // ---- semantic tokens ----
+
+    // The legend's token types, in order (semanticTokensProvider.legend).
+    static constexpr const char* tokenTypes[] = {"namespace", "type", "class", "enum", "struct", "typeParameter", "parameter", "variable",
+                                                 "property", "enumMember", "function", "method"};
+
+    int tokenType(const Decl* d)
+    {
+      switch (d->kind)
+      {
+      case NodeKind::NamespaceDecl: return 0;
+      case NodeKind::UsingAliasDecl: return 1;
+      case NodeKind::ClassDecl: return static_cast<const ClassDecl*>(d)->keyword == Kw::class_ ? 2 : 4;
+      case NodeKind::EnumDecl: return 3;
+      case NodeKind::TemplateParamDecl: return 5;
+      case NodeKind::ParamDecl: return 6;
+      case NodeKind::VariableDecl: return d->parent && d->parent->kind == NodeKind::ClassDecl ? 8 : 7;
+      case NodeKind::EnumeratorDecl: return 9;
+      case NodeKind::FunctionDecl: return symbolKind(d) == 12 ? 10 : 11;
+      default: return -1;
+      }
+    }
+
+    Json semanticTokens(const Json& params)
+    {
+      Json data = Json::array();
+      onProgram([&](const KeptProgram& program)
+      {
+        ParsedFile* f = fileOf(program, params["textDocument"]["uri"].text);
+        if (!f || !f->tokens)
+          return;
+        const std::vector<size_t>& starts = startsOf(f);
+        size_t previousLine = 0, previousStart = 0;
+        for (const Occurrence& o : occurrencesOf(f))
+        {
+          int type = tokenType(o.decl);
+          if (type < 0)
+            continue;
+          const Token& t = (*f->tokens)[o.token];
+          size_t line = size_t(std::upper_bound(starts.begin(), starts.end(), size_t(t.offset)) - starts.begin()) - 1;
+          size_t start = utf16Units(f->text, starts[line], t.offset);
+          int modifiers = (o.declaration ? 1 : 0) | (o.decl->file && o.decl->file->isLibrary ? 2 : 0);
+          data.push(line - previousLine).push(line == previousLine ? start - previousStart : start)
+            .push(utf16Units(f->text, t.offset, size_t(t.offset) + t.length)).push(type).push(modifiers);
+          previousLine = line;
+          previousStart = start;
+        }
+      });
+      return Json::object().set("data", std::move(data));
+    }
+
     Json workspaceSymbols(const Json& params)
     {
       Json result = Json::array();
       std::string query = params["query"].text;
       for (char& c : query)
         c = char(tolower((unsigned char)c));
-      withKeptProgram([&](const KeptProgram& program)
+      onProgram([&](const KeptProgram& program)
       {
         knowSymbols(program);
         // Exact names first, then prefixes, substrings and the query's letters in order; shorter first.
@@ -1445,7 +2325,10 @@ namespace
         size_t shown = std::min<size_t>(ranked.size(), 200);
         std::partial_sort(ranked.begin(), ranked.begin() + shown, ranked.end(), [](const auto& a, const auto& b)
         {
-          return a.first != b.first ? a.first < b.first : a.second->name != b.second->name ? a.second->name < b.second->name : a.second->container < b.second->container;
+          const Cache::Symbol& x = *a.second;
+          const Cache::Symbol& y = *b.second;
+          uint32_t xf = x.decl->file ? x.decl->file->index : 0, yf = y.decl->file ? y.decl->file->index : 0;
+          return std::tie(a.first, x.name, x.container, xf, x.decl->token) < std::tie(b.first, y.name, y.container, yf, y.decl->token);
         });
         for (size_t k = 0; k < shown; ++k)
         {
@@ -1520,6 +2403,16 @@ namespace
       }
     }
 
+    Json semanticTokensOptions()
+    {
+      Json types = Json::array();
+      for (const char* t : tokenTypes)
+        types.push(t);
+      return Json::object()
+        .set("legend", Json::object().set("tokenTypes", std::move(types)).set("tokenModifiers", Json::array().push("declaration").push("defaultLibrary")))
+        .set("full", true);
+    }
+
     Json capabilities()
     {
       return Json::object()
@@ -1529,6 +2422,10 @@ namespace
                                    .set("change", 2) // incremental
                                    .set("save", Json::object().set("includeText", false)))
         .set("hoverProvider", true)
+        .set("completionProvider", Json::object().set("triggerCharacters", Json::array().push(".").push(">").push(":")))
+        .set("signatureHelpProvider", Json::object().set("triggerCharacters", Json::array().push("(").push(",")))
+        .set("renameProvider", Json::object().set("prepareProvider", true))
+        .set("semanticTokensProvider", semanticTokensOptions())
         .set("definitionProvider", true)
         .set("declarationProvider", true)
         .set("referencesProvider", true)
@@ -1553,14 +2450,14 @@ namespace
       }
       if (method == "initialize")
       {
-        fs::path workspace;
         if (params["workspaceFolders"].kind == Json::Array && !params["workspaceFolders"].items.empty())
           workspace = uriToPath(params["workspaceFolders"].items[0]["uri"].text);
         else if (params["rootUri"].kind == Json::String)
           workspace = uriToPath(params["rootUri"].text);
         else if (params["rootPath"].kind == Json::String)
           workspace = params["rootPath"].text;
-        chooseArguments(workspace, self);
+        readOptions(params["initializationOptions"]);
+        chooseArguments(self);
         initialized = true;
         respond(id, Json::object()
                       .set("capabilities", capabilities())
@@ -1587,7 +2484,32 @@ namespace
       else if (method == "textDocument/didClose")
         close(params);
       else if (method == "textDocument/didSave")
+      {
         dirty = true; // files changed on disk by others are read again too
+        if (_wcsicmp(uriToPath(params["textDocument"]["uri"].text).filename().c_str(), L"build.kpp") == 0)
+          chooseArguments(self); // the project described again
+      }
+      else if (method == "workspace/didChangeConfiguration")
+      {
+        readOptions(params["settings"]["kpp"]);
+        chooseArguments(self);
+        dirty = true;
+      }
+      else if (method == "textDocument/completion")
+        respond(id, completion(params));
+      else if (method == "textDocument/prepareRename" || method == "textDocument/rename")
+      {
+        Json result;
+        std::string error;
+        if (method == "textDocument/prepareRename" ? prepareRename(params, result, error) : rename(params, result, error))
+          respond(id, std::move(result));
+        else
+          respondError(id, -32803, error.empty() ? "nothing to rename here" : error); // RequestFailed
+      }
+      else if (method == "textDocument/signatureHelp")
+        respond(id, signatureHelp(params));
+      else if (method == "textDocument/semanticTokens/full")
+        respond(id, semanticTokens(params));
       else if (method == "textDocument/hover")
         respond(id, hover(params));
       else if (method == "textDocument/definition")
@@ -1618,6 +2540,12 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
       continue;
     if (arg == "--check-each-change")
       server.checkEachChange = true;
+    else if (arg == "--lsp-log" && i + 1 < argc)
+    {
+      logFile = CreateFileA(argv[++i], GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+      if (logFile == INVALID_HANDLE_VALUE)
+        fprintf(stderr, "kppc --lsp: cannot write %s\n", argv[i]);
+    }
     else
       server.explicitArguments.push_back(arg);
   }

@@ -354,6 +354,8 @@ public:
   // The instances' own copies of a file's nodes (bodies, initializers, generic lambdas' operators),
   // with the declaration each was copied from: they index the file's tokens too.
   void forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit);
+  // The same for every file at once, with the file each copy's tokens index (`kppc --lsp`'s rename).
+  void forEachInstanceCopy(const std::function<void(Node* copy, const Decl* source, const ParsedFile& file)>& visit);
 
   // Queries for code generation (after resolveFile ran on every file).
   TypeTable& types();

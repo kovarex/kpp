@@ -366,12 +366,17 @@ don't guess"), on the full converted game.
 Decision 1 (LSP) is `kppc --lsp`. An editor starts it and speaks the Language Server Protocol 3.17
 on its stdin and stdout; its log goes to stderr.
 
-**Launch.** `kppc --lsp` with no other arguments checks the project of the editor's workspace
-folder: build.kpp, found from the folder up, gives the sources and options of its first executable's
-debug configuration (`projectCheckArguments`, project.cpp); without a build.kpp the folder itself is
-the program. `kppc --lsp OPTIONS SOURCES` checks exactly those (the converted game is checked this
-way: it has no build.kpp). A check always adds `--quiet --diagnostic-columns --check` and the
-standard library; `--exe`, `--emit-llvm` and `--server` given are left out (logged).
+**Launch**, as thread E's clients start it ([editors.md](editors.md), "The language server", whose
+interface this follows): `kpp --lsp` with no other arguments checks the project of the editor's
+workspace folder: build.kpp, found from the folder up (or `buildFile`), gives the sources and options
+of one configuration (`configuration`, debug by default) of one executable (`executable`), or of all
+of them together (their sources and exclusions with the first one's options), with build.kpp's
+`settings` (`projectCheckArguments`, project.cpp; those four are the keys of initializationOptions
+and of `workspace/didChangeConfiguration`'s `kpp`; saving build.kpp describes the project again).
+Without a build.kpp the folder itself is the program. `kppc --lsp OPTIONS SOURCES` checks exactly
+those (the converted game is checked this way: it has no build.kpp). A check always adds
+`--quiet --diagnostic-columns --check` and the standard library; `--exe`, `--emit-llvm` and
+`--server` given are left out (logged). `--lsp-log FILE` writes the log to a file too.
 
 **How it holds the program.** In its own process, through the compile server's machinery
 (`buildInThisProcess`, server.cpp): each check is a build of the kind a compile server runs, kept
@@ -406,18 +411,40 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 | `textDocument/references` | every name in the program resolved to the declaration or its other declarations; an index of all files made on the first request after a check, on all threads |
 | `textDocument/documentSymbol` | the file's outline: namespaces, classes and their members, enums, functions, variables |
 | `workspace/symbol` | every declaration outside function bodies, exact names first, then prefixes, substrings and the query's letters in order; 200 at most |
+| `textDocument/completion` (`.`, `>`, `:`) | after `.` and `->`: the members of the class the expression before is (names, calls, indexing and `this` chained; its bases' members after its own), each with its declaration as the detail; after `X::`: the names declared in X; else the function's parameters and locals declared before, its class's members, and the top-level names starting with what was typed (300 at most, `isIncomplete` past that) |
+| `textDocument/signatureHelp` (`(`, `,`) | the overloads of the function called (a member after `.` and `->`, a scope's after `X::`), each parameter's range in the label, the argument the cursor is at |
+| `textDocument/prepareRename`, `textDocument/rename` | below |
+| `textDocument/semanticTokens/full` | every resolved name and declaration's own name by kind (namespace, type, class, enum, struct, typeParameter, parameter, variable, property, enumMember, function, method), `declaration` and `defaultLibrary` (the standard library's) as modifiers |
 
-Gaps: names inside a template's body that depend on its parameters are resolved only in the
-instances' copies, which the occurrences do not walk yet, so references miss them; an operator has no
-name token, so it is not found by position.
+**Rename never misses a use silently.** Every identifier spelled like the old name in the program's
+own files must be accounted for: a name the compiler resolved to the declaration (or to one of its
+other declarations; a class's constructors and destructor count as the class), a qualifier naming
+it (`Shape` in `Shape::area`), a constructor's member initializer naming it, the same names in
+template instances' copies; or a name resolved to something else, which is left alone. A name the
+compiler did not resolve (a template's dependent name with no instance), a token that means the
+declaration in one instance and something else in another, or a use in the standard library makes
+the rename an error that names the place. It is refused too for an imported C or a standard library
+declaration, a constructor, destructor or operator, a virtual function (its overrides would keep the
+old name), C linkage, a new name that is no identifier or is a keyword, and a new name that would
+change what another name means: a member the class or a base already has, a name used anywhere in a
+local's function, and, for everything else, any declaration outside function bodies so named (one
+global scope). The edits are returned, not applied: the editor applies them, and the next check is
+the build that confirms them.
+
+Gaps: an operator has no name token, so it is not found by position; completion and signature help
+look a name up from its nearest resolved spelling before the cursor, the enclosing class and the
+top-level names, not with the resolver's own lookup (a using-directive's names are missed).
 
 **Tested** by tests/lsp.ps1 (in run_tests): a scripted session (tests/lsp/session.jsonl) on
 tests/lsp/program, every message the server sends compared with tests/lsp/session.expected: the
 first check, hover on a function, a data member and a local, definition, references with and without
-the declaration, the outline, a workspace symbol, diagnostics of a misspelt member (codegen's),
-a misspelt name (the resolver's, with its column), a type error, a parse error (the token's range),
-each cleared when fixed, and closing a document. `--check-each-change` makes the check run after
-every change, so the transcript does not depend on timing.
+the declaration, the outline, a workspace symbol, rename of a local, a function and a class (its uses
+as a template argument too) and four refusals, signature help, semantic tokens, completion after
+`.`, `->` and `::` and of a prefix, diagnostics of a misspelt member (codegen's), a misspelt name (the
+resolver's, with its column), a type error, a parse error (the token's range), each cleared when
+fixed, and closing a document. `--check-each-change` makes the check run after every change, so the
+transcript does not depend on timing. Thread E's tools/vscode/test/lsp-smoke.js (what the editors'
+clients rely on) runs against `kppc --lsp` in run_tests when Node.js is found.
 
 **Measured on the full game** (scratchpad lspmeasure.py: a client that times each request from its
 send to its answer; the converted tree of the resolver thread's worktree, 2026-10-31 19:19, frozen
@@ -440,12 +467,23 @@ for the check of the documents as they are, so "after a body edit" is the check 
 | diagnostics after typing an error (an undeclared name) | 8.0 s |
 | diagnostics after fixing it | 17.4 s |
 
-What makes the last two slow is where the compile server stops being incremental, not the
+The requests of steps 3 and 4, the same tree and machine (scratchpad lspmeasure2.py), in
+BuildEntityAchievement.kpp: semantic tokens of the file 7.4 ms (first) and 0.3 ms; signature help in
+`TimeUtil::timeFormat(` 2.0 to 2.5 ms; prepareRename 0.1 ms; rename of `builtCount` (every
+identifier so spelled in the program accounted for, the instances' copies walked) 1.1 to 2.5 s, 8
+edits in one file, which are all of its 8 uses (three other classes' members of that name are left
+alone); completion after typing `this->` 1.96 to 3.39 s (the check: the line does not parse, so
+the front end runs from scratch and codegen not at all), 35 members, 0.2 ms when asked again;
+taking the line out again 12.7 to 17.1 s (from scratch, codegen in full).
+
+What makes the slow ones slow is where the compile server stops being incremental, not the
 language server: codegen keeps its session only when the program has no codegen error
 (codegen.cpp, `keepTexts`), so a check with an error is codegen in full; and a kept build with
 checker errors in the edited file is not taken incrementally ("the file has checker errors"), so the
-fix is a build from scratch. On the older conversion in factorio-in-kpp (d9080751), which has 109
-format errors under today's compiler, every check after an edit was codegen in full (8 to 10 s) for
-the same reason. Errors as you type need both paths to take a program with errors; reported to the
-codegen and resolver threads. Smaller items: every check reads all 4,126 sources again although the
+fix is a build from scratch; a file that does not parse (a line half typed) is a front end from
+scratch too. On the older conversion in factorio-in-kpp (d9080751), which has 109 format errors under
+today's compiler, every check after an edit was codegen in full (8 to 10 s) for the same reason.
+Errors as you type need these paths to take a program with errors (codegen's session kept with the
+failed functions marked, a file's checker errors kept per unit so that its walk can take them back,
+a body that does not parse checked as an error body); reported to the codegen and resolver threads. Smaller items: every check reads all 4,126 sources again although the
 language server knows which document changed, and lexes them again for a report nobody reads.

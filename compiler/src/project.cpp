@@ -793,25 +793,72 @@ int runProject(int argc, char** argv, CompileFunction compile)
   return act(root, request, compile);
 }
 
-bool projectCheckArguments(const std::filesystem::path& directory, std::vector<std::string>& args, std::string& error)
+bool projectCheckArguments(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<std::string>& args, std::string& error)
 {
-  fs::path root = findProject(directory);
+  fs::path root = check.buildFile.empty() ? findProject(directory) : fs::path(check.buildFile).parent_path();
   if (root.empty())
     return false;
+  if (!check.buildFile.empty() && !fs::is_regular_file(check.buildFile))
+  {
+    error = check.buildFile + " does not exist";
+    return true;
+  }
   Request request;
+  request.server = false; // no compile server left running in the project for its description
+  request.settings = check.settings;
   std::vector<Description> descriptions;
   if (!describe(root, request, descriptions))
   {
     error = (root / "build.kpp").string() + " did not describe the build";
     return true;
   }
-  if (descriptions[0].programs.empty())
+  const Description* d = nullptr;
+  for (const Description& candidate : descriptions)
+    if (candidate.configuration == check.configuration)
+      d = &candidate;
+  if (!d)
+  {
+    error = "build.kpp has no configuration " + check.configuration + " (debug or release)";
+    return true;
+  }
+  if (d->programs.empty())
   {
     error = (root / "build.kpp").string() + " describes no executable";
     return true;
   }
+  // One executable, or (none named) the first one's options with every executable's sources.
+  Program program;
+  if (!check.executable.empty())
+  {
+    const Program* named = nullptr;
+    for (const Program& p : d->programs)
+      if (p.name == check.executable)
+        named = &p;
+    if (!named)
+    {
+      error = "build.kpp describes no executable " + check.executable;
+      return true;
+    }
+    program = *named;
+  }
+  else
+  {
+    program = d->programs[0];
+    for (size_t k = 1; k < d->programs.size(); ++k)
+    {
+      auto addAll = [](std::vector<std::string>& to, const std::vector<std::string>& from)
+      {
+        for (const std::string& x : from)
+          if (std::find(to.begin(), to.end(), x) == to.end())
+            to.push_back(x);
+      };
+      addAll(program.roots, d->programs[k].roots);
+      addAll(program.excluded, d->programs[k].excluded);
+      addAll(program.cIncludes, d->programs[k].cIncludes);
+    }
+  }
   // What only code generation and the link read is left out (the executable, the link's options).
-  std::vector<std::string> all = buildArguments(root, descriptions[0], descriptions[0].programs[0], request);
+  std::vector<std::string> all = buildArguments(root, *d, program, request);
   args.clear();
   for (size_t i = 0; i < all.size(); ++i)
     if (all[i] == "--exe" || all[i] == "--lib")

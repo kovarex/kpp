@@ -139,10 +139,9 @@ if errorlevel 1 set /a FAIL+=1
 rem The language server (tests\lsp.ps1, docs/ide.md): a scripted editor session, every message it sends.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\lsp.ps1 -Kppc %KPPC%
 if errorlevel 1 set /a FAIL+=1
-rem What editors' LSP clients rely on (docs/editors.md): for now against the stand-in server, until
-rem kppc --lsp answers; skipped without Node.js.
+rem What editors' LSP clients rely on (docs/editors.md), against kppc --lsp; skipped without Node.js.
 where node >nul 2>nul && (
-  node ..\tools\vscode\test\lsp-smoke.js node ..\tools\vscode\test\stub-server.js
+  node ..\tools\vscode\test\lsp-smoke.js %KPPC% --lsp
   if errorlevel 1 set /a FAIL+=1
 )
 rem The compile server must build what a new process builds, edit after edit (tests\incremental.ps1).

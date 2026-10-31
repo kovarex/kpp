@@ -24069,6 +24069,24 @@ void GlobalScope::forEachInstanceCopy(const ParsedFile& file, const std::functio
   }
 }
 
+void GlobalScope::forEachInstanceCopy(const std::function<void(Node* copy, const Decl* source, const ParsedFile& file)>& visit)
+{
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+    {
+      const Decl* source = record->recheck ? record->recheck->source : record->of;
+      if (record->body && record->body->file)
+        visit(record->body, source, *record->body->file);
+      if (record->init && record->of && record->of->file)
+        visit(record->init, source, *record->of->file);
+      if (record->lambda && record->of && record->of->file)
+        visit(record->lambda, source, *record->of->file);
+    }
+  }
+}
+
 void GlobalScope::forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile* file, const std::function<void(uint32_t& token)>& visit)
 {
   std::lock_guard lock(impl->instanceStatsMutex);

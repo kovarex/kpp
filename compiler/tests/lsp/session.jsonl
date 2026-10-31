@@ -14,6 +14,32 @@
 {"jsonrpc":"2.0","id":17,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
 {"jsonrpc":"2.0","id":18,"method":"workspace/symbol","params":{"query":"totalArea"}}
 {"jsonrpc":"2.0","id":19,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":1,"character":0}}}
+// Rename: prepareRename's range, the edits of a local, a function and a class (its uses as a template
+// argument too), and the refusals: a name a member already has, no name, the standard library's.
+{"jsonrpc":"2.0","id":40,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":9}}}
+{"jsonrpc":"2.0","id":41,"method":"textDocument/rename","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":9},"newName":"box"}}
+{"jsonrpc":"2.0","id":42,"method":"textDocument/rename","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":7,"character":17},"newName":"sumOfAreas"}}
+{"jsonrpc":"2.0","id":43,"method":"textDocument/rename","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":2,"character":10},"newName":"Rectangle"}}
+{"jsonrpc":"2.0","id":44,"method":"textDocument/rename","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":5,"character":7},"newName":"height"}}
+{"jsonrpc":"2.0","id":45,"method":"textDocument/rename","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":3,"character":7},"newName":"1x"}}
+{"jsonrpc":"2.0","id":46,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":6,"character":10}}}
+// Signature help inside a call, and the semantic tokens of a file.
+{"jsonrpc":"2.0","id":47,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":7,"character":27}}}
+{"jsonrpc":"2.0","id":48,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
+// Completion: members after `.` and `->` (with signatures), a scope's names after `::`, a name's prefix
+// (locals first, then top-level names); a `>` that is no `->` completes nothing.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":20},"contentChanges":[{"range":{"start":{"line":8,"character":0},"end":{"line":8,"character":0}},"text":"  square.\n"}]}}
+{"jsonrpc":"2.0","id":30,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":8,"character":9},"context":{"triggerKind":2,"triggerCharacter":"."}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":21},"contentChanges":[{"range":{"start":{"line":8,"character":0},"end":{"line":8,"character":9}},"text":"  Shape* pointer = &square;\n  pointer->"}]}}
+{"jsonrpc":"2.0","id":31,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":9,"character":11},"context":{"triggerKind":2,"triggerCharacter":">"}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":22},"contentChanges":[{"range":{"start":{"line":9,"character":0},"end":{"line":9,"character":11}},"text":"  Shape::"}]}}
+{"jsonrpc":"2.0","id":32,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":9,"character":9},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":23},"contentChanges":[{"range":{"start":{"line":9,"character":0},"end":{"line":9,"character":9}},"text":"  int c = 1 > squ"}]}}
+{"jsonrpc":"2.0","id":33,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":9,"character":17},"context":{"triggerKind":1}}}
+{"jsonrpc":"2.0","id":34,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":9,"character":13},"context":{"triggerKind":2,"triggerCharacter":">"}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":24},"contentChanges":[{"range":{"start":{"line":9,"character":0},"end":{"line":9,"character":16}},"text":"  totalA"}]}}
+{"jsonrpc":"2.0","id":35,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":9,"character":8},"context":{"triggerKind":1}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":25},"contentChanges":[{"text":"int main()\n{\n  Vector<Shape> shapes;\n  Shape square;\n  square.width = 3;\n  square.height = 3;\n  shapes.push_back(square);\n  println(\"{}\", totalArea(shapes));\n  return 0;\n}\n"}]}}
 // A member misspelt (codegen's error: the line), then a name misspelt (the resolver's: line and column).
 {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"range":{"start":{"line":4,"character":9},"end":{"line":4,"character":14}},"text":"widht"}]}}
 {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":3},"contentChanges":[{"range":{"start":{"line":5,"character":2},"end":{"line":5,"character":8}},"text":"sqaure"}]}}
