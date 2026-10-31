@@ -1,0 +1,10 @@
+// html: HTML escaping and templates checked at compile time (README.md). `kpp --test` here runs its tests.
+void build(Project& project)
+{
+  Library& html = project.library("html");
+  html.version = "0.1.0";
+  html.license = "MIT";
+  html.minimumKpp = "0.1.0";
+  html.root("src");
+  html.test("tests");
+}

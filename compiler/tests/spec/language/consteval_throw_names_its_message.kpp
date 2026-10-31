@@ -1,0 +1,21 @@
+// spec: a constant evaluation that reaches a throw is an error that shows what is thrown: the message of an Exception, or the text of a string literal, at the throw's line; a library checks its input at compile time this way (C++ rejects a throw in a constant expression; GCC and Clang name the throw)
+// factorio: none; found by thread G for libraries/html, whose templates are checked by a constexpr constructor that throws on a malformed template
+// pending: the error says only "the constexpr variable bad is no constant", without the reason
+// error: consteval_throw_names_its_message.kpp:16: error: the constexpr variable bad is no constant: it throws RuntimeError("a negative value") (consteval_throw_names_its_message.kpp:11)
+struct Checked
+{
+  int value;
+  constexpr Checked(int v) : value(v)
+  {
+    if (v < 0)
+      throw RuntimeError(String("a negative value"));
+  }
+};
+
+constexpr Checked good(1);
+constexpr Checked bad(-1);
+
+int main()
+{
+  return good.value;
+}

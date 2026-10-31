@@ -1,0 +1,108 @@
+// The html library's tests: escaping, templates made at compile time, and the errors of templates
+// made at run time.
+
+constexpr HtmlTemplate htmlTestCard("<div class=\"card {{kind}}\"><a href=\"{{url}}\">{{name}}</a><p>{{summary}}</p></div>");
+constexpr HtmlTemplate htmlTestSearch("<a href=\"/library/{{name}}?q={{query}}#{{part}}\">x</a>");
+constexpr HtmlTemplate htmlTestPage("<!DOCTYPE html>\n<html><head><title>{{title}}</title><style>p { color: red; }</style></head>"
+                                    "<body><!-- a comment -->{{content}}<br><img src=\"logo.png\" alt=\"{{title}}\"/></body></html>");
+
+test "escaping"
+{
+  check(htmlEscape("a < b && c > \"d\" 'e'") == "a &lt; b &amp;&amp; c &gt; &quot;d&quot; &#39;e&#39;");
+  check(htmlEscape("") == "");
+  check(htmlEscape("plain \xC3\xA9") == "plain \xC3\xA9");
+  check(SafeHtml::escape("<b>").html == "&lt;b&gt;");
+}
+
+test "a template made at compile time"
+{
+  static_assert(htmlTestCard.partCount == 9);
+  SafeHtml card = htmlTestCard.render({{"kind", "featured"}, {"url", "https://kpp.net/json"}, {"name", "json <1.0>"}, {"summary", "\"fast\" & strict"}});
+  check(card.html == "<div class=\"card featured\"><a href=\"https://kpp.net/json\">json &lt;1.0&gt;</a><p>&quot;fast&quot; &amp; strict</p></div>");
+  Vector<String> holes = htmlTestCard.holes();
+  check(holes.size() == 4);
+  check(holes[0] == "kind");
+  check(holes[3] == "summary");
+}
+
+test "holes in a URL"
+{
+  SafeHtml link = htmlTestSearch.render({{"name", "a b/c"}, {"query", "x&y=1/2"}, {"part", "h\xC3\xA9"}});
+  check(link.html == "<a href=\"/library/a%20b/c?q=x%26y%3D1%2F2#h%C3%A9\">x</a>");
+}
+
+test "SafeHtml goes in as it is, and a page nests templates"
+{
+  SafeHtml body = SafeHtml::trusted("<p>made by <b>markdown</b></p>");
+  SafeHtml page = htmlTestPage.render({{"title", "Kpp & you"}, {"content", body}});
+  check(page.html == "<!DOCTYPE html>\n<html><head><title>Kpp &amp; you</title><style>p { color: red; }</style></head><body><!-- a comment --><p>made by "
+                     "<b>markdown</b></p><br><img src=\"logo.png\" alt=\"Kpp &amp; you\"/></body></html>");
+  SafeHtml list;
+  for (const char* name : {"json", "sha256"})
+    list.append(htmlTestCard.render({{"kind", "small"}, {"url", "/" + String(name)}, {"name", name}, {"summary", ""}}));
+  check(list.html.find("<a href=\"/sha256\">sha256</a>") > 0);
+}
+
+// The error's message for a template made at run time, "" when it is fine.
+String htmlTemplateErrorOf(const char* text)
+{
+  try
+  {
+    HtmlTemplate t(text);
+    return "";
+  }
+  catch (const HtmlTemplateError& e)
+  {
+    return e.message;
+  }
+}
+
+test "malformed templates"
+{
+  check(htmlTemplateErrorOf("<p>{{name}}</p>") == "");
+  check(htmlTemplateErrorOf("<p>{{name</p>") == "1:4: a '{{' without its '}}'");
+  check(htmlTemplateErrorOf("<p>{{}}</p>") == "1:4: a hole without a name");
+  check(htmlTemplateErrorOf("<p>{{1x}}</p>") == "1:6: a hole's name is letters, digits and '_', not starting with a digit");
+  check(htmlTemplateErrorOf("<p>\n<b>x</p>") == "2:5: an end tag that does not close the element open here (every element but the void ones is closed explicitly)");
+  check(htmlTemplateErrorOf("<div><p>x</p>") == "1:1: an element that is never closed");
+  check(htmlTemplateErrorOf("x</p>") == "1:2: an end tag without its start tag");
+  check(htmlTemplateErrorOf("a < b") == "1:3: a '<' that starts no tag (write &lt;)");
+  check(htmlTemplateErrorOf("<a href={{url}}>x</a>") == "1:9: a hole in an unquoted attribute value (quote it)");
+  check(htmlTemplateErrorOf("<a {{attrs}}>x</a>") == "1:4: a hole in a tag outside a quoted attribute value");
+  check(htmlTemplateErrorOf("<a onclick=\"go({{x}})\">x</a>") == "1:16: a hole in a style, srcset, srcdoc or event handler attribute");
+  check(htmlTemplateErrorOf("<p style=\"color: {{c}}\">x</p>") == "1:18: a hole in a style, srcset, srcdoc or event handler attribute");
+  check(htmlTemplateErrorOf("<iframe srcdoc=\"{{x}}\"></iframe>") == "1:17: a hole in a style, srcset, srcdoc or event handler attribute");
+  check(htmlTemplateErrorOf("<script>var x = {{x}};</script>") == "1:17: a hole in <script> or <style> (pass the data in an attribute or a separate file)");
+  check(htmlTemplateErrorOf("<!-- {{x}} -->") == "1:6: a hole in a comment");
+  check(htmlTemplateErrorOf("<p title=\"x>y</p>") == "1:10: an attribute value without its closing quote");
+  check(htmlTemplateErrorOf("<p") == "1:1: a tag without its '>'");
+}
+
+// The error's message for a render, "" when it renders.
+String htmlRenderErrorOf(const HtmlTemplate& t, InitializerList<HtmlArgument> arguments)
+{
+  try
+  {
+    t.render(arguments);
+    return "";
+  }
+  catch (const HtmlTemplateError& e)
+  {
+    return e.message;
+  }
+}
+
+test "renders that do not fit"
+{
+  HtmlTemplate link("<a href=\"{{url}}\">{{name}}</a>");
+  check(htmlRenderErrorOf(link, {{"url", "https://a"}, {"name", "a"}}) == "");
+  check(htmlRenderErrorOf(link, {{"url", "https://a"}}) == "render: no value for {{name}}");
+  check(htmlRenderErrorOf(link, {{"url", "https://a"}, {"name", "a"}, {"nmae", "b"}}) == "render: a value for nmae, which the template has no hole for");
+  check(htmlRenderErrorOf(link, {{"url", "javascript:alert(1)"}, {"name", "a"}}) ==
+        "render: {{url}} is a URL with a scheme other than http, https and mailto: javascript:alert(1)");
+  check(htmlRenderErrorOf(link, {{"url", " JavaScript:x"}, {"name", "a"}}) != "");
+  check(htmlRenderErrorOf(link, {{"url", SafeHtml::trusted("x")}, {"name", "a"}}) == "render: {{url}} is SafeHtml, which goes only in an element's text");
+  check(htmlRenderErrorOf(link, {{"url", "mailto:a@b.c"}, {"name", "a"}}) == "");
+  check(htmlRenderErrorOf(link, {{"url", "relative/path:x"}, {"name", "a"}}) == "");
+  check(htmlRenderErrorOf(link, {{"url", "#top"}, {"name", 3}}) == "");
+}

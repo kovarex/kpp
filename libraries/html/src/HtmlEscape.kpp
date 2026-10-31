@@ -1,0 +1,57 @@
+// Escaping text for HTML, and HTML that is already safe.
+
+// The text with & < > " ' as character references: safe in an element's text and in a quoted
+// attribute value.
+String htmlEscape(StringView text)
+{
+  String out;
+  htmlAppendEscaped(out, text);
+  return out;
+}
+
+void htmlAppendEscaped(String& out, StringView text)
+{
+  for (int i = 0; i < text.size(); ++i)
+  {
+    char c = text[i];
+    if (c == '&')
+      out.append("&amp;");
+    else if (c == '<')
+      out.append("&lt;");
+    else if (c == '>')
+      out.append("&gt;");
+    else if (c == '"')
+      out.append("&quot;");
+    else if (c == '\'')
+      out.append("&#39;");
+    else
+      out.append(c);
+  }
+}
+
+// HTML that a template inserts as it is, unescaped: a rendered template, the markdown library's
+// output. Made only on purpose, by SafeHtml::trusted or by HtmlTemplate::render.
+struct SafeHtml
+{
+  String html;
+
+  SafeHtml() {}
+  static SafeHtml trusted(StringView html)
+  {
+    SafeHtml safe;
+    safe.html = String(html);
+    return safe;
+  }
+  // The text, escaped.
+  static SafeHtml escape(StringView text)
+  {
+    SafeHtml safe;
+    htmlAppendEscaped(safe.html, text);
+    return safe;
+  }
+
+  void append(const SafeHtml& more) { this->html.append(more.html); }
+  bool empty() const { return this->html.empty(); }
+  const String& str() const { return this->html; }
+  bool operator==(const SafeHtml& other) const { return this->html == other.html; }
+};

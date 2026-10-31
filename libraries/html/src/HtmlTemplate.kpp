@@ -1,0 +1,455 @@
+// HTML templates: text with {{name}} holes, escaped by where each hole is (README.md). The
+// constructor reads the template's HTML and is constexpr, so a template made as a constexpr
+// variable is checked when the program is compiled: a malformed one is a compile error.
+
+// A malformed template, or a render that does not fit its template. The message starts with
+// "line:column: " for a template's error.
+struct HtmlTemplateError : RuntimeError
+{
+  HtmlTemplateError() {}
+  explicit HtmlTemplateError(const String& message) : RuntimeError(message) {}
+};
+
+// What a part of a template is: its own text, or a hole and how its value is written.
+enum class HtmlHole : uint8_t
+{
+  literal,   // the template's text, as it is
+  text,      // in an element's text: escaped, or a SafeHtml as it is
+  attribute, // in a quoted attribute value: escaped
+  urlStart,  // the start of a URL attribute's value (href, src...): a URL whose scheme is checked
+  urlPath,   // later in a URL, before any '?' or '#': percent-encoded, '/' kept
+  urlQuery,  // in a URL's query or fragment: percent-encoded
+};
+
+struct HtmlTemplatePart
+{
+  int start;  // in the template's text; a hole's name for a hole
+  int length;
+  HtmlHole kind;
+};
+
+constexpr int htmlTemplateMaxParts = 256;
+constexpr int htmlTemplateMaxDepth = 64;
+
+// A value for a hole: text, escaped where it goes, or SafeHtml, inserted as it is (in an element's
+// text only).
+struct HtmlArgument
+{
+  const char* name;
+  String value;
+  bool safe = false;
+
+  HtmlArgument(const char* name, StringView value) : name(name), value(value) {}
+  HtmlArgument(const char* name, const char* value) : name(name), value(value) {}
+  HtmlArgument(const char* name, const String& value) : name(name), value(value) {}
+  HtmlArgument(const char* name, const SafeHtml& value) : name(name), value(value.html), safe(true) {}
+  HtmlArgument(const char* name, int value) : name(name), value(toString(value)) {}
+  HtmlArgument(const char* name, long long value) : name(name), value(toString(value)) {}
+};
+
+void htmlTemplateFail(const char* text, int offset, const char* what)
+{
+  int line = 1;
+  int column = 1;
+  for (int i = 0; i < offset; ++i)
+  {
+    if (text[i] == '\n')
+    {
+      ++line;
+      column = 1;
+    }
+    else
+      ++column;
+  }
+  throw HtmlTemplateError(format("{}:{}: {}", line, column, what));
+}
+
+struct HtmlTemplate
+{
+  const char* text;
+  int partCount = 0;
+  HtmlTemplatePart parts[256];
+  // While reading: the literal text not yet added, and the open elements' names.
+  int literalStart = 0;
+  int depth = 0;
+  int openStart[64];
+  int openLength[64];
+
+  constexpr HtmlTemplate(const char* text) : text(text)
+  {
+    int i = 0;
+    while (this->text[i])
+    {
+      if (this->isHole(i))
+        i = this->hole(i, HtmlHole::text);
+      else if (this->text[i] == '<')
+        i = this->markup(i);
+      else
+        ++i;
+    }
+    if (this->depth > 0)
+      this->fail(this->openStart[this->depth - 1] - 1, "an element that is never closed");
+    this->addLiteral(i);
+  }
+
+  // Renders the template with a value for each hole; a hole without a value, or a value no hole
+  // takes, throws HtmlTemplateError.
+  SafeHtml render(InitializerList<HtmlArgument> arguments) const
+  {
+    SafeHtml out;
+    this->renderTo(out.html, arguments);
+    return out;
+  }
+
+  void renderTo(String& out, InitializerList<HtmlArgument> arguments) const
+  {
+    int count = int(arguments.size());
+    Vector<bool> used(count, false);
+    for (int p = 0; p < this->partCount; ++p)
+    {
+      const HtmlTemplatePart& part = this->parts[p];
+      StringView name(this->text + part.start, part.length);
+      if (part.kind == HtmlHole::literal)
+      {
+        out.append(name);
+        continue;
+      }
+      const HtmlArgument* argument = nullptr;
+      int index = 0;
+      for (const HtmlArgument& a : arguments)
+      {
+        if (StringView(a.name) == name)
+        {
+          argument = &a;
+          used[index] = true;
+        }
+        ++index;
+      }
+      if (!argument)
+        throw HtmlTemplateError(format("render: no value for {{{}}}", String(name)));
+      if (argument->safe && part.kind != HtmlHole::text)
+        throw HtmlTemplateError(format("render: {{{}}} is SafeHtml, which goes only in an element's text", String(name)));
+      if (part.kind == HtmlHole::text && argument->safe)
+        out.append(argument->value);
+      else if (part.kind == HtmlHole::text || part.kind == HtmlHole::attribute)
+        htmlAppendEscaped(out, argument->value);
+      else if (part.kind == HtmlHole::urlStart)
+      {
+        if (!htmlUrlIsSafe(argument->value))
+          throw HtmlTemplateError(format("render: {{{}}} is a URL with a scheme other than http, https and mailto: {}", String(name),
+                                         argument->value));
+        htmlAppendEscaped(out, argument->value);
+      }
+      else
+        htmlAppendPercentEncoded(out, argument->value, part.kind == HtmlHole::urlPath);
+    }
+    int index = 0;
+    for (const HtmlArgument& a : arguments)
+    {
+      if (!used[index])
+        throw HtmlTemplateError(format("render: a value for {}, which the template has no hole for", a.name));
+      ++index;
+    }
+  }
+
+  // The holes' names, in order, with repeats.
+  Vector<String> holes() const
+  {
+    Vector<String> names;
+    for (int p = 0; p < this->partCount; ++p)
+      if (this->parts[p].kind != HtmlHole::literal)
+        names.push_back(String(this->text + this->parts[p].start, this->parts[p].length));
+    return names;
+  }
+
+  // --- reading the template ---
+
+  void fail(int offset, const char* what) const { htmlTemplateFail(this->text, offset, what); }
+
+  bool isHole(int i) const { return this->text[i] == '{' && this->text[i + 1] == '{'; }
+
+  void add(int start, int length, HtmlHole kind)
+  {
+    if (this->partCount == htmlTemplateMaxParts)
+      this->fail(start, "a template of more than 256 parts (split it)");
+    this->parts[this->partCount] = HtmlTemplatePart{start, length, kind};
+    ++this->partCount;
+  }
+
+  // Adds the literal text before end.
+  void addLiteral(int end)
+  {
+    if (end > this->literalStart)
+      this->add(this->literalStart, end - this->literalStart, HtmlHole::literal);
+  }
+
+  // The hole at i; returns where its text ends.
+  int hole(int i, HtmlHole kind)
+  {
+    this->addLiteral(i);
+    int start = i + 2;
+    int end = start;
+    while (this->text[end] && !(this->text[end] == '}' && this->text[end + 1] == '}'))
+      ++end;
+    if (!this->text[end])
+      this->fail(i, "a '{{' without its '}}'");
+    if (end == start)
+      this->fail(i, "a hole without a name");
+    for (int k = start; k < end; ++k)
+    {
+      char c = this->text[k];
+      bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+      if (!letter && !(k > start && c >= '0' && c <= '9'))
+        this->fail(k, "a hole's name is letters, digits and '_', not starting with a digit");
+    }
+    this->add(start, end - start, kind);
+    this->literalStart = end + 2;
+    return end + 2;
+  }
+
+  static bool isSpace(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; }
+  static bool isNameChar(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-'; }
+  static char lower(char c) { return c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c; }
+
+  // Whether the text at start, length characters, is the word (lowercase), ignoring case.
+  bool is(int start, int length, const char* word) const
+  {
+    int n = 0;
+    while (word[n])
+      ++n;
+    if (n != length)
+      return false;
+    for (int k = 0; k < n; ++k)
+      if (HtmlTemplate::lower(this->text[start + k]) != word[k])
+        return false;
+    return true;
+  }
+
+  bool startsWith(int i, const char* word) const
+  {
+    for (int k = 0; word[k]; ++k)
+      if (HtmlTemplate::lower(this->text[i + k]) != word[k])
+        return false;
+    return true;
+  }
+
+  // The first "{{" in [from, to), or -1.
+  int holeIn(int from, int to) const
+  {
+    for (int k = from; k + 1 < to; ++k)
+      if (this->isHole(k))
+        return k;
+    return -1;
+  }
+
+  bool isVoid(int start, int length) const
+  {
+    const char* voids[] = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"};
+    for (const char* v : voids)
+      if (this->is(start, length, v))
+        return true;
+    return false;
+  }
+
+  // The markup at i ('<'); returns where it ends.
+  int markup(int i)
+  {
+    if (this->startsWith(i, "<!--"))
+    {
+      int k = i + 4;
+      while (this->text[k] && !this->startsWith(k, "-->"))
+        ++k;
+      if (!this->text[k])
+        this->fail(i, "a comment without its '-->'");
+      if (this->holeIn(i, k) >= 0)
+        this->fail(this->holeIn(i, k), "a hole in a comment");
+      return k + 3;
+    }
+    if (this->text[i + 1] == '!')
+    {
+      int k = i + 2;
+      while (this->text[k] && this->text[k] != '>')
+        ++k;
+      if (!this->text[k])
+        this->fail(i, "a '<!' without its '>'");
+      if (this->holeIn(i, k) >= 0)
+        this->fail(this->holeIn(i, k), "a hole in a <!DOCTYPE>");
+      return k + 1;
+    }
+    if (this->text[i + 1] == '/')
+    {
+      int nameStart = i + 2;
+      int k = nameStart;
+      while (HtmlTemplate::isNameChar(this->text[k]))
+        ++k;
+      int nameLength = k - nameStart;
+      while (HtmlTemplate::isSpace(this->text[k]))
+        ++k;
+      if (nameLength == 0 || this->text[k] != '>')
+        this->fail(i, "an end tag that is not </name>");
+      if (this->depth == 0)
+        this->fail(i, "an end tag without its start tag");
+      int top = this->depth - 1;
+      bool same = this->openLength[top] == nameLength;
+      for (int c = 0; same && c < nameLength; ++c)
+        same = HtmlTemplate::lower(this->text[this->openStart[top] + c]) == HtmlTemplate::lower(this->text[nameStart + c]);
+      if (!same)
+        this->fail(i, "an end tag that does not close the element open here (every element but the void ones is closed explicitly)");
+      --this->depth;
+      return k + 1;
+    }
+    char first = this->text[i + 1];
+    if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')))
+      this->fail(i, "a '<' that starts no tag (write &lt;)");
+    int nameStart = i + 1;
+    int k = nameStart;
+    while (HtmlTemplate::isNameChar(this->text[k]))
+      ++k;
+    int nameLength = k - nameStart;
+    bool selfClosed = false;
+    while (true)
+    {
+      while (HtmlTemplate::isSpace(this->text[k]))
+        ++k;
+      char c = this->text[k];
+      if (!c)
+        this->fail(i, "a tag without its '>'");
+      if (c == '>')
+      {
+        ++k;
+        break;
+      }
+      if (c == '/' && this->text[k + 1] == '>')
+      {
+        selfClosed = true;
+        k += 2;
+        break;
+      }
+      k = this->attribute(k);
+    }
+    if (this->is(nameStart, nameLength, "script") || this->is(nameStart, nameLength, "style"))
+    {
+      // Raw text up to its end tag: no holes, since escaping for JavaScript or CSS is not HTML's.
+      int end = k;
+      while (this->text[end] && !(this->text[end] == '<' && this->text[end + 1] == '/' && this->startsWith(end + 2, this->is(nameStart, nameLength, "script") ? "script" : "style")))
+        ++end;
+      if (!this->text[end])
+        this->fail(i, "a <script> or <style> without its end tag");
+      if (this->holeIn(k, end) >= 0)
+        this->fail(this->holeIn(k, end), "a hole in <script> or <style> (pass the data in an attribute or a separate file)");
+      k = end;
+    }
+    if (!selfClosed && !this->isVoid(nameStart, nameLength))
+    {
+      if (this->depth == htmlTemplateMaxDepth)
+        this->fail(i, "elements nested more than 64 deep");
+      this->openStart[this->depth] = nameStart;
+      this->openLength[this->depth] = nameLength;
+      ++this->depth;
+    }
+    return k;
+  }
+
+  // The attribute at k, inside a tag; returns where it ends.
+  int attribute(int k)
+  {
+    if (this->isHole(k))
+      this->fail(k, "a hole in a tag outside a quoted attribute value");
+    int nameStart = k;
+    while (this->text[k] && !HtmlTemplate::isSpace(this->text[k]) && this->text[k] != '=' && this->text[k] != '>' && this->text[k] != '/' &&
+           this->text[k] != '"' && this->text[k] != '\'')
+    {
+      if (this->isHole(k))
+        this->fail(k, "a hole in an attribute's name");
+      ++k;
+    }
+    int nameLength = k - nameStart;
+    if (nameLength == 0)
+      this->fail(k, "a character that starts no attribute");
+    while (HtmlTemplate::isSpace(this->text[k]))
+      ++k;
+    if (this->text[k] != '=')
+      return k;
+    ++k;
+    while (HtmlTemplate::isSpace(this->text[k]))
+      ++k;
+    char quote = this->text[k];
+    if (quote != '"' && quote != '\'')
+    {
+      while (this->text[k] && !HtmlTemplate::isSpace(this->text[k]) && this->text[k] != '>')
+      {
+        if (this->isHole(k))
+          this->fail(k, "a hole in an unquoted attribute value (quote it)");
+        ++k;
+      }
+      return k;
+    }
+    ++k;
+    int valueStart = k;
+    bool url = false;
+    const char* urls[] = {"href", "src", "action", "formaction", "cite", "poster"};
+    for (const char* u : urls)
+      if (this->is(nameStart, nameLength, u))
+        url = true;
+    bool forbidden = this->is(nameStart, nameLength, "style") || this->is(nameStart, nameLength, "srcset") || this->is(nameStart, nameLength, "srcdoc") ||
+                     (nameLength > 2 && HtmlTemplate::lower(this->text[nameStart]) == 'o' && HtmlTemplate::lower(this->text[nameStart + 1]) == 'n');
+    bool query = false;
+    while (this->text[k] != quote)
+    {
+      if (!this->text[k])
+        this->fail(valueStart - 1, "an attribute value without its closing quote");
+      if (this->isHole(k))
+      {
+        if (forbidden)
+          this->fail(k, "a hole in a style, srcset, srcdoc or event handler attribute");
+        HtmlHole kind = !url ? HtmlHole::attribute : k == valueStart ? HtmlHole::urlStart : query ? HtmlHole::urlQuery : HtmlHole::urlPath;
+        k = this->hole(k, kind);
+        continue;
+      }
+      if (this->text[k] == '?' || this->text[k] == '#')
+        query = true;
+      ++k;
+    }
+    return k + 1;
+  }
+};
+
+// Whether a URL's scheme, if it has one, is http, https or mailto: the scheme is what comes before
+// a ':' that is before any '/', '?' or '#'.
+bool htmlUrlIsSafe(StringView url)
+{
+  for (int i = 0; i < url.size(); ++i)
+  {
+    char c = url[i];
+    if (c == '/' || c == '?' || c == '#')
+      return true;
+    if (c == ':')
+    {
+      String scheme;
+      for (int k = 0; k < i; ++k)
+        scheme.append(HtmlTemplate::lower(url[k]));
+      return scheme == "http" || scheme == "https" || scheme == "mailto";
+    }
+  }
+  return true;
+}
+
+// Appends the text percent-encoded: everything but RFC 3986's unreserved characters, and '/' when
+// keepSlash.
+void htmlAppendPercentEncoded(String& out, StringView text, bool keepSlash)
+{
+  const char* hex = "0123456789ABCDEF";
+  for (int i = 0; i < text.size(); ++i)
+  {
+    unsigned char c = (unsigned char)text[i];
+    bool unreserved = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~';
+    if (unreserved || (keepSlash && c == '/'))
+      out.append(char(c));
+    else
+    {
+      out.append('%');
+      out.append(hex[c >> 4]);
+      out.append(hex[c & 15]);
+    }
+  }
+}
