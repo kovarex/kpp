@@ -18,6 +18,11 @@ This file records decisions that have been made. When a decision changes, update
 ### 2. Compilation model
 - **No `#include`, no forward declarations.** Every project symbol is visible everywhere.
   The project is a set of files (a "scope expansion path"), not an include graph.
+  A class that is declared but never defined in the program (a C interface's handle type, a
+  converted forward declaration) is an opaque class: a pointer to it is passed, stored, compared
+  and cast like any pointer (a cast between it and another class pointer reinterprets, never
+  adjusts), and only a use that needs its layout (an object of it, its size, arithmetic on such a
+  pointer) is an error (2026-10-31; spec classes/pointer_to_declared_only_class_is_opaque).
 - **Order-independent.** Declaration order does not matter (except runtime static
   initialization order within a file). Circular dependencies that cannot be resolved
   (e.g. type A contains B by value and B contains A) are reported as errors.

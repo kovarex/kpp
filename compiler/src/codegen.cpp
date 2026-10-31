@@ -1053,11 +1053,21 @@ namespace
       return alignmentValue(v->alignment, context, currentArgs ? *currentArgs : TemplateArgs{}, sym(v->name.last().symbol), at);
     }
 
+    // A class type whose class is declared but has no definition in the program.
+    bool declaredOnly(const Ty* t)
+    {
+      t = classKey(t);
+      if (!t || !t->decl)
+        return false;
+      Decl* def = global.definitionOf(t->decl);
+      return !def || def->kind != NodeKind::ClassDecl;
+    }
+
     ClassDecl* classDef(Decl* decl, Node* at)
     {
       Decl* def = global.definitionOf(decl);
       if (!def || def->kind != NodeKind::ClassDecl)
-        unsupported(at, "a class without a definition (" + qualifiedName(decl) + ")");
+        fail(at, qualifiedName(decl) + " is only declared (no definition in the program), and this use needs its layout");
       return static_cast<ClassDecl*>(def);
     }
 
@@ -9235,6 +9245,11 @@ namespace
     // subobjects, and the conversion to it is ambiguous: an error, as in C++ ([conv.ptr]/3).
     bool basePath(const Ty* derived, const Ty* base, std::vector<std::pair<std::string, uint32_t>>& path, Node* at)
     {
+      // A class only declared (no definition in the program) has no bases and is no class's base
+      // (a base must be defined): no path, and no layout asked for (a cast between pointers to it
+      // reinterprets the pointer, as a C-style cast does).
+      if (declaredOnly(derived) || declaredOnly(base))
+        return classKey(derived) == classKey(base);
       if (canonicalClass(derived, at) == canonicalClass(base, at))
         return true;
       StructInfo& info = structFor(derived, at);

@@ -1,6 +1,5 @@
 // spec: a cast from a pointer to a class to a pointer to a class that is only declared (no definition in the program) reinterprets the pointer, as a C++ C-style cast does
 // factorio: the library passes its own WIN32_FIND_DATAW-shaped struct to FindFirstFileW, whose parameter is windows.h's `struct _WIN32_FIND_DATAW*`
-// pending: codegen does not support a class without a definition yet (the library casts through void* meanwhile)
 struct Opaque;
 struct Storage
 {

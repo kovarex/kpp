@@ -1,0 +1,9 @@
+// spec: a use of a class that is only declared (no definition in the program) that needs its layout (a copy of the object a pointer to it points at, as here; its size, arithmetic on such a pointer) is an error, as for C++'s incomplete type
+// error: Handle is only declared (no definition in the program), and this use needs its layout
+struct Handle;
+Handle* lookUp() { return nullptr; }
+int main()
+{
+  Handle copy = *lookUp();
+  return 0;
+}

@@ -1,0 +1,40 @@
+// spec: a pointer to a class that is only declared (no definition in the program) is an opaque pointer: it is passed, returned, stored, compared, tested for null, converted to void* and back, and cast to and from pointers to other classes (a base subobject's pointer included, which a C-style cast reinterprets, not adjusts); only a use that needs the class's layout is an error
+// factorio: windows.h's handles to structs it never defines (HWND__*, HINSTANCE__*), and the library's casts to its own copies of declared-only Windows structs
+struct Handle;
+struct First
+{
+  int a = 1;
+};
+struct Second
+{
+  int b = 2;
+};
+struct Both : First, Second
+{
+  int c = 3;
+};
+struct Holder
+{
+  Handle* handle = nullptr;
+  Handle* table[2] = {nullptr, nullptr};
+};
+Handle* passThrough(Handle* h) { return h; }
+bool same(const Handle* x, const Handle* y) { return x == y; }
+int main()
+{
+  Both both;
+  Handle* h = (Handle*)&both;
+  Holder holder;
+  holder.handle = passThrough(h);
+  holder.table[1] = holder.handle;
+  void* raw = holder.table[1];
+  Handle* back = static_cast<Handle*>(raw);
+  println("{} {} {}", same(back, h), holder.table[0] == nullptr, back != nullptr);
+  // A C-style cast between unrelated class pointers reinterprets: the Second subobject's pointer
+  // goes through Handle* unadjusted.
+  Second* second = &both;
+  Handle* viaSecond = (Handle*)second;
+  println("{} {}", ((Second*)viaSecond)->b, ((Both*)h)->c);
+  println("{}", reinterpret_cast<First*>(holder.handle)->a);
+  return 0;
+}
