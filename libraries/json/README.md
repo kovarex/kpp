@@ -70,7 +70,7 @@ with them: `2:9: a number with a leading zero`.
 
 ## Tests
 
-`kppc --test libraries/json`, or `kpp --run` in this directory. They include every parsing case
+`kpp --test` in this directory, or `kppc --test libraries/json` anywhere. They include every parsing case
 of [JSONTestSuite](https://github.com/nst/JSONTestSuite) (MIT license): its 95 `y_` texts parse,
 its 188 `n_` texts do not, and of its 35 `i_` (implementation-defined) texts the six that a
 reader can take without changing them parse (huge or tiny numbers, rounded; 500 nested arrays),
