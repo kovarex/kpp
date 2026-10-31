@@ -13,6 +13,10 @@ int combine(int a, int b) { return a + b; }
 
 constexpr int limit() { int r = 5; return r; }
 
+// No constexpr: the evaluator runs it for main.kpp's static_assert all the same, from a copy of
+// its body (an instance record of its own), which a body edit must replace.
+int plainLimit() { int r = 7; return r; }
+
 int measure() { return 1; }
 
 int unitWidth() { return 1; }

@@ -2429,6 +2429,7 @@ namespace
     };
     std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
     std::vector<const FunctionDecl*> constantBodies; // changed constexpr bodies: what the evaluator ran them for is checked again
+    std::vector<FunctionDecl*> plainBodies; // changed bodies of the others: for withBodyCopies
     for (size_t n = 0; n < changed.size(); ++n)
     {
       if (!graftBodies(kept, changed[n], why))
@@ -2441,9 +2442,21 @@ namespace
         kept.changedBodies.push_back(changed[n].oldBodies[k].f);
         if (changed[n].oldBodies[k].templated)
           templateBodies.push_back(changed[n].oldBodies[k].f);
+        else
+          plainBodies.push_back(changed[n].oldBodies[k].f);
         if (changed[n].oldBodies[k].constant)
           constantBodies.push_back(changed[n].oldBodies[k].f);
       }
+    }
+    // A changed function that is no template but has a copy of its body in an instance record: the
+    // evaluator ran it from that copy (a constexpr one or not: a static_assert, --run-build) or its
+    // `auto` return was typed before its file's walk. The copy is made anew, and what the evaluator
+    // ran it for is found, as for a constexpr one (it was kept, the old body's answer: silently).
+    for (FunctionDecl* f : kept.global->withBodyCopies(plainBodies))
+    {
+      templateBodies.push_back(f);
+      if (std::find(constantBodies.begin(), constantBodies.end(), f) == constantBodies.end())
+        constantBodies.push_back(f);
     }
     GlobalScope& global = *kept.global;
     GlobalScope::recordDependencies(true);
@@ -2554,6 +2567,13 @@ namespace
     // with what the walk gives now (changed, what read it is out of date: from scratch).
     std::vector<const Ty*> typesBefore = global.forgetTypesFromWalks(typedByWalk);
     global.beginRewalk();
+    // A template's changed body: its instances copied anew and checked again, their statistics
+    // replacing theirs (the kept total is made again from every instance walk's own). Before the
+    // walks: one that runs the function in the evaluator (a static_assert) runs the instance's copy,
+    // which must be the new body's (after them, it ran the old one's and kept its answer).
+    size_t droppedInstances = 0; // codegen's, taken out (codegen makes them anew)
+    std::vector<const Decl*> instancesOfBodies, instancesOfReaders;
+    bool rechecked = templateBodies.empty() || global.recheckInstancesOf(templateBodies, {}, why, &droppedInstances, &instancesOfBodies);
     for (size_t index : walked)
     {
       ResolveStats s;
@@ -2562,11 +2582,21 @@ namespace
       global.resolveFile(*kept.parsed[index], kept.lexed[index].tokens, kept.files[index].text, s);
       kept.stats[index] = std::move(s);
     }
-    // A template's changed body: its instances copied anew and checked again, their statistics
-    // replacing theirs (the kept total is made again from every instance walk's own).
-    size_t droppedInstances = 0; // codegen's, taken out (codegen makes them anew)
-    bool rechecked = (templateBodies.empty() && readingInstances.empty()) ||
-                     global.recheckInstancesOf(templateBodies, readingInstances, why, &droppedInstances, &kept.instancesOf);
+    // The instances that read a change (invalidateReaders), checked again once the walks are done.
+    rechecked = rechecked && (readingInstances.empty() || global.recheckInstancesOf({}, readingInstances, why, &droppedInstances, &instancesOfReaders));
+    {
+      // (both lists in their files' order, as recheckInstancesOf gives each)
+      std::set<const Decl*> seen;
+      for (const std::vector<const Decl*>* list : {&instancesOfBodies, &instancesOfReaders})
+        for (const Decl* d : *list)
+          if (seen.insert(d).second)
+            kept.instancesOf.push_back(d);
+      std::stable_sort(kept.instancesOf.begin(), kept.instancesOf.end(), [](const Decl* a, const Decl* b)
+      {
+        uint32_t fa = a->file ? a->file->index : UINT32_MAX, fb = b->file ? b->file->index : UINT32_MAX;
+        return fa != fb ? fa < fb : a->token < b->token;
+      });
+    }
     // Codegen emits again the functions given, those that inlined one of them, the instances of a
     // changed template body, and every instance of a template one of whose instances read a change
     // (instancesOf: those checked again and those taken out, which it makes anew) (rebuildLLVM).

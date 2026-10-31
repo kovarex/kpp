@@ -23738,19 +23738,44 @@ ResolveStats GlobalScope::instanceStatsAtResolveEnd()
   return total;
 }
 
+std::vector<FunctionDecl*> GlobalScope::withBodyCopies(const std::vector<FunctionDecl*>& functions)
+{
+  std::unordered_set<const void*> wanted(functions.begin(), functions.end()), found;
+  if (wanted.empty())
+    return {};
+  for (Impl::InstanceShard& shard : impl->instanceShards)
+  {
+    std::lock_guard lock(shard.mutex);
+    for (auto& [key, record] : shard.map)
+    {
+      if (record->recheck && wanted.count(record->recheck->source))
+        found.insert(record->recheck->source);
+      if (wanted.count(record->of))
+        found.insert(record->of);
+    }
+  }
+  std::vector<FunctionDecl*> out;
+  for (FunctionDecl* f : functions)
+    if (found.count(f))
+      out.push_back(f);
+  return out;
+}
+
 bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why, size_t* dropped,
                                      std::vector<const Decl*>* instancesOf)
 {
-  std::unordered_set<const FunctionDecl*> changed(sources.begin(), sources.end());
+  std::unordered_set<const void*> changed(sources.begin(), sources.end());
   std::vector<Impl::InstanceRecord*> stale;
   for (Impl::InstanceShard& shard : impl->instanceShards)
   {
     std::lock_guard lock(shard.mutex);
     for (auto& [key, record] : shard.map)
-      if (record->recheck && changed.count(record->recheck->source))
+      if ((record->recheck && changed.count(record->recheck->source)) || changed.count(record->of))
       {
         if (record->late || record->state.load() != 2)
           return why = "an instance of a changed template that only codegen made", false;
+        if (!record->recheck)
+          return why = "an instance of a changed function with no record of how it was checked", false;
         stale.push_back(record.get());
       }
   }

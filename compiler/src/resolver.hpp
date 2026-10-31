@@ -341,6 +341,10 @@ public:
   // instance checked again or taken out (once each, in their files' order), what codegen emits their
   // instances again from: what it asked instanceBody for (and the definition whose body was copied,
   // where that is another declaration).
+  // Of functions, those with an instance record that copied their body, though they are no template
+  // (the evaluator runs a function from such a copy; an `auto` return typed before its file's walk
+  // makes one): a body edit of one has its copy made anew (recheckInstancesOf), as a template's.
+  std::vector<FunctionDecl*> withBodyCopies(const std::vector<FunctionDecl*>& functions);
   bool recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why,
                           size_t* dropped = nullptr, std::vector<const Decl*>* instancesOf = nullptr);
   // The instance statistics as the resolve counts them: every instance walk's but codegen's.
