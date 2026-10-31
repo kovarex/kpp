@@ -1,0 +1,24 @@
+#!/bin/sh
+# post-receive hook of a bare repository on kpp.net (RUNBOOK.md, step 4): pushes every updated ref
+# to the GitHub mirror, so GitHub follows kpp.net. Install as hooks/post-receive (executable) in
+# each bare repository, and set the mirror's URL once:
+#   git --git-dir=/home/private/git/kpp.git config kpp.mirror git@github.com:kovarex/kpp.git
+# The deploy key is /home/private/.ssh/github-mirror (write access to that one GitHub repository).
+# Works only if NFS lets sites open outbound SSH connections (not confirmed); otherwise clients
+# push to both remotes instead (RUNBOOK.md, step 4, option B).
+mirror=$(git config kpp.mirror) || exit 0
+export GIT_SSH_COMMAND="ssh -i /home/private/.ssh/github-mirror -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+refs=""
+while read -r old new ref; do
+  if [ "$new" = 0000000000000000000000000000000000000000 ]; then
+    refs="$refs :$ref"
+  else
+    refs="$refs +$ref:$ref"
+  fi
+done
+[ -z "$refs" ] && exit 0
+# shellcheck disable=SC2086
+if ! git push --quiet "$mirror" $refs 2>/home/private/git/mirror-error.log; then
+  echo "kpp.net: the push is stored here, but mirroring to GitHub failed (see /home/private/git/mirror-error.log)." >&2
+  echo "kpp.net: the next push retries it; to retry now: ssh in and run 'git push --mirror $mirror' in this repository." >&2
+fi

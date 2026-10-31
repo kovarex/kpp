@@ -125,7 +125,7 @@ def mirror(path, store):
         os.makedirs(target_dir, exist_ok=True)
         shutil.copyfile(path, target + '.partial')
         os.replace(target + '.partial', target)
-    print(f'https://registry.kpp.net/mirror/{digest_hex}/{os.path.basename(path)}')
+    print(f'https://kpp.net/registry/mirror/{digest_hex}/{os.path.basename(path)}')
 
 
 def main(args):

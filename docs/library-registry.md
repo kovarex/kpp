@@ -3,7 +3,7 @@
 **The ask** (kovarex): a package installer for Kpp libraries, like Factorio's mods: a service
 written in Kpp where libraries are registered, from which a library is added to a project in one
 step. This document is research and a proposal. Decided so far: where it lives ([Hosting on
-kpp.net](#hosting-on-kppnet-decided-2026-10-31), kovarex 2026-10-31) and, in
+kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day), kovarex 2026-10-31) and, in
 [build.md](build.md), how a project adds a library (`project.use("json")` in build.kpp, versions
 pinned in build.lock). The open decisions are listed at the end
 ([Decisions for kovarex](#decisions-for-kovarex)).
@@ -21,10 +21,11 @@ in the interpreter and cannot call C, **adding a library never runs its code on 
 until you run your program**: no build scripts, no install hooks, the attack surface npm and
 cargo have. The registry indexes the top-level names each release declares, so `kppc add json`
 reports a name clash with your program or another library before it changes anything. Everything is
-hosted on kpp.net (decided): a Forgejo forge at git.kpp.net holds the libraries' repositories,
-reviews and CI, registry.kpp.net serves the index and the hash-addressed archives as static
-files, and GitHub is only a read-only mirror. The first version needs no registry service of its
-own beyond that; the service in Kpp (accounts, web pages, publishing API) comes
+hosted on kpp.net at NearlyFreeSpeech.NET (decided): canonical git repositories there, GitHub as
+the mirror where pull requests happen, and the website and the registry written in Kpp, first as
+static files that Kpp programs generate on Windows, then as Kpp CGI programs and a Kpp HTTP
+daemon on FreeBSD; the libraries those need are the first ones the registry hosts. The service in
+Kpp (accounts, web pages, publishing API) comes
 after, as a dogfooding target, when the standard library has networking.
 
 ## Contents
@@ -37,7 +38,7 @@ after, as a dogfooding target, when the standard library has networking.
   [names](#names-the-one-global-scope), [C dependencies](#c-dependencies),
   [versions and the lockfile](#versions-resolution-and-the-lockfile),
   [the commands](#the-commands-and-the-project-description),
-  [the service](#the-service), [hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31),
+  [the service](#the-service), [hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day),
   [security](#security-and-moderation),
   [mirrors and offline](#mirrors-offline-and-private-registries), [IDE and VS](#ide-and-visual-studio)
 - [Phases and effort](#phases-and-effort), [Risks](#risks),
@@ -312,16 +313,16 @@ and build.lock recording, per library, name, version, the tree hash (`sha256-tre
 [kppnet/registry/tree_hash.py](../kppnet/registry/tree_hash.py)) and the registry it came from.
 
 ### The service
-- **Phase 1 needs no registry program**: the index is a git repository on the forge
-  (`git.kpp.net/kpp/registry-index`, one file per library listing its releases: version, tree
-  hash, archive path, dependencies, exported names, yanked), as crates.io's index was a git
-  repository for years. Publishing: a library's repository (official ones in the `libraries`
-  organization on git.kpp.net) tags a version; its workflow builds and tests it with the current
-  kpp, packs it (`tree_hash.py pack`), computes `--exports` and opens a pull request on the index
-  that adds the release; CI there checks the manifest, the hash, name rules and clashes; kovarex or
-  a maintainer merges; the merge uploads the archive and the index file to registry.kpp.net
-  (write-once, [kppnet/registry/layout.md](../kppnet/registry/layout.md)). kpp reads only
-  registry.kpp.net's static files.
+- **Phase 1 needs no server program**: the index is a git repository (`registry-index.git` on
+  kpp.net, mirrored to GitHub; one file per library listing its releases: version, tree hash,
+  archive path, dependencies, exported names, yanked), as crates.io's index was a git repository
+  for years. Publishing: a library's repository tags a version; a pull request on the index (on
+  GitHub) proposes the release; GitHub Actions builds and tests it with the current kpp and checks
+  the manifest, name rules and clashes; a maintainer merges locally and runs `kpp publish`, which
+  packs it (the tree hash of [kppnet/registry/tree_hash.py](../kppnet/registry/tree_hash.py)),
+  writes the index file and the library's page, and uploads them to kpp.net write-once
+  ([kppnet/registry/layout.md](../kppnet/registry/layout.md)). kpp reads only kpp.net's static
+  files.
 - **Phase 2, the service in Kpp** (dogfooding): an HTTP API (index, search, publish, yank,
   tokens), web pages (library page with readme, versions, dependencies, exported names, license,
   "binary" mark, download counts, clash list), a small database (SQLite through C interop), and
@@ -335,73 +336,204 @@ and build.lock recording, per library, name, version, the tree hash (`sha256-tre
   (the forge's repository permissions in phase 1), transferable; scoped API tokens; 2FA required
   to publish.
 
-### Hosting on kpp.net (decided 2026-10-31)
-**The decision** (kovarex, the coordinator's option A): official Kpp
-libraries, and later kpp itself, live in git repositories owned and hosted on kpp.net, with a
-forge there for pull requests, issues, review and CI. GitHub may be used, but only as a mirror:
-nothing may depend on it existentially, and moving to another host must stay possible. In his
-words: "I prefer to build A right away." The deployment kit is [kppnet/](../kppnet/README.md);
-nothing is deployed yet.
+### Hosting on kpp.net (decided 2026-10-31, revised the same day)
+**The decisions** (kovarex, 2026-10-31):
+- Official Kpp libraries, and later kpp itself, are in repositories owned and hosted on kpp.net.
+  GitHub may be used only as a mirror: nothing may depend on it existentially, and moving to
+  another host must stay possible. His words were "I prefer to build A right away", option A being
+  a self-hosted forge.
+- **Revised the same day:** kpp.net is his, at NearlyFreeSpeech.NET (NFS), and the site is hosted
+  there too. The kpp.net website and the library provider are written in Kpp: "I find it nicely
+  poetic, and even practical", and "one of the first libraries we should host on the site, would
+  be those needed to run actual web page by kpp."
 
-**The names.**
-- `git.kpp.net`: the forge. Organizations `kpp` (the compiler; factorio-in-kpp, private) and
-  `libraries` (official libraries); `actions` holds pull mirrors of the few GitHub Actions the
-  workflows use.
-- `registry.kpp.net`: static files only: the registry index, the archives by tree hash, kpp's own
-  releases, and mirrored third-party files CI needs
-  ([kppnet/registry/layout.md](../kppnet/registry/layout.md)).
-- `kpp.net`: redirects to the compiler's repository until there is a site.
+The plan that follows from both:
+- Canonical bare git repositories live on kpp.net, and pushes go there.
+- GitHub is the mirror where pull requests and issues happen. Maintainers merge locally and push
+  to kpp.net, which mirrors to GitHub.
+- CI stays on GitHub Actions for now.
+- A forge on kpp.net comes later, only if NFS can run one (below).
 
-**The forge: Forgejo** (15.x, the LTS line, supported until 2027-07-15 [26]), with SQLite, behind
-Caddy for TLS, in Docker on one Debian VM. Why it and not:
-- *Gitea*: the same code base before the fork; Forgejo is run by a non-profit (Codeberg e.V.),
-  is free software throughout, and is what Codeberg runs. Either would do; Forgejo has no
-  company that can change the terms.
-- *GitLab CE*: more mature CI, and its runner officially supports Windows, which is Forgejo's weak
-  point here (below). But it wants 8 GB or more for itself, many services to run and upgrade,
-  and a heavier backup and restore. It is the fallback if no runner works on Windows.
-- *SourceHut, Gerrit*: patches by mail, or review only; kovarex asked for pull requests, issues,
-  review and CI in one place.
+The VM-based kit from earlier that day (Forgejo, Caddy, a Windows runner) is dropped; only the
+registry's store layout and its reference hash survive, in [kppnet/registry/](../kppnet/registry).
 
-**Not depending on GitHub**, item by item:
-- Code: the repositories on git.kpp.net are the originals; GitHub gets a force-pushed copy on
-  every push (a push mirror [27]), with its issues, pull requests and Actions turned off.
-  Dropping GitHub is deleting the mirror.
-- Downloads: kpp fetches libraries only from registry.kpp.net (or a configured mirror of it), by
-  name, version and tree hash, and checks the hash; build.lock records all three. It never
-  downloads from GitHub or from a forge URL.
-- CI: workflows run on Forgejo Actions on our own runner. `uses: actions/checkout@v4` resolves on
-  git.kpp.net (`DEFAULT_ACTIONS_URL = self` and the mirrored `actions/*` repositories [28]), and
-  files CI downloads from github.com today (ci.yml's SDL3 headers) move to registry.kpp.net/mirror.
-- Sign-in: contributors use "Sign in with GitHub" (OAuth) for convenience; it creates a forge
-  account, which can get a password by mail if GitHub sign-in ever goes away. Admins have local
-  accounts with 2FA. No password sign-up for others, which keeps out spam accounts.
+#### What NFS offers
+Read from NFS's own pages on 2026-10-31. "Unconfirmed" means its pages do not say; kovarex can
+check those over SSH or by asking NFS support.
 
-**CI.** ci.yml and release.yml are kept portable between GitHub Actions and Forgejo Actions
-(thread H, through the coordinator): Forgejo reads `.github/workflows` when there is no
-`.forgejo/workflows` [29], its `github` context is its own `forgejo` context under that name, and
-`concurrency`, `schedule` and `workflow_dispatch` work as on GitHub [30]. The runner registers the
-label `windows-2022:host`, so `runs-on: windows-2022` is unchanged; jobs run directly on a
-dedicated Windows machine with Visual Studio Build Tools and clang, as GitHub's image has them.
-What is not portable is publishing: "Publish latest" (`gh release`) and release.yml's
-`softprops/action-gh-release` become uploads to registry.kpp.net (`kpp/releases/`,
-`kpp/latest.json`), which factorio-in-kpp's CI then reads.
-**Open risk:** Forgejo Runner's releases have Linux binaries only (v13.2.1, 2026-10-29), and
-running it on Windows in host mode is not documented [31]. The kit builds it from source for
-Windows, with Gitea's act_runner (which ships a Windows binary, v5.2.4 [32]) as the fallback; the
-runbook's smoke test decides which works, and the result is recorded here. If neither does, the
-options are a Linux runner driving a Windows VM, or GitLab.
+| | What NFS says | Source |
+|---|---|---|
+| OS, hardware | FreeBSD on 64-bit AMD Epyc servers with ECC RAM, files on NVMe; content served mostly from New York. FreeBSD version: unconfirmed (`uname -a` over SSH; design.md's triple assumes 14). | [26][27] |
+| Software sets | A site's "realm" is its whole OS, language and application set. New stable realms come about every three months; the recommended "late" setting upgrades about every six months. | [28] |
+| Scope | "web sites only": only HTTP(S) services are reachable from outside. Supporting services (databases, caches) are allowed to a limited extent. | [29][30] |
+| Own programs | NFS provides C and C++ compilers, as-is, for compiling one's own CGI applications. Which compilers is unconfirmed; FreeBSD's base `cc` is clang. Running an uploaded, statically linked FreeBSD binary is unconfirmed but follows from "compile your own". | [31] |
+| CGI | Any executable with a `.cgi` extension, marked executable with a `#!` line, in any directory. CGI processes and single SSH commands get 2 to 5 minutes of CPU, and are killed for running too long or for behaving like daemons. | [32][33] |
+| Daemons | A long-running process is added in the site panel (tag, command line, working directory). Web servers run as user `web`, support servers as `me`. NFS starts it within about a minute. Restart after a crash: unconfirmed. The server type must allow daemons ("custom", or the 2023 "Kitchen Sink" type with Apache, PHP, CGI, daemons and proxies). | [34][35] |
+| Proxies | A proxy maps a base path of the site to a daemon's TCP port (1024 to 65535). The 2014 posts list HTTP, SCGI and FastCGI. The listen address is unconfirmed, presumably localhost. | [34][36] |
+| TLS | Automatic Let's Encrypt certificates for every site, custom processes and proxies included, with no setup or renewal. NFS's front end terminates TLS, so a daemon speaks plain HTTP; this is implied, not stated. HTTP/2 and WebSockets: unconfirmed for today. | [37][38] |
+| SSH, SFTP | `ssh <user>_<site>@ssh.<host>.nearlyfreespeech.net` into a shell. Ed25519 keys in the member's keychain. **Automated access must use a key and is allowed only for backups (at most daily) and uploads (under one file per five minutes on average).** | [39][40][41] |
+| Git | Not in NFS's docs. Members' how-tos keep a bare repository under `/home/private` and push to it over SSH with a post-receive hook, so git is installed. Unconfirmed officially. | [42] |
+| Databases | MariaDB processes (InnoDB) reachable only from NFS sites: the first is free, each extra $0.01 a day. SQLite bindings exist for the supported languages. PostgreSQL and others can run under the "custom" type. | [43] |
+| Limits | No overall per-site CPU limit; RAM and CPU are billed. Memory limits per process: unconfirmed. Outbound connections from sites: unconfirmed. | [33] |
+| Prices | Membership up to $5 a month. A production site is $0.05 a day with 10 GiB of bandwidth a day included; extra bandwidth is currently not billed. Storage is $1.00 per GiB-month. Resources are $0.01 per 44.64 RAU, one RAU being 1 GB of RAM for one minute or the CPU equivalent. DNS is $0.01 per 9 days when the domain is registered and hosted there. | [44] |
 
-**Backups and leaving.** A nightly `forgejo dump` and the registry's files go to restic on storage
-at another provider, kept 14 days, 8 weeks, 12 months, with a tenth read back each night and a
-yearly restore drill (kppnet/RUNBOOK.md step 8). Moving host is restoring the backup elsewhere and
-changing DNS; leaving Forgejo is taking the plain git repositories (GitHub's mirror has them too)
-and exporting issues through the API; the registry is static files any server can serve.
+**Cost of the plan**, estimated (assumptions in brackets):
+- the site: $0.05 a day, $1.50 a month;
+- a Kpp daemon using 30 MB all day: 43 RAU a day, about $0.30 a month [resident memory billed in
+  full];
+- 2 GiB of archives and site files: $2 a month;
+- membership: up to $5 a month.
 
-**Cost**: about €15 to €20 a month for the server and backups, plus the Windows runner (a machine
-Wube or kovarex owns: nothing; rented: roughly €60 to €150 a month). What kovarex must provide or
-do by hand (domain, server, runner machine, accounts, OAuth app, secrets) is listed in
-[kppnet/README.md](../kppnet/README.md).
+That is about $5 to $9 a month. Bandwidth is free for now: 10 GiB a day is about 200,000
+downloads of a 50 KB library.
+
+#### Git: canonical on kpp.net, pull requests on GitHub
+- **The repositories:** bare repositories in the site's private area, e.g.
+  `/home/private/git/kpp.git`, `factorio-in-kpp.git`, `libraries/<name>.git` and
+  `registry-index.git`. Clone URL: `<user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git`.
+  Every push goes there first.
+- **Mirroring to GitHub**, two ways depending on what NFS allows:
+  1. **Preferred:** a `post-receive` hook on kpp.net pushes to GitHub with a deploy key, if NFS
+     allows outbound SSH or HTTPS from sites (unconfirmed). Clients then push to kpp.net only, and
+     a GitHub ruleset lets only that deploy key update branches. GitHub's merge button cannot be
+     turned off directly; the ruleset is what makes it fail, so a pull request is merged only by a
+     push that went through kpp.net.
+  2. **Otherwise:** every clone's `origin` has two push URLs, kpp.net first and GitHub second
+     (`git remote set-url --add --push origin ...`). One `git push` updates both. kpp.net stays the
+     original because it is pushed first and holds what GitHub has; a push that fails at GitHub is
+     repeated. GitHub's merge button is left alone by convention.
+- **The workflow:**
+  1. A contributor forks on GitHub and opens a pull request.
+  2. Review and issues happen on GitHub.
+  3. A maintainer fetches the branch, merges or rebases locally, and pushes to kpp.net.
+  4. The mirror updates GitHub, which shows the pull request as merged because its commits are on
+     master.
+
+  Nothing on GitHub is needed to build: the code is in every clone and on kpp.net, and pull
+  request history is the only thing lost if GitHub goes.
+- **The automation rule matters:** the threads push many times a day with keys, and NFS's policy
+  allows unattended SSH only for daily backups and occasional uploads. Whether frequent `git push`
+  from agent sessions counts is for kovarex to ask NFS (decision 12). If it is not allowed, the
+  threads keep pushing to GitHub, and a once-a-day job on kpp.net, or kovarex by hand, pulls
+  GitHub into kpp.net. Then kpp.net is a daily copy, not the original, until a forge or another
+  host takes the pushes.
+- **Backups:** the git data is in every clone, on GitHub and on PC-PRACOVNA. The registry's files
+  and the site's database are pulled once a day over SSH, which NFS allows for backups, to
+  PC-PRACOVNA and another place.
+
+#### CI
+CI stays on GitHub Actions, triggered by the mirror. ci.yml is already portable to Forgejo
+Actions (H, [build.md](build.md) "GitHub Actions and Forgejo Actions"), so moving it later
+costs little. NFS cannot be a CI runner: it has no Windows, it is web-only, and it kills
+long-running non-web processes. If CI ever leaves GitHub, it needs a self-hosted Windows runner
+(PC-PRACOVNA or a cloud VM) under a forge somewhere. H's open points (vars in `runs-on`,
+`concurrency`, the job token writing releases) matter only then. Two changes are useful now:
+- the SDL3 zip ci.yml downloads from github.com moves to kpp.net's mirror directory, checked by
+  its SHA-256;
+- `tools/release/publish.ps1` gains an upload of the "latest" package to kpp.net, so that
+  factorio-in-kpp and installers stop reading GitHub releases.
+
+#### A forge on NFS?
+Forgejo is a single Go program and could in principle run as an NFS daemon behind a proxy, with
+SQLite. The memory cost is small: 250 MB resident is about 360 RAU a day, around $2.50 a month.
+The obstacles:
+- Forgejo publishes no FreeBSD binary. It needs FreeBSD's port or a build with cgo for SQLite on
+  NFS, where Go is not confirmed.
+- Git over SSH would go through NFS's own SSH and its automation rule, not Forgejo's SSH server,
+  so contributors would use HTTPS.
+- Its CI needs runners elsewhere anyway.
+- NFS's FAQ wants daemons to be web servers, which Forgejo is, so a trial is allowed.
+
+Verdict: **feasible enough to try later, not needed now.** The plan above works without it.
+Trying means building Forgejo on NFS and running it for a week as a non-production site ($0.01 a
+day) to watch the RAU bill. The alternative forge is one written in Kpp, a far larger job than
+the registry.
+
+#### The website and the library provider in Kpp
+**The blocker:** kppc produces Windows x64 programs only. The FreeBSD target is thread B's
+([design.md](design.md) "Targets and hosts": `--target freebsd`, `x86_64-unknown-freebsd14`,
+ELF, ld.lld). So the plan has a stage that needs no FreeBSD at all.
+
+**Stage 1: static, built by Kpp on Windows (possible now).** NFS's Apache serves files. The
+website and the registry's public part can be all files, written by Kpp programs that run on
+PC-PRACOVNA:
+- `kppsite`, a static site generator in Kpp. It turns the pages' sources (Markdown, the docs in
+  this repository, the generated library pages) into HTML, and uploads by rsync over SSH, which
+  is allowed as an upload.
+- The registry's index and archives are static files too
+  ([kppnet/registry/layout.md](../kppnet/registry/layout.md)). A publish is run by a maintainer
+  with a Kpp tool (`kpp publish` in its first form). It packs, hashes, checks names and clashes,
+  writes the index file and the library's page, and uploads.
+- Search runs in the browser over a JSON list of libraries, which is small for years.
+
+This stage already needs the first libraries in Kpp: JSON, SHA-256, Markdown, HTML templating,
+zip with deflate, and file system walking.
+
+**Stage 2: dynamic, as CGI (once the FreeBSD target runs a program).** CGI is the smallest step
+on a new target. The program reads the environment and stdin, writes the response to stdout,
+and exits: no sockets and no threads. Apache in front handles TLS, HTTP and process limits.
+- `registry.cgi` takes publishes over HTTPS from GitHub Actions or `kpp publish`, so uploads stop
+  going over SSH and its automation limit. It also handles yanking and API tokens.
+- `site.cgi` serves whatever cannot be precomputed: search on the server, download counts,
+  per-version pages built on demand.
+
+State lives in files plus SQLite (the SQLite amalgamation is one C file, compiled by kppc).
+SQLite is cheaper than a MariaDB process and needs no server. One unconfirmed point: whether
+SQLite's file locking is safe on NFS's file storage. If it is not, a MariaDB process is free.
+
+**Stage 3: a daemon (once the target has sockets and threads).** A Kpp HTTP/1.1 server runs as
+an NFS daemon (user `web`), and NFS's proxy forwards to its port and terminates TLS. It holds
+the index in memory, keeps connections alive and needs no process per request. It is what makes
+"a web server in Kpp" true, and the libraries it needs are the ones others will want.
+
+**Libraries, in the order the stages need them.** Each one is a registry library, the first ones
+hosted. Each declares specific top-level names, because of the one global scope.
+1. `json`: parse and write, typed reflection-driven (de)serialization (section 8's compile-time
+   iteration).
+2. `sha256`, with HMAC-SHA-256 for tokens and a constant-time compare. Hashes are needed by the
+   registry itself (the tree hash, kppnet/registry/tree_hash.py).
+3. `zlib`, the C library compiled from source by kppc, and a `zip` reader and writer over it, for
+   the archives.
+4. `markdown`: CommonMark to HTML, for README and documentation pages.
+5. `html`: templates that escape by default. A template is parsed at compile time by the
+   interpreter, so a broken template is a compile error.
+6. `url`: percent-encoding, query strings and paths.
+7. `cgi`: Request and Response over the CGI environment and standard streams.
+8. `sqlite`: the C amalgamation and a Kpp face (statements, binding, rows into structs).
+9. `http`: an HTTP/1.1 parser and server, a router and a static file handler (stage 3).
+10. `base64`, and `time` formatting (RFC 3339, HTTP dates), if the standard library does not have
+    them.
+
+TLS is not needed: NFS terminates it. An outbound HTTPS client, for example to sign in with
+GitHub, would need TLS from C (BearSSL or mbedTLS) and NFS allowing outbound connections, so
+accounts use API tokens until then.
+
+**What the FreeBSD target must provide for this** (sent to thread B through the coordinator):
+- **Stage 1:** nothing; it runs on Windows.
+- **Stage 2 (CGI):**
+  - `main` with UTF-8 `argv`, and `getenv`;
+  - stdin and stdout as raw bytes, and the exit status;
+  - files: open, read, write, close, fstat, mkdir, rename (atomic, for write-once), unlink, fsync,
+    and directory listing;
+  - `clock_gettime` (REALTIME and MONOTONIC) and `gmtime_r`;
+  - `arc4random_buf` for tokens;
+  - errno through `__error()`;
+  - the C import against FreeBSD's headers, so the zlib and SQLite C sources compile with the
+    target's clang;
+  - exceptions unwinding on ELF (section 2 of Targets and hosts);
+  - a statically linked executable, so it survives NFS's realm upgrades. Otherwise, dynamic
+    linking against the realm's libc, and a rebuild on each upgrade.
+- **Stage 3 (daemon):** everything in stage 2, plus:
+  - sockets: socket, setsockopt (SO_REUSEADDR), bind and listen on 127.0.0.1 or the address NFS
+    expects, accept4, recv, send, shutdown, close;
+  - `kqueue` or `poll`;
+  - threads: pthread create and join, mutex, condition variable, and the library's atomics;
+  - signals: SIGTERM for a clean stop, SIGPIPE ignored.
+- **Build and run:**
+  - a cross build from Windows to a FreeBSD sysroot (base.txz's headers, crt objects and libc.a),
+    linked by VS's `ld.lld`;
+  - or, as a stopgap, kppc's IR copied to NFS and compiled with NFS's own clang;
+  - and a FreeBSD VM for tests, since NFS is production (design.md's Q3).
 
 ### Security and moderation
 - **Nothing runs on install or build** (the strongest point; keep it as a rule): a library
@@ -420,9 +552,9 @@ do by hand (domain, server, runner machine, accounts, OAuth app, secrets) is lis
 - **Integrity**: SHA-256 in the index and the lockfile from phase 1 (trust on first use plus
   HTTPS); phase 3: a transparency log over the index as sum.golang.org, or signed index files
   (TUF-style roles) so a compromised mirror or CDN cannot serve other bytes.
-- **Publishing**: from CI on git.kpp.net only (the upload key is an Actions secret of the forge,
-  never a person's); later, short-lived per-job tokens as crates.io's trusted publishing; tokens
-  scoped to one library and one action; 2FA. A security advisory list and `kppc audit` (phase 3).
+- **Publishing**: by a maintainer's `kpp publish` in phase 1; from stage 2 on, through the
+  registry's CGI endpoint with tokens scoped to one library and one action, later short-lived
+  per-job tokens as crates.io's trusted publishing; 2FA for maintainers. A security advisory list and `kppc audit` (phase 3).
 - **Moderation**: reports from users and automated checks; admins remove malware and ban
   accounts, publicly logged. Phase 1's pull-request review is moderation by construction, which
   is fine while the registry is small.
@@ -458,14 +590,17 @@ Estimates are in weeks of one thread, assuming thread E's project description ex
 | Phase | Contents | Effort |
 |---|---|---|
 | 0. Local libraries | `--path`/`--git` dependencies in the project description, cache, lockfile with SHA-256, `kppc add/remove/sync/vendor`, `kppc --exports` and the clash pre-check, C source parts compiled by kppc (moving `programs/factorio/native`'s build into this is the test) | 2 to 3 |
-| H. Hosting | the forge, CI runner, backups, mirrors, registry store on kpp.net: the kit is [kppnet/](../kppnet/README.md) (done); deploying it is kovarex's steps in its RUNBOOK.md plus checking the Windows runner | 1 to 2 days of his time, plus the runner machine |
-| 1. Registry without a service | index repository on git.kpp.net, archives on registry.kpp.net, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a Kpp face over sockets | 2 to 3, plus porting the first libraries |
+| H. Hosting | kpp.net on NFS: bare repositories, the mirror to GitHub, the static store, daily backups ([kppnet/RUNBOOK.md](../kppnet/RUNBOOK.md)) | half a day of kovarex's time |
+| S1. Static site and registry in Kpp | `kppsite` and `kpp publish` running on Windows, with the libraries json, sha256, zlib/zip, markdown, html | 4 to 6 |
+| S2. CGI on FreeBSD | `registry.cgi`, `site.cgi`, libraries url, cgi, sqlite; needs thread B's FreeBSD target (CGI subset) | 3 to 4 after the target |
+| S3. Kpp HTTP daemon | the `http` library and the site as an NFS daemon; needs sockets and threads on FreeBSD | 3 to 5 after the target |
+| 1. Registry without a service | index repository and archives on kpp.net, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a Kpp face over sockets | 2 to 3, plus porting the first libraries |
 | 2. The service in Kpp | stdlib networking/HTTP/JSON/SQLite face first (3 to 5 weeks, useful beyond this), then API, accounts, web pages, publish API, tokens, 2FA, download counts | 6 to 10 |
 | 3. Hardening | trusted publishing, transparency log or signed index, advisories and `kppc audit`, typosquat review queue, `internal` declarations if clashes are measured | 4 to 6 |
 | 4. Tools | IDE Libraries view, VS commands, generated documentation pages per library from reflection, more targets for binary parts, private registry setup | with threads E and F |
 
-The minimal first version is phases 0 and 1 on the hosting of phase H: about 5 weeks, no
-registry program of its own,
+The minimal first version is phases 0, 1 and S1 on the hosting of phase H: about 10 weeks, no
+server program of its own,
 usable by Wube and early users, and it proves the parts that are Kpp-specific (clash pre-check,
 C source parts, MVS with one version) before any server code is written.
 
@@ -506,18 +641,22 @@ C source parts, MVS with one version) before any server code is written.
    number? Proposed: yes.
 7. **The service written in Kpp** (dogfooding, needs stdlib networking) or a conventional stack
    with Kpp only in the client? Proposed: Kpp, from phase 2; phase 1 needs no service.
-8. **Hosting**: decided 2026-10-31, kovarex: "I prefer to build A right away": repositories,
-   reviews and CI on a self-hosted forge on kpp.net, GitHub only as a read-only mirror
-   ([Hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31)). Still his: confirming kpp.net is
-   his, the server provider, the runner machine ([kppnet/README.md](../kppnet/README.md)).
-9. **Accounts**: decided with 8: contributors sign in to the forge with GitHub (OAuth); admins
-   have local accounts with 2FA. factorio.com accounts remain possible later for the registry's
-   own service (phase 2).
+8. **Hosting**: decided 2026-10-31 ([Hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day)): kpp.net at
+   NearlyFreeSpeech.NET; canonical bare git repositories there, GitHub as the mirror for pull
+   requests and issues; the website and the registry written in Kpp; a forge only later and only
+   if NFS runs it.
+9. **Accounts**: none of kpp.net's own in stages S1 and S2 (maintainers' SSH keys, API tokens);
+   GitHub sign-in or factorio.com accounts are a question for the dynamic stages.
 10. **Hash normalization**: hash the files as stored (proposed; the repository's own
     `.gitattributes` fixes line endings) or normalize line endings before hashing?
 11. **Who owns it**: the commands touch the driver (thread B), the exported names the resolver
     (A), the project description (E). Proposed: a new thread for phases 0 and 1, with small hunks
     in B's and A's files after telling the coordinator.
+12. **Ask NFS** (kovarex, as the account holder): may agent sessions `git push` to kpp.net many
+    times a day (their automation policy allows unattended SSH only for daily backups and
+    occasional uploads)? May a site's hook or daemon open outbound connections (to push the mirror
+    to GitHub)? The FreeBSD version of the current realm, whether `git` and `clang` are on the SSH
+    hosts, a daemon's memory limit, and SQLite locking on their file storage.
 
 ## Sources
 1. Factorio Auxiliary Docs, Mod structure (info.json, dependencies):
@@ -553,13 +692,22 @@ C source parts, MVS with one version) before any server code is written.
 23. Shai-Hulud, first wave: https://versprite.com/resources/security/npm-supply-chain-attack-shai-hulud-worm-compromises-500-packages/
 24. Shai-Hulud 2.0: https://www.hivepro.com/threat-advisory/shai-hulud-2-0-fuels-global-npm-supply-chain-compromise/
 25. Russ Cox, The xz attack shell script: https://research.swtch.com/xz-script
-26. Forgejo releases and support periods: https://forgejo.org/releases/
-27. Forgejo, repository mirrors (push mirrors to GitHub): https://forgejo.org/docs/latest/user/repo-mirror/
-28. Forgejo Actions, using actions (DEFAULT_ACTIONS_URL): https://forgejo.org/docs/latest/user/actions/actions/
-29. Forgejo Actions user guide (.github/workflows when .forgejo/workflows is absent):
-    https://forgejo.org/docs/latest/user/actions/overview/
-30. Forgejo Actions reference (contexts, concurrency, schedule, workflow_dispatch):
-    https://forgejo.org/docs/latest/user/actions/reference/
-31. Forgejo Runner releases: https://code.forgejo.org/forgejo/runner/releases; installation:
-    https://forgejo.org/docs/latest/admin/actions/installation/binary/
-32. Gitea act_runner releases (windows-amd64): https://gitea.com/gitea/act_runner/releases
+26. NFS FAQ, hardware: https://faq.nearlyfreespeech.net/section/technology/hardware
+27. NFS blog, "Bigger, better, faster, more" (2023-08-22): https://blog.nearlyfreespeech.net/2023/08/22/bigger-better-faster-more/
+28. NFS FAQ, site realms: https://faq.nearlyfreespeech.net/section/programming/siterealm
+29. NFS FAQ, servers and services: https://faq.nearlyfreespeech.net/section/technology/servers
+30. NFS FAQ, what won't go: https://faq.nearlyfreespeech.net/section/technology/wontgo
+31. NFS FAQ, compiling your own CGI applications: https://faq.nearlyfreespeech.net/section/programming/compileapps
+32. NFS FAQ, CGI: https://faq.nearlyfreespeech.net/section/programming/cgi
+33. NFS FAQ, CPU limits: https://faq.nearlyfreespeech.net/section/policy/cpulimit
+34. NFS FAQ, daemon processes and proxies: https://faq.nearlyfreespeech.net/full/daemonprocesses
+35. NFS blog, server types (2023-12-26): https://blog.nearlyfreespeech.net/2023/12/26/small-christmas-upgrades/
+36. NFS blog, posts on proxies: https://blog.nearlyfreespeech.net/?s=proxy
+37. NFS blog, automatic TLS (2024-05-10): https://blog.nearlyfreespeech.net/2024/05/10/automatic-tls-is-now-a-thing/
+38. NFS FAQ, TLS: https://faq.nearlyfreespeech.net/section/technology/ssl
+39. NFS FAQ, SSH: https://faq.nearlyfreespeech.net/section/uploading/sshprogram
+40. NFS FAQ, SSH keys: https://faq.nearlyfreespeech.net/section/uploading/sshkeys
+41. NFS FAQ, automated SSH access: https://faq.nearlyfreespeech.net/section/uploading/automatedssh
+42. A member's how-to, a bare git repository on NFS: https://www.xanthir.com/b4or0
+43. NFS, databases: https://www.nearlyfreespeech.net/services/database
+44. NFS, pricing: https://www.nearlyfreespeech.net/services/pricing and https://www.nearlyfreespeech.net/services/hosting

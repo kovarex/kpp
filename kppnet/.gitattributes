@@ -1,9 +1,5 @@
-# The server runs these on Linux: LF whatever the checkout machine does.
+# Run on FreeBSD (NFS): LF whatever the checkout machine does.
 *.sh text eol=lf
-Caddyfile text eol=lf
-*.yaml text eol=lf
-*.service text eol=lf
-*.timer text eol=lf
-env.example text eol=lf
+post-receive text eol=lf
 # Run on Windows.
 *.ps1 text eol=crlf
