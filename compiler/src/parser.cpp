@@ -1738,6 +1738,33 @@ namespace
         pushDecl(ns);
         return;
       }
+      // A test, `TEST(Name) { ... }`, `TEST_FIXTURE(Fixture, Name) { ... }`: its body parsed as the
+      // function `void TestBody_Name()` (UnitTest++ makes it a fixture helper's Run(), whose class
+      // the converter writes out by text, members included), so that the converter's typed rules
+      // reach the statements: locals, parameters and calls are typed; a fixture's members are not
+      // (the converter's fixture handling writes them `this->x`).
+      if (scope == Scope::Namespace && atMacroName() && at(P::LParen, 1) &&
+          (spelling(0) == "TEST" || spelling(0) == "TEST_FIXTURE" || spelling(0) == "TEST_PARAMETRISED_FIXTURE"))
+      {
+        uint32_t save = pos;
+        uint32_t start = pos;
+        advance();
+        skipBalanced();
+        if (at(P::LBrace) && toks[pos - 2].getKind() == TokenKind::Identifier)
+        {
+          FunctionDecl* f = decl<FunctionDecl>(start);
+          BuiltinType* voidType = node<BuiltinType>(start);
+          voidType->keyword = Kw::void_;
+          f->returnType = voidType;
+          NamePart part;
+          part.symbol = symbols.intern("TestBody_" + std::string(symbols.name(toks[pos - 2].id)));
+          f->name.parts = makeSpanOf(std::vector<NamePart>{part});
+          f->body = parseBlock();
+          pushDecl(f);
+          return;
+        }
+        restore(save);
+      }
 
       // Macro invocation used as a declaration: MACRO(...) ; or MACRO(...) { ... }
       if (atMacroName() && at(P::LParen, 1) && !(scope == Scope::Class && tok().id == currentClassName))
