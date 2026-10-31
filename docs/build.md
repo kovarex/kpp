@@ -548,6 +548,10 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Nightly at 03:17 UTC, and when started by hand** (Actions > ci > Run workflow): the same, plus
   `spec.cmd --no-doc --release` and `spec.cmd --no-doc --debug-info`. The time is outside
   06:00 to 09:00 Pacific.
+- **Every pull request, besides:** the `signoff` job checks that each of its commits (merges
+  aside) has a `Signed-off-by` line with the author's e-mail (`tools/ci/check-signoff.sh BASE HEAD`,
+  [CONTRIBUTING.md](../CONTRIBUTING.md) "Sign-off"). It runs on an ubuntu-latest runner, whose
+  minutes cost half a Windows runner's (`KPP_CI_LINUX_RUNNER` names a Forgejo runner's label).
 - **What it leaves out:** `programs\factorio\convert.cmd` and everything else of the game. They need
   C:\Factorio, private source that is not on the runner; factorio-in-kpp's own CI is the game's check.
 - **SDL3 headers:** the two interop snippets that import SDL3/SDL.h get upstream SDL 3.4.18's headers
