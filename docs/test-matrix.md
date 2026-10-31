@@ -72,6 +72,39 @@ kppc's is `tests.cmd DIR` on the 40ce3c8d tree.
 | kppc debug | 9,500/9,500 (one test fewer in the conversion) | 445.4 s (0.54× C++ Debug) |
 | kppc release | not run: the pending adjacent-invokes crash (below) is not fixed yet | |
 
+A second round, the four builds interleaved (`unit-pair.ps1`: C++ Debug, kppc debug, C++ Release,
+kppc release), with kppc at 9b4552aa (B's fix of the adjacent-invokes crash, 76e81e04, included) on a
+fresh conversion of 4c178a5b915 (headline 0, every smoke test passes). CPU load before each run 67 to
+91%:
+
+| Build | Result | Test time |
+|---|---|---:|
+| C++ Debug | 9,501/9,501 | 1,121.0 s |
+| kppc debug | 9,499/9,500 | 705.0 s (0.63× C++ Debug) |
+| C++ Release | 9,501/9,501 | 240.2 s |
+| kppc release | **9,500/9,500** | 302.4 s (1.26× C++ Release) |
+
+kppc debug's one failure, Multiplayer/MultiplayerRandomConnections ("not enough reconnections" after
+182 s, TestMultiplayer.cpp:502), passes alone (kppc debug 4.7 and 27.4 s, C++ Debug 23.6 s): its
+length varies from run to run, and it failed only under load. kppc's test build of this conversion
+has 1 error and 1 stub: `entries.extract(entries.begin())` on a Set (tests/ForkLogic.kpp:449,
+used only by `--fork`), broken by stdlib 6247e579 and fixed by C in 9ad6dd98.
+
+**kppc release against C++ Release: 0.84×, and the 1.26× was the machine.** Two more rounds of the two
+release builds alone (`release-pair.ps1`, the order swapped each round) gave test times of C++ Release
+240.2 / 484.4 / 623.2 s and kppc release 302.4 / 375.7 / 198.6 s over the three rounds (the 623 s run
+started at 1% load): one full run on this shared machine says little. Per test, each build's fastest
+of the three rounds, summed over the 9,500 tests both have: C++ Release 209.5 s, kppc release
+**175.6 s, 0.84×** (the median per-test ratio of tests over 5 ms 0.88, the 10th and 90th percentiles
+0.48 and 1.47), in line with the menu maps' 0.81×. The first round's 18 outliers (from tens of
+milliseconds to 1 to 3 s, 20.7 s of its 62 s gap, Simulations/MainMenuSimulations_gleba_grotto 0.20
+against 2.91 s) do not reproduce: each alone, the builds alternating, 5 times, kppc release is as fast
+or faster on every one (gleba_grotto 0.116 to 0.126 s against 0.122 to 0.184 s). By suite (per-test
+minima), kppc release is slower by less than a second in AudioMusic (+0.91 s), TransitionalRequests
+(+0.91 s) and SpacePlatform (+0.83 s), and faster in Simulations (−6.5 s), Saves (−4.1 s), Migrations
+(−3.0 s), LatencyInput (−2.7 s) and Campaigns (−2.4 s). `suite-compare.py` and the per-test-minimum
+comparison are in thread H's scratch.
+
 C's CRC runs on the same builds (C++ Debug `--crc-write` 9,501/9,501 in 2,264 s; C++ Release checked
 against it, 9,501/9,501 in 843 s, 0 mismatches) are slower because they write or check the CRCs.
 
