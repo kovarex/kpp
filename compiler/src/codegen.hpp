@@ -70,4 +70,4 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
 // took it out): all their instances, and the functions that inlined one, are emitted again.
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
                           const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                          const std::vector<const Decl*>& instancesOf, bool& rebuilt);
+                          const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals, bool& rebuilt);

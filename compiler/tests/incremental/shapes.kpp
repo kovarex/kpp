@@ -60,3 +60,9 @@ struct Box
   T v;
   T tripled() const { T r = v * 3; return r; }
 };
+
+// A global built at startup from lambdas that call `offsetOf` (TransportBelt::itemPositionFunctions):
+// an edit of offsetOf emits the global's constructor again.
+int offsetOf(int v) { return v + 1; }
+Function<int(int)> offsetFunctions[2] = { [](int v) { return offsetOf(v); }, [](int v) { return offsetOf(v) * 2; } };
+int viaTable() { return offsetFunctions[0](3) + offsetFunctions[1](3); }

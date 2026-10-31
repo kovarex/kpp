@@ -71,9 +71,30 @@ dropped:
   copy the link keeps into every module that has another (the IR 727 -> 1,156 MB, worse).
 - 256 modules: the long modules' importers fall to a median of 5, but the leaf edit is still all
   256 back ends.
+- `available_externally` copies of every short function in each module calling it, with ThinLTO's
+  importing off (`-import-instr-limit=0`), on a fresh conversion of 4c178a5b915: no module imports
+  from another, and the leaf edit runs 3 back ends, but the IR is 4.5 times as large (753 MB ->
+  3.36 GB), a clean build 68 -> 108 s (clang 7.5 -> 54.9 s), the leaf edit's clang 24.1 s and link
+  18.8 s (its 5 modules are that much larger), and the 45 menu maps 1.24 times as long (8,614 ->
+  10,719 ms, two rounds): the copies inline less than ThinLTO's imports.
 What would do it is a cache key per imported function rather than per imported module, which is
 LLVM's (computeLTOCacheKey), or many more importable modules (one per file: thousands of modules,
 which module assembly would need to scale to first).
+
+**The debug edit loop: a global's constructor emitted again, and four modules per thread (2026-10-31).**
+- The wide edit (`MapPosition::operator+`) generated the program in full: `TransportBelt::itemPositionFunctions`,
+  a global built at startup from lambdas using the operator, read it, and codegen could not emit a
+  global's constructor on its own. Codegen now records how each constructor (`kpp.init.<name>`) was
+  emitted, and rebuildLLVM emits the constructors of the globals the server names (those whose
+  initializers read an edited or changed name) again, with their lambdas and static arrays, and
+  without a second entry in the startup list. A constant global (no constructor) is still codegen in
+  full. Through the server on a fresh conversion of 4c178a5b915, paired with master, 3 rounds of the
+  edit and its undo: **5.39 to 5.63 s -> 1.90 to 1.94 s** (codegen 3.69 to 3.88 -> 0.26 to 0.30 s);
+  `--verify-incremental` the same as from scratch. incremental.ps1 has a step for it.
+- A debug build has four modules per thread (128 here), not two: the leaf edit compiles one module
+  again. Through the server, 3 rounds: 64 modules 1.60 to 1.91 s (clang 0.50 to 0.61), **128 1.39 to
+  1.51 s** (clang 0.29 to 0.30), 256 1.28 to 1.41 s (clang 0.19 to 0.21); the clean build 11.6, 11.4
+  and 14.5 s. A release build keeps two (more made its ThinLTO link slower).
 
 ## A clean build, phase by phase, and what scales (2026-10-30, night)
 
@@ -310,7 +331,8 @@ again for the report`) and names why codegen runs in full.
 - The wide edit (`MapPosition::operator+`'s operands swapped): 6.6 to 6.8 s, of which codegen in full
   4.1 to 4.7 s: `TransportBelt::itemPositionFunctions`, a global initialized with a table of lambdas
   that use the operator, read the edited function, and codegen cannot emit a global's initializer
-  again (the codegen thread's: it would make the wide edit about 2.5 s). The walks and checks were
+  again (the codegen thread's: it would make the wide edit about 2.5 s; *landed since*, 1.90 to 1.94 s:
+  "The debug edit loop: a global's constructor emitted again" above). The walks and checks were
   0.93 s of it: invalidateReaders built a map of every declared type's readers whether or not one
   needed following (0.45 s), and it and walksReading scanned every unit's recorded names and uses
   (some 20 million) on one thread. Now the map is made only when followed, no name is scanned when

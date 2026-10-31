@@ -279,6 +279,23 @@ namespace
     // its definitions' order: member is the definition's token there, 0 for any other global.)
     struct Startup { uint32_t file; uint32_t token; uint32_t member; std::string function; };
     std::vector<Startup> startups;
+    std::unordered_set<std::string> startupFunctions; // the functions startups names (a server's build emits one again)
+    // How each global's constructor (`kpp.init.<name>`) was emitted (Emitter::emitGlobalConstructor's
+    // arguments), by its name, and the names by the global: a server's build emits one again when
+    // its initializer read an edited function (rebuildLLVM's changedGlobals).
+    struct GlobalInit
+    {
+      VariableDecl* v;
+      std::string name;
+      const Ty* t;
+      Expr* init;
+      Node* at;
+      bool perThread;
+      VariableDecl* definition;
+      std::optional<Startup> startupAt;
+    };
+    std::unordered_map<std::string, GlobalInit> globalInits;
+    std::unordered_map<const Decl*, std::vector<std::string>> globalInitsOf;
     std::unordered_map<std::string, std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
     std::vector<std::unordered_set<std::string>> vtablesIn; // per module: the vtables it already has
     std::unordered_map<ParsedFile*, unsigned> fileModule;   // file -> module
@@ -10445,6 +10462,15 @@ namespace
       emittingShared = false;
       std::string fnName = std::string(perThread ? "@\"kpp.tlsinit." : "@\"kpp.init.") + name.substr(2, name.size() - 3) + "\""; // per instantiation for class template members
       std::string guard = name.substr(0, name.size() - 1) + ".tlsguard\"";
+      {
+        std::lock_guard lock(sh.definitionsMutex);
+        if (sh.globalInits.emplace(fnName, Shared::GlobalInit{v, name, t, init, at, perThread, definition, startupAt}).second)
+        {
+          sh.globalInitsOf[v].push_back(fnName);
+          if (def != v)
+            sh.globalInitsOf[def].push_back(fnName);
+        }
+      }
       // In the module its name hashes to, whoever uses the global first (the same in every run),
       // and its errors are its own, not of the function that happened to use it first.
       struct ModuleRestore { unsigned& m; unsigned saved; ~ModuleRestore() { m = saved; } } moduleRestore{currentModule, currentModule};
@@ -10504,7 +10530,7 @@ namespace
         auto lock = sharedLock();
         if (perThread)
           threadLocalInits[name] = fnName;
-        else
+        else if (sh.startupFunctions.insert(fnName).second) // (once: a server's build emits it again)
           startups.push_back(startupAt ? Shared::Startup{startupAt->file, startupAt->token, def->token, fnName}
                                        : Shared::Startup{def->file ? def->file->index : 0, def->token, 0, fnName});
       }
@@ -18437,7 +18463,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     session->usable = true;
     auto start = std::chrono::steady_clock::now();
     bool rebuilt = false;
-    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, rebuilt);
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, {}, rebuilt);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
@@ -18487,7 +18513,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
                           const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
-                          const std::vector<const Decl*>& instancesOf, bool& rebuilt)
+                          const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -18526,6 +18552,22 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   for (FunctionDecl* f : added)
     if (e.isProgramFunction(f))
       level.push_back(programFunction(f));
+  // The globals whose initializers read an edited function: their constructors (with their lambdas
+  // and static InitializerList arrays) go and are emitted again, as their first use emitted them. One
+  // with no constructor (a constant, in the shared declarations) is codegen in full.
+  std::vector<Shared::GlobalInit> globalsAgain;
+  for (const Decl* g : changedGlobals)
+  {
+    auto it = sh.globalInitsOf.find(g);
+    if (it == sh.globalInitsOf.end())
+    {
+      out.declined = "the global " + e.global.qualifiedName(const_cast<Decl*>(g)) + " read an edited function, and it has no constructor to emit again";
+      return out;
+    }
+    for (const std::string& fnName : it->second)
+      if (owners.insert(fnName).second)
+        globalsAgain.push_back(sh.globalInits.at(fnName));
+  }
   // Each emitter's verdicts on which callees are trivial (inlined) were taken on the old bodies:
   // taken again. (A changed body that is trivial now is inlined by callers that only called it
   // before, which codegen does not know: the server passes an edited function's callers too.)
@@ -18802,6 +18844,24 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
         emitInstantiation(*emitters[i], level[k]);
     };
     onThreads(level.size() < 64 ? 1u : session.threads, work);
+    if (depth == 0)
+      for (const Shared::GlobalInit& g : globalsAgain)
+      {
+        Emitter& em = *emitters[0];
+        try
+        {
+          em.startupAt = g.startupAt;
+          em.emitGlobalConstructor(g.v, g.name, g.t, g.init, g.at, g.perThread, g.definition);
+          em.startupAt.reset();
+        }
+        catch (Emitter::Unsupported&)
+        {
+          em.startupAt.reset();
+          out.declined = "the constructor of " + g.name + " could not be emitted";
+          return out;
+        }
+        ++out.emittedAgain;
+      }
     if (depth == 0)
       for (const Operator& o : operators) // (none made again by its writer meanwhile)
       {

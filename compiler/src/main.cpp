@@ -113,7 +113,7 @@ namespace
             "  --exclude F   leave out the file F found under the sources (repeatable; build.kpp's exclude)\n"
             "  --config N=V  build configuration constant config::N (bool, integer, enumerator or string)\n"
             "  --release     the same as --config debug=false\n"
-            "  --modules N   split the program into N IR modules compiled in parallel (default: two per thread)\n"
+            "  --modules N   split the program into N IR modules compiled in parallel (default: four per thread, two in a release build)\n"
             "  --codegen-threads N  threads emitting IR (default: --threads; the IR does not depend on it)\n"
             "  --keep-going  compile and link the IR codegen emitted even when it reported errors (functions with\n"
             "                errors are left out; the link lists what is missing)\n"
@@ -230,6 +230,9 @@ namespace
     // The templates of the instances an incremental build checked again or took out (they read a
     // change: recheckInstancesOf): codegen emits their instances again.
     std::vector<const Decl*> instancesOf;
+    // The globals whose initializers read a changed or edited name: codegen emits their constructors
+    // again (rebuildLLVM).
+    std::vector<const Decl*> changedGlobals;
     bool rebuildCodegen = false;
     // An incremental build moved a kept local type (a lambda's closure, a local class) or renamed a
     // closure, or moved a template's position-named entity: names in the code are the position's
@@ -939,8 +942,13 @@ namespace
     const Options& options = build.options;
     using Clock = std::chrono::steady_clock;
     // --emit-llvm wants the whole program in one file; an executable is built from several modules
-    // compiled in parallel (one per group of files), unless --modules 1.
-    unsigned modules = options.modules ? options.modules : unsigned(std::min<size_t>(parsed.size(), 2 * std::max(1u, options.threads)));
+    // compiled in parallel (one per group of files), unless --modules 1. A debug build has four per
+    // thread: an edit compiles its module again, and the game's leaf edit through the server took
+    // 1.60 to 1.91 s with 64 modules, 1.39 to 1.51 with 128, 1.28 to 1.41 with 256 (its clean build
+    // 11.6, 11.4 and 14.5 s; docs/compile-speed.md, "The debug edit loop"). A release build has two
+    // (more made its ThinLTO link slower).
+    unsigned perThread = options.debug ? 4 : 2;
+    unsigned modules = options.modules ? options.modules : unsigned(std::min<size_t>(parsed.size(), perThread * std::max(1u, options.threads)));
     if (!options.emitLLVM.empty())
       modules = 1;
     auto start = Clock::now();
@@ -952,7 +960,7 @@ namespace
     if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
     {
       cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
-                       rebuilt);
+                       build.changedGlobals, rebuilt);
       logBuildNote(rebuilt ? "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
                                " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again"
                            : "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full");
@@ -2365,6 +2373,7 @@ namespace
     kept.removedFunctions.clear();
     kept.changedLayouts.clear();
     kept.instancesOf.clear();
+    kept.changedGlobals.clear();
     kept.positionalCodegenInFull = false;
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
     std::string codegenInFullBecause; // the first reason it is not (the server's log names it)
@@ -2476,6 +2485,8 @@ namespace
           if (!removedSet.count(d))
             kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));
         }
+        else if (!removedSet.count(d) && d->kind == NodeKind::VariableDecl)
+          kept.changedGlobals.push_back(d); // (its constructor emitted again)
         else if (!removedSet.count(d))
           inFull(initializerOf(d) + " read a changed name");
       // The index line counts the entries as the index has them now: what the functions added and
@@ -2605,8 +2616,10 @@ namespace
       for (const Decl* d : global.walksReading(edited))
         if (d->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(d)->body)
           kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));
+        else if (d->kind == NodeKind::VariableDecl)
+          kept.changedGlobals.push_back(d); // (its constructor emitted again)
         else
-          inFull(initializerOf(d) + " read an edited function"); // (no function codegen emits again on its own)
+          inFull(initializerOf(d) + " read an edited function");
     }
     std::sort(kept.changedBodies.begin(), kept.changedBodies.end());
     kept.changedBodies.erase(std::unique(kept.changedBodies.begin(), kept.changedBodies.end()), kept.changedBodies.end());
