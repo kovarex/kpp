@@ -16,6 +16,8 @@ simple templates, own standard library, C-only interop.
   (`kppc` finds it next to the compiler; `--std DIR` or `--no-std` override that).
 - `programs/`: real Kpp programs, one directory each (`kpplex`: the lexer in Kpp, with its C++
   transliteration and `run.cmd` timing both on the Factorio corpus).
+- `kppnet/`: the kpp.net hosting kit (site, registry, git hosting; nothing deployed by threads).
+- `tools/`: editor integration (VS, VS Code), release packaging. `projectlib/`: build.kpp's package.
 
 ## Machine
 - Work happens on PC-PRACOVNA (Windows 10, Ryzen 9 9950X 16C/32T, 128 GB RAM).
