@@ -1,8 +1,10 @@
 @echo off
 rem Converts the whole Factorio source (CommonUtil, Agui, src, and the tests with UnitTest++, the
-rem unit-test library they are written in) to Kpp into the factorio-in-kpp
-rem checkout (C:\factorio-in-kpp\kpp, or the directory given as the first argument; commit there by
-rem hand). Then converts the CommonUtil and Agui libraries and the game's Util module again on their
+rem unit-test library they are written in) to Kpp into the factorio-in-kpp checkout (C:\factorio-in-kpp,
+rem or the directory given as the first argument; commit there by hand), each file at its path in
+rem Factorio's repository (kppc's --convert-base): src\, tests\ and libraries\CommonUtil\ ... With it,
+rem the C and C++ shims the game links (native\) into libraries\kpp-native\. What the game takes from
+rem Factorio unchanged (data\, shaders\, the other libraries, the tests' saves) resources.cmd copies. Then converts the CommonUtil and Agui libraries and the game's Util module again on their
 rem own (into kpp\, with the hand-written files kept there), checks that kppc compiles them, and runs
 rem the smoke tests against that result: the stubs in tests\stubs\ stand in for the modules a whole
 rem conversion pulls in (FloatCast.cpp merged into FloatCast.kpp needs global and Logging, for example).
@@ -23,7 +25,7 @@ if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 set KPPC=..\..\compiler\build\kppc.exe
 set SRC=%FACTORIO%\src
-set WHOLE=C:\factorio-in-kpp\kpp
+set WHOLE=C:\factorio-in-kpp
 if not "%~1"=="" set WHOLE=%~1
 rem Lua (libraries\Lua): its .c files as the C++ the game compiles them as, with the game's C++
 rem overloads of its API (LuaCPPUtilities.hpp), into kpp\Lua\ (docs/path-to-factorio.md, "Converting
@@ -31,10 +33,23 @@ rem Lua"). No other input has .c files.
 set LUA=%FACTORIO%\libraries\Lua
 set EXT=--ext .cpp,.hpp,.h,.kpp,.c
 rem Fresh every run, as kpp\ below: a file an older conversion wrote and this one does not (a header
-rem no file includes any more, as ShaderProgram.hpp) would stay in the tree and be built with it.
-for %%d in (CommonUtil Agui cxxopts StackWalker Lua src UnitTest++ tests) do if exist "%WHOLE%\%%d" rd /s /q "%WHOLE%\%%d"
-%KPPC% --no-std --quiet --convert %WHOLE% %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || exit /b 1
+rem no file includes any more, as ShaderProgram.hpp) would stay in the tree and be built with it. The
+rem conversion's files only: tests\ and the libraries keep resources.cmd's (saves, READMEs).
+if exist "%WHOLE%\src" rd /s /q "%WHOLE%\src"
+for %%d in (libraries\CommonUtil libraries\Agui libraries\cxxopts libraries\StackWalker libraries\Lua libraries\UnitTest++ tests) do if exist "%WHOLE%\%%d" del /s /q "%WHOLE%\%%d\*.kpp" >nul
+%KPPC% --no-std --quiet --convert %WHOLE% --convert-base %FACTORIO% %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || exit /b 1
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
+rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
+rem with the headers they include from Factorio's src\ (which the checkout has as Kpp only) and the
+rem manifest and icons factorio.rc names, at paths relative to libraries\kpp-native.
+set NATIVE=%WHOLE%\libraries\kpp-native
+if exist "%NATIVE%" rd /s /q "%NATIVE%"
+mkdir "%NATIVE%\include\LED\Logitech\Includes"
+for %%f in (native\*.c native\*.cpp) do copy /y %%f "%NATIVE%" >nul
+xcopy /y /q native\include "%NATIVE%\include" >nul
+copy /y %FACTORIO%\src\LED\Logitech\Includes\LogitechLEDLib.h "%NATIVE%\include\LED\Logitech\Includes" >nul || exit /b 1
+copy /y %FACTORIO%\fastbuild\win\Factorio.manifest "%NATIVE%" >nul || exit /b 1
+powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C:/Factorio/fastbuild/win/', '').Replace('C:/Factorio/', '../../') | Set-Content -NoNewline -Encoding ascii '%NATIVE%\factorio.rc'" || exit /b 1
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
 rem any more) would still be compiled.
@@ -70,7 +85,8 @@ rem The tests' count, a gate as the headline is (0): the same errors in the whol
 rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each is a function that
 rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
 echo == tests codegen errors: %WHOLE% with UnitTest++ and tests (all errors in kpp\tests-errors.txt)
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %WHOLE%\CommonUtil %WHOLE%\Agui %WHOLE%\cxxopts %WHOLE%\StackWalker %WHOLE%\Lua %WHOLE%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
+set L=%WHOLE%\libraries
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
 set TESTSRC=%errorlevel%
 %SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
 if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %TESTSRC%)

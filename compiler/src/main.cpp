@@ -75,6 +75,7 @@ namespace
     std::string convertDir;        // --convert DIR: write the inputs as Kpp sources there
     const SourceConfiguration* configuration = nullptr; // converting: the #if branches the front end and the converter keep
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
+    std::string convertBase;       // --convert-base DIR: --convert writes each file at its path below DIR
     int repeat = 1;
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
     bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
@@ -129,6 +130,8 @@ namespace
             "  --debug-info  line tables in the objects (CodeView) and a .pdb next to the executable: a debugger\n"
             "                steps through the Kpp source (docs/debugging.md)\n"
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
+            "  --convert-base B  with --convert: each file at its input's path below B, not below its input\n"
+            "                root's name (B\\libraries\\Lua\\lapi.c as D\\libraries\\Lua\\lapi.kpp)\n"
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
             "  --stop-server stop the compile server of the other arguments\n"
@@ -1512,7 +1515,8 @@ namespace
         inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get()});
       std::vector<std::filesystem::path> roots(options.roots.begin(), options.roots.end());
       std::string summary =
-        convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary);
+        convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary,
+                     options.convertBase);
       report("convert: %s\n%s", options.convertDir.c_str(), summary.c_str());
       reportAccessWarnings(build); // over the C++ the conversion read, its friends still declared
     }
@@ -2787,6 +2791,8 @@ int compile(int argc, char** argv)
       ; // the compile server's (server.cpp): a build in its own process is from scratch anyway
     else if (arg == "--overrides" && i + 1 < argc)
       options.overridesDir = argv[++i];
+    else if (arg == "--convert-base" && i + 1 < argc)
+      options.convertBase = argv[++i];
     else if (arg[0] == '-')
     {
       usage();

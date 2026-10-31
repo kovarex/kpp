@@ -49,4 +49,4 @@ public:
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir = {}, const SourceConfiguration* configuration = nullptr,
-                         const std::filesystem::path& libraryDir = {});
+                         const std::filesystem::path& libraryDir = {}, const std::filesystem::path& baseDir = {});

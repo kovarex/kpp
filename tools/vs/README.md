@@ -39,7 +39,7 @@ and `programs\factorio\.vscode`. The project has run.cmd's build with these step
   `bin\x64` directory;
 - F5 starts the game there with `--no-crash-handler`.
 
-It compiles the converted tree in C:\factorio-in-kpp\kpp. The environment variables `FIK` (another
+It compiles the converted tree in the factorio-in-kpp checkout C:\factorio-in-kpp (its src\ and libraries\). The environment variables `FIK` (another
 converted tree) and `GAME` (another game directory) change this when generate.cmd runs.
 
 `measure.ps1` times edit→build inside a Visual Studio of its own, through DTE, and checks the

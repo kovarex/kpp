@@ -1570,7 +1570,7 @@ about their own code, the test bodies the macros now expand into.
 ### The unit tests (2026-10-29, evening)
 
 `programs\factorio\tests.cmd` builds the tests from convert.cmd's whole conversion (the directory
-given, or C:\factorio-in-kpp\kpp) as run.cmd builds the game: link-settings.cmd's libraries,
+given, or C:\factorio-in-kpp) as run.cmd builds the game: link-settings.cmd's libraries,
 `--keep-going --stub-missing` (a function the code generator left out aborts when a test reaches
 it) and the crash report, into kpp\tests-run\factorio-test.exe. It runs them from a write directory
 of its own (kpp\tests-run\run, through `--config` and `--write-data`; never %APPDATA%) and reads the

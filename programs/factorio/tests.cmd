@@ -1,7 +1,7 @@
 @echo off
 rem The converted game's unit tests (C:\Factorio\tests, written in UnitTest++), built and run as
 rem run.cmd builds and runs the game. They come from a conversion that has them: convert.cmd's whole
-rem one (C:\factorio-in-kpp\kpp, or the directory given as the first argument), with UnitTest++. The
+rem one (the checkout C:\factorio-in-kpp, or the directory given as the first argument), with UnitTest++. The
 rem build links link-settings.cmd's libraries with --keep-going and --stub-missing (a function the
 rem code generator left out aborts when a test reaches it) and the crash report, into
 rem kpp\tests-run\factorio-test.exe. The run has a write directory of its own, kpp\tests-run\run
@@ -37,7 +37,7 @@ if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 rem The script's own directory: the argument loop's shift shifts %0 too.
 set HERE=%~dp0
-set CONVERSION=C:\factorio-in-kpp\kpp
+set CONVERSION=C:\factorio-in-kpp
 set BASELINE=0
 set BASELINEDEBUG=0
 set ASAN=0
@@ -76,7 +76,7 @@ call native\build.cmd >nul || exit /b 1
 call "%HERE%link-settings.cmd"
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\CommonUtil %CONVERSION%\Agui %CONVERSION%\cxxopts %CONVERSION%\StackWalker %CONVERSION%\Lua %CONVERSION%\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
 echo == %OUT%\factorio-test.exe, built by kppc (exit %errorlevel%) from %CONVERSION% with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" %OUT%\build.txt
 %SystemRoot%\System32\find.exe /c /v "" %OUT%\build-errors.txt

@@ -8151,7 +8151,7 @@ std::set<std::string> libraryTypeNames(const std::filesystem::path& libraryDir)
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir, const SourceConfiguration* configuration,
-                         const std::filesystem::path& libraryDir)
+                         const std::filesystem::path& libraryDir, const std::filesystem::path& baseDir)
 {
   struct Piece
   {
@@ -8837,12 +8837,38 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   for (const auto& [test, why] : leftOutTests)
     if (!suitesConverted.empty() && !leftOutTestsFound.count(test))
       fprintf(stderr, "convert: %s: no converted test is %s\n", (overridesDir / "left-out-tests.txt").generic_string().c_str(), test.c_str());
+  // Where a file is written: below its root's name (its key, by which its overrides are found), or
+  // with --convert-base, at its root's path below that directory, so that the output mirrors the
+  // source tree (C:/Factorio/libraries/Lua/lapi.c as libraries/Lua/lapi.kpp).
+  std::map<std::string, std::string> rootPaths;
+  if (!baseDir.empty())
+  {
+    std::error_code ec;
+    std::filesystem::path base = std::filesystem::absolute(baseDir, ec).lexically_normal();
+    for (const auto& root : roots)
+    {
+      std::filesystem::path r = std::filesystem::absolute(root, ec).lexically_normal();
+      if (!std::filesystem::is_directory(r, ec))
+        r = r.parent_path();
+      std::filesystem::path rel = r.lexically_relative(base);
+      if (!rel.empty() && rel.native()[0] != '.')
+        rootPaths[r.filename().generic_string()] = rel.generic_string();
+    }
+  }
+  auto outputKey = [&](const std::string& key) -> std::string
+  {
+    size_t slash = key.find('/');
+    if (slash != std::string::npos)
+      if (auto it = rootPaths.find(key.substr(0, slash)); it != rootPaths.end())
+        return it->second + key.substr(slash);
+    return key;
+  };
   std::string report = "# Conversion report\n\n";
   size_t files = 0;
   for (auto& [key, pieces] : outputs)
   {
     std::stable_sort(pieces.begin(), pieces.end(), [](const Piece& a, const Piece& b) { return a.header && !b.header; });
-    std::filesystem::path outPath = outDir / key;
+    std::filesystem::path outPath = outDir / outputKey(key);
     std::error_code ec;
     std::filesystem::create_directories(outPath.parent_path(), ec);
     OverrideFile* ov = overrideFor(key);
@@ -8879,7 +8905,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       fclose(f);
       ++files;
     }
-    report += "## " + key + "\n";
+    report += "## " + outputKey(key) + "\n";
     for (const Piece& p : pieces)
     {
       report += "- " + std::filesystem::path(p.source).filename().string() + ":";
@@ -8900,7 +8926,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       for (const auto& entry : std::filesystem::recursive_directory_iterator(added, ec))
         if (entry.is_regular_file(ec))
         {
-          std::filesystem::path rel = entry.path().lexically_relative(added);
+          std::filesystem::path rel = outputKey(entry.path().lexically_relative(added).generic_string());
           std::filesystem::path target = outDir / rel;
           std::filesystem::create_directories(target.parent_path(), ec);
           if (std::filesystem::copy_file(entry.path(), target, std::filesystem::copy_options::overwrite_existing, ec))

@@ -38,7 +38,8 @@ namespace
 
   const char* const valueOptions[] = {"-j", "--ext", "--repeat", "--errors", "--unresolved", "--why", "--why-at",
                                       "--emit-llvm", "--std", "--cinclude", "--clang-flags", "--codegen-threads",
-                                      "--lib", "--config", "--modules", "--convert", "--overrides", "--exclude"};
+                                      "--lib", "--config", "--modules", "--convert", "--overrides", "--exclude",
+                                      "--convert-base"};
 
   std::string xml(const std::string& text)
   {
