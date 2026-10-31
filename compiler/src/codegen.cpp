@@ -6548,7 +6548,7 @@ namespace
       std::string align = std::to_string(bits / 8);
       if (callArgs.empty())
         unsupported(at, "an atomic builtin without its pointer");
-      std::string p = convert(rvalue(callArgs[0]), types.pointer(types.voidType()), at).text;
+      std::string p = convert(rvalue(callArgs[0]), types.pointer(types.voidType()), at, true).text; // (the place, whatever its type)
       const Ty* valueTy = types.intType(bits, false);
       auto arg = [&](size_t i) { return convert(rvalue(callArgs[i]), valueTy, at).text; };
       std::string r = newTemp();
@@ -9132,6 +9132,8 @@ namespace
           if (baseAddress(from->inner, to->inner, v.text, addr, at))
             return {keepNull(v.text, addr), to};
         }
+        if (!explicitCast && !impliedPointerConversion(from, to, at))
+          fail(at, "a pointer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
         return {fk == TyKind::Nullptr ? "null" : v.text, to};
       }
       if (tk == TyKind::Pointer && fk == TyKind::Int)
@@ -9238,6 +9240,62 @@ namespace
       fn += "  " + isNull + " = icmp eq ptr " + original + ", null\n";
       fn += "  " + r + " = select i1 " + isNull + ", ptr null, ptr " + adjusted + "\n";
       return r;
+    }
+
+    // Whether C++ converts from (a pointer, array, function or nullptr) to the pointer `to` without a
+    // cast ([conv.ptr], [conv.qual], [conv.array], [conv.func]): to the same type with added
+    // qualifiers, to `void*` from an object pointer, from a derived class to its base (the caller
+    // moves the address); a function or an array to a pointer to it, or to its element. Imported C
+    // converts any object pointer to and from `void*` (C11 6.3.2.3).
+    bool impliedPointerConversion(const Ty* from, const Ty* to, Node* at)
+    {
+      if (from->kind == TyKind::Nullptr)
+        return true;
+      const Ty* target = to->inner;
+      const Ty* source = from->kind == TyKind::Function ? from : from->inner;
+      if (!target || !source || types.isDependent(target) || types.isDependent(source) || !target->isKnown() || !source->isKnown())
+        return true; // (nothing known to judge by)
+      if (from->kind == TyKind::Function)
+        return types.unqualified(target) == source;
+      bool keepsQualifiers = (target->isConst || !source->isConst) && (target->isVolatile || !source->isVolatile);
+      const Ty* t = types.unqualified(target);
+      const Ty* f = types.unqualified(source);
+      if (t == f)
+        return keepsQualifiers;
+      if (from->kind == TyKind::Pointer && qualificationConverts(from, to))
+        return true; // `DisplayPanel* const*` as a `const DisplayPanel* const*`
+      bool imported = currentFile && currentFile->isImported;
+      if (t->kind == TyKind::Void && f->kind != TyKind::Function)
+        return keepsQualifiers || imported;
+      if (imported && f->kind == TyKind::Void)
+        return true;
+      std::vector<std::pair<std::string, uint32_t>> path;
+      return isClass(t) && isClass(f) && keepsQualifiers && basePath(f, t, path, at);
+    }
+
+    // C++'s qualification conversion of a pointer to pointers ([conv.qual]): every level of `to` keeps
+    // the qualifiers of `from`'s, and a level that adds one has const at every level above it but
+    // the outermost (`T**` is no `const T**`, `T* const*` is a `const T* const*`).
+    bool qualificationConverts(const Ty* from, const Ty* to)
+    {
+      bool constAbove = true;
+      for (const Ty *a = from->inner, *b = to->inner; a && b;)
+      {
+        if ((a->isConst && !b->isConst) || (a->isVolatile && !b->isVolatile))
+          return false;
+        if ((a->isConst != b->isConst || a->isVolatile != b->isVolatile) && !constAbove)
+          return false;
+        const Ty* ua = types.unqualified(a);
+        const Ty* ub = types.unqualified(b);
+        if (ua == ub)
+          return true;
+        if (ua->kind != TyKind::Pointer || ub->kind != TyKind::Pointer)
+          return false;
+        constAbove = constAbove && b->isConst;
+        a = ua->inner;
+        b = ub->inner;
+      }
+      return false;
     }
 
     // The chain of base-class fields from derived down to base: (struct name, field index) pairs.
@@ -10754,6 +10812,21 @@ namespace
       if (l.ty->kind == TyKind::Pointer || r.ty->kind == TyKind::Pointer || l.ty->kind == TyKind::Nullptr || r.ty->kind == TyKind::Nullptr)
       {
         const Ty* pt = l.ty->kind == TyKind::Pointer ? l.ty : r.ty->kind == TyKind::Pointer ? r.ty : types.pointer(types.voidType());
+        // Both pointers: their composite pointer type ([expr.type]/4), the one the other converts to
+        // (`this != &other`, a `C*` and a `const C*`, compare as `const C*`).
+        if (l.ty->kind == TyKind::Pointer && r.ty->kind == TyKind::Pointer && l.ty != r.ty && l.ty->inner && r.ty->inner)
+        {
+          // (each side's pointee with the other's qualifiers too: `const Car*` against `Entity*` is
+          // a `const Entity*`, the base)
+          const Ty* a = l.ty->inner;
+          const Ty* b = r.ty->inner;
+          const Ty* lq = types.pointer(types.qualified(a, b->isConst, b->isVolatile));
+          const Ty* rq = types.pointer(types.qualified(b, a->isConst, a->isVolatile));
+          if (impliedPointerConversion(r.ty, lq, at))
+            pt = lq;
+          else if (impliedPointerConversion(l.ty, rq, at))
+            pt = rq;
+        }
         l = convert(l, pt, at);
         r = convert(r, pt, at);
         const char* pred = op == P::EqEq ? "eq" : op == P::NotEq ? "ne" : op == P::Less ? "ult" : op == P::LessEq ? "ule" : op == P::Greater ? "ugt" : "uge";
@@ -12291,7 +12364,7 @@ namespace
         need(2);
         int64_t hint = constArg(1); // _MM_HINT_T0 3 ... _MM_HINT_NTA 0: the locality
         std::string i = sseIntrinsic("llvm.prefetch.p0", "void", "ptr, i32, i32, i32");
-        fn += "  call void " + i + "(ptr " + convert(rvalue(c->args[0]), types.pointer(types.voidType()), c).text + ", i32 0, i32 " +
+        fn += "  call void " + i + "(ptr " + convert(rvalue(c->args[0]), types.pointer(types.voidType()), c, true).text + ", i32 0, i32 " + // (its `const char*`)
               std::to_string(hint & 3) + ", i32 1)\n";
         return Value{"", types.voidType(), false};
       }
@@ -13013,7 +13086,10 @@ namespace
           }
           std::string r;
           if (n->placement.size() == 1)
-            r = convert(rvalue(n->placement[0]), types.pointer(types.voidType()), e).text;
+          {
+            Value place = rvalue(n->placement[0]); // any object's place, a const one too (design.md 11)
+            r = convert(place, types.pointer(types.voidType()), e, place.ty && place.ty->kind == TyKind::Pointer).text;
+          }
           else if (!n->placement.empty())
             unsupported(e, "placement new with several arguments");
           else

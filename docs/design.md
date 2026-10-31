@@ -1135,6 +1135,17 @@ The smallest language that is still Kpp, as the target of the first code generat
   `pick(Entity*)` over `pick(const String&)`, while `take(0)` stays `take(int)`. Converted C and C++
   pass 0 for pointers throughout; requiring nullptr would be a converter rewrite instead (2026-10-29,
   spec language/literal_zero_null_pointer).
+- **A pointer converts without a cast only as in C++** (2026-10-31): to the same type with added
+  qualifiers (at every level as [conv.qual] allows: `T* const*` to `const T* const*`), to `void*`
+  from an object pointer, from a derived class to its base; a function or array to a pointer to it.
+  Any other (`float*` to `int*`, `const int*` to `int*`, one function pointer type to another) is
+  an error, in an initialisation, assignment, argument or return alike; imported C also converts
+  to and from `void*`. Two pointers compare as their composite pointer type (a `const Derived*`
+  against a `Base*` as a `const Base*`, moved to the base part). Placement new takes any object
+  pointer as its place, a const one too (the library's containers of const elements construct
+  into their storage so, where C++'s construct_at casts). Specs:
+  expressions/pointer_of_other_type_is_error, expressions/pointer_conversions_without_cast,
+  expressions/function_pointer_of_other_type_is_error.
 - **Grammar parseable without name lookup.** Three rules replace C++'s dependence on knowing
   what a name is:
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then

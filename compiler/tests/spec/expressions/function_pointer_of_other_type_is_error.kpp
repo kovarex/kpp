@@ -1,7 +1,6 @@
 // spec: a pointer to a function initialises or assigns only a function pointer of its own type (no implicit conversion between function pointer types), as in C++
 // factorio: found checking the library's C declarations against windows.h: `void (*)(void**)` took the address of a `void (int*)` function
-// pending: the initialisation compiles, and a call through the pointer passes arguments of the wrong type, silently
-// error: cannot initialize
+// error: function_pointer_of_other_type_is_error.kpp:7: error: a pointer (void(int32*)*) does not convert to void(void**)* without a cast
 void takesInt(int* x) {}
 int main()
 {

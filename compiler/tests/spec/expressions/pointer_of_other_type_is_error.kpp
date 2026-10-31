@@ -1,0 +1,21 @@
+// spec: a pointer converts without a cast only as C++ converts it ([conv.ptr], [conv.qual]): a `float*` is no `int*`, a `const int*` no `int*`, an `int**` no `const int**`, a `Base*` no `Derived*`, in an initialisation, an assignment, an argument and a return alike; each is an error
+// factorio: found by the templates thread with expressions/function_pointer_of_other_type_is_error: every one compiled, and the pointer was used as the other type (silent)
+// error: pointer_of_other_type_is_error.kpp:13: error: a pointer (float*) does not convert to int32* without a cast
+// error: pointer_of_other_type_is_error.kpp:14: error: a pointer (const int32*) does not convert to int32* without a cast
+// error: pointer_of_other_type_is_error.kpp:15: error: a pointer (int32**) does not convert to const int32** without a cast
+// error: pointer_of_other_type_is_error.kpp:16: error: a pointer (Base*) does not convert to Derived* without a cast
+// error: pointer_of_other_type_is_error.kpp:17: error: a pointer (const int32*) does not convert to int32* without a cast
+struct Base { int a = 1; };
+struct Derived : Base { int b = 2; };
+void write(int* p) { *p = 1; }
+float f = 1;
+const int c = 2;
+int* initialised() { int* q = &f; return q; }
+int* returned() { return &c; }
+void assigned(int** pp) { const int** cpp = nullptr; cpp = pp; }
+void derived(Base* base) { Derived* d = base; }
+void argument() { write(&c); }
+int main()
+{
+  return 0;
+}
