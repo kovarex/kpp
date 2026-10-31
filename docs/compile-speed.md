@@ -209,8 +209,10 @@ Factorio libraries' types (factorio.lib alone is 770 MB), so any link with a PDB
 report names frames from, stays link.exe, and the incremental relink is the edit loop's. lld wins
 only without a PDB, which no game build links (run.cmd passes `/DEBUG`; the release build is lld
 already, ThinLTO); a small program's link is 0.1 s with either. Nothing changed, so the game and its
-crash report are as before. (A build with --debug-info spends 13.3 s in codegen against 4.1 s: a lever
-of its own.)
+crash report are as before. (--debug-info costs about 2 s of a clean build at -j 32, two runs each on
+a quiet machine: codegen 4.06 and 4.11 -> 4.73 and 4.78 s, clang 3.43 and 3.40 -> 4.48 and 4.41 s,
+the link 1.56 and 1.58 -> 1.80 and 1.87 s, 681 -> 1,022 MB of IR. A first measurement, 13.3 s of
+codegen, was taken while other threads loaded the machine.)
 
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
