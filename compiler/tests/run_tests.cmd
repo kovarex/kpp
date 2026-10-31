@@ -118,6 +118,10 @@ if not errorlevel 1 (
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 set /a FAIL+=1
+rem --target (tests\targets.ps1, docs/design.md "Targets and hosts"): Windows, FreeBSD's IR and object,
+rem Linux built here and run under WSL (skipped without WSL).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\targets.ps1 -Kppc %KPPC%
+if errorlevel 1 set /a FAIL+=1
 rem The output must not depend on the thread count (tests\determinism.ps1, docs/compile-speed.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\determinism.ps1 -Kppc %KPPC%
 if errorlevel 1 (

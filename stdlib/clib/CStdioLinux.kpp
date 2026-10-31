@@ -1,0 +1,5 @@
+requires config::platform == Platform::Linux;
+// glibc's standard streams: variables of the C library itself.
+extern "C" FILE* stdin;
+extern "C" FILE* stdout;
+extern "C" FILE* stderr;

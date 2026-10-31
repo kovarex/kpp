@@ -1,0 +1,14 @@
+// Built for each target (tests\targets.ps1): the standard library's String, Vector and println,
+// the arguments, and the exit code.
+int main(int argc, char** argv)
+{
+  String who = "world";
+  Vector<int> squares;
+  for (int i = 0; i < 5; ++i)
+    squares.push_back(i * i);
+  int sum = 0;
+  for (int s : squares)
+    sum += s;
+  println("hello, {}! {} argument(s), sum {}, {}", who, argc - 1, sum, config::platform == Platform::Windows ? "windows" : "posix");
+  return 3;
+}

@@ -1,0 +1,22 @@
+// An exception nobody catches (tests\targets.ps1): the report names its type and its message, here a
+// String short enough to be kept in the object (core/String.kpp's small strings), which the report
+// read as a pointer and crashed on until 2026-11-01. Off Windows, until exceptions unwind there, a
+// throw reports itself and aborts, and says so (docs/design.md, "Targets and hosts", stage 3).
+struct Boom : Exception
+{
+  Boom() : Exception("it went boom") {}
+};
+
+int deep(int v)
+{
+  if (v > 2)
+    throw Boom();
+  return v;
+}
+
+int main()
+{
+  println("before");
+  println("{}", deep(5));
+  return 0;
+}

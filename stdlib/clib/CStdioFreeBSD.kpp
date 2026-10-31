@@ -1,0 +1,9 @@
+requires config::platform == Platform::FreeBSD;
+// FreeBSD's standard streams: its stdio.h's macros name the C library's __stdinp, __stdoutp and
+// __stderrp (which do not change once the program runs).
+extern "C" FILE* __stdinp;
+extern "C" FILE* __stdoutp;
+extern "C" FILE* __stderrp;
+FILE* stdin  = __stdinp;
+FILE* stdout = __stdoutp;
+FILE* stderr = __stderrp;

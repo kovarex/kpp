@@ -409,6 +409,7 @@ namespace
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
     bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
     bool despiteErrors = false;                          // --keep-going: the IR assembled despite errors
+    Target target;                                       // the platform the IR is for (--target)
     // A session kept across errors (generate): the program functions whose emission raised them, by
     // IR name (emitted again by every later build), and the modules not assembled since they changed.
     std::unordered_map<std::string, FunctionDecl*> erroring;
@@ -471,6 +472,17 @@ namespace
                                              "!2 = !DISubroutineType(types: !{})\n"
                                              "!3 = !{i32 2, !\"CodeView\", i32 1}\n"
                                              "!4 = !{i32 2, !\"Debug Info Version\", i32 3}\n";
+  // The tail for a target: DWARF instead of CodeView off Windows.
+  static std::string debugModuleTailFor(const Target& target)
+  {
+    std::string tail = debugModuleTail;
+    if (!target.windows())
+    {
+      const std::string codeView = "!3 = !{i32 2, !\"CodeView\", i32 1}";
+      tail.replace(tail.find(codeView), codeView.size(), "!3 = !{i32 7, !\"Dwarf Version\", i32 5}");
+    }
+    return tail;
+  }
   static const uint32_t debugFirstId = 16;
 
   // Calls found(offset, length) for each `@name` a text names, as module assembly has always scanned
@@ -6501,6 +6513,13 @@ namespace
       Signature s;
       bool method = global.owningClass(f) && !(f->flags & DF_Static) && !global.isExternC(f);
       const Ty* ret = ft->inner;
+      // A C function's struct by value follows the target's C calling convention, which only
+      // Windows' pointer to a copy is so far (docs/design.md, "Targets and hosts", stage 2).
+      if (!sh.target.windows() && global.isExternC(f))
+        for (size_t i = 0; i <= ft->args.size(); ++i)
+          if (const Ty* t = i < ft->args.size() ? ft->args[i] : ret; t && isAggregate(t))
+            unsupported(f, "a struct passed by value to or from a C function on " + sh.target.triple + " (" + qualifiedName(f) +
+                               "; docs/design.md, \"Targets and hosts\", stage 2)");
       if (returnsInMemory(ret))
       {
         s.hasSret = true;
@@ -8939,16 +8958,15 @@ namespace
       emittingShared = false;
       if (declaredNames.claim("@fprintf"))
         decls += "declare i32 @fprintf(ptr, ptr, ...)\n";
-      if (declaredNames.claim("@__acrt_iob_func"))
-        decls += "declare ptr @__acrt_iob_func(i32)\n";
+      std::string err = stderrStream();
       if (declaredNames.claim("@fflush"))
         decls += "declare i32 @fflush(ptr)\n";
       if (declaredNames.claim("@abort"))
         decls += "declare void @abort()\n";
       shared += sharedComdat("@kpp_missing") +
                 "define linkonce_odr void @kpp_missing(ptr %what) noinline comdat {\nentry:\n"
-                "  %f = call i32 @fflush(ptr null)\n" // (every stream first: the program's own output comes before the message)
-                "  %err = call ptr @__acrt_iob_func(i32 2)\n  %r = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %what)\n"
+                "  %f = call i32 @fflush(ptr null)\n" + // (every stream first: the program's own output comes before the message)
+                err + "  %r = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %what)\n"
                 "  %f2 = call i32 @fflush(ptr %err)\n  call void @abort()\n  unreachable\n}\n";
     }
 
@@ -9593,11 +9611,28 @@ namespace
           nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
       }
       if (sh.debugInfo)
-        out += debugModuleTail;
+        out += debugModuleTailFor(sh.target);
       return out;
     }
 
     // The default assert handler, unless the program defines `extern "C" kpp_assert_failed`.
+    // The C runtime's stderr stream, loaded into %err (the lines that do it; the declaration it needs
+    // joins the shared ones): the UCRT's __acrt_iob_func(2), glibc's `stderr`, FreeBSD's `__stderrp`.
+    std::string stderrStream()
+    {
+      if (sh.target.windows())
+      {
+        if (declaredNames.claim("@__acrt_iob_func"))
+          decls += "declare ptr @__acrt_iob_func(i32)\n";
+        return "  %err = call ptr @__acrt_iob_func(i32 2)\n";
+      }
+      // (quoted, as a C variable the program declares is named: one declaration for both)
+      std::string stream = sh.target.os == Target::Os::FreeBSD ? "@\"__stderrp\"" : "@\"stderr\"";
+      if (declaredNames.claim(stream))
+        decls += stream + " = external global ptr\n";
+      return "  %err = load ptr, ptr " + stream + "\n";
+    }
+
     void finishAssertRuntime()
     {
       if (!usesAssert || !declaredNames.claim("@kpp_assert_failed"))
@@ -9606,13 +9641,12 @@ namespace
       std::string format = cStringConstant("%s:%u:%u: assertion failed: %s\n");
       if (declaredNames.claim("@fprintf"))
         decls += "declare i32 @fprintf(ptr, ptr, ...)\n";
-      if (declaredNames.claim("@__acrt_iob_func"))
-        decls += "declare ptr @__acrt_iob_func(i32)\n";
+      std::string err = stderrStream();
       if (declaredNames.claim("@abort"))
         decls += "declare void @abort()\n";
       shared += "$kpp_assert_failed = comdat any\n"
-                "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {\nentry:\n"
-              "  %err = call ptr @__acrt_iob_func(i32 2)\n"
+                "define linkonce_odr void @kpp_assert_failed(ptr %file, i32 %line, i32 %column, ptr %expression) noinline comdat {\nentry:\n" +
+              err +
               "  %0 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %file, i32 %line, i32 %column, ptr %expression)\n"
               "  call void @abort()\n  unreachable\n}\n";
       emittingShared = false;
@@ -15389,6 +15423,8 @@ namespace
     // objects), the try's dispatch, or "" when nothing in this function has to happen.
     std::string unwindDestination()
     {
+      if (!sh.target.windows())
+        return ""; // no exception unwinds yet off Windows (tryStatement)
       size_t limit = ehFrames.empty() ? 0 : ehFrames.back().scopeDepth;
       std::vector<Object> objects;
       for (size_t i = statementTemps.size(); i-- > 0;)
@@ -15609,10 +15645,14 @@ namespace
     // whose filter function (run by the OS during the search phase) matches the thrown type against
     // the handlers in order and records the exception for the one that takes it. The handler code
     // is a catchpad funclet reading that record; leaving it normally ends the exception.
+    // Off Windows, until exceptions unwind there (docs/design.md, "Targets and hosts", stage 3): no
+    // call unwinds (unwindDestination), so a try's handlers are never reached and not emitted, and a
+    // throw prints what was thrown and aborts (finishExceptionRuntime's kpp_throw).
     void tryStatement(TryStmt* t)
     {
       usesExceptions = true;
-      markEH();
+      if (sh.target.windows())
+        markEH();
       std::string endL = newLabel("try.end"), dispatchL = newLabel("catch.dispatch"), handlerL = newLabel("catch.pad");
       ehFrames.push_back({false, dispatchL, currentFunclet(), "", "", scopes.size()});
       statement(t->body);
@@ -15724,6 +15764,25 @@ namespace
       startBlock(endL);
     }
 
+    // The lines of the report of an exception nobody caught that print its message (format: ": %s")
+    // when it is an Exception: from %object (its address) and %typeinfo, on to %end. Exception's
+    // message is a String (core/Utility.kpp): its characters are in the object when its last byte
+    // (markIndex 23) is a small string's length, at the pointer in its first word when it is
+    // largeMark (0x80; core/String.kpp). Read as a pointer, a small one's characters crashed.
+    std::string exceptionMessage(const std::string& format)
+    {
+      if (exceptionTypeinfo.empty())
+        return "  br label %end\n";
+      return "  %off = call i64 @kpp_eh_offset(ptr %typeinfo, ptr " + exceptionTypeinfo + ")\n  %isExc = icmp sge i64 %off, 0\n"
+             "  br i1 %isExc, label %msg, label %end\n"
+             "msg:\n  %ep = getelementptr inbounds i8, ptr %object, i64 %off\n"
+             "  %markp = getelementptr inbounds i8, ptr %ep, i64 23\n  %mark = load i8, ptr %markp\n"
+             "  %large = icmp eq i8 %mark, -128\n  br i1 %large, label %heap, label %print\n"
+             "heap:\n  %heapChars = load ptr, ptr %ep\n  %nodata = icmp eq ptr %heapChars, null\n  br i1 %nodata, label %end, label %print\n"
+             "print:\n  %data = phi ptr [ %ep, %msg ], [ %heapChars, %heap ]\n"
+             "  %r2 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + format + ", ptr %data)\n  br label %end\n";
+    }
+
     // The exception runtime (linkonce_odr, in every module) and the real @main, which calls the
     // program's main and reports an exception nobody caught.
     void finishExceptionRuntime()
@@ -15733,11 +15792,35 @@ namespace
         if (declaredNames.claim(name))
           decls += line + "\n";
       };
-      if (usesExceptions)
+      if (usesExceptions && !sh.target.windows())
+      {
+        // No unwinding yet off Windows (tryStatement): a throw prints the exception, as an uncaught
+        // one does, says why, and aborts; `throw;` outside a handler traps (no handler runs here).
+        declareOnce("@fprintf", "declare i32 @fprintf(ptr, ptr, ...)");
+        declareOnce("@fflush", "declare i32 @fflush(ptr)");
+        declareOnce("@abort", "declare void @abort()");
+        emittingShared = true;
+        std::string fmt1 = cStringConstant("exception of type %s thrown"), fmt2 = cStringConstant(": %s"),
+                    fmt3 = cStringConstant(" (exceptions do not unwind on this target yet: docs/design.md, \"Targets and hosts\", stage 3)\n");
+        emittingShared = false;
+        std::string err = stderrStream();
+        shared += sharedComdat("@kpp.eh.current") + "@kpp.eh.current = linkonce_odr thread_local global ptr null, comdat\n";
+        shared += baseSearchFunction("@kpp_eh_offset");
+        std::string message = exceptionMessage(fmt2);
+        shared += sharedComdat("@kpp_throw") +
+                  "define linkonce_odr void @kpp_throw(ptr %object, ptr %typeinfo, ptr %dtor) noinline comdat {\nentry:\n"
+                  "  %flushed = call i32 @fflush(ptr null)\n" + // (the program's output first: abort writes no buffer out)
+                  err +
+                  "  %name = load ptr, ptr %typeinfo\n  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
+                  "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
+        shared += sharedComdat("@kpp_eh_rethrow") + "define linkonce_odr void @kpp_eh_rethrow(ptr %out) noinline comdat {\nentry:\n  call void @abort()\n  unreachable\n}\n";
+      }
+      else if (usesExceptions)
       {
         ensureMalloc();
         declareOnce("@RaiseException", "declare dllimport void @RaiseException(i32, i32, i32, ptr)");
         declareOnce("@fprintf", "declare i32 @fprintf(ptr, ptr, ...)");
+        declareOnce("@fflush", "declare i32 @fflush(ptr)");
         declareOnce("@__acrt_iob_func", "declare ptr @__acrt_iob_func(i32)");
         declareOnce("@abort", "declare void @abort()");
         markEH();
@@ -15791,17 +15874,10 @@ namespace
                   "define linkonce_odr i32 @kpp.eh.filter.any(ptr %pointers, ptr %frame) comdat {\nentry:\n"
                   "  %rec = load ptr, ptr %pointers\n  %code = load i32, ptr %rec\n  %is = icmp eq i32 %code, -536870911\n"
                   "  br i1 %is, label %yes, label %no\nyes:\n  call void @kpp_eh_push(ptr %rec, i32 0, i64 0)\n  ret i32 1\nno:\n  ret i32 0\n}\n";
-        std::string message;
-        if (!exceptionTypeinfo.empty())
-          message = "  %off = call i64 @kpp_eh_offset(ptr %typeinfo, ptr " + exceptionTypeinfo + ")\n  %isExc = icmp sge i64 %off, 0\n"
-                    "  br i1 %isExc, label %msg, label %end\n"
-                    "msg:\n  %ep = getelementptr inbounds i8, ptr %object, i64 %off\n  %data = load ptr, ptr %ep\n"
-                    "  %nodata = icmp eq ptr %data, null\n  br i1 %nodata, label %end, label %print\n"
-                    "print:\n  %r2 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt2 + ", ptr %data)\n  br label %end\n";
-        else
-          message = "  br label %end\n";
+        std::string message = exceptionMessage(fmt2);
         shared += sharedComdat("@kpp_eh_unhandled") +
                   "define linkonce_odr void @kpp_eh_unhandled(ptr %object, ptr %typeinfo) noinline comdat {\nentry:\n"
+                  "  %flushed = call i32 @fflush(ptr null)\n" // (the program's output first: abort writes no buffer out)
                   "  %err = call ptr @__acrt_iob_func(i32 2)\n  %name = load ptr, ptr %typeinfo\n"
                   "  %r1 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt1 + ", ptr %name)\n" + message +
                   "end:\n  %r3 = call i32 (ptr, ptr, ...) @fprintf(ptr %err, ptr " + fmt3 + ")\n  call void @abort()\n  unreachable\n}\n";
@@ -15810,7 +15886,8 @@ namespace
       // @main, or @wmain for a program whose entry takes wide arguments (the game's, on Windows: the
       // C runtime calls whichever the program defines).
       for (const char* entry : {"main", "wmain"})
-        emitEntry(entry, "@kpp." + std::string(entry));
+        if (sh.target.windows() || std::string_view(entry) == "main") // (wmain is Windows' entry alone)
+          emitEntry(entry, "@kpp." + std::string(entry));
     }
 
     void emitEntry(const std::string& entry, const std::string& mainName)
@@ -15827,8 +15904,9 @@ namespace
         return;
       bool args = declare.find("(i32, ptr)") != std::string::npos || declare.find("(i32 %p0, ptr %p1)") != std::string::npos;
       std::string call = "i32 " + mainName + (args ? "(i32 %argc, ptr %argv)" : "()");
-      std::string text = "define i32 @" + entry + "(i32 %argc, ptr %argv) " + std::string(usesExceptions ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n";
-      if (!usesExceptions)
+      bool reports = usesExceptions && sh.target.windows(); // (off Windows, kpp_throw reports and aborts itself)
+      std::string text = "define i32 @" + entry + "(i32 %argc, ptr %argv) " + std::string(reports ? "personality ptr @__C_specific_handler " : "") + "{\nentry:\n";
+      if (!reports)
         text += "  %r = call " + call + "\n  ret i32 %r\n}\n\n";
       else
         text += "  %out = alloca [6 x i64]\n  %r = invoke " + call + " to label %done unwind label %dispatch\n"
@@ -17966,7 +18044,7 @@ void CodegenSessionDeleter::operator()(CodegenSession* session) const
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo);
+                              CodegenSessionPtr* keep, bool debugInfo, const Target* target);
 
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
 // (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
@@ -18115,7 +18193,7 @@ static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
 
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                            unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                           CodegenSessionPtr* keep, bool debugInfo)
+                           CodegenSessionPtr* keep, bool debugInfo, const Target* target)
 {
 #ifdef _WIN32
   // The emitter recurses as deep as the code it walks (long else-if chains, nested expressions),
@@ -18133,13 +18211,14 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     bool inlineTrivial;
     CodegenSessionPtr* keep;
     bool debugInfo;
+    const Target* target;
     CodegenResult result;
-  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, {}};
+  } job{&files, &global, &symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target, {}};
   HANDLE thread = CreateThread(nullptr, size_t(1) << 30, [](void* p) -> DWORD
   {
     auto* j = static_cast<Job*>(p);
     j->result = generate(*j->files, *j->global, *j->symbols, j->debug, j->moduleCount, j->despiteErrors, j->threads, j->stubMissing, j->inlineTrivial,
-                         j->keep, j->debugInfo);
+                         j->keep, j->debugInfo, j->target);
     return 0;
   }, &job, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
   if (thread)
@@ -18149,7 +18228,7 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
     return std::move(job.result);
   }
 #endif
-  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo);
+  return generate(files, global, symbols, debug, moduleCount, despiteErrors, threads, stubMissing, inlineTrivial, keep, debugInfo, target);
 }
 
 // --stub-missing: the functions used without a definition that declsFor defines as stubs.
@@ -18242,7 +18321,7 @@ static std::string destructorHelperIn(const std::string& entry)
 
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                               unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
-                              CodegenSessionPtr* keep, bool debugInfo)
+                              CodegenSessionPtr* keep, bool debugInfo, const Target* target)
 {
   // The build's state lives in a session (Shared refers to its result), kept for the next build
   // when asked (keep) or freed.
@@ -18253,6 +18332,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   sh.debug = debug;
   sh.stubMissing = despiteErrors && stubMissing;
   sh.despiteErrors = despiteErrors;
+  if (target)
+    sh.target = *target;
   sh.inlineTrivial = inlineTrivial;
   sh.debugInfo = debugInfo;
   sh.setModules(moduleCount);
@@ -18508,8 +18589,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     sh.moduleDecls[k].finish();
   }
   std::string prefix = "; Kpp v0: generated by kppc\n"
-                       "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\n"
-                       "target triple = \"x86_64-pc-windows-msvc\"\n\n";
+                       "target datalayout = \"" + sh.target.dataLayout + "\"\n"
+                       "target triple = \"" + sh.target.triple + "\"\n\n";
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
@@ -18555,7 +18636,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     }
     result.ir.append(std::move(e.body.text));
     if (sh.debugInfo)
-      result.ir += debugModuleTail;
+      result.ir += debugModuleTailFor(sh.target);
     if (!result.errors.empty())
     {
       std::unordered_set<std::string> stubbed;

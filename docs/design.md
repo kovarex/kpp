@@ -1907,6 +1907,57 @@ All of this goes through the coordinator.
 8. **macOS arm64, then x86-64:** Mach-O (no COMDATs, ld64, ad-hoc signing, compact unwind),
    kppc hosted on macOS, and CI macOS jobs.
 
+### Stage 1 as built (2026-11-01)
+
+- **The target model.**
+  - `--target windows|linux|freebsd`, or a triple (target.hpp). The other names say which stage
+    brings them.
+  - `--sysroot DIR`.
+  - The program sees the target through the `config::platform` that already existed (`Platform`
+    gained `FreeBSD`), not a new `config::os`. `--config platform=` must agree with the target.
+- **What codegen emits for the target:**
+  - its triple and data layout;
+  - DWARF instead of CodeView;
+  - the runtime's stderr: glibc's `stderr`, FreeBSD's `__stderrp`;
+  - no `wmain` entry (a program with only `wmain` is an error off Windows).
+
+  The driver compiles with `--target` and links with ld.lld, the sysroot, `--gc-sections`, `-lm`
+  and `-pthread`. A release build is ThinLTO through ld.lld (`--thinlto-jobs`,
+  `--thinlto-cache-dir`).
+- **Until stage 3:** off Windows no call unwinds, so a `try`'s handlers are never reached. A
+  `throw` writes out the program's output, then `exception of type T thrown: message (exceptions
+  do not unwind on this target yet ...)`, then aborts.
+- **Refused loudly, until stage 2:**
+  - an `extern "C"` function with a struct by value;
+  - a C header import.
+- **The standard library's first platform split:**
+  - `clib/CStdioWindows.kpp`, `CStdioLinux.kpp` and `CStdioFreeBSD.kpp` define stdin, stdout and
+    stderr. Each is chosen by the file-level `requires config::platform == ...` Kpp already had,
+    which may serve the platform layer instead of directories.
+  - Library functions that call Win32 or the UCRT (`_errno` in `stod`, Filesystem, Thread) link
+    only while unused: a program for Linux that calls one fails to link, by name.
+- **A sysroot for Linux** comes from WSL's Ubuntu (`tools/sysroot/linux-from-wsl.sh`, glibc
+  2.39). Its link takes 0.03 s. The WSL root itself is no sysroot: ld.lld cannot follow
+  `\\wsl.localhost`'s symbolic links, and the attempt took 16 s.
+- **Test:** `tests/targets.ps1` in run_tests:
+  - Windows: hello world, and an uncaught exception's report;
+  - FreeBSD: the IR, and an ELF object for FreeBSD (OS ABI 9);
+  - Linux: debug, release and `--debug-info` builds run under WSL, and the uncaught throw.
+
+  The Linux part is skipped without WSL.
+- **Windows' IR** over the 906 spec snippets, with one standard library on both sides: 29
+  snippets are byte-identical. The other 869 differ only in the uncaught-exception report, a fix
+  found on the way:
+  - It read Exception's message (a String) as a heap pointer. A message of up to 22 characters is
+    stored in the object itself, so it crashed (0xC0000005 after the type).
+  - It now flushes the program's output first (abort wrote no buffer out, so a line printed before
+    the throw was lost when stdout was a file).
+
+  The new standard library files renumber the lambdas after them (`__lambda_<file>_<n>`), which
+  changes names only.
+- **Seen on the way, Q1's:** `clib/CStdio.kpp` declares `fseek` and `ftell` with `long`, which is
+  64 bits in glibc's C.
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets. (a) is recommended (above).

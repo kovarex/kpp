@@ -3,6 +3,7 @@
 // machine code by the bundled clang. See docs/design.md, "Kpp v0".
 #include "ast.hpp"
 #include "resolver.hpp"
+#include "target.hpp"
 #include <memory>
 #include <string>
 #include <vector>
@@ -47,10 +48,11 @@ using CodegenSessionPtr = std::unique_ptr<CodegenSession, CodegenSessionDeleter>
 // when each came from a program function's own emission (none assembled then).
 // debugInfo (--debug-info): line tables, each statement's instructions at its line, so that a
 // debugger steps through the Kpp source (docs/debugging.md).
+// target: the platform the IR is for (--target; null: Windows x64).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            bool debug = true, unsigned moduleCount = 1, bool despiteErrors = false, unsigned threads = 1,
                            bool stubMissing = false, bool inlineTrivial = true, CodegenSessionPtr* keep = nullptr,
-                           bool debugInfo = false);
+                           bool debugInfo = false, const Target* target = nullptr);
 
 // An incremental build after the resolver checked the changed bodies again (its steps 3b and 4):
 // emits again the functions whose declarations got new bodies (or were walked again), emits the

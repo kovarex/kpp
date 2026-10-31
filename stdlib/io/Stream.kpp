@@ -1,5 +1,5 @@
 // File streams: a thin wrapper over C stdio that gives the interface std::ifstream/ofstream
-// convert to. FILE and __acrt_iob_func are declared in clib/CStdio.kpp.
+// convert to. FILE and stderr are declared in clib/CStdio.kpp and its platforms' files.
 
 struct InFileStream
 {
@@ -183,7 +183,7 @@ struct StderrStream
 {
   FILE* handle()
   {
-    return __acrt_iob_func(2);
+    return stderr;
   }
 };
 
