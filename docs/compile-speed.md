@@ -237,6 +237,20 @@ at -j 32 with or without the cache (384,338, 384,341 or 384,342 in master's own 
 384,338 at -j 1): a few types are interned only in some interleavings (not looked into yet; the
 report and the IR are the same).
 
+**Clang behind module assembly: nothing to pipeline; the largest module first, 0.2 s (2026-10-31).**
+Codegen's module assembly and clang's 64 modules on one clock (a probe, not landed; clean build of
+the frozen tree at -j 32, scratch\resolver\pp1.py and ppan.py): assembly takes 0.51 s on all
+threads, clang starts 1 ms after codegen returns, and the phase ends 4.39 s after assembly began.
+Started as each module is assembled (simulated with each module's measured clang time, 32 at a
+time) it would end 0.005 s sooner: the modules are assembled in 0.1 to 0.25 s and the threads are
+busy assembling meanwhile. Not built. What ends the phase is the order: clang takes the modules by
+index, and the largest (module 39, 21 MB of IR, 2.67 s of clang) waits for a free thread in the
+second wave and starts 1.7 s in. Taken largest first (by text size; simulated 0.39 s sooner), 11
+rounds paired on a loaded machine (scratch\resolver\paired.sh, IR the same `f9651b8f`), clang
+3.22 to 11.1 s, median **3.49 s**, against master's 3.54 to 4.88 s, median 3.69 s: about 0.2 s of
+a clean build's 11 to 12. The change (scratch\resolver\lpt.diff: main.cpp's parallelFor over the
+modules sorted by size) is the driver's, not landed: under the 0.3 s asked for.
+
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
 threads; clang is the one phase still gaining. Why, phase by phase (as measured on 089dcce5):
