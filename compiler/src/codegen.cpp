@@ -1901,6 +1901,7 @@ namespace
     {
       const Ty* classTy;
       std::vector<const Ty*> argTypes;
+      std::vector<bool> nulls;
       bool operator==(const ConstructorKey&) const = default;
     };
     struct ConstructorKeyHash
@@ -1910,15 +1911,32 @@ namespace
         size_t h = std::hash<const void*>()(k.classTy);
         for (const Ty* a : k.argTypes)
           h = (h * 1000003) ^ std::hash<const void*>()(a);
-        return h;
+        return h ^ std::hash<std::vector<bool>>()(k.nulls);
       }
     };
     std::unordered_map<ConstructorKey, FunctionDecl*, ConstructorKeyHash> constructors;
 
-    FunctionDecl* findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at)
+    // The constructor for these arguments: their types, and which are the literal 0 (a null pointer
+    // constant, which reaches `FromText(const char*)` as the checker ranks it).
+    FunctionDecl* constructorFor(const Ty* classTy, Span<Expr*> args, Node* at)
+    {
+      std::vector<bool> nulls;
+      bool anyNull = false;
+      for (Expr* a : args)
+      {
+        if (a && isPackExpansion(a))
+          return findConstructor(classTy, argTypesOf(args), at); // (the elements are no literals)
+        nulls.push_back(nullPointerConstant(a));
+        anyNull = anyNull || nulls.back();
+      }
+      return findConstructor(classTy, argTypesOf(args), at, anyNull ? nulls : std::vector<bool>{});
+    }
+
+    // nulls: per argument, whether it is the literal 0; empty when none is.
+    FunctionDecl* findConstructor(const Ty* classTy, const std::vector<const Ty*>& argTypes, Node* at, const std::vector<bool>& nulls = {})
     {
       const Ty* canonical = canonicalClass(classTy, at);
-      ConstructorKey key{canonical, argTypes};
+      ConstructorKey key{canonical, argTypes, nulls};
       if (auto it = constructors.find(key); it != constructors.end())
         return it->second;
       auto* c = static_cast<ClassDecl*>(canonical->decl);
@@ -1972,7 +1990,7 @@ namespace
         }
         args.pairs.insert(args.pairs.end(), baseArgs.pairs.begin(), baseArgs.pairs.end());
       }
-      FunctionDecl* chosen = global.chooseOverload(candidates, argTypes, args, nullptr);
+      FunctionDecl* chosen = global.chooseOverload(candidates, argTypes, args, nullptr, nullptr, nulls.empty() ? nullptr : &nulls);
       if (chosen && std::find(candidates.begin() + own, candidates.end(), chosen) != candidates.end())
         chosen = nullptr;
       constructors.emplace(std::move(key), chosen);
@@ -2918,7 +2936,7 @@ namespace
       Expr* arg = args.size() == 1 && !braced ? args[0] : nullptr;
       const Ty* argTy = arg && arg->ty && arg->ty->isKnown() ? withCurrentArgs(types.unqualified(types.stripRef(arg->ty))) : nullptr;
       if (argTy && isClass(argTy) && !types.isDependent(argTy) && classKey(argTy) != classKey(t) && !baseInstantiation(argTy, classDef(t->decl, at), at) &&
-          !findConstructor(t, argTypesOf(args), at) && !global.converts(argumentType(arg, arg->ty, types), types.unqualified(t)))
+          !constructorFor(t, args, at) && !global.converts(argumentType(arg, arg->ty, types), types.unqualified(t)))
       {
         // The operator gives the class (`operator AchievementId()`) or a reference to it (`operator
         // const Constant&()`): either way the copy or move constructor's argument.
@@ -3016,7 +3034,7 @@ namespace
       // SignalID through SignalIDConnector's `operator SignalID()`, not a base's constructors.)
       bool converts = args.size() == 1 && !copyLike && args[0]->ty && isClass(types.stripRef(args[0]->ty)) &&
                       !types.isDependent(types.stripRef(args[0]->ty)) && conversionOperator(types.stripRef(args[0]->ty), t, at);
-      if (!copyLike && !converts && (!hasUserConstructors(c) || !findConstructor(t, argTypesOf(args), at)))
+      if (!copyLike && !converts && (!hasUserConstructors(c) || !constructorFor(t, args, at)))
         if (std::optional<QualifiedName> base = inheritedConstructorBase(c))
         {
           // Inherited constructors: the arguments build that base, everything else is default.
@@ -3064,7 +3082,7 @@ namespace
         }
       }
       const Ty* firstTy = args.size() == 1 ? args[0]->ty : nullptr;
-      FunctionDecl* ctor = findConstructor(t, argTypesOf(args), at);
+      FunctionDecl* ctor = constructorFor(t, args, at);
       if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t) && !ctor->params.empty())
       {
         // The same class: a copy, unless the chosen constructor is a copy constructor itself (a
@@ -7481,7 +7499,7 @@ namespace
               return "ptr " + convert(rvalue(arg), types.unqualified(cls), at).text; // `f(lowercase)` through `operator const String&()`
             // (the argument as overload resolution sees it: an lvalue binds a constructor template's `T&`;
             // a constructor inherited with `using Base::Base;` converts too, as the resolver ranks it)
-            if (findConstructor(cls, argTypesOf(Span<Expr*>{&arg, 1}), at) || global.converts(argumentType(arg, arg->ty, types), types.unqualified(cls)))
+            if (constructorFor(cls, Span<Expr*>{&arg, 1}, at) || global.converts(argumentType(arg, arg->ty, types), types.unqualified(cls)))
               return "ptr " + convertedTemporary(cls, arg, at); // `f(view)` with `f(const String&)`
           }
           Value o = rvalue(arg);
@@ -7494,7 +7512,7 @@ namespace
               return "ptr " + addr;
             // Fallback: try implicit constructor of the target class (e.g. Optional(const T&)
             // when passing T where const Optional<T>& is expected).
-            if (findConstructor(cls, argTypesOf(Span<Expr*>{&arg, 1}), at))
+            if (constructorFor(cls, Span<Expr*>{&arg, 1}, at))
               return "ptr " + convertedTemporary(cls, arg, at);
             if (conversionOperator(o.ty, types.unqualified(cls), at))
               return "ptr " + convert(o, types.unqualified(cls), at).text;

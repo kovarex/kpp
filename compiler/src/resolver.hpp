@@ -430,9 +430,11 @@ public:
   const Ty* lambdaInstance(const Ty* lambdaTy, const TemplateArgs& own, TemplateArgs* fullArgs, LambdaExpr** body);
   TemplateArgs classArgsOf(const Ty* classType); // Parameters of the class template -> arguments of the type.
   // Overload resolution by conversion ranking among candidates (members: objectType is the
-  // object they are called on, classArgs its instantiation). Null if none is viable.
+  // object they are called on, classArgs its instantiation). Null if none is viable. nullConstants:
+  // per argument, whether it is the literal 0 (a null pointer constant), as the checker's calls rank it.
   FunctionDecl* chooseOverload(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
-                               const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous = nullptr);
+                               const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous = nullptr,
+                               const std::vector<bool>* nullConstants = nullptr);
   // The free function `operator<punctuator>(lhs[, rhs])` visible from context (the namespaces of
   // the operand classes and enums and context's own), chosen by overload ranking; null if none.
   FunctionDecl* findFreeOperator(uint32_t punctuator, const Ty* lhs, const Ty* rhs, Decl* context);

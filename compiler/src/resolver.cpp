@@ -21272,11 +21272,12 @@ bool GlobalScope::constraintsHold(FunctionDecl* f, const TemplateArgs& args)
 }
 
 FunctionDecl* GlobalScope::chooseOverload(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes,
-                                          const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous)
+                                          const TemplateArgs& classArgs, const Ty* objectType, bool* ambiguous,
+                                          const std::vector<bool>* nullConstants)
 {
   Subst s = toSubst(classArgs);
   bool amb = false;
-  FunctionDecl* f = impl->chooseAmong(candidates, argTypes, classArgs.empty() ? nullptr : &s, objectType, amb);
+  FunctionDecl* f = impl->chooseAmong(candidates, argTypes, classArgs.empty() ? nullptr : &s, objectType, amb, nullptr, nullConstants);
   if (ambiguous)
     *ambiguous = amb;
   return f;
