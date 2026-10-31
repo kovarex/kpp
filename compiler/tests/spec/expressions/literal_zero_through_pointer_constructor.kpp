@@ -1,0 +1,17 @@
+// spec: the literal 0 is a null pointer constant, so it reaches a class through a converting constructor taking a pointer, as nullptr does (a user-defined conversion): `f(FromText)` given 0 calls `FromText(const char*)` with a null pointer, and wins over a candidate 0 does not convert to; clang 19 prints `2 1`
+// factorio: found by the templates thread comparing overload choices against clang 19 on generated calls (loud: no call)
+// pending: the checker resolves the call; codegen's constructor search sees an int argument and finds no constructor taking one ("a constructor of FromText taking 1 arguments")
+struct FromText
+{
+  int isNull;
+  FromText(const char* p) : isNull(p == nullptr ? 1 : 0) {}
+};
+enum E { E0, E1 };
+int f(E e) { return 1; }
+int f(FromText t) { return 2; }
+int g(FromText t) { return t.isNull; }
+int main()
+{
+  println("{} {}", f(0), g(0));
+  return 0;
+}

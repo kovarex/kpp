@@ -14227,9 +14227,13 @@ struct GlobalScope::Impl
         {
           // `CoInitializeEx(0, ...)`, `f(0)` with `f(Entity*)`: the literal 0 is a null pointer, a
           // conversion as int's to another arithmetic type is.
+          // It reaches a class by a converting constructor taking a pointer (`f(FromText)` with
+          // `FromText(const char*)`, a user-defined conversion), as nullptr does.
           const Ty* target = types.unqualified(types.stripRef(pt));
           if (target->kind == TyKind::Pointer || target->kind == TyKind::MemberPointer)
             r = 3;
+          else if (target->kind == TyKind::Class)
+            r = std::max(conversionRank(types.nullptrType(), pt), 4);
         }
         if (r >= NotViable)
           ok = false;

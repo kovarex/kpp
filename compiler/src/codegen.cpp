@@ -9173,6 +9173,11 @@ namespace
       }
       if (tk == TyKind::Pointer && fk == TyKind::Int)
       {
+        // Without a cast only the literal 0 is a pointer, the null one (C++ [conv.ptr]/1); a constant
+        // 0 makes the same null pointer. `int* p = n;` is an error, as `int y = &x;` is below.
+        // Imported C converts any integer, as its compilers accept with a warning.
+        if (!explicitCast && v.text != "0" && !(currentFile && currentFile->isImported))
+          fail(at, "an integer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
         // A signed integer narrower than a pointer is widened as a signed value first, as through
         // intptr_t: `(HANDLE)-1` is all ones (INVALID_HANDLE_VALUE); inttoptr alone zero-extends.
         std::string value = v.text, valueT = fromT;

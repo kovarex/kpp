@@ -1,0 +1,20 @@
+// spec: an integer converts to a pointer without a cast only as the literal 0, the null pointer ([conv.ptr]/1): `int* p = 5;`, `int* q = n;`, `p = n;`, an int argument and an int returned for a pointer are errors; `int* z = 0;`, `z = 0;` and `(int*)n` are not
+// factorio: found by the templates thread with expressions/null_pointer_argument_for_two_pointer_overloads_is_ambiguous: an initialisation and an assignment took any integer as an address (silent); an argument was codegen's unsupported construct
+// error: integer_to_pointer_is_error.kpp:7: error: an integer (int32) does not convert to int32* without a cast
+// error: integer_to_pointer_is_error.kpp:8: error: an integer (int32) does not convert to int32* without a cast
+// error: integer_to_pointer_is_error.kpp:9: error: an integer (int32) does not convert to int32* without a cast
+// error: integer_to_pointer_is_error.kpp:10: error: an integer (int32) does not convert to int32* without a cast
+int* literal() { int* p = 5; return p; }
+int* variable(int n) { int* q = n; return q; }
+int* assigned(int n) { int* p = nullptr; p = n; return p; }
+int* returned(int n) { return n; }
+int* fine(int n)
+{
+  int* z = 0;
+  z = 0;
+  return z ? z : (int*)n;
+}
+int main()
+{
+  return literal() == variable(1) && assigned(2) == returned(3) && fine(4) != nullptr;
+}
