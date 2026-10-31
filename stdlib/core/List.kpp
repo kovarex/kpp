@@ -138,7 +138,7 @@ struct List
     }
     return *this;
   }
-  List<T>& operator=(List<T>&& other)
+  List<T>& operator=(List<T>&& other) noexcept
   {
     if (this != &other)
     {

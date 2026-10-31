@@ -44,7 +44,7 @@ struct FunctionImpl
   FunctionImpl(const FunctionImpl<R, Args...>& other)
     : target(other.target ? other.clone(other.target) : nullptr), invoke(other.invoke), destroy(other.destroy), clone(other.clone)
   {}
-  FunctionImpl(FunctionImpl<R, Args...>&& other)
+  FunctionImpl(FunctionImpl<R, Args...>&& other) noexcept
     : target(other.target), invoke(other.invoke), destroy(other.destroy), clone(other.clone)
   {
     other.target = nullptr;
@@ -67,7 +67,7 @@ struct FunctionImpl
     this->clone = other.clone;
     return *this;
   }
-  FunctionImpl<R, Args...>& operator=(FunctionImpl<R, Args...>&& other)
+  FunctionImpl<R, Args...>& operator=(FunctionImpl<R, Args...>&& other) noexcept
   {
     if (this == &other)
       return *this;

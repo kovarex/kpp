@@ -49,7 +49,7 @@ struct String
     else
       memcpy(this->smallChars, other.smallChars, sizeof(String));
   }
-  String(String&& other)
+  String(String&& other) noexcept
   {
     memcpy(this->smallChars, other.smallChars, sizeof(String));
     other.becomeEmpty();
@@ -66,7 +66,7 @@ struct String
       this->assign(other.data(), other.size());
     return *this;
   }
-  String& operator=(String&& other)
+  String& operator=(String&& other) noexcept
   {
     if (this == &other)
       return *this;

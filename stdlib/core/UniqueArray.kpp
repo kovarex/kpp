@@ -16,11 +16,11 @@ struct UniqueArray
   // Takes over array, made by `new T[n]` (std::unique_ptr<T[]>(array)), or nothing for null.
   explicit UniqueArray(T* array) : pointer(array) {}
   UniqueArray(const UniqueArray<T>& other) = delete;
-  UniqueArray(UniqueArray<T>&& other) : pointer(other.pointer) { other.pointer = nullptr; }
+  UniqueArray(UniqueArray<T>&& other) noexcept : pointer(other.pointer) { other.pointer = nullptr; }
   ~UniqueArray() { delete[] this->pointer; }
 
   UniqueArray<T>& operator=(const UniqueArray<T>& other) = delete;
-  UniqueArray<T>& operator=(UniqueArray<T>&& other)
+  UniqueArray<T>& operator=(UniqueArray<T>&& other) noexcept
   {
     if (this != &other)
       this->reset(other.release());

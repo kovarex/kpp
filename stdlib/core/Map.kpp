@@ -404,7 +404,7 @@ struct RbTree
     }
     return *this;
   }
-  RbTree<E, K, KeyOf, Compare>& operator=(RbTree<E, K, KeyOf, Compare>&& other)
+  RbTree<E, K, KeyOf, Compare>& operator=(RbTree<E, K, KeyOf, Compare>&& other) noexcept
   {
     if (this != &other)
     {
@@ -706,10 +706,10 @@ struct MapNodeHandle
 
   MapNodeHandle() {}
   explicit MapNodeHandle(RbNode<Pair<K, V>>* node) : node(node) {}
-  MapNodeHandle(MapNodeHandle<K, V>&& other) : node(other.node) { other.node = nullptr; }
+  MapNodeHandle(MapNodeHandle<K, V>&& other) noexcept : node(other.node) { other.node = nullptr; }
   MapNodeHandle(const MapNodeHandle<K, V>& other) = delete;
   ~MapNodeHandle() { this->reset(); }
-  MapNodeHandle<K, V>& operator=(MapNodeHandle<K, V>&& other)
+  MapNodeHandle<K, V>& operator=(MapNodeHandle<K, V>&& other) noexcept
   {
     if (this != &other)
     {
@@ -740,10 +740,10 @@ struct SetNodeHandle
 
   SetNodeHandle() {}
   explicit SetNodeHandle(RbNode<T>* node) : node(node) {}
-  SetNodeHandle(SetNodeHandle<T>&& other) : node(other.node) { other.node = nullptr; }
+  SetNodeHandle(SetNodeHandle<T>&& other) noexcept : node(other.node) { other.node = nullptr; }
   SetNodeHandle(const SetNodeHandle<T>& other) = delete;
   ~SetNodeHandle() { this->reset(); }
-  SetNodeHandle<T>& operator=(SetNodeHandle<T>&& other)
+  SetNodeHandle<T>& operator=(SetNodeHandle<T>&& other) noexcept
   {
     if (this != &other)
     {

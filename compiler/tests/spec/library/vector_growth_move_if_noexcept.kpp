@@ -1,0 +1,59 @@
+// spec: a Vector's reallocation (growth, reserve) moves an element only when its move constructor cannot throw or it cannot be copied, and copies it otherwise (std::vector's move_if_noexcept, for the strong exception guarantee): a copyable type with a noexcept(false) move is copied, one with a noexcept move is moved, a move-only one is moved; an insert's shift still moves
+// factorio: Sprite's `Sprite(Sprite&&) noexcept(false)`: a std::vector<Sprite> copies its sprites when it grows in the C++ build
+int copies = 0;
+int moves = 0;
+
+struct Throwing
+{
+  int v;
+  Throwing(int v) : v(v) {}
+  Throwing(const Throwing& other) : v(other.v) { ++copies; }
+  Throwing(Throwing&& other) noexcept(false) : v(other.v) { ++moves; }
+};
+
+struct Nothrow
+{
+  int v;
+  Nothrow(int v) : v(v) {}
+  Nothrow(const Nothrow& other) : v(other.v) { ++copies; }
+  Nothrow(Nothrow&& other) noexcept : v(other.v) { ++moves; }
+};
+
+struct MoveOnly
+{
+  int v;
+  MoveOnly(int v) : v(v) {}
+  MoveOnly(const MoveOnly& other) = delete;
+  MoveOnly(MoveOnly&& other) noexcept(false) : v(other.v) { ++moves; }
+};
+
+template<typename T>
+void grow(const char* name)
+{
+  Vector<T> values;
+  values.reserve(3);
+  for (int i = 0; i < 3; ++i)
+    values.emplace_back(i);
+  copies = 0;
+  moves = 0;
+  values.reserve(100);
+  println("{}: {} copies, {} moves, {} {}", name, copies, moves, values[0].v, values[2].v);
+  // An insert before the end that grows the block moves the elements whatever their move (MSVC's
+  // std::vector: the standard guarantees nothing there).
+  copies = 0;
+  Vector<T> full;
+  full.reserve(2);
+  full.emplace_back(1);
+  full.emplace_back(2);
+  copies = 0;
+  full.emplace(full.begin(), 0);
+  println("{} inserted before: {} copies, {} {} {}", name, copies, full[0].v, full[1].v, full[2].v);
+}
+
+int main()
+{
+  grow<Throwing>("noexcept(false) move");
+  grow<Nothrow>("noexcept move");
+  grow<MoveOnly>("move only");
+  return 0;
+}

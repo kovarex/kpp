@@ -1,6 +1,7 @@
-// Kpp standard library: Vector<T>. A growable array. When the buffer grows, or elements shift
-// for an insert or erase, they are relocated as in std::vector: move constructor, then destructor.
-// Appending grows the capacity geometrically, reserve() exactly.
+// Kpp standard library: Vector<T>. A growable array. When elements shift for an insert or erase,
+// they are relocated (move constructor, then destructor); when the buffer grows, as in
+// std::vector's reallocation, by move_if_noexcept: a copyable T whose move constructor may throw
+// is copied. Appending grows the capacity geometrically, reserve() exactly.
 template<typename T>
 struct Vector
 {
@@ -49,7 +50,7 @@ struct Vector
   // sorted(lines.begin(), lines.end())` from a HashSet), as insert(end(), first, last).
   template<typename InputIt> requires (!isIntegral<InputIt>)
   Vector(InputIt first, InputIt last) { this->insert(this->items, first, last); }
-  Vector(Vector<T>&& other) : items(other.items), length(other.length), allocated(other.allocated)
+  Vector(Vector<T>&& other) noexcept : items(other.items), length(other.length), allocated(other.allocated)
   {
     other.items = nullptr;
     other.length = 0;
@@ -70,7 +71,7 @@ struct Vector
     this->appendCopies(other.items, other.length);
     return *this;
   }
-  Vector<T>& operator=(Vector<T>&& other)
+  Vector<T>& operator=(Vector<T>&& other) noexcept
   {
     if (this == &other)
       return *this;
@@ -332,7 +333,7 @@ struct Vector
   // are left unconstructed.
   void openSlots(int index, int count)
   {
-    this->ensureRoom(this->length + count);
+    this->ensureRoom(this->length + count, index == this->length); // only at the end the strong guarantee
     relocateBackward(this->items + index + count, this->items + index, this->length - index);
     this->length += count;
   }
@@ -377,13 +378,19 @@ struct Vector
     this->length = newLength;
   }
   // Moves the elements into a new block for newCapacity elements.
-  void moveToBlock(int newCapacity) { this->adoptBlock((T*)malloc((size_t)newCapacity * sizeof(T)), newCapacity); }
-  // Moves the elements into block, which has room for newCapacity, and frees the old one.
-  void adoptBlock(T* block, int newCapacity)
+  void moveToBlock(int newCapacity, bool strong = true) { this->adoptBlock((T*)malloc((size_t)newCapacity * sizeof(T)), newCapacity, strong); }
+  // Moves the elements into block, which has room for newCapacity, and frees the old one. strong
+  // (an append, reserve, shrink_to_fit: std::vector's strong exception guarantee) copies them
+  // where the move may throw and a copy exists (move_if_noexcept); an insert before the end moves
+  // them, as MSVC's std::vector does (the standard guarantees nothing there).
+  void adoptBlock(T* block, int newCapacity, bool strong = true)
   {
     if (this->items)
     {
-      relocate(block, this->items, this->length);
+      if (strong)
+        relocateIfNoexcept(block, this->items, this->length);
+      else
+        relocate(block, this->items, this->length);
       free(this->items);
     }
     this->items = block;
@@ -395,10 +402,10 @@ struct Vector
     int doubled = this->allocated < 2 ? 4 : this->allocated * 2;
     return needed > doubled ? needed : doubled;
   }
-  void ensureRoom(int needed)
+  void ensureRoom(int needed, bool strong = true)
   {
     if (needed > this->allocated)
-      this->moveToBlock(this->grownCapacity(needed));
+      this->moveToBlock(this->grownCapacity(needed), strong);
   }
   // Where the next appended element goes. When the vector is full that is in grown, a new block:
   // the new element's arguments may be elements, so they move over only in finishAppend, after

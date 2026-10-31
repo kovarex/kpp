@@ -40,6 +40,22 @@ void relocateBackward(T* destination, T* source, long long count)
     source[i].~T();
   }
 }
+// As relocate, for a container's growth into a new block (std::vector's reallocation): each object
+// is moved only when its move constructor cannot throw or it cannot be copied, otherwise copied
+// (std::move_if_noexcept), so that a throw leaves the old block whole: Factorio's
+// `Sprite(Sprite&&) noexcept(false)` is copied.
+template<typename T>
+void relocateIfNoexcept(T* destination, T* source, long long count)
+{
+  for (long long i = 0; i < count; ++i)
+  {
+    if constexpr (!isNothrowMoveConstructible<T> && isCopyConstructible<T>)
+      new (destination + i) T(static_cast<const T&>(source[i]));
+    else
+      new (destination + i) T(move(source[i]));
+    source[i].~T();
+  }
+}
 
 template<typename T>
 void swap(T& a, T& b)

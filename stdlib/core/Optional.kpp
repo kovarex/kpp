@@ -65,7 +65,7 @@ struct OptionalCopiedValue
       new (&this->storage.value) T(other.storage.value);
   }
   // The value moved over; the source keeps its state (present, with a moved-from value).
-  OptionalCopiedValue(OptionalCopiedValue<T>&& other) : present(other.present)
+  OptionalCopiedValue(OptionalCopiedValue<T>&& other) noexcept(isNothrowMoveConstructible<T>) : present(other.present)
   {
     if (other.present)
       new (&this->storage.value) T(move(other.storage.value));
@@ -75,7 +75,7 @@ struct OptionalCopiedValue
     optionalAssign<T>(*this, other.present, other.storage.value);
     return *this;
   }
-  OptionalCopiedValue<T>& operator=(OptionalCopiedValue<T>&& other)
+  OptionalCopiedValue<T>& operator=(OptionalCopiedValue<T>&& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
     optionalAssign<T>(*this, other.present, move(other.storage.value));
     return *this;
@@ -93,7 +93,7 @@ struct OptionalOwnedValue
     if (other.present)
       new (&this->storage.value) T(other.storage.value);
   }
-  OptionalOwnedValue(OptionalOwnedValue<T>&& other) : present(other.present)
+  OptionalOwnedValue(OptionalOwnedValue<T>&& other) noexcept(isNothrowMoveConstructible<T>) : present(other.present)
   {
     if (other.present)
       new (&this->storage.value) T(move(other.storage.value));
@@ -108,7 +108,7 @@ struct OptionalOwnedValue
     optionalAssign<T>(*this, other.present, other.storage.value);
     return *this;
   }
-  OptionalOwnedValue<T>& operator=(OptionalOwnedValue<T>&& other)
+  OptionalOwnedValue<T>& operator=(OptionalOwnedValue<T>&& other) noexcept(isNothrowMoveConstructible<T> && isNothrowMoveAssignable<T>)
   {
     optionalAssign<T>(*this, other.present, move(other.storage.value));
     return *this;

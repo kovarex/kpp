@@ -103,14 +103,14 @@ struct Thread
     this->threadId = Id(id);
   }
   Thread(const Thread&) = delete;
-  Thread(Thread&& other) : handle(other.handle), threadId(other.threadId)
+  Thread(Thread&& other) noexcept : handle(other.handle), threadId(other.threadId)
   {
     other.handle = nullptr;
     other.threadId = Id();
   }
   Thread& operator=(const Thread&) = delete;
   // A Thread still joinable here ends the program (std::thread calls std::terminate).
-  Thread& operator=(Thread&& other)
+  Thread& operator=(Thread&& other) noexcept
   {
     release_assert(!this->joinable());
     this->handle = other.handle;
@@ -317,12 +317,12 @@ struct UniqueLock
   UniqueLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   UniqueLock(const UniqueLock<M>&) = delete;
   UniqueLock<M>& operator=(const UniqueLock<M>&) = delete;
-  UniqueLock(UniqueLock<M>&& other) : mutex_(other.mutex_), owns(other.owns)
+  UniqueLock(UniqueLock<M>&& other) noexcept : mutex_(other.mutex_), owns(other.owns)
   {
     other.mutex_ = nullptr;
     other.owns = false;
   }
-  UniqueLock<M>& operator=(UniqueLock<M>&& other)
+  UniqueLock<M>& operator=(UniqueLock<M>&& other) noexcept
   {
     if (this != &other)
     {
@@ -403,12 +403,12 @@ struct SharedLock
   SharedLock(M& mutex, AdoptLock) : mutex_(&mutex), owns(true) {}
   SharedLock(const SharedLock<M>&) = delete;
   SharedLock<M>& operator=(const SharedLock<M>&) = delete;
-  SharedLock(SharedLock<M>&& other) : mutex_(other.mutex_), owns(other.owns)
+  SharedLock(SharedLock<M>&& other) noexcept : mutex_(other.mutex_), owns(other.owns)
   {
     other.mutex_ = nullptr;
     other.owns = false;
   }
-  SharedLock<M>& operator=(SharedLock<M>&& other)
+  SharedLock<M>& operator=(SharedLock<M>&& other) noexcept
   {
     if (this != &other)
     {

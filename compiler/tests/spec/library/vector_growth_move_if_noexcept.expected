@@ -1,0 +1,6 @@
+noexcept(false) move: 3 copies, 0 moves, 0 2
+noexcept(false) move inserted before: 0 copies, 0 1 2
+noexcept move: 0 copies, 3 moves, 0 2
+noexcept move inserted before: 0 copies, 0 1 2
+move only: 0 copies, 3 moves, 0 2
+move only inserted before: 0 copies, 0 1 2

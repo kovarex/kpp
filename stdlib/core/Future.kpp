@@ -159,9 +159,9 @@ struct Future
   Future() {}
   Future(SharedPtr<SharedState<T>> state) : state(move(state)) {}
   Future(const Future<T>&) = delete;
-  Future(Future<T>&& other) : state(move(other.state)) {}
+  Future(Future<T>&& other) noexcept : state(move(other.state)) {}
   Future<T>& operator=(const Future<T>&) = delete;
-  Future<T>& operator=(Future<T>&& other)
+  Future<T>& operator=(Future<T>&& other) noexcept
   {
     this->state = move(other.state);
     return *this;
@@ -193,9 +193,9 @@ struct Future<void>
   Future() {}
   Future(SharedPtr<SharedState<void>> state) : state(move(state)) {}
   Future(const Future<void>&) = delete;
-  Future(Future<void>&& other) : state(move(other.state)) {}
+  Future(Future<void>&& other) noexcept : state(move(other.state)) {}
   Future<void>& operator=(const Future<void>&) = delete;
-  Future<void>& operator=(Future<void>&& other)
+  Future<void>& operator=(Future<void>&& other) noexcept
   {
     this->state = move(other.state);
     return *this;
@@ -220,7 +220,7 @@ struct SharedFuture
   SharedPtr<SharedState<T>> state;
 
   SharedFuture() {}
-  SharedFuture(Future<T>&& f) : state(move(f.state)) {}
+  SharedFuture(Future<T>&& f) noexcept : state(move(f.state)) {}
   SharedFuture(const SharedFuture<T>& other) : state(other.state) {}
 
   bool valid() const { return (bool)this->state; }
@@ -237,9 +237,9 @@ struct Promise
 
   Promise() : state(makeShared<SharedState<T>>()) {}
   Promise(const Promise<T>&) = delete;
-  Promise(Promise<T>&& other) : state(move(other.state)) {}
+  Promise(Promise<T>&& other) noexcept : state(move(other.state)) {}
   Promise<T>& operator=(const Promise<T>&) = delete;
-  Promise<T>& operator=(Promise<T>&& other)
+  Promise<T>& operator=(Promise<T>&& other) noexcept
   {
     this->state = move(other.state);
     return *this;
@@ -263,9 +263,9 @@ struct Promise<void>
 
   Promise() : state(makeShared<SharedState<void>>()) {}
   Promise(const Promise<void>&) = delete;
-  Promise(Promise<void>&& other) : state(move(other.state)) {}
+  Promise(Promise<void>&& other) noexcept : state(move(other.state)) {}
   Promise<void>& operator=(const Promise<void>&) = delete;
-  Promise<void>& operator=(Promise<void>&& other)
+  Promise<void>& operator=(Promise<void>&& other) noexcept
   {
     this->state = move(other.state);
     return *this;

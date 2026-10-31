@@ -85,7 +85,7 @@ struct SharedPtr
     if (this->control)
       this->control->strong.fetchAdd(1);
   }
-  SharedPtr(SharedPtr<T>&& other) : pointer(other.pointer), control(other.control)
+  SharedPtr(SharedPtr<T>&& other) noexcept : pointer(other.pointer), control(other.control)
   {
     other.pointer = nullptr;
     other.control = nullptr;
@@ -99,7 +99,7 @@ struct SharedPtr
       this->control->strong.fetchAdd(1);
   }
   template<typename U> requires (isConvertible<U*, T*> && !isSame<U, T>)
-  implicit SharedPtr(SharedPtr<U>&& other) : pointer(other.pointer), control(other.control)
+  implicit SharedPtr(SharedPtr<U>&& other) noexcept : pointer(other.pointer), control(other.control)
   {
     other.pointer = nullptr;
     other.control = nullptr;
@@ -137,7 +137,7 @@ struct SharedPtr
     }
     return *this;
   }
-  SharedPtr<T>& operator=(SharedPtr<T>&& other)
+  SharedPtr<T>& operator=(SharedPtr<T>&& other) noexcept
   {
     if (this != &other)
     {
@@ -234,7 +234,7 @@ struct WeakPtr
     if (this->control)
       this->control->weak.fetchAdd(1);
   }
-  WeakPtr(WeakPtr<T>&& other) : pointer(other.pointer), control(other.control)
+  WeakPtr(WeakPtr<T>&& other) noexcept : pointer(other.pointer), control(other.control)
   {
     other.pointer = nullptr;
     other.control = nullptr;
@@ -259,7 +259,7 @@ struct WeakPtr
     }
     return *this;
   }
-  WeakPtr<T>& operator=(WeakPtr<T>&& other)
+  WeakPtr<T>& operator=(WeakPtr<T>&& other) noexcept
   {
     if (this != &other)
     {

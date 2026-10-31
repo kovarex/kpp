@@ -28,12 +28,12 @@ struct UniquePtr
   implicit UniquePtr(nullptr_t) {}
   explicit UniquePtr(T* object) : held(object) {}
   UniquePtr(const UniquePtr<T, D>& other) = delete;
-  UniquePtr(UniquePtr<T, D>&& other) : held(other.held) { other.held = nullptr; }
+  UniquePtr(UniquePtr<T, D>&& other) noexcept : held(other.held) { other.held = nullptr; }
   // From a UniquePtr to a type whose pointer converts to T* (a derived class, T const), with a
   // deleter that converts to D: takes its object. Deleting it through T* needs T's destructor to
   // be virtual when the types differ.
   template<typename U, typename E> requires (isConvertible<U*, T*> && isConvertible<E, D> && !(isSame<U, T> && isSame<E, D>))
-  implicit UniquePtr(UniquePtr<U, E>&& other) : held(other.release()) {}
+  implicit UniquePtr(UniquePtr<U, E>&& other) noexcept : held(other.release()) {}
   ~UniquePtr()
   {
     if (this->held)
@@ -46,7 +46,7 @@ struct UniquePtr
     this->reset(nullptr);
     return *this;
   }
-  UniquePtr<T, D>& operator=(UniquePtr<T, D>&& other)
+  UniquePtr<T, D>& operator=(UniquePtr<T, D>&& other) noexcept
   {
     if (this != &other)
     {
@@ -56,7 +56,7 @@ struct UniquePtr
     return *this;
   }
   template<typename U, typename E> requires (isConvertible<U*, T*> && isConvertible<E, D> && !(isSame<U, T> && isSame<E, D>))
-  UniquePtr<T, D>& operator=(UniquePtr<U, E>&& other)
+  UniquePtr<T, D>& operator=(UniquePtr<U, E>&& other) noexcept
   {
     this->reset(other.release());
     return *this;

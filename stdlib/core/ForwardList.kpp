@@ -76,7 +76,7 @@ struct ForwardList
     return *this;
   }
   ForwardList(const ForwardList<T>& other) { this->copyFrom(other); }
-  ForwardList(ForwardList<T>&& other)
+  ForwardList(ForwardList<T>&& other) noexcept
   {
     this->beforeHead.next = other.beforeHead.next;
     other.beforeHead.next = nullptr;
@@ -91,7 +91,7 @@ struct ForwardList
     }
     return *this;
   }
-  ForwardList<T>& operator=(ForwardList<T>&& other)
+  ForwardList<T>& operator=(ForwardList<T>&& other) noexcept
   {
     if (this != &other)
     {

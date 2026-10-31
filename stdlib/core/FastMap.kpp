@@ -157,7 +157,7 @@ struct BTree
     }
     return *this;
   }
-  BTree<E, K, KeyOf>& operator=(BTree<E, K, KeyOf>&& other)
+  BTree<E, K, KeyOf>& operator=(BTree<E, K, KeyOf>&& other) noexcept
   {
     if (this == &other)
       return *this;

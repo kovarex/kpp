@@ -120,7 +120,7 @@ struct HashTable
     }
     return *this;
   }
-  HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other)
+  HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>& operator=(HashTable<E, K, KeyOf, Hasher, KeyEqual, stable>&& other) noexcept
   {
     if (this != &other)
     {

@@ -28,7 +28,7 @@ struct WString
   WString(const wchar_t* first, const wchar_t* last) { this->append(first, (int)(last - first)); }
   WString(int count, wchar_t c) { this->append(count, c); }
   WString(const WString& other) { this->append(other.chars, other.unitCount); }
-  WString(WString&& other) : chars(other.chars), unitCount(other.unitCount), capacity(other.capacity)
+  WString(WString&& other) noexcept : chars(other.chars), unitCount(other.unitCount), capacity(other.capacity)
   {
     other.chars = nullptr;
     other.unitCount = 0;
@@ -47,7 +47,7 @@ struct WString
     this->append(other.chars, other.unitCount);
     return *this;
   }
-  WString& operator=(WString&& other)
+  WString& operator=(WString&& other) noexcept
   {
     if (this == &other)
       return *this;

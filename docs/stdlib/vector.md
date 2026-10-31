@@ -43,6 +43,11 @@ Access (precondition: the index is in [0, size()); `front`/`back` need a non-emp
 
 Size and capacity:
 - `size()`, `empty()`, `capacity()`.
+- A new block receives the elements as std::vector's reallocation does. For an append
+  (push_back, emplace_back, an insert at the end), `reserve` and `shrink_to_fit` (the strong
+  exception guarantee) it is by move_if_noexcept: an element is moved when its move constructor
+  cannot throw or it cannot be copied, and copied otherwise. For an insert before the end it is
+  by move, as MSVC's std::vector does (the standard guarantees nothing there).
 - `reserve(n)`: afterwards `capacity() >= n`. When n > capacity() the block is replaced by one
   with capacity exactly n and the elements are relocated; otherwise nothing happens. O(size()).
 - `resize(n)`, `resize(n, value)`: removes elements from the end, or appends default-constructed
