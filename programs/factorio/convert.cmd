@@ -15,7 +15,8 @@ rem SDK's gdiplus.h, and RE2 through the RegexUtil override (tests\regex_smoke.k
 rem Last, the converter's own tests: the sizes a serialiser writes (tests\convert_sizes\sizes.cpp),
 rem std::variant as typed unions (tests\convert_variant\variant.cpp) and Factorio's own printf
 rem mismatches made explicit (tests\convert_formats\formats.cpp), whose conversions print what their
-rem C++ builds print.
+rem C++ builds print, and the rules where C and C++ differ (tests\convert_c\rules.c, pending), whose
+rem conversion as C prints what its C build prints.
 rem Hand-written parts are in overrides\.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -146,3 +147,14 @@ if exist kpp\convert_formats rd /s /q kpp\convert_formats
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_formats.exe kpp\convert_formats || exit /b 1
 kpp\convert_formats.exe > kpp\convert_formats.out.txt
 fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && echo printf formats: output as expected || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & exit /b 1)
+echo == C rules: tests\convert_c\rules.c, where C and C++ differ (void* conversions, designated initializers, compound literals, C++ keywords as names...), converted as C and run, prints what its C build prints (tests\convert_c.expected)
+rem Pending until the converter's C mode exists (docs/path-to-factorio.md, "Converting the C libraries"):
+rem it is reported, not failed, and a pass while pending fails the run, as spec.cmd's pending snippets do.
+set CRULES=pending
+if exist kpp\convert_c rd /s /q kpp\convert_c
+if exist kpp\convert_c.exe del kpp\convert_c.exe
+%KPPC% --no-std --quiet --convert kpp\convert_c --ext .c tests\convert_c > kpp\convert_c.log 2>&1
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_c.exe kpp\convert_c >> kpp\convert_c.log 2>&1
+set CRULESOK=0
+if exist kpp\convert_c.exe (kpp\convert_c.exe > kpp\convert_c.out.txt 2>&1 && fc /w kpp\convert_c.out.txt tests\convert_c.expected > nul && set CRULESOK=1)
+if %CRULES%==pending (if %CRULESOK%==1 (echo C rules: FIXED while pending: remove the pending mark& exit /b 1) else (echo C rules: pending, kpp\convert_c.log)) else (if %CRULESOK%==1 (echo C rules: output as expected) else (echo C rules: OUTPUT DIFFERS, kpp\convert_c.log& exit /b 1))

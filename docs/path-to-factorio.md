@@ -1826,6 +1826,61 @@ inventory, one entity built) replays in the Kpp build with exit 0. A Kpp recordi
 (walking) replays with exit 0 in both C++ Debug exes of 2.1.25, the first one and H's final one.
 Each run passes about 300 heuristic checks.
 
+### Converting the C libraries (2026-10-31)
+
+**From source first.** factorio-in-kpp's build.kpp builds the 18 C and C++ libraries the game links.
+They come from `libraries\` with clang-cl, each with fbuild.bff's sources, defines and include
+directories (factorio-in-kpp a6cef7d1). No .lib file and no Factorio checkout is needed. On a clean
+clone, debug and release both match C++ on the 45 menu maps, and the unit tests pass 9,501/9,501.
+
+A cold build takes 35.6 s (debug) and 85.2 s (release); the 18 libraries are about 20 s of either. A
+debug rebuild after no change takes 1.8 s with the compile server, 1.9 s after touching one zlib file.
+
+**Then into Kpp** (kovarex: "we should start converting them to kpp"), one library at a time:
+1. crc32fast, ogg, zlib, trio;
+2. zstd, minizip, glad, stb, fontstash;
+3. opus, opusfile, vorbis, sdl-mixer;
+4. imgui, re2, open-vcdiff: their kpp-native C shims go;
+5. curl, then SDL.
+
+A converted library replaces its `cLibrary` in build.kpp only when three things hold:
+- its differential harness writes byte-identical output, built once with the C library and once
+  converted with it (the same driver source both times, inputs from the game's data: 4,539 .ogg,
+  8,971 .png, 35 fonts);
+- the unit tests still pass 9,501/9,501;
+- the 45 menu maps still match C++.
+
+**C is new to the converter.** Factorio compiles Lua as C++ (/TP), so everything converted so far
+was C++. Each library's .c files compiled as C++ (clang-cl /TP, the library's flags) measure the
+distance:
+
+| Library | .c files compiled as C++ | Errors |
+|---|---|---|
+| zstd, opus, opusfile, glad | 0 of 171 fail | 0 |
+| zlib | 1 of 15 fail | 3 |
+| trio | 2 of 4 fail | 8 |
+| ogg | 2 of 2 fail | 12 |
+| minizip | 4 of 8 fail | 18 |
+| sdl-mixer | 5 of 8 fail | 11 |
+| vorbis | 20 of 22 fail | 362 |
+| curl | 79 of 188 fail | 752 |
+| SDL | 53 of 230 fail | 1,311 |
+
+The rules behind those errors are `programs/factorio/tests/convert_c/rules.c`: void* to T*, ints
+to enums, narrowing in initializers, C++ keywords as names, `register`, tentative definitions,
+designated initializers and compound literals as C has them, struct tags and nested structs at file
+scope, `sizeof('a')` 4, `int f()`, `char s[3] = "xyz"`, `_Bool`, goto past an initialization,
+anonymous members, a dropped const. convert.cmd converts the file as C and runs it, and its output
+must be the C build's (`tests/convert_c.expected`). The check is pending until the converter has a C
+mode (thread C).
+
+No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
+- `language/alloca` and `language/flexible_array_member` (D);
+- MSVC intrinsics, `_BitScan*`, `_byteswap_*`, `__cpuid`, `_mm_prefetch` (D);
+- the SSE2 that stb_image's x64 path and sdl-mixer use (D);
+- C-style COM through the Windows headers, and C threads, atomics and thread-locals (B, for wave 5);
+- `--convert` reading each library's defines from build.kpp's description (E).
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
