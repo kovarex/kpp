@@ -8400,7 +8400,11 @@ namespace
       std::string addr = newObjectSlot(t, at);
       uint32_t token = at->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(at)->callee->token : at->token; // the callee's name
       auto [line, column] = lineColumnOf(token);
-      std::string function = currentFunction ? qualifiedName(currentFunction) : std::string();
+      // In a lambda written in a function body: that function, not whichever function emitted the
+      // lambda first (which varies with the threads' order).
+      Decl* writtenIn = lambdaContext ? lambdaContext->parent : nullptr;
+      FunctionDecl* named = writtenIn && writtenIn->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(writtenIn) : currentFunction;
+      std::string function = named ? qualifiedName(named) : std::string();
       fn += "  store ptr " + cStringConstant(currentFile->path) + ", ptr " + gep(info.name, addr, 0) + "\n";
       fn += "  store i32 " + std::to_string(line) + ", ptr " + gep(info.name, addr, 1) + "\n";
       fn += "  store i32 " + std::to_string(column) + ", ptr " + gep(info.name, addr, 2) + "\n";
