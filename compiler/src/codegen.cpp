@@ -3941,11 +3941,12 @@ namespace
     // element by element, each through its own copy or move: a member `T items[N]` of a class whose
     // copy or move is memberwise (the library's Array<Vector<T>, N> returned by value; bitwise, the
     // vectors were freed twice). One after the other for a few, in a loop for more; an array of what
-    // needs no destruction is copied bitwise.
+    // needs no destruction and copies (assigns) bitwise is copied bitwise (a `Counted cs[2]` whose
+    // copy constructor counts is copied by it).
     void transferArray(const std::string& dst, const std::string& src, const Ty* t, Node* at, bool move, bool assign)
     {
       t = types.unqualified(t);
-      if (!needsDestruction(t, at) || t->count == 0)
+      if ((!needsDestruction(t, at) && (assign ? assignsBitwise(t, at) : relocatesBitwise(t, at))) || t->count == 0)
       {
         std::string v = newTemp();
         fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";

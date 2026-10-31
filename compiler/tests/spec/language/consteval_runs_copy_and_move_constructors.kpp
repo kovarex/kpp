@@ -1,0 +1,44 @@
+// spec: a compile-time evaluation runs a class's own copy and move constructors as the program does: `T b = a;` copies by `T(const T&)`, `T c = static_cast<T&&>(b);` moves by `T(T&&)`, a by-value parameter is copied, and `return c;` of a parameter or local moves (no named return value is elided in a constant evaluation, [class.copy.elision]/1); a prvalue still initialises directly; an implicit copy or move runs the members' and array elements' own, and `forward<T>(x)` of an rvalue moves; the constant equals what the program computes at run time (`111101 11111` both)
+// factorio: found by the templates thread starting allocation in the interpreter (design.md 12): the interpreter copied the value and ran no constructor, so `run()` was 100 as a constant and 11101 at run time (silent)
+struct Counted
+{
+  int copies = 0;
+  int moves = 0;
+  int movedFrom = 0;
+  constexpr Counted() {}
+  constexpr Counted(const Counted& o) : copies(o.copies + 1), moves(o.moves) {}
+  constexpr Counted(Counted&& o) : copies(o.copies), moves(o.moves + 1) { o.movedFrom = 1; }
+  constexpr Counted& operator=(const Counted& o) { copies = o.copies + 10; moves = o.moves; return *this; }
+};
+struct Holder
+{
+  Counted c;
+  Counted cs[2];
+};
+constexpr Counted byValue(Counted c) { return c; }
+template<typename T> constexpr T pass(T&& t) { return forward<T>(t); }
+constexpr int run()
+{
+  Counted a;
+  Counted b = a;
+  Counted c = static_cast<Counted&&>(b);
+  Counted d;
+  d = a;
+  Counted e = byValue(a);
+  return e.moves * 100000 + b.copies * 10000 + c.moves * 1000 + d.copies * 10 + e.copies;
+}
+constexpr int parts()
+{
+  Holder h;
+  Holder copied = h;
+  Holder moved = move(copied);
+  Counted source;
+  Counted forwarded = pass(move(source));
+  return copied.cs[1].copies * 10000 + moved.cs[1].moves * 1000 + copied.c.movedFrom * 100 + forwarded.moves * 10 + source.movedFrom;
+}
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println("{} {} {} {}", run(), parts(), Show<run()>::value, Show<parts()>::value);
+  return 0;
+}

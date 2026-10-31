@@ -1,0 +1,23 @@
+// spec: a constexpr function builds a Vector<String> (the library's, through its malloc, placement new and free) and returns what it computed from it; the vector and its strings are destroyed at the end of their scope, so nothing is left allocated (design.md 12: build.kpp computes with the standard library)
+// factorio: build.kpp of programs/factorio (docs/build.md): `project.cIncludes.add(path(factorio, "libraries", lib))` for a list of libraries
+// pending: the interpreter evaluates no allocation
+constexpr int includes()
+{
+  Vector<String> paths;
+  for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "curl/include"})
+  {
+    String path = "C:/Factorio/libraries/";
+    path += lib;
+    paths.push_back(path);
+  }
+  int total = 0;
+  for (const String& p : paths)
+    total += p.size();
+  return paths.size() * 1000 + total;
+}
+static_assert(includes() == 4126);
+int main()
+{
+  println("{}", includes());
+  return 0;
+}

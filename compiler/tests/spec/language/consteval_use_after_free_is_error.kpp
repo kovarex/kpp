@@ -1,0 +1,24 @@
+// spec: reading or writing memory a compile-time evaluation freed, and freeing it twice, are errors, never undefined behaviour (an evaluation that would be UB is no constant, as in C++20)
+// factorio: build.kpp (design.md 12)
+// pending: the interpreter evaluates no allocation
+// error: consteval_use_after_free_is_error.kpp:19: error: static assertion whose condition is no constant: a read of memory freed at consteval_use_after_free_is_error.kpp:9
+// error: consteval_use_after_free_is_error.kpp:20: error: static assertion whose condition is no constant: memory freed twice (first at consteval_use_after_free_is_error.kpp:15)
+constexpr int afterFree()
+{
+  int* p = new int(5);
+  delete p;
+  return *p;
+}
+constexpr int twice()
+{
+  int* p = new int(5);
+  delete p;
+  delete p;
+  return 1;
+}
+static_assert(afterFree() == 5);
+static_assert(twice() == 1);
+int main()
+{
+  return 0;
+}

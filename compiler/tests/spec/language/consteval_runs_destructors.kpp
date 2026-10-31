@@ -1,0 +1,81 @@
+// spec: a compile-time evaluation runs destructors where the program does: locals at the end of their scope in reverse order, also on an early return, break and continue; a by-value parameter's at the end of the call; a temporary's at the end of its full expression; a class's body, then its members, then its bases; an array's elements in reverse; the constant equals what the program computes (C++20, `212131345 602078903211` both)
+// factorio: allocation in the interpreter for build.kpp (design.md 12): String's and Vector's destructors free what they allocated
+// pending: the interpreter runs no destructors
+struct Log
+{
+  long long digits = 0;
+  constexpr void add(int d) { digits = digits * 10 + d; }
+};
+struct Noisy
+{
+  Log* log;
+  int id;
+  constexpr Noisy(Log* l, int i) : log(l), id(i) {}
+  constexpr Noisy(const Noisy& o) : log(o.log), id(o.id + 5) {}
+  constexpr ~Noisy() { log->add(id); }
+};
+struct Base
+{
+  Log* log;
+  constexpr Base(Log* l) : log(l) {}
+  constexpr ~Base() { log->add(9); }
+};
+struct Whole : Base
+{
+  Noisy member;
+  constexpr Whole(Log* l) : Base(l), member(l, 8) {}
+  constexpr ~Whole() { log->add(7); }
+};
+constexpr int early(Log* log, bool leave)
+{
+  Noisy a(log, 1);
+  if (leave)
+  {
+    Noisy b(log, 2);
+    return 0;
+  }
+  Noisy c(log, 3);
+  return 1;
+}
+constexpr int take(Noisy n) { return n.id; }
+constexpr int peek(const Noisy& n) { return n.id; }
+constexpr long long scopes()
+{
+  Log log;
+  {
+    Noisy a(&log, 1);
+    Noisy b(&log, 2);
+  }
+  early(&log, true);
+  early(&log, false);
+  for (int i = 3; i < 6; ++i)
+  {
+    Noisy x(&log, i);
+    if (i == 4)
+      continue;
+    if (i == 5)
+      break;
+  }
+  return log.digits;
+}
+constexpr long long objects()
+{
+  Log log;
+  {
+    Noisy a(&log, 1);
+    take(a);
+    log.add(0);
+    peek(Noisy(&log, 2));
+    log.add(0);
+    { Whole w(&log); }
+    log.add(0);
+    { Noisy arr[3] = {Noisy(&log, 1), Noisy(&log, 2), Noisy(&log, 3)}; }
+  }
+  return log.digits;
+}
+template<long long N> struct Show { static constexpr long long value = N; };
+int main()
+{
+  println("{} {} {} {}", scopes(), objects(), Show<scopes()>::value, Show<objects()>::value);
+  return 0;
+}

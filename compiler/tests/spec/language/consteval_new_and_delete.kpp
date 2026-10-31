@@ -1,0 +1,44 @@
+// spec: the compile-time interpreter allocates (C++20's transient allocation): `new T(args)`, `new T[n]`, placement new, delete and delete[] (destructors run), a pointer into the allocation read, written, indexed and moved along, as long as every allocation is freed before the evaluation ends (design.md 12: build.kpp)
+// factorio: build.kpp's Vector and String (docs/build.md, "What it needs": allocation in the interpreter)
+// pending: the interpreter evaluates no new or delete
+struct Counter
+{
+  int* hits;
+  Counter(int* h) : hits(h) {}
+  ~Counter() { ++*this->hits; }
+};
+constexpr int single()
+{
+  int* p = new int(5);
+  *p += 2;
+  int v = *p;
+  delete p;
+  return v;
+}
+constexpr int array(int n)
+{
+  int* a = new int[n];
+  for (int i = 0; i < n; ++i)
+    a[i] = i * i;
+  int* end = a + n;
+  int sum = 0;
+  for (int* it = a; it != end; ++it)
+    sum += *it;
+  delete[] a;
+  return sum;
+}
+constexpr int destructors()
+{
+  int hits = 0;
+  Counter* c = new Counter(&hits);
+  delete c;
+  return hits;
+}
+static_assert(single() == 7);
+static_assert(array(4) == 14);
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println("{} {} {}", Show<single()>::value, Show<array(5)>::value, Show<destructors()>::value);
+  return 0;
+}
