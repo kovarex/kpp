@@ -1,0 +1,10 @@
+// base64: Base64 and base64url (RFC 4648) (README.md). `kpp --test` here runs its tests.
+void build(Project& project)
+{
+  Library& base64 = project.library("base64");
+  base64.version = "0.1.0";
+  base64.license = "MIT";
+  base64.minimumKpp = "0.1.0";
+  base64.root("src");
+  base64.test("tests");
+}

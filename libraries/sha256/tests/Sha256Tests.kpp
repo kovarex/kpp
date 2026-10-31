@@ -1,0 +1,104 @@
+// SHA-256 against FIPS 180-2's examples and HMAC-SHA-256 against RFC 4231's test cases; the
+// patterned messages' digests come from Python's hashlib and hmac (OpenSSL).
+
+// n bytes of a pattern: byte i is (i * 31 + 7) mod 256.
+String sha256Pattern(int n)
+{
+  String out;
+  for (int i = 0; i < n; ++i)
+    out.append(char((i * 31 + 7) & 255));
+  return out;
+}
+
+String sha256Repeat(char c, int n)
+{
+  String out;
+  for (int i = 0; i < n; ++i)
+    out.append(c);
+  return out;
+}
+
+test "FIPS 180-2 examples"
+{
+  check(sha256("").hex() == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  check(sha256("abc").hex() == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  check(sha256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq").hex() ==
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+  check(sha256("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")
+          .hex() == "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1");
+  check(sha256(sha256Repeat('a', 1000000)).hex() == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
+}
+
+test "lengths around the block boundaries"
+{
+  check(sha256(sha256Pattern(55)).hex() == "8aa994584139d128848eeebc4e815639ba5ab6e6e39574195a63ac4f14f7c43b");
+  check(sha256(sha256Pattern(56)).hex() == "ad574708f75c044c9b85de64cb568ee7711ff4f36448c6242f053ba8f6cc2b63");
+  check(sha256(sha256Pattern(63)).hex() == "280ed3e8ff1df845b2e7dfe6ac6cee817bef20e783cc65abc41b818b4d2fe076");
+  check(sha256(sha256Pattern(64)).hex() == "c6ab9724ade5b6a7a1edfffb12f3aa9181351355af8fd08c919952ad211339dd");
+  check(sha256(sha256Pattern(65)).hex() == "788367c73c7ddf4c53f65e68cc0d943e6227ab55b0e78ba63ace822b1c6301c0");
+  check(sha256(sha256Pattern(119)).hex() == "3d610547d68216dedf7435a4fb6260353911f6b3fd3f18805ddb8be285d726fe");
+  check(sha256(sha256Pattern(120)).hex() == "1f80156a804cb7862ad113e8200e9d74499723e7c7854d5f48776d3148e09656");
+  check(sha256(sha256Pattern(128)).hex() == "cc548ca2dec1f6fe4f58b2e27aa9c7521607df1130d140b55a4dad0665302356");
+  // Every length from 0 to 299: the digest of their digests, one after another.
+  Sha256 all;
+  for (int n = 0; n < 300; ++n)
+    all.update(sha256(sha256Pattern(n)).view());
+  check(all.finish().hex() == "82d1c86ef5eb80a2f7cb650e4770f5293bdbe86a5b577e54026c9295bbcf0e8d");
+}
+
+test "data given in parts"
+{
+  String message = sha256Pattern(1000);
+  Sha256Digest whole = sha256(message);
+  for (int part = 1; part <= 130; part += 3)
+  {
+    Sha256 hash;
+    for (int at = 0; at < message.size(); at += part)
+      hash.update(StringView(message).substr(at, part < message.size() - at ? part : message.size() - at));
+    check(hash.finish() == whole);
+  }
+  Sha256 reused;
+  reused.update("something else");
+  reused.finish();
+  reused.reset();
+  reused.update(message);
+  check(reused.finish() == whole);
+}
+
+test "RFC 4231 HMAC-SHA-256"
+{
+  check(hmacSha256(sha256Repeat('\x0b', 20), "Hi There").hex() == "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+  check(hmacSha256("Jefe", "what do ya want for nothing?").hex() == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
+  check(hmacSha256(sha256Repeat('\xaa', 20), sha256Repeat('\xdd', 50)).hex() ==
+        "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe");
+  String key4;
+  for (int i = 1; i <= 25; ++i)
+    key4.append(char(i));
+  check(hmacSha256(key4, sha256Repeat('\xcd', 50)).hex() == "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b");
+  // Test case 5 is truncated to 128 bits.
+  check(hmacSha256(sha256Repeat('\x0c', 20), "Test With Truncation").hex().substr(0, 32) == "a3b6167473100ee06e0c796c2955552b");
+  check(hmacSha256(sha256Repeat('\xaa', 131), "Test Using Larger Than Block-Size Key - Hash Key First").hex() ==
+        "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54");
+  check(hmacSha256(sha256Repeat('\xaa', 131), "This is a test using a larger than block-size key and a larger than block-size data. The key "
+                                              "needs to be hashed before being used by the HMAC algorithm.")
+          .hex() == "9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2");
+}
+
+test "HMAC over key and message lengths"
+{
+  // Keys of 0, 7, ... 133 bytes and messages of 0, 13, ... 130 bytes: the digest of their MACs.
+  Sha256 all;
+  for (int k = 0; k < 140; k += 7)
+    for (int m = 0; m < 140; m += 13)
+      all.update(hmacSha256(sha256Pattern(k), sha256Pattern(m)).view());
+  check(all.finish().hex() == "e6a47fc3055e9e41f964aa69b0a3c029cdc1744554fbcf19881617d3c73d5ed7");
+}
+
+test "constant-time compare"
+{
+  check(Sha256::constantTimeEqual("token", "token"));
+  check(!Sha256::constantTimeEqual("token", "tokem"));
+  check(!Sha256::constantTimeEqual("token", "token2"));
+  check(Sha256::constantTimeEqual("", ""));
+  check(sha256("a") != sha256("b"));
+}

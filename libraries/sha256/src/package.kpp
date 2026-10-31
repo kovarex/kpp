@@ -1,0 +1,3 @@
+// Package: SHA256
+// SHA-256 (FIPS 180-4) and HMAC-SHA-256 (RFC 2104): Sha256, sha256(), hmacSha256(). Documented in
+// libraries/sha256/README.md.

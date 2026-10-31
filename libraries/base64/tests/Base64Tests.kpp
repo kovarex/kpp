@@ -1,0 +1,83 @@
+// Base64 against RFC 4648's test vectors (section 10) and Python's base64 module; strict decoding.
+
+String base64Pattern(int n)
+{
+  String out;
+  for (int i = 0; i < n; ++i)
+    out.append(char((i * 31 + 7) & 255));
+  return out;
+}
+
+// The error's message for text that does not decode, "" when it does.
+String base64ErrorOf(StringView text, bool url = false)
+{
+  try
+  {
+    if (url)
+      base64UrlDecode(text);
+    else
+      base64Decode(text);
+    return "";
+  }
+  catch (const Base64Error& e)
+  {
+    return e.message;
+  }
+}
+
+test "RFC 4648 test vectors"
+{
+  const char* plain[] = {"", "f", "fo", "foo", "foob", "fooba", "foobar"};
+  const char* encoded[] = {"", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy"};
+  const char* url[] = {"", "Zg", "Zm8", "Zm9v", "Zm9vYg", "Zm9vYmE", "Zm9vYmFy"};
+  for (int i = 0; i < 7; ++i)
+  {
+    check(base64Encode(plain[i]) == encoded[i]);
+    check(base64Decode(encoded[i]) == plain[i]);
+    check(base64UrlEncode(plain[i]) == url[i]);
+    check(base64UrlEncode(plain[i], true) == encoded[i]);
+    check(base64UrlDecode(url[i]) == plain[i]);
+    check(base64UrlDecode(encoded[i]) == plain[i]);
+  }
+}
+
+test "every byte, against Python"
+{
+  String bytes = base64Pattern(40);
+  check(base64Encode(bytes) == "ByZFZIOiweD/Hj1ce5q52PcWNVRzkrHQ7w4tTGuKqcjnBiVEY4KhwA==");
+  check(base64UrlEncode(bytes, true) == "ByZFZIOiweD_Hj1ce5q52PcWNVRzkrHQ7w4tTGuKqcjnBiVEY4KhwA==");
+  String all;
+  for (int i = 0; i < 256; ++i)
+    all.append(char(i));
+  check(base64Encode(all) == "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w==");
+  check(base64Decode(base64Encode(all)) == all);
+  for (int n = 0; n < 300; ++n)
+  {
+    String data = base64Pattern(n);
+    check(base64Decode(base64Encode(data)) == data);
+    check(base64UrlDecode(base64UrlEncode(data)) == data);
+    check(base64Encode(data).size() == (n + 2) / 3 * 4);
+  }
+}
+
+test "strict decoding"
+{
+  check(base64ErrorOf("Zg") == "2: base64 whose length is not a multiple of 4 (missing or extra '=')");
+  check(base64ErrorOf("Zg=") == "3: base64 whose length is not a multiple of 4 (missing or extra '=')");
+  check(base64ErrorOf("Zm9v=") == "5: base64 whose length is not a multiple of 4 (missing or extra '=')");
+  check(base64ErrorOf("Zm8==") == "5: base64 whose length is not a multiple of 4 (missing or extra '=')");
+  check(base64ErrorOf("Zm9=Zm9v") == "3: '=' before the end");
+  check(base64ErrorOf("Zm9v Zg==") == "4: a character that is not base64");
+  check(base64ErrorOf("Zm9v\nZg==") == "4: a character that is not base64");
+  check(base64ErrorOf("Zm-v") == "2: a character that is not base64");
+  check(base64ErrorOf("Zh==") == "1: the last character has bits set that no byte uses");
+  check(base64ErrorOf("Zm9=") == "2: the last character has bits set that no byte uses");
+  check(base64ErrorOf("Z===") == "1: '=' before the end");
+  check(base64ErrorOf("Zm9vZ", true) == "5: a single base64 character left over at the end");
+  check(base64ErrorOf("Zm+v", true) == "2: a character that is not base64url");
+  check(base64ErrorOf("Zg=", true) == "3: padded base64url whose length is not a multiple of 4");
+  String out;
+  check(!tryBase64Decode("Zg", out));
+  check(tryBase64UrlDecode("Zg", out));
+  check(out == "f");
+}

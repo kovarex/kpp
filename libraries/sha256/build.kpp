@@ -1,0 +1,10 @@
+// sha256: SHA-256 and HMAC-SHA-256 (README.md). `kpp --test` here runs its tests.
+void build(Project& project)
+{
+  Library& sha256 = project.library("sha256");
+  sha256.version = "0.1.0";
+  sha256.license = "MIT";
+  sha256.minimumKpp = "0.1.0";
+  sha256.root("src");
+  sha256.test("tests");
+}

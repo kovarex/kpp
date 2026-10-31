@@ -15,6 +15,8 @@ leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs e
 | Library | What | Checked against |
 |---|---|---|
 | [json](json/README.md) | JSON parsing and writing, exact numbers | JSONTestSuite's 318 parsing cases; 200,000 random doubles round-trip |
+| [sha256](sha256/README.md) | SHA-256, HMAC-SHA-256, constant-time compare | FIPS 180-2's examples, RFC 4231's HMAC cases, Python's hashlib |
+| [base64](base64/README.md) | Base64 and base64url, strict decoding | RFC 4648's vectors, Python's base64 |
 
 **License**: every library's build.kpp says MIT, as a placeholder: the license of kovarex's
 libraries is his to decide (asked 2026-11-01).
