@@ -1,0 +1,27 @@
+// spec: move() of a const object takes the copy members, user-declared or implicit: `Tracked(const Tracked&)` and `operator=(const Tracked&)` beside the move ones, a class holding one through its implicit members, and a by-value parameter; the source keeps its value ([over.ics.ref]: a `T&&` binds no const rvalue); clang 19 prints `1 3 0 1 3 1`
+// factorio: found with language/move_of_const_copies by the templates thread: an implicit member (Holder's) and a by-value parameter moved from the const source (silent); in the game CombatRobot::addToDescription's `move(timeToLiveStr)` and a test's init-capture of a const String
+struct Tracked
+{
+  int value = 0;
+  int how = 0;
+  Tracked() {}
+  Tracked(const Tracked& o) : value(o.value), how(1) {}
+  Tracked(Tracked&& o) : value(o.value), how(2) { o.value = -1; }
+  Tracked& operator=(const Tracked& o) { value = o.value; how = 3; return *this; }
+  Tracked& operator=(Tracked&& o) { value = o.value; how = 4; o.value = -1; return *this; }
+};
+struct Holder { Tracked t; };
+int byValue(Tracked t) { return t.how; }
+int main()
+{
+  const Tracked source;
+  Tracked a(move(source));
+  Tracked b;
+  b = move(source);
+  const Holder h;
+  Holder hc(move(h));
+  Holder ha;
+  ha = move(h);
+  println("{} {} {} {} {} {}", a.how, b.how, source.value, hc.t.how, ha.t.how, byValue(move(source)));
+  return 0;
+}

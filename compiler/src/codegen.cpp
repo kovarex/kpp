@@ -3102,7 +3102,7 @@ namespace
           Value src = convert(rvalue(args[0]), types.unqualified(t), at);
           if (src.isTemporary)
             moveTemporary(addr, src, t, at);
-          else if (isXvalue(args[0]))
+          else if (movable(args[0]))
             moveConstruct(addr, src.text, t, at);
           else
             copyConstruct(addr, src.text, t, at);
@@ -3126,7 +3126,7 @@ namespace
         if (const Ty* from = withCurrentArgs(types.unqualified(types.stripRef(firstTy))); !types.isDependent(from) && basePath(from, t, path, at))
         {
           Value src = convert(rvalue(args[0]), types.unqualified(t), at);
-          if (isXvalue(args[0]))
+          if (movable(args[0]))
             moveConstruct(addr, src.text, t, at);
           else
             copyConstruct(addr, src.text, t, at);
@@ -3164,7 +3164,7 @@ namespace
         Value src = rvalue(args[0]);
         if (src.isTemporary)
           moveTemporary(addr, src, t, at);
-        else if (isXvalue(args[0]))
+        else if (movable(args[0]))
           moveConstruct(addr, src.text, t, at);
         else
           copyConstruct(addr, src.text, t, at);
@@ -3658,6 +3658,9 @@ namespace
     // Whether an expression is an xvalue: an rvalue reference to an object that may be moved from
     // (`move(x)`); a named rvalue reference is an lvalue.
     static bool isXvalue(Expr* e) { return e && e->ty && e->ty->kind == TyKind::RRef && !isLvalueExpression(e); }
+    // An xvalue a move may take: not a const one (`move(constObject)`), which a `T&&` does not bind,
+    // so the copy constructor or copy assignment takes it and the source keeps its value.
+    static bool movable(Expr* e) { return isXvalue(e) && e->ty->inner && !e->ty->inner->isConst; }
 
     // Move-constructs the object at src into dst: through the move constructor where the class has
     // one, as a copy otherwise.
@@ -4164,7 +4167,7 @@ namespace
           unsupported(at, "initialising a " + types.toString(t, &symbols) + " from a " + types.toString(src.ty, &symbols) + " whose type the checker left open");
         if (src.isTemporary)
           moveTemporary(addr, src, t, at);
-        else if (isXvalue(init))
+        else if (movable(init))
           moveConstruct(addr, src.text, t, at); // `T tmp = move(a);`
         else
           copyConstruct(addr, src.text, t, at);
@@ -5244,7 +5247,7 @@ namespace
         fn += "  store " + llType(t, at) + " " + tmp + ", ptr " + addr + "\n";
         return;
       }
-      copyClosure(addr, v.text, t, at, v.isTemporary || isXvalue(init));
+      copyClosure(addr, v.text, t, at, v.isTemporary || movable(init));
     }
 
     // Builds the closure object of a lambda expression in a fresh slot (into: in that object) and
@@ -7588,7 +7591,7 @@ namespace
         }
         std::string copy = newObjectSlot(pt, at);
         if (isLambda(pt))
-          copyClosure(copy, v.text, pt, at, isXvalue(arg));
+          copyClosure(copy, v.text, pt, at, movable(arg));
         else if (v.isTemporary && isClass(v.ty) && classKey(v.ty) == classKey(pt) && !isLambda(pt))
         {
           // `byValue(Tracker(5))`, `f(makeT())`: the temporary is the parameter, not moved (C++17
@@ -7603,7 +7606,7 @@ namespace
         }
         else if (v.isTemporary)
           moveTemporary(copy, v, pt, at);
-        else if (isXvalue(arg))
+        else if (movable(arg))
           moveConstruct(copy, v.text, pt, at); // `f(move(ptr))` with `f(UniquePtr<T> ptr)`
         else
           copyConstruct(copy, v.text, pt, at);
@@ -9940,7 +9943,7 @@ namespace
         unsupported(at, "assigning a value that is no object to " + types.toString(target, &symbols));
       if (canonicalClass(srcTy, at) != canonicalClass(target, at) && !baseAddress(srcTy, target, src.text, from, at))
         unsupported(at, "assigning " + types.toString(srcTy, &symbols) + " to " + types.toString(target, &symbols));
-      assignObject(dst, from, target, at, isXvalue(arg));
+      assignObject(dst, from, target, at, movable(arg));
       return {dst, types.lref(target)};
     }
 
@@ -13917,7 +13920,7 @@ namespace
           if (classKey(r.ty) != classKey(l.ty))
             if (!baseAddress(r.ty, l.ty, r.text, src, b))
               unsupported(b, "assigning an unrelated class");
-          assignObject(l.text, src, l.ty, b, r.isTemporary || isXvalue(b->rhs));
+          assignObject(l.text, src, l.ty, b, r.isTemporary || movable(b->rhs));
           return l;
         }
         unsupported(b, qualifiedName(l.ty->decl) + " has no " + name);
