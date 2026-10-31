@@ -14226,12 +14226,6 @@ struct GlobalScope::Impl
       bool someBetter = false;
       for (size_t i = 0; i < a.ranks.size(); ++i)
       {
-        // Exact and const-qualified-reference bindings differ only between two references
-        // (`T&` beats `const T&`); against a by-value parameter they are the same match. Between
-        // two by-value parameters the one is a qualification conversion (`const Entity*` given an
-        // Entity*), which the identity beats (C++ [over.ics.rank] 3.2.5).
-        if (a.ranks[i] + b.ranks[i] == 1 && a.refs[i] != b.refs[i])
-          continue;
         // A brace list made an InitializerList beats one made anything else, whatever the other
         // rules say (C++ [over.ics.rank] 3.1): `FlatSet<ChunkPosition>({{-1, -1}, {0, -1}})` takes
         // the InitializerList constructor, not the move constructor through a conversion by it.
@@ -14247,6 +14241,22 @@ struct GlobalScope::Impl
             someBetter = true;
             continue;
           }
+        }
+        // Exact and const-qualified-reference bindings differ only between two references
+        // (`T&` beats `const T&`); a reference binding is an identity against a by-value parameter,
+        // the same match as a by-value identity and better than a by-value qualification conversion
+        // (`const Entity*` given an Entity*, [over.ics.rank] 3.2.5): `f(const T&)` with T = Derived*
+        // beats `f(const T*)` with T = Derived given a Derived*. Between two by-value parameters
+        // the qualification conversion loses to the identity, below.
+        if (a.refs[i] != b.refs[i] && a.ranks[i] <= 1 && b.ranks[i] <= 1)
+        {
+          int ea = a.refs[i] ? 0 : a.ranks[i];
+          int eb = b.refs[i] ? 0 : b.ranks[i];
+          if (ea > eb)
+            return false;
+          if (ea < eb)
+            someBetter = true;
+          continue;
         }
         // Two user-defined conversions through the same conversion function: the standard
         // conversion after it decides ([over.ics.rank] 3.3). A class whose one conversion to a
@@ -14277,6 +14287,13 @@ struct GlobalScope::Impl
         // through one conversion function): the other arguments and the object decide.
         if (a.ranks[i] >= 4 && a.ranks[i] <= 5 && b.ranks[i] >= 4 && b.ranks[i] <= 5 && i < a.params.size() && i < b.params.size() &&
             a.params[i] && b.params[i] && types.unqualified(types.stripRef(a.params[i])) != types.unqualified(types.stripRef(b.params[i])))
+          continue;
+        // One user-defined conversion to one class, the object taken by value by one candidate and
+        // bound to a `const T&` by the other: the same sequence (only two reference bindings
+        // compare, `T&&` over `const T&`): `f(FromInt)` beside `f(const FromInt&)` given a float is
+        // ambiguous, as in C++.
+        if (a.ranks[i] >= 4 && a.ranks[i] <= 5 && b.ranks[i] >= 4 && b.ranks[i] <= 5 && i < a.params.size() && i < b.params.size() &&
+            a.params[i] && b.params[i] && a.params[i]->isReference() != b.params[i]->isReference())
           continue;
         if (a.ranks[i] > b.ranks[i])
           return false;

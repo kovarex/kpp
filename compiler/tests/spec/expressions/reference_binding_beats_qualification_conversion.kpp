@@ -1,0 +1,18 @@
+// spec: a reference binding is an identity, which beats a qualification conversion of a pointer passed by value ([over.ics.rank] 3.2.5): `f(const T&)` with T = Derived* beats `f(const T*)` with T = Derived given a Derived*, `g(T&)` with T = Base* beats `g(const T*)`, and a non-template `h(Base* const&)` beats `h(const Base*)`; clang 19 prints `2 2 2`
+// factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: the identity and the qualification conversion tied, and partial ordering took `f(const T*)` (silent)
+struct Base { int x = 1; };
+struct Derived : Base { int y = 2; };
+template<typename T> int f(const T* p) { return 1; }
+template<typename T> int f(const T& r) { return 2; }
+template<typename T> int g(const T* p) { return 1; }
+template<typename T> int g(T& r) { return 2; }
+int h(const Base* p) { return 1; }
+int h(Base* const& r) { return 2; }
+int main()
+{
+  Derived derived;
+  Derived* dp = &derived;
+  Base* bp = &derived;
+  println("{} {} {}", f(dp), g(bp), h(bp));
+  return 0;
+}
