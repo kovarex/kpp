@@ -64,6 +64,14 @@ rem System32's find: a Unix find earlier on the PATH (Git's) would walk the disk
 %SystemRoot%\System32\find.exe /c /v "" kpp\full-errors.txt
 if not "%FULLRC%"=="0" if not "%FULLRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %FULLRC%)
 findstr /c:"importing C headers failed" kpp\full-errors.txt >nul && echo NOT A VALID COUNT: importing the C headers failed, see kpp\full-errors.txt
+rem The tests' count, a gate as the headline is (0): the same errors in the whole conversion
+rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each is a function that
+rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
+echo == tests codegen errors: %WHOLE% with UnitTest++ and tests (all errors in kpp\tests-errors.txt)
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %WHOLE%\CommonUtil %WHOLE%\Agui %WHOLE%\cxxopts %WHOLE%\StackWalker %WHOLE%\Lua %WHOLE%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
+set TESTSRC=%errorlevel%
+%SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
+if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %TESTSRC%)
 echo == smoke test: tests\smoke.kpp against the converted CommonUtil (SystemClipboard stubbed: the real one needs SDL)
 setlocal EnableDelayedExpansion
 set FILES=
