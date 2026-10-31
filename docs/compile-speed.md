@@ -42,6 +42,24 @@ to the instances, 18cb68ba), -j 32 twice:
 | link (full) | 1.60 s | 1.71 | 1.62 | 1.61 | 1.61 | 1.59, 1.60 | 1x | serial |
 | wall | 72.9 s | 39.7 | 23.4 | 16.2 | 14.4 | 14.5, 14.5 | 5.0x | |
 
+The same on master e8e7a858 (2026-10-31: member initializers' temporaries per member and large
+destructions through the helper, bc010f0a; the codegen lock's final answers, b271e804; the instance
+static_asserts once per build, 9da239ad; NameSet's shards, e8e7a858), each thread count twice
+(scratch\resolver\paired.sh), the two runs within 2% of each other but for -j 1's link (1.54 and
+2.01 s):
+
+| phase | -j 1 | -j 2 | -j 4 | -j 8 | -j 16 | -j 32 | speedup at 32 | efficiency |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| read, lex, imports (cached), parse, index | 1.96 s | 1.20 | 0.78 | 0.60 | 0.54 | 0.55, 0.54 | 3.6x | 11% |
+| resolve | 7.01 s | 3.75 | 1.98 | 1.19 | 0.80 | 0.70, 0.71 | 10x | 31% |
+| codegen | 16.52 s | 10.16 | 6.45 | 4.66 | 4.10 | 4.03, 4.07 | 4.1x | 13% |
+| clang -O0, 64 modules | 37.29 s | 19.21 | 10.11 | 5.61 | 3.76 | 3.48, 3.48 | 10.7x | 33% |
+| link (full, link.exe incremental) | 1.54 s | 1.69 | 1.68 | 1.56 | 1.55 | 1.56, 1.56 | 1x | serial |
+| wall | 64.7 s | 36.3 | 21.3 | 14.0 | 11.1 | 10.7, 10.7 | 6.0x | |
+
+Against 18cb68ba at -j 32: codegen 6.6 -> 4.0 s, clang 4.55 -> 3.48 s (the largest module 35.5 ->
+19.5 MB, 739 -> 671 MB of IR), wall 14.5 -> 10.7 s.
+
 Resolve's critical path is still ValueToWidget.kpp, now its 480 plain functions' walks (0.63 s in
 all, the two largest 0.11 and 0.06 s, the rest 20 ms or less; its templates are tasks and cheap):
 every other file is done 0.31 s in (the C import's walk, 0.2 s, the next longest). Walking plain
@@ -124,6 +142,65 @@ layout per class under a lock (or a once-flag) of its own is the next step, a de
 codegen thread's layout code; and the threads' busy time at -j 32, waits taken out, is still over twice
 the levels' time at -j 1 (16 cores' SMT, the allocator), which a per-thread arena would show.
 
+**The lock, measured further: what does not help, and what did (2026-10-31).** Three changes
+to the lock itself, each the IR the same and concurrency.ps1 green, *none landed*:
+- a layout published once *ready* (its vtables made; a flag set at the end of buildStruct) instead
+  of only at lock depth 1: structFor's acquisitions 77 k -> 53 k (the depth rule left every layout
+  first seen inside another lock unpublished, so all 32 emitters looked it up);
+- a spinning recursive lock in place of std::recursive_mutex (the holds average 5 us, a contended
+  acquisition waited 470 us: a queue of 31, each handoff a wakeup);
+- definitions added to a per-emitter list, taken between levels (the definitions mutex was 12.8% of
+  the samples at -j 32).
+Paired, 8 rounds interleaved at -j 32 on a machine other threads were loading: codegen minimum 4.57
+s (master) against 4.53 s (all three), medians 5.67 and 5.13 s. Nothing on a quiet machine; the
+lock is held about 1.6 s of 3.5 s, and handoffs only add to it under load.
+
+So the time was looked for elsewhere, with a sampling probe (not landed: a thread suspends each
+emitter every millisecond and unwinds its stack, symbolised from a PDB build; ETW needs an elevated
+shell). At -j 1, 3,097 samples over the 18 s of work: the heap 19.7% inclusive (operator new), the
+resolver's walker re-typing instance bodies for codegen about 22% (Walker::walkExpr/walkDecl,
+declaredTypeOf, typeFunctionFor), TypeTable::intern 8.6%, and two that were plain waste:
+
+- *NameSet's shards* (the names declared, the instantiations requested): a name's shard was
+  hash % 64 and the shard's unordered_set buckets by the same hash's low bits, so a shard's names
+  fell into one bucket in 64 and every claim walked a chain of long names alike in their prefixes:
+  11.7% self time in the hash table. FinalAnswers had copied it. *Landed (e8e7a858):* the shard by
+  the hash's top bits. Codegen at -j 1 17.97 -> 16.33 s, at -j 32 4.14 to 4.18 -> 3.99 to 4.00 s.
+- *checkInstanceStaticAsserts* ran three times per build, serially, after codegen's last level and
+  before clang: 0.17, 0.16 and 0.19 s, each walking all 544 k interned types for the 77 k class
+  instances and checking all of them again. *Landed (9da239ad):* the type table lists its class
+  instances as they are made, and the calls of one build go on from where the last stopped (codegen
+  hands how far it checked to checkerErrors; the compile server's checks of a kept program still
+  check all). 0.033 + 0 + 0 s; wall minimum 10.96 -> 10.70 s.
+
+Layouts under the global lock are 1.1% of the samples at -j 1 (structFor's own time; buildStruct is
+not in the top 45): building them under locks of their own would shorten the holds at -j 32, but
+most of what is left there is the work growing with the threads (the busy time, waits taken out,
+1.5 times -j 1's at -j 8 and 3.1 times at -j 32), the heap and the resolver's walks being the
+largest parts of it.
+
+**The link: link.exe stays (2026-10-31).** The game's 64 objects of one clean build, each variant
+the build's own response file with its link flags replaced, 3 or 4 rounds, minimum (median), in
+seconds (scratch\resolver\linkm.py):
+
+| link | plain objects | with --debug-info | exe, PDB |
+|---|---:|---:|---|
+| link.exe `/INCREMENTAL /OPT:NOREF /DEBUG`, full (run.cmd's first link) | 1.58 (1.77) | 1.84 (2.04) | 109 MB, 136 MB |
+| the same, relinking after one object changed | **0.41** (0.43) | **0.52** (0.54) | |
+| link.exe `/OPT:REF /OPT:NOICF /DEBUG` | 1.85 (2.01) | 2.18 (2.61) | 76 MB, 74 MB |
+| link.exe `/DEBUG:FASTLINK`, incremental | 1.64 (2.38) | | |
+| lld `/OPT:REF /OPT:NOICF /DEBUG` (`/DEBUG:GHASH` the same) | 10.22 (11.85) | 11.94 (12.05) | 76 MB, **795 MB** |
+| link.exe `/OPT:REF /OPT:NOICF`, no PDB | 1.50 (1.81) | | 76 MB |
+| lld `/OPT:REF /OPT:NOICF`, no PDB | **0.76** (0.77) | 0.84 | 76 MB |
+
+lld's PDB holds 638 MB of type records against link.exe's 4 MB (llvm-pdbutil): it merges the
+Factorio libraries' types (factorio.lib alone is 770 MB), so any link with a PDB, the one the crash
+report names frames from, stays link.exe, and the incremental relink is the edit loop's. lld wins
+only without a PDB, which no game build links (run.cmd passes `/DEBUG`; the release build is lld
+already, ThinLTO); a small program's link is 0.1 s with either. Nothing changed, so the game and its
+crash report are as before. (A build with --debug-info spends 13.3 s in codegen against 4.1 s: a lever
+of its own.)
+
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
 threads; clang is the one phase still gaining. Why, phase by phase (as measured on 089dcce5):
@@ -159,10 +236,10 @@ threads; clang is the one phase still gaining. Why, phase by phase (as measured 
 
 | lever | today at -j 32 | estimate | owner |
 |---|---:|---:|---|
-| codegen scaling past 8 threads (23 s of work; 18 s since bc010f0a) | 6.7 s (4.3 s since b271e804) | 1.5 to 2.5 s | codegen thread (layouts under locks of their own) |
+| codegen scaling past 8 threads (23 s of work; 16.5 s since e8e7a858) | 6.7 s (4.0 s on e8e7a858) | 1.5 to 2.5 s | the heap and the resolver's walks for codegen (below), then layouts under locks of their own |
 | clang: modules of balanced size (split module 28's content; more, smaller modules) | 4.6 s | 1.5 to 2 s | codegen thread |
 | resolve: the dependent overload resolutions in ValueToWidget's generic walks | 1.31 s | 0.4 s (next: LuaHelper.kpp, 0.29 s) | templates thread |
-| the link: lld for a clean build (1.0 s, no PDB) or the incremental first link | 1.66 s | 1.0 s | codegen thread |
+| the link: link.exe's incremental first link (lld writes a 795 MB PDB in 10 s, measured below) | 1.6 s | none found | |
 | the front end before resolve (index's out-of-line attach, 0.16 s serial) | 0.53 s | 0.4 s | resolver thread |
 
 Together about 4.5 to 6 s, in the endgame's range. The resolver thread's own share is small (the
