@@ -1,0 +1,23 @@
+// spec: a const value is never incremented, decremented or assigned as a whole: `++c`, `c--` on a const int, `++*p` through a `const int*` and the implicit copy assignment of a const object are errors, as in C++ ([expr.pre.incr], [class.copy.assign])
+// factorio: found by the templates thread with language/const_value_assigned: each was accepted and stored (silent)
+// error: const_value_incremented.kpp:16: error: increment of a const value (const int32)
+// error: const_value_incremented.kpp:17: error: decrement of a const value (const int32)
+// error: const_value_incremented.kpp:18: error: increment of a const value (const int32)
+// error: const_value_incremented.kpp:20: error: assignment to a const value (const Box)
+struct Box { int value = 0; };
+int main()
+{
+  int x = 1;
+  const int* p = &x;
+  const int c = 2;
+  Box b;
+  const Box fixed;
+  int y = 3;
+  ++c;
+  c--;
+  ++*p;
+  y++;
+  fixed = b;
+  println("{} {} {}", x, c, fixed.value);
+  return 0;
+}

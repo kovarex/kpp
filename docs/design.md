@@ -490,6 +490,12 @@ An assignment used as an lvalue (`int& r = (a[i++] = v);`) is the place it store
 operand is evaluated once. Specs: expressions/assignment_evaluates_right_operand_first,
 expressions/assignment_right_operand_first_keeps_value_category.
 
+A const object is never modified (2026-10-31): a built-in assignment, compound assignment,
+increment or decrement of a const value, and the implicit copy or move assignment of a const
+class object, are errors ([expr.ass] 1, [expr.pre.incr]), in a template's instance only when its
+function is emitted. `volatile T` alone is volatile, not const. Specs:
+language/const_value_assigned, language/const_value_incremented, language/volatile_is_not_const.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find

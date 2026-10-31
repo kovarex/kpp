@@ -1,9 +1,9 @@
-// spec: a const value is never assigned: `r = 5` through a `const int&`, a const local's `c += 1` and `cb.get() = 7` through a const getter are errors, as in C++
-// found by the templates thread with language/non_const_member_overload_for_non_const_object: `history[key] = 1` through the const operator[]'s `const int&` was accepted and stored (silent); a check at every built-in assignment flags about 60 valid game and library lines (Array<const char, N>::fill instantiated, DrawCommandBatch's and SpriteDrawOrder's vertex writes, imported C's ReadAcquire bodies), so the constness the walk gives needs fixing first
-// pending: SILENT, all three assignments are accepted and stored (`5 7 4`)
+// spec: a const value is never assigned: `r = 5` through a `const int&`, a const local's `c += 1`, a `const volatile` local's `cv = 4` and `cb.get() = 7` through a const getter are errors, as in C++
+// factorio: found by the templates thread with language/non_const_member_overload_for_non_const_object: `history[key] = 1` through the const operator[]'s `const int&` was accepted and stored (silent); the check flagged 101 valid game lines until `volatile T` stopped being typed `const volatile T` (language/volatile_is_not_const)
 // error: const_value_assigned.kpp:18: error: assignment to a const value (const int32)
 // error: const_value_assigned.kpp:19: error: assignment to a const value (const int32)
 // error: const_value_assigned.kpp:21: error: assignment to a const value (const int32)
+// error: const_value_assigned.kpp:23: error: assignment to a const value (const volatile int32)
 struct Box
 {
   int value = 0;
@@ -19,6 +19,8 @@ int main()
   cb.get() = 7;
   const int c = 3;
   c += 1;
+  const volatile int cv = 3;
+  cv = 4;
   println("{} {} {}", x, b.value, c);
   return 0;
 }

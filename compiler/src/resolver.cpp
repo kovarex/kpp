@@ -14699,22 +14699,43 @@ struct GlobalScope::Impl
       std::string message = "'" + std::string(spelled) + "' is not declared";
       if (activeSubst)
       {
-        // An instance: counts once its function is emitted (an `if constexpr` branch the walk could
-        // not decide may be the discarded one).
-        if (!bodyOf || undecidedBranches > 0)
-          return;
-        std::string instance = instanceDescription();
-        if (!instance.empty() && requestFile)
-          instance += ", asked for at " + Impl::locationOf(requestFile, requestToken);
-        if (!instance.empty())
-          message += " (in " + instance + ")";
-        std::lock_guard lock(impl.checkerErrorsMutex);
-        impl.instanceNameErrors[bodyOf].push_back(Impl::locationOf(file, token) + ": error: " + message);
+        reportInInstance(token, message);
         return;
       }
       if (inGenericTemplate() && (dependentCall || inClassWithParameterBase()))
         return;
       impl.reportCheckerError(file, token, message);
+    }
+
+    // An error in an instance's body: counts once its function is emitted (an `if constexpr` branch
+    // the walk could not decide may be the discarded one, and a member of a class template's
+    // instance that nothing calls is never instantiated in C++: Array<const char, N>::fill).
+    void reportInInstance(uint32_t token, std::string message)
+    {
+      if (!bodyOf || undecidedBranches > 0)
+        return;
+      std::string instance = instanceDescription();
+      if (!instance.empty() && requestFile)
+        instance += ", asked for at " + Impl::locationOf(requestFile, requestToken);
+      if (!instance.empty())
+        message += " (in " + instance + ")";
+      std::lock_guard lock(impl.checkerErrorsMutex);
+      impl.instanceNameErrors[bodyOf].push_back(Impl::locationOf(file, token) + ": error: " + message);
+    }
+
+    // A built-in assignment (`=`, `+=` and the others on a scalar), increment or decrement of a const
+    // object is an error, as in C++ ([expr.ass]/1, [expr.pre.incr]: the operand is a modifiable
+    // lvalue): through a `const T&`, a const local or member, a const getter's result. Not in a
+    // template's own walk (its instances say). what: "assignment to", "increment of", "decrement of".
+    void checkConstModification(uint32_t token, const Ty* object, const char* what)
+    {
+      if (!object || !object->isConst || !object->isKnown() || !file || file->isImported || probing)
+        return;
+      std::string message = std::string(what) + " a const value (" + types.toString(object, &impl.symbols) + ")";
+      if (activeSubst)
+        reportInInstance(token, message);
+      else if (!inGenericTemplate())
+        impl.reportCheckerError(file, token, message);
     }
 
     // An object's array bound (a variable's, a data member's) that is no constant, or is negative,
@@ -17601,7 +17622,10 @@ struct GlobalScope::Impl
       // Operators every class has or that always yield bool.
       switch (op)
       {
-        case P::Assign: return lhs;                       // implicit copy/move assignment
+        case P::Assign:                                   // implicit copy/move assignment
+          if (l && l->kind == TyKind::Class)
+            checkConstModification(token, l, "assignment to");
+          return lhs;
         case P::AndAnd: case P::OrOr: case P::Bang: return types.boolType();
         case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
           if (l && l->kind == TyKind::Enum)
@@ -17732,6 +17756,7 @@ struct GlobalScope::Impl
         case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign:
         case P::PercentAssign: case P::AmpAssign: case P::PipeAssign: case P::CaretAssign: case P::ShlAssign:
         case P::ShrAssign:
+          checkConstModification(b->token, ls, "assignment to");
           return l;
         case P::EqEq: case P::NotEq: case P::Less: case P::Greater: case P::LessEq: case P::GreaterEq:
         case P::AndAnd: case P::OrOr:
@@ -17872,7 +17897,9 @@ struct GlobalScope::Impl
         case P::Amp: return types.pointer(s);
         case P::Bang: return types.boolType();
         case P::Minus: case P::Plus: case P::Tilde: return promote(t);
-        case P::PlusPlus: case P::MinusMinus: return u->postfix ? types.unqualified(s) : t;
+        case P::PlusPlus: case P::MinusMinus:
+          checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of");
+          return u->postfix ? types.unqualified(s) : t;
         default: return unknown(Why::Unsupported);
       }
     }
