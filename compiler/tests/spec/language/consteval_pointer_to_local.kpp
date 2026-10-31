@@ -1,0 +1,56 @@
+// spec: a compile-time evaluation takes the address of its own locals and parameters and works through it as the program does (C++20 [expr.const]): `&x` read and written through `*p`, `p->m` and `p[i]`, passed to a function and kept in a member, moved along an array and compared; the constant equals what the program computes (`5 6 34 10 true`)
+// factorio: allocation in the interpreter for build.kpp (design.md 12): a container's pointer into its storage, an object's pointer back to its owner
+struct Log
+{
+  long long digits = 0;
+  constexpr void add(int d) { digits = digits * 10 + d; }
+};
+struct Holder
+{
+  Log* log;
+  constexpr void put() { log->add(4); }
+};
+constexpr void bump(int* p) { *p += 5; }
+constexpr void addTo(Log* l) { l->add(3); }
+constexpr int direct()
+{
+  int x = 1;
+  int* p = &x;
+  *p = 5;
+  return x;
+}
+constexpr int throughCall()
+{
+  int x = 1;
+  bump(&x);
+  return x;
+}
+constexpr long long members()
+{
+  Log l;
+  addTo(&l);
+  Holder h{&l};
+  h.put();
+  return l.digits;
+}
+constexpr int walk()
+{
+  int a[4] = {1, 2, 3, 4};
+  int sum = 0;
+  for (int* it = a; it != a + 4; ++it)
+    sum += *it;
+  int* last = &a[3];
+  return sum + (last - a) * 0 + last[-3] - 1;
+}
+constexpr bool order()
+{
+  int a[2] = {};
+  return &a[0] < &a[1] && &a[1] == a + 1;
+}
+template<long long N> struct Show { static constexpr long long value = N; };
+int main()
+{
+  println("{} {} {} {} {}", Show<direct()>::value, Show<throughCall()>::value, Show<members()>::value, Show<walk()>::value, order());
+  static_assert(order());
+  return 0;
+}

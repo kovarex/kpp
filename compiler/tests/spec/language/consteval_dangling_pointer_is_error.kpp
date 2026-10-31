@@ -1,0 +1,30 @@
+// spec: reading through a pointer to a local whose lifetime ended, in a compile-time evaluation, is an error naming the local (C++20: such an evaluation is no constant), never the value it last had nor whatever took its place
+// factorio: allocation in the interpreter for build.kpp (design.md 12)
+// error: consteval_dangling_pointer_is_error.kpp:25: error: static assertion whose condition is no constant: a read of x, whose lifetime ended
+// error: consteval_dangling_pointer_is_error.kpp:26: error: static assertion whose condition is no constant: a read of y, whose lifetime ended
+constexpr int* escape(int v)
+{
+  int x = v;
+  return &x;
+}
+constexpr int afterReturn()
+{
+  int* p = escape(5);
+  return *p;
+}
+constexpr int afterBlock()
+{
+  int* p = nullptr;
+  {
+    int y = 3;
+    p = &y;
+  }
+  int z = 4;
+  return *p + z;
+}
+static_assert(afterReturn() == 5);
+static_assert(afterBlock() == 7);
+int main()
+{
+  return 0;
+}

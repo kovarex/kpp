@@ -28,7 +28,14 @@ struct ConstTarget
   // (bases, then data members, or elements), outermost first; empty for the whole variable. The
   // last index may be one past an array's end.
   std::vector<size_t> path;
-  bool operator==(const ConstTarget& o) const { return decl == o.decl && owner == o.owner && args == o.args && path == o.path; }
+  // Address: one of the evaluation's own objects (a local, a parameter, a temporary) by its serial,
+  // decl then null. Only the interpreter reads one: an evaluation whose result holds it is no
+  // constant.
+  uint64_t storage = 0;
+  bool operator==(const ConstTarget& o) const
+  {
+    return decl == o.decl && owner == o.owner && args == o.args && path == o.path && storage == o.storage;
+  }
 };
 
 // A compile-time value. What the code generator may lower to constant data (globalForOnce; the

@@ -1,6 +1,5 @@
 // spec: a compile-time evaluation runs destructors where the program does: locals at the end of their scope in reverse order, also on an early return, break and continue; a by-value parameter's at the end of the call; a temporary's at the end of its full expression; a class's body, then its members, then its bases; an array's elements in reverse; the constant equals what the program computes (C++20, `212131345 602078903211` both)
 // factorio: allocation in the interpreter for build.kpp (design.md 12): String's and Vector's destructors free what they allocated
-// pending: the interpreter runs no destructors
 struct Log
 {
   long long digits = 0;

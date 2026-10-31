@@ -1097,6 +1097,29 @@ static_asserts left need: VariantAlternative over a variant
 another class's member (`GraphicsInterface::orthoProjectionMatrix`), and `typeID > 0` in
 RendererContainer's instances (2), which the code generator evaluates.
 
+*Objects of the run, 2026-10-31 (for build.kpp, section 12).* The interpreter runs the program's
+object lifetimes, so that build.kpp can compute with Vector and String. Copies and moves run the
+class's own copy and move constructors with C++'s value categories: `T b = a;` copies,
+`static_cast<T&&>(b)`, `move(b)` and `forward<T>(x)` of an rvalue move (the source's place given to
+the constructor, so a move empties it), a by-value parameter is copied or moved from its argument,
+`return local;` moves (a constant evaluation elides no named object, [class.copy.elision]/1; the
+program does not either), a prvalue initializes its object directly, and an implicit copy or move
+runs the members' and elements' own (spec language/consteval_runs_copy_and_move_constructors).
+Destructors run where the program runs them: a scope's locals at its end, the last first, also on
+return, break and continue; a by-value parameter's at the end of its call; a temporary's at the end
+of its full expression (one a reference parameter binds, the object a member function runs on, a
+value discarded; a `const T&` local extends it to its scope); members after the body, then bases;
+an array's elements the last first (spec language/consteval_runs_destructors). The run takes the
+address of its own locals and parameters (`&x`, an array decaying to its first element) and works
+through it as through any pointer: `*p`, `p->m`, `p[i]`, member calls, arithmetic and order within
+an array, comparison; an address into a local whose lifetime ended is an error naming it, never
+the value it had nor what took its place (specs language/consteval_pointer_to_local,
+language/consteval_dangling_pointer_is_error). The run destroys only what it knows it made: a
+binding that copies an object it could not refer to (a reference given a value the run holds no
+place of, `this`) is never destroyed and gives no address, and an object an operator takes by
+value is not destroyed yet. An evaluation whose result points at one of its own objects is no
+constant.
+
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`
 optional; signed overflow at compile time is an error, as in C++ (spec
