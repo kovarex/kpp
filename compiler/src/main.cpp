@@ -352,10 +352,30 @@ namespace
     return s + "}\n";
   }
 
+  // KPP_CLANG, else the clang of the newest Visual Studio with its Clang component, any edition
+  // (vswhere, which the Visual Studio installer puts in a fixed place), else Community 2022's.
   std::string clangPath()
   {
-    const char* clangEnv = getenv("KPP_CLANG");
-    return clangEnv ? clangEnv : "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe";
+    if (const char* clangEnv = getenv("KPP_CLANG"))
+      return clangEnv;
+    static const std::string found = []
+    {
+      std::string fallback = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe";
+      FILE* pipe = _popen("\"\"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * "
+                          "-requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath 2>nul\"", "r");
+      if (!pipe)
+        return fallback;
+      char line[1024] = {};
+      bool read = fgets(line, sizeof(line), pipe) != nullptr;
+      _pclose(pipe);
+      std::string installation = read ? line : "";
+      while (!installation.empty() && (installation.back() == '\n' || installation.back() == '\r'))
+        installation.pop_back();
+      std::error_code ec;
+      std::filesystem::path clang = std::filesystem::path(installation) / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "clang.exe";
+      return !installation.empty() && std::filesystem::exists(clang, ec) ? clang.string() : fallback;
+    }();
+    return found;
   }
 
   std::string readWholeFile(const std::filesystem::path& path)
@@ -2637,6 +2657,11 @@ int main(int argc, char** argv)
     catch (...) { fprintf(stderr, "fatal: unknown exception\n"); }
     abort();
   });
+  // argv[0] as the executable's full path, also when found on PATH: a compile server, which runs
+  // from a copy of kppc, finds the standard library next to the client's (source.hpp).
+  static std::string self = compilerPath().string();
+  if (argc > 0 && !(argc == 3 && std::string(argv[1]) == "--serve"))
+    argv[0] = self.data();
   // The compile server (server.hpp): `--server` anywhere makes this a client, `--stop-server`
   // stops the server of the same arguments, `--serve KEY` is the server a client started.
   if (argc == 3 && std::string(argv[1]) == "--serve")
@@ -2771,8 +2796,7 @@ int compile(int argc, char** argv)
   quietOutput = options.quiet;
   if (!options.convertDir.empty())
   {
-    std::error_code ec;
-    options.conversionLibrary = options.stdDir.empty() ? std::filesystem::absolute(argv[0], ec).parent_path() / ".." / ".." / "stdlib"
+    options.conversionLibrary = options.stdDir.empty() ? defaultStdlib(argv[0])
                                                        : std::filesystem::path(options.stdDir);
   }
   // The standard library joins the program for code generation, and whenever --std names it.
@@ -2780,7 +2804,7 @@ int compile(int argc, char** argv)
   {
     std::error_code ec;
     std::filesystem::path stdPath = options.stdDir.empty()
-      ? std::filesystem::absolute(argv[0], ec).parent_path() / ".." / ".." / "stdlib"
+      ? defaultStdlib(argv[0])
       : std::filesystem::path(options.stdDir);
     if (std::filesystem::is_directory(stdPath, ec))
     {

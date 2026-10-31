@@ -7,7 +7,6 @@
 #include <set>
 #include <string>
 #include <vector>
-#include <windows.h>
 
 namespace
 {
@@ -97,13 +96,6 @@ namespace
       if (c == '/')
         c = '\\';
     return path;
-  }
-
-  fs::path kppcPath()
-  {
-    wchar_t buffer[MAX_PATH];
-    DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return fs::path(std::wstring(buffer, length));
   }
 
   fs::path exeFor(const Generation& g, const Configuration& c)
@@ -478,10 +470,10 @@ int generateProjectFiles(int argc, char** argv)
                     "  kppc --generate-visual-studio-files [build options] --exe OUT.exe SOURCES...\n");
     return 2;
   }
-  fs::path kppc = kppcPath();
+  fs::path kppc = compilerPath();
   fs::path stdlib;
   if (!g.noStd)
-    stdlib = g.stdDir.empty() ? (kppc.parent_path() / ".." / ".." / "stdlib").lexically_normal() : fs::absolute(g.stdDir).lexically_normal();
+    stdlib = g.stdDir.empty() ? defaultStdlib(kppc) : fs::absolute(g.stdDir).lexically_normal();
   if (!stdlib.empty() && !fs::is_directory(stdlib))
     stdlib.clear();
   std::vector<Source> files = sources(g, stdlib);

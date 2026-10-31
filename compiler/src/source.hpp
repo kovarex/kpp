@@ -20,3 +20,10 @@ bool readFile(const std::filesystem::path& path, std::string& out);
 // Studio's Error List reads (docs/build.md, "Visual Studio"). Every diagnostic's place is made here.
 extern bool msvcDiagnostics;
 std::string sourceLocation(const std::string& path, size_t line);
+
+// The running compiler's executable, and the standard library a compiler at `compiler` uses
+// unless --std names one: stdlib\ next to it in an installation (docs/build.md, "Installing"),
+// ..\..\stdlib from compiler\build\ in this repository. A compile server runs from a copy of kppc
+// elsewhere, so it is given its client's path (main makes argv[0] that).
+std::filesystem::path compilerPath();
+std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);

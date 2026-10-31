@@ -1,6 +1,7 @@
 #include "source.hpp"
 #include <algorithm>
 #include <cstdio>
+#include <windows.h>
 
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& root,
                                                 const std::vector<std::string>& extensions)
@@ -45,4 +46,20 @@ bool msvcDiagnostics = false;
 std::string sourceLocation(const std::string& path, size_t line)
 {
   return msvcDiagnostics ? path + "(" + std::to_string(line) + ")" : path + ":" + std::to_string(line);
+}
+
+std::filesystem::path compilerPath()
+{
+  wchar_t buffer[MAX_PATH];
+  DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+  return std::filesystem::path(std::wstring(buffer, length));
+}
+
+std::filesystem::path defaultStdlib(const std::filesystem::path& compiler)
+{
+  std::filesystem::path directory = compiler.parent_path();
+  std::error_code ec;
+  if (std::filesystem::is_directory(directory / "stdlib", ec))
+    return directory / "stdlib";
+  return (directory / ".." / ".." / "stdlib").lexically_normal();
 }
