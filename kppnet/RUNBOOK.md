@@ -29,19 +29,20 @@ item 4, and record the answers in the same place.
 
 ## 3. Bare repositories on kpp.net (kovarex, over SSH)
 ```sh
-mkdir -p /home/private/git/libraries
+mkdir -p /home/private/git
 cd /home/private/git
 git init --bare --initial-branch=master kpp.git
-git init --bare --initial-branch=master factorio-in-kpp.git
-git init --bare --initial-branch=master registry-index.git
 ```
-From PC-PRACOVNA, fill them from the current GitHub repositories (all branches and tags):
+`registry-index.git` comes when the first library is published, and `libraries/<name>.git` only
+when a library leaves `kpp.git` (docs/library-registry.md, "Git"). factorio-in-kpp is **not** put
+on kpp.net: it stays private on GitHub (kovarex, 2026-11-01).
+
+From PC-PRACOVNA, fill it from the current GitHub repository (all branches and tags):
 ```sh
 git -C C:/kpp push --mirror <user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git
-git -C C:/factorio-in-kpp push --mirror <user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/factorio-in-kpp.git
 ```
-`/home/private` is not served on the web, and factorio-in-kpp, which is converted game source,
-stays there. Run `git ls-remote` against both and check that master is the same commit as on GitHub.
+`/home/private` is not served on the web. Run `git ls-remote` against it and check that master is
+the same commit as on GitHub.
 
 ## 4. Mirroring to GitHub (kovarex)
 **Option A, if NFS allows outbound SSH from the site** (README.md, question 2):
@@ -66,7 +67,7 @@ ruleset; the merge button is left alone by convention.
 
 ## 5. Switch the pushes (kovarex and the coordinator)
 1. The coordinator pauses all pushes for the switch, which takes about ten minutes.
-2. Option A: in every clone (C:\kpp, C:\factorio-in-kpp, C:\kpp-sandbox\fik-convert), run
+2. Option A: in every clone of kpp (C:\kpp; factorio-in-kpp's clones stay as they are), run
    `git remote set-url --push origin <kpp.net URL>`. Worktrees share their clone's remote.
    Option B: the two commands in step 4 for each clone.
 3. If the threads push with their own key, which needs NFS's answer to question 1, add that key to

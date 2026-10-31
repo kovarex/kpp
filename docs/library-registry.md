@@ -349,8 +349,15 @@ and build.lock recording, per library, name, version, the tree hash (`sha256-tre
   there too. The kpp.net website and the library provider are written in Kpp: "I find it nicely
   poetic, and even practical", and "one of the first libraries we should host on the site, would
   be those needed to run actual web page by kpp."
+- **Scope** (2026-11-01): "kpp.net and its repositories will first mainly provide the compiler
+  (sources and releases) as well as the libraries."
+- **Factorio** (2026-11-01): "I would like to make the factorio sources to be available one day,
+  as an example of program in kpp, but it doesn't have to be in the start." So factorio-in-kpp
+  stays private and is not on kpp.net. Publishing it later, as an example program, is Wube's
+  decision when the time comes. Until then it has no license, and nothing in kpp.net's plan
+  depends on it.
 
-The plan that follows from both:
+The plan that follows from these:
 - Canonical bare git repositories live on kpp.net, and pushes go there.
 - GitHub is the mirror where pull requests and issues happen. Maintainers merge locally and push
   to kpp.net, which mirrors to GitHub.
@@ -391,10 +398,31 @@ That is about $5 to $9 a month. Bandwidth is free for now: 10 GiB a day is about
 downloads of a 50 KB library.
 
 #### Git: canonical on kpp.net, pull requests on GitHub
-- **The repositories:** bare repositories in the site's private area, e.g.
-  `/home/private/git/kpp.git`, `factorio-in-kpp.git`, `libraries/<name>.git` and
-  `registry-index.git`. Clone URL: `<user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git`.
-  Every push goes there first.
+- **The repositories, in this order** (the scope above: the compiler first, then the libraries):
+  1. `kpp.git`: the compiler, the standard library, projectlib, the tools and the docs. Its
+     releases (CI's packages, `publish.ps1`) go to `registry/kpp/releases/` with `latest.json`
+     (see "CI").
+  2. The official libraries. **Recommended: they stay in `kpp.git` under `libraries/`** for now,
+     and a registry release is cut from that subdirectory (the tree hash covers only the
+     library's directory; tags such as `json-v0.1.0`). The reasons:
+     - the language and the standard library still change weekly;
+     - `run_tests.cmd` builds and tests every library with every compiler change, so a change
+       that breaks a library is caught in the same commit;
+     - a fix that touches the compiler and a library lands as one commit.
+
+     A library moves to its own repository, `libraries/<name>.git`, once its API settles or it
+     gets maintainers of its own. The registry does not care where a release was cut, since it
+     records the tree hash and the commit. Third-party libraries are always their own
+     repositories, wherever their authors host them.
+  3. `registry-index.git`: the index's history, once the first library is published.
+  4. The website's sources: `kppsite` and its pages, in `kpp.git` (under `kppnet/site/`) until
+     they need a repository of their own.
+
+  Not on kpp.net: factorio-in-kpp (above).
+- **Where they live:** bare repositories in the site's private area
+  (`/home/private/git/kpp.git` ...). Clone URL:
+  `<user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git`. Every push goes there
+  first.
 - **Mirroring to GitHub**, two ways depending on what NFS allows:
   1. **Preferred:** a `post-receive` hook on kpp.net pushes to GitHub with a deploy key, if NFS
      allows outbound SSH or HTTPS from sites (unconfirmed). Clients then push to kpp.net only, and
@@ -646,7 +674,9 @@ also be protected from someone denying me from continuing providing the service.
 - **Third-party code keeps its license and notices:** the JSONTestSuite data in the json
   library's tests (MIT, with its license file next to it), and converted C libraries such as
   zlib, SDL, curl, ogg, vorbis, opus, re2, imgui and stb.
-- **factorio-in-kpp** is Factorio's source, Wube's, and gets no open license. In this repository,
+- **factorio-in-kpp** is Factorio's source, Wube's, and gets no open license. It stays private
+  and off kpp.net. kovarex would like it available one day as an example program in Kpp, which is
+  Wube's decision when the time comes ("Hosting on kpp.net"). In this repository,
   `programs/factorio/` (the overrides derived from the game's source, and the interfaces to its
   libraries) is listed in LICENSE as not covered. Which of its files are Kpp's own work (scripts,
   tests), and so could be Apache, is kovarex's call (decision 13).
