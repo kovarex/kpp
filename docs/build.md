@@ -51,8 +51,8 @@ build (`--msvc-diagnostics`) therefore has a server of its own, apart from the c
 **Programs describe their builds in .cmd scripts.** `programs/factorio/link-settings.cmd` sets
 `KPPC`, `CINC` (8 `--cinclude`) and `LIBS` (19 libraries of the game's C++ build, 21 Windows
 libraries, the shims and the resource file). `link.cmd` and `run.cmd` both call it and then each
-write their own kppc line: 6 source roots and 4 (link) or 9 (run) more options. `tools/vs/factorio/build.cmd`
-is a third copy of run.cmd's line. Three copies of one build is what a project file removes.
+write their own kppc line: 6 source roots and 4 (link) or 9 (run) more options.
+`tools/vs/factorio/generate.cmd` is a third copy of run.cmd's line. Three copies of one build is what a project file removes.
 
 ## FASTBuild
 
@@ -274,17 +274,46 @@ configurations, and the two axes never share names.
    directory.
 4. **`use` resolution**: `libraries/` and local paths first (no registry needed), then the cache
    and the registry with library-registry.md's phase 1.
-5. **Visual Studio.** The `.vcxproj` runs `kpp <target> --$(Configuration) --server
-   --msvc-diagnostics`, and `tools/vs/factorio/build.cmd` disappears into factorio's build.kpp.
+5. **Project files for an IDE** (below) are generated from build.kpp's targets, and
+   `tools/vs/factorio/generate.cmd` disappears into factorio's build.kpp.
 
-## Visual Studio
+## Project files for an IDE
 
-Files are in `tools/vs/` ([README](../tools/vs/README.md)): `Kpp.props`, which a program's 25-line
-`.vcxproj` imports; `hello/` and `factorio/` projects; a TextMate grammar for colouring
-(`install.cmd`); and `measure.ps1`, which drives a fresh Visual Studio through DTE to time
-edit→build and check the Error List.
+**kppc generates them** (decided by kovarex 2026-10-31: no hand-written project files):
 
-**Chosen: a Makefile `.vcxproj`.** It is Visual Studio's own "external build" project.
+```
+kppc --generate-visual-studio-files --generate-vs-code-files <build options> --exe OUT.exe SOURCES...
+```
+
+- **Visual Studio:** `build\visual-studio\<name>.sln`, `.vcxproj` and `.vcxproj.filters`. Every
+  source file is listed, in folders by source root and directory, the standard library as
+  *Standard Library*.
+- **VS Code:** `.vscode\tasks.json`, `launch.json` and `settings.json`. A `.vscode` file kppc
+  did not write is never overwritten.
+
+Both have debug (`--debug-info`, incremental link) and release (`--release`), each with its
+executable in `build\<configuration>\`. They build through the compile server with
+`--msvc-diagnostics`. Sources are passed as absolute paths, so errors carry absolute paths: the
+IDE opens a relative path against the project file's directory, which is not the build's.
+Options that build.kpp's targets and steps will give later:
+- `--debug-command`, `--debug-arguments`, `--debug-directory`: what the debugger starts;
+- `--before-build` and `--after-build`: commands around the build, with `{exe}` and
+  `{configuration}` in them.
+
+The code is `compiler/src/generate.cpp`; `tests/generate.ps1` (in run_tests.cmd) does the
+following:
+1. Generates both for tests/run/hello.kpp.
+2. Builds debug and release with MSBuild and runs each program.
+3. Checks that an error reaches MSBuild as `<absolute path>(line): error :`.
+
+Usage: [tools/vs/README.md](../tools/vs/README.md). programs/factorio's are written by
+`tools\vs\factorio\generate.cmd`. Measured on its generated solution, MSBuild from the command
+line, warm server, the converted tree of 783d327 (whose 123 errors against today's stdlib are the
+tree's age, and `--keep-going` links anyway): 10 s, including native\build.cmd's check and the
+copy into the game's directory. VS Code is not installed on PC-PRACOVNA: its files are checked
+as JSON only, not run.
+
+**Why a Makefile `.vcxproj`.** It is Visual Studio's own "external build" project.
 - Ctrl+Shift+B runs kppc through its server.
 - F5 builds, then starts the program under the debugger.
 - The Debug/Release dropdown maps to the configurations.
@@ -292,8 +321,7 @@ edit→build and check the Error List.
 
 The alternative, Open Folder with `.vs/tasks.vs.json` and `launch.vs.json`, keeps its files in the
 hidden, per-user `.vs/` directory. It has no configuration dropdown, and nothing documents that
-it fills the Error List from a task's output. It was not built or measured, because the Makefile
-project needs no more files (one 25-line `.vcxproj` per program).
+it fills the Error List from a task's output. It was not built or measured.
 
 **The Error List.** MSBuild reads errors from a tool's output only in the MSVC form,
 `file(line[,col]): error|warning [code]: text`. Verified with MSBuild 17 on a Makefile project:
@@ -306,13 +334,14 @@ a checker, a codegen and a static_assert diagnostic. kppc's messages have no col
 List shows lines only. (The first version, 456eda12, rewrote kppc's output through a pipe. That
 was replaced because it could misread a program's own output under `--run`.)
 
-**Measurements** (2026-10-30, the machine shared with seven other threads, so noisy):
+**Measurements** (hand-written projects, before generation;
+2026-10-30, the machine shared with seven other threads, so noisy):
 
 | | command | times |
 |---|---|---|
 | hello, edit→build | `kppc --quiet --exe hello.exe hello.kpp` | 130–420 ms (10 runs) |
 | hello, edit→build | the same with `--server` | 170–400 ms |
-| hello, edit→build | `MSBuild.exe hello.vcxproj` (standalone, so its process start included) | 1.2–2.5 s |
+| hello, edit→build | `MSBuild.exe hello.vcxproj` (hand-written then; standalone, so its process start included) | 1.2–2.5 s |
 | factorio, cold (server start) | `MSBuild.exe tools\vs\factorio\factorio.vcxproj` | 38.4 s |
 | factorio, warm, a comment edit | `tools\vs\factorio\build.cmd` | 6.5, 7.1, 7.9, 9.0 s |
 | factorio, warm, a comment edit | `MSBuild.exe factorio.vcxproj` | 6.4, 6.5, 9.8, 21.9 s |
@@ -324,7 +353,7 @@ build runs in-process, with no MSBuild.exe start. That measurement is still to d
 dialog (a sign-in prompt) that only kovarex can answer. After he has signed in once:
 
 ```
-powershell -File tools\vs\measure.ps1 -Project tools\vs\hello\hello.vcxproj -EditFile tools\vs\hello\hello.kpp
+powershell -File tools\vs\measure.ps1 -Project <a generated .vcxproj> -EditFile <one of its sources>
 ```
 
 **Debugging.** F5 starts the executable under Visual Studio's debugger. The Debug configuration
@@ -334,8 +363,7 @@ sign-in reason as the timings. programs/factorio builds Debug with it too:
 all 64 modules, 29.1 s through MSBuild on a warm server, a 268 MB PDB naming the converted
 `.kpp` files, and the game runs. Before B's fix edb182a4 (an exception leaving a catch handler
 unwound to the caller, a miscompile in every build), clang rejected most modules with debug
-info. That failure was hidden by `--quiet`, so factorio's `build.cmd` prints an error line
-whenever kppc exits non-zero.
+info. That failure was hidden by `--quiet`.
 
 **Colouring.** `tools/vs/kpp/Syntaxes/kpp.tmLanguage.json`, a TextMate grammar: Visual Studio
 reads these from `%USERPROFILE%\.vs\Extensions\` when it starts, with no extension to build or
@@ -344,7 +372,7 @@ install. `install.cmd` links it there.
 ## Questions for kovarex
 
 Answered 2026-10-31: the build description is `build.kpp` in Kpp, with `src/` and `libraries/`
-(above).
+(above); project files for an IDE are generated by kppc.
 
 1. **Release builds with debug info** (a PDB for profiling and crash stacks), or without?
 2. **The command's name**: `kpp`, replacing `kppc` (kovarex wrote `kpp --debug`), or `kpp` as
@@ -360,5 +388,3 @@ Answered 2026-10-31: the build description is `build.kpp` in Kpp, with `src/` an
    code. Not mismatches: crc32fast (code only), curl (its osx configuration), and Lua 5.2.1 (6
    files; the game's Lua is converted from source, and lua.lib is used only by the lua_compat
    check, which therefore compares against the old Lua).
-4. **One `.vcxproj` per program, written by hand** (25 lines, recommended), or generated by
-   `kppc --vcxproj` from build.kpp?

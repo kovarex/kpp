@@ -22,6 +22,7 @@ add_executable(kppc
   src/source.cpp
   src/server.cpp
   src/run.cpp
+  src/generate.cpp
   src/tests.cpp
   src/ast_walk.cpp
 )

@@ -5,6 +5,7 @@
 #include "parser.hpp"
 #include "resolver.hpp"
 #include "ast_walk.hpp"
+#include "generate.hpp"
 #include "run.hpp"
 #include "tests.hpp"
 #include "server.hpp"
@@ -128,6 +129,9 @@ namespace
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
             "  --stop-server stop the compile server of the other arguments\n"
+            "  --generate-visual-studio-files, --generate-vs-code-files  write project files for the build the\n"
+            "                other arguments describe, debug and release, listing every source file, instead of\n"
+            "                building (build\\visual-studio\\, .vscode\\; docs/build.md, \"Project files for an IDE\")\n"
             "  --run F ARGS  build F (a file or directory) with the options before --run and run it with ARGS;\n"
             "                the exit code is the program's (docs/design.md, \"Running and testing Kpp code\");\n"
             "                it builds through the compile server unless --no-server is among the options\n"
@@ -2637,6 +2641,10 @@ int main(int argc, char** argv)
   // stops the server of the same arguments, `--serve KEY` is the server a client started.
   if (argc == 3 && std::string(argv[1]) == "--serve")
     return runServer(argv[2], compile);
+  // Project files for an IDE (generate.hpp) take the build's own arguments.
+  for (int i = 1; i < argc; ++i)
+    if (isGenerateOption(argv[i]))
+      return generateProjectFiles(argc, argv);
   // `--run` and `--test` (run.hpp): the arguments after the sources are the program's.
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--run" || std::string(argv[i]) == "--test")

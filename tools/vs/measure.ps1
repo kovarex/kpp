@@ -4,7 +4,7 @@
 # timed from the call to the build's end. Then a line that does not compile, a build, the Error
 # List's items, and the first item navigated to (the editor's file and line). EditFile gets its
 # text back and Visual Studio quits.
-#   powershell -File tools\vs\measure.ps1 -Project tools\vs\hello\hello.vcxproj -EditFile tools\vs\hello\hello.kpp
+#   powershell -File tools\vs\measure.ps1 -Project <a .vcxproj kppc generated> -EditFile <one of its sources>
 param([Parameter(Mandatory)][string]$Project, [Parameter(Mandatory)][string]$EditFile, [int]$Rounds = 5,
       [string]$Configuration = "Debug")
 $ErrorActionPreference = "Stop"

@@ -1,5 +1,0 @@
-int main()
-{
-  println("hello from Kpp");
-  return 0;
-}

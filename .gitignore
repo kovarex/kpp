@@ -8,3 +8,4 @@ out/
 *.o
 *.rsp
 *.hash
+.vscode/
