@@ -1,0 +1,20 @@
+// spec: a conditional whose operands are arithmetic or unscoped enumerations of two types has the type the usual arithmetic conversions give ([expr.cond]/7.2), not the first operand's: `c ? U200 : 0.1f` is a float (0.1), `c ? uint8 : char` an int, `c ? float : double` a double; one type cv-qualified differently (a `const uint16` lvalue and a `uint16` prvalue) stays that type; clang 19 prints `4 0.1 4 -7 8 0.5 2 9`
+// factorio: found by the templates thread comparing values against clang 19 on generated expressions: the first operand's type took the other's value (`c ? U200 : 0.1f` gave 0), and a const operand beside a plain one of its type made an int (TagManager's `player ? player->index : PlayerIndex(-1)`)
+enum U8 : unsigned char { U0, U200 = 200 };
+struct Player { unsigned short index = 9; };
+int main()
+{
+  bool no = false;
+  unsigned char small = 200;
+  char negative = -7;
+  float half = 0.5f;
+  double one = 1.0;
+  const Player player;
+  const Player* p = &player;
+  auto a = no ? U200 : 0.1f;
+  auto b = no ? small : negative;
+  auto c = no ? one : half;
+  auto d = p ? p->index : (unsigned short)(-1);
+  println("{} {} {} {} {} {} {} {}", int(sizeof(a)), double(a), int(sizeof(b)), int(b), int(sizeof(c)), c, int(sizeof(d)), int(d));
+  return 0;
+}

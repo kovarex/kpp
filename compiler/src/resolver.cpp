@@ -17921,7 +17921,13 @@ struct GlobalScope::Impl
       {
         case TyKind::Bool: case TyKind::Char: return types.intType(32);
         case TyKind::Int: return t->bits < 32 ? types.intType(32) : t;
-        case TyKind::Enum: return types.intType(32);
+        case TyKind::Enum:
+        {
+          // One with a fixed underlying type promotes as that type does ([conv.prom]/4: an `enum :
+          // long long` stays 64 bits, an `enum : uint8_t` is an int); another is an int (MSVC's).
+          const Ty* u = impl.declaredUnderlying(t);
+          return u && u->isKnown() && u->kind != TyKind::Enum ? promote(u) : types.intType(32);
+        }
         default: return t;
       }
     }
@@ -19543,7 +19549,10 @@ struct GlobalScope::Impl
             return record(e, b->kind == TyKind::Array ? types.decay(b) : other);
           if (b->kind == TyKind::Nullptr)
             return record(e, a->kind == TyKind::Array ? types.decay(a) : then);
-          if (a->isArithmetic() && b->isArithmetic() && a != b)
+          // Two arithmetic or unscoped enumeration operands of two types: the usual arithmetic
+          // conversions ([expr.cond]/7.2): `c ? U200 : 0.1f` is a float, `c ? small : -7` an int.
+          auto arithmeticOrEnum = [](const Ty* t) { return t->isArithmetic() || (t->kind == TyKind::Enum && !static_cast<EnumDecl*>(t->decl)->isClass); };
+          if (arithmeticOrEnum(a) && arithmeticOrEnum(b) && types.unqualified(a) != types.unqualified(b))
             return record(e, arithmetic(a, b));
           // `on ? "true" : "false"`, `c ? buffer : fallback`, `c ? derived : base`: arrays decay to
           // pointers, and two pointers meet at their composite pointer type.

@@ -9449,7 +9449,7 @@ namespace
     {
       t = types.unqualified(types.stripRef(t));
       if (t->kind == TyKind::Enum)
-        return enumUnderlying(t->decl);
+        t = enumUnderlying(t->decl); // (then promoted as it: an `enum : uint8_t` is an int, `U200 << 1` 400)
       if (t->kind == TyKind::Bool || t->kind == TyKind::Char || (t->kind == TyKind::Int && t->bits < 32))
         return types.intType(32);
       return t;
