@@ -136,6 +136,9 @@ if errorlevel 1 set /a FAIL+=1
 rem A project's build.kpp (tests\project.ps1, docs/build.md): kpp new, two executables, settings, errors.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\project.ps1 -Kppc %KPPC%
 if errorlevel 1 set /a FAIL+=1
+rem The language server (tests\lsp.ps1, docs/ide.md): a scripted editor session, every message it sends.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\lsp.ps1 -Kppc %KPPC%
+if errorlevel 1 set /a FAIL+=1
 rem What editors' LSP clients rely on (docs/editors.md): for now against the stand-in server, until
 rem kppc --lsp answers; skipped without Node.js.
 where node >nul 2>nul && (

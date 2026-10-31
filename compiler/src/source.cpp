@@ -1,5 +1,8 @@
 #include "source.hpp"
 #include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <unordered_map>
 #include <cstdio>
 #include <windows.h>
 
@@ -25,8 +28,43 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& roo
   return result;
 }
 
+namespace
+{
+  std::mutex overlayMutex;
+  std::unordered_map<std::string, std::string> overlays;
+  std::atomic<bool> anyOverlay{false};
+}
+
+std::string overlayKey(const std::filesystem::path& path)
+{
+  std::error_code ec;
+  std::wstring w = std::filesystem::absolute(path, ec).lexically_normal().wstring();
+  CharLowerBuffW(w.data(), DWORD(w.size()));
+  return std::filesystem::path(w).string();
+}
+
+void setFileOverlay(const std::filesystem::path& path, const std::string* text)
+{
+  std::lock_guard lock(overlayMutex);
+  if (text)
+    overlays[overlayKey(path)] = *text;
+  else
+    overlays.erase(overlayKey(path));
+  anyOverlay = !overlays.empty();
+}
+
 bool readFile(const std::filesystem::path& path, std::string& out)
 {
+  if (anyOverlay)
+  {
+    std::string key = overlayKey(path);
+    std::lock_guard lock(overlayMutex);
+    if (auto found = overlays.find(key); found != overlays.end())
+    {
+      out = found->second;
+      return true;
+    }
+  }
   FILE* file = _wfopen(path.c_str(), L"rb");
   if (!file)
     return false;
@@ -41,10 +79,13 @@ bool readFile(const std::filesystem::path& path, std::string& out)
   return true;
 }
 
-bool msvcDiagnostics = false;
+bool msvcDiagnostics = false, diagnosticColumns = false;
 
-std::string sourceLocation(const std::string& path, size_t line)
+std::string sourceLocation(const std::string& path, size_t line, size_t column)
 {
+  if (diagnosticColumns && column)
+    return msvcDiagnostics ? path + "(" + std::to_string(line) + "," + std::to_string(column) + ")"
+                           : path + ":" + std::to_string(line) + ":" + std::to_string(column);
   return msvcDiagnostics ? path + "(" + std::to_string(line) + ")" : path + ":" + std::to_string(line);
 }
 

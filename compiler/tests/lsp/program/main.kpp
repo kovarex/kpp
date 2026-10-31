@@ -1,0 +1,10 @@
+int main()
+{
+  Vector<Shape> shapes;
+  Shape square;
+  square.width = 3;
+  square.height = 3;
+  shapes.push_back(square);
+  println("{}", totalArea(shapes));
+  return 0;
+}

@@ -21,6 +21,7 @@ add_executable(kppc
   src/instance.cpp
   src/source.cpp
   src/server.cpp
+  src/lsp.cpp
   src/run.cpp
   src/generate.cpp
   src/project.cpp

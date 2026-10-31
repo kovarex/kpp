@@ -1,0 +1,15 @@
+// The language server's test program (tests/lsp.ps1): two files, names used across them.
+struct Shape
+{
+  int width = 0;
+  int height = 0;
+  int area() const { return width * height; }
+};
+
+int totalArea(const Vector<Shape>& shapes)
+{
+  int sum = 0;
+  for (const Shape& s : shapes)
+    sum += s.area();
+  return sum;
+}

@@ -10,6 +10,7 @@
 #include "run.hpp"
 #include "tests.hpp"
 #include "server.hpp"
+#include "lsp.hpp"
 #include "source.hpp"
 #include <algorithm>
 #include <atomic>
@@ -84,7 +85,10 @@ namespace
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
+    bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)
   };
+  // Whether the build generates code: an executable, the IR, or --check's errors from codegen.
+  bool generatesCode(const Options& o) { return !o.emitLLVM.empty() || !o.exe.empty() || o.check; }
 
   void usage()
   {
@@ -105,8 +109,12 @@ namespace
             "  --quiet       no statistics\n"
             "  --msvc-diagnostics  diagnostics at path(line) instead of path:line, the form Visual Studio's\n"
             "                Error List reads (docs/build.md)\n"
+            "  --diagnostic-columns  the column too where it is known: path:line:column, path(line,column)\n"
+            "                (`kppc --lsp`, docs/ide.md)\n"
             "  --emit-llvm F write LLVM IR for the program to F\n"
             "  --exe F       compile the program to the executable F (needs clang)\n"
+            "  --check       every error a build reports, codegen's included, writing nothing\n"
+            "  --lsp [OPTIONS SOURCES]  a language server for an editor, on stdin and stdout (docs/ide.md)\n"
             "  --std DIR     standard library sources (default: stdlib next to the compiler)\n"
             "  --no-std      compile without the standard library\n"
             "  --cinclude D  directory searched by imported C headers (repeatable)\n"
@@ -995,6 +1003,8 @@ namespace
       codegenExit = 1;
     reportCheckerErrors(global, true, cg.instanceAssertsChecked);
     reportAccessWarnings(build);
+    if (options.check)
+      return; // the errors are all it is for
     auto writeFile = [&](const std::string& path, const std::string& text)
     {
       FILE* out = fopen(path.c_str(), "wb");
@@ -1200,6 +1210,15 @@ namespace
     return line;
   }
 
+  // A byte offset's column, from 1 (--diagnostic-columns).
+  uint32_t columnOf(const std::string& text, uint32_t offset)
+  {
+    uint32_t start = std::min<uint32_t>(offset, uint32_t(text.size()));
+    while (start > 0 && text[start - 1] != '\n')
+      --start;
+    return 1 + offset - start;
+  }
+
   void runParse(Build& build)
   {
     using Clock = std::chrono::steady_clock;
@@ -1281,7 +1300,7 @@ namespace
         {
           ++build.parseErrors;
           const Token& t = lexed[i].tokens[std::min<size_t>(d.token, lexed[i].tokens.size() - 1)];
-          fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset)).c_str(), d.message,
+          fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset), columnOf(files[i].text, t.offset)).c_str(), d.message,
                   int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
         }
     // --convert reads C++, whose macro uses the parser does not expand (the converter expands them
@@ -1300,10 +1319,10 @@ namespace
           break;
         const Token& t = lexed[i].tokens[std::min<size_t>(d.token, lexed[i].tokens.size() - 1)];
         if (quietOutput) // --quiet hides the statistics, not the program's errors
-          fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset)).c_str(), d.message,
+          fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset), columnOf(files[i].text, t.offset)).c_str(), d.message,
                   int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
         else
-          report("  %s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset)).c_str(), d.message,
+          report("  %s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset), columnOf(files[i].text, t.offset)).c_str(), d.message,
                  int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
       }
   }
@@ -1481,19 +1500,19 @@ namespace
       report("  most common unresolved names:\n");
     std::vector<std::pair<uint32_t, uint32_t>> top(total.unresolvedSymbols.begin(), total.unresolvedSymbols.end());
     std::sort(top.begin(), top.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
-    if (build.parseErrors && (!options.emitLLVM.empty() || !options.exe.empty()))
+    if (build.parseErrors && generatesCode(options))
     {
       fprintf(stderr, "error: %zu parse error(s): no code generated\n", build.parseErrors);
       reportCheckerErrors(global);
     }
-    else if (!build.clashes.empty() && (!options.emitLLVM.empty() || !options.exe.empty()))
+    else if (!build.clashes.empty() && generatesCode(options))
     {
       // (a name two entities claim is looked up as one of them: what codegen made of it would only
       // add errors that follow from the clash)
       fprintf(stderr, "error: %zu top-level name(s) declared twice: no code generated\n", build.clashes.size());
       reportCheckerErrors(global);
     }
-    else if (!options.emitLLVM.empty() || !options.exe.empty())
+    else if (generatesCode(options))
       runCodegen(build);
     else if (options.convertDir.empty())
     {
@@ -2696,10 +2715,10 @@ namespace
     {
       std::error_code ec;
       std::string base = kept.options.exe + "." + std::to_string(k);
-      if (kept.options.exe.empty() || !std::filesystem::exists(base + ".o", ec) || !std::filesystem::exists(base + ".hash", ec))
+      if (!kept.options.check && (kept.options.exe.empty() || !std::filesystem::exists(base + ".o", ec) || !std::filesystem::exists(base + ".hash", ec)))
         inFull("module " + std::to_string(k) + "'s object is missing");
     }
-    kept.rebuildCodegen = codegenCanFollow && kept.codegen && !kept.options.exe.empty();
+    kept.rebuildCodegen = codegenCanFollow && kept.codegen && (!kept.options.exe.empty() || kept.options.check);
     if (!kept.rebuildCodegen)
       logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? codegenInFullBecause + (codegenInFullOthers ? " (and " + std::to_string(codegenInFullOthers) + " more)" : std::string()) : "no executable"));
     noteIncrementalBuild();
@@ -2710,6 +2729,20 @@ namespace
 }
 
 int compile(int argc, char** argv);
+
+bool withKeptProgram(const std::function<void(const KeptProgram&)>& f)
+{
+  std::lock_guard lock(keptMutex);
+  if (!keptBuild || !keptBuild->global)
+    return false;
+  KeptProgram program;
+  for (const std::unique_ptr<ParsedFile>& p : keptBuild->parsed)
+    program.files.push_back(p.get());
+  program.symbols = keptBuild->symbols.get();
+  program.global = keptBuild->global.get();
+  f(program);
+  return true;
+}
 
 int main(int argc, char** argv)
 {
@@ -2734,6 +2767,10 @@ int main(int argc, char** argv)
   // stops the server of the same arguments, `--serve KEY` is the server a client started.
   if (argc == 3 && std::string(argv[1]) == "--serve")
     return runServer(argv[2], compile);
+  // The language server (lsp.hpp): `kppc --lsp`, started by an editor, JSON-RPC on stdin and stdout.
+  for (int i = 1; i < argc; ++i)
+    if (std::string(argv[i]) == "--lsp")
+      return runLanguageServer(argc, argv, compile);
   // A project's build.kpp (project.hpp): `kpp` with no sources in its directory, `kpp new`.
   if (int code = runProject(argc, argv, compile); code >= 0)
     return code;
@@ -2762,6 +2799,7 @@ int compile(int argc, char** argv)
   codegenExit = 0;
   quietOutput = false;
   msvcDiagnostics = false;
+  diagnosticColumns = false;
   Options options;
   for (int i = 1; i < argc; ++i)
   {
@@ -2802,6 +2840,10 @@ int compile(int argc, char** argv)
       options.quiet = true;
     else if (arg == "--msvc-diagnostics")
       msvcDiagnostics = true;
+    else if (arg == "--diagnostic-columns")
+      diagnosticColumns = true;
+    else if (arg == "--check")
+      options.check = true;
     else if (arg == "--emit-llvm" && i + 1 < argc)
       options.emitLLVM = argv[++i];
     else if (arg == "--exe" && i + 1 < argc)
@@ -2877,7 +2919,7 @@ int compile(int argc, char** argv)
                                                        : std::filesystem::path(options.stdDir);
   }
   // The standard library joins the program for code generation, and whenever --std names it.
-  if ((!options.exe.empty() || !options.emitLLVM.empty() || !options.stdDir.empty() || !options.runBuild.empty()) && !options.noStd)
+  if ((generatesCode(options) || !options.stdDir.empty() || !options.runBuild.empty()) && !options.noStd)
   {
     std::error_code ec;
     std::filesystem::path stdPath = options.stdDir.empty()

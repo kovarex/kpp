@@ -1,4 +1,10 @@
-# A Kpp IDE (proposal, 2026-10-30, not yet decided by kovarex)
+# A Kpp IDE (proposal, 2026-10-30; decision 1 taken 2026-10-31)
+
+**Decided (kovarex, 2026-10-31):** "Integrate with the Language Server Protocol
+(https://microsoft.github.io/language-server-protocol/) which will allow intellisense to work in
+most editors." That is decision 1 below (the query layer and the LSP adapter), built as `kppc --lsp`:
+see "The language server as built" at the end. Decisions 2 to 8 (an own editor, its language, the
+debugger, hot reload, ownership beyond the language server) stay open.
 
 kovarex asked whether Kpp should have its own IDE: compatible with the compiler features still to
 come, made for Kpp, without bloat. This is the design proposal; no code. It ends with the decisions
@@ -337,7 +343,8 @@ don't guess"), on the full converted game.
 ## Decisions for kovarex
 
 1. **Build the query layer and the LSP adapter now** (phases 0 and 1, 3 to 4 thread-weeks)?
-   Recommended: yes. It serves VS, VS Code and any later IDE, and the server is where the value is.
+   **Decided 2026-10-31: yes, LSP** (kovarex: "Integrate with the Language Server Protocol ... which
+   will allow intellisense to work in most editors"). Recommended: yes. It serves VS, VS Code and any later IDE, and the server is where the value is.
 2. **Build an own editor at all**, and when? Recommended: yes, starting phase 2 once phase 1 is in
    use, accepting that it pays off only with phases 3 and 4.
 3. **Written in Kpp** (dogfooding, compiler gaps become spec snippets) **or C++**? Recommended: Kpp.
@@ -353,3 +360,92 @@ don't guess"), on the full converted game.
    the new `query.cpp`, the new request kinds and `--lsp`; changes to the server's locking and pipe
    instances are made with thread A's review. Thread E's build description is the IDE's project
    file (no second format).
+
+## The language server as built (2026-10-31)
+
+Decision 1 (LSP) is `kppc --lsp`. An editor starts it and speaks the Language Server Protocol 3.17
+on its stdin and stdout; its log goes to stderr.
+
+**Launch.** `kppc --lsp` with no other arguments checks the project of the editor's workspace
+folder: build.kpp, found from the folder up, gives the sources and options of its first executable's
+debug configuration (`projectCheckArguments`, project.cpp); without a build.kpp the folder itself is
+the program. `kppc --lsp OPTIONS SOURCES` checks exactly those (the converted game is checked this
+way: it has no build.kpp). A check always adds `--quiet --diagnostic-columns --check` and the
+standard library; `--exe`, `--emit-llvm` and `--server` given are left out (logged).
+
+**How it holds the program.** In its own process, through the compile server's machinery
+(`buildInThisProcess`, server.cpp): each check is a build of the kind a compile server runs, kept
+for the next and incremental from it where the server's paths allow (step 3b body edits, step 4
+whole functions, codegen's kept session), its output captured instead of printed. This differs from
+the proposal above (the IDE talking to the build's own server over its pipe): the build's server is
+keyed by arguments that include `--exe` and serves one client at a time, so a check would wait
+behind a build's clang and link, and every query would need the server's new locking first. In
+process, nothing in the server changed but a client-less session, and queries read the kept program
+under the lock a build already takes (`withKeptProgram`, main.cpp). The cost is a second kept program
+when a command-line build server for the same sources also runs (the full game: about 2 GB).
+
+**Unsaved buffers.** An open document's text stands for its file (`setFileOverlay`, source.cpp:
+`readFile` gives it instead of the disk's); closing it brings back the file on disk.
+
+**Errors as you type.** After every change, once no other message is waiting, the program is checked
+with `--check` (new): every error a build reports, codegen's included, nothing written. Codegen is
+needed: the checker's type errors (`int n = "s";`, a member that does not exist) are reported by
+codegen, not by the front end. Diagnostics are published per file, only when they changed, and
+cleared when gone. `--diagnostic-columns` (new) adds the column where the error's maker knows the
+token: parse errors and the resolver's checker errors (`path:line:column`); their range is the
+token. Codegen's errors carry the line only (its range is the line's text): a gap.
+
+**Queries** read the kept program: every name's `resolved` declaration and every declaration's own
+name, found by token (`occurrencesIn`, one walk of the file, cached until the next check).
+
+| request | answer |
+|---|---|
+| `textDocument/hover` | the declaration as written (to its body or initializer), its kind and qualified name, an expression's type, the `//` comment above the declaration |
+| `textDocument/definition` | a class's definition, a member function's out-of-line definition, else the declaration |
+| `textDocument/declaration` | a definition's in-class declaration (one declaration for both: `canonical`) |
+| `textDocument/references` | every name in the program resolved to the declaration or its other declarations; an index of all files made on the first request after a check, on all threads |
+| `textDocument/documentSymbol` | the file's outline: namespaces, classes and their members, enums, functions, variables |
+| `workspace/symbol` | every declaration outside function bodies, exact names first, then prefixes, substrings and the query's letters in order; 200 at most |
+
+Gaps: names inside a template's body that depend on its parameters are resolved only in the
+instances' copies, which the occurrences do not walk yet, so references miss them; an operator has no
+name token, so it is not found by position.
+
+**Tested** by tests/lsp.ps1 (in run_tests): a scripted session (tests/lsp/session.jsonl) on
+tests/lsp/program, every message the server sends compared with tests/lsp/session.expected: the
+first check, hover on a function, a data member and a local, definition, references with and without
+the declaration, the outline, a workspace symbol, diagnostics of a misspelt member (codegen's),
+a misspelt name (the resolver's, with its column), a type error, a parse error (the token's range),
+each cleared when fixed, and closing a document. `--check-each-change` makes the check run after
+every change, so the transcript does not depend on timing.
+
+**Measured on the full game** (scratchpad lspmeasure.py: a client that times each request from its
+send to its answer; the converted tree of the resolver thread's worktree, 2026-10-31 19:19, frozen
+copy, 0 diagnostics; run.cmd's sources and C include directories; kppc of this commit; the machine
+85% busy with other threads). The first check is the whole program from scratch; a request waits
+for the check of the documents as they are, so "after a body edit" is the check plus the answer.
+
+| what | time |
+|---|---:|
+| first check (front end and codegen of the whole program, from scratch) | 11.4 to 11.8 s |
+| check after opening a file, no change (the previous build's output again) | 0.18 to 0.41 s |
+| hover, first in a file (its names found) | 6.9 ms |
+| hover, definition, again | 0.1 ms |
+| references, first after a check (the index of every file) | 0.72 s |
+| references, again (7 results) | 0.1 to 0.2 ms |
+| documentSymbol (15) | 0.2 ms |
+| workspace/symbol, three queries (157 to 200 results) | 13 to 16 ms |
+| diagnostics after a body edit (a statement added to `BuildEntityAchievement::gained` and taken out, three times each) | 0.92 to 2.07 s |
+| of it: reading every source again / parse / walk / lexed again for the report | 0.09 to 0.23 / 0.03 to 0.07 / 0.10 to 0.27 / 0.06 to 0.19 s |
+| diagnostics after typing an error (an undeclared name) | 8.0 s |
+| diagnostics after fixing it | 17.4 s |
+
+What makes the last two slow is where the compile server stops being incremental, not the
+language server: codegen keeps its session only when the program has no codegen error
+(codegen.cpp, `keepTexts`), so a check with an error is codegen in full; and a kept build with
+checker errors in the edited file is not taken incrementally ("the file has checker errors"), so the
+fix is a build from scratch. On the older conversion in factorio-in-kpp (d9080751), which has 109
+format errors under today's compiler, every check after an edit was codegen in full (8 to 10 s) for
+the same reason. Errors as you type need both paths to take a program with errors; reported to the
+codegen and resolver threads. Smaller items: every check reads all 4,126 sources again although the
+language server knows which document changed, and lexes them again for a report nobody reads.

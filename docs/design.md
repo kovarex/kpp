@@ -1573,7 +1573,9 @@ the standard library's modules once.
 
 - **An own IDE** (proposed 2026-10-30, [ide.md](ide.md)): a query layer in the compile server and an
   LSP adapter first, then an editor written in Kpp with a DbgEng debugger and hot reload. Its eight
-  decisions are listed at the end of ide.md.
+  decisions are listed at the end of ide.md. **Decided 2026-10-31 (kovarex): integrate with the
+  Language Server Protocol**, so that IntelliSense works in most editors: `kppc --lsp` (ide.md, "The
+  language server as built"). Whether to build an own editor on top stays open.
 
 - **Running and testing Kpp code** (the section above, 2026-10-30): Q1 an implicit `--run`, Q2
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the

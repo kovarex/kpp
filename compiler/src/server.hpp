@@ -30,6 +30,13 @@ void buildDone(int exitCode);
 // Whether this build runs in a compile server (for its client).
 bool servingBuild();
 
+// A build in this process as a compile server runs one, for the language server (`kppc --lsp`,
+// lsp.hpp): kept for the next, which is incremental from it where it can be, and what it printed
+// captured into out and err instead of reaching this process's streams (they point at NUL after
+// it); notes: what a server would log about it (why it was not incremental). One at a time.
+int buildInThisProcess(CompileFunction compile, std::vector<std::string> args, std::string& out, std::string& err,
+                       std::vector<std::string>* notes = nullptr);
+
 // Step 3a: a server's build whose inputs are as the previous build's. fingerprint hashes every
 // input (the sources, the configuration, the environment); outputs are the files the build
 // writes. When the previous build had the same fingerprint, its outputs are as it left them and the

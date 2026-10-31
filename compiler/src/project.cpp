@@ -792,3 +792,31 @@ int runProject(int argc, char** argv, CompileFunction compile)
   SetCurrentDirectoryW(root.c_str());
   return act(root, request, compile);
 }
+
+bool projectCheckArguments(const std::filesystem::path& directory, std::vector<std::string>& args, std::string& error)
+{
+  fs::path root = findProject(directory);
+  if (root.empty())
+    return false;
+  Request request;
+  std::vector<Description> descriptions;
+  if (!describe(root, request, descriptions))
+  {
+    error = (root / "build.kpp").string() + " did not describe the build";
+    return true;
+  }
+  if (descriptions[0].programs.empty())
+  {
+    error = (root / "build.kpp").string() + " describes no executable";
+    return true;
+  }
+  // What only code generation and the link read is left out (the executable, the link's options).
+  std::vector<std::string> all = buildArguments(root, descriptions[0], descriptions[0].programs[0], request);
+  args.clear();
+  for (size_t i = 0; i < all.size(); ++i)
+    if (all[i] == "--exe" || all[i] == "--lib")
+      ++i;
+    else if (all[i] != "--incremental-link" && all[i] != "--debug-info")
+      args.push_back(all[i]);
+  return true;
+}

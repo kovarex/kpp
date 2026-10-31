@@ -16,10 +16,18 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& roo
 
 bool readFile(const std::filesystem::path& path, std::string& out);
 
+// A text that stands for a file on disk, as an editor holds it unsaved (`kppc --lsp`, lsp.hpp):
+// readFile gives it instead of the file's contents. Null removes it. Paths compare as Windows
+// does (absolute, normalised, case-insensitive).
+void setFileOverlay(const std::filesystem::path& path, const std::string* text);
+std::string overlayKey(const std::filesystem::path& path);
+
 // Where a diagnostic is: `path:line`, or with --msvc-diagnostics `path(line)`, the form Visual
 // Studio's Error List reads (docs/build.md, "Visual Studio"). Every diagnostic's place is made here.
-extern bool msvcDiagnostics;
-std::string sourceLocation(const std::string& path, size_t line);
+// diagnosticColumns (--diagnostic-columns): the column too where the caller knows it,
+// `path:line:column` or `path(line,column)`; columns count bytes from 1.
+extern bool msvcDiagnostics, diagnosticColumns;
+std::string sourceLocation(const std::string& path, size_t line, size_t column = 0);
 
 // The running compiler's executable, and the standard library a compiler at `compiler` uses
 // unless --std names one: stdlib\ next to it in an installation (docs/build.md, "Installing"),

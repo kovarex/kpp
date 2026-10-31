@@ -284,6 +284,8 @@ namespace
     bool verifyRequested = false; // --verify-incremental: the build's end does not answer, the check does
     bool drained = false;        // its output is all captured (the forwarders have ended)
     bool keep = false;           // this build's result is kept (replayBuild found nothing to replay)
+    bool local = false;          // a build of this process's own (buildInThisProcess): no client
+    std::vector<std::string> notes; // its logBuildNote lines (a local build has no log of its own)
     uint64_t fingerprint = 0;
     std::vector<std::string> outputs;
   };
@@ -300,6 +302,8 @@ namespace
   bool sendFrame(Session& s, uint8_t type, const void* data, uint32_t size)
   {
     std::lock_guard lock(s.writeLock);
+    if (s.local)
+      return true;
     if (s.clientLost)
       return false;
     char head[5];
@@ -432,8 +436,11 @@ namespace
     if (s.keep)
       keepBuild(s, exitCode);
     sendFrame(s, exitFrame, &exitCode, 4);
-    FlushFileBuffers(s.client);
-    DisconnectNamedPipe(s.client);
+    if (!s.local)
+    {
+      FlushFileBuffers(s.client);
+      DisconnectNamedPipe(s.client);
+    }
     s.exitCode = exitCode;
     SetEvent(s.answeredEvent);
   }
@@ -733,6 +740,31 @@ namespace
 
 bool servingBuild() { return session != nullptr; }
 
+int buildInThisProcess(CompileFunction compile, std::vector<std::string> args, std::string& out, std::string& err, std::vector<std::string>* notes)
+{
+  Session s;
+  s.local = true;
+  s.muted = true; // what it prints is captured for the caller, sent to no client
+  if (!redirectOutput(s))
+  {
+    err = "kppc: cannot redirect the build's output\n";
+    return 1;
+  }
+  session = &s;
+  ++builds;
+  int result = runBuild(compile, std::move(args), s);
+  answer(s, result); // if the build did not answer itself (usage errors, a replay)
+  session = nullptr;
+  out = s.captured[0];
+  err = s.captured[1];
+  if (notes)
+  {
+    std::lock_guard lock(s.writeLock);
+    *notes = s.notes;
+  }
+  return result;
+}
+
 bool replayDisabled() { return replayOff; }
 
 void noteIncrementalBuild()
@@ -743,7 +775,12 @@ void noteIncrementalBuild()
 
 void logBuildNote(const std::string& note)
 {
-  if (session)
+  if (session && session->local)
+  {
+    std::lock_guard lock(session->writeLock);
+    session->notes.push_back(note);
+  }
+  else if (session)
     logLine("build %zu: %s", builds, note.c_str());
 }
 

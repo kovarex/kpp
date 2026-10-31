@@ -4680,13 +4680,16 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
-  // `path:line` of a token (sourceLocation).
+  // `path:line` of a token, `path:line:column` with --diagnostic-columns (sourceLocation).
   static std::string locationOf(const ParsedFile* file, uint32_t token)
   {
     if (!file || !file->tokens || file->tokens->empty())
       return file ? file->path : std::string("?");
     const Token& t = (*file->tokens)[std::min<size_t>(token, file->tokens->size() - 1)];
-    return sourceLocation(file->path, 1 + std::count(file->text.begin(), file->text.begin() + std::min<size_t>(t.offset, file->text.size()), '\n'));
+    size_t offset = std::min<size_t>(t.offset, file->text.size());
+    size_t lineStart = offset == 0 ? std::string_view::npos : file->text.rfind('\n', offset - 1);
+    lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+    return sourceLocation(file->path, 1 + std::count(file->text.begin(), file->text.begin() + offset, '\n'), 1 + offset - lineStart);
   }
 
   void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message)
