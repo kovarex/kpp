@@ -22,7 +22,7 @@ The commands: `compiler\tests\run_tests.cmd`; `compiler\tests\spec.cmd [--releas
 GAME_DIR` (the 45 menu maps' checksums, with test_mod removed from the game's mods);
 `programs\factorio\tests.cmd [--release] DIR` (the unit tests).
 
-## kppc b96ea59a, Factorio 4c178a5b915 (2.1.25, 2026-10-31)
+## kppc b96ea59a, Factorio 4c178a5b915 (2.1.25, 2026-10-31): current
 
 C's conversion factorio-in-kpp 40ce3c8d (a copy of it in thread H's scratch), linked against the
 Releasex64 libraries of the C++ Release build below (so SDL 3.4, SDL_Mixer and zlib match the
@@ -201,7 +201,11 @@ On 2026-10-23 (d0495ebfd8a) the same Debug numbers were 62 s clean, 16 s and 55 
 header's critical path now: its slowest unity object 11.4 s, factorio.lib 4.2 s, the factorio-test.exe
 link 9.9 s (factorio-run.exe 5.9 s).
 
-## kppc 9ab96a0e, old source d0495ebfd8a (2026-10-30)
+## Historical: kppc 9ab96a0e, old source d0495ebfd8a (2026-10-30)
+
+Kept as a record only; 4c178a5b915 above is the current matrix. d0495 is no longer a gate: with the
+printf-format check always on (21441057), its conversion has 3 errors from Factorio's own undefined
+behaviour, which upstream has since fixed.
 
 A fresh conversion of C:\kpp-sandbox\scratch\convert\d0495 (FACTORIO), so TCPSocket uses a free port.
 
