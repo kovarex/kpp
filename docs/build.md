@@ -515,7 +515,7 @@ the full machine:
 |---|---|---|
 | clean kppc build | 68 s | |
 | run_tests.cmd | 208 s | 252 s |
-| spec.cmd (debug, `--jobs 2`) | 1,168 s | 269 s |
+| spec.cmd (debug, `--jobs 2`) | 1,168 s | 269 s (39.5 s on a quiet machine: the 32-CPU column ran beside other threads' builds) |
 | spec.cmd --release | | 275 s |
 | spec.cmd --debug-info | | 263 s |
 
