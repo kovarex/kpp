@@ -1,0 +1,19 @@
+// spec: a range-for whose range is a member of a temporary (`for (const T& t : Duo{...}.a)`) keeps the temporary alive until the loop ends ([class.temporary]/6: the reference the range binds extends the whole temporary), so the loop reads live elements; clang 19 prints `T1 T2 it1 it2 ~T2 ~T1`, one per line
+// factorio: found by the templates thread comparing object lifetimes against clang 19: the temporary was destroyed before the loop, which read the destroyed elements (silent)
+// pending: the temporary holding the range is destroyed at the end of the range's initialisation, before the first iteration
+int moves = 0;
+struct T
+{
+  int id;
+  T(int v) : id(v) { println("T{}", id); }
+  T(const T& o) : id(o.id * 10) { println("T{} copy", id); }
+  T(T&& o) : id(o.id * 100) { ++moves; println("T{} move", id); }
+  ~T() { println("~T{}", id); }
+};
+struct Duo { T a[2]; };
+int main()
+{
+  for (const T& t : Duo{{T(1), T(2)}}.a)
+    println("it{}", t.id);
+  return 0;
+}

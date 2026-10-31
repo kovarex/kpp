@@ -3509,6 +3509,8 @@ namespace
       auto it = locals.find(d);
       if (it == locals.end() || it->second.isRef || !isClass(it->second.ty) || classKey(it->second.ty) == classKey(currentReturn))
         return nullptr;
+      if (const Ty* declared = declType(d); declared && declared->isConst)
+        return nullptr; // (a const local converts as an lvalue: copied, as returnedLocalObject's)
       return types.unqualified(it->second.ty);
     }
 
@@ -3523,6 +3525,10 @@ namespace
         return nullptr;
       auto it = locals.find(d);
       if (it == locals.end() || it->second.isRef || !isClass(it->second.ty) || classKey(it->second.ty) != classKey(currentReturn))
+        return nullptr;
+      // A const local is copied (`const T t; return t;`: the implicit move's `const T&&` binds the
+      // copy constructor, never the move constructor).
+      if (const Ty* declared = declType(d); declared && declared->isConst)
         return nullptr;
       return d;
     }
