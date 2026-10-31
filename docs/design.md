@@ -539,8 +539,11 @@ cache, pinned in `build.lock`. One project may build several executables from sh
 target leaving files out (Factorio's `Main`) rather than having its `main` replaced. With no
 build.kpp, `src/` is one executable with debug and release. Writing `project.use("json")` adds a
 library: the next build finds it (`libraries/`, cache, registry) and records it in build.lock. In
-the project's directory the compiler alone builds it (`kpp`, `kpp --release`). Details, the
-research behind it and what it needs: [build.md](build.md), "The build description".
+the project's directory the compiler alone builds it (`kpp`, `kpp --release`). A Kpp library is a
+project without an executable: its build.kpp says `project.library(NAME)` with its version,
+license, minimum kpp, source roots and test roots, its sources join the program of whatever uses
+it, and `kpp --test` runs its tests (build.md, "Kpp libraries"). Details, the research behind it
+and what it needs: [build.md](build.md), "The build description".
 
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 

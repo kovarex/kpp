@@ -76,5 +76,54 @@ void build(Project& project)
   Set-Content 'build.kpp' $good
 }
 finally { Pop-Location }
+
+# Kpp libraries (docs/build.md, "Kpp libraries"): app uses greet from its libraries\, greet uses text
+# next to it there; kpp --test in greet runs its tests and its test roots' with the runner's
+# arguments; a minimum version above greet's, a missing library and a minimum kpp above this one
+# are errors.
+$app = Join-Path $work 'app'
+New-Item -ItemType Directory -Force "$app\src", "$app\libraries\greet\src", "$app\libraries\greet\tests", "$app\libraries\text\src" | Out-Null
+Push-Location $app
+try
+{
+  Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.2`");`n}"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greeting(`"app`"));`n  return 0;`n}"
+  $greet = @'
+void build(Project& project)
+{
+  Library& greet = project.library("greet");
+  greet.version = "0.2.1";
+  greet.license = "MIT";
+  greet.minimumKpp = "0.1.0";
+  greet.test("tests");
+  greet.use("text");
+}
+'@
+  Set-Content 'libraries\greet\build.kpp' $greet
+  Set-Content 'libraries\greet\src\greet.kpp' "String greeting(StringView name) { return shout(`"hello`") + name; }`ntest `"greeting`"`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
+  Set-Content 'libraries\greet\tests\more.kpp' "test `"greeting twice`"`n{`n  check(greeting(`"b`") == `"hello! b`");`n  check(greeting(`"c`") == `"wrong`");`n}"
+  Set-Content 'libraries\text\build.kpp' "void build(Project& project)`n{`n  Library& text = project.library(`"text`");`n  text.version = `"1.0.0`";`n}"
+  Set-Content 'libraries\text\src\text.kpp' "String shout(StringView s) { String r = s; r += `"! `"; return r; }"
+  $output = Kpp @('--no-server')
+  $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
+  if ($code -ne 0 -or "$printed" -ne 'hello! app') { Fail "an executable using a library: exit $code, printed '$printed'`n$($output -join "`n")" }
+  Push-Location 'libraries\greet'
+  $output = (Kpp @('--test', '--no-server')) -join "`n"
+  if ($code -ne 1 -or $output -notmatch '2 tests, 1 failed' -or $output -notmatch 'more\.kpp:4:3: check failed') { Fail "kpp --test in a library: exit $code`n$output" }
+  $output = (Kpp @('--test', '--no-server', '--', '--filter', 'greet.kpp > greeting')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch '\b1 test\b') { Fail "kpp --test -- --filter: exit $code`n$output" }
+  Set-Content 'build.kpp' ($greet -replace '0\.1\.0', '99.0.0')
+  Pop-Location
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'the library greet needs kpp 99\.0\.0 or later') { Fail "a minimum kpp above this one: exit $code`n$output" }
+  Set-Content 'libraries\greet\build.kpp' $greet
+  Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.3`");`n}"
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'it uses the library greet 0\.3 or later, and .* has 0\.2\.1') { Fail "a minimum version above the library's: exit $code`n$output" }
+  Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"jsno`");`n}"
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'the library jsno is not in .*libraries\\jsno') { Fail "a missing library: exit $code`n$output" }
+}
+finally { Pop-Location }
 if ($failed -eq 0) { Write-Output 'ok   project' }
 exit $failed

@@ -216,7 +216,63 @@ run_tests.cmd.
 - **What version 0 lacks:**
   - Steps are `beforeBuild` and `afterBuild` commands of an executable, run by cmd in the
     project's directory.
-  - `use()` and the registry do not exist yet; there is no `configurations()` either.
+  - `use()` finds libraries in directories only (below); the registry, build.lock and `kpp add`
+    do not exist yet, and there is no `configurations()` either.
+
+### Kpp libraries (working now, 2026-10-31)
+
+**A library is a project without an executable.** Its build.kpp declares it with
+`project.library(NAME)` instead of `project.executable(...)`, and its sources join the program of
+every executable that uses it. Tested by `tests/project.ps1`.
+
+```cpp
+// libraries/json/build.kpp
+void build(Project& project)
+{
+  Library& json = project.library("json");
+  json.version = "0.1.0";        // major.minor.patch: required
+  json.license = "MIT";          // SPDX
+  json.minimumKpp = "0.1.0";     // optional: the lowest kpp it compiles with
+  json.root("src");              // its sources; none given: src
+  json.test("tests");            // sources only its own tests build
+  json.use("base64");            // a library it uses
+}
+```
+
+- **The fields** are the registry's manifest (library-registry.md, "What a library is"): `name`
+  (from `library()`), `version`, `license`, `minimumKpp`, the source roots and the test roots.
+  `version` must be `major.minor.patch`. kpp compares `minimumKpp` with its own version (0.1.0
+  now, raised with each release) and refuses a library that needs a newer one.
+- **Using one:** `project.use("json")` for every executable, `game.use("json")` for one, and
+  `json.use("base64")` in a library. `use("json", "0.2")` also states the lowest version that will
+  do; a lower one is an error. `use("json", local("../json"))` gives the library's directory,
+  relative to the build.kpp that says it.
+- **Where `use("json")` looks,** in order:
+  1. the project's `libraries/json` (the root project's, for the whole graph: so it is also the
+     override of a library a library uses, and of the registry's later);
+  2. for a library in a directory named `libraries`, next to it (`libraries/base64` for
+     `libraries/json`), so the libraries of one `libraries/` directory use each other and each
+     builds and tests on its own;
+  3. later, the registry; now a missing library is an error naming where it looked.
+- **What kpp does with it:** it describes the library's build.kpp (the same configuration and
+  `--set` settings), checks the version and minimumKpp, adds its roots to the executable's, and
+  does the same for the libraries it uses, depth first. One name in two directories is an error: a
+  program has one copy of each library. Only the library part of its build.kpp is read: its
+  executables and their commands are never built or run, and C libraries (`cLibrary`) in a used
+  library are an error until they are supported.
+- **`kpp --test [names] [-- runner arguments]`** builds and runs the tests (design.md, "Native
+  tests") of the executables and libraries named, all when none is: each one's roots, a
+  library's test roots too, through `kppc --test` with its build's options. `kpp --test -- --filter
+  "json.kpp > parse"` runs some. The exit code is 1 when a test failed. The `test` blocks in the
+  source roots of the libraries a program uses are in its test build too, so a library keeps its
+  tests in its test roots when they should not run in its users' tests.
+- **In an editor** (`kpp --lsp`), a library project is checked as its sources and test sources,
+  with its `test` blocks.
+- **A library's own build** (`kpp` in its directory) builds nothing: it has no executable.
+
+`Project::library(path)`, the C link file, is now `Project::linkFile(path)` (and
+`Executable::linkFile`; `Executable::library` stays its older name until factorio-in-kpp's
+build.kpp moves).
 
 ### C and C++ libraries (proposed 2026-10-31, not implemented)
 

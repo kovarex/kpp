@@ -6,6 +6,37 @@
 // compute but cannot read files, start processes or call C.
 enum class Configuration { debug, release };
 
+// Where a used library is (Project::use): a directory with its build.kpp, relative to the project's
+// directory or absolute. Without one, use() finds NAME in the project's libraries/NAME (later: the
+// registry, which libraries/NAME overrides).
+struct LibrarySource
+{
+  String path;
+};
+LibrarySource local(StringView path)
+{
+  LibrarySource source;
+  source.path = path;
+  return source;
+}
+
+// A Kpp library a project, an executable or another library uses: its name, the lowest version it
+// needs ("" for any) and where it is ("" for libraries/NAME).
+struct Dependency
+{
+  String name;
+  String minimum;
+  String path;
+};
+
+void kppUse(Vector<Dependency>& to, StringView name, StringView minimum, StringView path)
+{
+  Dependency& d = to.emplace_back();
+  d.name = name;
+  d.minimum = minimum;
+  d.path = path;
+}
+
 // One program the project builds.
 struct Executable
 {
@@ -16,6 +47,7 @@ struct Executable
   Vector<String> libraries; // what the link takes: a .lib, -lname, a .res (kppc's --lib)
   Vector<String> cIncludes; // directories the C headers are found in (kppc's --cinclude)
   Vector<String> links;     // the project's C libraries it links (Project::cLibrary), by name
+  Vector<Dependency> uses;  // the Kpp libraries it uses besides the project's (use())
   String beforeBuildCommand;
   String afterBuildCommand;
   String debugCommand;
@@ -25,8 +57,13 @@ struct Executable
   void root(StringView path) { roots.push_back(path); }
   void exclude(StringView path) { excluded.push_back(path); }
   void argument(StringView option) { arguments.push_back(option); }
+  void linkFile(StringView path) { libraries.push_back(path); }
+  // linkFile's older name, until factorio-in-kpp's build.kpp says linkFile.
   void library(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
+  // A Kpp library (Project::use), for this executable only.
+  void use(StringView name, StringView minimum = "") { kppUse(uses, name, minimum, ""); }
+  void use(StringView name, LibrarySource source) { kppUse(uses, name, "", source.path); }
   // A C library of the project (Project::cLibrary) by its name.
   void link(StringView name) { links.push_back(name); }
   // A Windows library by its name (`gdi32`): kppc's --lib -lgdi32.
@@ -68,6 +105,26 @@ struct CLibrary
   void standard(StringView name) { cppStandard = name; }
 };
 
+// A Kpp library (docs/build.md, "Kpp libraries"): a project without an executable, whose source
+// roots join the program of every executable that uses it. Its build.kpp declares it with
+// project.library(NAME); its tests are `test` blocks under its roots and its test roots, which
+// `kpp --test` builds and runs.
+struct Library
+{
+  String name;
+  String version;           // major.minor.patch
+  String license;           // an SPDX expression: MIT, Apache-2.0, MIT OR Apache-2.0
+  String minimumKpp;        // the lowest kpp version it compiles with, major.minor.patch; "": any
+  Vector<String> roots;     // its sources, relative to its directory; none: src
+  Vector<String> testRoots; // sources only its own tests build (tests next to the code need none)
+  Vector<Dependency> uses;  // the libraries it uses
+
+  void root(StringView path) { roots.push_back(path); }
+  void test(StringView path) { testRoots.push_back(path); }
+  void use(StringView name, StringView minimum = "") { kppUse(uses, name, minimum, ""); }
+  void use(StringView name, LibrarySource source) { kppUse(uses, name, "", source.path); }
+};
+
 struct Project
 {
   Configuration configuration = Configuration::debug;
@@ -77,9 +134,11 @@ struct Project
   Vector<String> arguments;
   Vector<String> libraries;
   Vector<String> cIncludes;
+  Vector<Dependency> uses;
   // Deques: adding one leaves the references earlier calls returned valid.
   Deque<Executable> executables;
   Deque<CLibrary> cLibraries;
+  Deque<Library> kppLibraries;
 
   Executable& executable(StringView name, InitializerList<StringView> roots)
   {
@@ -95,9 +154,22 @@ struct Project
     c.name = name;
     return c;
   }
+  // This project is a Kpp library (struct Library).
+  Library& library(StringView name)
+  {
+    Library& l = kppLibraries.emplace_back();
+    l.name = name;
+    return l;
+  }
   void argument(StringView option) { arguments.push_back(option); }
-  void library(StringView path) { libraries.push_back(path); }
+  // A file the link takes for every executable: a .lib, -lname, a .res (kppc's --lib).
+  void linkFile(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
+  // A Kpp library every executable uses (docs/build.md, "Kpp libraries"): use("json") finds it in
+  // libraries/json, use("json", "1.4") also states the lowest version that will do, and
+  // use("json", local("../json")) gives its directory.
+  void use(StringView name, StringView minimum = "") { kppUse(uses, name, minimum, ""); }
+  void use(StringView name, LibrarySource source) { kppUse(uses, name, "", source.path); }
 
   // A value given on kpp's command line (`kpp --set GAME=D:\game`), or otherwise.
   String setting(StringView name, StringView otherwise) const { return kppSetting(name, otherwise); }
@@ -119,22 +191,34 @@ void kppLines(String& out, StringView key, const Vector<String>& values)
     kppLine(out, key, value);
 }
 
+void kppUses(String& out, const Vector<Dependency>& uses)
+{
+  for (const Dependency& d : uses)
+  {
+    kppLine(out, "use", d.name);
+    kppLine(out, "use-minimum", d.minimum);
+    kppLine(out, "use-path", d.path);
+  }
+}
+
 // One line per fact, which kpp reads (project.cpp): `configuration debug`, then per executable
-// `executable NAME`, its lines, `end`, then per C library `clibrary NAME`, its lines, `end`. A
-// project that describes no executable has one: its directory's name, from src.
+// `executable NAME`, its lines, `end`, then per C library `clibrary NAME`, its lines, `end`, then
+// per Kpp library `library NAME`, its lines, `end`. A project that describes neither an executable
+// nor a library has one executable: its directory's name, from src.
 String describe(const Project& project)
 {
   bool debug = project.configuration == Configuration::debug;
   String out;
   kppLine(out, "configuration", debug ? "debug" : "release");
   kppLine(out, "debug-info", project.debugInfo.value_or(debug) ? "1" : "0");
-  if (project.executables.empty())
+  if (project.executables.empty() && project.kppLibraries.empty())
   {
     kppLine(out, "executable", kppProjectName());
     kppLine(out, "root", "src");
     kppLines(out, "argument", project.arguments);
     kppLines(out, "library", project.libraries);
     kppLines(out, "cinclude", project.cIncludes);
+    kppUses(out, project.uses);
     out += "end\n";
   }
   for (const Executable& e : project.executables)
@@ -154,6 +238,8 @@ String describe(const Project& project)
     kppLine(out, "debug-arguments", e.debugArguments);
     kppLine(out, "debug-directory", e.debugDirectory);
     kppLines(out, "link", e.links);
+    kppUses(out, project.uses);
+    kppUses(out, e.uses);
     out += "end\n";
   }
   for (const CLibrary& c : project.cLibraries)
@@ -166,6 +252,20 @@ String describe(const Project& project)
     kppLines(out, "prebuilt", c.prebuilt);
     kppLines(out, "resource", c.resources);
     kppLine(out, "language", c.cppStandard);
+    out += "end\n";
+  }
+  for (const Library& l : project.kppLibraries)
+  {
+    kppLine(out, "library", l.name);
+    kppLine(out, "version", l.version);
+    kppLine(out, "license", l.license);
+    kppLine(out, "minimum-kpp", l.minimumKpp);
+    if (l.roots.empty())
+      kppLine(out, "root", "src");
+    kppLines(out, "root", l.roots);
+    kppLines(out, "test-root", l.testRoots);
+    kppUses(out, project.uses);
+    kppUses(out, l.uses);
     out += "end\n";
   }
   return out;

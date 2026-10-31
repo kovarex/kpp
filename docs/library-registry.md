@@ -306,9 +306,11 @@ All of this is a part of kppc (one tool; the persistent server already holds the
 next build resolves, checks clashes and writes build.lock); `use("json", "1.4")` states a minimum;
 `git(...)` and `local(...)` are the other sources; `libraries/<name>` in the project overrides the
 registry (forks); a library is a project whose build.kpp says `project.library(...)` and may not
-declare build steps. So `kppc add` above is `kpp add`, which only inserts the `use` line. What
-the registry still needs from E's format: the library's manifest fields listed in
-[What a library is](#what-a-library-is) (version, license, minimum kpp, release paths, C parts),
+declare build steps. So `kppc add` above is `kpp add`, which only inserts the `use` line.
+`project.library(...)` with its version, license, minimum kpp, source and test roots, `use`
+from `libraries/` and local paths, and `kpp --test` work since 2026-10-31 (build.md, "Kpp
+libraries"). What the registry still needs from E's format: the rest of the manifest fields listed
+in [What a library is](#what-a-library-is) (authors, summary, homepage, release paths, C parts),
 and build.lock recording, per library, name, version, the tree hash (`sha256-tree:...`, defined by
 [kppnet/registry/tree_hash.py](../kppnet/registry/tree_hash.py)) and the registry it came from.
 
