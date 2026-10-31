@@ -40,10 +40,30 @@ namespace
         return false;
     return true;
   }
+
+  std::atomic<uint64_t> nextTableId{1};
+
+  // A thread's cache of the types it interned (any table's: a slot names its table, and ids are
+  // never reused), in front of the shards' locks. Every intern took its shard's lock, shared or
+  // not, and at 32 threads a quarter of the resolve's work was spent waiting on those (the shared
+  // acquire writes the lock's line; a new type's exclusive one stops its shard's readers). A type
+  // is never changed or freed while its table lives, so a hit needs no lock.
+  struct InternCache
+  {
+    static constexpr size_t slotCount = 1 << 14;
+    struct Slot
+    {
+      uint64_t table = 0, hash = 0;
+      const Ty* ty = nullptr;
+    };
+    std::unique_ptr<Slot[]> slots{new Slot[slotCount]};
+  };
+  thread_local InternCache internCache;
 }
 
 struct TypeTable::Impl
 {
+  const uint64_t id = nextTableId++;
   static constexpr uint32_t shardCount = 64;
   struct Shard
   {
@@ -79,19 +99,27 @@ TypeTable::~TypeTable() { delete impl; }
 const Ty* TypeTable::intern(const Ty& t)
 {
   uint64_t h = hashTy(t);
+  InternCache::Slot& slot = internCache.slots[(h >> 6) % InternCache::slotCount]; // (the shard is picked by the low bits)
+  if (slot.ty && slot.table == impl->id && slot.hash == h && sameTy(*slot.ty, t))
+    return slot.ty;
+  auto found = [&](const Ty* ty)
+  {
+    slot = {impl->id, h, ty};
+    return ty;
+  };
   Impl::Shard& shard = impl->shards[h % Impl::shardCount];
   {
     std::shared_lock lock(shard.mutex);
     auto range = shard.map.equal_range(h);
     for (auto it = range.first; it != range.second; ++it)
       if (sameTy(*it->second, t))
-        return it->second;
+        return found(it->second);
   }
   std::unique_lock lock(shard.mutex);
   auto range = shard.map.equal_range(h);
   for (auto it = range.first; it != range.second; ++it)
     if (sameTy(*it->second, t))
-      return it->second;
+      return found(it->second);
   auto owned = std::make_unique<Ty>(t);
   if (!t.args.empty())
   {
@@ -111,7 +139,7 @@ const Ty* TypeTable::intern(const Ty& t)
     std::lock_guard instancesLock(impl->classInstancesMutex);
     impl->classInstances.push_back(result);
   }
-  return result;
+  return found(result);
 }
 
 size_t TypeTable::size() const { return impl->count.load(); }

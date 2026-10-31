@@ -214,6 +214,29 @@ a quiet machine: codegen 4.06 and 4.11 -> 4.73 and 4.78 s, clang 3.43 and 3.40 -
 the link 1.56 and 1.58 -> 1.80 and 1.87 s, 681 -> 1,022 MB of IR. A first measurement, 13.3 s of
 codegen, was taken while other threads loaded the machine.)
 
+**Resolve's tail is contention, not chains: the type table's locks (2026-10-31).** A timeline of
+resolveAll (every file and queued task with who queued it, temporary) on the frozen tree, front end
+alone at -j 32: all 32 workers are busy until about 0.70 s, then one file's walk (ValueToWidget)
+runs alone for about 90 ms; a queued task waits 170 ms for a worker on average, and the queue
+chains (a task queuing the next) are 15 deep at most, short and few. The work grows with the
+threads instead, the workers' busy time summed: 7.8 s at -j 1, 9.0 at 4, 10.6 at 8, 15.6 at 16,
+21.8 at 32 (2.0x at 16, before any core runs two threads). A sampling profiler over the workers
+(temporary; scratch\resolver\sampler.cpp) named it: at -j 32, 18% of all samples, a quarter of the
+working ones, wait in `TypeTable::intern`'s shard locks (0% at -j 1), then `claimInstance` 3%,
+`recordInstanceSubst` 2%. Every intern took its shard's lock, the shared acquire writing the lock's
+cache line, and a new type's exclusive one stopping the shard's readers. *Landed:* a thread's
+direct-mapped cache of the types it interned (16,384 slots of table id, hash and type, 384 KB) in
+front of the shards: a hit takes no lock (a type never changes or goes while its table lives).
+Paired, the front end alone (scratch\resolver\fe2.cmd), 6 rounds interleaved on a quiet machine,
+resolve at -j 32: master 0.755 to 0.851 s, median 0.773 s -> **0.662 to 0.703 s, median 0.674 s**
+(-13%); at -j 1, 3 rounds: 7.54 to 7.68 s -> 7.21 to 7.22 s (-5%). Tried and not kept: 256 type
+shards picked by the top bits with a 65,536-slot cache, 0.725 s (1.5 MB a thread: worse than
+16,384 slots, the same as 4,096 at 0.674 s); 256 shards for the instance records and their
+substitutions on top of the cache, 0.660 s, within the noise. The number of distinct types varies
+at -j 32 with or without the cache (384,338, 384,341 or 384,342 in master's own runs; always
+384,338 at -j 1): a few types are interned only in some interleavings (not looked into yet; the
+report and the IR are the same).
+
 (The function-instance checks' CPU, which the instantiate line reports, grows from 5.3 s at -j 1
 to 14.6 s at -j 32 while their wall time stays: contention.) Resolve and codegen stop scaling at 8
 threads; clang is the one phase still gaining. Why, phase by phase (as measured on 089dcce5):
