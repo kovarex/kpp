@@ -102,7 +102,7 @@ void Holder::saveEach(Output& output) const
   // A printf-style argument is read by its format: `%zu` takes 8 bytes. A value above 32 bits
   // shows whether the whole size_t was passed.
   char text[64];
-  snprintf(text, sizeof(text), "%zu %zu %s", this->rows.size(), (size_t(1) << 40) + this->text.length(), "end");
+  snprintf(text, sizeof(text), "%zu %zu %s %llu", this->rows.size(), (size_t(1) << 40) + this->text.length(), "end", this->rows.size() + 1);
   printf("printf-style sizes %s\n", text);
 }
 

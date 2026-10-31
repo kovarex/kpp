@@ -3980,11 +3980,118 @@ namespace
       return i > 0 && (toks[i - 1].is(P::Dot) || (toks[i - 1].is(P::Arrow) && i + 1 < toks.size() && toks[i + 1].is(P::LParen)));
     }
 
+    // A printf-style format at token i (a string literal, or adjacent ones, that is an argument and
+    // has a `%`): each argument a 64-bit conversion reads (%zu, %llu, %I64u and their d/x kin) is
+    // written size_t(...), the size_t C++ passes there, which a container size's int (Kpp's
+    // library) is not: the vararg would carry 32 bits where printf reads 64. By the format, not by
+    // types, so that it holds where the converter has none (SUITE bodies, templates' instances).
+    // Returns the last token of the literal.
+    uint32_t widenFormatArguments(uint32_t i)
+    {
+      uint32_t last = i;
+      std::string format;
+      // Adjacent literals, and string macros between them (`"%s " UTF8_MULTIPLY " %zu"`).
+      for (; last < toks.size(); ++last)
+        if (toks[last].getKind() == TokenKind::String)
+          format += spelling(last);
+        else if (auto macro = toks[last].getKind() == TokenKind::Identifier ? objectMacros.find(std::string(spelling(last))) : objectMacros.end();
+                 macro != objectMacros.end() && isStringLiterals(macro->second))
+          format += macro->second;
+        else
+          break;
+      --last;
+      if (format.find('%') == std::string::npos || last + 1 >= toks.size() || !toks[last + 1].is(P::Comma))
+        return last;
+      // The conversions in order: for each argument it reads, whether it is a 64-bit integer.
+      std::vector<bool> wide;
+      for (size_t k = 0; k < format.size(); ++k)
+      {
+        if (format[k] != '%')
+          continue;
+        if (++k < format.size() && format[k] == '%')
+          continue;
+        while (k < format.size() && strchr("-+ #0'", format[k]))
+          ++k;
+        for (int part = 0; part < 2; ++part) // the width, then the precision after a `.`
+        {
+          if (part == 1 && !(k < format.size() && format[k] == '.'))
+            break;
+          if (part == 1)
+            ++k;
+          if (k < format.size() && format[k] == '*')
+          {
+            wide.push_back(false);
+            ++k;
+          }
+          while (k < format.size() && isdigit((unsigned char)format[k]))
+            ++k;
+        }
+        bool isWide = false;
+        if (format.compare(k, 3, "I64") == 0)
+          isWide = true, k += 3;
+        else if (format.compare(k, 3, "I32") == 0)
+          k += 3;
+        else if (format.compare(k, 2, "ll") == 0)
+          isWide = true, k += 2;
+        else if (k < format.size() && strchr("zjt", format[k]))
+          isWide = true, ++k;
+        else
+          while (k < format.size() && strchr("hlLqI", format[k]))
+            ++k;
+        if (k >= format.size())
+          break;
+        wide.push_back(isWide && strchr("diuxXo", format[k]) != nullptr);
+      }
+      // The arguments after the format, to the call's closing parenthesis.
+      uint32_t at = last + 2;
+      for (size_t n = 0; n < wide.size() && at < toks.size(); ++n)
+      {
+        uint32_t end = at;
+        for (int depth = 0; end < toks.size(); ++end)
+          if (toks[end].is(P::LParen) || toks[end].is(P::LBracket) || toks[end].is(P::LBrace))
+            ++depth;
+          else if (toks[end].is(P::RParen) || toks[end].is(P::RBracket) || toks[end].is(P::RBrace))
+          {
+            if (depth-- == 0)
+              break;
+          }
+          else if (toks[end].is(P::Comma) && depth == 0)
+            break;
+        if (end == at || end >= toks.size())
+          break;
+        bool cast = toks[at].getKind() == TokenKind::Identifier && spelling(at) == "size_t" && toks[at + 1].is(P::LParen);
+        if (wide[n] && !cast)
+        {
+          // The argument's last token ends with the parenthesis in place of itself: an insert after
+          // it would fall where a macro's rewrite of its own closing parenthesis takes it
+          // (`LOG_AND_ABORT("%zu", directionCount)`); a one-token argument is replaced whole, as an
+          // insert at its start would be taken by the replacement. A second rewrite of that token
+          // would leave the parentheses unbalanced, which the build reports.
+          uint32_t lastOfArgument = end - 1;
+          if (lastOfArgument == at)
+            replace(toks[at].offset, toks[at].length, "size_t(" + std::string(spelling(at)) + ")");
+          else
+          {
+            insert(toks[at].offset, "size_t(");
+            replace(toks[lastOfArgument].offset, toks[lastOfArgument].length, std::string(spelling(lastOfArgument)) + ")");
+          }
+          counts.add("64-bit printf arguments written size_t");
+        }
+        if (!toks[end].is(P::Comma))
+          break;
+        at = end + 1;
+      }
+      return last;
+    }
+
     void convertTokens()
     {
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        if (t.getKind() == TokenKind::String && i > 0 && (toks[i - 1].is(P::LParen) || toks[i - 1].is(P::Comma)) &&
+            !(i > 0 && toks[i - 1].getKind() == TokenKind::String))
+          widenFormatArguments(i);
         if (t.getKind() == TokenKind::Identifier && !fixtureBodies.empty())
           if (const FixtureBody* body = fixtureBodyAt(i))
           {
@@ -5639,8 +5746,8 @@ namespace
     // int in Kpp (docs/stdlib/common.md), which a serialiser's operator<< writes in 4 bytes instead
     // of 8: the game's complete-mode saves (its CRCs, desync reports) came out other than the C++
     // build's (TagManager::save, 4 bytes short per force). Written `size_t(...)` where it is the
-    // right operand of a << and an argument after a printf-style format (`%zu`), the places where
-    // C++ code sends a size on by its type (the game's
+    // right operand of a <<, the place where C++ code sends a size on by its type (a printf-style
+    // argument is widenFormatArguments's, by its format; the game's
     // saveContainerSize and saveSpaceOptimized take it as a FullType). length() and count(k) alike,
     // and wherever the declarations say the container's type (typeOfExpr): CustomGui::save's
     // `item.second.size()` of a map's std::set put the heuristic CRC 4 bytes short per mod.
@@ -6670,18 +6777,7 @@ namespace
               counts.add(star ? "explicit operator*() calls written *x" : "explicit operator->() calls written toAddress(x)");
             }
           }
-          // A printf-style call (ssprintf, LOG, snprintf: a string literal with a `%` among the
-          // arguments): the arguments after the format are varargs, which C++ passes a std
-          // container's size as the size_t `%zu` reads, 8 bytes; the library's int is 4.
-          bool afterFormat = false;
-          for (Expr* arg : call->args)
-          {
-            if (afterFormat)
-              sizeAsSizeT(arg);
-            else if (arg && arg->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(arg)->literalKind == TokenKind::String &&
-                     spelling(arg->token).find('%') != std::string_view::npos)
-              afterFormat = true;
-          }
+          // (A printf-style call's 64-bit arguments: widenFormatArguments, by the format.)
           walkExpr(call->callee, owner);
           walkExprs(call->args, owner);
           break;
