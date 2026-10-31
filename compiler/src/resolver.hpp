@@ -336,9 +336,12 @@ public:
   // endRewalk, which tell whether the checks made instances anew.
   // readers: instances invalidateReaders found reading a change, checked again likewise, or, made by
   // codegen, taken out of the table with the codegen-made instances that used them (codegen, run in
-  // full, makes them anew); dropped: how many were taken out.
+  // full, makes them anew); dropped: how many were taken out. instancesOf: the templates of every
+  // instance checked again or taken out (once each, in their files' order), what codegen emits their
+  // instances again from: what it asked instanceBody for (and the definition whose body was copied,
+  // where that is another declaration).
   bool recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why,
-                          size_t* dropped = nullptr);
+                          size_t* dropped = nullptr, std::vector<const Decl*>* instancesOf = nullptr);
   // The instance statistics as the resolve counts them: every instance walk's but codegen's.
   ResolveStats instanceStatsAtResolveEnd();
   // The places in a file each instance walk's own statistics name ("first at"), to move with its tokens.

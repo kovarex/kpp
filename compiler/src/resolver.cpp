@@ -21189,7 +21189,8 @@ ResolveStats GlobalScope::instanceStatsAtResolveEnd()
   return total;
 }
 
-bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why, size_t* dropped)
+bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, const std::vector<const void*>& readers, std::string& why, size_t* dropped,
+                                     std::vector<const Decl*>* instancesOf)
 {
   std::unordered_set<const FunctionDecl*> changed(sources.begin(), sources.end());
   std::vector<Impl::InstanceRecord*> stale;
@@ -21286,6 +21287,28 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
   }
   std::sort(stale.begin(), stale.end());
   stale.erase(std::unique(stale.begin(), stale.end()), stale.end());
+  if (instancesOf)
+  {
+    // (the dropped records are kept in droppedInstances: their pointers still hold)
+    std::unordered_set<const Decl*> templates;
+    auto add = [&](const Impl::InstanceRecord* r)
+    {
+      if (r->of)
+        templates.insert(r->of);
+      if (r->recheck && r->recheck->source)
+        templates.insert(r->recheck->source);
+    };
+    for (const Impl::InstanceRecord* r : stale)
+      add(r);
+    for (const Impl::InstanceRecord* r : drop)
+      add(r);
+    instancesOf->assign(templates.begin(), templates.end());
+    std::sort(instancesOf->begin(), instancesOf->end(), [](const Decl* a, const Decl* b)
+    {
+      uint32_t fa = a->file ? a->file->index : UINT32_MAX, fb = b->file ? b->file->index : UINT32_MAX;
+      return fa != fb ? fa < fb : a->token < b->token;
+    });
+  }
   impl->rechecking = true;
   struct Done { bool& flag; ~Done() { flag = false; } } done{impl->rechecking};
   std::unordered_set<const void*> requestedBefore; // the instances the old checks asked for
