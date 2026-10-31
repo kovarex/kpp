@@ -1174,10 +1174,13 @@ struct GlobalScope::Impl
   bool rechecking = false; // an instance checked again counts as the resolve's (step 4)
   void addInstanceStats(const ResolveStats& s, const void* owner = nullptr)
   {
+    // (the copy a compile server keeps is made before the lock: copying the statistics' maps under
+    // it made a server's resolve 3 times as long at 32 threads, the instance checks waiting in line)
+    std::unique_ptr<ResolveStats> kept = recordingDependencies ? std::make_unique<ResolveStats>(s) : nullptr;
     std::lock_guard lock(instanceStatsMutex);
     instanceStatsTotal.add(s);
-    if (recordingDependencies)
-      instanceContributions.push_back({owner, std::make_unique<ResolveStats>(s), afterResolve.load() && !rechecking});
+    if (kept)
+      instanceContributions.push_back({owner, std::move(kept), afterResolve.load() && !rechecking});
   }
 
   // The dependencies of the units that are declarations: a function's or a variable's walk (its
