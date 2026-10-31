@@ -11105,7 +11105,7 @@ struct GlobalScope::Impl
       case NodeKind::ConstType:
       {
         auto* c = static_cast<ConstType*>(t);
-        return types.qualified(convertType(c->inner, ctx, depth + 1), true, c->isVolatile);
+        return types.qualified(convertType(c->inner, ctx, depth + 1), c->isConst, c->isVolatile);
       }
       case NodeKind::ArrayType:
       {

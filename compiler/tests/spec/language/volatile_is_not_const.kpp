@@ -1,0 +1,20 @@
+// spec: `volatile` alone qualifies a type as volatile, not const: a volatile object, a member written through a `volatile T*` and a `T* volatile` pointer are assigned as in C++; `const volatile` is both
+// factorio: the game writes vertices through `volatile VertexLayout::Sprite*` buffers (DrawCommandBatch, SpriteDrawOrder) and Lua's `L->errorJmp->status` is a `volatile int`: kppc typed every `volatile T` as `const volatile T`, which an assignment check flagged at 101 valid lines
+struct Vertex { float x = 0; volatile int status = 0; };
+int main()
+{
+  volatile int v = 1;
+  v = 2;
+  v += 3;
+  Vertex buffer[2];
+  volatile Vertex* p = buffer;
+  p->x = 4.5f;
+  p[1].x = 6;
+  buffer[0].status = 7;
+  int target = 8;
+  int* volatile q = &target;
+  q = &target;
+  *q += 1;
+  println("{} {} {} {} {}", int(v), buffer[0].x, buffer[1].x, int(buffer[0].status), target);
+  return 0;
+}

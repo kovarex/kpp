@@ -967,6 +967,7 @@ namespace
         ConstType* c = node<ConstType>(typeToken);
         c->inner = type;
         c->isVolatile = isVolatile;
+        c->isConst = isConst;
         type = c;
       }
       return parseTypeSuffixes(type);
@@ -1003,6 +1004,7 @@ namespace
         {
           ConstType* c = node<ConstType>(pos);
           c->isVolatile = at(Kw::volatile_);
+          c->isConst = !c->isVolatile;
           advance();
           c->inner = type;
           type = c;

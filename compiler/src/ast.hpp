@@ -151,7 +151,7 @@ struct BuiltinType : Type { Kw keyword; uint8_t longCount = 0; bool isUnsigned =
 struct PointerType : Type { Type* pointee; };
 struct LRefType : Type { Type* referenced; };
 struct RRefType : Type { Type* referenced; };
-struct ConstType : Type { Type* inner; bool isVolatile = false; };
+struct ConstType : Type { Type* inner; bool isVolatile = false; bool isConst = true; }; // `volatile T` alone: isConst false
 struct ArrayType : Type { Type* element; Expr* size; };
 // asCall: in a template argument list, the same tokens read as a call (`Frac<gcd(N, M)>`), for
 // the resolver to take when the parameter is a constant.
