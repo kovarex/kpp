@@ -230,7 +230,8 @@ namespace
   // LuaCheckMacros.hpp's (since 9c29b449ce4). The conversion checks that every includer does so.
   const std::map<std::string, std::string> includerMacroHeaders = {{"tests/LuaPrototypeFixture.hpp", "tests/LuaCheckMacros.hpp"}};
   // The headers a library's build force-includes (fbuild.bff: Lua's `/FI"override_printf.h"`), by
-  // the library's directory name: its files see them before their own includes.
+  // the library's directory name: its source files see them before their own includes (its headers
+  // only where those source files include them).
   const std::map<std::string, std::string> forcedIncludes = {{"Lua", "override_printf.h"}};
   // The C libraries a library keeps calling, by the library's directory name (FileConverter's
   // keptCLibraries): Lua formats through trio, as its C++ build does.
@@ -3854,7 +3855,11 @@ namespace
             }
             // A string, name or spliced macro (lstring.h's `luaS_newliteral(L, MEMERRMSG)` gives
             // `"" MEMERRMSG`), which convertTokens writes out at the uses it sees, but not in here.
-            if (auto om = objectMacros.find(name); om != objectMacros.end() && !(j < result.size() && result[j] == '(') &&
+            // Another name for a function is one before a call too: luaconf.h's lua_number2str is
+            // `sprintf(...)`, which override_printf.h's `#define sprintf trio_sprintf` makes trio's
+            // in Lua's C++ build (the C runtime's printed 0/0 as `-nan(ind)`, trio `nan`).
+            if (auto om = objectMacros.find(name); om != objectMacros.end() &&
+                (!(j < result.size() && result[j] == '(') || isAliasMacro(om->first, om->second)) &&
                 !(i > 0 && (result[i - 1] == '.' || (result[i - 1] == '>' && i > 1 && result[i - 2] == '-') ||
                             (result[i - 1] == ':' && i > 1 && result[i - 2] == ':'))) &&
                 macroHoldsAt(om->first, useOffset))
@@ -7799,8 +7804,12 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   // The includes written as a file of the including file's own directory that is converted too (Lua's
   // `#include "lua.h"` in lapi.c): the converted file, never an import, whatever its name.
   std::vector<std::set<std::string>> siblingIncludes(inputs.size());
+  // Only the library's source files: its headers are included by the game's files too, which the
+  // build compiles without it (StringUtil.cpp's lua_number2str and Benchmark.cpp's printf are the
+  // C runtime's, not trio's).
   for (const auto& [key, k] : inputByPath)
-    if (auto forced = forcedIncludes.find(inputs[k].path.parent_path().filename().string()); forced != forcedIncludes.end())
+    if (auto forced = forcedIncludes.find(inputs[k].path.parent_path().filename().string());
+        forced != forcedIncludes.end() && (inputs[k].path.extension() == ".c" || inputs[k].path.extension() == ".cpp"))
       if (auto header = inputByPath.find(pathKey(inputs[k].path.parent_path() / forced->second)); header != inputByPath.end() && header->second != k)
         includedInputs[k].push_back(header->second);
   // A forced macro header (forcedMacroHeaders) comes first in every file of its project,
