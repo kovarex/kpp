@@ -484,12 +484,13 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner. It
-starts by hand (Actions > ci > Run workflow) until kovarex picks a trigger from the costs below.
-- **What it runs:**
-  - it builds kppc with `compiler\build.cmd`;
-  - then `compiler\tests\run_tests.cmd`;
-  - then `compiler\tests\spec.cmd --no-doc` three times: debug, `--release` and `--debug-info`.
+`.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner.
+Triggers (kovarex, 2026-10-31, chosen from the costs below):
+- **Every push to master and every pull request:** it builds kppc with `compiler\build.cmd`, then
+  runs `compiler\tests\run_tests.cmd` and `compiler\tests\spec.cmd --no-doc` (debug).
+- **Nightly at 03:17 UTC, and when started by hand** (Actions > ci > Run workflow): the same, plus
+  `spec.cmd --no-doc --release` and `spec.cmd --no-doc --debug-info`. The time is outside
+  06:00 to 09:00 Pacific.
 - **What it leaves out:** `programs\factorio\convert.cmd` and everything else of the game. They need
   C:\Factorio, private source that is not on the runner; factorio-in-kpp's own CI is the game's check.
 - **SDL3 headers:** the two interop snippets that import SDL3/SDL.h get upstream SDL 3.4.18's headers
@@ -497,15 +498,17 @@ starts by hand (Actions > ci > Run workflow) until kovarex picks a trigger from 
   `SDL_GetDisplayInternalDriverData`.
 - **Clang for the snippets' C sources:** clang comes from vswhere through `KPP_CLANG`, because the
   runner's Visual Studio is Enterprise.
-- **The "latest" prerelease:** a green run on master packages kpp with
+- **The "latest" prerelease:** every green run on master (push, nightly or by hand) packages kpp with
   `tools/release/package.ps1 -Version 0.1.0-ci.<run>` (semver, which vsce requires), including the package's own smoke test. It
   replaces the prerelease `latest` with that zip, which is what factorio-in-kpp's CI downloads.
   Numbered releases stay with release.yml.
 - **Caches:** only kppc's import cache (%TEMP%\kpp-imports), whose entries check every header's size
   and time. The CMake build directory is not cached: checkout gives every source a new time, so
   Ninja would rebuild it all anyway, and a clean build takes about a minute.
-- **Concurrency:** one run per branch. On master, a newer commit waits for the running one, and
-  only the newest waiting run is kept; on a pull request, a new push cancels the old run.
+- **Concurrency:** one run per trigger and branch. A newer push cancels the older run still going,
+  so runs never queue back to back. The nightly and hand-started runs have groups of their own, so
+  a push does not cancel them. While pushes come faster than a run takes, push runs keep being
+  cancelled; then the nightly run is the one that moves "latest".
 
 Cost, estimated before any runner run. These are measured on PC-PRACOVNA pinned to 2 logical CPUs
 (`start /affinity 3`), a stand-in for the 2-vCPU Windows runner a private repository gets, and on
@@ -523,11 +526,10 @@ A run with all three spec configurations is about 64 minutes on that stand-in, a
 the runner's slower cores. Windows minutes bill at twice the rate on a private repository, so one
 run is about 130 to 250 billed minutes. With commits every few minutes, the master queue would run
 back to back, about 22 runs a day, which far exceeds an included monthly quota (3,000 minutes on
-Pro) within a day. The options:
-- debug spec only on each master push (about 25 to 45 runner minutes);
-- the three configurations nightly;
-- a larger runner (billed per minute, outside the included minutes).
-The numbers get replaced by a real runner's once a manual run has been timed.
+Pro) within a day. So each push runs only the debug spec (about 25 to 45 runner minutes), and the
+three configurations run nightly. A larger runner (billed per minute, outside the included
+minutes) is the other option. The numbers get replaced by a real runner's once runs have been
+timed.
 
 ## Questions for kovarex
 

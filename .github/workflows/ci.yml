@@ -1,23 +1,28 @@
 # kpp's tests on a Windows runner (docs/build.md, "Continuous integration"): kppc built by
-# compiler\build.cmd, then compiler\tests\run_tests.cmd and compiler\tests\spec.cmd in the debug,
-# --release and --debug-info configurations. programs\factorio\convert.cmd is left out: it needs
-# C:\Factorio, private game source that is not on the runner (factorio-in-kpp's own CI covers the game).
-# A green run on master publishes the package as the rolling prerelease "latest", which
+# compiler\build.cmd, then compiler\tests\run_tests.cmd and compiler\tests\spec.cmd. Every push to
+# master and every pull request runs the debug spec; the nightly run (and one started by hand) adds
+# --release and --debug-info (kovarex, 2026-10-31). programs\factorio\convert.cmd is left out: it
+# needs C:\Factorio, private game source that is not on the runner (factorio-in-kpp's own CI covers
+# the game). A green run on master publishes the package as the rolling prerelease "latest", which
 # factorio-in-kpp's CI downloads; release.yml stays for numbered releases.
 name: ci
 
 on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: '17 3 * * *' # 03:17 UTC: 20:17 PDT, 04:17 CET; outside 06:00-09:00 Pacific
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# One run per branch at a time. On master a newer commit's run waits for the running one (GitHub keeps
-# only the newest waiting), so "latest" keeps moving even with a commit every few minutes; on a pull
-# request a new push cancels the old run.
+# A newer push cancels the older run still going, so runs never queue back to back; the nightly and
+# hand-started runs have groups of their own, so a push does not cancel them.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows:
@@ -72,10 +77,12 @@ jobs:
         run: compiler\tests\spec.cmd --no-doc
 
       - name: spec --release
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --release
 
       - name: spec --debug-info
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --debug-info
 
