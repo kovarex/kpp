@@ -14851,7 +14851,10 @@ struct GlobalScope::Impl
         return;
       std::string name = impl.namePartText(f->name.last());
       if (name.find("scanf") != std::string::npos)
-        return; // (the scanf family takes pointers: its own rules, not checked yet)
+      {
+        checkScanfFormat(c, k, name, text);
+        return;
+      }
       size_t next = k + 1;
       auto fail = [&](const std::string& why) { reportCheck(c->token, "the format of " + name + " " + why); };
       // What argument i is, as `...` passes it: null when its type is not known.
@@ -14998,6 +15001,129 @@ struct GlobalScope::Impl
           case 'n':
             if (t->kind != TyKind::Pointer)
               expect("an int*");
+            break;
+        }
+      }
+      if (next < c->args.size())
+        fail("has fewer conversions than arguments: " + std::to_string(c->args.size() - next) + " more");
+    }
+
+    // The scanf family's format (checkFormatCall's other half): every conversion takes a pointer to
+    // its type and size, `%*d` assigns nothing (no argument), `%[...]`, `%s` and `%c` a char
+    // buffer, `%lf` a double* where `%f` takes a float*.
+    void checkScanfFormat(CallExpr* c, size_t k, const std::string& name, const std::string& text)
+    {
+      size_t next = k + 1;
+      auto fail = [&](const std::string& why) { reportCheck(c->token, "the format of " + name + " " + why); };
+      for (size_t i = 0; i < text.size(); ++i)
+      {
+        if (text[i] != '%')
+          continue;
+        size_t start = i++;
+        if (i < text.size() && text[i] == '%')
+          continue;
+        bool assigns = true;
+        if (i < text.size() && text[i] == '*')
+        {
+          assigns = false;
+          ++i;
+        }
+        while (i < text.size() && isdigit((unsigned char)text[i]))
+          ++i;
+        int bits = 32; // of an integer conversion
+        bool longFloat = false, shortInt = false;
+        if (text.compare(i, 3, "I64") == 0)
+        {
+          bits = 64;
+          i += 3;
+        }
+        else if (text.compare(i, 2, "ll") == 0)
+        {
+          bits = 64;
+          i += 2;
+        }
+        else if (text.compare(i, 2, "hh") == 0)
+        {
+          bits = 8;
+          i += 2;
+        }
+        else if (i < text.size() && strchr("hlLzjtI", text[i]))
+        {
+          char l = text[i++];
+          if (l == 'h')
+            bits = 16, shortInt = true;
+          else if (l == 'z' || l == 'j' || l == 't' || l == 'I')
+            bits = 64;
+          else
+            longFloat = true; // (`l`: a double for %f, still 32 bits for %d under LLP64; `L` likewise)
+        }
+        (void)shortInt;
+        if (i >= text.size())
+        {
+          fail("ends in an unfinished conversion (\"" + text.substr(start) + "\")");
+          return;
+        }
+        char conversion = text[i];
+        if (conversion == '[')
+        {
+          size_t close = text.find(']', i + (i + 1 < text.size() && text[i + 1] == ']' ? 2 : 1));
+          if (close == std::string::npos)
+          {
+            fail("has an unclosed `%[` set");
+            return;
+          }
+          i = close;
+        }
+        std::string spelled = text.substr(start, i - start + 1);
+        if (!strchr("diuoxXcsSpneEfFgGaA[", conversion))
+        {
+          fail("has the unknown conversion \"" + spelled + "\"");
+          return;
+        }
+        if (!assigns)
+          continue;
+        if (next >= c->args.size())
+        {
+          fail("has more conversions than arguments: none for \"" + spelled + "\"");
+          return;
+        }
+        Expr* a = c->args[next++];
+        const Ty* t = a->ty ? types.unqualified(types.stripRef(a->ty)) : nullptr;
+        if (!t || !t->isKnown() || types.isDependent(t) || Impl::mentionsUnknown(t))
+          continue;
+        const Ty* target = t->kind == TyKind::Pointer ? t->inner : t->kind == TyKind::Array ? t->inner : nullptr;
+        std::string given = types.toString(t, &impl.symbols);
+        auto expect = [&](const std::string& what) { fail("takes " + what + " for \"" + spelled + "\", given " + given); };
+        if (!target || target->isConst)
+        {
+          expect("a pointer to a writable object");
+          continue;
+        }
+        const Ty* u = types.unqualified(target);
+        switch (conversion)
+        {
+          case 'd': case 'i': case 'u': case 'o': case 'x': case 'X': case 'n':
+          {
+            int b = u->kind == TyKind::Int || u->kind == TyKind::Char ? u->bits : 0;
+            if (b != bits)
+              expect("a pointer to a " + std::to_string(bits) + "-bit integer");
+            break;
+          }
+          case 'e': case 'E': case 'f': case 'F': case 'g': case 'G': case 'a': case 'A':
+            if (u->kind != TyKind::Float || u->bits != (longFloat ? 64 : 32))
+              expect(longFloat ? "a double*" : "a float*");
+            break;
+          case 's': case 'c': case '[':
+            if (!((u->kind == TyKind::Char || u->kind == TyKind::Int) && u->bits == 8))
+              expect("a char buffer");
+            break;
+          case 'S':
+            if (!((u->kind == TyKind::Char || u->kind == TyKind::Int) && u->bits == 16))
+              expect("a wide char buffer");
+            break;
+          case 'p':
+            if (u->kind != TyKind::Pointer)
+              expect("a void**");
             break;
         }
       }

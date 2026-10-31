@@ -1154,13 +1154,14 @@ The smallest language that is still Kpp, as the target of the first code generat
 - **A printf-like call's format matches its arguments** (decided 2026-10-31; an error, `kppc
   --format-errors` until the converted game has no mismatch, then always). A C-variadic function
   whose last named parameter is a `const char*` (the C library's printf family, ssprintf, the
-  game's FORMAT_STRING functions; not the scanf family yet) called with a string literal there:
-  every conversion takes an argument of its type and size (LLP64: `%ld` 32 bits, `%lld`, `%zu`,
-  `%I64d` 64; `*` an int), and the arguments are as many as the conversions. Factorio's own
-  mismatches are made explicit by the converter as C++ behaves (`%u` given a uint64 casts it to
-  uint32_t, an extra trailing argument is dropped); a container size passed for `%zu` is a
-  size_t. Specs: language/printf_format_must_match_arguments,
-  language/printf_format_matching_arguments.
+  game's FORMAT_STRING functions; the scanf family, whose conversions take pointers) called with a
+  string literal there: every conversion takes an argument of its type and size (LLP64: `%ld` 32
+  bits, `%lld`, `%zu`, `%I64d` 64; `*` an int; for scanf a pointer to them, `%lf` a double*),
+  and the arguments are as many as the conversions. Factorio's own mismatches are made explicit
+  by the converter as C++ behaves (`%u` given a uint64 casts it to uint32_t, an extra trailing
+  argument is dropped); a container size passed for `%zu` is a size_t. Specs:
+  language/printf_format_must_match_arguments, language/printf_format_matching_arguments,
+  language/scanf_format_must_match_arguments.
 - **Grammar parseable without name lookup.** Three rules replace C++'s dependence on knowing
   what a name is:
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
