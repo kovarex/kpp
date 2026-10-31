@@ -430,8 +430,22 @@ long-running non-web processes. If CI ever leaves GitHub, it needs a self-hosted
 `concurrency`, the job token writing releases) matter only then. Two changes are useful now:
 - the SDL3 zip ci.yml downloads from github.com moves to kpp.net's mirror directory, checked by
   its SHA-256;
-- `tools/release/publish.ps1` gains an upload of the "latest" package to kpp.net, so that
-  factorio-in-kpp and installers stop reading GitHub releases.
+- **Publishing kpp's own packages** (agreed with H through the coordinator):
+  `tools/release/publish.ps1` (H, a52cb2a8) keeps its GitHub/Forgejo release path and gains a
+  kpp.net path. That path uploads the files to `registry/kpp/releases/<version>/` over SSH with
+  `rsync --ignore-existing`, writes `registry/kpp/latest.json` (version, commit, zip, SHA-256)
+  last, and renames it into place so a reader never sees half a file. The key is a CI secret
+  authorized in NFS's keychain. kpp.net is the copy installers and factorio-in-kpp's CI read; the
+  GitHub release stays as a convenience. A green master run uploads three files, so even 22 runs
+  a day stay inside NFS's limit of one uploaded file per five minutes on average (288 a day).
+
+**Platforms.** kovarex wants Windows, macOS and Linux as the minimum
+([design.md](design.md) "Targets and hosts"). GitHub Actions has hosted runners for all three,
+Linux and macOS on both x86-64 and arm64, so staying on it covers the matrix with no machines of
+our own. GitHub has no FreeBSD runner: FreeBSD, kpp.net's target, runs in a FreeBSD VM inside a
+Linux runner (QEMU, for example the vmactions/freebsd-vm action), or on a FreeBSD VM thread B
+sets up (Q3 there). If CI ever moves to a forge of our own, all of these become self-hosted
+runners: Windows (VS 2022 with clang), Linux, a Mac, and a FreeBSD VM.
 
 #### A forge on NFS?
 Forgejo is a single Go program and could in principle run as an NFS daemon behind a proxy, with
@@ -448,6 +462,22 @@ Verdict: **feasible enough to try later, not needed now.** The plan above works 
 Trying means building Forgejo on NFS and running it for a week as a non-production site ($0.01 a
 day) to watch the RAU bill. The alternative forge is one written in Kpp, a far larger job than
 the registry.
+
+#### Where NFS is not enough
+The earlier VM kit (Forgejo, Caddy, restic backups, a Windows runner: kppnet/ at commit
+bbf5cf61) is kept only as the answer to these cases:
+1. **NFS forbids frequent automated pushes** (decision 12, question 1). Then kpp.net cannot take
+   the threads' many pushes a day, so it cannot be where they push. Either GitHub stays the push
+   target, with kpp.net pulling once a day as a copy, or the repositories move to a forge on a
+   rented VM (the kit), with NFS keeping the website and the registry.
+2. **Pull requests and issues off GitHub.** NFS can serve bare repositories but has no review UI
+   unless Forgejo runs there ("A forge on NFS?"). If GitHub must go entirely, the kit is that
+   forge.
+3. **CI off GitHub.** NFS can never be a runner. The runners are self-hosted machines whatever
+   hosts the forge.
+
+Everything else (the website, the registry, the archive store, the canonical repositories if
+pushes are allowed, and backups) fits NFS.
 
 #### The website and the library provider in Kpp
 **The blocker:** kppc produces Windows x64 programs only. The FreeBSD target is thread B's
