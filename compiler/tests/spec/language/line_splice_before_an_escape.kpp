@@ -1,0 +1,10 @@
+// spec: line splices come out before escapes are read (C++'s phase 2 before phase 5): `"x\\` at a line's end and `n"` on the next is `"x\n"`, a newline (the second backslash and the newline are the splice); a char literal splices too
+int main()
+{
+  const char* a = "x\\
+n";
+  char c = '\
+A';
+  println("{} {} {}", strlen(a), int(a[1]), c);
+  return 0;
+}

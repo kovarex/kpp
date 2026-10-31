@@ -4952,7 +4952,8 @@ struct GlobalScope::Impl
     if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
     {
       const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];
-      message += ": " + std::string(s->file->text.substr(t.offset, t.length));
+      std::string spliced;
+      message += ": " + std::string(tokenSpelling(s->file->text, t, spliced));
     }
     // A failure names its instance; a condition the checker cannot evaluate is its gap at that
     // place, one error however many instances meet it.
@@ -5937,7 +5938,8 @@ struct GlobalScope::Impl
             constWhy() = "a literal read with another file's tokens (a compiler bug)"; // never a wrong value
           return std::nullopt;
         }
-        return constArith().literal(l->literalKind, text.substr(t.offset, t.length));
+        std::string spliced;
+        return constArith().literal(l->literalKind, tokenSpelling(text, t, spliced));
       }
       case NodeKind::ParenExpr: return constValue(static_cast<ParenExpr*>(e)->inner, ctx, depth + 1);
       case NodeKind::CastExpr: return constCastValue(static_cast<CastExpr*>(e)->type, static_cast<CastExpr*>(e)->operand, ctx, depth);
@@ -7560,7 +7562,8 @@ struct GlobalScope::Impl
     {
       // `"type"sv`: the chars the quotes hold, as the walk types the literal (a suffix names no
       // operator it calls).
-      std::string_view spelled = text.substr((*toks)[i].offset, (*toks)[i].length);
+      std::string spliced;
+      std::string_view spelled = tokenSpelling(text, (*toks)[i], spliced);
       size_t quote = spelled.rfind('"');
       if (quote != std::string_view::npos && quote + 1 < spelled.size())
       {

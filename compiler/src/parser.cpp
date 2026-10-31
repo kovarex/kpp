@@ -261,11 +261,22 @@ namespace
 
     // --- diagnostics and recovery ---
 
+    // A string the parser reads itself (a language name, an import path, a test's name): a line
+    // splice in it is an error (an expression's literal is read through tokenSpelling).
+    void noSplice()
+    {
+      if (tok().spliced)
+        error("a line splice in this string is not supported");
+    }
+
     void error(const char* message)
     {
       if (inRecovery)
         return;
       inRecovery = true;
+      // (the lexer's error token for a line splice inside a token: that is the cause, whatever was expected)
+      if (at(TokenKind::Error) && spelling().starts_with("\\"))
+        message = "a line splice inside a token (C++ joins the two lines into one token; kppc does not read it so yet)";
       out.diagnostics.push_back({pos, message});
     }
 
@@ -1572,6 +1583,7 @@ namespace
         // extern "C" { ... } or extern "C" decl
         advance();
         bool savedExternC = externC;
+        noSplice();
         externC = spelling() == "\"C\"";
         advance();
         if (atIdent(kwImport) && at(TokenKind::String, 1))
@@ -1579,6 +1591,7 @@ namespace
           ImportDecl* imp = decl<ImportDecl>(start);
           advance();
           imp->pathToken = pos;
+          noSplice();
           advance();
           expect(P::Semi, "expected ';' after import");
           externC = savedExternC;
@@ -3017,6 +3030,7 @@ namespace
     {
       advance();
       uint32_t nameToken = pos;
+      noSplice();
       advance();
       if (!testsEnabled())
       {

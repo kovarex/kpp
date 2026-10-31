@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -65,7 +66,8 @@ struct Token
 {
   uint32_t offset;
   uint32_t length : 24;
-  uint32_t kind : 8;
+  uint32_t kind : 7;
+  uint32_t spliced : 1; // a literal with a line splice in it: its spelling is tokenSpelling's
   // Identifier: interned symbol id. Keyword: Kw. Punctuator: P. Else 0.
   uint32_t id;
 
@@ -105,3 +107,8 @@ uint32_t lookupKeyword(std::string_view spelling);
 LexResult lex(std::string_view text, SymbolTable& symbols);
 
 const char* tokenKindName(TokenKind kind);
+
+// A token's spelling as C++'s translation phase 2 leaves it: every line splice (a backslash that
+// ends a line) taken out. Only a string or char literal has one (the lexer marks it, and a splice
+// anywhere else in a token is an error); its spelling is then made in buffer.
+std::string_view tokenSpelling(std::string_view text, const Token& t, std::string& buffer);

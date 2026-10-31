@@ -210,6 +210,7 @@ namespace
       t.offset = uint32_t(start - begin);
       t.length = uint32_t(p - start) & 0xFFFFFF;
       t.kind = uint32_t(kind);
+      t.spliced = 0;
       t.id = id;
       result.tokens.push_back(t);
     }
@@ -237,9 +238,11 @@ namespace
           ++p;
         else if (c == '/' && p[1] == '/')
         {
+          // (a splice continues the comment on the next line, as in C++)
           p += 2;
           while (*p && *p != '\n')
-            ++p;
+            if (!skipSplice())
+              ++p;
         }
         else if (c == '/' && p[1] == '*')
         {
@@ -255,12 +258,62 @@ namespace
         }
         else if (c == '\\' && (p[1] == '\n' || (p[1] == '\r' && p[2] == '\n')))
         {
-          // Line continuation outside a directive; just skip it.
-          p += p[1] == '\r' ? 3 : 2;
-          ++result.lineCount;
+          // A line splice between tokens: whitespace, unless it joins the token before it with what
+          // follows into one (`count\` + `er`, `+\` + `=`), which is an error, never two tokens.
+          const char* at = p;
+          skipSplice();
+          if (joinsTokens(at))
+          {
+            const char* save = p;
+            p = at + 1;
+            error(at);
+            p = save;
+          }
         }
         else
           return newline;
+      }
+    }
+
+    // A line splice at p (a backslash ending a line): skipped, true.
+    bool skipSplice()
+    {
+      if (*p != '\\' || !(p[1] == '\n' || (p[1] == '\r' && p[2] == '\n')))
+        return false;
+      p += p[1] == '\r' ? 3 : 2;
+      ++result.lineCount;
+      return true;
+    }
+
+    // Whether the splice at `at` (p just past it) stands inside a token: the token before it ends
+    // right there and the character after it continues that token.
+    bool joinsTokens(const char* at)
+    {
+      if (result.tokens.empty())
+        return false;
+      const Token& last = result.tokens.back();
+      if (begin + last.offset + last.length != at)
+        return false;
+      unsigned char next = uint8_t(*p);
+      switch (last.getKind())
+      {
+        case TokenKind::Identifier:
+        case TokenKind::Keyword:
+        case TokenKind::Number:
+        case TokenKind::String: // (a literal's suffix)
+        case TokenKind::Char:
+          return isIdentChar(next) || (last.getKind() == TokenKind::Number && next == '.');
+        case TokenKind::Punctuator:
+        {
+          std::string joined(begin + last.offset, last.length);
+          joined += char(next);
+          for (std::string_view s : punctuators)
+            if (s.size() >= joined.size() && s.substr(0, joined.size()) == joined)
+              return true;
+          return false;
+        }
+        default:
+          return false;
       }
     }
 
@@ -340,21 +393,29 @@ namespace
 
     void lexQuoted(const char* start, char quote)
     {
+      // Line splices come out before escapes, as C++'s phase 2 before phase 5: `\\` + newline is a
+      // backslash escaping the next line's first character. tokenSpelling takes them out.
+      bool spliced = false;
       ++p;
       for (;;)
       {
+        while (skipSplice())
+          spliced = true;
         char c = *p;
         if (c == 0 || c == '\n')
         {
           error(start);
           return;
         }
+        ++p;
         if (c == '\\')
         {
-          p += p[1] ? 2 : 1;
+          while (skipSplice())
+            spliced = true;
+          if (*p && *p != '\n')
+            ++p;
           continue;
         }
-        ++p;
         if (c == quote)
           break;
       }
@@ -362,6 +423,7 @@ namespace
       while (isIdentChar(uint8_t(*p)))
         ++p;
       push(quote == '"' ? TokenKind::String : TokenKind::Char, start);
+      result.tokens.back().spliced = spliced;
     }
 
     void lexNumber(const char* start)
@@ -467,6 +529,24 @@ LexResult lex(std::string_view text, SymbolTable& symbols)
   Lexer lexer(text, symbols);
   lexer.run();
   return std::move(lexer.result);
+}
+
+std::string_view tokenSpelling(std::string_view text, const Token& t, std::string& buffer)
+{
+  std::string_view s = text.substr(t.offset, t.length);
+  if (!t.spliced)
+    return s;
+  buffer.clear();
+  for (size_t i = 0; i < s.size(); ++i)
+  {
+    if (s[i] == '\\' && i + 1 < s.size() && (s[i + 1] == '\n' || (s[i + 1] == '\r' && i + 2 < s.size() && s[i + 2] == '\n')))
+    {
+      i += s[i + 1] == '\r' ? 2 : 1;
+      continue;
+    }
+    buffer += s[i];
+  }
+  return buffer;
 }
 
 const char* tokenKindName(TokenKind kind)

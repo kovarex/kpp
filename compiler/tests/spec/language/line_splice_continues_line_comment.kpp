@@ -1,0 +1,10 @@
+// spec: a backslash at the end of a // comment continues the comment on the next line (C++'s translation phase 2 joins the lines before comments are taken out): the next line is comment too
+// factorio: Lua's luaconf.kpp and lobject.kpp carry #define bodies continued in // comments (the next lines are comments as well)
+int main()
+{
+  int x = 1;
+  // the next line is in this comment \
+  x = 2;
+  println("{}", x);
+  return 0;
+}
