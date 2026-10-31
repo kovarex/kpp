@@ -1,0 +1,21 @@
+// spec: the literal 0 converts to a null pointer to member, as nullptr does (a null pointer constant): a data member pointer's null (not the first member's offset, 0) and a member function pointer's null, as an argument, an initializer and an assignment
+struct Base
+{
+  int first = 1;
+  int second = 2;
+  int get() const { return first; }
+};
+int readOr(const Base& b, int Base::*member, int fallback) { return member ? b.*member : fallback; }
+int callOr(const Base& b, int (Base::*method)() const, int fallback) { return method ? (b.*method)() : fallback; }
+int main()
+{
+  Base b;
+  int Base::*none = 0;
+  int Base::*first = &Base::first;
+  int (Base::*noMethod)() const = 0;
+  println("{} {} {}", readOr(b, 0, 7), readOr(b, first, 7), none == nullptr);
+  first = 0;
+  println("{} {} {}", first == nullptr, callOr(b, 0, 9), callOr(b, &Base::get, 9));
+  println("{}", noMethod == nullptr);
+  return 0;
+}

@@ -9063,7 +9063,8 @@ namespace
       auto result = [&]() -> const std::string& { if (r.empty()) r = newTemp(); return r; };
       // A pointer to a member function is the function (null when none), one to a data member the
       // member's offset, -1 when null (offset 0 is the first member's), as MSVC has them.
-      if (tk == TyKind::MemberPointer && fk == TyKind::Nullptr)
+      // (The literal 0 is a null pointer constant too: `f(0)` for an `int Base::*` parameter.)
+      if (tk == TyKind::MemberPointer && (fk == TyKind::Nullptr || (fk == TyKind::Int && v.text == "0")))
         return {to->inner && to->inner->kind == TyKind::Function ? "null" : "-1", to};
       if (fk == TyKind::MemberPointer && tk == TyKind::Bool)
       {
@@ -10840,6 +10841,17 @@ namespace
     Value compare(P op, Value l, Value r, Node* at)
     {
       std::string res = newTemp();
+      // Pointers to members (== and != only): both as the member pointer's type (nullptr or the
+      // literal 0 becomes its null), a data member's offset (-1 when null) or a function.
+      if ((l.ty->kind == TyKind::MemberPointer || r.ty->kind == TyKind::MemberPointer) && (op == P::EqEq || op == P::NotEq))
+      {
+        const Ty* mt = l.ty->kind == TyKind::MemberPointer ? l.ty : r.ty;
+        l = convert(l, mt, at);
+        r = convert(r, mt, at);
+        bool function = mt->inner && mt->inner->kind == TyKind::Function;
+        fn += "  " + res + " = icmp " + (op == P::EqEq ? "eq " : "ne ") + (function ? "ptr " : "i64 ") + l.text + ", " + r.text + "\n";
+        return {res, types.boolType()};
+      }
       if (l.ty->kind == TyKind::Pointer || r.ty->kind == TyKind::Pointer || l.ty->kind == TyKind::Nullptr || r.ty->kind == TyKind::Nullptr)
       {
         const Ty* pt = l.ty->kind == TyKind::Pointer ? l.ty : r.ty->kind == TyKind::Pointer ? r.ty : types.pointer(types.voidType());
