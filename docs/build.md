@@ -219,6 +219,54 @@ run_tests.cmd.
   - `use()` and the registry do not exist yet; there is no `configurations()` either.
   - An I/O call in build() fails with the static_assert's message, not one naming the call.
 
+### C and C++ libraries (proposed 2026-10-31, not implemented)
+
+The case: factorio-in-kpp (C's layout, root-relative) links 18 C/C++ libraries that today come
+prebuilt from C:\Factorio\vs2022\Releasex64, which a clone does not have, plus the shims in
+libraries/kpp-native. Whether build.kpp builds them from libraries/ or the repository carries
+.lib files is kovarex's choice. A C library is therefore one kind of target, buildable either
+way, and an executable links it by name:
+
+```cpp
+void build(Project& project)
+{
+  CLibrary& zlib = project.cLibrary("zlib");
+  if (project.setting("PREBUILT", "").size() != 0)
+    zlib.prebuilt(project.setting("PREBUILT", ""), "/zlib.lib");   // a .lib (or several) as given
+  else
+  {
+    zlib.source("libraries/zlib");             // every .c/.cpp under it, or files one by one
+    zlib.include("libraries/zlib");            // its own include directories
+    zlib.define("ZLIB_CONST");
+  }
+  CLibrary& native = project.cLibrary("kpp-native");
+  native.source("libraries/kpp-native");
+  native.include("libraries/imgui");
+  native.language("c++17");                    // c11, c17, c++17, c++20
+  native.resource("libraries/kpp-native/factorio.rc");
+
+  Executable& game = project.executable("factorio", {"src", "libraries/CommonUtil" /* ... */});
+  game.link("zlib");
+  game.link("kpp-native");
+  game.systemLibrary("gdi32");
+}
+```
+
+- **Building one.** kpp compiles each source with the clang it already uses (clang-cl driver
+  mode), in parallel, with the library's includes, defines and language. It caches each object
+  by the hash of its source, its flags and the headers clang reports (-MD). It archives the
+  objects into `build\<configuration>\<name>.lib` with llvm-lib. A library's error is reported
+  at its file and line in the same Error List.
+- **Its configuration.** Version 1 compiles C libraries as the game's prebuilt ones are: /MT /O2
+  in both configurations, so that one CRT is linked. A per-library debug setting comes with a
+  real need.
+- **The flags are a short list:** include, define, language, `warning(off)`. There is no
+  free-form flag, so a library's build stays readable and the registry (library-registry.md, "C
+  dependencies") can take the same list.
+- **Factorio's 18 libraries** become 18 `cLibrary` entries whose sources and defines come from
+  fbuild.bff's Library() sections. Converting those by hand once is C's or E's work, depending on
+  kovarex's answer.
+
 ### Adding a library
 
 **Writing the line adds the library.** `project.use("json")` (or `game.use(...)` for one target)
