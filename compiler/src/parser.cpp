@@ -35,6 +35,7 @@ namespace
       : toks(tokens), text(text.data()), symbols(symbols), out(out), arena(out.arena)
     {
       kwImport = symbols.intern("import");
+      kwSuite = symbols.intern("SUITE");
       kwAssert = symbols.intern("assert");
       kwReleaseAssert = symbols.intern("release_assert");
       kwCaller = symbols.intern("caller");
@@ -68,7 +69,7 @@ namespace
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwTypes, kwFromStr, kwOptional, kwText, kwTag, kwTagField,
-             kwTagMethod, kwTypeMember;
+             kwTagMethod, kwTypeMember, kwSuite;
     uint32_t lambdaCount = 0;        // Lambdas parsed so far in this file.
     uint32_t autoCount = 0;          // Type parameters invented for `auto` parameters so far in this file.
     uint8_t pendingAttributes = 0;   // [[noinline]] and friends seen before the current declaration.
@@ -1705,6 +1706,37 @@ namespace
       {
         if (parseEnumOrElaborated(scope, flags, templ))
           return;
+      }
+
+      // UnitTest++'s `SUITE(Name) { ... }` in the C++ tests the converter reads: the namespace
+      // SuiteName it expands to, its declarations parsed as any namespace's (so that the
+      // converter's typed rules reach the tests, and `SuiteName::x` resolves), not skipped as
+      // the macro invocation below.
+      if (scope == Scope::Namespace && atIdent(kwSuite) && at(P::LParen, 1) && atIdent(2) && at(P::RParen, 3) && at(P::LBrace, 4))
+      {
+        uint32_t start = pos;
+        NamespaceDecl* ns = decl<NamespaceDecl>(start);
+        ns->name = symbols.intern("Suite" + std::string(symbols.name(tok(2).id)));
+        NamePart part;
+        part.symbol = ns->name;
+        ns->nested.parts.data = arena.array(&part, 1);
+        ns->nested.parts.count = 1;
+        for (int k = 0; k < 4; ++k)
+          advance();
+        expect(P::LBrace, "expected '{' after SUITE(...)");
+        Decl* savedParent = currentParent;
+        Access savedAccess = currentAccess;
+        currentParent = ns;
+        currentAccess = Access::Default;
+        size_t mark = scratch.size();
+        while (!at(P::RBrace) && !at(TokenKind::End))
+          parseDeclaration(Scope::Namespace);
+        ns->decls = makeSpan<Decl*>(mark);
+        currentParent = savedParent;
+        currentAccess = savedAccess;
+        expect(P::RBrace, "expected '}' to close SUITE(...)");
+        pushDecl(ns);
+        return;
       }
 
       // Macro invocation used as a declaration: MACRO(...) ; or MACRO(...) { ... }
