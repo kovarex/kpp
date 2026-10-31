@@ -52,6 +52,11 @@ $steps = @(
   @{ name = 'constexpr body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12'; edit = { Edit 'shapes.kpp' 'int r = 12; return r;' 'int r = 6; return r;' } },
   @{ name = 'a body edit of a function that is no constexpr, which a static_assert in another file runs (it fails)'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int plainLimit() { int r = 7; return r; }' 'int plainLimit() { int r = 7; return r + 5; }' } },
   @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12'; edit = { Edit 'shapes.kpp' 'int plainLimit() { int r = 7; return r + 5; }' 'int plainLimit() { int r = 7; return r; }' } },
+  @{ name = 'an undeclared name typed in a body (a checker error: the file is walked again, its walk''s errors taken back)'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' 'int scale(int v) { undeclaredName = 1; return v * 11; }' } },
+  @{ name = 'the error fixed'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12'; edit = { Edit 'shapes.kpp' 'int scale(int v) { undeclaredName = 1; return v * 11; }' 'int scale(int v) { return v * 11; }' } },
+  @{ name = 'a line half typed in a body (it does not parse: no code generated), and a body edit in another file'; expect = '(build exit 1)'; edit = { Edit 'shapes.kpp' 'int scale(int v) { return v * 11; }' 'int scale(int v) { v. return v * 11; }'; Edit 'lambdas.kpp' 'return stepFunctions[0](3) + stepFunctions[1](3); }' 'return stepFunctions[0](3) + stepFunctions[1](3) + 1; }' } },
+  @{ name = 'the line taken out (codegen emits the other file''s edit too)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 13'; edit = { Edit 'shapes.kpp' 'int scale(int v) { v. return v * 11; }' 'int scale(int v) { return v * 11; }' } },
+  @{ name = 'that body edit back'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12'; edit = { Edit 'lambdas.kpp' 'return stepFunctions[0](3) + stepFunctions[1](3) + 1; }' 'return stepFunctions[0](3) + stepFunctions[1](3); }' } },
   @{ name = 'a lambda added before another in its file (which moves and is renumbered)'; expect = '7 44 44 3 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12'; edit = { Edit 'lambdas.kpp' 'int firstHelper() { int r = 2; return r; }' 'int firstHelper() { auto two = []() { return 2; }; int r = two(); return r; }' } },
   @{ name = 'signature edit'; expect = '7 44 44 103 8 11 7 6 8 44 3 8 6 44 13 19 44 111 12 12'; edit = { Edit 'shapes.kpp' 'int combine(int a, int b) { return a + b; }' 'int combine(int a, int b, int c = 100) { return a + b + c; }' } },
   @{ name = 'return type edit (a data member is declared with it)'; expect = '7 44 44 103 8 11 7 6 16 44 3 8 6 44 13 19 44 111 12 12'; edit = { Edit 'shapes.kpp' 'int measure()' 'long long measure()' } },
@@ -174,7 +179,9 @@ else { "ok   incremental instances codegen made dropped and made anew (2)" }
 # viaScale<double>, calls: it is checked again, not built from scratch)
 if (@($whole).Count -lt 12) { "FAIL incremental: the signature edits and the overload added and removed were not built from the kept program ($(@($whole).Count) such builds, 12 expected)"; $failed++ }
 else { "ok   incremental whole-function edits built from the kept program ($(@($whole).Count))" }
-if (@($fast).Count -lt 10) { "FAIL incremental: $(@($fast).Count) body edits built from the kept program, 10 expected (5 through each of two servers) (the server's log, %TEMP%\kppc-server)"; $failed++ }
+# (and the edits with errors, through each server: the undeclared name typed and fixed, the line that
+# does not parse and the line taken out)
+if (@($fast).Count -lt 18) { "FAIL incremental: $(@($fast).Count) body edits built from the kept program, 18 expected (9 through each of two servers) (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }
 & $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
 & $Kppc --stop-server --verify-incremental --exe $exe $src | Out-Null

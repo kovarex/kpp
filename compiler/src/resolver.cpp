@@ -168,6 +168,9 @@ struct Entry
 // (a constexpr function's body edit changes what they computed). A later edit invalidates the
 // units that read what it changed.
 enum : uint8_t { USE_DeclaredType = 1, USE_ScopeRelations, USE_ClassInstance, USE_Instance, USE_RanBody, USE_ClassMembers };
+// Not a use: a checker error a cached answer's computation reported (its text), collected
+// (CollectUses) so that the answer's later askers report it too (Impl::replayUses).
+enum : uint8_t { USE_ReportedError = 64 };
 
 // A recorded name: a symbol looked up in a namespace's or an enumeration's scope (or coarsely, by
 // the symbol alone), or a symbol looked up in a class's scope with that scope (memberName): an edit
@@ -230,6 +233,10 @@ static bool recordingDependencies = false;
 
 // The list this thread's lookups are recorded into (null: none).
 static thread_local DependencyList* recordingInto = nullptr;
+
+// The unit whose checker errors this thread reports (its dependencies; null: none): a unit walked or
+// checked again takes back what it reported (Impl::forgetErrorsOf), one that is not keeps it.
+static thread_local const void* reportingUnit = nullptr;
 
 // A cached computation's reads, collected (CollectUses): kind 0 is a name (its RecordedName in
 // what's bits), else a use.
@@ -330,13 +337,17 @@ struct RecordInto
       recentUses = std::make_unique<RecentUses>();
     savedUnit = recordingUnit;
     recordingUnit = ++unitCounter;
+    savedReporting = reportingUnit;
+    reportingUnit = into;
   }
   uint32_t savedUnit = 0;
+  const void* savedReporting = nullptr;
   ~RecordInto()
   {
     if (!recordingDependencies)
       return;
     recordingInto = saved;
+    reportingUnit = savedReporting;
     lastName = UINT32_MAX;
     lastMember = 0;
     lastUse = nullptr;
@@ -388,7 +399,7 @@ static void replayCollected(const std::vector<CollectedUse>& uses)
       if (recordingInto)
         recordingInto->names.push_back(n);
     }
-    else
+    else if (kind != USE_ReportedError) // (Impl::replayUses reports that, which collects it again)
       recordUse(kind, what);
 }
 
@@ -759,13 +770,17 @@ struct GlobalScope::Impl
   std::unordered_map<Decl*, std::vector<VariableDecl*>> variableSpecializations;
   std::unordered_map<Decl*, Scope*> specializationMembers;         // `int Flag<true>::value() {...}` -> Flag<true>'s scope (finishIndex).
   std::mutex checkerErrorsMutex;
-  std::unordered_set<std::string> checkerErrorSet;                 // `path:line: error: ...`, each once (a failed static_assert)
+  // `path:line: error: ...`, each once (a failed static_assert), with the units that reported it
+  // (reportingUnit; null: none, or a build that records no units).
+  std::unordered_map<std::string, std::vector<const void*>> checkerErrorSet;
+  std::unordered_set<std::string> reportedErrorTexts;              // what a collected USE_ReportedError points at (never erased)
   struct LayoutAssert                                              // a static_assert on a class's size or alignment
   {
     StaticAssertDecl* decl = nullptr;
     Subst subst;                                                   // the instance's arguments, in a template
     std::string instance;
     const FunctionDecl* inFunction = nullptr;                      // the instance's function body it is in: counts if emitted
+    const void* unit = nullptr;                                    // the unit that met it (reportingUnit)
   };
   std::vector<LayoutAssert> layoutAsserts;                          // (under checkerErrorsMutex) for the code generator
   // (under checkerErrorsMutex) Failed static_asserts in template instances' function bodies, by
@@ -775,6 +790,8 @@ struct GlobalScope::Impl
   // lookup does not find either, by that body: errors once the code generator emits it.
   std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceNameErrors;
   std::unordered_set<const FunctionDecl*> emittedFunctions;
+  bool codeGenerated = true; // GlobalScope::setCodeGenerated: false, none of emittedFunctions counts
+  bool emitted(const FunctionDecl* f) const { return codeGenerated && emittedFunctions.count(f); }
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
   // scope tree so Phase 2 lookups remain lock-free. Keyed by (scope*, symbol).
@@ -4694,9 +4711,33 @@ struct GlobalScope::Impl
 
   void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message)
   {
-    std::string where = locationOf(file, token);
+    reportCheckerErrorText(locationOf(file, token) + ": error: " + message);
+  }
+
+  void reportCheckerErrorText(const std::string& text)
+  {
     std::lock_guard lock(checkerErrorsMutex);
-    checkerErrorSet.insert(where + ": error: " + message);
+    std::vector<const void*>& units = checkerErrorSet[text];
+    if (std::find(units.begin(), units.end(), reportingUnit) == units.end())
+      units.push_back(reportingUnit);
+    if (usesCollector) // (a cached answer's computation: its later askers report it too, replayUses)
+      usesCollector->push_back({USE_ReportedError, &*reportedErrorTexts.insert(text).first});
+  }
+
+  // The errors the units given reported (and the layout asserts they met), taken back: the units
+  // are walked or checked again and report what they still find. An error another unit reported
+  // too stays.
+  void forgetErrorsOf(const std::unordered_set<const void*>& units)
+  {
+    if (units.empty())
+      return;
+    std::lock_guard lock(checkerErrorsMutex);
+    for (auto it = checkerErrorSet.begin(); it != checkerErrorSet.end();)
+    {
+      std::erase_if(it->second, [&](const void* u) { return u && units.count(u); });
+      it = it->second.empty() ? checkerErrorSet.erase(it) : std::next(it);
+    }
+    std::erase_if(layoutAsserts, [&](const LayoutAssert& a) { return a.unit && units.count(a.unit); });
   }
 
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
@@ -5078,6 +5119,7 @@ struct GlobalScope::Impl
         a.subst = *ctx.subst;
       a.instance = instance;
       a.inFunction = inFunction;
+      a.unit = reportingUnit;
       return;
     }
     if (v && *v)
@@ -5837,6 +5879,8 @@ struct GlobalScope::Impl
     for (const auto& [kind, what] : uses)
       if (kind == USE_RanBody)
         ranBody(static_cast<const FunctionDecl*>(what));
+      else if (kind == USE_ReportedError)
+        reportCheckerErrorText(*static_cast<const std::string*>(what));
     replayCollected(uses);
   }
 
@@ -22701,7 +22745,7 @@ std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
   std::unordered_set<std::string> seen; // an instance's assert met by several walks once
   for (const Impl::LayoutAssert& a : impl->layoutAsserts)
   {
-    if (a.inFunction && !impl->emittedFunctions.count(a.inFunction))
+    if (a.inFunction && !impl->emitted(a.inFunction))
       continue; // in a template instance's function the program does not use (functionEmitted)
     std::string key = std::to_string(reinterpret_cast<uintptr_t>(a.decl)) + "|" + a.instance;
     if (!seen.insert(key).second)
@@ -22756,14 +22800,16 @@ std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
     return std::make_tuple(e.substr(0, colon), std::strtol(e.c_str() + colon + 1, nullptr, 10), e);
   };
   std::lock_guard lock(impl->checkerErrorsMutex);
-  std::unordered_set<std::string> all = impl->checkerErrorSet;
+  std::unordered_set<std::string> all;
+  for (const auto& [e, units] : impl->checkerErrorSet)
+    all.insert(e);
   for (const auto& [f, errors] : impl->instanceAssertErrors)
-    if (impl->emittedFunctions.count(f))
+    if (impl->emitted(f))
       all.insert(errors.begin(), errors.end());
   // (one the template's own walk reported at the definition already is that error, whichever walk
   // ran first)
   for (const auto& [f, errors] : impl->instanceNameErrors)
-    if (impl->emittedFunctions.count(f))
+    if (impl->emitted(f))
       for (const std::string& e : errors)
         if (!impl->checkerErrorSet.count(e.substr(0, e.find(" (in "))))
           all.insert(e);
@@ -22783,9 +22829,25 @@ size_t GlobalScope::unusedFailedAsserts()
   std::lock_guard lock(impl->checkerErrorsMutex);
   size_t n = 0;
   for (const auto& [f, errors] : impl->instanceAssertErrors)
-    if (!impl->emittedFunctions.count(f))
+    if (!impl->emitted(f))
       n += errors.size();
   return n;
+}
+
+void GlobalScope::setCodeGenerated(bool generated)
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  impl->codeGenerated = generated;
+}
+
+bool GlobalScope::unitlessErrorIn(const std::string& path)
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  for (const auto& [e, units] : impl->checkerErrorSet)
+    if (e.size() > path.size() && e.compare(0, path.size(), path) == 0 && e[path.size()] == ':' &&
+        std::find(units.begin(), units.end(), nullptr) != units.end())
+      return true;
+  return false;
 }
 
 void GlobalScope::resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne)
@@ -23150,9 +23212,12 @@ std::vector<const Ty*> GlobalScope::forgetTypesFromWalks(const std::vector<const
     const_cast<Decl*>(d)->cachedType.store(nullptr, std::memory_order_release);
     if (Dependencies* deps = d->typeDependencies.load(std::memory_order_acquire))
     {
-      std::lock_guard lock(deps->mutex);
-      deps->list = DependencyList{};
-      deps->tidied = true;
+      {
+        std::lock_guard lock(deps->mutex);
+        deps->list = DependencyList{};
+        deps->tidied = true;
+      }
+      impl->forgetErrorsOf({deps});
     }
   }
   return before;
@@ -23922,6 +23987,7 @@ namespace
 
 void GlobalScope::forgetWalks(const ParsedFile& file)
 {
+  std::unordered_set<const void*> units;
   for (Impl::DeclDependencyShard& shard : impl->declDependencies)
   {
     std::lock_guard lock(shard.mutex);
@@ -23931,8 +23997,11 @@ void GlobalScope::forgetWalks(const ParsedFile& file)
         std::lock_guard l(deps->mutex);
         deps->list = DependencyList{};
         deps->tidied = true;
+        units.insert(deps.get());
       }
   }
+  // (and the errors they reported: the walk reports what it still finds)
+  impl->forgetErrorsOf(units);
   // The types the old walk cached on its functions' locals (a deduced auto, a class template's
   // arguments from its initializer): kept, the walk again took them for the answer instead of
   // deducing them from what they read now (a return type edited: `Boxed b(unitDepth())` kept
@@ -24084,20 +24153,27 @@ std::vector<FunctionDecl*> GlobalScope::outOfLineDefinitions(const Decl* cls)
 
 void GlobalScope::forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit)
 {
-  for (Impl::InstanceShard& shard : impl->instanceShards)
+  // (the shards scanned on every thread, the full game's in a body edit; the copies visited in the
+  // shards' order after)
+  std::vector<std::vector<std::pair<Node*, const Decl*>>> copies(std::size(impl->instanceShards));
+  forEachParallel(std::size(impl->instanceShards), [&](size_t i)
   {
+    Impl::InstanceShard& shard = impl->instanceShards[i];
     std::lock_guard lock(shard.mutex);
     for (auto& [key, record] : shard.map)
     {
       const Decl* source = record->recheck ? record->recheck->source : record->of;
       if (record->body && record->body->file == &file)
-        visit(record->body, source);
+        copies[i].push_back({record->body, source});
       if (record->init && record->of && record->of->file == &file)
-        visit(record->init, source);
+        copies[i].push_back({record->init, source});
       if (record->lambda && record->of && record->of->file == &file)
-        visit(record->lambda, source);
+        copies[i].push_back({record->lambda, source});
     }
-  }
+  });
+  for (const auto& shard : copies)
+    for (auto [copy, source] : shard)
+      visit(copy, source);
 }
 
 void GlobalScope::forEachInstanceCopy(const std::function<void(Node* copy, const Decl* source, const ParsedFile& file)>& visit)
@@ -24147,23 +24223,26 @@ ResolveStats GlobalScope::instanceStatsAtResolveEnd()
 
 std::vector<FunctionDecl*> GlobalScope::withBodyCopies(const std::vector<FunctionDecl*>& functions)
 {
-  std::unordered_set<const void*> wanted(functions.begin(), functions.end()), found;
+  std::unordered_set<const void*> wanted(functions.begin(), functions.end());
   if (wanted.empty())
     return {};
-  for (Impl::InstanceShard& shard : impl->instanceShards)
+  // (the shards scanned on every thread: the full game's, in every body edit)
+  std::vector<std::unordered_set<const void*>> found(std::size(impl->instanceShards));
+  forEachParallel(std::size(impl->instanceShards), [&](size_t i)
   {
+    Impl::InstanceShard& shard = impl->instanceShards[i];
     std::lock_guard lock(shard.mutex);
     for (auto& [key, record] : shard.map)
     {
       if (record->recheck && wanted.count(record->recheck->source))
-        found.insert(record->recheck->source);
+        found[i].insert(record->recheck->source);
       if (wanted.count(record->of))
-        found.insert(record->of);
+        found[i].insert(record->of);
     }
-  }
+  });
   std::vector<FunctionDecl*> out;
   for (FunctionDecl* f : functions)
-    if (found.count(f))
+    if (std::any_of(found.begin(), found.end(), [&](const auto& set) { return set.count(f) != 0; }))
       out.push_back(f);
   return out;
 }
@@ -24311,6 +24390,14 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       std::lock_guard lock(r->deps.mutex);
       r->deps.list = DependencyList{};
       r->deps.tidied = true;
+    }
+    // Its errors go too: the check again reports what it still finds (in the new copy's body).
+    impl->forgetErrorsOf({&r->deps});
+    if (r->body)
+    {
+      std::lock_guard lock(impl->checkerErrorsMutex);
+      impl->instanceAssertErrors.erase(r->body);
+      impl->instanceNameErrors.erase(r->body);
     }
     const Ty* deducedBefore = r->deducedReturn;
     Impl::InstanceRecord::Recheck& rc = *r->recheck;
@@ -24692,6 +24779,7 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
         std::lock_guard l(deps->mutex);
         deps->list = DependencyList{};
       }
+      impl->forgetErrorsOf({deps});
       if (auto it = readersOf.find(owner); it != readersOf.end())
         pending.insert(pending.end(), it->second.begin(), it->second.end());
     }

@@ -10,11 +10,23 @@ struct SourceFile
   std::string text; // Always followed by a '\0' sentinel so the lexer needs no bounds checks.
 };
 
-// Recursively collects files with the given extensions under root.
+// A file's last write time and size, as a directory listing gives them: a compile server takes a
+// file whose stamp is its last build's as unchanged (main.cpp, compile), as build tools do.
+struct FileStamp
+{
+  int64_t time = 0;
+  uint64_t size = 0;
+  bool operator==(const FileStamp&) const = default;
+};
+
+// Recursively collects files with the given extensions under root (sorted), and with stamps each
+// one's stamp (the listing's: no file opened).
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& root,
-                                                const std::vector<std::string>& extensions);
+                                                const std::vector<std::string>& extensions, std::vector<FileStamp>* stamps = nullptr);
 
 bool readFile(const std::filesystem::path& path, std::string& out);
+// Whether readFile gives an overlay's text for path (setFileOverlay), not the file's.
+bool hasFileOverlay(const std::filesystem::path& path);
 
 // A text that stands for a file on disk, as an editor holds it unsaved (`kppc --lsp`, lsp.hpp):
 // readFile gives it instead of the file's contents. Null removes it. Paths compare as Windows

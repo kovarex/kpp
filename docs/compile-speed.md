@@ -799,7 +799,9 @@ before relying on the recorded uses.
      the text's order; outside the bodies the two token streams must be the same token for token,
      and a body that differs must be eligible: not a template's or a class template's member, not
      constexpr or consteval, no `auto` or `decltype` before it (a deduced return type types callers
-     elsewhere). The file must have no parse errors and no checker errors in the kept build.
+     elsewhere). (The file once had to have no parse errors and no checker errors in the kept build;
+     since "Edits with errors stay incremental" below, a parse error inside a body and a checker
+     error some walk reported are taken.)
   2. **The graft.** The kept file takes the new version's tokens and text. Every node it keeps is
      pointed at them: a diff of the two token streams (Myers', between the common prefix and
      suffix; given up past 4,000 edits) maps each old token to its new place, and a walk over every
@@ -1246,6 +1248,72 @@ KPP_CHECK_REBUILD every 50th program function (1,424) emits 1,884 again in 0.294
 server (scratchpad srvcheck.sh), the getStateInternal edit, its revert and the edit again: codegen
 0.132, 0.257 and 0.102 s, one module, each "the same as from scratch". The headline IR at -j 1 and
 -j 32 is the same; the game's --dump-data checksum is C++'s (486241314) and the 19 menu maps run.
+
+### Edits with errors stay incremental (2026-10-31)
+
+Errors as you type (`kppc --lsp`, [ide.md](ide.md), "The language server as built") check the
+program after every change, and a program being typed has errors most of the time. The server's
+incremental paths took none: a kept file with checker errors was built from scratch (a walk could
+not take back the errors it had reported: they were kept by text), and so was a file that did not
+parse. On the full game that made fixing an error 12 to 23 s and taking out a half-typed line 30 to
+44 s. Now:
+
+- **A checker error belongs to the unit that reported it.** The resolver keeps each error with the
+  units that reported it (the walk unit, an instance's check, a declared type's computation: the
+  dependencies `RecordInto` records into, `reportingUnit`). A unit walked or checked again takes its
+  errors back first (`forgetWalks`, `recheckInstancesOf`, a declared type forgotten:
+  `Impl::forgetErrorsOf`) and reports what it still finds; an error another unit reported too stays.
+  A cached answer whose computation reported an error reports it again to every later asker (it is
+  collected with the answer's reads, `USE_ReportedError`, and replayed), so a walk answered from a
+  cache does not lose it. Only an error reported outside any unit (the index's, a class instance's
+  static_assert) still makes its file's walk a build from scratch (`unitlessErrorIn`). The layout
+  static_asserts a unit met go with it too.
+- **A body that does not parse is grafted with what the parser recovered.** The parser recovers
+  inside a block up to its closing brace, so when every parse error of the new text is inside a
+  function body that the parser ended at its closing brace (`errorsInBodies`), the declarations
+  around it are what they were, and step 3b takes the file: the body is grafted with its
+  `ErrorStmt`s, the file's parse errors are the new text's, and the build reports them and generates
+  no code, as a build from scratch does. The same holds for a kept file with such errors, so the edit
+  that fixes the line is a body edit too. A parse error outside bodies (a declaration half typed)
+  is still a build from scratch; so are lexical errors.
+- **What a build without code changed is emitted by the next one.** A build that generates no code
+  (parse errors, a clash) leaves codegen's kept session behind (`Build::codegenBehind`); the next
+  build carries its changed bodies and globals over to `rebuildLLVM`, and runs codegen in full when
+  it changed what codegen cannot follow as such (functions added or removed, layouts, instances).
+  With no code generated, no function
+  counts as emitted for the errors either (`setCodeGenerated`), as in a build from scratch.
+- **Reading.** The server reads only the files whose stamp (last write time and size, from the
+  directory listing) is not the kept build's, and no editor's overlay stands for; each file's hash
+  is made as it is read (on every thread) and kept, and the replay's fingerprint mixes the hashes.
+  The C import's header stamps are checked once per build, on every thread (they were checked twice,
+  one at a time: 40 ms each on the game). With `--quiet` nothing is lexed again for the report.
+  `--verify-incremental`'s build from scratch reads every file.
+- **Two scans on every thread.** A body edit scanned every instance record of the program twice,
+  one shard at a time (`withBodyCopies`, a5afc850, and `forEachInstanceCopy` in the graft): 113 and
+  76 ms on the game, now 12 and 8 ms.
+
+The edit test has five steps more: an undeclared name typed in a body and fixed, and a line half
+typed in a body together with a body edit in another file, the line taken out (the other file's edit
+is emitted then: the server's program prints it), and that edit back; each through both servers
+with `--verify-incremental`, all incremental.
+
+Measured with F's language server client on the full game (scratchpad `lsp\measure.py`, the frozen
+4c178a5b915 tree, run.cmd's sources; `--check-each-change`, each request timed from the change to
+its answer; base a5afc850 against this change, two interleaved rounds each):
+
+| check after | base | new |
+|---|---:|---:|
+| a body edit (a statement added and taken out, three times each) | 0.73 to 0.81 s | 0.39 to 0.44 s |
+| typing `this->` on a line of its own (the body does not parse) | 5.8 to 12.6 s | 0.31 to 0.40 s |
+| taking that line out again | 30.5 to 44.5 s | 0.49 to 0.72 s |
+| an undeclared name typed | 8.1 to 17.6 s | 7.7 to 8.8 s |
+| the undeclared name taken out | 11.9 to 23.3 s | 8.5 to 10.8 s |
+
+The front end takes every one of these incrementally now (0 builds from scratch in either round).
+The two error rows are codegen's: `rebuildLLVM` declines a program with an error ("codegen does not
+support an unresolved name"), and a codegen with errors keeps no session (codegen.cpp, `keepTexts`),
+so the error and its fix are each a codegen in full; that is the codegen thread's part. Of a body
+edit's 0.4 s, codegen's rebuild of the module is about 0.25 s.
 
 ### The link in the edit loop (2026-10-30: incremental, 3.8 s -> 0.5 s)
 

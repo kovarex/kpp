@@ -243,6 +243,13 @@ namespace
     // again (rebuildLLVM).
     std::vector<const Decl*> changedGlobals;
     bool rebuildCodegen = false;
+    // The build generated no code (parse errors, a clash; reportResolve): codegen's kept session has
+    // not seen what it changed, which the next build that generates code emits too (incrementalBuild).
+    bool codegenBehind = false;
+    // The program's files' stamps (as listed) and their texts' hashes, by the files' order: a compile
+    // server's next build does not read a file whose stamp is the same again (compile).
+    std::vector<FileStamp> stamps;
+    std::vector<uint64_t> textHashes;
     // An incremental build moved a kept local type (a lambda's closure, a local class) or renamed a
     // closure, or moved a template's position-named entity: names in the code are the position's
     // (`f::__lambda_3_1@2045`, a static local's `.2051`), so codegen runs in full (its session keeps
@@ -458,20 +465,26 @@ namespace
     std::string stamps = readWholeFile(stampsPath);
     if (stamps.empty())
       return false;
+    std::vector<std::string> lines;
     for (size_t pos = 0; pos < stamps.size();)
     {
       size_t end = stamps.find('\n', pos);
       if (end == std::string::npos)
         end = stamps.size();
-      std::string line = stamps.substr(pos, end - pos);
+      if (end > pos)
+        lines.push_back(stamps.substr(pos, end - pos));
       pos = end + 1;
-      if (line.empty())
-        continue;
-      size_t a = line.find(' '), b = a == std::string::npos ? a : line.find(' ', a + 1);
-      if (b == std::string::npos || fileStamp(line.substr(b + 1)) != line)
-        return false;
     }
-    return true;
+    // (on every thread: the game's import reads hundreds of headers, a compile server's every build)
+    std::atomic<bool> same{true};
+    parallelFor(lines.size(), std::max(1u, std::thread::hardware_concurrency()), [&](size_t i)
+    {
+      const std::string& line = lines[i];
+      size_t a = line.find(' '), b = a == std::string::npos ? a : line.find(' ', a + 1);
+      if (same && (b == std::string::npos || fileStamp(line.substr(b + 1)) != line))
+        same = false;
+    });
+    return same;
   }
 
   // The bodies of the object-like macros that call function-like ones (SDL3's
@@ -977,6 +990,8 @@ namespace
     // generated in full, as when nothing is kept.
     CodegenResult cg;
     bool rebuilt = false;
+    global.setCodeGenerated(true);
+    build.codegenBehind = false;
     if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
     {
       cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
@@ -1522,17 +1537,23 @@ namespace
       report("  most common unresolved names:\n");
     std::vector<std::pair<uint32_t, uint32_t>> top(total.unresolvedSymbols.begin(), total.unresolvedSymbols.end());
     std::sort(top.begin(), top.end(), [&](auto& a, auto& b) { return a.second != b.second ? a.second > b.second : symbols.name(a.first) < symbols.name(b.first); }); // ties by name: symbol ids depend on the threads
+    // (no code generated: no function counts as emitted, as in a build from scratch, whatever a kept
+    // program's last code generator emitted)
     if (build.parseErrors && generatesCode(options))
     {
       fprintf(stderr, "error: %zu parse error(s): no code generated\n", build.parseErrors);
+      global.setCodeGenerated(false);
       reportCheckerErrors(global);
+      build.codegenBehind = true;
     }
     else if (!build.clashes.empty() && generatesCode(options))
     {
       // (a name two entities claim is looked up as one of them: what codegen made of it would only
       // add errors that follow from the clash)
       fprintf(stderr, "error: %zu top-level name(s) declared twice: no code generated\n", build.clashes.size());
+      global.setCodeGenerated(false);
       reportCheckerErrors(global);
+      build.codegenBehind = true;
     }
     else if (generatesCode(options))
       runCodegen(build);
@@ -1688,16 +1709,33 @@ namespace
     std::vector<size_t> changed;
   };
 
+  // Whether a file's parse errors are all inside function bodies (bodies, sorted by their opening
+  // brace), each of which the parser ended at its closing brace: the parser recovers inside a block
+  // up to its end, so the declarations around such a body are what the tokens around it say, as in
+  // a file without the error. A body that does not parse (a line half typed) is grafted with what
+  // the parser recovered: its errors are the build's (no code is generated), the rest of the file
+  // stays the kept tree.
+  bool errorsInBodies(const ParsedFile& parsed, const std::vector<Body>& bodies)
+  {
+    for (const Diagnostic& d : parsed.diagnostics)
+    {
+      auto after = std::upper_bound(bodies.begin(), bodies.end(), d.token, [](uint32_t t, const Body& b) { return t < b.open; });
+      if (after == bodies.begin())
+        return false;
+      const Body& b = *std::prev(after);
+      if (d.token > b.close || b.f->endToken != b.close + 1)
+        return false;
+    }
+    return true;
+  }
+
   bool bodiesOnly(Build& kept, size_t i, std::string text, ChangedFile& out, std::string& why)
   {
     const ParsedFile& old = *kept.parsed[i];
     const std::vector<Token>& oldTokens = kept.lexed[i].tokens;
     std::string_view oldText = kept.files[i].text;
-    if (!old.diagnostics.empty() || kept.files[i].path.extension() != ".kpp")
-      return why = "parse errors, or not a .kpp file", false;
-    for (const std::string& e : kept.global->checkerErrors())
-      if (e.compare(0, old.path.size(), old.path) == 0)
-        return why = "the file has checker errors", false;
+    if (kept.files[i].path.extension() != ".kpp" || kept.lexed[i].errorCount)
+      return why = "not a .kpp file, or lexical errors", false;
     out.index = i;
     out.text = std::move(text);
     out.lexed = lex(out.text, *kept.symbols);
@@ -1707,8 +1745,8 @@ namespace
     out.parsed->index = old.index;
     out.parsed->isLibrary = old.isLibrary;
     parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
-    if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
-      return why = "the new text has errors", false;
+    if (out.lexed.errorCount)
+      return why = "the new text has lexical errors", false;
     if (!collectBodies(old.decls, oldTokens, false, out.oldBodies))
       return why = "the function bodies cannot be paired", false;
     if (!collectBodies(out.parsed->decls, out.tokens, false, out.newBodies) || out.oldBodies.size() != out.newBodies.size())
@@ -1716,6 +1754,10 @@ namespace
     auto byOpen = [](const Body& a, const Body& b) { return a.open < b.open; };
     std::sort(out.oldBodies.begin(), out.oldBodies.end(), byOpen);
     std::sort(out.newBodies.begin(), out.newBodies.end(), byOpen);
+    if (!errorsInBodies(old, out.oldBodies))
+      return why = "parse errors outside function bodies", false;
+    if (!errorsInBodies(*out.parsed, out.newBodies))
+      return why = "the new text has parse errors outside function bodies", false;
     // Outside the bodies the token streams must be the same; a body that differs is a change.
     size_t a = 0, b = 0;
     for (size_t k = 0; k <= out.oldBodies.size(); ++k)
@@ -2021,6 +2063,7 @@ namespace
     kept.lexed[i].errorCount = c.lexed.errorCount;
     file.text = kept.files[i].text;
     file.tokens = &kept.lexed[i].tokens;
+    file.diagnostics = c.parsed->diagnostics; // (inside bodies: errorsInBodies)
     file.declCount = c.parsed->declCount;
     file.functionBodies = c.parsed->functionBodies;
     file.nodeCount = c.parsed->nodeCount;
@@ -2123,9 +2166,6 @@ namespace
     std::string_view oldText = kept.files[i].text;
     if (!old.diagnostics.empty() || kept.files[i].path.extension() != ".kpp")
       return why = "parse errors, or not a .kpp file", false;
-    for (const std::string& e : kept.global->checkerErrors())
-      if (e.compare(0, old.path.size(), old.path) == 0)
-        return why = "the file has checker errors", false;
     out.index = i;
     out.text = std::move(text);
     out.lexed = lex(out.text, *kept.symbols);
@@ -2407,12 +2447,13 @@ namespace
   // bodies only: those bodies parsed and checked again and nothing else, then the reports and
   // codegen as a build from scratch runs them. False when the request is no such build: it is built
   // from scratch then (keptChanged: the kept build was changed on the way, and is dropped).
-  bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collectTime, bool& keptChanged)
+  // headersSame: the C import's headers are as the kept build read them (lastImportStamps).
+  bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collectTime, bool headersSame, bool& keptChanged)
   {
     using Clock = std::chrono::steady_clock;
     keptChanged = false;
     std::string why;
-    if (!kept.keepable || files.size() + 1 < kept.files.size() || !(lastImportStamps.empty() || headersUnchanged(lastImportStamps)))
+    if (!kept.keepable || files.size() + 1 < kept.files.size() || !headersSame)
       return false;
     size_t sources = 0; // the kept files without the C import, which the request's files have not yet
     for (const auto& p : kept.parsed)
@@ -2442,6 +2483,20 @@ namespace
       }
     double parseTime = seconds(Clock::now() - start);
     keptChanged = true;
+    // The last build generated no code (parse errors, a clash): what it changed, codegen's kept
+    // session has not seen, and this build emits it too. What codegen cannot take as changed bodies
+    // and globals (functions added or removed, layouts, instances), or could not follow then, makes
+    // it run in full.
+    std::vector<FunctionDecl*> carriedBodies;
+    std::vector<const Decl*> carriedGlobals;
+    bool carriedInFull = false;
+    if (kept.codegenBehind)
+    {
+      carriedBodies = kept.changedBodies;
+      carriedGlobals = kept.changedGlobals;
+      carriedInFull = !kept.rebuildCodegen || !kept.addedFunctions.empty() || !kept.removedFunctions.empty() || !kept.changedLayouts.empty() ||
+                      !kept.instancesOf.empty() || kept.positionalCodegenInFull;
+    }
     kept.changedBodies.clear();
     kept.addedFunctions.clear();
     kept.removedFunctions.clear();
@@ -2551,6 +2606,8 @@ namespace
     // for local types that moved (remapKeptFile).
     if (kept.positionalCodegenInFull)
       inFull("a local type moved (its name is its place)");
+    if (carriedInFull)
+      inFull("the last build generated no code and changed what codegen does not follow");
     if (!names.empty() || !constantBodies.empty())
     {
       std::vector<const ParsedFile*> readers;
@@ -2589,15 +2646,14 @@ namespace
     // Walked again: what they read recorded anew, and nothing instantiated that a resolve from
     // scratch would count differently.
     std::vector<size_t> walked(rewalk.begin(), rewalk.end());
-    // A walk adds the errors it finds and cannot take back the old ones (they are kept by text,
-    // not by the unit that found them): a file with errors is not walked again here.
-    for (const std::string& e : global.checkerErrors())
-      for (size_t index : walked)
-        if (const std::string& path = kept.parsed[index]->path; e.compare(0, path.size(), path) == 0)
-        {
-          logBuildNote("not incremental: " + path + " is walked again and has checker errors");
-          return false;
-        }
+    // A walk takes back the errors its units reported (forgetWalks) and reports what it finds; one
+    // reported outside any unit (the index's) it cannot, and a file with one is not walked again here.
+    for (size_t index : walked)
+      if (const std::string& path = kept.parsed[index]->path; global.unitlessErrorIn(path))
+      {
+        logBuildNote("not incremental: " + path + " is walked again and has an error reported outside its walks");
+        return false;
+      }
     std::vector<std::vector<const void*>> before(walked.size());
     for (size_t n = 0; n < walked.size(); ++n)
     {
@@ -2667,26 +2723,31 @@ namespace
     }
     kept.resolveTime = seconds(Clock::now() - start);
     // The reports a build from scratch prints. The lexer's counts come from lexing every file again
-    // into a table of its own (the kept table holds the old texts' identifiers too).
+    // into a table of its own (the kept table holds the old texts' identifiers too); with --quiet
+    // there is no report, and nothing is lexed again (an editor's check, kppc --lsp).
     start = Clock::now();
-    SymbolTable fresh;
-    std::vector<LexResult> relexed(kept.files.size());
-    parallelFor(kept.files.size(), kept.options.threads, [&](size_t i)
+    if (!quietOutput)
     {
-      if (!kept.parsed[i]->isImported)
-        relexed[i] = lex(kept.files[i].text, fresh);
-    });
-    double lexTime = seconds(Clock::now() - start);
-    FileStats total;
-    for (size_t i = 0; i < kept.files.size(); ++i)
-      if (!kept.parsed[i]->isImported)
+      SymbolTable fresh;
+      std::vector<LexResult> relexed(kept.files.size());
+      parallelFor(kept.files.size(), kept.options.threads, [&](size_t i)
       {
-        total.bytes += kept.files[i].text.size();
-        total.tokens += relexed[i].tokens.size();
-        total.lines += relexed[i].lineCount;
-        total.errors += relexed[i].errorCount;
-      }
-    reportLex(sources, total, fresh.size(), kept.options.threads, collectTime, lexTime);
+        if (!kept.parsed[i]->isImported)
+          relexed[i] = lex(kept.files[i].text, fresh);
+      });
+      double lexTime = seconds(Clock::now() - start);
+      FileStats total;
+      for (size_t i = 0; i < kept.files.size(); ++i)
+        if (!kept.parsed[i]->isImported)
+        {
+          total.bytes += kept.files[i].text.size();
+          total.tokens += relexed[i].tokens.size();
+          total.lines += relexed[i].lineCount;
+          total.errors += relexed[i].errorCount;
+        }
+      reportLex(sources, total, fresh.size(), kept.options.threads, collectTime, lexTime);
+    }
+    double lexTime = seconds(Clock::now() - start);
     report("%s", kept.importsLine.c_str());
     reportParse(kept, parseTime);
     report("%s", kept.indexLine.c_str());
@@ -2724,6 +2785,17 @@ namespace
           kept.changedGlobals.push_back(d); // (its constructor emitted again)
         else
           inFull(initializerOf(d) + " read an edited function");
+    }
+    // (and what the last build changed that generated no code: none of it removed since, as a removal
+    // there makes codegen run in full)
+    {
+      std::unordered_set<const FunctionDecl*> removed(kept.removedFunctions.begin(), kept.removedFunctions.end());
+      for (FunctionDecl* f : carriedBodies)
+        if (!removed.count(f))
+          kept.changedBodies.push_back(f);
+      for (const Decl* d : carriedGlobals)
+        if (std::find(kept.changedGlobals.begin(), kept.changedGlobals.end(), d) == kept.changedGlobals.end())
+          kept.changedGlobals.push_back(d);
     }
     std::sort(kept.changedBodies.begin(), kept.changedBodies.end());
     kept.changedBodies.erase(std::unique(kept.changedBodies.begin(), kept.changedBodies.end()), kept.changedBodies.end());
@@ -2961,9 +3033,10 @@ int compile(int argc, char** argv)
   // Phase 0: find and read all files. Reading is I/O bound, so it is timed separately.
   auto startCollect = Clock::now();
   std::vector<std::filesystem::path> paths;
+  std::vector<FileStamp> stamps; // (paths[i]'s)
   for (const auto& root : options.roots)
   {
-    auto found = collectFiles(root, options.extensions);
+    auto found = collectFiles(root, options.extensions, &stamps);
     paths.insert(paths.end(), found.begin(), found.end());
   }
   // --exclude: files under the roots that are not part of this program (another program's main).
@@ -2971,13 +3044,20 @@ int compile(int argc, char** argv)
   {
     std::error_code ec;
     std::filesystem::path file = std::filesystem::absolute(excluded, ec).lexically_normal();
-    size_t before = paths.size();
-    std::erase_if(paths, [&](const std::filesystem::path& p) { return std::filesystem::absolute(p, ec).lexically_normal() == file; });
-    if (paths.size() == before)
+    size_t kept = 0;
+    for (size_t i = 0; i < paths.size(); ++i)
+      if (std::filesystem::absolute(paths[i], ec).lexically_normal() != file)
+      {
+        paths[kept] = std::move(paths[i]);
+        stamps[kept++] = stamps[i];
+      }
+    if (kept == paths.size())
     {
       fprintf(stderr, "error: --exclude %s names no file under the sources\n", excluded.c_str());
       return 1;
     }
+    paths.resize(kept);
+    stamps.resize(kept);
   }
   // A compile server's builds run one at a time up to the point each keeps what it made, so that a
   // build finds its predecessor's kept (the predecessor answers its client before that point and
@@ -2990,13 +3070,41 @@ int compile(int argc, char** argv)
   std::vector<SourceFile>& files = build->files;
   files.reserve(paths.size() + 3); // the configuration, the test runner and the imported C headers
   std::atomic<uint64_t> totalBytes{0};
+  auto hashOf = [](std::string_view bytes)
+  {
+    uint64_t h = 1469598103934665603ull;
+    for (unsigned char c : bytes)
+      h = (h ^ c) * 1099511628211ull;
+    return h;
+  };
+  // A compile server's file whose stamp is the kept build's, and for which no editor's unsaved text
+  // stands (an overlay, kppc --lsp), is the kept build's text: not read again (the listing gave its
+  // stamp). An overlaid file's stamp is none, so that it is read once the overlay is gone.
+  // (--verify-incremental's build from scratch reads every file.)
+  const Build* last = servingBuild() && !replayDisabled() && options.convertDir.empty() && keptBuild ? keptBuild.get() : nullptr;
+  std::vector<uint64_t> hashes(paths.size());
   parallelFor(paths.size(), options.threads, [&](size_t i)
   {
     files[i].path = paths[i];
-    if (!readFile(paths[i], files[i].text))
-      fprintf(stderr, "cannot read %s\n", paths[i].string().c_str());
+    bool overlaid = hasFileOverlay(paths[i]);
+    if (overlaid)
+      stamps[i] = FileStamp{};
+    if (last && !overlaid && stamps[i].time && i < last->stamps.size() && last->stamps[i] == stamps[i] && last->files[i].path == paths[i])
+    {
+      files[i].text = last->files[i].text;
+      hashes[i] = last->textHashes[i];
+    }
+    else
+    {
+      if (!readFile(paths[i], files[i].text))
+        fprintf(stderr, "cannot read %s\n", paths[i].string().c_str());
+      if (servingBuild()) // (for the replay's fingerprint below)
+        hashes[i] = hashOf(files[i].text);
+    }
     totalBytes += files[i].text.size();
   });
+  build->stamps = stamps;
+  build->textHashes = hashes;
   {
     // The build configuration is one more source file: `config::debug`, `config::platform`...
     if (!options.configValues.count("debug"))
@@ -3035,10 +3143,13 @@ int compile(int argc, char** argv)
         h = (h ^ c) * 1099511628211ull;
       h = (h ^ 0xff) * 1099511628211ull;
     };
-    for (const SourceFile& file : files)
+    for (size_t i = 0; i < files.size(); ++i)
     {
-      mix(file.path.string());
-      mix(file.text);
+      mix(files[i].path.string());
+      if (i < hashes.size()) // (a program's file by its hash, made as it was read)
+        mix(std::string_view(reinterpret_cast<const char*>(&hashes[i]), sizeof hashes[i]));
+      else
+        mix(files[i].text);
     }
     mix(environmentBlock()); // TMP (the import cache), KPP_CLANG, LIB...
     std::vector<std::string> outputs;
@@ -3046,15 +3157,20 @@ int compile(int argc, char** argv)
       if (!o.empty())
         outputs.push_back(std::filesystem::absolute(o).string());
     int replayed = 0;
-    if (replayBuild(h, outputs, lastImportStamps.empty() || headersUnchanged(lastImportStamps), replayed))
+    bool headersSame = lastImportStamps.empty() || headersUnchanged(lastImportStamps);
+    if (replayBuild(h, outputs, headersSame, replayed))
       return replayed;
     // Step 3b: the kept build with the changed function bodies checked again, when that is all
     // that changed.
     if (keptBuild && !replayDisabled() && options.repeat == 1 && !options.dumpTokens && options.parse) // (--verify-incremental's build is from scratch)
     {
       bool keptChanged = false;
-      if (incrementalBuild(*keptBuild, files, seconds(Clock::now() - startCollect), keptChanged))
+      if (incrementalBuild(*keptBuild, files, seconds(Clock::now() - startCollect), headersSame, keptChanged))
+      {
+        keptBuild->stamps = std::move(build->stamps); // (its texts are this build's now)
+        keptBuild->textHashes = std::move(build->textHashes);
         return codegenExit;
+      }
     }
     lastImportStamps.clear(); // this build's, if it imports any
   }

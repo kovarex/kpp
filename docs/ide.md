@@ -487,3 +487,10 @@ Errors as you type need these paths to take a program with errors (codegen's ses
 failed functions marked, a file's checker errors kept per unit so that its walk can take them back,
 a body that does not parse checked as an error body); reported to the codegen and resolver threads. Smaller items: every check reads all 4,126 sources again although the
 language server knows which document changed, and lexes them again for a report nobody reads.
+
+Since then (resolver thread, [compile-speed.md](compile-speed.md), "Edits with errors stay
+incremental"): a file with checker errors and a body that does not parse stay on the incremental
+path, the sources are read only when their stamp changed, and nothing is lexed again under
+`--quiet`. The same measurement: completion after typing `this->` 0.31 to 0.40 s, taking the line out
+0.49 to 0.72 s, a body edit 0.39 to 0.44 s; an error typed and fixed are still 7.7 to 10.8 s, codegen
+in full both times (codegen's part, above).

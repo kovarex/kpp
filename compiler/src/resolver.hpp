@@ -226,6 +226,12 @@ public:
   // functions it never emitted (all of them, when no code is generated).
   void functionEmitted(const FunctionDecl* f);
   size_t unusedFailedAsserts();
+  // Whether this build generated code (a compile server's kept program: the last build's code
+  // generator emitted functions): when not, none counts as emitted, as in a build from scratch.
+  void setCodeGenerated(bool generated);
+  // Whether a checker error at a place in the file at path was reported outside any unit (the
+  // index's, a class instance's static_assert): walking the file again would not take it back.
+  bool unitlessErrorIn(const std::string& path);
   // The first part of checkerErrors: the static_asserts of the class template instances named so
   // far. The code generator runs it once its functions are emitted (they name instances of their
   // own), before it checks the asserts on layouts. From the from-th instance made on (those before

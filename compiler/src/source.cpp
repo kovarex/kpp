@@ -7,24 +7,42 @@
 #include <windows.h>
 
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& root,
-                                                const std::vector<std::string>& extensions)
+                                                const std::vector<std::string>& extensions, std::vector<FileStamp>* stamps)
 {
-  std::vector<std::filesystem::path> result;
+  std::vector<std::pair<std::filesystem::path, FileStamp>> found;
+  std::error_code ec;
   if (std::filesystem::is_regular_file(root))
   {
-    result.push_back(root);
-    return result;
+    FileStamp stamp;
+    stamp.time = std::filesystem::last_write_time(root, ec).time_since_epoch().count();
+    stamp.size = std::filesystem::file_size(root, ec);
+    found.push_back({root, stamp});
   }
-  for (const auto& entry : std::filesystem::recursive_directory_iterator(
-         root, std::filesystem::directory_options::skip_permission_denied))
+  else
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+           root, std::filesystem::directory_options::skip_permission_denied))
+    {
+      if (!entry.is_regular_file())
+        continue;
+      std::string extension = entry.path().extension().string();
+      if (std::find(extensions.begin(), extensions.end(), extension) == extensions.end())
+        continue;
+      FileStamp stamp; // (on Windows the listing's own: the entry caches them)
+      if (stamps)
+      {
+        stamp.time = entry.last_write_time(ec).time_since_epoch().count();
+        stamp.size = entry.file_size(ec);
+      }
+      found.push_back({entry.path(), stamp});
+    }
+  std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  std::vector<std::filesystem::path> result;
+  for (auto& [path, stamp] : found)
   {
-    if (!entry.is_regular_file())
-      continue;
-    std::string extension = entry.path().extension().string();
-    if (std::find(extensions.begin(), extensions.end(), extension) != extensions.end())
-      result.push_back(entry.path());
+    result.push_back(std::move(path));
+    if (stamps)
+      stamps->push_back(stamp);
   }
-  std::sort(result.begin(), result.end());
   return result;
 }
 
@@ -51,6 +69,15 @@ void setFileOverlay(const std::filesystem::path& path, const std::string* text)
   else
     overlays.erase(overlayKey(path));
   anyOverlay = !overlays.empty();
+}
+
+bool hasFileOverlay(const std::filesystem::path& path)
+{
+  if (!anyOverlay)
+    return false;
+  std::string key = overlayKey(path);
+  std::lock_guard lock(overlayMutex);
+  return overlays.count(key) != 0;
 }
 
 bool readFile(const std::filesystem::path& path, std::string& out)
