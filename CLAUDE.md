@@ -20,7 +20,8 @@ simple templates, own standard library, C-only interop.
 ## Machine
 - Work happens on PC-PRACOVNA (Windows 10, Ryzen 9 9950X 16C/32T, 128 GB RAM).
 - Toolchain: Visual Studio 2022 Community (MSVC 14.44, bundled clang 19.1.5, CMake, Ninja).
-- Factorio source (benchmark corpus) is at C:\Factorio. Read-only: never modify or commit there.
+- Factorio source (benchmark corpus) is at C:\Factorio. Never modify its sources or commit there; building
+  it with its own FASTBuild command line (C++ Debug/Release, its libraries) is allowed (kovarex, 2026-10-31).
 - Repositories: this one is C:\kpp (github.com/kovarex/kpp; it replaced C:\kov and
   github.com/wube/kov, which are no longer worked in). The Factorio source converted to Kpp is
   C:\factorio-in-kpp (github.com/kovarex/factorio-in-kpp, private: it is game source), written by
@@ -56,7 +57,8 @@ Decided by kovarex; every thread follows them.
   calls `noteInlined(written)`.
 - The stdlib follows the C++ standard's guarantees; every deviation is listed in
   docs/stdlib-conformance.md.
-- C:\Factorio is read-only. The game runs from C:\factorio-in-kpp or a thread's scratch game dir with
+- C:\Factorio's sources are read-only; only its FASTBuild build may write there (its build outputs),
+  one FASTBuild run at a time, coordinated through the coordinator. The game runs from C:\factorio-in-kpp or a thread's scratch game dir with
   an isolated write dir; never write to %APPDATA%\Factorio.
 - Line endings: resolver.cpp LF, codegen.cpp CRLF.
 - Decisions go into docs/design.md; open questions stay listed there until kovarex answers.
