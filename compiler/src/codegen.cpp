@@ -17843,7 +17843,11 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     for (auto it = sh.structsByType.begin(); it != sh.structsByType.end();)
       it = droppedLayouts.count(it->second) ? sh.structsByType.erase(it) : std::next(it);
     for (const Ty* key : droppedKeys)
+    {
+      if (sh.structs[key].complete)
+        --sh.result.structs; // (counted again when laid out again: the count is a build from scratch's)
       sh.structs.erase(key);
+    }
     for (auto& em : emitters)
       em->forgetLayoutAnswers();
     sh.finalLayouts.clear();

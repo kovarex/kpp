@@ -101,7 +101,7 @@ foreach ($step in $steps)
     if ($d) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the replay's $part differs"; $d | Select-Object -First 4 | ForEach-Object { "  $($_.SideIndicator) $($_.InputObject)" } }
   }
   if ((Get-FileHash (Join-Path $work 'server.ll')).Hash -ne (Get-FileHash $fresh).Hash) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the IR after the replay differs" }
-  $b = Build @('--server', '--verify-incremental', '--quiet', '--exe', $exe, $src) "exe.$n"
+  $b = Build @('--server', '--verify-incremental', '--exe', $exe, $src) "exe.$n"
   $printed = if ($b.exit -eq 0) { (& $exe) -join ' ' } else { "(build exit $($b.exit))" }
   if ($printed -ne $step.expect) { $ok = $false; "FAIL incremental ${n} ($($step.name)): printed '$printed', expected '$($step.expect)'" }
   if ($ok) { "ok   incremental $n ($($step.name))" } else { $failed++ }
@@ -153,5 +153,5 @@ else { "ok   incremental whole-function edits built from the kept program ($(@($
 if (@($fast).Count -lt 10) { "FAIL incremental: $(@($fast).Count) body edits built from the kept program, 10 expected (5 through each of two servers) (the server's log, %TEMP%\kppc-server)"; $failed++ }
 else { "ok   incremental body edits built from the kept program ($(@($fast).Count))" }
 & $Kppc --stop-server --emit-llvm (Join-Path $work 'server.ll') $src | Out-Null
-& $Kppc --stop-server --verify-incremental --quiet --exe $exe $src | Out-Null
+& $Kppc --stop-server --verify-incremental --exe $exe $src | Out-Null
 if ($failed -gt 0) { exit 1 }
