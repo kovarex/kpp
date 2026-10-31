@@ -234,8 +234,9 @@ namespace
   // only where those source files include them).
   const std::map<std::string, std::string> forcedIncludes = {{"Lua", "override_printf.h"}};
   // The C libraries a library keeps calling, by the library's directory name (FileConverter's
-  // keptCLibraries): Lua formats through trio, as its C++ build does.
-  const std::map<std::string, std::set<std::string>> keptCLibraries = {{"Lua", {"trio"}}};
+  // keptCLibraries): Lua formats through trio, as its C++ build does, and so do CommonUtil's ssprintf
+  // and its double-to-text (trio's %g and %.17g are not the C runtime's: `%.17g` of 0.1 is `0.1`).
+  const std::map<std::string, std::set<std::string>> keptCLibraries = {{"Lua", {"trio"}}, {"CommonUtil", {"trio"}}};
   // The standard headers `__has_include(<...>)` finds: the ones the game asks about, all in MSVC's
   // library (the experimental one is deprecated there, still present).
   const std::set<std::string> availableHeaders = {"filesystem", "experimental/filesystem", "optional", "variant", "string_view"};
@@ -2719,8 +2720,8 @@ namespace
       fixtureBodies.push_back(std::move(body));
     }
     // The C libraries this file's library keeps calling, by include path prefix, imported where it
-    // includes them (Lua's override_printf.h includes trio.h; the game's own calls of trio are the
-    // C runtime's, and its includes of trio.h go).
+    // includes them (Lua's override_printf.h includes trio.h, CommonUtil's StringUtil.cpp too; the
+    // includes of trio.h elsewhere, which call none of it, go).
     const std::set<std::string>* keptCLibraries = nullptr;
     // The object-like macros of this file and the headers it reaches that are written out at their
     // uses: those whose body is string literals (UTF8_BULLET; constants in the conversion) where
@@ -4762,16 +4763,6 @@ namespace
         }
         if (t.getKind() == TokenKind::Identifier && toks[i + 1].is(P::LParen))
         {
-          // Library functions Factorio wraps that the C runtime provides as well.
-          static const std::map<std::string_view, std::string> renames = {
-            {"trio_vsnprintf", "vsnprintf"}, {"trio_snprintf", "snprintf"}, {"trio_sprintf", "sprintf"}, {"trio_vsprintf", "vsprintf"}};
-          auto rn = renames.find(spelling(i));
-          if (rn != renames.end())
-          {
-            replace(t.offset, t.length, rn->second);
-            counts.add("function renamed");
-            continue;
-          }
           // Members of std types whose library spelling differs and that no game class declares:
           // std::type_info's hash_code is TypeInfo's hashCode. (Optional has std's value_or: the
           // game's OptionalFundamental declares one of its own.)

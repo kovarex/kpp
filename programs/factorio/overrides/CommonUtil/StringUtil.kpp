@@ -10,36 +10,6 @@ const char* UTF8_BULLET = "\xE2\x80\xA2";
 
 void wstringConvert() = delete; // codecvt is gone: widen and narrow below do the work
 
-// ssprintf: the C runtime's vsnprintf into one static buffer (the original had a thread_local
-// std::array; Kpp has no thread_local storage yet), then a String of the right size.
-static char ssprintf_buffer[512];
-
-String vssprintf(const char* format, va_list args)
-{
-  String result;
-  va_list args2;
-  va_copy(args2, args);
-  int written = vsnprintf(ssprintf_buffer, sizeof(ssprintf_buffer), format, args);
-  if (written >= (int)sizeof(ssprintf_buffer))
-  {
-    result.resize(written);
-    vsnprintf(result.data(), (size_t)written + 1, format, args2);
-  }
-  else
-    result = ssprintf_buffer;
-  va_end(args2);
-  return result;
-}
-
-String ssprintf(const char* format, ...)
-{
-  va_list args;
-  va_start(args, format);
-  String result = vssprintf(format, args);
-  va_end(args);
-  return result;
-}
-
 namespace StringUtil
 {
   WString widen(const char* str, int length)
