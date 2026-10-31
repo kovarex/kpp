@@ -496,8 +496,9 @@ arguments, `NTAPI`/`WINAPI`/`EXTERNC` are known macros, and `__try`/`__except` b
 files parsing clean (93 errors in 37 files, down from 208 in 59). Spec: `language/specifier_order`,
 `language/alias_array_function_types`, `language/explicit_operator_call`,
 `interop/calling_convention_pointers`, `templates/requires_clause_before_body`;
-`templates/deduction_guides` stays pending (the `Overload{lambdas...}` idiom needs `using
-Ts::operator()...` and aggregate deduction).
+`templates/deduction_guides` stayed pending (the `Overload{lambdas...}` idiom needs `using
+Ts::operator()...` and a pack of bases); since 2026-10-31 a pack of bases is an error until
+something needs it (`templates/pack_of_base_classes_is_not_supported_yet`).
 
 A first self-contained subset (`Util/Container`, `Util/Sort`, `Util/MathExpressions`, `BitBuffer`
 with CommonUtil) compiles to 81.9% typed with 22 code generation complaints, and showed two

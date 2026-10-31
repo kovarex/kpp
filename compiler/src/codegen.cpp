@@ -1298,6 +1298,8 @@ namespace
       std::vector<const Ty*> baseKeys;
       for (const ClassDecl::Base& b : c->bases)
       {
+        if (b.isPack)
+          layoutError("a pack of base classes (`: Ts...`)");
         const Ty* bt = global.typeOfAstIn(b.type, c, args);
         if (!bt || bt->kind != TyKind::Class || types.isDependent(bt))
           layoutError("a base class whose type is unknown (" + (bt ? types.toString(bt, &symbols) : std::string("?")) + ")");

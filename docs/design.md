@@ -1130,7 +1130,9 @@ The smallest language that is still Kpp, as the target of the first code generat
   the constructors by its conversions and wins a tie; an explicit guide is no candidate for
   copy-initialisation (`T x = ...`). Why: guides are part of C++'s deduction, and dropping one
   (as the parser did) deduces other arguments than the code says, silently. Spec:
-  templates/deduction_guide_target, templates/deduction_guides.
+  templates/deduction_guide_target. A pack of base classes (`struct Overload : Ts...` with `using
+  Ts::operator()...`, the overload-set idiom) is an error where such a class is laid out, until
+  something needs it (2026-10-31, templates/pack_of_base_classes_is_not_supported_yet).
 - **The literal 0 is a null pointer constant** (C++'s rule; for kovarex's review, who may prefer
   Kpp to require `nullptr`): an integer literal 0 (`0`, `0u`, `0L`, ..., and only a literal, not a
   constant that is 0) converts to any pointer and member pointer type, ranked as a standard
