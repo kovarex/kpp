@@ -1,0 +1,51 @@
+# A Kpp release for every commit on master (docs/build.md, "Installing"): kppc built on a Windows
+# runner, packaged by tools/release/package.ps1 (which builds a new project with the package as its
+# smoke test), the installer made with Inno Setup, and both published as a prerelease named after
+# the run: build-<run number>.
+name: release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Threads push many commits a day: a newer commit's run replaces an older one still running.
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build kppc
+        shell: cmd
+        run: compiler\build.cmd
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+
+      - name: Package
+        shell: pwsh
+        run: tools\release\package.ps1 -Version "0.1.${{ github.run_number }}" -Commit "${{ github.sha }}"
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Kpp 0.1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          body: |
+            Built from ${{ github.sha }}. Install with kpp-0.1.${{ github.run_number }}-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-0.1.${{ github.run_number }}.zip anywhere.
+            Needs Visual Studio 2022 with "C++ Clang Compiler for Windows".
+          files: |
+            build/release/kpp-0.1.${{ github.run_number }}.zip
+            build/release/kpp-0.1.${{ github.run_number }}-setup.exe
