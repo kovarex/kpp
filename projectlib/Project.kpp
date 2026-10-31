@@ -137,11 +137,8 @@ String describe(const Project& project)
     kppLines(out, "cinclude", project.cIncludes);
     out += "end\n";
   }
-  // Index loops: a range-for over a Deque is no constant yet (the pending spec
-  // language/consteval_deque_range_for).
-  for (int i = 0; i < project.executables.size(); ++i)
+  for (const Executable& e : project.executables)
   {
-    const Executable& e = project.executables[i];
     kppLine(out, "executable", e.name);
     kppLines(out, "root", e.roots);
     kppLines(out, "exclude", e.excluded);
@@ -159,9 +156,8 @@ String describe(const Project& project)
     kppLines(out, "link", e.links);
     out += "end\n";
   }
-  for (int i = 0; i < project.cLibraries.size(); ++i)
+  for (const CLibrary& c : project.cLibraries)
   {
-    const CLibrary& c = project.cLibraries[i];
     kppLine(out, "clibrary", c.name);
     kppLines(out, "source", c.sources);
     kppLines(out, "exclude", c.excluded);
