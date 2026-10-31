@@ -1,0 +1,75 @@
+{
+  "name": "kpp",
+  "displayName": "Kpp",
+  "description": "The Kpp language: colouring, and IntelliSense from the Kpp compiler's language server (kpp --lsp).",
+  "version": "0.1.0",
+  "publisher": "kovarex",
+  "license": "UNLICENSED",
+  "repository": { "type": "git", "url": "https://github.com/kovarex/kpp" },
+  "engines": { "vscode": "^1.82.0" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": ["workspaceContains:build.kpp"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "kpp",
+        "aliases": ["Kpp", "kpp"],
+        "extensions": [".kpp"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      { "language": "kpp", "scopeName": "source.kpp", "path": "./syntaxes/kpp.tmLanguage.json" }
+    ],
+    "configuration": {
+      "title": "Kpp",
+      "properties": {
+        "kpp.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The Kpp compiler that serves IntelliSense (`kpp.exe` or `kppc.exe`). Empty: `kpp` on the PATH, as the installer puts it."
+        },
+        "kpp.configuration": {
+          "type": "string",
+          "enum": ["debug", "release"],
+          "default": "debug",
+          "description": "The build.kpp configuration whose description the language server checks."
+        },
+        "kpp.executable": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "The build.kpp executable whose sources the language server checks. Null: every executable's."
+        },
+        "kpp.settings": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "markdownDescription": "Settings for build.kpp, as `kpp --set NAME=VALUE` gives them."
+        },
+        "kpp.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Log the messages between VS Code and the language server in the Kpp output."
+        }
+      }
+    },
+    "commands": [
+      { "command": "kpp.restartServer", "title": "Kpp: Restart the Language Server" },
+      { "command": "kpp.showOutput", "title": "Kpp: Show the Language Server's Output" }
+    ]
+  },
+  "scripts": {
+    "grammar": "node -e \"require('fs').mkdirSync('syntaxes',{recursive:true});require('fs').copyFileSync('../vs/kpp/Syntaxes/kpp.tmLanguage.json','syntaxes/kpp.tmLanguage.json')\"",
+    "vscode:prepublish": "npm run grammar",
+    "package": "vsce package --out kpp.vsix --skip-license",
+    "smoke": "node test/lsp-smoke.js node test/stub-server.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.1.0"
+  }
+}

@@ -1,8 +1,8 @@
 # Packages a built kppc as a Kpp release (docs/build.md, "Installing"): build\release\kpp\ with
-# kpp.exe (compiler\build\kppc.exe under the name users type), stdlib\, projectlib\ and the
-# TextMate grammar; then build\release\kpp-<Version>.zip, and kpp-<Version>-setup.exe when Inno
-# Setup's compiler (ISCC) is found. The CI workflow (.github/workflows/release.yml) runs it on every
-# master commit; it runs the same by hand:
+# kpp.exe (compiler\build\kppc.exe under the name users type), stdlib\, projectlib\, the TextMate
+# grammar and the VS Code extension kpp.vsix (tools/vscode); then build\release\kpp-<Version>.zip,
+# and kpp-<Version>-setup.exe when Inno Setup's compiler (ISCC) is found. The CI workflow
+# (.github/workflows/release.yml) runs it; it runs the same by hand:
 #   powershell -File tools\release\package.ps1 -Version 0.0.0
 param([Parameter(Mandatory)][string]$Version, [string]$Commit = '')
 $ErrorActionPreference = 'Stop'
@@ -27,9 +27,27 @@ project. Documentation: https://github.com/kovarex/kpp/blob/master/docs/build.md
 Needs Visual Studio 2022 (any edition) with "C++ Clang Compiler for Windows": kpp compiles and links
 with its clang and the Windows SDK.
 
+kpp.vsix is the VS Code extension (colouring, and IntelliSense through kpp --lsp): the installer
+offers to install it, or run code --install-extension kpp.vsix. Other editors:
+https://github.com/kovarex/kpp/blob/master/docs/editors.md
+
 grammar\kpp.tmLanguage.json colours .kpp files in Visual Studio: copy it into
 %USERPROFILE%\.vs\Extensions\kpp\Syntaxes\ and restart Visual Studio.
 "@ | Set-Content "$kpp\README.txt"
+
+# The VS Code extension (tools/vscode), versioned as the release, with its dependencies from
+# package-lock.json. Needs Node.js (npm), as the CI runner has.
+Push-Location "$repository\tools\vscode"
+try
+{
+  $ErrorActionPreference = 'Continue'
+  npm ci --no-audit --no-fund 2>&1 | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "npm ci failed ($LASTEXITCODE)" }
+  npx vsce package $Version --no-git-tag-version --no-update-package-json --skip-license --out "$kpp\kpp.vsix" 2>&1 | Select-Object -Last 2 | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "vsce failed ($LASTEXITCODE)" }
+  $ErrorActionPreference = 'Stop'
+}
+finally { Pop-Location }
 
 # A smoke test of the package itself: kpp new and kpp --run in a project outside the repository.
 $smoke = Join-Path $out 'smoke'

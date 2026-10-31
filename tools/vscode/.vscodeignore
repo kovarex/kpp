@@ -1,0 +1,4 @@
+test/**
+.gitignore
+*.vsix
+README.dev.md

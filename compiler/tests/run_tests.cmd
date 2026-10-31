@@ -136,6 +136,12 @@ if errorlevel 1 set /a FAIL+=1
 rem A project's build.kpp (tests\project.ps1, docs/build.md): kpp new, two executables, settings, errors.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\project.ps1 -Kppc %KPPC%
 if errorlevel 1 set /a FAIL+=1
+rem What editors' LSP clients rely on (docs/editors.md): for now against the stand-in server, until
+rem kppc --lsp answers; skipped without Node.js.
+where node >nul 2>nul && (
+  node ..\tools\vscode\test\lsp-smoke.js node ..\tools\vscode\test\stub-server.js
+  if errorlevel 1 set /a FAIL+=1
+)
 rem The compile server must build what a new process builds, edit after edit (tests\incremental.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\incremental.ps1 -Kppc %KPPC%
 if errorlevel 1 (

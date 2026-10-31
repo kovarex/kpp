@@ -363,6 +363,10 @@ configurations, and the two axes never share names.
 
 ## Project files for an IDE
 
+These build, run and debug. IntelliSense (errors as you type, hover, go to definition, completion)
+comes from the language server, `kpp --lsp`: [editors.md](editors.md) has it for VS Code, Visual
+Studio and other editors.
+
 **kppc generates them** (decided by kovarex 2026-10-31: no hand-written project files):
 
 ```

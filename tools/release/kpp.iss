@@ -1,8 +1,9 @@
 ; The Kpp installer (docs/build.md, "Installing"), built by package.ps1 with Inno Setup 6:
 ; ISCC /DVersion=X /DSource=<build\release\kpp> /O<output> kpp.iss
 ; Installs kpp.exe, stdlib\ and projectlib\ into Program Files\Kpp and puts that directory on the
-; system PATH; the uninstaller takes it off again. It warns when no Visual Studio with its Clang
-; component is found, which kpp compiles and links with.
+; system PATH; the uninstaller takes it off again. When VS Code is found (`code` on the PATH), it
+; offers to install the extension kpp.vsix into it, as the user who started the installer. It warns
+; when no Visual Studio with its Clang component is found, which kpp compiles and links with.
 #ifndef Version
   #define Version "0.0.0"
 #endif
@@ -27,6 +28,12 @@ UninstallDisplayName=Kpp {#Version}
 [Files]
 Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
+[Tasks]
+Name: vscode; Description: "Install the Kpp extension into VS Code (colouring and IntelliSense)"; Check: VSCodeFound
+
+[Run]
+Filename: "{cmd}"; Parameters: "/c code --install-extension ""{app}\kpp.vsix"" --force"; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: vscode; StatusMsg: "Installing the VS Code extension..."
+
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NotOnPath(ExpandConstant('{app}'))
 
@@ -39,6 +46,13 @@ begin
     Result := True
   else
     Result := Pos(';' + Uppercase(Directory) + ';', ';' + Uppercase(Path) + ';') = 0;
+end;
+
+function VSCodeFound(): Boolean;
+var
+  Code: Integer;
+begin
+  Result := Exec(ExpandConstant('{cmd}'), '/c where code.cmd', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
 end;
 
 function InitializeSetup(): Boolean;

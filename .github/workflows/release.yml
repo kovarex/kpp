@@ -27,6 +27,11 @@ jobs:
         shell: cmd
         run: compiler\build.cmd
 
+      # For the VS Code extension (tools/vscode: npm ci, vsce).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Inno Setup
         shell: pwsh
         run: |
@@ -46,6 +51,8 @@ jobs:
           body: |
             Built from ${{ github.sha }}. Install with kpp-0.1.${{ github.run_number }}-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-0.1.${{ github.run_number }}.zip anywhere.
             Needs Visual Studio 2022 with "C++ Clang Compiler for Windows".
+            kpp.vsix is the VS Code extension (the installer offers it; or code --install-extension kpp.vsix).
           files: |
             build/release/kpp-0.1.${{ github.run_number }}.zip
             build/release/kpp-0.1.${{ github.run_number }}-setup.exe
+            build/release/kpp/kpp.vsix
