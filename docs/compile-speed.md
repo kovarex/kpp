@@ -1315,6 +1315,11 @@ support an unresolved name"), and a codegen with errors keeps no session (codege
 so the error and its fix are each a codegen in full; that is the codegen thread's part. Of a body
 edit's 0.4 s, codegen's rebuild of the module is about 0.25 s.
 
+With the codegen thread's 006315e6 (codegen keeps its session across errors) as well, master
+d336a43e, one round on the same tree: a body edit 0.37 to 0.44 s, an error typed 0.35 to 0.37 s, the
+error fixed 0.37 s, `this->` typed 0.17 s, the line taken out 0.35 to 0.42 s; no codegen in full
+and no build from scratch in the session.
+
 ### The link in the edit loop (2026-10-30: incremental, 3.8 s -> 0.5 s)
 
 A first try under load (the machine 40 to 100% busy) showed no gain from `/INCREMENTAL` and added

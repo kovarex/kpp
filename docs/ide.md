@@ -492,5 +492,7 @@ Since then (resolver thread, [compile-speed.md](compile-speed.md), "Edits with e
 incremental"): a file with checker errors and a body that does not parse stay on the incremental
 path, the sources are read only when their stamp changed, and nothing is lexed again under
 `--quiet`. The same measurement: completion after typing `this->` 0.31 to 0.40 s, taking the line out
-0.49 to 0.72 s, a body edit 0.39 to 0.44 s; an error typed and fixed are still 7.7 to 10.8 s, codegen
-in full both times (codegen's part, above).
+0.49 to 0.72 s, a body edit 0.39 to 0.44 s; an error typed and fixed were still 7.7 to 10.8 s, codegen
+in full both times, until codegen kept its session across errors (006315e6): with both, master
+d336a43e, every check of the session is 0.17 to 0.44 s (an error typed 0.35 to 0.37 s, fixed 0.37 s,
+`this->` 0.17 s, the line taken out 0.35 to 0.42 s).
