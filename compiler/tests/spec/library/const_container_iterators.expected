@@ -1,0 +1,22 @@
+map value 11
+Map: mutable const mutable const
+Map: equal true erased true
+MultiMap: mutable const mutable const
+MultiMap: equal true erased true
+Set: const const const const
+Set: equal true erased true
+MultiSet: const const const const
+MultiSet: equal true erased true
+HashMap: mutable const mutable const
+HashMap: equal true erased true
+HashSet: const const const const
+HashSet: equal true erased true
+FastMap: mutable const mutable const
+FastMap: equal true erased true
+FastSet: const const const const
+FastSet: equal true erased true
+Deque: mutable const mutable const mutable const
+Deque: equal true erased 2
+Deque: [] mutable const at const back const
+List: mutable const mutable const mutable const
+List: equal true erased 2

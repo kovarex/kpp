@@ -1,0 +1,56 @@
+// spec: a const container hands out no mutable element (C++'s const_iterator): begin(), find() and the other positions of a const Map, MultiMap, HashMap, FastMap, Deque or List are const_iterators, whose *it is const; the same calls on a mutable one give iterators, which write the element and convert to const_iterators (compared with them, passed to erase); a Set's, MultiSet's, HashSet's and FastSet's positions are const either way (its elements are its keys)
+// factorio: thread D's const-object check: a const std::map's find() handed out a mutable entry, as every node container's const begin() and find() did (no const_iterator type)
+template<typename T>
+const char* which(T&) { return "mutable"; }
+template<typename T>
+const char* which(const T&) { return "const"; }
+
+template<typename C>
+void probe(const char* name, C& c, const typename C::key_type& key)
+{
+  const C& constant = c;
+  println("{}: {} {} {} {}", name, which(*c.begin()), which(*constant.begin()), which(*c.find(key)), which(*constant.find(key)));
+  typename C::const_iterator position = c.find(key); // an iterator converts to a const_iterator
+  println("{}: equal {} erased {}", name, position == c.find(key), c.erase(position) == c.end());
+}
+
+template<typename C>
+void probeSequence(const char* name, C& c)
+{
+  const C& constant = c;
+  println("{}: {} {} {} {} {} {}", name, which(*c.begin()), which(*constant.begin()), which(c.front()), which(constant.front()),
+          which(*c.rbegin()), which(*constant.rbegin()));
+  typename C::const_iterator position = c.begin();
+  println("{}: equal {} erased {}", name, position == c.begin(), *c.erase(position));
+}
+
+int main()
+{
+  Map<int, int> map = {{1, 10}};
+  map.find(1)->second = 11; // a mutable Map's entry is written through its iterator
+  println("map value {}", map.at(1));
+  probe("Map", map, 1);
+  MultiMap<int, int> multiMap;
+  multiMap.insert(1, 10);
+  probe("MultiMap", multiMap, 1);
+  Set<int> set = {1};
+  probe("Set", set, 1);
+  MultiSet<int> multiSet;
+  multiSet.insert(1);
+  probe("MultiSet", multiSet, 1);
+  HashMap<int, int> hashMap = {{1, 10}};
+  probe("HashMap", hashMap, 1);
+  HashSet<int> hashSet = {1};
+  probe("HashSet", hashSet, 1);
+  FastMap<int, int> fastMap = {{1, 10}};
+  probe("FastMap", fastMap, 1);
+  FastSet<int> fastSet = {1};
+  probe("FastSet", fastSet, 1);
+  Deque<int> deque = {1, 2};
+  probeSequence("Deque", deque);
+  const Deque<int>& constDeque = deque;
+  println("Deque: [] {} {} at {} back {}", which(deque[0]), which(constDeque[0]), which(constDeque.at(0)), which(constDeque.back()));
+  List<int> list = {1, 2};
+  probeSequence("List", list);
+  return 0;
+}

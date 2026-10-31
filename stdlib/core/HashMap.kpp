@@ -23,10 +23,12 @@ uint8_t hashTagOf(size_t hash) { return (uint8_t)(0x80 | (hash >> 57)); }
 // made from are gone then): `auto [it, created] = memo.try_emplace(n); it->second = compute();`
 // with compute inserting more, as std::unordered_map's iterators, which are its nodes, allow
 // (NoiseProgramBuilder::compileExpression).
+// HashIterator<const E, stable> is the const_iterator: the same position, its entry const. An
+// iterator converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename E, bool stable>
 struct HashIterator
 {
-  using value_type = E;
+  using value_type = RemoveConst<E>;
   using difference_type = ptrdiff_t;
   using pointer = E*;
   using reference = E&;
@@ -39,6 +41,12 @@ struct HashIterator
   E* node = nullptr; // stable: the entry at index, or null at end()
 
   HashIterator() {}
+  template<typename F> requires (isSame<F, RemoveConst<E>> && !isSame<F, E>)
+  implicit HashIterator(const HashIterator<F, stable>& other)
+    : tags(other.tags), slots(other.slots), index(other.index), capacity(other.capacity), node(other.node) {}
+  template<typename F> requires (isSame<E, RemoveConst<F>> && !isSame<F, E>)
+  explicit HashIterator(const HashIterator<F, stable>& other)
+    : tags(other.tags), slots(other.slots), index(other.index), capacity(other.capacity), node((E*)other.node) {}
   // (The node is found here and in skipFree, not in a function of its own: a call more per lookup
   // cost 8-13% in the hash lookup benchmarks, as functions of other modules are not inlined.)
   HashIterator(uint8_t* tags, char* slots, int index, int capacity) : tags(tags), slots(slots), index(index), capacity(capacity)
@@ -57,7 +65,11 @@ struct HashIterator
   E& operator*() const { return *this->entry(); }
   E* operator->() const { return this->entry(); }
   bool operator==(const HashIterator<E, stable>& other) const { return this->index == other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
+  bool operator==(const HashIterator<F, stable>& other) const { return this->index == other.index; }
   bool operator!=(const HashIterator<E, stable>& other) const { return this->index != other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<E>> && !isSame<F, E>)
+  bool operator!=(const HashIterator<F, stable>& other) const { return this->index != other.index; }
   HashIterator<E, stable>& operator++()
   {
     ++this->index;
@@ -448,7 +460,7 @@ struct HashMap
   HashTable<Pair<K, V>, K, HashMapKey<K, V>, Hasher, KeyEqual, stable> table;
 
   using iterator = HashIterator<Pair<K, V>, stable>;
-  using const_iterator = HashIterator<Pair<K, V>, stable>;
+  using const_iterator = HashIterator<const Pair<K, V>, stable>;
   using value_type = Pair<K, V>;
   using size_type = int;
   using difference_type = ptrdiff_t;
@@ -483,12 +495,19 @@ struct HashMap
 
   int size() const { return this->table.count; }
   bool empty() const { return this->table.count == 0; }
-  HashIterator<Pair<K, V>, stable> begin() const { return this->table.begin(); }
-  HashIterator<Pair<K, V>, stable> end() const { return this->table.end(); }
-  HashIterator<Pair<K, V>, stable> cbegin() const { return this->begin(); }
-  HashIterator<Pair<K, V>, stable> cend() const { return this->end(); }
+  iterator begin() { return this->table.begin(); }
+  const_iterator begin() const { return this->table.begin(); }
+  iterator end() { return this->table.end(); }
+  const_iterator end() const { return this->table.end(); }
+  const_iterator cbegin() const { return this->begin(); }
+  const_iterator cend() const { return this->end(); }
 
-  HashIterator<Pair<K, V>, stable> find(const K& key) const
+  iterator find(const K& key)
+  {
+    int slot = this->table.findSlot(key, this->table.hashKey(key));
+    return slot < 0 ? this->table.end() : this->table.iteratorAt(slot);
+  }
+  const_iterator find(const K& key) const
   {
     int slot = this->table.findSlot(key, this->table.hashKey(key));
     return slot < 0 ? this->table.end() : this->table.iteratorAt(slot);
@@ -600,12 +619,12 @@ struct HashMap
   }
   // With a position hint, which a hash table does not need: the entry's position, new or found.
   template<typename... Args>
-  HashIterator<Pair<K, V>, stable> try_emplace(HashIterator<Pair<K, V>, stable> hint, const K& key, Args&&... args)
+  iterator try_emplace(const_iterator hint, const K& key, Args&&... args)
   {
     return this->try_emplace(key, forward<Args>(args)...).first;
   }
   template<typename KK, typename... Args> requires (isSame<KK, K>)
-  HashIterator<Pair<K, V>, stable> try_emplace(HashIterator<Pair<K, V>, stable> hint, KK&& key, Args&&... args)
+  iterator try_emplace(const_iterator hint, KK&& key, Args&&... args)
   {
     return this->try_emplace(move(key), forward<Args>(args)...).first;
   }
@@ -630,17 +649,18 @@ struct HashMap
     return 1;
   }
   // Removes the entry at position; returns the position of the next one.
-  HashIterator<Pair<K, V>, stable> erase(HashIterator<Pair<K, V>, stable> position)
+  iterator erase(const_iterator position)
   {
     this->table.eraseAt(position.index);
-    ++position;
-    return position;
+    HashIterator<Pair<K, V>, stable> next(position);
+    ++next;
+    return next;
   }
   // Inserts as insert(entry) does; the hint is accepted for compatibility and not needed.
-  HashIterator<Pair<K, V>, stable> insert(HashIterator<Pair<K, V>, stable> hint, const Pair<K, V>& entry) { return this->insert(entry).first; }
-  HashIterator<Pair<K, V>, stable> insert(HashIterator<Pair<K, V>, stable> hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
+  iterator insert(const_iterator hint, const Pair<K, V>& entry) { return this->insert(entry).first; }
+  iterator insert(const_iterator hint, Pair<K, V>&& entry) { return this->insert(move(entry)).first; }
   template<typename... Args>
-  HashIterator<Pair<K, V>, stable> emplace_hint(HashIterator<Pair<K, V>, stable> hint, Args&&... args)
+  iterator emplace_hint(const_iterator hint, Args&&... args)
   {
     return this->insert(Pair<K, V>(forward<Args>(args)...)).first;
   }
@@ -691,8 +711,8 @@ struct HashSet
 {
   HashTable<T, T, HashSetKey<T>, Hasher, KeyEqual, stable> table;
 
-  using iterator = HashIterator<T, stable>;
-  using const_iterator = HashIterator<T, stable>;
+  using iterator = HashIterator<const T, stable>; // a set's elements are its keys: const through every position
+  using const_iterator = HashIterator<const T, stable>;
   using value_type = T;
   using size_type = int;
   using difference_type = ptrdiff_t;
@@ -726,12 +746,12 @@ struct HashSet
 
   int size() const { return this->table.count; }
   bool empty() const { return this->table.count == 0; }
-  HashIterator<T, stable> begin() const { return this->table.begin(); }
-  HashIterator<T, stable> end() const { return this->table.end(); }
-  HashIterator<T, stable> cbegin() const { return this->begin(); }
-  HashIterator<T, stable> cend() const { return this->end(); }
+  const_iterator begin() const { return this->table.begin(); }
+  const_iterator end() const { return this->table.end(); }
+  const_iterator cbegin() const { return this->begin(); }
+  const_iterator cend() const { return this->end(); }
 
-  HashIterator<T, stable> find(const T& value) const
+  const_iterator find(const T& value) const
   {
     int slot = this->table.findSlot(value, this->table.hashKey(value));
     return slot < 0 ? this->table.end() : this->table.iteratorAt(slot);
@@ -740,7 +760,7 @@ struct HashSet
   int count(const T& value) const { return this->contains(value) ? 1 : 0; }
 
   // The entry with the value and whether it was inserted.
-  Pair<HashIterator<T, stable>, bool> insert(const T& value)
+  Pair<iterator, bool> insert(const T& value)
   {
     size_t hash = this->table.hashKey(value);
     bool found;
@@ -755,7 +775,7 @@ struct HashSet
       this->table.emplaceAt(slot, hash, value);
     return Pair<HashIterator<T, stable>, bool>(this->table.iteratorAt(slot), !found);
   }
-  Pair<HashIterator<T, stable>, bool> insert(T&& value)
+  Pair<iterator, bool> insert(T&& value)
   {
     size_t hash = this->table.hashKey(value);
     bool found;
@@ -770,7 +790,7 @@ struct HashSet
     return Pair<HashIterator<T, stable>, bool>(this->table.iteratorAt(slot), !found);
   }
   template<typename... Args>
-  Pair<HashIterator<T, stable>, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
+  Pair<iterator, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
 
   // The number of values removed (0 or 1).
   int erase(const T& value)
@@ -781,16 +801,17 @@ struct HashSet
     this->table.eraseAt(slot);
     return 1;
   }
-  HashIterator<T, stable> erase(HashIterator<T, stable> position)
+  iterator erase(const_iterator position)
   {
     this->table.eraseAt(position.index);
-    ++position;
-    return position;
+    HashIterator<T, stable> next(position);
+    ++next;
+    return next;
   }
-  HashIterator<T, stable> insert(HashIterator<T, stable> hint, const T& value) { return this->insert(value).first; }
-  HashIterator<T, stable> insert(HashIterator<T, stable> hint, T&& value) { return this->insert(move(value)).first; }
+  iterator insert(const_iterator hint, const T& value) { return this->insert(value).first; }
+  iterator insert(const_iterator hint, T&& value) { return this->insert(move(value)).first; }
   template<typename... Args>
-  HashIterator<T, stable> emplace_hint(HashIterator<T, stable> hint, Args&&... args) { return this->insert(T(forward<Args>(args)...)).first; }
+  iterator emplace_hint(const_iterator hint, Args&&... args) { return this->insert(T(forward<Args>(args)...)).first; }
   template<typename It>
   void insert(It first, It last)
   {

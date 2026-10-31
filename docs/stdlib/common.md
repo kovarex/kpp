@@ -50,6 +50,13 @@ Every container names its types as members: `value_type` (the element), `size_ty
 the ordered ones `key_compare`, the hash ones `hasher` and `key_equal`. A view (StringView) has
 const element types for `reference` and `pointer`.
 
+A const container hands out no mutable element, as C++'s: its `begin()`, `end()`, `find()` and the
+other positions are `const_iterator`s (whose `*it` is const), and `front()`, `back()`, `[]` and
+`at()` return const references. A mutable container's positions are `iterator`s, which convert
+implicitly to `const_iterator`s (they compare equal to the same position, and `erase`, `insert`
+with a hint and `splice` take either). A set's elements are its keys: its `iterator` is a
+`const_iterator` as well.
+
 ## Iterators, pointers and references
 
 An iterator, pointer or reference is **invalidated** by an operation when using it afterwards

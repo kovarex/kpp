@@ -19,7 +19,9 @@ struct Deque
   int length = 0;
 
   using iterator = DequeIterator<T>;
-  using const_iterator = DequeIterator<T>;
+  using const_iterator = DequeIterator<const T>;
+  using reverse_iterator = ReverseIterator<iterator>;
+  using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = T;
   using size_type = int;
   using difference_type = ptrdiff_t;
@@ -125,24 +127,38 @@ struct Deque
 
   int size() const { return this->length; }
   bool empty() const { return this->length == 0; }
-  T& operator[](int index) const { return *this->slotAt(this->start + index); }
+  // A const Deque's elements are const through every access, as std::deque's.
+  T& operator[](int index) { return *this->slotAt(this->start + index); }
+  const T& operator[](int index) const { return *this->slotAt(this->start + index); }
   // Throws OutOfRange for an index outside [0, size()).
-  T& at(int index) const
+  T& at(int index)
   {
     if (index < 0 || index >= this->length)
       throwOutOfRange("Deque::at: index out of range");
     return (*this)[index];
   }
-  T& front() const { return *this->slotAt(this->start); }
-  T& back() const { return *this->slotAt(this->start + this->length - 1); }
-  DequeIterator<T> begin() const { return DequeIterator<T>((Deque<T>*)this, 0); }
-  DequeIterator<T> end() const { return DequeIterator<T>((Deque<T>*)this, this->length); }
-  DequeIterator<T> cbegin() const { return this->begin(); }
-  DequeIterator<T> cend() const { return this->end(); }
-  auto crbegin() const { return this->rbegin(); }
-  auto crend() const { return this->rend(); }
-  ReverseIterator<DequeIterator<T>> rbegin() const { return ReverseIterator<DequeIterator<T>>(this->end()); }
-  ReverseIterator<DequeIterator<T>> rend() const { return ReverseIterator<DequeIterator<T>>(this->begin()); }
+  const T& at(int index) const
+  {
+    if (index < 0 || index >= this->length)
+      throwOutOfRange("Deque::at: index out of range");
+    return (*this)[index];
+  }
+  T& front() { return *this->slotAt(this->start); }
+  T& back() { return *this->slotAt(this->start + this->length - 1); }
+  const T& front() const { return *this->slotAt(this->start); }
+  const T& back() const { return *this->slotAt(this->start + this->length - 1); }
+  iterator begin() { return iterator(this, 0); }
+  iterator end() { return iterator(this, this->length); }
+  const_iterator begin() const { return const_iterator((Deque<T>*)this, 0); }
+  const_iterator end() const { return const_iterator((Deque<T>*)this, this->length); }
+  const_iterator cbegin() const { return this->begin(); }
+  const_iterator cend() const { return this->end(); }
+  const_reverse_iterator crbegin() const { return this->rbegin(); }
+  const_reverse_iterator crend() const { return this->rend(); }
+  reverse_iterator rbegin() { return reverse_iterator(this->end()); }
+  reverse_iterator rend() { return reverse_iterator(this->begin()); }
+  const_reverse_iterator rbegin() const { return const_reverse_iterator(this->end()); }
+  const_reverse_iterator rend() const { return const_reverse_iterator(this->begin()); }
   // Equal with the same elements in the same order, ordered lexicographically (common.md).
   bool operator==(const Deque<T>& other) const { return this->length == other.length && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const Deque<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
@@ -224,11 +240,11 @@ struct Deque
     }
     return DequeIterator<T>(this, index);
   }
-  DequeIterator<T> insert(DequeIterator<T> position, const T& value) { return this->insert(position.index, value); }
-  DequeIterator<T> insert(DequeIterator<T> position, T&& value) { return this->insert(position.index, move(value)); }
+  DequeIterator<T> insert(const_iterator position, const T& value) { return this->insert(position.index, value); }
+  DequeIterator<T> insert(const_iterator position, T&& value) { return this->insert(position.index, move(value)); }
   // An element made from args, inserted before position as insert does (std::deque::emplace).
   template<typename... Args>
-  DequeIterator<T> emplace(DequeIterator<T> position, Args&&... args) { return this->insert(position.index, T(forward<Args>(args)...)); }
+  DequeIterator<T> emplace(const_iterator position, Args&&... args) { return this->insert(position.index, T(forward<Args>(args)...)); }
   // Removes the element at index, moving the shorter side by one; returns the position of the
   // element after it.
   DequeIterator<T> erase(int index)
@@ -247,10 +263,10 @@ struct Deque
     }
     return DequeIterator<T>(this, index);
   }
-  DequeIterator<T> erase(DequeIterator<T> position) { return this->erase(position.index); }
+  DequeIterator<T> erase(const_iterator position) { return this->erase(position.index); }
   // Removes the elements in [first, last), moving the shorter side of the rest by their count;
   // returns the position of the element after them.
-  DequeIterator<T> erase(DequeIterator<T> first, DequeIterator<T> last)
+  DequeIterator<T> erase(const_iterator first, const_iterator last)
   {
     int from = first.index;
     int count = last.index - first.index;
@@ -359,30 +375,48 @@ struct Deque
 };
 
 // A position in a Deque: its element index. Random access.
+// DequeIterator<const T> is the const_iterator: the same position, its element const. An iterator
+// converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename T>
 struct DequeIterator
 {
-  using value_type = T;
+  using value_type = RemoveConst<T>;
   using difference_type = ptrdiff_t;
   using pointer = T*;
   using reference = T&;
   using iterator_category = RandomAccessIteratorTag;
 
-  Deque<T>* deque = nullptr;
+  Deque<RemoveConst<T>>* deque = nullptr;
   int index = 0;
 
   DequeIterator() {}
-  DequeIterator(Deque<T>* deque, int index) : deque(deque), index(index) {}
+  DequeIterator(Deque<RemoveConst<T>>* deque, int index) : deque(deque), index(index) {}
+  template<typename F> requires (isSame<F, RemoveConst<T>> && !isSame<F, T>)
+  implicit DequeIterator(const DequeIterator<F>& other) : deque(other.deque), index(other.index) {}
+  template<typename F> requires (isSame<T, RemoveConst<F>> && !isSame<F, T>)
+  explicit DequeIterator(const DequeIterator<F>& other) : deque(other.deque), index(other.index) {}
 
   T& operator*() const { return (*this->deque)[this->index]; }
   T* operator->() const { return &(*this->deque)[this->index]; }
   T& operator[](int offset) const { return (*this->deque)[this->index + offset]; }
   bool operator==(const DequeIterator<T>& other) const { return this->index == other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator==(const DequeIterator<F>& other) const { return this->index == other.index; }
   bool operator!=(const DequeIterator<T>& other) const { return this->index != other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator!=(const DequeIterator<F>& other) const { return this->index != other.index; }
   bool operator<(const DequeIterator<T>& other) const { return this->index < other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator<(const DequeIterator<F>& other) const { return this->index < other.index; }
   bool operator>(const DequeIterator<T>& other) const { return this->index > other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator>(const DequeIterator<F>& other) const { return this->index > other.index; }
   bool operator<=(const DequeIterator<T>& other) const { return this->index <= other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator<=(const DequeIterator<F>& other) const { return this->index <= other.index; }
   bool operator>=(const DequeIterator<T>& other) const { return this->index >= other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator>=(const DequeIterator<F>& other) const { return this->index >= other.index; }
   DequeIterator<T>& operator++()
   {
     ++this->index;
@@ -408,6 +442,8 @@ struct DequeIterator
   DequeIterator<T> operator+(int offset) const { return DequeIterator<T>(this->deque, this->index + offset); }
   DequeIterator<T> operator-(int offset) const { return DequeIterator<T>(this->deque, this->index - offset); }
   int operator-(const DequeIterator<T>& other) const { return this->index - other.index; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  int operator-(const DequeIterator<F>& other) const { return this->index - other.index; }
   DequeIterator<T>& operator+=(int offset)
   {
     this->index += offset;
@@ -434,8 +470,10 @@ struct Queue
 
   int size() const { return this->values.size(); }
   bool empty() const { return this->values.empty(); }
-  T& front() const { return this->values.front(); }
-  T& back() const { return this->values.back(); }
+  T& front() { return this->values.front(); }
+  T& back() { return this->values.back(); }
+  const T& front() const { return this->values.front(); }
+  const T& back() const { return this->values.back(); }
   void push(const T& value) { this->values.push_back(value); }
   void push(T&& value) { this->values.push_back(move(value)); }
   template<typename... Args>
@@ -458,7 +496,8 @@ struct Stack
 
   int size() const { return this->values.size(); }
   bool empty() const { return this->values.empty(); }
-  T& top() const { return this->values.back(); }
+  T& top() { return this->values.back(); }
+  const T& top() const { return this->values.back(); }
   void push(const T& value) { this->values.push_back(value); }
   void push(T&& value) { this->values.push_back(move(value)); }
   template<typename... Args>

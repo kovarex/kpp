@@ -31,10 +31,12 @@ void listUnlink(ListLinks* node)
   node->next->prev = node->prev;
 }
 
+// ListIterator<const T> is the const_iterator: the same position, its element const. An iterator
+// converts to it implicitly, and back only explicitly (erase(const_iterator)).
 template<typename T>
 struct ListIterator
 {
-  using value_type = T;
+  using value_type = RemoveConst<T>;
   using difference_type = ptrdiff_t;
   using pointer = T*;
   using reference = T&;
@@ -44,11 +46,19 @@ struct ListIterator
 
   ListIterator() {}
   explicit ListIterator(ListLinks* node) : node(node) {}
+  template<typename F> requires (isSame<F, RemoveConst<T>> && !isSame<F, T>)
+  implicit ListIterator(const ListIterator<F>& other) : node(other.node) {}
+  template<typename F> requires (isSame<T, RemoveConst<F>> && !isSame<F, T>)
+  explicit ListIterator(const ListIterator<F>& other) : node(other.node) {}
 
-  T& operator*() const { return ((ListNode<T>*)this->node)->value; }
-  T* operator->() const { return &((ListNode<T>*)this->node)->value; }
+  T& operator*() const { return ((ListNode<RemoveConst<T>>*)this->node)->value; }
+  T* operator->() const { return &((ListNode<RemoveConst<T>>*)this->node)->value; }
   bool operator==(const ListIterator<T>& other) const { return this->node == other.node; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator==(const ListIterator<F>& other) const { return this->node == other.node; }
   bool operator!=(const ListIterator<T>& other) const { return this->node != other.node; }
+  template<typename F> requires (isSame<RemoveConst<F>, RemoveConst<T>> && !isSame<F, T>)
+  bool operator!=(const ListIterator<F>& other) const { return this->node != other.node; }
   ListIterator<T>& operator++()
   {
     this->node = this->node->next;
@@ -80,7 +90,9 @@ struct List
   int length = 0;
 
   using iterator = ListIterator<T>;
-  using const_iterator = ListIterator<T>;
+  using const_iterator = ListIterator<const T>;
+  using reverse_iterator = ReverseIterator<iterator>;
+  using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = T;
   using size_type = int;
   using difference_type = ptrdiff_t;
@@ -138,16 +150,23 @@ struct List
 
   int size() const { return this->length; }
   bool empty() const { return this->length == 0; }
-  T& front() const { return ((ListNode<T>*)this->sentinel.next)->value; }
-  T& back() const { return ((ListNode<T>*)this->sentinel.prev)->value; }
-  ListIterator<T> begin() const { return ListIterator<T>(this->sentinel.next); }
-  ListIterator<T> end() const { return ListIterator<T>((ListLinks*)&this->sentinel); }
-  ListIterator<T> cbegin() const { return this->begin(); }
-  ListIterator<T> cend() const { return this->end(); }
+  // A const List's elements are const through every access, as std::list's.
+  T& front() { return ((ListNode<T>*)this->sentinel.next)->value; }
+  T& back() { return ((ListNode<T>*)this->sentinel.prev)->value; }
+  const T& front() const { return ((ListNode<T>*)this->sentinel.next)->value; }
+  const T& back() const { return ((ListNode<T>*)this->sentinel.prev)->value; }
+  iterator begin() { return iterator(this->sentinel.next); }
+  iterator end() { return iterator(&this->sentinel); }
+  const_iterator begin() const { return const_iterator(this->sentinel.next); }
+  const_iterator end() const { return const_iterator((ListLinks*)&this->sentinel); }
+  const_iterator cbegin() const { return this->begin(); }
+  const_iterator cend() const { return this->end(); }
   auto crbegin() const { return this->rbegin(); }
   auto crend() const { return this->rend(); }
-  ReverseIterator<ListIterator<T>> rbegin() const { return ReverseIterator<ListIterator<T>>(this->end()); }
-  ReverseIterator<ListIterator<T>> rend() const { return ReverseIterator<ListIterator<T>>(this->begin()); }
+  reverse_iterator rbegin() { return reverse_iterator(this->end()); }
+  reverse_iterator rend() { return reverse_iterator(this->begin()); }
+  const_reverse_iterator rbegin() const { return const_reverse_iterator(this->end()); }
+  const_reverse_iterator rend() const { return const_reverse_iterator(this->begin()); }
   // Equal with the same elements in the same order, ordered lexicographically (common.md).
   bool operator==(const List<T>& other) const { return this->length == other.length && equal(this->begin(), this->end(), other.begin()); }
   strong_ordering operator<=>(const List<T>& other) const { return lexicographicalCompareThreeWay(this->begin(), this->end(), other.begin(), other.end()); }
@@ -170,17 +189,17 @@ struct List
   void pop_front() { this->erase(this->begin()); }
 
   // Inserts before position; returns the new element's position.
-  ListIterator<T> insert(ListIterator<T> position, const T& value) { return this->emplace(position, value); }
-  ListIterator<T> insert(ListIterator<T> position, T&& value) { return this->emplace(position, move(value)); }
+  ListIterator<T> insert(const_iterator position, const T& value) { return this->emplace(position, value); }
+  ListIterator<T> insert(const_iterator position, T&& value) { return this->emplace(position, move(value)); }
   template<typename... Args>
-  ListIterator<T> emplace(ListIterator<T> position, Args&&... args)
+  ListIterator<T> emplace(const_iterator position, Args&&... args)
   {
     ListNode<T>* node = this->allocateNode();
     new (&node->value) T(forward<Args>(args)...);
-    return this->linkNode(position, node);
+    return this->linkNode(iterator(position), node);
   }
   // Removes the element at position; returns the position after it.
-  ListIterator<T> erase(ListIterator<T> position)
+  ListIterator<T> erase(const_iterator position)
   {
     ListLinks* next = position.node->next;
     listUnlink(position.node);
@@ -188,11 +207,11 @@ struct List
     --this->length;
     return ListIterator<T>(next);
   }
-  ListIterator<T> erase(ListIterator<T> first, ListIterator<T> last)
+  ListIterator<T> erase(const_iterator first, const_iterator last)
   {
     while (first != last)
       first = this->erase(first);
-    return last;
+    return iterator(last);
   }
   void clear()
   {
@@ -207,13 +226,13 @@ struct List
   }
 
   // Moves all of other's nodes before position, without copying (other ends up empty).
-  void splice(ListIterator<T> position, List<T>& other)
+  void splice(const_iterator position, List<T>& other)
   {
     while (!other.empty())
       this->splice(position, other, other.begin());
   }
   // Moves the node at it from other before position.
-  void splice(ListIterator<T> position, List<T>& other, ListIterator<T> it)
+  void splice(const_iterator position, List<T>& other, const_iterator it)
   {
     if (it.node == position.node || it.node->next == position.node)
     {

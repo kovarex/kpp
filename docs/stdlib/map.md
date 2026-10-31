@@ -98,5 +98,4 @@ O(n). `count` in a multi container: O(log n + number found).
 Kpp additions (not in C++): `insert(key, value)` returning whether the key was new (Map), and the
 camel-case spellings `lowerBound`, `upperBound`.
 
-*Differences from C++*: there is no separate const_iterator type, no `value_comp()`, and no
-allocator parameter.
+*Differences from C++*: no `value_comp()`, and no allocator parameter.
