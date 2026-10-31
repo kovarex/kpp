@@ -1,0 +1,47 @@
+// spec: a String holds at most maxContainerSize (2^31 - 1) bytes, its sizes being int: an append, insert or construction that would make it longer throws LengthError("string too long") before it copies a byte, as std::string throws length_error past max_size(), and leaves the string as it was; a byte range or a C string longer than maxContainerSize does too
+// factorio: none known; the guarantee that a size past int's range is an error, not a wrapped length and a write past the block (String's append compared length + count, which wraps negative, with the capacity)
+int main()
+{
+  String text = "a heap string, longer than twenty-two bytes";
+  const char* bytes = text.data();
+  int before = text.size();
+  try
+  {
+    text.append(bytes, maxContainerSize);
+    println("appended");
+  }
+  catch (const LengthError& e)
+  {
+    println("append: {}, size {}", e.what(), text.size() == before);
+  }
+  try
+  {
+    text.append(maxContainerSize - 10, 'x');
+    println("appended");
+  }
+  catch (const LengthError& e)
+  {
+    println("append count: {}, size {}", e.what(), text.size() == before);
+  }
+  try
+  {
+    text.insert(3, bytes, maxContainerSize);
+    println("inserted");
+  }
+  catch (const LengthError& e)
+  {
+    println("insert: {}, size {}", e.what(), text.size() == before);
+  }
+  // A range of 3 GB: the length is checked before a byte is read.
+  try
+  {
+    String range(bytes, bytes + 3000000000LL);
+    println("constructed {}", range.size());
+  }
+  catch (const LengthError& e)
+  {
+    println("range: {}", e.what());
+  }
+  println("{}", text);
+  return 0;
+}

@@ -1,0 +1,5 @@
+append: string too long, size true
+append count: string too long, size true
+insert: string too long, size true
+range: string too long
+a heap string, longer than twenty-two bytes

@@ -234,6 +234,8 @@ struct BTree
   // the way down are split before entering them, so the leaf it ends in has room.
   BTreeIterator<E> insertNew(E&& entry)
   {
+    if (this->count == maxContainerSize) // its count is an int (core/Sizes.kpp)
+      throwLengthError("map/set too long");
     if (!this->root)
     {
       this->root = this->newNode(true);
@@ -351,7 +353,7 @@ struct BTree
 
   BTreeNode<E>* newNode(bool leaf)
   {
-    BTreeNode<E>* node = (BTreeNode<E>*)malloc(leaf ? sizeof(BTreeNode<E>) : sizeof(BTreeInterior<E>));
+    BTreeNode<E>* node = (BTreeNode<E>*)allocateBytes(leaf ? sizeof(BTreeNode<E>) : sizeof(BTreeInterior<E>));
     node->parent = nullptr;
     node->count = 0;
     node->parentIndex = 0;

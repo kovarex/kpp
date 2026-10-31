@@ -239,6 +239,8 @@ struct List
       if (this == &other)
         return;
     }
+    if (this != &other && this->length == maxContainerSize)
+      throwLengthError("list too long");
     listUnlink(it.node);
     --other.length;
     listLinkBefore(position.node, it.node);
@@ -334,7 +336,13 @@ struct List
   }
 
   // Internals.
-  ListNode<T>* allocateNode() { return (ListNode<T>*)malloc(sizeof(ListNode<T>)); }
+  // Its length is an int (core/Sizes.kpp): LengthError past maxContainerSize, BadAlloc when malloc fails.
+  ListNode<T>* allocateNode()
+  {
+    if (this->length == maxContainerSize)
+      throwLengthError("list too long");
+    return (ListNode<T>*)allocateBytes(sizeof(ListNode<T>));
+  }
   ListIterator<T> linkNode(ListIterator<T> position, ListNode<T>* node)
   {
     listLinkBefore(position.node, node);

@@ -230,7 +230,7 @@ struct HashTable
     E* entry;
     if constexpr (stable)
     {
-      entry = (E*)malloc(sizeof(E));
+      entry = (E*)allocateBytes(sizeof(E));
       new (entry) E(forward<Args>(args)...);
       ((E**)this->slots)[slot] = entry;
     }
@@ -318,22 +318,31 @@ struct HashTable
     *this = move(held);
   }
 
-  // Twice the size, unless deleted slots made up the load: then the same size, cleared.
+  // Twice the size, unless deleted slots made up the load: then the same size, cleared. The slots
+  // are a power of two that an int counts, at most 2^30 (core/Sizes.kpp): LengthError past it.
   void grow()
   {
     if (this->capacity == 0)
       this->rehash(16);
+    else if (((long long)this->count + 1) * 2 > this->capacity)
+    {
+      if (this->capacity > maxContainerSize / 2)
+        throwLengthError("unordered_map/set too long");
+      this->rehash(this->capacity * 2);
+    }
     else
-      this->rehash((this->count + 1) * 2 > this->capacity ? this->capacity * 2 : this->capacity);
+      this->rehash(this->capacity);
   }
-  // Room for n entries without growing.
+  // Room for n entries without growing; LengthError when more than 2^30 slots would hold them.
   void reserve(int n)
   {
-    int needed = 16;
-    while (needed * 3 < n * 4)
+    long long needed = 16;
+    while (needed * 3 < (long long)n * 4)
       needed *= 2;
+    if (needed > maxContainerSize)
+      throwLengthError("unordered_map/set too long");
     if (needed > this->capacity)
-      this->rehash(needed);
+      this->rehash((int)needed);
   }
 
   void clear()
@@ -362,11 +371,19 @@ struct HashTable
   static const K& keyOf(const E& entry) { return KeyOf::of(entry); }
   const K& keyAt(int slot) const { return KeyOf::of(*this->entryAt(slot)); }
 
+  // Both blocks before the table changes: BadAlloc leaves it as it was.
   void allocate(int newCapacity)
   {
-    this->tags = (uint8_t*)malloc((size_t)newCapacity);
-    memset(this->tags, hashSlotEmpty, (size_t)newCapacity);
-    this->slots = (char*)malloc((size_t)newCapacity * HashTable::slotSize());
+    uint8_t* newTags = allocateArray<uint8_t>(newCapacity);
+    char* newSlots = (char*)malloc((size_t)newCapacity * HashTable::slotSize());
+    if (!newSlots)
+    {
+      free(newTags);
+      throwBadAlloc();
+    }
+    memset(newTags, hashSlotEmpty, (size_t)newCapacity);
+    this->tags = newTags;
+    this->slots = newSlots;
     this->capacity = newCapacity;
   }
   // Moves the used slots into a new table of newCapacity slots, which drops the deleted ones.
@@ -416,7 +433,7 @@ struct HashTable
       {
         if constexpr (stable)
         {
-          E* entry = (E*)malloc(sizeof(E));
+          E* entry = (E*)allocateBytes(sizeof(E));
           new (entry) E(*other.entryAt(i));
           ((E**)this->slots)[i] = entry;
         }

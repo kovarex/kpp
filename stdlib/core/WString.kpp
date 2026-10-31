@@ -25,7 +25,7 @@ struct WString
   WString() {}
   implicit WString(const wchar_t* text) { this->append(text, WString::lengthOf(text)); }
   WString(const wchar_t* text, int count) { this->append(text, count); }
-  WString(const wchar_t* first, const wchar_t* last) { this->append(first, (int)(last - first)); }
+  WString(const wchar_t* first, const wchar_t* last) { this->append(first, checkedSize(last - first, "string too long")); }
   WString(int count, wchar_t c) { this->append(count, c); }
   WString(const WString& other) { this->append(other.chars, other.unitCount); }
   WString(WString&& other) noexcept : chars(other.chars), unitCount(other.unitCount), capacity(other.capacity)
@@ -70,10 +70,10 @@ struct WString
 
   static int lengthOf(const wchar_t* text)
   {
-    int n = 0;
+    long long n = 0;
     while (text != nullptr && text[n] != 0)
       ++n;
-    return n;
+    return checkedSize(n, "string too long");
   }
 
   int size() const { return this->unitCount; }
@@ -105,14 +105,19 @@ struct WString
   ReverseIterator<const wchar_t*> crbegin() const { return this->rbegin(); }
   ReverseIterator<const wchar_t*> crend() const { return this->rend(); }
 
+  // Room for needed units and the terminator: the capacity doubles from 16 until they fit, at most
+  // maxContainerSize; LengthError when they do not fit in it (core/Sizes.kpp).
   void reserve(int needed)
   {
-    if (needed + 1 <= this->capacity)
+    if ((long long)needed + 1 <= this->capacity)
       return;
-    int newCapacity = this->capacity == 0 ? 16 : this->capacity;
-    while (newCapacity < needed + 1)
-      newCapacity *= 2;
-    wchar_t* bigger = (wchar_t*)malloc((size_t)newCapacity * sizeof(wchar_t));
+    if ((long long)needed + 1 > maxContainerSize)
+      throwLengthError("string too long");
+    long long doubled = this->capacity == 0 ? 16 : this->capacity;
+    while (doubled < (long long)needed + 1)
+      doubled *= 2;
+    int newCapacity = doubled > maxContainerSize ? maxContainerSize : (int)doubled;
+    wchar_t* bigger = allocateArray<wchar_t>(newCapacity);
     if (this->chars)
     {
       memcpy(bigger, this->chars, (size_t)(this->unitCount + 1) * sizeof(wchar_t));
@@ -128,12 +133,13 @@ struct WString
   {
     if (count <= 0)
       return *this;
+    int newLength = sizeSum(this->unitCount, count, "string too long"); // before a unit is copied
     if (this->chars && units >= this->chars && units < this->chars + this->capacity)
     {
       WString copy(units, count);
       return this->append(copy.chars, count);
     }
-    this->reserve(this->unitCount + count);
+    this->reserve(newLength);
     memcpy(this->chars + this->unitCount, units, (size_t)count * sizeof(wchar_t));
     this->unitCount += count;
     this->chars[this->unitCount] = 0;
@@ -145,7 +151,7 @@ struct WString
   {
     if (count <= 0)
       return *this;
-    this->reserve(this->unitCount + count);
+    this->reserve(sizeSum(this->unitCount, count, "string too long"));
     for (int i = 0; i < count; ++i)
       this->chars[this->unitCount + i] = c;
     this->unitCount += count;
@@ -199,12 +205,13 @@ struct WString
       throw OutOfRange(String("WString::insert"));
     if (count <= 0)
       return *this;
+    int newLength = sizeSum(this->unitCount, count, "string too long"); // before a unit is copied
     if (this->chars && units >= this->chars && units < this->chars + this->capacity)
     {
       WString copy(units, count);
       return this->insert(index, copy.chars, count);
     }
-    this->reserve(this->unitCount + count);
+    this->reserve(newLength);
     // The units from index on, the terminating 0 with them, move up by count.
     memmove(this->chars + index + count, this->chars + index, (size_t)(this->unitCount - index + 1) * sizeof(wchar_t));
     memcpy(this->chars + index, units, (size_t)count * sizeof(wchar_t));
@@ -238,7 +245,7 @@ struct WString
   WString operator+(const WString& other) const
   {
     WString result;
-    result.reserve(this->unitCount + other.unitCount);
+    result.reserve(sizeSum(this->unitCount, other.unitCount, "string too long"));
     result.append(*this);
     result.append(other);
     return result;

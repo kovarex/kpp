@@ -112,7 +112,7 @@ struct Deque
   static int blockSize()
   {
     int size = 16;
-    while (size * 2 * (int)sizeof(T) <= 512)
+    while ((size_t)size * 2 * sizeof(T) <= 512)
       size *= 2;
     return size;
   }
@@ -326,7 +326,7 @@ struct Deque
   void ensureBlock(int block)
   {
     if (!this->map[block])
-      this->map[block] = (T*)malloc((size_t)Deque::blockSize() * sizeof(T));
+      this->map[block] = allocateArray<T>(Deque::blockSize());
   }
   void freeBlock(int block)
   {
@@ -336,13 +336,20 @@ struct Deque
   // Makes the map cover blocks [first, last] of the current numbering (first may be -1 for a
   // block before the current start) in its middle, with room on both sides, twice as long when
   // they would fill more than half of it. Block pointers move; blocks and elements do not.
+  // The positions in the map's space (block * blockSize() + index) are ints, so it has at most
+  // maxContainerSize / blockSize() blocks: past them LengthError (core/Sizes.kpp).
   void remap(int first, int last)
   {
-    int needed = last - first + 1;
-    int newLength = this->mapLength < 8 ? 8 : this->mapLength;
-    while (newLength < needed * 2)
-      newLength *= 2;
-    T** newMap = (T**)malloc((size_t)newLength * sizeof(T*));
+    long long most = maxContainerSize / Deque::blockSize();
+    long long neededBlocks = (long long)last - first + 1;
+    if (neededBlocks > most)
+      throwLengthError("deque too long");
+    int needed = (int)neededBlocks;
+    long long doubled = this->mapLength < 8 ? 8 : this->mapLength;
+    while (doubled < neededBlocks * 2)
+      doubled *= 2;
+    int newLength = doubled > most ? (int)most : (int)doubled;
+    T** newMap = allocateArray<T*>(newLength);
     for (int i = 0; i < newLength; ++i)
       newMap[i] = nullptr;
     int offset = (newLength - needed) / 2; // where block `first` goes

@@ -81,9 +81,17 @@ struct OutStream
   }
 };
 
+// In pieces of at most maxContainerSize bytes, writeBytes' count being an int (core/Sizes.kpp).
 OutStream& operator<<(OutStream& s, const char* text)
 {
-  s.writeBytes(text, (int)strlen(text));
+  size_t remaining = strlen(text);
+  while (remaining > 0)
+  {
+    int piece = remaining > (size_t)maxContainerSize ? maxContainerSize : (int)remaining;
+    s.writeBytes(text, piece);
+    text += piece;
+    remaining -= piece;
+  }
   return s;
 }
 OutStream& operator<<(OutStream& s, const String& text)

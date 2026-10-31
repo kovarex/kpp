@@ -99,9 +99,9 @@ namespace filesystem
     path(const wchar_t* first, const wchar_t* last) : text(first, last) {}
     // From UTF-8 (where C++ on Windows reads a narrow string in the ANSI code page).
     implicit path(const String& source) : text(widenUtf8(source.data(), source.size())) {}
-    implicit path(const char* source) : text(widenUtf8(source, (int)strlen(source))) {}
+    implicit path(const char* source) : text(widenUtf8(source, checkedSize(strlen(source), "string too long"))) {}
     implicit path(StringView source) : text(widenUtf8(source.data(), source.size())) {}
-    path(const char* first, const char* last) : text(widenUtf8(first, (int)(last - first))) {}
+    path(const char* first, const char* last) : text(widenUtf8(first, checkedSize(last - first, "string too long"))) {}
 
     path& operator=(const WString& source)
     {
@@ -120,7 +120,7 @@ namespace filesystem
     }
     path& operator=(const char* source)
     {
-      this->text = widenUtf8(source, (int)strlen(source));
+      this->text = widenUtf8(source, checkedSize(strlen(source), "string too long"));
       return *this;
     }
     path& assign(const path& source)
@@ -220,7 +220,7 @@ namespace filesystem
     }
     path& operator+=(const char* s)
     {
-      this->text.append(widenUtf8(s, (int)strlen(s)));
+      this->text.append(widenUtf8(s, checkedSize(strlen(s), "string too long")));
       return *this;
     }
     path& concat(const path& p) { return *this += p; }

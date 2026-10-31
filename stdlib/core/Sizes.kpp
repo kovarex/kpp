@@ -1,0 +1,57 @@
+// Container sizes (docs/stdlib-conformance.md, "Sizes are int"). The containers count elements and
+// bytes in int, so the most any of them holds is maxContainerSize, 2^31 - 1, where std's max_size()
+// is far larger. A size past it is never a silent wrap: every growth path goes through these, which
+// throw LengthError past maxContainerSize, as std throws length_error past max_size(), with MSVC's
+// message ("vector too long"); and a block malloc cannot give throws BadAlloc, as std's operator new
+// does.
+
+// The largest element count, or byte length, a container holds.
+const int maxContainerSize = 2147483647;
+
+[[noreturn]] [[noinline]] void throwLengthError(const char* what) { throw LengthError(String(what)); }
+[[noreturn]] [[noinline]] void throwBadAlloc() { throw BadAlloc(); }
+
+// count as a container size: a count from outside the container (a strlen, a pointer range, a
+// distance, a sum), LengthError when past maxContainerSize. A negative count stays as it is (the
+// containers treat it as none).
+int checkedSize(long long count, const char* what)
+{
+  if (count > maxContainerSize)
+    throwLengthError(what);
+  return (int)count;
+}
+
+// a + b as a container size, LengthError past maxContainerSize: a length plus what is added to it.
+int sizeSum(long long a, long long b, const char* what) { return checkedSize(a + b, what); }
+
+// The capacity after growing one of capacity to hold needed: doubled, at least needed and minimum,
+// at most maxContainerSize (instead of a doubling past int's range); LengthError when needed is past
+// maxContainerSize.
+int grownCapacity(int capacity, long long needed, int minimum, const char* what = "container too long")
+{
+  if (needed > maxContainerSize)
+    throwLengthError(what);
+  long long grown = (long long)capacity * 2;
+  if (grown < minimum)
+    grown = minimum;
+  if (grown < needed)
+    grown = needed;
+  return grown > maxContainerSize ? maxContainerSize : (int)grown;
+}
+
+// malloc of bytes, BadAlloc when it fails (instead of a null pointer the caller writes through).
+void* allocateBytes(size_t bytes)
+{
+  void* block = malloc(bytes == 0 ? 1 : bytes);
+  if (!block)
+    throwBadAlloc();
+  return block;
+}
+
+// An uninitialized block for count elements of T (count at most maxContainerSize: no product
+// overflows a size_t), BadAlloc when malloc fails.
+template<typename T>
+T* allocateArray(long long count)
+{
+  return (T*)allocateBytes((size_t)count * sizeof(T));
+}

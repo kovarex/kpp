@@ -608,7 +608,7 @@ void stableSort(It first, It last, F less)
   if constexpr (!isPointer<It>)
   {
     Vector<T> items;
-    items.reserve(int(last - first));
+    items.reserve(checkedSize(last - first, "vector too long"));
     for (It it = first; it != last; ++it)
       items.push_back(move(*it));
     stableSort(items.begin(), items.end(), less);
@@ -627,7 +627,7 @@ void stableSort(It first, It last, F less)
       insertionSort(first + start, first + (start + run < count ? start + run : count), less);
     if (count <= run)
       return;
-    T* buffer = (T*)malloc((size_t)count * sizeof(T));
+    T* buffer = allocateArray<T>(count);
     T* from = first;
     T* to = buffer;
     for (ptrdiff_t width = run; width < count; width *= 2)

@@ -38,10 +38,10 @@ struct String
   using const_pointer = const char*;
 
   String() { this->becomeEmpty(); }
-  implicit String(const char* text) { this->initialize(text, (int)strlen(text)); }
+  implicit String(const char* text) { this->initialize(text, checkedSize(strlen(text), "string too long")); }
   implicit String(StringView text) { this->initialize(text.chars, text.byteCount); }
   String(const char* text, int count) { this->initialize(text, count); }
-  String(const char* first, const char* last) { this->initialize(first, int(last - first)); }
+  String(const char* first, const char* last) { this->initialize(first, checkedSize(last - first, "string too long")); }
   String(int count, char c)
   {
     this->becomeEmpty();
@@ -205,6 +205,7 @@ struct String
     if (count <= 0)
       return *this;
     int length = this->size();
+    int newLength = sizeSum(length, count, "string too long"); // before a byte is copied
     if (index > length)
       index = length;
     const char* chars = this->data();
@@ -214,19 +215,19 @@ struct String
       String copy(text, count);
       return this->insert(index, copy.data(), count);
     }
-    this->ensureRoom(length + count);
+    this->ensureRoom(newLength);
     char* target = this->data();
     memmove(target + index + count, target + index, length - index);
     memcpy(target + index, text, count);
     this->setLength(length + count);
     return *this;
   }
-  String& insert(int index, const char* text) { return this->insert(index, text, (int)strlen(text)); }
+  String& insert(int index, const char* text) { return this->insert(index, text, checkedSize(strlen(text), "string too long")); }
   // Inserts [first, last) before the character position points at.
   char* insert(char* position, const char* first, const char* last)
   {
     int index = int(position - this->data());
-    this->insert(index, first, int(last - first));
+    this->insert(index, first, checkedSize(last - first, "string too long"));
     return this->data() + index;
   }
   String& insert(int index, const String& text) { return this->insert(index, text.data(), text.size()); }
@@ -238,7 +239,7 @@ struct String
     int length = this->size();
     if (index > length)
       index = length;
-    this->ensureRoom(length + count);
+    this->ensureRoom(sizeSum(length, count, "string too long"));
     char* chars = this->data();
     memmove(chars + index + count, chars + index, length - index);
     memset(chars + index, c, count);
@@ -248,17 +249,24 @@ struct String
   // Replaces count bytes at index with text; returns the string.
   String& replace(int index, int count, const char* text)
   {
+    int textLength = checkedSize(strlen(text), "string too long");
+    this->checkReplacement(index, count, textLength);
     this->erase(index, count);
-    return this->insert(index, text);
+    return this->insert(index, text, textLength);
   }
   String& replace(int index, int count, const String& text)
   {
+    this->checkReplacement(index, count, text.size());
     this->erase(index, count);
     return this->insert(index, text);
   }
 
   // Searching. Every find returns the index of the first match at or after `from`, or npos.
-  int find(const char* needle, int from) const { return this->findBytes(needle, (int)strlen(needle), from); }
+  int find(const char* needle, int from) const
+  {
+    size_t count = strlen(needle);
+    return count > (size_t)maxContainerSize ? npos : this->findBytes(needle, (int)count, from);
+  }
   int find(const char* needle) const { return this->find(needle, 0); }
   int find(const String& needle) const { return this->findBytes(needle.data(), needle.size(), 0); }
   int find(const String& needle, int from) const { return this->findBytes(needle.data(), needle.size(), from); }
@@ -324,7 +332,11 @@ struct String
         return i;
     return npos;
   }
-  int rfind(const char* needle, int from) const { return this->rfindBytes(needle, (int)strlen(needle), from); }
+  int rfind(const char* needle, int from) const
+  {
+    size_t count = strlen(needle);
+    return count > (size_t)maxContainerSize ? npos : this->rfindBytes(needle, (int)count, from);
+  }
   int rfind(const char* needle) const { return this->rfind(needle, npos); }
   int rfind(const String& needle, int from) const { return this->rfindBytes(needle.data(), needle.size(), from); }
   int rfind(const String& needle) const { return this->rfindBytes(needle.data(), needle.size(), npos); }
@@ -490,7 +502,7 @@ struct String
       this->setLength(count);
       return *this;
     }
-    char* block = (char*)malloc(count + 1);
+    char* block = allocateArray<char>((long long)count + 1);
     memcpy(block, bytes, count);
     block[count] = 0;
     this->adopt(block, count, count);
@@ -498,8 +510,8 @@ struct String
   }
   // The other forms of std::string's assign: the bytes of [first, last) (TCPSocket's
   // `result.assign(buffer, buffer + received)`), a C string, another String, count copies of c.
-  String& assign(const char* first, const char* last) { return this->assign(first, int(last - first)); }
-  String& assign(const char* text) { return this->assign(text, int(strlen(text))); }
+  String& assign(const char* first, const char* last) { return this->assign(first, checkedSize(last - first, "string too long")); }
+  String& assign(const char* text) { return this->assign(text, checkedSize(strlen(text), "string too long")); }
   String& assign(const String& other) { return this->assign(other.data(), other.size()); }
   String& assign(int count, char c)
   {
@@ -514,7 +526,7 @@ struct String
     if (count <= 0)
       return *this;
     int length = this->size();
-    if (length + count > this->capacity())
+    if ((long long)length + count > this->capacity())
     {
       this->appendGrowing(bytes, count);
       return *this;
@@ -523,9 +535,9 @@ struct String
     this->setLength(length + count);
     return *this;
   }
-  String& append(const char* text) { return this->append(text, (int)strlen(text)); }
+  String& append(const char* text) { return this->append(text, checkedSize(strlen(text), "string too long")); }
   // The bytes of [first, last) (cxxopts' `s.append(begin, end)`).
-  String& append(const char* first, const char* last) { return this->append(first, int(last - first)); }
+  String& append(const char* first, const char* last) { return this->append(first, checkedSize(last - first, "string too long")); }
   String& append(const String& other) { return this->append(other.data(), other.size()); }
   // Appends count copies of c.
   String& append(int count, char c)
@@ -533,7 +545,7 @@ struct String
     if (count <= 0)
       return *this;
     int length = this->size();
-    this->ensureRoom(length + count);
+    this->ensureRoom(sizeSum(length, count, "string too long"));
     memset(this->data() + length, c, count);
     this->setLength(length + count);
     return *this;
@@ -594,7 +606,7 @@ struct String
   String operator+(const String& other) const
   {
     String result;
-    result.reserve(this->size() + other.size());
+    result.reserve(sizeSum(this->size(), other.size(), "string too long"));
     result.append(*this);
     result.append(other);
     return result;
@@ -602,7 +614,7 @@ struct String
   String operator+(const char* text) const
   {
     String result;
-    result.reserve(this->size() + (int)strlen(text));
+    result.reserve(sizeSum(this->size(), strlen(text), "string too long"));
     result.append(*this);
     result.append(text);
     return result;
@@ -670,7 +682,7 @@ struct String
       this->smallChars[String::markIndex] = (char)count;
       return;
     }
-    char* block = (char*)malloc(count + 1);
+    char* block = allocateArray<char>((long long)count + 1);
     memcpy(block, bytes, count);
     block[count] = 0;
     this->heapChars = block;
@@ -710,25 +722,35 @@ struct String
   [[noinline]] void reallocate(int newCapacity)
   {
     int length = this->size();
-    char* block = (char*)malloc(newCapacity + 1);
+    char* block = allocateArray<char>((long long)newCapacity + 1);
     memcpy(block, this->data(), length + 1);
     this->adopt(block, length, newCapacity);
   }
-  // Geometric growth: appending n characters one by one costs O(n) in total.
+  // Geometric growth: appending n characters one by one costs O(n) in total. At most
+  // maxContainerSize (core/Sizes.kpp).
   void ensureRoom(int needed)
   {
     int capacity = this->capacity();
     if (needed > capacity)
-      this->reallocate(needed > capacity * 2 ? needed : capacity * 2);
+      this->reallocate(grownCapacity(capacity, needed, 0, "string too long"));
+  }
+  // replace's size, checked before it erases: LengthError leaves the string as it was.
+  void checkReplacement(int index, int count, int textLength) const
+  {
+    int length = this->size();
+    if (index < 0 || index > length)
+      return; // erase throws OutOfRange
+    int removed = count < 0 || count > length - index ? length - index : count;
+    sizeSum(length - removed, textLength, "string too long");
   }
   // append() when the characters do not fit: bytes may point into this string, so the old block
   // is released only after they are copied.
   [[noinline]] void appendGrowing(const char* bytes, int count)
   {
     int length = this->size(), capacity = this->capacity();
-    int newLength = length + count;
-    int newCapacity = newLength > capacity * 2 ? newLength : capacity * 2;
-    char* block = (char*)malloc(newCapacity + 1);
+    int newLength = sizeSum(length, count, "string too long");
+    int newCapacity = grownCapacity(capacity, newLength, 0, "string too long");
+    char* block = allocateArray<char>((long long)newCapacity + 1);
     memcpy(block, this->data(), length);
     memcpy(block + length, bytes, count);
     block[newLength] = 0;
@@ -745,9 +767,9 @@ bool operator>=(const char* left, const String& right) { return right.compare(le
 
 String operator+(const char* left, const String& right)
 {
-  int leftLength = (int)strlen(left);
+  int leftLength = checkedSize(strlen(left), "string too long");
   String result;
-  result.reserve(leftLength + right.size());
+  result.reserve(sizeSum(leftLength, right.size(), "string too long"));
   result.append(left, leftLength);
   result.append(right);
   return result;
@@ -755,7 +777,7 @@ String operator+(const char* left, const String& right)
 String operator+(char left, const String& right)
 {
   String result;
-  result.reserve(1 + right.size());
+  result.reserve(sizeSum(1, right.size(), "string too long"));
   result.append(left);
   result.append(right);
   return result;

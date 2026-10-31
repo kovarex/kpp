@@ -125,7 +125,7 @@ struct ForwardList
   template<typename... Args>
   ForwardIterator<T> emplace_after(ForwardIterator<T> position, Args&&... args)
   {
-    ForwardNode<T>* node = (ForwardNode<T>*)malloc(sizeof(ForwardNode<T>));
+    ForwardNode<T>* node = (ForwardNode<T>*)allocateBytes(sizeof(ForwardNode<T>));
     new (&node->value) T(forward<Args>(args)...);
     node->next = position.node->next;
     position.node->next = node;

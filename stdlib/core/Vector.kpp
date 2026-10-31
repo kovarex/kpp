@@ -29,7 +29,7 @@ struct Vector
     // TypeAwareMemoryPool keeps Vectors of SpriteRegistration, which has neither.
     if (count <= 0)
       return;
-    this->items = (T*)malloc((size_t)count * sizeof(T));
+    this->items = allocateArray<T>(count);
     this->allocated = count;
     for (; this->length < count; ++this->length)
       new (this->items + this->length) T();
@@ -45,7 +45,7 @@ struct Vector
   // count copies of value.
   Vector(int count, const T& value) { this->assign(count, value); }
   // Copies of [first, last).
-  Vector(const T* first, const T* last) { this->appendCopies(first, int(last - first)); }
+  Vector(const T* first, const T* last) { this->appendCopies(first, checkedSize(last - first, "vector too long")); }
   // The elements of [first, last), input iterators of any kind (`Vector<TransportLine*>
   // sorted(lines.begin(), lines.end())` from a HashSet), as insert(end(), first, last).
   template<typename InputIt> requires (!isIntegral<InputIt>)
@@ -162,7 +162,7 @@ struct Vector
   void assign(const T* first, const T* last)
   {
     this->clear();
-    this->appendCopies(first, int(last - first));
+    this->appendCopies(first, checkedSize(last - first, "vector too long"));
   }
   // The elements of [first, last), input iterators of any kind (ResearchQueue's
   // `queue.assign(other.queue.begin(), other.queue.end())`); they must not point into this vector.
@@ -301,7 +301,7 @@ struct Vector
     int index = int(position - this->items);
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
-      int count = int(distance(first, last));
+      int count = checkedSize(distance(first, last), "vector too long");
       this->openSlots(index, count);
       for (int i = 0; i < count; ++i)
       {
@@ -333,7 +333,8 @@ struct Vector
   // are left unconstructed.
   void openSlots(int index, int count)
   {
-    this->ensureRoom(this->length + count, index == this->length); // only at the end the strong guarantee
+    // Only at the end the strong guarantee.
+    this->ensureRoom(sizeSum(this->length, count, "vector too long"), index == this->length);
     relocateBackward(this->items + index + count, this->items + index, this->length - index);
     this->length += count;
   }
@@ -378,7 +379,7 @@ struct Vector
     this->length = newLength;
   }
   // Moves the elements into a new block for newCapacity elements.
-  void moveToBlock(int newCapacity, bool strong = true) { this->adoptBlock((T*)malloc((size_t)newCapacity * sizeof(T)), newCapacity, strong); }
+  void moveToBlock(int newCapacity, bool strong = true) { this->adoptBlock(allocateArray<T>(newCapacity), newCapacity, strong); }
   // Moves the elements into block, which has room for newCapacity, and frees the old one. strong
   // (an append, reserve, shrink_to_fit: std::vector's strong exception guarantee) copies them
   // where the move may throw and a copy exists (move_if_noexcept); an insert before the end moves
@@ -396,16 +397,13 @@ struct Vector
     this->items = block;
     this->allocated = newCapacity;
   }
-  // Geometric growth (doubling, at least 4): n appends cost O(n) element moves in total.
-  int grownCapacity(int needed) const
-  {
-    int doubled = this->allocated < 2 ? 4 : this->allocated * 2;
-    return needed > doubled ? needed : doubled;
-  }
+  // Geometric growth (doubling, at least 4, at most maxContainerSize): n appends cost O(n) element
+  // moves in total. LengthError when needed is past maxContainerSize (core/Sizes.kpp).
+  int capacityFor(long long needed) const { return grownCapacity(this->allocated, needed, 4, "vector too long"); }
   void ensureRoom(int needed, bool strong = true)
   {
     if (needed > this->allocated)
-      this->moveToBlock(this->grownCapacity(needed), strong);
+      this->moveToBlock(this->capacityFor(needed), strong);
   }
   // Where the next appended element goes. When the vector is full that is in grown, a new block:
   // the new element's arguments may be elements, so they move over only in finishAppend, after
@@ -417,20 +415,20 @@ struct Vector
       grown = nullptr;
       return this->items + this->length;
     }
-    grown = (T*)malloc((size_t)this->grownCapacity(this->length + 1) * sizeof(T));
+    grown = allocateArray<T>(this->capacityFor((long long)this->length + 1));
     return grown + this->length;
   }
   void finishAppend(T* grown)
   {
     if (grown)
-      this->adoptBlock(grown, this->grownCapacity(this->length + 1));
+      this->adoptBlock(grown, this->capacityFor((long long)this->length + 1));
     ++this->length;
   }
   // Copy-constructs count elements from source after the last one (exact growth: the copy and
   // assignment of a whole vector).
   void appendCopies(const T* source, int count)
   {
-    this->reserve(this->length + count);
+    this->reserve(sizeSum(this->length, count, "vector too long"));
     T* target = this->items + this->length;
     for (int i = 0; i < count; ++i)
       new (target + i) T(source[i]);

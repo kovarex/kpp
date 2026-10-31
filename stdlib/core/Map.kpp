@@ -581,7 +581,9 @@ struct RbTree
   template<typename... Args>
   RbNode<E>* newNode(Args&&... args)
   {
-    RbNode<E>* node = (RbNode<E>*)malloc(sizeof(RbNode<E>));
+    if (this->count == maxContainerSize) // its count is an int (core/Sizes.kpp)
+      throwLengthError("map/set too long");
+    RbNode<E>* node = (RbNode<E>*)allocateBytes(sizeof(RbNode<E>));
     new (&node->entry) E(forward<Args>(args)...);
     return node;
   }
@@ -657,7 +659,7 @@ struct RbTree
   }
   RbNodeBase* clone(const RbNodeBase* source, RbNodeBase* parent)
   {
-    RbNode<E>* node = (RbNode<E>*)malloc(sizeof(RbNode<E>));
+    RbNode<E>* node = (RbNode<E>*)allocateBytes(sizeof(RbNode<E>));
     new (&node->entry) E(((const RbNode<E>*)source)->entry);
     node->red = source->red;
     node->parent = parent;

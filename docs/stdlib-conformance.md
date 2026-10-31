@@ -9,10 +9,43 @@ compile, loudly) last. State of 2026-10-29.
 
 ## Behaviour that differs
 
-**Compiler gaps that break library use**: none open. The four listed until 2026-10-29 pass now
-(language/brace_argument_binds_rvalue, templates/forwarding_reference_to_function,
-language/array_new_and_delete with library/unique_array_from_new,
-classes/reference_bound_through_conversion_operator).
+**Compiler gaps that break library use**: one open since 2026-11-01. `new` and `new T[n]` return
+null when malloc fails, where C++'s new throws bad_alloc, and new T[n] allocates the wrapped
+size when n * sizeof(T) does not fit in a size_t: `new int[2^62 + 1]` gets 4 bytes
+(language/new_failure_throws_bad_alloc, pending, B). That reaches UniqueArray and every `new[]` of
+the converted game. The four listed until 2026-10-29 pass now (language/brace_argument_binds_rvalue,
+templates/forwarding_reference_to_function, language/array_new_and_delete with
+library/unique_array_from_new, classes/reference_bound_through_conversion_operator).
+
+**Sizes are int** (core/Sizes.kpp, 2026-11-01). The containers count elements and bytes in int, so
+the most any holds is maxContainerSize, 2^31 - 1, where std's max_size() is far larger. Past it,
+every path throws LengthError with MSVC's message ("vector too long", "string too long", "map/set
+too long", "list too long", "unordered_map/set too long", "deque too long"), as std throws
+length_error past max_size(). It throws before an element or byte is copied, and the container is
+left as it was.
+
+A block malloc cannot give throws BadAlloc, as std's operator new does. Each path gets the check
+it needs:
+- a size plus what is added to it goes through sizeSum;
+- a count from outside the container (strlen, a pointer range, distance) goes through
+  checkedSize;
+- doubling stops at maxContainerSize (grownCapacity);
+- HashMap and HashSet have at most 2^30 slots, which hold about 805 million entries;
+- Deque's map has at most maxContainerSize / blockSize() blocks.
+
+`OutStream << const char*` writes a longer C string in pieces, and String's find and rfind of a
+longer needle return npos.
+
+Until 2026-11-01 these sizes wrapped silently:
+- String::append's `length + count` passed its capacity check when it wrapped, and the copy
+  wrote past the block;
+- doubling and `count + 1` went negative, malloc's null was written through;
+- WString's `reserve(2^31 - 1)` returned without reserving;
+- `(int)strlen` and `int(last - first)` truncated.
+
+The edges are specified in library/size_limits_string, size_limits_vector and size_limits_growth.
+stableSort throws BadAlloc when malloc cannot give its buffer. std's stable_sort falls back to
+sorting in place instead; that fallback comes when a use needs it.
 
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().

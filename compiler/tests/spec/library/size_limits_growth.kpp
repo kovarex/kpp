@@ -1,0 +1,55 @@
+// spec: the containers' growth past int's range: doubling a capacity stops at maxContainerSize (2^31 - 1) instead of wrapping negative; a size sum past maxContainerSize, HashMap's and HashSet's reserve of more than their slots can count and WString's growth there throw LengthError (MSVC's messages: "unordered_map/set too long", "string too long") instead of wrapping (WString's reserve of 2^31 - 1 returned without reserving: needed + 1 wrapped negative)
+// factorio: none known; sizeSum and grownCapacity are what every container's growth path uses (core/Sizes.kpp)
+int main()
+{
+  println("{} {} {}", grownCapacity(0, 1, 4), grownCapacity(100, 101, 4), grownCapacity(100, 500, 4));
+  println("{} {}", grownCapacity(0x40000001, 0x40000002, 4) == maxContainerSize, grownCapacity(maxContainerSize - 1, maxContainerSize, 4) == maxContainerSize);
+  println("{}", sizeSum(maxContainerSize - 1, 1, "sum") == maxContainerSize);
+  try
+  {
+    println("{}", sizeSum(maxContainerSize, 1, "sum too long"));
+  }
+  catch (const LengthError& e)
+  {
+    println("sum: {}", e.what());
+  }
+  try
+  {
+    println("{}", grownCapacity(maxContainerSize, maxContainerSize + 0LL + 1, 4));
+  }
+  catch (const LengthError& e)
+  {
+    println("grow: {}", e.what());
+  }
+  HashMap<int, int> map;
+  try
+  {
+    map.reserve(maxContainerSize);
+    println("reserved");
+  }
+  catch (const LengthError& e)
+  {
+    println("hash map: {}, {}", e.what(), map.size());
+  }
+  HashSet<int> set;
+  try
+  {
+    set.reserve(1700000000);
+    println("reserved");
+  }
+  catch (const LengthError& e)
+  {
+    println("hash set: {}", e.what());
+  }
+  WString wide = L"wide";
+  try
+  {
+    wide.reserve(maxContainerSize);
+    println("reserved");
+  }
+  catch (const LengthError& e)
+  {
+    println("wstring: {}, {}", e.what(), wide.size());
+  }
+  return 0;
+}

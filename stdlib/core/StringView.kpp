@@ -20,7 +20,7 @@ struct StringView
   static const int npos = 2147483647;
 
   StringView() {}
-  implicit StringView(const char* text) : chars(text), byteCount(text ? (int)strlen(text) : 0) {}
+  implicit StringView(const char* text) : chars(text), byteCount(text ? checkedSize(strlen(text), "string too long") : 0) {}
   StringView(const char* text, int count) : chars(text), byteCount(count) {}
   implicit StringView(const String& text) : chars(text.data()), byteCount(text.size()) {}
 
