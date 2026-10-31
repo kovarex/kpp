@@ -471,15 +471,18 @@ struct Scope
     const std::vector<Entry>* found = it == shard.map.end() ? nullptr : &it->second;
     if (!recordingDependencies || (!recordingInto && !usesCollector))
       return found;
-    // A class's lookup is recorded with the class, unless what it finds is a using-declaration (its
-    // target is looked up elsewhere, and cached): then by the name alone, as every other scope's.
+    // A class's lookup is recorded with the class; one that finds a using-declaration (its target is
+    // looked up elsewhere, and cached) by the name alone too, as every other scope's. (With the class
+    // as well: an edit of a member is read only through its class and the classes derived from it,
+    // and a using-declaration in a class names a base's member.)
     bool coarse = kind != ScopeKind::Class;
+    bool viaUsing = false;
     if (found && !coarse)
       for (const Entry& e : *found)
-        coarse = coarse || (e.decl && e.decl->kind == NodeKind::UsingNameDecl);
-    if (coarse)
+        viaUsing = viaUsing || (e.decl && e.decl->kind == NodeKind::UsingNameDecl);
+    if (coarse || viaUsing)
       recordName(symbol);
-    else
+    if (!coarse)
       recordMember(id, symbol);
     return found;
   }
@@ -21908,6 +21911,7 @@ GlobalScope::ChangedName GlobalScope::changedNameOf(const VariableDecl* v)
   ChangedName out{v->name.empty() ? UINT32_MAX : v->name.last().symbol, nullptr};
   if (v->parent && v->parent->kind == NodeKind::ClassDecl)
     out.classScope = v->parent->ownScope ? static_cast<const void*>(v->parent->ownScope) : ChangedName::anyClass;
+  out.memberOnly = out.classScope != nullptr;
   return out;
 }
 
@@ -21945,8 +21949,10 @@ namespace
     }
   };
 
-  // byClassOnly: a member function's name is read only through its class (walksReading: a lookup
-  // by name alone, a namespace's, never reaches a member, whose callers look it up in its class).
+  // byClassOnly: a member's name is read only through its class or a class derived from it: a lookup
+  // by name alone (a namespace's) never reaches a member, whose readers look it up in a class, and a
+  // class's lookup that finds a using-declaration is recorded with the class too (Scope::find). A
+  // friend defined in its class is found by ADL, recorded by name: it is no memberOnly name.
   // f(i) for every i in [0, count) on the machine's threads. A compile server's edit scans every
   // unit's recorded dependencies (millions of names and uses; 0.8 s on one thread for the game): each
   // scan keeps what it finds per shard, joined in shard order after, as one thread finds it.
@@ -22492,7 +22498,7 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
     std::lock_guard lock(impl->relationScopesMutex);
     relations = impl->relationScopes;
   }
-  NameReaders names = nameReaders(changed, relations);
+  NameReaders names = nameReaders(changed, relations, true);
   std::unordered_set<const void*> types(decls.begin(), decls.end()); // declarations whose declared types are no more what was read
   std::unordered_set<const void*> ran(bodies.begin(), bodies.end());  // changed bodies the evaluator may have run
   auto fail = [&](const char* reason)

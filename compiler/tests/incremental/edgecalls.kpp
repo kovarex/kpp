@@ -1,0 +1,7 @@
+// The callers of members.kpp's members, in a file of their own: each digit of memberEdges() is what
+// one call chose (UsingDerived::f through its using-declaration, EdgeBase::m
+// through EdgeDerived, and callM<EdgeDerived>'s call of it).
+template<typename T>
+int callM(T t) { return t.m(2); }
+
+int memberEdges() { return UsingDerived{}.f(short(3)) * 100 + EdgeDerived{}.m(2) * 10 + callM(EdgeDerived{}); }

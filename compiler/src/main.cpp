@@ -2390,6 +2390,7 @@ namespace
     auto initializerOf = [&](const Decl* d)
     {
       std::string what = d->kind == NodeKind::StaticAssertDecl ? std::string("a static_assert")
+                         : d->kind == NodeKind::UsingNameDecl ? "a using-declaration in " + kept.global->qualifiedName(d->parent)
                          : d->kind == NodeKind::VariableDecl  ? "the initializer of " + kept.global->qualifiedName(const_cast<Decl*>(d))
                                                               : "the walk of " + kept.global->qualifiedName(const_cast<Decl*>(d));
       return what + " (" + (d->file ? kept.files[d->file->index].path.filename().string() : std::string("?")) + ")";
