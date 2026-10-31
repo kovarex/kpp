@@ -8,7 +8,8 @@ rem harness\NAME.cpp (or .c) is a driver that feeds the library inputs and print
 rem It is built twice:
 rem - with the C or C++ library as the game links it today: CONVERSION\build\clib\NAME.lib, which
 rem   `kpp factorio` builds in the factorio-in-kpp checkout CONVERSION (C:\factorio-in-kpp unless
-rem   given), clang-cl with the library's own flags;
+rem   given), clang-cl with the library's own flags (so it runs before the library's swap: after it,
+rem   build.kpp builds no NAME.lib);
 rem - converted by kppc --convert together with the library's sources (FACTORIO\libraries\NAME),
 rem   and compiled by kppc.
 rem Both run on the same inputs, the files under CONVERSION that harness\NAME.inputs names (one

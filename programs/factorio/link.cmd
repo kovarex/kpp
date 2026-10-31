@@ -13,7 +13,7 @@ setlocal
 cd /d "%~dp0"
 call native\build.cmd >nul || exit /b 1
 call "%~dp0link-settings.cmd"
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going %LIBS% --exe kpp\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\src > kpp\link.txt 2> kpp\link-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going %LIBS% --exe kpp\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast kpp\src > kpp\link.txt 2> kpp\link-errors.txt
 echo kppc exit %errorlevel%
 echo unresolved externals (lines, then the linker's count):
 %SystemRoot%\System32\find.exe /c "unresolved external symbol" kpp\factorio.exe.link.txt

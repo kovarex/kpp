@@ -1850,6 +1850,16 @@ A converted library replaces its `cLibrary` in build.kpp only when three things 
 - the unit tests still pass 9,501/9,501;
 - the 45 menu maps still match C++.
 
+`programs/factorio/harness.cmd NAME` runs a harness. Its driver is `harness/NAME.cpp`, and its inputs are the
+files `harness/NAME.inputs` names in the checkout.
+
+**crc32fast is converted** (C++, so no C mode needed). Its harness runs all 11 CRC functions over
+every length and alignment and over the 18,317 files of data\ and tests\: 23,774 lines,
+byte-identical. With it converted (a root in convert.cmd, resources.cmd, tests.cmd and build.kpp's
+`game()`; no `cLibrary`), the game calls the converted `crc32_fast` directly. kpp-native's
+crc32fast_c.cpp and the hand-written part of Util/Crc are gone. The unit tests pass 9,501/9,501, and
+the 45 menu maps match in debug and release.
+
 **C is new to the converter.** Factorio compiles Lua as C++ (/TP), so everything converted so far
 was C++. Each library's .c files compiled as C++ (clang-cl /TP, the library's flags) measure the
 distance:

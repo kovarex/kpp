@@ -10,7 +10,7 @@ set KPPC=..\..\compiler\build\kppc.exe
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
 set L=C:\Factorio\vs2022\Releasex64
 set LIBS=--lib native\build\factorio-native.lib --lib %FACTORIO%\libraries\Logitech\x64\LogitechLEDLib.lib
-for %%l in (sdl sdl-mixer curl zlib zstd minizip ogg vorbis opus opusfile re2 crc32fast stb fontstash glad imgui trio open-vcdiff) do call set LIBS=%%LIBS%% --lib %L%\%%l.lib
+for %%l in (sdl sdl-mixer curl zlib zstd minizip ogg vorbis opus opusfile re2 stb fontstash glad imgui trio open-vcdiff) do call set LIBS=%%LIBS%% --lib %L%\%%l.lib
 for %%l in (dnsapi iphlpapi wldap32 gdi32 comdlg32 ole32 winmm psapi opengl32 gdiplus shell32 shlwapi user32 imm32 oleaut32 setupapi dxguid uuid windowscodecs wbemuuid version) do call set LIBS=%%LIBS%% --lib -l%%l
 rem The game's manifest and icons (native\factorio.rc): without the manifest's supportedOS entries
 rem Windows runs the game as Windows 8 (the log said "Windows 8 <running in compatibility mode>"), and

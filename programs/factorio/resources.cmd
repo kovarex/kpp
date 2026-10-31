@@ -12,7 +12,7 @@ if not defined FACTORIO set FACTORIO=C:\Factorio
 set WHOLE=C:\factorio-in-kpp
 if not "%~1"=="" set WHOLE=%~1
 rem The libraries convert.cmd converts, and the shims it copies (libraries\kpp-native).
-set CONVERTED=CommonUtil Agui cxxopts StackWalker Lua UnitTest++
+set CONVERTED=CommonUtil Agui cxxopts StackWalker Lua crc32fast UnitTest++
 rem Fresh every run: a file Factorio no longer has would stay. Every file of these directories but
 rem the conversion's (the .kpp files, and libraries\kpp-native) is removed.
 for %%d in (data shaders) do if exist "%WHOLE%\%%d" rd /s /q "%WHOLE%\%%d"
@@ -23,12 +23,13 @@ if exist "%WHOLE%\libraries" for /d %%d in ("%WHOLE%\libraries\*") do (
   for %%c in (%CONVERTED% kpp-native) do if /i "%%~nxd"=="%%c" set KEEP=1
   if !KEEP!==0 rd /s /q "%%d"
 )
-for %%d in (%CONVERTED%) do if exist "%WHOLE%\libraries\%%d" for /r "%WHOLE%\libraries\%%d" %%f in (*) do if /i not "%%~xf"==".kpp" del /q "%%f"
+rem (dir, not for /r: for /r's directory cannot be another for's variable, and then it lists nothing.)
+for %%d in (%CONVERTED%) do if exist "%WHOLE%\libraries\%%d" for /f "delims=" %%f in ('dir /s /b /a-d "%WHOLE%\libraries\%%d"') do if /i not "%%~xf"==".kpp" del /q "%%f"
 if exist "%WHOLE%\tests" for /r "%WHOLE%\tests" %%f in (*) do if /i not "%%~xf"==".kpp" del /q "%%f"
 endlocal
 rem A pathspec's * also matches /: libraries/Lua/*.c is every .c file below libraries/Lua.
 set EXCLUDE=
-for %%d in (libraries/CommonUtil libraries/Agui libraries/cxxopts libraries/StackWalker libraries/Lua libraries/UnitTest++ tests) do for %%e in (c h cpp hpp) do call set EXCLUDE=%%EXCLUDE%% ":(exclude)%%d/*.%%e"
+for %%d in (libraries/CommonUtil libraries/Agui libraries/cxxopts libraries/StackWalker libraries/Lua libraries/crc32fast libraries/UnitTest++ tests) do for %%e in (c h cpp hpp) do call set EXCLUDE=%%EXCLUDE%% ":(exclude)%%d/*.%%e"
 if not exist "%WHOLE%" mkdir "%WHOLE%"
 git -C %FACTORIO% archive HEAD -- data shaders libraries tests version.txt %EXCLUDE% | %SystemRoot%\System32\tar.exe -x -f - -C "%WHOLE%" || exit /b 1
 for /f %%h in ('git -C %FACTORIO% rev-parse --short HEAD') do echo resources: %FACTORIO% %%h into %WHOLE%
