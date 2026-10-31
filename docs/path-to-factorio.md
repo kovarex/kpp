@@ -1789,6 +1789,42 @@ The stdlib C-declaration cleanup (104467d3) was checked so: headline 0, the seve
 stdlib stopped PlanetGeneration in 1 of its 6 runs, and with the cleanup 1 of 15: a deferred async's
 function taken by two threads at once (fixed, spec library/shared_future_deferred_runs_once_across_threads).
 
+### Replay against C++ (2026-10-31)
+
+Gameplay without a human: one build records a game, the other replays it. A map made with
+`--create SAVE --enable-replay true` records every input action, and the game itself adds a
+CheckCRCHeuristic action every 60 ticks with a checksum of a part of the map state (players,
+entities by heuristic, electric networks: HeuristicCrcGenerator). The first autosave holds the
+replay. `--run-replay SAVE` runs it headless and fails with "Map desynchronisation: tick N" when its
+own checksum differs from the recorded one. The C++ build replaying its own recording is the
+control.
+
+Recording drove a game window with messages posted to it (WM_KEYDOWN, mouse buttons), which works
+behind a locked screen, captured with PrintWindow. Under the lock screen, mouse hover and
+hold-to-mine fail, because the lock screen is the window under the cursor and SDL sees the mouse
+leave. Typed text fails too: SDL3 drops WM_CHAR without keyboard focus, so there is no console.
+Clicks (GUI, building) and keys work. Once the display sleeps, the window shows no new frames and
+posted keys no longer dismissed the welcome tooltip, which pauses single player. A fuller session,
+with mining and console commands, waits for an unlocked PC. The tools are in
+C:\kpp-sandbox\scratch\codegen\replay: drive.ps1, record.ps1 ROOT OUT, and poke.exe EXE SYMBOL args.
+poke.exe starts the game suspended and sets a bool global found through the PDB:
+GlobalContext::dumpHeuristicEveryTick writes each tick's heuristic state as a file, and with
+dumpKeepCount only the last one stays, which gives a replay's length.
+
+The first replay, of a C++ Debug recording in the Kpp build of 4c178a5b915, failed at the first
+check, crcTick 59. `--until-tick` saves of the same map were byte-identical in both builds at
+ticks 1, 30 and 59, but they have no connected player. The per-tick heuristic dumps differed from
+tick 0 by 4 bytes, in the player's `<custom-gui-mod-owners>`: CustomGui::save writes a std::set's
+size(), a size_t, while Kpp's Set::size() is an int. The converter now writes such a size() as
+size_t (8d7be404). Other unwrapped `output << X.size()` writes in the game are of its own
+containers (BlueprintEntities, CompactDeque, IntrusiveSet: uint32_t; SmallVector, UndoItemStack:
+size_t), which have the same width in both builds.
+
+With that one site fixed, a C++ Debug recording of 18,001 ticks (walking, the technology screen, the
+inventory, one entity built) replays in the Kpp build with exit 0. A Kpp recording of 18,002 ticks
+(walking) replays with exit 0 in both C++ Debug exes of 2.1.25, the first one and H's final one.
+Each run passes about 300 heuristic checks.
+
 ### The libraries' C++ around C, and more of Windows (2026-10-29)
 
 What the game takes from C++ headers around C libraries and Windows, each given to Kpp the way
