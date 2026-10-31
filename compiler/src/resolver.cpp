@@ -14152,7 +14152,10 @@ struct GlobalScope::Impl
         const Ty* pt = ft && ft->kind == TyKind::Function && i < ft->args.size() ? ft->args[i] : nullptr;
         if (!pt)
         {
-          c.ranks.push_back(3); // variadic tail
+          // The C ellipsis (`f(...)`, `printf(const char*, ...)`): an ellipsis conversion, worse than
+          // any standard or user-defined one ([over.ics.rank] 2), so `f(FromInt)` beats `f(...)`
+          // given an int; a pack's element not known yet stays a conversion.
+          c.ranks.push_back((f->flags & DF_Variadic) ? 6 : 3);
           c.refs.push_back(false);
           c.params.push_back(nullptr);
           continue;
@@ -16193,7 +16196,9 @@ struct GlobalScope::Impl
       for (FunctionDecl* f : tied)
       {
         const Ty* ft = impl.declaredTypeOf(f, classSubst, 0);
-        if (!ft || types.isDependent(ft))
+        // (a function template's type names its own parameters: `int32(T)` beside `int32(T&)` is
+        // as ambiguous, C++'s partial ordering finding neither more specialised)
+        if (!ft || (types.isDependent(ft) && f->templateParams.empty()))
           return;
         candidates.push_back(types.toString(ft, &impl.symbols) + " (" + Impl::locationOf(f->file, f->token) + ")");
       }
