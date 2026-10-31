@@ -496,15 +496,44 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   C:\Factorio, private source that is not on the runner; factorio-in-kpp's own CI is the game's check.
 - **SDL3 headers:** the two interop snippets that import SDL3/SDL.h get upstream SDL 3.4.18's headers
   through `KPP_SDL_INCLUDE` (run_spec.py). That is the game's release; the game's copy adds only
-  `SDL_GetDisplayInternalDriverData`.
+  `SDL_GetDisplayInternalDriverData`. The zip comes from kpp.net's mirror,
+  `https://kpp.net/registry/mirror/<sha256>/SDL3-devel-3.4.18-VC.zip`, or from SDL's release on
+  github.com until it is there. Either copy must have the SHA-256 in ci.yml (`SDL_SHA256`), or the
+  step fails. A master run that had to fall back mirrors the zip, when it has kpp.net's key.
 - **Clang for the snippets' C sources:** clang comes from vswhere through `KPP_CLANG`, because the
   runner's Visual Studio is Enterprise. Node.js must be on the runner, for run_tests' LSP smoke test
   and the package's VS Code extension; the step fails without it.
-- **The "latest" prerelease:** every green run on master (push, nightly or by hand) packages kpp with
-  `tools/release/package.ps1 -Version 0.1.0-ci.<run>` (semver, which vsce requires), including the package's own smoke test. It
-  replaces the prerelease `latest` with that zip, which is what factorio-in-kpp's CI downloads.
-  `tools/release/publish.ps1` does the replacing through the forge's REST API, with the job's token.
+- **Publishing:** every green run on master (push, nightly or by hand) packages kpp with
+  `tools/release/package.ps1 -Version 0.1.0-ci.<run>` (semver, which vsce requires), including the
+  package's own smoke test. `tools/release/publish.ps1` then publishes the zip and kpp.vsix to two
+  places, each only when its credential is there:
+  - **kpp.net** ([library-registry.md](library-registry.md), "Hosting on kpp.net"; the store's
+    layout in [kppnet/registry/layout.md](../kppnet/registry/layout.md)). Installers and
+    factorio-in-kpp's CI read this copy.
+    - The files go to `registry/kpp/releases/<version>/` over SSH. A file already there is kept,
+      which is rsync `--ignore-existing`'s rule.
+    - `registry/kpp/latest.json` is written last, as a temporary file renamed into place:
+      `{"version", "commit", "zip", "sha256"}`, with `zip` relative to `registry/kpp/`.
+    - It uses OpenSSH's ssh and scp, because Windows runners have no rsync. Every file is sent
+      under a temporary name and renamed, so a reader never sees half of one.
+  - **The forge's prerelease `latest`**, replaced through the forge's REST API with the job's token:
+    a convenience copy.
+
   Numbered releases stay with release.yml.
+- **What kovarex sets up for kpp.net:** until then, the step says "kpp.net: skipped" and CI works
+  as before. Nothing in the repository holds a secret.
+  - the repository secret `KPP_NET_SSH_KEY`: an Ed25519 private key, its public half added to
+    NFS's keychain for the site;
+  - the repository variable `KPP_NET_SSH`: the SSH login,
+    `<user>_<site>@ssh.<host>.nearlyfreespeech.net`;
+  - the repository variable `KPP_NET_KNOWN_HOSTS`: the server's host key line, from
+    `ssh-keyscan ssh.<host>.nearlyfreespeech.net`, checked against what NFS shows. ssh runs with
+    `StrictHostKeyChecking=yes`, so a run never trusts a key it has not been given.
+
+  Only the SDL3 step and the publish step see the key, not the steps that build and run the pushed
+  code. Each green master run uploads 2 files and latest.json, and runs only as often as the
+  concurrency rule lets them. That stays under NFS's limit of one uploaded file per five minutes on
+  average (288 a day).
 - **No caches:** checkout gives every source a new time, so Ninja would rebuild a cached CMake build
   directory anyway, and a clean build takes about a minute. kppc's import cache (%TEMP%\kpp-imports)
   is not worth a cache action.
@@ -522,8 +551,16 @@ The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mir
   `github.repository`;
 - publishing is `tools/release/publish.ps1 -ApiUrl URL -Repository owner/name -Tag T -Commit SHA
   -Title T -Files F...`, with the token in `KPP_FORGE_TOKEN`. It speaks GitHub's API, or
-  Forgejo's (Gitea's) when the API URL ends in `/api/v1` (`-Forge github|forgejo` overrides). Both
-  paths were checked against a mock of the two APIs (create, then replace).
+  Forgejo's (Gitea's) when the API URL ends in `/api/v1` (`-Forge github|forgejo` overrides). The
+  kpp.net path needs only ssh and scp. Both forge paths were checked against a mock of the two
+  APIs (create, then replace). The kpp.net path was checked against a mock ssh and scp writing a
+  local directory:
+  - the files are uploaded;
+  - an existing file is kept;
+  - latest.json is replaced;
+  - a mirror file goes under its SHA-256;
+  - there is no upload without the key;
+  - it stops with an error when the key is set but known_hosts is not.
 - What is not portable, or not checked on Forgejo:
   - **`actions/checkout@v4`:** Forgejo fetches it from its own mirror of the actions (its runner's
     default actions URL), not from github.com.
@@ -534,8 +571,8 @@ The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mir
     its Clang component, Node.js and Python runs `forgejo-runner` in host mode.
   - **`concurrency`:** GitHub's cancelling of an older push run. Forgejo Actions may not honour it;
     there, each push runs to the end.
-  - **The SDL3 headers** come from libsdl-org's release on github.com (`SDL_ZIP`), an external
-    download, not the repository's host.
+  - **The SDL3 headers** come from kpp.net's mirror, with libsdl-org's release on github.com
+    (`SDL_FALLBACK`) as the fallback until the zip is mirrored.
   - **The job's token:** `github.token` on both. On Forgejo it must be allowed to write releases.
 
 Cost, estimated before any runner run. These are measured on PC-PRACOVNA pinned to 2 logical CPUs

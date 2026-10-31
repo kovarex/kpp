@@ -32,24 +32,49 @@ jobs:
     timeout-minutes: 120
     env:
       # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
-      # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h.
-      SDL_ZIP: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
+      # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h. The zip
+      # comes from kpp.net's mirror (kppnet/registry/layout.md), named by its SHA-256, or from SDL's
+      # release on github.com until it is mirrored there.
+      SDL_NAME: SDL3-devel-3.4.18-VC.zip
+      SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
+      SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
       KPP_SDL_INCLUDE: ${{ github.workspace }}\..\sdl\SDL3-3.4.18\include
     # Steps are scripts (Windows PowerShell 5.1, cmd) except the checkout, so the same file runs under
     # GitHub Actions and Forgejo Actions (docs/build.md, "Continuous integration").
     steps:
       - uses: actions/checkout@v4
 
+      # kpp.net's registry store is written over SSH by tools/release/publish.ps1 (docs/build.md,
+      # "Continuous integration"), only in the two steps that need it: the secret KPP_NET_SSH_KEY (a
+      # private key kovarex authorises in NFS's keychain), the repository variables KPP_NET_SSH
+      # (user@host) and KPP_NET_KNOWN_HOSTS (the server's host key line). Without the secret, nothing
+      # goes to kpp.net and the step says so.
       - name: SDL3 headers
         shell: powershell
+        env:
+          KPP_NET_SSH_KEY: ${{ secrets.KPP_NET_SSH_KEY }}
+          KPP_NET_KNOWN_HOSTS: ${{ vars.KPP_NET_KNOWN_HOSTS }}
         run: |
           $ErrorActionPreference = 'Stop'
           $dir = "${{ github.workspace }}\..\sdl"
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) {
             New-Item -ItemType Directory -Force $dir | Out-Null
             [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
-            Invoke-WebRequest $env:SDL_ZIP -OutFile "$dir\sdl.zip" -UseBasicParsing
-            Expand-Archive -Force "$dir\sdl.zip" $dir
+            $zip = "$dir\$env:SDL_NAME"
+            function Fetch([string]$url) {
+              try { Invoke-WebRequest $url -OutFile $zip -UseBasicParsing } catch { Write-Host "not at $url ($($_.Exception.Message))"; return $false }
+              $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+              if ($hash -ne $env:SDL_SHA256) { Write-Host "$url has SHA-256 $hash, not $env:SDL_SHA256"; return $false }
+              Write-Host "SDL3 from $url"; return $true
+            }
+            if (-not (Fetch "https://kpp.net/registry/mirror/$env:SDL_SHA256/$env:SDL_NAME")) {
+              if (-not (Fetch $env:SDL_FALLBACK)) { throw 'no SDL3 zip with the expected SHA-256' }
+              # Not mirrored yet: a master run with kpp.net's key puts it there (once; it is kept after).
+              if ('${{ github.event_name }}' -ne 'pull_request' -and '${{ github.ref }}' -eq 'refs/heads/master') {
+                tools\release\publish.ps1 -Mirror -KppNet "${{ vars.KPP_NET_SSH }}" -Files $zip
+              }
+            }
+            Expand-Archive -Force $zip $dir
           }
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) { throw "no SDL3\SDL.h in $env:KPP_SDL_INCLUDE" }
 
@@ -96,16 +121,21 @@ jobs:
           tools\release\package.ps1 -Version "0.1.0-ci.${{ github.run_number }}" -Commit "${{ github.sha }}"
           "packaging took $([int]((Get-Date) - $started).TotalSeconds) s"
 
-      # The rolling prerelease "latest", replaced at this commit with the zip, through the forge's own
-      # API (tools/release/publish.ps1: GitHub's, or Forgejo's when github.api_url ends in /api/v1).
+      # The package, through tools/release/publish.ps1: the forge's rolling prerelease "latest", replaced
+      # at this commit through the forge's API (GitHub's, or Forgejo's when github.api_url ends in
+      # /api/v1), and kpp.net's kpp/releases/<version>/ with kpp/latest.json, which installers and
+      # factorio-in-kpp's CI read (only with KPP_NET_SSH_KEY).
       - name: Publish latest
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         shell: powershell
         env:
           KPP_FORGE_TOKEN: ${{ github.token }}
+          KPP_NET_SSH_KEY: ${{ secrets.KPP_NET_SSH_KEY }}
+          KPP_NET_KNOWN_HOSTS: ${{ vars.KPP_NET_KNOWN_HOSTS }}
         run: |
           $ErrorActionPreference = 'Stop'
           tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag latest -Commit "${{ github.sha }}" -Prerelease `
+            -Version "0.1.0-ci.${{ github.run_number }}" -KppNet "${{ vars.KPP_NET_SSH }}" `
             -Title "Kpp latest (0.1.0-ci.${{ github.run_number }})" `
             -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, every test green. Unzip anywhere; needs Visual Studio 2022 with C++ Clang Compiler for Windows." `
-            -Files "build\release\kpp-0.1.0-ci.${{ github.run_number }}.zip"
+            -Files "build\release\kpp-0.1.0-ci.${{ github.run_number }}.zip", "build\release\kpp\kpp.vsix"
