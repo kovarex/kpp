@@ -1,0 +1,10 @@
+// markdown: CommonMark to HTML (README.md). `kpp --test` here runs its tests.
+void build(Project& project)
+{
+  Library& markdown = project.library("markdown");
+  markdown.version = "0.1.0";
+  markdown.license = "Apache-2.0 WITH LLVM-exception";
+  markdown.minimumKpp = "0.1.0";
+  markdown.root("src");
+  markdown.test("tests");
+}

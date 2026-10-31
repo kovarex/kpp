@@ -1,0 +1,80 @@
+// The markdown library's own tests, one or two per construct. The full check against the CommonMark
+// and GFM specs' examples is conformance\run.cmd (README.md, "Conformance").
+
+test "paragraphs and headings"
+{
+  check(markdownToHtml("Hello\nworld.\n\nAgain.") == "<p>Hello\nworld.</p>\n<p>Again.</p>\n");
+  check(markdownToHtml("# One\n### Three ###\n####### seven") == "<h1>One</h1>\n<h3>Three</h3>\n<p>####### seven</p>\n");
+  check(markdownToHtml("Title\n=====\nSub\n---") == "<h1>Title</h1>\n<h2>Sub</h2>\n");
+  check(markdownToHtml("a\n\n***\n\nb") == "<p>a</p>\n<hr />\n<p>b</p>\n");
+}
+
+test "code"
+{
+  check(markdownToHtml("```kpp ignored words\nint x = a < b;\n```") == "<pre><code class=\"language-kpp\">int x = a &lt; b;\n</code></pre>\n");
+  check(markdownToHtml("    indented\n\n    still\n\n") == "<pre><code>indented\n\nstill\n</code></pre>\n");
+  check(markdownToHtml("Use `a & b` or ``x ` y``.") == "<p>Use <code>a &amp; b</code> or <code>x ` y</code>.</p>\n");
+  check(markdownToHtml("~~~\nunclosed") == "<pre><code>unclosed\n</code></pre>\n");
+}
+
+test "emphasis"
+{
+  check(markdownToHtml("*a* _b_ **c** __d__ ***e***") == "<p><em>a</em> <em>b</em> <strong>c</strong> <strong>d</strong> <em><strong>e</strong></em></p>\n");
+  check(markdownToHtml("snake_case_name and 2*3*4") == "<p>snake_case_name and 2<em>3</em>4</p>\n");
+  check(markdownToHtml("*not closed") == "<p>*not closed</p>\n");
+}
+
+test "links and images"
+{
+  check(markdownToHtml("[Kpp](https://kpp.net \"home\") <https://kpp.net/a> <me@kpp.net>") ==
+        "<p><a href=\"https://kpp.net\" title=\"home\">Kpp</a> <a href=\"https://kpp.net/a\">https://kpp.net/a</a> "
+        "<a href=\"mailto:me@kpp.net\">me@kpp.net</a></p>\n");
+  check(markdownToHtml("[docs][d] and [d]\n\n[d]: /docs/design.md") == "<p><a href=\"/docs/design.md\">docs</a> and <a href=\"/docs/design.md\">d</a></p>\n");
+  check(markdownToHtml("![the *logo*](logo.png)") == "<p><img src=\"logo.png\" alt=\"the logo\" /></p>\n");
+  check(markdownToHtml("[a b](<my file.md>)") == "<p><a href=\"my%20file.md\">a b</a></p>\n");
+  check(markdownToHtml("[missing]") == "<p>[missing]</p>\n");
+}
+
+test "lists and quotes"
+{
+  check(markdownToHtml("- a\n- b\n  - c\n") == "<ul>\n<li>a</li>\n<li>b\n<ul>\n<li>c</li>\n</ul>\n</li>\n</ul>\n");
+  check(markdownToHtml("3. x\n\n4. y\n") == "<ol start=\"3\">\n<li>\n<p>x</p>\n</li>\n<li>\n<p>y</p>\n</li>\n</ol>\n");
+  check(markdownToHtml("> quoted\nlazy\n\n> - item") == "<blockquote>\n<p>quoted\nlazy</p>\n</blockquote>\n<blockquote>\n<ul>\n<li>item</li>\n</ul>\n</blockquote>\n");
+}
+
+test "HTML, entities, escapes and breaks"
+{
+  check(markdownToHtml("<div>\n*raw*\n</div>\n\n*md*") == "<div>\n*raw*\n</div>\n<p><em>md</em></p>\n");
+  check(markdownToHtml("a <span class=\"x\">b</span>") == "<p>a <span class=\"x\">b</span></p>\n");
+  check(markdownToHtml("&copy; &#x263A; &bogus; \\*x\\*") == "<p>\xC2\xA9 \xE2\x98\xBA &amp;bogus; *x*</p>\n");
+  check(markdownToHtml("hard  \nbreak\\\nand soft\nbreak") == "<p>hard<br />\nbreak<br />\nand soft\nbreak</p>\n");
+}
+
+test "tables"
+{
+  MarkdownOptions options;
+  options.tables = true;
+  check(markdownToHtml("| a | b |\n|:--|--:|\n| `x\\|y` | *z* |\nc\n\nafter", options) ==
+        "<table>\n<thead>\n<tr>\n<th align=\"left\">a</th>\n<th align=\"right\">b</th>\n</tr>\n</thead>\n<tbody>\n"
+        "<tr>\n<td align=\"left\"><code>x|y</code></td>\n<td align=\"right\"><em>z</em></td>\n</tr>\n"
+        "<tr>\n<td align=\"left\">c</td>\n<td align=\"right\"></td>\n</tr>\n</tbody>\n</table>\n<p>after</p>\n");
+  // Off by default: CommonMark has no tables.
+  check(markdownToHtml("| a |\n| - |\n| b |\n") == "<p>| a |\n| - |\n| b |</p>\n");
+}
+
+test "heading ids"
+{
+  MarkdownOptions options;
+  options.headingIds = true;
+  check(markdownToHtml("# Hosting on kpp.net (decided 2026-10-31)\n## A *b* `c`\n## A b c\n", options) ==
+        "<h1 id=\"hosting-on-kppnet-decided-2026-10-31\">Hosting on kpp.net (decided 2026-10-31)</h1>\n"
+        "<h2 id=\"a-b-c\">A <em>b</em> <code>c</code></h2>\n"
+        "<h2 id=\"a-b-c-1\">A b c</h2>\n");
+}
+
+test "line endings and odd bytes"
+{
+  check(markdownToHtml("a\r\nb\rc\n\r\n# d") == "<p>a\nb\nc</p>\n<h1>d</h1>\n");
+  check(markdownToHtml("") == "");
+  check(markdownToHtml(StringView("a\0b", 3)) == "<p>a\xEF\xBF\xBD" "b</p>\n");
+}

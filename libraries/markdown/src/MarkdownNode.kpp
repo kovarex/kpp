@@ -1,0 +1,203 @@
+// The document tree: blocks (paragraphs, lists...) and inlines (text, emphasis, links...) are nodes
+// of one kind, linked as commonmark.js links them, so that emphasis can move a run of siblings into
+// a new node.
+
+enum class MarkdownType : uint8_t
+{
+  document,
+  blockQuote,
+  list,
+  item,
+  paragraph,
+  heading,
+  thematicBreak,
+  codeBlock,
+  htmlBlock,
+  table,
+  tableRow,
+  tableCell,
+  text,
+  softBreak,
+  lineBreak,
+  code,
+  emphasis,
+  strong,
+  link,
+  image,
+  htmlInline,
+};
+
+struct MarkdownNode
+{
+  MarkdownType type = MarkdownType::document;
+  MarkdownNode* parent = nullptr;
+  MarkdownNode* firstChild = nullptr;
+  MarkdownNode* lastChild = nullptr;
+  MarkdownNode* previous = nullptr;
+  MarkdownNode* next = nullptr;
+
+  String literal; // text, code, an HTML block or inline, a code block's text
+  String content; // a paragraph's or heading's lines, before inlines are parsed
+  String destination;
+  String title;
+  String info; // a fenced code block's info string
+
+  bool open = true;
+  int startLine = 0;
+  int endLine = 0;
+  int level = 0; // a heading's
+
+  // A list's and an item's marker.
+  bool ordered = false;
+  bool tight = true;
+  char bulletChar = 0;
+  char delimiter = 0;
+  int start = 0;
+  int markerOffset = 0;
+  int padding = 0;
+
+  // A code block's fence.
+  bool fenced = false;
+  char fenceChar = 0;
+  int fenceLength = 0;
+  int fenceOffset = 0;
+
+  int htmlBlockType = 0;
+  int alignment = 0; // a table cell's: 0 none, 1 left, 2 center, 3 right
+  bool header = false; // a table row's
+
+  void appendChild(MarkdownNode* child)
+  {
+    child->unlink();
+    child->parent = this;
+    if (this->lastChild)
+    {
+      this->lastChild->next = child;
+      child->previous = this->lastChild;
+      this->lastChild = child;
+    }
+    else
+    {
+      this->firstChild = child;
+      this->lastChild = child;
+    }
+  }
+
+  void insertAfter(MarkdownNode* sibling)
+  {
+    sibling->unlink();
+    sibling->next = this->next;
+    if (sibling->next)
+      sibling->next->previous = sibling;
+    sibling->previous = this;
+    this->next = sibling;
+    sibling->parent = this->parent;
+    if (!sibling->next && sibling->parent)
+      sibling->parent->lastChild = sibling;
+  }
+
+  void unlink()
+  {
+    if (this->previous)
+      this->previous->next = this->next;
+    else if (this->parent)
+      this->parent->firstChild = this->next;
+    if (this->next)
+      this->next->previous = this->previous;
+    else if (this->parent)
+      this->parent->lastChild = this->previous;
+    this->parent = nullptr;
+    this->next = nullptr;
+    this->previous = nullptr;
+  }
+};
+
+// Owns the nodes of one document.
+struct MarkdownNodes
+{
+  Deque<MarkdownNode> nodes;
+
+  MarkdownNode* make(MarkdownType type)
+  {
+    MarkdownNode& node = this->nodes.emplace_back();
+    node.type = type;
+    return &node;
+  }
+  MarkdownNode* text(StringView literal)
+  {
+    MarkdownNode* node = this->make(MarkdownType::text);
+    node->literal = String(literal);
+    return node;
+  }
+};
+
+// --- characters ---
+
+bool markdownIsSpaceOrTab(int c) { return c == ' ' || c == '\t'; }
+bool markdownIsAsciiPunctuation(int c)
+{
+  return (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
+}
+bool markdownIsDigit(int c) { return c >= '0' && c <= '9'; }
+bool markdownIsLetter(int c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+bool markdownIsAlphanumeric(int c) { return markdownIsLetter(c) || markdownIsDigit(c); }
+int markdownLower(int c) { return c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c; }
+
+// The code point at text[at] (UTF-8), its length in *length; a byte that starts no sequence is
+// itself.
+int markdownDecode(StringView text, int at, int* length)
+{
+  unsigned char c = (unsigned char)text[at];
+  int n = c < 0x80 ? 1 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+  if (at + n > text.size())
+    n = 1;
+  int code = n == 1 ? c : n == 2 ? (c & 0x1F) : n == 3 ? (c & 0x0F) : (c & 0x07);
+  for (int i = 1; i < n; ++i)
+    code = (code << 6) | ((unsigned char)text[at + i] & 0x3F);
+  *length = n;
+  return code;
+}
+
+// The code point that ends before text[at].
+int markdownDecodeBefore(StringView text, int at)
+{
+  int start = at - 1;
+  while (start > 0 && at - start < 4 && ((unsigned char)text[start] & 0xC0) == 0x80)
+    --start;
+  int length = 0;
+  return markdownDecode(text, start, &length);
+}
+
+// Unicode whitespace (CommonMark 2.1: Zs, tab, line feed, form feed, carriage return).
+bool markdownIsUnicodeWhitespace(int c)
+{
+  return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r' || c == 0xA0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
+         c == 0x202F || c == 0x205F || c == 0x3000;
+}
+
+// Unicode punctuation (CommonMark 2.1: the P and S categories): MarkdownUnicode.kpp's table.
+bool markdownIsUnicodePunctuation(int c) { return c < 0x80 ? markdownIsAsciiPunctuation(c) : markdownIsNonAsciiPunctuation(c); }
+
+void markdownAppendUtf8(String& out, int code)
+{
+  if (code < 0x80)
+    out.append(char(code));
+  else if (code < 0x800)
+  {
+    out.append(char(0xC0 | (code >> 6)));
+    out.append(char(0x80 | (code & 0x3F)));
+  }
+  else if (code < 0x10000)
+  {
+    out.append(char(0xE0 | (code >> 12)));
+    out.append(char(0x80 | ((code >> 6) & 0x3F)));
+    out.append(char(0x80 | (code & 0x3F)));
+  }
+  else
+  {
+    out.append(char(0xF0 | (code >> 18)));
+    out.append(char(0x80 | ((code >> 12) & 0x3F)));
+    out.append(char(0x80 | ((code >> 6) & 0x3F)));
+    out.append(char(0x80 | (code & 0x3F)));
+  }
+}

@@ -1,0 +1,322 @@
+// markdownToHtml, and the HTML it writes: the same as the CommonMark spec's examples (and
+// commonmark.js's renderer), byte for byte.
+
+struct MarkdownOptions
+{
+  // GitHub's tables (the GFM spec's "Tables (extension)").
+  bool tables = false;
+  // An id on every heading, as GitHub makes them (README.md): links to #a-heading work.
+  bool headingIds = false;
+};
+
+// The HTML of a CommonMark document.
+String markdownToHtml(StringView text, const MarkdownOptions& options = MarkdownOptions())
+{
+  MarkdownNodes nodes;
+  MarkdownBlockParser blocks(&nodes, options);
+  blocks.parse(text);
+  markdownParseInlines(&nodes, &blocks, blocks.document);
+  MarkdownRenderer renderer;
+  renderer.options = options;
+  renderer.render(blocks.document);
+  return renderer.out;
+}
+
+void markdownParseInlines(MarkdownNodes* nodes, MarkdownBlockParser* blocks, MarkdownNode* block)
+{
+  for (MarkdownNode* child = block->firstChild; child; child = child->next)
+  {
+    if (child->type == MarkdownType::paragraph || child->type == MarkdownType::heading || child->type == MarkdownType::tableCell)
+    {
+      MarkdownInlineParser parser(nodes, blocks);
+      parser.parse(child);
+    }
+    else
+      markdownParseInlines(nodes, blocks, child);
+  }
+}
+
+// The text of inlines without their markup: a heading's for its id, an image's alt text.
+void markdownPlainText(String& out, MarkdownNode* node)
+{
+  for (MarkdownNode* child = node->firstChild; child; child = child->next)
+  {
+    if (child->type == MarkdownType::text || child->type == MarkdownType::code || child->type == MarkdownType::htmlInline)
+      out.append(child->literal);
+    else if (child->type == MarkdownType::softBreak || child->type == MarkdownType::lineBreak)
+      out.append('\n');
+    else
+      markdownPlainText(out, child);
+  }
+}
+
+struct MarkdownRenderer
+{
+  String out;
+  MarkdownOptions options;
+  bool lastWasNewline = true; // the last thing written was exactly "\n", or nothing
+  Vector<String> ids;
+
+  void literal(StringView text)
+  {
+    this->out.append(text);
+    this->lastWasNewline = text.size() == 1 && text[0] == '\n';
+  }
+  void escaped(StringView text)
+  {
+    String e;
+    for (char c : text)
+    {
+      if (c == '&')
+        e.append("&amp;");
+      else if (c == '<')
+        e.append("&lt;");
+      else if (c == '>')
+        e.append("&gt;");
+      else if (c == '"')
+        e.append("&quot;");
+      else
+        e.append(c);
+    }
+    this->literal(e);
+  }
+  void newline()
+  {
+    if (!this->lastWasNewline)
+      this->literal("\n");
+  }
+
+  void children(MarkdownNode* node)
+  {
+    for (MarkdownNode* child = node->firstChild; child; child = child->next)
+      this->render(child);
+  }
+
+  // GitHub's heading id: lowercase, letters, digits, '-' and '_' kept, spaces as '-', the rest
+  // dropped; a repeated id gets -1, -2...
+  String headingId(MarkdownNode* heading)
+  {
+    String text;
+    markdownPlainText(text, heading);
+    String id;
+    for (int i = 0; i < text.size();)
+    {
+      int length = 1;
+      int c = markdownDecode(text, i, &length);
+      if (c == ' ')
+        id.append('-');
+      else if (markdownIsAlphanumeric(c) || c == '-' || c == '_')
+        id.append(char(markdownLower(c)));
+      else if (c >= 0x80 && !markdownIsUnicodePunctuation(c) && !markdownIsUnicodeWhitespace(c))
+        markdownAppendFolded(id, c);
+      i += length;
+    }
+    String unique = id;
+    for (int n = 1;; ++n)
+    {
+      bool used = false;
+      for (const String& existing : this->ids)
+        if (existing == unique)
+          used = true;
+      if (!used)
+        break;
+      unique = id + "-" + toString(n);
+    }
+    this->ids.push_back(unique);
+    return unique;
+  }
+
+  void render(MarkdownNode* node)
+  {
+    switch (node->type)
+    {
+      case MarkdownType::document: this->children(node); break;
+      case MarkdownType::paragraph:
+      {
+        MarkdownNode* grandparent = node->parent ? node->parent->parent : nullptr;
+        if (grandparent && grandparent->type == MarkdownType::list && grandparent->tight)
+        {
+          this->children(node);
+          break;
+        }
+        this->newline();
+        this->literal("<p>");
+        this->children(node);
+        this->literal("</p>");
+        this->newline();
+        break;
+      }
+      case MarkdownType::heading:
+      {
+        String tag = "h" + toString(node->level);
+        this->newline();
+        if (this->options.headingIds)
+        {
+          this->literal("<" + tag + " id=\"");
+          this->escaped(this->headingId(node));
+          this->literal("\">");
+        }
+        else
+          this->literal("<" + tag + ">");
+        this->children(node);
+        this->literal("</" + tag + ">");
+        this->newline();
+        break;
+      }
+      case MarkdownType::thematicBreak:
+        this->newline();
+        this->literal("<hr />");
+        this->newline();
+        break;
+      case MarkdownType::blockQuote:
+        this->newline();
+        this->literal("<blockquote>");
+        this->newline();
+        this->children(node);
+        this->newline();
+        this->literal("</blockquote>");
+        this->newline();
+        break;
+      case MarkdownType::list:
+      {
+        const char* tag = node->ordered ? "ol" : "ul";
+        this->newline();
+        if (node->ordered && node->start != 1)
+          this->literal(format("<ol start=\"{}\">", node->start));
+        else
+          this->literal(format("<{}>", tag));
+        this->newline();
+        this->children(node);
+        this->newline();
+        this->literal(format("</{}>", tag));
+        this->newline();
+        break;
+      }
+      case MarkdownType::item:
+        this->literal("<li>");
+        this->children(node);
+        this->literal("</li>");
+        this->newline();
+        break;
+      case MarkdownType::codeBlock:
+      {
+        this->newline();
+        int end = 0;
+        while (end < node->info.size() && !markdownIsUnicodeWhitespace((unsigned char)node->info[end]))
+          ++end;
+        if (end > 0)
+        {
+          this->literal("<pre><code class=\"language-");
+          this->escaped(StringView(node->info).substr(0, end));
+          this->literal("\">");
+        }
+        else
+          this->literal("<pre><code>");
+        this->escaped(node->literal);
+        this->literal("</code></pre>");
+        this->newline();
+        break;
+      }
+      case MarkdownType::htmlBlock:
+        this->newline();
+        this->literal(node->literal);
+        this->newline();
+        break;
+      case MarkdownType::table:
+      {
+        this->newline();
+        this->literal("<table>");
+        this->newline();
+        bool body = false;
+        for (MarkdownNode* row = node->firstChild; row; row = row->next)
+        {
+          if (row->header)
+            this->literal("<thead>");
+          else if (!body)
+          {
+            this->literal("<tbody>");
+            body = true;
+          }
+          this->newline();
+          this->literal("<tr>");
+          this->newline();
+          for (MarkdownNode* cell = row->firstChild; cell; cell = cell->next)
+          {
+            const char* tag = row->header ? "th" : "td";
+            const char* align[] = {"", " align=\"left\"", " align=\"center\"", " align=\"right\""};
+            this->literal(format("<{}{}>", tag, align[cell->alignment]));
+            this->children(cell);
+            this->literal(format("</{}>", tag));
+            this->newline();
+          }
+          this->literal("</tr>");
+          this->newline();
+          if (row->header)
+          {
+            this->literal("</thead>");
+            this->newline();
+          }
+        }
+        if (body)
+        {
+          this->literal("</tbody>");
+          this->newline();
+        }
+        this->literal("</table>");
+        this->newline();
+        break;
+      }
+      case MarkdownType::text: this->escaped(node->literal); break;
+      case MarkdownType::softBreak: this->literal("\n"); break;
+      case MarkdownType::lineBreak:
+        this->literal("<br />");
+        this->newline();
+        break;
+      case MarkdownType::code:
+        this->literal("<code>");
+        this->escaped(node->literal);
+        this->literal("</code>");
+        break;
+      case MarkdownType::emphasis:
+        this->literal("<em>");
+        this->children(node);
+        this->literal("</em>");
+        break;
+      case MarkdownType::strong:
+        this->literal("<strong>");
+        this->children(node);
+        this->literal("</strong>");
+        break;
+      case MarkdownType::link:
+        this->literal("<a href=\"");
+        this->escaped(node->destination);
+        if (node->title.size() > 0)
+        {
+          this->literal("\" title=\"");
+          this->escaped(node->title);
+        }
+        this->literal("\">");
+        this->children(node);
+        this->literal("</a>");
+        break;
+      case MarkdownType::image:
+      {
+        this->literal("<img src=\"");
+        this->escaped(node->destination);
+        this->literal("\" alt=\"");
+        String alt;
+        markdownPlainText(alt, node);
+        this->escaped(alt);
+        if (node->title.size() > 0)
+        {
+          this->literal("\" title=\"");
+          this->escaped(node->title);
+        }
+        this->literal("\" />");
+        break;
+      }
+      case MarkdownType::htmlInline: this->literal(node->literal); break;
+      default: break;
+    }
+  }
+};

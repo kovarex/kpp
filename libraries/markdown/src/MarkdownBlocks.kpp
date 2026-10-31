@@ -1,0 +1,1082 @@
+// The block structure (CommonMark's appendix, "A parsing strategy", as commonmark.js's blocks.js
+// implements it): each line continues the open blocks it matches, may start new ones, and the rest
+// of it is text for the innermost.
+
+struct MarkdownReference
+{
+  String label; // normalized
+  String destination;
+  String title;
+};
+
+struct MarkdownBlockParser
+{
+  MarkdownNodes* nodes;
+  MarkdownOptions options;
+  MarkdownNode* document;
+  MarkdownNode* tip;
+  MarkdownNode* oldTip;
+  MarkdownNode* lastMatchedContainer;
+  Vector<MarkdownReference> references;
+
+  StringView line;
+  int lineNumber = 0;
+  int offset = 0;
+  int column = 0;
+  int nextNonspace = 0;
+  int nextNonspaceColumn = 0;
+  int indent = 0;
+  bool indented = false;
+  bool blank = false;
+  bool partiallyConsumedTab = false;
+  bool allClosed = true;
+  int lastLineLength = 0;
+
+  MarkdownBlockParser(MarkdownNodes* nodes, const MarkdownOptions& options) : nodes(nodes), options(options)
+  {
+    this->document = nodes->make(MarkdownType::document);
+    this->document->startLine = 1;
+    this->tip = this->document;
+    this->oldTip = this->document;
+    this->lastMatchedContainer = this->document;
+  }
+
+  int peek(int at) const { return at < this->line.size() ? (unsigned char)this->line[at] : -1; }
+
+  void parse(StringView text)
+  {
+    String clean;
+    for (int i = 0; i < text.size(); ++i)
+    {
+      if (text[i] == 0)
+        clean.append("\xEF\xBF\xBD");
+      else
+        clean.append(text[i]);
+    }
+    int at = 0;
+    while (at < clean.size())
+    {
+      int end = at;
+      while (end < clean.size() && clean[end] != '\n' && clean[end] != '\r')
+        ++end;
+      this->incorporateLine(StringView(clean.data() + at, end - at));
+      if (end < clean.size() && clean[end] == '\r' && end + 1 < clean.size() && clean[end + 1] == '\n')
+        ++end;
+      at = end + 1;
+    }
+    while (this->tip)
+      this->finalize(this->tip, this->lineNumber);
+  }
+
+  void findNextNonspace()
+  {
+    int i = this->offset;
+    int columns = this->column;
+    int c = this->peek(i);
+    while (c == ' ' || c == '\t')
+    {
+      if (c == ' ')
+        ++columns;
+      else
+        columns += 4 - columns % 4;
+      ++i;
+      c = this->peek(i);
+    }
+    this->blank = c == -1;
+    this->nextNonspace = i;
+    this->nextNonspaceColumn = columns;
+    this->indent = columns - this->column;
+    this->indented = this->indent >= 4;
+  }
+
+  void advanceNextNonspace()
+  {
+    this->offset = this->nextNonspace;
+    this->column = this->nextNonspaceColumn;
+    this->partiallyConsumedTab = false;
+  }
+
+  void advanceOffset(int count, bool columns)
+  {
+    while (count > 0 && this->offset < this->line.size())
+    {
+      if (this->line[this->offset] == '\t')
+      {
+        int charsToTab = 4 - this->column % 4;
+        if (columns)
+        {
+          this->partiallyConsumedTab = charsToTab > count;
+          int advance = charsToTab > count ? count : charsToTab;
+          this->column += advance;
+          this->offset += this->partiallyConsumedTab ? 0 : 1;
+          count -= advance;
+        }
+        else
+        {
+          this->partiallyConsumedTab = false;
+          this->column += charsToTab;
+          this->offset += 1;
+          count -= 1;
+        }
+      }
+      else
+      {
+        this->partiallyConsumedTab = false;
+        this->offset += 1;
+        this->column += 1;
+        count -= 1;
+      }
+    }
+  }
+
+  void addLine()
+  {
+    if (this->partiallyConsumedTab)
+    {
+      this->offset += 1;
+      int charsToTab = 4 - this->column % 4;
+      for (int i = 0; i < charsToTab; ++i)
+        this->tip->content.append(' ');
+    }
+    this->tip->content.append(this->line.substr(this->offset));
+    this->tip->content.append('\n');
+  }
+
+  static bool canContain(MarkdownType parent, MarkdownType child)
+  {
+    if (parent == MarkdownType::document || parent == MarkdownType::blockQuote || parent == MarkdownType::item)
+      return child != MarkdownType::item;
+    if (parent == MarkdownType::list)
+      return child == MarkdownType::item;
+    return false;
+  }
+
+  static bool acceptsLines(MarkdownType type)
+  {
+    return type == MarkdownType::paragraph || type == MarkdownType::codeBlock || type == MarkdownType::htmlBlock;
+  }
+
+  MarkdownNode* addChild(MarkdownType type, int offset)
+  {
+    while (!MarkdownBlockParser::canContain(this->tip->type, type))
+      this->finalize(this->tip, this->lineNumber - 1);
+    MarkdownNode* node = this->nodes->make(type);
+    node->startLine = this->lineNumber;
+    this->tip->appendChild(node);
+    this->tip = node;
+    return node;
+  }
+
+  void closeUnmatchedBlocks()
+  {
+    if (this->allClosed)
+      return;
+    while (this->oldTip != this->lastMatchedContainer)
+    {
+      MarkdownNode* parent = this->oldTip->parent;
+      this->finalize(this->oldTip, this->lineNumber - 1);
+      this->oldTip = parent;
+    }
+    this->allClosed = true;
+  }
+
+  // 0: the line continues the block; 1: it does not; 2: the line is used up.
+  int continueBlock(MarkdownNode* container)
+  {
+    switch (container->type)
+    {
+      case MarkdownType::document:
+      case MarkdownType::list:
+        return 0;
+      case MarkdownType::blockQuote:
+        if (!this->indented && this->peek(this->nextNonspace) == '>')
+        {
+          this->advanceNextNonspace();
+          this->advanceOffset(1, false);
+          if (markdownIsSpaceOrTab(this->peek(this->offset)))
+            this->advanceOffset(1, true);
+          return 0;
+        }
+        return 1;
+      case MarkdownType::item:
+        if (this->blank)
+        {
+          if (!container->firstChild)
+            return 1;
+          this->advanceNextNonspace();
+          return 0;
+        }
+        if (this->indent >= container->markerOffset + container->padding)
+        {
+          this->advanceOffset(container->markerOffset + container->padding, true);
+          return 0;
+        }
+        return 1;
+      case MarkdownType::heading:
+      case MarkdownType::thematicBreak:
+        return 1;
+      case MarkdownType::codeBlock:
+        if (container->fenced)
+        {
+          if (this->indent <= 3 && this->peek(this->nextNonspace) == container->fenceChar)
+          {
+            int length = this->closingFence(this->nextNonspace, container->fenceChar);
+            if (length >= container->fenceLength)
+            {
+              this->lastLineLength = this->offset + this->indent + length;
+              this->finalize(container, this->lineNumber);
+              return 2;
+            }
+          }
+          for (int i = container->fenceOffset; i > 0 && markdownIsSpaceOrTab(this->peek(this->offset)); --i)
+            this->advanceOffset(1, true);
+          return 0;
+        }
+        if (this->indent >= 4)
+          this->advanceOffset(4, true);
+        else if (this->blank)
+          this->advanceNextNonspace();
+        else
+          return 1;
+        return 0;
+      case MarkdownType::htmlBlock:
+        return this->blank && (container->htmlBlockType == 6 || container->htmlBlockType == 7) ? 1 : 0;
+      case MarkdownType::paragraph:
+        return this->blank ? 1 : 0;
+      case MarkdownType::table:
+        return this->blank || !this->options.tables ? 1 : this->tableContinues(container);
+      default:
+        return 1;
+    }
+  }
+
+  // The length of a closing fence of c at i (three or more, then only spaces or tabs), or 0.
+  int closingFence(int i, char c)
+  {
+    int k = i;
+    while (this->peek(k) == c)
+      ++k;
+    int length = k - i;
+    if (length < 3)
+      return 0;
+    while (markdownIsSpaceOrTab(this->peek(k)))
+      ++k;
+    return this->peek(k) == -1 ? length : 0;
+  }
+
+  void incorporateLine(StringView text)
+  {
+    MarkdownNode* container = this->document;
+    this->oldTip = this->tip;
+    this->offset = 0;
+    this->column = 0;
+    this->blank = false;
+    this->partiallyConsumedTab = false;
+    this->lineNumber += 1;
+    this->line = text;
+
+    bool allMatched = true;
+    while (container->lastChild && container->lastChild->open)
+    {
+      container = container->lastChild;
+      this->findNextNonspace();
+      int result = this->continueBlock(container);
+      if (result == 1)
+      {
+        container = container->parent;
+        allMatched = false;
+        break;
+      }
+      if (result == 2)
+      {
+        this->lastLineLength = text.size();
+        return;
+      }
+    }
+    this->allClosed = container == this->oldTip;
+    this->lastMatchedContainer = container;
+
+    bool matchedLeaf = container->type != MarkdownType::paragraph && MarkdownBlockParser::acceptsLines(container->type);
+    while (!matchedLeaf)
+    {
+      this->findNextNonspace();
+      int c = this->peek(this->nextNonspace);
+      bool maybeSpecial = c == '#' || c == '`' || c == '~' || c == '*' || c == '+' || c == '_' || c == '=' || c == '<' || c == '>' || c == '-' ||
+                          markdownIsDigit(c) || c == '|' || c == ':';
+      if (!this->indented && !maybeSpecial)
+      {
+        this->advanceNextNonspace();
+        break;
+      }
+      int started = this->startBlock(container);
+      if (started == 0)
+      {
+        this->advanceNextNonspace();
+        break;
+      }
+      container = this->tip;
+      if (started == 2)
+        matchedLeaf = true;
+    }
+
+    if (!this->allClosed && !this->blank && this->tip->type == MarkdownType::paragraph)
+      this->addLine(); // a lazy continuation line
+    else
+    {
+      this->closeUnmatchedBlocks();
+      MarkdownType t = container->type;
+      if (MarkdownBlockParser::acceptsLines(t))
+      {
+        this->addLine();
+        if (t == MarkdownType::htmlBlock && container->htmlBlockType >= 1 && container->htmlBlockType <= 5 &&
+            markdownHtmlBlockEnds(container->htmlBlockType, this->line.substr(this->offset)))
+        {
+          this->lastLineLength = text.size();
+          this->finalize(container, this->lineNumber);
+        }
+      }
+      else if (t == MarkdownType::table && !this->blank && this->offset < text.size())
+        this->addTableRow(container);
+      else if (this->offset < text.size() && !this->blank)
+      {
+        container = this->addChild(MarkdownType::paragraph, this->offset);
+        this->advanceNextNonspace();
+        this->addLine();
+      }
+    }
+    this->lastLineLength = text.size();
+  }
+
+  // Tries each kind of block start at the line's position: 0 none, 1 a container, 2 a leaf.
+  int startBlock(MarkdownNode* container)
+  {
+    int at = this->nextNonspace;
+    int c = this->peek(at);
+    // Block quote.
+    if (!this->indented && c == '>')
+    {
+      this->advanceNextNonspace();
+      this->advanceOffset(1, false);
+      if (markdownIsSpaceOrTab(this->peek(this->offset)))
+        this->advanceOffset(1, true);
+      this->closeUnmatchedBlocks();
+      this->addChild(MarkdownType::blockQuote, at);
+      return 1;
+    }
+    // ATX heading.
+    if (!this->indented && c == '#')
+    {
+      int k = at;
+      while (this->peek(k) == '#')
+        ++k;
+      int level = k - at;
+      if (level <= 6 && (this->peek(k) == -1 || markdownIsSpaceOrTab(this->peek(k))))
+      {
+        this->advanceNextNonspace();
+        this->advanceOffset(level, false);
+        this->closeUnmatchedBlocks();
+        MarkdownNode* heading = this->addChild(MarkdownType::heading, at);
+        heading->level = level;
+        heading->content = markdownAtxContent(this->line.substr(this->offset));
+        this->advanceOffset(this->line.size() - this->offset, false);
+        return 2;
+      }
+    }
+    // Fenced code block.
+    if (!this->indented && (c == '`' || c == '~'))
+    {
+      int k = at;
+      while (this->peek(k) == c)
+        ++k;
+      int length = k - at;
+      bool infoHasBacktick = false;
+      if (c == '`')
+        for (int i = k; i < this->line.size(); ++i)
+          if (this->line[i] == '`')
+            infoHasBacktick = true;
+      if (length >= 3 && !infoHasBacktick)
+      {
+        this->closeUnmatchedBlocks();
+        MarkdownNode* code = this->addChild(MarkdownType::codeBlock, at);
+        code->fenced = true;
+        code->fenceLength = length;
+        code->fenceChar = char(c);
+        code->fenceOffset = this->indent;
+        this->advanceNextNonspace();
+        this->advanceOffset(length, false);
+        return 2;
+      }
+    }
+    // HTML block.
+    if (!this->indented && c == '<')
+    {
+      StringView rest = this->line.substr(at);
+      for (int type = 1; type <= 7; ++type)
+        if (markdownHtmlBlockStarts(type, rest) &&
+            (type < 7 || (container->type != MarkdownType::paragraph && !(!this->allClosed && !this->blank && this->tip->type == MarkdownType::paragraph))))
+        {
+          this->closeUnmatchedBlocks();
+          MarkdownNode* html = this->addChild(MarkdownType::htmlBlock, this->offset);
+          html->htmlBlockType = type;
+          return 2;
+        }
+    }
+    // Setext heading underline.
+    if (!this->indented && container->type == MarkdownType::paragraph && (c == '=' || c == '-'))
+    {
+      int k = at;
+      while (this->peek(k) == c)
+        ++k;
+      while (markdownIsSpaceOrTab(this->peek(k)))
+        ++k;
+      if (this->peek(k) == -1)
+      {
+        this->closeUnmatchedBlocks();
+        this->resolveReferences(container);
+        if (container->content.size() > 0)
+        {
+          MarkdownNode* heading = this->nodes->make(MarkdownType::heading);
+          heading->startLine = container->startLine;
+          heading->level = c == '=' ? 1 : 2;
+          heading->content = container->content;
+          container->insertAfter(heading);
+          container->unlink();
+          this->tip = heading;
+          this->advanceOffset(this->line.size() - this->offset, false);
+          return 2;
+        }
+      }
+    }
+    // GitHub's table: a paragraph's one line, then a delimiter row.
+    if (this->options.tables && !this->indented && container->type == MarkdownType::paragraph && this->startTable(container))
+      return 2;
+    // Thematic break.
+    if (!this->indented && (c == '*' || c == '_' || c == '-'))
+    {
+      int count = 0;
+      bool only = true;
+      for (int k = at; k < this->line.size(); ++k)
+      {
+        if (this->line[k] == c)
+          ++count;
+        else if (!markdownIsSpaceOrTab(this->line[k]))
+          only = false;
+      }
+      if (only && count >= 3)
+      {
+        this->closeUnmatchedBlocks();
+        this->addChild(MarkdownType::thematicBreak, at);
+        this->advanceOffset(this->line.size() - this->offset, false);
+        return 2;
+      }
+    }
+    // List item.
+    if (!this->indented || container->type == MarkdownType::list)
+    {
+      MarkdownNode marker;
+      if (this->parseListMarker(container, marker))
+      {
+        this->closeUnmatchedBlocks();
+        if (this->tip->type != MarkdownType::list || this->tip->ordered != marker.ordered || this->tip->delimiter != marker.delimiter ||
+            this->tip->bulletChar != marker.bulletChar)
+        {
+          MarkdownNode* list = this->addChild(MarkdownType::list, at);
+          markdownCopyMarker(*list, marker);
+        }
+        MarkdownNode* item = this->addChild(MarkdownType::item, at);
+        markdownCopyMarker(*item, marker);
+        return 1;
+      }
+    }
+    // Indented code block.
+    if (this->indented && this->tip->type != MarkdownType::paragraph && !this->blank)
+    {
+      this->advanceOffset(4, true);
+      this->closeUnmatchedBlocks();
+      this->addChild(MarkdownType::codeBlock, this->offset);
+      return 2;
+    }
+    return 0;
+  }
+
+  bool parseListMarker(MarkdownNode* container, MarkdownNode& data)
+  {
+    if (this->indent >= 4)
+      return false;
+    int at = this->nextNonspace;
+    int c = this->peek(at);
+    int markerLength = 0;
+    data.markerOffset = this->indent;
+    if (c == '*' || c == '+' || c == '-')
+    {
+      data.ordered = false;
+      data.bulletChar = char(c);
+      markerLength = 1;
+    }
+    else if (markdownIsDigit(c))
+    {
+      int k = at;
+      int value = 0;
+      while (markdownIsDigit(this->peek(k)) && k - at < 9)
+      {
+        value = value * 10 + (this->peek(k) - '0');
+        ++k;
+      }
+      if (markdownIsDigit(this->peek(k)) || (this->peek(k) != '.' && this->peek(k) != ')'))
+        return false;
+      if (container->type == MarkdownType::paragraph && value != 1)
+        return false;
+      data.ordered = true;
+      data.start = value;
+      data.delimiter = char(this->peek(k));
+      markerLength = k + 1 - at;
+    }
+    else
+      return false;
+    int after = this->peek(at + markerLength);
+    if (!(after == -1 || after == '\t' || after == ' '))
+      return false;
+    if (container->type == MarkdownType::paragraph)
+    {
+      bool onlySpace = true;
+      for (int k = at + markerLength; k < this->line.size(); ++k)
+        if (!markdownIsSpaceOrTab(this->line[k]))
+          onlySpace = false;
+      if (onlySpace)
+        return false;
+    }
+    this->advanceNextNonspace();
+    this->advanceOffset(markerLength, true);
+    int spacesStartColumn = this->column;
+    int spacesStartOffset = this->offset;
+    do
+    {
+      this->advanceOffset(1, true);
+    } while (this->column - spacesStartColumn < 5 && markdownIsSpaceOrTab(this->peek(this->offset)));
+    bool blankItem = this->peek(this->offset) == -1;
+    int spacesAfterMarker = this->column - spacesStartColumn;
+    if (spacesAfterMarker >= 5 || spacesAfterMarker < 1 || blankItem)
+    {
+      data.padding = markerLength + 1;
+      this->column = spacesStartColumn;
+      this->offset = spacesStartOffset;
+      if (markdownIsSpaceOrTab(this->peek(this->offset)))
+        this->advanceOffset(1, true);
+    }
+    else
+      data.padding = markerLength + spacesAfterMarker;
+    return true;
+  }
+
+  // Link reference definitions at the start of a paragraph go into references and out of its text.
+  // Returns whether there were any.
+  bool resolveReferences(MarkdownNode* paragraph)
+  {
+    bool any = false;
+    while (paragraph->content.size() > 0 && paragraph->content[0] == '[')
+    {
+      MarkdownInlineParser parser(this->nodes, this);
+      int used = parser.parseReference(paragraph->content);
+      if (used == 0)
+        break;
+      paragraph->content = String(StringView(paragraph->content).substr(used));
+      any = true;
+    }
+    return any;
+  }
+
+  void finalize(MarkdownNode* block, int lineNumber)
+  {
+    MarkdownNode* above = block->parent;
+    block->open = false;
+    block->endLine = lineNumber;
+    switch (block->type)
+    {
+      case MarkdownType::paragraph:
+      {
+        if (this->resolveReferences(block))
+        {
+          bool onlySpace = true;
+          for (char c : block->content)
+            if (c != ' ' && c != '\t' && c != '\n')
+              onlySpace = false;
+          if (onlySpace)
+            block->unlink();
+        }
+        break;
+      }
+      case MarkdownType::codeBlock:
+      {
+        if (block->fenced)
+        {
+          int newline = block->content.find('\n');
+          StringView first = StringView(block->content).substr(0, newline);
+          block->info = markdownUnescape(markdownTrim(first));
+          block->literal = String(StringView(block->content).substr(newline + 1));
+        }
+        else
+        {
+          // Its trailing blank lines become one line end.
+          block->literal = String(StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
+          block->literal.append('\n');
+        }
+        block->content = String();
+        break;
+      }
+      case MarkdownType::htmlBlock:
+      {
+        block->literal = String(StringView(block->content).substr(0, markdownEndWithoutBlankLines(block->content)));
+        block->content = String();
+        break;
+      }
+      case MarkdownType::list:
+      {
+        for (MarkdownNode* item = block->firstChild; item; item = item->next)
+        {
+          if (item->next && markdownEndsWithBlankLine(item))
+          {
+            block->tight = false;
+            break;
+          }
+          bool loose = false;
+          for (MarkdownNode* sub = item->firstChild; sub; sub = sub->next)
+            if (sub->next && markdownEndsWithBlankLine(sub))
+            {
+              loose = true;
+              break;
+            }
+          if (loose)
+          {
+            block->tight = false;
+            break;
+          }
+        }
+        if (block->lastChild)
+          block->endLine = block->lastChild->endLine;
+        break;
+      }
+      case MarkdownType::item:
+        block->endLine = block->lastChild ? block->lastChild->endLine : block->startLine;
+        break;
+      default:
+        break;
+    }
+    this->tip = above;
+  }
+
+  // --- GitHub's tables (the GFM spec's "Tables (extension)") ---
+
+  // A row's cells: the text between unescaped '|'s, a leading and a trailing '|' optional.
+  static Vector<String> tableCells(StringView row)
+  {
+    Vector<String> cells;
+    StringView text = markdownTrim(row);
+    int at = 0;
+    if (text.size() > 0 && text[0] == '|')
+      at = 1;
+    String cell;
+    bool any = false;
+    for (int i = at; i < text.size(); ++i)
+    {
+      char c = text[i];
+      if (c == '\\' && i + 1 < text.size() && text[i + 1] == '|')
+      {
+        cell.append('|');
+        ++i;
+        any = true;
+        continue;
+      }
+      if (c == '|')
+      {
+        cells.push_back(String(markdownTrim(cell)));
+        cell = String();
+        any = false;
+        continue;
+      }
+      cell.append(c);
+      any = true;
+    }
+    if (any || cells.empty())
+      cells.push_back(String(markdownTrim(cell)));
+    return cells;
+  }
+
+  // The alignments of a delimiter row (1 left, 2 center, 3 right, 0 none), or empty when the line
+  // is not one.
+  static Vector<int> tableAlignments(StringView row)
+  {
+    Vector<int> alignments;
+    StringView text = markdownTrim(row);
+    bool hasPipe = false;
+    for (char c : text)
+      if (c == '|')
+        hasPipe = true;
+    Vector<String> cells = MarkdownBlockParser::tableCells(text);
+    for (const String& cell : cells)
+    {
+      if (cell.size() == 0)
+        return Vector<int>();
+      int k = 0;
+      bool left = cell[0] == ':';
+      if (left)
+        ++k;
+      int dashes = 0;
+      while (k < cell.size() && cell[k] == '-')
+      {
+        ++k;
+        ++dashes;
+      }
+      bool right = k < cell.size() && cell[k] == ':';
+      if (right)
+        ++k;
+      if (dashes == 0 || k != cell.size())
+        return Vector<int>();
+      alignments.push_back(left && right ? 2 : right ? 3 : left ? 1 : 0);
+    }
+    if (!hasPipe && alignments.size() < 2)
+      return Vector<int>();
+    return alignments;
+  }
+
+  bool startTable(MarkdownNode* paragraph)
+  {
+    // The paragraph's last line is the header row; earlier lines stay a paragraph.
+    String& content = paragraph->content;
+    int end = content.size() - 1;
+    int lineStart = end;
+    while (lineStart > 0 && content[lineStart - 1] != '\n')
+      --lineStart;
+    StringView headerLine = StringView(content).substr(lineStart, end - lineStart);
+    Vector<int> alignments = MarkdownBlockParser::tableAlignments(this->line.substr(this->nextNonspace));
+    if (alignments.empty())
+      return false;
+    Vector<String> header = MarkdownBlockParser::tableCells(headerLine);
+    if (header.size() != alignments.size())
+      return false;
+    this->closeUnmatchedBlocks();
+    MarkdownNode* table = this->nodes->make(MarkdownType::table);
+    table->startLine = this->lineNumber - 1;
+    if (lineStart > 0)
+    {
+      paragraph->content = String(StringView(content).substr(0, lineStart));
+      paragraph->insertAfter(table);
+      this->finalize(paragraph, this->lineNumber - 2);
+    }
+    else
+    {
+      paragraph->insertAfter(table);
+      paragraph->unlink();
+    }
+    for (int a : alignments)
+      table->info.append(char('0' + a));
+    this->tip = table;
+    MarkdownNode* row = this->nodes->make(MarkdownType::tableRow);
+    row->header = true;
+    table->appendChild(row);
+    this->fillRow(table, row, header);
+    this->advanceOffset(this->line.size() - this->offset, false);
+    return true;
+  }
+
+  void fillRow(MarkdownNode* table, MarkdownNode* row, const Vector<String>& cells)
+  {
+    for (int i = 0; i < table->info.size(); ++i)
+    {
+      MarkdownNode* cell = this->nodes->make(MarkdownType::tableCell);
+      cell->alignment = table->info[i] - '0';
+      cell->content = i < cells.size() ? cells[i] : String();
+      row->appendChild(cell);
+    }
+  }
+
+  int tableContinues(MarkdownNode* table) { return 0; }
+
+  void addTableRow(MarkdownNode* table)
+  {
+    MarkdownNode* row = this->nodes->make(MarkdownType::tableRow);
+    table->appendChild(row);
+    this->fillRow(table, row, MarkdownBlockParser::tableCells(this->line.substr(this->offset)));
+  }
+};
+
+void markdownCopyMarker(MarkdownNode& to, const MarkdownNode& from)
+{
+  to.ordered = from.ordered;
+  to.bulletChar = from.bulletChar;
+  to.delimiter = from.delimiter;
+  to.start = from.start;
+  to.markerOffset = from.markerOffset;
+  to.padding = from.padding;
+}
+
+// Where the text ends without its trailing lines of only spaces ("(\n *)+$" in commonmark.js).
+int markdownEndWithoutBlankLines(StringView text)
+{
+  int end = text.size();
+  while (true)
+  {
+    int k = end;
+    while (k > 0 && text[k - 1] == ' ')
+      --k;
+    if (k == 0 || text[k - 1] != '\n')
+      return end;
+    end = k - 1;
+  }
+}
+
+// Whether a blank line separates the block from the one after it.
+bool markdownEndsWithBlankLine(MarkdownNode* block) { return block->next && block->endLine != block->next->startLine - 1; }
+
+StringView markdownTrim(StringView text)
+{
+  int start = 0;
+  int end = text.size();
+  while (start < end && (text[start] == ' ' || text[start] == '\t' || text[start] == '\n' || text[start] == '\r'))
+    ++start;
+  while (end > start && (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\n' || text[end - 1] == '\r'))
+    --end;
+  return text.substr(start, end - start);
+}
+
+// An ATX heading's text: without the closing sequence of '#'s and the spaces around it.
+String markdownAtxContent(StringView rest)
+{
+  int end = rest.size();
+  while (end > 0 && markdownIsSpaceOrTab(rest[end - 1]))
+    --end;
+  int hashes = end;
+  while (hashes > 0 && rest[hashes - 1] == '#')
+    --hashes;
+  if (hashes == 0)
+    end = 0;
+  else if (hashes < end && markdownIsSpaceOrTab(rest[hashes - 1]))
+    end = hashes;
+  int start = 0;
+  while (start < end && markdownIsSpaceOrTab(rest[start]))
+    ++start;
+  while (end > start && markdownIsSpaceOrTab(rest[end - 1]))
+    --end;
+  return String(rest.substr(start, end - start));
+}
+
+// --- HTML blocks (CommonMark 4.6) ---
+
+bool markdownStartsWithIgnoringCase(StringView text, int at, const char* word)
+{
+  for (int i = 0; word[i]; ++i)
+    if (at + i >= text.size() || markdownLower((unsigned char)text[at + i]) != word[i])
+      return false;
+  return true;
+}
+
+bool markdownContainsIgnoringCase(StringView text, const char* word)
+{
+  for (int i = 0; i < text.size(); ++i)
+    if (markdownStartsWithIgnoringCase(text, i, word))
+      return true;
+  return false;
+}
+
+bool markdownHtmlBlockStarts(int type, StringView text)
+{
+  if (type == 1)
+  {
+    for (const char* tag : {"<script", "<pre", "<style", "<textarea"})
+      if (markdownStartsWithIgnoringCase(text, 0, tag))
+      {
+        int n = int(strlen(tag));
+        if (n == text.size() || text[n] == ' ' || text[n] == '\t' || text[n] == '>')
+          return true;
+      }
+    return false;
+  }
+  if (type == 2)
+    return markdownStartsWithIgnoringCase(text, 0, "<!--");
+  if (type == 3)
+    return markdownStartsWithIgnoringCase(text, 0, "<?");
+  if (type == 4)
+    return text.size() > 2 && text[1] == '!' && markdownIsLetter((unsigned char)text[2]);
+  if (type == 5)
+    return markdownStartsWithIgnoringCase(text, 0, "<![cdata[");
+  if (type == 6)
+  {
+    int at = text.size() > 1 && text[1] == '/' ? 2 : 1;
+    int end = at;
+    while (end < text.size() && markdownIsAlphanumeric((unsigned char)text[end]))
+      ++end;
+    if (end == at)
+      return false;
+    if (!(end == text.size() || text[end] == ' ' || text[end] == '\t' || text[end] == '>' || (text[end] == '/' && end + 1 < text.size() && text[end + 1] == '>')))
+      return false;
+    String name;
+    for (int i = at; i < end; ++i)
+      name.append(char(markdownLower((unsigned char)text[i])));
+    const char* names[] = {"address", "article", "aside", "base", "basefont", "blockquote", "body", "caption", "center", "col", "colgroup",
+                           "dd", "details", "dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "frame",
+                           "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hr", "html", "iframe", "legend", "li", "link",
+                           "main", "menu", "menuitem", "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search", "section",
+                           "summary", "table", "tbody", "td", "tfoot", "th", "thead", "title", "tr", "track", "ul"};
+    for (const char* n : names)
+      if (name == n)
+        return true;
+    return false;
+  }
+  // 7: a whole open or closing tag (not script, style, pre or textarea), then only spaces or tabs.
+  int length = markdownOpenTag(text, 0);
+  if (length == 0)
+    length = markdownClosingTag(text, 0);
+  if (length == 0)
+    return false;
+  for (const char* tag : {"<script", "<style", "<pre", "<textarea"})
+    if (markdownStartsWithIgnoringCase(text, 0, tag))
+    {
+      int n = int(strlen(tag));
+      if (n < text.size() && !markdownIsAlphanumeric((unsigned char)text[n]) && text[n] != '-')
+        return false;
+    }
+  for (int i = length; i < text.size(); ++i)
+    if (!markdownIsSpaceOrTab(text[i]))
+      return false;
+  return true;
+}
+
+bool markdownHtmlBlockEnds(int type, StringView text)
+{
+  if (type == 1)
+    return markdownContainsIgnoringCase(text, "</script>") || markdownContainsIgnoringCase(text, "</pre>") ||
+           markdownContainsIgnoringCase(text, "</style>") || markdownContainsIgnoringCase(text, "</textarea>");
+  if (type == 2)
+    return markdownContainsIgnoringCase(text, "-->");
+  if (type == 3)
+    return markdownContainsIgnoringCase(text, "?>");
+  if (type == 4)
+    return markdownContainsIgnoringCase(text, ">");
+  return markdownContainsIgnoringCase(text, "]]>");
+}
+
+// --- raw HTML (CommonMark 6.6): each returns the length matched at text[at], or 0 ---
+
+bool markdownIsHtmlSpace(char c) { return c == ' ' || c == '\t' || c == '\n'; }
+
+int markdownTagName(StringView text, int at)
+{
+  if (at >= text.size() || !markdownIsLetter((unsigned char)text[at]))
+    return 0;
+  int k = at + 1;
+  while (k < text.size() && (markdownIsAlphanumeric((unsigned char)text[k]) || text[k] == '-'))
+    ++k;
+  return k - at;
+}
+
+int markdownOpenTag(StringView text, int at)
+{
+  if (at >= text.size() || text[at] != '<')
+    return 0;
+  int name = markdownTagName(text, at + 1);
+  if (name == 0)
+    return 0;
+  int k = at + 1 + name;
+  while (true)
+  {
+    // An attribute: whitespace, a name, and maybe a value.
+    int s = k;
+    while (s < text.size() && markdownIsHtmlSpace(text[s]))
+      ++s;
+    if (s == k || s >= text.size())
+      break;
+    char c = text[s];
+    if (!(markdownIsLetter((unsigned char)c) || c == '_' || c == ':'))
+      break;
+    int n = s + 1;
+    while (n < text.size() && (markdownIsAlphanumeric((unsigned char)text[n]) || text[n] == '_' || text[n] == '.' || text[n] == ':' || text[n] == '-'))
+      ++n;
+    int v = n;
+    while (v < text.size() && markdownIsHtmlSpace(text[v]))
+      ++v;
+    if (v < text.size() && text[v] == '=')
+    {
+      ++v;
+      while (v < text.size() && markdownIsHtmlSpace(text[v]))
+        ++v;
+      if (v >= text.size())
+        return 0;
+      char q = text[v];
+      if (q == '"' || q == '\'')
+      {
+        int e = v + 1;
+        while (e < text.size() && text[e] != q)
+          ++e;
+        if (e >= text.size())
+          return 0;
+        n = e + 1;
+      }
+      else
+      {
+        int e = v;
+        while (e < text.size() && !markdownIsHtmlSpace(text[e]) && text[e] != '"' && text[e] != '\'' && text[e] != '=' && text[e] != '<' &&
+               text[e] != '>' && text[e] != '`')
+          ++e;
+        if (e == v)
+          return 0;
+        n = e;
+      }
+    }
+    k = n;
+  }
+  while (k < text.size() && markdownIsHtmlSpace(text[k]))
+    ++k;
+  if (k < text.size() && text[k] == '/')
+    ++k;
+  if (k < text.size() && text[k] == '>')
+    return k + 1 - at;
+  return 0;
+}
+
+int markdownClosingTag(StringView text, int at)
+{
+  if (at + 1 >= text.size() || text[at] != '<' || text[at + 1] != '/')
+    return 0;
+  int name = markdownTagName(text, at + 2);
+  if (name == 0)
+    return 0;
+  int k = at + 2 + name;
+  while (k < text.size() && markdownIsHtmlSpace(text[k]))
+    ++k;
+  if (k < text.size() && text[k] == '>')
+    return k + 1 - at;
+  return 0;
+}
+
+// The length of the text up to and with the first `end` at or after from, measured from at; 0 when
+// there is none.
+int markdownThrough(StringView text, int at, int from, const char* end)
+{
+  int n = int(strlen(end));
+  for (int k = from; k + n <= text.size(); ++k)
+    if (StringView(text.data() + k, n) == StringView(end))
+      return k + n - at;
+  return 0;
+}
+
+int markdownHtmlInline(StringView text, int at)
+{
+  if (int n = markdownOpenTag(text, at))
+    return n;
+  if (int n = markdownClosingTag(text, at))
+    return n;
+  if (markdownStartsWithIgnoringCase(text, at, "<!--"))
+  {
+    if (markdownStartsWithIgnoringCase(text, at, "<!-->"))
+      return 5;
+    if (markdownStartsWithIgnoringCase(text, at, "<!--->"))
+      return 6;
+    return markdownThrough(text, at, at + 4, "-->");
+  }
+  if (markdownStartsWithIgnoringCase(text, at, "<?"))
+    return markdownThrough(text, at, at + 2, "?>");
+  if (markdownStartsWithIgnoringCase(text, at, "<![cdata["))
+    return markdownThrough(text, at, at + 9, "]]>");
+  if (at + 2 < text.size() && text[at + 1] == '!' && markdownIsLetter((unsigned char)text[at + 2]))
+    return markdownThrough(text, at, at + 2, ">");
+  return 0;
+}

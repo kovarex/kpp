@@ -1,0 +1,3 @@
+// Package: Markdown
+// CommonMark (0.31.2) to HTML, with GitHub's tables as an option: markdownToHtml. Documented in
+// libraries/markdown/README.md.
