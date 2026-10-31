@@ -14764,6 +14764,49 @@ struct GlobalScope::Impl
                              " is not const, and its object is a " + types.toString(types.stripRef(objectTy), &impl.symbols));
     }
 
+    // A function defined twice (two bodies of one function: `int f(int)` and `int f(int)`, or
+    // `f(long)` beside `f(int)`, one function in Kpp, design.md "Types") is an error at the later
+    // definition, as in C++ ([basic.def.odr]); the code generator would emit both. Not templates
+    // (their specialisations and instances have bodies of their own) nor a `conditional(...)` one
+    // (alternatives of which one exists).
+    void checkDefinedOnce(FunctionDecl* f)
+    {
+      if (!f->body || activeSubst || probing || !file || file->isImported || !f->templateParams.empty() || f->condition ||
+          f->name.empty() || Impl::isFunctionSpecialization(f) || inGenericTemplate())
+        return;
+      // (not recorded as what f's walk reads: a compile server's build would walk f again for every
+      // overload added to its name, and its codegen then emitted f twice. So an edit that adds a
+      // definition before an unchanged one is not reported by the server's build: clang rejects the
+      // two definitions, a build from scratch reports them.)
+      RecordInto none(nullptr);
+      uint32_t symbol = impl.functionSymbol(f->name);
+      Scope* home = impl.homeScope(f);
+      Lookup look;
+      if (symbol == UINT32_MAX || !home || !impl.lookupInScope(home, symbol, look, 0, false) || !look.overloads)
+        return;
+      auto before = [](const FunctionDecl* a, const FunctionDecl* b) // a's definition comes first
+      {
+        uint32_t fa = a->file ? a->file->index : 0, fb = b->file ? b->file->index : 0;
+        return fa != fb ? fa < fb : a->token < b->token;
+      };
+      const FunctionDecl* first = nullptr;
+      for (const Entry& e : *look.overloads)
+      {
+        if (!e.decl || e.decl == f || e.decl->kind != NodeKind::FunctionDecl)
+          continue;
+        auto* g = static_cast<FunctionDecl*>(e.decl);
+        if (g->body && g->templateParams.empty() && !g->condition && !Impl::isFunctionSpecialization(g) && before(g, f) &&
+            (!first || before(g, first)) && impl.sameFunction(f, g))
+          first = g;
+      }
+      if (!first)
+        return;
+      std::string where = Impl::locationOf(first->file, first->token);
+      if (first->file == file)
+        where = "line " + where.substr(where.rfind(':') + 1); // (in the same file)
+      impl.reportCheckerError(file, f->token, "the function " + impl.namePartText(f->name.last()) + " is defined twice (first at " + where + ")");
+    }
+
     // An object's array bound (a variable's, a data member's) that is no constant, or is negative,
     // is an error at the bound, as in C++ ([dcl.array] 1), never an array of no elements. Checked
     // where its template parameters are known (not in a template's own walk: in its instances);
@@ -18358,6 +18401,7 @@ struct GlobalScope::Impl
           walkType(f->trailingReturn);
           walkExpr(f->requiresClause);
           walkExpr(f->condition);
+          checkDefinedOnce(f);
           for (const FunctionDecl::CtorInit& init : f->ctorInits)
           {
             Lookup l = impl.lookupQualified(init.member, scope, &locals, 0);

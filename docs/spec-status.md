@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**835 pass, 1 pending, 0 failing, 0 fixed** (836 snippets, 25.5 s).
+**836 pass, 1 pending, 0 failing, 0 fixed** (837 snippets, 25.3 s).
 
 ## Language: statements, expressions, declarations
 
@@ -127,6 +127,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/extern_variable_and_definition.kpp` | `extern T name;` and the definition `T name;` (or one with an initializer) in one namespace are one variable, whichever of the two a use names; a class-type definition is constructed once, with its initializer | pass |  |  |
 | `language/for_init_conditional.kpp` | a conditional expression in the init-statement of a classic for loop: `for (int j = k < 0 ? 0 : k; ...)` | pass |  |  |
 | `language/forwarding_reference_to_lambda.kpp` | a local `auto&&` bound to a lambda (a temporary whose lifetime the reference extends), then called | pass | the std::visit rewrite and generic code that holds a callable as `auto&& f = ...` |  |
+| `language/function_defined_twice_is_error.kpp` | a function defined twice is an error at the second definition, as in C++ ([basic.def.odr]), also when the two spell one parameter type two ways that Kpp makes one (`long` is `int`, `signed char` is `char`: design.md, "Types"), never two bodies the code generator emits | pass | found by the templates thread comparing overload choices against clang: `int f(int)` beside `int f(long)` reached clang as two definitions of `f(int32)` ("clang rejected module"), and two definitions of one signature likewise |  |
 | `language/generic_lambda_predicates.kpp` | a generic lambda called with lambda arguments that capture locals, other lambdas and this | pass |  |  |
 | `language/generic_lambdas.kpp` | generic lambdas (auto parameters) | pass | 330 uses in 168 files |  |
 | `language/global_address_constant_after_extern_declaration.kpp` | the address of a global declared `extern` before its definition is a constant, as C has it: a global initialised from it holds it before anything runs, whatever the startup order | pass |  |  |

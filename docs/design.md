@@ -1182,7 +1182,8 @@ The smallest language that is still Kpp, as the target of the first code generat
   (the short names exist in the compiler since 2026-10-24; `f32`/`f64` not yet).
   The C spellings are sizes, not distinct types: `long` is `int` (x64 Windows, LLP64), `long long`
   is `i64`, and `f(int)` beside `f(long)` is one function declared twice, where C++ has two
-  overloads (parked 2026-10-29, nothing converted needs them apart). Making them distinct would
+  overloads (parked 2026-10-29, nothing converted needs them apart; defining both is an error, as
+  any function defined twice: language/function_defined_twice_is_error). Making them distinct would
   touch the type table (an integer type keyed by spelling as well as size), conversion ranking
   (int to long an integral conversion, not an identity), template argument identity
   (`X<long>` and `X<int>` two instances) and codegen's function names (`f(int32)` for both).
