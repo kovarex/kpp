@@ -1,4 +1,4 @@
-tests\diagnostics\diagnostics.kpp:10: error: a pointer (const char*) does not convert to int32 without a cast (in @kpp.main)
+tests\diagnostics\diagnostics.kpp:10: error: 'Project' is not declared
+tests\diagnostics\diagnostics.kpp:13: error: a pointer (const char*) does not convert to int32 without a cast (in @kpp.main)
 tests\diagnostics\diagnostics.kpp:3: error: static assertion failed: "one is not two"
 tests\diagnostics\diagnostics.kpp:6: error: 'undefinedThing' is not declared
-tests\diagnostics\diagnostics.kpp:6: error: codegen does not support an unresolved name (undefinedThing) yet (in @"gap()")

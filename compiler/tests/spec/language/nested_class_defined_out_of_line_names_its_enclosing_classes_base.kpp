@@ -1,0 +1,23 @@
+// spec: a nested class defined out of line (`class Outer::Inner : public Base`) names its base as from inside Outer: Outer's nested Base, not one outside it
+// factorio: SelectorCombinatorGui::PageSelect : public Page (SelectorCombinatorGui::Page)
+class Outer
+{
+public:
+  class Base
+  {
+  public:
+    int value() const { return 7; }
+  };
+  class Inner;
+};
+class Outer::Inner : public Base
+{
+public:
+  int twice() const { return 2 * this->value(); }
+};
+int main()
+{
+  Outer::Inner i;
+  println("{}", i.twice());
+  return 0;
+}

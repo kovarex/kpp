@@ -22,7 +22,7 @@ int32_t classify()
     return 0;
 }
 
-fn main() -> int32_t
+auto main() -> int32_t
 {
   // Make=FromPtree, value_type=Item (not arithmetic)
   // !true || !false = false || true = true -> 1

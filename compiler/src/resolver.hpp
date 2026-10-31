@@ -236,6 +236,12 @@ public:
   // Whether a checker error at a place in the file at path was reported outside any unit (the
   // index's, a class instance's static_assert): walking the file again would not take it back.
   bool unitlessErrorIn(const std::string& path);
+  // Whether the checker reported an error in f's text (its signature or body), or in f, an instance's
+  // copy: a value of unknown type the code generator meets in f follows from it.
+  bool checkerErrorIn(const FunctionDecl* f);
+  // Whether the checker reported "'name' is not declared" somewhere (an undeclared type the code
+  // generator meets in a layout: its own error would only follow from that one).
+  bool undeclaredReported(const std::string& name);
   // The first part of checkerErrors: the static_asserts of the class template instances named so
   // far. The code generator runs it once its functions are emitted (they name instances of their
   // own), before it checks the asserts on layouts. From the from-th instance made on (those before

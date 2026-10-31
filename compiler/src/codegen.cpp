@@ -105,6 +105,7 @@ namespace
     bool sizing = false;                      // its size is being computed (a class that contains itself comes back here)
     bool failed = false;                      // laying it out failed: every use is an error, never the partial layout
     std::string failedWhy;                    // what made it fail, which every use reports
+    bool failedShown = true;                  // false: it follows from a checker error (fail's shown), at every use
   };
   // The field index of a member, 0 when the layout has no such member.
   uint32_t fieldIndexOf(const StructInfo& info, Decl* member)
@@ -618,6 +619,8 @@ namespace
     bool blockTerminated = false;
     std::string currentBlock = "entry";
     FunctionDecl* currentFunction = nullptr;
+    // The function emitFunction emits, as the checker typed it (an instance's copy; fail).
+    const FunctionDecl* checkerChecked = nullptr;
     const Ty* currentReturn = nullptr;
     std::string sretAddr; // Hidden return slot when returning a class.
     Decl* constContext = nullptr; // The declaration whose initializer evalConst is folding (a variable template's): the context of the traits in it.
@@ -735,9 +738,12 @@ namespace
 
     std::unordered_map<const ParsedFile*, std::vector<uint32_t>> lineStarts; // per file: the offset each line starts at
 
-    void error(Node* at, const std::string& message)
+    // shown: false for a failure that follows from an error the checker reported (fail): the
+    // checker's error is the build's, and the function fails as it would with this one.
+    void error(Node* at, const std::string& message, bool shown = true)
     {
-      errors.push_back(locationOf(at, currentFile, true) + ": error: " + message); // every codegen error is labelled, the gaps too
+      if (shown)
+        errors.push_back(locationOf(at, currentFile, true) + ": error: " + message); // every codegen error is labelled, the gaps too
       // A program function's own emission (not an instance's, a lambda's operator on demand, a
       // global's constructor or a shared text it happens to emit first): the function emitted again
       // gives the error again, at its place then.
@@ -789,18 +795,34 @@ namespace
     {
     };
     std::string lastFailure; // the message of the last fail(), without its place (a failed layout or global repeats it at every use)
+    bool lastFailureShown = true; // and whether it was shown (fail's shown)
     // An error that abandons what is being emitted (the function, layout or global it is in).
-    [[noreturn]] void fail(Node* at, const std::string& message)
+    // shown: false when the failure follows from a checker error: a name or a type the checker
+    // reported as not declared (followsUndeclared), which the build fails with already.
+    [[noreturn]] void fail(Node* at, const std::string& message, bool shown = true)
     {
       std::string where;
       if (!currentFunctionName.empty())
         where = " (in " + currentFunctionName + (currentRequestedBy.empty() ? "" : ", requested by " + currentRequestedBy) + ")";
+      // A value of unknown type in a function the checker reported an error in (`auto v = p.size()`
+      // on an undeclared type's p) follows from that error too.
+      if (shown && message.find("unknown type") != std::string::npos && global.checkerErrorIn(checkerChecked))
+        shown = false;
       lastFailure = message;
-      error(at, message + where);
+      lastFailureShown = shown;
+      error(at, message + where, shown);
       throw Unsupported{};
     }
     // A construct the code generator cannot translate yet.
-    [[noreturn]] void unsupported(Node* at, const std::string& what) { fail(at, "codegen does not support " + what + " yet"); }
+    [[noreturn]] void unsupported(Node* at, const std::string& what, bool shown = true) { fail(at, "codegen does not support " + what + " yet", shown); }
+    // Whether t (through references and pointers) is an undeclared type's placeholder class the
+    // checker reported where it is written: what fails on it follows from that error.
+    bool followsUndeclared(const Ty* t)
+    {
+      while (t && (t->isReference() || t->kind == TyKind::Pointer))
+        t = t->inner;
+      return t && t->decl && (t->decl->attributes & ATTR_Draft) && global.undeclaredReported(global.draftName(t->decl));
+    }
 
     // --- names and types ---
 
@@ -1257,12 +1279,13 @@ namespace
             // do not depend on which use comes first.
             structs[key].failed = true;
             structs[key].failedWhy = lastFailure;
+            structs[key].failedShown = lastFailureShown;
             ++sh.failuresRemembered;
             layoutCache.emplace(classTy, &structs[key]);
             if (mayPublish())
               sh.finalLayouts.publish(classTy, &structs[key]);
             errors.resize(errorsBefore);
-            fail(at, structs[key].failedWhy);
+            fail(at, structs[key].failedWhy, structs[key].failedShown);
           }
         }
       }
@@ -1281,7 +1304,7 @@ namespace
     {
       noteLayout(classTy);
       if (info.failed)
-        fail(at, info.failedWhy.empty() ? "codegen does not support the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed yet" : info.failedWhy);
+        fail(at, info.failedWhy.empty() ? "codegen does not support the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed yet" : info.failedWhy, info.failedShown);
       return info;
     }
 
@@ -1317,11 +1340,13 @@ namespace
       };
       // A type name declared nowhere is the resolver's placeholder class (a draft, so that checking
       // goes on): an error wherever a layout needs it, never an empty class that compiles.
+      // (Not shown again when the checker reported the name where it is written.)
       if (c->attributes & ATTR_Draft)
-        fail(at, "the type '" + global.draftName(c) + "' is not declared");
+        fail(at, "the type '" + global.draftName(c) + "' is not declared", !global.undeclaredReported(global.draftName(c)));
       auto undeclared = [&](const std::string& what, const Ty* draft)
       {
-        fail(at, "the layout of " + types.toString(key, &symbols) + ": " + what + " names '" + global.draftName(draft->decl) + "', which is not declared");
+        fail(at, "the layout of " + types.toString(key, &symbols) + ": " + what + " names '" + global.draftName(draft->decl) + "', which is not declared",
+             !global.undeclaredReported(global.draftName(draft->decl)));
       };
       // `Imm<strlen("x")>`: an argument the checker could not work out (a constant it could not
       // evaluate) is no argument to lay out with; taken for 0, `char data[N]` was an empty array
@@ -10583,7 +10608,7 @@ namespace
           auto* n = static_cast<NameExpr*>(e);
           Decl* d = n->resolved;
           if (!d)
-            unsupported(e, "an unresolved name (" + sym(n->name.last().symbol) + ")");
+            unsupported(e, "an unresolved name (" + sym(n->name.last().symbol) + ")", !(n->name.parts.size() == 1 && global.undeclaredReported(sym(n->name.last().symbol))));
           if (d->kind == NodeKind::VariableDecl)
             if (std::string bound; bindingAddress(static_cast<VariableDecl*>(d), e, bound))
               return bound;
@@ -10653,7 +10678,7 @@ namespace
           if ((!d || d->kind != NodeKind::VariableDecl) && !m->member.empty())
             d = findFieldByName(baseTy, m->member.last().symbol, e);
           if (!d || d->kind != NodeKind::VariableDecl)
-            unsupported(e, "a member access that did not resolve to a field");
+            unsupported(e, "a member access that did not resolve to a field", !followsUndeclared(baseTy));
           if (d->flags & DF_Static)
             return globalAddress(static_cast<VariableDecl*>(d), e, baseTy);
           if (const Ty* qualifier = memberQualifier(m, e))
@@ -17878,6 +17903,8 @@ namespace
         f = global.privateInstance(original, args, classTy);
       if (!conditionHolds(f))
         return; // conditional(false): the function does not exist in this build
+      struct Restore { const FunctionDecl*& at; const FunctionDecl* saved; ~Restore() { at = saved; } } restore{checkerChecked, checkerChecked};
+      checkerChecked = checked;
       global.functionEmitted(checked);
       if (f != checked)
         global.functionEmitted(f);

@@ -773,6 +773,8 @@ struct GlobalScope::Impl
   // `path:line: error: ...`, each once (a failed static_assert), with the units that reported it
   // (reportingUnit; null: none, or a build that records no units).
   std::unordered_map<std::string, std::vector<const void*>> checkerErrorSet;
+  // Where each was reported (its file and token; GlobalScope::checkerErrorIn).
+  std::unordered_map<std::string, std::pair<const ParsedFile*, uint32_t>> checkerErrorPlaces;
   std::unordered_set<std::string> reportedErrorTexts;              // what a collected USE_ReportedError points at (never erased)
   struct LayoutAssert                                              // a static_assert on a class's size or alignment
   {
@@ -4714,7 +4716,10 @@ struct GlobalScope::Impl
 
   void reportCheckerError(const ParsedFile* file, uint32_t token, const std::string& message)
   {
-    reportCheckerErrorText(locationOf(file, token) + ": error: " + message);
+    std::string text = locationOf(file, token) + ": error: " + message;
+    reportCheckerErrorText(text);
+    std::lock_guard lock(checkerErrorsMutex);
+    checkerErrorPlaces[text] = {file, token};
   }
 
   void reportCheckerErrorText(const std::string& text)
@@ -4738,7 +4743,13 @@ struct GlobalScope::Impl
     for (auto it = checkerErrorSet.begin(); it != checkerErrorSet.end();)
     {
       std::erase_if(it->second, [&](const void* u) { return u && units.count(u); });
-      it = it->second.empty() ? checkerErrorSet.erase(it) : std::next(it);
+      if (it->second.empty())
+      {
+        checkerErrorPlaces.erase(it->first);
+        it = checkerErrorSet.erase(it);
+      }
+      else
+        ++it;
     }
     std::erase_if(layoutAsserts, [&](const LayoutAssert& a) { return a.unit && units.count(a.unit); });
   }
@@ -18067,6 +18078,12 @@ struct GlobalScope::Impl
         {
           ++stats.typesUnresolved;
           countUnresolved(t->name, t->token);
+          // A type name nothing declares is an error where it is written, as an undeclared name is
+          // (not `class X` in a template argument, which declares X; not a value trait, isConst<T>,
+          // written where a type may be; not in a template's own walk: its instances say).
+          const NamePart& first = t->name.parts[0];
+          if (!t->elaborated && !(t->name.parts.size() == 1 && first.hasTemplateArgs && impl.isBoolTraitName(first.symbol)) && !inGenericTemplate())
+            reportUndeclared(t->name, t->token);
         }
       }
       else if (l.found == Found::Dependent)
@@ -21066,6 +21083,10 @@ struct GlobalScope::Impl
           auto* c = static_cast<ClassDecl*>(d);
           Scope* saved = scope;
           const Ty* savedThis = thisType;
+          // The bases are named from where the class is (its scope's parent: `class A::B : Base`
+          // sees A's Base, as in C++), not from where its definition is written.
+          if (c->ownScope && c->ownScope->parent)
+            scope = c->ownScope->parent;
           for (const ClassDecl::Base& b : c->bases)
           {
             walkType(b.type);
@@ -22921,6 +22942,31 @@ bool GlobalScope::unitlessErrorIn(const std::string& path)
       return true;
   return false;
 }
+
+bool GlobalScope::checkerErrorIn(const FunctionDecl* f)
+{
+  if (!f)
+    return false;
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  if (impl->instanceNameErrors.count(f) || impl->instanceAssertErrors.count(f))
+    return true; // (an instance's copy: its own errors)
+  for (const auto& [e, units] : impl->checkerErrorSet)
+    if (auto it = impl->checkerErrorPlaces.find(e); it != impl->checkerErrorPlaces.end() && it->second.first == f->file && it->second.second >= f->token &&
+                                                     it->second.second < f->endToken)
+      return true;
+  return false;
+}
+
+bool GlobalScope::undeclaredReported(const std::string& name)
+{
+  std::string said = "'" + name + "' is not declared";
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  for (const auto& [e, units] : impl->checkerErrorSet)
+    if (e.size() >= said.size() && e.compare(e.size() - said.size(), said.size(), said) == 0)
+      return true;
+  return false;
+}
+
 
 void GlobalScope::resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne)
 {

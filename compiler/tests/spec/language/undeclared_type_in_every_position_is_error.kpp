@@ -1,0 +1,41 @@
+// spec: a type name nothing declares is a front-end error where it is written, in every type position (a parameter, a return type, a local, a data member, a base, a template argument, a cast, sizeof, new), and the function's body does not add the code generator's errors
+// factorio: G's build.kpp without projectlib: `void build(Project& p)` gave only codegen's "a member access that did not resolve to a field"
+// error: undeclared_type_in_every_position_is_error.kpp:14: error: 'Project' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:15: error: 'Answer' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:18: error: 'Missing' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:21: error: 'Unknown' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:27: error: 'Undeclared' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:28: error: 'Element' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:29: error: 'Gone' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:30: error: 'Vanished' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:31: error: 'Nowhere' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:32: error: 'Absent' is not declared
+// error: undeclared_type_in_every_position_is_error.kpp:33: error: 'Lost' is not declared
+int build(Project& p) { return p.executable(1); }
+Answer compute() { return 42; }
+struct Settings
+{
+  Missing first;
+  int count = 0;
+};
+struct Derived : Unknown
+{
+  int value = 0;
+};
+int locals(void* raw)
+{
+  Undeclared u;
+  Vector<Element> items;
+  Gone* g = (Gone*)raw;
+  auto v = static_cast<Vanished*>(raw);
+  size_t n = sizeof(Nowhere);
+  auto made = new Absent();
+  return int(n) + int(sizeof(Lost));
+}
+int main()
+{
+  Settings s;
+  Derived d;
+  println("{} {}", s.count, d.value);
+  return 0;
+}

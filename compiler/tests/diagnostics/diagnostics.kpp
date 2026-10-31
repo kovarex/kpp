@@ -5,6 +5,9 @@ int gap()
 {
   return undefinedThing + 1;
 }
+// An undeclared type: the checker's error at the name; the body, whose member access cannot be
+// generated, adds no error of the code generator's (nor does gap's undeclared name).
+int built(Project& p) { return p.count; }
 int main()
 {
   int x = "s";
