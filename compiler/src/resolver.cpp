@@ -5932,20 +5932,31 @@ struct GlobalScope::Impl
       const Ty* have = types.unqualified(vt->inner);
       if (have == want || want->kind == TyKind::Void)
         return ConstValue::address(t, *v.target);
-      if (have->kind == TyKind::Void && v.target->storage)
-      {
-        // `(T*)p` of a void*: to what is there, when it is a T; malloc's bytes become Ts.
-        if (const Ty* there = constPointedType(v, 0); there && types.unqualified(there) == want)
-          return ConstValue::address(t, *v.target);
-        if (std::optional<ConstValue> typed = constTypeAllocation(v, want, 0))
-          return ConstValue::address(t, *typed->target);
-        return std::nullopt;
-      }
       if (std::optional<std::vector<size_t>> base = have->kind == TyKind::Class && want->kind == TyKind::Class ? constBasePath(have, want, 0) : std::nullopt)
       {
         ConstTarget part = *v.target;
         part.path.insert(part.path.end(), base->begin(), base->end());
         return ConstValue::address(t, std::move(part));
+      }
+      if (v.target->storage)
+      {
+        // `(T*)p` of a void* or another pointer to the evaluation's own memory: to what is there,
+        // when it is a T; malloc's bytes become Ts, also bytes typed as chars no one wrote yet
+        // (`(E**)this->slots`).
+        if (const Ty* there = constPointedType(v, 0); there && types.unqualified(there) == want)
+          return ConstValue::address(t, *v.target);
+        if (std::optional<ConstValue> typed = constTypeAllocation(v, want, 0, have->kind != TyKind::Void))
+          return ConstValue::address(t, *typed->target);
+        // `static_cast<RbNode<E>*>(base)`: down to the object whose base part it points at.
+        if (have->kind == TyKind::Class && want->kind == TyKind::Class)
+          if (std::optional<std::vector<size_t>> base = constBasePath(want, have, 0); base && !base->empty() && v.target->path.size() >= base->size() &&
+                                                                                       std::equal(base->begin(), base->end(), v.target->path.end() - base->size()))
+          {
+            ConstTarget whole = *v.target;
+            whole.path.resize(whole.path.size() - base->size());
+            if (const Ty* there = constPointedType(ConstValue::address(t, whole), 0); there && types.unqualified(there) == want)
+              return ConstValue::address(t, std::move(whole));
+          }
       }
       return std::nullopt;
     }
@@ -7017,6 +7028,8 @@ struct GlobalScope::Impl
     if (constLocal(callee, ctx) || (d && (d->kind == NodeKind::ParamDecl || (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef)))))
     {
       std::optional<ConstValue> fn = constValue(callee, ctx, depth + 1);
+      if (fn && fn->isObject())
+        return constCallObject(callee, c, ctx, depth); // `compare(a, b)`: an object's operator()
       return fn ? constCallThrough(*fn, c, ctx, depth) : std::nullopt;
     }
     if (!d || d->kind == NodeKind::TemplateParamDecl)
@@ -7260,6 +7273,8 @@ struct GlobalScope::Impl
     Lookup l;
     if (!s || !lookupInScope(s, m->member.parts[0].symbol, l, depth + 1))
       return std::nullopt;
+    if (l.decl && l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & (DF_Static | DF_Typedef)))
+      return constCallObject(m, c, ctx, depth, l.decl); // `this->hasher(key)`: a member object's operator()
     // Of the functions of the name, the one the call's arguments fill.
     FunctionDecl* f = nullptr;
     auto fills = [&](Decl* d) {
@@ -9901,14 +9916,28 @@ struct GlobalScope::Impl
   // Memory malloc allocated, untyped, given type t by the first cast to t* (or placement new of a
   // t into it): as many objects of t as fit, uninitialized (zero for calloc's); the pointer to the
   // first of them. Nullopt when p is no such memory (already typed: no new type for it).
-  std::optional<ConstValue> constTypeAllocation(const ConstValue& p, const Ty* t, int depth)
+  // retype: also bytes already typed (as chars), at their start, when no element was written yet.
+  std::optional<ConstValue> constTypeAllocation(const ConstValue& p, const Ty* t, int depth, bool retype = false)
   {
     auto it = p.isAddress() && p.target->storage ? constStorage().find(p.target->storage) : constStorage().end();
-    if (it == constStorage().end() || it->second.env != &constHeap() || !p.target->path.empty())
+    if (it == constStorage().end() || it->second.env != &constHeap())
       return std::nullopt;
     size_t index = it->second.index;
     ConstAllocation& a = constAllocations()[index];
-    if (!a.raw || a.isFreed || constHeap()[index].type)
+    if (!a.raw || a.isFreed)
+      return std::nullopt;
+    if (constHeap()[index].type)
+    {
+      const ConstValue& held = constHeap()[index].value;
+      bool untouched = retype && p.target->path == std::vector<size_t>{0} && held.isObject() && held.parts;
+      for (size_t i = 0; untouched && i < held.parts->size(); ++i)
+        untouched = (*held.parts)[i].isUnset();
+      if (!untouched)
+        return std::nullopt;
+      constHeap()[index].type = nullptr; // typed anew below
+      constHeap()[index].value = ConstValue::unset(nullptr);
+    }
+    else if (!p.target->path.empty())
       return std::nullopt;
     t = types.unqualified(t);
     std::optional<int64_t> size = constSizeOf(t, depth);
@@ -9937,7 +9966,7 @@ struct GlobalScope::Impl
     constHeap()[index].value = ConstValue::object(array, std::move(elements));
     it->second.type = array;
     ConstTarget first = *p.target;
-    first.path.push_back(0);
+    first.path = {0};
     return ConstValue::address(types.pointer(t), std::move(first));
   }
 
@@ -10648,6 +10677,68 @@ struct GlobalScope::Impl
     }
   }
 
+  // `it->member` of an iterator object (value v of expression e): its class's operator-> run on it
+  // where it is (an lvalue's place, else a temporary), the pointer it gives; nullopt for no object.
+  std::optional<ConstValue> constArrowOf(Expr* e, const ConstValue& v, const TypeContext& ctx, int depth)
+  {
+    if (!v.isObject() || !v.type || v.type->isBraceList() || types.unqualified(types.stripRef(v.type))->kind != TyKind::Class)
+      return std::nullopt;
+    Subst subst;
+    FunctionDecl* arrow = constClassOperator(v.type, P::Arrow, {}, subst, depth);
+    if (!arrow || !constDefinition(arrow))
+      return std::nullopt;
+    std::optional<ConstPlace> place = constPure(e) ? constPlaceOf(e, ctx, depth + 1) : std::nullopt;
+    if (!place)
+      place = constMaterialize(v, v.type);
+    std::optional<ConstValue> self = place ? constRead(*place) : std::optional<ConstValue>(v);
+    return constCallOn(arrow, subst, {}, &self, depth + 1, place ? &*place : nullptr);
+  }
+
+  // `hasher(key)`, `this->compare(a, b)`: an object of a class called, its operator() run on it where
+  // it is (an lvalue's place, else a temporary), with the arguments where they are.
+  // field: the data member a member call names (`this->hasher(key)`, whose name the walk may have
+  // bound to the operator() it calls), found in the object it is a member of.
+  std::optional<ConstValue> constCallObject(Expr* object, CallExpr* c, const TypeContext& ctx, int depth, Decl* field = nullptr)
+  {
+    std::optional<ConstPlace> place;
+    if (field && object->kind == NodeKind::MemberExpr)
+    {
+      auto* m = static_cast<MemberExpr*>(object);
+      std::optional<ConstPlace> base = m->base->kind == NodeKind::ThisExpr && m->op == P::Arrow ? constThisPlace(ctx)
+                                     : m->op == P::Dot && constPure(m->base)                    ? constPlaceOf(m->base, ctx, depth + 1)
+                                                                                                : std::nullopt;
+      std::optional<ConstValue> owner = base ? constRead(*base) : std::nullopt;
+      std::optional<std::vector<size_t>> path = owner && owner->isObject() ? constFieldPath(owner->type, field, 0) : std::nullopt;
+      if (path)
+      {
+        const ConstClassLayout* layout = constLayoutOf(owner->type, 0);
+        base->path.insert(base->path.end(), path->begin(), path->end());
+        base->type = declaredTypeOf(field, layout && !layout->subst.empty() ? &layout->subst : nullptr, 0);
+        place = base;
+      }
+    }
+    if (!place && constPure(object))
+      place = constPlaceOf(object, ctx, depth + 1);
+    std::optional<ConstValue> self = place ? constRead(*place) : constValue(object, ctx, depth + 1);
+    if (!self || !self->isObject() || !self->type || self->type->isBraceList() || types.unqualified(types.stripRef(self->type))->kind != TyKind::Class)
+      return std::nullopt;
+    if (!place)
+      place = constMaterialize(*self, self->type);
+    std::vector<ConstValue> values;
+    std::vector<std::optional<ConstPlace>> places;
+    std::vector<uint8_t> categories;
+    if (!constArguments(c->args, ctx, depth, values, &places, &categories))
+      return std::nullopt;
+    std::vector<const Ty*> argTypes;
+    for (const ConstValue& v : values)
+      argTypes.push_back(constTypeOfValue(v));
+    Subst subst;
+    FunctionDecl* call = constClassOperator(self->type, P::LParen, argTypes, subst, depth);
+    if (!call || !constDefinition(call))
+      return std::nullopt;
+    return constCallOn(call, subst, values, &self, depth + 1, place ? &*place : nullptr, &places, &categories);
+  }
+
   std::optional<ConstPlace> constPlaceOf(Expr* e, const TypeContext& ctx, int depth, bool calls = false)
   {
     while (e && e->kind == NodeKind::ParenExpr)
@@ -10684,8 +10775,10 @@ struct GlobalScope::Impl
         static_cast<UnaryExpr*>(e)->operand && static_cast<UnaryExpr*>(e)->operand->kind == NodeKind::ThisExpr)
       return constThisPlace(ctx); // `*this`
     if (e->kind == NodeKind::UnaryExpr && P(static_cast<UnaryExpr*>(e)->op) == P::Star && !static_cast<UnaryExpr*>(e)->isKeyword &&
-        !static_cast<UnaryExpr*>(e)->postfix && static_cast<UnaryExpr*>(e)->operand && constPointsIntoStorage(static_cast<UnaryExpr*>(e)->operand))
+        !static_cast<UnaryExpr*>(e)->postfix && static_cast<UnaryExpr*>(e)->operand &&
+        (constPointsIntoStorage(static_cast<UnaryExpr*>(e)->operand) || (calls && !constFrames().empty())))
     {
+      // (`*this->slotAt(i)` where a place is needed (a reference result): the call evaluated once.)
       // `*p` with p pointing at an object of the evaluation.
       std::optional<ConstValue> p = constValue(static_cast<UnaryExpr*>(e)->operand, ctx, depth + 1);
       if (p && p->isAddress() && p->target->storage)
@@ -10702,9 +10795,14 @@ struct GlobalScope::Impl
         base = constThisPlace(ctx);
       else if (m->op == P::Dot)
         base = constPlaceOf(m->base, ctx, depth + 1, calls);
-      else if (m->base && constPointsIntoStorage(m->base))
-        if (std::optional<ConstValue> p = constValue(m->base, ctx, depth + 1); p && p->isAddress() && p->target->storage)
-          base = constStoragePlace(*p, "a use of", depth); // `p->m`, p pointing at an object of the evaluation
+      else if (m->base && !constFrames().empty() && (constPure(m->base) || calls))
+        if (std::optional<ConstValue> p = constValue(m->base, ctx, depth + 1))
+        {
+          if (p->isAddress() && p->target->storage)
+            base = constStoragePlace(*p, "a use of", depth); // `p->m`, p pointing at an object of the evaluation
+          else if (std::optional<ConstValue> q = constArrowOf(m->base, *p, ctx, depth); q && q->isAddress() && q->target->storage)
+            base = constStoragePlace(*q, "a use of", depth); // `at->second`: through the iterator's operator->
+        }
       if (!base)
         return std::nullopt;
       std::optional<ConstValue> object = constRead(*base);
@@ -11365,6 +11463,93 @@ struct GlobalScope::Impl
   // StringView); such an object changed by the body makes no constant, since what its pointers
   // read is the array as it was.
   static constexpr uint32_t constRangeSymbol = 0xFFFFFFFDu;
+  // A range-for over a range whose begin() and end() are iterator objects (a Deque's, a Map's): the
+  // iterator and the end held as locals of the loop, `it != end`, `*it` and `++it` run by the
+  // iterator's class on them where they are; the variable refers to what `*it` refers to (or is a
+  // copy of it).
+  ConstFlow constRangeForIterators(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result,
+                                   int depth, const ConstValue& begin, const ConstValue& end, const Ty* declared, uint32_t name)
+  {
+    size_t at = env.size();
+    env.push_back(constBinding(0, begin, begin.type));
+    env.back().owns = true;
+    env.push_back(constBinding(0, end, end.type));
+    env.back().owns = true;
+    ConstPlace it{&env, at, {}, begin.type}, last{&env, at + 1, {}, end.type};
+    const Ty* iterator = types.unqualified(begin.type);
+    Subst derefSubst, stepSubst;
+    FunctionDecl* deref = constClassOperator(iterator, P::Star, {}, derefSubst, depth);
+    FunctionDecl* step = constClassOperator(iterator, P::PlusPlus, {}, stepSubst, depth);
+    if (!deref || !step || !constDefinition(deref) || !constDefinition(step))
+    {
+      if (constWhy().empty())
+        constWhy() = "a range-for over iterators of " + types.toString(iterator, &symbols) + " without operator* and prefix operator++ the evaluator can run";
+      return ConstFlow::Failed;
+    }
+    for (;;)
+    {
+      if (++constSteps() > 1000000)
+        return ConstFlow::Failed;
+      ConstOperand left{it, 1}, right{last, 1};
+      std::optional<ConstValue> a = constRead(it), b = constRead(last);
+      std::optional<ConstValue> more = a && b ? constBinaryValues(P::NotEq, *a, *b, ctx, depth + 1, &left, &right) : std::nullopt;
+      std::optional<bool> go = more ? constTruth(*more, depth + 1) : std::nullopt;
+      if (!go)
+        return ConstFlow::Failed;
+      if (!*go)
+        break;
+      size_t bodyMark = env.size();
+      std::optional<ConstPlace> element = constCallPlace(deref, derefSubst, {}, it, depth + 1); // `*it` refers to the element
+      if (declared && declared->isReference() && element)
+      {
+        ConstPlace resolved = constResolve(*element);
+        ConstBinding alias{name, ConstValue::unset(declared)};
+        alias.type = element->type;
+        alias.writable = !(declared->inner && declared->inner->isConst) && !resolved.readOnly;
+        alias.aliasEnv = resolved.env;
+        alias.aliasIndex = resolved.index;
+        alias.aliasPath = resolved.path;
+        env.push_back(std::move(alias));
+      }
+      else
+      {
+        std::optional<ConstValue> value;
+        if (element)
+          value = constRead(*element);
+        else
+        {
+          std::optional<ConstValue> self = constRead(it);
+          value = self ? constCallOn(deref, derefSubst, {}, &self, depth + 1, &it) : std::nullopt; // `*it` by value
+        }
+        if (!value || value->isUnset())
+          return ConstFlow::Failed;
+        const Ty* own = declared && !containsAuto(declared) ? declared : value->type;
+        if (own && !own->isReference() && value->isObject() && value->type && types.unqualified(types.stripRef(value->type)) == types.unqualified(own) &&
+            constCopyRunsCode(own))
+          value = constCopyConstruct(own, *value, element, false, depth + 1);
+        else if (declared && !containsAuto(declared))
+          value = constConvertTo(value, declared, depth + 1);
+        if (!value)
+          return ConstFlow::Failed;
+        env.push_back(constBinding(name, *value, declared));
+        env.back().owns = !(declared && declared->isReference());
+        if (declared && declared->isReference())
+          env.back().writable = false;
+      }
+      ConstFlow flow = constStatement(r->body, ctx, env, result, depth + 1);
+      if (!constEndLocals(env, bodyMark, depth, flow != ConstFlow::Failed))
+        return ConstFlow::Failed;
+      if (flow == ConstFlow::Returned || flow == ConstFlow::Failed)
+        return flow;
+      if (flow == ConstFlow::Break)
+        break;
+      std::optional<ConstValue> self = constRead(it);
+      if (!self || !constCallOn(step, stepSubst, {}, &self, depth + 1, &it)) // `++it`, where it is
+        return ConstFlow::Failed;
+    }
+    return ConstFlow::Next;
+  }
+
   ConstFlow constRangeFor(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth)
   {
     if (!r->var || r->var->kind != NodeKind::VariableDecl || !r->range || !r->body)
@@ -11406,6 +11591,8 @@ struct GlobalScope::Impl
       std::optional<ConstValue> b = constRangeEnd(*held, symBegin, depth + 1, &*range, write);
       std::optional<ConstValue> e = constRangeEnd(*held, symEnd, depth + 1, &*range, write);
       bool empty = b && e && b->kind == ConstValue::Kind::Int && e->kind == ConstValue::Kind::Int && b->i == 0 && e->i == 0; // two nulls
+      if (b && e && b->isObject() && e->isObject() && b->type && types.unqualified(b->type)->kind == TyKind::Class)
+        return constRangeForIterators(r, ctx, env, result, depth, *b, *e, declared, name); // a Deque's, a Map's iterators
       if (b && e && b->isAddress() && e->isAddress() && b->target->storage)
       {
         // Into an array of the evaluation's own (a local Array's): the elements there, which a

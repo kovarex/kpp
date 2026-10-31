@@ -1,6 +1,5 @@
 // spec: a range-for over a const Deque (DequeIterator's != and ++) works in a compile-time evaluation as at run time; the constant equals what the program computes (`6`)
 // factorio: build.kpp (design.md 12): projectlib's describe() walks Project's Deque<Executable>
-// pending: `it != end` of two DequeIterators is "an operator on an object or a pointer", no constant
 extern "C" import "stdio.h";
 constexpr int sum(const Deque<int>& all)
 {
