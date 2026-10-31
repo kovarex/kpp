@@ -82,7 +82,12 @@ if not exist %GAME%\run\config\config.ini (
 ) > %GAME%\run\config\config.ini
 rem The C++ log loads the game's test_mod, so this run does too, from a copy (a mod the game finds
 rem new is enabled): then its checksums, the prototype list's 486241314 among them, are comparable.
-if not exist %GAME%\run\mods\test_mod_1.0.0 xcopy /e /i /q %FACTORIO%\tests\mods\test_mod_1.0.0 %GAME%\run\mods\test_mod_1.0.0 >nul
+rem A game directory that has tests\ (a snapshot's) gives the game its test mods itself, from
+rem read-data\..\tests\mods (Paths::testModsPath; found disabled unless the mod list enables them, as in
+rem the C++ build from the same layout): then no copy, which would be a "Duplicate mod" (and an earlier
+rem run's copy goes).
+if exist %GAME%\tests\mods\test_mod_1.0.0 if exist %GAME%\run\mods\test_mod_1.0.0 rmdir /s /q %GAME%\run\mods\test_mod_1.0.0
+if not exist %GAME%\tests\mods\test_mod_1.0.0 if not exist %GAME%\run\mods\test_mod_1.0.0 xcopy /e /i /q %FACTORIO%\tests\mods\test_mod_1.0.0 %GAME%\run\mods\test_mod_1.0.0 >nul
 echo == running %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%
 %GAME%\bin\x64\factorio.exe --no-crash-handler%ARGS%
 echo == factorio exit %errorlevel%; the log: %GAME%\run\factorio-current.log
