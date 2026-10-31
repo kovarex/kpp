@@ -42,7 +42,9 @@ Decided by kovarex; every thread follows them.
   fails the run.
 - One thread per worktree, under C:\kpp-sandbox (see its README.md). C:\kpp stays clean master.
   Never create top-level directories in C:\. Rebase onto origin/master; push fast-forward only when
-  `run_tests.cmd` and `spec.cmd` pass (and the game still runs, for codegen). Commit small, push
+  `run_tests.cmd` and `spec.cmd` pass (and the game still runs, for codegen). A change that can
+  alter the converted game also needs `convert.cmd`: headline 0, tests errors 0
+  (kpp\tests-errors.txt: every one is a stubbed test function) and every smoke test. Commit small, push
   promptly. Never `git stash`: the stash is shared across worktrees.
 - Ownership: A resolver, parser, compile speed, persistent compiler; B codegen, driver, layout,
   cimport, linking, running the game; C convert.cpp, programs/factorio, the stdlib (sole owner),
