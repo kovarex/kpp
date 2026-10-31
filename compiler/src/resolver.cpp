@@ -21644,6 +21644,7 @@ GlobalScope::ChangedName GlobalScope::changedNameOf(const FunctionDecl* f)
     out.classScope = it->second;
   else if (f->name.parts.size() > 1)
     out.classScope = ChangedName::anyClass; // `X::f` whose class is not known here: every class's f
+  out.memberOnly = out.classScope && !(f->flags & DF_Friend); // (a friend defined in its class is found by ADL, recorded by name)
   return out;
 }
 
@@ -21659,6 +21660,8 @@ namespace
     std::unordered_set<uint32_t> anyClass;
     bool reads(const DependencyList& l) const
     {
+      if (symbols.empty() && members.empty() && anyClass.empty())
+        return false; // (no name changed: a body edit's; a list of millions is not walked for nothing)
       for (RecordedName n : l.names)
         if (!isMemberName(n) ? symbols.count(recordedSymbol(n)) != 0 : members.count(n) || anyClass.count(recordedSymbol(n)))
           return true;
@@ -21666,14 +21669,38 @@ namespace
     }
   };
 
-  NameReaders nameReaders(const std::vector<GlobalScope::ChangedName>& changed, const std::vector<const Scope*>& relationScopes)
+  // byClassOnly: a member function's name is read only through its class (walksReading: a lookup
+  // by name alone, a namespace's, never reaches a member, whose callers look it up in its class).
+  // f(i) for every i in [0, count) on the machine's threads. A compile server's edit scans every
+  // unit's recorded dependencies (millions of names and uses; 0.8 s on one thread for the game): each
+  // scan keeps what it finds per shard, joined in shard order after, as one thread finds it.
+  template<typename F>
+  void forEachParallel(size_t count, F&& f)
+  {
+    unsigned threads = unsigned(std::min<size_t>(std::max(1u, std::thread::hardware_concurrency()), count));
+    std::atomic<size_t> next{0};
+    auto worker = [&]
+    {
+      for (size_t i; (i = next.fetch_add(1)) < count;)
+        f(i);
+    };
+    std::vector<std::thread> pool;
+    for (unsigned t = 1; t < threads; ++t)
+      pool.emplace_back(worker);
+    worker();
+    for (std::thread& t : pool)
+      t.join();
+  }
+
+  NameReaders nameReaders(const std::vector<GlobalScope::ChangedName>& changed, const std::vector<const Scope*>& relationScopes, bool byClassOnly = false)
   {
     NameReaders out;
     std::unordered_map<const Scope*, std::vector<const Scope*>> derived; // a class scope -> the classes naming it as a base
     bool derivedKnown = false;
     for (const GlobalScope::ChangedName& c : changed)
     {
-      out.symbols.insert(c.symbol);
+      if (!byClassOnly || !c.memberOnly)
+        out.symbols.insert(c.symbol);
       if (c.classScope == GlobalScope::ChangedName::anyClass)
         out.anyClass.insert(c.symbol);
       else if (c.classScope)
@@ -22159,18 +22186,22 @@ std::vector<const Decl*> GlobalScope::walksReading(const std::vector<ChangedName
     std::lock_guard lock(impl->relationScopesMutex);
     relations = impl->relationScopes;
   }
-  NameReaders names = nameReaders(changed, relations);
-  std::vector<const Decl*> out;
-  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+  NameReaders names = nameReaders(changed, relations, true);
+  std::vector<std::vector<const Decl*>> found(std::size(impl->declDependencies));
+  forEachParallel(std::size(impl->declDependencies), [&](size_t i)
   {
+    Impl::DeclDependencyShard& shard = impl->declDependencies[i];
     std::lock_guard lock(shard.mutex);
     for (auto& [key, deps] : shard.map)
     {
       std::lock_guard l(deps->mutex);
       if (names.reads(deps->list))
-        out.push_back(reinterpret_cast<const Decl*>(key & ~uintptr_t(7)));
+        found[i].push_back(reinterpret_cast<const Decl*>(key & ~uintptr_t(7)));
     }
-  }
+  });
+  std::vector<const Decl*> out;
+  for (const std::vector<const Decl*>& f : found)
+    out.insert(out.end(), f.begin(), f.end());
   return out;
 }
 
@@ -22214,29 +22245,51 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
   for (const Decl* c : classes)
     if (membersReadOutsideUnits(c))
       return fail("a changed class's member list was read outside any recorded unit");
-  // The declared types that read them, and what read those: one pass for who reads what, then
-  // followed from the names' readers and the given declarations.
+  // The declared types that read them, and what read those: one pass for the direct readers, then
+  // (only when there are some to follow) one for who reads what, followed from them.
   {
     std::lock_guard lock(impl->typeDependenciesMutex);
     std::unordered_map<const void*, std::vector<std::pair<const Decl*, Dependencies*>>> readersOf; // declaration -> declared types that read its type
     std::vector<std::pair<const Decl*, Dependencies*>> pending;
-    for (auto& [owner, deps] : impl->typeDependencyOwners)
     {
-      std::lock_guard l(deps->mutex);
-      bool direct = names.reads(deps->list);
-      for (auto& [kind, what] : deps->list.uses)
-        if (kind == USE_DeclaredType)
+      // (in chunks on all threads, each its direct readers and its first reason to fail, joined in order)
+      const auto& owners = impl->typeDependencyOwners;
+      constexpr size_t chunks = 256;
+      std::vector<std::pair<const Decl*, Dependencies*>> direct[chunks];
+      const char* failed[chunks] = {};
+      forEachParallel(chunks, [&](size_t c)
+      {
+        for (size_t k = owners.size() * c / chunks, end = owners.size() * (c + 1) / chunks; k < end && !failed[c]; ++k)
         {
-          readersOf[what].push_back({owner, deps});
-          direct = direct || types.count(what);
+          auto [owner, deps] = owners[k];
+          std::lock_guard l(deps->mutex);
+          bool reads = names.reads(deps->list);
+          for (auto& [kind, what] : deps->list.uses)
+            if (kind == USE_DeclaredType)
+              reads = reads || types.count(what);
+            else if (kind == USE_RanBody && ran.count(what))
+              failed[c] = "a declared type ran a changed body (an array bound, a constant template argument)";
+            else if (kind == USE_ClassMembers && lists.count(what))
+              failed[c] = "a declared type read a changed class's member list";
+          if (reads)
+            direct[c].push_back({owner, deps});
         }
-        else if (kind == USE_RanBody && ran.count(what))
-          return fail("a declared type ran a changed body (an array bound, a constant template argument)");
-        else if (kind == USE_ClassMembers && lists.count(what))
-          return fail("a declared type read a changed class's member list");
-      if (direct)
-        pending.push_back({owner, deps});
+      });
+      for (size_t c = 0; c < chunks; ++c)
+      {
+        if (failed[c])
+          return fail(failed[c]);
+        pending.insert(pending.end(), direct[c].begin(), direct[c].end());
+      }
     }
+    if (!pending.empty())
+      for (auto& [owner, deps] : impl->typeDependencyOwners)
+      {
+        std::lock_guard l(deps->mutex);
+        for (auto& [kind, what] : deps->list.uses)
+          if (kind == USE_DeclaredType)
+            readersOf[what].push_back({owner, deps});
+      }
     while (!pending.empty())
     {
       auto [owner, deps] = pending.back();
@@ -22254,20 +22307,33 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
         pending.insert(pending.end(), it->second.begin(), it->second.end());
     }
   }
-  for (Impl::InstanceShard& shard : impl->instanceShards)
   {
-    std::lock_guard lock(shard.mutex);
-    for (auto& [key, record] : shard.map)
-      if (reads(record->deps))
-      {
-        if (!instances)
-          return fail("an instance read a changed function's name or ran a changed body");
-        // One that cannot be checked again fails the build here, before any file is walked again
-        // (recheckInstancesOf would refuse it after the walks).
-        if (record->state.load() != 2 || (!record->late && !record->recheck))
-          return fail("an instance read a change and cannot be checked again (no record of how it was checked, or unfinished)");
-        instances->push_back(record.get()); // checked again (recheckInstancesOf)
-      }
+    std::vector<std::vector<const void*>> reading(std::size(impl->instanceShards));
+    std::vector<const char*> failed(std::size(impl->instanceShards), nullptr);
+    forEachParallel(std::size(impl->instanceShards), [&](size_t i)
+    {
+      Impl::InstanceShard& shard = impl->instanceShards[i];
+      std::lock_guard lock(shard.mutex);
+      for (auto& [key, record] : shard.map)
+        if (!failed[i] && reads(record->deps))
+        {
+          if (!instances)
+            failed[i] = "an instance read a changed function's name or ran a changed body";
+          // One that cannot be checked again fails the build here, before any file is walked again
+          // (recheckInstancesOf would refuse it after the walks).
+          else if (record->state.load() != 2 || (!record->late && !record->recheck))
+            failed[i] = "an instance read a change and cannot be checked again (no record of how it was checked, or unfinished)";
+          else
+            reading[i].push_back(record.get()); // checked again (recheckInstancesOf)
+        }
+    });
+    for (size_t i = 0; i < std::size(impl->instanceShards); ++i)
+    {
+      if (failed[i])
+        return fail(failed[i]);
+      if (instances)
+        instances->insert(instances->end(), reading[i].begin(), reading[i].end());
+    }
   }
   for (Impl::InstShard& shard : impl->instShards)
   {
@@ -22291,24 +22357,28 @@ bool GlobalScope::invalidateReaders(const std::vector<ChangedName>& changed, con
                                        (u.first == USE_DeclaredType && types.count(u.second)); });
   }
   std::unordered_set<const ParsedFile*> found;
-  for (Impl::DeclDependencyShard& shard : impl->declDependencies)
+  std::vector<std::vector<const Decl*>> reading(std::size(impl->declDependencies));
+  forEachParallel(std::size(impl->declDependencies), [&](size_t i)
   {
+    Impl::DeclDependencyShard& shard = impl->declDependencies[i];
     std::lock_guard lock(shard.mutex);
     for (auto& [key, deps] : shard.map)
       if (reads(*deps))
+        reading[i].push_back(reinterpret_cast<const Decl*>(key & ~uintptr_t(7)));
+  });
+  for (const std::vector<const Decl*>& shardReading : reading)
+    for (const Decl* d : shardReading)
+    {
+      if (typeFromWalk(d))
       {
-        const Decl* d = reinterpret_cast<const Decl*>(key & ~uintptr_t(7));
-        if (typeFromWalk(d))
-        {
-          if (!typedByWalk)
-            return fail("a declaration whose type its walk gives (decltype, auto) read a changed function");
-          typedByWalk->push_back(d); // its type compared after the walk (forgetTypesFromWalks, typeOfDecl)
-        }
-        found.insert(d->file);
-        if (walks)
-          walks->push_back(d);
+        if (!typedByWalk)
+          return fail("a declaration whose type its walk gives (decltype, auto) read a changed function");
+        typedByWalk->push_back(d); // its type compared after the walk (forgetTypesFromWalks, typeOfDecl)
       }
-  }
+      found.insert(d->file);
+      if (walks)
+        walks->push_back(d);
+    }
   files.assign(found.begin(), found.end());
   std::sort(files.begin(), files.end(), [](const ParsedFile* a, const ParsedFile* b) { return a->index < b->index; });
   return true;

@@ -2353,6 +2353,23 @@ namespace
     kept.instancesOf.clear();
     kept.positionalCodegenInFull = false;
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
+    std::string codegenInFullBecause; // the first reason it is not (the server's log names it)
+    size_t codegenInFullOthers = 0;   // and how many more there are
+    auto inFull = [&](std::string why)
+    {
+      if (codegenCanFollow)
+        codegenInFullBecause = std::move(why);
+      else
+        ++codegenInFullOthers;
+      codegenCanFollow = false;
+    };
+    auto initializerOf = [&](const Decl* d)
+    {
+      std::string what = d->kind == NodeKind::StaticAssertDecl ? std::string("a static_assert")
+                         : d->kind == NodeKind::VariableDecl  ? "the initializer of " + kept.global->qualifiedName(const_cast<Decl*>(d))
+                                                              : "the walk of " + kept.global->qualifiedName(const_cast<Decl*>(d));
+      return what + " (" + (d->file ? kept.files[d->file->index].path.filename().string() : std::string("?")) + ")";
+    };
     std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
     std::vector<const FunctionDecl*> constantBodies; // changed constexpr bodies: what the evaluator ran them for is checked again
     for (size_t n = 0; n < changed.size(); ++n)
@@ -2422,7 +2439,7 @@ namespace
     // Codegen takes changed layouts (rebuildLLVM lays them out again, or declines); it runs in full
     // for local types that moved (remapKeptFile).
     if (kept.positionalCodegenInFull)
-      codegenCanFollow = false;
+      inFull("a local type moved (its name is its place)");
     if (!names.empty() || !constantBodies.empty())
     {
       std::vector<const ParsedFile*> readers;
@@ -2445,7 +2462,7 @@ namespace
             kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));
         }
         else if (!removedSet.count(d))
-          codegenCanFollow = false;
+          inFull(initializerOf(d) + " read a changed name");
       // The index line counts the entries as the index has them now: what the functions added and
       // took out (scopes none: no function with a class in its body is grafted).
       kept.indexEntries += global.entryCount() - entriesBefore;
@@ -2551,6 +2568,13 @@ namespace
                  (readingInstances.empty() ? std::string() : ", " + std::to_string(readingInstances.size()) + " instance(s) that read a change checked again") +
                  (droppedInstances ? " (" + std::to_string(droppedInstances) + " made by codegen dropped, to be made anew)" : std::string()) +
                  (kept.changedLayouts.empty() ? std::string() : ", " + std::to_string(kept.changedLayouts.size()) + " class layout(s) changed"));
+    {
+      // (the server's own part of the build's time, which the report's lines, a build from scratch's, do not show)
+      char times[160];
+      snprintf(times, sizeof times, "incremental: read the sources %.3f s, parse the changes %.3f s, walks and checks again %.3f s, lexed again for the report %.3f s",
+               collectTime, parseTime, kept.resolveTime, lexTime);
+      logBuildNote(times);
+    }
     // Codegen follows through its kept session when every module's object is where the last build
     // left it (an unchanged module is not assembled again, so it has no text to compile now).
     // The functions whose walks read an edited function's name are emitted again with it: an edit
@@ -2566,7 +2590,7 @@ namespace
         if (d->kind == NodeKind::FunctionDecl && static_cast<const FunctionDecl*>(d)->body)
           kept.changedBodies.push_back(const_cast<FunctionDecl*>(static_cast<const FunctionDecl*>(d)));
         else
-          codegenCanFollow = false; // (a global's initializer: no function codegen emits again on its own)
+          inFull(initializerOf(d) + " read an edited function"); // (no function codegen emits again on its own)
     }
     std::sort(kept.changedBodies.begin(), kept.changedBodies.end());
     kept.changedBodies.erase(std::unique(kept.changedBodies.begin(), kept.changedBodies.end()), kept.changedBodies.end());
@@ -2580,11 +2604,12 @@ namespace
     {
       std::error_code ec;
       std::string base = kept.options.exe + "." + std::to_string(k);
-      codegenCanFollow = !kept.options.exe.empty() && std::filesystem::exists(base + ".o", ec) && std::filesystem::exists(base + ".hash", ec);
+      if (kept.options.exe.empty() || !std::filesystem::exists(base + ".o", ec) || !std::filesystem::exists(base + ".hash", ec))
+        inFull("module " + std::to_string(k) + "'s object is missing");
     }
     kept.rebuildCodegen = codegenCanFollow && kept.codegen && !kept.options.exe.empty();
     if (!kept.rebuildCodegen)
-      logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? "a template's body, a global or a module's object needs it" : "no executable"));
+      logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? codegenInFullBecause + (codegenInFullOthers ? " (and " + std::to_string(codegenInFullOthers) + " more)" : std::string()) : "no executable"));
     noteIncrementalBuild();
     reportResolve(kept);
     kept.retiredCodegen.reset(); // (the client has its answer: reportResolve ends with buildDone)

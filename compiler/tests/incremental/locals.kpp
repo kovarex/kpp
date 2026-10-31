@@ -27,3 +27,9 @@ struct Grid
 };
 
 int Grid::fill(Array<int, biggest(2, 3)>& cells) { return int(cells.size()); }
+
+// A global whose initializer calls a free function named as a member edited elsewhere (Shape::area):
+// its lookup of the free `area` cannot reach the member, so the member's body edit is no reason to
+// generate the program in full (it emits again only what calls the member).
+int area(int w) { return w * 2; }
+int areaOfFour = area(4);

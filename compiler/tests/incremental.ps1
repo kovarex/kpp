@@ -144,6 +144,12 @@ $layouts = @($ours | Where-Object { $_ -match 'class layout\(s\) changed' })
 # beside Route's declaration of two declarators and removed: 10)
 if ($layouts.Count -lt 10) { "FAIL incremental: $($layouts.Count) layout edits built from the kept program, 10 expected"; $failed++ }
 else { "ok   incremental layout edits built from the kept program ($($layouts.Count))" }
+# A body edit never generates the program in full for a global's initializer that only looked up a
+# free function of the edited member's name (areaOfFour's area(4) and Shape::area: a lookup by name
+# alone does not reach a member).
+$byName = @($ours | Where-Object { $_ -match 'codegen in full: .* read an edited function' })
+if ($byName.Count -ne 0) { "FAIL incremental: $($byName.Count) body edits generated the program in full for a global that read the edited name: $($byName[0])"; $failed++ }
+else { "ok   incremental body edits not in full for a global that read only a free function's name" }
 $dropped = @($ours | Where-Object { $_ -match 'made by codegen dropped' })
 if ($dropped.Count -ne 2) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 2 expected (Panel::base through each server)"; $failed++ }
 else { "ok   incremental instances codegen made dropped and made anew (2)" }

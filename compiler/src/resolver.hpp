@@ -286,6 +286,7 @@ public:
   {
     uint32_t symbol;
     const void* classScope;
+    bool memberOnly = false; // a member function (no friend): only lookups in its class, or a class derived from it, reach it
     static inline const void* const anyClass = reinterpret_cast<const void*>(uintptr_t(1));
   };
   // Step 4 (functions added, removed or changed in a kept file). unindexFunction: takes a function

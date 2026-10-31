@@ -237,6 +237,31 @@ at -j 32 with or without the cache (384,338, 384,341 or 384,342 in master's own 
 384,338 at -j 1): a few types are interned only in some interleavings (not looked into yet; the
 report and the IR are the same).
 
+**The debug edit loop through the server, phase by phase (2026-10-31).** A frozen conversion of
+4c178a5b915 (scratch\resolver\ftree), the game as run.cmd builds it through one server, -j 32, a quiet
+machine (scratch\resolver\ed.sh: thread H's two edits, each and its undo). The server's log now gives
+its own phases (`incremental: read the sources, parse the changes, walks and checks again, lexed
+again for the report`) and names why codegen runs in full.
+- The leaf edit (a string in `AnimationBank::getAnimation`): 1.66 to 1.79 s. Reading the sources
+  0.08 s, parsing the change 0.03, walks and checks 0.09 to 0.10 (walksReading 0.01 of it), lexing
+  again for the report 0.07; codegen 0.21 to 0.25 (5 functions, 1 module assembled again), clang
+  0.51 to 0.53 (that module), the link 0.44; about 0.3 s more in the client and the reports.
+- The wide edit (`MapPosition::operator+`'s operands swapped): 6.6 to 6.8 s, of which codegen in full
+  4.1 to 4.7 s: `TransportBelt::itemPositionFunctions`, a global initialized with a table of lambdas
+  that use the operator, read the edited function, and codegen cannot emit a global's initializer
+  again (the codegen thread's: it would make the wide edit about 2.5 s). The walks and checks were
+  0.93 s of it: invalidateReaders built a map of every declared type's readers whether or not one
+  needed following (0.45 s), and it and walksReading scanned every unit's recorded names and uses
+  (some 20 million) on one thread. Now the map is made only when followed, no name is scanned when
+  none changed, and the scans run on all threads, joined in shard order: invalidateReaders 0.79 to
+  0.90 -> 0.04 s, walksReading 0.12 to 0.18 -> 0.01 s (every edit), the wide edit's walks and checks
+  0.93 -> 0.13 s.
+- Found on the way: a member function's body edit took every lookup of its name by name alone (a
+  namespace's) for a reader, so a global calling a free `operator+` (the C headers'
+  `D3D10_MESSAGE_CATEGORY`) or a free `area` made the edit of `Shape::area()` generate the program in
+  full. A lookup by name alone never reaches a member (its callers look it up in its class); a
+  friend defined in its class, found by ADL, still counts.
+
 **Clang behind module assembly: nothing to pipeline; the largest module first, 0.2 s (2026-10-31).**
 Codegen's module assembly and clang's 64 modules on one clock (a probe, not landed; clean build of
 the frozen tree at -j 32, scratch\resolver\pp1.py and ppan.py): assembly takes 0.51 s on all
