@@ -10,8 +10,9 @@ rem Then imgui frames through the generated imgui interface (native\generate_img
 rem against glm, the converted Lua against the C++ build's (tests\lua_compat.lua, the gate of Lua's
 rem conversion), and the GDI+ classes (overrides\added\src\Graphics\GdiplusClasses.kpp) against the
 rem SDK's gdiplus.h, and RE2 through the RegexUtil override (tests\regex_smoke.kpp) with the game's re2.lib.
-rem Last, the converter's own test of the sizes a serialiser writes (tests\convert_sizes\sizes.cpp): its
-rem conversion writes the bytes its C++ build writes.
+rem Last, the converter's own tests: the sizes a serialiser writes (tests\convert_sizes\sizes.cpp) and
+rem std::variant as typed unions (tests\convert_variant\variant.cpp), whose conversions print what
+rem their C++ builds print.
 rem Hand-written parts are in overrides\.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -116,3 +117,9 @@ if exist kpp\convert_sizes rd /s /q kpp\convert_sizes
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_sizes.exe kpp\convert_sizes || exit /b 1
 kpp\convert_sizes.exe > kpp\convert_sizes.out.txt
 fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected > nul && echo size widths: output as expected || (echo size widths: OUTPUT DIFFERS & fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected & exit /b 1)
+echo == variants: tests\convert_variant\variant.cpp, std::variant as the game uses it, converted to a typed union and run, prints what its C++ build prints (tests\convert_variant.expected)
+if exist kpp\convert_variant rd /s /q kpp\convert_variant
+%KPPC% --no-std --quiet --convert kpp\convert_variant --ext .cpp tests\convert_variant || exit /b 1
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_variant.exe kpp\convert_variant || exit /b 1
+kpp\convert_variant.exe > kpp\convert_variant.out.txt
+fc /w kpp\convert_variant.out.txt tests\convert_variant.expected > nul && echo variants: output as expected || (echo variants: OUTPUT DIFFERS & fc /w kpp\convert_variant.out.txt tests\convert_variant.expected & exit /b 1)
