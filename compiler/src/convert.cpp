@@ -845,6 +845,10 @@ namespace
     {"ADD_VALUE", "Values::addValue($1, PrototypeExplorerWidgets::demangleMemberName(#1), #1, result)"},
     {"SKIP_VALUE", "if constexpr (isReference<decltype($1)>) Values::recordReference(#1, result); else Values::recordValue($1, #1, result)"},
     {"ADD_ENUM", "Values::recordValue($1, #1, result); result.add($1, $2, $3)"},
+    // Util.hpp's `verify(x)`: x evaluated in every build, asserted only where asserts are (its #ifndef
+    // NDEBUG branch is `assert(x)`, which Kpp's release build compiles out with x:
+    // TransitionalRequestBuffers' `verify(set.erase(silo))` erased nothing there).
+    {"verify", "[&] { if constexpr (config::debug) { assert($1); } else { (void)($1); } }()"},
     // Windows' wingdi.h and winnt.h, as knownFunctionMacros above (with `(DWORD)((BYTE)(x))` where
     // wingdi.h has `(DWORD)(BYTE)(x)`, which Kpp asks to have written out).
     {"RGB", "((COLORREF)(((BYTE)($1) | ((WORD)((BYTE)($2)) << 8)) | (((DWORD)((BYTE)($3))) << 16)))"},
@@ -2800,7 +2804,8 @@ namespace
           // Util/Enums.hpp's ENUM as a readable class, ...); the first header to define a name gives
           // its definition.
           static const std::set<std::string> rewrittenByName = {"ENUM", "ENUM_IMPL", "ENUM_IMPL_NOSTRING", "BITFIELD", "MAKE_OPTIONAL"};
-          if (knownMacros.count(name) || knownFunctionMacros.count(name) || rewrittenByName.count(name) || localMacros.count(name))
+          if (knownMacros.count(name) || knownFunctionMacros.count(name) || argumentMacros.count(name) || rewrittenByName.count(name) ||
+              localMacros.count(name))
             continue;
           LocalMacro m;
           m.params = macro.first;
@@ -2981,7 +2986,7 @@ namespace
         body.pop_back();
       while (!body.empty() && isspace((unsigned char)body.front()))
         body.erase(body.begin());
-      if (knownMacros.count(name) || knownFunctionMacros.count(name))
+      if (knownMacros.count(name) || knownFunctionMacros.count(name) || argumentMacros.count(name))
       {
         counts.add("macro known");
         return ""; // its uses are rewritten
