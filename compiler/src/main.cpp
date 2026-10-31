@@ -55,7 +55,6 @@ namespace
     int showWhy = 0; // --why N
     std::string whyAt; // --why-at FILE:LINE[,FILE:LINE...]
     bool accessWarnings = false; // --access-warnings
-    bool formatErrors = false;   // --format-errors
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
@@ -98,8 +97,6 @@ namespace
             "  --access-warnings  warn of private and protected members named outside their class, its derived classes and\n"
             "                its friends, and of structs with a private member, a non-public base or a virtual function\n"
             "                (docs/design.md, \"struct and class\"); no error, no other change\n"
-            "  --format-errors  check printf-like calls' format strings against their arguments (types, sizes, count),\n"
-            "                an error each (off until the converted game has none)\n"
             "  --quiet       no statistics\n"
             "  --msvc-diagnostics  diagnostics at path(line) instead of path:line, the form Visual Studio's\n"
             "                Error List reads (docs/build.md)\n"
@@ -1359,8 +1356,6 @@ namespace
     // (docs/compile-speed.md, step 3), so that no file drags its instances onto one thread.
     if (options.accessWarnings)
       global.enableAccessWarnings();
-    if (options.formatErrors)
-      global.enableFormatErrors();
     global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
     build.resolveTime = seconds(Clock::now() - start);
     // What the reports count is the resolve's: codegen instantiates more afterwards.
@@ -2674,8 +2669,6 @@ int compile(int argc, char** argv)
       options.whyAt = argv[++i];
     else if (arg == "--access-warnings")
       options.accessWarnings = true;
-    else if (arg == "--format-errors")
-      options.formatErrors = true;
     else if (arg == "--quiet")
       options.quiet = true;
     else if (arg == "--msvc-diagnostics")

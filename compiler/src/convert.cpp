@@ -4210,7 +4210,7 @@ namespace
     void narrowFormatArguments(CallExpr* call)
     {
       // A C-variadic function's call whose last named parameter is the format (ssprintf, printf,
-      // snprintf), as --format-errors checks them: no other call's literal is a format.
+      // snprintf), as kppc checks them: no other call's literal is a format.
       Expr* callee = call->callee;
       Decl* d = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
               : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved

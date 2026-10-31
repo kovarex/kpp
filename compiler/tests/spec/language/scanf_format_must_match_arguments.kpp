@@ -1,10 +1,9 @@
-// spec: a scanf-like call (sscanf, scanf, fscanf) with a string literal format takes, for every assigning conversion, a pointer to a writable object of its type and size (`%d` an int*, `%lld` a 64-bit one, `%f` a float*, `%lf` a double*, `%s` and `%[...]` a char buffer), none for `%*d`, and as many as the conversions; each mismatch is an error (kppc --format-errors, with the printf family: design.md)
+// spec: a scanf-like call (sscanf, scanf, fscanf) with a string literal format takes, for every assigning conversion, a pointer to a writable object of its type and size (`%d` an int*, `%lld` a 64-bit one, `%f` a float*, `%lf` a double*, `%s` and `%[...]` a char buffer), none for `%*d`, and as many as the conversions; each mismatch is an error (with the printf family: design.md)
 // factorio: the game's three sscanf calls (TestFloatingPoint's, ...), found by the templates thread with language/printf_format_must_match_arguments
-// kppc: --format-errors
-// error: scanf_format_must_match_arguments.kpp:12: error: the format of sscanf takes a double* for "%lf", given float*
-// error: scanf_format_must_match_arguments.kpp:13: error: the format of sscanf takes a pointer to a writable object for "%d", given int32
-// error: scanf_format_must_match_arguments.kpp:14: error: the format of sscanf takes a pointer to a 64-bit integer for "%lld", given int32*
-// error: scanf_format_must_match_arguments.kpp:15: error: the format of sscanf has more conversions than arguments: none for "%d"
+// error: scanf_format_must_match_arguments.kpp:11: error: the format of sscanf takes a double* for "%lf", given float*
+// error: scanf_format_must_match_arguments.kpp:12: error: the format of sscanf takes a pointer to a writable object for "%d", given int32
+// error: scanf_format_must_match_arguments.kpp:13: error: the format of sscanf takes a pointer to a 64-bit integer for "%lld", given int32*
+// error: scanf_format_must_match_arguments.kpp:14: error: the format of sscanf has more conversions than arguments: none for "%d"
 extern "C" int sscanf(const char* buffer, const char* format, ...);
 int fine() { int a = 0; float b = 0; double c = 0; long long d = 0; char word[8]; char set[8]; return sscanf("1 2 3 4 x y z", "%d %f %lf %lld %*d %s %[a-z]", &a, &b, &c, &d, word, set); }
 float f = 0;

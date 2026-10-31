@@ -4567,7 +4567,6 @@ struct GlobalScope::Impl
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
 
   bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
-  bool formatErrors = false;   // kppc --format-errors: checkFormatCall at every printf-like call
   std::mutex accessMutex;
   // A use of a private or protected member that its code may not name, by its warning (`path:line:
   // warning: ...`), each once: a template's instances share the uses of their template.
@@ -14791,9 +14790,9 @@ struct GlobalScope::Impl
     {
       if (!bodyOf || undecidedBranches > 0)
         return;
+      // (not where the instance was asked for: the first request to claim it, which varies with the
+      // threads' order, and the error is to be the same at every thread count)
       std::string instance = instanceDescription();
-      if (!instance.empty() && requestFile)
-        instance += ", asked for at " + Impl::locationOf(requestFile, requestToken);
       if (!instance.empty())
         message += " (in " + instance + ")";
       std::lock_guard lock(impl.checkerErrorsMutex);
@@ -14839,7 +14838,7 @@ struct GlobalScope::Impl
     // An error where C++ compilers warn (-Wformat): the converted code is meant to be clean.
     void checkFormatCall(FunctionDecl* f, CallExpr* c)
     {
-      if (!impl.formatErrors || !(f->flags & DF_Variadic) || f->params.empty() || !file || file->isImported || probing)
+      if (!(f->flags & DF_Variadic) || f->params.empty() || !file || file->isImported || probing)
         return;
       size_t k = f->params.size() - 1;
       const Ty* ft = impl.declaredTypeOf(f, nullptr, 0);
@@ -22381,7 +22380,6 @@ GlobalScope::InstantiationStats GlobalScope::instantiationStats() const
 }
 
 void GlobalScope::enableAccessWarnings() { impl->accessWarnings = true; }
-void GlobalScope::enableFormatErrors() { impl->formatErrors = true; }
 
 std::vector<std::string> GlobalScope::accessReport(const std::vector<ParsedFile*>& files, std::string& summary)
 {
