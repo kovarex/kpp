@@ -6,9 +6,12 @@ page has the server's interface and the setup for each editor. For building and 
 an IDE, see [build.md](build.md), "Project files for an IDE".
 
 Status (2026-10-31):
-- Thread F is implementing the server on the compile server's kept program.
-- The VS Code extension is ready and checked against a stand-in server (tools/vscode/test).
-- The editor setups below follow the agreed interface and become live when `kpp --lsp` lands.
+- `kppc --lsp` is on master (thread F, ff6054ab), on the interface below. run_tests checks it
+  with the smoke client.
+- The VS Code extension is ready. Its protocol is checked; a run inside a real VS Code is not yet,
+  because VS Code is not installed on PC-PRACOVNA.
+- The Visual Studio extension is not built yet: the VS SDK workload and the .NET 8 SDK are not
+  installed.
 
 ## The language server
 
@@ -160,11 +163,9 @@ Community editions too):
 
 ## Questions for kovarex
 
-1. **The Visual Studio language client.** May I install the "Visual Studio extension development"
-   workload and the .NET 8 SDK, so that the VisualStudio.Extensibility VSIX can be built and
-   tested here and in the release workflow?
-2. **Testing the VS Code extension end to end.** VS Code is not installed on PC-PRACOVNA. One
-   option is installing it. The other is letting the tests download a VS Code build
-   (@vscode/test-electron), so that a test opens a .kpp file in a real VS Code and waits for the
-   server's diagnostics. Until then, only the protocol is checked (the smoke client), not the
-   extension running inside VS Code.
+1. **Installing the tools** (allowed by kovarex, relayed by the coordinator 2026-10-31). E's session
+   permissions refused the install commands, so they still need running, by kovarex or on his
+   direct instruction in E's session:
+   - VS Code: `winget install --id Microsoft.VisualStudioCode -e --scope user`;
+   - the .NET 8 SDK: `winget install --id Microsoft.DotNet.SDK.8 -e`;
+   - the "Visual Studio extension development" workload, added with the Visual Studio Installer.
