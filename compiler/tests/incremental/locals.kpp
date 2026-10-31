@@ -1,0 +1,25 @@
+// Locals whose walk gives their types: a deduced auto from unitDepth()'s return type, a class
+// template's arguments from its constructor's (unitHeight()'s). A return type edit makes each long
+// long in a walk again of this file, which must not keep the old walk's answer (the auto kept int:
+// silently 4 bytes where a build from scratch gave 8).
+template<typename T>
+struct Boxed
+{
+  T v;
+  Boxed(T x) : v(x) {}
+};
+
+int localSizes() { auto a = unitDepth(); Boxed b(unitHeight()); return int(sizeof(a)) * 10 + int(sizeof(b.v)); }
+
+// An instance checked by the index (matching an out-of-line definition to its declaration runs
+// biggest<int> for the array bound in its signature): it counts in the instances' statistics,
+// which a build that checks an instance again makes again from what each walk kept.
+template<typename T>
+constexpr T biggest(T a, T b) { T r = a > b ? a : b; return r; }
+
+struct Grid
+{
+  int fill(Array<int, biggest(2, 3)>& cells);
+};
+
+int Grid::fill(Array<int, biggest(2, 3)>& cells) { return int(cells.size()); }

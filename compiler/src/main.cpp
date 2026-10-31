@@ -1317,6 +1317,11 @@ namespace
       }
       begin = end + 1;
     }
+    // What each unit of the resolve read, for a compile server's next, incremental, build
+    // (docs/compile-speed.md, step 2); KPP_DEPENDENCY_STATS records them anywhere and reports them.
+    // From the index on: an instance checked there (finishIndex) counts in the instances'
+    // statistics, and a total made again from what each kept (step 4) must have it.
+    GlobalScope::recordDependencies(servingBuild() || getenv("KPP_DEPENDENCY_STATS"));
     auto start = Clock::now();
     parallelFor(parsed.size(), options.threads, [&](size_t i) { global.indexFile(*parsed[i]); });
     double indexTime = seconds(Clock::now() - start);
@@ -1349,9 +1354,6 @@ namespace
     }
     // Class instances' member bodies as tasks, taken by the workers that run out of files
     // (docs/compile-speed.md, step 3), so that no file drags its instances onto one thread.
-    // What each unit of the resolve read, for a compile server's next, incremental, build
-    // (docs/compile-speed.md, step 2); KPP_DEPENDENCY_STATS records them anywhere and reports them.
-    GlobalScope::recordDependencies(servingBuild() || getenv("KPP_DEPENDENCY_STATS"));
     if (options.accessWarnings)
       global.enableAccessWarnings();
     global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });
@@ -1983,19 +1985,15 @@ namespace
 
   // Whether a data member can come, go or change with what reads it found (its name's readers, its
   // class's member list's, its declared type's): one of a plain class's (no template, no union, no
-  // typed union, no lambda's closure), not static (a global), no alias or friend, one declarator.
-  bool plainDataMember(const DeclaredMember& d, const std::vector<DeclaredMember>& all)
+  // typed union, no lambda's closure), not static (a global), no alias or friend. (A declaration of
+  // several declarators comes or goes whole: functionsOnly pairs them a declaration at a time.)
+  bool plainDataMember(const DeclaredMember& d)
   {
     VariableDecl* v = d.v;
     ClassDecl* c = d.container;
-    if (d.templated || c->isTemplate || !c->templateParams.empty() || c->keyword == Kw::union_ || c->isTypedUnion || c->lambda ||
-        !c->isDefinition || c->name.empty() || (v->flags & (DF_Static | DF_Typedef | DF_Friend)) || v->name.parts.size() != 1 ||
-        !v->structuredBindings.empty())
-      return false;
-    for (const DeclaredMember& o : all)
-      if (o.v != v && o.v->type == v->type)
-        return false; // `int a, b;`: declarators sharing their type's tokens
-    return true;
+    return !(d.templated || c->isTemplate || !c->templateParams.empty() || c->keyword == Kw::union_ || c->isTypedUnion || c->lambda ||
+             !c->isDefinition || c->name.empty() || (v->flags & (DF_Static | DF_Typedef | DF_Friend)) || v->name.parts.size() != 1 ||
+             !v->structuredBindings.empty());
   }
 
   // Whether a function can come or go without anything but its name's readers seeing it: no
@@ -2081,34 +2079,50 @@ namespace
         for (uint32_t k = d.f->token; k < d.f->endToken && k < newCovered.size(); ++k)
           newCovered[k] = true;
       }
-    // Data members likewise (a class's layout edit): a kept member whose tokens all have places side
-    // by side at a new member's is the same, the others removed, the new ones not paired added.
-    std::unordered_map<uint32_t, const DeclaredMember*> newMemberByToken;
-    for (const DeclaredMember& d : newMembers)
-      newMemberByToken[d.v->token] = &d;
-    std::unordered_set<const VariableDecl*> pairedNewMembers;
-    std::vector<const DeclaredMember*> removedMembers, addedMembers;
-    for (const DeclaredMember& d : oldMembers)
+    // Data members likewise (a class's layout edit), a declaration at a time: its declarators all
+    // start at its first token and share its type's nodes (`MapPosition start, goal;`), so they are
+    // kept, removed or added together. A kept declaration whose tokens all have places side by side
+    // at a new one's is the same, the others removed, the new ones not paired added.
+    struct MemberDeclaration
     {
-      uint32_t s = d.v->token, e = memberEnd(d.v, oldTokens);
+      std::vector<const DeclaredMember*> declarators;
+      uint32_t end = 0; // one past its `;`
+    };
+    auto declarationsOf = [](const std::vector<DeclaredMember>& members, const std::vector<Token>& tokens)
+    {
+      std::map<uint32_t, MemberDeclaration> byToken;
+      for (const DeclaredMember& d : members)
+      {
+        MemberDeclaration& m = byToken[d.v->token];
+        m.declarators.push_back(&d);
+        m.end = std::max(m.end, memberEnd(d.v, tokens));
+      }
+      return byToken;
+    };
+    std::map<uint32_t, MemberDeclaration> oldDeclarations = declarationsOf(oldMembers, oldTokens), newDeclarations = declarationsOf(newMembers, out.tokens);
+    std::unordered_set<uint32_t> pairedNewDeclarations;
+    std::vector<const DeclaredMember*> removedMembers, addedMembers;
+    for (auto& [s, m] : oldDeclarations)
+    {
+      uint32_t e = m.end;
       bool same = e > s && e <= out.map.size() && out.map[s] != UINT32_MAX;
       for (uint32_t k = s; same && k < e; ++k)
         same = out.map[k] == out.map[s] + (k - s);
-      auto it = same ? newMemberByToken.find(out.map[s]) : newMemberByToken.end();
-      if (it != newMemberByToken.end() && memberEnd(it->second->v, out.tokens) == out.map[s] + (e - s))
+      auto it = same ? newDeclarations.find(out.map[s]) : newDeclarations.end();
+      if (it != newDeclarations.end() && it->second.end == out.map[s] + (e - s) && it->second.declarators.size() == m.declarators.size())
       {
-        pairedNewMembers.insert(it->second->v);
+        pairedNewDeclarations.insert(it->first);
         continue;
       }
-      removedMembers.push_back(&d);
+      removedMembers.insert(removedMembers.end(), m.declarators.begin(), m.declarators.end());
       for (uint32_t k = s; k < e && k < oldCovered.size(); ++k)
         oldCovered[k] = true;
     }
-    for (const DeclaredMember& d : newMembers)
-      if (!pairedNewMembers.count(d.v))
+    for (auto& [s, m] : newDeclarations)
+      if (!pairedNewDeclarations.count(s))
       {
-        addedMembers.push_back(&d);
-        for (uint32_t k = d.v->token; k < memberEnd(d.v, out.tokens) && k < newCovered.size(); ++k)
+        addedMembers.insert(addedMembers.end(), m.declarators.begin(), m.declarators.end());
+        for (uint32_t k = s; k < m.end && k < newCovered.size(); ++k)
           newCovered[k] = true;
       }
     if (removed.empty() && added.empty() && removedMembers.empty() && addedMembers.empty())
@@ -2124,11 +2138,11 @@ namespace
       if (!reached[k] && !newCovered[k])
         return why = "a change outside whole functions and data members", false;
     for (const DeclaredMember* d : removedMembers)
-      if (!plainDataMember(*d, oldMembers))
-        return why = "a removed or changed data member of a template, a union, or static, an alias, several declarators", false;
+      if (!plainDataMember(*d))
+        return why = "a removed or changed data member of a template, a union, or static, an alias", false;
     for (const DeclaredMember* d : addedMembers)
-      if (!plainDataMember(*d, newMembers))
-        return why = "an added or changed data member of a template, a union, or static, an alias, several declarators", false;
+      if (!plainDataMember(*d))
+        return why = "an added or changed data member of a template, a union, or static, an alias", false;
     for (const DeclaredFunction* d : removed)
       if (!plainFunction(*d, oldTokens))
         return why = "a removed or changed function others may read without its name (a template, virtual, special, constexpr)", false;

@@ -21065,6 +21065,19 @@ void GlobalScope::forgetWalks(const ParsedFile& file)
         deps->tidied = true;
       }
   }
+  // The types the old walk cached on its functions' locals (a deduced auto, a class template's
+  // arguments from its initializer): kept, the walk again took them for the answer instead of
+  // deducing them from what they read now (a return type edited: `Boxed b(unitDepth())` kept
+  // Boxed<int>, its initializer Boxed<long long>).
+  forEachNode(file.decls, [](Node* n)
+  {
+    if (n->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(n)->body)
+      forEachNode(static_cast<FunctionDecl*>(n)->body, [](Node* m)
+      {
+        if (m->kind == NodeKind::VariableDecl)
+          static_cast<VariableDecl*>(m)->cachedType.store(nullptr, std::memory_order_release);
+      });
+  });
 }
 
 std::vector<const void*> GlobalScope::instancesWalksUse(const ParsedFile& file)

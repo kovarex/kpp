@@ -23,6 +23,6 @@ int main()
   static_assert(limit() < 10, "the checker runs limit's body in main's walk");
   printf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", s.area(), scale(4), scale(4.5), int(combine(1, 2)), int(sizeof(Shape)), twice(5), Box<int>{2}.tripled(), n,
          int(sizeof(Holder)), viaScale(4.5), Gauge{}.reading(), readTwice(Meter{}), Panel{}.show(), viaLambda());
-  printf("%d %d\n", frameSize(), taggedSize()); // (holders.kpp: Shape by value, never named there)
+  printf("%d %d %d\n", frameSize(), taggedSize(), localSizes()); // (holders.kpp: Shape by value, never named there)
   return 0;
 }
