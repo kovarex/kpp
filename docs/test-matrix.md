@@ -108,6 +108,42 @@ comparison are in thread H's scratch.
 C's CRC runs on the same builds (C++ Debug `--crc-write` 9,501/9,501 in 2,264 s; C++ Release checked
 against it, 9,501/9,501 in 843 s, 0 mismatches) are slower because they write or check the CRCs.
 
+### Unit tests against C++ Debug's CRCs
+
+The runner's cross-platform CRC mode (tests\Main.cpp's `--crc-mode`): a run with `write` records
+every CRC and double the tests check (CHECK_CRC, CHECK_DOUBLE, and TestScenario's map CRC before
+each tick and at a test's end) per test; a run with `check` compares its own against them, each
+difference a failed check. C++ Debug writes: `tests.cmd --baseline-debug --crc-write F` (C:\Factorio's
+Debug factorio-test.exe of 4c178a5b915, 9,501/9,501, 1.87 MB of CRC data). The others check against
+F: `tests.cmd --baseline --crc-against F`, `tests.cmd DIR --crc-against F`, `tests.cmd --release DIR
+--crc-against F`. kppc 975d7584 (2026-10-31), a fresh conversion of 4c178a5b915 (headline 0, tests
+errors 0).
+
+| Build checked | Tests | Failed checks (CRC mismatches) | Test time |
+|---|---|---:|---:|
+| C++ Release (the control) | 9,501/9,501 | 0 | 843 s |
+| kppc debug | 9,500/9,500 | 0 | 1,105.5 s |
+| kppc release | 9,500/9,500 | 0 | 458.6 s |
+
+The way there, the first check (kppc 92a7fb5f's conversion): kppc release 17 tests with mismatches
+(31 failed checks), kppc debug 24 (43). Each cause was found by diffing the two builds' tagged map
+dumps of a failing test (`--dump-mode` with a CRC mode; the first differing tag):
+- Lua formatted numbers with the C runtime's sprintf, not trio's as its C++ build does, and the
+  game's files that include a Lua header called trio where C++ calls the C runtime (d9006ed7).
+- ssprintf formatted with the C runtime's vsnprintf into one static buffer; C++ formats with trio
+  into a thread_local one (9b4552aa). LuaPrintNumbers and 11 prototype tests.
+- move() of a const object emptied it (89e0adb0, spec language/move_of_const_copies): the player's
+  translation requests in flight lost their keys (Campaigns/LoadDemoLevel05).
+- A string literal was a private copy per module, so `==` of two pointers to it failed in kppc
+  debug (39d5785c): the latency-car tests' tank with a grid got no equipment (7 tests, debug only).
+- A line splice in a string literal kept its newline (17a6d854, spec
+  language/string_literal_line_splice): the tests' multi-line Lua commands echoed into the console
+  otherwise (ChunkBounds, EmptyMapGenSettingsReadWriteStability,
+  DestroyRoboportWithTriggerWhenSpawningRobotsForLogistics).
+
+MapDeserialiser/SaveLoadStdVariant, the one test the conversion leaves out
+(overrides\left-out-tests.txt), is the 9,501st of C++'s.
+
 ### Build time: the game, edit to linked executable
 
 **Method.** Each step runs the four builds one after another (paired, interleaved), two rounds;
