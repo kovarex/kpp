@@ -20,3 +20,4 @@ Deque: equal true erased 2
 Deque: [] mutable const at const back const
 List: mutable const mutable const mutable const
 List: equal true erased 2
+extract: 4 1 6 7 70

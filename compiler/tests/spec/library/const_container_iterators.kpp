@@ -52,5 +52,14 @@ int main()
   println("Deque: [] {} {} at {} back {}", which(deque[0]), which(constDeque[0]), which(constDeque.at(0)), which(constDeque.back()));
   List<int> list = {1, 2};
   probeSequence("List", list);
+  // extract takes the position begin() gives, a set's const one included (ForkLogic's
+  // `entries.extract(entries.begin())` of a std::set).
+  Set<int> extracting = {4, 5};
+  auto setNode = extracting.extract(extracting.begin());
+  MultiSet<int> multiExtracting = {6};
+  auto multiSetNode = multiExtracting.extract(multiExtracting.begin());
+  Map<int, int> mapExtracting = {{7, 70}};
+  auto mapNode = mapExtracting.extract(mapExtracting.begin());
+  println("extract: {} {} {} {} {}", setNode.value(), extracting.size(), multiSetNode.value(), mapNode.key(), mapNode.mapped());
   return 0;
 }

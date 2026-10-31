@@ -1204,7 +1204,7 @@ struct Set
   }
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
-  SetNodeHandle<T> extract(RbIterator<T> position) { return SetNodeHandle<T>(this->tree.unlink(position)); }
+  SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this->tree.unlink(RbIterator<T>(position))); }
   SetNodeHandle<T> extract(const T& key)
   {
     RbIterator<T> at = this->tree.find(key);
@@ -1573,7 +1573,7 @@ struct MultiSet
   }
   // Takes the entry at position out, together with its node: no copy, and pointers and references
   // to it stay valid while it is in the handle and after it is inserted somewhere.
-  SetNodeHandle<T> extract(RbIterator<T> position) { return SetNodeHandle<T>(this->tree.unlink(position)); }
+  SetNodeHandle<T> extract(const_iterator position) { return SetNodeHandle<T>(this->tree.unlink(RbIterator<T>(position))); }
   SetNodeHandle<T> extract(const T& key)
   {
     RbIterator<T> at = this->tree.find(key);
