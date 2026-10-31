@@ -1837,6 +1837,18 @@ namespace
         freshClosures[n->token] = static_cast<ClassDecl*>(n);
     });
     auto moved = [&](uint32_t t) { return t >= map.size() || map[t] != t; };
+    // A kept closure takes the name the new parse gives the lambda at its new place: true when that
+    // name is another.
+    auto renameClosure = [&](ClassDecl* c)
+    {
+      if (!c->lambda || c->name.empty() || c->token >= map.size() || map[c->token] == UINT32_MAX)
+        return false;
+      auto it = freshClosures.find(map[c->token]);
+      if (it == freshClosures.end() || it->second->name.empty() || it->second->name.last().symbol == c->name.last().symbol)
+        return false;
+      const_cast<NamePart&>(c->name.parts[c->name.parts.size() - 1]).symbol = it->second->name.last().symbol;
+      return true;
+    };
     std::vector<DeclaredFunction> functions;
     std::vector<Decl*> containers;
     collectFunctions(file.decls, nullptr, false, functions, containers);
@@ -1851,15 +1863,7 @@ namespace
           return;
         if (n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl)
         {
-          bool renamed = false;
-          if (auto* c = static_cast<ClassDecl*>(n); n->kind == NodeKind::ClassDecl && c->lambda && !c->name.empty() && c->token < map.size() &&
-                                                    map[c->token] != UINT32_MAX)
-            if (auto it = freshClosures.find(map[c->token]); it != freshClosures.end() && !it->second->name.empty() &&
-                                                             it->second->name.last().symbol != c->name.last().symbol)
-            {
-              const_cast<NamePart&>(c->name.parts[c->name.parts.size() - 1]).symbol = it->second->name.last().symbol;
-              renamed = true;
-            }
+          bool renamed = n->kind == NodeKind::ClassDecl && renameClosure(static_cast<ClassDecl*>(n));
           localType = localType || renamed || moved(n->token);
         }
         else if ((n->kind == NodeKind::VariableDecl && (static_cast<Decl*>(n)->flags & DF_Static)) || n->kind == NodeKind::TryStmt ||
@@ -1871,6 +1875,16 @@ namespace
       else if (positional)
         kept.changedBodies.push_back(d.f);
     }
+    // The closures outside function bodies, named alike (a global's initializer `{ [](int v) {...},
+    // ... }`, a default member initializer, a default argument): the instances made from them carry
+    // their names (`FunctionImpl<int32, int32>::call<__lambda_3_2>`), so a renamed one is emitted in
+    // full too. (Only renamed: outside a function their names carry no token. The ones in bodies
+    // again: renamed already.)
+    forEachNode(file.decls, [&](Node* n)
+    {
+      if (!skip.count(n) && n->kind == NodeKind::ClassDecl && renameClosure(static_cast<ClassDecl*>(n)))
+        kept.positionalCodegenInFull = true;
+    });
     bool lost = false;
     std::unordered_set<Node*> done;
     auto remap = [&](Node* n)
