@@ -4,7 +4,7 @@ files from NFS to this machine, checks every archive's tree hash, and keeps 14 d
 index. NFS allows automated SSH once a day per site for backups; run this from a scheduled task, not
 more often.
 
-  .\pull-backup.ps1 -SshTarget <user>_kpp@ssh.<host>.nearlyfreespeech.net -Destination D:\backup\kpp.net
+  .\pull-backup.ps1 -SshTarget kpp_kovarex@ssh.<host>.nearlyfreespeech.net -Destination D:\backup\kpp.net
 
 Needs OpenSSH (Windows' own) and rsync (from Git for Windows' or MSYS2's usr\bin) on PATH, and the
 backup key in ~\.ssh\kppnet-backup, authorized in NFS's member keychain.

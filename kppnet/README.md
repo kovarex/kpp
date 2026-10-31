@@ -22,9 +22,12 @@ dropped when the hosting moved to NFS (git history: bbf5cf61).
 
 ## What kovarex provides or does by hand
 No thread can do these: they need his NFS account, his keys or his answers.
-1. **The NFS site** for kpp.net: a production site ($0.05 a day). Its server type must allow
-   daemons and proxies, which stage 3 needs; Apache with CGI is enough until then. The domain's
-   DNS is pointed at the site (NFS's DNS hosting, since the domain is registered there).
+1. **The NFS site** for kpp.net: **created 2026-11-01**.
+   - Name `kpp`, server type Apache 2.4 Generic (static files, CGI, daemons and proxies; no PHP).
+   - Aliases `kpp.net` and `www.kpp.net`.
+   - SSH login `kpp_kovarex@ssh.<host>.nearlyfreespeech.net`; the host is the one his panel shows.
+
+   What he does next is the checklist at the top of [RUNBOOK.md](RUNBOOK.md), "Next, for kovarex".
 2. **SSH keys**: his Ed25519 public key in the NFS member keychain. A separate key for the threads'
    pushes, if NFS allows those (question 1 below), one for the daily backup pull, and CI's key with
    the GitHub settings `KPP_NET_SSH_KEY` (secret), `KPP_NET_SSH` and `KPP_NET_KNOWN_HOSTS`

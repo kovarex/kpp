@@ -421,7 +421,7 @@ downloads of a 50 KB library.
   Not on kpp.net: factorio-in-kpp (above).
 - **Where they live:** bare repositories in the site's private area
   (`/home/private/git/kpp.git` ...). Clone URL:
-  `<user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git`. Every push goes there
+  `kpp_kovarex@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git`. Every push goes there
   first.
 - **Mirroring to GitHub**, two ways depending on what NFS allows:
   1. **Preferred:** a `post-receive` hook on kpp.net pushes to GitHub with a deploy key, if NFS

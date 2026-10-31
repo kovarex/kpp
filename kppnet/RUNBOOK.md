@@ -3,21 +3,41 @@
 These steps are for a person at a keyboard. Steps marked **(kovarex)** need his NFS account,
 GitHub account or keys. Nothing here has been run, and no Claude thread may run these steps.
 
-Order matters: GitHub stays the place everyone pushes to until step 5. Placeholders:
-- `<user>`: his NFS member name;
-- `<host>`: the SSH host NFS shows for the site.
-
+Order matters: GitHub stays the place everyone pushes to until step 5. The one placeholder is
+`<host>`: the SSH host NFS's panel shows for the site, as in `ssh.<host>.nearlyfreespeech.net`.
 The design is in [docs/library-registry.md](../docs/library-registry.md), "Hosting on kpp.net".
 
-## 1. The site (kovarex)
-1. In NFS's member panel, create the site `kpp` as a **production** site. For the server type, take
-   Apache with CGI for now. A type that also allows daemons and proxies is needed only for stage 3,
-   and the type can be changed later.
-2. Add the aliases `kpp.net` and `www.kpp.net`, and let NFS set the DNS (the domain is registered
-   there).
-3. Wait for automatic TLS, then check that https://kpp.net shows the empty site.
-4. Add your Ed25519 public key to the member keychain (Profile > SSH keys), and check:
-   `ssh <user>_kpp@ssh.<host>.nearlyfreespeech.net`.
+**No thread connects to kpp.net** (SSH, uploads, CI publishing) until kovarex says go.
+
+## Next, for kovarex
+1. **The SSH host and the system**:
+   - Log in with `ssh kpp_kovarex@ssh.<host>.nearlyfreespeech.net` and tell the coordinator the
+     host name.
+   - Run step 2's line, which starts with `uname -a` for the FreeBSD version.
+   - Check that CGI works on the Generic server type. Put this as `/home/public/cgi-test.cgi`,
+     run `chmod 755 /home/public/cgi-test.cgi`, open https://kpp.net/cgi-test.cgi (it should show
+     the `uname` line), then delete it:
+     ```sh
+     #!/bin/sh
+     printf 'Content-Type: text/plain\r\n\r\n'
+     uname -a
+     ```
+2. **CI's key for publishing**: step 8 below. It sets the secret `KPP_NET_SSH_KEY` and the
+   variables `KPP_NET_SSH` (`kpp_kovarex@ssh.<host>.nearlyfreespeech.net`) and
+   `KPP_NET_KNOWN_HOSTS`. CI publishes kpp's packages and the SDL3 mirror from then on.
+3. **The first static upload**, once G's site generator produces pages. It goes to
+   `/home/public/` over SSH (step 7 creates `registry/` beside it).
+
+Then steps 3 to 6 (repositories, mirror, the switch of pushes, backups), when the coordinator
+schedules them.
+
+## 1. The site (kovarex) — done 2026-11-01
+- The site `kpp` exists, with server type **Apache 2.4 Generic** (static files, CGI, and daemons
+  with proxies; no PHP).
+- Its aliases are `kpp.net` and `www.kpp.net`.
+- The SSH login is `kpp_kovarex`.
+- Still to check: that https://kpp.net serves over TLS, and that your Ed25519 key is in the member
+  keychain (Profile > SSH keys).
 
 ## 2. What the realm has (kovarex, over SSH)
 ```sh
@@ -39,7 +59,7 @@ on kpp.net: it stays private on GitHub (kovarex, 2026-11-01).
 
 From PC-PRACOVNA, fill it from the current GitHub repository (all branches and tags):
 ```sh
-git -C C:/kpp push --mirror <user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git
+git -C C:/kpp push --mirror kpp_kovarex@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git
 ```
 `/home/private` is not served on the web. Run `git ls-remote` against it and check that master is
 the same commit as on GitHub.
@@ -59,7 +79,7 @@ the same commit as on GitHub.
 
 **Option B, otherwise:** each clone gets two push URLs, kpp.net first:
 ```sh
-git -C C:/kpp remote set-url --push origin <user>_kpp@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git
+git -C C:/kpp remote set-url --push origin kpp_kovarex@ssh.<host>.nearlyfreespeech.net:/home/private/git/kpp.git
 git -C C:/kpp remote set-url --add --push origin git@github.com:kovarex/kpp.git
 ```
 Then `git push` updates both. The fetch URL stays on GitHub, where pull requests arrive. There is no
@@ -80,7 +100,7 @@ ruleset; the merge button is left alone by convention.
 1. On PC-PRACOVNA: run `ssh-keygen -t ed25519 -f %USERPROFILE%\.ssh\kppnet-backup` and add the
    `.pub` to the keychain.
 2. Create a scheduled task, daily at 05:00:
-   `powershell -File C:\kpp\kppnet\backup\pull-backup.ps1 -SshTarget <user>_kpp@ssh.<host>.nearlyfreespeech.net -Destination D:\backup\kpp.net`
+   `powershell -File C:\kpp\kppnet\backup\pull-backup.ps1 -SshTarget kpp_kovarex@ssh.<host>.nearlyfreespeech.net -Destination D:\backup\kpp.net`
    Point the destination at a disk that is itself backed up. A second copy elsewhere (Wube's NAS,
    cloud storage) is cheap insurance.
 3. Run it once by hand and check that it ends with "backup ... done".
@@ -104,7 +124,7 @@ Without these settings it skips kpp.net and says so.
    Check its fingerprint (`ssh-keygen -lf`) against what your own first `ssh` login showed.
 4. On GitHub, kovarex/kpp > Settings > Secrets and variables > Actions, set:
    - the **secret** `KPP_NET_SSH_KEY`: the whole text of `kppnet-ci` (the private key);
-   - the **variable** `KPP_NET_SSH`: `<user>_kpp@ssh.<host>.nearlyfreespeech.net`;
+   - the **variable** `KPP_NET_SSH`: `kpp_kovarex@ssh.<host>.nearlyfreespeech.net`;
    - the **variable** `KPP_NET_KNOWN_HOSTS`: the line from step 3.
 
    Then delete the local copy of `kppnet-ci`.
