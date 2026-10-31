@@ -312,7 +312,9 @@ namespace
       // this function's emission holds, its lambdas' included (Emitter::noteInlined): an edit of one
       // of those bodies changes this text, and rebuildLLVM emits it again as `emitted` says.
       std::vector<const FunctionDecl*> inlined;
-      std::unique_ptr<Instantiation> emitted; // (set with inlined)
+      // How it was emitted: set with inlined, and for every instance's own definition (an edit of its
+      // template's body, as written, emits it again).
+      std::unique_ptr<Instantiation> emitted;
       // A lambda's call operator its first caller emitted (Emitter::emitCallOperatorOnDemand): its
       // closure and call types, to emit it again on its own once its writer's edit dropped it.
       const Ty* closure = nullptr;
@@ -8389,6 +8391,8 @@ namespace
         definition.emitted = std::make_unique<Instantiation>(
           onDemand ? Instantiation{onDemandNow.writer, {}, nullptr, currentModule, "", "", 0} : emittingNow);
       }
+      else if (!ownItself && name == owner && !onDemand && (!emittingNow.args.empty() || emittingNow.classTy))
+        definition.emitted = std::make_unique<Instantiation>(emittingNow); // an instance: emitted again when its template's body changes
       std::lock_guard lock(sh.definitionsMutex);
       sh.definitions[currentModule].push_back(std::move(definition));
       definedIn[name] = currentModule;
@@ -17460,11 +17464,22 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // in the module that asked for it).
   std::unordered_set<const FunctionDecl*> edited(changedBodies.begin(), changedBodies.end());
   edited.insert(removed.begin(), removed.end());
+  // An instance whose template's body (the definition it is emitted from, as written: an
+  // out-of-line one, an explicit specialisation) changed is emitted again too, from the copy the
+  // resolver checked again.
+  auto instanceOfEdited = [&](const Shared::Definition& d)
+  {
+    if (d.name != d.owner || (d.emitted->args.empty() && !d.emitted->classTy))
+      return false;
+    Decl* defined = e.global.definitionOf(d.emitted->f, d.emitted->args);
+    const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
+    return edited.count(written) != 0 || edited.count(d.emitted->f) != 0;
+  };
   std::map<unsigned, std::vector<Instantiation>> holding; // by depth
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
       if (d.emitted && !owners.count(d.owner) &&
-          std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0; }))
+          (std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0; }) || instanceOfEdited(d)))
       {
         owners.insert(d.owner);
         holding[d.emitted->depth].push_back(*d.emitted);

@@ -2420,10 +2420,10 @@ namespace
     // replacing theirs (the kept total is made again from every instance walk's own).
     size_t droppedInstances = 0; // codegen's, taken out (codegen makes them anew)
     bool rechecked = (templateBodies.empty() && readingInstances.empty()) || global.recheckInstancesOf(templateBodies, readingInstances, why, &droppedInstances);
-    // Codegen emits again the functions given and those that inlined one of them, not an instance
-    // whose template's body changed or that read a change: such an instance's code is old, so
-    // codegen runs in full.
-    if (!templateBodies.empty() || !readingInstances.empty())
+    // Codegen emits again the functions given, those that inlined one of them, and the instances of
+    // a changed template body (rebuildLLVM), not an instance that read a change: such an instance's
+    // code is old, so codegen runs in full.
+    if (!readingInstances.empty())
       codegenCanFollow = false;
     bool typesSame = true;
     for (size_t n = 0; n < typedByWalk.size(); ++n)

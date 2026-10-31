@@ -114,9 +114,11 @@ else { "ok   incremental replays ($($steps.Count), each the same as from scratch
 # The body edits (a plain function's, twice in one file, a template's, a class template member's, a
 # constexpr function's) were built from the kept program, the changed bodies checked again, and verified.
 $fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed \(0 with whole functions\)' }
-# Codegen followed through its kept session (step 5b) on the executable's builds, verified.
+# Codegen followed through its kept session (step 5b) on the executable's builds, verified: the body
+# edits, the template's and the class template member's included (their instances emitted again),
+# and the signature edits that no instance read.
 $rebuilt = $ours | Where-Object { $_ -match 'codegen: [0-9]+ module\(s\) assembled again' }
-if (@($rebuilt).Count -lt 3) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 3 (the server's log)"; $failed++ }
+if (@($rebuilt).Count -lt 8) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 8 (the server's log)"; $failed++ }
 else { "ok   incremental codegen rebuilt from its kept session ($(@($rebuilt).Count))" }
 $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmatch '\(0 with whole functions\)' }
 # Instances checked again because they read a change: the overload added and removed (viaScale<double>
