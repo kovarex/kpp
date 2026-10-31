@@ -1,5 +1,6 @@
 // spec: an `extern "C"` variable declared in Kpp source without an initializer refers to the C library's or the linker's (`extern "C" const IID IID_IDXGIDevice;`, here the linker's __ImageBase, the image's DOS header)
 // factorio: the IIDs __uuidof names (IID_ID3D11Device, IID_IDXGIFactory1, ...), defined in dxguid.lib, declared by the Kpp COM interfaces
+// target: windows (__ImageBase is the Windows linker's)
 extern "C" const char __ImageBase;
 
 int main()

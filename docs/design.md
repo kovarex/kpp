@@ -1957,6 +1957,19 @@ All of this goes through the coordinator.
   changes names only.
 - **Seen on the way, Q1's:** `clib/CStdio.kpp` declares `fseek` and `ftell` with `long`, which is
   64 bits in glibc's C.
+- **The spec suite on Linux** (`spec.cmd --target linux`, built here and run under WSL, 2026-11-01):
+  819 pass, 3 pending, 72 failing, 14 skipped.
+  - Skipped: the `run:` and `test:` snippets (kppc runs those on this machine), and 4 marked
+    `// target: windows`:
+    - MSVC's `%I64u` and LLP64's `%ld` (glibc reads `%I64u` as its `I` flag and a width of 64);
+    - a file that requires the Windows platform;
+    - the UCRT's declarations;
+    - `__ImageBase`.
+  - Two snippets print the platform and have a `.linux.expected`.
+  - Every failure is a later stage's:
+    - 39 import C headers (stage 2);
+    - 16 link library functions that call Win32 (stage 4);
+    - 17 throw, which aborts (stage 3).
 
 ### Questions for kovarex
 

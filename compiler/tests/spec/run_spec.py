@@ -15,6 +15,7 @@ snippet says what it is about:
     // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
                                                   the snippet's directory: the paths printed are its name)
     // exit: 3                                   (the program's exit code; 0 or 1 when not given)
+    // target: windows (why)                     (the snippet is about that target alone: skipped for others)
 
 Statuses: pass, FAIL (a regression), pending (a known gap, still failing), fixed (a pending
 snippet that passes: remove its pending line). The run writes docs/spec-status.md, the
@@ -29,6 +30,12 @@ snippet's executable (`--lib`), for what only a real C object shows (the variabl
 debug-info configurations, docs/test-matrix.md), into build\\spec-release or build\\spec-debug-info,
 and write no spec-status.md, which is the debug build's. A snippet that prints its own configuration
 has the release build's output in <name>.release.expected.
+
+--target linux builds every snippet for Linux x86-64 (docs/design.md, "Targets and hosts") against a
+glibc sysroot (KPP_SYSROOT_LINUX, else build\\sysroots\\linux-x86_64, which tests\\targets.ps1 makes from
+WSL) and runs it under WSL, into build\\spec-linux, writing no spec-status.md. Skipped: the `run:` and
+`test:` snippets (kppc runs those itself, on this machine) and those with another `target:`. Output
+that differs on Linux goes in <name>.linux.expected.
 """
 import argparse, os, re, shlex, subprocess, sys, concurrent.futures, time
 
@@ -47,6 +54,18 @@ OUT = os.path.join(COMPILER, "build", "spec")
 DOC = os.path.join(ROOT, "docs", "spec-status.md")
 # The clang kppc itself uses (main.cpp's clangPath), for the snippets' own C sources.
 CLANG = os.environ.get("KPP_CLANG", r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe")
+# --target: the target the snippets are built for (None: this machine's, Windows), the clang flags
+# for their C sources, and how a program runs (under WSL for linux).
+TARGET = None
+C_TARGET_FLAGS = []
+SYSROOT_LINUX = os.environ.get("KPP_SYSROOT_LINUX", os.path.join(COMPILER, "build", "sysroots", "linux-x86_64"))
+
+
+def run_program(exe, arguments=()):
+    if TARGET == "linux":
+        drive, rest = os.path.splitdrive(os.path.abspath(exe))
+        return ["wsl.exe", "-e", "/mnt/" + drive[0].lower() + rest.replace("\\", "/"), *arguments]
+    return [exe, *arguments]
 
 AREA_TITLES = {
   "language": "Language: statements, expressions, declarations",
@@ -59,10 +78,11 @@ AREA_TITLES = {
 
 
 def header(path):
-    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "run": None, "test": None, "exit": None, "kppc": ""}
+    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "run": None, "test": None, "exit": None, "kppc": "",
+            "target": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
-            m = re.match(r"//\s*(spec|factorio|pending|error|run|test|exit|kppc):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending|error|run|test|exit|kppc|target):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -95,12 +115,19 @@ def run_one(path):
     # A snippet that prints its own configuration has the release build's output next to the debug one's.
     if "--release" in EXTRA and os.path.exists(os.path.splitext(path)[0] + ".release.expected"):
         expected_path = os.path.splitext(path)[0] + ".release.expected"
+    if TARGET and os.path.exists(os.path.splitext(path)[0] + f".{TARGET}.expected"):
+        expected_path = os.path.splitext(path)[0] + f".{TARGET}.expected"
     result = {"area": area, "name": name, "info": info, "note": ""}
+    target = info["target"].split()[0] if info["target"] else None # (`// target: windows (why)`)
+    if TARGET and (info["run"] is not None or info["test"] is not None or (target or TARGET) != TARGET):
+        result["status"] = "skip"; return result
+    if not TARGET and target not in (None, "windows"):
+        result["status"] = "skip"; return result
     libs = []
     c_source = os.path.splitext(path)[0] + ".c"
     if os.path.exists(c_source):
         obj = os.path.join(OUT, f"{area}.{name}.c.obj")
-        cc = subprocess.run([CLANG, "-c", "-O1", "-o", obj, c_source], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        cc = subprocess.run([CLANG, *C_TARGET_FLAGS, "-c", "-O1", "-o", obj, c_source], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if cc.returncode != 0:
             result["status"] = "FAIL"; result["note"] = f"its C source did not compile: {first_complaint(cc.stderr)}"; return finish(result)
         libs = ["--lib", obj]
@@ -136,7 +163,7 @@ def run_one(path):
         result["status"] = "FAIL"; result["note"] = "the build exited 0 but reported " + reported[reported.find(": error:") + 2:]
         return finish(result)
     try:
-        r = subprocess.run([exe], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        r = subprocess.run(run_program(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "program timed out"; return finish(result)
     if r.returncode != 0 and r.returncode > 1:
@@ -227,14 +254,23 @@ def main():
     ap.add_argument("--no-doc", action="store_true")
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
+    ap.add_argument("--target", choices=["linux"])
     args = ap.parse_args()
-    global OUT
+    global OUT, TARGET, C_TARGET_FLAGS
     for flag in ("release", "debug_info"):
         if getattr(args, flag):
             option = "--" + flag.replace("_", "-")
             EXTRA.append(option)
             OUT += option[1:]
             args.no_doc = True
+    if args.target:
+        TARGET = args.target
+        if not os.path.exists(os.path.join(SYSROOT_LINUX, "usr", "lib", "x86_64-linux-gnu", "libc.so.6")):
+            print("no Linux sysroot at", SYSROOT_LINUX, "(tests\\targets.ps1 makes one from WSL)"); return 2
+        EXTRA.extend(["--target", "linux", "--sysroot", SYSROOT_LINUX])
+        C_TARGET_FLAGS = ["--target=x86_64-unknown-linux-gnu", "--sysroot=" + SYSROOT_LINUX]
+        OUT += "-" + TARGET
+        args.no_doc = True
     if not os.path.exists(KPPC):
         print("no compiler at", KPPC); return 2
     os.makedirs(OUT, exist_ok=True)
@@ -244,6 +280,8 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(run_one, files))
     elapsed = time.time() - start
+    skipped = sum(1 for r in results if r["status"] == "skip")
+    results = [r for r in results if r["status"] != "skip"]
     for r in results:
         tag = {"pass": "ok     ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
         line = f"{tag} {r['area']}/{r['name']}"
@@ -251,7 +289,8 @@ def main():
             line += f"  -- {r['note']}"
         print(line)
     counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "pending", "FAIL", "fixed")}
-    print(f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed ({elapsed:.1f} s)")
+    print(f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
+          (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")
     if not args.no_doc and not args.filter:
         write_doc(results, elapsed)
         print("wrote", os.path.relpath(DOC, ROOT))

@@ -1,5 +1,6 @@
 // spec: a printf-like call whose format matches its arguments compiles: `%d %u %x %c` take an int (a char, a bool, an unscoped enum promoted), `%zu %lld %I64d` 64 bits, `%ld` 32 (LLP64), `%s` a char pointer or array, `%p` any pointer, `%f %g` a float or double, `*` an int, `%%` nothing; clang 19 prints `1 2 ff a 3 4 5 6 x y 2.50 3 7%0`
 // factorio: what the game's ssprintf, Logging and C library calls pass (language/printf_format_must_match_arguments for the mismatches)
+// target: windows (MSVC's %I64u, and %ld as 32 bits: glibc reads %I as a flag and %ld as 64 bits; a Linux snippet comes with Q1, docs/design.md "Targets and hosts")
 extern "C" int printf(const char* format, ...);
 enum Kind { First, Second };
 int main()

@@ -1,4 +1,5 @@
 // spec: `requires <condition>;` at the top of a file (compiled only when the config says so)
+// target: windows (its file requires the Windows platform: for another target the program has no main)
 requires config::platform == Platform::Windows;
 int main()
 {

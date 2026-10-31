@@ -3,6 +3,7 @@
 // of those headers declares the same C functions the same way (top-level const on a parameter dropped).
 // factorio: the game imports the UCRT headers and windows.h beside the library
 // (The variadic ones, printf, fprintf, snprintf, sprintf and sscanf: language/variadic_function_pointer_type.)
+// target: windows (the UCRT's declarations: __acrt_iob_func, _errno)
 static_assert(isSame<decltype(&::_Exit), void (*)(int)>, "_Exit");
 static_assert(isSame<decltype(&::__acrt_iob_func), FILE* (*)(unsigned)>, "__acrt_iob_func");
 static_assert(isSame<decltype(&::_errno), int* (*)()>, "_errno");
