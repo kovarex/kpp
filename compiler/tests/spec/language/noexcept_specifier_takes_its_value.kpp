@@ -1,0 +1,18 @@
+// spec: a noexcept specifier with an expression (`noexcept(false)`, `noexcept(isNothrowDestructible<T>)`, `noexcept(sizeof(int) == 4)`) is noexcept only when its constant is true, as in C++ ([except.spec]/2): the nothrow traits read that, and a `noexcept(false)` function is potentially-throwing; clang 19 prints `0 1 1 0 1`
+// factorio: FlatMap's move constructor `noexcept(std::is_nothrow_move_constructible_v<value_type>)`, UniquePointer's `noexcept(is_nothrow_destructible)`, and eleven `noexcept(false)` destructors (ChartedChunksEventHelper's "because sendToListeners can throw")
+struct Throwing { Throwing() {} Throwing(Throwing&& o) noexcept(false) {} };
+struct Quiet { Quiet() {} Quiet(Quiet&& o) noexcept(true) {} };
+struct BySize { BySize() {} BySize(BySize&& o) noexcept(sizeof(int) == 4) {} };
+template<typename T>
+struct Holder
+{
+  T held;
+  Holder() {}
+  Holder(Holder&& o) noexcept(isNothrowMoveConstructible<T>) : held(move(o.held)) {}
+};
+int main()
+{
+  println("{} {} {} {} {}", int(isNothrowMoveConstructible<Throwing>), int(isNothrowMoveConstructible<Quiet>), int(isNothrowMoveConstructible<BySize>),
+          int(isNothrowMoveConstructible<Holder<Throwing>>), int(isNothrowMoveConstructible<Holder<Quiet>>));
+  return 0;
+}

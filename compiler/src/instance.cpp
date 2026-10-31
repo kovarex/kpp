@@ -235,6 +235,7 @@ Decl* InstanceCopier::decl(const Decl* d)
       c->requiresClause = expr(c->requiresClause);
       c->condition = expr(c->condition);
       c->explicitCondition = expr(c->explicitCondition);
+      c->noexceptCondition = expr(c->noexceptCondition);
       copy = c;
       break;
     }
@@ -756,6 +757,7 @@ void InstanceCopier::fixReferences(Node* root)
             push(f->requiresClause);
             push(f->condition);
             push(f->explicitCondition);
+            push(f->noexceptCondition);
             break;
           }
           case NodeKind::UsingAliasDecl: push(static_cast<UsingAliasDecl*>(n)->type); break;

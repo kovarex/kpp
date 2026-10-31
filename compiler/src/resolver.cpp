@@ -3533,6 +3533,25 @@ struct GlobalScope::Impl
     return !v || *v != 0; // unknown: explicit, the safe side
   }
 
+  // Whether a function is noexcept here: `noexcept`, or `noexcept(cond)` with cond true under the
+  // substitution (`noexcept(false)` is not; FlatMap's `noexcept(isNothrowMoveConstructible<T>)` as T
+  // is). nullopt: the condition is no constant here.
+  std::optional<bool> isNoexcept(FunctionDecl* f, const Subst* subst)
+  {
+    if (!(f->flags & DF_Noexcept))
+      return false;
+    if (!f->noexceptCondition)
+      return true;
+    DeclContext dc;
+    declContextFor(f, dc);
+    ParsedFile* file = f->file;
+    TypeContext ctx{dc.scope, &dc.params, subst, file ? file->tokens : nullptr, file ? file->text : std::string_view()};
+    std::optional<int64_t> v = constEval(f->noexceptCondition, ctx, 0);
+    if (!v)
+      return std::nullopt;
+    return *v != 0;
+  }
+
   // Trait answers by (name, argument types): a trait of known types is a fact about them, asked
   // again and again (isTriviallyCopyable of a class walks its special members and bases each time,
   // about a fifth of the front end before this cache). Only definite answers are kept.
@@ -3995,7 +4014,7 @@ struct GlobalScope::Impl
   // A user-declared special member chosen for the trait: deleted is false; a user-provided one
   // is not trivial, and nothrow as declared; a defaulted one is as the implicit one (nullopt:
   // decide by the bases and members).
-  static std::optional<bool> declaredSpecial(FunctionDecl* f, TraitForm form)
+  std::optional<bool> declaredSpecial(FunctionDecl* f, TraitForm form, const Ty* of)
   {
     if (f->flags & DF_Delete)
       return false;
@@ -4004,7 +4023,11 @@ struct GlobalScope::Impl
     if (form == TraitForm::Trivially)
       return false;
     if (form == TraitForm::Nothrow)
-      return (f->flags & DF_Noexcept) != 0;
+    {
+      // (as its noexcept condition says under the class's arguments: `noexcept(false)` is not)
+      Subst s = of && !of->args.empty() ? substFor(of) : Subst{};
+      return isNoexcept(f, s.pairs.empty() ? nullptr : &s);
+    }
     return true;
   }
 
@@ -4071,7 +4094,7 @@ struct GlobalScope::Impl
     FunctionDecl* chosen = move && s.moveCtor ? s.moveCtor : s.copyCtor;
     if (chosen)
     {
-      if (std::optional<bool> d = declaredSpecial(chosen, form))
+      if (std::optional<bool> d = declaredSpecial(chosen, form, u))
         return d;
     }
     else
@@ -4119,7 +4142,7 @@ struct GlobalScope::Impl
     FunctionDecl* chosen = move && s.moveAssign ? s.moveAssign : s.copyAssign;
     if (chosen)
     {
-      if (std::optional<bool> d = declaredSpecial(chosen, form))
+      if (std::optional<bool> d = declaredSpecial(chosen, form, u))
         return d;
     }
     else
@@ -21420,6 +21443,13 @@ bool GlobalScope::isExplicit(FunctionDecl* f, const TemplateArgs& args)
 {
   Subst s = toSubst(args);
   return impl->isExplicit(f, args.empty() ? nullptr : &s);
+}
+
+bool GlobalScope::isNoexcept(FunctionDecl* f, const TemplateArgs& args)
+{
+  Subst s = toSubst(args);
+  std::optional<bool> v = impl->isNoexcept(f, args.empty() ? nullptr : &s);
+  return !v || *v; // (a condition that is no constant: as declared, noexcept)
 }
 
 Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args)

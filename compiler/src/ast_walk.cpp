@@ -145,6 +145,7 @@ namespace
           expr(f->requiresClause);
           expr(f->condition);
           expr(f->explicitCondition);
+          expr(f->noexceptCondition);
           break;
         }
         case NodeKind::UsingAliasDecl: type(static_cast<UsingAliasDecl*>(d)->type); break;

@@ -1,0 +1,31 @@
+// spec: a destructor declared `noexcept(false)` may throw, and its exception leaves the scope whose end ran it as any other: a try around the scope catches it, and the code after the try runs on ([except.spec]/9, [except.ctor]); clang 19 prints `5 then 6`
+// factorio: eleven `noexcept(false)` destructors that throw by design (ChartedChunksEventHelper's "because sendToListeners can throw", RollingStock::CarriageGuard, ForceManager, MapSerialiser, ...)
+// pending: the destructor's call at the end of the scope has no unwind edge (`noexcept(false)` counts as noexcept, and a destructor's call is not invoked), so its exception is unhandled
+struct Thrower
+{
+  ~Thrower() noexcept(false) { throw 5; }
+};
+void loud() { throw 1; }
+int main()
+{
+  int caught = 0;
+  try
+  {
+    Thrower t;
+  }
+  catch (int v)
+  {
+    caught = v;
+  }
+  println("{} then", caught);
+  try
+  {
+    loud();
+  }
+  catch (int v)
+  {
+    caught += v;
+  }
+  println("{}", caught);
+  return 0;
+}

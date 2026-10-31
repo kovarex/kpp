@@ -363,6 +363,7 @@ public:
   Decl* enumFromStrDecl();                       // The library's enumFromStr<E>(const char*) template (E::fromStr lowers to it), or null.
   Decl* strongOrderingDecl();                    // The library's strong_ordering class (what `a <=> b` yields), or null.
   bool isExplicit(FunctionDecl* f, const TemplateArgs& args); // `explicit`, or `explicit(cond)` with cond true under args.
+  bool isNoexcept(FunctionDecl* f, const TemplateArgs& args); // `noexcept`, or `noexcept(cond)` with cond true under args.
   // The initializer of v (a data member's default initializer, a static member's or a variable
   // template's) for one instantiation: a copy typed under args once and kept, as instanceBody's
   // copies of function bodies are; v's own initializer when args is empty. Thread-safe.

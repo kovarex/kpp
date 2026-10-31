@@ -21,6 +21,7 @@ namespace
     bool isFunction = false;
     Span<Decl*> params;
     uint32_t flags = 0;
+    Expr* noexceptCondition = nullptr; // noexcept(expr)
     Type* trailingReturn = nullptr;
     Expr* bitfield = nullptr;
     Expr* requiresClause = nullptr;
@@ -2397,8 +2398,13 @@ namespace
         {
           advance();
           d.flags |= DF_Noexcept;
-          if (at(P::LParen))
-            skipBalanced();
+          if (accept(P::LParen))
+          {
+            // `noexcept(false)`, `noexcept(isNothrowMoveConstructible<T>)`: noexcept only while the
+            // constant is true (FunctionDecl::noexceptCondition), never whatever it says.
+            d.noexceptCondition = parseExpression();
+            expect(P::RParen, "expected ')' after the noexcept condition");
+          }
         }
         else if (at(Kw::throw_) && at(P::LParen, 1))
         {
@@ -2503,6 +2509,7 @@ namespace
       pendingCondition = nullptr;
       f->explicitCondition = pendingExplicitCondition;
       pendingExplicitCondition = nullptr;
+      f->noexceptCondition = d.noexceptCondition;
       f->attributes = pendingAttributes;
       pendingAttributes = 0;
       f->templateParams = templ.params;
