@@ -1,0 +1,12 @@
+// spec: a backslash at the end of a line inside a string literal splices the next line on, as C++'s translation phase 2 does: the backslash and the newline are not in the string (the next line's leading spaces are); a constant's literal the same
+// factorio: the unit tests' multi-line Lua commands (TestLuaSurface's EmptyMapGenSettingsReadWriteStability, ChunkBounds, DestroyRoboportWithTriggerWhenSpawningRobotsForLogistics): the command text a test echoes to the console kept a newline per splice, so the map's console and its CRC differed from the C++ build's
+// pending: a spliced literal keeps the newline (codegen's and consteval's escape decoding take `\` + newline as a newline)
+constexpr const char* constant = "ab\
+cd";
+int main()
+{
+  const char* text = "local a = 1;\
+   local b = 2";
+  println("[{}] {} [{}] {}", text, strlen(text), constant, strlen(constant));
+  return 0;
+}

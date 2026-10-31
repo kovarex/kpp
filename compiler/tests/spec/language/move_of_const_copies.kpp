@@ -1,0 +1,38 @@
+// spec: move() of a const object is a const rvalue, which binds to the copy constructor or copy assignment (a move's T&& parameter takes no const object), so the source keeps its value, as std::move of a const lvalue in C++: for a class with the implicit special members as for String, through a const reference, through a const container's element, by assignment and by construction
+// factorio: Player::sendTranslationRequests's `entry.localisedString = std::move(item.second)` over a const std::map& (the player's translation requests in flight): the requests lost their keys in the converted game, so the map's CRC differed from the C++ build's (Campaigns/LoadDemoLevel05)
+// pending: a class's implicit move assignment and move constructor take a const rvalue and empty the const source
+struct Localised
+{
+  String key;
+  Vector<int> parameters;
+};
+struct Entry
+{
+  Localised localised;
+};
+
+void send(const Map<int, Localised>& requests, Vector<Entry>& entries)
+{
+  for (auto& item : requests)
+  {
+    Entry& entry = entries.emplace_back();
+    entry.localised = move(item.second);
+  }
+}
+
+int main()
+{
+  Map<int, Localised> inFlight;
+  inFlight[7] = Localised{"iron-processing-stop", {1}};
+  Vector<Entry> entries;
+  send(inFlight, entries);
+  const Localised source{"copper", {2}};
+  Localised constructed(move(source));
+  Localised assigned;
+  assigned = move(source);
+  const String text = "plate";
+  String textCopy(move(text));
+  println("{} {} {} | {} {} {} {} | {} {}", inFlight[7].key, inFlight[7].parameters.size(), entries[0].localised.key, source.key,
+          source.parameters.size(), constructed.key, assigned.key, text, textCopy);
+  return 0;
+}
