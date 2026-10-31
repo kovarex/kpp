@@ -1,0 +1,35 @@
+// kppsite's tests (`kpp --test` in kppnet/site). run_tests.cmd also runs kppsite on the repository
+// with fixture/registry as the registry's store.
+
+test "relative links between pages"
+{
+  check(siteRelativeLink("docs/stdlib/time.md", "docs/design.html") == "../design.html");
+  check(siteRelativeLink("docs/design.md", "docs/stdlib/time.html") == "stdlib/time.html");
+  check(siteRelativeLink("docs/design.md", "docs/build.html") == "build.html");
+  check(siteRelativeLink("libraries/json/README.md", "docs/design.html") == "../../docs/design.html");
+  check(siteRootOf("index.html") == "");
+  check(siteRootOf("docs/stdlib/time.html") == "../../");
+  check(siteHtmlPath("docs/design.md") == "docs/design.html");
+}
+
+test "titles and summaries"
+{
+  check(siteTitle("intro\n# The `json` library\n## more", "x.md") == "The json library");
+  check(siteTitle("no heading", "docs/x.md") == "docs/x.md");
+  check(siteSummary("# json\n\nJSON ([RFC 8259](https://x)) for *Kpp*:\nparse it.\n\nMore.") == "JSON (RFC 8259) for Kpp: parse it.");
+}
+
+test "a library's releases"
+{
+  JsonValue library = parseJson(R"({"name": "x", "releases": [
+    {"version": "1.0.0", "tree": "sha256-tree:aa", "archive": "archives/aa/aa.zip", "kpp": "0.1.0", "published": "2026-11-01T00:00:00Z", "yanked": null},
+    {"version": "1.1.0", "tree": "sha256-tree:bb", "archive": "archives/bb/bb.zip", "kpp": "0.1.0", "published": "2026-11-02T00:00:00Z", "yanked": "broken"}]})");
+  check(siteLatestVersion(library) == "1.0.0");
+  SiteOptions options;
+  Site site(options);
+  String table = site.releaseTable(library).html;
+  check(table.find("<td>1.1.0</td><td>2026-11-02T00:00:00Z</td><td>0.1.0</td><td><a href=\"https://kpp.net/registry/archives/bb/bb.zip\">archive</a></td>"
+                   "<td><code>sha256-tree:bb</code></td><td>broken</td>") != String::npos);
+  // The newest release first.
+  check(table.find("1.1.0") < table.find("1.0.0"));
+}

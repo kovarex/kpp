@@ -16,7 +16,10 @@ simple templates, own standard library, C-only interop.
   (`kppc` finds it next to the compiler; `--std DIR` or `--no-std` override that).
 - `programs/`: real Kpp programs, one directory each (`kpplex`: the lexer in Kpp, with its C++
   transliteration and `run.cmd` timing both on the Factorio corpus).
-- `kppnet/`: the kpp.net hosting kit (site, registry, git hosting; nothing deployed by threads).
+- `kppnet/`: the kpp.net hosting kit (site, registry, git hosting; nothing deployed by threads);
+  `kppnet/site/`: kppsite, the static site generator in Kpp.
+- `libraries/`: the official Kpp libraries (json, sha256, base64, html, markdown, url), each a
+  library project with its tests; run_tests.cmd tests them all.
 - `tools/`: editor integration (VS, VS Code), release packaging. `projectlib/`: build.kpp's package.
 
 ## Machine

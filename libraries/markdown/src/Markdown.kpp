@@ -7,6 +7,9 @@ struct MarkdownOptions
   bool tables = false;
   // An id on every heading, as GitHub makes them (README.md): links to #a-heading work.
   bool headingIds = false;
+  // Called with every link's and image's destination (percent-encoded, as written in the HTML);
+  // what it returns is written instead. A site uses it to turn links to .md files into .html.
+  Function<String(const String&)> rewriteLink;
 };
 
 // The HTML of a CommonMark document.
@@ -84,6 +87,11 @@ struct MarkdownRenderer
   {
     if (!this->lastWasNewline)
       this->literal("\n");
+  }
+
+  String destination(MarkdownNode* node) const
+  {
+    return this->options.rewriteLink ? this->options.rewriteLink(node->destination) : node->destination;
   }
 
   void children(MarkdownNode* node)
@@ -289,7 +297,7 @@ struct MarkdownRenderer
         break;
       case MarkdownType::link:
         this->literal("<a href=\"");
-        this->escaped(node->destination);
+        this->escaped(this->destination(node));
         if (node->title.size() > 0)
         {
           this->literal("\" title=\"");
@@ -302,7 +310,7 @@ struct MarkdownRenderer
       case MarkdownType::image:
       {
         this->literal("<img src=\"");
-        this->escaped(node->destination);
+        this->escaped(this->destination(node));
         this->literal("\" alt=\"");
         String alt;
         markdownPlainText(alt, node);

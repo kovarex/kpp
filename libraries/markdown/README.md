@@ -44,7 +44,7 @@ must be trusted, as this repository's own documents are. There is no "safe" mode
 | | |
 |---|---|
 | `String markdownToHtml(StringView text, const MarkdownOptions& = {})` | the document's HTML |
-| `MarkdownOptions` | `tables`, `headingIds` |
+| `MarkdownOptions` | `tables`, `headingIds`, and `rewriteLink`: a `Function<String(const String&)>` called with every link's and image's destination (percent-encoded), whose result is written instead; a site turns `.md` links into `.html` with it |
 
 Text is UTF-8; line ends are `\n`, `\r\n` or `\r`; a zero byte becomes U+FFFD, as the spec says.
 `markdownToHtml` throws nothing: every text is a CommonMark document.

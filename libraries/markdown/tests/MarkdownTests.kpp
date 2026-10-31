@@ -78,3 +78,16 @@ test "line endings and odd bytes"
   check(markdownToHtml("") == "");
   check(markdownToHtml(StringView("a\0b", 3)) == "<p>a\xEF\xBF\xBD" "b</p>\n");
 }
+
+test "rewriting links"
+{
+  MarkdownOptions options;
+  options.rewriteLink = [](const String& destination) -> String
+  {
+    if (destination.endsWith(".md"))
+      return String(StringView(destination).substr(0, destination.size() - 3)) + ".html";
+    return destination;
+  };
+  check(markdownToHtml("[a](design.md) [b](x.png) ![c](d.md)", options) ==
+        "<p><a href=\"design.html\">a</a> <a href=\"x.png\">b</a> <img src=\"d.html\" alt=\"c\" /></p>\n");
+}

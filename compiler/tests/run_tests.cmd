@@ -165,6 +165,29 @@ for /d %%l in (..\libraries\*) do (
     echo ok   library %%~nl
   )
 )
+rem kpp.net's site generator (kppnet\site\README.md): its tests, and a run over this repository with
+rem fixture\registry as the registry's store, which must write the fixture's library pages.
+pushd ..\kppnet\site
+..\..\compiler\%KPPC% --no-server --test > ..\..\compiler\build\tests\kppsite-tests.txt 2>&1
+set SITE_TESTS=%errorlevel%
+..\..\compiler\%KPPC% --no-server --debug > ..\..\compiler\build\tests\kppsite-build.txt 2>&1
+build\debug\kppsite.exe --out ..\..\compiler\build\tests\site --repository ..\.. --registry fixture\registry > ..\..\compiler\build\tests\kppsite-run.txt 2>&1
+set SITE_RUN=%errorlevel%
+popd
+if %SITE_TESTS% neq 0 (
+  echo FAIL kppsite tests
+  type build\tests\kppsite-tests.txt
+  set /a FAIL+=1
+) else if %SITE_RUN% neq 0 (
+  echo FAIL kppsite run
+  type build\tests\kppsite-build.txt build\tests\kppsite-run.txt
+  set /a FAIL+=1
+) else if not exist build\tests\site\libraries\thirdparty.html (
+  echo FAIL kppsite run: no page for the fixture registry's library
+  set /a FAIL+=1
+) else (
+  echo ok   kppsite
+)
 if %FAIL% neq 0 exit /b 1
 rem (Explicitly: the batch file's exit code would otherwise be the determinism check's.)
 exit /b 0

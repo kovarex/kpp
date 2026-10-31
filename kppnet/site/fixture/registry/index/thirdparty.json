@@ -1,0 +1,1 @@
+{"name": "thirdparty", "releases": [{"version": "1.0.0", "tree": "sha256-tree:55", "archive": "archives/55/55.zip", "archive_sha256": "66", "size": 1, "kpp": "0.1.0", "dependencies": [], "published": "2026-11-03T00:00:00Z", "commit": "bbbb", "yanked": null}]}

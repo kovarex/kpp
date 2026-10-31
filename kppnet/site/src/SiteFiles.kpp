@@ -1,0 +1,101 @@
+// Files and paths for kppsite. Paths inside the repository are relative, with '/', as git names
+// them: docs/stdlib/time.md.
+
+// A file or directory that should be there and is not, a file that cannot be written.
+struct SiteError : RuntimeError
+{
+  SiteError() {}
+  explicit SiteError(const String& message) : RuntimeError(message) {}
+};
+
+String siteReadFile(const String& path)
+{
+  FILE* file = fopen(path.c_str(), "rb");
+  if (!file)
+    throw SiteError(format("cannot read {}", path));
+  String text;
+  char buffer[65536];
+  while (true)
+  {
+    size_t n = fread(buffer, 1, 65536, file);
+    if (n == 0)
+      break;
+    text.append(buffer, int(n));
+  }
+  fclose(file);
+  return text;
+}
+
+// Writes the file, making its directories first.
+void siteWriteFile(const String& path, StringView content)
+{
+  int slash = path.rfind('/');
+  if (slash != String::npos && slash > 0)
+    filesystem::create_directories(filesystem::path(String(StringView(path).substr(0, slash))));
+  FILE* file = fopen(path.c_str(), "wb");
+  if (!file)
+    throw SiteError(format("cannot write {}", path));
+  bool written = fwrite(content.data(), 1, content.size(), file) == size_t(content.size());
+  if (fclose(file) != 0 || !written)
+    throw SiteError(format("cannot write {}", path));
+}
+
+bool siteIsFile(const String& path) { return filesystem::is_regular_file(filesystem::path(path)); }
+bool siteIsDirectory(const String& path) { return filesystem::is_directory(filesystem::path(path)); }
+
+// The .md files under the repository's directory, as repository paths, sorted.
+void siteFindMarkdown(const String& repository, const String& directory, Vector<String>& out)
+{
+  Vector<String> names;
+  for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(repository + "/" + directory)))
+    names.push_back(entry.path().filename().string());
+  sort(names.begin(), names.end());
+  for (const String& name : names)
+  {
+    String relative = directory + "/" + name;
+    if (siteIsDirectory(repository + "/" + relative))
+    {
+      if (name != "build" && name[0] != '.')
+        siteFindMarkdown(repository, relative, out);
+    }
+    else if (name.endsWith(".md"))
+      out.push_back(relative);
+  }
+}
+
+// The directory part of a repository path, with its '/': "docs/stdlib/" for docs/stdlib/time.md.
+StringView siteDirectoryOf(StringView path)
+{
+  int slash = path.rfind('/');
+  return slash == StringView::npos ? StringView() : path.substr(0, slash + 1);
+}
+
+// A relative link from the page at `from` to the file at `to`, both repository paths:
+// docs/stdlib/time.md to docs/design.html is ../design.html.
+String siteRelativeLink(StringView from, StringView to)
+{
+  StringView fromDirectory = siteDirectoryOf(from);
+  int common = 0;
+  for (int i = 0; i < fromDirectory.size() && i < to.size() && fromDirectory[i] == to[i]; ++i)
+    if (fromDirectory[i] == '/')
+      common = i + 1;
+  String link;
+  for (int i = common; i < fromDirectory.size(); ++i)
+    if (fromDirectory[i] == '/')
+      link.append("../");
+  link.append(to.substr(common));
+  return link;
+}
+
+// The way from a page up to the site's root: "" for index.html, "../../" for docs/stdlib/time.html.
+String siteRootOf(StringView page)
+{
+  String up;
+  for (char c : page)
+    if (c == '/')
+      up.append("../");
+  return up;
+}
+
+// The page a Markdown file becomes: docs/design.md is docs/design.html.
+String siteHtmlPath(StringView markdownPath) { return String(markdownPath.substr(0, markdownPath.size() - 3)) + ".html"; }

@@ -1,0 +1,8 @@
+// kppsite: kpp.net's static site generator (README.md). `kpp` here builds it, `kpp --test` runs its
+// tests.
+void build(Project& project)
+{
+  Executable& site = project.executable("kppsite", {"src"});
+  for (StringView name : {"json", "markdown", "html", "url"})
+    site.use(name, local(String("../../libraries/") + name));
+}
