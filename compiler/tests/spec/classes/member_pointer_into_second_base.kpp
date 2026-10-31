@@ -1,0 +1,14 @@
+// spec: a pointer to a data member of a base, used on an object of a derived class (`c.*p`, `pc->*p` with `int B::* p` and B the second base of C), is the member of the object's B part: the object moves to its B subobject before the offset (C++ [expr.mptr.oper]/2-3); clang 19 prints `7 1 1`
+// factorio: found by the templates thread checking repeated bases: the offset was added to the C object's address, so `c.*p` read A's a (silent)
+struct A { int a = 1; };
+struct B { int b = 2; };
+struct C : A, B {};
+int main()
+{
+  C c;
+  int B::* p = &B::b;
+  C* pc = &c;
+  pc->*p = 7;
+  println("{} {} {}", c.b, int(&(c.*p) == &c.b), c.a);
+  return 0;
+}

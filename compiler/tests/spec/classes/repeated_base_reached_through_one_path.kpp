@@ -1,0 +1,20 @@
+// spec: a class with a non-virtual base twice reaches the second subobject through every path that names it: a qualified method call (`b.Right::get()`, `this` is Right's Base), a cast or a reference or pointer to Right and then Base, a method of Right, and a member pointer of Right (`int Right::*` from `&Base::id`, used on a Both) (C++ [class.mi], [expr.mptr.oper]); clang 19 prints `1 1 1 1 1 1` and `1 1 1`
+// factorio: found by the templates thread with classes/qualified_member_of_repeated_base: `b.Right::get()` and `b.*rmp` reached Left's Base (silent)
+struct Base { int id = 1; int get() { return id; } };
+struct Left : Base {};
+struct Right : Base { int rid() { return id; } };
+struct Both : Left, Right {};
+int viaBase(Base& x) { return x.id; }
+int main()
+{
+  Both b;
+  b.Left::id = 5;
+  Right& rr = b;
+  Right* rp = &b;
+  Base* bp = rp;
+  int Base::* mp = &Base::id;
+  int Right::* rmp = &Base::id;
+  println("{} {} {} {} {} {}", static_cast<Right&>(b).id, rr.id, rp->id, bp->id, rr.*mp, b.*rmp);
+  println("{} {} {}", rp->rid(), viaBase(rr), b.Right::get());
+  return 0;
+}

@@ -1,6 +1,5 @@
 // spec: a class with a non-virtual base twice (a diamond without `virtual`) has two subobjects of it, and a member named through one path (`b.Right::id`) is that path's (C++ [class.mi], [class.member.lookup]): Left's and Right's ids are two variables; clang 19 prints `1 0 8`
 // factorio: found by the templates thread checking virtual bases: kppc lays out both subobjects (sizeof 8) but `b.Right::id` reached Left's, so writing b.Left::id changed what b.Right::id read (silent)
-// pending: a member named through the second path of a repeated base is the first path's
 struct Base { int id = 1; };
 struct Left : Base {};
 struct Right : Base {};

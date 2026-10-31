@@ -372,7 +372,11 @@ kpp/test_filter, kpp/test_list, kpp/test_report, kpp/test_in_class, kpp/test_bui
 - `dynamic_cast` and `typeid` work for the whole hierarchy (Factorio's 647 casts): a type
   descriptor behind the vtable names the class and lists its direct bases with their offsets, so a
   downcast or a cross-cast through any base finds its target. No virtual bases: a `virtual` base
-  specifier is an error (2026-10-31, classes/virtual_base_is_not_supported).
+  specifier is an error (2026-10-31, classes/virtual_base_is_not_supported). A non-virtual base
+  reached along two paths is two subobjects, as in C++: a qualified name (`b.Right::id`,
+  `b.Right::get()`) goes through its own path, and a conversion to the repeated base itself is an
+  error, ambiguous (2026-10-31, classes/repeated_base_conversion_is_ambiguous; the game has four
+  such classes, Unit and SpiderUnit with Targetable twice, Loader and InfinityPipe with Freezable).
 - The vtable is MSVC's and COM's (2026-10-29): the object's first word points at the first
   virtual function's slot, the slots follow in declaration order (an override takes its base's
   slot), `this` is the first argument and a class result goes through a hidden pointer after it.

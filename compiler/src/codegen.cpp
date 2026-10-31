@@ -9231,6 +9231,8 @@ namespace
     }
 
     // The chain of base-class fields from derived down to base: (struct name, field index) pairs.
+    // A base reached along two paths (`struct Both : Left, Right`, both of them Bases) is two
+    // subobjects, and the conversion to it is ambiguous: an error, as in C++ ([conv.ptr]/3).
     bool basePath(const Ty* derived, const Ty* base, std::vector<std::pair<std::string, uint32_t>>& path, Node* at)
     {
       if (canonicalClass(derived, at) == canonicalClass(base, at))
@@ -9239,14 +9241,21 @@ namespace
       std::string name = info.name;
       std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
       std::vector<const Ty*> fieldTypes = info.fieldTypes;
+      std::vector<std::pair<std::string, uint32_t>> found;
+      bool any = false;
       for (auto& [baseDef, index] : bases)
       {
-        path.push_back({name, index});
-        if (basePath(fieldTypes[index], base, path, at))
-          return true;
-        path.pop_back();
+        std::vector<std::pair<std::string, uint32_t>> sub{{name, index}};
+        if (!basePath(fieldTypes[index], base, sub, at))
+          continue;
+        if (any)
+          fail(at, "the conversion of " + types.toString(derived, &symbols) + " to its base " + types.toString(base, &symbols) +
+                       " is ambiguous: it has that base more than once");
+        any = true;
+        found = std::move(sub);
       }
-      return false;
+      path.insert(path.end(), found.begin(), found.end());
+      return any;
     }
 
     // The derived object's address from its base subobject's, back along the path of base fields.
@@ -9295,22 +9304,13 @@ namespace
 
     bool baseAddress(const Ty* derived, const Ty* base, const std::string& addr, std::string& out, Node* at)
     {
-      if (canonicalClass(derived, at) == canonicalClass(base, at))
-      {
-        out = addr;
-        return true;
-      }
-      StructInfo& info = structFor(derived, at);
-      std::string name = info.name;
-      std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
-      std::vector<const Ty*> fieldTypes = info.fieldTypes;
-      for (auto& [baseDef, index] : bases)
-      {
-        std::string sub = gep(name, addr, index);
-        if (baseAddress(fieldTypes[index], base, sub, out, at))
-          return true;
-      }
-      return false;
+      std::vector<std::pair<std::string, uint32_t>> path;
+      if (!basePath(derived, base, path, at))
+        return false;
+      out = addr;
+      for (auto& [name, index] : path)
+        out = gep(name, out, index);
+      return true;
     }
 
     // An arithmetic operand's type after the integral promotions.
@@ -9501,8 +9501,18 @@ namespace
             // qualifier is or derives from (the first base holding a field of that declaration was
             // another instance of Hook). The field's own class, not the qualifier: `b.Left::id`
             // with id in a virtual base is the one shared subobject's.
+            // The qualifier's subobject first: `b.Right::id` with Base under both Left and Right is
+            // the id of Right's Base, not of the first Base among the bases.
             Decl* owner = global.owningClass(d);
             const Ty* instance = owner ? instantiationIn(qualifier, owner, e) : nullptr;
+            if (instance && qualifier != canonicalClass(baseTy, e) && qualifier != instance)
+            {
+              std::string addr;
+              if (!baseAddress(baseTy, qualifier, object, addr, e))
+                unsupported(e, "a member of " + types.toString(qualifier, &symbols) + ", which is no base of " + types.toString(baseTy, &symbols));
+              object = addr;
+              baseTy = qualifier;
+            }
             if (instance && instance != canonicalClass(baseTy, e))
             {
               std::string addr;
@@ -11065,6 +11075,12 @@ namespace
                 if (!base)
                   base = baseInstantiation(objectTy, owner, c);
                 std::string addr;
+                // (`b.Right::get()` with Base under both Left and Right: Right's Base, through Right.)
+                if (base && qualifier && qualifier != objectTy && qualifier != base && baseAddress(objectTy, qualifier, thisArg, addr, c))
+                {
+                  thisArg = addr;
+                  objectTy = qualifier;
+                }
                 if (base && baseAddress(objectTy, base, thisArg, addr, c))
                 {
                   thisArg = addr;
@@ -14219,8 +14235,20 @@ namespace
       else if (!isClass(object.ty))
         unsupported(b, ".* on something that is not an object");
       Value offset = rvalue(b->rhs);
-      if (!offset.ty || types.stripRef(offset.ty)->kind != TyKind::MemberPointer)
+      const Ty* mp = offset.ty ? types.stripRef(offset.ty) : nullptr;
+      if (!mp || mp->kind != TyKind::MemberPointer)
         unsupported(b, "a member pointer of unknown type");
+      // The offset is within the pointer's class: an object of a class derived from it moves to
+      // that base first (`c.*p` with `int B::* p` and B the second base of C).
+      const Ty* objectTy = P(b->op) == P::ArrowStar ? object.ty->inner : types.stripRef(object.ty);
+      const Ty* memberOf = mp->args.empty() ? nullptr : withCurrentArgs(mp->args[0]);
+      if (isClass(objectTy) && isClass(memberOf) && classKey(objectTy) != classKey(memberOf))
+      {
+        std::string moved;
+        if (!baseAddress(objectTy, memberOf, base, moved, b))
+          unsupported(b, "a pointer to a member of " + types.toString(memberOf, &symbols) + " used on " + types.toString(objectTy, &symbols) + ", which is not derived from it");
+        base = moved;
+      }
       std::string r = newTemp();
       fn += "  " + r + " = getelementptr inbounds i8, ptr " + base + ", i64 " + offset.text + "\n";
       return r;

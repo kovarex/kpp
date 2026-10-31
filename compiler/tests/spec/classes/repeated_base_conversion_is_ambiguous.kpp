@@ -1,0 +1,13 @@
+// spec: converting a class to a base it has twice (a non-virtual Base under both Left and Right) is ambiguous, a compile error at the conversion, never the first subobject (C++ [conv.ptr]/3, [class.member.lookup]); a qualified name through one path (`b.Right::id`) is the way to one of them
+// error: repeated_base_conversion_is_ambiguous.kpp:10: error: the conversion of Both to its base Base is ambiguous: it has that base more than once (in @kpp.main)
+struct Base { int id = 1; };
+struct Left : Base {};
+struct Right : Base {};
+struct Both : Left, Right {};
+int main()
+{
+  Both b;
+  Base& r = b;
+  println("{}", r.id);
+  return 0;
+}
