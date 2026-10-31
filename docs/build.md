@@ -1,9 +1,9 @@
 # Building Kpp programs
 
 How a Kpp program is built today, where FASTBuild fits in, a proposal for describing a build
-(project file, named configurations), and the Visual Studio integration (`tools/vs/`). The
-proposal waits on kovarex's answers to the questions at the end. Nothing in it is implemented
-until he answers the format question.
+(a `build.kpp` in Kpp, the project layout, named configurations), and the Visual Studio
+integration (`tools/vs/`). The proposal waits on kovarex's answers to the questions at the end.
+Nothing in it is implemented until he answers questions 1 and 2.
 
 ## Today
 
@@ -71,68 +71,180 @@ directly, not with FASTBuild.
 .libs were built, among them SDL 3.4.18 (2026-10-29) and zlib 1.3.2 (2026-10-10). The game is
 compiled against the headers at HEAD (`--cinclude C:\Factorio\libraries\...`) but linked with
 April's libraries. The rule is "always the latest pull", and this does not follow it. Rebuilding
-them with FASTBuild writes into `C:\Factorio`, which is read-only. See question 3.
+them with FASTBuild writes into `C:\Factorio`, which is read-only. See question 4.
 
 ## Proposal: the build description
 
-### A project file
+What kovarex asked for (2026-10-31): one description of a project's builds (targets, steps,
+libraries) for every tool, not only Visual Studio; no special build language such as CMake's or a
+script's, so research writing it in Kpp, sandboxed; starting must take nothing (no file, or a tiny
+generated one, gives debug and release); and one layout for the program's own code, its own
+libraries and forks, and libraries taken unchanged from the registry
+([library-registry.md](library-registry.md)).
 
-One file per program names everything its build needs: sources, C include directories,
-libraries, the output, and its configurations. kppc reads it with
-`kppc --project FILE [--configuration NAME]`, and command-line options still add to it.
-Two candidate formats follow, using programs/factorio as the example.
+### How others describe builds
 
-**(A) A list of kppc's own options** (`factorio.kppproj`): one option per line, as on the command
-line; `[name]` starts a configuration's section; `NAME = value` sets a variable that the
-environment overrides; `%NAME%` expands one; paths are relative to the file.
+| | Build file | What it may do | With no file | A changed copy of a library |
+|---|---|---|---|---|
+| CMake | its own language | anything: files, processes | nothing builds | by hand |
+| Cargo (Rust) | `Cargo.toml` data, plus `build.rs`, a Rust program | `build.rs` runs unsandboxed before the build | `cargo new` writes 6 lines; `src/main.rs` by convention; `dev` and `release` built in | `[patch]` replaces it in the whole graph |
+| Go | none; `go.mod` is data (module, requirements) | nothing; `go generate` steps are run by hand | a directory is a package; `go build` | `replace` in go.mod |
+| Zig | `build.zig`, Zig compiled and run natively; `build.zig.zon` data for dependencies | anything; it builds a graph of steps that the build runner executes | `zig run file.zig`; `zig init` writes about 80 lines | a path dependency |
+| Jai | a `#run` metaprogram in the program's language | anything, at compile time | `jai main.jai` | by hand |
+| Nim | NimScript (`config.nims`, `.nimble`): Nim run by the compiler's own VM | the VM has `exec` and file I/O | `nim c main.nim` | by hand |
+| Swift | `Package.swift`, Swift evaluated into a JSON description | evaluated in a sandbox (macOS); build steps are plugins with declared inputs and outputs | `swift package init` writes about 20 lines | `.package(path:)` |
+| Bazel, Buck | Starlark, a deterministic Python dialect without I/O | only declares; the declared actions run with declared inputs and outputs | nothing builds | a local repository override |
+| Meson | its own language, on purpose not Turing-complete | declares; custom targets run commands | nothing builds | subprojects |
 
-```
-# The converted game (programs/factorio).
-FACTORIO = C:\Factorio
-FIK = C:\factorio-in-kpp\kpp
-%FIK%\CommonUtil  %FIK%\Agui  %FIK%\cxxopts  %FIK%\StackWalker  %FIK%\Lua  %FIK%\src
---exe build\%CONFIGURATION%\factorio.exe
---cinclude %FACTORIO%\libraries\SDL3\include
---cinclude native\include
---lib native\build\factorio-native.lib
---lib -lgdi32
-...
-[debug]
---incremental-link
---debug-info
-[release]
---release
-```
+What the comparison says:
+1. **The description computes and declares; it does not act.** Running a tool is a step that
+   names its inputs and outputs, and the build tool runs it and caches its result (Bazel, Swift's
+   plugins, Zig's step graph). Where the description language can act (Cargo's `build.rs`, Zig,
+   Jai, Nim), every dependency runs code on the developer's machine, and the build depends on the
+   machine it ran on.
+2. **Defaults carry most programs.** Go needs no file; Cargo's is 6 lines; Jai and Zig compile a
+   lone file.
+3. **Tools must edit the dependency list.** Zig put it in a data file (`build.zig.zon`) next to the
+   code; Swift's `Package.swift` is code, and editing it from a tool came years late, through a
+   Swift parser.
 
-kppc needs nothing new except reading the file: every line is an option it already has. A reader
-needs nothing new either, and the server key is the expanded list (an edit of the file gets a new
-server, as a changed command line does now).
+Kpp is placed unusually well for point 1: its compile-time interpreter (design.md, "Compile-time
+evaluation") already runs ordinary Kpp with no I/O and no C calls, under step and memory limits.
+That is Starlark's sandbox without a second language.
 
-**(B) A Kpp declaration** (`project.kpp`), in the form `package.kpp` already proposes
-(design.md, "Code packages"):
+### build.kpp, run by the interpreter (recommended)
+
+- **The build file is Kpp**: `build.kpp` in the project's root directory. kppc compiles it on its
+  own, with the standard library and a small `build` package (`Project`, `Step`, `Dependencies`),
+  and runs it in the interpreter. It may compute anything: loops, functions, the standard
+  library. It can only describe: it fills in a `Project` value, and kppc builds what that value
+  says. It cannot read a file, start a process or call C. This is the interpreter's existing
+  limit, so it needs no separate sandbox.
+- **Its errors are Kpp errors.** They come with the same diagnostics and go to the same Error
+  List, colouring and IDE navigation as the program's own code. There is no second syntax.
+- **The program does not see build.kpp's declarations.** The `config::` constants are what
+  crosses over: the build sets them per configuration, and the program reads them as today.
+- **Inputs from outside come only from the command line.** `kppc --set FACTORIO=D:\snapshot`
+  is read as `project.setting("FACTORIO", "C:/Factorio")`, so a build depends only on its files
+  and its arguments. The arguments are part of the server's key.
+- **Cost:** the server evaluates the file once per configuration and keeps the result until the
+  file changes. To be measured once it exists.
+
+The functions kppc calls, all of them optional:
 
 ```cpp
-project "Factorio"
+// build.kpp: the libraries this project uses. One call per line and nothing else,
+// so that `kppc add` and `kppc remove` can edit it without a Kpp parser of their own.
+void dependencies(Dependencies& d)
 {
-    sources = { "%FIK%/CommonUtil", "%FIK%/Agui", "%FIK%/cxxopts", "%FIK%/StackWalker", "%FIK%/Lua", "%FIK%/src" };
-    cinclude = { "%FACTORIO%/libraries/SDL3/include", "native/include" };
-    libs = { "native/build/factorio-native.lib", "-lgdi32" };
-    output = "factorio.exe";
+    d.use("sdl3", "3.4");        // registry name, minimum version
+    d.use("lua", "5.4");
 }
-configuration "release" { config::debug = false; }
+
+// More configurations than the built-in debug and release, each based on one of them.
+void configurations(Configurations& c)
+{
+    c.add("asan", "debug");
+}
+
+// Called once per configuration. Before the call, project holds the defaults for that
+// configuration: the name, sources and output from the layout below, and H's settings.
+void build(Project& project)
+{
+    if (project.configuration == "debug")
+        project.debugInfo = true;
+    if (project.configuration == "asan")
+        project.clangFlags.add("-fsanitize=address");
+}
 ```
 
-It is typed and checked by the compiler, and `config::` values sit next to the rest. The cost:
-kppc needs a small evaluator for it, tools must run kppc to read it, and each kppc option needs a
-field.
+**With no build.kpp** the project is the defaults: the directory's name, `src/` as the sources,
+an executable, debug and release, no libraries. `kppc new hello` writes `src/main.kpp`, a
+`.gitignore` with `build/`, and no build.kpp at all.
 
-**Recommendation: (A).** It is the leanest, and it is exactly what the .cmd scripts hold today.
+**programs/factorio** today needs three .cmd files (link-settings, link, run). As one file:
+
+```cpp
+// programs/factorio/build.kpp
+void build(Project& project)
+{
+    StringView factorio = project.setting("FACTORIO", "C:/Factorio");
+    StringView converted = project.setting("FIK", "C:/factorio-in-kpp/kpp");
+    project.sources = {};
+    for (StringView root : {"CommonUtil", "Agui", "cxxopts", "StackWalker", "Lua", "src"})
+        project.sources.add(path(converted, root));
+    for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "", "curl/include", "glad/include", "trio"})
+        project.cIncludes.add(path(factorio, "libraries", lib));
+    for (StringView system : {"gdi32", "user32", "opengl32", "winmm" /* ... */})
+        project.systemLibraries.add(system);
+    project.debugInfo = project.configuration == "debug";
+    project.steps.add(Step::copy(project.output, path(project.setting("GAME", "C:/factorio-in-kpp"), "bin/x64")));
+}
+```
+
+The C shims (`native/`, built by a .cmd today) become a library, `libraries/factorio-native`, whose
+build.kpp lists its C and C++ files. The C:\Factorio libraries become registry libraries or
+libraries in `libraries/`, depending on question 4.
+
+**Steps** are for what is not compiling Kpp or C, such as generating code or copying into a game
+directory. A step is either a built-in (`Step::copy`) or a Kpp program in the project
+(`Step::run("tools/generate_imgui.kpp", inputs, outputs)`). kppc compiles and runs it with the
+full standard library, and runs it again only when its inputs change. That covers the remaining
+scripts, written in Kpp too. Only the root project may declare steps. A library's build.kpp may
+not, so adding a library still runs none of its code on your machine (library-registry.md,
+decision 5).
+
+**What it needs before it works:**
+- **Allocation in the interpreter.** `new` and `delete` are not evaluated today (C++20's
+  transient allocation), so a build file could not use `Vector` or `String`. This is thread D's
+  work. Until then build data must be arrays and string literals, which is too tight for the
+  factorio example.
+- **A way for kppc to read the resulting `Project` value back** into the driver. This is B's
+  driver and E's.
+- **The `build` package** in the standard library (C's).
+- **The commands** `kppc build [configuration]`, `kppc run` and `kppc new`, which find build.kpp
+  upward from the current directory.
+
+**The alternative**, a list of kppc's options with `[configuration]` sections (this document's
+first proposal), needs none of that and could be done in a day. But it is exactly the "special
+language" that grows conditionals and variables until it is CMake.
+
+### One layout
+
+```
+hello/
+  build.kpp          optional
+  build.lock         written by kppc when there are dependencies; committed
+  src/               the program's code: the top-level package, named after the project
+  libraries/         libraries kept in this repository: your own, and forks; committed
+    json/            a fork: replaces the registry's json everywhere in the program
+      build.kpp      a library is a project with no executable
+      src/
+  build/             outputs, never committed
+    debug/hello.exe
+    release/hello.exe
+```
+
+- **Registry libraries are not in the tree.** They sit in a read-only shared cache
+  (`%LOCALAPPDATA%\kpp\libraries\<name>-<version>-<hash>\`), named in `dependencies` and pinned with
+  their hashes in build.lock, so they are 1:1 with what the registry serves.
+- **A directory in `libraries/` named like a registry library replaces that library** for the
+  whole program, its other libraries included. A program has one version of each library anyway
+  (the one global scope).
+  - `kppc fork json` copies the locked version there and records what it was forked from.
+  - From that record, kppc can show the fork's diff to upstream and say when upstream has a
+    newer release.
+  - Deleting the directory goes back to the registry's version.
+- **A directory in `libraries/` with a new name** is your own library, used by the program
+  without a registry.
+- **The IDE's package tree** shows *Program*, *Libraries* (own, and forks marked as such),
+  *Registry* (read-only) and *Standard Library*.
+- **One-file programs** stay one command: `kppc --run hello.kpp` needs no directory, as today.
 
 ### Named configurations
 
-`debug` and `release` are built in, so a project that defines neither still has both; a project's
-`[debug]` or `[release]` section adds options to the built-in set. The names and contents are
-thread H's (debug/release matrix), adopted:
+`debug` and `release` are built in, so a project that defines neither still has both. Their
+contents are thread H's, adopted:
 
 | | debug | release |
 |---|---|---|
@@ -141,50 +253,21 @@ thread H's (debug/release matrix), adopted:
 | clang | `-O0` | `-O2` + ThinLTO, lld, its LTO cache |
 | link | incremental allowed | whole |
 
-`--debug-info` is not a configuration. It is an option either one may add, in its section (the
-Visual Studio projects add it to debug). Question 2 asks whether release should have it by default.
-Any further configuration (a profiling build, an AddressSanitizer build) is a `[name]` section with
-its options, such as `--clang-flags -fsanitize=address --lib -fsanitize=address`. `--release`
-stays as shorthand.
+Debug info is a field (`project.debugInfo`), not a configuration. Question 3 asks whether release
+should have it by default. Each configuration's output goes to `build\<configuration>\`, so
+configurations never share an object cache.
 
-The converted game has a second axis, apart from these: the Factorio defines the converter
+The converted game has a second axis apart from these: the Factorio defines the converter
 preprocesses with. `game-fastdebug` (_DEBUG, DEBUG, LUA_USE_APICHECK) is the only one today; a
 `game-release` would need a second conversion. It belongs to the conversion, not to kppc's
 configurations, and the two axes never share names.
 
-### Libraries, C include directories, outputs
-
-These are the `--lib`, `--cinclude` and `--exe` lines above, nothing more. The output defaults to
-`build\<configuration>\<project name>.exe` next to the project file, which keeps configurations
-from sharing an object cache. C sources the program compiles itself (programs/factorio/native)
-stay a script until question 3 is answered.
-
-### Dependencies and libraries
-
-These parts are for the library registry ([library-registry.md](library-registry.md), "What this
-needs from thread E"). In format (A) they are lines like the rest, one entry per line, so
-`kppc add` can edit the file without touching the author's comments:
-
-```
---use sdl3 3.4            # registry name, minimum version
---use lualib 5.4 path ..\lua             # a source override: a path,
---use glm 1.0 git https://github.com/... 4c1f2e0     # a git URL at a commit, or another registry
-```
-
-A library is a project file without `--exe`. It carries the manifest fields that registry
-document lists, and its C parts are lines too: C sources, `--cinclude`, defines, system
-libraries, and prebuilt files per target. A library's C sources compile with the program's
-configuration, and its code reads the program's `config::` constants, since it is compiled as
-part of the program. The lockfile (`<project>.lock`) sits next to the project file and is
-written only by kppc. The registry's incompatibility mark and the C-source option are spelled
-out with the registry's phase 1, not here.
-
 ### What changes for Visual Studio
 
 The `.vcxproj` (below) stops naming sources and options. It runs
-`kppc --server --msvc-diagnostics --project F --configuration $(Configuration)`, and the
-configurations dropdown becomes the project's configurations. `tools/vs/factorio/build.cmd`
-shrinks to the copy into the game's directory.
+`kppc build $(Configuration) --server --msvc-diagnostics` in the project's directory, and the
+configurations dropdown lists the project's configurations. `tools/vs/factorio/build.cmd`
+disappears into factorio's build.kpp.
 
 ## Visual Studio
 
@@ -252,19 +335,22 @@ install. `install.cmd` links it there.
 
 ## Questions for kovarex
 
-1. **Project file format:** (A) a list of kppc options with `[configuration]` sections
-   (recommended), or (B) a Kpp `project "..." { }` declaration?
-2. **Release builds with debug info** (a PDB for profiling and crash stacks), or without?
-3. **The C libraries the game links** are FASTBuild's April build; `libraries/` changed 54 times
+1. **The build file in Kpp**: `build.kpp`, run by the compile-time interpreter, which only
+   describes (recommended); or a list of kppc options with `[configuration]` sections?
+2. **The layout**: `src/`, `libraries/` (your own and forks, a fork replacing the registry's
+   library of its name), `build/`, registry libraries in a shared cache outside the tree. Are the
+   names and the replacement rule right?
+3. **Release builds with debug info** (a PDB for profiling and crash stacks), or without?
+4. **The C libraries the game links** are FASTBuild's April build; `libraries/` changed 54 times
    since, and `C:\Factorio` is read-only. Options: build them with FASTBuild into a directory
    outside `C:\Factorio` (if fbuild.bff allows an output root), build them with kppc's clang
-   from a list of C sources in the project file, or accept prebuilt libraries and rebuild them by
-   hand when `libraries/` changes. What is at stake (thread C's comparison of the headers at
-   4c178a5b915 with the .libs, built at d0495ebfd8a): SDL3 3.3.4 → 3.4.18 (sdl.lib), SDL_Mixer
-   3.1.2-pre → 3.2.4 (sdl-mixer.lib), zlib 1.2.7 → 1.3.2 (zlib.lib). Once the new source is
-   converted, the game compiles against SDL 3.4 headers and links SDL 3.3 code. Not mismatches:
-   crc32fast (code only), curl (its osx configuration), and Lua 5.2.1 (6 files; the game's Lua is
-   converted from source, and lua.lib is used only by the lua_compat check, which therefore
-   compares against the old Lua).
-4. **One `.vcxproj` per program, written by hand** (25 lines, recommended), or generated by
-   `kppc --vcxproj` from the project file?
+   as libraries with a build.kpp listing their C sources, or accept prebuilt libraries and
+   rebuild them by hand when `libraries/` changes. What is at stake (thread C's comparison of
+   the headers at 4c178a5b915 with the .libs, built at d0495ebfd8a): SDL3 3.3.4 → 3.4.18
+   (sdl.lib), SDL_Mixer 3.1.2-pre → 3.2.4 (sdl-mixer.lib), zlib 1.2.7 → 1.3.2 (zlib.lib). Once
+   the new source is converted, the game compiles against SDL 3.4 headers and links SDL 3.3
+   code. Not mismatches: crc32fast (code only), curl (its osx configuration), and Lua 5.2.1 (6
+   files; the game's Lua is converted from source, and lua.lib is used only by the lua_compat
+   check, which therefore compares against the old Lua).
+5. **One `.vcxproj` per program, written by hand** (25 lines, recommended), or generated by
+   `kppc --vcxproj` from build.kpp?
