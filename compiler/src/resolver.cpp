@@ -5085,6 +5085,44 @@ struct GlobalScope::Impl
     reportCheckerError(s->file, s->token, message);
   }
 
+  // A constexpr variable's initializer is evaluated as C++ requires ([dcl.constexpr] 10): one that is
+  // no constant, or that the interpreter cannot evaluate yet, is an error, never a variable
+  // initialized at run time. One whose value needs the code generator's layouts (a sizeof the
+  // checker's own layouts do not know exactly) is the code generator's to evaluate.
+  // inFunction: the template instance's function it is in, whose errors count once it is emitted.
+  void checkConstexprVariable(VariableDecl* v, const Ty* t, const TypeContext& ctx, const FunctionDecl* inFunction, const ParsedFile* in)
+  {
+    const ParsedFile* where = v->file ? v->file : in;
+    if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t) || containsAuto(t) || v->name.empty())
+      return;
+    if (ctx.subst)
+      for (const Subst::Pair& p : ctx.subst->pairs)
+        if (!p.type || mentionsUnknown(p.type))
+          return; // an instance whose arguments the checker does not know decides nothing
+    TokenScope tokenScope(ctx.tokens, ctx.text);
+    bool outerExact = exactLayoutOnly, outerNeeded = layoutNeeded;
+    exactLayoutOnly = true;
+    layoutNeeded = false;
+    constWhy().clear();
+    std::optional<ConstValue> value = constInitialize(t, v->init, ctx, 0);
+    std::string why = value ? std::string() : constWhy();
+    bool needed = layoutNeeded;
+    exactLayoutOnly = outerExact;
+    layoutNeeded = outerNeeded;
+    if (value || needed)
+      return;
+    std::string message = "the constexpr variable " + std::string(symbols.name(v->name.last().symbol)) + " is no constant";
+    if (!why.empty())
+      message += ": " + why;
+    if (inFunction)
+    {
+      std::lock_guard lock(checkerErrorsMutex);
+      instanceAssertErrors[inFunction].push_back(locationOf(where, v->token) + ": error: " + message);
+      return;
+    }
+    reportCheckerError(where, v->token, message);
+  }
+
   // The value of a declaration used as a constant: a const/constexpr variable with an initializer
   // (converted to its declared type), an enumerator, a Kpp enum's count, or a non-type template
   // parameter under the substitution. classSubst: the arguments of the class template
@@ -5967,20 +6005,53 @@ struct GlobalScope::Impl
   }
 
   // An expression's value at compile time under ctx, typed as C++ types it, or nullopt when it is
-  // no constant the checker can evaluate. The outermost evaluation's own objects end with it: a
-  // result that points at one is no constant.
+  // no constant the checker can evaluate.
   std::optional<ConstValue> constValue(Expr* e, const TypeContext& ctx, int depth = 0)
   {
-    if (constActive() > 0)
-      return constValueIn(e, ctx, depth);
+    return constOutermost([&] { return constValueIn(e, ctx, depth); }, depth);
+  }
+
+  // One evaluation, run by evaluate, whichever entry starts it (constValue, constInitialize): the
+  // outermost one's own objects, memory and temporaries begin and end with it, memory it leaves
+  // allocated is an error, and a result that points at one of its objects is no constant. One
+  // nested in it is part of it.
+  static int& constEvaluating()
+  {
+    static thread_local int evaluating = 0;
+    return evaluating;
+  }
+  template<class Evaluate>
+  std::optional<ConstValue> constOutermost(Evaluate&& evaluate, int depth)
+  {
+    if (constEvaluating() > 0)
+      return evaluate();
+    struct Level
+    {
+      Level() { ++constEvaluating(); }
+      ~Level() { --constEvaluating(); }
+    } level;
     constStorage().clear();
+    constHeap().clear();
+    constAllocations().clear();
     std::optional<ConstValue> v;
     {
-      ConstTemps temps;
-      v = constValueIn(e, ctx, depth);
-      if (!constEndTemps(temps, depth, v.has_value()))
-        v.reset();
+      ConstFrame heap(&constHeap());
+      {
+        ConstTemps temps;
+        v = evaluate();
+        if (!constEndTemps(temps, depth, v.has_value()))
+          v.reset();
+      }
+      for (const ConstAllocation& a : constAllocations())
+        if (v && !a.isFreed)
+        {
+          if (constWhy().empty())
+            constWhy() = "memory allocated at " + constWhereText(a.allocated) + " is never freed";
+          v.reset();
+        }
     }
+    constHeap().clear();
+    constAllocations().clear();
     if (v)
       if (const ConstStorage* escaped = constHeldStorage(*v))
       {
@@ -6069,6 +6140,16 @@ struct GlobalScope::Impl
         return constValueOfDecl(d, ctx, depth + 1);
       }
       case NodeKind::CallExpr: return constCall(static_cast<CallExpr*>(e), ctx, depth);
+      case NodeKind::NewExpr: return constNew(static_cast<NewExpr*>(e), ctx, depth);
+      case NodeKind::DeleteExpr: return constDelete(static_cast<DeleteExpr*>(e), ctx, depth);
+      case NodeKind::ThisExpr:
+      {
+        // `this` as a pointer: the address of the object the function runs on.
+        std::optional<ConstPlace> self = constThisPlace(ctx);
+        if (!self || !self->type || !(self->binding().owns || self->binding().symbol == constThisSymbol))
+          return std::nullopt;
+        return ConstValue::address(types.pointer(self->type), constStorageTarget(*self));
+      }
       case NodeKind::LiteralExpr:
       {
         auto* l = static_cast<LiteralExpr*>(e);
@@ -6185,7 +6266,16 @@ struct GlobalScope::Impl
             std::optional<ConstPlace> self = constThisPlace(ctx); // `*this` (a reference to the caller's object, in a place call)
             return self ? constRead(*self) : std::nullopt;
           }
-          std::optional<ConstValue> p = constValue(u->operand, ctx, depth + 1);
+          std::optional<ConstPlace> object = constPure(u->operand) ? constPlaceOf(u->operand, ctx, depth + 1) : std::nullopt;
+          std::optional<ConstValue> p = object ? constRead(*object) : constValue(u->operand, ctx, depth + 1);
+          if (p && p->isObject() && p->type && types.unqualified(p->type)->kind == TyKind::Class)
+          {
+            // `*optional`: the class's operator*, run on the object (where it is, when it has a place).
+            Subst subst;
+            FunctionDecl* f = constClassOperator(p->type, P::Star, {}, subst, depth);
+            std::optional<ConstValue> self = p;
+            return f && constDefinition(f) ? constCallOn(f, subst, {}, &self, depth + 1, object ? &*object : nullptr) : std::nullopt;
+          }
           if (p && p->isAddress())
             return p->target->decl && p->target->decl->kind == NodeKind::FunctionDecl ? p : constReadTarget(*p, depth + 1); // `(*f)(5)`: the function
           return p ? constDeref(*p) : std::nullopt;
@@ -6831,15 +6921,25 @@ struct GlobalScope::Impl
         return constEmpty(t, true, depth + 1); // `Point()`: value-initialized
       return std::nullopt;
     }
-    if (d->kind == NodeKind::ClassDecl || (d->kind == NodeKind::UsingAliasDecl && !callee->name.last().hasTemplateArgs))
+    if (d->kind == NodeKind::ClassDecl || (d->kind == NodeKind::UsingAliasDecl && !callee->name.last().hasTemplateArgs) ||
+        (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)) ||
+        (d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType))
     {
-      // `BoundingBox(a, b)`: the object the constructor the arguments choose makes.
+      // `BoundingBox(a, b)`, `V(x, y)` with V a type parameter (a CRTP base's derived class): the
+      // object the constructor the arguments choose makes.
       NamedType named{};
       named.kind = NodeKind::NamedType;
       named.token = callee->token;
       named.name = callee->name;
-      const Ty* t = types.unqualified(convertType(&named, ctx, depth + 1));
-      if (!t || t->kind != TyKind::Class)
+      const Ty* t = convertType(&named, ctx, depth + 1);
+      t = t ? types.unqualified(t) : nullptr;
+      // `Pair(1, "one")`: a class template named without its arguments, the ones the walk deduced
+      // (class template argument deduction), as for `Pair { 1, "one" }`.
+      if ((!t || !t->isKnown() || isUndeducedClassTemplate(t)) && c->ty)
+        if (const Ty* deduced = types.unqualified(types.stripRef(c->ty));
+            deduced->kind == TyKind::Class && deduced->isKnown() && !types.isDependent(deduced) && !mentionsUnknown(deduced))
+          t = deduced;
+      if (!t || t->kind != TyKind::Class || isUndeducedClassTemplate(t))
         return std::nullopt;
       std::vector<ConstValue> values;
       if (!constArguments(c->args, ctx, depth, values))
@@ -6906,6 +7006,14 @@ struct GlobalScope::Impl
         explicitFor(f, given);
       }
     }
+    if (!f->body && c->args.size() == 3 && f->params.size() == 3 && !f->name.empty())
+      if (std::string_view name = symbols.name(f->name.last().symbol); name == "memcpy" || name == "memmove" || name == "memset")
+      {
+        std::vector<ConstValue> values;
+        if (!constArguments(c->args, ctx, depth, values))
+          return std::nullopt;
+        return name == "memset" ? constMemset(values[0], values[1], values[2], depth) : constMemcpy(values[0], values[1], values[2], depth);
+      }
     if (!f->body && c->args.size() == 1 && f->params.size() == 1 && !f->name.empty() && symbols.name(f->name.last().symbol) == "strlen")
     {
       std::optional<ConstValue> text = constValue(c->args[0], ctx, depth + 1);
@@ -7079,6 +7187,20 @@ struct GlobalScope::Impl
         if (!(place = constStoragePlace(*pointer, "a use of", depth)))
           return std::nullopt;
     }
+    if (!place && !pointer && m->op == P::Dot && m->base->kind != NodeKind::ThisExpr)
+    {
+      // `make().size()`: the object is a temporary of the full expression, which the function
+      // runs on there (and which ends with it).
+      Expr* source = nullptr;
+      if (constCategory(m->base, source) == 0)
+        if (std::optional<ConstValue> object = constValue(m->base, ctx, depth + 1))
+        {
+          if (object->isObject() && object->type && types.unqualified(object->type)->kind == TyKind::Class)
+            place = constMaterialize(*object, object->type);
+          if (!place)
+            pointer = object; // (no full expression to hold it: run on the value, as before)
+        }
+    }
     if (place)
       held = constRead(*place);
     else
@@ -7091,12 +7213,7 @@ struct GlobalScope::Impl
       held.reset();
     if (!held)
       return constRun(f, values, fctx, depth, nullptr, &places, &categories); // what the object's type decides (Array::size of a run-time array)
-    std::optional<ConstValue> r = constRun(f, values, fctx, depth, &held, &places, &categories);
-    if (r && held && place && place->writable() && !(f->flags & DF_Const))
-      constWrite(*place, *held);
-    Expr* source = nullptr;
-    if (r && held && !place && !pointer && m->op == P::Dot && held->type && constDestroyRunsCode(held->type) && constCategory(m->base, source) == 0)
-      constMaterialize(*held, held->type); // `make().size()`: the object ends with the full expression
+    std::optional<ConstValue> r = constRun(f, values, fctx, depth, &held, &places, &categories, place ? &*place : nullptr);
     return r;
   }
 
@@ -7270,7 +7387,8 @@ struct GlobalScope::Impl
   }
 
   // A function chosen for an object (or for none): run with these arguments, `this` the object.
-  std::optional<ConstValue> constCallOn(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, std::optional<ConstValue>* self, int depth)
+  std::optional<ConstValue> constCallOn(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, std::optional<ConstValue>* self, int depth,
+                                        const ConstPlace* selfPlace = nullptr)
   {
     if (!constDefinition(f))
       return std::nullopt;
@@ -7279,7 +7397,7 @@ struct GlobalScope::Impl
       params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
     TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
                      f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-    return constRun(f, args, fctx, depth, self);
+    return constRun(f, args, fctx, depth, self, nullptr, nullptr, selfPlace);
   }
 
   // Whether an object is true in a condition (`if (optional)`, `!*this`): its conversion to bool
@@ -7561,11 +7679,14 @@ struct GlobalScope::Impl
     std::vector<uint8_t> fieldBits; // a bit field's width, 0 for a whole member
     std::vector<FunctionDecl*> constructors;
     bool ok = false;
+    // A member is an anonymous struct or union: its field is null, its type that class's, its
+    // members reached through it (constFieldPath). No aggregate initialization goes through one.
+    bool anonymous = false;
     std::vector<CollectedUse> uses; // what computing it read (a recording build's): replayed to each asker
   };
 
   // A field no initializer of an aggregate names: an unnamed bit field (`int : 0;`), padding.
-  static bool constUnnamedField(const ConstClassLayout& layout, size_t i) { return layout.fields[i]->name.empty(); }
+  static bool constUnnamedField(const ConstClassLayout& layout, size_t i) { return !layout.fields[i] || layout.fields[i]->name.empty(); }
 
   // `using Vector2::Vector2;`: a class with a base's constructors (no aggregate, C++20).
   static bool constInheritsConstructors(const ConstClassLayout& layout)
@@ -7621,8 +7742,7 @@ struct GlobalScope::Impl
     auto layout = std::make_shared<ConstClassLayout>();
     CollectUses collected;
     Scope* s = classScopeOf(t);
-    if (s && s->owner && s->owner->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(s->owner)->isDefinition &&
-        static_cast<ClassDecl*>(s->owner)->keyword != Kw::union_)
+    if (s && s->owner && s->owner->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(s->owner)->isDefinition)
     {
       auto* cls = static_cast<ClassDecl*>(s->owner);
       layout->decl = cls;
@@ -7645,7 +7765,19 @@ struct GlobalScope::Impl
         if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
           layout->constructors.push_back(static_cast<FunctionDecl*>(m));
         if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
-          layout->ok = false; // an anonymous struct or union member: not laid out here yet
+        {
+          // An anonymous struct or union member: one part, its own class's object.
+          const Ty* at = selfType(m);
+          if (at && sp)
+            at = substitute(at, *sp);
+          if (!at || !at->isKnown() || types.isDependent(at))
+            layout->ok = false;
+          layout->anonymous = true;
+          layout->fields.push_back(nullptr);
+          layout->fieldTypes.push_back(at);
+          layout->fieldBits.push_back(0);
+          continue;
+        }
         if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
           continue;
         const Ty* ft = declaredTypeOf(m, sp, depth + 1);
@@ -7681,6 +7813,13 @@ struct GlobalScope::Impl
     for (size_t i = 0; i < layout->fields.size(); ++i)
       if (layout->fields[i] == field)
         return std::vector<size_t>{layout->bases.size() + i};
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+      if (!layout->fields[i])
+        if (std::optional<std::vector<size_t>> inner = constFieldPath(layout->fieldTypes[i], field, depth + 1))
+        {
+          inner->insert(inner->begin(), layout->bases.size() + i); // through the anonymous member
+          return inner;
+        }
     for (size_t b = 0; b < layout->bases.size(); ++b)
       if (std::optional<std::vector<size_t>> inner = constFieldPath(layout->bases[b], field, depth + 1))
       {
@@ -7718,6 +7857,13 @@ struct GlobalScope::Impl
     std::vector<ConstValue> parts = *v.parts;
     if (!constSetPart(parts[path[from]], path, from + 1, part))
       return false;
+    // A union holds one member: writing one ends the others' lifetimes, so reading them is no
+    // constant (C++20 [class.union]), never what was there.
+    if (const Ty* u = v.type ? v.type : nullptr; u && u->kind == TyKind::Class && u->decl && u->decl->kind == NodeKind::ClassDecl &&
+                                                  static_cast<ClassDecl*>(u->decl)->keyword == Kw::union_)
+      for (size_t i = 0; i < parts.size(); ++i)
+        if (i != path[from])
+          parts[i] = ConstValue::unset(parts[i].type);
     v.parts = std::make_shared<const std::vector<ConstValue>>(std::move(parts));
     return true;
   }
@@ -7844,7 +7990,7 @@ struct GlobalScope::Impl
   std::optional<ConstValue> constFieldDefault(const ConstClassLayout& layout, size_t i, bool zero, int depth)
   {
     VariableDecl* f = layout.fields[i];
-    if (!f->init)
+    if (!f || !f->init)
       return constEmpty(layout.fieldTypes[i], zero, depth + 1);
     LocalStack params;
     for (Decl* p : effectiveParams(layout.decl))
@@ -7991,6 +8137,11 @@ struct GlobalScope::Impl
 
   std::optional<ConstValue> constInitialize(const Ty* t, Expr* init, const TypeContext& ctx, int depth)
   {
+    return constOutermost([&] { return constInitializeIn(t, init, ctx, depth); }, depth);
+  }
+
+  std::optional<ConstValue> constInitializeIn(const Ty* t, Expr* init, const TypeContext& ctx, int depth)
+  {
     const Ty* u = t ? types.unqualified(types.stripRef(t)) : nullptr;
     if (!init || depth > 512)
       return std::nullopt;
@@ -8004,9 +8155,34 @@ struct GlobalScope::Impl
       if (!t->isReference())
         if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init, u, ctx, depth))
           return *copied;
+      if (std::optional<ConstValue> chars = constCharArrayFromLiteral(u, init, ctx, depth))
+        return chars;
       return constConvertTo(constValue(init, ctx, depth + 1), u, depth);
     }
     return constAsDeclared(constInitValue(init, ctx, depth), t);
+  }
+
+  // `char name[8] = "pipe";`, `char text[] = "1.57";`: the literal's characters and its terminating
+  // zero, the rest of the array zero ([dcl.init.string]); a literal longer than the array is no
+  // constant. Nullopt when t is no char array or init no string literal.
+  std::optional<ConstValue> constCharArrayFromLiteral(const Ty* t, Expr* init, const TypeContext& ctx, int depth)
+  {
+    while (init && init->kind == NodeKind::ParenExpr)
+      init = static_cast<ParenExpr*>(init)->inner;
+    const Ty* element = t->kind == TyKind::Array && t->inner ? types.unqualified(t->inner) : nullptr;
+    if (!element || element->kind != TyKind::Char || !init || init->kind != NodeKind::LiteralExpr ||
+        static_cast<LiteralExpr*>(init)->literalKind != TokenKind::String)
+      return std::nullopt;
+    std::optional<ConstValue> literal = constValue(init, ctx, depth + 1);
+    if (!literal || !literal->isObject() || !literal->parts)
+      return std::nullopt;
+    size_t count = t->count ? t->count : literal->parts->size();
+    if (literal->parts->size() > count + 1 || (literal->parts->size() == count + 1 && literal->parts->back().i != 0))
+      return std::nullopt;
+    std::vector<ConstValue> chars;
+    for (size_t i = 0; i < count; ++i)
+      chars.push_back(ConstValue::integer(i < literal->parts->size() ? (*literal->parts)[i].i : 0, element));
+    return ConstValue::object(t->count ? t : types.array(element, uint32_t(count)), std::move(chars));
   }
 
   // `{1, 2, 3}` for an array: its elements in order, the rest value-initialized; brace elision
@@ -8086,7 +8262,7 @@ struct GlobalScope::Impl
   bool constIsAggregate(const Ty* t, int depth)
   {
     const ConstClassLayout* layout = constLayoutOf(t, depth);
-    if (!layout || !layout->constructors.empty() || constInheritsConstructors(*layout))
+    if (!layout || !layout->constructors.empty() || constInheritsConstructors(*layout) || layout->anonymous)
       return false;
     for (Decl* m : membersRead(layout->decl))
       if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Virtual))
@@ -8113,7 +8289,7 @@ struct GlobalScope::Impl
         return constArrayInit(t, b->args, ctx, depth);
       // `{.x = 1, .z = 3}`: each member its designator names, the rest from their defaults.
       const ConstClassLayout* layout = constLayoutOf(t, depth);
-      if (!layout || !layout->bases.empty())
+      if (!layout || !layout->bases.empty() || layout->anonymous)
         return std::nullopt;
       std::vector<ConstValue> parts;
       for (size_t i = 0; i < layout->fields.size(); ++i)
@@ -8165,6 +8341,76 @@ struct GlobalScope::Impl
   // written: the argument expressions, when the construction has them: where the values' types leave
   // two constructors equally good (`Pair(A&&, B&&)` and `Pair(const A&, B&&)` for a string literal
   // and an enumerator), the types the walk gave them, value categories included, decide.
+  // A typed union (design.md 8.5) made from a value of exactly one alternative's type, or from a
+  // constant tag and that alternative's arguments: the tag, and that alternative alive in the
+  // storage (the others not). Nullopt for anything else.
+  std::optional<ConstValue> constTypedUnion(const Ty* t, const ConstClassLayout& layout, const std::vector<ConstValue>& args, int depth)
+  {
+    ClassDecl* def = layout.decl;
+    size_t tagAt = SIZE_MAX, storageAt = SIZE_MAX;
+    for (size_t i = 0; i < layout.fields.size(); ++i)
+      if (layout.fields[i] && layout.fields[i] == def->tagField)
+        tagAt = i;
+      else if (!layout.fields[i])
+        storageAt = i;
+    const ConstClassLayout* storage = storageAt != SIZE_MAX ? constLayoutOf(layout.fieldTypes[storageAt], depth + 1) : nullptr;
+    if (args.empty() || tagAt == SIZE_MAX || !storage || !layout.bases.empty())
+      return std::nullopt;
+    const Ty* tagTy = types.unqualified(layout.fieldTypes[tagAt]);
+    auto alternativeType = [&](size_t k) -> const Ty* {
+      for (size_t i = 0; i < storage->fields.size(); ++i)
+        if (storage->fields[i] == def->alternatives[k])
+          return storage->fieldTypes[i];
+      return nullptr;
+    };
+    size_t which = SIZE_MAX;
+    std::vector<ConstValue> rest;
+    if (args[0].kind == ConstValue::Kind::Int && args[0].type && types.unqualified(args[0].type) == tagTy)
+    {
+      which = size_t(args[0].i); // `U(U::Text, x)`
+      rest.assign(args.begin() + 1, args.end());
+    }
+    else if (args.size() == 1)
+    {
+      const Ty* given = args[0].type ? types.unqualified(types.stripRef(args[0].type)) : nullptr;
+      size_t found = 0;
+      for (size_t k = 0; k < def->alternatives.size(); ++k)
+        if (const Ty* at = alternativeType(k); given && at && types.unqualified(at) == given)
+        {
+          which = k;
+          ++found;
+        }
+      if (found != 1)
+        return std::nullopt; // no alternative, or several, of the value's type
+      rest = args;
+    }
+    const Ty* alternative = which < def->alternatives.size() ? alternativeType(which) : nullptr;
+    if (!alternative)
+      return std::nullopt;
+    const Ty* au = types.unqualified(alternative);
+    std::optional<ConstValue> value = rest.size() == 1 && rest[0].type && types.unqualified(types.stripRef(rest[0].type)) == au
+                                        ? constConvertTo(rest[0], au, depth + 1)
+                                    : au->kind == TyKind::Class ? constConstruct(au, rest, false, depth + 1)
+                                    : rest.size() == 1           ? constConvertTo(rest[0], au, depth + 1)
+                                                                 : std::nullopt;
+    if (!value)
+      return std::nullopt;
+    std::vector<ConstValue> alternatives;
+    for (size_t i = 0; i < storage->fields.size(); ++i)
+      alternatives.push_back(storage->fields[i] == def->alternatives[which] ? *value : ConstValue::unset(storage->fieldTypes[i]));
+    std::vector<ConstValue> parts;
+    for (size_t i = 0; i < layout.fields.size(); ++i)
+    {
+      std::optional<ConstValue> part = i == tagAt     ? constArith().convert(ConstValue::integer(int64_t(which)), tagTy)
+                                     : i == storageAt ? std::optional<ConstValue>(ConstValue::object(layout.fieldTypes[storageAt], std::move(alternatives)))
+                                                      : constFieldDefault(layout, i, true, depth);
+      if (!part)
+        return std::nullopt;
+      parts.push_back(*part);
+    }
+    return ConstValue::object(t, std::move(parts));
+  }
+
   std::optional<ConstValue> constConstruct(const Ty* t, const std::vector<ConstValue>& args, bool implicitOnly, int depth,
                                           const Span<Expr*>* written = nullptr)
   {
@@ -8174,10 +8420,14 @@ struct GlobalScope::Impl
       return std::nullopt;
     if (args.size() == 1 && args[0].isObject() && args[0].type && types.unqualified(types.stripRef(args[0].type)) == t)
       return args[0]; // a copy (the interpreter's values are copied by value)
+    if (layout->decl && layout->decl->isTypedUnion)
+      return constTypedUnion(t, *layout, args, depth);
     if (layout->constructors.empty() && !constInheritsConstructors(*layout))
     {
       if (implicitOnly && !args.empty())
         return std::nullopt;
+      if (layout->anonymous && !args.empty())
+        return std::nullopt; // (an aggregate with an anonymous member: not initialized from values here)
       if (args.empty())
         return constEmpty(t, true, depth + 1);
       std::vector<ConstValue> parts;
@@ -8520,7 +8770,7 @@ struct GlobalScope::Impl
         {
           // A local or parameter of the run (what a reference to one refers to): its storage. Not a
           // copy the run holds of something else's (`this`, a reference it could not bind).
-          if (!local->binding().owns || !local->type || local->type->isReference())
+          if ((!local->binding().owns && local->binding().symbol != constThisSymbol) || !local->type || local->type->isReference())
             return std::nullopt;
           return ConstDesignated{constStorageTarget(*local), local->type};
         }
@@ -8545,7 +8795,14 @@ struct GlobalScope::Impl
         std::optional<ConstDesignated> base;
         if (m->op == P::Dot)
           base = constDesignated(m->base, ctx, depth + 1);
-        else if (m->op == P::Arrow && m->base->kind != NodeKind::ThisExpr)
+        else if (m->op == P::Arrow && m->base->kind == NodeKind::ThisExpr)
+        {
+          // `&this->storage.value`: a part of the object the function runs on.
+          std::optional<ConstPlace> self = constThisPlace(ctx);
+          if (self && (self->binding().owns || self->binding().symbol == constThisSymbol) && self->type)
+            base = ConstDesignated{constStorageTarget(*self), self->type};
+        }
+        else if (m->op == P::Arrow)
           if (std::optional<ConstValue> p = constValue(m->base, ctx, depth + 1))
             base = pointee(*p);
         const Ty* cls = base ? types.unqualified(types.stripRef(base->type)) : nullptr;
@@ -8875,18 +9132,20 @@ struct GlobalScope::Impl
   }
 
   // The value of a range's begin() or end() (`for (auto v : flags)`), run on the object.
-  std::optional<ConstValue> constRangeEnd(const ConstValue& range, uint32_t symbol, int depth)
+  // at: the range's place, where begin() runs (its result may point into it); write: the loop
+  // writes the elements (`for (auto& v : table)`), so the begin() that is not const.
+  std::optional<ConstValue> constRangeEnd(const ConstValue& range, uint32_t symbol, int depth, const ConstPlace* at = nullptr, bool write = false)
   {
     Subst subst;
     std::vector<FunctionDecl*> candidates = constMembersNamed(range.type, symbol, subst, depth);
     FunctionDecl* f = nullptr;
     for (FunctionDecl* c : candidates)
-      if (c->params.empty() && (!f || (c->flags & DF_Const)))
-        f = c; // `begin() const` where there are both: the elements are only read
+      if (c->params.empty() && (!f || ((c->flags & DF_Const) != 0) != write))
+        f = c; // `begin() const` where there are both, unless the elements are written
     if (!f)
       return std::nullopt;
     std::optional<ConstValue> self = range;
-    return constCallOn(f, subst, {}, &self, depth + 1);
+    return constCallOn(f, subst, {}, &self, depth + 1, at);
   }
 
   // Constructor ctor of class t run at compile time: the bases and members its initializers name
@@ -8946,6 +9205,7 @@ struct GlobalScope::Impl
     }
     std::vector<ConstBinding> env;
     ConstFrame frame(&env);
+    ConstRunning running(ctor->file);
     fctx.env = &env;
     for (size_t i = 0; i < ctor->params.size(); ++i)
     {
@@ -9054,7 +9314,7 @@ struct GlobalScope::Impl
       };
       bool found = false;
       for (size_t i = 0; i < nf && !found; ++i)
-        if (!layout->fields[i]->name.empty() && layout->fields[i]->name.last().symbol == symbol)
+        if (layout->fields[i] && !layout->fields[i]->name.empty() && layout->fields[i]->name.last().symbol == symbol)
         {
           parts[nb + i] = initialize(layout->fieldTypes[i]);
           if (!parts[nb + i])
@@ -9188,6 +9448,59 @@ struct GlobalScope::Impl
     ~ConstFrame() { constFrames().pop_back(); }
   };
 
+  // The file of the function running, for where the evaluation allocates and frees.
+  static const ParsedFile*& constRunningFile()
+  {
+    static thread_local const ParsedFile* file = nullptr;
+    return file;
+  }
+  struct ConstRunning
+  {
+    const ParsedFile* outer = constRunningFile();
+    explicit ConstRunning(const ParsedFile* file)
+    {
+      if (file)
+        constRunningFile() = file;
+    }
+    ~ConstRunning() { constRunningFile() = outer; }
+  };
+  struct ConstWhere
+  {
+    const ParsedFile* file = nullptr;
+    uint32_t token = 0;
+  };
+  ConstWhere constHere(const Expr* e) { return ConstWhere{constRunningFile(), e->token}; }
+  // "Build.kpp:12": the file's name and the line.
+  static std::string constWhereText(const ConstWhere& w)
+  {
+    if (!w.file || !w.file->tokens || w.token >= w.file->tokens->size())
+      return "a place the evaluator does not know";
+    std::string_view text = w.file->text;
+    size_t offset = std::min<size_t>((*w.file->tokens)[w.token].offset, text.size());
+    uint32_t line = 1 + uint32_t(std::count(text.begin(), text.begin() + offset, '\n'));
+    return w.file->path.substr(w.file->path.find_last_of("/\\") + 1) + ":" + std::to_string(line);
+  }
+
+  // Memory the outermost evaluation allocated (C++20's transient allocation): one binding per
+  // allocation, which nothing destroys on its own (an Address names it by serial, as a local's),
+  // and where it was allocated and freed. All of it is freed before the evaluation ends.
+  struct ConstAllocation
+  {
+    ConstWhere allocated, freed;
+    bool array = false; // by new[]
+    bool isFreed = false;
+  };
+  static std::vector<ConstBinding>& constHeap()
+  {
+    static thread_local std::vector<ConstBinding> heap;
+    return heap;
+  }
+  static std::vector<ConstAllocation>& constAllocations()
+  {
+    static thread_local std::vector<ConstAllocation> allocations;
+    return allocations;
+  }
+
   // An Address of the object at place (a binding of a running frame, a part of it): the serial
   // its binding is named by from now on.
   ConstTarget constStorageTarget(const ConstPlace& place)
@@ -9221,6 +9534,12 @@ struct GlobalScope::Impl
       return nullptr;
     }
     const ConstStorage& s = it->second;
+    if (s.env == &constHeap() && s.index < constAllocations().size() && constAllocations()[s.index].isFreed)
+    {
+      if (constWhy().empty())
+        constWhy() = std::string(use) + " memory freed at " + constWhereText(constAllocations()[s.index].freed);
+      return nullptr;
+    }
     const std::vector<const void*>& frames = constFrames();
     if (std::find(frames.begin(), frames.end(), s.env) == frames.end() || s.index >= s.env->size() || (*s.env)[s.index].serial != t.storage)
     {
@@ -9259,6 +9578,153 @@ struct GlobalScope::Impl
         if (const ConstStorage* s = constHeldStorage(part, depth + 1))
           return s;
     return nullptr;
+  }
+
+  // The type of the object an Address points at (its target's part, whatever the pointer's own
+  // type says: `void*`), or null.
+  const Ty* constPointedType(const ConstValue& p, int depth)
+  {
+    if (!p.isAddress() || !p.target)
+      return nullptr;
+    const ConstTarget& t = *p.target;
+    const Ty* whole = constTargetType(t, depth);
+    const Ty* part = whole ? constPartType(whole, t.path, t.path.size(), depth) : nullptr;
+    return part ? types.unqualified(types.stripRef(part)) : nullptr;
+  }
+
+  // A scalar's value read as another scalar type of the same size (the bits kept: `memcpy` of a
+  // uint32_t into a float), or nullopt.
+  std::optional<ConstValue> constBitCast(const ConstValue& v, const Ty* to, int depth)
+  {
+    std::optional<int64_t> fromSize = v.type ? constSizeOf(v.type, depth) : std::nullopt, toSize = constSizeOf(to, depth);
+    if (!v.isScalar() || !fromSize || !toSize || *fromSize != *toSize || (*toSize != 4 && *toSize != 8))
+      return std::nullopt;
+    uint64_t bits = 0;
+    if (v.isFloat())
+    {
+      if (*fromSize == 4)
+      {
+        float f = float(v.f);
+        uint32_t b;
+        memcpy(&b, &f, 4);
+        bits = b;
+      }
+      else
+        memcpy(&bits, &v.f, 8);
+    }
+    else
+      bits = uint64_t(v.i) & (*fromSize == 4 ? 0xFFFFFFFFull : ~0ull);
+    if (to->kind == TyKind::Float)
+    {
+      if (*toSize == 4)
+      {
+        uint32_t b = uint32_t(bits);
+        float f;
+        memcpy(&f, &b, 4);
+        return ConstValue::floating(f, to);
+      }
+      double d;
+      memcpy(&d, &bits, 8);
+      return ConstValue::floating(d, to);
+    }
+    if (!to->isArithmetic() && to->kind != TyKind::Enum)
+      return std::nullopt;
+    return constArith().convert(ConstValue::integer(int64_t(bits), types.intType(64, true)), to);
+  }
+
+  // `memcpy(to, from, n)` and `memmove` of the evaluation's own objects, by their types: the whole
+  // object when n is its size and both are of one type (its value copied), a scalar into another of
+  // its size (its bits), or n bytes of elements of one type along two arrays (copied as if through
+  // a buffer). Anything else is no constant: the evaluator has no bytes, only typed values.
+  std::optional<ConstValue> constMemcpy(const ConstValue& to, const ConstValue& from, const ConstValue& count, int depth)
+  {
+    auto fail = [&](const std::string& why) -> std::optional<ConstValue> {
+      if (constWhy().empty())
+        constWhy() = why;
+      return std::nullopt;
+    };
+    if (count.kind != ConstValue::Kind::Int || count.i < 0)
+      return std::nullopt;
+    if (count.i == 0)
+      return to;
+    const Ty* target = constPointedType(to, depth);
+    const Ty* source = from.isAddress() ? constPointedType(from, depth) : from.isPointer() && from.parts && from.i >= 0 && size_t(from.i) < from.parts->size() ? (*from.parts)[size_t(from.i)].type : nullptr;
+    if (!to.isAddress() || !to.target->storage || !target || !source)
+      return fail("a memcpy the evaluator cannot follow (not between objects of the evaluation)");
+    source = types.unqualified(types.stripRef(source));
+    std::optional<int64_t> targetSize = constSizeOf(target, depth), sourceSize = constSizeOf(source, depth);
+    auto read = [&](const ConstValue& p) -> std::optional<ConstValue> { return p.isAddress() ? constReadTarget(p, depth + 1) : constDeref(p); };
+    auto move = [&](const ConstValue& p, int64_t n) -> std::optional<ConstValue> {
+      return p.isAddress() ? constAddressMove(p, n, depth) : constPointerArith(P::Plus, p, ConstValue::integer(n, types.intType()));
+    };
+    if (targetSize && sourceSize && *targetSize == count.i && *sourceSize == count.i)
+    {
+      std::optional<ConstValue> v = read(from);
+      if (v && target != source)
+        v = target->kind == TyKind::Class || source->kind == TyKind::Class ? std::nullopt : constBitCast(*v, target, depth);
+      std::optional<ConstPlace> place = v ? constStoragePlace(to, "a memcpy into", depth) : std::nullopt;
+      if (!place)
+        return v ? std::nullopt : fail("a memcpy between objects of different types: " + types.toString(source, &symbols) + " into " + types.toString(target, &symbols));
+      place->type = target;
+      return constWrite(*place, *v) ? std::optional<ConstValue>(to) : std::nullopt;
+    }
+    if (target != source || !targetSize || !*targetSize || count.i % *targetSize)
+      return fail("a memcpy of " + std::to_string(count.i) + " bytes between " + types.toString(source, &symbols) + " and " + types.toString(target, &symbols));
+    int64_t n = count.i / *targetSize;
+    std::vector<ConstValue> elements;
+    for (int64_t i = 0; i < n; ++i)
+    {
+      std::optional<ConstValue> at = move(from, i);
+      std::optional<ConstValue> v = at ? read(*at) : std::nullopt;
+      if (!v)
+        return fail("a memcpy reading past what the source holds");
+      elements.push_back(*v);
+    }
+    for (int64_t i = 0; i < n; ++i)
+    {
+      std::optional<ConstValue> at = move(to, i);
+      std::optional<ConstPlace> place = at ? constStoragePlace(*at, "a memcpy into", depth) : std::nullopt;
+      if (!place)
+        return fail("a memcpy writing past what the target holds");
+      place->type = target;
+      if (!constWrite(*place, elements[size_t(i)]))
+        return std::nullopt;
+    }
+    return to;
+  }
+
+  // `memset(to, c, n)` of the evaluation's own objects: n bytes of chars, or zero over whole objects
+  // or elements (each value-initialized to zero). Anything else is no constant.
+  std::optional<ConstValue> constMemset(const ConstValue& to, const ConstValue& byte, const ConstValue& count, int depth)
+  {
+    const Ty* target = constPointedType(to, depth);
+    std::optional<int64_t> size = target ? constSizeOf(target, depth) : std::nullopt;
+    if (!to.isAddress() || !to.target->storage || byte.kind != ConstValue::Kind::Int || count.kind != ConstValue::Kind::Int || count.i < 0 || !size ||
+        !*size || count.i % *size)
+    {
+      if (constWhy().empty())
+        constWhy() = "a memset the evaluator cannot follow";
+      return std::nullopt;
+    }
+    bool chars = target->kind == TyKind::Char;
+    if (!chars && (byte.i & 0xFF) != 0)
+    {
+      if (constWhy().empty())
+        constWhy() = "a memset of a nonzero byte over " + types.toString(target, &symbols);
+      return std::nullopt;
+    }
+    for (int64_t i = 0; i < count.i / *size; ++i)
+    {
+      std::optional<ConstValue> at = constAddressMove(to, i, depth);
+      std::optional<ConstPlace> place = at ? constStoragePlace(*at, "a memset of", depth) : std::nullopt;
+      std::optional<ConstValue> v = chars ? constArith().convert(ConstValue::integer(byte.i & 0xFF), target) : constEmpty(target, true, depth + 1);
+      if (!place || !v)
+        return std::nullopt;
+      place->type = target;
+      if (!constWrite(*place, *v))
+        return std::nullopt;
+    }
+    return to;
   }
 
   // The temporaries of the full expression being evaluated (constTemps), or null outside any.
@@ -9379,6 +9845,143 @@ struct GlobalScope::Impl
   }
 
   bool constEndTemps(ConstTemps& temps, int depth, bool run = true) { return constEndLocals(temps.list, 0, depth, run); }
+
+  // The object `new T...` makes, of type t, from the new-expression's initializer: `T` default-
+  // initialized, `T()` value-initialized, `T(a, b)` and `T{a, b}` from them.
+  std::optional<ConstValue> constNewObject(NewExpr* n, const Ty* t, const TypeContext& ctx, int depth)
+  {
+    const Ty* u = types.unqualified(t);
+    if (n->braced && n->args.size() == 1)
+      return constInitialize(u, n->args[0], ctx, depth + 1);
+    if (n->args.empty())
+      return constEmpty(u, n->parenthesized, depth + 1);
+    if (n->args.size() == 1)
+    {
+      if (u->kind != TyKind::Class)
+        return constConvertTo(constValue(n->args[0], ctx, depth + 1), u, depth + 1);
+      if (std::optional<std::optional<ConstValue>> copied = constCopyInit(n->args[0], u, ctx, depth))
+        return *copied;
+      std::optional<ConstValue> v = constValue(n->args[0], ctx, depth + 1);
+      if (!v)
+        return std::nullopt;
+      if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == u)
+        return constConvertTo(v, u, depth + 1);
+      return constConstruct(u, {*v}, false, depth + 1);
+    }
+    std::vector<ConstValue> values;
+    if (!constArguments(n->args, ctx, depth, values))
+      return std::nullopt;
+    return constConstruct(u, values, false, depth + 1);
+  }
+
+  // `new T(args)`, `new T[n]{...}`: an object, or n of them, in memory the evaluation allocates
+  // (C++20's transient allocation: freed before it ends); a pointer to it, to the first of the n.
+  // `new (p) T(args)`: the object made where p points.
+  std::optional<ConstValue> constNew(NewExpr* n, const TypeContext& ctx, int depth)
+  {
+    if (!n->type || n->placement.size() > 1)
+      return std::nullopt;
+    Type* written = n->type;
+    Expr* count = nullptr;
+    if (written->kind == NodeKind::ArrayType && n->placement.empty())
+    {
+      count = static_cast<ArrayType*>(written)->size;
+      written = static_cast<ArrayType*>(written)->element;
+      if (!count)
+        return std::nullopt;
+    }
+    const Ty* t = convertType(written, ctx, depth + 1);
+    if (!t || !t->isKnown() || types.isDependent(t) || t->isReference())
+      return std::nullopt;
+    t = types.unqualified(t);
+    if (n->placement.size() == 1)
+    {
+      std::optional<ConstValue> where = constValue(n->placement[0], ctx, depth + 1);
+      if (!where || !where->isAddress() || !where->target->storage)
+        return std::nullopt; // (placement new into what the evaluation does not hold)
+      ConstValue typed = *where;
+      typed.type = types.pointer(t);
+      std::optional<ConstPlace> place = constStoragePlace(typed, "a placement new into", depth);
+      std::optional<ConstValue> object = place ? constNewObject(n, t, ctx, depth) : std::nullopt;
+      if (!object || !constWrite(*place, *object))
+        return std::nullopt;
+      return typed;
+    }
+    std::optional<ConstValue> value;
+    if (count)
+    {
+      std::optional<ConstValue> size = constValue(count, ctx, depth + 1);
+      if (!size || size->kind != ConstValue::Kind::Int || size->i < 0 || !constMayMake(size_t(size->i)))
+        return std::nullopt;
+      const Ty* array = types.array(t, uint64_t(size->i));
+      if (n->braced && n->args.size() == 1 && n->args[0]->kind == NodeKind::BraceInitExpr)
+        value = constArrayInit(array, static_cast<BraceInitExpr*>(n->args[0])->args, ctx, depth + 1);
+      else if (n->args.empty())
+      {
+        std::vector<ConstValue> elements;
+        for (int64_t i = 0; i < size->i; ++i)
+        {
+          std::optional<ConstValue> e = constEmpty(t, n->parenthesized, depth + 1);
+          if (!e)
+            return std::nullopt;
+          elements.push_back(*e);
+        }
+        value = ConstValue::object(array, std::move(elements));
+      }
+      if (!value)
+        return std::nullopt;
+    }
+    else if (!(value = constNewObject(n, t, ctx, depth)))
+      return std::nullopt;
+    std::vector<ConstBinding>& heap = constHeap();
+    ConstBinding b{0, *value};
+    b.type = value->type ? value->type : t;
+    heap.push_back(std::move(b));
+    constAllocations().push_back(ConstAllocation{constHere(n), {}, count != nullptr, false});
+    ConstTarget target = constStorageTarget(ConstPlace{&heap, heap.size() - 1, {}, heap.back().type});
+    if (count)
+      target.path.push_back(0);
+    return ConstValue::address(types.pointer(t), std::move(target));
+  }
+
+  // `delete p`, `delete[] p` of memory `new` allocated: the object (each element, the last first)
+  // destroyed, the memory freed. Null: nothing. Anything else is an error, as in C++20.
+  std::optional<ConstValue> constDelete(DeleteExpr* d, const TypeContext& ctx, int depth)
+  {
+    std::optional<ConstValue> p = constValue(d->operand, ctx, depth + 1);
+    if (!p)
+      return std::nullopt;
+    ConstValue done = ConstValue::integer(0, types.voidType());
+    if (p->kind == ConstValue::Kind::Int && p->i == 0)
+      return done;
+    auto fail = [&](const std::string& why) -> std::optional<ConstValue> {
+      if (constWhy().empty())
+        constWhy() = why;
+      return std::nullopt;
+    };
+    auto it = p->isAddress() && p->target->storage ? constStorage().find(p->target->storage) : constStorage().end();
+    if (it == constStorage().end() || it->second.env != &constHeap())
+      return fail(std::string(d->isArray ? "delete[]" : "delete") + " of memory new did not allocate");
+    size_t index = it->second.index;
+    ConstAllocation& a = constAllocations()[index];
+    if (a.isFreed)
+      return fail("memory freed twice (first at " + constWhereText(a.freed) + ")");
+    if (a.array != d->isArray || p->target->path != (a.array ? std::vector<size_t>{0} : std::vector<size_t>{}))
+      return fail(std::string(d->isArray ? "delete[]" : "delete") + " of memory " + (a.array ? "new[]" : "new") + " allocated at " +
+                  constWhereText(a.allocated) + (p->target->path.size() > (a.array ? 1u : 0u) ? ", through a pointer into it" : ""));
+    const Ty* pointee = p->type && types.unqualified(types.stripRef(p->type))->kind == TyKind::Pointer ? types.unqualified(types.unqualified(types.stripRef(p->type))->inner) : nullptr;
+    const Ty* object = constHeap()[index].type;
+    if (!pointee || types.unqualified(a.array ? object->inner : object) != pointee)
+      return fail("a delete through a pointer of another type than the object's is not supported in a constant evaluation yet");
+    ConstValue value = constHeap()[index].value;
+    if (!value.isUnset() && !constDestroy(object, value, depth + 1))
+      return std::nullopt;
+    ConstAllocation& freed = constAllocations()[index]; // (the destructor may have allocated)
+    freed.isFreed = true;
+    freed.freed = constHere(d);
+    constHeap()[index].value = ConstValue::unset(object);
+    return done;
+  }
 
   std::optional<ConstPlace> constLocal(Expr* e, const TypeContext& ctx)
   {
@@ -9663,6 +10266,10 @@ struct GlobalScope::Impl
     for (size_t i = 0; i < layout->fields.size(); ++i)
       if (layout->fields[i] == field)
         return layout->fieldBits[i];
+    for (size_t i = 0; i < layout->fields.size(); ++i)
+      if (!layout->fields[i])
+        if (uint8_t bits = constBitsOf(layout->fieldTypes[i], field, depth + 1))
+          return bits; // in an anonymous member
     for (const Ty* b : layout->bases)
       if (uint8_t bits = constBitsOf(b, field, depth + 1))
         return bits;
@@ -9838,14 +10445,14 @@ struct GlobalScope::Impl
   // gets a copy it may not write).
   std::optional<ConstValue> constRun(FunctionDecl* f, const std::vector<ConstValue>& args, TypeContext fctx, int depth,
                                      std::optional<ConstValue>* self = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr,
-                                     const std::vector<uint8_t>* categories = nullptr)
+                                     const std::vector<uint8_t>* categories = nullptr, const ConstPlace* selfPlace = nullptr)
   {
     // A virtual function runs as the object's own class overrides it.
     if (self && *self)
       if (FunctionDecl* g = constOverrider(f, (*self)->type, 0); g != f && constDefinition(g))
       {
         Subst subst = memberSubst(types.unqualified((*self)->type), g->parent ? g->parent->ownScope : nullptr, 0);
-        return constCallOn(g, subst, args, self, depth + 1);
+        return constCallOn(g, subst, args, self, depth + 1, selfPlace);
       }
     struct Call
     {
@@ -9871,6 +10478,7 @@ struct GlobalScope::Impl
     def = constInstanceBody(def, fctx.subst); // a template's function: its instance's
     std::vector<ConstBinding> env;
     ConstFrame frame(&env);
+    ConstRunning running(def->file);
     fctx.env = &env;
     for (size_t i = 0; i < def->params.size(); ++i)
     {
@@ -9949,7 +10557,19 @@ struct GlobalScope::Impl
       env.back().owns = type && !type->isReference() && (i >= args.size() || (categories && i < categories->size()));
     }
     size_t selfAt = env.size();
-    if (self && *self)
+    if (self && *self && selfPlace)
+    {
+      // On an object the evaluation holds a place of: `this` refers to it there (what the
+      // function changes is changed in it, `&this->value` is its address).
+      ConstBinding alias{constThisSymbol, ConstValue::unset((*self)->type)};
+      alias.type = (*self)->type;
+      alias.writable = !(f->flags & DF_Const) && selfPlace->writable();
+      alias.aliasEnv = selfPlace->env;
+      alias.aliasIndex = selfPlace->index;
+      alias.aliasPath = selfPlace->path;
+      env.push_back(std::move(alias));
+    }
+    else if (self && *self)
     {
       env.push_back(constBinding(constThisSymbol, **self, (*self)->type));
       env.back().writable = !(f->flags & DF_Const);
@@ -9960,7 +10580,7 @@ struct GlobalScope::Impl
     std::optional<ConstValue> result;
     ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
     if (self && *self && selfAt < env.size() && env[selfAt].symbol == constThisSymbol)
-      *self = env[selfAt].value;
+      *self = selfPlace ? constRead(*selfPlace) : std::optional<ConstValue>(env[selfAt].value);
     if (!constEndLocals(env, 0, depth, flow != ConstFlow::Failed)) // the by-value parameters
       return std::nullopt;
     if (isVoid && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
@@ -10128,8 +10748,10 @@ struct GlobalScope::Impl
       return ConstFlow::Failed;
     const Ty* ht = held->type ? types.unqualified(held->type) : nullptr;
     std::shared_ptr<const std::vector<ConstValue>> pointed; // the array begin() and end() point into
+    std::optional<ConstValue> first;                        // or the element of the evaluation's own begin() points at
     size_t from = 0, to = 0;
     bool places = ht && ht->kind == TyKind::Array;
+    const Ty* declared = v->type ? convertType(v->type, ctx, depth + 1) : nullptr;
     if (places)
       to = held->parts->size();
     else if (!ht || ht->isBraceList())
@@ -10139,11 +10761,25 @@ struct GlobalScope::Impl
     }
     else if (ht->kind == TyKind::Class)
     {
-      std::optional<ConstValue> b = constRangeEnd(*held, symBegin, depth + 1), e = constRangeEnd(*held, symEnd, depth + 1);
+      bool write = declared && declared->isReference() && declared->inner && !declared->inner->isConst;
+      std::optional<ConstValue> b = constRangeEnd(*held, symBegin, depth + 1, &*range, write);
+      std::optional<ConstValue> e = constRangeEnd(*held, symEnd, depth + 1, &*range, write);
       bool empty = b && e && b->kind == ConstValue::Kind::Int && e->kind == ConstValue::Kind::Int && b->i == 0 && e->i == 0; // two nulls
-      if (!empty && (!b || !e || !b->isPointer() || !e->isPointer() || b->parts != e->parts || b->i > e->i))
+      if (b && e && b->isAddress() && e->isAddress() && b->target->storage)
+      {
+        // Into an array of the evaluation's own (a local Array's): the elements there, which a
+        // reference loop variable refers to.
+        const ConstTarget &bt = *b->target, &et = *e->target;
+        if (bt.storage != et.storage || bt.path.empty() || bt.path.size() != et.path.size() ||
+            !std::equal(bt.path.begin(), bt.path.end() - 1, et.path.begin()) || bt.path.back() > et.path.back())
+          return ConstFlow::Failed;
+        first = b;
+        from = bt.path.back();
+        to = et.path.back();
+      }
+      else if (!empty && (!b || !e || !b->isPointer() || !e->isPointer() || b->parts != e->parts || b->i > e->i))
         return ConstFlow::Failed;
-      if (!empty)
+      else if (!empty)
       {
         pointed = b->parts;
         from = size_t(b->i);
@@ -10152,7 +10788,6 @@ struct GlobalScope::Impl
     }
     else
       return ConstFlow::Failed;
-    const Ty* declared = v->type ? convertType(v->type, ctx, depth + 1) : nullptr;
     for (size_t i = from; i < to; ++i)
     {
       size_t bodyMark = env.size();
@@ -10163,11 +10798,19 @@ struct GlobalScope::Impl
         at.type = ht->inner;
         at.bits = 0;
       }
-      if (declared && declared->isReference() && places)
+      if (first)
+      {
+        std::optional<ConstValue> moved = constAddressMove(*first, int64_t(i - from), depth);
+        std::optional<ConstPlace> element = moved ? constStoragePlace(*moved, "a use of", depth) : std::nullopt;
+        if (!element)
+          return ConstFlow::Failed;
+        at = *element;
+      }
+      if (declared && declared->isReference() && (places || first))
       {
         ConstPlace resolved = constResolve(at);
         ConstBinding alias{name, ConstValue::unset(declared)};
-        alias.type = ht->inner;
+        alias.type = first ? at.type : ht->inner;
         alias.writable = !(declared->inner && declared->inner->isConst) && !resolved.readOnly;
         alias.aliasEnv = at.env;
         alias.aliasIndex = at.index;
@@ -10176,14 +10819,14 @@ struct GlobalScope::Impl
       }
       else
       {
-        std::optional<ConstValue> element = places ? constRead(at) : std::optional<ConstValue>((*pointed)[i]);
+        std::optional<ConstValue> element = places || first ? constRead(at) : std::optional<ConstValue>((*pointed)[i]);
         if (!element || element->isUnset())
           return ConstFlow::Failed;
         const Ty* own = declared && !containsAuto(declared) ? declared : element->type;
         std::optional<ConstValue> value;
         if (own && !own->isReference() && element->isObject() && element->type &&
             types.unqualified(types.stripRef(element->type)) == types.unqualified(own) && constCopyRunsCode(own))
-          value = constCopyConstruct(own, *element, places ? std::optional<ConstPlace>(at) : std::nullopt, false, depth + 1); // `for (String s : names)`: copied
+          value = constCopyConstruct(own, *element, places || first ? std::optional<ConstPlace>(at) : std::nullopt, false, depth + 1); // `for (String s : names)`: copied
         else
           value = declared && !containsAuto(declared) ? constConvertTo(element, declared, depth + 1) : element;
         if (!value)
@@ -10439,7 +11082,8 @@ struct GlobalScope::Impl
       case NodeKind::DeclStmt:
         for (Decl* d : static_cast<DeclStmt*>(s)->decls)
         {
-          if (d->kind == NodeKind::StaticAssertDecl || d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EmptyDecl)
+          if (d->kind == NodeKind::StaticAssertDecl || d->kind == NodeKind::UsingAliasDecl || d->kind == NodeKind::EmptyDecl ||
+              d->kind == NodeKind::UsingDirectiveDecl || d->kind == NodeKind::UsingNameDecl) // (names the walk bound where written)
             continue;
           if (d->kind != NodeKind::VariableDecl)
             return ConstFlow::Failed;
@@ -19591,6 +20235,7 @@ struct GlobalScope::Impl
         case NodeKind::VariableDecl:
         {
           auto* v = static_cast<VariableDecl*>(d);
+          deducedLocal = nullptr; // this variable's own, if it deduces one (not the one walked before)
           walkType(v->type);
           checkArrayBounds(v);
           walkExpr(v->bitfield);
@@ -19671,6 +20316,14 @@ struct GlobalScope::Impl
             }
             else if ((activeSubst && !activeSubst->empty()) || !d->file || d->file->index == stats.fileIndex)
               ++stats.unknownAuto; // once, by its own file's walk (or its instance's): a global walked for another file's statistics may come before or not
+          }
+          // A constexpr variable is a context that needs its constant: checked where its type is
+          // known, as a static_assert is (not in a template's own walk: its instances are).
+          if ((v->flags & DF_Constexpr) && v->init && !(v->flags & DF_Typedef) && undecidedBranches == 0 && !inGenericTemplate() &&
+              !retypingElements && !probing)
+          {
+            const Ty* type = deducedLocal ? deducedLocal : declared;
+            impl.checkConstexprVariable(v, type, ctx(), activeSubst ? bodyOf : nullptr, file);
           }
           break;
         }

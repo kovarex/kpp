@@ -1120,6 +1120,42 @@ place of, `this`) is never destroyed and gives no address, and an object an oper
 value is not destroyed yet. An evaluation whose result points at one of its own objects is no
 constant.
 
+*A constexpr variable needs its constant, 2026-10-31.* A `constexpr` (or `constinit`) variable,
+global, static member or local, whose initializer the interpreter cannot evaluate is an error
+("the constexpr variable x is no constant", with the reason when there is one), never a variable
+initialized at run time (C++ [dcl.constexpr] 10; spec
+language/constexpr_variable_that_is_no_constant_is_error, found by thread E for build.kpp). It is
+checked where its type is known, as a static_assert is: a template's instances, not the template;
+one whose value needs the code generator's exact layouts is the code generator's. The game had 21
+constexpr variables the interpreter could not evaluate, all initialized at run time without a
+word; each was an interpreter gap, now closed (specs language/consteval_game_constexpr_tables,
+language/consteval_unions, language/consteval_memcpy_and_memset): a char array from a string
+literal; a class template named without its arguments in a call (`Pair(1, "one")`); a type
+parameter naming a class constructed with several arguments (a CRTP base's `V(x, y)`); unions,
+holding one member alive as C++ does (writing one ends the others, reading another is no
+constant), anonymous struct and union members (their fields named as the class's), and typed
+unions made from a value of one alternative's type or from a tag and value; `memcpy`, `memmove`
+and `memset` over the evaluation's own objects by their types (a whole object, a scalar's bits as
+another scalar of its size, element runs; anything else is no constant, the evaluator having typed
+values, not bytes); `*optional` and `Optional`'s construction in place, for which `this` refers to
+the object where it is (the caller's local, a temporary) rather than to a copy; a range-for over
+a local Array writing through `auto&`; a `using namespace` in a body. Four of the game's globals
+became constant data instead of being built at startup (`BlueprintBook::ICON_SHIFT`,
+`CyclicFramePosition::EMPTY` as the positive quiet NaN, `RenderLayer::sortLayer`, Lua's
+`udatatypename`); no other function's IR changed. A walker bug was found on the way: a global or
+member took the type deduced for the declaration walked before it. Measured paired (front end on
+the converted game, 5 interleaved rounds): 1.99 s before and after.
+
+*Allocation, 2026-10-31.* `new T(args)`, `new T[n]{...}`, placement new into the evaluation's own
+objects, `delete` and `delete[]` (destructors run) allocate from memory that belongs to the
+outermost evaluation (C++20's transient allocation): all of it is freed before the evaluation
+ends, else "memory allocated at File.kpp:7 is never freed"; a read of freed memory, freeing twice,
+and `delete` of what `new[]` allocated (or the other way) are errors naming where (specs
+language/consteval_new_and_delete, language/consteval_leak_is_error,
+language/consteval_use_after_free_is_error). Not yet: `malloc` and `free`, which the library's
+Vector and String allocate with, and String's small-string representation (spec
+language/consteval_vector_of_strings, pending).
+
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`
 optional; signed overflow at compile time is an error, as in C++ (spec

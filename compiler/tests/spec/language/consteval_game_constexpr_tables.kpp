@@ -1,0 +1,57 @@
+// spec: what the game's constexpr variables need of the compile-time interpreter: a char array from a string literal (zero-padded, its bound from the literal when omitted), a class template named without its arguments in a call (`Pair(1, "one")`, the deduced arguments), a CRTP base constructing its derived class (`V(x, y)` with V a type parameter), a range-for writing through `auto&` over a local Array, a `using namespace` in the body, `*optional`, and a table of Optionals built by assignment; each constant equals what the program computes (`1.57 13 d 2 7 1 5`)
+// factorio: the constexpr variables the interpreter could not evaluate (silently initialized at run time until the check of language/constexpr_variable_that_is_no_constant_is_error): TestLua's PI_2_STR, CP437Converter's lookup, TileRenderLayer::getLayerName's data, BlueprintBook::ICON_SHIFT, LogitechLEDController's and RazerChromaController's scancode tables
+template<typename T, class V>
+class Vec2
+{
+public:
+  constexpr Vec2() = default;
+  constexpr Vec2(T x, T y) : x(x), y(y) {}
+  constexpr V operator*(T scalar) const { return V(this->x * scalar, this->y * scalar); }
+  T x = 0;
+  T y = 0;
+};
+class Vec2D : public Vec2<double, Vec2D>
+{
+public:
+  using Vec2<double, Vec2D>::Vec2;
+};
+enum Key { A = 1, B = 2, INVALID = 9 };
+namespace Codes
+{
+  enum Code { First = 3, Last = 10 };
+}
+constexpr int codeCount()
+{
+  using namespace Codes;
+  return Last - First;
+}
+constexpr Array<Key, 6> keys()
+{
+  Array<Key, 6> table = {};
+  for (auto& value : table)
+    value = INVALID;
+  table[2] = B;
+  return table;
+}
+constexpr Array<Optional<Key>, 4> optionalKeys()
+{
+  Array<Optional<Key>, 4> table = {};
+  table[1] = A;
+  return table;
+}
+static constexpr char pi[] = "1.57";
+static constexpr const char lookup[2][4] = {"ab", "cd"};
+static constexpr Array named = {Pair(1, "one"), Pair(13, "thirteen")};
+static constexpr Vec2D shift = Vec2D(1.0, 3.5) * 2.0;
+static constexpr Array<Key, 6> table = keys();
+static constexpr Array<Optional<Key>, 4> optionals = optionalKeys();
+static constexpr Optional<int> five = 5;
+static_assert(sizeof(pi) == 5 && pi[4] == 0);
+static_assert(named[1].first == 13 && shift.y == 7.0 && table[2] == B && table[5] == INVALID);
+static_assert(codeCount() == 7);
+static_assert(*optionals[1] == A && !optionals[2].has_value() && *five == 5);
+int main()
+{
+  println("{} {} {} {} {} {} {}", pi, named[1].first, lookup[1][1], int(table[2]), shift.y, int(*optionals[1]), *five);
+  return 0;
+}

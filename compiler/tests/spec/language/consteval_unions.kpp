@@ -1,0 +1,54 @@
+// spec: the compile-time interpreter holds unions as C++ does: one member alive, the one last written (writing one ends the others, so reading another is no constant); anonymous struct and union members, their fields named as the enclosing class's (`this->small[15]`, a bit field in an anonymous struct keeping its width); a typed union made from a value of one alternative's type, or from its tag and value (design.md 8.5); each constant equals what the program computes (`3 9 5 7 2 4`)
+// factorio: FreeControllerNavigation's DEFAULT_NAVIGATOR_CONFIGURATION, whose ZoomSpecifications hold a `union enum`; Optional's storage; String's
+union Store
+{
+  int value;
+  float other;
+  constexpr Store() {}
+};
+struct Small
+{
+  union
+  {
+    struct
+    {
+      int length;
+      int capacity : 4;
+    };
+    char chars[16];
+  };
+  constexpr Small() { this->chars[15] = 3; }
+  constexpr Small(int n) { this->length = n; this->capacity = 21; }
+};
+class Zoom
+{
+public:
+  struct Scale { constexpr explicit Scale(int s) : s(s) {} int s; };
+  struct Distance { constexpr Distance(int near, int far) : near(near), far(far) {} int near; int far; };
+  explicit constexpr Zoom(Scale s) : data(s) {}
+  explicit constexpr Zoom(Distance d) : data(d) {}
+  union enum Data
+  {
+    { {::Zoom::Scale, ByScale}, {::Zoom::Distance, ByDistance} }
+  };
+  Data data;
+};
+struct Zooms { Zoom closest; Zoom furthest; };
+struct Navigation { Zooms zooms; bool clamp; };
+constexpr int stored()
+{
+  Store s;
+  s.other = 1.5f;
+  s.value = 7;
+  return s.value;
+}
+static constexpr Navigation navigation = { { .closest = Zoom(Zoom::Scale(2)), .furthest = Zoom(Zoom::Distance(4, 8)) }, true };
+static_assert(Small().chars[15] == 3 && Small(9).length == 9 && Small(9).capacity == 5);
+static_assert(stored() == 7);
+static_assert(navigation.zooms.closest.data.tag() == Zoom::Data::ByScale && navigation.zooms.furthest.data.tag() == Zoom::Data::ByDistance);
+int main()
+{
+  println("{} {} {} {} {} {}", int(Small().chars[15]), Small(9).length, Small(9).capacity, stored(), navigation.zooms.closest.data[Zoom::Data::ByScale].s,
+          navigation.zooms.furthest.data[Zoom::Data::ByDistance].near);
+  return 0;
+}

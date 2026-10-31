@@ -1,6 +1,5 @@
 // spec: the compile-time interpreter allocates (C++20's transient allocation): `new T(args)`, `new T[n]`, placement new, delete and delete[] (destructors run), a pointer into the allocation read, written, indexed and moved along, as long as every allocation is freed before the evaluation ends (design.md 12: build.kpp)
 // factorio: build.kpp's Vector and String (docs/build.md, "What it needs": allocation in the interpreter)
-// pending: the interpreter evaluates no new or delete
 struct Counter
 {
   int* hits;

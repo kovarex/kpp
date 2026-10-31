@@ -1,7 +1,6 @@
 // spec: memory a compile-time evaluation allocates and does not free is an error naming the allocation, as in C++20 (a constant expression may not leave an allocation behind): never a value pointing at nothing
 // factorio: build.kpp (design.md 12) must describe, not leak
-// pending: the interpreter evaluates no allocation
-// error: consteval_leak_is_error.kpp:10: error: static assertion whose condition is no constant: memory allocated at consteval_leak_is_error.kpp:7 is never freed
+// error: consteval_leak_is_error.kpp:9: error: static assertion whose condition is no constant: memory allocated at consteval_leak_is_error.kpp:6 is never freed
 constexpr int leak()
 {
   int* p = new int(5);

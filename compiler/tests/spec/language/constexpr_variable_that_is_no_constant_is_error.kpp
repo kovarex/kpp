@@ -1,6 +1,5 @@
 // spec: a constexpr variable whose initializer the compiler cannot evaluate (it calls printf, which has no Kpp body) is an error, as in C++ ([dcl.constexpr] 10) and design.md "Compile-time evaluation" (a `constexpr` variable is a context that needs its constant), never a variable initialized at run time
-// pending: a constexpr global that does not evaluate is initialized at run time, silently (found by thread E on 2026-10-31 for build.kpp, which relies on constexpr to keep the build description in the interpreter)
-// error: constexpr_variable_that_is_no_constant_is_error.kpp:13: error: the constexpr variable described is no constant
+// error: constexpr_variable_that_is_no_constant_is_error.kpp:12: error: the constexpr variable described is no constant
 extern "C" int printf(const char* format, ...);
 
 int describe(int v)
