@@ -484,7 +484,8 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner.
+`.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner,
+or on the runner named by the repository variable `KPP_CI_RUNNER`.
 Triggers (kovarex, 2026-10-31, chosen from the costs below):
 - **Every push to master and every pull request:** it builds kppc with `compiler\build.cmd`, then
   runs `compiler\tests\run_tests.cmd` and `compiler\tests\spec.cmd --no-doc` (debug).
@@ -497,18 +498,45 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   through `KPP_SDL_INCLUDE` (run_spec.py). That is the game's release; the game's copy adds only
   `SDL_GetDisplayInternalDriverData`.
 - **Clang for the snippets' C sources:** clang comes from vswhere through `KPP_CLANG`, because the
-  runner's Visual Studio is Enterprise.
+  runner's Visual Studio is Enterprise. Node.js must be on the runner, for run_tests' LSP smoke test
+  and the package's VS Code extension; the step fails without it.
 - **The "latest" prerelease:** every green run on master (push, nightly or by hand) packages kpp with
   `tools/release/package.ps1 -Version 0.1.0-ci.<run>` (semver, which vsce requires), including the package's own smoke test. It
   replaces the prerelease `latest` with that zip, which is what factorio-in-kpp's CI downloads.
+  `tools/release/publish.ps1` does the replacing through the forge's REST API, with the job's token.
   Numbered releases stay with release.yml.
-- **Caches:** only kppc's import cache (%TEMP%\kpp-imports), whose entries check every header's size
-  and time. The CMake build directory is not cached: checkout gives every source a new time, so
-  Ninja would rebuild it all anyway, and a clean build takes about a minute.
+- **No caches:** checkout gives every source a new time, so Ninja would rebuild a cached CMake build
+  directory anyway, and a clean build takes about a minute. kppc's import cache (%TEMP%\kpp-imports)
+  is not worth a cache action.
 - **Concurrency:** one run per trigger and branch. A newer push cancels the older run still going,
   so runs never queue back to back. The nightly and hand-started runs have groups of their own, so
   a push does not cancel them. While pushes come faster than a run takes, push runs keep being
   cancelled; then the nightly run is the one that moves "latest".
+
+### GitHub Actions and Forgejo Actions
+
+The repositories' home is to be a Forgejo forge on kpp.net, with GitHub as a mirror (kovarex,
+2026-10-31; thread I designs it). So ci.yml runs on both:
+- every step is a script (Windows PowerShell 5.1 or cmd) except `actions/checkout@v4`;
+- it names no repository URL: the forge's API comes from `github.api_url` and the repository from
+  `github.repository`;
+- publishing is `tools/release/publish.ps1 -ApiUrl URL -Repository owner/name -Tag T -Commit SHA
+  -Title T -Files F...`, with the token in `KPP_FORGE_TOKEN`. It speaks GitHub's API, or
+  Forgejo's (Gitea's) when the API URL ends in `/api/v1` (`-Forge github|forgejo` overrides). Both
+  paths were checked against a mock of the two APIs (create, then replace).
+- What is not portable, or not checked on Forgejo:
+  - **`actions/checkout@v4`:** Forgejo fetches it from its own mirror of the actions (its runner's
+    default actions URL), not from github.com.
+  - **`runs-on`:** a Forgejo runner is self-hosted, with labels of its own, so the repository
+    variable `KPP_CI_RUNNER` must name its label. Whether Forgejo expands `vars` in `runs-on` has not
+    been checked; if it does not, the label is written in place of the expression.
+  - **The runner itself:** Forgejo hosts no runners. A Windows machine with Visual Studio 2022 and
+    its Clang component, Node.js and Python runs `forgejo-runner` in host mode.
+  - **`concurrency`:** GitHub's cancelling of an older push run. Forgejo Actions may not honour it;
+    there, each push runs to the end.
+  - **The SDL3 headers** come from libsdl-org's release on github.com (`SDL_ZIP`), an external
+    download, not the repository's host.
+  - **The job's token:** `github.token` on both. On Forgejo it must be allowed to write releases.
 
 Cost, estimated before any runner run. These are measured on PC-PRACOVNA pinned to 2 logical CPUs
 (`start /affinity 3`), a stand-in for the 2-vCPU Windows runner a private repository gets, and on

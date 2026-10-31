@@ -26,47 +26,48 @@ concurrency:
 
 jobs:
   windows:
-    runs-on: windows-2022
+    # A GitHub-hosted runner by default; a Forgejo runner's label through the repository variable
+    # KPP_CI_RUNNER.
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 120
     env:
       # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
       # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h.
+      SDL_ZIP: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
       KPP_SDL_INCLUDE: ${{ github.workspace }}\..\sdl\SDL3-3.4.18\include
+    # Steps are scripts (Windows PowerShell 5.1, cmd) except the checkout, so the same file runs under
+    # GitHub Actions and Forgejo Actions (docs/build.md, "Continuous integration").
     steps:
       - uses: actions/checkout@v4
 
       - name: SDL3 headers
-        shell: pwsh
+        shell: powershell
         run: |
+          $ErrorActionPreference = 'Stop'
           $dir = "${{ github.workspace }}\..\sdl"
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          Invoke-WebRequest https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip -OutFile "$dir\sdl.zip"
-          Expand-Archive "$dir\sdl.zip" $dir
+          if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) {
+            New-Item -ItemType Directory -Force $dir | Out-Null
+            [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
+            Invoke-WebRequest $env:SDL_ZIP -OutFile "$dir\sdl.zip" -UseBasicParsing
+            Expand-Archive -Force "$dir\sdl.zip" $dir
+          }
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) { throw "no SDL3\SDL.h in $env:KPP_SDL_INCLUDE" }
 
-      - name: Clang for the snippets' C sources
-        shell: pwsh
+      # Clang for the snippets' C sources (the runner's Visual Studio need not be Community), and
+      # Node.js for run_tests' LSP smoke test and the package's VS Code extension (npm ci, vsce).
+      - name: Tools
+        shell: powershell
         run: |
+          $ErrorActionPreference = 'Stop'
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
-          "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-
-      # kppc's cache of preprocessed C imports (%TEMP%\kpp-imports): each entry is checked against the
-      # size and time of every header it read, so a stale one is never used.
-      - name: Import cache
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\Temp\kpp-imports
-          key: kpp-imports-${{ github.run_id }}
-          restore-keys: kpp-imports-
+          if (-not $vs) { throw 'no Visual Studio with the Clang component' }
+          "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          node --version
+          if ($LASTEXITCODE -ne 0) { throw 'no Node.js on the runner' }
 
       - name: Build kppc
         shell: cmd
         run: compiler\build.cmd
-
-      # run_tests' LSP smoke test and the VS Code extension the package builds (tools/vscode: npm ci, vsce).
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: run_tests
         shell: cmd
@@ -88,16 +89,23 @@ jobs:
 
       - name: Package
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
-        shell: pwsh
-        run: tools\release\package.ps1 -Version "0.1.0-ci.${{ github.run_number }}" -Commit "${{ github.sha }}"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $started = Get-Date
+          tools\release\package.ps1 -Version "0.1.0-ci.${{ github.run_number }}" -Commit "${{ github.sha }}"
+          "packaging took $([int]((Get-Date) - $started).TotalSeconds) s"
 
-      # The rolling prerelease "latest": deleted and made again at this commit, with the zip only.
+      # The rolling prerelease "latest", replaced at this commit with the zip, through the forge's own
+      # API (tools/release/publish.ps1: GitHub's, or Forgejo's when github.api_url ends in /api/v1).
       - name: Publish latest
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
-        shell: pwsh
+        shell: powershell
         env:
-          GH_TOKEN: ${{ github.token }}
+          KPP_FORGE_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest --cleanup-tag --yes 2>$null
-          gh release create latest "build\release\kpp-0.1.0-ci.${{ github.run_number }}.zip" --prerelease --target "${{ github.sha }}" --title "Kpp latest (0.1.0-ci.${{ github.run_number }})" --notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, every test green. Unzip anywhere; needs Visual Studio 2022 with C++ Clang Compiler for Windows."
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+          $ErrorActionPreference = 'Stop'
+          tools\release\publish.ps1 -ApiUrl "${{ github.api_url }}" -Repository "${{ github.repository }}" -Tag latest -Commit "${{ github.sha }}" -Prerelease `
+            -Title "Kpp latest (0.1.0-ci.${{ github.run_number }})" `
+            -Notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, every test green. Unzip anywhere; needs Visual Studio 2022 with C++ Clang Compiler for Windows." `
+            -Files "build\release\kpp-0.1.0-ci.${{ github.run_number }}.zip"
