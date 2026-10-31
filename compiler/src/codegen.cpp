@@ -283,8 +283,11 @@ namespace
     std::unordered_map<std::string, unsigned> definedIn;    // function name -> module
     std::unordered_map<std::string, std::string> declareLines; // function name -> its declare line
     std::unordered_map<std::string, const Ty*> irTypeNames; // irTypeName(): a struct type's IR name -> its type
-    std::unordered_map<std::string, std::string> sharedConstants; // constantName(): a private constant's name -> its contents
-    std::vector<std::unordered_map<std::string, std::string>> moduleConstants;
+    // String literals (constantName): each name's contents, one name per contents for the whole
+    // program; the names the shared declarations define, and those each module defines itself.
+    std::unordered_map<std::string, std::string> literalContents;
+    std::unordered_set<std::string> sharedLiterals;
+    std::vector<std::unordered_set<std::string>> moduleLiterals;
     std::unordered_map<const Ty*, StructInfo> structs;
     std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
     std::unordered_map<Decl*, std::string> globals;
@@ -375,7 +378,7 @@ namespace
       bodies.resize(moduleCount);
       moduleDecls.resize(moduleCount);
       vtablesIn.resize(moduleCount);
-      moduleConstants.resize(moduleCount);
+      moduleLiterals.resize(moduleCount);
       definitions.resize(moduleCount);
       ownedEntries.resize(moduleCount);
       keptModuleEntries.resize(moduleCount);
@@ -491,8 +494,6 @@ namespace
     bool& debug = sh.debug;
     std::atomic<bool>& usesAssert = sh.usesAssert;
     std::unordered_map<std::string, const Ty*>& irTypeNames = sh.irTypeNames;
-    std::unordered_map<std::string, std::string>& sharedConstants = sh.sharedConstants;
-    std::vector<std::unordered_map<std::string, std::string>>& moduleConstants = sh.moduleConstants;
     std::unordered_map<const Ty*, StructInfo>& structs = sh.structs;
     std::unordered_map<const Ty*, StructInfo*>& structsByType = sh.structsByType;
     std::unordered_map<Decl*, std::string>& globals = sh.globals;
@@ -8190,15 +8191,20 @@ namespace
       for (size_t i = 0; i < units.size(); ++i)
         elements += std::string(i ? ", " : "") + unit + " " + std::to_string(units[i]);
       std::string contents = "[" + std::to_string(units.size()) + " x " + unit + "] [" + elements + "]";
-      auto [name, isNew] = constantName(emittingShared ? "@.swstr." : "@.wstr.", contents);
+      auto [name, isNew] = constantName("@.wstr.", contents);
       if (isNew)
-        (emittingShared ? decls : moduleDecls[currentModule]) += name + " = private unnamed_addr constant " + contents + "\n";
+        (emittingShared ? decls : moduleDecls[currentModule]) += literalDefinition(name, contents);
       return name;
     }
 
-    // The name of a private constant with these contents in the output being written (the shared
-    // declarations, or the current module): its contents decide it, the same in every run whatever
-    // order the functions are emitted in; isNew when the caller has to define it there.
+    // A string literal is one object in the whole program, whichever module names it (as C++'s
+    // literal pooling makes it, and as a constexpr pointer to one must be: a module that folds the
+    // pointer's value and the module whose definition of the variable the linker keeps name the
+    // same object). Its name comes from its contents, the same in every run whatever order the
+    // functions are emitted in; isNew when the caller has to define it in the output being written
+    // (the shared declarations, which every module carries, or the current module, unless the
+    // shared ones define it: a module's own definition of one the shared declarations define later
+    // is dropped when its declarations are finished, dropSharedLiterals).
     std::unordered_map<std::string, std::string> constantCache; // where + prefix + contents -> the name this emitter got
     std::pair<std::string, bool> constantName(const char* prefix, const std::string& contents)
     {
@@ -8212,17 +8218,24 @@ namespace
       snprintf(hex, sizeof hex, "%016llx", (unsigned long long)h);
       std::string base = std::string(prefix) + hex, name = base;
       std::lock_guard lock(sh.constantsMutex);
-      auto& defined = emittingShared ? sharedConstants : moduleConstants[currentModule];
       for (int n = 2;; ++n)
       {
-        auto [it, inserted] = defined.emplace(name, contents);
+        auto [it, inserted] = sh.literalContents.emplace(name, contents);
         if (inserted || it->second == contents)
-        {
-          constantCache.emplace(std::move(key), name);
-          return {name, inserted};
-        }
-        name = base + "." + std::to_string(n); // two contents with one hash
+          break;
+        name = base + "." + std::to_string(n); // two contents with one hash (which takes the suffix is the emission order's)
       }
+      bool isNew = emittingShared ? sh.sharedLiterals.insert(name).second
+                                  : !sh.sharedLiterals.count(name) && sh.moduleLiterals[currentModule].insert(name).second;
+      constantCache.emplace(std::move(key), name);
+      return {name, isNew};
+    }
+
+    // A string literal's definition: one object in the program (the linker keeps one of the
+    // modules' copies).
+    static std::string literalDefinition(const std::string& name, const std::string& contents)
+    {
+      return "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr unnamed_addr constant " + contents + ", comdat\n";
     }
 
     // The IR name of a class's or closure's struct type: a hash of the type as printed, so that it
@@ -8264,9 +8277,9 @@ namespace
         }
       }
       std::string contents = "[" + std::to_string(bytes.size()) + " x i8] c\"" + escaped + "\"";
-      auto [name, isNew] = constantName(emittingShared ? "@.sstr." : "@.str.", contents);
+      auto [name, isNew] = constantName("@.str.", contents);
       if (isNew)
-        (emittingShared ? decls : moduleDecls[currentModule]) += name + " = private unnamed_addr constant " + contents + "\n";
+        (emittingShared ? decls : moduleDecls[currentModule]) += literalDefinition(name, contents);
       return name;
     }
 
@@ -10205,7 +10218,8 @@ namespace
     }
 
     // A Pointer value: into an array the evaluation made (a string literal's chars, a brace list's
-    // elements), which becomes a private constant (one per contents), and the element's address.
+    // elements), which becomes a constant (one object per contents in the program, as a string
+    // literal is: constantName), and the element's address.
     std::optional<std::string> evaluatedArrayElement(const ConstValue& v, const Ty* pointerTy, Node* at, int depth)
     {
       const Ty* element = types.unqualified(pointerTy->inner);
@@ -10216,9 +10230,9 @@ namespace
       if (!body)
         return std::nullopt;
       std::string contents = llType(arrayTy, at) + " " + *body;
-      auto [name, isNew] = constantName(emittingShared ? "@.sdata." : "@.data.", contents);
+      auto [name, isNew] = constantName("@.data.", contents);
       if (isNew)
-        (emittingShared ? decls : moduleDecls[currentModule]) += name + " = private unnamed_addr constant " + contents + "\n";
+        (emittingShared ? decls : moduleDecls[currentModule]) += literalDefinition(name, contents);
       return "getelementptr inbounds (" + llType(arrayTy, at) + ", ptr " + name + ", i64 0, i64 " + std::to_string(v.i) + ")";
     }
 
@@ -17144,6 +17158,17 @@ static std::string declareUndefined(const std::string& text, const std::unordere
   return out;
 }
 
+// A module's own definitions of string literals the shared declarations (which every module carries)
+// came to define too, after the module's: dropped (Emitter::constantName).
+static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
+{
+  std::erase_if(entries, [&](const std::string& e) {
+    if (!e.starts_with("$.str.") && !e.starts_with("$.wstr.") && !e.starts_with("$.data."))
+      return false;
+    return sh.sharedLiterals.count("@" + e.substr(1, e.find(" = comdat") - 1)) != 0;
+  });
+}
+
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols, bool debug,
                            unsigned moduleCount, bool despiteErrors, unsigned threads, bool stubMissing, bool inlineTrivial,
                            CodegenSessionPtr* keep, bool debugInfo)
@@ -17515,6 +17540,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     // The definitions in the order SharedText puts entries: by their text.
     std::sort(sh.definitions[k].begin(), sh.definitions[k].end(),
               [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; });
+    dropSharedLiterals(sh, sh.moduleDecls[k].entries);
     if (keepTexts)
       sh.keptModuleEntries[k] = sh.moduleDecls[k].entries;
     for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
@@ -18081,6 +18107,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     // and its functions' own.
     std::vector<std::string>& kept = sh.keptModuleEntries[k];
     kept.insert(kept.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
+    dropSharedLiterals(sh, kept);
     std::vector<std::string> entries = kept;
     for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
       entries.push_back(o.text);
