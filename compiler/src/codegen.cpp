@@ -17500,7 +17500,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     session->usable = true;
     auto start = std::chrono::steady_clock::now();
     bool rebuilt = false;
-    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, rebuilt);
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, {}, rebuilt);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
@@ -17549,7 +17549,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
 }
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts, bool& rebuilt)
+                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+                          const std::vector<const Decl*>& instancesOf, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -17601,13 +17602,17 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // An instance whose template's body (the definition it is emitted from, as written: an
   // out-of-line one, an explicit specialisation) changed is emitted again too, from the copy the
   // resolver checked again.
+  // So is every instance of a template one of whose instances read a change (instancesOf: the
+  // resolver checked it again, or took it out to be made anew by its first use here), and a
+  // function that inlined one (its body as written is the template's).
+  std::unordered_set<const Decl*> rechecked(instancesOf.begin(), instancesOf.end());
   auto instanceOfEdited = [&](const Shared::Definition& d)
   {
     if (d.name != d.owner || (d.emitted->args.empty() && !d.emitted->classTy))
       return false;
     Decl* defined = e.global.definitionOf(d.emitted->f, d.emitted->args);
     const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
-    return edited.count(written) != 0 || edited.count(d.emitted->f) != 0;
+    return edited.count(written) != 0 || edited.count(d.emitted->f) != 0 || rechecked.count(written) != 0 || rechecked.count(d.emitted->f) != 0;
   };
   // Changed class layouts (the resolver's changedLayouts: data members of non-template classes
   // added, removed or changed): those layouts, and every one holding one of them by value or as a
@@ -17721,7 +17726,8 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
       if (d.emitted && !owners.count(d.owner) &&
-          (std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0; }) || instanceOfEdited(d) ||
+          (std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; }) ||
+           instanceOfEdited(d) ||
            (!droppedLayouts.empty() && usesDropped(d))))
       {
         owners.insert(d.owner);

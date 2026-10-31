@@ -215,8 +215,11 @@ namespace
     std::vector<size_t> moduleBytes;
     std::vector<FunctionDecl*> changedBodies, addedFunctions, removedFunctions;
     // The classes whose data members an incremental build changed (step 4's layout edits): codegen
-    // runs in full for them until it takes changed layouts (docs/compile-speed.md).
+    // lays them out again (rebuildLLVM).
     std::vector<const Decl*> changedLayouts;
+    // The templates of the instances an incremental build checked again or took out (they read a
+    // change: recheckInstancesOf): codegen emits their instances again.
+    std::vector<const Decl*> instancesOf;
     bool rebuildCodegen = false;
     // An incremental build moved a kept local type (a lambda's closure, a local class) or renamed a
     // closure, or moved a template's position-named entity: names in the code are the position's
@@ -944,7 +947,8 @@ namespace
     bool rebuilt = false;
     if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
     {
-      cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, rebuilt);
+      cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
+                       rebuilt);
       logBuildNote(rebuilt ? "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
                                " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again"
                            : "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full");
@@ -2332,6 +2336,7 @@ namespace
     kept.addedFunctions.clear();
     kept.removedFunctions.clear();
     kept.changedLayouts.clear();
+    kept.instancesOf.clear();
     kept.positionalCodegenInFull = false;
     bool codegenCanFollow = true; // what changed is functions' code only (rebuildLLVM's input)
     std::vector<FunctionDecl*> templateBodies; // changed bodies of templates: their instances are checked again
@@ -2469,12 +2474,11 @@ namespace
     // A template's changed body: its instances copied anew and checked again, their statistics
     // replacing theirs (the kept total is made again from every instance walk's own).
     size_t droppedInstances = 0; // codegen's, taken out (codegen makes them anew)
-    bool rechecked = (templateBodies.empty() && readingInstances.empty()) || global.recheckInstancesOf(templateBodies, readingInstances, why, &droppedInstances);
-    // Codegen emits again the functions given, those that inlined one of them, and the instances of
-    // a changed template body (rebuildLLVM), not an instance that read a change: such an instance's
-    // code is old, so codegen runs in full.
-    if (!readingInstances.empty())
-      codegenCanFollow = false;
+    bool rechecked = (templateBodies.empty() && readingInstances.empty()) ||
+                     global.recheckInstancesOf(templateBodies, readingInstances, why, &droppedInstances, &kept.instancesOf);
+    // Codegen emits again the functions given, those that inlined one of them, the instances of a
+    // changed template body, and every instance of a template one of whose instances read a change
+    // (instancesOf: those checked again and those taken out, which it makes anew) (rebuildLLVM).
     bool typesSame = true;
     for (size_t n = 0; n < typedByWalk.size(); ++n)
       typesSame = typesSame && global.typeOfDecl(const_cast<Decl*>(typedByWalk[n])) == typesBefore[n];

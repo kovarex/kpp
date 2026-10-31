@@ -116,10 +116,12 @@ else { "ok   incremental replays ($($steps.Count), each the same as from scratch
 $fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed \(0 with whole functions\)' }
 # Codegen followed through its kept session (step 5b) on the executable's builds, verified: the body
 # edits, the template's and the class template member's included (their instances emitted again),
-# the signature edits that no instance read, and the layout edit (Shape's: what used its layout, or
-# Frame's and Tagged<Shape>'s holding it, emitted again; holders.kpp is not walked again).
+# the signature edits, the layout edit (Shape's: what used its layout, or Frame's and Tagged<Shape>'s
+# holding it, emitted again; holders.kpp is not walked again), and the edits instances read
+# (viaScale<double> and viaLambda's operator for the overload added and removed, scaled<int> dropped
+# for Panel::base: every instance of their templates emitted again).
 $rebuilt = $ours | Where-Object { $_ -match 'codegen: [0-9]+ module\(s\) assembled again' }
-if (@($rebuilt).Count -lt 9) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 9 (the server's log)"; $failed++ }
+if (@($rebuilt).Count -lt 12) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 12 (the server's log)"; $failed++ }
 else { "ok   incremental codegen rebuilt from its kept session ($(@($rebuilt).Count))" }
 $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmatch '\(0 with whole functions\)' }
 # Instances checked again because they read a change: the overload added and removed (viaScale<double>
@@ -129,8 +131,7 @@ $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmat
 $instances = @($ours | Where-Object { $_ -match 'instance\(s\) that read a change checked again' })
 if ($instances.Count -ne 6) { "FAIL incremental: $($instances.Count) builds checked instances that read a change again, 6 expected (the overload steps and Panel::base)"; $failed++ }
 else { "ok   incremental instances checked again only where they read the change (6)" }
-# The layout edit (a data member added to Shape) built from the kept program through each server
-# (codegen in full: it does not take changed layouts yet).
+# The layout edit (a data member added to Shape) built from the kept program through each server.
 $layouts = @($ours | Where-Object { $_ -match 'class layout\(s\) changed' })
 # (and the member added to Plain, which a trait in main.kpp reads by position: 4)
 if ($layouts.Count -lt 4) { "FAIL incremental: $($layouts.Count) layout edits built from the kept program, 4 expected"; $failed++ }

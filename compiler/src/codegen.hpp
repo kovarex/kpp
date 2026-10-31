@@ -66,5 +66,8 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
 // classes whose data members changed (non-template ones): their layouts and those holding them are
 // laid out again, and every function that used one of them is emitted again (declined for a
 // polymorphic one, or one a destructor helper, a descriptor, a global or a lambda's capture holds).
+// instancesOf: templates one of whose instances read a change (the resolver checked it again or
+// took it out): all their instances, and the functions that inlined one, are emitted again.
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts, bool& rebuilt);
+                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
+                          const std::vector<const Decl*>& instancesOf, bool& rebuilt);

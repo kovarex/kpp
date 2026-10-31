@@ -894,6 +894,11 @@ the order of work:
    1.35 s, codegen 6.8 s). Every such build verified the same as from scratch. What is left is
    codegen: it runs in full when an instance was checked again or dropped (its rebuild takes
    program functions, not instances), and in the server 1 s slower than in a new process.
+   *Then codegen (landed):* recheckInstancesOf reports the templates of the instances it checked
+   again or dropped (`instancesOf`), and rebuildLLVM emits again every instance of them and every
+   function that inlined one; a dropped instance is made anew by its first use there. The edit
+   test's overload added and removed and its `Panel::base` edit now let codegen follow (12 builds
+   instead of 9, each verified the same as from scratch).
 2. **The resolver's half of a layout edit.** A changed file whose differences are data members of
    non-template classes (added, removed, a type or a default initialiser changed; no virtual, base,
    union or typed-union change): the members grafted and indexed as whole functions are; every
@@ -952,8 +957,8 @@ in and indexed (`indexMembers`). What read them: their names in the class (and t
 from it), the removed members' declared types, and every unit that read the class's member list by
 position (`USE_ClassMembers`; a containing class's layout reads it through the replayed caches); a
 class whose list was read outside any unit, a class instance or a declared type that read it, is a
-build from scratch. The classes go to `Build::changedLayouts`, for codegen's
-`rebuildLLVM(changedLayouts)` once it exists; until then codegen runs in full for them. The edit
+build from scratch. The classes go to `Build::changedLayouts`, which codegen's
+`rebuildLLVM(changedLayouts)` lays out again (c0cc0bdf). The edit
 test's layout step (a member added to `Shape`) and a member added to `Plain`, which a namespace-scope
 `isTriviallyCopyable<Plain>` static_assert in another file reads by position only (it fails then,
 as from scratch), are built from the kept program through each server.
