@@ -9112,6 +9112,8 @@ namespace
       }
       if ((fk == TyKind::Pointer || fk == TyKind::Nullptr) && tk == TyKind::Bool)
       {
+        if (fk == TyKind::Nullptr && !explicitCast) // ([conv.bool]: only `bool(nullptr)`, a direct initialisation)
+          fail(at, "nullptr does not convert to bool without a cast");
         fn += "  " + result() + " = icmp ne ptr " + v.text + ", null\n";
         return {r, to};
       }

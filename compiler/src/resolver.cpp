@@ -13113,7 +13113,9 @@ struct GlobalScope::Impl
     switch (p->kind)
     {
       case TyKind::Bool:
-        if (isInt(a) || a->kind == TyKind::Float || a->kind == TyKind::Pointer || a->kind == TyKind::Nullptr)
+        // (not nullptr: a bool is initialised from it only directly, `bool(nullptr)` ([conv.bool]),
+        // never as an argument or in a copy-initialisation)
+        if (isInt(a) || a->kind == TyKind::Float || a->kind == TyKind::Pointer || a->kind == TyKind::MemberPointer)
           return 3;
         if (a->kind == TyKind::Enum && !static_cast<EnumDecl*>(a->decl)->isClass)
           return 3;
@@ -13185,7 +13187,7 @@ struct GlobalScope::Impl
           if (types.unqualified(ai) == types.unqualified(pi))
             return pi->isConst == ai->isConst ? 0 : (pi->isConst ? 1 : NotViable);
           if (pi->kind == TyKind::Void)
-            return 3;
+            return (ai->isConst && !pi->isConst) || (ai->isVolatile && !pi->isVolatile) ? NotViable : 3; // (`const char*` is no `void*`)
           if (ai->kind == TyKind::Class && pi->kind == TyKind::Class && isBaseClass(pi, ai))
             return !pi->isConst && ai->isConst ? NotViable : 3;
           return NotViable;
@@ -14291,12 +14293,33 @@ struct GlobalScope::Impl
                 someBetter = true;
               }
             }
+        // A null pointer constant (nullptr, the literal 0) converts to every pointer alike: none of
+        // the pointer tie-breakers below compares two such conversions (`pick(nullptr)` with
+        // pick(Base*) and pick(const Base*) is ambiguous, as in C++).
+        const Ty* argument = i < argTypes.size() && argTypes[i] ? types.unqualified(types.stripRef(argTypes[i])) : nullptr;
+        bool nullArgument = (argument && argument->kind == TyKind::Nullptr) || (nullConstants && i < nullConstants->size() && (*nullConstants)[i]);
+        // Of two conversions of one rank, one that makes a pointer (or a member pointer) a bool is
+        // the worse ([over.ics.rank] 4.1): pick(const void*) over pick(bool) given a Derived*.
+        if (a.ranks[i] == b.ranks[i] && a.ranks[i] == 3 && argument &&
+            (argument->kind == TyKind::Pointer || argument->kind == TyKind::MemberPointer || argument->kind == TyKind::Array || argument->kind == TyKind::Function) &&
+            i < a.params.size() && i < b.params.size() && a.params[i] && b.params[i])
+        {
+          bool aBool = types.unqualified(types.stripRef(a.params[i]))->kind == TyKind::Bool;
+          bool bBool = types.unqualified(types.stripRef(b.params[i]))->kind == TyKind::Bool;
+          if (aBool != bBool)
+          {
+            if (aBool)
+              return false;
+            someBetter = true;
+            continue;
+          }
+        }
         // Two standard conversions of one rank to pointers (or to references) of related types, C++'s
         // tie-breakers: `pick(spider)` with a Spider* takes pick(Entity*) over pick(const Entity*)
         // (the same conversion and a qualification more), and pick(Unit*) over pick(Entity*) for
         // Unit deriving from Entity (the conversion to the nearer base).
         if (a.ranks[i] == b.ranks[i] && (a.ranks[i] == 2 || a.ranks[i] == 3) && i < a.params.size() && i < b.params.size() &&
-            a.params[i] && b.params[i])
+            a.params[i] && b.params[i] && !nullArgument)
         {
           const Ty* pa = types.unqualified(types.stripRef(a.params[i]));
           const Ty* pb = types.unqualified(types.stripRef(b.params[i]));

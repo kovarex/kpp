@@ -1,0 +1,24 @@
+// spec: of two conversions of one rank, the one that makes a pointer (an array's or a function's too) or a member pointer a bool is the worse ([over.ics.rank] 4.1): a Derived* takes `const void*` or `const Base*` over bool, an array `void*` over bool; a member pointer converts to bool; a `const char*` is no `void*` argument, so `const void*` is the one ([conv.ptr]); clang 19 prints `2 1 2 1 2`
+// factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: each was ambiguous or no call (loud)
+struct Base { int x = 1; };
+struct Derived : Base { int y = 2; };
+enum E { E0, E1 };
+int toVoid(bool b) { return 1; }
+int toVoid(const void* p) { return 2; }
+int fromArray(void* p) { return 1; }
+int fromArray(bool b) { return 2; }
+int toBase(bool b) { return 1; }
+int toBase(const Base* p) { return 2; }
+int member(bool b) { return 1; }
+int member(E e) { return 2; }
+int constChars(void* p) { return 1; }
+int constChars(const void* p) { return 2; }
+int main()
+{
+  Derived d;
+  const Derived* cd = &d;
+  int array[2] = {1, 2};
+  const char* text = "x";
+  println("{} {} {} {} {}", toVoid(&d), fromArray(array), toBase(cd), member(&Base::x), constChars(text));
+  return 0;
+}

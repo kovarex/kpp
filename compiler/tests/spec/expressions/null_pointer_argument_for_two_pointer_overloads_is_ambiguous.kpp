@@ -1,0 +1,18 @@
+// spec: a null pointer constant (nullptr, the literal 0) converts to every pointer type alike, so a call with one and two pointer overloads is ambiguous, whatever their pointees' qualifiers or classes ([over.ics.rank]: no tie-breaker compares two null pointer conversions); and nullptr makes no bool argument ([conv.bool]: only `bool(nullptr)`); each is an error
+// factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: `pick(nullptr)` took pick(Base*) over pick(const Base*), `take(0)` take(int*), and `flag(nullptr)` passed false (silent)
+// error: null_pointer_argument_for_two_pointer_overloads_is_ambiguous.kpp:12: error: the call of pick with (nullptr_t) is ambiguous between int32(Base*)
+// error: null_pointer_argument_for_two_pointer_overloads_is_ambiguous.kpp:13: error: the call of take with (int32) is ambiguous between int32(const int32*)
+// error: null_pointer_argument_for_two_pointer_overloads_is_ambiguous.kpp:14: error: nullptr does not convert to bool without a cast
+struct Base { int x = 1; };
+int pick(Base* p) { return 1; }
+int pick(const Base* p) { return 2; }
+int take(int* p) { return 1; }
+int take(const int* p) { return 2; }
+int flag(bool b) { return 1; }
+int nulls() { return pick(nullptr); }
+int zeros() { return take(0); }
+int bools() { return flag(nullptr); }
+int main()
+{
+  return nulls() + zeros() + bools();
+}
