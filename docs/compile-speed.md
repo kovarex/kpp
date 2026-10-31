@@ -179,6 +179,17 @@ most of what is left there is the work growing with the threads (the busy time, 
 1.5 times -j 1's at -j 8 and 3.1 times at -j 32), the heap and the resolver's walks being the
 largest parts of it.
 
+Where codegen enters the resolver (the sampling probe at 1 ms, 22,142 samples at -j 1, by the
+outermost GlobalScope call under an Emitter frame): about half of codegen's work. callFunction ->
+retypeFor 10.7%, instanceBody 15.2% (emitFunction 6.1, trivialDefinition 5.7, callFunction 3.4:
+the instances only codegen asks for, typed when it does), emitFunction -> privateInstance 6.1%,
+typeOfDeclIn about 9% (signatureOf, emitFunction, callFunction, computeFunctionName), foldConst ->
+evaluate 1.9%, findConstructor -> chooseOverload 1.6%. retypeFor is a pack expansion re-typing the
+whole function once per element and once more to restore the whole packs (a probe): 20,494 element
+retypes 0.50 s, 18,674 restores 0.39 s, 832 elements with the same types as the one before 0.01 s;
+typing only the pattern would save at most those 0.9 s of -j 1's 16.5 s, a few hundredths at -j 32.
+None of these is a lever at -j 32 alone: what grows there is every part's time with the threads.
+
 **The link: link.exe stays (2026-10-31).** The game's 64 objects of one clean build, each variant
 the build's own response file with its link flags replaced, 3 or 4 rounds, minimum (median), in
 seconds (scratch\resolver\linkm.py):
