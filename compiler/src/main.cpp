@@ -1501,14 +1501,20 @@ namespace
       reportAccessWarnings(build);
       if (!options.runBuild.empty() && !codegenExit)
       {
-        // `--run-build debug`: build.kpp's description, computed by the interpreter, on stdout.
-        std::string error;
-        if (std::optional<std::string> text = global.runBuild(options.runBuild, error))
-          fwrite(text->data(), 1, text->size(), stdout);
-        else
+        // `--run-build debug,release`: build.kpp's description of each configuration, computed by
+        // the interpreter, on stdout one after the other.
+        for (size_t start = 0; start <= options.runBuild.size() && !codegenExit;)
         {
-          fprintf(stderr, "error: %s\n", error.c_str());
-          codegenExit = 1;
+          size_t comma = std::min(options.runBuild.find(',', start), options.runBuild.size());
+          std::string error;
+          if (std::optional<std::string> text = global.runBuild(std::string_view(options.runBuild).substr(start, comma - start), error))
+            fwrite(text->data(), 1, text->size(), stdout);
+          else
+          {
+            fprintf(stderr, "error: %s\n", error.c_str());
+            codegenExit = 1;
+          }
+          start = comma + 1;
         }
       }
     }

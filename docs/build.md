@@ -199,25 +199,28 @@ run_tests.cmd.
     build.kpp, `src\main.kpp` and a `.gitignore`.
   An argument that is an existing file or directory makes it a plain build of those sources, as
   before.
-- **How build.kpp runs.** kpp compiles build.kpp with projectlib and a generated file into
-  `build\kpp\describe.exe`. The generated file holds `constexpr Project kppDebug =
-  kppDescribe(Configuration::debug);` (and release), so the interpreter computes build(). Its
-  main only prints the two constants, and kpp reads that. A static_assert on each makes them
-  required constants. Without it a constexpr global that does not evaluate is silently computed
-  at run time: the pending spec language/constexpr_variable_that_is_no_constant_is_error, for D.
-  The result is kept, keyed by build.kpp, projectlib, the settings and kpp itself.
+- **How build.kpp runs.** kpp runs `kppc --run-build debug,release` on build.kpp, projectlib and a
+  generated `build\kpp\settings.kpp` (the `--set` values and the project's name), through the
+  compile server. The interpreter (GlobalScope::runBuild) default-constructs a Project, sets its
+  configuration, runs build(project) and then projectlib's `String describe(const Project&)`, and
+  kppc prints that text, which kpp reads. Nothing is linked or run. An I/O call in build() is an
+  error naming it: `build.kpp:4: a call to puts, a C function, which has no body to run at
+  compile time`. The result is kept, keyed by build.kpp, projectlib, the settings and kpp itself.
 - **Measured** on a `kpp new` project (2026-10-31, PC-PRACOVNA): the first `kpp --debug` took
   1.9 s (compiling build.kpp and the program); with nothing changed it took 0.2 s.
 - **What version 0 lacks:**
-  - Lists have fixed sizes (64 entries; 8 executables), because the interpreter does not
-    allocate. Adding past one is an error.
-  - A Text is two parts (`project.cInclude(root, "/include")`) instead of a joined string.
-  - Overloads stand in for default arguments, and `kppSame` for StringView's `==`; the
-    interpreter evaluates neither yet.
+  - Lists are Vector<String> and joined paths are Strings
+    (`String root = project.setting("ROOT", "C:/x"); project.cInclude(root + "/include");`; the shorter `project.setting(...) + "/include"` leaks its temporary at compile time, the pending spec language/consteval_temporary_object_of_member_call_destroyed). Until the interpreter
+    runs Deque, `emplace_back()` and assigning a String inside a Vector's element (the pending spec
+    language/consteval_projectlib_containers, D's), a project holds at most 64 executables and 64 C
+    libraries, a 65th is an error, and a String field is set by a method:
+    `game.afterBuild("copy ...")`, `game.debug(command, arguments, directory)`,
+    `library.standard("c++20")`. The 64 keep the references executable() returns valid: the
+    interpreter does not yet report a write through a reference a Vector reallocated away (the
+    pending spec language/consteval_reference_into_reallocated_vector_is_error).
   - Steps are `beforeBuild` and `afterBuild` commands of an executable, run by cmd in the
     project's directory.
   - `use()` and the registry do not exist yet; there is no `configurations()` either.
-  - An I/O call in build() fails with the static_assert's message, not one naming the call.
 
 ### C and C++ libraries (proposed 2026-10-31, not implemented)
 

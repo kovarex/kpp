@@ -1,0 +1,45 @@
+// spec: what build.kpp's projectlib does with the library's containers works in a compile-time evaluation as at run time: a String assigned to a member of a Vector's element, Vector::emplace_back() with no arguments, Deque::push_back (its blocks and map of block pointers), Optional<bool>::value_or; each equals what the program computes (`3 2 3 1`)
+// factorio: build.kpp (design.md 12): Project's Vector<Executable> and Deque, Executable's String name, Project::debugInfo
+// pending: String's assignment in a Vector's element (String.kpp:84), emplace_back() (Vector.kpp), Deque's push_back (Deque.kpp:173) and value_or are no constants
+extern "C" import "stdio.h";
+struct Named
+{
+  String name;
+  Vector<String> roots;
+};
+constexpr int assigned()
+{
+  Vector<Named> all;
+  all.push_back(Named{});
+  Named& n = all.back();
+  n.name = "abc";
+  return n.name.size();
+}
+constexpr int emplaced()
+{
+  Vector<Named> all;
+  all.emplace_back();
+  all.emplace_back().roots.push_back("src");
+  return all.size();
+}
+constexpr int queued()
+{
+  Deque<Named> all;
+  for (int i = 0; i < 3; ++i)
+    all.push_back(Named{});
+  return all.size();
+}
+constexpr int fallback()
+{
+  Optional<bool> unset;
+  return unset.value_or(true) ? 1 : 0;
+}
+static_assert(assigned() == 3);
+static_assert(emplaced() == 2);
+static_assert(queued() == 3);
+static_assert(fallback() == 1);
+int main()
+{
+  printf("%d %d %d %d\n", assigned(), emplaced(), queued(), fallback());
+  return 0;
+}

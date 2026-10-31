@@ -42,7 +42,8 @@ try
   Set-Content 'build.kpp' @'
 void build(Project& project)
 {
-  project.cInclude(project.setting("INCLUDE_ROOT", "missing"), "/include");
+  String root = project.setting("INCLUDE_ROOT", "missing");
+  project.cInclude(root + "/include");
   CLibrary& plus = project.cLibrary("plus");
   plus.source("libs/plus");
   plus.exclude("libs/plus/broken.c");
@@ -72,7 +73,7 @@ void build(Project& project)
   if ($code -eq 0 -or ($output -join "`n") -notmatch "build\.kpp:3: error: ") { Fail "a build.kpp with an error: exit $code`n$($output -join "`n")" }
   Set-Content 'build.kpp' "extern `"C`" int puts(const char*);`nvoid build(Project& project)`n{`n  puts(`"io`");`n}"
   $output = Kpp @('--no-server')
-  if ($code -eq 0 -or ($output -join "`n") -notmatch 'compile-time interpreter') { Fail "a build() calling C: exit $code`n$($output -join "`n")" }
+  if ($code -eq 0 -or ($output -join "`n") -notmatch 'puts, a C function, which has no body to run at compile time') { Fail "a build() calling C: exit $code`n$($output -join "`n")" }
   Set-Content 'build.kpp' $good
 }
 finally { Pop-Location }

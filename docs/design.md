@@ -1195,7 +1195,8 @@ default-constructed, its `configuration` the enumerator of that name, `build(pro
 left allocated is an error as in any constant. When that is no constant, the error names the
 innermost statement that failed and why ("build.kpp:6: a call to puts, a C function, which has no
 body to run at compile time"). `kppc --run-build CONFIGURATION files...` prints it (run_tests'
-runbuild case).
+runbuild case); `--run-build debug,release` prints each in turn, which is how kpp describes a
+project (project.cpp, through the compile server; projectlib's `describe`), with no describe.exe.
 
 *Its cost, measured 2026-10-31 (stage 7).* A description at Factorio's scale, written with Vector and
 String as projectlib will be (15 C libraries of 20 sources, 5 include directories and 5 defines
