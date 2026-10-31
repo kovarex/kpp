@@ -2570,6 +2570,12 @@ namespace
     }
     std::sort(kept.changedBodies.begin(), kept.changedBodies.end());
     kept.changedBodies.erase(std::unique(kept.changedBodies.begin(), kept.changedBodies.end()), kept.changedBodies.end());
+    // An added function is emitted as added, never as a changed one too (its walk may read an edited
+    // name: an overload that calls the function it overloads; codegen then emitted it twice).
+    {
+      std::unordered_set<const FunctionDecl*> added(kept.addedFunctions.begin(), kept.addedFunctions.end());
+      std::erase_if(kept.changedBodies, [&](FunctionDecl* f) { return added.count(f) != 0; });
+    }
     for (size_t k = 0; codegenCanFollow && k < kept.moduleBytes.size(); ++k)
     {
       std::error_code ec;

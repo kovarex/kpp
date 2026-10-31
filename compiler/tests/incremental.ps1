@@ -67,6 +67,8 @@ $steps = @(
   @{ name = 'both removed again'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 44'; edit = { Edit 'shapes.kpp' ' int cost = 3; int x = 4, y = 5;' '' } },
   @{ name = 'return type edit read only by a deduced auto local in another file'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 84'; edit = { Edit 'shapes.kpp' 'int unitDepth()' 'long long unitDepth()' } },
   @{ name = 'return type edit read only by a local whose class template arguments are deduced'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88'; edit = { Edit 'shapes.kpp' 'int unitHeight()' 'long long unitHeight()' } },
+  @{ name = 'an overload added that calls a recursive function (both read its name)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88'; edit = { Edit 'locals.kpp' 'int depth(int n) { return n > 0 ? depth(n - 1) + 1 : 0; }' "int depth(int n) { return n > 0 ? depth(n - 1) + 1 : 0; }`nint depth(double v) { return depth(int(v)) + 100; }" } },
+  @{ name = 'that overload removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88'; edit = { Edit 'locals.kpp' "`nint depth(double v) { return depth(int(v)) + 100; }" '' } },
   @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15 1 17 23 88'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
   @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
 )
