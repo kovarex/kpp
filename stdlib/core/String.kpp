@@ -5,6 +5,11 @@
 // allocate; longer strings live in a heap block. The last byte tells which: the length of a small
 // string, or largeMark. All-zero bytes are the empty string. Nothing points into the object, so a
 // move is a 24-byte copy and two byte stores.
+//
+// At compile time String always uses the heap representation, because reading the inactive union
+// member (the mark in smallChars while the heap fields are alive) is undefined behaviour in a
+// constant evaluation. The `if consteval` branches below are that path; the program holds none of
+// them, so its String is the same code and size as without them (design.md "isConstantEvaluated").
 struct String
 {
   union
@@ -51,6 +56,14 @@ struct String
   }
   String(String&& other) noexcept
   {
+    if consteval
+    {
+      this->heapChars = other.heapChars; // the heap fields taken, other left empty (see the top)
+      this->heapLength = other.heapLength;
+      this->heapCapacity = other.heapCapacity;
+      other.becomeEmpty();
+      return;
+    }
     memcpy(this->smallChars, other.smallChars, sizeof(String));
     other.becomeEmpty();
   }
@@ -72,6 +85,14 @@ struct String
       return *this;
     if (this->isLarge())
       free(this->heapChars);
+    if consteval
+    {
+      this->heapChars = other.heapChars; // the heap fields taken, other left empty (see the top)
+      this->heapLength = other.heapLength;
+      this->heapCapacity = other.heapCapacity;
+      other.becomeEmpty();
+      return *this;
+    }
     memcpy(this->smallChars, other.smallChars, sizeof(String));
     other.becomeEmpty();
     return *this;
@@ -81,7 +102,14 @@ struct String
   // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
   static const int npos = 2147483647;
 
-  bool isLarge() const { return (uint8_t)this->smallChars[String::markIndex] == String::largeMark; }
+  bool isLarge() const
+  {
+    if consteval
+    {
+      return true; // (at compile time always: see the top)
+    }
+    return (uint8_t)this->smallChars[String::markIndex] == String::largeMark;
+  }
   int size() const { return this->isLarge() ? this->heapLength : (int)this->smallChars[String::markIndex]; }
   int length() const { return this->size(); }
   // Characters that fit without allocating.
@@ -607,12 +635,29 @@ struct String
   // Internals.
   void becomeEmpty()
   {
+    if consteval
+    {
+      this->initialize("", 0); // a heap block holding the terminator
+      return;
+    }
     this->smallChars[0] = 0;
     this->smallChars[String::markIndex] = 0;
   }
   // Construction from count bytes.
   void initialize(const char* bytes, int count)
   {
+    if consteval
+    {
+      // The heap representation, also for an empty or a short string (see the top).
+      int length = count > 0 ? count : 0;
+      char* block = (char*)malloc(length + 1);
+      memcpy(block, bytes, length);
+      block[length] = 0;
+      this->heapChars = block;
+      this->heapLength = length;
+      this->heapCapacity = length;
+      return;
+    }
     if (count <= 0)
     {
       this->becomeEmpty();
@@ -655,7 +700,10 @@ struct String
     this->heapChars = block;
     this->heapLength = length;
     this->heapCapacity = capacity;
-    this->smallChars[String::markIndex] = (char)String::largeMark;
+    if !consteval
+    {
+      this->smallChars[String::markIndex] = (char)String::largeMark; // (no mark at compile time: see the top)
+    }
   }
   // Moves the characters into a heap block with room for newCapacity. Out of line, like every
   // growth path, so that the fast paths around it stay small enough to inline.

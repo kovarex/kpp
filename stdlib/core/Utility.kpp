@@ -12,6 +12,20 @@ T&& forward(RemoveReference<T>& value) { return (T&&)value; }
 template<typename T>
 T&& forward(RemoveReference<T>&& value) { return (T&&)value; }
 
+// Whether this runs in a compile-time evaluation (std::is_constant_evaluated): true there, false
+// in the program. Code that must not branch at run time writes `if consteval` instead, whose other
+// branch is the only one the program holds. (A template only so that a program that never calls it
+// holds none of it: the code generator emits every function that is no template.)
+template<typename Unused = void>
+constexpr bool isConstantEvaluated()
+{
+  if consteval
+  {
+    return true;
+  }
+  return false;
+}
+
 // A value of type T where only its type matters (`decltype(declval<T>().str())`): declared, never
 // defined, so a call outside decltype and requires does not link.
 template<typename T>

@@ -1177,6 +1177,17 @@ small-string union is read through the member that is not alive (the mark byte i
 while the heap fields are), which C++ makes undefined and the interpreter rejects; the fix is the
 library's (proposed to its owner 2026-10-31; spec language/consteval_vector_of_strings, pending).
 
+*isConstantEvaluated, 2026-10-31 (decided by the coordinator).* `if consteval { A } else { B }` and
+`if !consteval` (C++23) work: A runs in a compile-time evaluation, B in the program, and B is the
+only branch the program holds (the code generator emits nothing of A, nor anything only A calls).
+The library's `isConstantEvaluated()` (std::is_constant_evaluated) is built on it: true at compile
+time, false in the program (spec language/if_consteval_and_is_constant_evaluated). The library's
+String uses `if consteval` to keep its heap representation at compile time, since reading its
+small-string union's inactive member is undefined behaviour in a constant evaluation; its run-time
+code, size and speed are unchanged (the game's IR byte-identical), and with it Vector<String> works
+in a constant (spec language/consteval_vector_of_strings). Whether String's run-time reading of
+that member is acceptable is a language question for kovarex.
+
 *For build.kpp's descriptions, 2026-10-31.* A StringView compares with a literal or another
 StringView at compile time (`memcmp` over chars, and an object compared with a pointer or array
 by its class's operator, not as pointers), and a call, a member function's too, may leave trailing

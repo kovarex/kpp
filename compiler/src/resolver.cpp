@@ -7130,6 +7130,14 @@ struct GlobalScope::Impl
         std::vector<const Ty*> rest(given.begin() + std::min(i, given.size()), given.end());
         t = types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())});
       }
+      if (!t && param->isType && !param->isPack && param->defaultArg)
+      {
+        // Neither written nor deduced: its default (`template<typename Unused = void>`), which may
+        // name the parameters before it.
+        TypeContext dctx{lexicalScopeOf(f), &params, bound.empty() ? nullptr : &bound, f->file ? f->file->tokens : nullptr,
+                         f->file ? f->file->text : std::string_view()};
+        t = convertType(static_cast<Type*>(param->defaultArg), dctx, depth + 1);
+      }
       if (!t || !t->isKnown() || types.isDependent(t))
         return std::nullopt;
       bound.pairs.push_back({f->templateParams[i], t});
@@ -10810,13 +10818,30 @@ struct GlobalScope::Impl
         break;
       }
       const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
-      if (type && type->isReference() && !(places && i < places->size() && (*places)[i]) && i < args.size() && categories &&
-          i < categories->size() && (*categories)[i] == 0 && args[i].isObject() && args[i].type && constDestroyRunsCode(args[i].type))
+      // A reference refers to the argument's object when that is of its type (or of a class derived
+      // from it: the base part); anything else converts, a class object it makes being a temporary.
+      std::optional<std::vector<size_t>> basePart;
+      if (type && type->isReference() && i < args.size() && type->inner)
       {
-        // `const Text& t` given `Text("a")`: a temporary of the caller's full expression, which the
-        // function refers to (and may move from).
+        const Ty* want = types.unqualified(type->inner);
+        const Ty* have = places && i < places->size() && (*places)[i] && (*places)[i]->type ? types.unqualified(types.stripRef((*places)[i]->type))
+                       : args[i].type                                                     ? types.unqualified(types.stripRef(args[i].type))
+                                                                                          : nullptr;
+        if (have && (have == want || want->kind == TyKind::Void))
+          basePart = std::vector<size_t>{};
+        else if (have && have->kind == TyKind::Class && want->kind == TyKind::Class)
+          basePart = constBasePath(have, want, depth + 1);
+      }
+      bool prvalue = categories && i < categories->size() && (*categories)[i] == 0;
+      if (type && type->isReference() && i < args.size() && !args[i].isUnset() &&
+          ((!basePart && types.unqualified(type->inner)->kind == TyKind::Class) ||
+           (basePart && !(places && i < places->size() && (*places)[i]) && prvalue && args[i].isObject() && args[i].type && constDestroyRunsCode(args[i].type))))
+      {
+        // `const Text& t` given `Text("a")`, or a StringView where a `const String&` is wanted: a
+        // temporary of the caller's full expression, which the function refers to (and may move
+        // from), destroyed when that ends.
         std::optional<ConstValue> v = constConvertTo(args[i], types.unqualified(type->inner), depth + 1);
-        std::optional<ConstPlace> at = v ? constMaterialize(*v, type->inner) : std::nullopt;
+        std::optional<ConstPlace> at = v && v->isObject() && v->type && constDestroyRunsCode(v->type) ? constMaterialize(*v, type->inner) : std::nullopt;
         if (at)
         {
           ConstBinding alias{p->name, ConstValue::unset(type)};
@@ -10828,16 +10853,17 @@ struct GlobalScope::Impl
           continue;
         }
       }
-      if (type && type->isReference() && places && i < places->size() && (*places)[i])
+      if (type && type->isReference() && places && i < places->size() && (*places)[i] && basePart)
       {
-        // `int& out`, `const Point& p` given a local: a reference to it.
+        // `int& out`, `const Point& p` given a local: a reference to it (to its base part).
         const ConstPlace& at = *(*places)[i];
         ConstBinding alias{p->name, ConstValue::unset(type)};
-        alias.type = (*places)[i]->type;
+        alias.type = basePart->empty() ? (*places)[i]->type : types.unqualified(type->inner);
         alias.writable = !(type->inner && type->inner->isConst) && !at.readOnly;
         alias.aliasEnv = at.env;
         alias.aliasIndex = at.index;
         alias.aliasPath = at.path;
+        alias.aliasPath.insert(alias.aliasPath.end(), basePart->begin(), basePart->end());
         env.push_back(std::move(alias));
         continue;
       }
@@ -11260,6 +11286,8 @@ struct GlobalScope::Impl
       case NodeKind::IfStmt:
       {
         auto* i = static_cast<IfStmt*>(s);
+        if (i->ifConsteval) // `if consteval`: a compile-time evaluation's branch
+          return constStatement(i->ifConsteval == 1 ? i->then : i->else_, ctx, env, result, depth + 1);
         if (i->init)
           return ConstFlow::Failed;
         std::optional<bool> cond = condition(i->cond);

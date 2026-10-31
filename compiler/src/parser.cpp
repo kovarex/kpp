@@ -3664,8 +3664,20 @@ namespace
             IfStmt* s = node<IfStmt>(start);
             if (accept(Kw::constexpr_))
               s->isConstexpr = true;
-            if (atIdent() && spelling() == "consteval")
+            if (at(Kw::consteval_) || (at(P::Bang) && at(Kw::consteval_, 1)))
+            {
+              // `if consteval { ... } else { ... }`, `if !consteval { ... }` (C++23): no condition.
+              bool negated = accept(P::Bang);
               advance();
+              s->ifConsteval = negated ? 2 : 1;
+              s->cond = nullptr;
+              if (!at(P::LBrace))
+                error("expected '{' after if consteval");
+              s->then = parseStatement();
+              if (accept(Kw::else_))
+                s->else_ = parseStatement();
+              return s;
+            }
             if (!expect(P::LParen, "expected '(' after if"))
               return s;
             parseCondition(s->init, s->cond);

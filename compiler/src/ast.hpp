@@ -297,7 +297,13 @@ struct Stmt : Node {};
 struct BlockStmt : Stmt { Span<Stmt*> stmts; };
 struct ExprStmt : Stmt { Expr* expr; };
 struct DeclStmt : Stmt { Span<Decl*> decls; };
-struct IfStmt : Stmt { Stmt* init = nullptr; Node* cond; Stmt* then; Stmt* else_ = nullptr; bool isConstexpr = false; int8_t constexprKnown = -1; /* -1 = not evaluated, 0 = false branch, 1 = true branch */ };
+struct IfStmt : Stmt
+{
+  Stmt* init = nullptr; Node* cond; Stmt* then; Stmt* else_ = nullptr; bool isConstexpr = false; int8_t constexprKnown = -1; /* -1 = not evaluated, 0 = false branch, 1 = true branch */
+  // `if consteval` (1) and `if !consteval` (2), C++23, no condition: the first branch runs in a
+  // compile-time evaluation (the second for `!`), the other one in the program, the only one emitted.
+  uint8_t ifConsteval = 0;
+};
 struct AssertStmt : Stmt { Expr* cond; uint32_t startToken, endToken; bool release = false; uint8_t testKind = 0; }; // tokens of the expression text // assert(cond); release_assert(cond); testKind 1 check(cond), 2 require(cond) in a test
 struct ForStmt : Stmt { Stmt* init = nullptr; Node* cond = nullptr; Expr* step = nullptr; Stmt* body; };
 struct RangeForStmt : Stmt { Decl* var; Expr* range; Stmt* body; };

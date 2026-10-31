@@ -5060,6 +5060,11 @@ namespace
         {
           auto* i = static_cast<IfStmt*>(n);
           visit(i->init);
+          if (i->ifConsteval)
+          {
+            visit(i->ifConsteval == 1 ? i->else_ : i->then); // `if consteval`: the program's branch alone
+            break;
+          }
           if (keptBranches && i->isConstexpr && i->constexprKnown >= 0)
           {
             // An instance's `if constexpr`: only the branch it keeps, as C++ captures what the
@@ -16048,6 +16053,12 @@ namespace
         case NodeKind::IfStmt:
         {
           auto* i = static_cast<IfStmt*>(s);
+          if (i->ifConsteval)
+          {
+            // `if consteval`: the program's branch alone (the other runs only at compile time).
+            subStatement(i->ifConsteval == 1 ? i->else_ : i->then);
+            break;
+          }
           if (i->isConstexpr && i->constexprKnown >= 0)
           {
             // The resolver already folded this if constexpr during instantiation.

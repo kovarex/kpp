@@ -1,0 +1,29 @@
+// spec: `if consteval { A } else { B }` (C++23) runs A in a compile-time evaluation and B in the program, and `if !consteval` the other way round; isConstantEvaluated() (std::is_constant_evaluated) is true in a compile-time evaluation and false in the program; the emitted code holds only the program's branch (`1 2 1 2 2 1`)
+// factorio: the library's String, which at compile time keeps its heap representation (design.md "isConstantEvaluated"), and C++23 code that uses `if consteval`
+constexpr int where()
+{
+  if consteval
+  {
+    return 1;
+  }
+  else
+  {
+    return 2;
+  }
+}
+constexpr int notWhere()
+{
+  if !consteval
+  {
+    return 2;
+  }
+  return 1;
+}
+constexpr int asked() { return isConstantEvaluated() ? 1 : 2; }
+template<int N> struct Show { static constexpr int value = N; };
+static_assert(where() == 1 && notWhere() == 1 && asked() == 1);
+int main()
+{
+  println("{} {} {} {} {} {}", Show<where()>::value, where(), Show<notWhere()>::value, notWhere(), asked(), Show<asked()>::value);
+  return 0;
+}
