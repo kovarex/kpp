@@ -59,25 +59,74 @@ configurations are not the same code: kppc release is Factorio's FastDebug prepr
 Factorio's own Release configuration in MSVC; kppc debug is the same preprocessing at clang -O0,
 against Factorio's Debug configuration.
 
-### Build time: C++ (FASTBuild)
+### Unit tests
 
-`cd C:\Factorio\fastbuild` then `FBuild.exe -summary [-clean] vs2022-Debugx64-factorio-run
-vs2022-Debugx64-factorio-test` (the time is the summary's `Real`). An edit is a timestamp-only touch
-of the header (`(Get-Item F).LastWriteTime = Get-Date`): FASTBuild rebuilds what includes it exactly
-as for a one-line change, and C:\Factorio's sources and git status stay unchanged. Two rounds, the
-CPU load before each run recorded (from 1 to 100%: other threads' builds).
+Plain runs (no `--fork`, no CRC mode), one after another: `factorio-test.exe --config CFG
+--write-data DIR --no-colors` as `tests.cmd --baseline` runs it, each with its own write directory;
+kppc's is `tests.cmd DIR` on the 40ce3c8d tree.
 
-| C++ Debug | run + test | run only | objects |
-|---|---|---|---|
-| clean | 77.1 s (19.4× parallel, 24 min 58 s CPU) | | 920 |
-| no change | 0.09 s | | 0 |
-| touch `src/AnimationBank.hpp` (an ordinary header) | 37.1 / 25.6 s | 27.4 / 19.7 s | 5 |
-| touch `src/ActionResult.hpp` (in the PCH) | 70.3 / 71.8 s | 65.6 / 50.3 s | 143 (run only: 102) |
+| Build | Result | Test time |
+|---|---|---:|
+| C++ Release | 9,501/9,501 | 229.2 s |
+| C++ Debug | 9,501/9,501 | 829.5 s |
+| kppc debug | 9,500/9,500 (one test fewer in the conversion) | 445.4 s (0.54× C++ Debug) |
+| kppc release | not run: the pending adjacent-invokes crash (below) is not fixed yet | |
 
-The ordinary header's critical path: its slowest unity object 11.4 s, factorio.lib 4.2 s, the
-factorio-test.exe link 9.9 s (factorio-run.exe 5.9 s). C++ Release clean: 4 min 19.6 s, 920 objects,
-1 h 57 min CPU (27.1×). The paired rounds with kppc's server (a body edit, an inline function's
-edit) and C++ Release's edits are still to come.
+C's CRC runs on the same builds (C++ Debug `--crc-write` 9,501/9,501 in 2,264 s; C++ Release checked
+against it, 9,501/9,501 in 843 s, 0 mismatches) are slower because they write or check the CRCs.
+
+### Build time: the game, edit to linked executable
+
+**Method.** Each step runs the four builds one after another (paired, interleaved), two rounds;
+`pair-edit.ps1` in thread H's scratch. The CPU load before each run is recorded: 0 to 100% (other
+threads' builds), so every number is one sample on a shared machine.
+- C++: `cd C:\Factorio\fastbuild`, `FBuild.exe -summary [-clean] vs2022-<Debug|Release>x64-factorio-run`
+  (the game only, as kppc builds it; the time is the summary's `Real`). An edit is a timestamp-only
+  touch of a header (`(Get-Item F).LastWriteTime = Get-Date`): FASTBuild rebuilds what includes it as
+  for a one-line change, and C:\Factorio's sources and git status stay unchanged.
+- kppc: run.cmd's own kppc line with `--server` added, into a directory of its own; the time is the
+  client's wall time from start to exit, including the link.
+- The leaf edit: C++ touches `src/AnimationBank.hpp` (an ordinary header, 5 objects); kppc changes a
+  string in `AnimationBank::getAnimation` in the converted AnimationBank.kpp.
+- The wide edit: C++ touches `src/ActionResult.hpp` (included by the PCH, 102 objects of the game);
+  kppc swaps the operands of `MapPosition::operator+(const MapPosition&)`, an inline function used
+  across the game. Each kppc edit is undone by the next round's, so the tree ends as converted.
+
+| Step | C++ Debug | kppc debug | C++ Release | kppc release |
+|---|---|---|---|---|
+| clean | 56.7 / 61.0 s (862 objects) | 56.4 / 44.3 s (fresh server; see below) | 4 min 19.6 s with factorio-test (once: a Release clean rewrites the libraries kppc links) | 133.0 / 142.7 s |
+| no change | 0.2 / 0.2 s | 0.2 / 0.2 s | 0.2 s | 0.1 / 0.2 s |
+| leaf edit | 22.0 / 28.7 s | **2.4 / 3.2 s** | 23.2 / 26.5 s | 67.2 / 88.2 s |
+| wide edit | 58.8 / 51.1 s | **10.7 / 14.8 s** | 111.4 / 105.9 s | 103.4 / 92.0 s |
+
+An earlier pass of the kppc builds alone (no C++ in between) gave clean 14.4 / 56.2 s (debug) and
+96.1 / 99.8 s (release), leaf 2.0 / 2.0 s and 64.5 / 64.3 s, wide 7.5 / 8.7 s and 87.1 / 67.8 s.
+C++ Release's first no-change build compiled 102 objects for a reason not found; the second built
+nothing (0.1 s).
+
+- **kppc release's edit is its ThinLTO link**: 60 to 85 s of the leaf edit's 64 to 88 s is the lld
+  link with 1 of 64 modules changed (clang itself 0.8 to 1.4 s), against 0.4 to 0.7 s for the debug
+  link. That makes kppc release's leaf edit slower than C++ Release's (64 to 88 s against 23 to 27 s)
+and its wide edit about level (68 to 103 s against 106 to 111 s).
+- **The server's first build is slower than a build in its own process.** Clean kppc debug builds
+  alternating the two (`clean-kppc.ps1`, 3 rounds): in its own process 12.8 / 12.4 / 15.0 s, through a
+  fresh server 12.4 / 35.2 / 38.4 s. In the slow ones, instantiation takes 55 to 62 s of CPU instead
+  of 18 to 26 s, and resolve 2.0 to 2.2 s instead of 0.9 to 1.3 s. A clean kppc debug build is 12 to
+  15 s against C++ Debug's 57 to 61 s.
+
+C++ with its tests (`factorio-run` and `factorio-test`, the 2026-10-23 baseline's targets),
+`cpp-runtest.ps1`, Debug and Release interleaved, plus the first Debug rounds:
+
+| C++, run + test | Debug | Release |
+|---|---|---|
+| clean | 77.1 s (920 objects, 24 min 58 s CPU, 19.4×) | 4 min 19.6 s (1 h 57 min CPU, 27.1×) |
+| no change | 0.09 to 0.21 s | 0.09 to 0.11 s |
+| touch `src/AnimationBank.hpp` (5 objects) | 37.1 / 25.6 / 35.3 / 43.1 s | 29.0 / 38.9 s |
+| touch `src/ActionResult.hpp` (143 objects) | 70.3 / 71.8 / 67.2 / 65.1 s | 4 min 46.5 s / 4 min 43.3 s |
+
+On 2026-10-23 (d0495ebfd8a) the same Debug numbers were 62 s clean, 16 s and 55 s. The ordinary
+header's critical path now: its slowest unity object 11.4 s, factorio.lib 4.2 s, the factorio-test.exe
+link 9.9 s (factorio-run.exe 5.9 s).
 
 ## kppc 9ab96a0e, old source d0495ebfd8a (2026-10-30)
 
