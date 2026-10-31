@@ -514,6 +514,17 @@ operator, on a const object is an error. Specs: language/const_value_assigned,
 language/const_value_incremented, language/volatile_is_not_const,
 classes/non_const_method_on_const_object_is_error.
 
+### 12. The build description: build.kpp (decided 2026-10-31)
+A project's builds are described in `build.kpp` at its root: Kpp, run by the compile-time
+interpreter, so it can compute but only describes (no I/O, no processes, no C). The project's code
+is in `src/`, its own libraries and forks in `libraries/`; registry libraries stay in a shared
+cache, pinned in `build.lock`. One project may build several executables from shared sources, a
+target leaving files out (Factorio's `Main`) rather than having its `main` replaced. With no
+build.kpp, `src/` is one executable with debug and release. Writing `project.use("json")` adds a
+library: the next build finds it (`libraries/`, cache, registry) and records it in build.lock. In
+the project's directory the compiler alone builds it (`kpp`, `kpp --release`). Details, the
+research behind it and what it needs: [build.md](build.md), "The build description".
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
@@ -1448,12 +1459,9 @@ the standard library's modules once.
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
   converted UnitTest++ as native tests.
 
-- **How a build is described** ([build.md](build.md), proposed 2026-10-30): the project file's
-  format (revised 2026-10-31 at kovarex's request: a `build.kpp` in Kpp that the compile-time
-  interpreter runs and that only describes, recommended over a list of kppc options), the project
-  layout (`src/`, `libraries/` for own libraries and forks that replace registry ones, `build/`),
-  debug information in release builds, who builds the C libraries the game links (FASTBuild's
-  April build is 54 `libraries/` commits behind HEAD), and hand-written or generated `.vcxproj`.
+- **How a build is described** ([build.md](build.md)): debug information in release builds, the
+  command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54
+  `libraries/` commits behind HEAD), and hand-written or generated `.vcxproj`.
 
 ## Roadmap
 1. **Speed-test prototype** (done, see [prototype-results.md](prototype-results.md)): parallel
