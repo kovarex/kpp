@@ -1,0 +1,229 @@
+// A JSON value (libraries/json/README.md). An object keeps its members in the order they were
+// added; setting an existing key replaces its value in place.
+enum class JsonType { null, boolean, integer, number, string, array, object };
+
+struct JsonValue
+{
+  JsonType type = JsonType::null;
+  bool booleanValue = false;
+  long long integerValue = 0; // JsonType::integer: a number written without fraction or exponent
+  double numberValue = 0;     // JsonType::number
+  String stringValue;
+  Vector<JsonValue> items; // an array's elements, or an object's values
+  Vector<String> keys;     // an object's keys, items[i]'s at keys[i]
+
+  JsonValue() {}
+  implicit JsonValue(bool value) : type(JsonType::boolean), booleanValue(value) {}
+  implicit JsonValue(int value) : type(JsonType::integer), integerValue(value) {}
+  implicit JsonValue(long long value) : type(JsonType::integer), integerValue(value) {}
+  implicit JsonValue(double value) : type(JsonType::number), numberValue(value) {}
+  implicit JsonValue(const char* value) : type(JsonType::string), stringValue(value) {}
+  implicit JsonValue(StringView value) : type(JsonType::string), stringValue(value) {}
+  implicit JsonValue(const String& value) : type(JsonType::string), stringValue(value) {}
+
+  static JsonValue array()
+  {
+    JsonValue value;
+    value.type = JsonType::array;
+    return value;
+  }
+  static JsonValue object()
+  {
+    JsonValue value;
+    value.type = JsonType::object;
+    return value;
+  }
+
+  bool isNull() const { return this->type == JsonType::null; }
+  bool isBool() const { return this->type == JsonType::boolean; }
+  bool isInteger() const { return this->type == JsonType::integer; }
+  // An integer or a number.
+  bool isNumber() const { return this->type == JsonType::integer || this->type == JsonType::number; }
+  bool isString() const { return this->type == JsonType::string; }
+  bool isArray() const { return this->type == JsonType::array; }
+  bool isObject() const { return this->type == JsonType::object; }
+
+  // The value as the type asked for; any other type throws JsonTypeError.
+  bool asBool() const
+  {
+    this->expect(JsonType::boolean, "a boolean");
+    return this->booleanValue;
+  }
+  long long asInteger() const
+  {
+    this->expect(JsonType::integer, "an integer");
+    return this->integerValue;
+  }
+  // An integer converted to double, or a number.
+  double asNumber() const
+  {
+    if (this->type == JsonType::integer)
+      return double(this->integerValue);
+    this->expect(JsonType::number, "a number");
+    return this->numberValue;
+  }
+  const String& asString() const
+  {
+    this->expect(JsonType::string, "a string");
+    return this->stringValue;
+  }
+
+  // An array's elements or an object's members; 0 for anything else.
+  int size() const { return this->items.size(); }
+
+  // An array's element; out of range or not an array throws.
+  const JsonValue& operator[](int index) const
+  {
+    this->expect(JsonType::array, "an array");
+    if (index < 0 || index >= this->items.size())
+      throw JsonTypeError(format("JSON array index {} out of range (size {})", index, this->items.size()));
+    return this->items[index];
+  }
+  JsonValue& operator[](int index)
+  {
+    this->expect(JsonType::array, "an array");
+    if (index < 0 || index >= this->items.size())
+      throw JsonTypeError(format("JSON array index {} out of range (size {})", index, this->items.size()));
+    return this->items[index];
+  }
+
+  // An object's member, or nullptr when it has none of that name; not an object throws.
+  const JsonValue* find(StringView key) const
+  {
+    this->expect(JsonType::object, "an object");
+    for (int i = 0; i < this->keys.size(); ++i)
+      if (StringView(this->keys[i]) == key)
+        return &this->items[i];
+    return nullptr;
+  }
+  JsonValue* find(StringView key)
+  {
+    this->expect(JsonType::object, "an object");
+    for (int i = 0; i < this->keys.size(); ++i)
+      if (StringView(this->keys[i]) == key)
+        return &this->items[i];
+    return nullptr;
+  }
+  bool contains(StringView key) const { return this->find(key) != nullptr; }
+  // An object's member; a missing one throws.
+  const JsonValue& operator[](StringView key) const
+  {
+    const JsonValue* member = this->find(key);
+    if (!member)
+      throw JsonTypeError(format("JSON object has no member \"{}\"", String(key)));
+    return *member;
+  }
+  const JsonValue& operator[](const char* key) const { return (*this)[StringView(key)]; }
+
+  // Appends to an array; a null value becomes an empty array first.
+  JsonValue& push(const JsonValue& value)
+  {
+    if (this->type == JsonType::null)
+      this->type = JsonType::array;
+    this->expect(JsonType::array, "an array");
+    this->items.push_back(value);
+    return this->items.back();
+  }
+  // Sets an object's member, replacing the value of an existing key in its place; a null value
+  // becomes an empty object first.
+  JsonValue& set(StringView key, const JsonValue& value)
+  {
+    if (this->type == JsonType::null)
+      this->type = JsonType::object;
+    JsonValue* member = this->find(key);
+    if (member)
+    {
+      *member = value;
+      return *member;
+    }
+    this->keys.push_back(String(key));
+    this->items.push_back(value);
+    return this->items.back();
+  }
+  // Removes an object's member; false when there was none.
+  bool remove(StringView key)
+  {
+    this->expect(JsonType::object, "an object");
+    for (int i = 0; i < this->keys.size(); ++i)
+      if (StringView(this->keys[i]) == key)
+      {
+        this->keys.erase(this->keys.begin() + i);
+        this->items.erase(this->items.begin() + i);
+        return true;
+      }
+    return false;
+  }
+
+  // Equal type and value. An integer never equals a number (1 and 1.0 differ, as they print
+  // differently); objects are equal with the same members in any order.
+  bool operator==(const JsonValue& other) const
+  {
+    if (this->type != other.type)
+      return false;
+    switch (this->type)
+    {
+      case JsonType::null: return true;
+      case JsonType::boolean: return this->booleanValue == other.booleanValue;
+      case JsonType::integer: return this->integerValue == other.integerValue;
+      case JsonType::number: return jsonSameNumber(this->numberValue, other.numberValue);
+      case JsonType::string: return this->stringValue == other.stringValue;
+      case JsonType::array: return this->items == other.items;
+      case JsonType::object:
+      {
+        if (this->keys.size() != other.keys.size())
+          return false;
+        for (int i = 0; i < this->keys.size(); ++i)
+        {
+          const JsonValue* member = other.find(this->keys[i]);
+          if (!member || !(this->items[i] == *member))
+            return false;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+  bool operator!=(const JsonValue& other) const { return !(*this == other); }
+
+  // The value as compact JSON, for messages and the test runner's check values.
+  String str() const { return writeJson(*this); }
+
+  void expect(JsonType wanted, const char* what) const
+  {
+    if (this->type != wanted)
+      throw JsonTypeError(format("JSON value is {}, not {}", jsonTypeName(this->type), what));
+  }
+};
+
+// The JSON type's name with its article, for messages: "a string", "null".
+const char* jsonTypeName(JsonType type)
+{
+  switch (type)
+  {
+    case JsonType::null: return "null";
+    case JsonType::boolean: return "a boolean";
+    case JsonType::integer: return "an integer";
+    case JsonType::number: return "a number";
+    case JsonType::string: return "a string";
+    case JsonType::array: return "an array";
+    case JsonType::object: return "an object";
+  }
+  return "?";
+}
+
+// The same double, bit for bit apart from NaN's payload: -0.0 is not 0.0.
+bool jsonSameNumber(double a, double b)
+{
+  if (a != a)
+    return b != b;
+  if (a != b)
+    return false;
+  return a != 0 || (1 / a) == (1 / b);
+}
+
+// A value of the wrong JSON type asked for, a missing member, an index out of range.
+struct JsonTypeError : RuntimeError
+{
+  JsonTypeError() {}
+  explicit JsonTypeError(const String& message) : RuntimeError(message) {}
+};

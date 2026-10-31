@@ -1,0 +1,191 @@
+// The json library's own tests: kppc --test libraries/json
+
+test "parse scalars"
+{
+  check(parseJson("null").isNull());
+  check(parseJson("true").asBool() == true);
+  check(parseJson(" false ").asBool() == false);
+  check(parseJson("42").asInteger() == 42);
+  check(parseJson("-7").asInteger() == -7);
+  check(parseJson("1.5").asNumber() == 1.5);
+  check(parseJson("\"hi\"").asString() == "hi");
+}
+
+test "integers keep their exact value"
+{
+  check(parseJson("9223372036854775807").asInteger() == 9223372036854775807ll);
+  check(parseJson("-9223372036854775808").asInteger() == (-9223372036854775807ll - 1));
+  // Past long long: a double.
+  JsonValue big = parseJson("9223372036854775808");
+  check(big.type == JsonType::number);
+  check(big.asNumber() == 9223372036854775808.0);
+  // -0 is the number -0.0.
+  JsonValue minusZero = parseJson("-0");
+  check(minusZero.type == JsonType::number);
+  check(writeJson(minusZero) == "-0.0");
+}
+
+test "arrays and objects"
+{
+  JsonValue v = parseJson(" { \"a\" : [1, 2.5, \"x\", null, true], \"b\": {} } ");
+  require(v.isObject());
+  check(v.size() == 2);
+  check(v["a"].size() == 5);
+  check(v["a"][0].asInteger() == 1);
+  check(v["a"][1].asNumber() == 2.5);
+  check(v["a"][2].asString() == "x");
+  check(v["a"][3].isNull());
+  check(v["b"].isObject());
+  check(v.find("c") == nullptr);
+  check(writeJson(v) == "{\"a\":[1,2.5,\"x\",null,true],\"b\":{}}");
+}
+
+test "a repeated key keeps the last value in the first place"
+{
+  JsonValue v = parseJson("{\"a\":1,\"b\":2,\"a\":3}");
+  check(writeJson(v) == "{\"a\":3,\"b\":2}");
+}
+
+test "string escapes"
+{
+  check(parseJson("\"a\\\"b\\\\c\\/d\\b\\f\\n\\r\\t\"").asString() == "a\"b\\c/d\b\f\n\r\t");
+  check(parseJson("\"\\u00e9\"").asString() == "\xC3\xA9");
+  check(parseJson("\"\\u20AC\"").asString() == "\xE2\x82\xAC");
+  check(parseJson("\"\\ud83d\\ude00\"").asString() == "\xF0\x9F\x98\x80");
+  check(writeJson(JsonValue("a\"b\\c\n\x01")) == "\"a\\\"b\\\\c\\n\\u0001\"");
+  check(writeJson(JsonValue("\xF0\x9F\x98\x80")) == "\"\xF0\x9F\x98\x80\"");
+}
+
+// The error's message for text that is not JSON, "" when it parses.
+String jsonErrorOf(StringView text)
+{
+  JsonValue value;
+  JsonParseError error;
+  if (tryParseJson(text, value, &error))
+    return "";
+  return error.message;
+}
+
+test "errors name the line and column"
+{
+  check(jsonErrorOf("") == "1:1: expected a value, found the end of the text");
+  check(jsonErrorOf("[1,]") == "1:4: expected a value");
+  check(jsonErrorOf("{\n  \"a\": 01}") == "2:9: a number with a leading zero");
+  check(jsonErrorOf("[1] x") == "1:5: text after the JSON value");
+  check(jsonErrorOf("\"\\ud800\"") == "1:2: \\u escape of a high surrogate without a low surrogate after it");
+  check(jsonErrorOf("\"\xC0\x80\"") == "1:2: bytes that are not UTF-8 in a string");
+  check(jsonErrorOf("1e400") == "1:1: a number too large for a double");
+  check(jsonErrorOf("{\"a\" 1}") == "1:6: expected ':' after an object's key");
+  check(jsonErrorOf("[.5]") == "1:2: expected a value");
+  check(jsonErrorOf("[1.]") == "1:4: expected a digit after a number's '.'");
+  check(jsonErrorOf("tru") == "1:1: expected a value");
+  check(jsonErrorOf("\"a\tb\"") == "1:3: a control character in a string (it must be escaped)");
+}
+
+test "nesting is limited"
+{
+  String deep;
+  for (int i = 0; i < 1001; ++i)
+    deep.append('[');
+  check(jsonErrorOf(deep) == "1:1001: nesting deeper than 1000 levels");
+  String ok;
+  for (int i = 0; i < 1000; ++i)
+    ok.append('[');
+  for (int i = 0; i < 1000; ++i)
+    ok.append(']');
+  check(jsonErrorOf(ok) == "");
+}
+
+test "building and pretty printing"
+{
+  JsonValue v;
+  v.set("name", "kpp");
+  v.set("version", 1);
+  JsonValue& list = v.set("tags", JsonValue::array());
+  list.push("fast");
+  list.push(2.5);
+  v.set("empty", JsonValue::object());
+  check(writeJsonPretty(v) == "{\n  \"name\": \"kpp\",\n  \"version\": 1,\n  \"tags\": [\n    \"fast\",\n    2.5\n  ],\n  \"empty\": {}\n}");
+  check(v.remove("tags"));
+  check(writeJson(v) == "{\"name\":\"kpp\",\"version\":1,\"empty\":{}}");
+}
+
+test "wrong types throw"
+{
+  JsonValue v = parseJson("[1]");
+  bool threw = false;
+  try
+  {
+    v.asString();
+  }
+  catch (const JsonTypeError& e)
+  {
+    threw = true;
+    check(String(e.what()) == "JSON value is an array, not a string");
+  }
+  check(threw);
+  threw = false;
+  try
+  {
+    writeJson(JsonValue(0.0 / 0.0));
+  }
+  catch (const JsonTypeError&)
+  {
+    threw = true;
+  }
+  check(threw);
+}
+
+test "objects compare in any order"
+{
+  check(parseJson("{\"a\":1,\"b\":[true]}") == parseJson("{\"b\":[true],\"a\":1}"));
+  check(parseJson("1") != parseJson("1.0"));
+  check(parseJson("0.0") != parseJson("-0.0"));
+}
+
+// A double read back from its JSON text: the same bits.
+bool jsonNumberRoundTrips(double value)
+{
+  String text = writeJson(JsonValue(value));
+  JsonValue back = parseJson(text);
+  if (back.type == JsonType::number && bitCast<uint64_t>(back.numberValue) == bitCast<uint64_t>(value))
+    return true;
+  println("{} does not round-trip", text);
+  return false;
+}
+
+test "numbers round-trip exactly"
+{
+  check(writeJson(JsonValue(0.1)) == "0.1");
+  check(writeJson(JsonValue(1e300)) == "1e+300");
+  check(writeJson(JsonValue(5.0)) == "5.0");
+  check(writeJson(JsonValue(1.0 / 3.0)) == "0.3333333333333333");
+  check(writeJson(JsonValue(5e-324)) == "4.94065645841247e-324");
+  double edges[] = {0.0, -0.0, 1.0, -1.0, 0.1, 0.2, 0.3, 1.0 / 3.0, 2.2250738585072014e-308, 2.2250738585072009e-308, 4.9406564584124654e-324,
+                    1.7976931348623157e308, 9007199254740993.0, 123456789012345680.0, 1e21, 1e-7, 100.0};
+  for (double value : edges)
+  {
+    check(jsonNumberRoundTrips(value));
+    check(jsonNumberRoundTrips(-value));
+  }
+  // Every exponent, random mantissas: xorshift64 bits read as a double.
+  uint64_t state = 0x9E3779B97F4A7C15ull;
+  int failures = 0;
+  for (int i = 0; i < 200000; ++i)
+  {
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    double value = bitCast<double>(state);
+    if (isfinite(value) && !jsonNumberRoundTrips(value))
+      ++failures;
+  }
+  check(failures == 0);
+}
+
+test "integers round-trip exactly"
+{
+  long long values[] = {0, 1, -1, 9007199254740993ll, 9223372036854775807ll, -9223372036854775807ll - 1};
+  for (long long value : values)
+    check(parseJson(writeJson(JsonValue(value))).asInteger() == value);
+}

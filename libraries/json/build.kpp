@@ -1,0 +1,10 @@
+// json: a Kpp library (libraries/json/README.md). Registry fields, until projectlib has
+// project.library() (docs/build.md): name json, version 0.1.0, license MIT, minimum kppc: master
+// of 2026-10-31, release files src/ and README.md.
+//
+// `kpp` here builds the tests, `kppc --test .` builds and runs them.
+void build(Project& project)
+{
+  Executable& tests = project.executable("json-tests", {"src", "tests"});
+  tests.argument("--tests");
+}

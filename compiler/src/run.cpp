@@ -151,6 +151,13 @@ int runProgram(int argc, char** argv, int runIndex)
       return 2;
     }
     mix(absolute.string());
+    // A project's directory (a library's): its build.kpp describes the build and is not one of
+    // its sources.
+    if (std::filesystem::is_regular_file(absolute / "build.kpp", ec))
+    {
+      options.push_back("--exclude");
+      options.push_back((absolute / "build.kpp").string());
+    }
   }
   if (test)
     options.push_back("--tests");

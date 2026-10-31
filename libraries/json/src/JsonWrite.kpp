@@ -1,0 +1,122 @@
+// Writing JSON text. A number is written so that parseJson reads back the same double
+// (README.md, "Numbers"); NaN, infinity and strings that are not UTF-8 have no JSON form and
+// throw JsonTypeError rather than write text that would read back as something else.
+
+// Compact: no whitespace.
+String writeJson(const JsonValue& value)
+{
+  String out;
+  jsonWrite(out, value, -1, 0);
+  return out;
+}
+
+// One member or element per line, indented by indent spaces per level.
+String writeJsonPretty(const JsonValue& value, int indent = 2)
+{
+  String out;
+  jsonWrite(out, value, indent, 0);
+  return out;
+}
+
+// Appends the value; indent < 0 is compact.
+void jsonWrite(String& out, const JsonValue& value, int indent, int level)
+{
+  switch (value.type)
+  {
+    case JsonType::null: out.append("null"); return;
+    case JsonType::boolean: out.append(value.booleanValue ? "true" : "false"); return;
+    case JsonType::integer: out.append(toString(value.integerValue)); return;
+    case JsonType::number: jsonWriteNumber(out, value.numberValue); return;
+    case JsonType::string: jsonWriteString(out, value.stringValue); return;
+    case JsonType::array:
+    case JsonType::object:
+    {
+      bool object = value.type == JsonType::object;
+      out.append(object ? '{' : '[');
+      for (int i = 0; i < value.items.size(); ++i)
+      {
+        if (i > 0)
+          out.append(',');
+        jsonNewLine(out, indent, level + 1);
+        if (object)
+        {
+          jsonWriteString(out, value.keys[i]);
+          out.append(indent < 0 ? ":" : ": ");
+        }
+        jsonWrite(out, value.items[i], indent, level + 1);
+      }
+      if (value.items.size() > 0)
+        jsonNewLine(out, indent, level);
+      out.append(object ? '}' : ']');
+      return;
+    }
+  }
+}
+
+void jsonNewLine(String& out, int indent, int level)
+{
+  if (indent < 0)
+    return;
+  out.append('\n');
+  for (int i = 0; i < indent * level; ++i)
+    out.append(' ');
+}
+
+// The shortest of %.15g, %.16g and %.17g that strtod reads back as the same double: 17
+// significant digits always do, and a double that 15 digits can name gets its shortest form.
+// Always has a '.' or an exponent, so it reads back as a number, not an integer.
+void jsonWriteNumber(String& out, double value)
+{
+  if (!isfinite(value))
+    throw JsonTypeError("JSON has no form for NaN or infinity");
+  char buffer[40];
+  int n = 0;
+  for (int precision = 15; precision <= 17; ++precision)
+  {
+    n = snprintf(buffer, 40, "%.*g", precision, value);
+    if (strtod(buffer, nullptr) == value)
+      break;
+  }
+  bool hasPoint = false;
+  for (int i = 0; i < n; ++i)
+    if (buffer[i] == '.' || buffer[i] == 'e')
+      hasPoint = true;
+  out.append(buffer, n);
+  if (!hasPoint)
+    out.append(".0");
+}
+
+void jsonWriteString(String& out, StringView text)
+{
+  if (!jsonIsUtf8(text))
+    throw JsonTypeError("a JSON string must be UTF-8");
+  out.append('"');
+  const char* hex = "0123456789abcdef";
+  for (int i = 0; i < text.size(); ++i)
+  {
+    unsigned char c = (unsigned char)text[i];
+    if (c == '"')
+      out.append("\\\"");
+    else if (c == '\\')
+      out.append("\\\\");
+    else if (c == '\n')
+      out.append("\\n");
+    else if (c == '\r')
+      out.append("\\r");
+    else if (c == '\t')
+      out.append("\\t");
+    else if (c == '\b')
+      out.append("\\b");
+    else if (c == '\f')
+      out.append("\\f");
+    else if (c < 0x20)
+    {
+      out.append("\\u00");
+      out.append(hex[c >> 4]);
+      out.append(hex[c & 15]);
+    }
+    else
+      out.append(char(c));
+  }
+  out.append('"');
+}

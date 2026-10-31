@@ -150,6 +150,17 @@ if errorlevel 1 (
   echo FAIL incremental: the compile server's build differs from a new process's
   set /a FAIL+=1
 )
+rem The libraries in ..\libraries (libraries\README.md): each one's own tests, kppc --test on its directory.
+for /d %%l in (..\libraries\*) do (
+  %KPPC% --no-server --test %%l > build\tests\library-%%~nl.txt 2>&1
+  if errorlevel 1 (
+    echo FAIL library %%~nl: kppc --test %%l
+    type build\tests\library-%%~nl.txt
+    set /a FAIL+=1
+  ) else (
+    echo ok   library %%~nl
+  )
+)
 if %FAIL% neq 0 exit /b 1
 rem (Explicitly: the batch file's exit code would otherwise be the determinism check's.)
 exit /b 0
