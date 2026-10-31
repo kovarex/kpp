@@ -6911,7 +6911,9 @@ namespace
                        !(r->flags & DF_Static);
             else
               member = memberNames(owner).count(n->name.parts[0].symbol) != 0; // unresolved, but spelled like a member
-            if (member)
+            // (A fixture's test body, now parsed as its helper's Run(): the fixture handling writes
+            // `this->` there, by text.)
+            if (member && !fixtureBodyAt(n->token))
             {
               insert(toks[n->token].offset, "this->");
               counts.add("this-> added");

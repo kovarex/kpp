@@ -1738,19 +1738,64 @@ namespace
         pushDecl(ns);
         return;
       }
-      // A test, `TEST(Name) { ... }`, `TEST_FIXTURE(Fixture, Name) { ... }`: its body parsed as the
-      // function `void TestBody_Name()` (UnitTest++ makes it a fixture helper's Run(), whose class
-      // the converter writes out by text, members included), so that the converter's typed rules
-      // reach the statements: locals, parameters and calls are typed; a fixture's members are not
-      // (the converter's fixture handling writes them `this->x`).
+      // A test, `TEST(Name) { ... }`, `TEST_FIXTURE(Fixture, Name) { ... }`: its body parsed as
+      // UnitTest++ makes it, so that the converter's typed rules reach the statements (the
+      // converter writes the test out by text, as before). A fixture's test is the member
+      // `void Run()` of the class FixtureNameHelper derived from the fixture, whose members it
+      // uses; a TEST (the empty NullFixture's) the function `void TestBody_Name()`.
       if (scope == Scope::Namespace && atMacroName() && at(P::LParen, 1) &&
           (spelling(0) == "TEST" || spelling(0) == "TEST_FIXTURE" || spelling(0) == "TEST_PARAMETRISED_FIXTURE"))
       {
         uint32_t save = pos;
         uint32_t start = pos;
+        bool fixture = spelling(0) != "TEST";
         advance();
+        uint32_t fixtureToken = pos + 1;
         skipBalanced();
-        if (at(P::LBrace) && toks[pos - 2].getKind() == TokenKind::Identifier)
+        uint32_t nameToken = pos - 2;
+        if (fixture && at(P::LBrace) && toks[nameToken].getKind() == TokenKind::Identifier)
+        {
+          // The fixture's type, from the macro's first argument.
+          uint32_t afterArguments = pos;
+          pos = fixtureToken;
+          NamedType* base = node<NamedType>(pos);
+          bool parsed = parseQualifiedName(base->name, true, false) && at(P::Comma);
+          pos = afterArguments;
+          if (parsed)
+          {
+            ClassDecl* c = decl<ClassDecl>(start);
+            c->keyword = Kw::class_;
+            NamePart classPart;
+            classPart.symbol = symbols.intern(std::string(symbols.name(base->name.last().symbol)) + std::string(symbols.name(toks[nameToken].id)) + "Helper");
+            c->name.parts = makeSpanOf(std::vector<NamePart>{classPart});
+            c->isDefinition = true;
+            ClassDecl::Base b{base, Access::Public, false, false};
+            c->bases = makeSpanOf(std::vector<ClassDecl::Base>{b});
+            Decl* savedParent = currentParent;
+            Access savedAccess = currentAccess;
+            uint32_t savedClassName = currentClassName;
+            currentParent = c;
+            currentAccess = Access::Public;
+            currentClassName = classPart.symbol;
+            size_t mark = scratch.size();
+            FunctionDecl* run = decl<FunctionDecl>(start);
+            BuiltinType* voidType = node<BuiltinType>(start);
+            voidType->keyword = Kw::void_;
+            run->returnType = voidType;
+            NamePart runPart;
+            runPart.symbol = symbols.intern("Run");
+            run->name.parts = makeSpanOf(std::vector<NamePart>{runPart});
+            run->body = parseBlock();
+            pushDecl(run);
+            c->members = makeSpan<Decl*>(mark);
+            currentParent = savedParent;
+            currentAccess = savedAccess;
+            currentClassName = savedClassName;
+            pushDecl(c);
+            return;
+          }
+        }
+        if (at(P::LBrace) && toks[nameToken].getKind() == TokenKind::Identifier)
         {
           FunctionDecl* f = decl<FunctionDecl>(start);
           BuiltinType* voidType = node<BuiltinType>(start);
