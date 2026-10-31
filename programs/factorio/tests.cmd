@@ -20,6 +20,15 @@ rem the directory on PATH too. The game's own signal handler reports a segfault 
 rem read through a wild pointer still shows only as "Received SIGSEGV"; a use after free or an
 rem overflow gets ASan's report with the allocation and free stacks. `tests.cmd --release` builds the
 rem tests as kppc --release builds (config::debug false, ThinLTO) into kpp\tests-release.
+rem `tests.cmd --baseline-debug` runs C:\Factorio\bin\Debugx64vs2022\factorio-test.exe as --baseline
+rem runs the Release one (write directory kpp\tests-baseline-debug\run).
+rem Cross-build CRC comparison, with the runner's own cross-platform mode (tests\Main.cpp's
+rem --crc-mode): `--crc-write FILE` has this run record every CRC and double the tests check
+rem (CHECK_CRC, CHECK_DOUBLE, and each tick's map CRC in TestScenario) into FILE; `--crc-against FILE`
+rem has this run compare its own against FILE's, each difference a failed check ("Expected X but was
+rem Y" with the test's name). A relative FILE is taken from this directory (programs\factorio). The
+rem C++ Debug build writes, the conversion checks: `tests.cmd --baseline-debug --crc-write F`, then
+rem `tests.cmd [--release] DIR --crc-against F`. Both runs must be of the same source.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
 rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
@@ -30,18 +39,23 @@ rem The script's own directory: the argument loop's shift shifts %0 too.
 set HERE=%~dp0
 set CONVERSION=C:\factorio-in-kpp\kpp
 set BASELINE=0
+set BASELINEDEBUG=0
 set ASAN=0
 set RELEASE=0
 set ASANRUNTIME=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\lib\clang\19\lib\windows
 set ARGS=
 :arguments
 if "%~1"=="" goto argumentsDone
-if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--asan" (set ASAN=1) else if "%~1"=="--release" (set RELEASE=1) else if exist "%~1\tests" (set CONVERSION=%~1) else (set ARGS=%ARGS% %1)
+for %%o in (--crc-write --crc-against) do if "%~1"=="%%o" if "%~2"=="" (echo %%o needs a file& exit /b 1)
+if "%~1"=="--crc-write" (set ARGS=%ARGS% --crc-mode write --crc-file "%~f2"& shift& shift& goto arguments)
+if "%~1"=="--crc-against" (set ARGS=%ARGS% --crc-mode check --crc-file "%~f2"& shift& shift& goto arguments)
+if "%~1"=="--baseline" (set BASELINE=1) else if "%~1"=="--baseline-debug" (set BASELINE=1& set BASELINEDEBUG=1) else if "%~1"=="--asan" (set ASAN=1) else if "%~1"=="--release" (set RELEASE=1) else if exist "%~1\tests" (set CONVERSION=%~1) else (set ARGS=%ARGS% %1)
 shift
 goto arguments
 :argumentsDone
 set OUT=%HERE%kpp\tests-run
 if %BASELINE%==1 set OUT=%HERE%kpp\tests-baseline
+if %BASELINEDEBUG%==1 set OUT=%HERE%kpp\tests-baseline-debug
 set SANITIZE=
 if %ASAN%==1 set OUT=%HERE%kpp\tests-asan
 if %ASAN%==1 set SANITIZE=--clang-flags -fsanitize=address --lib -fsanitize=address
@@ -56,6 +70,7 @@ rem The config the runner reads (--config): the game's data from C:\Factorio, th
   echo write-data=%OUT:\=/%/run
 ) > %OUT%\config.ini
 set EXE=C:\Factorio\bin\Releasex64vs2022\factorio-test.exe
+if %BASELINEDEBUG%==1 set EXE=C:\Factorio\bin\Debugx64vs2022\factorio-test.exe
 if %BASELINE%==1 goto run
 call native\build.cmd >nul || exit /b 1
 call "%HERE%link-settings.cmd"
