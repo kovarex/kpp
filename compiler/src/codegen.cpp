@@ -6,12 +6,14 @@
 #include <unordered_set>
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <cstdio>
 #include <cstring>
 #include <deque>
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <numeric>
 #include <optional>
 #include <thread>
 #include <unordered_map>
@@ -340,6 +342,25 @@ namespace
     };
     static Definition definitionOf(std::string text);
     std::vector<std::vector<Definition>> definitions;    // per module, sorted by text at the end (as SharedText sorts)
+    // A release build's modules [0, importableModules) hold the short definitions emitted in the
+    // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
+    unsigned importableModules = 0;
+    std::vector<std::vector<const Definition*>> placedHere; // per module: the definitions placed in it
+    std::vector<std::string> placedDecls;                    // per module: what they name from where they were emitted
+    std::unordered_map<std::string, unsigned> placedIn;      // a placed definition's name -> its module
+    std::unordered_set<const Definition*> placedAway;        // the definitions placed in another module than their own
+    std::vector<std::vector<std::string_view>> movedOut;     // per module: its declarations' lines placed in another (static locals)
+    // The module emission puts item x in (x: a file's index, a name's hash): one of the modules after
+    // the importable ones.
+    unsigned emissionModule(size_t x) const { return importableModules + unsigned(x % (moduleCount - importableModules)); }
+    // The module that defines a function: where it was placed, else where it was emitted; null if none.
+    const unsigned* moduleDefining(const std::string& name) const
+    {
+      if (auto it = placedIn.find(name); it != placedIn.end())
+        return &it->second;
+      auto it = definedIn.find(name);
+      return it == definedIn.end() ? nullptr : &it->second;
+    }
     // Held to add a definition (definitions, definedIn, declareLines: only added to while functions
     // are emitted, read once they all are), and to name a constant (constantName).
     std::mutex definitionsMutex, constantsMutex;
@@ -382,6 +403,9 @@ namespace
       definitions.resize(moduleCount);
       ownedEntries.resize(moduleCount);
       keptModuleEntries.resize(moduleCount);
+      placedHere.resize(moduleCount);
+      placedDecls.resize(moduleCount);
+      movedOut.resize(moduleCount);
     }
   };
 
@@ -6370,7 +6394,7 @@ namespace
       // In the module its name hashes to: spread evenly, and the same module whoever asks first (the
       // first requester's module piled most of the library's instantiations into one module that
       // clang then took 7 s at -O0 and 224 s at -O2 on, alone).
-      unsigned module = moduleCount <= 1 ? 0 : unsigned(std::hash<std::string>()(name) % moduleCount);
+      unsigned module = moduleCount <= 1 ? 0 : sh.emissionModule(std::hash<std::string>()(name));
       worklist.push_back({f, args, classTy, module, currentFunctionName, name, currentDepth + 1});
     }
 
@@ -8754,8 +8778,8 @@ namespace
             if (nameEnd != std::string_view::npos)
             {
               std::string name(line.substr(at, nameEnd - at));
-              auto it = definedIn.find(name);
-              skip = it != definedIn.end() && it->second == k;
+              const unsigned* in = sh.moduleDefining(name);
+              skip = in && *in == k;
               // --stub-missing: a function of the program used without a definition is defined
               // here as a stub (in every module: linkonce_odr), from its declaration.
               if (!skip && sh.stubMissing && sh.undefinedUses.count(name) && !definedIn.count(name))
@@ -8855,14 +8879,416 @@ namespace
         });
     }
 
+    // A release build's placement (Shared::importableModules). ThinLTO imports short functions into
+    // their callers' modules, and its cache keeps a module's back end only while every module it
+    // imports from is unchanged: with functions spread by file and name, every module imported from
+    // every other, and an edit of one function ran all 64 back ends again (docs/compile-speed.md,
+    // "The release edit"). So each short function goes where its callers are: the modules whose
+    // long functions call it, directly or through other short functions (what ThinLTO imports it
+    // into). Called from one module, it is defined in that module; from several, in one of the
+    // importable modules (first in the link); from none (only through a vtable or a pointer), it
+    // stays where it was emitted. An edit of a long function (or of a short one called from one
+    // module) then changes one module, whose back end alone runs again; of a short one called from
+    // several, an importable module, which nearly every module imports from (all of them again).
+    // (A linkonce_odr copy in each calling module, as C++ has its inline functions, does not help:
+    // ThinLTO imports the copy the link keeps into every module with another.) A definition moves
+    // with copies of what it names from its module's declarations (string literals, vtables, type
+    // descriptors, thunks: linkonce_odr, one object whichever copy the link keeps; declarations),
+    // and with the names only its module has (a static local and its guard, a private function)
+    // when every definition naming them moves with it to the same place. Placed again from the
+    // definitions as they are before every assembly: a server's build places as a build from
+    // scratch does.
+    static constexpr size_t shortLines = 300;
+    void placeShortDefinitions(unsigned threads)
+    {
+      for (unsigned k = 0; k < moduleCount; ++k)
+      {
+        sh.placedHere[k].clear();
+        sh.placedDecls[k].clear();
+        sh.movedOut[k].clear();
+      }
+      sh.placedIn.clear();
+      sh.placedAway.clear();
+      unsigned importable = sh.importableModules;
+      if (!importable)
+        return;
+      // The name a line defines or declares (`@name = ...`, `$name = comdat any`, `declare ... @name(`,
+      // `define ... @name(`), without its sigil; empty for any other line.
+      auto definedBy = [](std::string_view line) -> std::string_view
+      {
+        size_t at = line.starts_with("declare ") || line.starts_with("define ") ? line.find('@') : line.starts_with("@") || line.starts_with("$") ? 0 : std::string_view::npos;
+        if (at == std::string_view::npos || at + 1 >= line.size())
+          return {};
+        size_t end = line[at + 1] == '"' ? line.find('"', at + 2) + 1 : line.find_first_of(" (", at + 1);
+        return end == std::string_view::npos || end <= at + 1 ? std::string_view() : line.substr(at + 1, end - at - 1);
+      };
+      // Each line of a module's declarations; a definition (a thunk's) whole, its body with it.
+      auto forEachLine = [](std::string_view text, auto&& f)
+      {
+        for (size_t pos = 0; pos < text.size();)
+        {
+          bool definition = text.substr(pos).starts_with("define ");
+          size_t end = definition ? text.find("\n}", pos) : text.find('\n', pos);
+          if (definition && end != std::string_view::npos)
+            end += 2;
+          if (end == std::string_view::npos)
+            end = text.size();
+          f(text.substr(pos, end - pos));
+          pos = end + 1;
+        }
+      };
+      auto localLine = [](std::string_view line)
+      {
+        return (line[0] == '@' && (line.find(" = private ") != std::string_view::npos || line.find(" = internal ") != std::string_view::npos)) ||
+               line.starts_with("define private ") || line.starts_with("define internal ");
+      };
+      // f(k) for every module, on the threads (what each module's part writes is its own; the parts
+      // are joined in module order after).
+      auto forModules = [&](auto&& f)
+      {
+        std::atomic<unsigned> next{0};
+        auto run = [&]()
+        {
+          for (unsigned k; (k = next++) < moduleCount;)
+            f(k);
+        };
+        std::vector<std::thread> pool;
+        for (unsigned i = 1; i < std::min(std::max(threads, 1u), moduleCount); ++i)
+          pool.emplace_back(run);
+        run();
+        for (std::thread& t : pool)
+          t.join();
+      };
+      // Every module's declarations by the name each line is for (a global and its comdat).
+      std::vector<std::unordered_map<std::string_view, std::vector<std::string_view>>> linesFor(moduleCount);
+      forModules([&](unsigned k)
+      {
+        forEachLine(moduleDecls[k].text, [&](std::string_view line)
+        {
+          if (std::string_view name = definedBy(line); !name.empty())
+            linesFor[k][name].push_back(line);
+        });
+      });
+      // The units that may move: per module after the importable ones, its short definitions
+      // joined with the local names they share (each unit moves whole or not at all).
+      struct Unit
+      {
+        unsigned module;
+        std::vector<uint32_t> definitions;           // indices in the module's definitions
+        std::vector<std::string_view> lines, locals; // what they name from the module's declarations: copied, moved
+      };
+      std::vector<std::vector<Unit>> unitsIn(moduleCount); // per module, then all of them in module order
+      std::vector<std::vector<std::pair<std::string_view, uint32_t>>> unitNamesIn(moduleCount);
+      std::vector<std::vector<std::string_view>> definedName(moduleCount);
+      forModules([&](unsigned k)
+      {
+        const std::vector<Shared::Definition>& defs = sh.definitions[k];
+        definedName[k].resize(defs.size());
+        for (size_t i = 0; i < defs.size(); ++i)
+          definedName[k][i] = definedBy(std::string_view(defs[i].text).substr(0, defs[i].text.find('\n')));
+        if (k < importable)
+          return;
+        // A local name moves with every definition that names it, and the local names its line
+        // names with it: the definitions and local names joined that way move together or stay
+        // together. A group stays when one of its definitions is long, or a line that stays (one
+        // not local) names one of its local names.
+        std::unordered_map<std::string_view, uint32_t> localNode;
+        for (auto& [name, lines] : linesFor[k])
+          for (std::string_view line : lines)
+            if (localLine(line))
+              localNode.emplace(name, 0);
+        for (size_t i = 0; i < defs.size(); ++i)
+          if (!definedName[k][i].empty() && localLine(std::string_view(defs[i].text).substr(0, defs[i].text.find('\n'))))
+            localNode.emplace(definedName[k][i], 0);
+        uint32_t nodes = uint32_t(defs.size());
+        for (auto& [name, node] : localNode)
+          node = nodes++;
+        std::vector<uint32_t> parent(nodes);
+        std::iota(parent.begin(), parent.end(), 0u);
+        auto find = [&](uint32_t x)
+        {
+          while (parent[x] != x)
+            x = parent[x] = parent[parent[x]];
+          return x;
+        };
+        auto join = [&](uint32_t a, uint32_t b) { parent[find(a)] = find(b); };
+        std::vector<char> stays(nodes, 0);
+        for (size_t i = 0; i < defs.size(); ++i)
+        {
+          if (auto own = localNode.find(definedName[k][i]); own != localNode.end())
+            join(uint32_t(i), own->second);
+          for (auto [at, length] : defs[i].names)
+            if (auto it = localNode.find(std::string_view(defs[i].text).substr(at + 1, length - 1)); it != localNode.end())
+              join(uint32_t(i), it->second);
+        }
+        for (auto& [name, lines] : linesFor[k])
+          for (std::string_view line : lines)
+          {
+            auto self = localNode.find(name);
+            bool isLocal = self != localNode.end() && localLine(line);
+            irNamesIn(line, [&](size_t at, size_t length)
+            {
+              if (auto it = localNode.find(line.substr(at + 1, length - 1)); it != localNode.end())
+              {
+                if (isLocal)
+                  join(self->second, it->second);
+                else
+                  stays[it->second] = 1;
+              }
+            });
+          }
+        for (uint32_t x = 0; x < nodes; ++x)
+          if (stays[x])
+            stays[find(x)] = 1;
+        for (size_t i = 0; i < defs.size(); ++i)
+          if (definedName[k][i].empty() || size_t(std::count(defs[i].text.begin(), defs[i].text.end(), '\n')) > shortLines)
+            stays[find(uint32_t(i))] = 1;
+        // What each definition names from the module's declarations, and what those name in turn:
+        // copied with it, or (a local name of its group) moved with it. A local name of another
+        // group reached through a copied line keeps the definition's group where it is.
+        std::vector<std::vector<std::string_view>> lines(defs.size()), locals(defs.size());
+        for (size_t i = 0; i < defs.size(); ++i)
+        {
+          uint32_t group = find(uint32_t(i));
+          if (stays[group])
+            continue;
+          std::vector<std::string_view> work;
+          std::unordered_set<std::string_view> seen;
+          for (auto [at, length] : defs[i].names)
+            work.push_back(std::string_view(defs[i].text).substr(at + 1, length - 1));
+          while (!work.empty())
+          {
+            std::string_view n = work.back();
+            work.pop_back();
+            if (!seen.insert(n).second)
+              continue;
+            if (auto it = localNode.find(n); it != localNode.end() && find(it->second) != group)
+            {
+              stays[group] = 1;
+              break;
+            }
+            if (auto it = linesFor[k].find(n); it != linesFor[k].end())
+              for (std::string_view line : it->second)
+              {
+                (localLine(line) ? locals[i] : lines[i]).push_back(line);
+                irNamesIn(line, [&](size_t at, size_t length) { work.push_back(line.substr(at + 1, length - 1)); });
+              }
+          }
+        }
+        std::unordered_map<uint32_t, uint32_t> unitOfGroup;
+        for (size_t i = 0; i < defs.size(); ++i)
+        {
+          uint32_t group = find(uint32_t(i));
+          if (stays[group])
+            continue;
+          auto [it, added] = unitOfGroup.emplace(group, uint32_t(unitsIn[k].size()));
+          if (added)
+            unitsIn[k].push_back({k, {}, {}, {}});
+          Unit& u = unitsIn[k][it->second];
+          u.definitions.push_back(uint32_t(i));
+          u.lines.insert(u.lines.end(), lines[i].begin(), lines[i].end());
+          u.locals.insert(u.locals.end(), locals[i].begin(), locals[i].end());
+          unitNamesIn[k].push_back({definedName[k][i], it->second});
+        }
+      });
+      std::vector<Unit> units;
+      std::unordered_map<std::string_view, uint32_t> unitOf; // a unit's definition's name -> the unit
+      for (unsigned k = 0; k < moduleCount; ++k)
+      {
+        uint32_t first = uint32_t(units.size());
+        for (Unit& u : unitsIn[k])
+          units.push_back(std::move(u));
+        for (auto [name, local] : unitNamesIn[k])
+          unitOf.emplace(name, first + local);
+      }
+      // The modules each unit's definitions are called from: those of the definitions that stay
+      // (or the module's declarations' thunks) naming one directly, and those a unit naming one is
+      // called from. A bit per module.
+      size_t words = (moduleCount + 63) / 64;
+      std::vector<uint64_t> callers(units.size() * words, 0);
+      std::vector<std::vector<uint32_t>> callees(units.size());
+      std::vector<std::vector<uint32_t>> calledFrom(moduleCount);                 // per module: the units it calls
+      std::vector<std::vector<std::pair<uint32_t, uint32_t>>> unitCalls(moduleCount); // per module: unit -> unit it calls
+      forModules([&](unsigned k)
+      {
+        const std::vector<Shared::Definition>& defs = sh.definitions[k];
+        for (size_t i = 0; i < defs.size(); ++i)
+        {
+          auto self = unitOf.find(definedName[k][i]);
+          for (auto [at, length] : defs[i].names)
+            if (auto it = unitOf.find(std::string_view(defs[i].text).substr(at + 1, length - 1)); it != unitOf.end())
+            {
+              if (self == unitOf.end())
+                calledFrom[k].push_back(it->second);
+              else if (self->second != it->second)
+                unitCalls[k].push_back({self->second, it->second});
+            }
+        }
+        // (a thunk calls; a vtable or another constant names: ThinLTO imports a read-only constant and
+        // then the functions it names)
+        for (auto& [name, lines] : linesFor[k])
+          for (std::string_view line : lines)
+            irNamesIn(line, [&](size_t at, size_t length)
+            {
+              if (auto it = unitOf.find(line.substr(at + 1, length - 1)); it != unitOf.end() && it->first != name)
+                calledFrom[k].push_back(it->second);
+            });
+      });
+      for (unsigned k = 0; k < moduleCount; ++k)
+      {
+        for (uint32_t u : calledFrom[k])
+          callers[u * words + k / 64] |= uint64_t(1) << (k % 64);
+        for (auto [from, to] : unitCalls[k])
+          callees[from].push_back(to);
+      }
+      // What a unit's lines name (a vtable it takes with it) is called from wherever the unit is.
+      for (uint32_t u = 0; u < units.size(); ++u)
+        for (std::string_view line : units[u].lines)
+          irNamesIn(line, [&](size_t at, size_t length)
+          {
+            if (auto it = unitOf.find(line.substr(at + 1, length - 1)); it != unitOf.end() && it->second != u)
+              callees[u].push_back(it->second);
+          });
+      for (std::vector<uint32_t>& c : callees)
+      {
+        std::sort(c.begin(), c.end());
+        c.erase(std::unique(c.begin(), c.end()), c.end());
+      }
+      std::vector<uint32_t> work;
+      std::vector<char> queued(units.size(), 0);
+      auto propagate = [&]()
+      {
+        while (!work.empty())
+        {
+          uint32_t u = work.back();
+          work.pop_back();
+          queued[u] = 0;
+          for (uint32_t c : callees[u])
+          {
+            bool grew = false;
+            for (size_t w = 0; w < words; ++w)
+            {
+              uint64_t now = callers[c * words + w] | callers[u * words + w];
+              grew = grew || now != callers[c * words + w];
+              callers[c * words + w] = now;
+            }
+            if (grew && !queued[c])
+            {
+              queued[c] = 1;
+              work.push_back(c);
+            }
+          }
+        }
+      };
+      for (uint32_t u = 0; u < units.size(); ++u)
+      {
+        work.push_back(u);
+        queued[u] = 1;
+      }
+      propagate();
+      // A unit nothing calls (a virtual function, one whose address is taken) stays where it was
+      // emitted, and calls from there.
+      for (uint32_t u = 0; u < units.size(); ++u)
+        if (std::all_of(&callers[u * words], &callers[u * words] + words, [](uint64_t w) { return w == 0; }))
+        {
+          callers[u * words + units[u].module / 64] |= uint64_t(1) << (units[u].module % 64);
+          work.push_back(u);
+          queued[u] = 1;
+        }
+      propagate();
+      // Where each unit goes, then what it takes with it.
+      std::vector<std::unordered_set<std::string_view>> own(moduleCount); // what each module's declarations define or declare
+      forModules([&](unsigned k)
+      {
+        for (auto& [name, lines] : linesFor[k])
+          own[k].insert(name);
+      });
+      std::vector<std::map<std::string, std::string>> needed(moduleCount); // per module: sigil and name -> the line placed in it
+      for (const Unit& u : units)
+      {
+        const uint64_t* bits = &callers[(&u - units.data()) * words];
+        unsigned count = 0, only = 0;
+        for (size_t w = 0; w < words; ++w)
+        {
+          count += unsigned(std::popcount(bits[w]));
+          if (bits[w])
+            only = unsigned(w * 64 + std::countr_zero(bits[w]));
+        }
+        // (several: by its name, not by who calls it, as the importable modules are imported by
+        // nearly every module either way, there being thousands of different sets of callers; and
+        // a function does not move between them when a caller is added)
+        unsigned to = count == 0 ? u.module
+                      : count == 1 ? only
+                                   : unsigned(std::hash<std::string_view>()(definedName[u.module][u.definitions.front()]) % importable);
+        if (to == u.module)
+          continue;
+        bool clash = false; // (a local name the module it would go to has a line of its own for)
+        for (std::string_view line : u.locals)
+          clash = clash || own[to].count(definedBy(line));
+        if (clash)
+          continue;
+        for (uint32_t i : u.definitions)
+        {
+          const Shared::Definition& d = sh.definitions[u.module][i];
+          sh.placedHere[to].push_back(&d);
+          sh.placedAway.insert(&d);
+          sh.placedIn["@" + std::string(definedName[u.module][i])] = to;
+        }
+        for (std::string_view line : u.locals)
+        {
+          needed[to][std::string(line.substr(0, 1)) + std::string(definedBy(line))] = std::string(line) + "\n";
+          sh.movedOut[u.module].push_back(line); // (its module has it no longer)
+        }
+        for (std::string_view line : u.lines)
+          if (!own[to].count(definedBy(line)))
+          {
+            std::string& text = needed[to][std::string(line.substr(0, 1)) + std::string(definedBy(line))];
+            if (text.empty())
+              text = std::string(line) + "\n";
+          }
+      }
+      for (unsigned k = 0; k < moduleCount; ++k)
+      {
+        std::sort(sh.movedOut[k].begin(), sh.movedOut[k].end(), [](std::string_view a, std::string_view b) { return a.data() < b.data(); });
+        sh.movedOut[k].erase(std::unique(sh.movedOut[k].begin(), sh.movedOut[k].end(),
+                                         [](std::string_view a, std::string_view b) { return a.data() == b.data(); }),
+                             sh.movedOut[k].end());
+        for (auto& [key, text] : needed[k])
+        {
+          // (not a declaration of what is now defined here)
+          const unsigned* in = sh.moduleDefining("@" + key.substr(1));
+          if (text.starts_with("declare ") && in && *in == k)
+            continue;
+          sh.placedDecls[k] += text;
+        }
+      }
+    }
+
     // Module k's text. Reads only what is finished (the texts) and prepareModuleTexts' lookups, so
     // the modules are assembled on all threads at once.
     std::string moduleText(unsigned k, const std::string& prefix)
     {
       std::string ctors = ctorsText(k); // module 0 runs the startup functions of every module
       std::string decls = declsFor(k, false);
+      // The module's own declarations, without the lines placed in another module.
+      std::string_view ownDecls = moduleDecls[k].text;
+      std::string kept;
+      if (!sh.movedOut[k].empty())
+      {
+        const std::vector<std::string_view>& cut = sh.movedOut[k]; // (sorted by where they are)
+        const char* at = ownDecls.data();
+        const char* end = ownDecls.data() + ownDecls.size();
+        for (std::string_view line : cut)
+        {
+          kept.append(at, line.data());
+          at = std::min(end, line.data() + line.size() + 1);
+        }
+        kept.append(at, end);
+        ownDecls = kept;
+      }
       std::unordered_set<std::string> already; // declarations the module carries (shared, or its own)
-      declaredIn(moduleDecls[k].text, already);
+      declaredIn(ownDecls, already);
+      declaredIn(sh.placedDecls[k], already);
       std::string declares;
       std::unordered_set<std::string> seen;
       auto declare = [&](const std::string& name)
@@ -8879,21 +9305,27 @@ namespace
         std::string name(nameView);
         if (!seen.insert(name).second)
           return;
-        auto it = definedIn.find(name);
-        if (it != definedIn.end() && it->second != k && !sharedDeclared.count(name) && !already.count(name))
+        const unsigned* in = sh.moduleDefining(name);
+        if (in && *in != k && !sharedDeclared.count(name) && !already.count(name))
           declare(name); // not when a declaration is in the module's text already
       };
       auto scan = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { consider(text.substr(at, length)); }); };
-      const std::vector<Shared::Definition>& definitions = sh.definitions[k];
-      scan(moduleDecls[k].text);
-      for (const Shared::Definition& d : definitions)
-        for (auto [at, length] : d.names)
-          consider(std::string_view(d.text).substr(at, length));
+      // Its definitions: those emitted in it and not placed in another, then those placed in it.
+      std::vector<const Shared::Definition*> definitions;
+      for (const Shared::Definition& d : sh.definitions[k])
+        if (!sh.placedAway.count(&d))
+          definitions.push_back(&d);
+      definitions.insert(definitions.end(), sh.placedHere[k].begin(), sh.placedHere[k].end());
+      scan(ownDecls);
+      scan(sh.placedDecls[k]);
+      for (const Shared::Definition* d : definitions)
+        for (auto [at, length] : d->names)
+          consider(std::string_view(d->text).substr(at, length));
       scan(shared.text);
       scan(ctors);
       // The functions the shared declarations name: every module but the defining one declares them.
       for (const std::string& name : sh.sharedReferences)
-        if (auto it = definedIn.find(name); it != definedIn.end() && it->second != k && !already.count(name) && seen.insert(name).second)
+        if (const unsigned* in = sh.moduleDefining(name); in && *in != k && !already.count(name) && seen.insert(name).second)
           declare(name);
       // The type definitions the module names, and those they name in turn (every module had all of
       // the game's 24 k), in the shared declarations' order.
@@ -8912,10 +9344,11 @@ namespace
         if (auto it = sh.typeIndex.find(name); it != sh.typeIndex.end())
           mark(it->second);
       };
-      typeNamesIn(moduleDecls[k].text, markName);
-      for (const Shared::Definition& d : definitions)
-        for (auto [at, length] : d.types)
-          markName(std::string_view(d.text).substr(at, length));
+      typeNamesIn(ownDecls, markName);
+      typeNamesIn(sh.placedDecls[k], markName);
+      for (const Shared::Definition* d : definitions)
+        for (auto [at, length] : d->types)
+          markName(std::string_view(d->text).substr(at, length));
       typeNamesIn(shared.text, markName);
       typeNamesIn(ctors, markName);
       typeNamesIn(decls, markName);
@@ -8934,27 +9367,29 @@ namespace
           types.append(sh.typeLines[t].line);
           types += '\n';
         }
-      size_t size = prefix.size() + types.size() + decls.size() + moduleDecls[k].text.size() + ctors.size() + 1 + shared.text.size() + declares.size() + 1;
-      for (const Shared::Definition& d : definitions)
-        size += d.text.size();
+      size_t size = prefix.size() + types.size() + decls.size() + ownDecls.size() + sh.placedDecls[k].size() + ctors.size() + 1 +
+                    shared.text.size() + declares.size() + 1;
+      for (const Shared::Definition* d : definitions)
+        size += d->text.size();
       std::string out;
       out.reserve(size);
       out += prefix;
       out += types;
       out += decls;
-      out += moduleDecls[k].text;
+      out += ownDecls;
+      out += sh.placedDecls[k];
       out += ctors;
       out += '\n';
       out += shared.text;
       out += declares;
       out += '\n';
       uint32_t nextDebugId = debugFirstId;
-      for (const Shared::Definition& d : definitions)
+      for (const Shared::Definition* d : definitions)
       {
         size_t at = out.size();
-        out += d.text;
+        out += d->text;
         if (sh.debugInfo)
-          nextDebugId += renumberDebugIds(out.data() + at, d.text.size(), nextDebugId);
+          nextDebugId += renumberDebugIds(out.data() + at, d->text.size(), nextDebugId);
       }
       if (sh.debugInfo)
         out += debugModuleTail;
@@ -9898,7 +10333,7 @@ namespace
       // In the module its name hashes to, whoever uses the global first (the same in every run),
       // and its errors are its own, not of the function that happened to use it first.
       struct ModuleRestore { unsigned& m; unsigned saved; ~ModuleRestore() { m = saved; } } moduleRestore{currentModule, currentModule};
-      currentModule = moduleCount <= 1 ? 0 : unsigned(std::hash<std::string>()(fnName) % moduleCount);
+      currentModule = moduleCount <= 1 ? 0 : sh.emissionModule(std::hash<std::string>()(fnName));
       // What it adds (its static InitializerList arrays) belongs to it, not to its first user.
       struct OwnerRestore { std::string& owner; std::string saved; ~OwnerRestore() { owner = saved; } } ownerRestore{owner, owner};
       owner = fnName;
@@ -17503,8 +17938,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   sh.inlineTrivial = inlineTrivial;
   sh.debugInfo = debugInfo;
   sh.setModules(moduleCount);
+  // A release build (ThinLTO) puts its short definitions in modules of their own (Emitter::placeShortDefinitions).
+  if (!debug && sh.moduleCount >= 2)
+    sh.importableModules = sh.moduleCount / 2;
   for (size_t i = 0; i < files.size(); ++i)
-    sh.fileModule[files[i].get()] = unsigned(i % sh.moduleCount);
+    sh.fileModule[files[i].get()] = sh.emissionModule(i);
   // One emitter per thread; the first one also finishes the runtime and assembles the modules.
   threads = std::max(1u, threads);
   std::vector<std::unique_ptr<Emitter>> emitters;
@@ -17707,7 +18145,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         everywhere.push_back(std::move(entry));
         continue;
       }
-      unsigned home = unsigned(std::hash<std::string>()(name) % sh.moduleCount);
+      unsigned home = sh.emissionModule(std::hash<std::string>()(name));
       sh.definedIn[name] = home;
       sh.declareLines[name] = "declare void " + name + "(ptr)";
       // weak_odr, not linkonce_odr: the home module's copy is the only one, and a release build's
@@ -17787,10 +18225,14 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // The modules are independent once the texts are finished: assembled on all the emitters'
   // threads at once (on one thread this was 4.5 s of the game's codegen), each module's own texts
   // freed as soon as it is assembled.
+  e.placeShortDefinitions(threads);
   e.prepareModuleTexts();
   result.modules.resize(e.moduleCount);
   std::vector<std::unordered_set<std::string>> stubbedIn(e.moduleCount);
   std::atomic<unsigned> nextModule{0};
+  // (A module's definitions may be placed in another (placeShortDefinitions): they are freed once
+  // every module is assembled; its own declarations as soon as it is.)
+  bool placed = sh.importableModules != 0;
   auto assemble = [&](unsigned thread)
   {
     Emitter& em = *emitters[thread];
@@ -17799,7 +18241,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       result.modules[k] = em.moduleText(k, prefix);
       if (!keepTexts)
       {
-        std::vector<Shared::Definition>().swap(sh.definitions[k]);
+        if (!placed)
+          std::vector<Shared::Definition>().swap(sh.definitions[k]);
         std::string().swap(sh.moduleDecls[k].text);
       }
       if (!result.errors.empty())
@@ -17807,6 +18250,9 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     }
   };
   onThreads(unsigned(emitters.size()), assemble);
+  if (placed && !keepTexts)
+    for (unsigned k = 0; k < e.moduleCount; ++k)
+      std::vector<Shared::Definition>().swap(sh.definitions[k]);
   std::unordered_set<std::string> stubbed;
   for (const std::unordered_set<std::string>& names : stubbedIn)
     stubbed.insert(names.begin(), names.end());
@@ -18306,6 +18752,41 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     sh.moduleDecls[k].entries = std::move(entries);
     sh.moduleDecls[k].text.clear();
     sh.moduleDecls[k].finish();
+  }
+  // Placed again (Emitter::placeShortDefinitions): a definition placed elsewhere than before changes
+  // both modules, and a module whose definitions changed changes those its definitions are placed in.
+  if (sh.importableModules)
+  {
+    std::unordered_map<std::string, unsigned> before = sh.placedIn;
+    e.placeShortDefinitions(session.threads);
+    auto at = [&](const std::unordered_map<std::string, unsigned>& placed, const std::string& name)
+    {
+      if (auto it = placed.find(name); it != placed.end())
+        return it->second;
+      auto in = sh.definedIn.find(name);
+      return in == sh.definedIn.end() ? 0u : in->second;
+    };
+    std::vector<unsigned> also;
+    for (const auto* placed : {&before, &sh.placedIn})
+      for (auto& [name, module] : *placed)
+        if (at(before, name) != at(sh.placedIn, name))
+        {
+          also.push_back(at(before, name));
+          also.push_back(at(sh.placedIn, name));
+        }
+    for (unsigned k : which)
+      for (const Shared::Definition& d : sh.definitions[k])
+        if (std::string_view header = std::string_view(d.text).substr(0, d.text.find('\n')); header.find('@') != std::string_view::npos)
+        {
+          size_t from = header.find('@');
+          size_t end = header[from + 1] == '"' ? header.find('"', from + 2) + 1 : header.find('(', from);
+          std::string name(header.substr(from, end - from));
+          also.push_back(at(before, name));
+          also.push_back(at(sh.placedIn, name));
+        }
+    which.insert(which.end(), also.begin(), also.end());
+    std::sort(which.begin(), which.end());
+    which.erase(std::unique(which.begin(), which.end()), which.end());
   }
   out.modules.resize(sh.moduleCount);
   out.changedModules.assign(sh.moduleCount, false);

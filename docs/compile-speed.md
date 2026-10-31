@@ -14,6 +14,67 @@ for 10 minutes on half-written input), then
 powershell -ExecutionPolicy Bypass -File programs\factorio\measure-speed.ps1 -Tree <the copy>
 ```
 
+## The release edit (2026-10-31)
+
+A release build (ThinLTO, 64 modules) of the game took 64 to 88 s for a one-line edit, against
+C++ Release's 23 to 27 s (test-matrix.md, "Build time"), 60 to 85 s of it the lld link. Scripts in
+the codegen thread's scratch (`C:\kpp-sandbox\scratch\codegen\rel`: pair.ps1, imports.py, whatimports.py).
+
+**Why the link cache did not help.** lld's ThinLTO cache keeps a module's back end only while its
+own bitcode and every module it imports from are unchanged (the key hashes each imported-from module
+whole). Functions went to modules by file and by name, so the short functions ThinLTO imports were
+in every module, and every module imported from all 63 others (lld's import lists): the leaf edit
+(one module changed) made 64 of 64 new cache entries, and the link ran every back end again.
+- Link alone, quiet machine: nothing changed 8.2 s (LTO 3.4 s, PDB 4.1 s); empty cache 62.8 s
+  (8.6 s before the back ends, the thin link 1.5 s of it; back ends 47.4 s on 32 threads; PDB 4.1 s).
+- `/opt:lldltojobs` on an empty cache: 8 jobs 110.9 s, 16 76.8 s, 32 68.5 s (32 is kppc's).
+- The back ends as separate clang processes (distributed ThinLTO, 32 at a time) take as long:
+  index 6.0 s + back ends 65.6 s + link 4.9 s = 76.5 s. (A first measurement, 25.0 s, was of empty
+  objects: clang finds a module in the index only by the path spelled as lld spelled it, forward
+  slashes, and otherwise writes an empty object without a word.)
+- `-import-instr-limit=0` makes the back ends 16.6 s, but the 45 menu maps run 1.35 times as long
+  (12,317 against 9,154 ms); per-module -O2 objects without ThinLTO 1.38 times (12,617 ms).
+
+**Placement by callers (landed).** In a release build each function shorter than 300 lines of
+kppc's IR goes where its callers are, as ThinLTO would import it (Emitter::placeShortDefinitions):
+called from one module, into that module; from several, into one of 32 importable modules (by its
+name; first in the link, so the constants they name are kept from there); from none, it stays. The
+callers are found from the definitions' names, through other short functions, thunks and vtables
+(ThinLTO imports a vtable and then the functions it names). A definition takes copies of the
+constants it names and its static locals with it (only when everything naming them moves with it).
+Long functions keep their module. Afterwards most of the 32 other modules are imported from by 0 to
+5 modules (before: 63 each); seven still by 19 to 63, for long functions that optimise to a few
+instructions (a 1,099-line switch, `InputAction::noData`, becomes a table lookup) and what those
+call.
+
+Paired and interleaved (base kppc, then the new one, each through its own server, on one tree; the
+machine shared; two runs of two rounds; seconds, wall time from start to linked executable):
+
+| Step | base | placed | back ends run (placed) |
+|---|---|---|---|
+| clean | 144.3 / 110.9 | 75.7 / 66.1 | 64 |
+| no change | 11.9, 12.1 / 9.9, 10.1 | 16.5, 11.0 / 15.5, 13.1 | 0 |
+| leaf edit (a short function called from several modules) | 62.2, 64.4 / 61.9, 65.5 | 60.3, 50.7 / 78.9, 64.4 | 64 |
+| an edit of a long function (`FireFlame::drawParticlesOnGround`, 1,211 lines) | 126.8, 75.0 / 66.0, 66.4 | 24.3, 22.2 / 23.8, 24.6 | 1 |
+| wide edit (`MapPosition::operator+`) | 65.7 / 120.1 | 69.2 / 109.7 | 64 |
+
+The 45 menu maps (bench-menu.py, three rounds interleaved): 8,999 ms base, 8,776 ms placed, no
+checksum differs; the executable 63.8 -> 65.0 MB. The release IR is the same at 1, 8 and 32 codegen
+threads; the debug build's IR is byte for byte the same as before (it is not placed).
+
+**What is left.** An edit of a short function called from several modules (the leaf edit) still
+runs every back end: the 32 importable modules hold thousands of different sets of callers between
+them, and each is imported by nearly every module (with the caller sets themselves as the key, 32
+or 1,024 groups, the modules importing a group are all 32 for the median function). Tried and
+dropped:
+- A linkonce_odr copy in each calling module, as C++ has its inline functions: ThinLTO imports the
+  copy the link keeps into every module that has another (the IR 727 -> 1,156 MB, worse).
+- 256 modules: the long modules' importers fall to a median of 5, but the leaf edit is still all
+  256 back ends.
+What would do it is a cache key per imported function rather than per imported module, which is
+LLVM's (computeLTOCacheKey), or many more importable modules (one per file: thousands of modules,
+which module assembly would need to scale to first).
+
 ## A clean build, phase by phase, and what scales (2026-10-30, night)
 
 A clean build of the game as run.cmd builds it, in a new process and a new output directory (no
