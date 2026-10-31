@@ -471,10 +471,12 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
     uninstaller removes it);
   - it warns when vswhere finds no Visual Studio with the Clang component.
   Not yet built or run on PC-PRACOVNA, which has no Inno Setup.
-- **`.github/workflows/release.yml`** runs on every master commit: it builds kppc on a
-  windows-2022 runner, packages it, and publishes the zip and installer as the prerelease
-  `build-<run number>`, version 0.1.<run number>. A newer commit's run cancels an older one still
-  running. The repository is private, so its runs use the account's Actions minutes (Windows
+- **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
+  builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
+  prerelease `build-<run number>`, version 0.1.<run number>. It ran on every master commit from
+  e0ca8975 until the coordinator made it manual (2026-10-31): master gets dozens of commits a day,
+  and no run had been checked. An automatic trigger (per tag, or nightly) comes once kovarex has
+  seen a manual run succeed. The repository is private, so its runs use the account's Actions minutes (Windows
   minutes count double) and its releases are visible only to its collaborators.
 
 ## Questions for kovarex

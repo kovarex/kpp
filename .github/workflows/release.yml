@@ -1,12 +1,12 @@
-# A Kpp release for every commit on master (docs/build.md, "Installing"): kppc built on a Windows
-# runner, packaged by tools/release/package.ps1 (which builds a new project with the package as its
-# smoke test), the installer made with Inno Setup, and both published as a prerelease named after
-# the run: build-<run number>.
+# A Kpp release, started by hand (Actions > release > Run workflow; docs/build.md, "Installing"):
+# kppc built on a Windows runner, packaged by tools/release/package.ps1 (which builds a new project
+# with the package as its smoke test), the installer made with Inno Setup, and both published as a
+# prerelease named after the run: build-<run number>. Manual only until a run has been checked: master
+# gets dozens of commits a day and Windows runners of a private repository bill at a multiplier; an
+# automatic trigger (per tag, or nightly) comes after.
 name: release
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
