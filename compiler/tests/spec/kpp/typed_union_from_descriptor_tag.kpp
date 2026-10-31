@@ -1,0 +1,22 @@
+// spec: in a `for constexpr` body over `alternatives(U)`, a descriptor's `a.tag` is a constant tag of U, so `U(a.tag, value)` constructs that alternative (design.md 8.5): loading a union by its saved index picks the alternative whichever others share its type
+// factorio: the converter's DeserialiserHelper override for std::variant (loadSTDVariantIndirect): `return T(a.tag, input.template load<a.type>());`
+union enum V : uint8_t
+{
+  { {int, Number}, {String, Text}, {String, Comment} }
+};
+V load(int index)
+{
+  for constexpr (auto a : alternatives(V))
+    if (index == int(a.tag))
+      return V(a.tag, a.type());
+  return V(V::Number, -1);
+}
+int main()
+{
+  V number = load(0);
+  V text = load(1);
+  V comment = load(2);
+  V none = load(7);
+  println("{} {} {} {}", number == V::Number, text == V::Text, comment == V::Comment, none[V::Number]);
+  return 0;
+}

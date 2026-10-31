@@ -3017,7 +3017,7 @@ namespace
       // share its type, and nothing else is built first (design.md 8.5, decided by kovarex 2026-10-31).
       if (c->isTypedUnion && !args.empty() && args[0]->ty && types.unqualified(types.stripRef(args[0]->ty)) == tagType(c))
       {
-        std::optional<int64_t> index = evalConst(args[0]);
+        std::optional<int64_t> index = constantTag(c, args[0]);
         if (!index || *index < 0 || size_t(*index) >= c->alternatives.size())
           fail(args[0], "the tag constructing the typed union " + qualifiedName(c) + " is no constant one of its alternatives");
         storeZero(t, addr, at);
@@ -15850,6 +15850,24 @@ namespace
                      "::" + name(found[0]) + ", value), or u[" + name(found[0]) + "] = value)");
       return found[0];
     }
+    // The alternative a constant tag names: an enumerator of U::Tag (`U::Text`), a constant of it, or
+    // the tag of a descriptor of `alternatives(U)` in a `for constexpr` body (`a.tag`).
+    std::optional<int64_t> constantTag(ClassDecl* c, Expr* e)
+    {
+      Expr* x = e;
+      while (x && x->kind == NodeKind::ParenExpr)
+        x = static_cast<ParenExpr*>(x)->inner;
+      if (x && x->kind == NodeKind::MemberExpr)
+      {
+        auto* m = static_cast<MemberExpr*>(x);
+        const Ty* bt = m->base && m->base->ty ? types.stripRef(m->base->ty) : nullptr;
+        if (bt && bt->kind == TyKind::Member && !m->member.empty() && sym(m->member.last().symbol) == "tag")
+          if (int64_t index = descriptorAlternative(c, bt); index >= 0)
+            return index;
+      }
+      return evalConst(e);
+    }
+
     // The index among c's alternatives of the one a descriptor of `alternatives(U)` names, or -1.
     static int64_t descriptorAlternative(ClassDecl* c, const Ty* descriptor)
     {

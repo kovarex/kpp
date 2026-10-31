@@ -3626,6 +3626,8 @@ struct GlobalScope::Impl
       // takes none or a copy; a scalar takes one convertible value).
       if (a.empty())
         return false;
+      if (a.size() == 1)
+        return defaultConstructible(a[0]); // (`int&` is not: a reference binds something)
       const Ty* t = types.unqualified(types.stripRef(a[0]));
       std::vector<const Ty*> args(a.begin() + 1, a.end());
       bool copy = args.size() == 1 && types.unqualified(types.stripRef(args[0])) == t;
@@ -3662,7 +3664,7 @@ struct GlobalScope::Impl
                 ctors.push_back(f);
         }
         if (copy || ctors.empty())
-          return copy || args.empty();
+          return copy;
         bool ambiguous = false;
         return chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous) != nullptr;
       }
@@ -4285,6 +4287,86 @@ struct GlobalScope::Impl
   // isTriviallyDefaultConstructible: a default constructor that is neither user-provided nor
   // deleted, no virtual function or base, no default member initializer, and every base and member
   // trivially default constructible.
+  // Whether T() builds a T (std::is_default_constructible): a scalar or a pointer does; a reference
+  // does not; a class by its declared default constructor (not a deleted one), none if it declares
+  // others, else by the implicit one, which needs every base and member default-constructible (or
+  // initialised in the class), no reference or const scalar left uninitialised, and for a typed
+  // union its first alternative (design.md 8.5: default construction builds that one).
+  std::optional<bool> defaultConstructible(const Ty* t, int depth = 0)
+  {
+    if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)
+      return std::nullopt;
+    if (t->isReference())
+      return false;
+    const Ty* u = types.unqualified(t);
+    while (u->kind == TyKind::Array)
+      u = types.unqualified(u->inner);
+    if (u->kind == TyKind::Void || u->kind == TyKind::Function)
+      return false;
+    if (u->kind != TyKind::Class)
+      return true;
+    ClassDecl* def = classDefinition(u);
+    if (!def)
+      return std::nullopt;
+    if (std::optional<bool> isAbstract = abstractClass(u, {}); !isAbstract || *isAbstract)
+      return isAbstract ? std::optional<bool>(false) : std::nullopt;
+    bool anyConstructor = false;
+    for (Decl* m : membersRead(def))
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
+        continue;
+      anyConstructor = true;
+      auto* f = static_cast<FunctionDecl*>(m);
+      bool takesNone = true;
+      for (Decl* p : f->params)
+        takesNone = takesNone && (static_cast<ParamDecl*>(p)->defaultValue || static_cast<ParamDecl*>(p)->isPack);
+      if (!takesNone)
+        continue;
+      if (f->flags & DF_Delete)
+        return false;
+      if (!(f->flags & DF_Default))
+        return true; // a user-provided default constructor
+      anyConstructor = false; // `= default`: as the implicit one, below
+      break;
+    }
+    if (anyConstructor)
+      return false; // constructors declared, none takes no argument: no implicit one
+    Subst s = substFor(u);
+    if (def->isTypedUnion)
+    {
+      if (def->alternatives.empty())
+        return true;
+      return defaultConstructible(declaredTypeOf(def->alternatives[0], s.pairs.empty() ? nullptr : &s, 0), depth + 1);
+    }
+    std::vector<const Ty*> bases;
+    if (!directBases(u, def, bases))
+      return std::nullopt;
+    for (const Ty* b : bases)
+      if (std::optional<bool> r = defaultConstructible(b, depth + 1); !r || !*r)
+        return r;
+    for (Decl* m : membersRead(def))
+    {
+      if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)))
+        continue;
+      auto* v = static_cast<VariableDecl*>(m);
+      if (v->init)
+        continue; // initialised in the class
+      const Ty* mt = declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0);
+      if (!mt || !mt->isKnown() || types.isDependent(mt))
+        return std::nullopt;
+      if (mt->isReference())
+        return false;
+      const Ty* mu = mt;
+      while (mu->kind == TyKind::Array)
+        mu = mu->inner;
+      if (mu->isConst && mu->kind != TyKind::Class)
+        return false; // a const scalar left uninitialised
+      if (std::optional<bool> r = defaultConstructible(mt, depth + 1); !r || !*r)
+        return r;
+    }
+    return true;
+  }
+
   std::optional<bool> triviallyDefaultConstructible(const Ty* t, int depth = 0)
   {
     if (!t || !t->isKnown() || types.isDependent(t) || depth > 16)

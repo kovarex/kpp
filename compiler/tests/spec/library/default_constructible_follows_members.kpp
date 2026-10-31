@@ -1,0 +1,39 @@
+// spec: isConstructible<T> with no arguments (std::is_default_constructible) follows the default constructor C++ has: a typed union's builds its first alternative, so it is false when that alternative has none; a class without declared constructors has the implicit one only when every base and member is default-constructible (or initialised in the class) and no reference or const scalar is left uninitialised; one declaring other constructors has none; the copy and move traits follow every alternative
+// factorio: TestMapDeserialiser.cpp:886 static_asserts that a variant whose first alternative has no default constructor is not default-constructible (found by C mapping std::variant to typed unions)
+struct NoDefault
+{
+  int v;
+  NoDefault(int x) : v(x) {}
+};
+union enum FirstHasNone : uint8_t
+{
+  { {NoDefault, First}, {int, Second} }
+};
+union enum FirstHasOne : uint8_t
+{
+  { {int, First}, {NoDefault, Second} }
+};
+struct Holds { NoDefault n; };
+struct HoldsInitialised { NoDefault n = NoDefault(1); };
+struct HoldsReference { int& r; };
+struct HoldsConst { const int c; };
+struct Plain { int a; String b; };
+struct Derived : Holds {};
+struct Declares { Declares(int x) {} };
+static_assert(!isConstructible<FirstHasNone>);
+static_assert(isConstructible<FirstHasOne>);
+static_assert(!isConstructible<Holds>);
+static_assert(isConstructible<HoldsInitialised>);
+static_assert(!isConstructible<HoldsReference>);
+static_assert(!isConstructible<HoldsConst>);
+static_assert(isConstructible<Plain>);
+static_assert(!isConstructible<Derived>);
+static_assert(!isConstructible<Declares>);
+static_assert(isConstructible<Declares, int>);
+static_assert(isCopyConstructible<FirstHasNone> && isMoveConstructible<FirstHasNone>);
+static_assert(isConstructible<int> && isConstructible<NoDefault*> && !isConstructible<int&>);
+int main()
+{
+  println("ok");
+  return 0;
+}
