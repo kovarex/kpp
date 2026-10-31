@@ -28,8 +28,11 @@ in every module, and every module imported from all 63 others (lld's import list
 - Link alone, quiet machine: nothing changed 8.2 s (LTO 3.4 s, PDB 4.1 s); empty cache 62.8 s
   (8.6 s before the back ends, the thin link 1.5 s of it; back ends 47.4 s on 32 threads; PDB 4.1 s).
 - `/opt:lldltojobs` on an empty cache: 8 jobs 110.9 s, 16 76.8 s, 32 68.5 s (32 is kppc's).
-- The back ends as separate clang processes (distributed ThinLTO, 32 at a time) take as long:
-  index 6.0 s + back ends 65.6 s + link 4.9 s = 76.5 s. (A first measurement, 25.0 s, was of empty
+- The back ends as separate clang processes (distributed ThinLTO, 32 at a time) are slower. Paired,
+  3 rounds on a fresh conversion of 4c178a5b915, all 64 back ends (an empty cache): inside lld 50.6,
+  54.1, 50.3 s; as processes (lld's thin link alone, the back ends, a plain link of their objects,
+  which links: `kpp.init.stdin` was undefined only while the objects were empty) 72.4, 70.6, 59.0 s
+  (the last round quiet for both: index 4.1 s, back ends 50.5 s, link 4.4 s). Not adopted. (A first measurement, 25.0 s, was of empty
   objects: clang finds a module in the index only by the path spelled as lld spelled it, forward
   slashes, and otherwise writes an empty object without a word.)
 - `-import-instr-limit=0` makes the back ends 16.6 s, but the 45 menu maps run 1.35 times as long
