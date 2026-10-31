@@ -5895,6 +5895,38 @@ namespace
         }
       return false;
     }
+    // A std container's iterator type, as the code at owner names it: `std::vector<T>::iterator`, or
+    // `WidgetArray::iterator` where WidgetArray is an alias of one in owner or a class or namespace
+    // around it (Agui's visible_iterator). Its operator* and operator-> are a pointer's in Kpp.
+    bool isStdIteratorType(Type* type, Decl* owner)
+    {
+      while (type && type->kind == NodeKind::ConstType)
+        type = static_cast<ConstType*>(type)->inner;
+      if (!type || type->kind != NodeKind::NamedType)
+        return false;
+      const QualifiedName& name = static_cast<NamedType*>(type)->name;
+      for (const NamePart& part : name.parts)
+        if (part.symbol == UINT32_MAX)
+          return false;
+      std::string_view last = symbols.name(name.last().symbol);
+      if (last != "iterator" && last != "const_iterator" && last != "reverse_iterator" && last != "const_reverse_iterator")
+        return false;
+      if (name.parts.size() == 3 && symbols.name(name.parts[0].symbol) == "std")
+        return stdContainerNames().count(symbols.name(name.parts[1].symbol)) != 0;
+      if (name.parts.size() != 2)
+        return false;
+      for (Decl* d = owner; d; d = d->parent)
+        if (d->kind == NodeKind::ClassDecl)
+        {
+          if (Type* alias = memberAlias(static_cast<ClassDecl*>(d), name.parts[0].symbol))
+            return isStdContainerType(alias);
+        }
+        else if (d->kind == NodeKind::NamespaceDecl)
+          for (Decl* member : static_cast<NamespaceDecl*>(d)->decls)
+            if (member->kind == NodeKind::UsingAliasDecl && static_cast<UsingAliasDecl*>(member)->name == name.parts[0].symbol)
+              return isStdContainerType(static_cast<UsingAliasDecl*>(member)->type);
+      return false;
+    }
     // `output << x.size()`, `x.length()`, `x.count(k)` of a std container: written size_t(...).
     void sizeAsSizeT(Expr* e)
     {
@@ -6620,7 +6652,10 @@ namespace
           // `it.operator*()` and `it.operator->()` on an iterator: a std::vector's is a class in the
           // game's library and a pointer in Kpp's, which has no member call for them (Agui's
           // visible_iterator), so they are written `(*it)` and `toAddress(it)`, which C++ gives the
-          // same meaning for an iterator. The opening goes in at the base's first token before the
+          // same meaning for an iterator. Only where the declarations say a std iterator: any other
+          // keeps the member call (PrototypeIDWithQualityIterator's `this->idIterator.operator->()`
+          // calls PrototypeIDIterator's non-const one, which toAddress's const parameter would
+          // not). The opening goes in at the base's first token before the
           // base's own edits there (`this->`); a postfix node's token is its operator, the `.`.
           if (call->args.empty() && call->callee->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(call->callee)->member.parts.size() == 1)
           {
@@ -6629,7 +6664,7 @@ namespace
             bool star = name.opToken == uint32_t(P::Star), arrow = name.opToken == uint32_t(P::Arrow);
             uint32_t dot = m->token;
             if (m->op == P::Dot && name.special == 2 && (star || arrow) && dot + 4 < toks.size() &&
-                toks[dot + 3].is(P::LParen) && toks[dot + 4].is(P::RParen))
+                toks[dot + 3].is(P::LParen) && toks[dot + 4].is(P::RParen) && isStdIteratorType(typeOfExpr(m->base, 0).type, owner))
             {
               insert(toks[firstTokenOf(m->base)].offset, star ? "(*" : "toAddress(");
               replace(toks[dot].offset, toks[dot + 4].offset + 1 - toks[dot].offset, ")");
