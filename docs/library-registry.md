@@ -678,8 +678,8 @@ also be protected from someone denying me from continuing providing the service.
   and off kpp.net. kovarex would like it available one day as an example program in Kpp, which is
   Wube's decision when the time comes ("Hosting on kpp.net"). In this repository,
   `programs/factorio/` (the overrides derived from the game's source, and the interfaces to its
-  libraries) is listed in LICENSE as not covered. Which of its files are Kpp's own work (scripts,
-  tests), and so could be Apache, is kovarex's call (decision 13).
+  libraries) stays entirely unlicensed, all of it, scripts and tests included, excluded like
+  factorio-in-kpp (kovarex, 2026-11-01; decision 13). LICENSE lists it as not covered.
 
 **What the registry requires of a hosted library.**
 - Every release states an SPDX license expression in its build.kpp (`license`), and its archive
@@ -814,10 +814,9 @@ C source parts, MVS with one version) before any server code is written.
     occasional uploads)? May a site's hook or daemon open outbound connections (to push the mirror
     to GitHub)? The FreeBSD version of the current realm, whether `git` and `clang` are on the SSH
     hosts, a daemon's memory limit, and SQLite locking on their file storage.
-13. **programs/factorio/ and the license**: LICENSE lists the whole directory as not covered
-    (its overrides derive from Factorio's source). Should Kpp's own files there (the converter's
-    scripts, tests, harnesses) be Apache too, with only the game-derived files excluded? And the
-    trademark steps in [Licensing](#licensing-decided-2026-11-01).
+13. **programs/factorio/ and the license**: decided 2026-11-01, kovarex: it stays entirely
+    unlicensed, excluded like factorio-in-kpp, as LICENSE says. Still open: the trademark steps
+    in [Licensing](#licensing-decided-2026-11-01).
 
 ## Sources
 1. Factorio Auxiliary Docs, Mod structure (info.json, dependencies):
