@@ -1,0 +1,86 @@
+# kpp.net: Forgejo (git.kpp.net) and Caddy (TLS for every name, the registry's static files on
+# registry.kpp.net). Runs on one Linux VM under /srv/kppnet (RUNBOOK.md, step 3). Secrets come from
+# .env next to this file (made from env.example, never committed). Forgejo settings are given here
+# as FORGEJO__section__KEY variables, so app.ini is never edited by hand and this file is the
+# whole configuration.
+name: kppnet
+
+services:
+  forgejo:
+    # The LTS line (15.x, supported until 2027-07-15): fewer upgrades than the 17.x line.
+    image: codeberg.org/forgejo/forgejo:15
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      FORGEJO__database__DB_TYPE: sqlite3
+      FORGEJO__database__SQLITE_JOURNAL_MODE: WAL
+      FORGEJO__server__DOMAIN: git.kpp.net
+      FORGEJO__server__ROOT_URL: https://git.kpp.net/
+      FORGEJO__server__HTTP_PORT: "3000"
+      FORGEJO__server__SSH_DOMAIN: git.kpp.net
+      # Git over SSH on 2222, so the host's own sshd keeps 22 (decision in RUNBOOK.md, step 3).
+      FORGEJO__server__SSH_PORT: "2222"
+      FORGEJO__server__SSH_LISTEN_PORT: "22"
+      FORGEJO__server__LFS_START_SERVER: "true"
+      FORGEJO__server__OFFLINE_MODE: "true"
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__security__SECRET_KEY: ${FORGEJO_SECRET_KEY}
+      FORGEJO__security__INTERNAL_TOKEN: ${FORGEJO_INTERNAL_TOKEN}
+      FORGEJO__oauth2__JWT_SECRET: ${FORGEJO_JWT_SECRET}
+      FORGEJO__session__COOKIE_SECURE: "true"
+      # Accounts only through an external login (GitHub OAuth, RUNBOOK.md step 6); admins are made
+      # on the command line. No password sign-up, no OpenID.
+      FORGEJO__service__DISABLE_REGISTRATION: "false"
+      FORGEJO__service__ALLOW_ONLY_EXTERNAL_REGISTRATION: "true"
+      FORGEJO__service__REQUIRE_SIGNIN_VIEW: "false"
+      FORGEJO__service__DEFAULT_KEEP_EMAIL_PRIVATE: "true"
+      FORGEJO__openid__ENABLE_OPENID_SIGNIN: "false"
+      FORGEJO__openid__ENABLE_OPENID_SIGNUP: "false"
+      FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION: "true"
+      FORGEJO__oauth2_client__USERNAME: nickname
+      FORGEJO__oauth2_client__ACCOUNT_LINKING: login
+      FORGEJO__repository__DEFAULT_BRANCH: master
+      FORGEJO__repository__DEFAULT_PRIVATE: private
+      # Actions: `uses: actions/checkout@v4` resolves on this instance (the `actions` organization
+      # holds pull mirrors of the few actions the workflows use; mirror/mirror-actions.sh), so CI
+      # does not depend on github.com being up.
+      FORGEJO__actions__ENABLED: "true"
+      FORGEJO__actions__DEFAULT_ACTIONS_URL: self
+      FORGEJO__mirror__ENABLED: "true"
+      FORGEJO__mirror__DEFAULT_INTERVAL: 8h
+      FORGEJO__mirror__MIN_INTERVAL: 10m
+      FORGEJO__migrations__ALLOWED_DOMAINS: github.com,*.github.com,codeberg.org,code.forgejo.org
+      FORGEJO__mailer__ENABLED: ${FORGEJO_MAIL_ENABLED}
+      FORGEJO__mailer__PROTOCOL: smtps
+      FORGEJO__mailer__SMTP_ADDR: ${FORGEJO_SMTP_HOST}
+      FORGEJO__mailer__SMTP_PORT: "465"
+      FORGEJO__mailer__USER: ${FORGEJO_SMTP_USER}
+      FORGEJO__mailer__PASSWD: ${FORGEJO_SMTP_PASSWORD}
+      FORGEJO__mailer__FROM: ${FORGEJO_MAIL_FROM}
+      FORGEJO__cron_0X2E_update_checker__ENABLED: "false"
+    volumes:
+      - ./data/forgejo:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "2222:22"
+    networks: [web]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+      - ./data/registry:/srv/registry:ro
+    networks: [web]
+
+networks:
+  web: {}

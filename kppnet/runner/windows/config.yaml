@@ -1,0 +1,28 @@
+# Runner settings for kpp's Windows CI machine (install-runner.ps1 copies this over the generated
+# defaults). Keys follow Forgejo Runner's `generate-config` output; Gitea's act_runner reads the same
+# ones.
+log:
+  level: info
+
+runner:
+  # Registration state written by `register`.
+  file: .runner
+  # One job at a time: a kpp run uses all cores (spec.cmd --jobs), and a second job would only make
+  # both slower. Raise it on a machine with 32+ cores.
+  capacity: 1
+  # ci.yml's job has timeout-minutes 120; this is the runner's own ceiling.
+  timeout: 3h
+  shutdown_timeout: 3h
+  fetch_timeout: 5s
+  fetch_interval: 2s
+  # Labels come from registration (windows-2022:host); listing them here would override them.
+  labels: []
+
+cache:
+  # The runner's own cache server, which actions/cache@v4 talks to (kppc's import cache in ci.yml).
+  enabled: true
+  dir: C:\kpp-runner\cache
+
+host:
+  # Jobs run directly on this machine (label type `host`), each in a directory under this one.
+  workdir_parent: C:\kpp-runner\work

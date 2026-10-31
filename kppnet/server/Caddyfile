@@ -1,0 +1,32 @@
+# TLS certificates for every name come from Let's Encrypt automatically, once DNS points here
+# (RUNBOOK.md, step 2).
+{
+	email {$ACME_EMAIL}
+}
+
+# The forge.
+git.kpp.net {
+	encode zstd gzip
+	request_body {
+		max_size 2GB
+	}
+	reverse_proxy forgejo:3000
+}
+
+# The registry and every file kpp downloads: static, content-addressed (registry/layout.md).
+# Archives and mirrored files never change once written, so caches keep them for a year; the index
+# changes on every publish.
+registry.kpp.net {
+	root * /srv/registry
+	encode zstd gzip
+	@immutable path /archives/* /mirror/* /kpp/releases/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	@index path /index/* /kpp/latest.json
+	header @index Cache-Control "public, max-age=60"
+	file_server
+}
+
+# Until kpp.net has a site of its own, the apex goes to the compiler's repository.
+kpp.net, www.kpp.net {
+	redir https://git.kpp.net/kpp/kpp{uri} 302
+}

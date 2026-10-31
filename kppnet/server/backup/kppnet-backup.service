@@ -1,0 +1,8 @@
+[Unit]
+Description=kpp.net nightly backup (Forgejo dump and registry files to restic)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /srv/kppnet/backup/backup.sh

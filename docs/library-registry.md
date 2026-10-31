@@ -1,25 +1,30 @@
-# A library registry for Kpp (proposed 2026-10-30, not yet decided by kovarex)
+# A library registry for Kpp (proposed 2026-10-30; hosting decided 2026-10-31)
 
 **The ask** (kovarex): a package installer for Kpp libraries, like Factorio's mods: a service
 written in Kpp where libraries are registered, from which a library is added to a project in one
-step. This document is research and a proposal only; nothing here is decided. The decisions
-needed are listed at the end ([Decisions for kovarex](#decisions-for-kovarex)).
+step. This document is research and a proposal. Decided so far: where it lives ([Hosting on
+kpp.net](#hosting-on-kppnet-decided-2026-10-31), kovarex 2026-10-31) and, in
+[build.md](build.md), how a project adds a library (`project.use("json")` in build.kpp, versions
+pinned in build.lock). The open decisions are listed at the end
+([Decisions for kovarex](#decisions-for-kovarex)).
 
 **The proposal in one paragraph.** A library is a directory of Kpp source (a top-level code
-package, [design.md](design.md) "Code packages") with a manifest in the project description that
-thread E is defining ([build.md](build.md), not yet written); C code it needs ships as C/C++
+package, [design.md](design.md) "Code packages") with its own build.kpp
+([build.md](build.md)); C code it needs ships as C/C++
 source that kppc compiles with its bundled clang, and only prebuilt binaries that cannot be built
 from source (Steam SDK, Logitech LED) ship as files, flagged. Every release is an immutable
 archive identified by a SHA-256 of its file tree (Zig's model), so any mirror, a cache or a
 vendored copy is as good as the registry. Versions are three numbers as in Factorio; a program
 holds exactly one version of each library (the one global scope allows no other), chosen by Go's
-minimal version selection, and a lockfile records the hashes. Because Kpp compile-time code runs
+minimal version selection, and build.lock records the hashes. Because Kpp compile-time code runs
 in the interpreter and cannot call C, **adding a library never runs its code on your machine
 until you run your program**: no build scripts, no install hooks, the attack surface npm and
 cargo have. The registry indexes the top-level names each release declares, so `kppc add json`
-reports a name clash with your program or another library before it changes anything. The first
-version needs no service at all: an index in a git repository, archives on GitHub releases, and
-`kppc add/remove/update/sync`; the service in Kpp (accounts, web pages, publishing API) comes
+reports a name clash with your program or another library before it changes anything. Everything is
+hosted on kpp.net (decided): a Forgejo forge at git.kpp.net holds the libraries' repositories,
+reviews and CI, registry.kpp.net serves the index and the hash-addressed archives as static
+files, and GitHub is only a read-only mirror. The first version needs no registry service of its
+own beyond that; the service in Kpp (accounts, web pages, publishing API) comes
 after, as a dogfooding target, when the standard library has networking.
 
 ## Contents
@@ -32,7 +37,8 @@ after, as a dogfooding target, when the standard library has networking.
   [names](#names-the-one-global-scope), [C dependencies](#c-dependencies),
   [versions and the lockfile](#versions-resolution-and-the-lockfile),
   [the commands](#the-commands-and-the-project-description),
-  [the service](#the-service), [security](#security-and-moderation),
+  [the service](#the-service), [hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31),
+  [security](#security-and-moderation),
   [mirrors and offline](#mirrors-offline-and-private-registries), [IDE and VS](#ide-and-visual-studio)
 - [Phases and effort](#phases-and-effort), [Risks](#risks),
   [Decisions for kovarex](#decisions-for-kovarex), [Sources](#sources)
@@ -268,8 +274,8 @@ packaging suffix if needed (decision 6).
   solver, is deterministic, and a new release upstream changes nothing until someone runs
   `kppc update`. A conflict (a minimum `>= 2.0` against a `< 2.0`, or a `!`) is an error that
   names the chain of requirements.
-- **The lockfile** (name TBD with E, e.g. `kpp.lock`), committed to source control: each library
-  with exact version, SHA-256 and the registry it came from. With MVS it is not needed to pick
+- **The lockfile**, `build.lock` (build.md), committed to source control: each library
+  with exact version, tree hash and the registry it came from. With MVS it is not needed to pick
   versions; it is needed to detect a changed archive and to pin a yanked version. kppc refuses to
   build when a file in the cache does not match the lockfile.
 - **The built program remembers**: kppc embeds the lockfile's content (names, versions, hashes) in
@@ -294,27 +300,28 @@ All of this is a part of kppc (one tool; the persistent server already holds the
   projects; the persistent compiler keeps parsed libraries keyed by the hash, so switching
   projects that use the same version does not re-parse it.
 
-#### What this needs from thread E
-To be agreed through the coordinator; this document does not define the syntax.
-- A dependency list in the project description, each entry: registry name, minimum version, an
-  optional source override (path, git URL with commit, other registry), the incompatibility mark.
-  Editable by a tool without losing the author's formatting and comments (so `kppc add` can edit
-  it: one entry per line is enough).
-- A `library` part with the manifest fields listed in [What a library is](#what-a-library-is),
-  including the C parts (files, include directories, defines, system libraries, prebuilt files
-  per target).
-- Named configurations apply to libraries too: a library's C sources compile with the program's
-  configuration, and a library may read the program's `config` constants.
-- The lockfile next to the project description, written only by tools.
+#### The project description (thread E, decided 2026-10-31)
+[build.md](build.md) settled the form: `project.use("json")` in build.kpp adds a library (the
+next build resolves, checks clashes and writes build.lock); `use("json", "1.4")` states a minimum;
+`git(...)` and `local(...)` are the other sources; `libraries/<name>` in the project overrides the
+registry (forks); a library is a project whose build.kpp says `project.library(...)` and may not
+declare build steps. So `kppc add` above is `kpp add`, which only inserts the `use` line. What
+the registry still needs from E's format: the library's manifest fields listed in
+[What a library is](#what-a-library-is) (version, license, minimum kpp, release paths, C parts),
+and build.lock recording, per library, name, version, the tree hash (`sha256-tree:...`, defined by
+[kppnet/registry/tree_hash.py](../kppnet/registry/tree_hash.py)) and the registry it came from.
 
 ### The service
-- **Phase 1 needs none**: the index is a git repository (`github.com/kovarex/kpp-libraries`, one
-  file per library listing its releases: version, hash, archive URL, dependencies, exported
-  names, yanked), as crates.io's index was a git repository for years; archives are attached to
-  GitHub releases of that repository. Publishing is a pull request that CI checks (manifest,
-  hash, it compiles with the current kppc against its dependencies, `kppc --exports`, name
-  rules, clash report, its tests run); kovarex or a maintainer merges. kppc reads the index
-  over HTTPS (raw files, or a shallow clone), so the "server" is GitHub.
+- **Phase 1 needs no registry program**: the index is a git repository on the forge
+  (`git.kpp.net/kpp/registry-index`, one file per library listing its releases: version, tree
+  hash, archive path, dependencies, exported names, yanked), as crates.io's index was a git
+  repository for years. Publishing: a library's repository (official ones in the `libraries`
+  organization on git.kpp.net) tags a version; its workflow builds and tests it with the current
+  kpp, packs it (`tree_hash.py pack`), computes `--exports` and opens a pull request on the index
+  that adds the release; CI there checks the manifest, the hash, name rules and clashes; kovarex or
+  a maintainer merges; the merge uploads the archive and the index file to registry.kpp.net
+  (write-once, [kppnet/registry/layout.md](../kppnet/registry/layout.md)). kpp reads only
+  registry.kpp.net's static files.
 - **Phase 2, the service in Kpp** (dogfooding): an HTTP API (index, search, publish, yank,
   tokens), web pages (library page with readme, versions, dependencies, exported names, license,
   "binary" mark, download counts, clash list), a small database (SQLite through C interop), and
@@ -324,13 +331,77 @@ To be agreed through the coordinator; this document does not define the syntax.
   exercises threads, I/O, strings and containers under real load, which the game does not
   (the game exercises everything else). The index stays a set of static files the service
   writes, so kppc's client code does not change and a CDN serves the reads.
-- **Hosting and domain**: a small VM and object storage, or Cloudflare (R2 for archives, CDN
-  for the index). Load is tiny compared with the Factorio mod portal. The domain: kpp.net was
-  suggested; its availability and ownership are not checked here (decision 8).
-- **Accounts**: none in phase 1 (GitHub identities on pull requests). Phase 2: GitHub login, as
-  crates.io, or Wube's existing factorio.com accounts, as the mod portal does (decision 9).
-  Ownership per library: owners and co-owners, transferable; scoped API tokens; 2FA required to
-  publish.
+- **Hosting and accounts**: decided, next section. Ownership per library: owners and co-owners
+  (the forge's repository permissions in phase 1), transferable; scoped API tokens; 2FA required
+  to publish.
+
+### Hosting on kpp.net (decided 2026-10-31)
+**The decision** (kovarex, the coordinator's option A): official Kpp
+libraries, and later kpp itself, live in git repositories owned and hosted on kpp.net, with a
+forge there for pull requests, issues, review and CI. GitHub may be used, but only as a mirror:
+nothing may depend on it existentially, and moving to another host must stay possible. In his
+words: "I prefer to build A right away." The deployment kit is [kppnet/](../kppnet/README.md);
+nothing is deployed yet.
+
+**The names.**
+- `git.kpp.net`: the forge. Organizations `kpp` (the compiler; factorio-in-kpp, private) and
+  `libraries` (official libraries); `actions` holds pull mirrors of the few GitHub Actions the
+  workflows use.
+- `registry.kpp.net`: static files only: the registry index, the archives by tree hash, kpp's own
+  releases, and mirrored third-party files CI needs
+  ([kppnet/registry/layout.md](../kppnet/registry/layout.md)).
+- `kpp.net`: redirects to the compiler's repository until there is a site.
+
+**The forge: Forgejo** (15.x, the LTS line, supported until 2027-07-15 [26]), with SQLite, behind
+Caddy for TLS, in Docker on one Debian VM. Why it and not:
+- *Gitea*: the same code base before the fork; Forgejo is run by a non-profit (Codeberg e.V.),
+  is free software throughout, and is what Codeberg runs. Either would do; Forgejo has no
+  company that can change the terms.
+- *GitLab CE*: more mature CI, and its runner officially supports Windows, which is Forgejo's weak
+  point here (below). But it wants 8 GB or more for itself, many services to run and upgrade,
+  and a heavier backup and restore. It is the fallback if no runner works on Windows.
+- *SourceHut, Gerrit*: patches by mail, or review only; kovarex asked for pull requests, issues,
+  review and CI in one place.
+
+**Not depending on GitHub**, item by item:
+- Code: the repositories on git.kpp.net are the originals; GitHub gets a force-pushed copy on
+  every push (a push mirror [27]), with its issues, pull requests and Actions turned off.
+  Dropping GitHub is deleting the mirror.
+- Downloads: kpp fetches libraries only from registry.kpp.net (or a configured mirror of it), by
+  name, version and tree hash, and checks the hash; build.lock records all three. It never
+  downloads from GitHub or from a forge URL.
+- CI: workflows run on Forgejo Actions on our own runner. `uses: actions/checkout@v4` resolves on
+  git.kpp.net (`DEFAULT_ACTIONS_URL = self` and the mirrored `actions/*` repositories [28]), and
+  files CI downloads from github.com today (ci.yml's SDL3 headers) move to registry.kpp.net/mirror.
+- Sign-in: contributors use "Sign in with GitHub" (OAuth) for convenience; it creates a forge
+  account, which can get a password by mail if GitHub sign-in ever goes away. Admins have local
+  accounts with 2FA. No password sign-up for others, which keeps out spam accounts.
+
+**CI.** ci.yml and release.yml are kept portable between GitHub Actions and Forgejo Actions
+(thread H, through the coordinator): Forgejo reads `.github/workflows` when there is no
+`.forgejo/workflows` [29], its `github` context is its own `forgejo` context under that name, and
+`concurrency`, `schedule` and `workflow_dispatch` work as on GitHub [30]. The runner registers the
+label `windows-2022:host`, so `runs-on: windows-2022` is unchanged; jobs run directly on a
+dedicated Windows machine with Visual Studio Build Tools and clang, as GitHub's image has them.
+What is not portable is publishing: "Publish latest" (`gh release`) and release.yml's
+`softprops/action-gh-release` become uploads to registry.kpp.net (`kpp/releases/`,
+`kpp/latest.json`), which factorio-in-kpp's CI then reads.
+**Open risk:** Forgejo Runner's releases have Linux binaries only (v13.2.1, 2026-10-29), and
+running it on Windows in host mode is not documented [31]. The kit builds it from source for
+Windows, with Gitea's act_runner (which ships a Windows binary, v5.2.4 [32]) as the fallback; the
+runbook's smoke test decides which works, and the result is recorded here. If neither does, the
+options are a Linux runner driving a Windows VM, or GitLab.
+
+**Backups and leaving.** A nightly `forgejo dump` and the registry's files go to restic on storage
+at another provider, kept 14 days, 8 weeks, 12 months, with a tenth read back each night and a
+yearly restore drill (kppnet/RUNBOOK.md step 8). Moving host is restoring the backup elsewhere and
+changing DNS; leaving Forgejo is taking the plain git repositories (GitHub's mirror has them too)
+and exporting issues through the API; the registry is static files any server can serve.
+
+**Cost**: about €15 to €20 a month for the server and backups, plus the Windows runner (a machine
+Wube or kovarex owns: nothing; rented: roughly €60 to €150 a month). What kovarex must provide or
+do by hand (domain, server, runner machine, accounts, OAuth app, secrets) is listed in
+[kppnet/README.md](../kppnet/README.md).
 
 ### Security and moderation
 - **Nothing runs on install or build** (the strongest point; keep it as a rule): a library
@@ -349,8 +420,9 @@ To be agreed through the coordinator; this document does not define the syntax.
 - **Integrity**: SHA-256 in the index and the lockfile from phase 1 (trust on first use plus
   HTTPS); phase 3: a transparency log over the index as sum.golang.org, or signed index files
   (TUF-style roles) so a compromised mirror or CDN cannot serve other bytes.
-- **Publishing**: trusted publishing from CI (GitHub OIDC) as crates.io; tokens scoped to one
-  library and one action; 2FA. A security advisory list and `kppc audit` (phase 3).
+- **Publishing**: from CI on git.kpp.net only (the upload key is an Actions secret of the forge,
+  never a person's); later, short-lived per-job tokens as crates.io's trusted publishing; tokens
+  scoped to one library and one action; 2FA. A security advisory list and `kppc audit` (phase 3).
 - **Moderation**: reports from users and automated checks; admins remove malware and ban
   accounts, publicly logged. Phase 1's pull-request review is moderation by construction, which
   is fine while the registry is small.
@@ -386,12 +458,14 @@ Estimates are in weeks of one thread, assuming thread E's project description ex
 | Phase | Contents | Effort |
 |---|---|---|
 | 0. Local libraries | `--path`/`--git` dependencies in the project description, cache, lockfile with SHA-256, `kppc add/remove/sync/vendor`, `kppc --exports` and the clash pre-check, C source parts compiled by kppc (moving `programs/factorio/native`'s build into this is the test) | 2 to 3 |
-| 1. Registry without a service | index repository, archives on GitHub releases, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a Kpp face over sockets | 2 to 3, plus porting the first libraries |
+| H. Hosting | the forge, CI runner, backups, mirrors, registry store on kpp.net: the kit is [kppnet/](../kppnet/README.md) (done); deploying it is kovarex's steps in its RUNBOOK.md plus checking the Windows runner | 1 to 2 days of his time, plus the runner machine |
+| 1. Registry without a service | index repository on git.kpp.net, archives on registry.kpp.net, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a Kpp face over sockets | 2 to 3, plus porting the first libraries |
 | 2. The service in Kpp | stdlib networking/HTTP/JSON/SQLite face first (3 to 5 weeks, useful beyond this), then API, accounts, web pages, publish API, tokens, 2FA, download counts | 6 to 10 |
 | 3. Hardening | trusted publishing, transparency log or signed index, advisories and `kppc audit`, typosquat review queue, `internal` declarations if clashes are measured | 4 to 6 |
 | 4. Tools | IDE Libraries view, VS commands, generated documentation pages per library from reflection, more targets for binary parts, private registry setup | with threads E and F |
 
-The minimal first version is phases 0 and 1: about 5 weeks, no running service, no accounts,
+The minimal first version is phases 0 and 1 on the hosting of phase H: about 5 weeks, no
+registry program of its own,
 usable by Wube and early users, and it proves the parts that are Kpp-specific (clash pre-check,
 C source parts, MVS with one version) before any server code is written.
 
@@ -432,9 +506,13 @@ C source parts, MVS with one version) before any server code is written.
    number? Proposed: yes.
 7. **The service written in Kpp** (dogfooding, needs stdlib networking) or a conventional stack
    with Kpp only in the client? Proposed: Kpp, from phase 2; phase 1 needs no service.
-8. **Domain and hosting**: kpp.net (ownership not checked) or another; GitHub plus Cloudflare,
-   or Wube's infrastructure?
-9. **Accounts**: GitHub login, or Wube's factorio.com accounts as the mod portal uses?
+8. **Hosting**: decided 2026-10-31, kovarex: "I prefer to build A right away": repositories,
+   reviews and CI on a self-hosted forge on kpp.net, GitHub only as a read-only mirror
+   ([Hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31)). Still his: confirming kpp.net is
+   his, the server provider, the runner machine ([kppnet/README.md](../kppnet/README.md)).
+9. **Accounts**: decided with 8: contributors sign in to the forge with GitHub (OAuth); admins
+   have local accounts with 2FA. factorio.com accounts remain possible later for the registry's
+   own service (phase 2).
 10. **Hash normalization**: hash the files as stored (proposed; the repository's own
     `.gitattributes` fixes line endings) or normalize line endings before hashing?
 11. **Who owns it**: the commands touch the driver (thread B), the exported names the resolver
@@ -475,3 +553,13 @@ C source parts, MVS with one version) before any server code is written.
 23. Shai-Hulud, first wave: https://versprite.com/resources/security/npm-supply-chain-attack-shai-hulud-worm-compromises-500-packages/
 24. Shai-Hulud 2.0: https://www.hivepro.com/threat-advisory/shai-hulud-2-0-fuels-global-npm-supply-chain-compromise/
 25. Russ Cox, The xz attack shell script: https://research.swtch.com/xz-script
+26. Forgejo releases and support periods: https://forgejo.org/releases/
+27. Forgejo, repository mirrors (push mirrors to GitHub): https://forgejo.org/docs/latest/user/repo-mirror/
+28. Forgejo Actions, using actions (DEFAULT_ACTIONS_URL): https://forgejo.org/docs/latest/user/actions/actions/
+29. Forgejo Actions user guide (.github/workflows when .forgejo/workflows is absent):
+    https://forgejo.org/docs/latest/user/actions/overview/
+30. Forgejo Actions reference (contexts, concurrency, schedule, workflow_dispatch):
+    https://forgejo.org/docs/latest/user/actions/reference/
+31. Forgejo Runner releases: https://code.forgejo.org/forgejo/runner/releases; installation:
+    https://forgejo.org/docs/latest/admin/actions/installation/binary/
+32. Gitea act_runner releases (windows-amd64): https://gitea.com/gitea/act_runner/releases

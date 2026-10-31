@@ -1,0 +1,10 @@
+[Unit]
+Description=kpp.net nightly backup at 04:30 UTC (after the 03:17 nightly CI has started)
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
