@@ -414,6 +414,10 @@ public:
   // characters. Nullopt with error ("Build.kpp:12: why") when that is no constant (a call it
   // cannot run, memory left allocated, more than a million steps).
   std::optional<std::string> runBuild(std::string_view configuration, std::string& error);
+  // Why this thread's last evaluation that failed is no constant ("a call to puts, ..."), empty
+  // when the interpreter cannot evaluate it yet; cleared by clearConstantReason.
+  static std::string constantReason();
+  static void clearConstantReason();
   std::optional<ConstValue> evaluateInitializer(const Ty* t, Expr* init, ParsedFile* file, Decl* context, const TemplateArgs& args,
                                                 const ConstHooks& hooks);
   // Re-types the body of f for one instantiation (expression types and resolved callees are

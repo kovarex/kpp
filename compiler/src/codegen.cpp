@@ -17604,6 +17604,7 @@ namespace
       currentFunctionName.clear();
       currentRequestedBy.clear();
       std::optional<bool> v;
+      GlobalScope::clearConstantReason();
       try
       {
         v = evalCondition(s->cond);
@@ -17614,7 +17615,11 @@ namespace
       }
       if (v && *v)
         return;
-      std::string message = v ? "static assertion failed" : "static assertion whose condition the compiler cannot evaluate yet";
+      // As the checker words it: a condition that is no constant says why (the interpreter's reason).
+      std::string why = v ? std::string() : GlobalScope::constantReason();
+      std::string message = v                ? "static assertion failed"
+                          : !why.empty()     ? "static assertion whose condition is no constant: " + why
+                                             : "static assertion whose condition the compiler cannot evaluate yet";
       if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
       {
         const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];

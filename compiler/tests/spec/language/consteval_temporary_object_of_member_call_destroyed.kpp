@@ -1,6 +1,5 @@
 // spec: a temporary that is the object of a member call (`name() + "/include"`, String::operator+ on the String name() returns) or an argument written as a functional cast (`path + String(view)`) is destroyed at the end of the full-expression in a compile-time evaluation as at run time, so the String it allocated is freed; the constants equal what the program computes (`39 42`)
 // factorio: build.kpp (design.md 12): `project.cInclude(project.setting("ROOT", "C:/x") + "/include")`, projectlib's `String("-l") + name`
-// pending: neither temporary is destroyed: "memory allocated at String.kpp:653 is never freed"
 extern "C" import "stdio.h";
 String name() { return String("abcdefghijklmnopqrstuvwxyz0123456789"); }
 constexpr int joined()

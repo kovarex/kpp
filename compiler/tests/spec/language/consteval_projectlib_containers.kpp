@@ -1,6 +1,5 @@
 // spec: what build.kpp's projectlib does with the library's containers works in a compile-time evaluation as at run time: a String assigned to a member of a Vector's element, Vector::emplace_back() with no arguments, Deque::push_back (its blocks and map of block pointers), Optional<bool>::value_or; each equals what the program computes (`3 2 3 1`)
 // factorio: build.kpp (design.md 12): Project's Vector<Executable> and Deque, Executable's String name, Project::debugInfo
-// pending: String's assignment in a Vector's element (String.kpp:84), emplace_back() (Vector.kpp), Deque's push_back (Deque.kpp:173) and value_or are no constants
 extern "C" import "stdio.h";
 struct Named
 {

@@ -1,7 +1,6 @@
 // spec: a reference to a Vector's element that a later push_back reallocated away refers to freed storage; a write through it in a compile-time evaluation is an error (C++20: such an evaluation is no constant), never a silent write into the freed block
 // factorio: build.kpp (design.md 12): projectlib's `Executable& a = project.executable(...)` held across a second executable()
-// pending: the write through the stale reference is accepted and the evaluation is a constant
-// error: consteval_reference_into_reallocated_vector_is_error.kpp:19: error: static assertion whose condition is no constant
+// error: consteval_reference_into_reallocated_vector_is_error.kpp:18: error: static assertion whose condition is no constant
 struct Entry
 {
   int value = 0;
