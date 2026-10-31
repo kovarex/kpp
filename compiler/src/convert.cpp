@@ -5639,7 +5639,8 @@ namespace
     // int in Kpp (docs/stdlib/common.md), which a serialiser's operator<< writes in 4 bytes instead
     // of 8: the game's complete-mode saves (its CRCs, desync reports) came out other than the C++
     // build's (TagManager::save, 4 bytes short per force). Written `size_t(...)` where it is the
-    // right operand of a <<, the one place where C++ code sends a size on by its type (the game's
+    // right operand of a << and an argument after a printf-style format (`%zu`), the places where
+    // C++ code sends a size on by its type (the game's
     // saveContainerSize and saveSpaceOptimized take it as a FullType). length() and count(k) alike,
     // and wherever the declarations say the container's type (typeOfExpr): CustomGui::save's
     // `item.second.size()` of a map's std::set put the heuristic CRC 4 bytes short per mod.
@@ -5968,8 +5969,10 @@ namespace
           break;
       if (close >= toks.size())
         return;
+      // The closing one replaces the call's own `)`: an insert after it would fall where a macro's
+      // rewrite replaces the macro's `)` (`LOG_INFO("%zu", v.size())`), which takes it.
       insert(toks[first].offset, "size_t(");
-      insert(endOffset(close), ")");
+      replace(toks[close].offset, toks[close].length, "))");
       counts.add("std container sizes written size_t");
     }
     const VariantInfo* variantOfExpr(Expr* e)
@@ -6666,6 +6669,18 @@ namespace
               replace(toks[dot].offset, toks[dot + 4].offset + 1 - toks[dot].offset, ")");
               counts.add(star ? "explicit operator*() calls written *x" : "explicit operator->() calls written toAddress(x)");
             }
+          }
+          // A printf-style call (ssprintf, LOG, snprintf: a string literal with a `%` among the
+          // arguments): the arguments after the format are varargs, which C++ passes a std
+          // container's size as the size_t `%zu` reads, 8 bytes; the library's int is 4.
+          bool afterFormat = false;
+          for (Expr* arg : call->args)
+          {
+            if (afterFormat)
+              sizeAsSizeT(arg);
+            else if (arg && arg->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(arg)->literalKind == TokenKind::String &&
+                     spelling(arg->token).find('%') != std::string_view::npos)
+              afterFormat = true;
           }
           walkExpr(call->callee, owner);
           walkExprs(call->args, owner);

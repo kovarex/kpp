@@ -99,6 +99,11 @@ void Holder::saveEach(Output& output) const
   auto copy = this->mapping;
   output << copy.size();
   report("auto copy's size", output);
+  // A printf-style argument is read by its format: `%zu` takes 8 bytes. A value above 32 bits
+  // shows whether the whole size_t was passed.
+  char text[64];
+  snprintf(text, sizeof(text), "%zu %zu %s", this->rows.size(), (size_t(1) << 40) + this->text.length(), "end");
+  printf("printf-style sizes %s\n", text);
 }
 
 int main()

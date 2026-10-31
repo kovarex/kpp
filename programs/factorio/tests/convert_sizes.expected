@@ -10,3 +10,4 @@ own uint32_t size 4
 FlatSet size 8
 auto reference's size 8
 auto copy's size 8
+printf-style sizes 1 1099511627780 end
