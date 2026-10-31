@@ -1,0 +1,47 @@
+// spec: a flexible array member (C99's `T items[];`, last in a struct; an extension MSVC and clang take in C++ too): it has no size of its own, so sizeof is the struct up to it with the padding the struct's alignment asks; offsetof gives where it starts; an object allocated with malloc(sizeof(S) + n * sizeof(T)) indexes it from 0 to n-1, through a pointer or a reference
+// factorio: libraries\re2's re2\onepass.cc (`struct OneState { uint32_t matchcond; uint32_t action[]; };`) and re2\dfa.cc (State's `std::atomic<State*> next_[];`), SDL3's hidapi_descriptor_reconstruct.h (Windows)
+// pending: a member array without a bound is an error ("no constant the compiler could evaluate"): kppc has no flexible array member (D)
+extern "C" import "stdlib.h";
+extern "C" import "stddef.h";
+
+struct OneState
+{
+  unsigned int matchcond;
+  unsigned int action[];
+};
+
+struct Named
+{
+  long long id;
+  char tag;
+  short values[];
+};
+
+int sumActions(const OneState& state, int count)
+{
+  int sum = 0;
+  for (int i = 0; i < count; ++i)
+    sum += (int)state.action[i];
+  return sum;
+}
+
+int main()
+{
+  println("{} {}", (int)sizeof(OneState), (int)offsetof(OneState, action));
+  println("{} {}", (int)sizeof(Named), (int)offsetof(Named, values));
+  int count = 5;
+  OneState* state = (OneState*)malloc(sizeof(OneState) + count * sizeof(unsigned int));
+  state->matchcond = 7;
+  for (int i = 0; i < count; ++i)
+    state->action[i] = (unsigned int)(i * 10);
+  println("{} {} {}", state->matchcond, state->action[4], sumActions(*state, count));
+  println("{}", (int)((char*)&state->action[0] - (char*)state));
+  free(state);
+  Named* named = (Named*)malloc(sizeof(Named) + 3 * sizeof(short));
+  named->tag = 'x';
+  named->values[0] = -1;
+  named->values[2] = 300;
+  println("{} {} {}", named->tag, named->values[0], named->values[2]);
+  free(named);
+  return 0;
+}
