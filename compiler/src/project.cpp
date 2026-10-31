@@ -380,6 +380,14 @@ namespace
       // The flags of every object: Factorio's prebuilt libraries' (/O2 /MT, no assertions), the
       // library's includes and defines; no warnings, since the code is the library's own.
       std::string flags = "/nologo /c /O2 /MT /DNDEBUG /w";
+      // The MSVC headers and libraries of clang's own Visual Studio: on its own, clang-cl takes the
+      // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20).
+      fs::path installation = tools.parent_path().parent_path().parent_path().parent_path().parent_path();
+      std::string version = readText(installation / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt");
+      while (!version.empty() && (version.back() == '\n' || version.back() == '\r' || version.back() == ' '))
+        version.pop_back();
+      if (!version.empty() && fs::is_directory(installation / "VC" / "Tools" / "MSVC" / version, ec))
+        flags += " /vctoolsdir " + quoteArg((installation / "VC" / "Tools" / "MSVC" / version).string());
       for (const std::string& i : c.includes)
         flags += " /I" + quoteArg(rooted(root, i).string());
       for (const std::string& d : c.defines)
