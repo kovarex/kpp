@@ -2421,7 +2421,7 @@ struct GlobalScope::Impl
           // Functions of the name in both places are one overload set (`twice(x)` with
           // ::twice(double) and Helpers::twice(int)).
           if (lookupInScope(s, symbol, out, depth) && found(out))
-            return sameNameTogether(out, viaUsing);
+            return sameNameTogether(out, viaUsing, depth);
           return viaUsing;
         }
       }
@@ -2450,11 +2450,11 @@ struct GlobalScope::Impl
         Lookup one;
         if (at != s || !lookupInScope(u, symbol, one, depth + 1) || !found(one))
           continue;
-        via = viaFound ? sameNameTogether(via, one) : one;
+        via = viaFound ? sameNameTogether(via, one, depth) : one;
         viaFound = true;
       }
       if (ownFound && viaFound)
-        return sameNameTogether(own, via);
+        return sameNameTogether(own, via, depth);
       if (ownFound)
         return own;
       if (viaFound)
@@ -2479,12 +2479,27 @@ struct GlobalScope::Impl
     return root;
   }
 
-  // One name found twice at one level (a namespace's own declaration and a using-directive's, or
-  // two directives'): the same entity, or functions (one overload set), or ambiguous.
-  Lookup sameNameTogether(const Lookup& a, const Lookup& b)
+  // The entity a namespace's using-declaration names (`using Colors::Red;`), else d itself.
+  Decl* throughUsing(Decl* d, int depth)
   {
-    if (a.decl == b.decl || (a.scope && a.scope == b.scope))
-      return a;
+    if (!d || d->kind != NodeKind::UsingNameDecl || static_cast<UsingNameDecl*>(d)->isEnum || depth > 8)
+      return d;
+    Lookup target = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, depth + 1);
+    return target.decl ? throughUsing(target.decl, depth + 1) : d;
+  }
+
+  // One name found twice at one level (a namespace's own declaration and a using-directive's, or
+  // two directives'): the same entity (also when one of them is a using-declaration of it, `using
+  // Colors::Red;` beside `using namespace Colors;`), or functions (one overload set), or ambiguous.
+  Lookup sameNameTogether(const Lookup& a0, const Lookup& b0, int depth)
+  {
+    if (a0.decl == b0.decl || (a0.scope && a0.scope == b0.scope))
+      return a0;
+    if (Decl* entity = throughUsing(a0.decl, depth); entity && entity == throughUsing(b0.decl, depth))
+      return a0;
+    // (a using-declaration of functions: the functions it names)
+    Lookup a = withNamespaceUsings(a0, depth);
+    Lookup b = withNamespaceUsings(b0, depth);
     auto onlyFunctions = [](const Lookup& l)
     {
       if (!l.decl || l.decl->kind != NodeKind::FunctionDecl)
@@ -2497,8 +2512,8 @@ struct GlobalScope::Impl
     };
     if (onlyFunctions(a) && onlyFunctions(b))
       return mergeOverloads(a, b);
-    Lookup out = a;
-    out.ambiguousWith = b.decl;
+    Lookup out = a0;
+    out.ambiguousWith = b0.decl;
     return out;
   }
 
@@ -17368,6 +17383,15 @@ struct GlobalScope::Impl
       if (l.found == Found::No && e->name.parts.size() > 1)
         l = memberOfQualifierInstance(e);
       reportAmbiguity(l, e->name, e->token);
+      // `using Colors::shade;` in a namespace: the name is the variable it names (functions stay the
+      // using-declaration's overload set, which a call takes through withNamespaceUsings).
+      if (l.decl && l.decl->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(l.decl)->isEnum && !l.ambiguousWith && l.foundIn &&
+          l.foundIn->kind == ScopeKind::Namespace)
+      {
+        Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(l.decl)->name, impl.lexicalScopeOf(l.decl), nullptr, 0);
+        if (target.decl && target.decl->kind == NodeKind::VariableDecl)
+          l = target;
+      }
       e->resolved = l.decl;
       for (const NamePart& part : e->name.parts)
         for (Node* arg : part.templateArgs)
@@ -22071,6 +22095,9 @@ namespace
   {
     if (d->flags & (DF_Specialization | DF_Friend | DF_Extern))
       return false;
+    // (a variable template's partial specialisation, `constexpr bool isSaved<T, VoidT<...>> = true`)
+    if (d->kind == NodeKind::VariableDecl && !static_cast<const VariableDecl*>(d)->name.empty() && static_cast<const VariableDecl*>(d)->name.last().hasTemplateArgs)
+      return false;
     switch (d->kind)
     {
       case NodeKind::ClassDecl: return static_cast<const ClassDecl*>(d)->isDefinition;
@@ -22136,37 +22163,119 @@ std::vector<std::string> GlobalScope::topLevelClashes()
     }
     return true;
   };
+  // The type a top-level declaration names (a class, an enum, an alias), or null: two declarations
+  // naming one type are one name (`typedef struct LoadF {...} LoadF;`, an alias written in two files).
+  auto typeNamed = [&](const Decl* d) -> const Ty*
+  {
+    Decl* m = const_cast<Decl*>(d);
+    const Ty* t = nullptr;
+    if (!d->templateParams.empty())
+      return nullptr;
+    if (d->kind == NodeKind::ClassDecl)
+      t = impl->types.classType(m, {});
+    else if (d->kind == NodeKind::EnumDecl)
+      t = impl->enumTypeIn(m, nullptr);
+    else if (d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)))
+      t = impl->declaredTypeOf(m, nullptr, 0);
+    return t && t->isKnown() && !Impl::mentionsUnknown(t) ? t : nullptr;
+  };
+  // A constant's declaration spelled token by token, when it reads no name but its own (literals,
+  // keywords, punctuation: nothing in it means something else in another file), or nothing.
+  auto constantSpelling = [&](const Decl* d)
+  {
+    std::vector<std::string> out;
+    if (d->kind != NodeKind::VariableDecl || (d->flags & DF_Typedef) || !d->file->tokens || static_cast<const VariableDecl*>(d)->name.parts.size() != 1)
+      return std::vector<std::string>{};
+    const std::vector<Token>& tokens = *d->file->tokens;
+    uint32_t own = static_cast<const VariableDecl*>(d)->name.last().symbol;
+    bool constant = false;
+    int depth = 0;
+    std::string buffer;
+    for (uint32_t t = d->token; t < tokens.size(); ++t)
+    {
+      const Token& token = tokens[t];
+      if (token.getKind() == TokenKind::End || (token.getKind() == TokenKind::Identifier && token.id != own) || (depth == 0 && token.is(P::Comma)))
+        return std::vector<std::string>{};
+      constant = constant || token.is(Kw::const_) || token.is(Kw::constexpr_);
+      depth += token.is(P::LParen) || token.is(P::LBracket) || token.is(P::LBrace);
+      depth -= token.is(P::RParen) || token.is(P::RBracket) || token.is(P::RBrace);
+      if (depth == 0 && token.is(P::Semi))
+        return constant ? out : std::vector<std::string>{};
+      out.push_back(std::string(tokenSpelling(d->file->text, token, buffer)));
+    }
+    return std::vector<std::string>{};
+  };
+  // Two declarations of one name that are one entity, or one overload set: functions, two names of
+  // one type, or one constant written alike in two files (`const auto M_1_2_PI = 0.159154943091895335769;`
+  // from a macro of the game's and one of Lua's; in C++ each file had its own, of the same value).
+  auto together = [&](const Decl* a, const Decl* b)
+  {
+    if (a->kind == NodeKind::FunctionDecl && b->kind == NodeKind::FunctionDecl)
+      return true;
+    if (const Ty* ta = typeNamed(a); ta && ta == typeNamed(b))
+      return true;
+    std::vector<std::string> sa = constantSpelling(a);
+    return !sa.empty() && sa == constantSpelling(b);
+  };
+  // A file-local name (`static`, or in an unnamed namespace) is local to its file in C++ and in
+  // design.md; kppc gives every top-level name one entity, so one that another declaration also
+  // claims is two entities merged: an error until names local to their file are supported.
+  auto clash = [&](const Decl* d, uint32_t symbol, const Decl* other)
+  {
+    std::string text = whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) + "' is declared here and " +
+                       (other->file->isLibrary ? "in the standard library (" + whereIs(other) + ")" : "at " + whereIs(other));
+    if (fileLocal(d) || fileLocal(other))
+      text += "; a name local to its file (static, or in an unnamed namespace) is not supported yet (kppc gives every top-level name one entity), rename one of them";
+    else
+      text += "; top-level names are global, rename one of them";
+    out.push_back(text);
+  };
   for (uint32_t i = 0; i < root.shardCount; ++i)
     for (const auto& [symbol, entries] : root.shards[i].map)
     {
+      if (entries.size() < 2)
+        continue;
       const Decl* library = nullptr;
       for (const Entry& e : entries)
-        if (!library && e.decl->file && e.decl->file->isLibrary && claimsTopLevelName(e.decl) && !fileLocal(e.decl))
+        if (!library && e.decl->file && e.decl->file->isLibrary && claimsTopLevelName(e.decl))
           library = e.decl;
-      if (!library)
-        continue;
+      // The program's own declarations of the name, in source order (the order of indexing varies).
+      std::vector<const Decl*> program;
       for (const Entry& e : entries)
+        if (e.decl->file && !e.decl->file->isLibrary && !e.decl->file->isImported && claimsTopLevelName(e.decl))
+          program.push_back(e.decl);
+      std::sort(program.begin(), program.end(),
+                [](const Decl* a, const Decl* b) { return std::make_pair(std::string_view(a->file->path), a->token) < std::make_pair(std::string_view(b->file->path), b->token); });
+      for (size_t k = 0; k < program.size(); ++k)
       {
-        const Decl* d = e.decl;
-        if (!d->file || d->file->isLibrary || d->file->isImported || !claimsTopLevelName(d) || fileLocal(d))
-          continue;
-        if (library->kind == NodeKind::FunctionDecl && d->kind == NodeKind::FunctionDecl)
+        const Decl* d = program[k];
+        if (library)
         {
-          // Overloads of one function; but the parameters of one of the library's is that function
-          // declared again (`gcd(long long, long long)`), which the program cannot have twice.
-          for (const Entry& l : entries)
-            if (l.decl->kind == NodeKind::FunctionDecl && l.decl->file && l.decl->file->isLibrary && claimsTopLevelName(l.decl) &&
-                !fileLocal(l.decl) && sameParameters(static_cast<FunctionDecl*>(l.decl), static_cast<FunctionDecl*>(const_cast<Decl*>(d))))
-            {
-              out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) +
-                            "' with these parameters is defined here and in the standard library (" + whereIs(l.decl) +
-                            "); top-level names are global, rename one of them");
-              break;
-            }
+          if (library->kind == NodeKind::FunctionDecl && d->kind == NodeKind::FunctionDecl)
+          {
+            // Overloads of one function; but the parameters of one of the library's is that function
+            // declared again (`gcd(long long, long long)`), which the program cannot have twice.
+            for (const Entry& l : entries)
+              if (l.decl->kind == NodeKind::FunctionDecl && l.decl->file && l.decl->file->isLibrary && claimsTopLevelName(l.decl) &&
+                  sameParameters(static_cast<FunctionDecl*>(l.decl), static_cast<FunctionDecl*>(const_cast<Decl*>(d))))
+              {
+                out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) +
+                              "' with these parameters is defined here and in the standard library (" + whereIs(l.decl) +
+                              "); top-level names are global, rename one of them");
+                break;
+              }
+            continue;
+          }
+          clash(d, symbol, library);
           continue;
         }
-        out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) + "' is declared here and in the standard library (" +
-                      whereIs(library) + "); top-level names are global, rename one of them");
+        // Two of the program's: the second is the error, at the first that is another entity.
+        for (size_t j = 0; j < k; ++j)
+          if (!together(program[j], d))
+          {
+            clash(d, symbol, program[j]);
+            break;
+          }
       }
     }
   std::sort(out.begin(), out.end());

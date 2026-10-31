@@ -572,6 +572,19 @@ extended to the library.
   Utility (stdlib/core/Utility.kpp:12); top-level names are global, rename one of them`.
   Overloads of a function are not a clash (they are one name, as in C++), and neither are
   `static` functions or names in an unnamed namespace, which are local to their file.
+- Checked between the program's own files too: two files declaring one name, or a variable and a
+  function of one name, are the same error, at the later file (they were silently one entity: two
+  files' `int total` were one variable). Two declarations that are one entity are no clash: one
+  type named twice (`typedef struct Cell {...} Cell;`, an alias written in two files), one constant
+  written alike in two files with no other name in it (`const auto M_1_2_PI = 0.159...;`, a macro of
+  the game's and one of Lua's), a variable template's partial specialisation.
+- Names local to their file are not implemented yet: the resolver and the code generator give
+  every top-level name one entity, so a `static` variable or a name in an unnamed namespace that
+  another declaration also claims (another file's, or the standard library's `empty`) is an error,
+  "a name local to its file ... is not supported yet", until they are. (`static` functions of one
+  name are one overload set; two of them with the same parameters are "defined twice".) The
+  converted game has none. A build with a clash generates no code: lookup takes the name as one
+  of the two, and what codegen made of that was only the clash's echo.
 - This settles the open question "Library names and program names share one global scope" with
   the "distinct names" option, made into a rule the compiler checks instead of a convention. It
   also replaces the `kpp::` namespace floated in the Speed-test prototype thread: that one needs

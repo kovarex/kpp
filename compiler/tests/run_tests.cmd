@@ -53,6 +53,33 @@ for %%m in (plain msvc) do (
     echo ok   %%m diagnostics
   )
 )
+rem Top-level names (docs/design.md, "One global scope, so clashes are errors"): a name two of the
+rem program's files declare is an error, a static one's too (not local to its file yet), and no code
+rem is generated; one type named twice or one constant written alike in two files is one name.
+%KPPC% --quiet --exe build\tests\clashes.exe tests\clashes\errors 2>&1 | %SystemRoot%\System32\sort.exe > build\tests\clashes.errors.txt
+fc /w build\tests\clashes.errors.txt tests\clashes\errors.expected > nul
+if errorlevel 1 (
+  echo FAIL clashes: build\tests\clashes.errors.txt differs from tests\clashes\errors.expected
+  fc /w build\tests\clashes.errors.txt tests\clashes\errors.expected
+  set /a FAIL+=1
+) else (
+  echo ok   clashes
+)
+%KPPC% --quiet --exe build\tests\allowed.exe tests\clashes\allowed > build\tests\allowed.compile.txt 2>&1
+if errorlevel 1 (
+  echo FAIL clashes allowed: compile
+  type build\tests\allowed.compile.txt
+  set /a FAIL+=1
+) else (
+  build\tests\allowed.exe > build\tests\allowed.out.txt
+  fc /w build\tests\allowed.out.txt tests\clashes\allowed.expected > nul
+  if errorlevel 1 (
+    echo FAIL clashes allowed: output differs
+    set /a FAIL+=1
+  ) else (
+    echo ok   clashes allowed
+  )
+)
 rem A module clang rejects (here: a flag clang does not know) is an error whatever --quiet says, with
 rem clang's message, and the build fails, --keep-going or not.
 %KPPC% --quiet --keep-going --clang-flags -fno-such-kpp-flag --exe build\tests\rejected.exe tests\debuginfo\lines.kpp > nul 2> build\tests\rejected.errors.txt

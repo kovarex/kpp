@@ -1341,7 +1341,9 @@ namespace
     build.indexEntries = global.entryCount();
     build.finishTime = finishTime;
     report("%s", indexLine);
-    build.clashes = global.topLevelClashes();
+    // (Kpp's one global scope: not the rule of the C++ a conversion reads, whose names local to their file are)
+    if (options.convertDir.empty())
+      build.clashes = global.topLevelClashes();
     for (const std::string& clash : build.clashes)
     {
       fprintf(stderr, "%s\n", clash.c_str());
@@ -1473,6 +1475,13 @@ namespace
     if (build.parseErrors && (!options.emitLLVM.empty() || !options.exe.empty()))
     {
       fprintf(stderr, "error: %zu parse error(s): no code generated\n", build.parseErrors);
+      reportCheckerErrors(global);
+    }
+    else if (!build.clashes.empty() && (!options.emitLLVM.empty() || !options.exe.empty()))
+    {
+      // (a name two entities claim is looked up as one of them: what codegen made of it would only
+      // add errors that follow from the clash)
+      fprintf(stderr, "error: %zu top-level name(s) declared twice: no code generated\n", build.clashes.size());
       reportCheckerErrors(global);
     }
     else if (!options.emitLLVM.empty() || !options.exe.empty())
@@ -2476,7 +2485,8 @@ namespace
       snprintf(line, sizeof line, "index:   %.3f s  (+%.3f s for out-of-line class definitions): %zu scopes, %zu entries\n", kept.indexTime,
                kept.finishTime, kept.indexScopes, kept.indexEntries);
       kept.indexLine = line;
-      kept.clashes = global.topLevelClashes();
+      if (kept.options.convertDir.empty())
+        kept.clashes = global.topLevelClashes();
     }
     // Walked again: what they read recorded anew, and nothing instantiated that a resolve from
     // scratch would count differently.

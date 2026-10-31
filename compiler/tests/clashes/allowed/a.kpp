@@ -1,0 +1,12 @@
+// Names declared twice that are one entity: the C idiom `typedef struct Cell {...} Cell;`, one alias
+// written in two files, one constant written alike in two files (two macros of one value, converted),
+// and a variable template's partial specialisation beside its primary.
+typedef struct Cell { int v = 4; } Cell;
+using Count = int;
+const auto half = 0.5;
+template<class T, class = void>
+constexpr bool hasBig = false;
+template<class T>
+constexpr bool hasBig<T, VoidT<typename T::Big>> = true;
+struct Large { using Big = int; };
+Count fromA() { return Cell{}.v + int(half * 2) + (hasBig<Large> ? 10 : 0) + (hasBig<Cell> ? 100 : 0); }

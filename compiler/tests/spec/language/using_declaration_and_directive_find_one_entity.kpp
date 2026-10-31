@@ -1,0 +1,28 @@
+// spec: a name a using-declaration and a using-directive both bring into one scope is not ambiguous when both name the same entity ([namespace.udir] 6, [basic.lookup] 1): an enumerator, a variable (the one object: a write through the using-declaration is the namespace's), a class and an overload set of functions
+// factorio: from D's value corpus: an enumerator reached through `using N::E;` and `using namespace N;` was "ambiguous: the one declared at :3 and the one at :3"
+namespace Colors
+{
+  enum Color { Red, Green };
+  int shade = 7;
+  struct Pen { int width = 2; };
+  int mix(int a) { return a + 1; }
+  int mix(double a) { return 3; }
+}
+using Colors::Red;
+using Colors::shade;
+using Colors::Pen;
+using Colors::mix;
+using namespace Colors;
+namespace Game
+{
+  using Colors::Green;
+  using namespace Colors;
+  int green() { return Green; }
+}
+int main()
+{
+  println("{} {} {} {} {} {}", int(Red), Game::green(), shade, Pen{}.width, mix(1), mix(1.5));
+  shade = 8;
+  println("{}", Colors::shade);
+  return 0;
+}

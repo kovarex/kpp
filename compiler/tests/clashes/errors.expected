@@ -1,0 +1,6 @@
+error: 5 top-level name(s) declared twice: no code generated
+tests\clashes\errors\b.kpp:1: error: 'total' is declared here and at tests\clashes\errors\a.kpp:5; top-level names are global, rename one of them
+tests\clashes\errors\b.kpp:2: error: 'Crate' is declared here and at tests\clashes\errors\a.kpp:6; top-level names are global, rename one of them
+tests\clashes\errors\b.kpp:3: error: 'measure' is declared here and at tests\clashes\errors\a.kpp:7; top-level names are global, rename one of them
+tests\clashes\errors\b.kpp:4: error: 'counter' is declared here and at tests\clashes\errors\a.kpp:8; a name local to its file (static, or in an unnamed namespace) is not supported yet (kppc gives every top-level name one entity), rename one of them
+tests\clashes\errors\b.kpp:5: error: 'depth' is declared here and at tests\clashes\errors\a.kpp:9; a name local to its file (static, or in an unnamed namespace) is not supported yet (kppc gives every top-level name one entity), rename one of them

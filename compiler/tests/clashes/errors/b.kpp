@@ -1,0 +1,11 @@
+int total = 2;
+struct Crate { int v = 2; };
+int measure = 3;
+static int counter = 2;
+namespace { int depth = 20; }
+int useB() { return total + Crate{}.v + measure + counter + depth; }
+int main()
+{
+  println("{} {}", useA(), useB());
+  return 0;
+}
