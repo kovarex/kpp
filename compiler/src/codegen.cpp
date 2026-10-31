@@ -12552,7 +12552,7 @@ namespace
               if (Decl* fd = findFieldByName(bt, m->member.last().symbol, e))
                 memberTy = declType(fd);
           }
-          if (const BitfieldInfo* bits = m->resolved ? bitfieldFor(m->resolved) : nullptr)
+          if (const BitfieldInfo* bits = bitfieldNamed(e)) // (one whose place is not known is an error, never its whole unit)
             return loadBitfield(addr, *bits, types.stripRef(memberTy), e);
           return load(addr, memberTy, e);
         }
@@ -13011,7 +13011,9 @@ namespace
         return bitfieldCache.emplace(d, known).first->second;
       auto lock = sharedLock();
       auto it = bitfieldOf.find(d);
-      const BitfieldInfo* bits = it == bitfieldOf.end() ? nullptr : &it->second; // map nodes stay put: the pointer outlives the lock
+      if (it == bitfieldOf.end())
+        return nullptr; // its class not laid out yet: no answer to remember (the callers that read one make it an error)
+      const BitfieldInfo* bits = &it->second; // map nodes stay put: the pointer outlives the lock
       bitfieldCache.emplace(d, bits);
       if (mayPublish())
         sh.finalBitfields.publish(d, bits);
