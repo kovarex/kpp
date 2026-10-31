@@ -6,13 +6,14 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**905 pass, 2 pending, 0 failing, 0 fixed** (907 snippets, 215.3 s).
+**905 pass, 3 pending, 0 failing, 0 fixed** (908 snippets, 116.5 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
 | `language/consteval_map_and_hash_containers.kpp` | the library's Map (operator[], through its red-black tree's nodes and iterators) and HashMap and HashSet (their slots, raw bytes holding entries or pointers to them) work at compile time as at run time (`3 1 2`) | pending | build.kpp (design.md 12): a Map or a HashMap in a build description | Map::operator[] and HashMap's and HashSet's insertion are no constants yet (Map::insert and the other containers work: language/consteval_container_iterators); C:\kpp-sandbox\worktrees\tests-kpp\compiler\tests\spec\language\consteval_map_and_hash_containers.kpp:8: error: the constexpr variable results is no constant |
+| `language/consteval_throw_names_its_message.kpp` | a constant evaluation that reaches a throw is an error that shows what is thrown: the message of an Exception, or the text of a string literal, at the throw's line; a library checks its input at compile time this way (C++ rejects a throw in a constant expression; GCC and Clang name the throw) | pending | none; found by thread G for libraries/html, whose templates are checked by a constexpr constructor that throws on a malformed template | the error says only "the constexpr variable bad is no constant", without the reason; no error `consteval_throw_names_its_message.kpp:16: error: the constexpr variable bad is no constant: it throws RuntimeError("a negative value") (consteval_throw_names_its_message.kpp:11)`; the first complaint: C:\kpp-sandbox\worktrees\tests-kpp\compiler\tests\spec\language\consteval_throw_names_its_message.kpp:16: error: the constexpr variable bad is no constant |
 | `language/adjacent_invokes_cleanup_once_release.kpp` | a call that throws runs only its own scope's cleanups, even when the next call's scope starts at its return address (release) | pass |  |  |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
