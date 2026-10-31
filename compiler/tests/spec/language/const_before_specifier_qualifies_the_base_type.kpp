@@ -1,0 +1,15 @@
+// spec: a `const` written before a storage class or an elaborated type specifier qualifies the base type, as one written before the type does: `const static char* name` is a `const char*`, `const struct S* p` a `const S*`, not a const pointer ([dcl.type]/[dcl.spec]: the decl-specifiers are in any order)
+// factorio: TestLuaEventFilters's `const static char* controlLua = R"(...)"` and SocketAddress's `const struct sockaddr_in* addr4 = (const struct sockaddr_in*)(...)` were typed `char* const` and `sockaddr_in* const` (silent: the pointee was writable, the pointer not), found by the templates thread checking pointer conversions
+struct S { int a = 1; };
+const static char* name = "x";
+int main()
+{
+  S s;
+  const struct S* p = &s;
+  static_assert(isSame<decltype(p), const S*>, "const struct S*");
+  static_assert(isSame<decltype(name), const char*>, "const static char*");
+  p = nullptr;
+  name = "y";
+  println("{} {}", int(p == nullptr), name);
+  return 0;
+}

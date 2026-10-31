@@ -1775,9 +1775,11 @@ namespace
       parseDeclSpecifiers(flags); // C++ lets them follow the type: `float static f()`, `void inline g()`, `const static int x[]`
       if (pendingConst)
       {
+        // (the base type's, under the pointer: `const static char* name` is a `const char*`)
+        Type* base = stripSuffixes(type);
         ConstType* c = node<ConstType>(start);
-        c->inner = type;
-        type = c;
+        c->inner = base;
+        type = rebase(type, base, c);
         pendingConst = false;
       }
       // Declarators.
