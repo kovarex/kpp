@@ -1023,13 +1023,24 @@ namespace
       int rc = system(command.c_str());
       report("clang:   %.3f s (%s, exit %d)\n", seconds(Clock::now() - start), level, rc);
       if (rc != 0)
+      {
+        fprintf(stderr, "%s: error: clang failed (exit %d); its messages are above\n", llPath.c_str(), rc); // (whatever --quiet says)
         codegenExit = 1;
+      }
       return;
     }
     if (stop)
       return;
     std::vector<std::string> objects(cg.modules.size());
     std::atomic<int> failures{0}, cached{0};
+    struct ModuleFailure
+    {
+      unsigned module;
+      int rc;
+      std::string path, output;
+    };
+    std::vector<ModuleFailure> moduleFailures;
+    std::mutex moduleFailuresMutex;
     start = Clock::now();
     parallelFor(cg.modules.size(), options.threads, [&](size_t k)
     {
@@ -1061,13 +1072,51 @@ namespace
         ++failures;
         return;
       }
-      std::string command = "\"\"" + clang + "\" " + level + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" + objects[k] + "\"\"";
-      if (system(command.c_str()) != 0)
+      // clang's messages go to a file of the module's, printed with the failure below (32 clangs
+      // writing to one stderr at once interleave).
+      std::string errPath = options.exe + "." + std::to_string(k) + ".clang.txt";
+      std::string command = "\"\"" + clang + "\" " + level + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" + objects[k] +
+                            "\" 2> \"" + errPath + "\"\"";
+      if (int rc = system(command.c_str()); rc != 0)
+      {
         ++failures;
+        std::error_code removed;
+        std::filesystem::remove(objects[k], removed); // (no object of an earlier build linked in its place)
+        std::lock_guard lock(moduleFailuresMutex);
+        moduleFailures.push_back({unsigned(k), rc, llPath, readWholeFile(errPath)});
+      }
       else
+      {
         writeFile(hashPath, hashText);
+        std::error_code removed;
+        std::filesystem::remove(errPath, removed); // (-w: nothing in it)
+      }
     });
     double compileTime = seconds(Clock::now() - start);
+    // A module clang rejected is an error of the build whatever --quiet says, with what clang said
+    // (its first lines): with --keep-going the link goes on without its object and reports what it
+    // would have defined, which names no cause.
+    std::sort(moduleFailures.begin(), moduleFailures.end(), [](const ModuleFailure& a, const ModuleFailure& b) { return a.module < b.module; });
+    for (const ModuleFailure& f : moduleFailures)
+    {
+      std::string said;
+      size_t lines = 0;
+      for (size_t at = 0; at < f.output.size() && lines < 6;)
+      {
+        size_t end = f.output.find('\n', at);
+        if (end == std::string::npos)
+          end = f.output.size();
+        std::string line = f.output.substr(at, end - at);
+        at = end + 1;
+        if (!line.empty() && line.back() == '\r')
+          line.pop_back();
+        if (line.empty() || line.starts_with(" #") || line.starts_with("Stack dump") || line.starts_with("PLEASE submit") || line.starts_with("Exception Code"))
+          continue;
+        said += "\n  " + line;
+        ++lines;
+      }
+      fprintf(stderr, "%s: error: clang rejected module %u (exit %d)%s\n", f.path.c_str(), f.module, f.rc, said.empty() ? " and said nothing" : said.c_str());
+    }
     if (failures)
     {
       report("clang:   %.3f s (%s, %zu modules, %d failed)\n", compileTime, level, cg.modules.size(), failures.load());

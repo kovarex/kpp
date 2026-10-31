@@ -53,6 +53,21 @@ for %%m in (plain msvc) do (
     echo ok   %%m diagnostics
   )
 )
+rem A module clang rejects (here: a flag clang does not know) is an error whatever --quiet says, with
+rem clang's message, and the build fails, --keep-going or not.
+%KPPC% --quiet --keep-going --clang-flags -fno-such-kpp-flag --exe build\tests\rejected.exe tests\debuginfo\lines.kpp > nul 2> build\tests\rejected.errors.txt
+if not errorlevel 1 (
+  echo FAIL rejected module: the build exited 0
+  set /a FAIL+=1
+) else (
+  %SystemRoot%\System32\findstr.exe /c:"error: clang rejected module 0 (exit 1)" build\tests\rejected.errors.txt > nul && %SystemRoot%\System32\findstr.exe /c:"-fno-such-kpp-flag" build\tests\rejected.errors.txt > nul
+  if errorlevel 1 (
+    echo FAIL rejected module: build\tests\rejected.errors.txt does not report module 0 with clang's message
+    set /a FAIL+=1
+  ) else (
+    echo ok   rejected module reported
+  )
+)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 set /a FAIL+=1
