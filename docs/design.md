@@ -1177,6 +1177,13 @@ small-string union is read through the member that is not alive (the mark byte i
 while the heap fields are), which C++ makes undefined and the interpreter rejects; the fix is the
 library's (proposed to its owner 2026-10-31; spec language/consteval_vector_of_strings, pending).
 
+*For build.kpp's descriptions, 2026-10-31.* A StringView compares with a literal or another
+StringView at compile time (`memcmp` over chars, and an object compared with a pointer or array
+by its class's operator, not as pointers), and a call, a member function's too, may leave trailing
+parameters to their defaults (spec language/consteval_string_view_and_default_arguments). A
+constant that calls a function without a body says so: "a call to puts, a C function, which has
+no body to run at compile time" (spec language/consteval_reason_names_a_call_it_cannot_run).
+
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`
 optional; signed overflow at compile time is an error, as in C++ (spec

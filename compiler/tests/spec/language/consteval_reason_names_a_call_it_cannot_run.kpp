@@ -1,0 +1,15 @@
+// spec: a condition the interpreter cannot evaluate because it calls a function without a body (a C function: puts) says so, naming the function, rather than "cannot evaluate yet"
+// factorio: build.kpp (thread E): "static assertion whose condition the compiler cannot evaluate yet" for a description that called puts
+// error: consteval_reason_names_a_call_it_cannot_run.kpp:11: error: static assertion whose condition is no constant: a call to puts, a C function, which has no body to run at compile time
+extern "C" int puts(const char* text);
+constexpr int announce(int v)
+{
+  if (v > 0)
+    puts("announced");
+  return v;
+}
+static_assert(announce(1) == 1);
+int main()
+{
+  return 0;
+}

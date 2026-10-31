@@ -7044,12 +7044,14 @@ struct GlobalScope::Impl
         return constCAllocation(name, values, c, depth);
       }
     if (!f->body && c->args.size() == 3 && f->params.size() == 3 && !f->name.empty())
-      if (std::string_view name = symbols.name(f->name.last().symbol); name == "memcpy" || name == "memmove" || name == "memset")
+      if (std::string_view name = symbols.name(f->name.last().symbol); name == "memcpy" || name == "memmove" || name == "memset" || name == "memcmp")
       {
         std::vector<ConstValue> values;
         if (!constArguments(c->args, ctx, depth, values))
           return std::nullopt;
-        return name == "memset" ? constMemset(values[0], values[1], values[2], depth) : constMemcpy(values[0], values[1], values[2], depth);
+        return name == "memset"   ? constMemset(values[0], values[1], values[2], depth)
+             : name == "memcmp"   ? constMemcmp(values[0], values[1], values[2], depth)
+                                  : constMemcpy(values[0], values[1], values[2], depth);
       }
     if (!f->body && c->args.size() == 1 && f->params.size() == 1 && !f->name.empty() && symbols.name(f->name.last().symbol) == "strlen")
     {
@@ -7059,7 +7061,7 @@ struct GlobalScope::Impl
       return text ? constStrlen(*text) : std::nullopt;
     }
     if (FunctionDecl* def = constDefinition(f); !def || def->body->kind != NodeKind::BlockStmt)
-      return std::nullopt;
+      return constNoBody(f);
     std::vector<ConstValue> values;
     std::vector<std::optional<ConstPlace>> places; // what reference parameters refer to
     std::vector<uint8_t> categories;               // how by-value parameters are initialised
@@ -7432,6 +7434,16 @@ struct GlobalScope::Impl
   // The declaration whose body a call of f runs: f, or its definition outside the class
   // (`Rectangle::Rectangle(int x, ...)` after the class: the game's .cpp half); null when none
   // has a body the evaluator sees (a C function, a declaration defined in no Kpp source).
+  // A call the evaluator cannot run, the reason kept (why): the function has no body it sees (a C
+  // function: `printf`, `puts`; one declared and defined nowhere in the program).
+  std::optional<ConstValue> constNoBody(FunctionDecl* f)
+  {
+    if (constWhy().empty() && f && !f->name.empty())
+      constWhy() = "a call to " + std::string(symbols.name(functionSymbol(f->name))) +
+                   ((f->file && f->file->isImported) || (f->flags & DF_ExternC) ? ", a C function, which has no body to run at compile time" : ", whose body the program does not have");
+    return std::nullopt;
+  }
+
   FunctionDecl* constDefinition(FunctionDecl* f)
   {
     if (!f || f->body)
@@ -7595,16 +7607,21 @@ struct GlobalScope::Impl
         return std::nullopt;
       return ConstValue::integer(op == P::AndAnd ? *a && *b : *a || *b, types.boolType());
     }
-    if (l.isAddress() || r.isAddress() || l.isMemberPointer() || r.isMemberPointer())
+    // An object of a class on either side: its operators (`name == "release"` by StringView's).
+    auto classObject = [this](const ConstValue& v) {
+      return v.isObject() && v.type && !v.type->isBraceList() && types.unqualified(types.stripRef(v.type))->kind == TyKind::Class;
+    };
+    bool objects = classObject(l) || classObject(r);
+    if (!objects && (l.isAddress() || r.isAddress() || l.isMemberPointer() || r.isMemberPointer()))
       return constAddressArith(op, l, r, depth);
-    if (l.isPointer() || r.isPointer())
+    if (!objects && (l.isPointer() || r.isPointer()))
       return constPointerArith(op, l, r);
     // `this->items + N`: an array an operator meets is a pointer to its first element.
     auto decayed = [this](const ConstValue& v) -> std::optional<ConstValue> {
       const Ty* t = v.isObject() && v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
       return t && t->kind == TyKind::Array && t->inner ? constPointerTo(v, types.pointer(t->inner)) : std::nullopt;
     };
-    if (op == P::Plus || op == P::Minus || op == P::EqEq || op == P::NotEq)
+    if (!objects && (op == P::Plus || op == P::Minus || op == P::EqEq || op == P::NotEq))
       if (std::optional<ConstValue> a = decayed(l), b = decayed(r); a || b)
         return constPointerArith(op, a ? *a : l, b ? *b : r);
     if (!l.isObject() && !r.isObject())
@@ -9914,6 +9931,43 @@ struct GlobalScope::Impl
         return std::nullopt;
     }
     return to;
+  }
+
+  // `memcmp(a, b, n)` of chars (or other bytes) through any pointer the evaluation holds (a string
+  // literal's, its own arrays', a constant's): the first difference's sign, as unsigned bytes.
+  // Elements of a wider type are compared by no bytes the evaluator has: no constant.
+  std::optional<ConstValue> constMemcmp(const ConstValue& a, const ConstValue& b, const ConstValue& count, int depth)
+  {
+    if (count.kind != ConstValue::Kind::Int || count.i < 0)
+      return std::nullopt;
+    auto pointer = [&](const ConstValue& p) -> std::optional<ConstValue> {
+      if (p.isObject() && p.type && types.unqualified(p.type)->kind == TyKind::Array && types.unqualified(p.type)->inner)
+        return ConstValue::pointer(types.pointer(types.unqualified(p.type)->inner), p.parts, 0); // an array given as it is
+      return p.isPointer() || p.isAddress() ? std::optional<ConstValue>(p) : std::nullopt;
+    };
+    std::optional<ConstValue> pa = pointer(a), pb = pointer(b);
+    if (!pa || !pb)
+      return std::nullopt;
+    for (int64_t i = 0; i < count.i; ++i)
+    {
+      std::optional<ConstValue> x = pa->isAddress() ? constAddressMove(*pa, i, depth) : constPointerArith(P::Plus, *pa, ConstValue::integer(i, types.intType()));
+      std::optional<ConstValue> y = pb->isAddress() ? constAddressMove(*pb, i, depth) : constPointerArith(P::Plus, *pb, ConstValue::integer(i, types.intType()));
+      std::optional<ConstValue> cx = x ? (x->isAddress() ? constReadTarget(*x, depth + 1) : constDeref(*x)) : std::nullopt;
+      std::optional<ConstValue> cy = y ? (y->isAddress() ? constReadTarget(*y, depth + 1) : constDeref(*y)) : std::nullopt;
+      if (!cx || !cy || cx->kind != ConstValue::Kind::Int || cy->kind != ConstValue::Kind::Int)
+        return std::nullopt;
+      std::optional<int64_t> wx = cx->type ? constSizeOf(cx->type, depth) : std::nullopt, wy = cy->type ? constSizeOf(cy->type, depth) : std::nullopt;
+      if (!wx || !wy || *wx != 1 || *wy != 1)
+      {
+        if (constWhy().empty())
+          constWhy() = "a memcmp of elements wider than a byte";
+        return std::nullopt;
+      }
+      int ux = int(uint8_t(cx->i)), uy = int(uint8_t(cy->i));
+      if (ux != uy)
+        return ConstValue::integer(ux < uy ? -1 : 1, types.intType());
+    }
+    return ConstValue::integer(0, types.intType());
   }
 
   // `memset(to, c, n)` of the evaluation's own objects: n bytes of chars, or zero over whole objects
