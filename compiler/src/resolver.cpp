@@ -19969,10 +19969,12 @@ void GlobalScope::finishIndex()
     if (!cls || cls->kind != NodeKind::ClassDecl)
       continue;
     // Constructors, destructors and conversions are no entries of the class's scope: its members.
+    // (Not a read of the member list: the answer is the special members', whose edits a compile
+    // server never builds from the kept program, so a data member's edit cannot change it.)
     const uint32_t special = DF_Constructor | DF_Destructor | DF_Conversion;
     bool declared = false;
     if (f->flags & special)
-      for (Decl* m : membersRead(static_cast<ClassDecl*>(cls)))
+      for (Decl* m : static_cast<ClassDecl*>(cls)->members)
         if (!declared && m->kind == NodeKind::FunctionDecl && m != f && (m->flags & special) == (f->flags & special) &&
             !static_cast<FunctionDecl*>(m)->body)
           declared = (f->flags & DF_Destructor) ||

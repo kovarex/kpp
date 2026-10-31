@@ -25,8 +25,9 @@ int unitHeight() { return 1; }
 struct Plain { int a = 0; };
 
 // A declaration of several declarators (their type's nodes shared): a member added beside it, one
-// like it added and removed.
-struct Route { int start = 1, goal = 2; };
+// like it added and removed. The class has an out-of-line constructor.
+struct Route { Route(); int start = 1, goal = 2; };
+Route::Route() {} // (out of line: the index looks for its declaration among Route's members)
 int routeLength() { Route r; return r.goal - r.start; }
 
 // Two classes with a member of one name: an edit of Gauge's is no change for what reads Meter's
