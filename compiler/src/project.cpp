@@ -2,7 +2,9 @@
 #include "generate.hpp"
 #include "source.hpp"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <thread>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -20,8 +22,15 @@ namespace
   struct Program
   {
     std::string name;
-    std::vector<std::string> roots, excluded, arguments, libraries, cIncludes;
+    std::vector<std::string> roots, excluded, arguments, libraries, cIncludes, links;
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
+  };
+
+  // A C or C++ library of the project (Project.kpp's CLibrary).
+  struct CLibrary
+  {
+    std::string name, language;
+    std::vector<std::string> sources, excluded, includes, defines, prebuilt, resources;
   };
 
   struct Description
@@ -29,6 +38,7 @@ namespace
     std::string configuration;
     bool debugInfo = false;
     std::vector<Program> programs;
+    std::vector<CLibrary> cLibraries;
   };
 
   struct Request
@@ -126,6 +136,7 @@ namespace
   std::vector<Description> parse(const std::string& text)
   {
     std::vector<Description> result;
+    bool inLibrary = false;
     size_t pos = 0;
     while (pos < text.size())
     {
@@ -139,13 +150,26 @@ namespace
       size_t space = line.find(' ');
       std::string key = line.substr(0, space), value = space == std::string::npos ? "" : line.substr(space + 1);
       if (key == "configuration")
-        result.push_back({value});
+        result.push_back({value}), inLibrary = false;
       else if (result.empty())
         continue;
       else if (key == "debug-info")
         result.back().debugInfo = value == "1";
       else if (key == "executable")
-        result.back().programs.push_back({value});
+        result.back().programs.push_back({value}), inLibrary = false;
+      else if (key == "clibrary")
+        result.back().cLibraries.push_back({value}), inLibrary = true;
+      else if (inLibrary)
+      {
+        CLibrary& c = result.back().cLibraries.back();
+        if (key == "source") c.sources.push_back(value);
+        else if (key == "exclude") c.excluded.push_back(value);
+        else if (key == "include") c.includes.push_back(value);
+        else if (key == "define") c.defines.push_back(value);
+        else if (key == "prebuilt") c.prebuilt.push_back(value);
+        else if (key == "resource") c.resources.push_back(value);
+        else if (key == "language") c.language = value;
+      }
       else if (result.back().programs.empty())
         continue;
       else
@@ -161,6 +185,7 @@ namespace
         else if (key == "debug-command") p.debugCommand = value;
         else if (key == "debug-arguments") p.debugArguments = value;
         else if (key == "debug-directory") p.debugDirectory = value;
+        else if (key == "link") p.links.push_back(value);
       }
     }
     return result;
@@ -262,6 +287,191 @@ namespace
   }
 
   // kppc's arguments for one executable of one configuration.
+  const CLibrary* findLibrary(const Description& d, const std::string& name)
+  {
+    for (const CLibrary& c : d.cLibraries)
+      if (c.name == name)
+        return &c;
+    return nullptr;
+  }
+
+  fs::path libraryDirectory(const fs::path& root, const CLibrary& c) { return root / "build" / "clib" / c.name; }
+
+  // What linking a C library takes: its prebuilt .lib files or the one kpp builds, and its .res files.
+  std::vector<fs::path> libraryFiles(const fs::path& root, const CLibrary& c)
+  {
+    std::vector<fs::path> files;
+    for (const std::string& lib : c.prebuilt)
+      files.push_back(rooted(root, lib));
+    if (c.prebuilt.empty() && !c.sources.empty())
+      files.push_back(root / "build" / "clib" / (c.name + ".lib"));
+    for (const std::string& rc : c.resources)
+      files.push_back(libraryDirectory(root, c) / (fs::path(rc).stem().string() + ".res"));
+    return files;
+  }
+
+  fs::file_time_type modified(const fs::path& path)
+  {
+    std::error_code ec;
+    fs::file_time_type t = fs::last_write_time(path, ec);
+    return ec ? fs::file_time_type::max() : t;
+  }
+
+  // Whether object depends only on files older than itself: the source and the headers clang
+  // named in its dependency file (-MD).
+  bool upToDate(const fs::path& object, const fs::path& dependencies)
+  {
+    std::error_code ec;
+    if (!fs::exists(object, ec) || !fs::exists(dependencies, ec))
+      return false;
+    fs::file_time_type built = fs::last_write_time(object, ec);
+    std::string text = readText(dependencies);
+    // A make rule: "target: dep dep \<newline> dep"; a blank inside a path is "\ ".
+    size_t colon = text.find(": ");
+    std::string word;
+    auto check = [&]
+    {
+      bool fresh = word.empty() || modified(word) <= built;
+      word.clear();
+      return fresh;
+    };
+    for (size_t i = colon == std::string::npos ? text.size() : colon + 2; i < text.size(); ++i)
+    {
+      char c = text[i];
+      if (c == '\\' && i + 1 < text.size() && text[i + 1] == ' ')
+        word += ' ', ++i;
+      else if (c == '\\' && i + 1 < text.size() && (text[i + 1] == '\n' || text[i + 1] == '\r'))
+        ;
+      else if (c == ' ' || c == '\n' || c == '\r' || c == '\t')
+      {
+        if (!check())
+          return false;
+      }
+      else
+        word += c;
+    }
+    return check();
+  }
+
+  // Builds a C library from its sources with clang-cl into build\clib\NAME.lib, compiling only the
+  // objects whose source, headers or flags changed, in parallel; and its resources with llvm-rc.
+  // Prebuilt libraries need nothing. Errors are clang's, at their file and line.
+  bool buildLibrary(const fs::path& root, const CLibrary& c)
+  {
+    fs::path tools = fs::path(clangPath()).parent_path();
+    fs::path directory = libraryDirectory(root, c);
+    std::error_code ec;
+    fs::create_directories(directory, ec);
+    if (c.prebuilt.empty() && !c.sources.empty())
+    {
+      std::vector<fs::path> sources;
+      std::vector<fs::path> excluded;
+      for (const std::string& e : c.excluded)
+        excluded.push_back(rooted(root, e));
+      for (const std::string& s : c.sources)
+        for (const fs::path& file : collectFiles(rooted(root, s), {".c", ".cc", ".cpp"}))
+          if (std::find(excluded.begin(), excluded.end(), fs::absolute(file).lexically_normal()) == excluded.end())
+            sources.push_back(fs::absolute(file).lexically_normal());
+      if (sources.empty())
+      {
+        fprintf(stderr, "error: the C library %s has no .c, .cc or .cpp file in its sources\n", c.name.c_str());
+        return false;
+      }
+      // The flags of every object: Factorio's prebuilt libraries' (/O2 /MT, no assertions), the
+      // library's includes and defines; no warnings, since the code is the library's own.
+      std::string flags = "/nologo /c /O2 /MT /DNDEBUG /w";
+      for (const std::string& i : c.includes)
+        flags += " /I" + quoteArg(rooted(root, i).string());
+      for (const std::string& d : c.defines)
+        flags += " /D" + quoteArg(d);
+      std::string cppFlags = " /EHsc /std:" + (c.language.empty() ? std::string("c++17") : c.language);
+      bool flagsChanged = readText(directory / "flags.txt") != flags + cppFlags;
+      std::vector<std::string> commands;
+      std::vector<fs::path> objects, logs;
+      for (size_t n = 0; n < sources.size(); ++n)
+      {
+        const fs::path& source = sources[n];
+        std::string stem = source.lexically_relative(root).string();
+        for (char& ch : stem)
+          if (ch == '\\' || ch == '/' || ch == ':' || ch == '.')
+            ch = '_';
+        fs::path object = directory / (stem + ".obj"), dependencies = directory / (stem + ".d");
+        objects.push_back(object);
+        if (!flagsChanged && upToDate(object, dependencies))
+          continue;
+        bool cpp = source.extension() != ".c";
+        logs.push_back(directory / (stem + ".log"));
+        commands.push_back("\"" + quoteArg((tools / "clang-cl.exe").string()) + " " + flags + (cpp ? cppFlags : "") +
+                           " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
+                           " " + quoteArg(source.string()) + " > " + quoteArg(logs.back().string()) + " 2>&1\"");
+      }
+      fs::path lib = root / "build" / "clib" / (c.name + ".lib");
+      if (!commands.empty() || !fs::exists(lib, ec))
+      {
+        printf("kpp: %s: compiling %zu of %zu C/C++ files\n", c.name.c_str(), commands.size(), sources.size());
+        std::atomic<size_t> next = 0;
+        std::atomic<bool> failed = false;
+        std::vector<std::thread> threads;
+        unsigned count = std::max(1u, std::thread::hardware_concurrency());
+        for (unsigned t = 0; t < count && t < commands.size(); ++t)
+          threads.emplace_back([&]
+          {
+            for (size_t i; (i = next++) < commands.size();)
+              if (system(commands[i].c_str()) != 0)
+                failed = true;
+          });
+        for (std::thread& t : threads)
+          t.join();
+        for (const fs::path& log : logs)
+        {
+          std::string text = readText(log);
+          if (!text.empty())
+            fprintf(stderr, "%s", text.c_str());
+        }
+        if (failed)
+        {
+          fprintf(stderr, "error: the C library %s did not compile (above)\n", c.name.c_str());
+          return false;
+        }
+        FILE* file = _wfopen((directory / "flags.txt").c_str(), L"wb");
+        if (file)
+          fwrite((flags + cppFlags).data(), 1, (flags + cppFlags).size(), file), fclose(file);
+        std::string response;
+        for (const fs::path& object : objects)
+          response += quoteArg(object.string()) + "\n";
+        FILE* rsp = _wfopen((directory / "objects.rsp").c_str(), L"wb");
+        if (rsp)
+          fwrite(response.data(), 1, response.size(), rsp), fclose(rsp);
+        std::string archive = "\"" + quoteArg((tools / "llvm-lib.exe").string()) + " /nologo /out:" + quoteArg(lib.string()) +
+                              " @" + quoteArg((directory / "objects.rsp").string()) + "\"";
+        if (system(archive.c_str()) != 0)
+        {
+          fprintf(stderr, "error: llvm-lib could not archive the C library %s\n", c.name.c_str());
+          return false;
+        }
+      }
+    }
+    for (const std::string& rc : c.resources)
+    {
+      fs::path script = rooted(root, rc), res = directory / (script.stem().string() + ".res");
+      // A resource script names files next to it (icons, a manifest): rebuilt when any is newer.
+      bool fresh = fs::exists(res, ec);
+      for (const fs::directory_entry& entry : fs::directory_iterator(script.parent_path(), ec))
+        if (entry.is_regular_file() && modified(entry.path()) > modified(res))
+          fresh = false;
+      if (fresh)
+        continue;
+      std::string command = "\"cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg((tools / "llvm-rc.exe").string()) +
+                            " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()) + "\"";
+      if (system(command.c_str()) != 0)
+      {
+        fprintf(stderr, "%s: error: llvm-rc could not compile it\n", script.string().c_str());
+        return false;
+      }
+    }
+    return true;
+  }
+
   std::vector<std::string> buildArguments(const fs::path& root, const Description& d, const Program& p, const Request& request)
   {
     std::vector<std::string> args = {compilerPath().string()};
@@ -277,6 +487,10 @@ namespace
       args.push_back("--cinclude"), args.push_back(rooted(root, c).string());
     for (const std::string& l : p.libraries)
       args.push_back("--lib"), args.push_back(l[0] == '-' ? l : rooted(root, l).string());
+    for (const std::string& name : p.links)
+      if (const CLibrary* c = findLibrary(d, name))
+        for (const fs::path& file : libraryFiles(root, *c))
+          args.push_back("--lib"), args.push_back(file.string());
     for (const std::string& e : p.excluded)
       args.push_back("--exclude"), args.push_back(rooted(root, e).string());
     args.insert(args.end(), request.passed.begin(), request.passed.end());
@@ -296,6 +510,17 @@ namespace
     {
       fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
       return 1;
+    }
+    for (const std::string& name : p.links)
+    {
+      const CLibrary* c = findLibrary(d, name);
+      if (!c)
+      {
+        fprintf(stderr, "error: %s links %s, which build.kpp declares no C library of\n", p.name.c_str(), name.c_str());
+        return 1;
+      }
+      if (!buildLibrary(root, *c))
+        return 1;
     }
     auto start = std::chrono::steady_clock::now();
     int code = invoke(buildArguments(root, d, p, request), request.server, compile);

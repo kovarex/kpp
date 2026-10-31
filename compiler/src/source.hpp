@@ -27,3 +27,8 @@ std::string sourceLocation(const std::string& path, size_t line);
 // elsewhere, so it is given its client's path (main makes argv[0] that).
 std::filesystem::path compilerPath();
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
+
+// The clang kppc compiles and links with: KPP_CLANG, else the clang of the newest Visual Studio
+// with its Clang component, any edition (vswhere), else Community 2022's. clang-cl, llvm-lib and
+// llvm-rc are next to it.
+std::string clangPath();

@@ -63,3 +63,27 @@ std::filesystem::path defaultStdlib(const std::filesystem::path& compiler)
     return directory / "stdlib";
   return (directory / ".." / ".." / "stdlib").lexically_normal();
 }
+
+std::string clangPath()
+{
+  if (const char* clangEnv = getenv("KPP_CLANG"))
+    return clangEnv;
+  static const std::string found = []
+  {
+    std::string fallback = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe";
+    FILE* pipe = _popen("\"\"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * "
+                        "-requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath 2>nul\"", "r");
+    if (!pipe)
+      return fallback;
+    char line[1024] = {};
+    bool read = fgets(line, sizeof(line), pipe) != nullptr;
+    _pclose(pipe);
+    std::string installation = read ? line : "";
+    while (!installation.empty() && (installation.back() == '\n' || installation.back() == '\r'))
+      installation.pop_back();
+    std::error_code ec;
+    std::filesystem::path clang = std::filesystem::path(installation) / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "clang.exe";
+    return !installation.empty() && std::filesystem::exists(clang, ec) ? clang.string() : fallback;
+  }();
+  return found;
+}

@@ -33,15 +33,25 @@ try
   New-Item -ItemType Directory -Force 'tests', 'include' | Out-Null
   Set-Content 'src\main.kpp' "int main()`n{`n  println(`"game {}`", answer());`n  return 0;`n}"
   Set-Content 'src\answer.kpp' "int answer() { return GREETING_NUMBER; }"
-  Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests {}`", answer() + 1);`n  return 0;`n}"
-  Set-Content 'include\greeting.h' "#define GREETING_NUMBER 41"
+  Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests {}`", plus_one(answer()));`n  return 0;`n}"
+  Set-Content 'include\greeting.h' "#define GREETING_NUMBER 41`nint plus_one(int value);"
+  # A C library built from its sources: plus.c, and broken.c left out by exclude.
+  New-Item -ItemType Directory -Force 'libs\plus' | Out-Null
+  Set-Content 'libs\plus\plus.c' "#include `"greeting.h`"`nint plus_one(int value) { return value + PLUS; }"
+  Set-Content 'libs\plus\broken.c' "this is no C"
   Set-Content 'build.kpp' @'
 void build(Project& project)
 {
   project.cInclude(project.setting("INCLUDE_ROOT", "missing"), "/include");
+  CLibrary& plus = project.cLibrary("plus");
+  plus.source("libs/plus");
+  plus.exclude("libs/plus/broken.c");
+  plus.include("include");
+  plus.define("PLUS=1");
   project.executable("game", {"src"});
   Executable& tests = project.executable("game-tests", {"src", "tests"});
   tests.exclude("src/main.kpp");
+  tests.link("plus");
 }
 '@
   Set-Content 'src\greeting.kpp' 'extern "C" import "greeting.h";'

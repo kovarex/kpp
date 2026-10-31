@@ -52,10 +52,51 @@ struct Executable
   void library(StringView first) { libraries.add(first); }
   void cInclude(StringView first, StringView second) { cIncludes.add(first, second); }
   void cInclude(StringView first) { cIncludes.add(first); }
+  // A C library of the project (Project::cLibrary) by its name.
+  void link(StringView name) { links.add(name); }
+  // A Windows library by its name (`gdi32`): kppc's --lib -lgdi32.
+  void systemLibrary(StringView name) { libraries.add("-l", name); }
+  Texts links;
+};
+
+// A C or C++ library the executables link (docs/build.md, "C and C++ libraries"): kpp compiles its
+// sources with Visual Studio's clang-cl (/O2 /MT in both configurations, as Factorio's prebuilt
+// libraries are) into build\clib\NAME.lib, or takes prebuilt .lib files as given.
+struct CLibrary
+{
+  StringView name;
+  Texts sources;     // files, or directories: every .c, .cc and .cpp under them
+  Texts excluded;    // files under those directories left out
+  Texts includes;    // its include directories
+  Texts defines;     // NAME or NAME=VALUE
+  Texts prebuilt;    // .lib files used as they are, instead of sources
+  Texts resources;   // .rc files, compiled into .res files the executables link
+  StringView language = ""; // a C++ file's standard: c++17 (the default) or c++20
+
+  void source(StringView first, StringView second) { sources.add(first, second); }
+  void source(StringView first) { sources.add(first); }
+  void exclude(StringView first, StringView second) { excluded.add(first, second); }
+  void exclude(StringView first) { excluded.add(first); }
+  void include(StringView first, StringView second) { includes.add(first, second); }
+  void include(StringView first) { includes.add(first); }
+  void define(StringView definition) { defines.add(definition); }
+  void prebuiltLibrary(StringView first, StringView second) { prebuilt.add(first, second); }
+  void prebuiltLibrary(StringView first) { prebuilt.add(first); }
+  void resource(StringView first, StringView second) { resources.add(first, second); }
+  void resource(StringView first) { resources.add(first); }
 };
 
 struct Project
 {
+  CLibrary cLibraries[24];
+  int cLibraryCount = 0;
+  CLibrary& cLibrary(StringView name)
+  {
+    CLibrary& c = cLibraries[cLibraryCount++];
+    c.name = name;
+    return c;
+  }
+
   Configuration configuration = Configuration::debug;
   bool debugInfo = true; // line tables and a PDB; kppDescribe sets it to configuration == debug first
   // For every executable, before its own.
@@ -139,6 +180,21 @@ void kppPrint(const Project& project)
     kppPrintText("debug-command", e.debugCommand);
     kppPrintText("debug-arguments", e.debugArguments);
     kppPrintText("debug-directory", e.debugDirectory);
+    kppPrintTexts("link", e.links);
+    printf("end\n");
+  }
+  for (int i = 0; i < project.cLibraryCount; ++i)
+  {
+    const CLibrary& c = project.cLibraries[i];
+    printf("clibrary %.*s\n", int(c.name.size()), c.name.data());
+    kppPrintTexts("source", c.sources);
+    kppPrintTexts("exclude", c.excluded);
+    kppPrintTexts("include", c.includes);
+    kppPrintTexts("define", c.defines);
+    kppPrintTexts("prebuilt", c.prebuilt);
+    kppPrintTexts("resource", c.resources);
+    if (c.language.size() != 0)
+      printf("language %.*s\n", int(c.language.size()), c.language.data());
     printf("end\n");
   }
 }
