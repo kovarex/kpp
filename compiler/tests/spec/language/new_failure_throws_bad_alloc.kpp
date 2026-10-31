@@ -1,0 +1,33 @@
+// spec: new throws BadAlloc when the memory cannot be had, as C++'s new throws std::bad_alloc: when malloc fails (new returns no null pointer and constructs nothing), and for new T[n] whose n * sizeof(T) does not fit in a size_t (never a wrapped, smaller block)
+// factorio: every new and new[] of the converted game and of the library's UniqueArray; found with the containers' size limits (library/size_limits_vector)
+// pending: new returns null when malloc fails, and new int[2^62 + 1] allocates the 4 bytes its wrapped size asks for (B)
+struct Page
+{
+  char bytes[4096];
+  Page() { println("constructed"); }
+};
+
+int main(int argc, char** argv)
+{
+  int count = 2147483647 - argc + 1; // 8 TB of pages: no malloc gives them
+  try
+  {
+    Page* pages = new Page[count];
+    println("allocated {}", pages != nullptr);
+  }
+  catch (const BadAlloc& e)
+  {
+    println("pages: {}", e.what());
+  }
+  long long wrapping = 0x4000000000000000LL + argc; // 2^62 + 1 ints: 4 * that wraps to 4 bytes
+  try
+  {
+    int* ints = new int[wrapping];
+    println("allocated {}", ints != nullptr);
+  }
+  catch (const BadAlloc& e)
+  {
+    println("ints: {}", e.what());
+  }
+  return 0;
+}
