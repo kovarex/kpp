@@ -1,0 +1,44 @@
+// spec: a destructor that throws leaves the objects built before its object to be destroyed, and nothing after it twice: the locals of the scope, a class's members and bases, a temporary, `delete`, a destructor whose own body throws (its members are destroyed), a loop's iteration, and a handler's local (the exception leaves the handler to the try around it) ([except.ctor]/2, [class.dtor]/13); clang 19 prints the same
+// factorio: the eleven `noexcept(false)` destructors (ChartedChunksEventHelper, RollingStock::CarriageGuard, ForceManager, MapSerialiser, ...); a throw from one during another exception's unwinding ends the program (std::terminate), as in C++
+struct Noisy
+{
+  int id;
+  Noisy(int i) : id(i) {}
+  ~Noisy() { println("~Noisy {}", id); }
+};
+struct Thrower
+{
+  int code;
+  Thrower(int c) : code(c) {}
+  ~Thrower() noexcept(false) { if (code) throw code; }
+};
+struct Holder
+{
+  Noisy first{1};
+  Thrower t{7};
+  Noisy last{2};
+};
+struct Derived : Noisy
+{
+  Thrower t{8};
+  Derived() : Noisy(3) {}
+};
+struct BodyThrows
+{
+  Noisy member{4};
+  ~BodyThrows() noexcept(false) { throw 9; }
+};
+int make(const Thrower& t) { return t.code; }
+int main()
+{
+  try { Noisy a{10}; Thrower t{5}; Noisy b{11}; } catch (int v) { println("caught {}", v); }
+  try { Holder h; } catch (int v) { println("caught {}", v); }
+  try { Derived d; } catch (int v) { println("caught {}", v); }
+  try { int x = make(Thrower(6)); println("x {}", x); } catch (int v) { println("caught {}", v); }
+  try { Thrower* p = new Thrower(12); delete p; } catch (int v) { println("caught {}", v); }
+  try { BodyThrows b; } catch (int v) { println("caught {}", v); }
+  try { for (int i = 0; i < 2; ++i) { Thrower t{i}; Noisy n{20 + i}; } } catch (int v) { println("caught {}", v); }
+  try { try { throw 1; } catch (int v) { println("inner {}", v); Thrower t{13}; } } catch (int v) { println("outer {}", v); }
+  println("end");
+  return 0;
+}

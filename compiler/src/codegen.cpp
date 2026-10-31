@@ -2276,6 +2276,19 @@ namespace
       {
         if (!needsDestruction(t->inner, at))
           return;
+        if (destructionMayThrow(t->inner, at))
+        {
+          // (an element's destructor that throws leaves the elements before it to be destroyed)
+          pushScope();
+          for (uint32_t i = 0; i < t->count; ++i)
+          {
+            std::string e = newTemp();
+            fn += "  " + e + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(i) + "\n";
+            scopes.back().push_back({e, t->inner});
+          }
+          popScope();
+          return;
+        }
         for (uint32_t i = t->count; i-- > 0;)
         {
           std::string e = newTemp();
@@ -2288,6 +2301,15 @@ namespace
       {
         std::vector<std::pair<uint32_t, const Ty*>> fields = closureValueFields(t, at);
         std::string structName = closureFor(t, at).structName;
+        if (destructionMayThrow(t, at))
+        {
+          pushScope();
+          for (size_t i = 0; i < fields.size(); ++i)
+            if (needsDestruction(fields[i].second, at))
+              scopes.back().push_back({gep(structName, addr, fields[i].first), fields[i].second});
+          popScope();
+          return;
+        }
         for (size_t i = fields.size(); i-- > 0;)
           if (needsDestruction(fields[i].second, at))
             destroy(gep(structName, addr, fields[i].first), fields[i].second, at);
@@ -2302,7 +2324,7 @@ namespace
         if (int slot = slotKeyed(structFor(t, at), "~"); slot >= 0)
         {
           std::string fp = loadSlot(addr, slot);
-          emitCall("", "void " + fp + "(ptr " + addr + ")", false);
+          callDestructor(fp, addr, destructionMayThrow(t, at));
           return;
         }
       }
@@ -2317,7 +2339,7 @@ namespace
       if (FunctionDecl* dtor = findDestructor(c))
       {
         TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
-        emitCall("", "void " + useFunction(dtor, args, canonicalClass(t, at)) + "(ptr " + addr + ")", false);
+        callDestructor(useFunction(dtor, args, canonicalClass(t, at)), addr, destructionMayThrow(t, at));
         return;
       }
       // A class whose destruction spells out more than a few calls is destroyed through its
@@ -2327,10 +2349,83 @@ namespace
       // of IR, 70% of the game's largest module). The helper's own body spells them out.
       if (t != destructorHelperFor && destructionCalls(t, at) > 8)
       {
-        emitCall("", "void " + destructorThunk(t, at) + "(ptr " + addr + ")", false);
+        callDestructor(destructorThunk(t, at), addr, destructionMayThrow(t, at));
         return;
       }
       destroyMembers(addr, t, at);
+    }
+
+    // Whether destroying an object of type t may throw: its destructor is declared `noexcept(false)`
+    // (or noexcept with a condition that is false), or has no specifier and a member's or base's
+    // destruction may throw (C++ [except.spec]/8: such a destructor is noexcept unless one of
+    // theirs is potentially-throwing). The game has eleven that throw by design (ChartedChunksEventHelper,
+    // RollingStock::CarriageGuard, ForceManager, MapSerialiser, ...); every other destructor call
+    // stays a plain call.
+    std::unordered_map<const Ty*, bool> throwingDestructionCache;
+    bool destructionMayThrow(const Ty* t, Node* at, int depth = 0)
+    {
+      t = types.stripRef(t);
+      if (t->kind == TyKind::Array)
+        return destructionMayThrow(t->inner, at, depth + 1);
+      if (depth > 16 || !(isClass(t) || isLambda(t)) || !needsDestruction(t, at))
+        return false;
+      if (auto it = throwingDestructionCache.find(t); it != throwingDestructionCache.end())
+        return it->second;
+      bool result = false;
+      if (isLambda(t))
+      {
+        for (const auto& [index, ft] : closureValueFields(t, at))
+          result = result || destructionMayThrow(ft, at, depth + 1);
+      }
+      else
+      {
+        noteLayout(t);
+        ClassDecl* c = classDef(t->decl, at);
+        FunctionDecl* dtor = c->isTypedUnion ? nullptr : findDestructor(c);
+        if (dtor && (dtor->flags & DF_Noexcept))
+          result = !global.isNoexcept(dtor, global.classArgsOf(canonicalClass(t, at)));
+        else if (c->isTypedUnion)
+        {
+          for (size_t i = 0; i < c->alternatives.size() && !result; ++i)
+            result = destructionMayThrow(alternativeType(c, t, i, at), at, depth + 1);
+        }
+        else
+          for (const Ty* ft : std::vector<const Ty*>(structFor(t, at).fieldTypes))
+            result = result || (!ft->isReference() && destructionMayThrow(ft, at, depth + 1));
+      }
+      throwingDestructionCache.emplace(t, result);
+      return result;
+    }
+
+    // A destructor's call (dtor: the function, object: its address). One that may throw is invoked:
+    // its exception unwinds through what was built before the object (the caller keeps that out of
+    // the lists: popScope). While an exception is already unwinding (in a cleanup pad) its exception
+    // ends the program, C++'s std::terminate ([except.terminate]): the call goes through
+    // @kpp_destroy_unwinding, which invokes it with abort as the unwind (a cleanup funclet of SEH's
+    // personality can hold no invoke itself).
+    void callDestructor(const std::string& dtor, const std::string& object, bool mayThrow)
+    {
+      if (!mayThrow || funcletOverride.empty())
+      {
+        emitCall("", "void " + dtor + "(ptr " + object + ")", mayThrow);
+        return;
+      }
+      markEH();
+      if (declaredNames.claim("@abort"))
+        decls += "declare void @abort()\n";
+      {
+        auto lock = sharedLock();
+        if (!emittedShared["@kpp_destroy_unwinding"])
+        {
+          emittedShared["@kpp_destroy_unwinding"] = true;
+          shared += sharedComdat("@kpp_destroy_unwinding") +
+                    "define linkonce_odr void @kpp_destroy_unwinding(ptr %dtor, ptr %object) comdat personality ptr @__C_specific_handler {\nentry:\n"
+                    "  invoke void %dtor(ptr %object) to label %done unwind label %terminate\n"
+                    "done:\n  call void asm sideeffect \"nop\", \"\"()\n  ret void\n"
+                    "terminate:\n  %pad = cleanuppad within none []\n  call void @abort() [ \"funclet\"(token %pad) ]\n  unreachable\n}\n";
+        }
+      }
+      fn += "  call void @kpp_destroy_unwinding(ptr " + dtor + ", ptr " + object + ")" + bundle() + "\n";
     }
 
     // How many calls destroying an object of class type t spells out inline (destroy without a
@@ -2379,6 +2474,20 @@ namespace
       std::vector<const Ty*> fieldTypes = info.fieldTypes;
       std::unordered_map<Decl*, uint32_t> fieldIndex = info.fieldIndex;
       std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
+      if (std::any_of(fieldTypes.begin(), fieldTypes.end(), [&](const Ty* ft) { return !ft->isReference() && destructionMayThrow(ft, at); }))
+      {
+        // A member's or base's destructor may throw: they are a scope of their own, built in order
+        // (bases, then members), so that one throwing leaves those built before it to be destroyed.
+        pushScope();
+        for (auto& [base, index] : bases)
+          if (needsDestruction(fieldTypes[index], at))
+            scopes.back().push_back({gep(name, addr, index), fieldTypes[index]});
+        for (Decl* d : fieldDecls)
+          if (const Ty* ft = fieldTypes[fieldIndex[d]]; !ft->isReference() && needsDestruction(ft, at))
+            scopes.back().push_back({gep(name, addr, fieldIndex[d]), ft});
+        popScope();
+        return;
+      }
       for (size_t i = fieldDecls.size(); i-- > 0;)
       {
         const Ty* ft = fieldTypes[fieldIndex[fieldDecls[i]]];
@@ -8669,6 +8778,7 @@ namespace
       sizeCache.clear();
       destructionCache.clear();
       destructionCallCounts.clear();
+      throwingDestructionCache.clear();
       bitwiseRelocation.clear();
       bitwiseAssignment.clear();
       bitfieldCache.clear();
@@ -14954,10 +15064,16 @@ namespace
 
     // --- statements and scopes ---
 
+    // (Each object leaves the list as it is destroyed: a destructor that throws unwinds through the
+    // objects built before it alone.)
     void destroyTemps()
     {
       for (size_t i = statementTemps.size(); i-- > 0;)
-        destroyOnExit(statementTemps[i]);
+      {
+        Object o = statementTemps[i];
+        statementTemps.resize(i);
+        destroyOnExit(o);
+      }
       statementTemps.clear();
     }
 
@@ -14966,7 +15082,11 @@ namespace
     void destroyTempsFrom(size_t mark)
     {
       for (size_t i = statementTemps.size(); i-- > mark;)
-        destroyOnExit(statementTemps[i]);
+      {
+        Object o = statementTemps[i];
+        statementTemps.resize(i);
+        destroyOnExit(o);
+      }
       statementTemps.resize(mark);
     }
 
@@ -15012,19 +15132,30 @@ namespace
     {
       if (!blockTerminated)
         for (size_t i = scopes.back().size(); i-- > 0;)
-          destroyOnExit(scopes.back()[i]);
+        {
+          Object o = scopes.back()[i];
+          scopes.back().resize(i); // (destroyed: a destructor that throws unwinds through those before it)
+          destroyOnExit(o);
+        }
       scopes.pop_back();
     }
 
     // Destroys the objects of the innermost scopes down to (not including) depth.
     void unwindTo(size_t depth) { unwindRange(depth, scopes.size()); }
 
-    // Destroys the objects of scopes [low, high), innermost first; the scopes stay open.
+    // Destroys the objects of scopes [low, high), innermost first; the scopes stay open (each object
+    // leaves them while it is destroyed, and they are as they were after).
     void unwindRange(size_t low, size_t high)
     {
+      std::vector<std::vector<Object>> open(scopes.begin() + low, scopes.begin() + high);
       for (size_t s = high; s-- > low;)
         for (size_t i = scopes[s].size(); i-- > 0;)
-          destroyOnExit(scopes[s][i]);
+        {
+          Object o = scopes[s][i];
+          scopes[s].resize(i);
+          destroyOnExit(o);
+        }
+      std::move(open.begin(), open.end(), scopes.begin() + low);
     }
 
     // Destroys the scopes above depth for a `return`, `break` or `continue`, leaving the catch
@@ -15249,7 +15380,8 @@ namespace
       {
         destroy("%o", t, at);
         fn += "  ret void\n";
-        shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %o) comdat {\nentry:\n" + allocas + fn + "}\n";
+        shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %o) comdat " + (usesEH ? "personality ptr @__C_specific_handler " : "") +
+                  "{\nentry:\n" + allocas + fn + ehBlocks + "}\n";
       }
       catch (Unsupported&)
       {
@@ -17363,6 +17495,28 @@ namespace
         if (destructor)
         {
           storeVptrs(thisPointer(f), structFor(currentClassTy, f)); // virtual calls while it is destroyed reach this class's functions, as in C++
+          // A destructor that may throw: its members and bases are destroyed when its body throws, too.
+          if (destructionMayThrow(currentClassTy, f))
+          {
+            StructInfo& info = structFor(currentClassTy, f);
+            std::string structName = info.name, self = thisPointer(f);
+            std::vector<std::pair<Decl*, uint32_t>> bases = info.bases;
+            std::vector<Decl*> fieldDecls = info.fieldDecls;
+            std::vector<const Ty*> fieldTypes = info.fieldTypes;
+            std::unordered_map<Decl*, uint32_t> fieldIndex = info.fieldIndex;
+            auto member = [&](uint32_t index)
+            {
+              Object o{gep(structName, self, index), fieldTypes[index]};
+              o.unwindOnly = true;
+              scopes.back().push_back(o);
+            };
+            for (auto& [base, index] : bases)
+              if (needsDestruction(fieldTypes[index], f))
+                member(index);
+            for (Decl* d : fieldDecls)
+              if (!fieldTypes[fieldIndex[d]]->isReference() && needsDestruction(fieldTypes[fieldIndex[d]], f))
+                member(fieldIndex[d]);
+          }
           // The members and bases are destroyed after the body however it ends: falling off its end
           // or at a `return` (CargoBayResizeHelper's `if (!this->surface) return;` left its targeter
           // member in the hub's list, and destroying the hub faulted).
