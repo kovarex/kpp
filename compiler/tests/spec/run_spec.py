@@ -37,8 +37,9 @@ COMPILER = os.path.dirname(os.path.dirname(HERE))
 ROOT = os.path.dirname(COMPILER)
 KPPC = os.path.join(COMPILER, "build", "kppc.exe")
 # The game's SDL3 headers, for the interop snippets that import them (skipped when the Factorio
-# checkout is not on this machine; the snippet then shows as failing to find the header).
-SDL_INCLUDE = r"C:\Factorio\libraries\SDL3\include"
+# checkout is not on this machine; the snippet then shows as failing to find the header). CI sets
+# KPP_SDL_INCLUDE to upstream SDL 3.4.18's include directory (.github/workflows/ci.yml).
+SDL_INCLUDE = os.environ.get("KPP_SDL_INCLUDE", r"C:\Factorio\libraries\SDL3\include")
 EXTRA = ["--cinclude", SDL_INCLUDE] if os.path.isdir(SDL_INCLUDE) else []
 # Headers written for the interop snippets themselves (C constructs the system headers lack).
 EXTRA += ["--cinclude", os.path.join(HERE, "interop")]

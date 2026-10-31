@@ -482,6 +482,53 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   seen a manual run succeed. The repository is private, so its runs use the account's Actions minutes (Windows
   minutes count double) and its releases are visible only to its collaborators.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner. It
+starts by hand (Actions > ci > Run workflow) until kovarex picks a trigger from the costs below.
+- **What it runs:**
+  - it builds kppc with `compiler\build.cmd`;
+  - then `compiler\tests\run_tests.cmd`;
+  - then `compiler\tests\spec.cmd --no-doc` three times: debug, `--release` and `--debug-info`.
+- **What it leaves out:** `programs\factorio\convert.cmd` and everything else of the game. They need
+  C:\Factorio, private source that is not on the runner; factorio-in-kpp's own CI is the game's check.
+- **SDL3 headers:** the two interop snippets that import SDL3/SDL.h get upstream SDL 3.4.18's headers
+  through `KPP_SDL_INCLUDE` (run_spec.py). That is the game's release; the game's copy adds only
+  `SDL_GetDisplayInternalDriverData`.
+- **Clang for the snippets' C sources:** clang comes from vswhere through `KPP_CLANG`, because the
+  runner's Visual Studio is Enterprise.
+- **The "latest" prerelease:** a green run on master packages kpp with
+  `tools/release/package.ps1 -Version 0.1.0-ci.<run>` (semver, which vsce requires), including the package's own smoke test. It
+  replaces the prerelease `latest` with that zip, which is what factorio-in-kpp's CI downloads.
+  Numbered releases stay with release.yml.
+- **Caches:** only kppc's import cache (%TEMP%\kpp-imports), whose entries check every header's size
+  and time. The CMake build directory is not cached: checkout gives every source a new time, so
+  Ninja would rebuild it all anyway, and a clean build takes about a minute.
+- **Concurrency:** one run per branch. On master, a newer commit waits for the running one, and
+  only the newest waiting run is kept; on a pull request, a new push cancels the old run.
+
+Cost, estimated before any runner run. These are measured on PC-PRACOVNA pinned to 2 logical CPUs
+(`start /affinity 3`), a stand-in for the 2-vCPU Windows runner a private repository gets, and on
+the full machine:
+
+| Step | 2 CPUs | 32 CPUs |
+|---|---|---|
+| clean kppc build | 68 s | |
+| run_tests.cmd | 208 s | 252 s |
+| spec.cmd (debug, `--jobs 2`) | 1,168 s | 269 s |
+| spec.cmd --release | | 275 s |
+| spec.cmd --debug-info | | 263 s |
+
+A run with all three spec configurations is about 64 minutes on that stand-in, and likely more on
+the runner's slower cores. Windows minutes bill at twice the rate on a private repository, so one
+run is about 130 to 250 billed minutes. With commits every few minutes, the master queue would run
+back to back, about 22 runs a day, which far exceeds an included monthly quota (3,000 minutes on
+Pro) within a day. The options:
+- debug spec only on each master push (about 25 to 45 runner minutes);
+- the three configurations nightly;
+- a larger runner (billed per minute, outside the included minutes).
+The numbers get replaced by a real runner's once a manual run has been timed.
+
 ## Questions for kovarex
 
 Answered 2026-10-31: the build description is `build.kpp` in Kpp, with `src/` and `libraries/`

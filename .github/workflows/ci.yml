@@ -1,0 +1,96 @@
+# kpp's tests on a Windows runner (docs/build.md, "Continuous integration"): kppc built by
+# compiler\build.cmd, then compiler\tests\run_tests.cmd and compiler\tests\spec.cmd in the debug,
+# --release and --debug-info configurations. programs\factorio\convert.cmd is left out: it needs
+# C:\Factorio, private game source that is not on the runner (factorio-in-kpp's own CI covers the game).
+# A green run on master publishes the package as the rolling prerelease "latest", which
+# factorio-in-kpp's CI downloads; release.yml stays for numbered releases.
+name: ci
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One run per branch at a time. On master a newer commit's run waits for the running one (GitHub keeps
+# only the newest waiting), so "latest" keeps moving even with a commit every few minutes; on a pull
+# request a new push cancels the old run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
+      # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h.
+      KPP_SDL_INCLUDE: ${{ github.workspace }}\..\sdl\SDL3-3.4.18\include
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SDL3 headers
+        shell: pwsh
+        run: |
+          $dir = "${{ github.workspace }}\..\sdl"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Invoke-WebRequest https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip -OutFile "$dir\sdl.zip"
+          Expand-Archive "$dir\sdl.zip" $dir
+          if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) { throw "no SDL3\SDL.h in $env:KPP_SDL_INCLUDE" }
+
+      - name: Clang for the snippets' C sources
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+          "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      # kppc's cache of preprocessed C imports (%TEMP%\kpp-imports): each entry is checked against the
+      # size and time of every header it read, so a stale one is never used.
+      - name: Import cache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Temp\kpp-imports
+          key: kpp-imports-${{ github.run_id }}
+          restore-keys: kpp-imports-
+
+      - name: Build kppc
+        shell: cmd
+        run: compiler\build.cmd
+
+      # run_tests' LSP smoke test and the VS Code extension the package builds (tools/vscode: npm ci, vsce).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: run_tests
+        shell: cmd
+        run: compiler\tests\run_tests.cmd
+
+      - name: spec
+        shell: cmd
+        run: compiler\tests\spec.cmd --no-doc
+
+      - name: spec --release
+        shell: cmd
+        run: compiler\tests\spec.cmd --no-doc --release
+
+      - name: spec --debug-info
+        shell: cmd
+        run: compiler\tests\spec.cmd --no-doc --debug-info
+
+      - name: Package
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        shell: pwsh
+        run: tools\release\package.ps1 -Version "0.1.0-ci.${{ github.run_number }}" -Commit "${{ github.sha }}"
+
+      # The rolling prerelease "latest": deleted and made again at this commit, with the zip only.
+      - name: Publish latest
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes 2>$null
+          gh release create latest "build\release\kpp-0.1.0-ci.${{ github.run_number }}.zip" --prerelease --target "${{ github.sha }}" --title "Kpp latest (0.1.0-ci.${{ github.run_number }})" --notes "Built by ci run ${{ github.run_number }} from ${{ github.sha }}, every test green. Unzip anywhere; needs Visual Studio 2022 with C++ Clang Compiler for Windows."
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
