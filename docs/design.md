@@ -1573,13 +1573,34 @@ machine: 2.3 s median (1.5-2.8 s); in the same rounds, warm after an edit 0.91 s
 warm unchanged 0.87 s (0.31-1.36 s). The load decides more than the build does; a cold run builds
 the standard library's modules once.
 
-## Targets: FreeBSD and Linux x86-64 (proposed 2026-10-31, thread B; Q1 to Q4 are kovarex's)
+## Targets and hosts (decided 2026-10-31; the design proposed by thread B, Q1 to Q6 kovarex's)
 
-**Goal.** kpp.net runs on NearlyFreeSpeech.NET, which is FreeBSD, and its website and library
-registry are written in Kpp. So kppc must build programs for FreeBSD x86-64, then Linux x86-64.
-Windows stays the default target, with its output unchanged: the game, the tests, and the IR byte
-for byte unless a difference is shown to be a fix. Only x86-64 is in scope. kppc itself keeps
-running on Windows and cross-compiles. A kppc that runs on FreeBSD comes later (below).
+**Decision (kovarex, 2026-10-31):** "kpp will have to work obviously in all reasonable platforms, so
+windows/mac/linux is minimum." kpp.net, the website and library registry written in Kpp, is hosted
+on NearlyFreeSpeech.NET, which runs FreeBSD. That decision has two axes:
+
+- **Targets:** what kppc emits and links for. The minimum is Windows x64 (the default), Linux x86-64
+  and arm64, macOS arm64 (Apple Silicon) and x86-64, and FreeBSD x86-64 for kpp.net.
+- **Hosts:** where kppc itself (C++20) builds and runs. That is Windows, Linux and macOS.
+
+On both axes Windows stays the default, with its output unchanged: the game, the tests, and the IR
+byte for byte unless a difference is shown to be a fix.
+
+**Order (proposed):**
+1. Linux x86-64: the most tooling, CI runners, and the closest to FreeBSD. It is also testable on
+   this machine (WSL).
+2. FreeBSD x86-64.
+3. macOS arm64, with Linux arm64 alongside: one AArch64 lowering serves both.
+4. macOS x86-64.
+
+| Target | Triple | Object, linker | C calling convention | Exceptions | Tested on |
+|---|---|---|---|---|---|
+| Windows x64 (default) | `x86_64-pc-windows-msvc` | COFF, lld-link | MS x64 | SEH (today's) | this machine, CI |
+| Linux x86-64 | `x86_64-unknown-linux-gnu` | ELF, ld.lld | SysV AMD64 | Itanium tables, Kpp's personality | WSL here, CI ubuntu |
+| FreeBSD x86-64 | `x86_64-unknown-freebsd14` | ELF, ld.lld | SysV AMD64 | the same | NFS, or a FreeBSD VM (Q3) |
+| Linux arm64 | `aarch64-unknown-linux-gnu` | ELF, ld.lld | AAPCS64 | the same | CI ubuntu arm64, qemu-user in WSL |
+| macOS arm64 | `arm64-apple-macosx11.0.0` | Mach-O, ld64 (or ld64.lld) | Apple's AAPCS64 | the same, compact unwind | CI macOS arm64 (Q5) |
+| macOS x86-64 | `x86_64-apple-macosx10.15.0` | Mach-O, ld64 | SysV AMD64 | the same | CI macOS x86-64 (Q5) |
 
 ### What exists (surveyed 2026-10-31 on a52cb2a8)
 
@@ -1587,13 +1608,14 @@ running on Windows and cross-compiles. A kppc that runs on FreeBSD comes later (
   (`x86_64-pc-windows-msvc`, `e-m:w-...`). A hello world's IR with only those two strings changed
   to `x86_64-unknown-linux-gnu` and `e-m:e-...` compiles with VS's clang 19, links with gcc and
   prints its line under WSL (Ubuntu, glibc 2.39).
-- **What is Windows-only in codegen:**
+- **What is Windows-only in the emitted code:**
   - exceptions: SEH funclets, `__C_specific_handler`, `RaiseException`, a filter function per
-    `try` (the EH part of codegen.cpp);
+    `try`;
   - the runtime's stderr through `__acrt_iob_func` (8 places);
   - one `dllimport`;
   - the CodeView module flag;
   - the `wmain` entry;
+  - COMDATs on every shared definition (`$x = comdat any`), which ELF has and Mach-O does not;
   - the link line: lld-link's `/OPT`, `/ENTRY`, `/INCLUDE`, `legacy_stdio_definitions` and the
     Windows libraries (main.cpp `linkFlags`).
 - **The front end fixes Windows' C types:** `long` is 32 bits and `wchar_t` 16
@@ -1609,65 +1631,80 @@ running on Windows and cross-compiles. A kppc that runs on FreeBSD comes later (
   class through a hidden slot, extern "C" functions included. For C functions that is MS x64's
   rule only above 8 bytes, where MS x64 passes 1, 2, 4 and 8-byte structs in a register. That gap
   exists on Windows today.
-- **The toolchain on this machine:** VS's clang 19.1.5 ships `ld.lld`, so it can compile and link
-  ELF given a sysroot. WSL2 runs Ubuntu with glibc 2.39, gcc and clang: Linux binaries can be run
-  and tested here.
+- **kppc as a host program** uses Win32 in its sources (lines matching Win32 APIs):
+  - server.cpp 49: named pipes and processes;
+  - codegen.cpp 22: threads with 1 GB stacks, an SEH guard against stack overflow,
+    `TerminateProcess`;
+  - lsp.cpp 16, convert.cpp 14, run.cpp 13, project.cpp 11, resolver.cpp 6, parser.cpp 5, main.cpp
+    4 and source.cpp 4. source.cpp finds clang through vswhere.
+
+  CMakeLists.txt has MSVC flags and `/STACK`. The test entry points are `run_tests.cmd` and
+  `spec.cmd`; the other tests are PowerShell scripts and the spec runner is Python.
+- **The toolchain on this machine:** VS's clang 19.1.5 ships `ld.lld` and `ld64.lld`. WSL2 runs
+  Ubuntu with glibc 2.39, gcc and clang: Linux binaries can be run and tested here.
 
 ### 1. The target model
 
-- **`--target <triple>`** with short names: `windows` = `x86_64-pc-windows-msvc` (the default),
-  `freebsd` = `x86_64-unknown-freebsd14` (its version is NFS's, Q4), `linux` =
-  `x86_64-unknown-linux-gnu`. The driver keeps one Target record:
+- **`--target <name or triple>`** with the short names `windows`, `linux`, `linux-arm64`,
+  `freebsd`, `macos` (arm64), `macos-x64`. The default is the host's own platform, which is
+  `windows` on Windows. The driver keeps one Target record:
   - triple and data layout;
-  - the C type sizes;
+  - the object format;
+  - the C type sizes and plain `char`'s signedness;
   - the C calling convention and the exception model;
   - the debug-info format;
-  - the linker and its flags, and the sysroot;
+  - the linker and its flags, and the sysroot or SDK;
   - the standard library's platform directories.
 
   The target is part of the compile server's key, the C import cache's key and the object hashes.
-- **In build.kpp:** `project.target = "freebsd";`, or `exe.target` for one executable, and on the
-  command line `kpp --target freebsd`. The program sees it as `config::os` (an enum: `windows`,
-  `freebsd`, `linux`) and `config::posix`, the same way `config::debug` crosses over (section 12).
+- **In build.kpp:** `project.target = "linux";`, or `exe.target` for one executable, and on the
+  command line `kpp --target linux`. The program sees it as `config::os` (`windows`, `linux`,
+  `freebsd`, `macos`), `config::arch` (`x86_64`, `arm64`) and `config::posix`, the same way
+  `config::debug` crosses over (section 12).
 - **What differs, and what this proposes:**
 
-| | Windows (today) | FreeBSD, Linux | Proposal |
+| | Windows (today) | ELF, Mach-O, AArch64 | Proposal |
 |---|---|---|---|
-| Calls between Kpp functions | Kpp's convention: a class through a pointer to a copy, the result slot after `this` | the same | Unchanged on every target. Scalars get the platform's convention from LLVM's `ccc` and the triple, with no codegen change. |
-| `extern "C"` calls with a struct by value | the pointer to a copy (wrong at 8 bytes or less) | SysV: classified into INTEGER/SSE registers up to 16 bytes, larger on the stack (`byval`); results likewise or `sret` | A C ABI lowering per target in codegen, for calls to C and for Kpp functions C calls back (callbacks). It fixes Windows' small-struct gap too. Specs for each size class on both targets. |
-| Varargs | LLVM lowers the calls; `va_list` is `char*` | `va_list` is `__va_list_tag[1]`, 24 bytes | Calls are unchanged. `va_list` comes from the target's headers through the C import. Kpp defines no C variadic functions. |
+| Calls between Kpp functions | Kpp's convention: a class through a pointer to a copy, the result slot after `this` | the same | Unchanged everywhere. Scalars get the platform's convention from LLVM's `ccc` and the triple, with no codegen change. A class result keeps its slot after `this`. On AArch64, LLVM's `sret` attribute puts the slot in x8 for C functions only. |
+| `extern "C"` calls with a struct by value | the pointer to a copy (wrong at 8 bytes or less) | SysV: classified into INTEGER/SSE registers up to 16 bytes, larger on the stack (`byval`). AAPCS64: up to 16 bytes in x0-x7, a homogeneous float aggregate of up to 4 members in v0-v3, larger through a pointer to a copy, a result in memory through x8. | A C ABI lowering per target in codegen (MS x64, SysV, AAPCS64), for calls to C and for Kpp functions C calls back. It fixes Windows' small-struct gap too. Specs for each size class on every target. |
+| Varargs | LLVM lowers the calls; `va_list` is `char*` | SysV: `__va_list_tag[1]`. Linux AArch64: a 32-byte struct. Apple arm64: every variadic argument on the stack, `va_list` is `char*`. | LLVM lowers the calls for each triple. `va_list` comes from the target's headers through the C import. Kpp defines no C variadic functions. |
 | `long` | 32 bits | 64 bits in C (LP64) | Q1 below. |
-| `wchar_t` | 16 bits, UTF-16 | 32 bits, UTF-32 | Q2 below. |
-| `long double` | = double | x87 80-bit in C | Kpp's stays double. An imported C function that takes or returns `long double` is an error until something needs one. |
-| Bit fields | MSVC's rules | SysV's (a unit straddles less, and types of different sizes may share one) | The target's C rules for every class (a struct shared with C must match). Windows is unchanged. Specs on both. |
-| Symbol names | quoted IR names (`@"twice(int32)"`), C names unmangled | the same names are valid ELF symbols; comdat works on ELF | Unchanged. No `dllimport` off Windows. FreeBSD's libc symbol versions are the linker's (it takes the default version). |
-| TLS | `thread_local` globals, lazily built per thread | ELF TLS through LLVM | Unchanged. |
-| Global constructors | `llvm.global_ctors` | `.init_array`, the same IR | Unchanged. No target runs global destructors at exit yet. |
+| `wchar_t` | 16 bits, UTF-16 | 32 bits | Q2 below. |
+| plain `char` | signed | unsigned on Linux AArch64, signed on Apple arm64 and x86-64 | Kpp's `char` stays signed on every target (Kpp's meaning does not change with the target). An imported C `char` is the same type; a C function that relies on unsigned `char` sees the same bits. |
+| `long double` | = double | x87 80-bit on x86-64 SysV, 128-bit on Linux AArch64, = double on Apple arm64 | Kpp's stays double. An imported C function that takes or returns `long double` is an error where the C type differs. |
+| Bit fields | MSVC's rules | SysV's (Itanium): a unit straddles less, and types of different sizes may share one | The target's C rules for every class (a struct shared with C must match). Windows is unchanged. Specs on each target. |
+| Memory ordering | x86's: stores are seen in order | AArch64 is weakly ordered | The library's atomics are LLVM atomics with explicit orderings, so they hold. Lock-free code that relies on x86's ordering through plain loads and stores is a bug on AArch64. The library is audited for it in the AArch64 stage. |
+| Symbol names | quoted IR names (`@"twice(int32)"`), C names unmangled | the same names are valid in ELF and Mach-O; Mach-O prefixes `_`, which LLVM adds through the data layout's `m:o` | Unchanged in the IR. No `dllimport` off Windows. |
+| COMDAT | `linkonce_odr` with `comdat any` | ELF has COMDATs. Mach-O has none (LLVM rejects them) and coalesces weak definitions instead. | Emitted on Windows and ELF, left out on Mach-O. The shared definitions stay `linkonce_odr` or `weak_odr`. |
+| TLS | `thread_local` globals, lazily built per thread | ELF TLS; Mach-O's TLV descriptors (`__tlv_bootstrap`); both through LLVM | Unchanged. |
+| Global constructors | `llvm.global_ctors` | `.init_array` on ELF, `__mod_init_func` on Mach-O, from the same IR | Unchanged. No target runs global destructors at exit yet. |
 | Entry | `main`, or `wmain` (the game) | `main`, with UTF-8 `argv` | `wmain` is Windows-only. |
-| Debug info | CodeView | DWARF | One module flag per target. |
-| The runtime's stderr and errno | `__acrt_iob_func(2)`, `_errno()` | `write(2, ...)`; `__error()` on FreeBSD, `__errno_location()` on glibc | The runtime's few calls go through the platform layer (3). |
+| Debug info | CodeView | DWARF (on macOS, `dsymutil` collects it into a .dSYM) | One module flag per target. |
+| Signing | none needed | macOS arm64 runs only signed code | ld64 and ld64.lld sign ad hoc on arm64 by default. A program shipped to others needs a Developer ID signature and notarization (packaging, thread E). |
+| The runtime's stderr and errno | `__acrt_iob_func(2)`, `_errno()` | `write(2, ...)`; `__errno_location()` on glibc, `__error()` on FreeBSD and macOS | The runtime's few calls go through the platform layer (3). |
 
-- **Q1, `long` (parked question).** On LP64 targets, C's `long` is 64 bits:
+- **Q1, `long` (parked question).** On LP64 targets (every target but Windows), C's `long` is 64
+  bits:
   - **(a) Kpp's `long` stays 32 bits everywhere.** C's `long` follows the target: the C import
     types an imported header's `long` as 64 bits on LP64, and hand-written bindings say `CLong` or
     `CULong` (stdlib/clib: int32 on Windows, int64 elsewhere). A Kpp program means the same on
     every target, and the library's 93 lines and the game's 232 stay right. The cost is that Kpp's
-    `long` differs from C's on FreeBSD, so code ported from POSIX C must use `CLong` for C's.
-  - **(b) `long` follows the target's C everywhere.** This matches C and C++. Code that meant 32
-    bits (the library's atomics, MSVC code like the game's) changes meaning on FreeBSD, so the
-    converter would map MSVC's `long` to `int32_t`, and portable code must not say `long`.
+    `long` differs from C's off Windows, so code ported from POSIX C must use `CLong` for C's.
+  - **(b) `long` follows the target's C.** This matches C and C++. Code that meant 32 bits (the
+    library's atomics, MSVC code like the game's) changes meaning off Windows, so the converter
+    would map MSVC's `long` to `int32_t`, and portable code must not say `long`.
   - **(c) No `long` in Kpp.** It is an error, leaving int, int64_t and the rest, plus `CLong` for C.
     The converter maps it, and so must the 93 library lines.
 
   **Recommended: (a).** Kpp's types mean one thing everywhere, and only the C boundary follows the
-  platform, which is where the difference lives. It is needed before stage 2: `ssize_t`, `off_t`
-  and `time_t` are `long` in FreeBSD's and glibc's headers.
+  platform, which is where the difference lives. It is needed before the first target's C import:
+  `ssize_t`, `off_t` and `time_t` are `long` in glibc's, FreeBSD's and Apple's headers.
 - **Q2, `wchar_t`.**
   - **(a) Recommended:** `wchar_t` is the target's C `wchar_t` (16 or 32 bits), for interop only.
     The library's portable text is UTF-8 (String). The UTF-16 APIs (WString, conversions) exist on
     Windows only, and a path's native form is per platform, as in std::filesystem: UTF-16 on
-    Windows, UTF-8 bytes on POSIX.
-  - **(b)** `wchar_t` is 16 bits everywhere. C's `wchar_t` then differs on POSIX, and Kpp code
+    Windows, UTF-8 bytes elsewhere.
+  - **(b)** `wchar_t` is 16 bits everywhere. C's `wchar_t` then differs off Windows, and Kpp code
     that passes one to a C function there is wrong.
 
   The game's 394 lines are Windows code.
@@ -1684,21 +1721,22 @@ The semantics of section 9 hold on every target:
 - Descriptors, the record a handler owns, `throw;`, and the current-exception stack are the same.
 
 - **Windows keeps SEH**, unchanged.
-- **FreeBSD and Linux use the Itanium model's zero-cost tables.** A call that may throw is an
-  `invoke` whose unwind edge goes to a `landingpad`. LLVM writes the LSDA from the landing pads'
-  clauses: the call-site table, the action table, and a type table of pointers to Kpp's type
-  descriptors.
+- **Every other target uses the Itanium model's zero-cost tables.** The unwind information is
+  `.eh_frame` on ELF, and compact unwind with `__eh_frame` on Mach-O; LLVM writes both. A call
+  that may throw is an `invoke` whose unwind edge goes to a `landingpad`. LLVM writes the LSDA from
+  the landing pads' clauses: the call-site table, the action table, and a type table of pointers to
+  Kpp's type descriptors.
   - **The personality** is Kpp's own, `__kpp_personality_v0`, a runtime function codegen emits as
-    IR text (as it emits `kpp_throw` today). It works over the platform unwinder's `_Unwind_*` API:
-    libgcc_s in FreeBSD's base system (LLVM's libunwind underneath) and on every glibc system.
+    IR text (as it emits `kpp_throw` today). It works over the platform unwinder's `_Unwind_*`
+    API: libgcc_s on Linux and in FreeBSD's base system, and libunwind in macOS's libSystem.
     - Phase 1 walks the LSDA. A catch clause matches when `kpp_eh_offset` (the base search SEH's
       filters use today) finds the clause's descriptor among the thrown type's bases.
     - Phase 2 installs the landing pad with the record and the clause's selector.
   - **`throw`** allocates `{_Unwind_Exception header; object; descriptor; destructor}` and calls
     `_Unwind_RaiseException`.
-  - **Not `__gxx_personality_v0`:** that would need C++ `std::type_info` objects and libcxxrt's or
-    libsupc++'s `__cxa_*` runtime. Kpp's personality keeps Kpp's descriptors and links only the
-    unwinder.
+  - **Not `__gxx_personality_v0`:** that would need C++ `std::type_info` objects and a C++ runtime's
+    `__cxa_*` (libcxxrt, libsupc++, libc++abi). Kpp's personality keeps Kpp's descriptors and links
+    only the unwinder. On x86-64 and AArch64 the personality is the same code.
 - **The lowering is split along one interface.** codegen's EH has three parts:
   1. Which calls become invokes, and what each unwinds through (the destruction state and the
      innermost `try`). This part is model-neutral and stays as it is.
@@ -1733,71 +1771,152 @@ The semantics of section 9 hold on every target:
   - `stdlib/platform/windows/` holds today's Win32 and UCRT code, moved.
   - `stdlib/platform/posix/` uses pthreads, `clock_gettime`, open/read/opendir, `environ`,
     `posix_spawn` and BSD sockets.
-  - `stdlib/platform/freebsd/` and `linux/` hold the differences: the errno accessor, and the
-    layouts and constants of `struct stat`, `dirent`, `sockaddr`, `pthread_mutex_t` (8 bytes on
-    FreeBSD, 40 on glibc), `O_*`, `SOCK_*` and the errno values. These come from the C import of
-    the target's own headers where the importer manages, and are hand-written where it does not.
+  - `stdlib/platform/linux/`, `freebsd/` and `macos/` hold the differences: the errno accessor,
+    and the layouts and constants of `struct stat`, `dirent`, `sockaddr`, `pthread_mutex_t` (40
+    bytes on glibc x86-64, 8 on FreeBSD, 64 on macOS), `O_*`, `SOCK_*` and the errno values. These
+    come from the C import of the target's own headers where the importer manages, and are
+    hand-written where it does not.
 - **How a file picks its platform:** by directory. The driver adds `stdlib/platform/<os>` and its
-  parents (`posix` for freebsd and linux) for the target. There are no file-level conditionals.
-  A small difference inside portable code is `if constexpr (config::os == Os::windows)`, and an API
-  that exists on one platform only (UTF-16 paths) is `conditional(config::os == Os::windows)`.
+  parents (`posix` for linux, freebsd and macos) for the target. There are no file-level
+  conditionals. A small difference inside portable code is `if constexpr (config::os ==
+  Os::windows)`, and an API that exists on one platform only (UTF-16 paths) is
+  `conditional(config::os == Os::windows)`.
 - **Order:** sockets and threads first, which the web server needs (thread I collects the
   website's needs). Then files, time, the environment and processes.
 
-### 4. Toolchain
+### 4. Toolchains: what links for each target, from each host
 
-- **Cross-compiling from Windows (proposed).** kppc writes IR as today, VS's clang 19 compiles it
-  with `--target`, and ld.lld links:
+- **Linux and FreeBSD targets.** clang with `--target` and ld.lld from any host:
   `clang --target=x86_64-unknown-freebsd14 --sysroot=<root> -fuse-ld=lld`.
-  - **The sysroot** for FreeBSD is the base system's `base.txz` for the version NFS runs:
-    `usr/include`, `lib`, and `usr/lib` with crt1.o, libc, libthr, libm and libgcc_s, about 180 MB
-    unpacked. For Linux, WSL's Ubuntu (`\\wsl.localhost\Ubuntu`) serves as a glibc sysroot, or the
-    link runs inside WSL.
-  - **The C import** runs `clang -E --target=... --sysroot=...` on the target's headers. FreeBSD's
-    and glibc's headers use GNU extensions the importer must accept or drop (`__attribute__`,
-    `__extension__`, `__restrict`, inline functions, `__builtin_va_list`). They are measured in
-    stage 2.
-- **On the host instead:** kppc itself would have to run on FreeBSD. Its Win32 parts (the server's
-  pipes, threads with 1 GB stacks, CreateProcess, the paths) need porting. That is later, and only
-  if building on the host is wanted.
-- **Testing:**
-  - Linux runs here: the spec suite with `--target linux` runs each program through `wsl`. That is
-    the portable subset, with the Windows-only snippets (Win32, UTF-16, SEH-specific) marked.
-  - FreeBSD needs a FreeBSD machine. The options are kovarex's NFS site over SSH (a test bundle
-    and a script that runs it and reports), or a local FreeBSD VM (Hyper-V is in Windows 10 Pro).
-- **Q3, what kovarex provides:**
-  - the FreeBSD version NFS runs (`freebsd-version` there);
-  - an OK to download that version's `base.txz` from download.freebsd.org into the sandbox, as
-    the sysroot;
-  - a way to run test bundles on FreeBSD: he runs a script this thread prepares, or this machine
-    gets SSH access, or a local VM.
-- **Q4: the FreeBSD major version to target.** The default is the one NFS runs, and the triple
-  names it.
+  - **The sysroot** is the target's headers and libraries:
+    - FreeBSD: the base system's `base.txz` for the version NFS runs (`usr/include`, `lib`, and
+      `usr/lib` with crt1.o, libc, libthr, libm and libgcc_s), about 180 MB unpacked.
+    - Linux: the host's own root on a Linux host. On Windows, WSL's Ubuntu
+      (`\\wsl.localhost\Ubuntu`) is a glibc x86-64 sysroot, or the link runs inside WSL. For arm64,
+      Ubuntu's `arm64` multiarch packages or a Debian arm64 sysroot.
+  - **The C import** runs `clang -E --target=... --sysroot=...` on the target's headers. glibc's,
+    FreeBSD's and Apple's headers use GNU extensions the importer must accept or drop
+    (`__attribute__`, `__extension__`, `__restrict`, inline functions, `__builtin_va_list`, Apple's
+    availability attributes and `__asm` renames). They are measured in the Linux stage.
+- **macOS targets.** Built on a Mac: Xcode's command-line tools' clang, ld64 and the SDK. Apple's
+  SDK licence ties its use to Apple hardware, so cross-linking for macOS from Windows or Linux is
+  not proposed, though ld64.lld exists. A Mac host, or CI's macOS runners, builds and tests the
+  macOS targets.
+- **Windows target from another host:** lld-link and the Windows SDK's import libraries and UCRT
+  headers. That is not needed for the minimum: Windows builds on Windows.
+- **Finding the toolchain:**
+  - Windows: today's vswhere search.
+  - Linux and FreeBSD: `clang` and `ld.lld` on PATH, or an LLVM release directory.
+  - macOS: `xcrun --find clang`.
+  - Everywhere: `KPP_CLANG`, and a `--sysroot` or build.kpp's `project.sysroot`.
+
+  One clang major version is supported per release (19 today).
+- **Testing per target:**
+  - Linux x86-64: WSL here, and CI's ubuntu runners.
+  - Linux arm64: CI's ubuntu arm64 runners, or qemu-user in WSL with an arm64 sysroot.
+  - macOS: CI's macOS runners, arm64 and x86-64 (Q5).
+  - FreeBSD: kovarex's NFS site over SSH (a test bundle and a script that runs it and reports), a
+    local FreeBSD VM (Hyper-V is in Windows 10 Pro), or a FreeBSD VM in CI (cross-platform-actions
+    runs one on Linux runners) (Q3).
+
+  The spec runner takes `--target` and a runner command (`wsl`, `qemu-aarch64`, `ssh host`) for
+  targets that do not run on the host. The Windows-only snippets (Win32, UTF-16, SEH-specific) are
+  marked.
+
+### 5. The host: kppc on Linux and macOS
+
+kppc is C++20, built with clang. Its Win32 uses come in four kinds:
+- threads with large stacks and a guard against stack overflow;
+- processes and pipes;
+- the compile server's channel;
+- paths and finding tools.
+
+The proposal is a small host layer, `compiler/src/host.hpp/.cpp`, with one implementation for
+Win32 and one for POSIX (Linux, macOS; FreeBSD for free):
+- `runWithStack(size, fn)`:
+  - Win32: CreateThread with a reserved stack.
+  - POSIX: `pthread_attr_setstacksize`.
+- `guardStackOverflow(fn)`, the codegen's guard:
+  - Win32: `__try` on `EXCEPTION_STACK_OVERFLOW`.
+  - POSIX: a SIGSEGV handler on `sigaltstack` that checks the fault against the thread's guard
+    page, reports, and `_exit`s, as the Windows guard does.
+- `spawn(command, arguments, stdout and stderr files or pipes)`, `wait`, `kill`:
+  - Win32: CreateProcess.
+  - POSIX: `posix_spawn`.
+
+  This replaces `system()` and `_popen` with argument vectors, so quoting stops being per-shell.
+- `executablePath()`:
+  - Win32: GetModuleFileName.
+  - Linux and FreeBSD: `/proc/self/exe`, or sysctl `KERN_PROC_PATHNAME` on FreeBSD.
+  - macOS: `_NSGetExecutablePath`.
+- `processId()`, `temporaryDirectory()`, `environment(name)`, `cpuCount()`.
+- The server's channel:
+  - Win32: a named pipe.
+  - POSIX: a Unix domain socket in the user's runtime directory.
+
+  Both carry the same protocol (server.cpp).
+
+Builds and tests:
+- CMakeLists.txt gets non-MSVC flags (`-Wall`, an 8 MB main stack through `ulimit` or a thread of
+  its own). It is configured with clang and Ninja on every host.
+- The test entry points become cross-platform: `run_tests` and `spec` as PowerShell 7 (`pwsh`,
+  which runs on all three) or Python scripts, keeping the `.cmd` files as one-line wrappers on
+  Windows.
+- CI adds ubuntu and macOS jobs that build kppc and run the portable tests.
+
+**Who does what (proposed):**
+- **Thread B (this thread):** the targets, the driver and the toolchain (main.cpp's link lines and
+  target record, source.cpp's tool discovery), codegen including its host uses (threads with big
+  stacks, the stack guard), and `host.hpp` itself, which codegen and the driver need first.
+- **Thread A:** the server's channel and processes (server.cpp) on host.hpp.
+- **Thread E:** build.kpp's target settings, `kpp`, run.cpp, project.cpp and generate.cpp, the test
+  scripts, CI, and packaging (signing and notarization on macOS).
+- **Thread F:** lsp.cpp's processes and pipes.
+- **Thread C:** the standard library's platform layer, with B for the runtime's few calls.
+- **The converter (convert.cpp)** reads the Factorio sources and can stay Windows-only until
+  needed.
+
+All of this goes through the coordinator.
 
 ### Stages (each landed with specs, the Windows IR checked unchanged)
 
-1. **The target model and hello world:**
-   - `--target`, the triple and data layout, the entry, the runtime's stderr, DWARF;
-   - the POSIX link (clang, ld.lld and a sysroot for FreeBSD; WSL for Linux).
+1. **The target model and Linux x86-64 hello world:**
+   - `--target`, the triple and data layout, no `dllimport`, the entry, the runtime's stderr,
+     DWARF;
+   - the ELF link (clang and ld.lld with a sysroot, or WSL's).
 
-   Specs: hello world for Linux (built, linked, and run under WSL), and for FreeBSD (object and
-   link checked, run on FreeBSD once Q3 is answered).
-2. **The portable subset of the spec suite on Linux:**
-   - the runner's `--target`;
-   - the Windows-only snippets marked;
+   A spec builds, links and runs hello world under WSL.
+2. **The portable subset of the spec suite on Linux x86-64:**
+   - the runner's `--target` and runner command, and the Windows-only snippets marked;
    - the C ABI lowering for structs by value (SysV, and MS x64's small structs);
    - `long` and `wchar_t` as Q1 and Q2 decide;
-   - the C import with `--target` and the sysroot.
+   - the C import with `--target` and a sysroot.
 3. **Exceptions on Itanium tables:** the personality and the lowering. Every exception spec runs
    on Linux, and the Windows IR is unchanged.
-4. **The platform layer:** the Win32 code moves behind `platform::`. POSIX threads, mutexes,
-   condition variables, time and sockets come first, then files, the environment and processes,
-   with specs that run on Linux and in FreeBSD batches.
-5. **FreeBSD specifics:** its sysroot, its headers' constants and structs, its errno, and a test
-   bundle run on FreeBSD.
+4. **The platform layer on POSIX:** the Win32 code moves behind `platform::`. POSIX threads,
+   mutexes, condition variables, time and sockets come first, then files, the environment and
+   processes.
+5. **The host layer:** kppc builds and runs on Linux (WSL here, CI ubuntu), with A, E and F.
+6. **FreeBSD x86-64:** its sysroot, its headers' constants and structs, its errno, and a test
+   bundle run on FreeBSD. kpp.net's server can be built from here on.
+7. **AArch64:** the AAPCS64 and Apple C lowerings, Linux arm64 (CI or qemu), and the memory
+   ordering audit.
+8. **macOS arm64, then x86-64:** Mach-O (no COMDATs, ld64, ad-hoc signing, compact unwind),
+   kppc hosted on macOS, and CI macOS jobs.
 
-Linux comes along with FreeBSD at every stage: most of the work is common, and Linux is testable
-here.
+### Questions for kovarex
+
+- **Q1:** `long` on LP64 targets. (a) is recommended (above).
+- **Q2:** `wchar_t`. (a) is recommended (above).
+- **Q3:** FreeBSD: the version NFS runs (`freebsd-version` there), an OK to download its
+  `base.txz` as the sysroot, and how tests run there: a script he runs, SSH access for this
+  machine, a local VM, or a FreeBSD VM in CI.
+- **Q4:** The FreeBSD major version to target. The default is the one NFS runs.
+- **Q5:** CI for macOS (arm64 and x86-64) and Linux arm64 on GitHub's runners. macOS minutes cost
+  10 times Linux's on a private repository. The alternative is a Mac he has, as a self-hosted
+  runner.
+- **Q6:** The minimum macOS (11.0 for arm64 and 10.15 for x86-64 proposed) and glibc (2.31,
+  Ubuntu 20.04, proposed) versions to support.
 
 ## Open questions
 - **Syntax must be parseable without name lookup.** C++ needs to know whether a name is a type
@@ -1824,8 +1943,7 @@ here.
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
   converted UnitTest++ as native tests.
 
-- **Targets** (the section above, 2026-10-31): Q1 `long` on LP64 targets, Q2 `wchar_t`, Q3 a
-  FreeBSD sysroot and a way to run tests there, Q4 the FreeBSD version.
+- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets, Q2 `wchar_t`, Q3 a FreeBSD sysroot and a way to run tests there, Q4 the FreeBSD version, Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
 
 - **How a build is described** ([build.md](build.md)): debug information in release builds, the
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54
