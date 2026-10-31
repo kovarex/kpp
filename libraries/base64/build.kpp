@@ -3,7 +3,7 @@ void build(Project& project)
 {
   Library& base64 = project.library("base64");
   base64.version = "0.1.0";
-  base64.license = "MIT";
+  base64.license = "Apache-2.0 WITH LLVM-exception";
   base64.minimumKpp = "0.1.0";
   base64.root("src");
   base64.test("tests");

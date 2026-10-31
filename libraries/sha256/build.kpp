@@ -3,7 +3,7 @@ void build(Project& project)
 {
   Library& sha256 = project.library("sha256");
   sha256.version = "0.1.0";
-  sha256.license = "MIT";
+  sha256.license = "Apache-2.0 WITH LLVM-exception";
   sha256.minimumKpp = "0.1.0";
   sha256.root("src");
   sha256.test("tests");

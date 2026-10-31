@@ -3,7 +3,7 @@ void build(Project& project)
 {
   Library& json = project.library("json");
   json.version = "0.1.0";
-  json.license = "MIT";
+  json.license = "Apache-2.0 WITH LLVM-exception";
   json.minimumKpp = "0.1.0";
   json.root("src");
   json.test("tests");

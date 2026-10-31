@@ -113,7 +113,7 @@ struct Library
 {
   String name;
   String version;           // major.minor.patch
-  String license;           // an SPDX expression: MIT, Apache-2.0, MIT OR Apache-2.0
+  String license;           // an SPDX expression: Apache-2.0 WITH LLVM-exception, MIT, MIT OR Apache-2.0
   String minimumKpp;        // the lowest kpp version it compiles with, major.minor.patch; "": any
   Vector<String> roots;     // its sources, relative to its directory; none: src
   Vector<String> testRoots; // sources only its own tests build (tests next to the code need none)

@@ -231,7 +231,7 @@ void build(Project& project)
 {
   Library& json = project.library("json");
   json.version = "0.1.0";        // major.minor.patch: required
-  json.license = "MIT";          // SPDX
+  json.license = "Apache-2.0 WITH LLVM-exception"; // SPDX
   json.minimumKpp = "0.1.0";     // optional: the lowest kpp it compiles with
   json.root("src");              // its sources; none given: src
   json.test("tests");            // sources only its own tests build

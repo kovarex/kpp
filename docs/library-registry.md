@@ -40,7 +40,8 @@ after, as a dogfooding target, when the standard library has networking.
   [the commands](#the-commands-and-the-project-description),
   [the service](#the-service), [hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day),
   [security](#security-and-moderation),
-  [mirrors and offline](#mirrors-offline-and-private-registries), [IDE and VS](#ide-and-visual-studio)
+  [mirrors and offline](#mirrors-offline-and-private-registries), [IDE and VS](#ide-and-visual-studio),
+  [licensing](#licensing-decided-2026-11-01)
 - [Phases and effort](#phases-and-effort), [Risks](#risks),
   [Decisions for kovarex](#decisions-for-kovarex), [Sources](#sources)
 
@@ -618,6 +619,98 @@ For threads F and E; proposals for their documents, not decisions.
   description. A NuGet-style browser is not worth building twice; the IDE is where the rich view
   lives.
 
+### Licensing (decided 2026-11-01)
+**The decision** (kovarex): "Ok, so the apache seems to be most programmer friendly. Basically I
+want other programmers/Ai coders to be able to freely use everything as much as they want, and
+also be protected from someone denying me from continuing providing the service."
+
+**What is under which license.**
+- **Kpp:** the compiler, the standard library, projectlib, the tools, kppnet, the documentation and
+  the official libraries in `libraries/` are under **Apache-2.0 WITH LLVM-exception**, as LLVM and
+  clang are. The canonical text is [LICENSE](../LICENSE): LLVM's LICENSE.TXT [45], whose Apache
+  part is word for word SPDX's Apache-2.0 [46].
+  - The exception's first paragraph is why this variant was chosen. A program compiled with Kpp
+    contains compiled parts of the standard library, and the exception lets those be distributed
+    without Apache's conditions 4(a), 4(b) and 4(d). So users owe no copy of the license, no
+    notices and no attribution for the programs they build.
+  - Its second paragraph removes Apache 2.0's known incompatibility with GPLv2 for combined
+    software [47].
+- **No NOTICE file**, as LLVM has none. Under section 4(d) every redistributor would have to carry
+  a NOTICE file's text.
+- **Contributions** come in under the same license, certified per commit by a `Signed-off-by`
+  line (the Developer Certificate of Origin [48], [CONTRIBUTING.md](../CONTRIBUTING.md)). There is
+  no copyright assignment and no contributor license agreement. The consequence: contributors keep
+  their copyright, so relicensing Kpp later (to anything, proprietary included) would need every
+  contributor's consent. Apache 2.0 already allows every use, so this blocks nothing kovarex
+  asked for.
+- **Third-party code keeps its license and notices:** the JSONTestSuite data in the json
+  library's tests (MIT, with its license file next to it), and converted C libraries such as
+  zlib, SDL, curl, ogg, vorbis, opus, re2, imgui and stb.
+- **factorio-in-kpp** is Factorio's source, Wube's, and gets no open license. In this repository,
+  `programs/factorio/` (the overrides derived from the game's source, and the interfaces to its
+  libraries) is listed in LICENSE as not covered. Which of its files are Kpp's own work (scripts,
+  tests), and so could be Apache, is kovarex's call (decision 13).
+
+**What the registry requires of a hosted library.**
+- Every release states an SPDX license expression in its build.kpp (`license`), and its archive
+  contains the license texts (`LICENSE`, `COPYING` or a `LICENSES/` directory). Publishing checks
+  the expression against the SPDX list and refuses a release without the text.
+- **Official libraries** (`libraries/`, maintained by the project) are Apache-2.0 WITH
+  LLVM-exception. A Kpp face over a third-party C library is ours. The bundled upstream code keeps
+  its license, so such a library's expression names both, e.g.
+  `Zlib AND Apache-2.0 WITH LLVM-exception`.
+- **Other libraries** may use any OSI-approved license, or one equivalent to the public domain
+  (CC0, Unlicense). The library page shows the license, and `kpp add` names it, with a notice when
+  it is copyleft (GPL, LGPL, MPL), so nobody adopts one by accident.
+- **Converted third-party libraries** carry upstream's license files and every notice verbatim,
+  and the release names the upstream version and URL. Their notices, unlike the standard
+  library's, must ship with programs that use them (zlib's does not have to, MIT's and BSD's do).
+  So every build writes `build/<configuration>/licenses.txt`: the license texts of every library
+  in the program with a notice requirement. That is a phase 0 task.
+
+**What the license protects, and what it does not ("denying me from continuing").**
+- **It does:**
+  - Section 2 grants every recipient a perpetual, irrevocable copyright license. Once Kpp is
+    published, nobody can take away kovarex's or anyone's right to use, change and distribute the
+    published code, and kovarex keeps his own rights as an author too.
+  - Section 3 grants a patent license from every contributor for their contributions. Anyone who
+    sues claiming that Kpp infringes a patent loses the patent license they got from Kpp. This
+    protects against a contributor, or someone building on Kpp, attacking it with patents.
+  - The DCO makes every contribution certified as licensable, so no contributor can later claim
+    their code was not licensed.
+- **It does not:**
+  - Section 6 explicitly grants no rights to trademarks. Anyone may fork Kpp, but the license
+    neither stops nor allows them to call their fork "Kpp".
+  - The name is protected only by trademark law, which is strongest with a registration.
+  - kpp.net is protected by its registration (kovarex's, at NFS, paid until 2030-01-03), and the
+    service by his accounts at NFS and GitHub.
+  - The license also does not stop someone from registering "Kpp" as a trademark first, in some
+    country and class, and contesting his use of the name there.
+
+**Steps kovarex might take** (none taken; listed for him to decide):
+1. **A trademark clearance search** for "KPP" and "Kpp" in Nice classes 9 (software) and 42
+   (software services, hosting). Search tools are EUIPO's TMview, the USPTO and WIPO's Global
+   Brand Database. KPP is a common abbreviation, so earlier marks in those classes are possible.
+   A trademark attorney's search is the reliable version.
+2. **Register the word mark**, and later a logo. The owner could be him personally, Wube, or a
+   foundation if Kpp should outlive any one owner.
+   - EU trade mark (EUIPO): €850 online for one class, €50 for the second, €150 for each further
+     class [49].
+   - US (USPTO): $350 per class since 2025-01-18 [50].
+   - Other countries through WIPO's Madrid system.
+3. **A short trademark policy** on kpp.net. Forks and products may say "for Kpp", "based on Kpp"
+   or "compatible with Kpp", but may not be called Kpp or look like the official site; the stdlib
+   and official libraries keep their names in forks. This is what Rust, Python and others
+   publish.
+4. **Domain hygiene:**
+   - kpp.net on auto-renew, with the registrar lock and two-factor login;
+   - possibly defensive registrations of the same name under other top-level domains
+     (availability not checked);
+   - the GitHub organization or user name the mirror lives under kept in his account.
+5. **The copyright line** in LICENSE and file headers: "the Kpp authors" (the convention with a
+   DCO), or his name for the code he and the threads write. Today no file carries a copyright
+   line, which is allowed; the license applies either way.
+
 ## Phases and effort
 Estimates are in weeks of one thread, assuming thread E's project description exists.
 
@@ -691,6 +784,10 @@ C source parts, MVS with one version) before any server code is written.
     occasional uploads)? May a site's hook or daemon open outbound connections (to push the mirror
     to GitHub)? The FreeBSD version of the current realm, whether `git` and `clang` are on the SSH
     hosts, a daemon's memory limit, and SQLite locking on their file storage.
+13. **programs/factorio/ and the license**: LICENSE lists the whole directory as not covered
+    (its overrides derive from Factorio's source). Should Kpp's own files there (the converter's
+    scripts, tests, harnesses) be Apache too, with only the game-derived files excluded? And the
+    trademark steps in [Licensing](#licensing-decided-2026-11-01).
 
 ## Sources
 1. Factorio Auxiliary Docs, Mod structure (info.json, dependencies):
@@ -745,3 +842,9 @@ C source parts, MVS with one version) before any server code is written.
 42. A member's how-to, a bare git repository on NFS: https://www.xanthir.com/b4or0
 43. NFS, databases: https://www.nearlyfreespeech.net/services/database
 44. NFS, pricing: https://www.nearlyfreespeech.net/services/pricing and https://www.nearlyfreespeech.net/services/hosting
+45. LLVM's LICENSE.TXT (Apache 2.0 with LLVM Exceptions): https://github.com/llvm/llvm-project/blob/main/LICENSE.TXT
+46. SPDX, Apache-2.0 and LLVM-exception texts: https://spdx.org/licenses/Apache-2.0.html, https://spdx.org/licenses/LLVM-exception.html
+47. LLVM relicensing, why the exceptions: https://llvm.org/foundation/relicensing/
+48. Developer Certificate of Origin 1.1: https://developercertificate.org/
+49. EU trade mark fees per class (third-party summary of EUIPO's schedule): https://tmarkmetric.com/insights/eu-trademark-cost
+50. USPTO trademark fees from 2025-01-18: https://www.fr.com/insights/thought-leadership/blogs/new-uspto-trademark-fees-go-into-effect-january-18-2025/

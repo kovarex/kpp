@@ -19,5 +19,6 @@ leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs e
 | [base64](base64/README.md) | Base64 and base64url, strict decoding | RFC 4648's vectors, Python's base64 |
 | [html](html/README.md) | escaping; templates escaped by context, checked at compile time | its own tests (no published suite) |
 
-**License**: every library's build.kpp says MIT, as a placeholder: the license of kovarex's
-libraries is his to decide (asked 2026-11-01).
+**License**: Apache-2.0 WITH LLVM-exception, as all of Kpp ([LICENSE](../LICENSE); kovarex,
+2026-11-01); each build.kpp says so. Third-party test data keeps its own license
+(json/tests/JSONTestSuite-LICENSE.txt).

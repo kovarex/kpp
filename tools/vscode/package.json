@@ -4,7 +4,7 @@
   "description": "The Kpp language: colouring, and IntelliSense from the Kpp compiler's language server (kpp --lsp).",
   "version": "0.1.0",
   "publisher": "kovarex",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0 WITH LLVM-exception",
   "repository": { "type": "git", "url": "https://github.com/kovarex/kpp" },
   "engines": { "vscode": "^1.82.0" },
   "categories": ["Programming Languages"],
