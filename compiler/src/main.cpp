@@ -892,10 +892,11 @@ namespace
   }
 
   // The errors the checker found itself (a static_assert that fails or cannot be evaluated).
-  // laidOut: codegen ran and checked the asserts on sizes and alignments (its errors).
-  void reportCheckerErrors(GlobalScope& global, bool laidOut = false)
+  // laidOut: codegen ran and checked the asserts on sizes and alignments (its errors), and the
+  // static_asserts of the first instancesChecked class template instances.
+  void reportCheckerErrors(GlobalScope& global, bool laidOut = false, size_t instancesChecked = 0)
   {
-    for (const std::string& e : global.checkerErrors())
+    for (const std::string& e : global.checkerErrors(instancesChecked))
     {
       fprintf(stderr, "%s\n", e.c_str());
       codegenExit = 1;
@@ -975,7 +976,7 @@ namespace
       fprintf(stderr, "%s\n", e.c_str());
     if (!cg.errors.empty())
       codegenExit = 1;
-    reportCheckerErrors(global, true);
+    reportCheckerErrors(global, true, cg.instanceAssertsChecked);
     reportAccessWarnings(build);
     auto writeFile = [&](const std::string& path, const std::string& text)
     {

@@ -19,6 +19,7 @@ struct CodegenResult
   std::vector<bool> changedModules; // rebuildLLVM: which modules it assembled again (the others' texts are empty here)
   size_t emittedAgain = 0;          // rebuildLLVM: the functions it emitted (the changed and added ones, those that inlined a changed body, first uses)
   std::string declined;             // rebuildLLVM: why it did not rebuild (rebuilt false), for the server's log
+  size_t instanceAssertsChecked = 0; // the class template instances whose static_asserts it checked (GlobalScope::checkerErrors)
 };
 
 // Codegen's state kept between builds by the compile server (docs/compile-speed.md, step 5b): the

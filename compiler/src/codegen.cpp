@@ -17185,7 +17185,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         // checker leaves to the layouts; those of class template instances once the functions
         // that name the instances are emitted (and one in an instance's function if that is
         // emitted). A layout they build can ask for functions (its vtable's), which go on.
-        global.checkInstanceStaticAsserts();
+        result.instanceAssertsChecked = global.checkInstanceStaticAsserts(result.instanceAssertsChecked); // (only those named since)
         bool checked = false;
         for (const GlobalScope::LayoutStaticAssert& a : global.layoutStaticAsserts())
           if (layoutAssertsChecked.insert({a.decl, a.instance}).second)

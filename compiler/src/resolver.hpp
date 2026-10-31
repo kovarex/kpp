@@ -206,8 +206,10 @@ public:
   // After the checker (and the code generator, which asks it for instance bodies) is done: the
   // static_asserts of the class template instances it made are checked, and the errors the checker
   // found are returned, `path:line: error: ...` one each, sorted. A static_assert whose condition
-  // is false, or no constant the checker can evaluate, is one.
-  std::vector<std::string> checkerErrors();
+  // is false, or no constant the checker can evaluate, is one. instancesChecked: how many of the
+  // instances the code generator of this same build checked already (checkInstanceStaticAsserts'
+  // result), 0 for all.
+  std::vector<std::string> checkerErrors(size_t instancesChecked = 0);
   // Access checking, warnings only, after enableAccessWarnings() before the resolve (kppc
   // --access-warnings; design.md, "struct and class"): the uses of private and protected members
   // outside their class, its derived classes (protected) and its friends, and the structs with a
@@ -226,8 +228,9 @@ public:
   size_t unusedFailedAsserts();
   // The first part of checkerErrors: the static_asserts of the class template instances named so
   // far. The code generator runs it once its functions are emitted (they name instances of their
-  // own), before it checks the asserts on layouts.
-  void checkInstanceStaticAsserts();
+  // own), before it checks the asserts on layouts. From the from-th instance made on (those before
+  // it checked by an earlier call of the same build); returns how many there are now.
+  size_t checkInstanceStaticAsserts(size_t from = 0);
   // The static_asserts whose condition needs a class's size or alignment, which only the code
   // generator's layout knows: each with the arguments of the instance it is in (none outside
   // templates) and that instance for messages. The checker leaves them to the code generator.

@@ -54,6 +54,8 @@ struct TypeTable::Impl
   };
   Shard shards[shardCount];
   std::atomic<size_t> count{0};
+  std::mutex classInstancesMutex;
+  std::vector<const Ty*> classInstances; // in the order they were made (classInstances())
 };
 
 TypeTable::TypeTable() : impl(new Impl)
@@ -104,22 +106,20 @@ const Ty* TypeTable::intern(const Ty& t)
   shard.owned.push_back(std::move(owned));
   shard.map.emplace(h, result);
   ++impl->count;
+  if (result->kind == TyKind::Class && !result->args.empty())
+  {
+    std::lock_guard instancesLock(impl->classInstancesMutex);
+    impl->classInstances.push_back(result);
+  }
   return result;
 }
 
 size_t TypeTable::size() const { return impl->count.load(); }
 
-std::vector<const Ty*> TypeTable::classInstances()
+std::vector<const Ty*> TypeTable::classInstances(size_t from)
 {
-  std::vector<const Ty*> out;
-  for (Impl::Shard& shard : impl->shards)
-  {
-    std::shared_lock lock(shard.mutex);
-    for (auto& entry : shard.map)
-      if (entry.second->kind == TyKind::Class && !entry.second->args.empty())
-        out.push_back(entry.second);
-  }
-  return out;
+  std::lock_guard lock(impl->classInstancesMutex);
+  return std::vector<const Ty*>(impl->classInstances.begin() + std::min(from, impl->classInstances.size()), impl->classInstances.end());
 }
 
 const Ty* TypeTable::intType(uint8_t bits, bool isUnsigned)

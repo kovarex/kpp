@@ -19928,11 +19928,12 @@ std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
   return out;
 }
 
-void GlobalScope::checkInstanceStaticAsserts()
+size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
 {
   // The static_asserts in the bodies of class templates, once per instance the program names (a
   // template's own walk leaves them to its instances).
-  for (const Ty* cls : impl->types.classInstances())
+  std::vector<const Ty*> instances = impl->types.classInstances(from);
+  for (const Ty* cls : instances)
   {
     if (!cls->decl || cls->decl->kind != NodeKind::ClassDecl || cls->isConst || cls->isVolatile || !cls->isKnown() ||
         impl->types.isDependent(cls) || Impl::mentionsUnknown(cls))
@@ -19952,11 +19953,12 @@ void GlobalScope::checkInstanceStaticAsserts()
       if (m->kind == NodeKind::StaticAssertDecl)
         impl->checkStaticAssert(static_cast<StaticAssertDecl*>(m), ctx, impl->types.toString(cls, &impl->symbols));
   }
+  return from + instances.size();
 }
 
-std::vector<std::string> GlobalScope::checkerErrors()
+std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
 {
-  checkInstanceStaticAsserts();
+  checkInstanceStaticAsserts(instancesChecked);
   // By file, then line number, then text.
   auto key = [](const std::string& e)
   {

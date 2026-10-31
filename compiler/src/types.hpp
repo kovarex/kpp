@@ -126,7 +126,9 @@ public:
   // are made of, which must tell every two types apart.
   std::string toString(const Ty* t, const SymbolTable* symbols, bool qualified = false) const;
   size_t size() const;
-  std::vector<const Ty*> classInstances(); // every class type with template arguments made so far
+  // Every class type with template arguments made so far, from the from-th on (in the order they
+  // were made: an index into a list kept as they are interned, not a walk of every type).
+  std::vector<const Ty*> classInstances(size_t from = 0);
 
 private:
   const Ty* intern(const Ty& t);
