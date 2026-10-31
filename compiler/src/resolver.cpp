@@ -5929,6 +5929,15 @@ struct GlobalScope::Impl
       const Ty* have = types.unqualified(vt->inner);
       if (have == want || want->kind == TyKind::Void)
         return ConstValue::address(t, *v.target);
+      if (have->kind == TyKind::Void && v.target->storage)
+      {
+        // `(T*)p` of a void*: to what is there, when it is a T; malloc's bytes become Ts.
+        if (const Ty* there = constPointedType(v, 0); there && types.unqualified(there) == want)
+          return ConstValue::address(t, *v.target);
+        if (std::optional<ConstValue> typed = constTypeAllocation(v, want, 0))
+          return ConstValue::address(t, *typed->target);
+        return std::nullopt;
+      }
       if (std::optional<std::vector<size_t>> base = have->kind == TyKind::Class && want->kind == TyKind::Class ? constBasePath(have, want, 0) : std::nullopt)
       {
         ConstTarget part = *v.target;
@@ -6097,13 +6106,15 @@ struct GlobalScope::Impl
       return std::nullopt;
     }
     // An array of the run's own (a local, a part of one) where a value is wanted: the address of its
-    // first element there (array-to-pointer conversion), as `&a[0]` is. (One the run holds a copy
-    // of, through `this` or a reference it could not bind, is still a pointer into that value.)
+    // first element there (array-to-pointer conversion), as `&a[0]` is: also one of the object a
+    // constructor builds, or a member function runs on (where that is a copy, the address dangles
+    // once the call ends). One the run holds a copy of through a reference it could not bind is
+    // still a pointer into that value.
     if (const Ty* at = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
         at && at->kind == TyKind::Array && at->inner && !constFrames().empty() &&
         (e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr || e->kind == NodeKind::IndexExpr) && constPure(e))
       if (std::optional<ConstPlace> place = constPlaceOf(e, ctx, depth + 1))
-        if (ConstPlace whole = constResolve(*place); whole.binding().owns)
+        if (ConstPlace whole = constResolve(*place); whole.binding().owns || whole.binding().symbol == constThisSymbol)
         {
           const Ty* element = types.unqualified(types.stripRef(place->type ? place->type : at));
           if (element->kind == TyKind::Array && element->inner)
@@ -6831,6 +6842,9 @@ struct GlobalScope::Impl
         continue;
       }
       std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      if (!v && places && constPure(a))
+        if (std::optional<ConstPlace> at = constPlaceOf(a, ctx, depth + 1); at && !constRead(*at))
+          v = ConstValue::unset(at->type); // `appendSlot(grown)` of `T* grown;`: a reference to it reads nothing
       if (!v)
         return false;
       values.push_back(*v);
@@ -7021,6 +7035,14 @@ struct GlobalScope::Impl
         explicitFor(f, given);
       }
     }
+    if (!f->body && (c->args.size() == 1 || c->args.size() == 2) && f->params.size() == c->args.size() && !f->name.empty())
+      if (std::string_view name = symbols.name(f->name.last().symbol); name == "malloc" || name == "calloc" || name == "realloc" || name == "free")
+      {
+        std::vector<ConstValue> values;
+        if (!constArguments(c->args, ctx, depth, values))
+          return std::nullopt;
+        return constCAllocation(name, values, c, depth);
+      }
     if (!f->body && c->args.size() == 3 && f->params.size() == 3 && !f->name.empty())
       if (std::string_view name = symbols.name(f->name.last().symbol); name == "memcpy" || name == "memmove" || name == "memset")
       {
@@ -7140,6 +7162,20 @@ struct GlobalScope::Impl
     auto* m = static_cast<MemberExpr*>(c->callee);
     if (!m->base || m->dynamicMember || m->member.parts.size() != 1 || m->member.parts[0].hasTemplateArgs)
       return std::nullopt;
+    if (m->member.parts[0].special == 1 && c->args.empty())
+    {
+      // `slots[i].~Text()`, `p->~T()`: the object destroyed where it is, its lifetime ended there
+      // (what is left is no value: reading it is no constant).
+      std::optional<ConstPlace> place;
+      if (m->op == P::Dot)
+        place = constPlaceOf(m->base, ctx, depth + 1);
+      else if (std::optional<ConstValue> p = constValue(m->base, ctx, depth + 1))
+        place = constStoragePlace(*p, "a destruction of", depth);
+      std::optional<ConstValue> value = place ? constRead(*place) : std::nullopt;
+      if (!value || !constDestroy(value->type ? value->type : place->type, *value, depth + 1) || !constWrite(*place, ConstValue::unset(value->type)))
+        return std::nullopt;
+      return ConstValue::integer(0, types.voidType());
+    }
     const Ty* object = constObjectType(m->base, ctx, m->op == P::Arrow);
     Scope* s = object ? classScopeOf(object) : nullptr;
     Lookup l;
@@ -7148,8 +7184,18 @@ struct GlobalScope::Impl
     // Of the functions of the name, the one the call's arguments fill.
     FunctionDecl* f = nullptr;
     auto fills = [&](Decl* d) {
-      return d && d->kind == NodeKind::FunctionDecl && constDefinition(static_cast<FunctionDecl*>(d)) && static_cast<FunctionDecl*>(d)->templateParams.empty() &&
-             static_cast<FunctionDecl*>(d)->params.size() == c->args.size();
+      if (!d || d->kind != NodeKind::FunctionDecl || !constDefinition(static_cast<FunctionDecl*>(d)) || !static_cast<FunctionDecl*>(d)->templateParams.empty())
+        return false;
+      // As many arguments as parameters, or fewer and defaults for the rest (`moveToBlock(n)` of
+      // `moveToBlock(int, bool strong = true)`), in the declaration or the definition.
+      auto* fd = static_cast<FunctionDecl*>(d);
+      FunctionDecl* def = constDefinition(fd);
+      if (c->args.size() > fd->params.size())
+        return false;
+      for (size_t i = c->args.size(); i < fd->params.size(); ++i)
+        if (!static_cast<ParamDecl*>(fd->params[i])->defaultValue && !(def && i < def->params.size() && static_cast<ParamDecl*>(def->params[i])->defaultValue))
+          return false;
+      return true;
     };
     if (m->resolved && m->resolved->kind == NodeKind::FunctionDecl)
       f = fills(m->resolved) ? static_cast<FunctionDecl*>(m->resolved) : nullptr;
@@ -9504,6 +9550,11 @@ struct GlobalScope::Impl
     ConstWhere allocated, freed;
     bool array = false; // by new[]
     bool isFreed = false;
+    // By malloc, calloc or realloc: bytes, untyped until a cast or a placement new gives them a
+    // type (k objects of T, uninitialized; zero for calloc's).
+    bool raw = false;
+    bool zero = false;
+    int64_t bytes = 0;
   };
   static std::vector<ConstBinding>& constHeap()
   {
@@ -9595,6 +9646,158 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
+  // `malloc(n)`, `calloc(k, n)`, `realloc(p, n)`, `free(p)` at compile time: bytes from the
+  // evaluation's own memory (which it must free before it ends, as new's), typed by the first cast
+  // to T* (constTypeAllocation); free of what malloc did not allocate, twice, or of a pointer into
+  // a block is an error, as delete's are.
+  std::optional<ConstValue> constCAllocation(std::string_view name, const std::vector<ConstValue>& args, CallExpr* c, int depth)
+  {
+    auto fail = [&](const std::string& why) -> std::optional<ConstValue> {
+      if (constWhy().empty())
+        constWhy() = why;
+      return std::nullopt;
+    };
+    const Ty* voidPointer = types.pointer(types.voidType());
+    auto block = [&](const ConstValue& p) -> std::optional<size_t> {
+      auto it = p.isAddress() && p.target->storage ? constStorage().find(p.target->storage) : constStorage().end();
+      if (it == constStorage().end() || it->second.env != &constHeap())
+        return std::nullopt;
+      return it->second.index;
+    };
+    auto release = [&](const ConstValue& p, const char* what) -> std::optional<size_t> {
+      std::optional<size_t> index = block(p);
+      if (!index || !constAllocations()[*index].raw)
+      {
+        fail(std::string(what) + " of memory malloc did not allocate" +
+             (index ? " (new allocated it at " + constWhereText(constAllocations()[*index].allocated) + ")" : std::string()));
+        return std::nullopt;
+      }
+      ConstAllocation& a = constAllocations()[*index];
+      if (a.isFreed)
+      {
+        fail("memory freed twice (first at " + constWhereText(a.freed) + ")");
+        return std::nullopt;
+      }
+      bool typed = constHeap()[*index].type != nullptr;
+      if (p.target->path != (typed ? std::vector<size_t>{0} : std::vector<size_t>{}))
+      {
+        fail(std::string(what) + " of a pointer into memory allocated at " + constWhereText(a.allocated));
+        return std::nullopt;
+      }
+      return index;
+    };
+    auto allocate = [&](int64_t bytes, bool zero) -> std::optional<ConstValue> {
+      if (bytes < 0 || !constMayMake(size_t(bytes) / 64 + 1))
+        return std::nullopt;
+      std::vector<ConstBinding>& heap = constHeap();
+      heap.push_back(ConstBinding{0, ConstValue::unset(nullptr)});
+      ConstAllocation a;
+      a.allocated = constHere(c);
+      a.raw = true;
+      a.zero = zero;
+      a.bytes = bytes;
+      constAllocations().push_back(a);
+      return ConstValue::address(voidPointer, constStorageTarget(ConstPlace{&heap, heap.size() - 1, {}, nullptr}));
+    };
+    for (const ConstValue& a : args)
+      if (a.isUnset())
+        return std::nullopt;
+    if (name == "malloc")
+      return args[0].kind == ConstValue::Kind::Int ? allocate(args[0].i, false) : std::nullopt;
+    if (name == "calloc")
+      return args.size() == 2 && args[0].kind == ConstValue::Kind::Int && args[1].kind == ConstValue::Kind::Int ? allocate(args[0].i * args[1].i, true) : std::nullopt;
+    bool null = args[0].kind == ConstValue::Kind::Int && args[0].i == 0;
+    if (name == "free")
+    {
+      if (null)
+        return ConstValue::integer(0, types.voidType());
+      std::optional<size_t> index = release(args[0], "free");
+      if (!index)
+        return std::nullopt;
+      constAllocations()[*index].isFreed = true; // (no destructor: free ends what it holds without one)
+      constAllocations()[*index].freed = constHere(c);
+      constHeap()[*index].value = ConstValue::unset(constHeap()[*index].type);
+      return ConstValue::integer(0, types.voidType());
+    }
+    // realloc: a new block, the old one's elements moved over bitwise (trivially copyable only)
+    if (args.size() != 2 || args[1].kind != ConstValue::Kind::Int)
+      return std::nullopt;
+    if (null)
+      return allocate(args[1].i, false);
+    std::optional<size_t> old = release(args[0], "realloc");
+    if (!old)
+      return std::nullopt;
+    const Ty* oldType = constHeap()[*old].type;
+    ConstValue oldValue = constHeap()[*old].value;
+    std::optional<ConstValue> grown = allocate(args[1].i, false);
+    if (!grown)
+      return std::nullopt;
+    if (oldType)
+    {
+      const Ty* element = types.unqualified(oldType->inner);
+      std::optional<bool> trivial = triviallyCopyable(element);
+      if (!trivial || !*trivial)
+        return fail("realloc of " + types.toString(element, &symbols) + ", which is not trivially copyable");
+      std::optional<ConstValue> typed = constTypeAllocation(*grown, element, depth);
+      if (!typed)
+        return std::nullopt;
+      std::optional<size_t> index = block(*typed);
+      std::vector<ConstValue> elements = *constHeap()[*index].value.parts;
+      for (size_t i = 0; i < elements.size() && oldValue.isObject() && i < oldValue.parts->size(); ++i)
+        elements[i] = (*oldValue.parts)[i];
+      constHeap()[*index].value = ConstValue::object(constHeap()[*index].type, std::move(elements));
+      grown = typed;
+      grown->type = voidPointer;
+    }
+    constAllocations()[*old].isFreed = true;
+    constAllocations()[*old].freed = constHere(c);
+    constHeap()[*old].value = ConstValue::unset(oldType);
+    return grown;
+  }
+
+  // Memory malloc allocated, untyped, given type t by the first cast to t* (or placement new of a
+  // t into it): as many objects of t as fit, uninitialized (zero for calloc's); the pointer to the
+  // first of them. Nullopt when p is no such memory (already typed: no new type for it).
+  std::optional<ConstValue> constTypeAllocation(const ConstValue& p, const Ty* t, int depth)
+  {
+    auto it = p.isAddress() && p.target->storage ? constStorage().find(p.target->storage) : constStorage().end();
+    if (it == constStorage().end() || it->second.env != &constHeap() || !p.target->path.empty())
+      return std::nullopt;
+    size_t index = it->second.index;
+    ConstAllocation& a = constAllocations()[index];
+    if (!a.raw || a.isFreed || constHeap()[index].type)
+      return std::nullopt;
+    t = types.unqualified(t);
+    std::optional<int64_t> size = constSizeOf(t, depth);
+    if (!size || *size <= 0 || t->kind == TyKind::Void)
+      return std::nullopt;
+    if (a.bytes % *size != 0)
+    {
+      if (constWhy().empty())
+        constWhy() = std::to_string(a.bytes) + " bytes allocated at " + constWhereText(a.allocated) + " used as objects of " + types.toString(t, &symbols) +
+                     ", which are " + std::to_string(*size) + " bytes";
+      return std::nullopt;
+    }
+    int64_t count = a.bytes / *size;
+    if (!constMayMake(size_t(count)))
+      return std::nullopt;
+    std::vector<ConstValue> elements;
+    for (int64_t i = 0; i < count; ++i)
+    {
+      std::optional<ConstValue> e = a.zero ? constEmpty(t, true, depth + 1) : std::optional<ConstValue>(ConstValue::unset(t));
+      if (!e)
+        return std::nullopt;
+      elements.push_back(*e);
+    }
+    const Ty* array = types.array(t, uint32_t(count));
+    constHeap()[index].type = array;
+    constHeap()[index].value = ConstValue::object(array, std::move(elements));
+    it->second.type = array;
+    ConstTarget first = *p.target;
+    first.path.push_back(0);
+    return ConstValue::address(types.pointer(t), std::move(first));
+  }
+
   // The type of the object an Address points at (its target's part, whatever the pointer's own
   // type says: `void*`), or null.
   const Ty* constPointedType(const ConstValue& p, int depth)
@@ -9662,6 +9865,8 @@ struct GlobalScope::Impl
       return std::nullopt;
     if (count.i == 0)
       return to;
+    if (from.isObject() && from.type && types.unqualified(from.type)->kind == TyKind::Array && types.unqualified(from.type)->inner)
+      return constMemcpy(to, ConstValue::pointer(types.pointer(types.unqualified(from.type)->inner), from.parts, 0), count, depth); // `memcpy(text, "abc", 3)`
     const Ty* target = constPointedType(to, depth);
     const Ty* source = from.isAddress() ? constPointedType(from, depth) : from.isPointer() && from.parts && from.i >= 0 && size_t(from.i) < from.parts->size() ? (*from.parts)[size_t(from.i)].type : nullptr;
     if (!to.isAddress() || !to.target->storage || !target || !source)
@@ -9689,8 +9894,11 @@ struct GlobalScope::Impl
     std::vector<ConstValue> elements;
     for (int64_t i = 0; i < n; ++i)
     {
+      // An element no one wrote is copied as such (memcpy copies indeterminate bytes; reading the
+      // copy is what is no constant).
       std::optional<ConstValue> at = move(from, i);
-      std::optional<ConstValue> v = at ? read(*at) : std::nullopt;
+      std::optional<ConstPlace> place = at && at->isAddress() ? constStoragePlace(*at, "a memcpy from", depth) : std::nullopt;
+      std::optional<ConstValue> v = place ? constPartOrUnset(*place) : at ? read(*at) : std::nullopt;
       if (!v)
         return fail("a memcpy reading past what the source holds");
       elements.push_back(*v);
@@ -9916,6 +10124,8 @@ struct GlobalScope::Impl
         return std::nullopt; // (placement new into what the evaluation does not hold)
       ConstValue typed = *where;
       typed.type = types.pointer(t);
+      if (std::optional<ConstValue> fresh = constTypeAllocation(*where, t, depth))
+        typed = *fresh; // `new (malloc(sizeof(T))) T(...)`
       std::optional<ConstPlace> place = constStoragePlace(typed, "a placement new into", depth);
       std::optional<ConstValue> object = place ? constNewObject(n, t, ctx, depth) : std::nullopt;
       if (!object || !constWrite(*place, *object))
@@ -9979,6 +10189,8 @@ struct GlobalScope::Impl
       return fail(std::string(d->isArray ? "delete[]" : "delete") + " of memory new did not allocate");
     size_t index = it->second.index;
     ConstAllocation& a = constAllocations()[index];
+    if (a.raw)
+      return fail(std::string(d->isArray ? "delete[]" : "delete") + " of memory malloc allocated at " + constWhereText(a.allocated));
     if (a.isFreed)
       return fail("memory freed twice (first at " + constWhereText(a.freed) + ")");
     if (a.array != d->isArray || p->target->path != (a.array ? std::vector<size_t>{0} : std::vector<size_t>{}))
@@ -10256,6 +10468,16 @@ struct GlobalScope::Impl
     return std::nullopt;
   }
 
+  // The value at a place, unset included.
+  static std::optional<ConstValue> constPartOrUnset(const ConstPlace& place)
+  {
+    ConstPlace p = constResolve(place);
+    if (p.path.empty())
+      return p.binding().value;
+    std::optional<ConstValue> v = constPart(p.binding().value, p.path);
+    return v ? v : std::optional<ConstValue>(ConstValue::unset(place.type));
+  }
+
   // The value at a place, nullopt while unset.
   static std::optional<ConstValue> constRead(const ConstPlace& place)
   {
@@ -10344,6 +10566,19 @@ struct GlobalScope::Impl
   // StringView(const char*) counts with it.
   std::optional<ConstValue> constStrlen(const ConstValue& p)
   {
+    if (p.isAddress() && p.target->storage)
+    {
+      // Along chars of the evaluation's own (a local array, malloc's) to the terminating zero.
+      for (int64_t n = 0;; ++n)
+      {
+        std::optional<ConstValue> at = constAddressMove(p, n, 0);
+        std::optional<ConstValue> c = at && constAddressDereferenceable(*at, 0) ? constReadTarget(*at, 1) : std::nullopt;
+        if (!c || c->kind != ConstValue::Kind::Int)
+          return std::nullopt;
+        if (c->i == 0)
+          return ConstValue::integer(n, types.sizeType());
+      }
+    }
     if (!p.isPointer() || !p.parts)
       return std::nullopt;
     for (size_t i = size_t(p.i); i < p.parts->size(); ++i)

@@ -1,0 +1,66 @@
+// spec: malloc, calloc, realloc and free at compile time, as the library allocates: bytes typed by the first cast to T* (or placement new of a T into them), objects built in them by placement new and ended by an explicit destructor call, realloc moving trivially copyable elements, calloc's zero, strlen over the evaluation's own chars; with them the library's Vector<int> and a small String (up to 22 chars) work in a constant; each equals what the program computes (`18 33 3 190 5 3`)
+// factorio: build.kpp (design.md 12): projectlib's fixed 64-entry arrays become Vector and String
+extern "C" import "stdlib.h";
+extern "C" import "string.h";
+struct Text
+{
+  int* hits;
+  int id;
+  Text(int* h, int i) : hits(h), id(i) {}
+  ~Text() { ++*this->hits; }
+};
+constexpr int grow()
+{
+  int* items = (int*)malloc(2 * sizeof(int));
+  items[0] = 5;
+  items[1] = 6;
+  int* bigger = (int*)realloc(items, 4 * sizeof(int));
+  bigger[3] = 7;
+  int sum = bigger[0] + bigger[1] + bigger[3];
+  free(bigger);
+  return sum;
+}
+constexpr int placed()
+{
+  int hits = 0;
+  Text* slots = (Text*)malloc(3 * sizeof(Text));
+  for (int i = 0; i < 3; ++i)
+    new (slots + i) Text(&hits, i * 10);
+  int ids = slots[1].id + slots[2].id;
+  for (int i = 0; i < 3; ++i)
+    slots[i].~Text();
+  free(slots);
+  return ids + hits;
+}
+constexpr int chars()
+{
+  char* text = (char*)calloc(8, 1);
+  memcpy(text, "abc", 3);
+  int n = (int)strlen(text);
+  free(text);
+  return n;
+}
+constexpr int vector()
+{
+  Vector<int> v;
+  for (int i = 0; i < 20; ++i)
+    v.push_back(i);
+  int sum = 0;
+  for (int x : v)
+    sum += x;
+  return sum;
+}
+constexpr int string()
+{
+  String s = "abc";
+  String t = s;
+  t += "de";
+  String u = move(t);
+  return u.size();
+}
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println("{} {} {} {} {} {}", Show<grow()>::value, Show<placed()>::value, Show<chars()>::value, Show<vector()>::value, Show<string()>::value, chars());
+  return 0;
+}

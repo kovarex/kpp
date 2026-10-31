@@ -1,0 +1,19 @@
+// spec: what malloc gives a compile-time evaluation it must free before the evaluation ends; freeing it twice, freeing what new allocated, and deleting what malloc allocated are errors naming where (C++20: such an evaluation is no constant), never undefined behaviour
+// factorio: build.kpp (design.md 12)
+// error: consteval_malloc_errors.kpp:12: error: static assertion whose condition is no constant: memory allocated at consteval_malloc_errors.kpp:8 is never freed
+// error: consteval_malloc_errors.kpp:13: error: static assertion whose condition is no constant: memory freed twice (first at consteval_malloc_errors.kpp:9)
+// error: consteval_malloc_errors.kpp:14: error: static assertion whose condition is no constant: free of memory malloc did not allocate (new allocated it at consteval_malloc_errors.kpp:10)
+// error: consteval_malloc_errors.kpp:15: error: static assertion whose condition is no constant: delete of memory malloc allocated at consteval_malloc_errors.kpp:11
+extern "C" import "stdlib.h";
+constexpr int leaks() { void* p = malloc(4); return 1; }
+constexpr int twice() { void* p = malloc(4); free(p); free(p); return 1; }
+constexpr int freesNew() { int* p = new int(3); free(p); return 1; }
+constexpr int deletesMalloc() { int* p = (int*)malloc(sizeof(int)); delete p; return 1; }
+static_assert(leaks() == 1);
+static_assert(twice() == 1);
+static_assert(freesNew() == 1);
+static_assert(deletesMalloc() == 1);
+int main()
+{
+  return 0;
+}

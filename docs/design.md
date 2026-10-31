@@ -1165,9 +1165,17 @@ outermost evaluation (C++20's transient allocation): all of it is freed before t
 ends, else "memory allocated at File.kpp:7 is never freed"; a read of freed memory, freeing twice,
 and `delete` of what `new[]` allocated (or the other way) are errors naming where (specs
 language/consteval_new_and_delete, language/consteval_leak_is_error,
-language/consteval_use_after_free_is_error). Not yet: `malloc` and `free`, which the library's
-Vector and String allocate with, and String's small-string representation (spec
-language/consteval_vector_of_strings, pending).
+language/consteval_use_after_free_is_error). `malloc`, `calloc`, `realloc` and `free` allocate
+from the same memory as the library does (spec language/consteval_malloc_and_free): bytes, typed
+by the first cast to `T*` (`(T*)malloc(n * sizeof(T))`: n objects of T, uninitialized; calloc's
+zero) or by a placement new into them; objects built there by placement new and ended by an
+explicit destructor call (`slots[i].~T()`); realloc moving trivially copyable elements; `free` of
+what malloc did not allocate, twice or through a pointer into a block, and `delete` of malloc's
+memory, are errors naming where (spec language/consteval_malloc_errors). With them the library's
+Vector and a small String (up to 22 characters) work in a constant. A longer String does not: its
+small-string union is read through the member that is not alive (the mark byte in `smallChars`
+while the heap fields are), which C++ makes undefined and the interpreter rejects; the fix is the
+library's (proposed to its owner 2026-10-31; spec language/consteval_vector_of_strings, pending).
 
 The three questions were answered with the proposals on 2026-10-29 (the go-ahead came while
 kovarex was away; his to revise): any function with a body may run at compile time, `constexpr`
