@@ -1,0 +1,30 @@
+// spec: a non-const member function is never called on a const object (its implicit object parameter is a `C&`, which a const object does not bind): `cb.set(5)` through a `const Box&`, `p->set(6)` through a `const Box*`, and a class's own `operator=`, `operator++` and `operator+=` on a const object are errors, as in C++ ([over.match.funcs]/4-5)
+// factorio: found by the templates thread with language/const_value_incremented: each call ran and stored (silent)
+// error: non_const_method_on_const_object_is_error.kpp:22: error: the member function set is not const, and its object is a const Box
+// error: non_const_method_on_const_object_is_error.kpp:23: error: the member function set is not const, and its object is a const Box
+// error: non_const_method_on_const_object_is_error.kpp:25: error: the member function operator= is not const, and its object is a const Box
+// error: non_const_method_on_const_object_is_error.kpp:26: error: the member function operator++ is not const, and its object is a const Box
+// error: non_const_method_on_const_object_is_error.kpp:27: error: the member function operator+= is not const, and its object is a const Box
+struct Box
+{
+  int value = 0;
+  void set(int v) { value = v; }
+  Box& operator=(const Box& o) { value = o.value; return *this; }
+  Box& operator++() { ++value; return *this; }
+  Box& operator+=(int n) { value += n; return *this; }
+  int get() const { return value; }
+};
+int main()
+{
+  Box b;
+  const Box& cb = b;
+  const Box* p = &b;
+  cb.set(5);
+  p->set(6);
+  const Box fixed;
+  fixed = b;
+  ++fixed;
+  fixed += 2;
+  println("{} {}", cb.get(), fixed.get());
+  return 0;
+}

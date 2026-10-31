@@ -498,8 +498,11 @@ expressions/assignment_right_operand_first_keeps_value_category.
 A const object is never modified (2026-10-31): a built-in assignment, compound assignment,
 increment or decrement of a const value, and the implicit copy or move assignment of a const
 class object, are errors ([expr.ass] 1, [expr.pre.incr]), in a template's instance only when its
-function is emitted. `volatile T` alone is volatile, not const. Specs:
-language/const_value_assigned, language/const_value_incremented, language/volatile_is_not_const.
+function is emitted. `volatile T` alone is volatile, not const. A non-const member function is
+no candidate for a const object ([over.match.funcs] 4-5): calling one, or the class's own
+operator, on a const object is an error. Specs: language/const_value_assigned,
+language/const_value_incremented, language/volatile_is_not_const,
+classes/non_const_method_on_const_object_is_error.
 
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 

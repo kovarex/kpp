@@ -14729,13 +14729,39 @@ struct GlobalScope::Impl
     // template's own walk (its instances say). what: "assignment to", "increment of", "decrement of".
     void checkConstModification(uint32_t token, const Ty* object, const char* what)
     {
-      if (!object || !object->isConst || !object->isKnown() || !file || file->isImported || probing)
+      if (!object || !object->isConst || !object->isKnown())
         return;
-      std::string message = std::string(what) + " a const value (" + types.toString(object, &impl.symbols) + ")";
+      reportCheck(token, std::string(what) + " a const value (" + types.toString(object, &impl.symbols) + ")");
+    }
+
+    // A checker error at token: in a template's instance once its function is emitted, never in the
+    // template's own walk (its instances say), nowhere while probing or in imported C.
+    void reportCheck(uint32_t token, const std::string& message)
+    {
+      if (!file || file->isImported || probing)
+        return;
       if (activeSubst)
         reportInInstance(token, message);
       else if (!inGenericTemplate())
         impl.reportCheckerError(file, token, message);
+    }
+
+    // Whether f, a member function, is a non-const one called on a const object (objectTy): no
+    // candidate in C++, whose implicit object parameter `C&` a const object does not bind
+    // ([over.match.funcs]/4-5). A static member, a constructor or a destructor takes any object.
+    bool nonConstOnConstObject(FunctionDecl* f, const Ty* objectTy)
+    {
+      const Ty* o = objectTy ? types.stripRef(objectTy) : nullptr;
+      return f && o && o->isConst && o->isKnown() && o->kind == TyKind::Class && !(f->flags & (DF_Const | DF_Static | DF_Constructor | DF_Destructor));
+    }
+
+    void checkConstObjectCall(FunctionDecl* f, const Ty* objectTy, uint32_t token)
+    {
+      if (!nonConstOnConstObject(f, objectTy))
+        return;
+      uint32_t symbol = impl.functionSymbol(f->name);
+      reportCheck(token, "the member function " + std::string(symbol == UINT32_MAX ? "?" : impl.symbols.name(symbol)) +
+                             " is not const, and its object is a " + types.toString(types.stripRef(objectTy), &impl.symbols));
     }
 
     // An object's array bound (a variable's, a data member's) that is no constant, or is negative,
@@ -17185,6 +17211,8 @@ struct GlobalScope::Impl
             if (Scope* self = impl.classScopeOf(types.unqualified(thisType->inner)); self && reachesClassScope(self, l.foundIn, 0))
               implicitObject = thisType->inner;
           FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, implicitObject, ambiguous, &n->name.last(), c->args, &tied);
+          if (f && !ambiguous)
+            checkConstObjectCall(f, implicitObject, c->token);
           if (!f)
           {
             // No callee the code generator could trust: not the first of several overloads, nor a
@@ -17337,6 +17365,8 @@ struct GlobalScope::Impl
           std::vector<FunctionDecl*> tied;
           std::vector<const Ty*> argTypes = argTypesOf(c->args);
           FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, object, ambiguous, &last, c->args, &tied);
+          if (f && !ambiguous)
+            checkConstObjectCall(f, object, m->token);
           if (!f)
           {
             ++stats.membersBound;
@@ -17437,7 +17467,11 @@ struct GlobalScope::Impl
         {
           bool ambiguous;
           if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypesOf(c->args), &r.subst, t, ambiguous))
+          {
+            if (!ambiguous)
+              checkConstObjectCall(f, t, c->token);
             return returnTypeOfCall(f, &r.subst, c->args, nullptr);
+          }
           return unknown(Why::Overload);
         }
         return r.why == Why::Member ? unknown(Why::Member) : types.unknown();
@@ -17484,6 +17518,8 @@ struct GlobalScope::Impl
     // the substitution of its class and isMember is set.
     FunctionDecl* operatorFunction(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, Subst& subst, bool& isMember)
     {
+      FunctionDecl* constViolation = nullptr; // the class's own operator, non-const, on a const lhs
+      Subst violationSubst;
       uint32_t symbol = impl.opSymbols[uint32_t(op)];
       const Ty* l = types.stripRef(lhs);
       isMember = false;
@@ -17498,9 +17534,14 @@ struct GlobalScope::Impl
             argTypes.push_back(rhs);
           if (FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, lhs, ambiguous))
           {
-            subst = r.subst;
-            isMember = true;
-            return f;
+            if (!nonConstOnConstObject(f, lhs))
+            {
+              subst = r.subst;
+              isMember = true;
+              return f;
+            }
+            constViolation = f;
+            violationSubst = r.subst;
           }
         }
       }
@@ -17531,6 +17572,14 @@ struct GlobalScope::Impl
           }
           break;
         }
+      }
+      if (constViolation)
+      {
+        // (no other operator takes it: the error, and the operator for the walk to go on with)
+        checkConstObjectCall(constViolation, lhs, token);
+        subst = violationSubst;
+        isMember = true;
+        return constViolation;
       }
       return nullptr;
     }
