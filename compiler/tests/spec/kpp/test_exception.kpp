@@ -1,0 +1,21 @@
+// spec: an exception that leaves a test fails that test; one derived from Exception shows its message
+// test:
+// exit: 1
+test "standard"
+{
+  throw RuntimeError("the disk is full");
+}
+
+struct Custom
+{
+};
+
+test "other"
+{
+  throw Custom();
+}
+
+test "after"
+{
+  println("still running");
+}

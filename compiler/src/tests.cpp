@@ -282,6 +282,11 @@ int main(int argc, char** argv)
     catch (const __KppTestEnded&)
     {
     }
+    catch (const Exception& e)
+    {
+      String text = format("an exception left the test: {}", e.message);
+      __kppFail(test.where.file_name(), int(test.where.line()), int(test.where.column()), "exception", text.c_str(), "test failed");
+    }
     catch (...)
     {
       __kppFail(test.where.file_name(), int(test.where.line()), int(test.where.column()), "exception", "an exception left the test",
