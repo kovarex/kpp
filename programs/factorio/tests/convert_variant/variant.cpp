@@ -1,8 +1,8 @@
 // The converter's test of std::variant: a variant becomes a typed union (`union enum`, design.md
 // 8.5), and what this file prints compiled as C++ (convert_variant.expected) is what its conversion
 // must print. The uses the game has: construction from an alternative, assignment, index(),
-// holds_alternative, get and get_if by type, visit, comparison. (The tests' SaveLoadStdVariant's
-// variants are not: overrides\left-out-tests.txt says why.)
+// holds_alternative, get and get_if by type, visit, comparison. (The tests' SaveLoadStdVariant
+// has the rest: two alternatives of one type, in_place_index, converting construction.)
 #include <cstdio>
 #include <string>
 #include <variant>

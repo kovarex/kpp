@@ -4,4 +4,3 @@
 # the code generator leaves out is a stub that stops the whole suite where a test reaches it. Only
 # a test of what Kpp replaces by design belongs here; a gap of the compiler or the library gets a
 # pending spec and a fix instead. docs/path-to-factorio.md, "The unit tests".
-MapDeserialiser/SaveLoadStdVariant: its two test-local variants need what a typed union has not, by design (design.md 8.5): construction in a given alternative (std::in_place_index<2> and <3> of two int alternatives; its first alternative has no default constructor and the test static_asserts that the variant has none either), and C++'s converting construction (VariantType("hello world") holds the std::string); the game's own nine variants are typed unions (tests\convert_variant)

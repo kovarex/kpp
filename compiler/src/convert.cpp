@@ -1491,6 +1491,7 @@ namespace
     std::string unionName; // AIState, DataVariant
     std::string qualified; // ::SegmentedUnitAI::AIState
     std::vector<VariantAlternative> alternatives;
+    std::set<std::string> localTypes; // a block's union: the classes declared in its blocks, which it names as written
   };
   struct Variants
   {
@@ -1606,7 +1607,54 @@ namespace
     return name;
   }
 
-  // Records the program's std::variant aliases and members (prefix: the enclosing scopes and `::`).
+  void collectVariants(Span<Decl*> decls, const std::string& prefix, const std::vector<Token>& tk, std::string_view text,
+                       const SymbolTable& symbols, Variants& out);
+  // A function body's block-local aliases (`using VariantType = std::variant<...>;` in a test):
+  // the union is declared in the block, named as written, unqualified.
+  void collectLocalVariants(Stmt* s, const std::vector<Token>& tk, std::string_view text, const SymbolTable& symbols, Variants& out,
+                            std::set<std::string> localClasses)
+  {
+    if (!s)
+      return;
+    switch (s->kind)
+    {
+      case NodeKind::BlockStmt:
+        for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+        {
+          // A class declared in the block is in scope for what follows it there.
+          if (inner->kind == NodeKind::DeclStmt)
+            for (Decl* d : static_cast<DeclStmt*>(inner)->decls)
+              if (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->name.empty())
+                localClasses.insert(nameText(static_cast<ClassDecl*>(d)->name, symbols));
+          collectLocalVariants(inner, tk, text, symbols, out, localClasses);
+        }
+        break;
+      case NodeKind::DeclStmt:
+      {
+        size_t before = out.all.size();
+        collectVariants(static_cast<DeclStmt*>(s)->decls, "", tk, text, symbols, out);
+        for (size_t i = before; i < out.all.size(); ++i)
+        {
+          out.all[i].qualified = out.all[i].unionName;
+          out.all[i].localTypes = localClasses;
+        }
+        break;
+      }
+      case NodeKind::IfStmt:
+        collectLocalVariants(static_cast<IfStmt*>(s)->then, tk, text, symbols, out, localClasses);
+        collectLocalVariants(static_cast<IfStmt*>(s)->else_, tk, text, symbols, out, localClasses);
+        break;
+      case NodeKind::ForStmt: collectLocalVariants(static_cast<ForStmt*>(s)->body, tk, text, symbols, out, localClasses); break;
+      case NodeKind::RangeForStmt: collectLocalVariants(static_cast<RangeForStmt*>(s)->body, tk, text, symbols, out, localClasses); break;
+      case NodeKind::WhileStmt: collectLocalVariants(static_cast<WhileStmt*>(s)->body, tk, text, symbols, out, localClasses); break;
+      case NodeKind::DoStmt: collectLocalVariants(static_cast<DoStmt*>(s)->body, tk, text, symbols, out, localClasses); break;
+      case NodeKind::SwitchStmt: collectLocalVariants(static_cast<SwitchStmt*>(s)->body, tk, text, symbols, out, localClasses); break;
+      default: break;
+    }
+  }
+
+  // Records the program's std::variant aliases and members (prefix: the enclosing scopes and `::`),
+  // and the block-local aliases of its functions' bodies.
   void collectVariants(Span<Decl*> decls, const std::string& prefix, const std::vector<Token>& tk, std::string_view text,
                        const SymbolTable& symbols, Variants& out)
   {
@@ -1614,6 +1662,11 @@ namespace
     {
       Type* type = nullptr;
       std::string unionName;
+      if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body)
+      {
+        collectLocalVariants(static_cast<FunctionDecl*>(d)->body, tk, text, symbols, out, {});
+        continue;
+      }
       if (d->kind == NodeKind::NamespaceDecl)
       {
         auto* n = static_cast<NamespaceDecl*>(d);
@@ -5899,6 +5952,84 @@ namespace
       counts.add("std::variant to union enum");
     }
 
+    // A std::variant's construction `V(...)` as the typed union's from a tag (design.md 8.5,
+    // `U(U::Tag, args...)`): `V(std::in_place_index<I>, args...)` names the I-th alternative,
+    // `V(std::in_place_type<T>, args...)` T's; and the C++ converting constructions the union's
+    // from-a-value does not make, where std::variant selects an alternative by conversion: a
+    // string literal (the std::string alternative) and std::nullopt (the std::optional one), when
+    // one alternative is of that kind. Any other construction stays as written (from a value of
+    // one alternative's type; kppc rejects one it cannot decide).
+    // (A cast `V(...)` or, in a function body, a call of the alias's name: the parse takes a name
+    // it does not know as a type for a function.)
+    void variantConstruction(const VariantInfo& info, uint32_t typeToken, Span<Expr*> args)
+    {
+      if (args.empty())
+        return;
+      uint32_t open = typeToken;
+      while (open < toks.size() && !toks[open].is(P::LParen))
+        ++open;
+      if (open >= toks.size())
+        return;
+      std::vector<std::pair<uint32_t, uint32_t>> ranges = argumentRanges(open + 1);
+      if (ranges.size() != args.size())
+        return;
+      auto [first, end] = ranges[0];
+      // `std::in_place_index<I>` / `std::in_place_type<T>` (the `std::` optional).
+      uint32_t k = first;
+      if (k + 2 < end && spelling(k) == "std" && toks[k + 1].is(P::ColonColon))
+        k += 2;
+      std::string_view marker = k < end ? spelling(k) : std::string_view();
+      if ((marker == "in_place_index" || marker == "in_place_type") && k + 2 < end && toks[k + 1].is(P::Less) && toks[end - 1].is(P::Greater))
+      {
+        std::string argument = normalizedSpelling(text.substr(toks[k + 2].offset, toks[end - 1].offset - toks[k + 2].offset));
+        const VariantAlternative* chosen = nullptr;
+        if (marker == "in_place_index")
+        {
+          size_t index = size_t(atoi(argument.c_str()));
+          chosen = index < info.alternatives.size() ? &info.alternatives[index] : nullptr;
+        }
+        else
+        {
+          int matches = 0;
+          for (const VariantAlternative& a : info.alternatives)
+            if (a.spelling == argument)
+            {
+              chosen = &a;
+              ++matches;
+            }
+          if (matches != 1)
+            chosen = nullptr;
+        }
+        if (chosen)
+        {
+          replace(toks[first].offset, endOffset(end - 1) - toks[first].offset, info.qualified + "::" + chosen->name);
+          counts.add("std::variant constructions in an alternative written U(U::Tag, ...)");
+        }
+        return;
+      }
+      if (args.size() != 1)
+        return;
+      Expr* argument = args[0];
+      bool literal = argument->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(argument)->literalKind == TokenKind::String;
+      bool nullopt = end - first <= 3 && spelling(end - 1) == "nullopt";
+      if (!literal && !nullopt)
+        return;
+      const VariantAlternative* chosen = nullptr;
+      int matches = 0;
+      for (const VariantAlternative& a : info.alternatives)
+        if ((literal && (a.spelling == "std::string" || a.spelling == "String")) || (nullopt && a.spelling.rfind("std::optional<", 0) == 0))
+        {
+          chosen = &a;
+          ++matches;
+        }
+      if (matches != 1)
+        return;
+      // In place of the call's `(`: an insert at the argument would be taken by the argument's own
+      // rewrite starting there (`std::nullopt`).
+      replace(toks[open].offset, toks[open].length, "(" + info.qualified + "::" + chosen->name + ", ");
+      counts.add("std::variant converting constructions written U(U::Tag, value)");
+    }
+
     // The variant an expression is declared as: a variable, parameter or member whose type is one of
     // the variant aliases (or a variant member itself), or a call of a function returning one.
     const VariantInfo* variantOfType(Type* t)
@@ -6793,6 +6924,8 @@ namespace
           for (Decl* d : static_cast<DeclStmt*>(s)->decls)
             if (d->kind == NodeKind::VariableDecl)
               walkExpr(static_cast<VariableDecl*>(d)->init, owner);
+            else if (d->kind == NodeKind::UsingAliasDecl)
+              recordVariantDeclaration(d, false); // a block's `using V = std::variant<...>;`
           break;
         case NodeKind::IfStmt:
         {
@@ -6971,6 +7104,9 @@ namespace
           // (A printf-style call's 64-bit arguments: widenFormatArguments, by the format; its
           // 64-bit arguments read as 32 bits, by the declarations:)
           narrowFormatArguments(call);
+          if (variants && call->callee->kind == NodeKind::NameExpr)
+            if (auto v = variants->byDecl.find(static_cast<NameExpr*>(call->callee)->resolved); v != variants->byDecl.end())
+              variantConstruction(variants->all[v->second], call->callee->token, call->args);
           walkExpr(call->callee, owner);
           walkExprs(call->args, owner);
           break;
@@ -7014,7 +7150,14 @@ namespace
         }
         case NodeKind::BraceInitExpr: walkExprs(static_cast<BraceInitExpr*>(e)->args, owner); break;
         case NodeKind::ThrowExpr: walkExpr(static_cast<ThrowExpr*>(e)->operand, owner); break;
-        case NodeKind::FunctionalCastExpr: walkExprs(static_cast<FunctionalCastExpr*>(e)->args, owner); break;
+        case NodeKind::FunctionalCastExpr:
+        {
+          auto* cast = static_cast<FunctionalCastExpr*>(e);
+          if (const VariantInfo* info = variants ? variantOfType(cast->type) : nullptr)
+            variantConstruction(*info, cast->type->token, cast->args);
+          walkExprs(cast->args, owner);
+          break;
+        }
         case NodeKind::FoldExpr:
           walkExpr(static_cast<FoldExpr*>(e)->lhs, owner);
           walkExpr(static_cast<FoldExpr*>(e)->rhs, owner);
@@ -7252,7 +7395,10 @@ namespace
           for (size_t a = 0; a < v.args.size() && a < v.info->alternatives.size(); ++a)
           {
             std::string type = applyEdits(edits, v.args[a].first, v.args[a].second);
-            type = qualifiedAlternativeType(type, *v.info, v.memberStart);
+            // A block's union names its blocks' classes as written (they have no qualified name),
+            // the others qualified as any union's (an alternative named String hides the type).
+            if (!v.info->localTypes.count(normalizedSpelling(type)))
+              type = qualifiedAlternativeType(type, *v.info, v.memberStart);
             list += std::string(list.empty() ? "" : ", ") + "{" + type + ", " + v.info->alternatives[a].name + "}";
           }
           // std::variant's ==, the same alternative with equal values; a template, so that as for

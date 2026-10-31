@@ -1,6 +1,7 @@
 // The typed unions the game's std::variants become are loaded as std::variant was: the
 // alternative's index, then its value, built from the input when it has such a constructor and
-// loaded into a default-constructed one otherwise. These join the converted DeserialiserHelper in
+// loaded into a default-constructed one otherwise; an indirect load builds the union from the
+// tag and the value (`T(a.tag, value)`). These join the converted DeserialiserHelper in
 // place of its loads of any std::variant<T...>, which recurse over the alternatives' indices with
 // variant_size_v (the converter drops those); here a `for constexpr` over alternatives(U) does it.
 template<class DeserialiserType>
@@ -14,10 +15,12 @@ private:
     for constexpr (auto a : alternatives(T))
       if (alternativeIndex == uint32_t(int(a.tag)))
       {
+        // Built in the alternative of that tag (its type may be another's too: two ints), with
+        // no default-constructed union first (its first alternative may have no default).
         if constexpr (should_construct<a.type, DeserialiserType&>)
-          return a.type(input);
+          return T(a.tag, a.type(input));
         else
-          return input.template load<a.type>();
+          return T(a.tag, input.template load<a.type>());
       }
     throw DeserialiserException(ssprintf("Invalid alternative index (%ul) loaded from input file for variant (with size %ul)",
                                          alternativeIndex,
