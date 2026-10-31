@@ -47,7 +47,12 @@ Decided by kovarex; every thread follows them.
   `run_tests.cmd` and `spec.cmd` pass (and the game still runs, for codegen). A change that can
   alter the converted game also needs `convert.cmd`: headline 0, tests errors 0
   (kpp\tests-errors.txt: every one is a stubbed test function) and every smoke test. Commit small, push
-  promptly. Never `git stash`: the stash is shared across worktrees.
+  promptly. Never `git stash`: the stash is shared across worktrees. Commit with `git commit -s`
+  (kovarex's DCO sign-off, which he authorised for threads' commits on 2026-11-01; CONTRIBUTING.md)
+  besides the Co-Authored-By line.
+- Licence: kpp and libraries/ are Apache-2.0 WITH LLVM-exception (LICENSE). Not under it, and never
+  relicensed by a thread: programs/factorio/ (game-derived) and factorio-in-kpp (Wube's game source).
+  Third-party code keeps its own licence and notice.
 - Ownership: A resolver, parser, compile speed, persistent compiler; B codegen, driver, layout,
   cimport, linking, running the game; C convert.cpp, programs/factorio, the stdlib (sole owner),
   interop, factorio-in-kpp pushes; D deduction, instantiation, overloads, checker, interpreter,
