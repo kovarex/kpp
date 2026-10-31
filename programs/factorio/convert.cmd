@@ -10,6 +10,8 @@ rem Then imgui frames through the generated imgui interface (native\generate_img
 rem against glm, the converted Lua against the C++ build's (tests\lua_compat.lua, the gate of Lua's
 rem conversion), and the GDI+ classes (overrides\added\src\Graphics\GdiplusClasses.kpp) against the
 rem SDK's gdiplus.h, and RE2 through the RegexUtil override (tests\regex_smoke.kpp) with the game's re2.lib.
+rem Last, the converter's own test of the sizes a serialiser writes (tests\convert_sizes\sizes.cpp): its
+rem conversion writes the bytes its C++ build writes.
 rem Hand-written parts are in overrides\.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -100,3 +102,9 @@ echo == regex smoke test: tests\regex_smoke.kpp through kpp\src\Util\RegexUtil.k
 %KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\regex_smoke.exe kpp\src\Util\RegexUtil.kpp tests\regex_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\re2.lib || exit /b 1
 kpp\regex_smoke.exe > kpp\regex_smoke.out.txt
 fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected > nul && echo regex smoke test: output as expected || (echo regex smoke test: OUTPUT DIFFERS & fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected & exit /b 1)
+echo == size widths: tests\convert_sizes\sizes.cpp, converted and run, writes the bytes C++ writes for each std container size a serialiser takes (tests\convert_sizes.expected, from the C++ build of the same file)
+if exist kpp\convert_sizes rd /s /q kpp\convert_sizes
+%KPPC% --no-std --quiet --convert kpp\convert_sizes --ext .cpp tests\convert_sizes || exit /b 1
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_sizes.exe kpp\convert_sizes || exit /b 1
+kpp\convert_sizes.exe > kpp\convert_sizes.out.txt
+fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected > nul && echo size widths: output as expected || (echo size widths: OUTPUT DIFFERS & fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected & exit /b 1)

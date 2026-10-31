@@ -5638,61 +5638,280 @@ namespace
     // int in Kpp (docs/stdlib/common.md), which a serialiser's operator<< writes in 4 bytes instead
     // of 8: the game's complete-mode saves (its CRCs, desync reports) came out other than the C++
     // build's (TagManager::save, 4 bytes short per force). Written `size_t(...)` where it is the
-    // right operand of a <<, the one place where C++ code sends a size on by its type.
+    // right operand of a <<, the one place where C++ code sends a size on by its type (the game's
+    // saveContainerSize and saveSpaceOptimized take it as a FullType). length() and count(k) alike,
+    // and wherever the declarations say the container's type (typeOfExpr): CustomGui::save's
+    // `item.second.size()` of a map's std::set put the heuristic CRC 4 bytes short per mod.
     // A std container, written so or through an alias of one, or a class derived from one
     // (ScheduleRecords : std::vector<ScheduleRecord>): whose size() is the library's int.
-    bool isStdContainerType(Type* type, int depth)
+    static const std::set<std::string_view>& stdContainerNames()
     {
-      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType))
-        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner : static_cast<LRefType*>(type)->referenced;
-      if (!type || type->kind != NodeKind::NamedType || depth > 8)
-        return false;
-      auto* named = static_cast<NamedType*>(type);
-      const QualifiedName& name = named->name;
       static const std::set<std::string_view> containers = {
         "vector", "deque", "list", "map", "multimap", "set", "multiset", "unordered_map", "unordered_multimap", "unordered_set",
         "unordered_multiset", "string", "wstring", "u16string", "u32string", "string_view", "wstring_view", "array", "bitset", "span",
         "queue", "stack", "priority_queue"};
+      return containers;
+    }
+    bool isStdContainerType(Type* type)
+    {
+      NamedType* named = stdTemplateOf(type, 0);
+      return named && stdContainerNames().count(stdTemplateName(named)) != 0;
+    }
+    // The std container (or std::pair) a type names, written so, through aliases or as a base class:
+    // the NamedType whose last part carries its template arguments. Null for any other type.
+    NamedType* stdTemplateOf(Type* type, int depth)
+    {
+      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType || type->kind == NodeKind::RRefType))
+        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner
+             : type->kind == NodeKind::LRefType  ? static_cast<LRefType*>(type)->referenced
+                                                 : static_cast<RRefType*>(type)->referenced;
+      if (!type || type->kind != NodeKind::NamedType || depth > 8)
+        return nullptr;
+      auto* named = static_cast<NamedType*>(type);
+      const QualifiedName& name = named->name;
       if (name.parts.size() == 2 && name.parts[0].symbol != UINT32_MAX && name.parts[1].symbol != UINT32_MAX &&
           symbols.name(name.parts[0].symbol) == "std")
-        return containers.count(symbols.name(name.parts[1].symbol)) != 0;
+        return named;
       Decl* d = named->resolved;
       if (!d)
-        return false;
+        return nullptr;
       if (d->kind == NodeKind::UsingAliasDecl)
-        return isStdContainerType(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+        return stdTemplateOf(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
       if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
-        return isStdContainerType(static_cast<VariableDecl*>(d)->type, depth + 1);
+        return stdTemplateOf(static_cast<VariableDecl*>(d)->type, depth + 1);
       if (d->kind == NodeKind::ClassDecl)
         for (const ClassDecl::Base& b : static_cast<ClassDecl*>(d)->bases)
-          if (isStdContainerType(b.type, depth + 1))
-            return true;
+          if (NamedType* base = stdTemplateOf(b.type, depth + 1))
+            return base;
+      return nullptr;
+    }
+    std::string_view stdTemplateName(NamedType* named) { return symbols.name(named->name.parts[1].symbol); }
+    Type* stdTemplateArg(NamedType* named, uint32_t i)
+    {
+      const NamePart& part = named->name.parts[1];
+      Node* arg = i < part.templateArgs.size() ? part.templateArgs[i] : nullptr;
+      return arg && arg->kind <= NodeKind::PackType ? static_cast<Type*>(arg) : nullptr;
+    }
+    // What an expression is, as far as the declarations say: a type, or a std::pair's (a map element's)
+    // two types; an iterator's element (begin(), find()) is the same with `iterator` set. The type of
+    // an auto variable is its initialiser's or, for a range-for's, its range's element.
+    struct SeenType
+    {
+      Type* type = nullptr;
+      Type* first = nullptr;
+      Type* second = nullptr;
+      bool iterator = false;
+      bool known() const { return type || first; }
+    };
+    std::map<Decl*, Expr*> rangeForRanges; // a range-for's variable: its range
+    // A std container's element: a map's key and value pair, an array's or a sequence's T.
+    SeenType elementOf(const SeenType& of)
+    {
+      SeenType element;
+      if (!of.type)
+        return element;
+      Type* t = of.type;
+      while (t && (t->kind == NodeKind::ConstType || t->kind == NodeKind::LRefType))
+        t = t->kind == NodeKind::ConstType ? static_cast<ConstType*>(t)->inner : static_cast<LRefType*>(t)->referenced;
+      if (t && t->kind == NodeKind::ArrayType)
+      {
+        element.type = static_cast<ArrayType*>(t)->element;
+        return element;
+      }
+      NamedType* named = stdTemplateOf(t, 0);
+      if (!named)
+        return element;
+      std::string_view name = stdTemplateName(named);
+      if (name == "map" || name == "multimap" || name == "unordered_map" || name == "unordered_multimap")
+      {
+        element.first = stdTemplateArg(named, 0);
+        element.second = stdTemplateArg(named, 1);
+      }
+      else if (name == "vector" || name == "deque" || name == "list" || name == "set" || name == "multiset" || name == "unordered_set" ||
+               name == "unordered_multiset" || name == "array" || name == "span")
+        element.type = stdTemplateArg(named, 0);
+      return element;
+    }
+    SeenType typeOfDecl(Decl* d, int depth)
+    {
+      SeenType seen;
+      if (!d || depth > 16)
+        return seen;
+      Type* type = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d)->type
+                 : d->kind == NodeKind::ParamDecl    ? static_cast<ParamDecl*>(d)->type
+                                                     : nullptr;
+      Type* t = type;
+      while (t && (t->kind == NodeKind::ConstType || t->kind == NodeKind::LRefType || t->kind == NodeKind::RRefType))
+        t = t->kind == NodeKind::ConstType ? static_cast<ConstType*>(t)->inner
+          : t->kind == NodeKind::LRefType  ? static_cast<LRefType*>(t)->referenced
+                                           : static_cast<RRefType*>(t)->referenced;
+      if (!t || t->kind != NodeKind::AutoType)
+      {
+        seen.type = type;
+        return seen;
+      }
+      if (auto it = rangeForRanges.find(d); it != rangeForRanges.end())
+        return elementOf(typeOfExpr(it->second, depth + 1));
+      if (d->kind == NodeKind::VariableDecl)
+        if (Expr* init = static_cast<VariableDecl*>(d)->init)
+          return typeOfExpr(init, depth + 1);
+      return seen;
+    }
+    SeenType typeOfExpr(Expr* e, int depth)
+    {
+      SeenType seen;
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (!e || depth > 16)
+        return seen;
+      switch (e->kind)
+      {
+        case NodeKind::NameExpr: return typeOfDecl(static_cast<NameExpr*>(e)->resolved, depth + 1);
+        case NodeKind::MemberExpr:
+        {
+          auto* member = static_cast<MemberExpr*>(e);
+          if (member->resolved)
+            return typeOfDecl(member->resolved, depth + 1);
+          if (member->member.parts.size() != 1 || member->member.parts[0].symbol == UINT32_MAX)
+            return seen;
+          // `item.second` of a map element, `it->first` of a map iterator, `pair.first` of a std::pair.
+          SeenType base = typeOfExpr(member->base, depth + 1);
+          if ((member->op == P::Arrow) != base.iterator)
+            return seen;
+          if (!base.first && base.type)
+            if (NamedType* named = stdTemplateOf(base.type, 0); named && stdTemplateName(named) == "pair")
+            {
+              base.first = stdTemplateArg(named, 0);
+              base.second = stdTemplateArg(named, 1);
+            }
+          std::string_view name = symbols.name(member->member.parts[0].symbol);
+          seen.type = name == "first" ? base.first : name == "second" ? base.second : nullptr;
+          return seen;
+        }
+        case NodeKind::IndexExpr:
+        {
+          auto* index = static_cast<IndexExpr*>(e);
+          SeenType base = typeOfExpr(index->base, depth + 1);
+          SeenType element = elementOf(base);
+          if (element.first) // a map's [] is its value
+            seen.type = element.second;
+          else
+            seen = element;
+          return seen;
+        }
+        case NodeKind::UnaryExpr:
+        {
+          auto* unary = static_cast<UnaryExpr*>(e);
+          if (P(unary->op) != P::Star)
+            return seen;
+          SeenType operand = typeOfExpr(unary->operand, depth + 1);
+          if (!operand.iterator)
+            return seen;
+          operand.iterator = false;
+          return operand;
+        }
+        case NodeKind::CallExpr:
+        {
+          // A std container's front() / back() / at(i): its element; begin() / find(k): an iterator to one.
+          auto* call = static_cast<CallExpr*>(e);
+          if (call->callee->kind != NodeKind::MemberExpr)
+            return seen;
+          auto* member = static_cast<MemberExpr*>(call->callee);
+          if (member->op == P::Arrow || member->member.parts.size() != 1 || member->member.parts[0].symbol == UINT32_MAX)
+            return seen;
+          std::string_view name = symbols.name(member->member.parts[0].symbol);
+          bool access = name == "front" || name == "back" || name == "at";
+          bool iterator = name == "begin" || name == "cbegin" || name == "find" || name == "lower_bound" || name == "upper_bound";
+          if (!access && !iterator)
+            return seen;
+          SeenType base = typeOfExpr(member->base, depth + 1);
+          if (!base.type || base.iterator || !stdTemplateOf(base.type, 0))
+            return seen;
+          seen = elementOf(base);
+          if (name == "at" && seen.first)
+            seen = SeenType{seen.second};
+          seen.iterator = iterator;
+          return seen;
+        }
+        default: return seen;
+      }
+    }
+    // A class's member type alias (`using size_type = ...`, `typedef ... size_type`) named symbol.
+    Type* memberAlias(ClassDecl* c, uint32_t symbol)
+    {
+      for (Decl* m : c->members)
+        if (m->kind == NodeKind::UsingAliasDecl && static_cast<UsingAliasDecl*>(m)->name == symbol)
+          return static_cast<UsingAliasDecl*>(m)->type;
+        else if (m->kind == NodeKind::VariableDecl && (m->flags & DF_Typedef) && static_cast<VariableDecl*>(m)->name.parts.size() == 1 &&
+                 static_cast<VariableDecl*>(m)->name.parts[0].symbol == symbol)
+          return static_cast<VariableDecl*>(m)->type;
+      return nullptr;
+    }
+    // A std container's size_type, as class c names it: `std::vector<T>::size_type`,
+    // `container_type::size_type` of a member alias of one, or a member alias of either (FlatSet's
+    // `using size_type = typename container_type::size_type;`).
+    bool isStdSizeType(Type* type, ClassDecl* c, int depth)
+    {
+      if (!type || type->kind != NodeKind::NamedType || depth > 8)
+        return false;
+      const QualifiedName& name = static_cast<NamedType*>(type)->name;
+      for (const NamePart& part : name.parts)
+        if (part.symbol == UINT32_MAX)
+          return false;
+      if (name.parts.size() == 1)
+        return isStdSizeType(memberAlias(c, name.parts[0].symbol), c, depth + 1);
+      if (symbols.name(name.last().symbol) != "size_type")
+        return false;
+      if (name.parts.size() == 3 && symbols.name(name.parts[0].symbol) == "std")
+        return stdContainerNames().count(symbols.name(name.parts[1].symbol)) != 0;
+      return name.parts.size() == 2 && isStdContainerType(memberAlias(c, name.parts[0].symbol));
+    }
+    // The game's class whose size() (or length(), count()) returns its std container's size_type: a
+    // size_t in C++, the library's int in Kpp, as a std container's own.
+    bool returnsStdSizeType(Type* type, std::string_view function)
+    {
+      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType))
+        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner : static_cast<LRefType*>(type)->referenced;
+      Decl* d = type && type->kind == NodeKind::NamedType ? static_cast<NamedType*>(type)->resolved : nullptr;
+      for (int depth = 0; d && d->kind == NodeKind::UsingAliasDecl && depth < 8; ++depth)
+      {
+        Type* aliased = static_cast<UsingAliasDecl*>(d)->type;
+        d = aliased && aliased->kind == NodeKind::NamedType ? static_cast<NamedType*>(aliased)->resolved : nullptr;
+      }
+      if (!d || d->kind != NodeKind::ClassDecl)
+        return false;
+      auto* c = static_cast<ClassDecl*>(d);
+      for (Decl* m : c->members)
+        if (m->kind == NodeKind::FunctionDecl)
+        {
+          auto* f = static_cast<FunctionDecl*>(m);
+          if (f->name.parts.size() == 1 && f->name.parts[0].symbol != UINT32_MAX && symbols.name(f->name.parts[0].symbol) == function)
+            return isStdSizeType(f->returnType, c, 0);
+        }
       return false;
     }
+    // `output << x.size()`, `x.length()`, `x.count(k)` of a std container: written size_t(...).
     void sizeAsSizeT(Expr* e)
     {
       if (!e || e->kind != NodeKind::CallExpr)
         return;
       auto* call = static_cast<CallExpr*>(e);
-      if (!call->args.empty() || call->callee->kind != NodeKind::MemberExpr)
+      if (call->callee->kind != NodeKind::MemberExpr)
         return;
       auto* member = static_cast<MemberExpr*>(call->callee);
-      if (member->member.parts.size() != 1 || member->member.parts[0].symbol == UINT32_MAX ||
-          symbols.name(member->member.parts[0].symbol) != "size")
+      if (member->member.parts.size() != 1 || member->member.parts[0].symbol == UINT32_MAX)
+        return;
+      std::string_view name = symbols.name(member->member.parts[0].symbol);
+      if (!(call->args.size() == 0 && (name == "size" || name == "length")) && !(call->args.size() == 1 && name == "count"))
         return;
       Expr* base = member->base;
       while (base && base->kind == NodeKind::ParenExpr)
         base = static_cast<ParenExpr*>(base)->inner;
-      Decl* d = !base ? nullptr : base->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(base)->resolved
-                              : base->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(base)->resolved
-                                                                   : nullptr;
-      Type* type = !d ? nullptr : d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d)->type
-                              : d->kind == NodeKind::ParamDecl ? static_cast<ParamDecl*>(d)->type
-                                                               : nullptr;
-      if (!isStdContainerType(type, 0))
+      SeenType type = typeOfExpr(base, 0);
+      if ((member->op == P::Arrow) != type.iterator || !(isStdContainerType(type.type) || returnsStdSizeType(type.type, name)))
         return;
       // The call's first token is its base's leftmost one (a CallExpr's own token is its parenthesis),
-      // its last the `)` of the `size ( )` after the base.
+      // its last the `)` that closes that parenthesis.
       Expr* leftmost = base;
       while (leftmost)
         if (leftmost->kind == NodeKind::MemberExpr)
@@ -5706,14 +5925,18 @@ namespace
       if (!leftmost)
         return;
       uint32_t first = leftmost->token;
-      uint32_t close = first;
-      while (close + 2 < toks.size() && !(toks[close].getKind() == TokenKind::Identifier && spelling(close) == "size" &&
-                                          toks[close + 1].is(P::LParen) && toks[close + 2].is(P::RParen)))
-        ++close;
-      if (close + 2 >= toks.size())
+      uint32_t close = call->token;
+      if (close >= toks.size() || !toks[close].is(P::LParen))
+        return;
+      for (int depth = 0; close < toks.size(); ++close)
+        if (toks[close].is(P::LParen))
+          ++depth;
+        else if (toks[close].is(P::RParen) && --depth == 0)
+          break;
+      if (close >= toks.size())
         return;
       insert(toks[first].offset, "size_t(");
-      insert(endOffset(close + 2), ")");
+      insert(endOffset(close), ")");
       counts.add("std container sizes written size_t");
     }
     const VariantInfo* variantOfExpr(Expr* e)
@@ -6261,6 +6484,7 @@ namespace
         case NodeKind::RangeForStmt:
         {
           auto* f = static_cast<RangeForStmt*>(s);
+          rangeForRanges[f->var] = f->range;
           walkExpr(f->range, owner);
           walkStmt(f->body, owner);
           break;
