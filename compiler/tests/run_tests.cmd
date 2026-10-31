@@ -86,6 +86,9 @@ if errorlevel 1 (
 rem Project files for an IDE (tests\generate.ps1, docs/build.md): generated, built by MSBuild, errors in its form.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\generate.ps1 -Kppc %KPPC%
 if errorlevel 1 set /a FAIL+=1
+rem A project's build.kpp (tests\project.ps1, docs/build.md): kpp new, two executables, settings, errors.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\project.ps1 -Kppc %KPPC%
+if errorlevel 1 set /a FAIL+=1
 rem The compile server must build what a new process builds, edit after edit (tests\incremental.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\incremental.ps1 -Kppc %KPPC%
 if errorlevel 1 (

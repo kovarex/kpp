@@ -6,6 +6,7 @@
 #include "resolver.hpp"
 #include "ast_walk.hpp"
 #include "generate.hpp"
+#include "project.hpp"
 #include "run.hpp"
 #include "tests.hpp"
 #include "server.hpp"
@@ -65,6 +66,7 @@ namespace
     std::filesystem::path libraryRoot; // the standard library's directory, when it joins the program
     std::vector<std::string> cIncludeDirs; // --cinclude DIR, for imported C headers
     std::vector<std::string> libs;         // --lib FILE: libraries linked into the executable
+    std::vector<std::string> excluded;     // --exclude FILE: a file under the roots left out
     bool showImportErrors = false; // --errors given: list parse errors in imported headers too
     ConfigValues configValues;     // --config name=value, --release; becomes the `config` namespace
     bool debug = true;             // config::debug
@@ -107,6 +109,7 @@ namespace
             "  --no-std      compile without the standard library\n"
             "  --cinclude D  directory searched by imported C headers (repeatable)\n"
             "  --lib F       a library (.lib) linked into the executable (repeatable)\n"
+            "  --exclude F   leave out the file F found under the sources (repeatable; build.kpp's exclude)\n"
             "  --config N=V  build configuration constant config::N (bool, integer, enumerator or string)\n"
             "  --release     the same as --config debug=false\n"
             "  --modules N   split the program into N IR modules compiled in parallel (default: two per thread)\n"
@@ -2667,6 +2670,9 @@ int main(int argc, char** argv)
   // stops the server of the same arguments, `--serve KEY` is the server a client started.
   if (argc == 3 && std::string(argv[1]) == "--serve")
     return runServer(argv[2], compile);
+  // A project's build.kpp (project.hpp): `kpp` with no sources in its directory, `kpp new`.
+  if (int code = runProject(argc, argv, compile); code >= 0)
+    return code;
   // Project files for an IDE (generate.hpp) take the build's own arguments.
   for (int i = 1; i < argc; ++i)
     if (isGenerateOption(argv[i]))
@@ -2758,6 +2764,8 @@ int compile(int argc, char** argv)
       options.codegenThreads = unsigned(atoi(argv[++i]));
     else if (arg == "--lib" && i + 1 < argc)
       options.libs.push_back(argv[++i]);
+    else if (arg == "--exclude" && i + 1 < argc)
+      options.excluded.push_back(argv[++i]);
     else if (arg == "--config" && i + 1 < argc)
     {
       std::string item = argv[++i];
@@ -2825,6 +2833,19 @@ int compile(int argc, char** argv)
   {
     auto found = collectFiles(root, options.extensions);
     paths.insert(paths.end(), found.begin(), found.end());
+  }
+  // --exclude: files under the roots that are not part of this program (another program's main).
+  for (const std::string& excluded : options.excluded)
+  {
+    std::error_code ec;
+    std::filesystem::path file = std::filesystem::absolute(excluded, ec).lexically_normal();
+    size_t before = paths.size();
+    std::erase_if(paths, [&](const std::filesystem::path& p) { return std::filesystem::absolute(p, ec).lexically_normal() == file; });
+    if (paths.size() == before)
+    {
+      fprintf(stderr, "error: --exclude %s names no file under the sources\n", excluded.c_str());
+      return 1;
+    }
   }
   // A compile server's builds run one at a time up to the point each keeps what it made, so that a
   // build finds its predecessor's kept (the predecessor answers its client before that point and

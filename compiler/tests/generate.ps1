@@ -41,12 +41,13 @@ try
   $log = & $msbuild -nologo -v:m -p:Configuration=Debug -p:Platform=x64 'build\visual-studio\hello.sln' 2>&1
   $path = [regex]::Escape((Resolve-Path hello.kpp).Path)
   if ($LASTEXITCODE -eq 0 -or -not ($log -match "^\s*$path\(\d+\): error : ")) { Fail "the error is not in MSBuild's form:`n$($log -join "`n")" }
-  # The servers the builds started.
-  foreach ($configuration in 'debug', 'release')
+  # The servers the builds started: each task's command after --server, with --stop-server.
+  $tasks = (Get-Content '.vscode\tasks.json' | Select-Object -Skip 1) -join "`n" | ConvertFrom-Json
+  foreach ($task in $tasks.tasks)
   {
-    $tasks = (Get-Content '.vscode\tasks.json' | Select-Object -Skip 1) -join "`n" | ConvertFrom-Json
-    $arguments = ($tasks.tasks | Where-Object { $_.label -eq "kpp: compile $configuration" }).args | Where-Object { $_ -ne '--server' }
-    & $Kppc --stop-server @arguments | Out-Null
+    $command = $task.args[3]
+    $rest = $command.Substring($command.IndexOf('--server ') + 9)
+    & cmd /d /c "`"$Kppc`" --stop-server $rest" | Out-Null
   }
 }
 finally { Pop-Location }

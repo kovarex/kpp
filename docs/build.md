@@ -182,6 +182,43 @@ void build(Project& project)
   `src/`, debug and release, no libraries. `kpp new hello` writes `src/main.kpp` and a
   `.gitignore` with `build/`.
 
+### Version 0, working now
+
+`compiler/src/project.cpp` and `projectlib/Project.kpp` (2026-10-31); `tests/project.ps1` in
+run_tests.cmd.
+- **The commands.** In a directory with build.kpp, or below one, `kpp` takes executables' names,
+  never sources:
+  - `kpp [names] [--debug|--release]` builds them, all of them when none is named;
+  - `kpp NAME --run ARGS` builds and runs one;
+  - `--generate-visual-studio-files` and `--generate-vs-code-files` write one solution for all
+    executables, whose builds run `kpp NAME --debug --msvc-diagnostics`, so an edit of build.kpp
+    needs no new project files;
+  - `--set NAME=VALUE` gives a setting; `--no-server` builds without the compile server, and
+    `--stop-server` stops the project's servers;
+  - `kpp` alone in a console shows a menu of these, each with its command; `kpp new [DIR]` writes
+    build.kpp, `src\main.kpp` and a `.gitignore`.
+  An argument that is an existing file or directory makes it a plain build of those sources, as
+  before.
+- **How build.kpp runs.** kpp compiles build.kpp with projectlib and a generated file into
+  `build\kpp\describe.exe`. The generated file holds `constexpr Project kppDebug =
+  kppDescribe(Configuration::debug);` (and release), so the interpreter computes build(). Its
+  main only prints the two constants, and kpp reads that. A static_assert on each makes them
+  required constants. Without it a constexpr global that does not evaluate is silently computed
+  at run time: the pending spec language/constexpr_variable_that_is_no_constant_is_error, for D.
+  The result is kept, keyed by build.kpp, projectlib, the settings and kpp itself.
+- **Measured** on a `kpp new` project (2026-10-31, PC-PRACOVNA): the first `kpp --debug` took
+  1.9 s (compiling build.kpp and the program); with nothing changed it took 0.2 s.
+- **What version 0 lacks:**
+  - Lists have fixed sizes (64 entries; 8 executables), because the interpreter does not
+    allocate. Adding past one is an error.
+  - A Text is two parts (`project.cInclude(root, "/include")`) instead of a joined string.
+  - Overloads stand in for default arguments, and `kppSame` for StringView's `==`; the
+    interpreter evaluates neither yet.
+  - Steps are `beforeBuild` and `afterBuild` commands of an executable, run by cmd in the
+    project's directory.
+  - `use()` and the registry do not exist yet; there is no `configurations()` either.
+  - An I/O call in build() fails with the static_assert's message, not one naming the call.
+
 ### Adding a library
 
 **Writing the line adds the library.** `project.use("json")` (or `game.use(...)` for one target)
