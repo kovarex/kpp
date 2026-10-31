@@ -116,14 +116,18 @@ each tick and at a test's end) per test; a run with `check` compares its own aga
 difference a failed check. C++ Debug writes: `tests.cmd --baseline-debug --crc-write F` (C:\Factorio's
 Debug factorio-test.exe of 4c178a5b915, 9,501/9,501, 1.87 MB of CRC data). The others check against
 F: `tests.cmd --baseline --crc-against F`, `tests.cmd DIR --crc-against F`, `tests.cmd --release DIR
---crc-against F`. kppc 975d7584 (2026-10-31), a fresh conversion of 4c178a5b915 (headline 0, tests
-errors 0).
+--crc-against F`. kppc 8ac5d25f (2026-10-31: with bdacabd7's value fixes, the tests' SUITE and
+TEST bodies parsed by the converter, Factorio's own printf mismatches made explicit), a fresh
+conversion of 4c178a5b915 (headline 0, tests errors 0, --format-errors 0).
 
 | Build checked | Tests | Failed checks (CRC mismatches) | Test time |
 |---|---|---:|---:|
 | C++ Release (the control) | 9,501/9,501 | 0 | 843 s |
-| kppc debug | 9,500/9,500 | 0 | 1,105.5 s |
-| kppc release | 9,500/9,500 | 0 | 458.6 s |
+| kppc debug | 9,500/9,500 | 0 | 1,183.3 s |
+| kppc release | 9,500/9,500 | 0 | 466.2 s |
+
+The same on kppc 975d7584, before those: kppc debug 9,500/9,500 (1,105.5 s), kppc release
+9,500/9,500 (458.6 s), 0 mismatches each.
 
 The way there, the first check (kppc 92a7fb5f's conversion): kppc release 17 tests with mismatches
 (31 failed checks), kppc debug 24 (43). Each cause was found by diffing the two builds' tagged map
