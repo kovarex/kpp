@@ -10,9 +10,10 @@ rem Then imgui frames through the generated imgui interface (native\generate_img
 rem against glm, the converted Lua against the C++ build's (tests\lua_compat.lua, the gate of Lua's
 rem conversion), and the GDI+ classes (overrides\added\src\Graphics\GdiplusClasses.kpp) against the
 rem SDK's gdiplus.h, and RE2 through the RegexUtil override (tests\regex_smoke.kpp) with the game's re2.lib.
-rem Last, the converter's own tests: the sizes a serialiser writes (tests\convert_sizes\sizes.cpp) and
-rem std::variant as typed unions (tests\convert_variant\variant.cpp), whose conversions print what
-rem their C++ builds print.
+rem Last, the converter's own tests: the sizes a serialiser writes (tests\convert_sizes\sizes.cpp),
+rem std::variant as typed unions (tests\convert_variant\variant.cpp) and Factorio's own printf
+rem mismatches made explicit (tests\convert_formats\formats.cpp), whose conversions print what their
+rem C++ builds print.
 rem Hand-written parts are in overrides\.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
@@ -123,3 +124,9 @@ if exist kpp\convert_variant rd /s /q kpp\convert_variant
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_variant.exe kpp\convert_variant || exit /b 1
 kpp\convert_variant.exe > kpp\convert_variant.out.txt
 fc /w kpp\convert_variant.out.txt tests\convert_variant.expected > nul && echo variants: output as expected || (echo variants: OUTPUT DIFFERS & fc /w kpp\convert_variant.out.txt tests\convert_variant.expected & exit /b 1)
+echo == printf formats: tests\convert_formats\formats.cpp, Factorio's own 64-bit arguments read as 32 bits and extra arguments, converted and run, prints what its C++ build prints (tests\convert_formats.expected) and passes --format-errors
+if exist kpp\convert_formats rd /s /q kpp\convert_formats
+%KPPC% --no-std --quiet --convert kpp\convert_formats --ext .cpp tests\convert_formats || exit /b 1
+%KPPC% --std ..\..\stdlib --quiet --format-errors --exe kpp\convert_formats.exe kpp\convert_formats || exit /b 1
+kpp\convert_formats.exe > kpp\convert_formats.out.txt
+fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && echo printf formats: output as expected || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & exit /b 1)

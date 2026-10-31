@@ -3980,30 +3980,17 @@ namespace
       return i > 0 && (toks[i - 1].is(P::Dot) || (toks[i - 1].is(P::Arrow) && i + 1 < toks.size() && toks[i + 1].is(P::LParen)));
     }
 
-    // A printf-style format at token i (a string literal, or adjacent ones, that is an argument and
-    // has a `%`): each argument a 64-bit conversion reads (%zu, %llu, %I64u and their d/x kin) is
-    // written size_t(...), the size_t C++ passes there, which a container size's int (Kpp's
-    // library) is not: the vararg would carry 32 bits where printf reads 64. By the format, not by
-    // types, so that it holds where the converter has none (SUITE bodies, templates' instances).
-    // Returns the last token of the literal.
-    uint32_t widenFormatArguments(uint32_t i)
+    // A printf-style format's conversions, in the order of the arguments they read: the conversion
+    // character ('*' for a width or precision given as an argument) and whether it reads a 64-bit
+    // integer (the z, j, t, ll and I64 sizes of d i u x X o).
+    struct FormatConversion
     {
-      uint32_t last = i;
-      std::string format;
-      // Adjacent literals, and string macros between them (`"%s " UTF8_MULTIPLY " %zu"`).
-      for (; last < toks.size(); ++last)
-        if (toks[last].getKind() == TokenKind::String)
-          format += spelling(last);
-        else if (auto macro = toks[last].getKind() == TokenKind::Identifier ? objectMacros.find(std::string(spelling(last))) : objectMacros.end();
-                 macro != objectMacros.end() && isStringLiterals(macro->second))
-          format += macro->second;
-        else
-          break;
-      --last;
-      if (format.find('%') == std::string::npos || last + 1 >= toks.size() || !toks[last + 1].is(P::Comma))
-        return last;
-      // The conversions in order: for each argument it reads, whether it is a 64-bit integer.
-      std::vector<bool> wide;
+      char conversion;
+      bool wide;
+    };
+    static std::vector<FormatConversion> formatConversions(const std::string& format)
+    {
+      std::vector<FormatConversion> out;
       for (size_t k = 0; k < format.size(); ++k)
       {
         if (format[k] != '%')
@@ -4020,7 +4007,7 @@ namespace
             ++k;
           if (k < format.size() && format[k] == '*')
           {
-            wide.push_back(false);
+            out.push_back({'*', false});
             ++k;
           }
           while (k < format.size() && isdigit((unsigned char)format[k]))
@@ -4040,11 +4027,31 @@ namespace
             ++k;
         if (k >= format.size())
           break;
-        wide.push_back(isWide && strchr("diuxXo", format[k]) != nullptr);
+        out.push_back({format[k], isWide && strchr("diuxXo", format[k]) != nullptr});
       }
-      // The arguments after the format, to the call's closing parenthesis.
-      uint32_t at = last + 2;
-      for (size_t n = 0; n < wide.size() && at < toks.size(); ++n)
+      return out;
+    }
+    // The format at token i: adjacent literals and the string macros between them (`"%s "
+    // UTF8_MULTIPLY " %zu"`), into format; returns its last token.
+    uint32_t formatAt(uint32_t i, std::string& format)
+    {
+      uint32_t last = i;
+      for (; last < toks.size(); ++last)
+        if (toks[last].getKind() == TokenKind::String)
+          format += spelling(last);
+        else if (auto macro = toks[last].getKind() == TokenKind::Identifier ? objectMacros.find(std::string(spelling(last))) : objectMacros.end();
+                 macro != objectMacros.end() && isStringLiterals(macro->second))
+          format += macro->second;
+        else
+          break;
+      return last - 1;
+    }
+    // The token ranges [first, end) of the arguments from token at to the call's closing
+    // parenthesis, by depth; the last range's end is that parenthesis.
+    std::vector<std::pair<uint32_t, uint32_t>> argumentRanges(uint32_t at)
+    {
+      std::vector<std::pair<uint32_t, uint32_t>> out;
+      while (at < toks.size())
       {
         uint32_t end = at;
         for (int depth = 0; end < toks.size(); ++end)
@@ -4059,29 +4066,211 @@ namespace
             break;
         if (end == at || end >= toks.size())
           break;
-        bool cast = toks[at].getKind() == TokenKind::Identifier && spelling(at) == "size_t" && toks[at + 1].is(P::LParen);
-        if (wide[n] && !cast)
-        {
-          // The argument's last token ends with the parenthesis in place of itself: an insert after
-          // it would fall where a macro's rewrite of its own closing parenthesis takes it
-          // (`LOG_AND_ABORT("%zu", directionCount)`); a one-token argument is replaced whole, as an
-          // insert at its start would be taken by the replacement. A second rewrite of that token
-          // would leave the parentheses unbalanced, which the build reports.
-          uint32_t lastOfArgument = end - 1;
-          if (lastOfArgument == at)
-            replace(toks[at].offset, toks[at].length, "size_t(" + std::string(spelling(at)) + ")");
-          else
-          {
-            insert(toks[at].offset, "size_t(");
-            replace(toks[lastOfArgument].offset, toks[lastOfArgument].length, std::string(spelling(lastOfArgument)) + ")");
-          }
-          counts.add("64-bit printf arguments written size_t");
-        }
+        out.push_back({at, end});
         if (!toks[end].is(P::Comma))
           break;
         at = end + 1;
       }
+      return out;
+    }
+    // Writes the argument [first, end) as `type(argument)`. The argument's last token ends with the
+    // parenthesis in place of itself: an insert after it would fall where a macro's rewrite of its
+    // own closing parenthesis takes it (`LOG_AND_ABORT("%zu", directionCount)`); a one-token
+    // argument is replaced whole, as an insert at its start would be taken by the replacement. A
+    // second rewrite of that token would leave the parentheses unbalanced, which the build reports.
+    void castArgument(uint32_t first, uint32_t end, const std::string& type)
+    {
+      uint32_t last = end - 1;
+      if (last == first)
+        replace(toks[first].offset, toks[first].length, type + "(" + std::string(spelling(first)) + ")");
+      else
+      {
+        insert(toks[first].offset, type + "(");
+        replace(toks[last].offset, toks[last].length, std::string(spelling(last)) + ")");
+      }
+    }
+    // A printf-style format at token i (a string literal, or adjacent ones, that is an argument and
+    // has a `%`): each argument a 64-bit conversion reads (%zu, %llu, %I64u and their d/x kin) is
+    // written size_t(...), the size_t C++ passes there, which a container size's int (Kpp's
+    // library) is not: the vararg would carry 32 bits where printf reads 64. By the format, not by
+    // types, so that it holds where the converter has none (templates' instances, fixtures'
+    // members). Returns the last token of the literal.
+    uint32_t widenFormatArguments(uint32_t i)
+    {
+      std::string format;
+      uint32_t last = formatAt(i, format);
+      if (format.find('%') == std::string::npos || last + 1 >= toks.size() || !toks[last + 1].is(P::Comma))
+        return last;
+      std::vector<FormatConversion> conversions = formatConversions(format);
+      std::vector<std::pair<uint32_t, uint32_t>> arguments = argumentRanges(last + 2);
+      for (size_t n = 0; n < conversions.size() && n < arguments.size(); ++n)
+      {
+        auto [at, end] = arguments[n];
+        bool cast = toks[at].getKind() == TokenKind::Identifier && spelling(at) == "size_t" && toks[at + 1].is(P::LParen);
+        if (conversions[n].wide && !cast)
+        {
+          castArgument(at, end, "size_t");
+          counts.add("64-bit printf arguments written size_t");
+        }
+      }
       return last;
+    }
+    // Whether the declarations say an expression is a 64-bit integer: a variable, member, parameter
+    // or function result of such a type (size_t, int64_t, uint64_t, long long, and aliases of them:
+    // UnitNumber), arithmetic with one, a cast to one, a literal suffixed so.
+    bool isWideIntegerType(Type* type, int depth = 0)
+    {
+      while (type && (type->kind == NodeKind::ConstType || type->kind == NodeKind::LRefType || type->kind == NodeKind::RRefType))
+        type = type->kind == NodeKind::ConstType ? static_cast<ConstType*>(type)->inner
+             : type->kind == NodeKind::LRefType  ? static_cast<LRefType*>(type)->referenced
+                                                 : static_cast<RRefType*>(type)->referenced;
+      if (!type || depth > 8)
+        return false;
+      if (type->kind == NodeKind::BuiltinType)
+        return static_cast<BuiltinType*>(type)->longCount >= 2;
+      if (type->kind != NodeKind::NamedType)
+        return false;
+      auto* named = static_cast<NamedType*>(type);
+      const QualifiedName& name = named->name;
+      if (!name.parts.empty() && name.last().symbol != UINT32_MAX)
+      {
+        static const std::set<std::string_view> wide = {"size_t", "int64_t", "uint64_t", "ptrdiff_t", "intptr_t", "uintptr_t", "ssize_t", "time_t"};
+        if (wide.count(symbols.name(name.last().symbol)))
+          return true;
+      }
+      Decl* d = named->resolved;
+      if (d && d->kind == NodeKind::UsingAliasDecl)
+        return isWideIntegerType(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+        return isWideIntegerType(static_cast<VariableDecl*>(d)->type, depth + 1);
+      return false;
+    }
+    bool isWideInteger(Expr* e, int depth = 0)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      if (!e || depth > 16)
+        return false;
+      switch (e->kind)
+      {
+        case NodeKind::LiteralExpr:
+        {
+          std::string_view text = spelling(e->token);
+          return static_cast<LiteralExpr*>(e)->literalKind == TokenKind::Number &&
+                 (text.find("ll") != std::string_view::npos || text.find("LL") != std::string_view::npos || text.find("i64") != std::string_view::npos);
+        }
+        case NodeKind::NameExpr:
+        case NodeKind::MemberExpr:
+          return isWideIntegerType(typeOfExpr(e, 0).type);
+        case NodeKind::CallExpr:
+        {
+          Expr* callee = static_cast<CallExpr*>(e)->callee;
+          Decl* f = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
+                  : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
+                                                         : nullptr;
+          return f && f->kind == NodeKind::FunctionDecl && isWideIntegerType(static_cast<FunctionDecl*>(f)->returnType);
+        }
+        case NodeKind::BinaryExpr:
+        {
+          auto* binary = static_cast<BinaryExpr*>(e);
+          if (binary->isKeyword)
+            return false;
+          switch (P(binary->op))
+          {
+            case P::Plus: case P::Minus: case P::Star: case P::Slash: case P::Percent: case P::Amp: case P::Pipe: case P::Caret:
+              return isWideInteger(binary->lhs, depth + 1) || isWideInteger(binary->rhs, depth + 1);
+            case P::Shl: case P::Shr: case P::Assign: case P::PlusAssign: case P::MinusAssign:
+              return isWideInteger(binary->lhs, depth + 1);
+            default:
+              return false;
+          }
+        }
+        case NodeKind::UnaryExpr:
+        {
+          auto* unary = static_cast<UnaryExpr*>(e);
+          return !unary->isKeyword && (P(unary->op) == P::Minus || P(unary->op) == P::Tilde || P(unary->op) == P::Plus ||
+                                       P(unary->op) == P::PlusPlus || P(unary->op) == P::MinusMinus) && isWideInteger(unary->operand, depth + 1);
+        }
+        case NodeKind::ConditionalExpr:
+        {
+          auto* c = static_cast<ConditionalExpr*>(e);
+          return (c->then && isWideInteger(c->then, depth + 1)) || isWideInteger(c->else_, depth + 1);
+        }
+        case NodeKind::CastExpr: return isWideIntegerType(static_cast<CastExpr*>(e)->type);
+        case NodeKind::NamedCastExpr: return isWideIntegerType(static_cast<NamedCastExpr*>(e)->type);
+        case NodeKind::FunctionalCastExpr: return isWideIntegerType(static_cast<FunctionalCastExpr*>(e)->type);
+        default: return false;
+      }
+    }
+    // Factorio's own format mismatches, made explicit as C++ prints them on x64: an argument the
+    // declarations say is 64-bit, read by a 32-bit conversion (`%u` of a UnitNumber or a size_t
+    // index, `#%ull`), is written uint32_t(...) (int32_t for %d and %i), the 32 bits printf reads
+    // of it; arguments after the last the format reads are dropped (C++ evaluates and ignores
+    // them; the one the game has, a toUint32(), has no effect).
+    void narrowFormatArguments(CallExpr* call)
+    {
+      // A C-variadic function's call whose last named parameter is the format (ssprintf, printf,
+      // snprintf), as --format-errors checks them: no other call's literal is a format.
+      Expr* callee = call->callee;
+      Decl* d = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
+              : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
+                                                     : nullptr;
+      // The C library's, which the C++ parse does not declare: by name, with the format's place.
+      static const std::map<std::string_view, size_t> cFunctions = {{"printf", 0}, {"sprintf", 1}, {"snprintf", 2}, {"fprintf", 1}};
+      size_t formatIndex;
+      std::string_view calleeName;
+      if (d && d->kind == NodeKind::FunctionDecl && (d->flags & DF_Variadic) && !static_cast<FunctionDecl*>(d)->params.empty())
+      {
+        formatIndex = static_cast<FunctionDecl*>(d)->params.size() - 1;
+        calleeName = symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol);
+      }
+      else if (auto c = !d && callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(callee)->name.parts.size() == 1
+                          ? cFunctions.find(symbols.name(static_cast<NameExpr*>(callee)->name.parts[0].symbol))
+                          : cFunctions.end();
+               c != cFunctions.end())
+      {
+        formatIndex = c->second;
+        calleeName = c->first;
+      }
+      else
+        return;
+      for (size_t a = formatIndex; a < call->args.size() && a == formatIndex; ++a)
+      {
+        Expr* arg = call->args[a];
+        if (!arg || arg->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(arg)->literalKind != TokenKind::String)
+          continue;
+        std::string format;
+        uint32_t last = formatAt(arg->token, format);
+        if (format.find('%') == std::string::npos && !(last + 1 < toks.size() && toks[last + 1].is(P::Comma)))
+          return;
+        std::vector<FormatConversion> conversions = formatConversions(format);
+        std::vector<std::pair<uint32_t, uint32_t>> ranges =
+          last + 1 < toks.size() && toks[last + 1].is(P::Comma) ? argumentRanges(last + 2) : std::vector<std::pair<uint32_t, uint32_t>>();
+        size_t following = call->args.size() - a - 1;
+        if (ranges.size() != following)
+          return; // the tokens are not the call's arguments (a macro's): leave them
+        for (size_t n = 0; n < conversions.size() && n < following; ++n)
+          if (!conversions[n].wide && strchr("diuxXoc", conversions[n].conversion) && isWideInteger(call->args[a + 1 + n]))
+          {
+            castArgument(ranges[n].first, ranges[n].second, strchr("di", conversions[n].conversion) ? "int32_t" : "uint32_t");
+            counts.add("64-bit printf arguments read as 32 bits written so");
+          }
+        if (following > 0 && format.find('%') == std::string::npos && callee->kind == NodeKind::NameExpr && calleeName == "ssprintf")
+        {
+          // A format that reads nothing: `ssprintf("text", x)` is the text (ssprintf without
+          // arguments is deleted: CommonUtil's StringUtil.hpp).
+          replace(toks[firstTokenOf(callee)].offset, toks[arg->token].offset - toks[firstTokenOf(callee)].offset, "String(");
+          remove(toks[last + 1].offset, toks[ranges.back().second].offset - toks[last + 1].offset);
+          counts.add("printf arguments the format does not read dropped");
+        }
+        else if (following > conversions.size())
+        {
+          uint32_t from = conversions.empty() ? last + 1 : ranges[conversions.size() - 1].second;
+          remove(toks[from].offset, toks[ranges.back().second].offset - toks[from].offset);
+          counts.add("printf arguments the format does not read dropped");
+        }
+        return;
+      }
     }
 
     void convertTokens()
@@ -6777,7 +6966,9 @@ namespace
               counts.add(star ? "explicit operator*() calls written *x" : "explicit operator->() calls written toAddress(x)");
             }
           }
-          // (A printf-style call's 64-bit arguments: widenFormatArguments, by the format.)
+          // (A printf-style call's 64-bit arguments: widenFormatArguments, by the format; its
+          // 64-bit arguments read as 32 bits, by the declarations:)
+          narrowFormatArguments(call);
           walkExpr(call->callee, owner);
           walkExprs(call->args, owner);
           break;
