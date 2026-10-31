@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**850 pass, 0 pending, 0 failing, 0 fixed** (850 snippets, 27.8 s).
+**852 pass, 0 pending, 0 failing, 0 fixed** (852 snippets, 28.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -181,6 +181,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/pointer_to_int_implicit.kpp` | a pointer does not convert to an integer without a cast (C++ rejects it): initialising an int from `&x`, an aggregate's member from `{&x}` and `P p{&x}` are errors; a cast converts it | pass |  |  |
 | `language/pointers_arrays.kpp` | pointers, arrays, pointer arithmetic, arrays of arrays | pass |  |  |
 | `language/postfix_increment_assignment.kpp` | assigning the result of a class's postfix ++ (`previous = it++;`): the old value is assigned, then the object is incremented | pass |  |  |
+| `language/printf_format_matching_arguments.kpp` | a printf-like call whose format matches its arguments compiles under --format-errors: `%d %u %x %c` take an int (a char, a bool, an unscoped enum promoted), `%zu %lld %I64d` 64 bits, `%ld` 32 (LLP64), `%s` a char pointer or array, `%p` any pointer, `%f %g` a float or double, `*` an int, `%%` nothing; clang 19 prints `1 2 ff a 3 4 5 6 x y 2.50 3 7%0` | pass | what the game's ssprintf, Logging and C library calls pass (language/printf_format_must_match_arguments for the mismatches) |  |
+| `language/printf_format_must_match_arguments.kpp` | a printf-like call (a C-variadic function whose last named parameter is a `const char*`: the printf family, ssprintf, the game's FORMAT_STRING functions) with a string literal format takes, for every conversion, an argument of its type and size (LLP64: `%ld` 32 bits, `%lld`, `%zu`, `%I64d` 64), and as many arguments as conversions; each mismatch is an error (kppc --format-errors, until the converted game has none: design.md) | pass | `%zu` given a 32-bit container size passes 32 bits where printf reads 64 (garbage in the upper half), and `%u` given a UnitNumber (uint64_t) in the tests; found by the templates thread |  |
 | `language/qualifier_names_only_scopes.kpp` | the name before `::` is looked up among namespaces, classes, enumerations, aliases and template parameters only, so a variable of the same name in scope (often the one being declared) does not hide it: `int clock = clock::now();` | pass | RaceChecker's `Thread::id thisThread = thisThread::get_id();` (std::this_thread, converted to the library's thisThread namespace) |  |
 | `language/range_for.kpp` | range-based for | pass | 8577 uses in 1333 files |  |
 | `language/range_for_converts_element_to_class_loop_variable.kpp` | a range-for's loop variable of a class type is initialized from each element by conversion, as a declaration with that initializer would be: `for (String name : {"stone-wall", "transport-belt"})`, over a Vector<const char*>, and a `const String&` bound to the converted temporary | pass | the tests' `for (std::string blockingEntity : {"stone-wall", "transport-belt"})` (TestDragBuilding), `for (std::string entityName : {"assembling-machine-3", ...})` (TestInventory) and the like: each name came out empty, "Unknown entity name: " and "Unknown item name: " (13 failed checks) |  |

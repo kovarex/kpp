@@ -218,6 +218,7 @@ public:
   // note for each use a friend declaration allows and for each friend declaration, and in summary
   // their counts.
   void enableAccessWarnings();
+  void enableFormatErrors(); // --format-errors: printf-like calls' formats checked (checkFormatCall)
   std::vector<std::string> accessReport(const std::vector<ParsedFile*>& files, std::string& summary);
   // A static_assert in the body of a template instance's function is checked only if the program
   // uses that function, as C++ instantiates a member or function template only where it is used:

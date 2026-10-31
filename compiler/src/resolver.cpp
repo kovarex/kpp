@@ -4564,6 +4564,7 @@ struct GlobalScope::Impl
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
 
   bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
+  bool formatErrors = false;   // kppc --format-errors: checkFormatCall at every printf-like call
   std::mutex accessMutex;
   // A use of a private or protected member that its code may not name, by its warning (`path:line:
   // warning: ...`), each once: a template's instances share the uses of their template.
@@ -7548,6 +7549,29 @@ struct GlobalScope::Impl
     if (v.isObject())
       return nullptr; // `{}`: a brace list of no type, which decides no overload
     return v.isFloat() ? types.floatType(64) : types.intType(64, false);
+  }
+
+  // A string literal's bytes (adjacent ones joined, escapes decoded), read from the file it is in
+  // (or `in`); false when its tokens are not at hand.
+  bool literalBytes(LiteralExpr* l, const ParsedFile* in, std::string& bytes)
+  {
+    const ParsedFile* pf = l->file && l->file->tokens ? l->file : in;
+    if (!pf || !pf->tokens)
+      return false;
+    const std::vector<Token>* toks = pf->tokens;
+    if (l->token >= toks->size() || (*toks)[l->token].getKind() != TokenKind::String)
+      return false;
+    for (size_t i = l->token; i < toks->size() && (*toks)[i].getKind() == TokenKind::String; ++i)
+    {
+      std::string spliced;
+      std::string_view spelled = tokenSpelling(pf->text, (*toks)[i], spliced);
+      size_t quote = spelled.rfind('"');
+      if (quote != std::string_view::npos && quote + 1 < spelled.size())
+        spelled = spelled.substr(0, quote + 1); // (`"..."sv`: the chars the quotes hold)
+      if (!decodeNarrowString(spelled, bytes))
+        return false;
+    }
+    return true;
   }
 
   // A string literal (adjacent ones joined) as an array of its chars and a terminating zero.
@@ -14801,6 +14825,186 @@ struct GlobalScope::Impl
       return f && o && o->isConst && o->isKnown() && o->kind == TyKind::Class && !(f->flags & (DF_Const | DF_Static | DF_Constructor | DF_Destructor));
     }
 
+    // A call of a printf-like function (C-variadic, its last named parameter a `const char*`: the C
+    // library's printf family, ssprintf, the game's FORMAT_STRING functions) with a string literal
+    // for the format: every conversion takes an argument of its type and size (Windows' LLP64:
+    // `%ld` 32 bits, `%lld`/`%zu`/`%I64d` 64), and the arguments are as many as the conversions.
+    // An error where C++ compilers warn (-Wformat): the converted code is meant to be clean.
+    void checkFormatCall(FunctionDecl* f, CallExpr* c)
+    {
+      if (!impl.formatErrors || !(f->flags & DF_Variadic) || f->params.empty() || !file || file->isImported || probing)
+        return;
+      size_t k = f->params.size() - 1;
+      const Ty* ft = impl.declaredTypeOf(f, nullptr, 0);
+      if (!ft || ft->kind != TyKind::Function || k >= ft->args.size())
+        return;
+      const Ty* fp = types.stripRef(ft->args[k]);
+      if (!fp || fp->kind != TyKind::Pointer || !fp->inner || types.unqualified(fp->inner) != types.charType(8, false) || c->args.size() <= k)
+        return;
+      Expr* fmt = c->args[k];
+      while (fmt && fmt->kind == NodeKind::ParenExpr)
+        fmt = static_cast<ParenExpr*>(fmt)->inner;
+      if (!fmt || fmt->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(fmt)->literalKind != TokenKind::String)
+        return;
+      std::string text;
+      if (!impl.literalBytes(static_cast<LiteralExpr*>(fmt), file, text))
+        return;
+      std::string name = impl.namePartText(f->name.last());
+      if (name.find("scanf") != std::string::npos)
+        return; // (the scanf family takes pointers: its own rules, not checked yet)
+      size_t next = k + 1;
+      auto fail = [&](const std::string& why) { reportCheck(c->token, "the format of " + name + " " + why); };
+      // What argument i is, as `...` passes it: null when its type is not known.
+      auto argument = [&](size_t i) -> const Ty*
+      {
+        const Ty* t = c->args[i]->ty ? types.unqualified(types.stripRef(c->args[i]->ty)) : nullptr;
+        if (!t || !t->isKnown() || types.isDependent(t) || Impl::mentionsUnknown(t))
+          return nullptr;
+        if (t->kind == TyKind::Array)
+          return types.pointer(t->inner);
+        return t;
+      };
+      auto integerBits = [&](const Ty* t) -> int // 0: no integer
+      {
+        if (t->kind == TyKind::Bool || t->kind == TyKind::Char)
+          return 32; // (promoted to int)
+        if (t->kind == TyKind::Int)
+          return t->bits < 32 ? 32 : t->bits;
+        if (t->kind == TyKind::Enum && !static_cast<EnumDecl*>(t->decl)->isClass)
+        {
+          const Ty* u = impl.declaredUnderlying(t);
+          return u && u->kind == TyKind::Int && u->bits == 64 ? 64 : 32;
+        }
+        return 0;
+      };
+      for (size_t i = 0; i < text.size(); ++i)
+      {
+        if (text[i] != '%')
+          continue;
+        size_t start = i++;
+        if (i < text.size() && text[i] == '%')
+          continue;
+        while (i < text.size() && strchr("-+ #0'", text[i]))
+          ++i;
+        auto starArgument = [&](const char* what) -> bool
+        {
+          if (next >= c->args.size())
+          {
+            fail("has a " + std::string(what) + " `*` with no argument for it");
+            return false;
+          }
+          if (const Ty* t = argument(next); t && integerBits(t) != 32)
+          {
+            fail("takes an int for the " + std::string(what) + " `*`, given " + types.toString(t, &impl.symbols));
+            return false;
+          }
+          ++next;
+          return true;
+        };
+        if (i < text.size() && text[i] == '*')
+        {
+          if (!starArgument("width"))
+            return;
+          ++i;
+        }
+        while (i < text.size() && isdigit((unsigned char)text[i]))
+          ++i;
+        if (i < text.size() && text[i] == '.')
+        {
+          ++i;
+          if (i < text.size() && text[i] == '*')
+          {
+            if (!starArgument("precision"))
+              return;
+            ++i;
+          }
+          while (i < text.size() && isdigit((unsigned char)text[i]))
+            ++i;
+        }
+        // The length: none, hh, h, l, ll, L, z, j, t, I, I32, I64, w.
+        int bits = 32;
+        bool wide = false;
+        if (text.compare(i, 3, "I64") == 0)
+        {
+          bits = 64;
+          i += 3;
+        }
+        else if (text.compare(i, 3, "I32") == 0)
+          i += 3;
+        else if (text.compare(i, 2, "ll") == 0)
+        {
+          bits = 64;
+          i += 2;
+        }
+        else if (text.compare(i, 2, "hh") == 0)
+          i += 2;
+        else if (i < text.size() && strchr("hlLzjtIw", text[i]))
+        {
+          char l = text[i++];
+          if (l == 'z' || l == 'j' || l == 't' || l == 'I')
+            bits = 64;
+          wide = l == 'l' || l == 'w';
+        }
+        if (i >= text.size())
+        {
+          fail("ends in an unfinished conversion (\"" + text.substr(start) + "\")");
+          return;
+        }
+        char conversion = text[i];
+        std::string spelled = text.substr(start, i - start + 1);
+        if (!strchr("diuoxXcCsSpneEfFgGaA", conversion))
+        {
+          fail("has the unknown conversion \"" + spelled + "\"");
+          return;
+        }
+        if (next >= c->args.size())
+        {
+          fail("has more conversions than arguments: none for \"" + spelled + "\"");
+          return;
+        }
+        const Ty* t = argument(next++);
+        if (!t)
+          continue;
+        std::string given = types.toString(t, &impl.symbols);
+        auto expect = [&](const std::string& what) { fail("takes " + what + " for \"" + spelled + "\", given " + given); };
+        switch (conversion)
+        {
+          case 'd': case 'i': case 'u': case 'o': case 'x': case 'X':
+            if (integerBits(t) != bits)
+              expect(bits == 64 ? "a 64-bit integer" : "an int");
+            break;
+          case 'c': case 'C':
+            if (integerBits(t) != 32)
+              expect("a char (an int)");
+            break;
+          case 'e': case 'E': case 'f': case 'F': case 'g': case 'G': case 'a': case 'A':
+            if (t->kind != TyKind::Float)
+              expect("a double");
+            break;
+          case 's': case 'S':
+          {
+            bool wideString = conversion == 'S' || wide;
+            const Ty* e = t->kind == TyKind::Pointer && t->inner ? types.unqualified(t->inner) : nullptr;
+            bool ok = e && (wideString ? ((e->kind == TyKind::Int || e->kind == TyKind::Char) && e->bits == 16)
+                                       : (e->kind == TyKind::Char || (e->kind == TyKind::Int && e->bits == 8)));
+            if (!ok)
+              expect(wideString ? "a wide string (a `const wchar_t*`)" : "a string (a `const char*`)");
+            break;
+          }
+          case 'p':
+            if (t->kind != TyKind::Pointer && t->kind != TyKind::Nullptr)
+              expect("a pointer");
+            break;
+          case 'n':
+            if (t->kind != TyKind::Pointer)
+              expect("an int*");
+            break;
+        }
+      }
+      if (next < c->args.size())
+        fail("has fewer conversions than arguments: " + std::to_string(c->args.size() - next) + " more");
+    }
+
     void checkConstObjectCall(FunctionDecl* f, const Ty* objectTy, uint32_t token)
     {
       if (!nonConstOnConstObject(f, objectTy))
@@ -17303,7 +17507,10 @@ struct GlobalScope::Impl
               implicitObject = thisType->inner;
           FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, implicitObject, ambiguous, &n->name.last(), c->args, &tied);
           if (f && !ambiguous)
+          {
             checkConstObjectCall(f, implicitObject, c->token);
+            checkFormatCall(f, c);
+          }
           if (!f)
           {
             // No callee the code generator could trust: not the first of several overloads, nor a
@@ -17457,7 +17664,10 @@ struct GlobalScope::Impl
           std::vector<const Ty*> argTypes = argTypesOf(c->args);
           FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, object, ambiguous, &last, c->args, &tied);
           if (f && !ambiguous)
+          {
             checkConstObjectCall(f, object, m->token);
+            checkFormatCall(f, c);
+          }
           if (!f)
           {
             ++stats.membersBound;
@@ -22028,6 +22238,7 @@ GlobalScope::InstantiationStats GlobalScope::instantiationStats() const
 }
 
 void GlobalScope::enableAccessWarnings() { impl->accessWarnings = true; }
+void GlobalScope::enableFormatErrors() { impl->formatErrors = true; }
 
 std::vector<std::string> GlobalScope::accessReport(const std::vector<ParsedFile*>& files, std::string& summary)
 {
