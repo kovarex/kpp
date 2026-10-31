@@ -728,6 +728,7 @@ namespace
             f->params = d.params;
             f->isConst = (d.flags & DF_Const) != 0;
             f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+            f->isVariadic = (d.flags & DF_Variadic) != 0;
             // `Frac<gcd(P1::num, P2::num)>`: also read as a call, which the resolver takes when the
             // parameter is a constant (the parser cannot tell a function from a type).
             uint32_t after = pos;
@@ -1033,6 +1034,7 @@ namespace
           FunctionType* f = node<FunctionType>(start);
           f->result = type;
           f->params = d.params;
+          f->isVariadic = (d.flags & DF_Variadic) != 0;
           PointerType* p = node<PointerType>(start);
           p->pointee = f;
           type = p;
@@ -1052,6 +1054,7 @@ namespace
           f->result = type;
           f->params = d.params;
           f->isConst = (d.flags & DF_Const) != 0;
+          f->isVariadic = (d.flags & DF_Variadic) != 0;
           MemberPointerType* m = node<MemberPointerType>(start);
           m->classType = cls;
           m->pointee = f;
@@ -1996,6 +1999,7 @@ namespace
           Declarator tmp;
           parseFunctionSuffix(tmp);
           f->params = tmp.params;
+          f->isVariadic = (tmp.flags & DF_Variadic) != 0;
           f->isConst = (tmp.flags & DF_Const) != 0;
           f->isNoexcept = (tmp.flags & DF_Noexcept) != 0;
           if (inner && inner->kind == NodeKind::MemberPointerType)
@@ -2347,6 +2351,7 @@ namespace
         FunctionType* f = node<FunctionType>(start);
         f->result = d.type;
         f->params = d.params;
+        f->isVariadic = (d.flags & DF_Variadic) != 0;
         p->type = f;
       }
       if (accept(P::Assign))
@@ -2609,6 +2614,7 @@ namespace
         f->params = d.params;
         f->isConst = (d.flags & DF_Const) != 0;
         f->isNoexcept = (d.flags & DF_Noexcept) != 0;
+        f->isVariadic = (d.flags & DF_Variadic) != 0;
         return f;
       }
       return type;

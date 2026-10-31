@@ -1,6 +1,5 @@
 // spec: a function pointer type written with `...` is the type of a pointer to a variadic function, distinct from the same type without it, as in C++
 // factorio: the library's printf, fprintf, snprintf, sprintf and sscanf against their pointer types (library/c_declarations_as_in_c_headers)
-// pending: a written `int (*)(const char*, ...)` is the same type as `int (*)(const char*)` and differs from the type of &printf; both silently
 extern "C" int printLike(const char* format, ...);
 using Variadic = int (*)(const char*, ...);
 using Fixed = int (*)(const char*);

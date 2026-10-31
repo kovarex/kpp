@@ -11154,7 +11154,7 @@ struct GlobalScope::Impl
           else
             params.push_back(pt);
         }
-        return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, false);
+        return types.function(convertType(f->result, ctx, depth + 1), Span<const Ty*>{params.data(), uint32_t(params.size())}, f->isVariadic);
       }
       case NodeKind::AutoType: return static_cast<AutoType*>(t)->isDecltypeAuto ? types.decltypeAutoType() : types.autoType();
       case NodeKind::DecltypeType:
