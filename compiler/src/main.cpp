@@ -815,6 +815,12 @@ namespace
     std::string wrapper = "#define WIN32_LEAN_AND_MEAN\n#define NOMINMAX\n#define _USE_MATH_DEFINES\n";
     for (const std::string& h : headers)
       wrapper += "#include <" + h + ">\n";
+    // MSVC's intrin.h declares these; clang's has them as builtins it declares itself. The code
+    // generator emits each one's instruction (msvcBuiltin).
+    if (std::find(headers.begin(), headers.end(), "intrin.h") != headers.end())
+      wrapper += "unsigned short __popcnt16(unsigned short);\nunsigned int __popcnt(unsigned int);\nunsigned __int64 __popcnt64(unsigned __int64);\n"
+                 "unsigned char _rotl8(unsigned char, unsigned char);\nunsigned char _rotr8(unsigned char, unsigned char);\n"
+                 "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n";
     // The include directories as absolute paths, in the key and on clang's command line: a relative
     // `--cinclude native\include` names another directory in every worktree.
     std::error_code ec;

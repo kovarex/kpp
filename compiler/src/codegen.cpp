@@ -12999,6 +12999,20 @@ namespace
         need(1);
         return Value{extract(v2d, arg(0, v2d), 0), f64};
       }
+      if (name == "_mm_cvtss_si32" || name == "_mm_cvt_ss2si" || name == "_mm_cvttss_si32" || name == "_mm_cvtt_ss2si" || name == "_mm_cvtss_si64" ||
+          name == "_mm_cvttss_si64" || name == "_mm_cvtsd_si32" || name == "_mm_cvttsd_si32" || name == "_mm_cvtsd_si64" || name == "_mm_cvtsd_si64x" ||
+          name == "_mm_cvttsd_si64" || name == "_mm_cvttsd_si64x")
+      {
+        // The lowest lane to an integer: rounded by the current rounding mode (to nearest even by
+        // default), or truncated (cvtt); out of range the integer indefinite (INT_MIN), as the
+        // instruction gives, never an fptosi's poison.
+        need(1);
+        bool single = name.find("ss") != std::string::npos, truncate = name.starts_with("_mm_cvtt"), wide = name.find("si64") != std::string::npos;
+        const Ty* in = single ? v4f : v2d;
+        std::string intrinsic = std::string(single ? "llvm.x86.sse.cvt" : "llvm.x86.sse2.cvt") + (truncate ? "t" : "") + (single ? "ss2si" : "sd2si") + (wide ? "64" : "");
+        std::string iN = wide ? "i64" : "i32";
+        return Value{sseCall(sseIntrinsic(intrinsic, iN, ll(in)), iN, ll(in) + " " + arg(0, in)), types.intType(wide ? 64 : 32)};
+      }
       if (name == "_mm_cvttps_epi32" || name == "_mm_cvtpd_epi32" || name == "_mm_cvttpd_epi32")
       {
         need(1);
@@ -13133,13 +13147,48 @@ namespace
       return std::nullopt; // not an SSE operation the code generator has
     }
 
-    // MSVC's intrin.h functions the game calls that are instructions: _BitScanReverse and
-    // _BitScanForward (32 and 64 bits), __cpuid and __cpuidex. Nothing for other names.
+    // MSVC's intrin.h (and stdlib.h) functions that are instructions: _BitScanReverse and
+    // _BitScanForward (32 and 64 bits), __cpuid and __cpuidex, the byte swaps, the rotations and
+    // __popcnt, as MSVC and clang-cl emit them. Nothing for other names.
     std::optional<Value> msvcBuiltin(NameExpr* n, CallExpr* c)
     {
       if (n->name.parts.size() != 1)
         return std::nullopt;
       std::string name = sym(n->name.parts[0].symbol);
+      auto bitsOf = [&](std::initializer_list<std::pair<const char*, int>> names) {
+        for (auto [known, bits] : names)
+          if (name == known)
+            return bits;
+        return 0;
+      };
+      if (int bits = bitsOf({{"_byteswap_ushort", 16}, {"_byteswap_ulong", 32}, {"_byteswap_uint64", 64}, {"__popcnt16", 16}, {"__popcnt", 32}, {"__popcnt64", 64}}))
+      {
+        if (c->args.size() != 1)
+          unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+        std::string iN = "i" + std::to_string(bits), op = name.starts_with("_byteswap") ? "llvm.bswap." + iN : "llvm.ctpop." + iN;
+        std::string v = convert(rvalue(c->args[0]), types.intType(bits, true), c).text;
+        return Value{sseCall(sseIntrinsic(op, iN, iN), iN, iN + " " + v), types.intType(bits, true)};
+      }
+      if (int bits = bitsOf({{"_rotl", 32}, {"_rotr", 32}, {"_lrotl", 32}, {"_lrotr", 32}, {"_rotl64", 64}, {"_rotr64", 64}, {"_rotl8", 8}, {"_rotr8", 8}, {"_rotl16", 16}, {"_rotr16", 16}}))
+      {
+        // The value rotated by the count modulo its width (the instruction's masking): a funnel
+        // shift of the value with itself. The count is an int (sign-extended: -1 rotates the other
+        // way), for the 8- and 16-bit forms an unsigned char.
+        if (c->args.size() != 2)
+          unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+        std::string iN = "i" + std::to_string(bits), op = std::string(name.find("rotl") != std::string::npos ? "llvm.fshl." : "llvm.fshr.") + iN;
+        bool small = bits < 32;
+        std::string v = convert(rvalue(c->args[0]), types.intType(bits, true), c).text;
+        std::string count = convert(rvalue(c->args[1]), small ? types.intType(8, true) : types.intType(32), c).text;
+        if (bits == 64 || bits == 16)
+        {
+          std::string wide = newTemp();
+          fn += "  " + wide + " = " + (bits == 64 ? "sext i32 " : "zext i8 ") + count + " to " + iN + "\n";
+          count = wide;
+        }
+        return Value{sseCall(sseIntrinsic(op, iN, iN + ", " + iN + ", " + iN), iN, iN + " " + v + ", " + iN + " " + v + ", " + iN + " " + count),
+                     types.intType(bits, true)};
+      }
       if (name == "_alloca" || name == "alloca")
       {
         // Stack memory for the rest of the function (StackWalker's buffers): an alloca where the

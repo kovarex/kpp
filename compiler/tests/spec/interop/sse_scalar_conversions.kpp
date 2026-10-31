@@ -1,0 +1,13 @@
+// spec: the SSE conversions of the lowest lane to an integer, as MSVC and clang-cl give them: _mm_cvtss_si32/_mm_cvtsd_si32 (and the 64-bit forms) round by the current rounding mode, to nearest even by default (2.5 to 2, 3.5 to 4); _mm_cvttss_si32/_mm_cvttsd_si32 truncate; a value out of range gives the integer indefinite (INT_MIN), never a wrong number
+// for the C libraries: opus's float2int (celt/float_cast.h) and vorbis's vorbis_ftoi (os.h) on x64 Windows; the expected output is MSVC's and clang-cl's for the same program written in C++
+extern "C" import "intrin.h";
+int main()
+{
+  float singles[] = {2.5f, 3.5f, -2.5f, 1.75f, -1.75f, 3e9f};
+  for (float f : singles)
+    println("{} {} {} {}", _mm_cvtss_si32(_mm_set_ss(f)), _mm_cvttss_si32(_mm_set_ss(f)), _mm_cvtss_si64(_mm_set_ss(f)), _mm_cvttss_si64(_mm_set_ss(f)));
+  double doubles[] = {2.5, 3.5, -2.5, 1.75, -1.75, 3e9, 1e20};
+  for (double d : doubles)
+    println("{} {} {} {}", _mm_cvtsd_si32(_mm_load_sd(&d)), _mm_cvttsd_si32(_mm_set_sd(d)), _mm_cvtsd_si64(_mm_set_sd(d)), _mm_cvttsd_si64(_mm_set_sd(d)));
+  return 0;
+}
