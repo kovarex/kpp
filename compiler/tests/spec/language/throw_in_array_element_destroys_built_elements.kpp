@@ -1,6 +1,5 @@
 // spec: an exception thrown while an array's elements are initialised destroys the elements already built, in reverse order, before the handler runs ([except.ctor]/3); clang 19 prints `E1 E2 ~E2 ~E1 caught 3`, one per line
 // factorio: found by the templates thread comparing object lifetimes against clang 19: the built elements were never destroyed (silent: their destructors' effects lost)
-// pending: an array's initialisation has no cleanup for the elements built so far
 struct E
 {
   int id;

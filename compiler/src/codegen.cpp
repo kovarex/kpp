@@ -4099,6 +4099,23 @@ namespace
 
     // Initialises the object/scalar at addr of type t from an initializer expression,
     // constructing in place where the expression is a temporary.
+    // Whether both branches of conditional c are prvalues of class t itself (`c ? T(1) : make(2)`),
+    // which build the object initialised from c in place: no lvalue (that one is copied) and no other
+    // class (converted).
+    bool conditionalOfPrvalues(ConditionalExpr* c, const Ty* t, Node* at)
+    {
+      if (!c->then || !c->else_)
+        return false;
+      for (Expr* branch : {c->then, c->else_})
+      {
+        const Ty* bt = branch->ty ? withCurrentArgs(branch->ty) : nullptr;
+        if (!bt || bt->isReference() || isLvalueExpression(branch) || !isClass(bt) || types.isDependent(bt) ||
+            canonicalClass(types.unqualified(bt), at) != canonicalClass(types.unqualified(t), at))
+          return false;
+      }
+      return true;
+    }
+
     void initializeFrom(const std::string& addr, const Ty* t, Expr* init, Node* at)
     {
       t = types.stripRef(t);
@@ -4118,6 +4135,25 @@ namespace
         // `InitializerList<int> numbers = {1, 2, 3}`, `const auto entityNames = {"pipe", "tank"}`:
         // the list over an array that lives as long as the variable.
         initializerListTemporary(t, static_cast<BraceInitExpr*>(init), at, addr);
+        return;
+      }
+      if (isClass(t) && init && init->kind == NodeKind::ConditionalExpr && conditionalOfPrvalues(static_cast<ConditionalExpr*>(init), t, at))
+      {
+        // `T a = c ? T(1) : make(2);`: the chosen branch builds the object itself, no temporary
+        // moved from (guaranteed elision, [expr.cond]/7 and [dcl.init]/17.6.1).
+        auto* c = static_cast<ConditionalExpr*>(init);
+        Value cond = convert(rvalue(c->cond), types.boolType(), at);
+        std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
+        fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
+        for (int branch = 0; branch < 2; ++branch)
+        {
+          startBlock(branch == 0 ? tL : eL);
+          size_t temps = statementTemps.size();
+          initializeFrom(addr, t, branch == 0 ? c->then : c->else_, at);
+          destroyTempsFrom(temps); // (a branch's own temporaries end with it)
+          emitBranch(jL);
+        }
+        startBlock(jL);
         return;
       }
       if (isClass(t))
@@ -4251,13 +4287,31 @@ namespace
         }
         if (t->kind == TyKind::Array)
         {
-          // Element by element (nested lists for arrays of arrays); the rest stays zero.
+          // Element by element (nested lists for arrays of arrays); the rest stays zero. An element
+          // built is destroyed if a later one's initializer throws ([except.ctor]/3): an unwind-only
+          // cleanup each, dropped once the array is whole (its owner destroys it then).
           storeZero(t, addr, at);
+          bool cleanups = !scopes.empty() && needsDestruction(t->inner, at);
+          std::vector<std::string> built;
           for (size_t i = 0; i < bi->args.size() && i < t->count; ++i)
           {
             std::string element = newTemp();
             fn += "  " + element + " = getelementptr inbounds " + llType(t, at) + ", ptr " + addr + ", i64 0, i64 " + std::to_string(i) + "\n";
             initializeFrom(element, t->inner, bi->args[i], at);
+            if (cleanups && i + 1 < bi->args.size() && i + 1 < t->count)
+            {
+              Object o{element, t->inner};
+              o.unwindOnly = true;
+              scopes.back().push_back(o);
+              built.push_back(element);
+            }
+          }
+          if (!built.empty())
+          {
+            std::vector<Object>& scope = scopes.back();
+            scope.erase(std::remove_if(scope.begin(), scope.end(),
+                                       [&](const Object& o) { return o.unwindOnly && std::find(built.begin(), built.end(), o.addr) != built.end(); }),
+                        scope.end());
           }
           return;
         }
@@ -16207,10 +16261,59 @@ namespace
         global.retypeFor(currentFunction, original, currentClassTy);
     }
 
+    // The temporary a range-for's range is a member subobject of (`Duo{...}.a`, `makeHolder().items[1]`):
+    // the base of a chain of `.member` and array elements, when it is a class prvalue. The reference
+    // the range binds extends its whole lifetime to the loop's end ([class.temporary]/6), not the
+    // other temporaries of the range's expression.
+    const Ty* rangeTemporaryBase(Expr* e)
+    {
+      bool member = false;
+      for (;;)
+      {
+        while (e && e->kind == NodeKind::ParenExpr)
+          e = static_cast<ParenExpr*>(e)->inner;
+        if (e && e->kind == NodeKind::MemberExpr && static_cast<MemberExpr*>(e)->op == P::Dot)
+        {
+          Decl* d = static_cast<MemberExpr*>(e)->resolved;
+          if (!d || d->kind != NodeKind::VariableDecl || (d->flags & DF_Static))
+            return nullptr;
+          e = static_cast<MemberExpr*>(e)->base;
+          member = true;
+          continue;
+        }
+        if (e && e->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(e)->base && static_cast<IndexExpr*>(e)->base->ty &&
+            types.stripRef(static_cast<IndexExpr*>(e)->base->ty)->kind == TyKind::Array)
+        {
+          e = static_cast<IndexExpr*>(e)->base;
+          member = true;
+          continue;
+        }
+        break;
+      }
+      if (!member || !e || !e->ty || e->ty->isReference() || isLvalueExpression(e) || !isClass(e->ty))
+        return nullptr;
+      return types.unqualified(e->ty);
+    }
+
+    // Moves the statement's temporary of class cls made since `since` (the last one: the base the
+    // range is a member of) to the loop's scope, which destroys it when the loop ends.
+    void extendRangeTemporary(const Ty* cls, size_t since, Node* at)
+    {
+      for (size_t i = statementTemps.size(); i-- > since;)
+        if (statementTemps[i].ty && isClass(statementTemps[i].ty) && canonicalClass(statementTemps[i].ty, at) == canonicalClass(cls, at))
+        {
+          scopes.back().push_back(statementTemps[i]);
+          statementTemps.erase(statementTemps.begin() + i);
+          return;
+        }
+    }
+
     void rangeFor(RangeForStmt* f)
     {
       pushScope();
       const Ty* rt = types.stripRef(f->range->ty);
+      const Ty* temporaryBase = rangeTemporaryBase(f->range);
+      size_t tempsBefore = statementTemps.size();
       if (!rt || !rt->isKnown())
         unsupported(f, "a range of unknown type");
       std::string beginV, endV;
@@ -16232,6 +16335,8 @@ namespace
         }
         else
           base = lvalue(f->range);
+        if (temporaryBase)
+          extendRangeTemporary(temporaryBase, tempsBefore, f);
         beginV = newTemp();
         fn += "  " + beginV + " = getelementptr inbounds " + llType(rt, f) + ", ptr " + base + ", i64 0, i64 0\n";
         endV = newTemp();
@@ -16241,6 +16346,8 @@ namespace
       else if (isClass(rt))
       {
         Value range = rvalue(f->range);
+        if (temporaryBase)
+          extendRangeTemporary(temporaryBase, tempsBefore, f);
         if (range.isTemporary)
         {
           for (size_t i = statementTemps.size(); i-- > 0;)

@@ -1,6 +1,5 @@
 // spec: a conditional whose branches are prvalues of the variable's class initializes the variable directly ([expr.cond]/7, [dcl.init]/17.6.1: guaranteed copy elision), no temporary moved from; clang 19 prints `T1`, `~T1`, `0`
 // factorio: found by the templates thread comparing object lifetimes against clang 19 (an extra move constructor call and destructor, observable where they have effects)
-// pending: the chosen branch is built in a temporary and moved into the variable
 int moves = 0;
 struct T
 {

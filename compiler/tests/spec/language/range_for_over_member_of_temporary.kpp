@@ -1,6 +1,5 @@
 // spec: a range-for whose range is a member of a temporary (`for (const T& t : Duo{...}.a)`) keeps the temporary alive until the loop ends ([class.temporary]/6: the reference the range binds extends the whole temporary), so the loop reads live elements; clang 19 prints `T1 T2 it1 it2 ~T2 ~T1`, one per line
-// factorio: found by the templates thread comparing object lifetimes against clang 19: the temporary was destroyed before the loop, which read the destroyed elements (silent)
-// pending: the temporary holding the range is destroyed at the end of the range's initialisation, before the first iteration
+// factorio: TextRenderer's `for (const TextDrawSection& section : this->getTrimmedOverlappingSections(sections, line).sections)` (three loops) iterated a Vector already destroyed; found by the templates thread comparing object lifetimes against clang 19 (silent)
 int moves = 0;
 struct T
 {
