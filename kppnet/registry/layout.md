@@ -23,7 +23,8 @@ https://kpp.net/registry/
                               named by the SHA-256 of the file itself
   kpp/
     releases/<version>/       kpp's own packages: kpp-<version>.zip, kpp-<version>-setup.exe, kpp.vsix
-    latest.json               {"version", "commit", "zip", "sha256"}: what GitHub's "latest" prerelease is today
+    latest.json               {"version", "commit", "zip", "sha256"}: what GitHub's "latest" prerelease is today;
+                              "zip" is relative to registry/kpp/ (releases/<version>/kpp-<version>.zip)
 ```
 
 **A release in `index/<name>.json`:**
@@ -65,11 +66,16 @@ Options -Indexes
   `archive` from kpp.net (or a configured mirror), unpacks it, recomputes the tree hash and refuses
   a mismatch. It never downloads from GitHub.
 - Write once: `tree_hash.py pack` skips an archive already in the store (the same hash is the same
-  content) and never replaces one, and uploads use `rsync --ignore-existing`. A release's entry in
+  content) and never replaces one. Every upload keeps what is there. CI's
+  `tools/release/publish.ps1` uses OpenSSH's ssh and scp, since Windows runners have no rsync. It
+  skips a file whose path exists (`test -e`), copies to a temporary name and moves it into place
+  with `mv -n`. Only `kpp/latest.json` is replaced, by a rename. A maintainer's upload from
+  PC-PRACOVNA may use `rsync --ignore-existing`, which follows the same rule. A release's entry in
   the index changes only to set `yanked` (a reason string).
 - Removal (malware, legal) deletes the archive and keeps the index entry with `"removed": "<reason>"`,
   so the version number is never reused.
 - `tree_hash.py verify` recomputes every archive's hash; the daily backup pull runs it on its copy.
-- `mirror/` holds what CI used to download from github.com (`ci.yml`'s SDL3 headers):
-  `tree_hash.py mirror FILE STORE` prints the URL to put in the workflow, with the SHA-256 to
-  check.
+- `mirror/` holds what CI used to download from github.com (`ci.yml`'s SDL3 headers, which it now
+  fetches from here by SHA-256, with github.com as the fallback). CI's
+  `publish.ps1 -Mirror -KppNet <user@host> -Files F` puts a file there. `tree_hash.py mirror FILE
+  STORE` does the same into a local copy of the store.

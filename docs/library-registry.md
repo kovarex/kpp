@@ -431,11 +431,13 @@ long-running non-web processes. If CI ever leaves GitHub, it needs a self-hosted
 - the SDL3 zip ci.yml downloads from github.com moves to kpp.net's mirror directory, checked by
   its SHA-256;
 - **Publishing kpp's own packages** (agreed with H through the coordinator):
-  `tools/release/publish.ps1` (H, a52cb2a8) keeps its GitHub/Forgejo release path and gains a
-  kpp.net path. That path uploads the files to `registry/kpp/releases/<version>/` over SSH with
-  `rsync --ignore-existing`, writes `registry/kpp/latest.json` (version, commit, zip, SHA-256)
-  last, and renames it into place so a reader never sees half a file. The key is a CI secret
-  authorized in NFS's keychain. kpp.net is the copy installers and factorio-in-kpp's CI read; the
+  `tools/release/publish.ps1` (H, a52cb2a8, kpp.net path 9ba37cc1) keeps its GitHub/Forgejo
+  release path and has a kpp.net path. That path copies the files to
+  `registry/kpp/releases/<version>/` with OpenSSH's ssh and scp (Windows runners have no rsync),
+  keeping any file already there. It writes `registry/kpp/latest.json` (version, commit, zip,
+  SHA-256) last, and renames it into place so a reader never sees half a file. With `-Mirror`, it
+  puts third-party files under `registry/mirror/<sha256>/`. The key is the CI secret
+  `KPP_NET_SSH_KEY`, authorized in NFS's keychain. kpp.net is the copy installers and factorio-in-kpp's CI read; the
   GitHub release stays as a convenience. A green master run uploads three files, so even 22 runs
   a day stay inside NFS's limit of one uploaded file per five minutes on average (288 a day).
 

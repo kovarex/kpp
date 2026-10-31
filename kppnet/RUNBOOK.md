@@ -89,10 +89,28 @@ ruleset; the merge button is left alone by convention.
 mkdir -p /home/public/registry/index /home/public/registry/archives /home/public/registry/mirror /home/public/registry/kpp
 ```
 Put the `.htaccess` from [registry/layout.md](registry/layout.md) into `/home/public/registry/`.
-Publishing (stage 1) is a maintainer's `kpp publish`, which uploads with
-`rsync --ignore-existing`. The first upload is CI's SDL3 zip:
-`python -I kppnet/registry/tree_hash.py mirror SDL3-devel-3.4.18-VC.zip <local store>` and an
-rsync of `<local store>/mirror/`. Thread H then switches ci.yml to the printed URL.
+Libraries (stage 1) are published by a maintainer's `kpp publish`.
+
+## 8. CI's access to kpp.net (kovarex)
+CI writes kpp's packages to `registry/kpp/` and mirrored files to `registry/mirror/` with
+`tools/release/publish.ps1`, over OpenSSH (ci.yml; docs/build.md "Continuous integration").
+Without these settings it skips kpp.net and says so.
+1. On PC-PRACOVNA, make a key for CI only, without a passphrase:
+   `ssh-keygen -t ed25519 -f kppnet-ci -N "" -C ci@kpp.net`.
+2. Add `kppnet-ci.pub` to NFS's member keychain.
+3. Read the server's host key line:
+   `ssh-keyscan -t ed25519 ssh.<host>.nearlyfreespeech.net`.
+   Check its fingerprint (`ssh-keygen -lf`) against what your own first `ssh` login showed.
+4. On GitHub, kovarex/kpp > Settings > Secrets and variables > Actions, set:
+   - the **secret** `KPP_NET_SSH_KEY`: the whole text of `kppnet-ci` (the private key);
+   - the **variable** `KPP_NET_SSH`: `<user>_kpp@ssh.<host>.nearlyfreespeech.net`;
+   - the **variable** `KPP_NET_KNOWN_HOSTS`: the line from step 3.
+
+   Then delete the local copy of `kppnet-ci`.
+5. Check: run ci on master by hand (Actions > ci > Run workflow). Its log says it published to
+   kpp.net, and https://kpp.net/registry/kpp/latest.json names the run's version. The first such
+   run also mirrors the SDL3 zip to `registry/mirror/<sha256>/`, and later runs fetch it from
+   there.
 
 ## Running it
 - **Realm upgrades:** NFS's "late" setting upgrades about every six months. Before switching, run

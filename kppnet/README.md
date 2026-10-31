@@ -26,7 +26,9 @@ No thread can do these: they need his NFS account, his keys or his answers.
    daemons and proxies, which stage 3 needs; Apache with CGI is enough until then. The domain's
    DNS is pointed at the site (NFS's DNS hosting, since the domain is registered there).
 2. **SSH keys**: his Ed25519 public key in the NFS member keychain. A separate key for the threads'
-   pushes, if NFS allows those (question 1 below), and one for the daily backup pull.
+   pushes, if NFS allows those (question 1 below), one for the daily backup pull, and CI's key with
+   the GitHub settings `KPP_NET_SSH_KEY` (secret), `KPP_NET_SSH` and `KPP_NET_KNOWN_HOSTS`
+   (variables) (RUNBOOK.md step 8).
 3. **The GitHub side**:
    - the mirror's deploy key with write access, for the hook;
    - a ruleset on each mirrored repository that lets only that deploy key update branches;
