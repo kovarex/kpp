@@ -235,6 +235,14 @@ namespace
       std::lock_guard lock(s.mutex);
       s.answers.emplace(k, v);
     }
+    void clear()
+    {
+      for (Shard& s : shards)
+      {
+        std::lock_guard lock(s.mutex);
+        s.answers.clear();
+      }
+    }
   };
 
   // A request for an instantiation: by which function (its IR name), and the instantiation depth
@@ -315,6 +323,10 @@ namespace
       // How it was emitted: set with inlined, and for every instance's own definition (an edit of its
       // template's body, as written, emits it again).
       std::unique_ptr<Instantiation> emitted;
+      // The class types whose layouts (or answers computed from them: size, destruction, bitwise
+      // copy) its emission and its lambdas' used (Emitter::noteLayout), sorted: a changed layout
+      // emits it again (rebuildLLVM's changedLayouts).
+      std::vector<const Ty*> layouts;
       // A lambda's call operator its first caller emitted (Emitter::emitCallOperatorOnDemand): its
       // closure and call types, to emit it again on its own once its writer's edit dropped it.
       const Ty* closure = nullptr;
@@ -842,6 +854,7 @@ namespace
     std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> sizeCache; // this emitter's view of the remembered sizes
     std::pair<uint64_t, uint64_t> classSizeAndAlign(const Ty* t, Node* at)
     {
+      noteLayout(t);
       if (auto mine = sizeCache.find(t); mine != sizeCache.end())
         return mine->second;
       if (std::pair<uint64_t, uint64_t> known; sh.finalSizes.find(t, known))
@@ -1163,6 +1176,7 @@ namespace
     // comes first, so that they do not depend on the order functions are emitted in).
     StructInfo& checkedLayout(StructInfo& info, const Ty* classTy, Node* at)
     {
+      noteLayout(classTy);
       if (info.failed)
         fail(at, info.failedWhy.empty() ? "codegen does not support the class " + types.toString(classKey(classTy), &symbols) + ", whose layout failed yet" : info.failedWhy);
       return info;
@@ -2155,6 +2169,7 @@ namespace
       }
       if (!isClass(t))
         return false;
+      noteLayout(t);
       if (auto mine = destructionCache.find(t); mine != destructionCache.end())
         return mine->second;
       if (bool known; sh.finalDestruction.find(t, known))
@@ -2266,6 +2281,7 @@ namespace
     size_t destructionCalls(const Ty* t, Node* at, int depth = 0)
     {
       t = types.stripRef(t);
+      noteLayout(t);
       if (auto it = destructionCallCounts.find(t); it != destructionCallCounts.end())
         return it->second;
       size_t n = 0;
@@ -4246,6 +4262,7 @@ namespace
       if (!isClass(t) || depth > 32)
         return true;
       const Ty* key = canonicalClass(t, at);
+      noteLayout(key);
       if (auto it = bitwiseRelocation.find(key); it != bitwiseRelocation.end())
         return it->second;
       bitwiseRelocation[key] = true; // (a member pointing back at its class is no member by value)
@@ -4289,6 +4306,7 @@ namespace
       if (!isClass(t) || depth > 32)
         return true;
       const Ty* key = canonicalClass(t, at);
+      noteLayout(key);
       if (auto it = bitwiseAssignment.find(key); it != bitwiseAssignment.end())
         return it->second;
       bitwiseAssignment[key] = true; // (a member pointing back at its class is no member by value)
@@ -8426,6 +8444,15 @@ namespace
         definition.closure = onDemandNow.closure;
         definition.callType = onDemandNow.callType;
       }
+      if (!ownItself && (name == owner || onDemand) && !layoutsNow.empty())
+      {
+        // The layouts it and its lambdas used (a call operator emitted on demand: what its
+        // emission used, its writer's so far included; emitted again with its writer).
+        std::sort(layoutsNow.begin(), layoutsNow.end());
+        layoutsNow.erase(std::unique(layoutsNow.begin(), layoutsNow.end()), layoutsNow.end());
+        definition.layouts = std::move(layoutsNow);
+        layoutsNow.clear();
+      }
       if (!ownItself && (name == owner || onDemand) && !inlinedNow.empty())
       {
         // The function's own definition, its emission done: what it and its lambdas inlined. (What
@@ -8437,8 +8464,10 @@ namespace
         definition.emitted = std::make_unique<Instantiation>(
           onDemand ? Instantiation{onDemandNow.writer, {}, nullptr, currentModule, "", "", 0} : emittingNow);
       }
-      else if (!ownItself && name == owner && !onDemand && (!emittingNow.args.empty() || emittingNow.classTy))
-        definition.emitted = std::make_unique<Instantiation>(emittingNow); // an instance: emitted again when its template's body changes
+      else if (!ownItself && name == owner && !onDemand && (!emittingNow.args.empty() || emittingNow.classTy || !definition.layouts.empty()))
+        definition.emitted = std::make_unique<Instantiation>(emittingNow); // an instance, or a user of layouts: emitted again when they change
+      else if (onDemand && !definition.layouts.empty())
+        definition.emitted = std::make_unique<Instantiation>(Instantiation{onDemandNow.writer, {}, nullptr, currentModule, "", "", 0});
       std::lock_guard lock(sh.definitionsMutex);
       sh.definitions[currentModule].push_back(std::move(definition));
       definedIn[name] = currentModule;
@@ -8449,6 +8478,7 @@ namespace
     std::string owner;
     Instantiation emittingNow{}; // how that function is emitted (what rebuildLLVM emits again)
     std::vector<const FunctionDecl*> inlinedNow; // the bodies its emission inlined so far
+    std::vector<const Ty*> layoutsNow;           // the class layouts its emission used so far (noteLayout)
     struct OnDemand
     {
       std::string name; // the call operator emitCallOperatorOnDemand is emitting, or empty
@@ -8463,6 +8493,26 @@ namespace
     {
       if (moduleCount > 1)
         inlinedNow.push_back(written);
+    }
+
+    // A changed layout (rebuildLLVM): every answer this emitter remembers from layouts goes.
+    void forgetLayoutAnswers()
+    {
+      layoutCache.clear();
+      sizeCache.clear();
+      destructionCache.clear();
+      destructionCallCounts.clear();
+      bitwiseRelocation.clear();
+      bitwiseAssignment.clear();
+      bitfieldCache.clear();
+    }
+
+    // A class type whose layout (or an answer computed from it) the function being emitted uses
+    // (Shared::Definition::layouts).
+    void noteLayout(const Ty* classTy)
+    {
+      if (moduleCount > 1 && !owner.empty())
+        layoutsNow.push_back(classTy);
     }
 
     // A module declaration that belongs to the function being emitted (Shared::OwnedEntry).
@@ -16428,6 +16478,7 @@ namespace
         owner = currentFunctionName;
         emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth};
         inlinedNow.clear();
+        layoutsNow.clear();
       }
       try
       {
@@ -17418,7 +17469,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     session->usable = true;
     auto start = std::chrono::steady_clock::now();
     bool rebuilt = false;
-    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, rebuilt);
+    CodegenResult again = rebuildLLVM(*session, picked, {}, {}, {}, rebuilt);
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     shared = std::move(session->shared);
     emitters = std::move(session->emitters);
@@ -17467,7 +17518,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
 }
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                          const std::vector<FunctionDecl*>& removed, bool& rebuilt)
+                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts, bool& rebuilt)
 {
   rebuilt = false;
   CodegenResult out;
@@ -17527,15 +17578,147 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
     return edited.count(written) != 0 || edited.count(d.emitted->f) != 0;
   };
+  // Changed class layouts (the resolver's changedLayouts: data members of non-template classes
+  // added, removed or changed): those layouts, and every one holding one of them by value or as a
+  // base (transitively), are dropped and laid out again by their first use; every function whose
+  // emission used one of them (Shared::Definition::layouts) is emitted again. Declined (codegen in
+  // full): a polymorphic one (its vtables and thunks hold its offsets), one that a text other than a
+  // function's names (a destructor helper, a descriptor, a global's definition), a closure holding
+  // one by value.
+  std::unordered_set<const StructInfo*> droppedLayouts;
+  std::vector<const Ty*> droppedKeys;
+  std::unordered_map<const Ty*, const StructInfo*> layoutOf; // a noted type -> its layout (memo)
+  auto layoutFor = [&](const Ty* t) -> const StructInfo*
+  {
+    t = e.types.stripRef(t);
+    while (t && t->kind == TyKind::Array)
+      t = t->inner;
+    if (!t || !e.isClass(t))
+      return nullptr;
+    auto [it, isNew] = layoutOf.emplace(t, nullptr);
+    if (!isNew)
+      return it->second;
+    if (auto known = sh.structsByType.find(t); known != sh.structsByType.end())
+      return it->second = known->second;
+    try
+    {
+      if (auto own = sh.structs.find(e.canonicalClass(t, nullptr)); own != sh.structs.end())
+        it->second = &own->second;
+    }
+    catch (Emitter::Unsupported&)
+    {
+    }
+    return it->second;
+  };
+  if (!changedLayouts.empty())
+  {
+    std::unordered_set<const Decl*> changedClasses(changedLayouts.begin(), changedLayouts.end());
+    for (auto& [key, info] : sh.structs)
+      if (key->decl && changedClasses.count(key->decl))
+        droppedLayouts.insert(&info);
+    for (bool grew = true; grew;)
+    {
+      grew = false;
+      for (auto& [key, info] : sh.structs)
+        if (!droppedLayouts.count(&info))
+          for (const Ty* ft : info.fieldTypes)
+            if (ft && !ft->isReference() && droppedLayouts.count(layoutFor(ft)))
+            {
+              droppedLayouts.insert(&info);
+              grew = true;
+              break;
+            }
+    }
+    for (auto& [key, info] : sh.structs)
+      if (droppedLayouts.count(&info))
+        droppedKeys.push_back(key);
+    auto decline = [&](const std::string& why)
+    {
+      out.declined = why;
+      return out;
+    };
+    std::vector<std::string> droppedNames;
+    for (const Ty* key : droppedKeys)
+    {
+      const StructInfo& info = sh.structs[key];
+      if (info.polymorphic)
+        return decline("a changed layout of a polymorphic class (" + e.types.toString(key, &e.symbols) + "): its vtables");
+      droppedNames.push_back(info.name);
+    }
+    // A text other than a function's that names one of them.
+    auto namesOne = [&](std::string_view text, bool typeLinesToo) -> std::string
+    {
+      for (const std::string& name : droppedNames)
+        for (size_t at = text.find(name); at != std::string_view::npos; at = text.find(name, at + 1))
+        {
+          size_t after = at + name.size();
+          if (after < text.size() && (std::isalnum((unsigned char)text[after]) || text[after] == '.' || text[after] == '_'))
+            continue; // (a longer name)
+          size_t lineStart = text.rfind('\n', at);
+          lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+          if (!typeLinesToo && text.substr(lineStart, 8) == "%struct." && text.find(" = type ", lineStart) < text.find('\n', lineStart))
+            continue; // a type line (the layouts holding it are dropped too)
+          return name;
+        }
+      return {};
+    };
+    for (auto& [name, done] : sh.emittedShared)
+      for (const std::string& dropped : droppedNames)
+        if (name.find(dropped.substr(8)) != std::string::npos)
+          return decline("a changed layout that " + name + " was made for");
+    if (std::string named = namesOne(sh.decls.text, false); !named.empty())
+      return decline("a changed layout that the shared declarations name: " + named);
+    if (std::string named = namesOne(sh.shared.text, true); !named.empty())
+      return decline("a changed layout that a shared definition names: " + named);
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+      if (std::string named = namesOne(sh.moduleDecls[k].text, true); !named.empty())
+        return decline("a changed layout that module " + std::to_string(k) + "'s declarations name: " + named);
+    for (auto& [t, closure] : sh.closures)
+      if (closure.laidOut)
+        for (size_t i = 0; i < closure.fieldTypes.size(); ++i)
+          if (!closure.byRef[i] && closure.captured[i] && droppedLayouts.count(layoutFor(closure.fieldTypes[i])))
+            return decline("a changed layout that a lambda holds by value");
+  }
   std::map<unsigned, std::vector<Instantiation>> holding; // by depth
+  auto usesDropped = [&](const Shared::Definition& d)
+  {
+    for (const Ty* t : d.layouts)
+      if (droppedLayouts.count(layoutFor(t)))
+        return true;
+    return false;
+  };
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
       if (d.emitted && !owners.count(d.owner) &&
-          (std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0; }) || instanceOfEdited(d)))
+          (std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0; }) || instanceOfEdited(d) ||
+           (!droppedLayouts.empty() && usesDropped(d))))
       {
         owners.insert(d.owner);
         holding[d.emitted->depth].push_back(*d.emitted);
       }
+  if (!droppedLayouts.empty())
+  {
+    // A function that used a dropped layout without a record of how it was emitted cannot be emitted
+    // again: declined.
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+      for (const Shared::Definition& d : sh.definitions[k])
+        if (!d.emitted && !owners.count(d.owner) && usesDropped(d))
+        {
+          out.declined = "a changed layout that " + d.name + " used, with no record of its emission";
+          return out;
+        }
+    // The layouts go, with every answer computed from them (each emitter's and the published ones).
+    for (auto it = sh.structsByType.begin(); it != sh.structsByType.end();)
+      it = droppedLayouts.count(it->second) ? sh.structsByType.erase(it) : std::next(it);
+    for (const Ty* key : droppedKeys)
+      sh.structs.erase(key);
+    for (auto& em : emitters)
+      em->forgetLayoutAnswers();
+    sh.finalLayouts.clear();
+    sh.finalSizes.clear();
+    sh.finalDestruction.clear();
+    sh.finalBitfields.clear();
+  }
   // Per module, the texts dropped (sorted) and how many definitions and owned entries stayed: the
   // ones emitted now follow those, and a module whose new texts are the dropped ones again (an
   // edited function's callers, emitted again for what they inline, mostly are) is not assembled again.
@@ -17660,6 +17843,49 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // An error, or a first use that added to the shared declarations (in every module): from scratch.
   // What it was goes to the server's log (the first one, cut).
   auto cut = [](const std::string& text) { return text.substr(0, std::min(text.find('\n'), size_t(240))); };
+  // The dropped layouts not laid out again by a function emitted again: laid out now (a type line
+  // names them). Each new type line replaces the old one in the shared declarations' text, where it
+  // sorts the same (its name), and the modules are assembled again with them.
+  bool layoutsReplaced = false;
+  if (!droppedKeys.empty())
+  {
+    for (const Ty* key : droppedKeys)
+      if (!sh.structs.count(key))
+        try
+        {
+          emitters[0]->structFor(key, key->decl);
+        }
+        catch (Emitter::Unsupported&)
+        {
+        }
+    std::vector<std::string> remaining;
+    for (std::string& entry : sh.decls.entries)
+    {
+      size_t is = entry.find(" = type ");
+      if (!entry.starts_with("%struct.") || is == std::string::npos || entry.find('\n') + 1 != entry.size())
+      {
+        remaining.push_back(std::move(entry));
+        continue;
+      }
+      std::string head = entry.substr(0, is + 8);
+      size_t at = sh.decls.text.starts_with(head) ? 0 : sh.decls.text.find("\n" + head);
+      if (at == std::string::npos)
+      {
+        remaining.push_back(std::move(entry)); // a new type: a first use (declined below)
+        continue;
+      }
+      at += at ? 1 : 0;
+      sh.decls.text.replace(at, sh.decls.text.find('\n', at) + 1 - at, entry);
+      layoutsReplaced = true;
+    }
+    sh.decls.entries = std::move(remaining);
+    if (layoutsReplaced)
+    {
+      sh.typeLines.clear();
+      sh.typeIndex.clear();
+      e.prepareModuleTexts();
+    }
+  }
   for (auto& em : emitters)
     if (!em->errors.empty())
     {
@@ -17681,7 +17907,8 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     std::vector<Shared::Definition>& defs = sh.definitions[k];
     std::vector<Shared::OwnedEntry>& owned = sh.ownedEntries[k];
     bool declared = !sh.moduleDecls[k].entries.empty(); // a first use declared something in this module
-    if (was.definitions.empty() && was.owned.empty() && defs.size() == was.keptDefinitions && owned.size() == was.keptOwned && !declared)
+    if (was.definitions.empty() && was.owned.empty() && defs.size() == was.keptDefinitions && owned.size() == was.keptOwned && !declared &&
+        !layoutsReplaced)
       continue;
     // The new definitions sorted and merged in among the kept ones (as from scratch, all in order).
     auto byText = [](const Shared::Definition& a, const Shared::Definition& b) { return a.text < b.text; };
@@ -17698,7 +17925,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       same = ownedNow == was.owned;
     }
     std::inplace_merge(defs.begin(), defs.begin() + was.keptDefinitions, defs.end(), byText);
-    if (same)
+    if (same && !layoutsReplaced)
       continue; // its text would be the one it has
     which.push_back(k);
     // The module's declarations again: those kept, those a first use added now (kept from here on),

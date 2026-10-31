@@ -62,6 +62,9 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
 // callers of an edited function come in changedBodies (the server's walksReading): codegen knows
 // only the callers that inline, and one that only called it inlines it once it is trivial. rebuilt
 // is false when it cannot (an error, a change to the shared declarations; result.declined says
-// which): the session is then unusable, and the caller builds from scratch.
+// which): the session is then unusable, and the caller builds from scratch. changedLayouts: the
+// classes whose data members changed (non-template ones): their layouts and those holding them are
+// laid out again, and every function that used one of them is emitted again (declined for a
+// polymorphic one, or one a destructor helper, a descriptor, a global or a lambda's capture holds).
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& added,
-                          const std::vector<FunctionDecl*>& removed, bool& rebuilt);
+                          const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts, bool& rebuilt);

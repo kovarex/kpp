@@ -944,7 +944,7 @@ namespace
     bool rebuilt = false;
     if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == modules)
     {
-      cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, rebuilt);
+      cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, rebuilt);
       logBuildNote(rebuilt ? "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
                                " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again"
                            : "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full");
@@ -2400,9 +2400,9 @@ namespace
     }
     std::sort(kept.changedLayouts.begin(), kept.changedLayouts.end());
     kept.changedLayouts.erase(std::unique(kept.changedLayouts.begin(), kept.changedLayouts.end()), kept.changedLayouts.end());
-    // Codegen does not take changed layouts yet (rebuildLLVM): it runs in full for them, and for
-    // local types that moved (remapKeptFile).
-    if (!kept.changedLayouts.empty() || kept.positionalCodegenInFull)
+    // Codegen takes changed layouts (rebuildLLVM lays them out again, or declines); it runs in full
+    // for local types that moved (remapKeptFile).
+    if (kept.positionalCodegenInFull)
       codegenCanFollow = false;
     if (!names.empty() || !constantBodies.empty())
     {
