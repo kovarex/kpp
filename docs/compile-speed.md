@@ -898,7 +898,13 @@ the order of work:
    again or dropped (`instancesOf`), and rebuildLLVM emits again every instance of them and every
    function that inlined one; a dropped instance is made anew by its first use there. The edit
    test's overload added and removed and its `Panel::base` edit now let codegen follow (12 builds
-   instead of 9, each verified the same as from scratch).
+   instead of 9, each verified the same as from scratch). On the game (the 4c178a5b915 conversion),
+   a data member added to `MergeRequest` (7 instances read it, 1 layout changed) and removed again
+   through the server: 66 functions emitted again, codegen 1.1 s instead of 5.3; all 64 modules'
+   IR the same as a build from scratch's of the edited source, and the build back the same as the
+   first. Paired with the parent commit's kppc (codegen in full), 3 rounds interleaved
+   (scratch\codegen\merge-pair.sh 3, another thread building meanwhile): the edit 4.8 to 9.3 s
+   against 9.1 to 10.8 s, the build back 5.2 to 6.7 s against 9.8 to 14.2 s.
 2. **The resolver's half of a layout edit.** A changed file whose differences are data members of
    non-template classes (added, removed, a type or a default initialiser changed; no virtual, base,
    union or typed-union change): the members grafted and indexed as whole functions are; every
