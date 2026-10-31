@@ -4,24 +4,7 @@
 // (kppc --run-build, GlobalScope::runBuild): a Project default-constructed, its configuration set,
 // build(project), then describe(project), whose text kpp reads (project.cpp). So build.kpp can
 // compute but cannot read files, start processes or call C.
-//
-// Until the interpreter runs them (the pending spec language/consteval_projectlib_containers):
-// executables and C libraries are Vectors with room for 64 reserved, so that the references
-// executable() and cLibrary() return stay valid, and a 65th is an error; a String member is set by
-// a method (clear and +=), not by assignment. A String temporary written `String(...)` is not
-// destroyed at compile time yet (the pending spec
-// language/consteval_temporary_object_of_member_call_destroyed): a local stands for it.
 enum class Configuration { debug, release };
-
-// Declared only: a call is the error "a call to kppMoreThan64Executables, ... no body".
-void kppMoreThan64Executables();
-void kppMoreThan64CLibraries();
-
-void kppSet(String& field, StringView value)
-{
-  field.clear();
-  field += value;
-}
 
 // One program the project builds.
 struct Executable
@@ -47,23 +30,18 @@ struct Executable
   // A C library of the project (Project::cLibrary) by its name.
   void link(StringView name) { links.push_back(name); }
   // A Windows library by its name (`gdi32`): kppc's --lib -lgdi32.
-  void systemLibrary(StringView name)
-  {
-    String option = "-l";
-    option += name;
-    libraries.push_back(option);
-  }
+  void systemLibrary(StringView name) { libraries.push_back(String("-l") + name); }
   // A command run before the build, and one after it, in the project's directory; {exe} is the
   // executable, {configuration} the configuration.
-  void beforeBuild(StringView command) { kppSet(beforeBuildCommand, command); }
-  void afterBuild(StringView command) { kppSet(afterBuildCommand, command); }
+  void beforeBuild(StringView command) { beforeBuildCommand = command; }
+  void afterBuild(StringView command) { afterBuildCommand = command; }
   // What Run and the debugger start, when not the executable itself: the command, its arguments and
   // the directory it starts in.
   void debug(StringView command, StringView arguments = "", StringView directory = "")
   {
-    kppSet(debugCommand, command);
-    kppSet(debugArguments, arguments);
-    kppSet(debugDirectory, directory);
+    debugCommand = command;
+    debugArguments = arguments;
+    debugDirectory = directory;
   }
 };
 
@@ -87,7 +65,7 @@ struct CLibrary
   void define(StringView definition) { defines.push_back(definition); }
   void prebuiltLibrary(StringView path) { prebuilt.push_back(path); }
   void resource(StringView path) { resources.push_back(path); }
-  void standard(StringView name) { kppSet(cppStandard, name); }
+  void standard(StringView name) { cppStandard = name; }
 };
 
 struct Project
@@ -99,38 +77,30 @@ struct Project
   Vector<String> arguments;
   Vector<String> libraries;
   Vector<String> cIncludes;
-  Vector<Executable> executables;
-  Vector<CLibrary> cLibraries;
-
-  Project()
-  {
-    executables.reserve(64);
-    cLibraries.reserve(64);
-  }
+  // Deques: adding one leaves the references earlier calls returned valid.
+  Deque<Executable> executables;
+  Deque<CLibrary> cLibraries;
 
   Executable& executable(StringView name, InitializerList<StringView> roots)
   {
-    if (executables.size() == executables.capacity())
-      kppMoreThan64Executables();
-    executables.push_back(Executable{String(name)});
-    Executable& e = executables.back();
+    Executable& e = executables.emplace_back();
+    e.name = name;
     for (StringView root : roots)
       e.roots.push_back(root);
     return e;
   }
   CLibrary& cLibrary(StringView name)
   {
-    if (cLibraries.size() == cLibraries.capacity())
-      kppMoreThan64CLibraries();
-    cLibraries.push_back(CLibrary{String(name)});
-    return cLibraries.back();
+    CLibrary& c = cLibraries.emplace_back();
+    c.name = name;
+    return c;
   }
   void argument(StringView option) { arguments.push_back(option); }
   void library(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
 
   // A value given on kpp's command line (`kpp --set GAME=D:\game`), or otherwise.
-  String setting(StringView name, StringView otherwise) const { return String(kppSetting(name, otherwise)); }
+  String setting(StringView name, StringView otherwise) const { return kppSetting(name, otherwise); }
 };
 
 void kppLine(String& out, StringView key, StringView value)
@@ -157,7 +127,7 @@ String describe(const Project& project)
   bool debug = project.configuration == Configuration::debug;
   String out;
   kppLine(out, "configuration", debug ? "debug" : "release");
-  kppLine(out, "debug-info", (project.debugInfo.has_value() ? *project.debugInfo : debug) ? "1" : "0");
+  kppLine(out, "debug-info", project.debugInfo.value_or(debug) ? "1" : "0");
   if (project.executables.empty())
   {
     kppLine(out, "executable", kppProjectName());
@@ -167,8 +137,11 @@ String describe(const Project& project)
     kppLines(out, "cinclude", project.cIncludes);
     out += "end\n";
   }
-  for (const Executable& e : project.executables)
+  // Index loops: a range-for over a Deque is no constant yet (the pending spec
+  // language/consteval_deque_range_for).
+  for (int i = 0; i < project.executables.size(); ++i)
   {
+    const Executable& e = project.executables[i];
     kppLine(out, "executable", e.name);
     kppLines(out, "root", e.roots);
     kppLines(out, "exclude", e.excluded);
@@ -186,8 +159,9 @@ String describe(const Project& project)
     kppLines(out, "link", e.links);
     out += "end\n";
   }
-  for (const CLibrary& c : project.cLibraries)
+  for (int i = 0; i < project.cLibraries.size(); ++i)
   {
+    const CLibrary& c = project.cLibraries[i];
     kppLine(out, "clibrary", c.name);
     kppLines(out, "source", c.sources);
     kppLines(out, "exclude", c.excluded);

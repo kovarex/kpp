@@ -206,18 +206,14 @@ run_tests.cmd.
   kppc prints that text, which kpp reads. Nothing is linked or run. An I/O call in build() is an
   error naming it: `build.kpp:4: a call to puts, a C function, which has no body to run at
   compile time`. The result is kept, keyed by build.kpp, projectlib, the settings and kpp itself.
+- **projectlib** (`projectlib/Project.kpp`). Lists are `Vector<String>`, paths join with `+`
+  (`project.cInclude(project.setting("ROOT", "C:/x") + "/include")`), and executables and C
+  libraries are Deques, so the reference `executable()` returns stays valid. Commands are set by
+  methods: `game.afterBuild("copy ...")`, `game.debug(command, arguments, directory)`,
+  `library.standard("c++20")`.
 - **Measured** on a `kpp new` project (2026-10-31, PC-PRACOVNA): the first `kpp --debug` took
   1.9 s (compiling build.kpp and the program); with nothing changed it took 0.2 s.
 - **What version 0 lacks:**
-  - Lists are Vector<String> and joined paths are Strings
-    (`String root = project.setting("ROOT", "C:/x"); project.cInclude(root + "/include");`; the shorter `project.setting(...) + "/include"` leaks its temporary at compile time, the pending spec language/consteval_temporary_object_of_member_call_destroyed). Until the interpreter
-    runs Deque, `emplace_back()` and assigning a String inside a Vector's element (the pending spec
-    language/consteval_projectlib_containers, D's), a project holds at most 64 executables and 64 C
-    libraries, a 65th is an error, and a String field is set by a method:
-    `game.afterBuild("copy ...")`, `game.debug(command, arguments, directory)`,
-    `library.standard("c++20")`. The 64 keep the references executable() returns valid: the
-    interpreter does not yet report a write through a reference a Vector reallocated away (the
-    pending spec language/consteval_reference_into_reallocated_vector_is_error).
   - Steps are `beforeBuild` and `afterBuild` commands of an executable, run by cmd in the
     project's directory.
   - `use()` and the registry do not exist yet; there is no `configurations()` either.

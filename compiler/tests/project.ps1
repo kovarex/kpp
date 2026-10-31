@@ -42,8 +42,7 @@ try
   Set-Content 'build.kpp' @'
 void build(Project& project)
 {
-  String root = project.setting("INCLUDE_ROOT", "missing");
-  project.cInclude(root + "/include");
+  project.cInclude(project.setting("INCLUDE_ROOT", "missing") + "/include");
   CLibrary& plus = project.cLibrary("plus");
   plus.source("libs/plus");
   plus.exclude("libs/plus/broken.c");

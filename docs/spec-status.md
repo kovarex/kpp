@@ -6,12 +6,13 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**896 pass, 1 pending, 0 failing, 0 fixed** (897 snippets, 28.8 s).
+**896 pass, 2 pending, 0 failing, 0 fixed** (898 snippets, 30.6 s).
 
 ## Language: statements, expressions, declarations
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
+| `language/consteval_deque_range_for.kpp` | a range-for over a const Deque (DequeIterator's != and ++) works in a compile-time evaluation as at run time; the constant equals what the program computes (`6`) | pending | build.kpp (design.md 12): projectlib's describe() walks Project's Deque<Executable> | `it != end` of two DequeIterators is "an operator on an object or a pointer", no constant; C:\kpp-sandbox\worktrees\build\compiler\tests\spec\language\consteval_deque_range_for.kpp:19: error: static assertion whose condition the compiler cannot evaluate yet |
 | `language/adjacent_invokes_cleanup_once_release.kpp` | a call that throws runs only its own scope's cleanups, even when the next call's scope starts at its return address (release) | pass |  |  |
 | `language/alias_array_function_types.kpp` | aliases of array and function types: `using Row = int[3]`, `using Grid = size_t[2][3]`, `using Unary = double(double)` | pass |  |  |
 | `language/alignas.kpp` | alignas on a struct | pass | 68 alignas/alignof uses in 15 files |  |
@@ -911,7 +912,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
-| `expressions/noexcept_operator.kpp` | the noexcept operator is false when its operand can throw ([expr.unary.noexcept]): a call of a function not declared noexcept, a throw expression; true otherwise (a call of a noexcept function, arithmetic); a constant expression, so static_assert reads it | pending | none in the converted game or the stdlib (only noexcept specifications); found reviewing the parser's C-style casts: `noexcept(expr)` was parsed as `true` whatever the operand | the noexcept operator is a parse error ("not supported yet"); it was `true` for every operand; C:\kpp-templates\compiler\tests\spec\expressions\noexcept_operator.kpp:9: error: the noexcept operator is not supported yet (at 'noexcept') |
+| `expressions/noexcept_operator.kpp` | the noexcept operator is false when its operand can throw ([expr.unary.noexcept]): a call of a function not declared noexcept, a throw expression; true otherwise (a call of a noexcept function, arithmetic); a constant expression, so static_assert reads it | pending | none in the converted game or the stdlib (only noexcept specifications); found reviewing the parser's C-style casts: `noexcept(expr)` was parsed as `true` whatever the operand | the noexcept operator is a parse error ("not supported yet"); it was `true` for every operand; C:\kpp-sandbox\worktrees\build\compiler\tests\spec\expressions\noexcept_operator.kpp:9: error: the noexcept operator is not supported yet (at 'noexcept') |
 | `expressions/address_of_reference_cast_to_second_base.kpp` | the address of `static_cast<B&>(d)` with B a base of D that is not at offset 0 (D : A, B) is the address of d's B part, as `B& b = static_cast<B&>(d)` binds it; casting back down with `static_cast<D&>(b)` gives d again | pass |  |  |
 | `expressions/ambiguous_call_is_error.kpp` | a call that two overloads take equally well is an error, as in C++, never one of them taken silently: pick(int64, int32) and pick(int32, int64) given two int32s | pass |  |  |
 | `expressions/assignment_evaluates_right_operand_first.kpp` | C++17's sequencing (design.md, "Evaluation order"): an assignment's right operand, = and every compound one, built-in or a class's operator, is evaluated before its left ([expr.ass] 1, [over.match.oper] 2); a subscript, a shift, .* and ->*, and a call (the callee, the object of a member call) evaluate their left operand first ([expr.sub], [expr.shift], [expr.mptr.oper], [expr.call] 8); the expected line is clang 19's | pass | CompiledMapGenSettings::createContext's `ctx.numericConstants[key] = *value;` with value a pointer into the same FlatMap: the left operand's insertion shifted the entries before *value was read, so "numeric-constant" got its neighbour's 1 instead of starting_area_radius's 150 (CompiledMapGenSettings/NoiseExpressionCompilationContext, the one failing unit test of 4c178a5b915) |  |
