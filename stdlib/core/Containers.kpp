@@ -50,6 +50,8 @@ struct Array
   ReverseIterator<const T*> crend() const { return this->rend(); }
   T& front() { return this->items[0]; }
   T& back() { return this->items[N - 1]; }
+  const T& front() const { return this->items[0]; }
+  const T& back() const { return this->items[N - 1]; }
   void fill(const T& value)
   {
     for (int i = 0; i < N; ++i)
@@ -112,6 +114,8 @@ struct Array<T, 0>
   ReverseIterator<const T*> crend() const { return this->rend(); }
   T& front() { return *this->data(); }
   T& back() { return *this->data(); }
+  const T& front() const { return *this->data(); }
+  const T& back() const { return *this->data(); }
   void fill(const T& value) {}
   bool operator==(const Array<T, 0>& other) const { return true; }
   strong_ordering operator<=>(const Array<T, 0>& other) const { return strong_ordering::equal; }

@@ -1,0 +1,13 @@
+// spec: a const Array's front() and back() are const T& (std::array's const overloads): a call through a const Array picks the overload of a const reference, a call through a mutable one the T& one, which writes the element
+// factorio: thread D's const-object check, which found a mutable T& handed out through a const Array (Array had only `T& front()` and `T& back()`)
+const char* which(int&) { return "mutable"; }
+const char* which(const int&) { return "const"; }
+int main()
+{
+  Array<int, 3> a = {1, 2, 3};
+  const Array<int, 3>& c = a;
+  a.front() = 10;
+  a.back() = 30;
+  println("{} {} {} {} {} {}", which(c.front()), which(c.back()), which(a.front()), which(a.back()), c.front(), c.back());
+  return 0;
+}
