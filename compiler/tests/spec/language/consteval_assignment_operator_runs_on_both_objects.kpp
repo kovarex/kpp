@@ -1,0 +1,41 @@
+// spec: a class's assignment operator at compile time runs on the assigned object where it is, with the right operand where it is (an lvalue's object, a prvalue as a temporary): a move assignment that changes its source changes it, and `this == &other` compares the two objects; the constant equals what the program computes (`1 1 2`)
+// factorio: found by the templates thread measuring build.kpp (stage 7): String's `operator=(String&&)` compares `this == &other`, and its move must empty the source (else two Strings own one block)
+struct Counted
+{
+  int moved = 0;
+  int assigned = 0;
+  Counted() {}
+  Counted& operator=(Counted&& other)
+  {
+    if (this == &other)
+      return *this;
+    other.moved = 1;
+    this->assigned = other.assigned + 1;
+    return *this;
+  }
+};
+constexpr int source()
+{
+  Counted a, b;
+  a = static_cast<Counted&&>(b);
+  return b.moved;
+}
+constexpr int self()
+{
+  Counted a;
+  a = static_cast<Counted&&>(a);
+  return a.assigned + 1;
+}
+constexpr int chained()
+{
+  Counted a, b;
+  b = Counted();
+  a = static_cast<Counted&&>(b);
+  return a.assigned;
+}
+template<int N> struct Show { static constexpr int value = N; };
+int main()
+{
+  println("{} {} {}", Show<source()>::value, Show<self()>::value, Show<chained()>::value);
+  return 0;
+}

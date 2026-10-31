@@ -1197,6 +1197,18 @@ innermost statement that failed and why ("build.kpp:6: a call to puts, a C funct
 body to run at compile time"). `kppc --run-build CONFIGURATION files...` prints it (run_tests'
 runbuild case).
 
+*Its cost, measured 2026-10-31 (stage 7).* A description at Factorio's scale, written with Vector and
+String as projectlib will be (15 C libraries of 20 sources, 5 include directories and 5 defines
+each, two executables; 481 lines of description; `C:\kpp-sandbox\scratch\templates\rb7`), with
+`C:\kpp-sandbox\scratch\templates\runbuild-time.ps1` (10 interleaved rounds, `kppc --std stdlib
+--quiet [--run-build release] projectlib.kpp build.kpp`): the front end alone 37 ms, with the
+evaluation 7,429 ms, then 178 ms after a write into a value no other value shares (the binding's
+own array) stopped copying the array: about 145 ms of interpretation per configuration. Two
+gaps the description found, closed: an assignment operator runs on both objects where they are
+(spec language/consteval_assignment_operator_runs_on_both_objects), and a class prvalue converted
+for a parameter of another type (`path(path(a, b), c)` with a StringView parameter) is a temporary
+destroyed at the end of its full expression.
+
 *For build.kpp's descriptions, 2026-10-31.* A StringView compares with a literal or another
 StringView at compile time (`memcmp` over chars, and an object compared with a pointer or array
 by its class's operator, not as pointers), and a call, a member function's too, may leave trailing

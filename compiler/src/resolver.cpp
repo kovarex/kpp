@@ -7470,7 +7470,8 @@ struct GlobalScope::Impl
 
   // A function chosen for an object (or for none): run with these arguments, `this` the object.
   std::optional<ConstValue> constCallOn(FunctionDecl* f, const Subst& subst, const std::vector<ConstValue>& args, std::optional<ConstValue>* self, int depth,
-                                        const ConstPlace* selfPlace = nullptr)
+                                        const ConstPlace* selfPlace = nullptr, const std::vector<std::optional<ConstPlace>>* places = nullptr,
+                                        const std::vector<uint8_t>* categories = nullptr)
   {
     if (!constDefinition(f))
       return std::nullopt;
@@ -7479,7 +7480,7 @@ struct GlobalScope::Impl
       params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
     TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
                      f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
-    return constRun(f, args, fctx, depth, self, nullptr, nullptr, selfPlace);
+    return constRun(f, args, fctx, depth, self, places, categories, selfPlace);
   }
 
   // Whether an object is true in a condition (`if (optional)`, `!*this`): its conversion to bool
@@ -7931,7 +7932,9 @@ struct GlobalScope::Impl
     return *at;
   }
 
-  // v with the part at path replaced by part: new parts along the path, the rest shared.
+  // v with the part at path replaced by part: new parts along the path, the rest shared. Parts no
+  // other value shares (the binding's own) are written in place: an element written into a long
+  // array costs no copy of the array.
   static bool constSetPart(ConstValue& v, const std::vector<size_t>& path, size_t from, const ConstValue& part)
   {
     if (from == path.size())
@@ -7941,7 +7944,16 @@ struct GlobalScope::Impl
     }
     if (!v.isObject() || path[from] >= v.parts->size())
       return false;
-    std::vector<ConstValue> parts = *v.parts;
+    std::vector<ConstValue> copy;
+    std::vector<ConstValue>* written = nullptr;
+    if (v.parts.use_count() == 1)
+      written = const_cast<std::vector<ConstValue>*>(v.parts.get()); // ours alone: nobody else sees it change
+    else
+    {
+      copy = *v.parts;
+      written = &copy;
+    }
+    std::vector<ConstValue>& parts = *written;
     if (!constSetPart(parts[path[from]], path, from + 1, part))
       return false;
     // A union holds one member: writing one ends the others' lifetimes, so reading them is no
@@ -7951,7 +7963,8 @@ struct GlobalScope::Impl
       for (size_t i = 0; i < parts.size(); ++i)
         if (i != path[from])
           parts[i] = ConstValue::unset(parts[i].type);
-    v.parts = std::make_shared<const std::vector<ConstValue>>(std::move(parts));
+    if (written == &copy)
+      v.parts = std::make_shared<const std::vector<ConstValue>>(std::move(copy));
     return true;
   }
 
@@ -10998,8 +11011,15 @@ struct GlobalScope::Impl
         v = constCopyConstruct(type, args[i], at, (*categories)[i] == 2, depth + 1);
       }
       else
+      {
+        // `path(path(a, b), c)` with a StringView parameter: the String the inner call made is
+        // converted, and is a temporary of the caller's full expression, destroyed when that ends.
+        if (i < args.size() && type && categories && i < categories->size() && (*categories)[i] == 0 && args[i].isObject() && args[i].type &&
+            types.unqualified(types.stripRef(args[i].type)) != types.unqualified(types.stripRef(type)) && constDestroyRunsCode(args[i].type))
+          constMaterialize(args[i], args[i].type);
         v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
                             : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
+      }
       if (!v)
         return std::nullopt;
       env.push_back(constBinding(p->name, *v, type));
@@ -11077,13 +11097,25 @@ struct GlobalScope::Impl
       FunctionDecl* f = constClassOperator(target, op, {constTypeOfValue(*r)}, subst, depth);
       if (f && !constDefaulted(f) && constDefinition(f))
       {
+        // Run on the object where it is, the right operand referred to where it is: an lvalue's
+        // place, a prvalue as a temporary of the full expression (`name = String(text)`), so that
+        // `this == &other` compares and a move empties its source.
+        Expr* source = nullptr;
+        uint8_t category = constCategory(b->rhs, source);
+        std::optional<ConstPlace> right;
+        if (category != 0 && constPure(source))
+          right = constPlaceOf(source, ctx, depth + 1);
+        else if (category == 0 && r->isObject() && r->type && types.unqualified(types.stripRef(r->type))->kind == TyKind::Class)
+          right = constMaterialize(*r, r->type);
+        std::vector<std::optional<ConstPlace>> places{right};
+        std::vector<uint8_t> categories{category};
         std::optional<ConstValue> self = constRead(*place);
         if (!self)
           return std::nullopt;
-        std::optional<ConstValue> result = constCallOn(f, subst, {*r}, &self, depth + 1);
-        if (!result || !self || !constWrite(*place, *self))
+        std::optional<ConstValue> result = constCallOn(f, subst, {*r}, &self, depth + 1, &*place, &places, &categories);
+        if (!result || !self)
           return std::nullopt;
-        return self;
+        return constRead(*place);
       }
       if (op != P::Assign)
         return std::nullopt; // `a += b` of a class without its operator+=
