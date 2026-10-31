@@ -1,0 +1,10 @@
+// url: URLs (RFC 3986), percent-encoding and query strings (README.md). `kpp --test` here runs its tests.
+void build(Project& project)
+{
+  Library& url = project.library("url");
+  url.version = "0.1.0";
+  url.license = "Apache-2.0 WITH LLVM-exception";
+  url.minimumKpp = "0.1.0";
+  url.root("src");
+  url.test("tests");
+}

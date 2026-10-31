@@ -1,0 +1,471 @@
+// URLs as RFC 3986 defines URI references: parsing into components, writing them back, resolving
+// a reference against a base (section 5), percent-encoding, and query strings in the form
+// browsers send (application/x-www-form-urlencoded).
+
+// Text that is not a URI reference, or a malformed percent-encoding. The message starts with the
+// byte offset of the problem.
+struct UrlError : RuntimeError
+{
+  int offset = 0;
+  UrlError() {}
+  UrlError(const String& message, int offset) : RuntimeError(message), offset(offset) {}
+};
+
+void urlFail(int offset, const char* what) { throw UrlError(format("{}: {}", offset, what), offset); }
+
+// A URI reference's components, as written (percent-encoded). The has* flags tell an empty
+// component from a missing one: "http://a?" has an empty query, "http://a" none.
+struct Url
+{
+  String scheme; // without ':'; empty for a relative reference
+  bool hasAuthority = false;
+  String userInfo;
+  bool hasUserInfo = false;
+  String host; // an IP literal keeps its brackets: [::1]
+  String port; // digits, maybe empty ("http://a:/")
+  bool hasPort = false;
+  String path;
+  bool hasQuery = false;
+  String query;
+  bool hasFragment = false;
+  String fragment;
+
+  bool isRelative() const { return this->scheme.empty(); }
+
+  // The port as a number, or -1 when there is none or it is empty.
+  int portNumber() const
+  {
+    if (this->port.empty())
+      return -1;
+    long long value = 0;
+    for (char c : this->port)
+      if ((value = value * 10 + (c - '0')) > 65535)
+        throw UrlError(format("port {} is out of range", this->port), 0);
+    return int(value);
+  }
+
+  // The reference recomposed (RFC 3986 5.3).
+  String str() const
+  {
+    String out;
+    if (!this->scheme.empty())
+    {
+      out.append(this->scheme);
+      out.append(':');
+    }
+    if (this->hasAuthority)
+    {
+      out.append("//");
+      if (this->hasUserInfo)
+      {
+        out.append(this->userInfo);
+        out.append('@');
+      }
+      out.append(this->host);
+      if (this->hasPort)
+      {
+        out.append(':');
+        out.append(this->port);
+      }
+    }
+    out.append(this->path);
+    if (this->hasQuery)
+    {
+      out.append('?');
+      out.append(this->query);
+    }
+    if (this->hasFragment)
+    {
+      out.append('#');
+      out.append(this->fragment);
+    }
+    return out;
+  }
+
+  bool operator==(const Url& other) const { return this->str() == other.str(); }
+};
+
+bool urlIsUnreserved(char c)
+{
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~';
+}
+bool urlIsSubDelimiter(char c)
+{
+  return c == '!' || c == '$' || c == '&' || c == '\'' || c == '(' || c == ')' || c == '*' || c == '+' || c == ',' || c == ';' || c == '=';
+}
+int urlHexValue(char c)
+{
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+  return -1;
+}
+
+// Checks text[from, to) of a component: each character is unreserved, a sub-delimiter, one of
+// `allowed`, or a valid %XX.
+void urlCheckComponent(StringView text, int from, int to, const char* allowed, const char* component)
+{
+  for (int i = from; i < to; ++i)
+  {
+    char c = text[i];
+    if (c == '%')
+    {
+      if (i + 2 >= to)
+        urlFail(i, "a '%' without two hex digits after it");
+      if (urlHexValue(text[i + 1]) < 0 || urlHexValue(text[i + 2]) < 0)
+        urlFail(i, "a '%' without two hex digits after it");
+      i += 2;
+      continue;
+    }
+    if (urlIsUnreserved(c) || urlIsSubDelimiter(c))
+      continue;
+    bool ok = false;
+    for (int k = 0; allowed[k]; ++k)
+      if (allowed[k] == c)
+        ok = true;
+    if (!ok)
+      urlFail(i, format("a character that may not stand in a URL's {} (percent-encode it)", component).c_str());
+  }
+}
+
+// A URI reference (RFC 3986 4.1) split into its components; anything else throws UrlError.
+Url parseUrl(StringView text)
+{
+  Url url;
+  int at = 0;
+  int end = text.size();
+  // A scheme: letters, digits, + - . after a letter, then ':', before any '/', '?' or '#'.
+  int colon = -1;
+  for (int i = 0; i < end; ++i)
+  {
+    char c = text[i];
+    if (c == '/' || c == '?' || c == '#')
+      break;
+    if (c == ':')
+    {
+      colon = i;
+      break;
+    }
+  }
+  if (colon == 0)
+    urlFail(0, "a URL that starts with ':'");
+  if (colon > 0)
+  {
+    bool letter = (text[0] >= 'a' && text[0] <= 'z') || (text[0] >= 'A' && text[0] <= 'Z');
+    for (int i = 1; letter && i < colon; ++i)
+    {
+      char c = text[i];
+      letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.';
+    }
+    if (!letter)
+      urlFail(0, "a ':' in the first segment of a relative path (write ./ before it), or a scheme that is not letters, digits, + - .");
+    url.scheme = String(text.substr(0, colon));
+    at = colon + 1;
+  }
+  // The authority.
+  if (end - at >= 2 && text[at] == '/' && text[at + 1] == '/')
+  {
+    url.hasAuthority = true;
+    int start = at + 2;
+    int stop = start;
+    while (stop < end && text[stop] != '/' && text[stop] != '?' && text[stop] != '#')
+      ++stop;
+    int hostStart = start;
+    for (int i = start; i < stop; ++i)
+      if (text[i] == '@')
+      {
+        urlCheckComponent(text, start, i, ":", "user information");
+        url.userInfo = String(text.substr(start, i - start));
+        url.hasUserInfo = true;
+        hostStart = i + 1;
+        break;
+      }
+    int hostEnd = stop;
+    if (hostStart < stop && text[hostStart] == '[')
+    {
+      int close = hostStart;
+      while (close < stop && text[close] != ']')
+        ++close;
+      if (close == stop)
+        urlFail(hostStart, "an IP literal without its ']'");
+      urlCheckComponent(text, hostStart + 1, close, ":", "IP literal");
+      hostEnd = close + 1;
+      if (hostEnd < stop && text[hostEnd] != ':')
+        urlFail(hostEnd, "text after an IP literal that is not a port");
+    }
+    else
+    {
+      for (int i = hostStart; i < stop; ++i)
+        if (text[i] == ':')
+        {
+          hostEnd = i;
+          break;
+        }
+      urlCheckComponent(text, hostStart, hostEnd, "", "host");
+    }
+    url.host = String(text.substr(hostStart, hostEnd - hostStart));
+    if (hostEnd < stop)
+    {
+      url.hasPort = true;
+      for (int i = hostEnd + 1; i < stop; ++i)
+        if (text[i] < '0' || text[i] > '9')
+          urlFail(i, "a port that is not digits");
+      url.port = String(text.substr(hostEnd + 1, stop - hostEnd - 1));
+    }
+    at = stop;
+  }
+  // The path, query and fragment.
+  int pathEnd = at;
+  while (pathEnd < end && text[pathEnd] != '?' && text[pathEnd] != '#')
+    ++pathEnd;
+  urlCheckComponent(text, at, pathEnd, ":@/", "path");
+  url.path = String(text.substr(at, pathEnd - at));
+  at = pathEnd;
+  if (at < end && text[at] == '?')
+  {
+    int queryEnd = at + 1;
+    while (queryEnd < end && text[queryEnd] != '#')
+      ++queryEnd;
+    urlCheckComponent(text, at + 1, queryEnd, ":@/?", "query");
+    url.hasQuery = true;
+    url.query = String(text.substr(at + 1, queryEnd - at - 1));
+    at = queryEnd;
+  }
+  if (at < end && text[at] == '#')
+  {
+    urlCheckComponent(text, at + 1, end, ":@/?", "fragment");
+    url.hasFragment = true;
+    url.fragment = String(text.substr(at + 1, end - at - 1));
+  }
+  return url;
+}
+
+// The path without its "." and ".." segments (RFC 3986 5.2.4).
+String urlRemoveDotSegments(StringView path)
+{
+  String input = String(path);
+  String output;
+  while (!input.empty())
+  {
+    StringView in = input;
+    if (in.startsWith("../"))
+      input = String(in.substr(3));
+    else if (in.startsWith("./"))
+      input = String(in.substr(2));
+    else if (in.startsWith("/./"))
+      input = String(in.substr(2));
+    else if (in == "/.")
+      input = "/";
+    else if (in.startsWith("/../") || in == "/..")
+    {
+      input = in == "/.." ? String("/") : String(in.substr(3));
+      int slash = output.rfind('/');
+      output = slash < 0 ? String() : String(StringView(output).substr(0, slash));
+    }
+    else if (in == "." || in == "..")
+      input = String();
+    else
+    {
+      int next = in.find('/', in[0] == '/' ? 1 : 0);
+      if (next < 0)
+        next = in.size();
+      output.append(in.substr(0, next));
+      input = String(in.substr(next));
+    }
+  }
+  return output;
+}
+
+// The reference resolved against the base, as a browser follows a link (RFC 3986 5.2.2, strict:
+// a reference with a scheme is used as it is). The base must have a scheme.
+Url resolveUrl(const Url& base, const Url& reference)
+{
+  if (base.isRelative())
+    throw UrlError(format("resolving against {}, which has no scheme", base.str()), 0);
+  Url target;
+  if (!reference.scheme.empty())
+  {
+    target = reference;
+    target.path = urlRemoveDotSegments(reference.path);
+    return target;
+  }
+  if (reference.hasAuthority)
+  {
+    target = reference;
+    target.path = urlRemoveDotSegments(reference.path);
+  }
+  else
+  {
+    if (reference.path.empty())
+    {
+      target = base;
+      target.hasFragment = false;
+      target.fragment = String();
+      if (reference.hasQuery)
+      {
+        target.hasQuery = true;
+        target.query = reference.query;
+      }
+    }
+    else
+    {
+      target = base;
+      target.hasQuery = reference.hasQuery;
+      target.query = reference.query;
+      target.hasFragment = false;
+      target.fragment = String();
+      if (reference.path[0] == '/')
+        target.path = urlRemoveDotSegments(reference.path);
+      else
+      {
+        // Merge (5.2.3): the reference after the base path's last '/'.
+        String merged;
+        if (base.hasAuthority && base.path.empty())
+          merged = "/" + reference.path;
+        else
+        {
+          int slash = base.path.rfind('/');
+          merged = slash < 0 ? reference.path : String(StringView(base.path).substr(0, slash + 1)) + reference.path;
+        }
+        target.path = urlRemoveDotSegments(merged);
+      }
+    }
+  }
+  target.scheme = base.scheme;
+  target.hasFragment = reference.hasFragment;
+  target.fragment = reference.fragment;
+  return target;
+}
+
+// resolveUrl on text.
+String resolveUrl(StringView base, StringView reference) { return resolveUrl(parseUrl(base), parseUrl(reference)).str(); }
+
+// --- percent-encoding ---
+
+// Every byte but RFC 3986's unreserved characters (letters, digits, - . _ ~) as %XX: a value that
+// goes into any component, a query parameter or a path segment.
+String urlEncode(StringView text) { return urlEncodeKeeping(text, ""); }
+
+// As urlEncode, but '/' is kept: a path of segments.
+String urlEncodePath(StringView text) { return urlEncodeKeeping(text, "/"); }
+
+String urlEncodeKeeping(StringView text, const char* keep)
+{
+  const char* hex = "0123456789ABCDEF";
+  String out;
+  for (int i = 0; i < text.size(); ++i)
+  {
+    unsigned char c = (unsigned char)text[i];
+    bool kept = urlIsUnreserved(char(c));
+    for (int k = 0; !kept && keep[k]; ++k)
+      kept = keep[k] == char(c);
+    if (kept)
+      out.append(char(c));
+    else
+    {
+      out.append('%');
+      out.append(hex[c >> 4]);
+      out.append(hex[c & 15]);
+    }
+  }
+  return out;
+}
+
+// %XX as the byte; a '%' without two hex digits throws UrlError. '+' stays '+'.
+String urlDecode(StringView text) { return urlDecodeWith(text, false); }
+
+String urlDecodeWith(StringView text, bool plusIsSpace)
+{
+  String out;
+  for (int i = 0; i < text.size(); ++i)
+  {
+    char c = text[i];
+    if (c == '%')
+    {
+      if (i + 2 >= text.size())
+        urlFail(i, "a '%' without two hex digits after it");
+      int high = urlHexValue(text[i + 1]);
+      int low = urlHexValue(text[i + 2]);
+      if (high < 0 || low < 0)
+        urlFail(i, "a '%' without two hex digits after it");
+      out.append(char(high * 16 + low));
+      i += 2;
+    }
+    else if (c == '+' && plusIsSpace)
+      out.append(' ');
+    else
+      out.append(c);
+  }
+  return out;
+}
+
+// --- query strings (application/x-www-form-urlencoded, as browsers send forms) ---
+
+struct UrlQueryParameter
+{
+  String name;
+  String value;
+};
+
+// "a=1&b=x+y&c": the parameters in order, '+' as a space, %XX decoded; an empty piece ("a&&b")
+// is skipped, a piece without '=' has an empty value.
+Vector<UrlQueryParameter> parseUrlQuery(StringView query)
+{
+  Vector<UrlQueryParameter> parameters;
+  int at = 0;
+  while (at <= query.size())
+  {
+    int end = at;
+    while (end < query.size() && query[end] != '&')
+      ++end;
+    if (end > at)
+    {
+      StringView piece = query.substr(at, end - at);
+      int equals = piece.find('=');
+      UrlQueryParameter p;
+      p.name = urlDecodeWith(equals < 0 ? piece : piece.substr(0, equals), true);
+      p.value = equals < 0 ? String() : urlDecodeWith(piece.substr(equals + 1), true);
+      parameters.push_back(p);
+    }
+    at = end + 1;
+  }
+  return parameters;
+}
+
+// The parameters as a query string: names and values encoded, a space as '+'.
+String writeUrlQuery(const Vector<UrlQueryParameter>& parameters)
+{
+  String out;
+  for (int i = 0; i < parameters.size(); ++i)
+  {
+    if (i > 0)
+      out.append('&');
+    urlAppendForm(out, parameters[i].name);
+    out.append('=');
+    urlAppendForm(out, parameters[i].value);
+  }
+  return out;
+}
+
+void urlAppendForm(String& out, StringView text)
+{
+  for (int i = 0; i < text.size(); ++i)
+  {
+    if (text[i] == ' ')
+      out.append('+');
+    else
+      out.append(urlEncode(text.substr(i, 1)));
+  }
+}
+
+// The first value of the parameter, or nullptr.
+const String* findUrlQueryParameter(const Vector<UrlQueryParameter>& parameters, StringView name)
+{
+  for (const UrlQueryParameter& p : parameters)
+    if (StringView(p.name) == name)
+      return &p.value;
+  return nullptr;
+}

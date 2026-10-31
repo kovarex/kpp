@@ -18,6 +18,7 @@ leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs e
 | [sha256](sha256/README.md) | SHA-256, HMAC-SHA-256, constant-time compare | FIPS 180-2's examples, RFC 4231's HMAC cases, Python's hashlib |
 | [base64](base64/README.md) | Base64 and base64url, strict decoding | RFC 4648's vectors, Python's base64 |
 | [html](html/README.md) | escaping; templates escaped by context, checked at compile time | its own tests (no published suite) |
+| [url](url/README.md) | URLs (RFC 3986): parsing, resolving, percent-encoding, query strings | RFC 3986's 42 resolution examples, Python's urllib.parse |
 | [markdown](markdown/README.md) | CommonMark 0.31.2 to HTML, GitHub's tables and heading ids | all 655 CommonMark spec examples and the GFM spec's 8 table examples (conformance/run.cmd, fetched: CC-BY-SA) |
 
 **License**: Apache-2.0 WITH LLVM-exception, as all of Kpp ([LICENSE](../LICENSE),
