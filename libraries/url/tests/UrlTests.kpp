@@ -145,3 +145,13 @@ test "query strings, against Python"
   check(loose[1].value == "");
   check(findUrlQueryParameter(loose, "missing") == nullptr);
 }
+
+test "dot segments and merging without a '/'"
+{
+  check(urlRemoveDotSegments("a/../b") == "/b");
+  check(urlRemoveDotSegments("a/b/../../c") == "/c");
+  check(urlRemoveDotSegments("/a/./b/../c/") == "/a/c/");
+  check(urlRemoveDotSegments("mid/content=5/../6") == "mid/6");
+  check(resolveUrl("foo:bar", "baz") == "foo:baz");
+  check(resolveUrl("http://a", "b") == "http://a/b");
+}

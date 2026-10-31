@@ -263,14 +263,14 @@ String urlRemoveDotSegments(StringView path)
     {
       input = in == "/.." ? String("/") : String(in.substr(3));
       int slash = output.rfind('/');
-      output = slash < 0 ? String() : String(StringView(output).substr(0, slash));
+      output = slash == String::npos ? String() : String(StringView(output).substr(0, slash));
     }
     else if (in == "." || in == "..")
       input = String();
     else
     {
       int next = in.find('/', in[0] == '/' ? 1 : 0);
-      if (next < 0)
+      if (next == StringView::npos)
         next = in.size();
       output.append(in.substr(0, next));
       input = String(in.substr(next));
@@ -328,7 +328,7 @@ Url resolveUrl(const Url& base, const Url& reference)
         else
         {
           int slash = base.path.rfind('/');
-          merged = slash < 0 ? reference.path : String(StringView(base.path).substr(0, slash + 1)) + reference.path;
+          merged = slash == String::npos ? reference.path : String(StringView(base.path).substr(0, slash + 1)) + reference.path;
         }
         target.path = urlRemoveDotSegments(merged);
       }
@@ -426,8 +426,8 @@ Vector<UrlQueryParameter> parseUrlQuery(StringView query)
       StringView piece = query.substr(at, end - at);
       int equals = piece.find('=');
       UrlQueryParameter p;
-      p.name = urlDecodeWith(equals < 0 ? piece : piece.substr(0, equals), true);
-      p.value = equals < 0 ? String() : urlDecodeWith(piece.substr(equals + 1), true);
+      p.name = urlDecodeWith(equals == StringView::npos ? piece : piece.substr(0, equals), true);
+      p.value = equals == StringView::npos ? String() : urlDecodeWith(piece.substr(equals + 1), true);
       parameters.push_back(p);
     }
     at = end + 1;

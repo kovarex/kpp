@@ -40,7 +40,7 @@ test "SafeHtml goes in as it is, and a page nests templates"
   SafeHtml list;
   for (const char* name : {"json", "sha256"})
     list.append(htmlTestCard.render({{"kind", "small"}, {"url", "/" + String(name)}, {"name", name}, {"summary", ""}}));
-  check(list.html.find("<a href=\"/sha256\">sha256</a>") > 0);
+  check(list.html.find("<a href=\"/sha256\">sha256</a>") != String::npos);
 }
 
 // The error's message for a template made at run time, "" when it is fine.
