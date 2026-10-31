@@ -334,6 +334,16 @@ and Comment both have that type". Overload resolution ranks the conversion from 
 converting constructor's.
 Spec snippets: kpp/typed_union_from_value, kpp/typed_union_alternatives.
 
+Decided by kovarex 2026-10-31: *from a tag and a value*. Several tags may carry the same type, as
+before (many InputActions with the same data, told apart by the tag); construction from a value
+alone works only when exactly one alternative has that type, and is an ambiguity error
+otherwise. An explicit construction from (tag, value) constructs that alternative directly:
+`U(U::Text, x)`, `U u(U::Int2, 7);`, `return U(U::Comment, s);`, with no default construction of
+the first alternative first (so it works for a union whose first alternative is not
+default-constructible). Constructor arguments are taken in place: `U(U::Pos, 1, 2)` constructs
+the alternative from them. The tag is a constant (a tag read at run time is an error). Specs:
+kpp/typed_union_from_tag_and_value, kpp/typed_union_from_tag_and_value_errors.
+
 Decided 2026-10-29 (the converter's std::variant ordering, asked by the coordinator): *comparisons*
 are std::variant's. `a == b` holds when both hold the same alternative and its values are equal
 (`!=` is its negation); `a < b`, `>`, `<=`, `>=` and `<=>` order by the alternative held, in

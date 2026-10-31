@@ -3012,6 +3012,25 @@ namespace
       }
       Span<uint32_t> designators = pendingDesignators;
       pendingDesignators = {};
+      // `U(U::Text, x)`, `U u(U::Where, 1, 2)`, `return U(U::Comment, s)`: a tag first names the
+      // alternative, the rest build it (its value, or its constructor's arguments), whichever others
+      // share its type, and nothing else is built first (design.md 8.5, decided by kovarex 2026-10-31).
+      if (c->isTypedUnion && !args.empty() && args[0]->ty && types.unqualified(types.stripRef(args[0]->ty)) == tagType(c))
+      {
+        std::optional<int64_t> index = evalConst(args[0]);
+        if (!index || *index < 0 || size_t(*index) >= c->alternatives.size())
+          fail(args[0], "the tag constructing the typed union " + qualifiedName(c) + " is no constant one of its alternatives");
+        storeZero(t, addr, at);
+        if (args.size() <= 2)
+          constructAlternative(c, t, addr, size_t(*index), args.size() == 2 ? args[1] : nullptr, at);
+        else
+        {
+          setTag(c, t, addr, size_t(*index), at);
+          constructInto(alternativeAddress(c, t, addr, size_t(*index), at), alternativeType(c, t, size_t(*index), at),
+                        Span<Expr*>{args.data + 1, uint32_t(args.size() - 1)}, at);
+        }
+        return;
+      }
       if (c->isTypedUnion && args.size() == 1 && args[0]->ty && args[0]->ty->isKnown() && !isPackExpansion(args[0])) // an expansion: its element, below
       {
         // `Shape a(s)`, `Shape(7)`, a member initializer `shape(s)`, `new (slot) Shape(x)`: as
@@ -15773,7 +15792,8 @@ namespace
         fail(at, "the typed union " + qualifiedName(c) + " has no alternative of type " + types.toString(v, &symbols));
       if (found.size() > 1)
         fail(at, "a " + types.toString(v, &symbols) + " is ambiguous for the typed union " + qualifiedName(c) + ": its alternatives " +
-                     name(found[0]) + " and " + name(found[1]) + " both have that type (set one by name: u[" + name(found[0]) + "] = value)");
+                     name(found[0]) + " and " + name(found[1]) + " both have that type (name one: " + qualifiedName(c) + "(" + qualifiedName(c) +
+                     "::" + name(found[0]) + ", value), or u[" + name(found[0]) + "] = value)");
       return found[0];
     }
     // The index among c's alternatives of the one a descriptor of `alternatives(U)` names, or -1.

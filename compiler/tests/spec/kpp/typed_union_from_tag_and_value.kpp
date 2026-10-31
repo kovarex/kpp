@@ -1,0 +1,32 @@
+// spec: a typed union constructed from a tag and the alternative's value or constructor arguments (design.md 8.5, decided by kovarex 2026-10-31): `U(U::Text, x)`, `U u(U::Int2, 7);`, `return U(U::Comment, s);` and `U u(U::Where, 1, 2)` build that alternative directly from them, whichever other alternatives share its type, and with no default construction of the first alternative first (here one with no default constructor)
+// factorio: InputAction's many actions with the same data told apart by the tag, which a value alone cannot choose (the last left-out unit test); the converter maps such a variant construction to this form
+struct NoDefault
+{
+  int v;
+  NoDefault(int x) : v(x) {}
+};
+struct Pos
+{
+  int x;
+  int y;
+  Pos(int a, int b) : x(a), y(b) {}
+};
+union enum U : uint8_t
+{
+  { {NoDefault, First}, {String, Text}, {String, Comment}, {int, Int1}, {int, Int2}, {Pos, Where} }
+};
+U note(const String& s) { return U(U::Comment, s); }
+int main()
+{
+  U a(U::Text, String("hi"));
+  U b = U(U::Int2, 7);
+  U c = note("later");
+  U d(U::Where, 1, 2);
+  U e(U::First, 9);
+  U f = NoDefault(4);
+  println("{} {} | {} {} | {} {} | {} {} | {} {}", a == U::Text, a[U::Text], b == U::Int2, b[U::Int2], c == U::Comment, c[U::Comment], d[U::Where].x,
+          d[U::Where].y, e[U::First].v, f[U::First].v);
+  b = U(U::Int1, 3);
+  println("{} {}", b == U::Int1, b[U::Int1]);
+  return 0;
+}
