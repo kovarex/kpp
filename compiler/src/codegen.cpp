@@ -5555,6 +5555,12 @@ namespace
         initializerOf = nullptr;
       }
       resetFunctionState();
+      // The function it is written in is the current function while its body is emitted (not the
+      // one that happened to emit it first, a generic lambda's first caller): its operators and free
+      // functions are looked up from there, `this` is that function's, and its nodes are that
+      // function's to retype (a pack expansion, a for constexpr). Restored with the saved state.
+      if (l->closure && l->closure->parent && l->closure->parent->kind == NodeKind::FunctionDecl)
+        currentFunction = static_cast<FunctionDecl*>(l->closure->parent);
       if (args)
         currentArgs = args;
       if (l->closure && l->closure->file)
