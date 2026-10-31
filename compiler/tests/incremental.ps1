@@ -74,8 +74,11 @@ $steps = @(
   @{ name = 'a base member brought in by a using-declaration: signature edit (its caller in another file)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88 311 12 12'; edit = { Edit 'members.kpp' '  int f(int v) { return 1; }' '  int f(int v, int w = 0) { return 3; }' } },
   @{ name = 'a base member called through a derived class and a template: signature edit'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88 344 12 12'; edit = { Edit 'members.kpp' '  int m(int v) { return 1; }' '  int m(int v, int w = 7) { return 4; }' } },
   @{ name = 'a global''s initializer reads an edited function (its constructor emitted again)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88 344 15 12'; edit = { Edit 'shapes.kpp' 'int offsetOf(int v) { return v + 1; }' 'int offsetOf(int v) { return v + 2; }' } },
-  @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15 1 17 23 88 344 15 12'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
-  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 88 344 15 12'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
+  @{ name = 'a codegen error typed into a body (codegen keeps its session across it)'; expect = '(build exit 1)'; edit = { Edit 'holders.kpp' 'Frame f; return' 'Frame f; int* bad = 5; return' } },
+  @{ name = 'another body edited while the error stays'; expect = '(build exit 1)'; edit = { Edit 'locals.kpp' '+ depth(0); }' '+ depth(1); }' } },
+  @{ name = 'the error fixed (the modules changed meanwhile assembled)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Edit 'holders.kpp' 'Frame f; int* bad = 5; return' 'Frame f; return' } },
+  @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15 1 17 23 89 344 15 12'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
+  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
 )
 $n = 0
 foreach ($step in $steps)
@@ -136,6 +139,11 @@ $fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed \(0 w
 $rebuilt = $ours | Where-Object { $_ -match 'codegen: [0-9]+ module\(s\) assembled again' }
 if (@($rebuilt).Count -lt 13) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 13 (the server's log)"; $failed++ }
 else { "ok   incremental codegen rebuilt from its kept session ($(@($rebuilt).Count))" }
+# The codegen error typed into frameSize's body, and the edit while it stays: codegen kept its session
+# across them on the executable's builds (and assembled what changed meanwhile once it was fixed).
+$keptAcross = @($ours | Where-Object { $_ -match 'codegen: the session kept across [0-9]+ error' })
+if ($keptAcross.Count -lt 2) { "FAIL incremental: codegen kept its session across errors $($keptAcross.Count) times, expected at least 2 (the server's log)"; $failed++ }
+else { "ok   incremental codegen kept its session across errors ($($keptAcross.Count))" }
 $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmatch '\(0 with whole functions\)' }
 # Instances checked again because they read a change: the overload added and removed (viaScale<double>
 # and viaLambda's generic lambda read scale) and the edit of Panel::base (scaled<int>, made by codegen: dropped and made anew),

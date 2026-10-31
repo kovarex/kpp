@@ -43,7 +43,8 @@ using CodegenSessionPtr = std::unique_ptr<CodegenSession, CodegenSessionDeleter>
 // name and line when called, so that the program links and runs up to the first one it reaches.
 // inlineTrivial: calls of trivial functions are emitted as the callees' bodies (docs/compile-speed.md,
 // "Design: inlining trivial functions in kppc"); false (--no-inline) keeps every call.
-// keep: hand the session back (a build of several modules without errors) instead of freeing it.
+// keep: hand the session back (a build of several modules) instead of freeing it: one with errors only
+// when each came from a program function's own emission (none assembled then).
 // debugInfo (--debug-info): line tables, each statement's instructions at its line, so that a
 // debugger steps through the Kpp source (docs/debugging.md).
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
@@ -60,9 +61,11 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
 // what is emitted of them being their instances. The functions (instances included) whose emission
 // inlined a changed or removed body, or ran it in a constant fold, are emitted again too. The
 // callers of an edited function come in changedBodies (the server's walksReading): codegen knows
-// only the callers that inline, and one that only called it inlines it once it is trivial. rebuilt
-// is false when it cannot (an error, a change to the shared declarations; result.declined says
-// which): the session is then unusable, and the caller builds from scratch. changedLayouts: the
+// only the callers that inline, and one that only called it inlines it once it is trivial. Errors of
+// program functions' own emissions keep the session (those functions are emitted again by every
+// later build; no module is assembled until a build has none: it assembles every module changed
+// since). rebuilt is false when it cannot (another error, a change to the shared declarations;
+// result.declined says which): the session is then unusable, and the caller builds from scratch. changedLayouts: the
 // classes whose data members changed (non-template ones): their layouts and those holding them are
 // laid out again, and every function that used one of them is emitted again (declined for a
 // polymorphic one, or one a destructor helper, a descriptor, a global or a lambda's capture holds).

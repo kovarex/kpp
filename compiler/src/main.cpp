@@ -970,21 +970,32 @@ namespace
     {
       cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
                        build.changedGlobals, rebuilt);
-      logBuildNote(rebuilt ? "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
-                               " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again"
-                           : "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full");
+      logBuildNote(!rebuilt              ? "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full"
+                   : !cg.errors.empty() ? "codegen: the session kept across " + std::to_string(cg.errors.size()) + " error(s), " +
+                                              std::to_string(cg.emittedAgain) + " function(s) emitted again"
+                                        : "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
+                                              " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again");
     }
     build.rebuildCodegen = false;
     if (!rebuilt)
     {
       build.retiredCodegen = std::move(build.codegen);
-      cg = generateLLVM(parsed, global, symbols, options.debug, modules, options.keepGoing, options.codegenThreads ? options.codegenThreads : options.threads,
-                        options.keepGoing && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr,
+      // (--check writes nothing: no IR assembled despite errors, so that a server keeps its session across them)
+      bool despiteErrors = options.keepGoing && !options.check;
+      cg = generateLLVM(parsed, global, symbols, options.debug, modules, despiteErrors, options.codegenThreads ? options.codegenThreads : options.threads,
+                        despiteErrors && options.stubMissing, !options.noInline, servingBuild() ? &build.codegen : nullptr,
                         options.debugInfo);
       cg.changedModules.clear();
     }
     double t = seconds(Clock::now() - start);
-    if (build.moduleBytes.size() != cg.modules.size())
+    // Errors assemble no module; a session kept across them keeps the sizes of the modules the last
+    // build without errors assembled (it assembles the others once the errors are gone).
+    if (cg.modules.empty() && !cg.errors.empty() && build.codegen)
+    {
+      if (build.moduleBytes.size() != modules)
+        build.moduleBytes.assign(modules, 0);
+    }
+    else if (build.moduleBytes.size() != cg.modules.size())
       build.moduleBytes.assign(cg.modules.size(), 0);
     size_t irBytes = cg.ir.size();
     for (size_t k = 0; k < cg.modules.size(); ++k)
@@ -995,7 +1006,7 @@ namespace
     }
     report("codegen: %.3f s, %zu functions, %zu structs, %zu bytes of IR in %zu module(s)\n", t, cg.functions, cg.structs, irBytes,
            std::max<size_t>(1, cg.modules.size()));
-    if (options.keepGoing && options.stubMissing)
+    if (options.keepGoing && options.stubMissing && !options.check)
       printf("stubs: %zu functions left out are stubs that abort when called (--stub-missing)\n", cg.stubs);
     for (const std::string& e : cg.errors)
       fprintf(stderr, "%s\n", e.c_str());

@@ -311,6 +311,7 @@ namespace
     std::unordered_map<const Ty*, StructInfo*> structsByType; // any spelling of a class type (const, a reference, a declaration) -> its layout
     std::unordered_map<Decl*, std::string> globals;
     std::map<std::pair<Decl*, const Ty*>, std::string> failedGlobals; // globals whose definition failed -> what their uses report
+    std::atomic<size_t> failuresRemembered{0}; // failed layouts, closures and globals, whose uses fail with them (no session kept)
     std::unordered_map<Decl*, BitfieldInfo> bitfieldOf; // bit-field members of every laid-out class
     bool dyncastEmitted = false;                        // the @kpp.dyncast helper is in `decls`
     std::unordered_map<std::string, std::string> instanceGlobals; // static members of class template instantiations, by name
@@ -404,6 +405,11 @@ namespace
     std::map<std::string, FunctionDecl*> undefinedUses;  // Kpp functions used whose definition was not found (only declared)
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
     bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
+    bool despiteErrors = false;                          // --keep-going: the IR assembled despite errors
+    // A session kept across errors (generate): the program functions whose emission raised them, by
+    // IR name (emitted again by every later build), and the modules not assembled since they changed.
+    std::unordered_map<std::string, FunctionDecl*> erroring;
+    std::vector<bool> unassembled;
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
@@ -550,6 +556,12 @@ namespace
     // Its errors and the functions they left out, gathered once all are emitted.
     std::vector<std::string> errors, failedFunctions;
     std::unordered_map<std::string, std::string> failedAt; // failed function's IR name -> "qualified name at file:line"
+    // Where its errors came from, for a compile server's session kept across builds with errors
+    // (rebuildLLVM): the program functions (level 0) whose own emission raised them, by IR name, and
+    // whether any came from elsewhere (an instance, a global's constructor, a shared text, a check
+    // after the emission), which a later build cannot emit again on its own.
+    std::unordered_map<std::string, FunctionDecl*> erroring;
+    bool unattributedErrors = false;
     bool& mallocDeclared = sh.mallocDeclared;
     std::atomic<bool>& usesExceptions = sh.usesExceptions;
     std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
@@ -710,14 +722,34 @@ namespace
 
     void error(Node* at, const std::string& message)
     {
-      errors.push_back(locationOf(at, currentFile) + ": error: " + message); // every codegen error is labelled, the gaps too
+      errors.push_back(locationOf(at, currentFile, true) + ": error: " + message); // every codegen error is labelled, the gaps too
+      // A program function's own emission (not an instance's, a lambda's operator on demand, a
+      // global's constructor or a shared text it happens to emit first): the function emitted again
+      // gives the error again, at its place then.
+      if (!owner.empty() && owner == emittingName && emittingNow.args.empty() && !emittingNow.classTy && emittingNow.depth == 0 &&
+          emittingNow.name.empty() && emittingNow.requestedBy.empty() && onDemandNow.name.empty() && !emittingShared)
+        erroring.emplace(owner, emittingNow.f);
+      else
+        unattributedErrors = true;
     }
 
-    // "file:line" of a node in a file, "?" when unknown.
-    std::string locationOf(Node* at, ParsedFile* file)
+    // "file:line" of a node in a file ("file:line:column" with --diagnostic-columns when column),
+    // "?" when unknown.
+    std::string locationOf(Node* at, ParsedFile* file, bool column = false)
     {
       size_t line = lineOf(at, file);
-      return line ? sourceLocation(file->path, line) : "?";
+      if (!line)
+        return "?";
+      if (!column)
+        return sourceLocation(file->path, line);
+      // A member access's at its member's name (its node's token is the `.` or `->`).
+      const std::vector<Token>& toks = *file->tokens;
+      size_t token = std::min<size_t>(at->token, toks.size() - 1);
+      if (at->kind == NodeKind::MemberExpr && token + 1 < toks.size() && toks[token + 1].getKind() == TokenKind::Identifier)
+        ++token;
+      const std::vector<uint32_t>& starts = lineStarts[file];
+      size_t tokenLine = size_t(std::upper_bound(starts.begin(), starts.end(), toks[token].offset) - starts.begin());
+      return sourceLocation(file->path, tokenLine, 1 + toks[token].offset - starts[tokenLine - 1]);
     }
 
     // The line a node starts on in its file (from 1), 0 when unknown.
@@ -1210,6 +1242,7 @@ namespace
             // do not depend on which use comes first.
             structs[key].failed = true;
             structs[key].failedWhy = lastFailure;
+            ++sh.failuresRemembered;
             layoutCache.emplace(classTy, &structs[key]);
             if (mayPublish())
               sh.finalLayouts.publish(classTy, &structs[key]);
@@ -5320,6 +5353,7 @@ namespace
         // whichever function asks first.
         std::string why = lastFailure;
         closures[t].failure = why;
+        ++sh.failuresRemembered;
         errors.resize(errorsBefore);
         fail(at, "the closure of " + irString(t) + " could not be laid out (" + why + ")");
       }
@@ -8775,6 +8809,7 @@ namespace
     // emission adds (its definition, its lambdas' call operators) belongs to it.
     std::string owner;
     Instantiation emittingNow{}; // how that function is emitted (what rebuildLLVM emits again)
+    std::string emittingName;    // its IR name (the owner while it is emitted)
     std::vector<const FunctionDecl*> inlinedNow; // the bodies its emission inlined so far
     std::vector<const Ty*> layoutsNow;           // the class layouts its emission used so far (noteLayout)
     struct OnDemand
@@ -11045,6 +11080,7 @@ namespace
           // same lines whichever use comes first).
           std::string why = "a use of the global " + qualifiedName(v) + ", whose definition failed (" + lastFailure + ")";
           sh.failedGlobals[key] = why;
+          ++sh.failuresRemembered;
           errors.resize(errorsBefore);
           fail(at, why);
         }
@@ -15419,6 +15455,7 @@ namespace
         restoreState(saved);
         funcletOverride = savedOverride;
         destructorHelperFor = savedHelperFor;
+        ++sh.failuresRemembered; // (marked emitted: its later uses do not fail)
         throw;
       }
       restoreState(saved);
@@ -17425,6 +17462,7 @@ namespace
       if (ownerScope.outermost)
       {
         owner = currentFunctionName;
+        emittingName = currentFunctionName;
         emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth};
         inlinedNow.clear();
         layoutsNow.clear();
@@ -18131,6 +18169,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   Shared& sh = *shared;
   sh.debug = debug;
   sh.stubMissing = despiteErrors && stubMissing;
+  sh.despiteErrors = despiteErrors;
   sh.inlineTrivial = inlineTrivial;
   sh.debugInfo = debugInfo;
   sh.setModules(moduleCount);
@@ -18274,6 +18313,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // A closure that functions name but whose lambda was never laid out: the function it is written
   // in failed before it (an error), and so did those functions, but with --keep-going the modules
   // have to parse, so the type gets a placeholder. Without any error it is a closure nobody built.
+  bool placeholders = false;
   {
     bool anyErrors = false;
     for (auto& em : emitters)
@@ -18287,6 +18327,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
           e.error(t->decl, "the closure of " + e.irString(t) + " is used, but its lambda was never emitted");
         }
         sh.decls += info.structName + " = type { i8 } ; left out by codegen errors\n";
+        placeholders = true;
       }
   }
   // Functions of the program used where no definition of theirs was found (an out-of-line member
@@ -18360,7 +18401,17 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // n-th function of the program is emitted again in the kept state, as an edit of its body would
   // be, and the modules assembled again must be byte for byte the ones just built.
   const char* checkRebuild = getenv("KPP_CHECK_REBUILD");
-  bool keepTexts = (checkRebuild || keep) && result.errors.empty() && sh.moduleCount > 1;
+  // A compile server's session is kept across errors when each came from a program function's own
+  // emission (Emitter::error): the next build emits those functions again, as it does edited ones,
+  // and assembles the modules once it has no errors. Not when a failure is remembered for every use
+  // (a layout's, a closure's, a global's), a lambda got a placeholder, or the IR is assembled
+  // despite the errors (--keep-going).
+  bool keptAcrossErrors = keep && !result.errors.empty() && !despiteErrors && !outOfMemory && !placeholders && sh.failuresRemembered == 0 &&
+                          std::none_of(emitters.begin(), emitters.end(), [](const std::unique_ptr<Emitter>& em) { return em->unattributedErrors; });
+  if (keptAcrossErrors)
+    for (auto& em : emitters)
+      sh.erroring.insert(em->erroring.begin(), em->erroring.end());
+  bool keepTexts = ((checkRebuild && result.errors.empty()) || (keep && (result.errors.empty() || keptAcrossErrors))) && sh.moduleCount > 1;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     // The definitions in the order SharedText puts entries: by their text.
@@ -18373,14 +18424,26 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       sh.moduleDecls[k].entries.push_back(o.text);
     sh.moduleDecls[k].finish();
   }
+  std::string prefix = "; Kpp v0: generated by kppc\n"
+                       "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\n"
+                       "target triple = \"x86_64-pc-windows-msvc\"\n\n";
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
   if (!result.errors.empty() && !despiteErrors)
+  {
+    if (keepTexts)
+    {
+      // Kept across the errors: placed and prepared as for assembly, and no module assembled (the
+      // build that has no errors assembles them all).
+      e.placeShortDefinitions(threads);
+      e.prepareModuleTexts();
+      session->prefix = prefix;
+      sh.unassembled.assign(sh.moduleCount, true);
+      session->usable = !checkRebuild;
+    }
     return std::move(result);
-  std::string prefix = "; Kpp v0: generated by kppc\n"
-                       "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\n"
-                       "target triple = \"x86_64-pc-windows-msvc\"\n\n";
+  }
   if (e.moduleCount <= 1)
   {
     // Pre-compute pieces and reserve to avoid temporary-string OOM on large programs.
@@ -18557,6 +18620,28 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   for (FunctionDecl* f : added)
     if (e.isProgramFunction(f))
       level.push_back(programFunction(f));
+  // The functions whose emission raised the last build's errors (a session kept across them): emitted
+  // again, so that each error is given again at its place now, or goes. Those emitted again for that
+  // alone must fail again (an error that goes without a change is one that a mark of something
+  // emitted once hid: codegen in full).
+  std::vector<std::string> erroredBefore;
+  const bool hadErrors = !sh.erroring.empty();
+  {
+    std::unordered_set<const FunctionDecl*> gone(removed.begin(), removed.end());
+    std::map<std::string, FunctionDecl*> byName(sh.erroring.begin(), sh.erroring.end());
+    for (auto& [name, f] : byName)
+      if (!gone.count(f) && owners.insert(name).second)
+      {
+        if (!e.isProgramFunction(f))
+        {
+          out.declined = "the function with an error " + name + " is no program function now";
+          return out;
+        }
+        level.push_back(programFunction(f));
+        erroredBefore.push_back(name);
+      }
+    sh.erroring.clear();
+  }
   // The globals whose initializers read an edited function: their constructors (with their lambdas
   // and static InitializerList arrays) go and are emitted again, as their first use emitted them. One
   // with no constructor (a constant, in the shared declarations) is codegen in full.
@@ -18816,12 +18901,24 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     sh.definedIn.erase(name);
     sh.declareLines.erase(name);
   }
+  // After errors, a lambda's operator that failed is marked emitted without a definition: emitted
+  // again by its writer (a function with an error, emitted again above).
+  if (hadErrors)
+  {
+    for (auto& [t, info] : sh.closures)
+      if (!sh.definedIn.count(info.functionName))
+        sh.closuresEmitted.erase(t);
+    std::erase_if(sh.lambdaInstances, [&](const std::string& name) { return !sh.definedIn.count(name); });
+  }
   sh.functions -= std::min<size_t>(sh.functions, droppedFunctions);
   size_t sharedBefore = sh.decls.entries.size() + sh.shared.entries.size();
   for (auto& em : emitters)
   {
     em->errors.clear();
     em->failedFunctions.clear();
+    em->failedAt.clear();
+    em->erroring.clear();
+    em->unattributedErrors = false;
   }
   // Level by level as the build emitted them: the functions of depth d with the first uses those of
   // depth d - 1 asked for, after all of those (a closure's call operator goes to the function that
@@ -18929,10 +19026,25 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       e.prepareModuleTexts();
     }
   }
+  // Errors keep the session when they came from program functions' own emissions (as generate keeps
+  // it), each of those emitted again only for its last error failing again.
+  bool errors = false;
+  std::unordered_map<std::string, FunctionDecl*> erroring;
   for (auto& em : emitters)
-    if (!em->errors.empty())
+    if (!em->errors.empty() || em->unattributedErrors)
     {
-      out.declined = "an error: " + cut(em->errors.front());
+      errors = true;
+      if (em->unattributedErrors || sh.despiteErrors || sh.failuresRemembered)
+      {
+        out.declined = "an error: " + cut(em->errors.empty() ? std::string("(gone)") : em->errors.front());
+        return out;
+      }
+      erroring.insert(em->erroring.begin(), em->erroring.end());
+    }
+  for (const std::string& name : erroredBefore)
+    if (!erroring.count(name))
+    {
+      out.declined = "the error of " + name + " went without a change to it";
       return out;
     }
   if (sh.decls.entries.size() + sh.shared.entries.size() != sharedBefore)
@@ -19018,6 +19130,33 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     std::sort(which.begin(), which.end());
     which.erase(std::unique(which.begin(), which.end()), which.end());
   }
+  sh.erroring = std::move(erroring);
+  sh.unassembled.resize(sh.moduleCount);
+  if (errors)
+  {
+    // Nothing assembled (a build with errors writes no module): the modules that changed are
+    // assembled by the first build without errors.
+    for (unsigned k : which)
+      sh.unassembled[k] = true;
+    for (auto& em : emitters)
+    {
+      out.errors.insert(out.errors.end(), em->errors.begin(), em->errors.end());
+      out.failedFunctions.insert(out.failedFunctions.end(), em->failedFunctions.begin(), em->failedFunctions.end());
+    }
+    std::sort(out.errors.begin(), out.errors.end());
+    std::sort(out.failedFunctions.begin(), out.failedFunctions.end());
+    out.functions = sh.functions;
+    out.structs = session.result.structs;
+    session.usable = true;
+    rebuilt = true;
+    return out;
+  }
+  for (unsigned k = 0; k < sh.moduleCount; ++k)
+    if (sh.unassembled[k])
+      which.push_back(k);
+  std::sort(which.begin(), which.end());
+  which.erase(std::unique(which.begin(), which.end()), which.end());
+  sh.unassembled.assign(sh.moduleCount, false);
   out.modules.resize(sh.moduleCount);
   out.changedModules.assign(sh.moduleCount, false);
   std::atomic<size_t> nextModule{0};

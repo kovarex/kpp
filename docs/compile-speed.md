@@ -1174,6 +1174,46 @@ read the name `setup` (names are recorded by symbol). The edit test verifies the
 builds too now, checks that codegen rebuilt from its session, and turns a trivial getter called from
 another file into two statements with a new value (an inlined body must not stay in its callers).
 
+### Codegen's session kept across errors (2026-10-31)
+
+Codegen kept its session only after a build without errors. Any error meant codegen in full,
+and so did the next build: the language server's check took 6 to 13 s to show an error typed
+into a game function, and as long again to clear it. Now a session survives errors that came from
+a program function's own emission (`Emitter::error` records the function; level 0, not an
+instance, an operator on demand, a global's constructor or a shared text). Every later build
+emits those functions again, so each error is given again at its current line or goes, and one
+emitted again only for its error must fail again (else codegen in full: an error that went
+without a change is one that a mark of something emitted once hid). Lambda operators marked
+emitted without a definition are emitted again by their writer. A build with errors assembles no
+module. It notes the modules that changed (`Shared::unassembled`), and the first build without
+errors assembles those too. The session is not kept when a failure is remembered for every use (a
+layout's, a closure's, a global's, a destructor helper's), a lambda got a placeholder type, or
+the IR is assembled despite errors (`--keep-going`; `--check` no longer does that, since it
+writes nothing). Codegen errors carry a column with `--diagnostic-columns`, a member access's at
+its member's name.
+
+The game (kpp2, a fresh conversion of 4c178a5b915), the language server's check arguments
+(`--server --quiet --diagnostic-columns --check`, debug, `--keep-going --stub-missing`), an int
+initialised from `nullptr` (a codegen error, no checker error) typed into
+`AnimationBank::getAnimation` and removed, 3 rounds, master and this kppc interleaved
+(`scratch\codegen\rel\errpair.ps1`):
+
+| | master | kept across errors |
+|---|---|---|
+| the error typed | 6.16, 7.54, 6.40 s | 0.83, 1.07, 0.76 s |
+| the error fixed | 11.84, 12.80, 13.01 s | 0.73, 0.75, 1.16 s |
+
+With `--verify-incremental`, both are the same as from scratch. `incremental.ps1` has the
+steps: an error typed into `frameSize`, another file's body edited while it stays, then the
+fix. The executable prints the other edit's value, so the module changed meanwhile was
+assembled.
+
+Not covered yet: an undeclared name is a checker error too ("'x' is not declared"), and the front
+end does not build a file with checker errors from the kept program ("the file has checker
+errors"). The checker keeps its errors as text, not by the walk that found them. A removed
+string literal's only use leaves its definition in its module (the IR is then 120 bytes larger
+than from scratch, and `--verify-incremental` says so). That holds without errors too.
+
 ### Codegen's record of the bodies a function holds (2026-10-30)
 
 Each function's definition in the session records the definitions (as written: an instance's
