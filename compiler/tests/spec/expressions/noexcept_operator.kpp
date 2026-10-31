@@ -1,0 +1,16 @@
+// spec: the noexcept operator is false when its operand can throw ([expr.unary.noexcept]): a call of a function not declared noexcept, a throw expression; true otherwise (a call of a noexcept function, arithmetic); a constant expression, so static_assert reads it
+// factorio: none in the converted game or the stdlib (only noexcept specifications); found reviewing the parser's C-style casts: `noexcept(expr)` was parsed as `true` whatever the operand
+// pending: the noexcept operator is a parse error ("not supported yet"); it was `true` for every operand
+int mayThrow() { return 1; }
+int never() noexcept { return 2; }
+
+int main()
+{
+  bool a = noexcept(mayThrow());
+  bool b = noexcept(never());
+  bool c = noexcept(1 + 2);
+  static_assert(!noexcept(mayThrow()), "mayThrow() can throw");
+  static_assert(noexcept(never()), "never() cannot");
+  println("{} {} {}", a, b, c);
+  return 0;
+}

@@ -4570,12 +4570,13 @@ namespace
           case Kw::noexcept_:
             if (at(P::LParen, 1))
             {
+              // The noexcept operator: an error until the checker decides whether its operand can
+              // throw (it was `true` whatever the operand, a silent wrong answer for a call of a
+              // function not declared noexcept).
+              error("the noexcept operator is not supported yet");
               advance();
               skipBalanced();
-              LiteralExpr* l = node<LiteralExpr>(start);
-              l->literalKind = TokenKind::Keyword;
-              l->keyword = Kw::true_;
-              return l;
+              return node<ErrorExpr>(start);
             }
             break;
           case Kw::new_:
@@ -4751,7 +4752,25 @@ namespace
       return atIdent() || at(TokenKind::Number) || at(TokenKind::String) || at(TokenKind::Char) || at(P::Bang) ||
              at(P::Tilde) || at(Kw::this_) || at(Kw::sizeof_) || at(Kw::new_) || at(Kw::true_) || at(Kw::false_) ||
              at(Kw::nullptr_) || at(P::ColonColon) || at(Kw::static_cast_) || at(Kw::reinterpret_cast_) ||
-             at(Kw::const_cast_) || at(Kw::dynamic_cast_);
+             at(Kw::const_cast_) || at(Kw::dynamic_cast_) || startsTypeOperand();
+    }
+
+    // A builtin type, `decltype(...)` or `typename X::Y` after `(T)` (a functional cast or brace
+    // initialisation: `(S64)char(7)`, `(S64)decltype(a)(10)`), or `alignof`, `noexcept`, `typeid`:
+    // no parenthesised expression can be followed by one, so `(T)` casts what it starts.
+    bool startsTypeOperand() const
+    {
+      if (!at(TokenKind::Keyword))
+        return false;
+      switch (Kw(tok().id))
+      {
+        case Kw::bool_: case Kw::char_: case Kw::char8_t_: case Kw::char16_t_: case Kw::char32_t_: case Kw::wchar_t_:
+        case Kw::short_: case Kw::int_: case Kw::long_: case Kw::signed_: case Kw::unsigned_: case Kw::float_:
+        case Kw::double_: case Kw::decltype_: case Kw::typename_: case Kw::alignof_: case Kw::noexcept_: case Kw::typeid_:
+          return true;
+        default:
+          return false;
+      }
     }
 
     // `offsetof(T, member)` (C's macro, from <cstddef>): read as what it expands to, the address of

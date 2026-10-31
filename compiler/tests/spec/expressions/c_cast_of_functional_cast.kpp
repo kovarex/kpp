@@ -1,0 +1,35 @@
+// spec: a C-style cast to a type named by an alias or a class, `(S64)`, casts a functional cast or brace initialisation that follows it, whatever starts it: a builtin type `(S64)char(7)`, `(S64)unsigned(9)`, `decltype(x)(y)`, `typename T::value_type(v)`, a class `(S64)Meters{5}.value`; and an `alignof` expression; none of these can continue a parenthesised expression
+// factorio: D's value corpus (generated expressions checked against clang): 42 cases of `(S64)char(7)` and its kin failed to parse ("expected ';' after declaration")
+using S64 = int64_t;
+
+struct Meters
+{
+  int value;
+};
+
+struct Box
+{
+  using value_type = short;
+};
+
+template<typename T>
+S64 widen(int v)
+{
+  return (S64)typename T::value_type(v);
+}
+
+int main()
+{
+  S64 a = (S64)char(7);
+  S64 b = (S64)int(8);
+  S64 c = (S64)unsigned(9);
+  S64 d = (S64)decltype(a)(10);
+  S64 e = (S64)Meters{5}.value;
+  double f = (double)float(1.5);
+  S64 g = (S64)S64(11);
+  S64 h = (S64)bool(3);
+  S64 i = (S64)long(-12);
+  S64 j = (S64)alignof(double);
+  println("{} {} {} {} {} {} {} {} {} {} {}", a, b, c, d, e, f, g, h, i, j, widen<Box>(13));
+  return 0;
+}
