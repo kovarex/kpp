@@ -160,6 +160,23 @@ builds win less unless machine code is cached per function.
   base at offset 0, as C++ has it, so the layout is C's and its members are the struct's; anywhere
   else it is a member with a name of its own (the layout stays right; its members by their names
   are an error). (2026-10-29, spec interop/c_anonymous_member_of_named_type.)
+- For the C libraries' conversion (2026-10-31, thread D):
+  - **Flexible array members.** `T items[];` as a struct's last data member, with another data
+    member before it, has C's meaning: `sizeof` ends where the array starts (rounded up to the
+    alignment), offsetof gives its start, and the elements are past the struct, indexed through a
+    pointer or a reference. Errors (C's and clang's): one before another data member, alone, in a
+    union, in a base, or held by value in another class; `sizeof` of the member, a range-for over it
+    and a value for it in an aggregate's braces (it has no length). Specs
+    language/flexible_array_member, flexible_array_member_placement_is_error and
+    flexible_array_member_without_length_is_error.
+  - **alloca.** `alloca` (imported with malloc.h) and `_alloca` allocate stack memory, aligned to 16,
+    that lasts until the calling function returns, in a loop or an ended block too. A compile-time
+    evaluation that reaches either is no constant. Spec language/alloca.
+  - **MSVC's intrinsics that are instructions.** `_BitScanForward/Reverse(64)`, `__cpuid(ex)`,
+    `_byteswap_*`, the rotations (`_rotl` ... `_rotr64`, `_rotl8/16`), `__popcnt(16/64)` and the
+    SSE operations are emitted as their instructions, never as CRT calls; clang's implicit ones
+    (`__popcnt`, `_rotl8`) are declared by the import of intrin.h. Specs interop/msvc_intrinsics,
+    interop/sse_scalar_conversions.
 
 ### 6. Language changes from the proposal (not yet scheduled)
 Real enum class with methods/str()/iteration, `this` as a reference, required `this->`,

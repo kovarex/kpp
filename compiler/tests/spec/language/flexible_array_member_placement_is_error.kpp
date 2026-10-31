@@ -1,0 +1,64 @@
+// spec: a flexible array member is the last data member of a struct with another before it, not in a union; a struct with one is no base and no member held by value of another (its elements would overlap what follows): each an error, as C has it, never a layout where elements and members overlap
+// factorio: the C libraries' conversion (libraries\re2, SDL3): checked with language/flexible_array_member
+// error: flexible_array_member_placement_is_error.kpp:38: error: the layout of NotLast: the member data (`int data[]`) is a flexible array member before another data member
+// error: flexible_array_member_placement_is_error.kpp:43: error: the layout of Alone: the member data (`int data[]`) is a flexible array member with no data member before it
+// error: flexible_array_member_placement_is_error.kpp:48: error: the layout of InUnion: the member data (`int data[]`) is an array without a length in a union
+// error: flexible_array_member_placement_is_error.kpp:53: error: the layout of Derived: the base Flexible has a flexible array member
+// error: flexible_array_member_placement_is_error.kpp:58: error: the layout of Holder: the member inner (`Flexible inner`) holds Flexible, which has a flexible array member
+struct NotLast
+{
+  int data[];
+  int count;
+};
+struct Alone
+{
+  int data[];
+};
+union InUnion
+{
+  int count;
+  int data[];
+};
+struct Flexible
+{
+  int count;
+  int data[];
+};
+struct Derived : Flexible
+{
+  int more;
+};
+struct Holder
+{
+  Flexible inner;
+  int more;
+};
+int notLast()
+{
+  NotLast n;
+  return 0;
+}
+int alone()
+{
+  Alone a;
+  return 0;
+}
+int inUnion()
+{
+  InUnion u;
+  return 0;
+}
+int derived()
+{
+  Derived d;
+  return 0;
+}
+int holder()
+{
+  Holder h;
+  return 0;
+}
+int main()
+{
+  return notLast() + alone() + inUnion() + derived() + holder();
+}

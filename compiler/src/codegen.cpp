@@ -77,6 +77,9 @@ namespace
     bool empty = false;
     std::vector<bool> zeroSize;              // per field: an empty base laid out without storage
     bool packed = false;                     // [[packed]]: `<{ ... }>`, every member at alignment 1
+    // Its last data member is a flexible array member (`T items[];`, C99's): a `[0 x T]` field, so
+    // the size ends where the array starts (rounded up to the alignment); the elements are past it.
+    bool flexible = false;
     std::optional<bool> needsDestruction;
     // Virtual functions: a polymorphic class has a vtable pointer at offset 0 (its own, or its
     // primary base's: the first polymorphic one), whose slots extend the primary base's in
@@ -1343,6 +1346,9 @@ namespace
             layoutError("the member " + memberName(m) + " has an unknown type");
           if (const Ty* draft = draftHeld(ft))
             undeclared("the member " + memberName(m), draft);
+          for (const Ty* a = types.unqualified(ft); a->kind == TyKind::Array; a = types.unqualified(a->inner))
+            if (a->count == 0 && !(c->file && c->file->isImported))
+              fail(at, "the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) + " is an array without a length in a union (no flexible array member there)");
           if (m->kind == NodeKind::ClassDecl)
             info.anonymous.push_back({m, 0});
           size = std::max(size, sizeOf(ft, at));
@@ -1381,7 +1387,9 @@ namespace
         if (const Ty* draft = draftHeld(bt))
           undeclared("a base class", draft);
         const Ty* baseKey = canonicalClass(bt, at);
-        structFor(baseKey, at);
+        if (structFor(baseKey, at).flexible)
+          fail(at, "the layout of " + types.toString(key, &symbols) + ": the base " + types.toString(baseKey, &symbols) +
+                       " has a flexible array member, whose elements this class's members would overlap");
         baseKeys.push_back(baseKey);
       }
       // The primary base is the first polymorphic one: at offset 0, its vtable pointer the class's
@@ -1438,12 +1446,27 @@ namespace
           layoutError("the member " + memberName(m) + " has an unknown type");
         if (const Ty* draft = draftHeld(ft))
           undeclared("the member " + memberName(m), draft);
-        // `char data[N]` with N no constant the checker could evaluate has the length 0; only a C
-        // struct's last member may be such an array (`char data[];`, a flexible array member).
+        // `char data[N]` with N no constant the checker could evaluate has the length 0; only a
+        // struct's last data member may be such an array, written without a length (`char data[];`,
+        // a flexible array member), after another data member (C's rules; not in a union, above).
         for (const Ty* a = types.unqualified(ft); a && a->kind == TyKind::Array; a = types.unqualified(a->inner))
           if (a->count == 0 && !(c->file && c->file->isImported))
-            fail(at, "the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) +
-                         " is an array whose length is no constant the compiler could evaluate");
+          {
+            auto* declared = static_cast<VariableDecl*>(m)->type;
+            bool unbounded = a == types.unqualified(ft) && declared && declared->kind == NodeKind::ArrayType && !static_cast<ArrayType*>(declared)->size;
+            if (!unbounded)
+              fail(at, "the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) +
+                           " is an array whose length is no constant the compiler could evaluate");
+            bool last = true;
+            for (auto after = std::find(c->members.begin(), c->members.end(), m) + 1; after != c->members.end(); ++after)
+              last = last && !((*after)->kind == NodeKind::VariableDecl && !((*after)->flags & (DF_Static | DF_Typedef | DF_Friend))) &&
+                     !((*after)->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(*after)->name.empty() && static_cast<ClassDecl*>(*after)->isDefinition);
+            if (!last || info.fieldDecls.empty() || static_cast<VariableDecl*>(m)->bitfield)
+              fail(at, "the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) + " is a flexible array member " +
+                          (!last ? "before another data member" : info.fieldDecls.empty() ? "with no data member before it" : "with a bit width") +
+                          " (a flexible array member is the last data member of a struct with others)");
+            info.flexible = true;
+          }
         // A lambda held by value (FunctionImpl<F>'s `F f`, TransformView's): its closure, laid out
         // from the lambda's AST whoever asks first; one that cannot be laid out fails this class.
         for (const Ty* held = types.unqualified(ft); held; held = held->kind == TyKind::Array ? types.unqualified(held->inner) : nullptr)
@@ -1510,6 +1533,15 @@ namespace
       std::string line = info.name + " = type " + (info.packed ? "<{ " : "{ ");
       for (size_t i = 0; i < info.fieldTypes.size(); ++i)
         line += (i ? ", " : "") + (info.zeroSize[i] ? std::string("[0 x i8]") : llType(info.fieldTypes[i], c));
+      for (Decl* m : info.fieldDecls)
+      {
+        const Ty* held = types.unqualified(info.fieldTypes[fieldIndexOf(info, m)]);
+        while (held->kind == TyKind::Array)
+          held = types.unqualified(held->inner);
+        if (isClass(held) && structFor(held, c).flexible) // (laid out already, for its field above)
+          fail(at, "the layout of " + types.toString(key, &symbols) + ": the member " + memberName(m) + " holds " + types.toString(held, &symbols) +
+                       ", which has a flexible array member: only a pointer may refer to such an object inside another");
+      }
       if (info.empty)
         line += info.fieldTypes.empty() ? "i8" : ", i8"; // one byte of its own as an object
       if (tailPadding)
@@ -3505,6 +3537,8 @@ namespace
               }
           valueOf[next++] = args[k];
         }
+        if (info.flexible && !valueOf.empty() && valueOf.back())
+          fail(at, "a value for " + qualifiedName(c) + "::" + sym(static_cast<VariableDecl*>(members.back())->name.last().symbol) + ", a flexible array member, which has no elements of its own to initialize");
         size_t i = 0;
         std::set<size_t> zeroedUnits; // the storage units of bit fields, each zeroed at its first member
         // A union holds one member: the one a value is for (`{.effectTexture = {bitmap}}`), else

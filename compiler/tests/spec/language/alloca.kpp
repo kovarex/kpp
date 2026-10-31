@@ -1,6 +1,5 @@
 // spec: alloca (<malloc.h>, MSVC's _alloca): a block of a run-time size on the stack of the calling function, distinct per call and aligned to 16 bytes, which stays valid until that function returns, also when the call is in a loop or in a block that has ended; the function's return frees all of them, so calling it again and again does not grow the stack
 // factorio: libraries\vorbis (63 uses in 13 files: block.c's `float *lpc=alloca(order*sizeof(*lpc));`), libraries\opus (USE_ALLOCA: celt and silk's ALLOC), libraries\imgui (10)
-// pending: alloca is not declared: malloc.h's `#define alloca _alloca` names a compiler intrinsic, which kppc neither imports nor implements (D)
 extern "C" import "malloc.h";
 
 // Fills `count` blocks of `size` ints, each allocated in its own loop iteration and block, and

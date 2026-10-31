@@ -1,0 +1,44 @@
+// spec: a flexible array member has no length: sizeof of it, a range-for over it and a value for it in an aggregate's initializer are errors, as in C++ (clang: "invalid application of 'sizeof' to an incomplete type", "cannot use incomplete type as a range", "initialization of flexible array member is not allowed"), never 0, no iterations or a value silently dropped
+// factorio: the C libraries' conversion (libraries\re2, SDL3): checked with language/flexible_array_member
+// error: flexible_array_member_without_length_is_error.kpp:21: error: sizeof of data, an array without a length (a flexible array member), which has no size
+// error: flexible_array_member_without_length_is_error.kpp:27: error: a range-for over data, an array without a length (a flexible array member): where it ends is not known
+// error: flexible_array_member_without_length_is_error.kpp:34: error: a value for Packet::data, a flexible array member, which has no elements of its own to initialize
+extern "C" import "stdlib.h";
+
+struct Packet
+{
+  int count;
+  int data[];
+};
+
+Packet* make()
+{
+  return (Packet*)malloc(sizeof(Packet) + 4 * sizeof(int));
+}
+
+size_t bytes(Packet* p)
+{
+  return sizeof(p->data);
+}
+
+int sum(Packet* p)
+{
+  int total = 0;
+  for (int v : p->data)
+    total += v;
+  return total;
+}
+
+int first()
+{
+  Packet p = {1, {2, 3}};
+  return p.count;
+}
+
+int main()
+{
+  Packet* p = make();
+  println("{} {} {}", bytes(p), sum(p), first());
+  free(p);
+  return 0;
+}

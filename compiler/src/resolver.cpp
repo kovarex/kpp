@@ -8140,7 +8140,9 @@ struct GlobalScope::Impl
       return zero ? constConverted(ConstValue::integer(0), t) : std::optional<ConstValue>(ConstValue::unset(t));
     if (t->kind == TyKind::Array)
     {
-      if (t->count == 0 || !constMayMake(t->count))
+      if (t->count == 0)
+        return ConstValue::object(t, {}); // a flexible array member's: no elements, every index past the end
+      if (!constMayMake(t->count))
         return std::nullopt;
       std::optional<ConstValue> element = constEmpty(t->inner, zero, depth + 1);
       if (!element)
@@ -20685,6 +20687,23 @@ struct GlobalScope::Impl
       return nullptr;
     }
 
+    // A data member declared as an array without a length (`int items[];`: a flexible array
+    // member), as e names it (`s->items`, `items` in a member function), or a lone name in sizeof's
+    // type names it; else null. (`extern int table[];` takes its length from its definition.)
+    VariableDecl* unboundedArray(Node* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      Decl* d = !e ? nullptr
+              : e->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(e)->resolved
+              : e->kind == NodeKind::NameExpr   ? static_cast<NameExpr*>(e)->resolved
+              : e->kind == NodeKind::NamedType  ? static_cast<NamedType*>(e)->resolved
+                                                : nullptr;
+      auto* v = d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef) ? static_cast<VariableDecl*>(d) : nullptr;
+      bool member = v && !(v->flags & DF_Static) && impl.owningClassOf(v);
+      return member && v->type && v->type->kind == NodeKind::ArrayType && !static_cast<ArrayType*>(v->type)->size ? v : nullptr;
+    }
+
     // rangeExpr: the range written, for a free begin(range).
     const Ty* elementTypeOf(const Ty* range, Expr* rangeExpr)
     {
@@ -21494,6 +21513,9 @@ struct GlobalScope::Impl
           auto* f = static_cast<RangeForStmt*>(s);
           size_t mark = locals.mark();
           const Ty* range = walkExpr(f->range);
+          if (VariableDecl* unbounded = unboundedArray(f->range))
+            impl.reportCheckerError(file, f->token, "a range-for over " + std::string(symbols.name(unbounded->name.last().symbol)) +
+                                                        ", an array without a length (a flexible array member): where it ends is not known");
           if (f->range->kind == NodeKind::BraceInitExpr)
           {
             // `for (X* kids : {&a, &b})`: an array of the first element's type.
@@ -21851,9 +21873,18 @@ struct GlobalScope::Impl
           return record(e, c->castKind == Kw::static_cast_ ? probedCast(t, operand) : t);
         }
         case NodeKind::SizeofExpr:
-          walkType(static_cast<SizeofExpr*>(e)->type);
-          walkExpr(static_cast<SizeofExpr*>(e)->operand);
+        {
+          auto* z = static_cast<SizeofExpr*>(e);
+          walkType(z->type);
+          walkExpr(z->operand);
+          // `sizeof(s->items)` of a flexible array member (or of `extern int table[];`): an array
+          // without a length has no size ([expr.sizeof] 1), never 0.
+          if (!z->isPack && z->sizeofKind != Kw::alignof_)
+            if (VariableDecl* v = unboundedArray(z->operand ? static_cast<Node*>(z->operand) : z->type))
+              impl.reportCheckerError(file, e->token, "sizeof of " + std::string(symbols.name(v->name.last().symbol)) +
+                                                          ", an array without a length (a flexible array member), which has no size");
           return record(e, types.sizeType());
+        }
         case NodeKind::NewExpr:
         {
           auto* n = static_cast<NewExpr*>(e);

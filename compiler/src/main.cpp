@@ -821,6 +821,11 @@ namespace
       wrapper += "unsigned short __popcnt16(unsigned short);\nunsigned int __popcnt(unsigned int);\nunsigned __int64 __popcnt64(unsigned __int64);\n"
                  "unsigned char _rotl8(unsigned char, unsigned char);\nunsigned char _rotr8(unsigned char, unsigned char);\n"
                  "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n";
+    // malloc.h's alloca is `#define alloca _alloca` (only where __STDC__ is not defined, as it is
+    // here), which the import does not carry: declared as the function, the code generator's
+    // stack allocation like _alloca.
+    if (std::find(headers.begin(), headers.end(), "malloc.h") != headers.end())
+      wrapper += "#undef alloca\nvoid* alloca(size_t);\n";
     // The include directories as absolute paths, in the key and on clang's command line: a relative
     // `--cinclude native\include` names another directory in every worktree.
     std::error_code ec;
