@@ -6057,6 +6057,7 @@ struct GlobalScope::Impl
     constStorage().clear();
     constHeap().clear();
     constAllocations().clear();
+    constFailedAt() = ConstWhere{};
     std::optional<ConstValue> v;
     {
       ConstFrame heap(&constHeap());
@@ -9556,6 +9557,12 @@ struct GlobalScope::Impl
     uint32_t token = 0;
   };
   ConstWhere constHere(const Expr* e) { return ConstWhere{constRunningFile(), e->token}; }
+  // The innermost statement of the outermost evaluation that failed (runBuild's "build.kpp:12").
+  static ConstWhere& constFailedAt()
+  {
+    static thread_local ConstWhere at;
+    return at;
+  }
   // "Build.kpp:12": the file's name and the line.
   static std::string constWhereText(const ConstWhere& w)
   {
@@ -10270,6 +10277,120 @@ struct GlobalScope::Impl
     freed.freed = constHere(d);
     constHeap()[index].value = ConstValue::unset(object);
     return done;
+  }
+
+  // build.kpp's description for one configuration (GlobalScope::runBuild, design.md 12): a Project
+  // default-constructed, its configuration the enumerator of that name, build(project) run on it,
+  // then describe(project), whose String's characters are the answer; both destroyed after, so
+  // memory left allocated is an error as in any constant. Nullopt with error, "Build.kpp:12: why",
+  // when that is no constant.
+  std::optional<std::string> runBuild(std::string_view configuration, std::string& error)
+  {
+    auto named = [&](const char* name, NodeKind kind) -> Decl* {
+      Lookup l;
+      if (!lookupInScope(&root, symbols.intern(name), l, 0))
+        return nullptr;
+      if (!l.overloads)
+        return l.decl && l.decl->kind == kind ? l.decl : nullptr;
+      Decl* only = nullptr;
+      for (const Entry& entry : *l.overloads)
+        if (entry.decl && entry.decl->kind == kind && (kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(entry.decl)->body))
+        {
+          if (only)
+            return nullptr; // several: which is not decided
+          only = entry.decl;
+        }
+      return only;
+    };
+    auto* project = static_cast<ClassDecl*>(named("Project", NodeKind::ClassDecl));
+    auto* configurations = static_cast<EnumDecl*>(named("Configuration", NodeKind::EnumDecl));
+    auto* build = static_cast<FunctionDecl*>(named("build", NodeKind::FunctionDecl));
+    auto* describe = static_cast<FunctionDecl*>(named("describe", NodeKind::FunctionDecl));
+    if (!project || !configurations || !build || !describe || build->params.size() != 1 || describe->params.size() != 1)
+    {
+      error = "a build description needs one class Project, one enum Configuration, one build(Project&) and one describe(const Project&)";
+      return std::nullopt;
+    }
+    Decl* chosen = nullptr;
+    for (Decl* e : configurations->enumerators)
+      if (e->kind == NodeKind::EnumeratorDecl && symbols.name(static_cast<EnumeratorDecl*>(e)->name) == configuration)
+        chosen = e;
+    if (!chosen)
+    {
+      error = "no configuration named " + std::string(configuration);
+      return std::nullopt;
+    }
+    const Ty* projectTy = selfType(project);
+    const ConstClassLayout* layout = constLayoutOf(projectTy, 0);
+    size_t field = SIZE_MAX;
+    for (size_t i = 0; layout && i < layout->fields.size(); ++i)
+      if (layout->fields[i] && !layout->fields[i]->name.empty() && symbols.name(layout->fields[i]->name.last().symbol) == "configuration")
+        field = i;
+    if (field == SIZE_MAX)
+    {
+      error = "Project has no member configuration";
+      return std::nullopt;
+    }
+    auto contextOf = [&](FunctionDecl* f) {
+      return TypeContext{lexicalScopeOf(f), nullptr, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
+    };
+    std::string text;
+    constWhy().clear();
+    std::optional<ConstValue> done = constOutermost([&]() -> std::optional<ConstValue> {
+      std::vector<ConstBinding> env;
+      ConstFrame frame(&env);
+      std::optional<ConstValue> object = constConstruct(projectTy, {}, false, 0);
+      TypeContext none = contextOf(build);
+      std::optional<ConstValue> tag = object ? constValueOfDecl(chosen, none, 0) : std::nullopt;
+      if (!tag)
+        return std::nullopt;
+      env.push_back(constBinding(symbols.intern("project"), *object, projectTy));
+      env.back().owns = true;
+      ConstPlace whole{&env, 0, {}, projectTy};
+      ConstPlace at{&env, 0, {layout->bases.size() + field}, layout->fieldTypes[field]};
+      if (!constWrite(at, *tag))
+        return std::nullopt;
+      std::vector<std::optional<ConstPlace>> places{whole};
+      std::vector<uint8_t> lvalue{1};
+      if (!constRun(build, {*constRead(whole)}, contextOf(build), 0, nullptr, &places, &lvalue))
+        return std::nullopt;
+      std::optional<ConstValue> described = constRun(describe, {*constRead(whole)}, contextOf(describe), 0, nullptr, &places, &lvalue);
+      if (!described || !described->isObject() || !described->type)
+        return std::nullopt;
+      env.push_back(constBinding(0, *described, described->type));
+      env.back().owns = true; // destroyed with the project, after its characters are read
+      ConstPlace string{&env, 1, {}, described->type};
+      auto member = [&](const char* name) -> std::optional<ConstValue> {
+        Subst subst;
+        for (FunctionDecl* f : constMembersNamed(described->type, symbols.intern(name), subst, 0))
+          if (f->params.empty())
+          {
+            std::optional<ConstValue> self = constRead(string);
+            return constCallOn(f, subst, {}, &self, 0, &string);
+          }
+        return std::nullopt;
+      };
+      std::optional<ConstValue> chars = member("data"), size = member("size");
+      if (!chars || !size || size->kind != ConstValue::Kind::Int)
+        return std::nullopt;
+      for (int64_t i = 0; i < size->i; ++i)
+      {
+        std::optional<ConstValue> at = chars->isAddress() ? constAddressMove(*chars, i, 0)
+                                                          : constPointerArith(P::Plus, *chars, ConstValue::integer(i, types.intType()));
+        std::optional<ConstValue> c = at ? (at->isAddress() ? constReadTarget(*at, 1) : constDeref(*at)) : std::nullopt;
+        if (!c || c->kind != ConstValue::Kind::Int)
+          return std::nullopt;
+        text.push_back(char(c->i));
+      }
+      if (!constEndLocals(env, 0, 0))
+        return std::nullopt;
+      return ConstValue::integer(1, types.intType());
+    }, 0);
+    if (done)
+      return text;
+    std::string why = constWhy().empty() ? "the build description is no constant" : constWhy();
+    error = constFailedAt().file ? constWhereText(constFailedAt()) + ": " + why : why;
+    return std::nullopt;
   }
 
   std::optional<ConstPlace> constLocal(Expr* e, const TypeContext& ctx)
@@ -11205,6 +11326,8 @@ struct GlobalScope::Impl
       flow = ConstFlow::Failed;
     if (temps && !constEndTemps(*temps, depth, flow != ConstFlow::Failed))
       flow = ConstFlow::Failed;
+    if (flow == ConstFlow::Failed && !constFailedAt().file)
+      constFailedAt() = ConstWhere{constRunningFile(), s->token}; // the innermost statement that failed
     return flow;
   }
 
@@ -23008,6 +23131,11 @@ std::optional<ConstValue> GlobalScope::evaluateInitializer(const Ty* t, Expr* e,
     ~Lent() { Impl::constHooks() = saved; }
   } lent(hooks);
   return t ? impl->constInitialize(t, e, ctx, 0) : impl->constValue(e, ctx, 0);
+}
+
+std::optional<std::string> GlobalScope::runBuild(std::string_view configuration, std::string& error)
+{
+  return impl->runBuild(configuration, error);
 }
 
 const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args)

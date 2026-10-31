@@ -1,0 +1,13 @@
+configuration debug
+root src
+cinclude C:/Factorio/libraries/SDL3/include
+cinclude C:/Factorio/libraries/SDL_Mixer/include
+cinclude C:/Factorio/libraries/Lua
+cinclude C:/Factorio/libraries/curl/include
+configuration release
+root src
+root release-only
+cinclude C:/Factorio/libraries/SDL3/include
+cinclude C:/Factorio/libraries/SDL_Mixer/include
+cinclude C:/Factorio/libraries/Lua
+cinclude C:/Factorio/libraries/curl/include

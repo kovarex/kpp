@@ -1188,6 +1188,15 @@ code, size and speed are unchanged (the game's IR byte-identical), and with it V
 in a constant (spec language/consteval_vector_of_strings). Whether String's run-time reading of
 that member is acceptable is a language question for kovarex.
 
+*The driver's entry, 2026-10-31 (E's interface).* `GlobalScope::runBuild(configuration, error)`
+computes a build description in the interpreter, without building an executable: a `Project`
+default-constructed, its `configuration` the enumerator of that name, `build(project)` run, then
+`describe(project)`, whose String's characters it returns; both are destroyed after, so memory
+left allocated is an error as in any constant. When that is no constant, the error names the
+innermost statement that failed and why ("build.kpp:6: a call to puts, a C function, which has no
+body to run at compile time"). `kppc --run-build CONFIGURATION files...` prints it (run_tests'
+runbuild case).
+
 *For build.kpp's descriptions, 2026-10-31.* A StringView compares with a literal or another
 StringView at compile time (`memcmp` over chars, and an object compared with a pointer or array
 by its class's operator, not as pointers), and a call, a member function's too, may leave trailing

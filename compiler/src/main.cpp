@@ -60,6 +60,7 @@ namespace
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
+    std::string runBuild; // --run-build CONFIGURATION: print build.kpp's description (GlobalScope::runBuild)
     std::string stdDir;   // --std <dir>; default: <kppc dir>\..\..\stdlib when it exists
     std::filesystem::path conversionLibrary; // the library --convert keeps the program's names apart from
     bool noStd = false;
@@ -1498,6 +1499,18 @@ namespace
     {
       reportCheckerErrors(global);
       reportAccessWarnings(build);
+      if (!options.runBuild.empty() && !codegenExit)
+      {
+        // `--run-build debug`: build.kpp's description, computed by the interpreter, on stdout.
+        std::string error;
+        if (std::optional<std::string> text = global.runBuild(options.runBuild, error))
+          fwrite(text->data(), 1, text->size(), stdout);
+        else
+        {
+          fprintf(stderr, "error: %s\n", error.c_str());
+          codegenExit = 1;
+        }
+      }
     }
     if (!options.convertDir.empty())
     {
@@ -2757,6 +2770,8 @@ int compile(int argc, char** argv)
       options.emitLLVM = argv[++i];
     else if (arg == "--exe" && i + 1 < argc)
       options.exe = argv[++i];
+    else if (arg == "--run-build" && i + 1 < argc)
+      options.runBuild = argv[++i];
     else if (arg == "--std" && i + 1 < argc)
       options.stdDir = argv[++i];
     else if (arg == "--no-std")
@@ -2826,7 +2841,7 @@ int compile(int argc, char** argv)
                                                        : std::filesystem::path(options.stdDir);
   }
   // The standard library joins the program for code generation, and whenever --std names it.
-  if ((!options.exe.empty() || !options.emitLLVM.empty() || !options.stdDir.empty()) && !options.noStd)
+  if ((!options.exe.empty() || !options.emitLLVM.empty() || !options.stdDir.empty() || !options.runBuild.empty()) && !options.noStd)
   {
     std::error_code ec;
     std::filesystem::path stdPath = options.stdDir.empty()

@@ -405,6 +405,11 @@ public:
   // member's initializer: `Flags f = {A, B};`, `Array<int, 3> a = {1, 2, 3}`, `Box b = Box(1, 2);`):
   // a brace list's elements, a constructor's arguments, a conversion; context and hooks as for
   // evaluate. Null when it is no constant (the object is then initialized at run time).
+  // build.kpp at compile time (design.md 12): a Project default-constructed, its configuration
+  // the enumerator of that name, build(project) run, then describe(project): that String's
+  // characters. Nullopt with error ("Build.kpp:12: why") when that is no constant (a call it
+  // cannot run, memory left allocated, more than a million steps).
+  std::optional<std::string> runBuild(std::string_view configuration, std::string& error);
   std::optional<ConstValue> evaluateInitializer(const Ty* t, Expr* init, ParsedFile* file, Decl* context, const TemplateArgs& args,
                                                 const ConstHooks& hooks);
   // Re-types the body of f for one instantiation (expression types and resolved callees are

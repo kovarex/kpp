@@ -1,0 +1,1 @@
+error: calls_c.kpp:6: a call to puts, a C function, which has no body to run at compile time

@@ -1,0 +1,8 @@
+// A build() that calls C: runBuild names the line.
+extern "C" int puts(const char* text);
+void build(Project& project)
+{
+  project.root("src");
+  puts("hello");
+}
+int main() { return 0; }

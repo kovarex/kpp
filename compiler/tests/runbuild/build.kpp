@@ -1,0 +1,10 @@
+// build.kpp for project.kpp in this directory: computes with StringView, Vector and String.
+void build(Project& project)
+{
+  project.root("src");
+  for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "curl/include"})
+    project.include("C:/Factorio/libraries/", lib);
+  if (project.configuration == Configuration::release)
+    project.root("release-only");
+}
+int main() { return 0; }

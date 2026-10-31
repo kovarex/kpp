@@ -65,6 +65,26 @@ if errorlevel 1 (
 ) else (
   echo ok   clashes
 )
+rem build.kpp at compile time (docs/design.md 12, GlobalScope::runBuild): the description of each
+rem configuration, computed by the interpreter with Vector and String; a build() that calls C is an
+rem error at its line.
+(for %%c in (debug release) do %KPPC% --quiet --run-build %%c tests\runbuild\project.kpp tests\runbuild\build.kpp) > build\tests\runbuild.txt 2>&1
+%KPPC% --quiet --run-build debug tests\runbuild\project.kpp tests\runbuild\calls_c.kpp 2> build\tests\runbuild.errors.txt > nul
+fc /w build\tests\runbuild.txt tests\runbuild\descriptions.expected > nul
+if errorlevel 1 (
+  echo FAIL runbuild: build\tests\runbuild.txt differs from tests\runbuild\descriptions.expected
+  fc /w build\tests\runbuild.txt tests\runbuild\descriptions.expected
+  set /a FAIL+=1
+) else (
+  fc /w build\tests\runbuild.errors.txt tests\runbuild\errors.expected > nul
+  if errorlevel 1 (
+    echo FAIL runbuild errors: build\tests\runbuild.errors.txt differs from tests\runbuild\errors.expected
+    fc /w build\tests\runbuild.errors.txt tests\runbuild\errors.expected
+    set /a FAIL+=1
+  ) else (
+    echo ok   runbuild
+  )
+)
 %KPPC% --quiet --exe build\tests\allowed.exe tests\clashes\allowed > build\tests\allowed.compile.txt 2>&1
 if errorlevel 1 (
   echo FAIL clashes allowed: compile
