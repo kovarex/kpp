@@ -1,0 +1,47 @@
+// spec: at compile time a chained call on the reference a member function returns (t.set("x", 5).set("y", true)) runs the overload the arguments choose, as at run time, also where several overloads take as many arguments; so does an operator[] overloaded on its index type (`512 512`)
+// factorio: build.kpp (design.md 12): projectlib's project.use("greet").config("volume", 3).config("loud", true), Dependency::config overloaded on bool, i32, const char* and StringView, was "memory allocated at String.kpp:678 is never freed"
+extern "C" import "stdio.h";
+struct Two
+{
+  int a = 0;
+  int b = 0;
+  int c = 0;
+  Two& set(StringView name, i32 value)
+  {
+    a = value;
+    return *this;
+  }
+  Two& set(StringView name, bool value)
+  {
+    b = value ? 1 : 0;
+    return *this;
+  }
+  Two& set(StringView name, StringView value)
+  {
+    c = int(value.size());
+    return *this;
+  }
+  int& operator[](i32 i) { return a; }
+  int& operator[](StringView name) { return c; }
+};
+int chained()
+{
+  Two t;
+  t.set("x", 5).set("y", true).set("z", StringView("ab"));
+  t[0] += 0;
+  return t.a * 100 + t.b * 10 + t.c;
+}
+constexpr int atCompileTime()
+{
+  Two t;
+  t.set("x", 5).set("y", true).set("z", StringView("ab"));
+  t[0] += 0;
+  return t.a * 100 + t.b * 10 + t.c;
+}
+static_assert(atCompileTime() == 512);
+constexpr int value = atCompileTime();
+int main()
+{
+  printf("%d %d\n", value, chained());
+  return 0;
+}

@@ -1,6 +1,5 @@
 // spec: a member function that returns the reference a free function got from Deque::emplace_back, with a member function called on it in the same expression (p.use("a").config("x")), works at compile time as at run time (`1 1`)
 // factorio: build.kpp (design.md 12): projectlib's project.use("zlib").config("debug", true), a library option
-// pending: at compile time "memory allocated at Sizes.kpp:59 is never freed" (the Deque's blocks); with emplace_back in the member function itself it works (D)
 extern "C" import "stdio.h";
 struct Dep
 {

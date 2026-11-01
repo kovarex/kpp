@@ -1,6 +1,5 @@
 // spec: after a member function took the address of a member Vector (Holder::add returns a handle holding &items), a member function called on a member of the element operator[] returns (h.items[0].names.push_back(s), s an lvalue String) works at compile time as at run time (`1 1`)
 // factorio: build.kpp (design.md 12): projectlib's use(...).config(...) added a value to a Dependency in project.uses
-// pending: at compile time it is "a condition the compiler cannot evaluate yet"; with the element first bound to a reference (Item& i = h.items[0]; i.names.push_back(s);) it works (D)
 extern "C" import "stdio.h";
 struct Item
 {
