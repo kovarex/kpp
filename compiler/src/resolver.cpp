@@ -23529,8 +23529,12 @@ std::vector<std::string> GlobalScope::topLevelClashes()
   auto clash = [&](const Decl* d, uint32_t symbol, const Decl* other)
   {
     std::string text = whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) + "' is declared here and " +
-                       (other->file->isLibrary ? "in the standard library (" + whereIs(other) + ")" : "at " + whereIs(other));
-    if (fileLocal(d) || fileLocal(other))
+                       (other->file->isLibrary  ? "in the standard library (" + whereIs(other) + ")"
+                        : other->file->isImported ? "in the imported C headers (" + whereIs(other) + ")"
+                                                  : "at " + whereIs(other));
+    if (other->file->isImported)
+      text += "; a C header's names are the program's, rename the program's";
+    else if (fileLocal(d) || fileLocal(other))
       text += "; a name local to its file (static, or in an unnamed namespace) is not supported yet (kppc gives every top-level name one entity), rename one of them";
     else
       text += "; top-level names are global, rename one of them";
@@ -23563,6 +23567,12 @@ std::vector<std::string> GlobalScope::topLevelClashes()
             program.push_back(e.decl);
         std::sort(program.begin(), program.end(),
                   [](const Decl* a, const Decl* b) { return std::make_pair(std::string_view(a->file->path), a->token) < std::make_pair(std::string_view(b->file->path), b->token); });
+        // The imported C headers' (`extern "C" import`) of the name, which every file sees as the
+        // program's own are.
+        std::vector<const Decl*> imported;
+        for (const Entry& e : entries)
+          if (e.decl->file && e.decl->file->isImported && claimsTopLevelName(e.decl))
+            imported.push_back(e.decl);
         for (size_t k = 0; k < program.size(); ++k)
         {
           const Decl* d = program[k];
@@ -23584,6 +23594,18 @@ std::vector<std::string> GlobalScope::topLevelClashes()
               continue;
             }
             clash(d, symbol, library);
+            continue;
+          }
+          // A C header's name is the program's unless the program's is that entity too (a function
+          // the header declares, or overloads of it; an alias of the header's type; a constant
+          // written alike); otherwise one of the two silently stood for the other in every file (a
+          // struct of another layout, whose sizeof the header's own users then got). Every one of
+          // the header's: its `typedef struct X X;` names the program's X when both define X, so
+          // that one alone would excuse the header's own definition (a forward declaration's
+          // typedef, kpp_directx.h's COM interfaces, is the only one there).
+          if (!imported.empty() && !std::all_of(imported.begin(), imported.end(), [&](const Decl* c) { return together(c, d); }))
+          {
+            clash(d, symbol, imported[0]);
             continue;
           }
           // Two of the program's: the second is the error, at the first that is another entity.
