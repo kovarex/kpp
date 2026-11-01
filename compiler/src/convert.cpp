@@ -5770,8 +5770,36 @@ namespace
             // with the namespace the directive names (with `::` when there is none).
             auto* a = static_cast<UsingAliasDecl*>(d);
             Type* t = a->type;
-            if (t && t->token + 1 < toks.size() && toks[t->token].getKind() == TokenKind::Identifier &&
-                spelling(t->token) == symbols.name(a->name) && toks[t->token + 1].is(P::Semi) && !(t->token > 0 && toks[t->token - 1].is(P::ColonColon)))
+            bool ownName = t && t->token + 1 < toks.size() && toks[t->token].getKind() == TokenKind::Identifier &&
+                           spelling(t->token) == symbols.name(a->name) && toks[t->token + 1].is(P::Semi) &&
+                           !(t->token > 0 && toks[t->token - 1].is(P::ColonColon));
+            // Unless the scope declared a class or enum of that name before it (InfinityPipeSettings's
+            // `class Filter { ... }; using Filter = Filter;`): the alias then names that member,
+            // which MSVC takes as a redeclaration, so it goes (there is no outer one to qualify).
+            bool memberOfThatName = false;
+            for (Decl* other : decls)
+            {
+              if (other == d)
+                break;
+              const QualifiedName* n = other->kind == NodeKind::ClassDecl  ? &static_cast<ClassDecl*>(other)->name
+                                       : other->kind == NodeKind::EnumDecl ? &static_cast<EnumDecl*>(other)->name
+                                                                           : nullptr;
+              if (n && !n->empty() && n->last().symbol == a->name)
+                memberOfThatName = true;
+            }
+            if (ownName && memberOfThatName && t->token >= 3 && spelling(t->token - 3) == "using")
+            {
+              uint32_t from = toks[t->token - 3].offset, to = endOffset(t->token + 1);
+              while (from > 0 && (text[from - 1] == ' ' || text[from - 1] == '\t'))
+                --from;
+              if (to < text.size() && text[to] == '\r')
+                ++to;
+              if (to < text.size() && text[to] == '\n')
+                ++to;
+              remove(from, to - from);
+              counts.add("alias of a member of its own name removed");
+            }
+            else if (ownName)
             {
               std::string qualifier;
               for (Decl* other : decls)
