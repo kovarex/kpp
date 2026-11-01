@@ -782,8 +782,16 @@ arguments, one after another, with nothing parsed.
 - **Localisation** (where the order of the parts changes per language) is not this mechanism: a
   later localisation library with its own tools (kovarex). `format("{}", ...)` stays only with a
   compile-time literal format; a non-literal format is a compile error.
-- **C interop:** converted C code keeps C's printf (a variadic function's own format, decision
-  pending: spec `language/variadic_with_own_format`).
+- **Converted code is Kpp too** (kovarex, 2026-11-01: "converting code to kpp is getting kpp code"):
+  the converter rewrites every printf-family call, in the game (`ssprintf`, `printf`) and in
+  converted C libraries, into `print`/`println`/`toString`/`<<` with `hex`, `fixed`, `padded` for
+  the specifiers; where C++ read a value narrower than its type (`%u` of a 64-bit value) it writes
+  the narrowing (`u32(x)`), so the text stays identical (the harnesses and the game's CRCs check
+  it). So **no format-string checking exists in the language**: the rule "a printf-like call's
+  format matches its arguments" is retired. C's `...` stays only at the C boundary: calling a C
+  variadic function, and a converted library whose own interface is variadic (trio's printf
+  implementation, zlib's `gzprintf`, stb's `writef`); such a call is an ordinary variadic call,
+  never format-checked (spec `language/variadic_with_own_format`).
 - **Later:** `appendTo` may take a general writer (a file, a socket) besides `String`, so that a
   large save streams to its destination; nothing above changes.
 
