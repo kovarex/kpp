@@ -15,7 +15,7 @@ extern "C" double sin(double value);
 extern "C" double cos(double value);
 extern "C" double atan2(double y, double x);
 extern "C" double fabs(double value);
-extern "C" CLong lround(double value);
+extern "C" long lround(double value);
 extern "C" double nextafter(double from, double to);
 float sqrt(float value) { return (float)sqrt((double)value); }
 float floor(float value) { return (float)floor((double)value); }

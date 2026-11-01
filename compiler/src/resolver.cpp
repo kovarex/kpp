@@ -1429,7 +1429,7 @@ struct GlobalScope::Impl
     add("uint_fast32_t", types.intType(32, true));
     add("nullptr_t", types.nullptrType());
     add("_Bool", types.boolType());
-    add("wchar_t", types.charType(16, true));
+    add("wchar_t", types.wcharType()); // (GlobalScope::setLP64: the target's size)
     add("__m128", types.vectorType(types.floatType(32), 4));
     add("__m128d", types.vectorType(types.floatType(64), 2));
     add("__m128i", types.vectorType(types.intType(32), 4));
@@ -13233,7 +13233,7 @@ struct GlobalScope::Impl
           case Kw::char8_t_: return types.charType(8, true);
           case Kw::char16_t_: return types.charType(16, true);
           case Kw::char32_t_: return types.charType(32, true);
-          case Kw::wchar_t_: return types.charType(16, true);
+          case Kw::wchar_t_: return types.wcharType(); // (the target's C wchar_t)
           case Kw::float_: return types.floatType(32);
           case Kw::double_: return types.floatType(64);
           case Kw::short_: return types.intType(16, b->isUnsigned);
@@ -20740,7 +20740,7 @@ struct GlobalScope::Impl
           if (s.starts_with("u8")) return types.charType(8, true);
           if (s.starts_with("u")) return types.charType(16, true);
           if (s.starts_with("U")) return types.charType(32, true);
-          if (s.starts_with("L")) return types.charType(16, true);
+          if (s.starts_with("L")) return types.wcharType();
           return types.charType(8, false);
         }
         case TokenKind::String:
@@ -20750,7 +20750,7 @@ struct GlobalScope::Impl
           if (s.starts_with("u8")) ch = types.charType(8, true);
           else if (s.starts_with("u")) ch = types.charType(16, true);
           else if (s.starts_with("U")) ch = types.charType(32, true);
-          else if (s.starts_with("L")) ch = types.charType(16, true);
+          else if (s.starts_with("L")) ch = types.wcharType();
           return types.pointer(types.qualified(ch, true, false));
         }
         case TokenKind::Number:
@@ -22902,9 +22902,14 @@ void GlobalScope::setCodeGenerated(bool generated)
   impl->codeGenerated = generated;
 }
 
-void GlobalScope::setCLong64(bool lp64)
+void GlobalScope::setLP64(bool lp64)
 {
   impl->cLong64 = lp64;
+  impl->types.longBits = lp64 ? 64 : 32;
+  impl->types.wcharBits = lp64 ? 32 : 16;
+  for (auto& [symbol, t] : impl->builtinNames)
+    if (impl->symbols.name(symbol) == "wchar_t")
+      t = impl->types.wcharType();
 }
 
 bool GlobalScope::unitlessErrorIn(const std::string& path)

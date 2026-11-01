@@ -252,7 +252,7 @@ std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view s
     if (q == std::string_view::npos || spelling.size() < q + 3 || spelling.back() != '\'')
       return fail("a character literal it cannot read");
     std::string_view prefix = spelling.substr(0, q), body = spelling.substr(q + 1, spelling.size() - q - 2);
-    const Ty* type = prefix.empty() ? types.charType(8, false) : prefix == "L" || prefix == "u" ? types.charType(16, true)
+    const Ty* type = prefix.empty() ? types.charType(8, false) : prefix == "L" ? types.wcharType() : prefix == "u" ? types.charType(16, true)
                    : prefix == "U" ? types.charType(32, true) : types.charType(8, true);
     int64_t v = 0;
     if (body.empty())

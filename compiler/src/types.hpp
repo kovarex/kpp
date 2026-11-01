@@ -80,6 +80,11 @@ public:
   // C++, and as wide as the target's C long (32 bits on Windows, 64 on LP64 targets).
   const Ty* longType(bool isUnsigned = false);
   uint8_t longBits = 32;
+  // wchar_t, and the units of L"..." and L'x': the target's C wchar_t (unsigned 16 bits, UTF-16, on
+  // Windows; a signed 32-bit int, UTF-32, as glibc, FreeBSD and macOS have it: docs/design.md,
+  // "Targets and hosts").
+  uint8_t wcharBits = 16;
+  const Ty* wcharType() { return charType(wcharBits, wcharBits == 16); }
   // The integer conversion rank ([conv.rank]): long long above long above int above short above
   // the 8-bit types; 0 for a type that is no integer.
   static int integerRank(const Ty* t);

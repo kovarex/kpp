@@ -1,0 +1,54 @@
+'a': char
+(signed char)1: signed char
+(unsigned char)1: unsigned char
+(int8_t)1: signed char
+(uint8_t)1: unsigned char
+(__int8)1: char
+(unsigned __int8)1: unsigned char
+(short)1: short
+(int16_t)1: short
+1: int
+1u: unsigned
+(int32_t)1: int
+(uint32_t)1: unsigned
+1L: long
+1l: long
+1UL: unsigned long
+1LL: long long
+1ULL: unsigned long long
+(int64_t)1: long long
+(uint64_t)1: unsigned long long
+(size_t)1: unsigned long long
+(ptrdiff_t)1: long long
+(__int64)1: long long
+2147483648: long
+0x80000000: unsigned
+0xFFFFFFFFL: long
+1 + 1L: long
+1u + 1L: long
+1L + 1LL: long long
+1UL + 1LL: unsigned long long
+1u + 1UL: unsigned long
+(short)1 + (short)1: int
+'a' + 'b': int
+(unsigned char)1 * 2: int
+1L << 2: long
+-1L: long
+~1UL: unsigned long
+true ? 1 : 1L: long
+1 1 2 long unsigned char 8 0
+2 2 1
+char = __int8
+signed char = int8_t
+unsigned char = uint8_t
+short = int16_t
+int = int32_t
+long long = int64_t
+long long = ptrdiff_t
+long long = __int64
+unsigned long long = uint64_t
+unsigned long long = size_t
+int64_t = ptrdiff_t
+int64_t = __int64
+uint64_t = size_t
+ptrdiff_t = __int64

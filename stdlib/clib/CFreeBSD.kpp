@@ -1,10 +1,6 @@
 requires config::platform == Platform::FreeBSD;
 // What FreeBSD's C library has its own way (CWindows.kpp, CLinux.kpp for the others).
 
-// C's long and unsigned long: 64 bits (LP64).
-using CLong = long long;
-using CULong = unsigned long long;
-
 // The standard streams: its stdio.h's macros name the C library's __stdinp, __stdoutp and
 // __stderrp (which do not change once the program runs).
 extern "C" FILE* __stdinp;

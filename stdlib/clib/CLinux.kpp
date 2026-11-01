@@ -1,10 +1,6 @@
 requires config::platform == Platform::Linux;
 // What glibc has its own way (CWindows.kpp, CFreeBSD.kpp for the others).
 
-// C's long and unsigned long: 64 bits (LP64).
-using CLong = long long;
-using CULong = unsigned long long;
-
 // The standard streams: variables of the C library itself.
 extern "C" FILE* stdin;
 extern "C" FILE* stdout;

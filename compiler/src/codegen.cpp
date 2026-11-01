@@ -8749,8 +8749,10 @@ namespace
     {
       std::string spliced;
       std::string_view first = literalSpelling(l, l->token, spliced);
-      bool wide16 = first.starts_with("L") || (first.starts_with("u") && !first.starts_with("u8"));
-      bool wide32 = first.starts_with("U");
+      // (L"..." is in the target's wchar_t: UTF-16 on Windows, UTF-32 elsewhere)
+      bool wideL = first.starts_with("L");
+      bool wide16 = (wideL && types.wcharBits == 16) || (first.starts_with("u") && !first.starts_with("u8"));
+      bool wide32 = first.starts_with("U") || (wideL && types.wcharBits == 32);
       std::string bytes;
       const std::vector<Token>& toks = *literalFile(l)->tokens;
       for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)
@@ -8766,8 +8768,9 @@ namespace
     {
       std::string spliced;
       std::string_view first = literalSpelling(l, l->token, spliced);
-      bool wide16 = first.starts_with("L") || (first.starts_with("u") && !first.starts_with("u8"));
-      unitBytes = wide16 ? 2 : first.starts_with("U") ? 4 : 1;
+      bool wideL = first.starts_with("L");
+      bool wide16 = (wideL && types.wcharBits == 16) || (first.starts_with("u") && !first.starts_with("u8"));
+      unitBytes = wide16 ? 2 : first.starts_with("U") || wideL ? 4 : 1;
       std::string bytes;
       const std::vector<Token>& toks = *literalFile(l)->tokens;
       for (size_t i = l->token; i < toks.size() && toks[i].getKind() == TokenKind::String; ++i)

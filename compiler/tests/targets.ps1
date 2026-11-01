@@ -46,7 +46,7 @@ $exe = Join-Path $work 'imports.exe'
 if (Build @('--exe', $exe, (Join-Path $src 'imports.kpp')))
 {
   $r = Run $exe @()
-  if ($r.out -ne '2147483647 4' -or $r.exit -ne 0) { Fail "windows imports: '$($r.out)', exit $($r.exit)" }
+  if ($r.out -ne '2147483647 4 2 5 2' -or $r.exit -ne 0) { Fail "windows imports: '$($r.out)', exit $($r.exit)" }
 }
 $exe = Join-Path $work 'uncaught.exe'
 if (Build @('--exe', $exe, (Join-Path $src 'uncaught.kpp')))
@@ -118,7 +118,7 @@ else
   if (Build @('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf, (Join-Path $src 'imports.kpp')))
   {
     $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim())
-    if ($r.out -ne '9000000000 8' -or $r.exit -ne 0) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
+    if ($r.out -ne '9000000000 8 4 5 1' -or $r.exit -ne 0) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
   }
   $bad = Join-Path $work 'long_format.kpp'
   [IO.File]::WriteAllText($bad, "extern `"C`" int printf(const char* format, ...);`nint main() { int narrow = 6; printf(`"%ld\n`", narrow); return 0; }`n")

@@ -1,12 +1,15 @@
-// The target's own C headers (tests\targets.ps1): stdio.h and stdlib.h as the target's C library
-// declares them, C's long as CLong (32 bits on Windows, 64 on Linux and FreeBSD) and printf's %ld
-// taking one.
+// The target's own C headers (tests\targets.ps1): stdio.h, stdlib.h and wchar.h as the target's C
+// library declares them. Kpp's long and wchar_t are the target C's (docs/design.md, "Targets and
+// hosts"): long 32 bits on Windows and 64 on Linux and FreeBSD, read by printf's %ld; wchar_t 16 bits
+// (UTF-16) on Windows and 32 (UTF-32) elsewhere, L"..." in its units, which the C library's wcslen
+// counts (an emoji is two UTF-16 units, one UTF-32 unit).
 extern "C" import "stdio.h";
 extern "C" import "stdlib.h";
+extern "C" import "wchar.h";
 
 int main()
 {
-  CLong big = strtol("9000000000", nullptr, 10); // (saturated to LONG_MAX where long is 32 bits)
-  printf("%ld %d\n", big, int(sizeof(CLong)));
+  long big = strtol("9000000000", nullptr, 10); // (saturated to LONG_MAX where long is 32 bits)
+  printf("%ld %d %d %d %d\n", big, int(sizeof(long)), int(sizeof(wchar_t)), int(wcslen(L"h\u00e9llo")), int(wcslen(L"\U0001F600")));
   return 0;
 }

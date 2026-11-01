@@ -1862,8 +1862,8 @@ byte for byte unless a difference is shown to be a fix.
   **Recommended: (a).** Kpp's types mean one thing everywhere, and only the C boundary follows the
   platform, which is where the difference lives. It is needed before the first target's C import:
   `ssize_t`, `off_t` and `time_t` are `long` in glibc's, FreeBSD's and Apple's headers.
-- **Q2, `wchar_t`.**
-  - **(a) Recommended:** `wchar_t` is the target's C `wchar_t` (16 or 32 bits), for interop only.
+- **Q2, `wchar_t`: decided** (kovarex, 2026-11-01): (a), the target's C size; UTF-8 String is the portable text.
+  - **(a)** `wchar_t` is the target's C `wchar_t` (16 or 32 bits), for interop only.
     The library's portable text is UTF-8 (String). The UTF-16 APIs (WString, conversions) exist on
     Windows only, and a path's native form is per platform, as in std::filesystem: UTF-16 on
     Windows, UTF-8 bytes elsewhere.
@@ -2155,19 +2155,18 @@ All of this goes through the coordinator.
 
 ### Stage 2, the target's C headers (2026-11-01)
 
-What follows needs no decision of Q1's. Whatever Kpp's own `long` becomes, C's `long` in an
-imported header is the platform's.
+Done before Q1 and Q2 were decided; what changed with them is in the next section.
 - **The C import** preprocesses with `--target` and `--sysroot` (both in the cache's key), and
   reads glibc's own `stdio.h`, `stdlib.h` and `string.h`. They give 20 parse errors (GNU
   extensions), ignored as Windows' are.
-  - **`long`:** on an LP64 target each C `long` that is not part of `long long` or `long double`
-    becomes `long long` in the imported text (`widenCLong`).
+  - **`long`:** on an LP64 target each C `long` became `long long` in the imported text (`widenCLong`,
+    gone with the next section: Kpp's `long` is C's now).
   - **`va_list`:** clang's `__builtin_va_list` becomes SysV's `__va_list_tag[1]`, 24 bytes of
     register save area (`vaListForSysV`). Codegen's `va_start`, `va_copy` and `va_end` take its
     address, or the pointer a parameter holds, and `va_arg` is LLVM's `va_arg` there.
   - **`intrin.h`:** MSVC's header becomes clang's `immintrin.h` and `x86intrin.h` off Windows: the
     same SSE intrinsics.
-- **`CLong` and `CULong`:** C's long and unsigned long. They are int32 on Windows and int64
+- **`CLong` and `CULong`** (gone with the next section): C's long and unsigned long, int32 on Windows and int64
   elsewhere, in `clib/CWindows.kpp`, `CLinux.kpp` and `CFreeBSD.kpp` (the files once named
   `CStdio<platform>`, which also hold the standard streams). The library's C declarations with
   `long` now say `CLong`: `fseek`, `ftell`, `strtol`, `strtoul`, `lround`.
@@ -2175,7 +2174,7 @@ imported header is the platform's.
     32-bit ones ("the C function strtol is declared with two types").
   - Still `long`, which is Q1's: Win32's declarations (Windows-only, where long is 32 bits) and the
     library's own 32-bit atomics (`kpp_atomic_*32`).
-- **printf's format check follows the target** (resolver.cpp, `setCLong64`). On LP64, `%ld` takes
+- **printf's format check follows the target** (resolver.cpp's `setLP64`). On LP64, `%ld` takes
   64 bits, and MSVC's lengths (`%I64d`, `%I32d`, `%Id`, `%w`) are errors: glibc reads `I` as a
   flag and the digits as a width. A 32-bit `long` given to `%ld` printed garbage silently on Linux
   before.
@@ -2188,15 +2187,43 @@ imported header is the platform's.
   - Skipped as Windows' own: 9 more. Six import `windows.h`; the others use MSVC's
     `_byteswap_*`, `_BitScanForward`, `__cpuid` and `_alloca`.
 
+### Stage 2, `long` and `wchar_t` as the target's C has them (2026-11-01, after Q1 and Q2)
+
+- **Sizes:** `long` (D's distinct type) is as wide as the target's C long: `TypeTable::longBits`,
+  64 on LP64 targets. `wchar_t` (the type, the keyword, `L'x'` and `L"..."`, in the resolver,
+  the constant evaluator and codegen's literals) is the target's C wchar_t: `TypeTable::wcharBits`,
+  a signed 32-bit int (UTF-32) off Windows, as glibc, FreeBSD and macOS have it; unsigned 16 bits on
+  Windows. `GlobalScope::setLP64` sets both, and printf's `%ld`, for the target.
+- **What follows from it:**
+  - An imported header's `long` is Kpp's `long` again (no `widenCLong`).
+  - The library's C declarations say `long` again (`fseek`, `ftell`, `strtol`, `strtoul`,
+    `lround`).
+  - `CLong` and `CULong` are gone.
+  - The library's `kpp_atomic_*32` are declared with `long`, but codegen sizes them by their
+    names, so they stay 32 bits. Their declarations go with D's deprecation of `long`.
+- **Test:** `imports.kpp` in tests/targets.ps1 prints `%ld` of `strtol("9000000000")`,
+  `sizeof(long)`, `sizeof(wchar_t)`, and the C library's `wcslen` of `L"h\u00e9llo"` and of an
+  emoji. Windows gives `2147483647 4 2 5 2` (the emoji is a UTF-16 surrogate pair); Linux gives
+  `9000000000 8 4 5 1`.
+- **Specs on Linux:** C++'s LP64 answers have a `.linux.expected`:
+  - `integer_types_are_distinct`: 2147483648 is a `long`, `0xFFFFFFFFL` and `1u + 1L` are `long`,
+    `1UL + 1LL` is `unsigned long long`, and `sizeof(long)` is 8.
+  - `numeric_limits`: `Limits<wchar_t>::max()` is 2147483647.
+
+  `pointer_bitwise_operator_is_an_error`'s expected error no longer names wchar_t's type. The suite
+  on Linux: 855 pass, 3 pending, 23 skipped, and 37 failing, every one stage 3's (20 throws) or
+  stage 4's (17 Win32 links).
+- **Seen on the way:** `sizeof(L"ab")` is a pointer's 8 on every target, not C++'s array size: Kpp
+  types a string literal as a pointer.
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).
-- **Q2:** `wchar_t`. (a) is recommended (above).
+- **Q2:** `wchar_t`: decided 2026-11-01, the target's C size (above).
 - **Q3:** FreeBSD: the version NFS runs (`freebsd-version` there), an OK to download its
   `base.txz` as the sysroot, and how tests run there: a script he runs, SSH access for this
   machine, a local VM, or a FreeBSD VM in CI.
 - **Q4:** The FreeBSD major version to target. The default is the one NFS runs.
-- **Q5:** CI for macOS (arm64 and x86-64) and Linux arm64 on GitHub's runners. macOS minutes cost
+- **Q5:** (to decide when macOS comes, kovarex 2026-11-01) CI for macOS (arm64 and x86-64) and Linux arm64 on GitHub's runners. macOS minutes cost
   10 times Linux's on a private repository. The alternative is a Mac he has, as a self-hosted
   runner.
 - **Q6:** The minimum macOS (11.0 for arm64 and 10.15 for x86-64 proposed) and glibc (2.31,

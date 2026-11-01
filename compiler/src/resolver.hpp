@@ -229,9 +229,10 @@ public:
   // Whether this build generated code (a compile server's kept program: the last build's code
   // generator emitted functions): when not, none counts as emitted, as in a build from scratch.
   void setCodeGenerated(bool generated);
-  // The target's C has a 64-bit long (LP64: every target but Windows; docs/design.md, "Targets and
-  // hosts"): printf's `%ld` takes 64 bits, and MSVC's lengths (`%I64d`) are no C library's there.
-  void setCLong64(bool lp64);
+  // The target's C is LP64 with a 32-bit wchar_t (every target but Windows; docs/design.md, "Targets
+  // and hosts"): `long` is 64 bits and `wchar_t` (with L"..." and L'x') 32, printf's `%ld` takes 64
+  // bits, and MSVC's lengths (`%I64d`) are no C library's there. Before anything is resolved.
+  void setLP64(bool lp64);
   // Whether a checker error at a place in the file at path was reported outside any unit (the
   // index's, a class instance's static_assert): walking the file again would not take it back.
   bool unitlessErrorIn(const std::string& path);
