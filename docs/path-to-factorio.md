@@ -1948,6 +1948,76 @@ header directories, no `cLibrary`), the game links vorbis, opusfile and sdl-mixe
 converted ogg. The unit tests pass 9,501/9,501 with their CRCs checked against C++ Debug's, and the
 45 menu maps match, in debug and in release.
 
+**What zlib, glad, minizip and trio needed** (2026-11-01). Each library's directory
+`c-libraries/NAME` can also hold:
+- `c-headers.txt`: its interface headers (zlib.h, zconf.h). They are parsed with the library but
+  never written, and every include of one imports it.
+- `defines.txt`: the library's own defines from build.kpp.
+- `inputs.txt`: other libraries' interfaces it uses, parsed with it. minizip parses zlib.h.
+- `links.txt`: the C libraries both of the harness's builds link. minizip's harness uses the C
+  zlib, so the two builds differ only in minizip.
+
+The converter's C mode grew with them:
+- **The C build's configuration.** C sources are preprocessed as factorio-in-kpp builds the C
+  libraries: as C, with NDEBUG, Factorio's global defines and clang-cl's predefines for C on x64.
+  They used to get the game's C++ FastDebug configuration (`__cplusplus`, `_DEBUG`, no
+  `__x86_64__`).
+
+  Each wrong predefine changed a branch. Without `__x86_64__`, zlib's crc32 braided 32-bit words
+  against 64-bit tables, and the harness caught it. trio recognises C89 by `_MSC_EXTENSIONS`.
+  gzlib.c opened its files without `O_BINARY`, which comes from fcntl.h, and its reads stopped at
+  the first 0x1A byte.
+
+  The configuration does not read system headers, so the C runtime's limits and open flags the
+  libraries test are listed with the predefines. Reading them from the headers is the better fix,
+  together with item 9 below.
+- **Macros the parse sees through:** those that are nothing (`FAR`, `ZEXPORT`), one keyword
+  (`local`, `ZEXTERN`), their argument (`OF`, `TRIO_PROTO_SCANF`), nothing with their arguments
+  (`Assert`, `Tracev`), their other arguments in parentheses (trio's K&R `TRIO_ARGS2`) or a pointer
+  (glad's `APIENTRYP`).
+- **Macro constants are written out at their uses,** after `.` and inside macro expansions too, as
+  the preprocessor does. A C macro holds in one translation unit; a Kpp constant is a name of the
+  whole program. As constants, gzguts.h's `COPY 1` met inflate.h's enumerator COPY, inftrees.h's
+  MAXBITS met Lua's, and crc32.c's W met the game's.
+
+  The first of these compiled silently: inflate stored 1 as its mode, and its next call returned
+  Z_STREAM_ERROR. That clash is pending in `language/enumerator_and_constant_of_one_name` (A).
+- **A header holds in its includers' macros:** trees.h's tables are `D_CODES` long, a macro of
+  deflate.h.
+- **Smaller rules:**
+  - `#  include` is an include;
+  - a `#define` inside a struct is global;
+  - names `config` (Kpp's configuration namespace) are renamed;
+  - `Z_NULL` is `nullptr`;
+  - Windows' TCHAR names are the narrow ones (the C libraries build without UNICODE);
+  - calls through function pointers, and the C library's typed pointer parameters (`wcslen`,
+    `strncpy`...), get their void* casts.
+
+**zlib and glad are converted.**
+- **zlib's harness** (`harness/zlib.c`) covers:
+  - checksums and their combine;
+  - deflate at every level, strategy, window and memory level, with flushes, `deflateParams` and a
+    dictionary;
+  - inflate in pieces;
+  - `compress2`/`uncompress2`, gz files and damaged streams;
+  - round trips of the data's .lua and .cfg files, and the core graphics' PNG IDAT streams.
+
+  Its output is 4,075 lines over 3,986 files, byte-identical.
+- **glad's harness** (`harness/glad.c`, written by `harness/glad.py` from glad.h) loads through a
+  fake loader for six GL versions. It prints every `GLAD_GL_` flag and which of its 2,584 pointers
+  were set: 114 lines, byte-identical.
+
+With ogg, zlib and glad converted (build.kpp: their roots, `--ext .kpp` for the game's roots, as
+these directories keep their C headers), the unit tests pass 9,501/9,501 with their CRCs checked,
+and the 45 menu maps match, in debug and in release. The game draws through D3D, so the menu maps do
+not reach glad; its harness does.
+
+**minizip and trio wait for the compiler.**
+- minizip converts with 0 errors, but clang crashes on its zipOpen4: `*zi = ziinit;` copies a
+  struct with a 64 KB array as one value (`classes/large_struct_copy_through_pointer`, B).
+- trio's array bounds are enumerators of an enum whose flags each double the one before. Evaluating
+  it exceeds the evaluator's million steps (`language/enum_chain_of_doublings_is_constant`, D).
+
 No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
 - `language/alloca` and `language/flexible_array_member` (D);
 - MSVC intrinsics, `_BitScan*`, `_byteswap_*`, `__cpuid`, `_mm_prefetch` (D);
