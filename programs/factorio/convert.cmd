@@ -99,7 +99,7 @@ for %%f in (kpp\CommonUtil\*.kpp) do if not %%~nf==SystemClipboard set FILES=!FI
 kpp\smoke.exe > kpp\smoke.out.txt
 fc /w kpp\smoke.out.txt tests\smoke.expected > nul && echo smoke test: output as expected || (echo smoke test: OUTPUT DIFFERS & fc /w kpp\smoke.out.txt tests\smoke.expected & exit /b 1)
 echo == Agui smoke test: tests\agui_smoke.kpp against the converted Agui (Void backend)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\agui_smoke.exe !FILES! tests\stubs\SystemClipboard.kpp kpp\Agui tests\agui_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\agui_smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\stubs\AguiGameWidgets.kpp kpp\Agui tests\agui_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
 kpp\agui_smoke.exe > kpp\agui_smoke.out.txt
 fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected > nul && echo agui smoke test: output as expected || (echo agui smoke test: OUTPUT DIFFERS & fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected & exit /b 1)
 echo == Util smoke test: tests\util_smoke.kpp against the converted Util subset (containers, sorting, the math expression evaluator; Logging, Util helpers, Math, FloatCast, GameRuntimeError and prefetch stubbed)

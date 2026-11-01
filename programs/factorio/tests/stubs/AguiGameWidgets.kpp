@@ -1,0 +1,12 @@
+// Stand-ins for the game's widgets Agui's Widget names (asQuickBarItemSlot() and the like return
+// them): Factorio's Widget.hpp forward-declares them and the game defines them, but the Agui smoke
+// test builds Agui without the game, where a type nothing declares is an error.
+class QuickBarItemSlot {};
+class EquipmentGridGuiHolder {};
+class BlueprintWidget {};
+class TextFieldWithChatIconSelector {};
+class RecipeSlot {};
+class CraftingQueueSlot {};
+class InventoryGuiSlot {};
+class HyperLink {};
+class ChooseLogisticRequestAndTrashButton {};
