@@ -1,0 +1,3 @@
+data\*.lua
+data\*.cfg
+data\core\graphics\*.png

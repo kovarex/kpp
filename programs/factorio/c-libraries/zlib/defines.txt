@@ -1,0 +1,6 @@
+# zlib's own defines in factorio-in-kpp's build.kpp (zlib.define)
+verbose=-1
+# crc32.c defines N (5 braids) and W (8, with __x86_64__) before it includes crc32.h, whose tables
+# are for those; the configuration preprocesses crc32.h on its own. Only crc32.c and crc32.h use them.
+N=5
+W=8

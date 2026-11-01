@@ -15,7 +15,9 @@ rem   and compiled by kppc. A C library has a directory c-libraries\NAME: it is 
 rem   rules (--c-sources), with c-libraries\NAME as the conversion's overrides (its
 rem   expand-macros.txt names the headers whose macros the converted code expands), and its headers
 rem   stay C imports, found in the directories c-libraries\NAME\includes.txt names (below
-rem   FACTORIO\libraries\NAME).
+rem   FACTORIO\libraries\NAME). Its inputs.txt names the C interfaces it uses, parsed with it (zlib.h for
+rem   minizip), and its links.txt the C libraries both builds link (build\clib\NAME.lib: the C zlib for
+rem   minizip, so that the builds differ in minizip alone).
 rem Both run on the same inputs, the files under CONVERSION that harness\NAME.inputs names (one
 rem `dir` pattern per line, such as data\*.ogg), and their outputs must be byte-identical.
 rem Everything is written to kpp\harness\NAME. Exit 0 only when the outputs match.
@@ -36,8 +38,14 @@ if not exist "%CLIBRARY%" (echo %CLIBRARY% is missing: build it with `kpp factor
 set OUT=kpp\harness\%NAME%
 set CMODE=
 set CINC=
+set CLINC=
+set CINPUTS=
+set CLINKS=
+set KLINKS=
+if exist c-libraries\%NAME%\links.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\links.txt") do call set CLINKS=%%CLINKS%% "%CONVERSION%\build\clib\%%i.lib"& call set KLINKS=%%KLINKS%% --lib "%CONVERSION%\build\clib\%%i.lib"
+if exist c-libraries\%NAME%\inputs.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\inputs.txt") do call set CINPUTS=%%CINPUTS%% "%FACTORIO%\libraries\%%i"
 if exist c-libraries\%NAME% set CMODE=--c-sources --overrides c-libraries\%NAME%
-if exist c-libraries\%NAME%\includes.txt for /f "usebackq delims=" %%i in ("c-libraries\%NAME%\includes.txt") do call set CINC=%%CINC%% --cinclude "%FACTORIO%\libraries\%NAME%\%%i"
+if exist c-libraries\%NAME%\includes.txt for /f "usebackq delims=" %%i in ("c-libraries\%NAME%\includes.txt") do call set CINC=%%CINC%% --cinclude "%FACTORIO%\libraries\%NAME%\%%i"& call set CLINC=%%CLINC%% /I"%CONVERSION%\libraries\%NAME%\%%i"
 if exist %OUT% rd /s /q %OUT%
 mkdir %OUT%\driver
 
@@ -54,12 +62,12 @@ set /p FLAGS=<"%CONVERSION%\build\clib\%NAME%\flags.txt"
 set FLAGS=%FLAGS:/c =%
 rem (a driver in C: the library's C++ standard flag is no C one)
 if /i "%DRIVER:~-2%"==".c" set FLAGS=%FLAGS:/std:c++20=%
-"%CLANGCL%" %FLAGS% /I"%CONVERSION%\libraries" -fuse-ld=lld /Fo%OUT%\ /Fe%OUT%\c.exe %DRIVER% "%CLIBRARY%" > %OUT%\c-build.txt 2>&1 || (type %OUT%\c-build.txt& exit /b 1)
+"%CLANGCL%" %FLAGS% /I"%CONVERSION%\libraries" %CLINC% -fuse-ld=lld /Fo%OUT%\ /Fe%OUT%\c.exe %DRIVER% "%CLIBRARY%" %CLINKS% > %OUT%\c-build.txt 2>&1 || (type %OUT%\c-build.txt& exit /b 1)
 
 rem The Kpp build: the driver and the library converted together, then compiled.
 copy /y %DRIVER% %OUT%\driver\ > nul
-%KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %FACTORIO%\libraries\%NAME% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
-%KPPC% --std ..\..\stdlib --quiet %CINC% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+%KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %FACTORIO%\libraries\%NAME% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
 
 %OUT%\c.exe %OUT%\inputs.txt > %OUT%\c-output.txt 2> %OUT%\c-errors.txt
 set CEXIT=%errorlevel%

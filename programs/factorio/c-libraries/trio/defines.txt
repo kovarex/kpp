@@ -1,0 +1,2 @@
+# trio's own defines in factorio-in-kpp's build.kpp (trio.define)
+TRIO_PUBLIC=

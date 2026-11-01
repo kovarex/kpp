@@ -1,0 +1,3 @@
+# The C interfaces minizip uses, parsed with it (not written): zlib's types and macros.
+zlib\zlib.h
+zlib\zconf.h

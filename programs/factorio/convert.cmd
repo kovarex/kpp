@@ -66,7 +66,7 @@ set CLIBKPP=
 set CLIBWHOLE=
 if exist kpp\clib rd /s /q kpp\clib
 for %%l in (%CLIBRARIES%) do (
-  %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h %FACTORIO%\libraries\%%l || exit /b 1
+  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h %FACTORIO%\libraries\%%l %%CLIBIN_%%l%% || exit /b 1
   if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
   xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l "%WHOLE%\libraries\%%l" >nul
   if exist kpp\%%l rd /s /q kpp\%%l

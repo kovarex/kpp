@@ -1,0 +1,7 @@
+# minizip's interface: these headers stay C, imported by the converted files and by the game
+# (unzip.h, zip.h and ioapi.h).
+unzip.h
+zip.h
+ioapi.h
+zlib.h
+zconf.h

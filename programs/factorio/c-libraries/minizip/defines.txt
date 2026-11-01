@@ -1,0 +1,2 @@
+# minizip's own defines in factorio-in-kpp's build.kpp (minizip.define)
+NOCRYPT
