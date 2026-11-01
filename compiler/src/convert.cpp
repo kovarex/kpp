@@ -2670,6 +2670,8 @@ namespace
     const std::set<std::string>* cInterfaceHeaders = nullptr; // overrides/c-headers.txt: included, imported
     const std::map<std::string, std::set<size_t>>* cInterfaceNames = nullptr; // the functions those headers declare: their parameter counts
     const std::map<std::string, std::string>* cStaticRenames = nullptr; // C: this file's statics another file declares too
+    bool cGivenHeader = false; // C: a header given alone, which holds a header-only library's implementation (stb_truetype.h)
+    const std::set<std::string>* cPrivateNames = nullptr; // C: the library's private-names.txt (stb_truetype's stbrp_*)
     const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
     const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
@@ -4550,7 +4552,10 @@ namespace
             continue;
           }
         }
-        if (in.c && cStaticRenames && t.getKind() == TokenKind::Identifier && !memberAccessAt(i) && !inClassBody(t.offset))
+        // (A private name, private-names.txt's, is a type too: also in a class body, stb_truetype's
+        // `struct stbrp_rect { stbrp_coord x,y; ... }`.)
+        if (in.c && cStaticRenames && t.getKind() == TokenKind::Identifier && !memberAccessAt(i) &&
+            (!inClassBody(t.offset) || (cPrivateNames && cPrivateNames->count(std::string(spelling(i))))))
           if (auto renamed = cStaticRenames->find(std::string(spelling(i))); renamed != cStaticRenames->end())
           {
             replace(t.offset, t.length, renamed->second);
@@ -5808,11 +5813,15 @@ namespace
           counts.add("deduction guides removed");
           continue;
         }
-        if (namespaceScope && (d->flags & DF_Static) && (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && isHeader())
+        if (namespaceScope && (d->flags & DF_Static) && (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && isHeader() &&
+            !cGivenHeader)
         {
           // `static` at namespace scope in a header gives every C++ file that includes it a copy
           // of its own; in Kpp a header and its source are one file and a `static` name stays in
           // it, so the other files would not find it (EMPTY_CARGO_STATION_ID): the `static` goes.
+          // (Not in a C header given alone: it is the implementation's one file, and its statics
+          // are its own, stb_truetype.h's fallback stbrp_init_target and stbrp_pack_rects beside
+          // the game's stb_rect_pack.)
           uint32_t start = declStart(d);
           uint32_t first = d->token;
           while (first > 0 && toks[first - 1].offset >= start)
@@ -8427,6 +8436,24 @@ namespace
             counts.add("C functions passing structs by value the interface does not declare kept Kpp's linkage");
             written = true;
           }
+          // A function whose declaration names one of the library's private names (private-names.txt):
+          // its C view, which the game imports, has the program's type of that name, another one
+          // (stb_truetype's stbtt_PackFontRangesGatherRects takes its fallback's stbrp_rect, the
+          // imported fontstash.h stb_rect_pack's), which C allows only across translation units: it
+          // keeps Kpp's linkage.
+          if (cPrivateNames && !cPrivateNames->empty() && !written)
+          {
+            uint32_t k = d->token;
+            for (uint32_t start = declStart(d); k > 0 && toks[k - 1].offset >= start;)
+              --k;
+            for (; k < toks.size() && !toks[k].is(P::LBrace); ++k)
+              if (toks[k].getKind() == TokenKind::Identifier && cPrivateNames->count(std::string(spelling(k))))
+              {
+                counts.add("C functions taking the library's private types kept Kpp's linkage");
+                written = true;
+                break;
+              }
+          }
           // A C++ overload of an interface function (fontstash.h, which the game compiles as C++, defines
           // a fonsAddFontSdf of three parameters besides the interface's of four): C++'s linkage there,
           // Kpp's here, as C has one function of a name.
@@ -9410,6 +9437,7 @@ struct SourceConfiguration::Impl
   MacroTable cDefines;        // then: cLibraryDefines and the library's defines.txt
   std::map<std::string, std::string> cNameDefines; // the defines.txt ones that are a name (STBIW_ZLIB_COMPRESS=zlib_compress_stb_adapter)
   std::set<std::string> cEmptyDefines;             // the defines.txt ones that are empty (trio's TRIO_PUBLIC=)
+  std::set<std::string> cPrivateNames;             // private-names.txt: names the library keeps to its files (stb_truetype's stbrp_*)
   std::vector<std::filesystem::path> paths;
   std::vector<std::string_view> texts;
   std::vector<std::filesystem::path> roots;
@@ -9699,6 +9727,31 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
       if (equals != std::string::npos && equals + 1 == line.size())
         impl->cEmptyDefines.insert(line.substr(0, equals));
     }
+    // Names the library keeps to its own files that another part of the program declares too, one a
+    // line: stb_truetype.h's fallback rect packer (stbrp_context, stbrp_init_target, ... without
+    // STB_RECT_PACK_VERSION), private to fontstash.cpp's translation unit, beside the game's
+    // stb_rect_pack, which Kpp's C import makes one program's names.
+    if (!overridesDir.empty())
+      if (FILE* f = fopen((overridesDir / "private-names.txt").string().c_str(), "rb"))
+      {
+        std::string names;
+        char buffer[4096];
+        size_t n;
+        while ((n = fread(buffer, 1, sizeof buffer, f)) > 0)
+          names.append(buffer, n);
+        fclose(f);
+        for (size_t pos = 0; pos < names.size();)
+        {
+          size_t end = names.find('\n', pos);
+          if (end == std::string::npos)
+            end = names.size();
+          std::string line = names.substr(pos, end - pos);
+          pos = end + 1;
+          size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
+          if (a != std::string::npos && line[a] != '#')
+            impl->cPrivateNames.insert(line.substr(a, b - a + 1));
+        }
+      }
   }
   impl->paths = paths;
   impl->texts = texts;
@@ -10224,6 +10277,22 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         if (declaredBy[name].size() > 1)
           cStaticRenames[in][name] = stem + "_" + name;
     }
+    // And the library's private names (private-names.txt), in each of its files that uses one:
+    // stb_truetype_stbrp_init_target.
+    if (configuration)
+      for (const ConvertInput& in : inputs)
+      {
+        if (!in.c || !in.parsed || !in.tokens)
+          continue;
+        std::string stem = in.path.stem().string();
+        for (char& ch : stem)
+          if (!isIdentChar(ch))
+            ch = '_';
+        for (const Token& t : *in.tokens)
+          if (t.getKind() == TokenKind::Identifier)
+            if (std::string name(in.text.substr(t.offset, t.length)); configuration->impl->cPrivateNames.count(name))
+              cStaticRenames[&in][name] = stem + "_" + name;
+      }
   }
   std::map<std::string, std::set<size_t>> cInterfaceNames; // the functions the C interface headers declare: their parameter counts
   // (and a header-only library's: the declarations of a C header given alone, which holds its
@@ -10633,6 +10702,9 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     FileConverter fc(in, global, symbols);
     fc.cInterfaceHeaders = &cInterfaceHeaders;
     fc.cInterfaceNames = &cInterfaceNames;
+    fc.cGivenHeader = givenCHeaders.count(size_t(&in - inputs.data())) > 0;
+    if (configuration)
+      fc.cPrivateNames = &configuration->impl->cPrivateNames;
     if (auto renames = cStaticRenames.find(&in); renames != cStaticRenames.end())
       fc.cStaticRenames = &renames->second;
     fc.cConfiguredImports = &cConfiguredImports;

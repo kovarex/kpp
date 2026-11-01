@@ -2091,6 +2091,26 @@ fontstash converted, the unit tests pass 9,501/9,501 with their CRCs checked, an
 match, in debug and in release. The harnesses of the other five stay byte-identical with these
 rules (their globals now have C linkage).
 
+**The swap had a silent miscompile those gates could not see** (found 2026-11-01, when B's
+c4039685 made it a link error). stb_truetype.h, without STB_RECT_PACK_VERSION, defines a fallback
+rect packer of its own: the types stbrp_coord, stbrp_context, stbrp_node and stbrp_rect, and static
+stbrp_init_target and stbrp_pack_rects, private to fontstash.cpp's translation unit. The conversion
+dropped the statics' `static` (a C++ header's statics are copies in every includer), and Kpp lets a
+Kpp declaration take the place of an imported C one of the same name in every file
+(`interop/kpp_declaration_of_an_imported_c_name`, pending, A). So TextureProcessor, which imports
+imgui's stb_rect_pack.h, had stb_truetype's stbrp_context (20 bytes, not 72) and stbrp_node (1 byte,
+not 16) for the GPU compression's staging rects, which only a game with graphics reaches. Now:
+- a C header given alone keeps its statics' `static` (it is the implementation's one file);
+- `c-libraries\fontstash\private-names.txt` names the six, which the conversion renames with their
+  file's name in each file that uses them (stb_truetype_stbrp_context), types inside structs too;
+- a function whose declaration names a private name keeps Kpp's linkage: stb_truetype's
+  stbtt_PackFontRanges* take the fallback's stbrp_rect, and their C view in the imported fontstash.h
+  takes stb_rect_pack's (C allows two types across translation units, Kpp has one program).
+The game's IR now allocates stb_rect_pack's 72-byte stbrp_context and 16-byte nodes and calls its C
+stbrp_init_target and stbrp_pack_rects (kpp-native's header_only.c, the same C object as the C++
+build's). TextureProcessor's own packing stays unchecked against C++: it runs only when the game
+compresses textures on the GPU, with graphics.
+
 **stb_image waits for the compiler.** Its implementation is in stb_image.hpp and
 stb_image_write.h, which stb_image.cpp compiles as C++ with its PNG writer deflating through zlib
 (`zlib_compress_stb_adapter`, hand-written in Kpp: `c-libraries/stb_image/added`). The conversion
