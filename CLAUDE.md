@@ -48,7 +48,9 @@ Decided by kovarex; every thread follows them.
 - One thread per worktree, under C:\kpp-sandbox (see its README.md). C:\kpp stays clean master.
   Never create top-level directories in C:\. Disk is shared: keep scratch\<thread> under ~15 GB
   (reuse fixed directory names, delete a measurement's build trees and IR dumps once its numbers
-  are written down; kovarex found 900+ GB in C:\kpp-sandbox on 2026-11-01). Delete with
+  are written down; kovarex found 900+ GB in C:\kpp-sandbox on 2026-11-01). Builds, clones, game
+  copies, IR dumps and harness outputs go in C:\kpp-sandbox\scratch\<thread>, never in the session
+  scratchpad (%LOCALAPPDATA%\Temp\claude\...): that is for small notes only, and kovarex cleans it. Delete with
   `cmd /c rd /s /q`, never PowerShell `Remove-Item -Recurse`, which can follow a junction into
   C:\Factorio. Rebase onto origin/master; push fast-forward only when
   `run_tests.cmd` and `spec.cmd` pass (and the game still runs, for codegen). A change that can
