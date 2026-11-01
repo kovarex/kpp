@@ -378,7 +378,9 @@ struct LambdaExpr : Expr
   uint8_t defaultCapture = 0; // 0 none, 1 by copy (=), 2 by reference (&)
   Decl* closure = nullptr;    // Synthetic ClassDecl giving this lambda an identity and a name.
 };
-struct BraceInitExpr : Expr { Span<Expr*> args; Span<uint32_t> designators; }; // designators: the member named per argument (`.x = 1`), UINT32_MAX for none; empty when no argument has one
+// designators: the member named per argument (`.x = 1`), UINT32_MAX for none; empty when no argument has one.
+// text: the arguments a call gives a Text parameter (design.md 14), packed by the type checker, the Text built from them.
+struct BraceInitExpr : Expr { Span<Expr*> args; Span<uint32_t> designators; bool text = false; };
 struct ThrowExpr : Expr { Expr* operand; };
 struct FunctionalCastExpr : Expr { Type* type; Span<Expr*> args; bool braced; };
 // operandType and operandDecl are filled by the type checker: the type named, or the variable the

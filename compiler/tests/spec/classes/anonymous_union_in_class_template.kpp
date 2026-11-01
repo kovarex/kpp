@@ -1,7 +1,7 @@
-// spec: an anonymous union in a class template whose members name the template's own nested types and parameters (`union { Long longStr; char shortStr[N]; };` in Text<N>) is laid out with the instantiation's arguments
+// spec: an anonymous union in a class template whose members name the template's own nested types and parameters (`union { Long longStr; char shortStr[N]; };` in Label<N>) is laid out with the instantiation's arguments
 // factorio: ImmutableStringTemplate<N> (`union { SharedString sharedStr; LongStr longStr; char shortStr[short_string_size]; }`), inside PropertyTree and everything holding one
 template<int N>
-struct Text
+struct Label
 {
   struct Long
   {
@@ -17,7 +17,7 @@ struct Text
 };
 int main()
 {
-  Text<16> t;
+  Label<16> t;
   t.shortStr[0] = 'k';
   t.shortStr[1] = 0;
   println("{} {}", sizeof(t) >= 17, t.shortStr[0]);

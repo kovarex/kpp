@@ -87,6 +87,17 @@ inline bool isLvalueExpression(const Expr* e)
 // literal or one whose tokens are not at hand.
 const Ty* stringLiteralArray(const Expr* e, const Ty* t, TypeTable& types);
 
+// How one argument packed into a Text (design.md 14) appends itself: the library's function the
+// Text calls for it (Text.kpp: appendMemberPiece<T>, appendFreePiece<T> or appendCTextPiece) and
+// the type T it is instantiated for (null for C text); or error, why the argument can be no piece
+// (a compile error naming its type). Neither for a type not known yet.
+struct TextPieceKind
+{
+  FunctionDecl* thunk = nullptr;
+  const Ty* type = nullptr;
+  std::string error;
+};
+
 // The type an argument expression presents to overload resolution: an lvalue of a non-reference
 // type is an lvalue reference to it, so that `T&&` parameters take only temporaries and `move(x)`
 // (C++ rules); `t` is the expression's type, or one element of a pack it expands. A string
@@ -112,6 +123,8 @@ inline const Ty* argumentType(const Expr* e, const Ty* t, TypeTable& types)
 // `T&` takes them (`implicit BoxRef(Box& b)` for `{a, b}`).
 inline const Ty* braceListType(const Expr* e, Decl* initializerList, TypeTable& types)
 {
+  if (e && e->kind == NodeKind::BraceInitExpr && static_cast<const BraceInitExpr*>(e)->text)
+    return e->ty; // a call's arguments packed for its Text parameter: a Text (design.md 14)
   if (!e || e->kind != NodeKind::BraceInitExpr || !initializerList)
     return nullptr;
   auto* b = static_cast<const BraceInitExpr*>(e);
@@ -392,7 +405,11 @@ public:
   // the explicit specialisation written for it (`template<> R Button<RecipeID>::f()`), if any.
   Decl* definitionOf(Decl* d, const TemplateArgs& classArgs);
   Decl* initializerListDecl();                   // The library's InitializerList class, or null.
-  Decl* typeInfoDecl();                          // The library's TypeInfo class (what typeid yields), or null.
+  const Ty* textType();                          // The library's Text class (design.md 14), or null.
+  // How an argument of type t (e: the expression, for a string literal) packed into a Text appends
+  // itself (TextPieceKind), looked up from context.
+  TextPieceKind textPieceOf(const Expr* e, const Ty* t, Decl* context);
+  Decl* typeInfoDecl();                         // The library's TypeInfo class (what typeid yields), or null.
   Decl* enumFromStrDecl();                       // The library's enumFromStr<E>(const char*) template (E::fromStr lowers to it), or null.
   Decl* strongOrderingDecl();                    // The library's strong_ordering class (what `a <=> b` yields), or null.
   bool isExplicit(FunctionDecl* f, const TemplateArgs& args); // `explicit`, or `explicit(cond)` with cond true under args.

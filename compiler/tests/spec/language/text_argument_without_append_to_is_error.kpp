@@ -1,0 +1,35 @@
+// spec: an argument for a Text parameter whose type has no appendTo member is an error naming the type (design.md 14: no silent fallback), also where only a conversion would reach one (a class converting to another that has appendTo); a pointer is an error even when it would convert to bool (C text is StringView(p), an address address(p)); and a free appendTo the program writes is an error itself, since the member is the one form (it would never be called)
+// error: text_argument_without_append_to_is_error.kpp:23: error: appendTo is a member: write `void appendTo(String& out) const` in the type, not a free function (design.md 14)
+// error: text_argument_without_append_to_is_error.kpp:29: error: Plain has no appendTo, so it cannot be a piece of a Text (design.md 14)
+// error: text_argument_without_append_to_is_error.kpp:30: error: Feet has no appendTo, so it cannot be a piece of a Text (design.md 14)
+// error: text_argument_without_append_to_is_error.kpp:31: error: Inches has no appendTo, so it cannot be a piece of a Text (design.md 14)
+// error: text_argument_without_append_to_is_error.kpp:32: error: a pointer (int32*) is no piece of a Text: write address(p) for its address (design.md 14)
+// error: text_argument_without_append_to_is_error.kpp:33: error: a pointer (const char*) is no piece of a Text: write StringView(p) for C text or address(p) for its address (design.md 14)
+struct Plain
+{
+  int x = 0;
+};
+struct Meters
+{
+  int m = 0;
+  void appendTo(String& out) const { out += "m"; }
+};
+struct Feet
+{
+  int f = 0;
+  operator Meters() const { return Meters{f / 3}; }
+};
+struct Inches { int i = 0; };
+void appendTo(const Inches& value, String& out) {}
+void show(Text text) {}
+int main()
+{
+  int x = 0;
+  const char* c = "c";
+  show(Plain{});
+  show(Feet{});
+  show(Inches{});
+  show(&x);
+  show(c);
+  return 0;
+}

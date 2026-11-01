@@ -1,0 +1,33 @@
+// spec: an operator whose right operand is a Text packs that operand, so `out << a << " = " << b` appends piece by piece through one operator<<, compiled once (`(1) = red`)
+extern "C" import "stdio.h";
+struct Point
+{
+  int x = 0;
+  void appendTo(String& out) const
+  {
+    out += "(";
+    out += char('0' + x);
+    out += ")";
+  }
+};
+struct Color
+{
+  bool green = false;
+  void appendTo(String& out) const { out += green ? "green" : "red"; }
+};
+struct Out
+{
+  String text;
+};
+Out& operator<<(Out& out, Text text)
+{
+  text.appendTo(out.text);
+  return out;
+}
+int main()
+{
+  Out out;
+  out << Point{1} << " = " << Color{false};
+  printf("%s\n", out.text.c_str());
+  return 0;
+}

@@ -1,0 +1,25 @@
+// spec: a consteval function's call outside another consteval function must be a constant expression (C++ [expr.const] immediate invocation): a run-time argument is an error, also through an implicit consteval converting constructor (a format that is no literal, design.md 14), and so is a call whose evaluation throws
+// error: consteval_call_that_is_no_constant_is_error.kpp:21: error: the call of consteval square is no constant
+// error: consteval_call_that_is_no_constant_is_error.kpp:22: error: the call of consteval Pattern::Pattern is no constant
+// error: consteval_call_that_is_no_constant_is_error.kpp:23: error: the call of consteval Pattern::Pattern is no constant: it throws "too many holes"
+extern "C" import "stdlib.h";
+consteval int square(int value) { return value * value; }
+struct Pattern
+{
+  const char* text = nullptr;
+  consteval implicit Pattern(const char* text) : text(text)
+  {
+    if (text[0] == '!')
+      throw "too many holes";
+  }
+};
+int use(Pattern pattern) { return 0; }
+int main()
+{
+  int n = atoi("3");
+  const char* text = getenv("PATH");
+  int a = square(n);
+  int b = use(text);
+  int c = use("!");
+  return a + b + c;
+}

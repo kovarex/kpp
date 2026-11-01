@@ -2,12 +2,12 @@
 // factorio: build.kpp (design.md 12): projectlib's fixed 64-entry arrays become Vector and String
 extern "C" import "stdlib.h";
 extern "C" import "string.h";
-struct Text
+struct Label
 {
   int* hits;
   int id;
-  Text(int* h, int i) : hits(h), id(i) {}
-  ~Text() { ++*this->hits; }
+  Label(int* h, int i) : hits(h), id(i) {}
+  ~Label() { ++*this->hits; }
 };
 constexpr int grow()
 {
@@ -23,12 +23,12 @@ constexpr int grow()
 constexpr int placed()
 {
   int hits = 0;
-  Text* slots = (Text*)malloc(3 * sizeof(Text));
+  Label* slots = (Label*)malloc(3 * sizeof(Label));
   for (int i = 0; i < 3; ++i)
-    new (slots + i) Text(&hits, i * 10);
+    new (slots + i) Label(&hits, i * 10);
   int ids = slots[1].id + slots[2].id;
   for (int i = 0; i < 3; ++i)
-    slots[i].~Text();
+    slots[i].~Label();
   free(slots);
   return ids + hits;
 }

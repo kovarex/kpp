@@ -1,9 +1,9 @@
-// spec: a brace list argument deduces no template parameter: `Text::totalLength({args...})` in a variadic template picks the InitializerList<StringView> overload
+// spec: a brace list argument deduces no template parameter: `Strings::totalLength({args...})` in a variadic template picks the InitializerList<StringView> overload
 // found in CommonUtil StringUtil (concat and concatInto, every StringUtil::concat call in the game): a wrong deduction from the brace list recursed until the instantiation depth limit; `{args...}` also has to give one list element per pack element
-namespace Text
+namespace Strings
 {
   template<typename... Args>
-  int totalLength(const Args&... args) { return Text::totalLength({args...}); }
+  int totalLength(const Args&... args) { return Strings::totalLength({args...}); }
 
   int totalLength(InitializerList<StringView> parts)
   {
@@ -16,6 +16,6 @@ namespace Text
 int main()
 {
   String middle = "cde";
-  println("{}", Text::totalLength("ab", middle, StringView("f")));
+  println("{}", Strings::totalLength("ab", middle, StringView("f")));
   return 0;
 }

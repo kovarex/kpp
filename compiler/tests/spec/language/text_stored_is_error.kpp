@@ -1,0 +1,26 @@
+// spec: a Text refers to its caller's arguments, valid during the call only (design.md 14), so storing one is an error: a data member, a global, a function's result, an element of a container, a pointer to one, and a lambda capturing one that is stored (here in a Function); so is making one other than by passing arguments to a Text parameter
+// error: text_stored_is_error.kpp:11: error: a Text is valid only during the call that gives it, so it cannot be the type of the data member text (design.md 14)
+// error: text_stored_is_error.kpp:13: error: a Text is valid only during the call that gives it, so it cannot be the type of the variable kept (design.md 14)
+// error: text_stored_is_error.kpp:14: error: a Text is valid only during the call that gives it, so it cannot be the result of again (design.md 14)
+// error: text_stored_is_error.kpp:18: error: a Text is valid only during the call that gives it, so it cannot be an argument of Vector (design.md 14)
+// error: text_stored_is_error.kpp:19: error: a Text is valid only during the call that gives it, so it cannot be pointed to (design.md 14)
+// error: text_stored_is_error.kpp:20: error: a lambda capturing a Text cannot be stored (design.md 14)
+// error: text_stored_is_error.kpp:24: error: a Text is made only by passing arguments to a Text parameter (design.md 14)
+struct Message
+{
+  Text text;
+};
+Text kept;
+Text again(Text text) { return text; }
+Function<void()> later;
+void keep(Text text)
+{
+  Vector<Text> all;
+  Text* pointer = &text;
+  later = [=] { Text inner = text; };
+}
+int main()
+{
+  Text made = {"a"};
+  return 0;
+}

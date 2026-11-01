@@ -1,0 +1,26 @@
+// spec: the arguments packed into a Text are evaluated left to right and live until the call's full expression ends, as a reference parameter's temporaries do: the callee reads them all, then they are destroyed in reverse order (`loud1!loud2 ~2 ~1 end`)
+extern "C" import "stdio.h";
+struct Loud
+{
+  int id = 0;
+  Loud(int id) : id(id) {}
+  ~Loud() { printf("~%d ", id); }
+  void appendTo(String& out) const
+  {
+    out += "loud";
+    out += char('0' + id);
+  }
+};
+Loud make(int id) { return Loud(id); }
+void show(Text text)
+{
+  String s;
+  text.appendTo(s);
+  printf("%s ", s.c_str());
+}
+int main()
+{
+  show(make(1), "!", make(2));
+  printf("end\n");
+  return 0;
+}

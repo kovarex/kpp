@@ -1,0 +1,25 @@
+// spec: a Text parameter works in compile-time evaluation as at run time: the pieces' appendTo run in the interpreter (`9 9`)
+extern "C" import "stdio.h";
+struct Point
+{
+  int x = 0;
+  void appendTo(String& out) const
+  {
+    out += "(";
+    out += char('0' + x);
+    out += ")";
+  }
+};
+constexpr int length(Text text)
+{
+  String s;
+  text.appendTo(s);
+  return int(s.size());
+}
+static_assert(length("ab", Point{1}, "c", Point{2}) == 9);
+constexpr int atCompileTime = length("ab", Point{1}, "c", Point{2});
+int main()
+{
+  printf("%d %d\n", atCompileTime, length("ab", Point{1}, "c", Point{2}));
+  return 0;
+}

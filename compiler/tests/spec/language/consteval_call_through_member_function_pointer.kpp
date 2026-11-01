@@ -1,0 +1,21 @@
+// spec: at compile time a call through a function pointer a data member holds (`s.f(4)`, `pieces[i].append(object, out)`) runs the function it points at, as at run time; also an array of such structs walked by reference (`8 12`)
+// found while building Text (design.md 14), whose appendTo calls each piece's `append` member: the interpreter took `s.f(4)` for a member function call and gave up
+extern "C" import "stdio.h";
+int twice(int v) { return 2 * v; }
+struct Op { int (*f)(int); };
+constexpr int direct() { Op s{&twice}; return s.f(4); }
+constexpr int walked()
+{
+  Op ops[2] = {{&twice}, {&twice}};
+  int sum = 0;
+  for (const Op& op : ops)
+    sum += op.f(1);
+  return sum + direct();
+}
+static_assert(direct() == 8);
+static_assert(walked() == 12);
+int main()
+{
+  printf("%d %d\n", direct(), walked());
+  return 0;
+}

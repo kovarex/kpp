@@ -1,0 +1,29 @@
+// spec: a consteval function's call is evaluated at compile time where it is written (C++ [expr.const] immediate invocation), also an implicit consteval converting constructor's (a pattern checked as it is given); inside another consteval function its arguments may be that function's parameters (`9 3 {}`)
+extern "C" import "stdio.h";
+consteval int square(int value) { return value * value; }
+consteval int squarePlusNothing(int value) { return square(value); }
+consteval int countBraces(const char* text)
+{
+  int n = 0;
+  for (int i = 0; text[i] != 0; ++i)
+    if (text[i] == '{' && text[i + 1] == '}')
+      ++n;
+  return n;
+}
+struct Pattern
+{
+  const char* text = nullptr;
+  int holes = 0;
+  consteval implicit Pattern(const char* text) : text(text), holes(countBraces(text))
+  {
+    if (holes > 3)
+      throw "too many holes";
+  }
+};
+int holesOf(Pattern pattern) { return pattern.holes; }
+const char* textOf(Pattern pattern) { return pattern.text; }
+int main()
+{
+  printf("%d %d %s\n", squarePlusNothing(3), holesOf("{}{}{}"), textOf("{}"));
+  return 0;
+}

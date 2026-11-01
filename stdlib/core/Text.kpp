@@ -1,0 +1,49 @@
+// Kpp standard library: Text, the parameter type that takes a call's arguments as they are
+// (design.md 14). `void log(Text text)` called as `log("Hello ", name, age)`: the compiler packs
+// the arguments from the Text parameter's position on into one Text, each piece with the function
+// that appends it through its type's appendTo, so log is compiled once whatever its callers pass.
+// The arguments live to the end of the caller's full expression, so a Text is valid during the
+// call only: it is a parameter (or a local copy of one) and is never stored, a compile error.
+// The compiler builds it directly (a pointer to the pieces, then their count: keep these two
+// fields first, and TextPiece's two).
+
+// One argument: where it is, and the function that appends it.
+struct TextPiece
+{
+  const void* object = nullptr;
+  void (*append)(const void* object, String& out) = nullptr;
+};
+
+struct Text
+{
+  const TextPiece* pieces = nullptr;
+  ContainerSize count = 0;
+
+  // Every piece appended to out, in order.
+  void appendTo(String& out) const
+  {
+    for (ContainerSize i = 0; i < this->count; ++i)
+      this->pieces[i].append(this->pieces[i].object, out);
+  }
+};
+
+// What appends a piece, the compiler choosing by its type: a class's `void appendTo(String& out)
+// const`; a built-in type's or an enumeration's, which the standard library writes as a free
+// `void appendTo(T value, String& out)` (the program writes no free appendTo); or C text (a string
+// literal or an array of chars, to its first zero).
+template<typename T>
+void appendMemberPiece(const void* object, String& out)
+{
+  static_cast<const T*>(object)->appendTo(out);
+}
+
+template<typename T>
+void appendFreePiece(const void* object, String& out)
+{
+  appendTo(*static_cast<const T*>(object), out);
+}
+
+void appendCTextPiece(const void* object, String& out)
+{
+  out.append(static_cast<const char*>(object));
+}

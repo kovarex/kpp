@@ -1,0 +1,57 @@
+// spec: a parameter of type Text (design.md 14) takes the call's arguments from its position on, in order, each piece appended by its type's appendTo member; a string literal is its text; no arguments make an empty Text; a Text given alone passes through, and among other arguments it is a piece; the called function is compiled once, not once per argument combination (`[Point (3,4) is green][][a(3,4)][2: b(3,4)][(0,0)a(3,4)!][c] 1`)
+extern "C" import "stdio.h";
+struct Point
+{
+  int x = 0;
+  int y = 0;
+  void appendTo(String& out) const
+  {
+    out += "(";
+    out += char('0' + x);
+    out += ",";
+    out += char('0' + y);
+    out += ")";
+  }
+};
+struct Color
+{
+  bool green = false;
+  void appendTo(String& out) const { out += green ? "green" : "red"; }
+};
+void show(Text text)
+{
+  String s;
+  text.appendTo(s);
+  printf("[%s]", s.c_str());
+}
+void forward(Text text) { show(text); }
+void framed(Text text) { show(text, "!"); }
+void tagged(int level, Text text)
+{
+  printf("[%d: ", level);
+  String s;
+  text.appendTo(s);
+  printf("%s]", s.c_str());
+}
+struct Logger
+{
+  int lines = 0;
+  void log(Text text)
+  {
+    ++lines;
+    show(text);
+  }
+};
+int main()
+{
+  Point p{3, 4};
+  show("Point ", p, " is ", Color{true});
+  show();
+  forward("a", p);
+  tagged(2, "b", p);
+  framed(Point{}, "a", p);
+  Logger logger;
+  logger.log("c");
+  printf(" %d\n", logger.lines);
+  return 0;
+}

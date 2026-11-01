@@ -1,17 +1,17 @@
-// spec: a base-class initializer given an object of the derived class (`Name(const Name& n) : Text(n)`, `: Plain(d)`) copies or moves the base part through the base's own copy or move constructor, the derived-to-base conversion of the argument
+// spec: a base-class initializer given an object of the derived class (`Name(const Name& n) : Label(n)`, `: Plain(d)`) copies or moves the base part through the base's own copy or move constructor, the derived-to-base conversion of the argument
 // factorio: Filesystem::Path's copy and move constructors (`Path(Path&& p) : path(std::move(p))`, `explicit Path(const Path& p) : path(p)`), over std::filesystem::path
-struct Text
+struct Label
 {
   String value;
-  Text() {}
-  implicit Text(const char* v) : value(v) {}
+  Label() {}
+  implicit Label(const char* v) : value(v) {}
 };
-struct Name : Text
+struct Name : Label
 {
   Name() {}
-  implicit Name(const char* s) : Text(s) {}
-  Name(const Name& n) : Text(n) {}
-  Name(Name&& n) : Text(::move(n)) {}
+  implicit Name(const char* s) : Label(s) {}
+  Name(const Name& n) : Label(n) {}
+  Name(Name&& n) : Label(::move(n)) {}
 };
 struct Plain
 {

@@ -1,0 +1,44 @@
+// spec: a constructor's Text parameter packs its arguments as a function's does: a variable's `(...)`, a thrown object, `new`, and a member's initializer, also with a single piece (`bad point (2) caught bad (1) new (3) member (4) (5)(6)(7)`)
+extern "C" import "stdio.h";
+struct Point
+{
+  int x = 0;
+  void appendTo(String& out) const
+  {
+    out += "(";
+    out += char('0' + x);
+    out += ")";
+  }
+};
+struct Problem
+{
+  String message;
+  Problem(Text text) { text.appendTo(message); }
+};
+struct Owner
+{
+  Problem problem;
+  Owner() : problem("member ", Point{4}) {}
+};
+int main()
+{
+  Problem problem("bad point ", Point{2});
+  printf("%s ", problem.message.c_str());
+  try
+  {
+    throw Problem("bad ", Point{1});
+  }
+  catch (const Problem& caught)
+  {
+    printf("caught %s ", caught.message.c_str());
+  }
+  Problem* made = new Problem("new ", Point{3});
+  Owner owner;
+  printf("%s %s ", made->message.c_str(), owner.problem.message.c_str());
+  Problem single(Point{5});
+  Problem* alone = new Problem(Point{6});
+  printf("%s%s%s\n", single.message.c_str(), alone->message.c_str(), Problem(Point{7}).message.c_str());
+  delete alone;
+  delete made;
+  return 0;
+}

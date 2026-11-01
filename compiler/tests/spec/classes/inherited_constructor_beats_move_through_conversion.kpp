@@ -1,17 +1,17 @@
 // spec: a constructor inherited with `using Base::Base;` competes with the class's own ones, and an exact match of it beats the class's move constructor reached through a conversion by that same inherited constructor; the base's copy and move constructors are not inherited
 // found in tests/TestFlatMap (MoveOnlyString: `using String::String;` beside a deleted copy and a defaulted move constructor)
-struct Text
+struct Label
 {
   String value;
-  Text() = default;
-  implicit Text(const char* s) : value(s) {}
-  Text(const Text& other) = default;
-  Text(Text&& other) = default;
+  Label() = default;
+  implicit Label(const char* s) : value(s) {}
+  Label(const Label& other) = default;
+  Label(Label&& other) = default;
 };
-class MoveOnly : public Text
+class MoveOnly : public Label
 {
 public:
-  using Text::Text;
+  using Label::Label;
   MoveOnly(const MoveOnly&) = delete;
   MoveOnly(MoveOnly&&) = default;
 };

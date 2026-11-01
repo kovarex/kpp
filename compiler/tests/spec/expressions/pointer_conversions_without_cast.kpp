@@ -4,9 +4,9 @@ struct Base { int a = 1; };
 struct Other { int o = 0; };
 struct Derived : Other, Base { int b = 2; };
 int twice(int x) { return 2 * x; }
-struct Text
+struct Label
 {
-  int same(const Text& other) const { return int(this == &other); }
+  int same(const Label& other) const { return int(this == &other); }
 };
 int main()
 {
@@ -25,7 +25,7 @@ int main()
   int (*f)(int) = twice;
   int* none = nullptr;
   const Derived* cd = &d;
-  Text t;
+  Label t;
   println("{} {} {} {} {} {} {} {}", int(cv == v), int(base->a), int(constBase == base), f(1), int(**constRows), int(first[0]), int(none == nullptr), int(cd == base) + t.same(t) - 1);
   return 0;
 }

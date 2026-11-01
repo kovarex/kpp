@@ -6680,7 +6680,17 @@ struct GlobalScope::Impl
       }
       case NodeKind::FoldExpr: return constFold(static_cast<FoldExpr*>(e), ctx, depth);
       case NodeKind::IndexExpr: return constIndex(static_cast<IndexExpr*>(e), ctx, depth);
-      case NodeKind::BraceInitExpr: return constBraceList(static_cast<BraceInitExpr*>(e), ctx, depth); // its type decides later
+      case NodeKind::BraceInitExpr:
+        if (static_cast<BraceInitExpr*>(e)->text)
+        {
+          // A call's arguments packed for its Text parameter (design.md 14).
+          std::vector<ConstValue> values;
+          std::vector<std::optional<ConstPlace>> places;
+          if (!constArguments(static_cast<BraceInitExpr*>(e)->args, ctx, depth, values, &places))
+            return std::nullopt;
+          return constTextOf(values, &places, 0, depth);
+        }
+        return constBraceList(static_cast<BraceInitExpr*>(e), ctx, depth); // its type decides later
       default:
         return std::nullopt;
     }
@@ -7228,7 +7238,17 @@ struct GlobalScope::Impl
       constCallPlaceRan = true;
     }
     if (c->callee && c->callee->kind == NodeKind::MemberExpr)
+    {
+      // `piece.append(piece.object, out)`: through the function pointer a data member holds.
+      auto* m = static_cast<MemberExpr*>(c->callee);
+      if (m->resolved && m->resolved->kind == NodeKind::VariableDecl && !(m->resolved->flags & DF_Typedef) && m->ty &&
+          types.unqualified(types.stripRef(m->ty))->kind == TyKind::Pointer)
+      {
+        std::optional<ConstValue> fn = constValue(m, ctx, depth + 1);
+        return fn ? constCallThrough(*fn, c, ctx, depth) : std::nullopt;
+      }
       return constMemberCall(c, ctx, depth);
+    }
     if (!c->callee)
       return std::nullopt;
     Expr* called = c->callee;
@@ -7650,7 +7670,8 @@ struct GlobalScope::Impl
 
   // A free function named symbol (a free operator) visible from the scope and the arguments'
   // classes' namespaces, the arguments choosing among them (GlobalScope::findFree's search).
-  FunctionDecl* constFreeFunction(uint32_t symbol, const std::vector<const Ty*>& argTypes, Scope* scope)
+  // templates: function templates too, their arguments deduced.
+  FunctionDecl* constFreeFunction(uint32_t symbol, const std::vector<const Ty*>& argTypes, Scope* scope, bool templates = false)
   {
     std::vector<Scope*> places;
     for (const Ty* a : argTypes)
@@ -7669,10 +7690,10 @@ struct GlobalScope::Impl
         if (look.overloads)
         {
           for (const Entry& e : *look.overloads)
-            if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty())
+            if (e.decl && e.decl->kind == NodeKind::FunctionDecl && (templates || e.decl->templateParams.empty()))
               candidates.push_back(static_cast<FunctionDecl*>(e.decl));
         }
-        else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && look.decl->templateParams.empty())
+        else if (look.decl && look.decl->kind == NodeKind::FunctionDecl && (templates || look.decl->templateParams.empty()))
           candidates.push_back(static_cast<FunctionDecl*>(look.decl));
         bool ambiguous = false;
         if (FunctionDecl* f = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, nullptr, nullptr, ambiguous); f && !ambiguous)
@@ -10565,6 +10586,66 @@ struct GlobalScope::Impl
     return b.owns || b.symbol == constThisSymbol || p.env == &constHeap();
   }
 
+  // The Text the arguments from `from` on make for a Text parameter (design.md 14), as code
+  // generation builds it: each piece the address of its argument (a temporary of the full
+  // expression for one that has no place) and the library's function appending it, the Text a
+  // pointer to the pieces and their count. Nullopt for an argument that is no piece.
+  std::optional<ConstValue> constTextOf(const std::vector<ConstValue>& values, const std::vector<std::optional<ConstPlace>>* places, size_t from, int depth)
+  {
+    Decl* pieceDecl = libraryDecl("TextPiece", NodeKind::ClassDecl);
+    const Ty* textTy = textType();
+    const Ty* countTy = textTy ? constPartType(textTy, {1}, 1, depth + 1) : nullptr;
+    if (!pieceDecl || !countTy)
+      return std::nullopt;
+    const Ty* pieceTy = selfType(pieceDecl);
+    std::vector<ConstValue> pieces;
+    for (size_t i = from; i < values.size(); ++i)
+    {
+      const ConstValue& v = values[i];
+      std::optional<ConstPlace> place = places && i < places->size() ? (*places)[i] : std::nullopt;
+      // (An array variable's value reads as the pointer it decays to: its place has its type.)
+      const Ty* type = !v.isObject() && place && place->type && !place->type->isReference() ? place->type : v.type;
+      if (const Ty* array = type ? types.unqualified(types.stripRef(type)) : nullptr;
+          array && array->kind == TyKind::Array && !array->count && v.isObject() && v.parts)
+        type = types.array(array->inner, uint32_t(v.parts->size())); // a string literal's chars, `const char[]` as it reads
+      TextPieceKind kind = textPieceOf(nullptr, type, &root);
+      if (!kind.thunk)
+      {
+        if (constWhy().empty())
+          constWhy() = kind.error.empty() ? "a piece of a Text of no known type" : kind.error;
+        return std::nullopt;
+      }
+      // Its own object, or a temporary of the full expression (a value, or a string literal, whose
+      // place does not know its length).
+      if (!place || !constAddressable(*place) || !place->type ||
+          types.unqualified(types.stripRef(place->type)) != types.unqualified(types.stripRef(type)))
+        place = constMaterialize(v, type);
+      if (!place)
+        return std::nullopt;
+      ConstTarget at = constStorageTarget(*place);
+      const Ty* objectTy = types.unqualified(types.stripRef(type));
+      if (objectTy->kind == TyKind::Array)
+      {
+        at.path.push_back(0); // C text: its first char
+        objectTy = objectTy->inner;
+      }
+      ConstTarget fn;
+      fn.decl = kind.thunk;
+      if (kind.type && !kind.thunk->templateParams.empty())
+        fn.args.push_back({kind.thunk->templateParams[0], kind.type});
+      const Ty* fnTy = declaredTypeOf(kind.thunk, nullptr, depth + 1);
+      pieces.push_back(ConstValue::object(pieceTy, {ConstValue::address(types.pointer(types.qualified(objectTy, true, false)), std::move(at)),
+                                                    ConstValue::address(types.pointer(fnTy), std::move(fn))}));
+    }
+    ConstValue array;
+    array.kind = ConstValue::Kind::Pointer;
+    array.type = types.pointer(types.qualified(pieceTy, true, false));
+    array.i = 0;
+    int64_t count = int64_t(pieces.size());
+    array.parts = std::make_shared<const std::vector<ConstValue>>(std::move(pieces));
+    return ConstValue::object(textTy, {array, ConstValue::integer(count, countTy)});
+  }
+
   // The temporaries of the full expression being evaluated (constTemps), or null outside any.
   static std::vector<ConstBinding>*& constTempList()
   {
@@ -11615,6 +11696,26 @@ struct GlobalScope::Impl
                                      const std::vector<uint8_t>* categories = nullptr, const ConstPlace* selfPlace = nullptr,
                                      std::optional<ConstPlace>* returnPlace = nullptr)
   {
+    // A call of a function taking a Text the walk left as written (a template's own nodes): its
+    // arguments from the Text parameter's position on packed here (design.md 14).
+    if (size_t k = f->params.size() - 1; namesTextLast(f) && args.size() >= k && !(args.size() == k + 1 && isText(args[k].type)))
+    {
+      std::optional<ConstValue> text = constTextOf(args, places, k, depth);
+      if (!text)
+        return std::nullopt;
+      std::vector<ConstValue> packed(args.begin(), args.begin() + k);
+      packed.push_back(*text);
+      std::vector<std::optional<ConstPlace>> packedPlaces;
+      std::vector<uint8_t> packedCategories;
+      for (size_t i = 0; i < k; ++i)
+      {
+        packedPlaces.push_back(places && i < places->size() ? (*places)[i] : std::nullopt);
+        packedCategories.push_back(categories && i < categories->size() ? (*categories)[i] : 0);
+      }
+      packedPlaces.push_back(std::nullopt);
+      packedCategories.push_back(0);
+      return constRun(f, packed, fctx, depth, self, &packedPlaces, &packedCategories, selfPlace, returnPlace);
+    }
     // A virtual function runs as the object's own class overrides it.
     if (self && *self)
       if (FunctionDecl* g = constOverrider(f, (*self)->type, 0); g != f && constDefinition(g))
@@ -13064,6 +13165,171 @@ struct GlobalScope::Impl
   bool isInitializerList(const Ty* t)
   {
     return t && t->kind == TyKind::Class && t->decl && t->decl == initializerListDecl();
+  }
+  // The library's Text (design.md 14): a parameter of the type takes a call's remaining arguments.
+  uint32_t textSymbol_ = UINT32_MAX;
+  Decl* textDecl()
+  {
+    if (textSymbol_ == UINT32_MAX)
+      textSymbol_ = symbols.intern("Text");
+    Lookup l;
+    if (lookupInScope(&root, textSymbol_, l, 0) && l.scope && l.scope->owner && l.scope->owner->kind == NodeKind::ClassDecl)
+      return l.scope->owner;
+    return nullptr;
+  }
+  bool isText(const Ty* t)
+  {
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    return t && t->kind == TyKind::Class && t->decl && t->decl == textDecl();
+  }
+  // The closures of lambdas that capture a Text, or such a closure (Walker's lambda walk): valid,
+  // as a Text is, during the call that made them only.
+  std::mutex textClosuresMutex;
+  std::unordered_set<const Decl*> textClosures;
+  void markTextClosure(const Decl* closure)
+  {
+    std::lock_guard lock(textClosuresMutex);
+    textClosures.insert(closure);
+  }
+  bool isTextClosure(const Ty* t)
+  {
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    if (!t || t->kind != TyKind::Lambda || !t->decl)
+      return false;
+    std::lock_guard lock(textClosuresMutex);
+    return textClosures.count(t->decl) != 0;
+  }
+  // Whether t is, refers to or holds a Text or a closure capturing one (design.md 14): a pointer to
+  // one, an array of them, a class template instance with one among its arguments.
+  bool holdsText(const Ty* t, int depth = 0)
+  {
+    if (!t || depth > 16 || !textDecl())
+      return false;
+    t = types.unqualified(types.stripRef(t));
+    switch (t->kind)
+    {
+      case TyKind::Pointer: case TyKind::Array: return holdsText(t->inner, depth + 1);
+      case TyKind::Lambda: return isTextClosure(t);
+      case TyKind::Class:
+        if (isText(t))
+          return true;
+        for (const Ty* a : t->args)
+          if (holdsText(a, depth + 1))
+            return true;
+        return false;
+      default: return false;
+    }
+  }
+  // Whether f's last parameter is written as Text (`Text text`, `const Text& text`): the cheap test
+  // before its type is looked at.
+  bool namesTextLast(FunctionDecl* f)
+  {
+    if (f->params.empty())
+      return false;
+    Type* t = static_cast<ParamDecl*>(f->params[f->params.size() - 1])->type;
+    while (t && (t->kind == NodeKind::LRefType || t->kind == NodeKind::ConstType))
+      t = t->kind == NodeKind::LRefType ? static_cast<LRefType*>(t)->referenced : static_cast<ConstType*>(t)->inner;
+    if (!t || t->kind != NodeKind::NamedType || static_cast<NamedType*>(t)->name.empty())
+      return false;
+    if (textSymbol_ == UINT32_MAX)
+      textSymbol_ = symbols.intern("Text");
+    return static_cast<NamedType*>(t)->name.last().symbol == textSymbol_;
+  }
+  // The position of a function type's Text parameter, its last; SIZE_MAX when it has none.
+  size_t textParameterOf(const Ty* ft)
+  {
+    if (!ft || ft->kind != TyKind::Function || ft->args.empty() || ft->variadic || !isText(ft->args[ft->args.size() - 1]))
+      return SIZE_MAX;
+    return ft->args.size() - 1;
+  }
+  // A function or class the library declares at the top level (Text.kpp's), or null.
+  Decl* libraryDecl(std::string_view name, NodeKind kind)
+  {
+    Lookup l;
+    if (!lookupInScope(&root, symbols.intern(name), l, 0))
+      return nullptr;
+    if (kind == NodeKind::ClassDecl)
+      return l.scope && l.scope->owner && l.scope->owner->kind == NodeKind::ClassDecl ? l.scope->owner : nullptr;
+    return l.decl && l.decl->kind == kind ? l.decl : nullptr;
+  }
+  const Ty* textType()
+  {
+    Decl* d = textDecl();
+    return d ? selfType(d) : nullptr;
+  }
+
+  // How one argument packed into a Text (design.md 14) appends itself, by its type: the library's
+  // function the Text calls for it (Text.kpp) and the type it is instantiated for (none for C
+  // text), or why the argument can be no piece, an error naming the type. An argument whose type
+  // is not known yet (a template's own walk) has neither: its instance decides.
+  TextPieceKind textPieceOf(const Expr* e, const Ty* given, Scope* from)
+  {
+    TextPieceKind out;
+    const Ty* t = given ? types.unqualified(types.stripRef(given)) : nullptr;
+    if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+      return out;
+    auto thunk = [&](std::string_view name)
+    {
+      out.thunk = static_cast<FunctionDecl*>(libraryDecl(name, NodeKind::FunctionDecl));
+      if (!out.thunk)
+        out.error = "the standard library has no " + std::string(name) + " for a piece of a Text (Text.kpp, design.md 14)";
+      return out;
+    };
+    std::string name = types.toString(t, &symbols);
+    auto isNarrowChar = [&](const Ty* c) { return c && types.unqualified(c)->kind == TyKind::Char && types.unqualified(c)->bits == 8; };
+    // A string literal or an array of chars: C's text, to its first zero (as C++'s `out << text`).
+    if ((e && stringLiteralArray(e, given, types)) || (t->kind == TyKind::Array && isNarrowChar(t->inner)))
+      return thunk("appendCTextPiece");
+    if (t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr)
+    {
+      out.error = t->kind == TyKind::Pointer && isNarrowChar(t->inner)
+                    ? "a pointer (" + name + ") is no piece of a Text: write StringView(p) for C text or address(p) for its address (design.md 14)"
+                    : "a pointer (" + name + ") is no piece of a Text: write address(p) for its address (design.md 14)";
+      return out;
+    }
+    if (t->kind == TyKind::Array || t->kind == TyKind::Function || t->kind == TyKind::MemberPointer || t->kind == TyKind::Void)
+    {
+      out.error = name + " is no piece of a Text (design.md 14)";
+      return out;
+    }
+    const Ty* string = nullptr;
+    if (Decl* d = libraryDecl("String", NodeKind::ClassDecl))
+      string = selfType(d);
+    uint32_t appendTo = symbols.intern("appendTo");
+    if (string && t->kind == TyKind::Class)
+    {
+      // Its own `void appendTo(String& out) const`, or a base's.
+      Subst subst;
+      std::vector<FunctionDecl*> members = constMembersNamed(t, appendTo, subst, 0);
+      std::vector<FunctionDecl*> constOnes;
+      for (FunctionDecl* f : members)
+        if ((f->flags & DF_Const) && !(f->flags & DF_Static))
+          constOnes.push_back(f);
+      bool ambiguous = false;
+      if (!constOnes.empty() && chooseAmong(constOnes, {types.lref(string)}, subst.empty() ? nullptr : &subst, types.lref(types.qualified(t, true, false)),
+                                            ambiguous) && !ambiguous)
+      {
+        out.type = t;
+        return thunk("appendMemberPiece");
+      }
+    }
+    if (string && t->kind != TyKind::Class)
+    {
+      // A built-in type's or an enumeration's appendTo, which the standard library writes as a
+      // free `void appendTo(T value, String& out)` (design.md 14: the member of every type, the
+      // program writing none of its own), taking the type itself: no promotion or conversion
+      // reaches one (an unscoped enumeration prints as itself, never as the integer it converts to).
+      FunctionDecl* f = constFreeFunction(appendTo, {types.lref(types.qualified(t, true, false)), types.lref(string)}, &root, true);
+      const Ty* ft = f && f->file && f->file->isLibrary ? declaredTypeOf(f, nullptr, 0) : nullptr;
+      const Ty* takes = ft && ft->kind == TyKind::Function && ft->args.size() == 2 ? types.unqualified(types.stripRef(ft->args[0])) : nullptr;
+      if (takes && (!f->templateParams.empty() || takes == t))
+      {
+        out.type = t;
+        return thunk("appendFreePiece");
+      }
+    }
+    out.error = name + " has no appendTo, so it cannot be a piece of a Text (design.md 14)";
+    return out;
   }
   uint32_t enumFromStrSymbol_ = UINT32_MAX;
   Decl* enumFromStrDecl()
@@ -16881,7 +17147,15 @@ struct GlobalScope::Impl
         else if (!param->defaultValue)
           ++required;
       }
-      if (argTypes.size() < required || (!variadic && argTypes.size() > total))
+      // A Text parameter (design.md 14), the last, takes the remaining arguments, however many.
+      size_t textAt = SIZE_MAX;
+      if (!variadic && total > 0 && argTypes.size() + 1 >= required && namesTextLast(f) && !static_cast<ParamDecl*>(f->params[total - 1])->defaultValue)
+      {
+        textAt = textParameterOf(declaredTypeOf(f, classSubst, 0));
+        if (textAt != SIZE_MAX)
+          --required;
+      }
+      if (argTypes.size() < required || (!variadic && textAt == SIZE_MAX && argTypes.size() > total))
         continue;
       Candidate c{f, {}, 0, {}};
       bool constMethod = (f->flags & DF_Const) != 0;
@@ -16914,6 +17188,19 @@ struct GlobalScope::Impl
       for (size_t i = 0; i < argTypes.size() && ok; ++i)
       {
         const Ty* pt = ft && ft->kind == TyKind::Function && i < ft->args.size() ? ft->args[i] : nullptr;
+        if (i >= textAt && !(argTypes.size() == textAt + 1 && isText(argTypes[i])))
+        {
+          // A piece of the Text: packed as C's `...` takes an argument, worse than any standard or
+          // user-defined conversion, so an overload taking the arguments as they are wins. Whether
+          // its type has appendTo is checked once the call is chosen (an error, never another
+          // overload). A brace list has no type to be a piece of.
+          if (argTypes[i] && argTypes[i]->isBraceList())
+            ok = false;
+          c.ranks.push_back(6);
+          c.refs.push_back(false);
+          c.params.push_back(nullptr);
+          continue;
+        }
         if (!pt)
         {
           // The C ellipsis (`f(...)`, `printf(const char*, ...)`): an ellipsis conversion, worse than
@@ -18246,6 +18533,14 @@ struct GlobalScope::Impl
     {
       if (instantiationDepth > 16 || !argsConcrete(types, classTy) || !classTy->decl || !classTy->decl->ownScope)
         return;
+      for (const Ty* a : classTy->args)
+        if (impl.holdsText(a) && current && classTy->decl->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(classTy->decl)->name.empty())
+        {
+          // `Vector<Text>`: its instance would keep the Text past the call (design.md 14).
+          reportTextError(current->token, impl.isTextClosure(a) ? "a lambda capturing a Text cannot be stored (design.md 14)"
+                                                                : textStored("an argument of " + std::string(symbols.name(static_cast<ClassDecl*>(classTy->decl)->name.last().symbol))));
+          break;
+        }
       if (!classTy->decl->isTemplate || classTy->decl->templateParams.empty())
         return;
       bool producer;
@@ -20133,7 +20428,342 @@ struct GlobalScope::Impl
                                              "write `T(x)` or `(T)((x)...)` to say which");
     }
 
+    // Whether this walk owns the nodes it types, so that it may rewrite them: an instance's copy, a
+    // function that is no template, a global's initializer. A template's own nodes are shared
+    // with the walks copying them for its instances (and with probes), which rewrite their own.
+    bool ownsNodes() const
+    {
+      if (probing)
+        return false;
+      if (activeSubst)
+        return true;
+      for (Decl* d = bodyOf; d; d = d->parent)
+        if (!d->templateParams.empty())
+          return false;
+      for (Scope* s = scope; s; s = s->parent)
+        if (s->owner && !s->owner->templateParams.empty())
+          return false;
+      return true;
+    }
+
+    // A lambda whose body names a Text (or a closure capturing one) of the function around it: its
+    // closure holds the Text, so it is valid during the call only (holdsText).
+    void markTextCapture(LambdaExpr* l, size_t mark)
+    {
+      if (!impl.textDecl() || !l->closure)
+        return;
+      auto outsideHoldsText = [&](Decl* d)
+      {
+        for (size_t i = 0; i < mark && i < locals.items.size(); ++i)
+          if (locals.items[i].decl == d)
+          {
+            const Ty* t = locals.items[i].type ? locals.items[i].type : impl.declaredTypeOf(d, activeSubst, 0);
+            return impl.holdsText(t);
+          }
+        return false;
+      };
+      bool holds = false;
+      for (const LambdaCapture& cap : l->captures)
+        if (!cap.decl && cap.symbol != UINT32_MAX)
+          for (size_t i = std::min(mark, locals.items.size()); i-- > 0;)
+            if (locals.items[i].symbol == cap.symbol)
+            {
+              holds = holds || outsideHoldsText(locals.items[i].decl);
+              break;
+            }
+      if (!holds && l->body)
+        forEachNode(l->body, [&](Node* n)
+        {
+          if (!holds && n->kind == NodeKind::NameExpr)
+            if (Decl* d = static_cast<NameExpr*>(n)->resolved; d && (d->kind == NodeKind::ParamDecl || d->kind == NodeKind::VariableDecl))
+              holds = outsideHoldsText(d);
+        });
+      if (holds)
+        impl.markTextClosure(l->closure);
+    }
+
+    // A Text's lifetime rule broken (design.md 14): reported where the program asks for it, the
+    // request's site for an instance of the library's code (`later = [=] { ... }` making a Function
+    // that allocates the closure).
+    void reportTextError(uint32_t token, const std::string& message)
+    {
+      if (probing || !file)
+        return;
+      if (!file->isLibrary)
+        impl.reportCheckerError(file, token, message);
+      else if (activeSubst && requestFile && !requestFile->isLibrary)
+        impl.reportCheckerError(requestFile, requestToken, message);
+      // (else an instance the library asked for, which the program's own request reported)
+    }
+    // A closure capturing a Text given where another type is wanted (a Function, a class's
+    // parameter): it would be kept as that type, past the call (design.md 14). As its own type it
+    // goes on (a template's parameter, a local), the rule following it.
+    void checkClosureTo(const Expr* value, const Ty* to, uint32_t token)
+    {
+      if (!value || !value->ty || !to || !impl.isTextClosure(value->ty) || inGenericTemplate())
+        return;
+      const Ty* target = types.unqualified(types.stripRef(to));
+      if (target->kind == TyKind::Param || types.isDependent(target) || target == types.unqualified(types.stripRef(value->ty)))
+        return;
+      reportTextError(token, "a lambda capturing a Text cannot be stored (design.md 14)");
+    }
+    static std::string textStored(const std::string& as)
+    {
+      return "a Text is valid only during the call that gives it, so it cannot be " + as + " (design.md 14)";
+    }
+    // The Text parameters of f: the last one, without a default, not from C; f's result holds none.
+    void checkTextSignature(FunctionDecl* f)
+    {
+      if (probing || !impl.textDecl() || activeSubst)
+        return; // (an instance's parameters are its template's, `const T& a` a Text where the template has none)
+      const Ty* ft = impl.declaredTypeOf(f, nullptr, 0);
+      if (!ft || ft->kind != TyKind::Function)
+        return;
+      bool generic = inGenericTemplate();
+      // (an operator's or a conversion's last part names no symbol)
+      std::string fname = !f->name.empty() && f->name.last().symbol != UINT32_MAX ? std::string(symbols.name(f->name.last().symbol)) : std::string();
+      for (size_t i = 0; i < f->params.size() && i < ft->args.size(); ++i)
+      {
+        auto* p = static_cast<ParamDecl*>(f->params[i]);
+        std::string name = p->name != UINT32_MAX ? std::string(symbols.name(p->name)) : std::to_string(i + 1);
+        if (impl.isText(ft->args[i]))
+        {
+          if (i + 1 != f->params.size())
+            reportTextError(p->token, "the Text parameter " + name + " takes the remaining arguments, so it must be the last parameter (design.md 14)");
+          if (p->defaultValue)
+            reportTextError(p->token, "the Text parameter " + name +
+                                        " takes the remaining arguments, so it has no default argument; no arguments make an empty Text (design.md 14)");
+          if (f->flags & DF_ExternC)
+            reportTextError(p->token, "a Text parameter cannot be passed from C: " + fname + " is extern \"C\" (design.md 14)");
+        }
+        else if (!generic && impl.holdsText(ft->args[i]) && types.unqualified(types.stripRef(ft->args[i]))->kind == TyKind::Pointer)
+          reportTextError(p->token, textStored("pointed to"));
+      }
+      // (A template's instance passes one on, `move(closure)`, as the function it is written in does.)
+      if (!generic && ft->inner && impl.holdsText(ft->inner))
+        reportTextError(f->token, textStored("the result of " + (fname.empty() ? std::string("an operator") : fname)));
+      // `void appendTo(const Meters& m, String& out)` outside a class: a free appendTo the
+      // program writes would never be called (design.md 14: the member is the one form).
+      if (file && !file->isLibrary && f->name.parts.size() == 1 && fname == "appendTo" &&
+          !impl.owningClassOf(f) && !(f->flags & DF_Friend))
+        reportTextError(f->token, "appendTo is a member: write `void appendTo(String& out) const` in the type, not a free function (design.md 14)");
+    }
+    // A variable holding a Text: a parameter's local copy only, never a data member or a global.
+    void checkTextVariable(VariableDecl* v, const Ty* declared)
+    {
+      if (probing || !declared || !impl.holdsText(declared) || inGenericTemplate() || v->name.empty())
+        return;
+      std::string name(symbols.name(v->name.last().symbol));
+      bool member = v->parent && v->parent->kind == NodeKind::ClassDecl && !(v->flags & DF_Static);
+      bool local = bodyOf && !member && !(v->flags & (DF_Static | DF_Extern | DF_ThreadLocal));
+      if (member)
+        reportTextError(v->token, textStored("the type of the data member " + name));
+      else if (!local)
+        reportTextError(v->token, textStored("the type of the variable " + name));
+      else if (types.unqualified(types.stripRef(declared))->kind == TyKind::Pointer)
+        reportTextError(v->token, textStored("pointed to"));
+      else if (const Ty* c = types.unqualified(types.stripRef(declared)); c->kind == TyKind::Class && !impl.isText(c) && c->decl &&
+                                                                         c->decl->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(c->decl)->name.empty())
+        reportTextError(v->token, textStored("an argument of " + std::string(symbols.name(static_cast<ClassDecl*>(c->decl)->name.last().symbol))));
+      else if (impl.isText(declared) && (!v->init || !v->init->ty || !impl.isText(v->init->ty) ||
+                                         (v->init->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(v->init)->text)))
+        reportTextError(v->token, "a Text is made only by passing arguments to a Text parameter (design.md 14)");
+    }
+
+    // A call of f whose last parameter is a Text (design.md 14): the arguments from its position on
+    // become one brace list typed Text (BraceInitExpr::text), which code generation and the
+    // interpreter build the Text from; each must have an appendTo, an error naming its type
+    // otherwise. A call given one Text there passes it on as it is.
+    void packText(Span<Expr*>& args, FunctionDecl* f, uint32_t token)
+    {
+      if (f && impl.namesTextLast(f))
+        packTextAt(args, impl.textParameterOf(impl.declaredTypeOf(f, nullptr, 0)), token);
+    }
+    // The same for a call through a lambda or a function pointer whose type takes a Text.
+    void packTextThrough(Span<Expr*>& args, const Ty* callee, uint32_t token)
+    {
+      const Ty* t = callee ? types.unqualified(types.stripRef(callee)) : nullptr;
+      if (t && t->kind == TyKind::Pointer && t->inner)
+        t = types.unqualified(t->inner);
+      if (t && (t->kind == TyKind::Lambda || t->kind == TyKind::Function) && !t->args.empty() && !t->variadic && impl.isText(t->args[t->args.size() - 1]))
+        packTextAt(args, t->args.size() - 1, token);
+    }
+    void packTextAt(Span<Expr*>& args, size_t k, uint32_t token)
+    {
+      if (k == SIZE_MAX || args.size() < k)
+        return;
+      if (args.size() == k + 1 && args[k] &&
+          ((args[k]->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(args[k])->text) || (args[k]->ty && impl.isText(args[k]->ty))))
+        return;
+      bool known = true;
+      auto check = [&](Expr* a, const Ty* t)
+      {
+        TextPieceKind piece = impl.textPieceOf(a, t, scope);
+        if (!piece.error.empty())
+        {
+          if (!probing)
+            impl.reportCheckerError(file, a->token, piece.error);
+          known = false;
+        }
+        else if (!piece.thunk)
+          known = false;
+      };
+      for (size_t i = k; i < args.size(); ++i)
+      {
+        Expr* a = args[i];
+        if (!a || isEmptyExpansion(a))
+          continue;
+        if (a->kind == NodeKind::BraceInitExpr)
+        {
+          if (!probing)
+            impl.reportCheckerError(file, a->token, "a brace list is no piece of a Text: it has no type (design.md 14)");
+          known = false;
+          continue;
+        }
+        if (a->ty && a->ty->kind == TyKind::Pack)
+          for (const Ty* e : a->ty->args)
+            check(a, e);
+        else
+          check(a, a->ty);
+      }
+      const Ty* text = impl.textType();
+      if (!known || !text || !ownsNodes())
+        return;
+      Arena& arena = impl.instanceArena();
+      auto* packed = arena.make<BraceInitExpr>();
+      packed->kind = NodeKind::BraceInitExpr;
+      packed->token = k < args.size() ? args[k]->token : token;
+      packed->args = Span<Expr*>{arena.array(args.data + k, args.size() - k), uint32_t(args.size() - k)};
+      packed->text = true;
+      record(packed, text);
+      std::vector<Expr*> all(args.begin(), args.begin() + k);
+      all.push_back(packed);
+      args = Span<Expr*>{arena.array(all.data(), all.size()), uint32_t(all.size())};
+    }
+
+    // A call of a consteval function, or of a consteval constructor converting an argument (C++20's
+    // immediate invocation): a constant where it is written, evaluated here; an error naming the
+    // function otherwise. Inside a consteval function's own body it is evaluated with the call of
+    // that function (its parameters are constants there).
+    FunctionDecl* initializersOf = nullptr; // the constructor whose member initializers are walked
+    bool insideConsteval() const
+    {
+      if (initializersOf && (initializersOf->flags & DF_Consteval))
+        return true;
+      for (Decl* d = bodyOf; d; d = d->parent)
+        if (d->kind == NodeKind::FunctionDecl && (d->flags & DF_Consteval))
+          return true;
+      return false;
+    }
+    void checkImmediate(FunctionDecl* f, uint32_t token, const std::function<std::optional<ConstValue>()>& evaluate)
+    {
+      if (!f || !(f->flags & DF_Consteval) || probing || inGenericTemplate() || insideConsteval() || f->name.empty() || !file)
+        return;
+      bool outerExact = impl.exactLayoutOnly, outerNeeded = impl.layoutNeeded;
+      impl.exactLayoutOnly = true;
+      impl.layoutNeeded = false;
+      impl.constWhy().clear();
+      std::optional<ConstValue> v = evaluate();
+      std::string why = v ? std::string() : impl.constWhy();
+      bool needed = impl.layoutNeeded;
+      impl.exactLayoutOnly = outerExact;
+      impl.layoutNeeded = outerNeeded;
+      if (v || needed)
+        return; // (a class layout it needs is code generation's to know: not decided here)
+      std::string name = f->name.last().symbol != UINT32_MAX ? std::string(symbols.name(f->name.last().symbol)) : std::string("operator");
+      if (f->flags & DF_Constructor)
+        name += "::" + name;
+      reportTextError(token, "the call of consteval " + name + " is no constant" + (why.empty() ? std::string() : ": " + why));
+    }
+    // An argument converted to its class parameter by a consteval constructor (`format("{}", x)`
+    // with format's `FormatString(const char*)`, design.md 14): that conversion is an immediate
+    // invocation.
+    void checkImmediateConversion(Expr* arg, const Ty* param)
+    {
+      const Ty* cls = param ? types.unqualified(types.stripRef(param)) : nullptr;
+      if (!arg || !arg->ty || !cls || cls->kind != TyKind::Class || types.isDependent(cls) || !cls->isKnown() || impl.isText(cls))
+        return;
+      if (types.unqualified(types.stripRef(arg->ty)) == cls)
+        return;
+      Scope* s = impl.classScopeOf(cls);
+      if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+        return;
+      std::vector<FunctionDecl*> ctors;
+      bool immediate = false;
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Delete))
+        {
+          ctors.push_back(static_cast<FunctionDecl*>(m));
+          immediate = immediate || (m->flags & DF_Consteval);
+        }
+      if (!immediate)
+        return;
+      Subst subst = impl.substFor(cls);
+      bool ambiguous = false;
+      FunctionDecl* ctor = impl.chooseAmong(ctors, {argumentType(arg, arg->ty, types)}, subst.empty() ? nullptr : &subst, nullptr, ambiguous);
+      if (!ctor || ambiguous || !(ctor->flags & DF_Consteval))
+        return;
+      checkImmediate(ctor, arg->token, [&]() -> std::optional<ConstValue>
+      {
+        std::optional<ConstValue> value = impl.constValue(arg, ctx(), 0);
+        if (!value)
+          return std::nullopt;
+        return impl.constRunConstructor(ctor, cls, {*value}, 0);
+      });
+    }
+
+    // The constructor of cls a call with these arguments runs when one of cls's takes a Text, else null.
+    FunctionDecl* textConstructor(const Ty* cls, Span<Expr*> args)
+    {
+      cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+      if (!cls || cls->kind != TyKind::Class || !cls->isKnown() || types.isDependent(cls))
+        return nullptr;
+      Scope* s = impl.classScopeOf(cls);
+      if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+        return nullptr;
+      std::vector<FunctionDecl*> ctors;
+      bool any = false;
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Delete))
+        {
+          ctors.push_back(static_cast<FunctionDecl*>(m));
+          any = any || impl.namesTextLast(static_cast<FunctionDecl*>(m));
+        }
+      if (!any)
+        return nullptr;
+      Subst subst = impl.substFor(cls);
+      bool ambiguous = false;
+      FunctionDecl* f = impl.chooseAmong(ctors, argTypesOf(args), subst.empty() ? nullptr : &subst, nullptr, ambiguous);
+      return f && !ambiguous && impl.namesTextLast(f) ? f : nullptr;
+    }
+
     const Ty* typeOfCall(CallExpr* c)
+    {
+      const Ty* t = typeOfCallUnpacked(c);
+      Expr* callee = c->callee;
+      Decl* d = callee && callee->kind == NodeKind::NameExpr     ? static_cast<NameExpr*>(callee)->resolved
+                : callee && callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
+                                                                 : nullptr;
+      if (d && d->kind == NodeKind::FunctionDecl)
+      {
+        auto* f = static_cast<FunctionDecl*>(d);
+        if (const Ty* ft = impl.declaredTypeOf(f, nullptr, 0); ft && ft->kind == TyKind::Function)
+          for (size_t i = 0; i < c->args.size() && i < ft->args.size(); ++i)
+          {
+            checkClosureTo(c->args[i], ft->args[i], c->args[i]->token);
+            checkImmediateConversion(c->args[i], ft->args[i]);
+          }
+        checkImmediate(f, c->token, [&] { return impl.constValue(c, ctx(), 0); });
+        packText(c->args, f, c->token);
+      }
+      else if (d && t && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+        packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`
+      else if (callee)
+        packTextThrough(c->args, callee->ty, c->token); // `log("a", b)` with `auto log = [](Text text) {...}` or a function pointer
+      return t;
+    }
+
+    const Ty* typeOfCallUnpacked(CallExpr* c)
     {
       if (c->callee && c->callee->kind == NodeKind::CallExpr)
         checkPostfixAfterParenthesisedType(c->callee, c->token);
@@ -20797,6 +21427,8 @@ struct GlobalScope::Impl
     // The type of `lhs op rhs` (or `op lhs`) through an operator function, or for what every class
     // has; null when there is none (counted as unknown here only when countFailure). lhsOperand:
     // the left operand as an argument (an lvalue a reference), for a template's deduction.
+    FunctionDecl* operatorChosen = nullptr; // overloadedOperator's operator function, null for none
+    bool operatorIsMember = false;
     const Ty* overloadedOperator(P op, const Ty* lhs, const Ty* rhs, uint32_t token, size_t arity, bool countFailure = true,
                                  const Ty* lhsOperand = nullptr)
     {
@@ -20806,8 +21438,11 @@ struct GlobalScope::Impl
       Span<Expr*> none;
       // The left operand as an argument (an lvalue a reference): a free `Stream& operator<<(Stream&,
       // const char*)` binds the stream lvalue.
+      operatorChosen = nullptr;
       if (FunctionDecl* f = operatorFunction(op, lhsOperand ? lhsOperand : lhs, rhs, token, arity, subst, isMember))
       {
+        operatorChosen = f;
+        operatorIsMember = isMember;
         // The operands a template deduces from: a member's object is not one of them.
         std::vector<const Ty*> operands;
         if (!isMember)
@@ -20944,8 +21579,21 @@ struct GlobalScope::Impl
           return types.unknown();
         if (types.isDependent(ls) || types.isDependent(rs))
           return types.param(ls->kind == TyKind::Param ? ls->decl : rs->decl);
+        if (op == P::Assign)
+          checkClosureTo(b->rhs, l, b->token); // `later = [=] { ... text ... }`
         if (const Ty* t = overloadedOperator(op, l, argumentType(b->rhs, r, types), b->token, 2, false, argumentType(b->lhs, l, types)))
+        {
+          if (FunctionDecl* f = operatorChosen)
+          {
+            // `out << point` through `operator<<(String&, Text)`: the right operand packed (packText).
+            Expr* operands[2] = {b->lhs, b->rhs};
+            Span<Expr*> args{operatorIsMember ? operands + 1 : operands, operatorIsMember ? 1u : 2u};
+            packText(args, f, b->token);
+            if (args.size() > 0 && args[args.size() - 1] != b->rhs)
+              b->rhs = args[args.size() - 1];
+          }
           return t;
+        }
         // Two typed unions of one type with no operator of their own compare as std::variant's
         // (design.md 8.5): by the alternative held, then by its values.
         if (typedUnionOf(ls) && types.unqualified(ls) == types.unqualified(rs))
@@ -21090,6 +21738,8 @@ struct GlobalScope::Impl
       if (u->isKeyword)
         return Kw(u->op) == Kw::not_ ? types.boolType() : promote(t);
       P op = P(u->op);
+      if (op == P::Amp && !u->postfix && t && impl.isText(t) && !inGenericTemplate())
+        reportTextError(u->token, textStored("pointed to"));
       if (op == P::Ellipsis)
         return t;
       if (!s || !s->isKnown())
@@ -21571,7 +22221,8 @@ struct GlobalScope::Impl
           walkExpr(f->requiresClause);
           walkExpr(f->condition);
           checkDefinedOnce(f);
-          for (const FunctionDecl::CtorInit& init : f->ctorInits)
+          checkTextSignature(f);
+          for (FunctionDecl::CtorInit& init : f->ctorInits)
           {
             Lookup l = impl.lookupQualified(init.member, scope, &locals, 0);
             if (l.found == Found::No)
@@ -21581,8 +22232,20 @@ struct GlobalScope::Impl
             }
             else
               ++stats.namesMember;
+            FunctionDecl* savedInitializers = initializersOf;
+            initializersOf = f;
             for (Expr* a : init.args)
               walkExpr(a);
+            initializersOf = savedInitializers;
+            // `problem("bad ", point)` for a member (or base) constructed with a Text (design.md 14).
+            if (!init.braced && !init.isPack && l.decl)
+            {
+              const Ty* initialized = l.decl->kind == NodeKind::VariableDecl ? impl.declaredTypeOf(l.decl, activeSubst, 0)
+                                    : l.decl->kind == NodeKind::ClassDecl  ? impl.selfType(l.decl)
+                                                                           : nullptr;
+              if (initialized && initialized->kind == TyKind::Class && !types.isDependent(initialized))
+                packText(init.args, textConstructor(initialized, init.args), f->token);
+            }
           }
           bool autoReturn = f->returnType && Impl::astMentionsAuto(f->returnType) && !f->trailingReturn;
           if (autoReturn)
@@ -21641,6 +22304,9 @@ struct GlobalScope::Impl
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
           if (v->init && declared && declared->isKnown() && !impl.containsAuto(declared) && !probesSharedNodes())
             bindTemplateAddresses(v->init, declared); // `const Expr& (*binary)(const Expr&, const Expr&) = construct<Add>;`
+          checkTextVariable(v, declared);
+          if (v->init && declared && !impl.containsAuto(declared))
+            checkClosureTo(v->init, declared, v->token); // `Function<void()> f = [&] { ... text ... };`
           bool isDraft = declared && declared->kind == TyKind::Class && declared->decl && (declared->decl->attributes & ATTR_Draft);
           if ((!declared || isDraft || Impl::mentionsUnknown(declared)) && v->type && !probesSharedNodes())
           {
@@ -22427,6 +23093,10 @@ struct GlobalScope::Impl
               t = deduced; // `new DeleteHelper(old.release())`: the class's arguments from a constructor (CTAD)
           if (!n->braced && !n->args.empty())
             bindOverloadSetsOfConstruction(t, n->args);
+          if (impl.holdsText(t) && !inGenericTemplate())
+            reportTextError(n->token, impl.isTextClosure(t) ? "a lambda capturing a Text cannot be stored (design.md 14)" : textStored("allocated"));
+          if (!n->braced)
+            packText(n->args, textConstructor(t, n->args), n->token); // `new Problem("bad ", point)`
           return record(e, t->isKnown() ? types.pointer(t) : t);
         }
         case NodeKind::DeleteExpr:
@@ -22472,6 +23142,7 @@ struct GlobalScope::Impl
           returnFrames.push_back(nullptr);
           decltypeReturns.push_back(l->returnType && l->returnType->kind == NodeKind::AutoType && static_cast<AutoType*>(l->returnType)->isDecltypeAuto);
           walkStmt(l->body);
+          markTextCapture(l, mark);
           const Ty* deduced = returnFrames.back();
           returnFrames.pop_back();
           decltypeReturns.pop_back();
@@ -22522,6 +23193,9 @@ struct GlobalScope::Impl
         }
         case NodeKind::BraceInitExpr:
           walkExprs(static_cast<BraceInitExpr*>(e)->args);
+          if (static_cast<BraceInitExpr*>(e)->text)
+            if (const Ty* text = impl.textType())
+              return record(e, text); // a call's arguments packed for its Text parameter (packText)
           return record(e, unknown(Why::Unsupported));
         case NodeKind::ThrowExpr:
           walkExpr(static_cast<ThrowExpr*>(e)->operand);
@@ -22566,6 +23240,8 @@ struct GlobalScope::Impl
             }
             bindOverloadSetsOfConstruction(t, args);
           }
+          if (!c->braced)
+            packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`, `Problem problem("bad ", point);`
           return record(e, t);
         }
         case NodeKind::TypeidExpr:
@@ -23859,6 +24535,12 @@ TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArg
 }
 
 Decl* GlobalScope::initializerListDecl() { return impl->initializerListDecl(); }
+const Ty* GlobalScope::textType() { return impl->textType(); }
+TextPieceKind GlobalScope::textPieceOf(const Expr* e, const Ty* t, Decl* context)
+{
+  Scope* from = context ? impl->lexicalScopeOf(context) : nullptr;
+  return impl->textPieceOf(e, t, from ? from : &impl->root);
+}
 Decl* GlobalScope::typeInfoDecl() { return impl->typeInfoDecl(); }
 Decl* GlobalScope::enumFromStrDecl() { return impl->enumFromStrDecl(); }
 Decl* GlobalScope::strongOrderingDecl() { return impl->strongOrderingDecl(); }

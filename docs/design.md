@@ -884,6 +884,48 @@ once thread A's lookup parses them, build.md "Library scopes"); thread C the std
 registry's docs. This supersedes the "distinct names" answer below for libraries; the package tree
 for browsing stays as proposed.
 
+**The language side as built (thread D, 2026-11-01; specs `language/text_*`):**
+
+- **What a Text is:** stdlib/core/Text.kpp, which the compiler builds directly as it does
+  InitializerList: a pointer to the pieces and their count, each piece the address of its
+  argument and the function that appends it. The called function is compiled once; each piece
+  type has one small appending function (`appendMemberPiece<T>`, `appendFreePiece<T>`,
+  `appendCTextPiece`).
+- **Which arguments:** a parameter of type `Text` is the last one. It takes every argument from
+  its position on, zero or more, in order, evaluated left to right. A single argument that is
+  already a Text passes through. Calls, member calls, calls through a lambda or a function
+  pointer, constructors (`Problem("bad ", point)`, `throw`, a variable's `(...)`, `new`, a
+  member's initializer) and an operator's right operand (`out << a`) pack. Packing ranks
+  as C's `...` does, below every standard and user-defined conversion, so an overload taking the
+  arguments as they are wins.
+- **Lifetime:** the arguments live to the end of the caller's full expression, as a reference
+  parameter's temporaries do.
+- **The type's conversion (an error naming the type otherwise):**
+  - a class: its own or a base's `void appendTo(String& out) const` (a class converting to
+    something printable has no appendTo of its own);
+  - a built-in type or an enumeration: the standard library's `appendTo` for that type itself,
+    with no promotion or conversion. How the stdlib writes a built-in's member is open: thread D
+    proposed library-only free `appendTo(T, String&)` functions that `x.appendTo(out)` resolves
+    to, an open question for kovarex;
+  - a free `appendTo` the program writes is an error, as it would never be called;
+  - a string literal or an array of chars: C text, to its first zero;
+  - a pointer is no piece (the error points to `StringView(p)` or `address(p)`).
+- **Compile errors (the lifetime rule):**
+  - a Text anywhere but a parameter or a local initialized from a Text;
+  - a data member, a global or static, a function's result, a pointer to one, `new`;
+  - a class template argument (`Vector<Text>`);
+  - a lambda capturing a Text (or such a lambda) given to another type (a `Function`, a class
+    parameter, an assignment). As its own type it may be called, kept in a local and passed to
+    a function template;
+  - a Text not last, defaulted, or a parameter of an `extern "C"` function.
+  - Errors inside the library's code are reported at the program's line that asked for it.
+- **`format` with a literal format:** through C++20 `consteval`, which kppc now enforces. A call
+  of a consteval function outside another consteval function, including an implicit consteval
+  converting constructor, is evaluated where it is written. One that is no constant (a run-time
+  argument, a throw) is an error naming the function. The library's
+  `consteval implicit FormatString(const char*)` makes `format(runtimeText, x)` an error, and
+  its constructor can reject a malformed pattern.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
@@ -2471,6 +2513,11 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   converted UnitTest++ as native tests.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot and a way to run tests there, Q4 the FreeBSD version, Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
+
+- **How the standard library writes a built-in type's `appendTo`** (section 14, 2026-11-01): (a)
+  member definitions on the built-in's name (`void i32::appendTo(String& out) const`), or (b)
+  library-only free `appendTo(T, String&)` functions that `x.appendTo(out)` resolves to (thread
+  D's proposal: less parser work; a free appendTo a program writes is an error either way).
 
 - **How a build is described** ([build.md](build.md)): debug information in release builds, the
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54

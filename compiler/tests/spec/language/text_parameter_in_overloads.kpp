@@ -1,0 +1,29 @@
+// spec: packing arguments into a Text parameter ranks as C's `...` does, below every standard and user-defined conversion: an overload that takes the arguments as they are wins, and the Text one takes what no other does (`int Point Text Text Text Wrapped`)
+extern "C" import "stdio.h";
+struct Point
+{
+  int x = 0;
+  void appendTo(String& out) const { out += "p"; }
+};
+struct Wrapped
+{
+  implicit Wrapped(int value) {}
+};
+void f(int value) { printf("int "); }
+void f(Text text) { printf("Text "); }
+void g(const Point& p) { printf("Point "); }
+void g(Text text) { printf("Text "); }
+void h(Wrapped w) { printf("Wrapped "); }
+void h(Text text) { printf("Text "); }
+int main()
+{
+  Point p;
+  f(1);
+  g(p);
+  f(p);
+  f(p, p);
+  g();
+  h(1);
+  printf("\n");
+  return 0;
+}

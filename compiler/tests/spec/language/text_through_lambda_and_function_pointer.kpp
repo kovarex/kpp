@@ -1,0 +1,22 @@
+// spec: a call through a lambda or a function pointer whose type takes a Text packs its arguments as a function's call does (design.md 14) (`[ap][bp][cp]`)
+extern "C" import "stdio.h";
+struct P
+{
+  void appendTo(String& out) const { out += "p"; }
+};
+void show(Text text)
+{
+  String s;
+  text.appendTo(s);
+  printf("[%s]", s.c_str());
+}
+int main()
+{
+  auto viaLambda = [](Text text) { show(text); };
+  viaLambda("a", P{});
+  void (*pointer)(Text) = &show;
+  pointer("b", P{});
+  (*pointer)("c", P{});
+  printf("\n");
+  return 0;
+}

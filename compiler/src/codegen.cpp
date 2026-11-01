@@ -2276,6 +2276,73 @@ namespace
       return list;
     }
 
+    // A call's arguments packed for its Text parameter (design.md 14, BraceInitExpr::text): the
+    // pieces in a temporary array, each the address of its argument (a temporary of the statement
+    // for one that is no lvalue, bound as a const reference binds it) and the library's function
+    // that appends it (resolver: textPieceOf); the Text a pointer to them and their count.
+    std::string textTemporary(BraceInitExpr* b, Node* at)
+    {
+      const Ty* textTy = b->ty ? types.unqualified(types.stripRef(b->ty)) : nullptr;
+      if (!textTy || !isClass(textTy))
+        unsupported(at, "a Text without its type");
+      const StructInfo& info = structFor(textTy, at);
+      if (info.fieldDecls.size() < 2)
+        unsupported(at, "a Text class without its two fields");
+      uint32_t piecesField = fieldIndexOf(info, info.fieldDecls[0]);
+      uint32_t countField = fieldIndexOf(info, info.fieldDecls[1]);
+      const Ty* piecesTy = info.fieldTypes[piecesField];
+      const Ty* pieceTy = piecesTy && piecesTy->kind == TyKind::Pointer ? types.unqualified(piecesTy->inner) : nullptr;
+      if (!pieceTy || !isClass(pieceTy))
+        unsupported(at, "a Text whose first field is no pointer to its pieces");
+      const StructInfo& pieceInfo = structFor(pieceTy, at);
+      if (pieceInfo.fieldDecls.size() < 2)
+        unsupported(at, "a TextPiece class without its two fields");
+      uint32_t n = 0;
+      for (Expr* a : b->args)
+        n += isPackExpansion(a) ? uint32_t(packElementCount(static_cast<UnaryExpr*>(a)->operand, at)) : 1;
+      const Ty* arrayTy = types.array(pieceTy, n);
+      std::string array = newObjectSlot(arrayTy, at);
+      uint32_t i = 0;
+      auto piece = [&](Expr* value)
+      {
+        const Ty* t = value->ty ? withCurrentArgs(value->ty) : nullptr;
+        TextPieceKind kind = global.textPieceOf(value, t, currentFunction);
+        if (!kind.thunk)
+          unsupported(value, kind.error.empty() ? "a piece of a Text of no known type" : kind.error);
+        // Its address: a string literal's chars, an lvalue's own object, a temporary otherwise.
+        const Ty* object = kind.type ? types.qualified(kind.type, true, false) : nullptr;
+        if (!object)
+        {
+          object = stringLiteralArray(value, t, types);
+          if (!object)
+            object = types.unqualified(types.stripRef(t)); // an array of chars
+        }
+        std::string address = argumentText(types.lref(object), value, at).substr(4); // ("ptr " ...)
+        TemplateArgs fargs;
+        if (kind.type && !kind.thunk->templateParams.empty())
+          fargs.pairs.push_back({kind.thunk->templateParams[0], kind.type});
+        std::string function = useFunction(kind.thunk, fargs, nullptr, at);
+        std::string slot = newTemp();
+        fn += "  " + slot + " = getelementptr inbounds " + llType(arrayTy, at) + ", ptr " + array + ", i64 0, i64 " + std::to_string(i++) + "\n";
+        fn += "  store ptr " + address + ", ptr " + gep(pieceInfo.name, slot, fieldIndexOf(pieceInfo, pieceInfo.fieldDecls[0])) + "\n";
+        fn += "  store ptr " + function + ", ptr " + gep(pieceInfo.name, slot, fieldIndexOf(pieceInfo, pieceInfo.fieldDecls[1])) + "\n";
+      };
+      for (Expr* a : b->args)
+      {
+        if (isPackExpansion(a))
+        {
+          Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
+          forEachPackElement(pattern, at, [&](size_t) { piece(pattern); });
+        }
+        else
+          piece(a);
+      }
+      std::string text = newObjectSlot(textTy, at);
+      fn += "  store ptr " + array + ", ptr " + gep(info.name, text, piecesField) + "\n";
+      fn += "  store " + llType(info.fieldTypes[countField], at) + " " + std::to_string(n) + ", ptr " + gep(info.name, text, countField) + "\n";
+      return text;
+    }
+
     // Default-constructs every element of an array of objects at addr: one after the other for a
     // few, in a loop for more (an array of a thousand would otherwise be a thousand copies).
     void constructArray(const std::string& addr, const Ty* t, Node* at)
@@ -3198,7 +3265,7 @@ namespace
       {
         // `InitializerList<TestCase>{{...}, {...}}` (a range-for's range in the tests): the list
         // over its elements' array, which lives as long as the object made here does.
-        if (!listElements && args.size() == 1 && args[0] && args[0]->kind == NodeKind::BraceInitExpr)
+        if (!listElements && args.size() == 1 && args[0] && args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(args[0])->text)
         {
           initializerListTemporary(types.unqualified(t), static_cast<BraceInitExpr*>(args[0]), at, addr);
           return;
@@ -3255,7 +3322,7 @@ namespace
       // (`return {{a, b}};` for an Optional<Pair<int, int>>: the inner list, one element of the
       // outer one, is an argument of a constructor, not the class's own list again; nor is the
       // one value of `{.effectTexture = {bitmap}}`, which is the designated member's.)
-      if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !(listElements && hasUserConstructors(c)) &&
+      if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(args[0])->text && !(listElements && hasUserConstructors(c)) &&
           !(listElements && !pendingDesignators.empty()))
       {
         // `T x{y}` with y a T, or of a class derived from T: a copy or a move of y, before any
@@ -7844,7 +7911,7 @@ namespace
                        (canonicalClass(argTy, at) == canonicalClass(t, at) || basePath(argTy, t, path, at));
         // (`data.previewIcons = {Signal(4), Signal(5)}` through a defaulted `operator=(Icons&&)`:
         // the list makes the temporary, as list-initialization of t.)
-        bool list = args[0]->kind == NodeKind::BraceInitExpr;
+        bool list = args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(args[0])->text; // (a Text's packed arguments are no list)
         if (((argTy && argTy->isKnown() && !related) || list) && !(f->flags & (DF_Constructor | DF_Destructor)) && isClass(t))
         {
           std::string tmp = newObjectSlot(t, at);
@@ -8137,6 +8204,8 @@ namespace
     // One call argument as "<type> <operand>", converted to the parameter type (null: variadic).
     std::string argumentText(const Ty* pt, Expr* arg, Node* at)
     {
+      if (arg->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(arg)->text)
+        return "ptr " + textTemporary(static_cast<BraceInitExpr*>(arg), at); // a Text parameter's packed arguments (design.md 14)
       if (pt && pt->isReference())
       {
         // `f("abc")` with `f(const char (&)[4])`, or `const T&` with T = char[4]: the literal's own
@@ -13793,6 +13862,8 @@ namespace
 
     Value rvalue(Expr* e)
     {
+      if (e->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(e)->text)
+        return {textTemporary(static_cast<BraceInitExpr*>(e), e), types.unqualified(types.stripRef(e->ty)), false}; // (design.md 14)
       if (++recursionDepth > 128)
       {
         recursionDepth = 0;
@@ -14111,7 +14182,7 @@ namespace
           }
           // `value_type{forward<Args>(args)...}` with a scalar value_type: as `T(...)` below.
           Span<Expr*> args = c->args;
-          if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(args[0])->args.size() == 1 &&
+          if (args.size() == 1 && args[0]->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(args[0])->text && static_cast<BraceInitExpr*>(args[0])->args.size() == 1 &&
               isPackExpansion(static_cast<BraceInitExpr*>(args[0])->args[0]))
             args = static_cast<BraceInitExpr*>(args[0])->args;
           if (args.size() == 1 && isPackExpansion(args[0]))
@@ -16412,7 +16483,7 @@ namespace
         if (init->kind == NodeKind::FunctionalCastExpr && static_cast<FunctionalCastExpr*>(init)->type == v->type &&
             static_cast<FunctionalCastExpr*>(init)->args.size() == 1)
           init = static_cast<FunctionalCastExpr*>(init)->args[0];
-        if (init->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(init)->args.size() == 1 &&
+        if (init->kind == NodeKind::BraceInitExpr && !static_cast<BraceInitExpr*>(init)->text && static_cast<BraceInitExpr*>(init)->args.size() == 1 &&
             static_cast<BraceInitExpr*>(init)->designators.empty())
           init = static_cast<BraceInitExpr*>(init)->args[0];
         std::string addr;
