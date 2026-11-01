@@ -748,12 +748,18 @@ arguments, one after another, with nothing parsed.
   `text.appendTo(out)` and `toString(text)`; it cannot be iterated (kovarex: the pieces can be of
   any type, so it is neither useful nor practical).
 - **`appendTo`, the one conversion a type defines:** `void appendTo(String& out) const`. Every
-  other form comes from it: `toString(x)` (a new String), `out += x`, `out << x`, `print`, `Text`.
+  other form comes from it: `toString(x)` (a new String), `out << x`, `a + b`, `print`, `Text`.
   There is no second, String-returning method to write (kovarex: one method, so a deep hierarchy
   is written in O(n) into one buffer, never O(n^2) through intermediate strings).
 - **`<<` chains appends**, in the direction of Factorio's `Serialiser`/`MapSerialiser` (saving is
   `<<`; `>>` stays the reading direction, as `MapDeserialiser`'s): `out << left << " = " << right;`
-  calls each piece's `appendTo` on `out` and returns `out`. `+=` stays the single append.
+  calls each piece's `appendTo` on `out` and returns `out`. **`<<` is the only append** (kovarex,
+  2026-11-01): String has no `+=`, so `s += 65` cannot be read as a character or as "65"; the
+  converter writes C++'s `std::string +=` as `<<` (`out << char(x)` where C++ appended an integer
+  as a character). A `<<` chain into a String mixed with `&`, `|` or `^` without parentheses is a
+  compile error, since `&` binds looser than `<<`. **`a + b` stays** for one-liners (kovarex: "the
+  alternatives don't allow one liners in simple places"): a new String, when one side is a String
+  or StringView and the other has `appendTo` (`String s = "x = " + equation;`).
 - **Built in and in the standard library:** every integer, float, `bool`, `char`, `String`,
   `StringView` and container has `appendTo`; formatting options are small objects with it
   (`hex(x)`, `fixed(t, 2)`, `padded(n, 5)`). `out << 65` appends the text "65"; a character is
@@ -769,7 +775,7 @@ arguments, one after another, with nothing parsed.
   name (`Direction::north` is "north"; a value that is no enumerator writes `Direction(7)`).
   There is no free `appendTo` for users: a struct imported from a C header or a class of another
   library is printed field by field or wrapped.
-- **No silent fallback:** printing, `<<`, `+=` or `Text` with a type that has no `appendTo` is a
+- **No silent fallback:** printing, `<<`, `+` or `Text` with a type that has no `appendTo` is a
   compile error naming the type; a pointer prints only through an explicit `address(p)`.
 - **Localisation** (where the order of the parts changes per language) is not this mechanism: a
   later localisation library with its own tools (kovarex). `format("{}", ...)` stays only with a
@@ -781,7 +787,7 @@ arguments, one after another, with nothing parsed.
 
 Owners: thread D the language side (`Text` as a parameter type and its lifetime rule, packing a
 call's arguments into it, the missing-`appendTo` error); thread C the library side (`appendTo`
-throughout the stdlib, `operator<<` and `operator+=`, `print`, `toString`, `hex`, `fixed`,
+throughout the stdlib, `operator<<` and `operator+`, `print`, `toString`, `hex`, `fixed`,
 `padded`, docs/stdlib/).
 
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
