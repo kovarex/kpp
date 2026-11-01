@@ -19,8 +19,9 @@ holds exactly one version of each library (the one global scope allows no other)
 minimal version selection, and build.lock records the hashes. Because Kpp compile-time code runs
 in the interpreter and cannot call C, **adding a library never runs its code on your machine
 until you run your program**: no build scripts, no install hooks, the attack surface npm and
-cargo have. The registry indexes the top-level names each release declares, so `kppc add json`
-reports a name clash with your program or another library before it changes anything. Everything is
+cargo have. A library's names are qualified by its name (`json::Value`) unless the library declares itself
+unscoped, as the standard library is; for an unscoped one, `kpp add` reports a name clash with
+your program or another library before it changes anything. Everything is
 hosted on kpp.net at NearlyFreeSpeech.NET (decided): canonical git repositories there, GitHub as
 the mirror where pull requests happen, and the website and the registry written in Kpp, first as
 static files that Kpp programs generate on Windows, then as Kpp CGI programs and a Kpp HTTP
@@ -35,7 +36,7 @@ after, as a dogfooding target, when the standard library has networking.
   [vcpkg and Conan](#vcpkg-and-conan), [Zig](#zigs-package-manager), [npm](#npm-and-its-incidents),
   [lessons](#lessons-for-kpp)
 - [Design for Kpp](#design-for-kpp): [what a library is](#what-a-library-is),
-  [names](#names-the-one-global-scope), [C dependencies](#c-dependencies),
+  [names](#names-library-scopes-decided-2026-11-01), [C dependencies](#c-dependencies),
   [versions and the lockfile](#versions-resolution-and-the-lockfile),
   [the commands](#the-commands-and-the-project-description), [library options](#library-options-kovarex-2026-11-01),
   [the service](#the-service), [hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day),
@@ -52,7 +53,8 @@ after, as a dogfooding target, when the standard library has networking.
 - Code packages (proposed 2026-10-27): a directory is a package, the source roots (program,
   `stdlib/`, "each library") are the top-level packages, package names never appear in code, and
   all top-level names are in **one global scope**, so a clash between two packages is a compile
-  error that names both.
+  error that names both. Libraries are now scoped by their name unless they say otherwise
+  ([design.md](design.md) section 16; [Names](#names-library-scopes-decided-2026-11-01)).
 - The converted game already has the shape of a project with C dependencies:
   `programs/factorio/native/` holds C interfaces over C++ libraries (`imgui_c.cpp`, `re2_c.cpp`,
   `open_vcdiff_c.cpp`, `jc_voronoi.cpp`...) compiled by clang, plus prebuilt `.lib` files
@@ -101,7 +103,7 @@ The closest model, and the one kovarex named.
 - Manifest `Cargo.toml`, versions are semver, `foo = "1.2"` means `>=1.2.0, <2.0.0`; the resolver
   picks the *newest* compatible version, and `Cargo.lock` records exact versions and checksums.
   Several major versions of one crate can coexist in a program (they are distinct crates by
-  symbol mangling); Kpp cannot do that ([below](#names-the-one-global-scope)).
+  symbol mangling); Kpp keeps one version per program ([below](#names-library-scopes-decided-2026-11-01)).
 - **Yank, not delete**: a yanked version cannot be newly locked, but a project whose lockfile
   already has it still downloads and builds it [9]. Nothing is ever deleted except malware.
 - `build.rs` and procedural macros run arbitrary code at build time: the surface used by
@@ -206,40 +208,47 @@ The two C++ package managers, both built around compiling native code for many c
 - **The standard library is not in the registry**: it ships with kppc and its version is kppc's,
   as Factorio's `base` mod is the game's.
 
-### Names: the one global scope
-The issue Kpp has and no other system above has: there is no per-library namespace, so two
-libraries (or a library and the program) that both declare `Logger` cannot be used together.
-Duplicate versions of one library are impossible for the same reason: `json` 1.x and 2.x both
-declare `JsonValue`. What to do about it, from cheapest:
+### Names: library scopes (decided 2026-11-01)
+Decided by kovarex in [design.md section 16](design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01),
+which answers decision 3 below. His words: "adding library means that I have to change unrelated
+code to remove ambiguity is not nice"; "when I read zlib::close, I instantly know what is going
+on, compared to close".
+- **Scoped by default.** A library's names are qualified by its registry name everywhere outside
+  it: `json::Value`, `zlib::compress`. Inside the library they are bare. Registry names are unique
+  for ever ([What a library is](#what-a-library-is)), so the qualifiers cannot clash, and adding a
+  scoped library never changes or breaks the meaning of existing code. There are no per-file
+  imports or aliases, so a snippet from a library's documentation means the same in every program.
+- **Unscoped is the library's choice** (`lib.unscoped = true` in its build.kpp). Its names are
+  bare and share the one global scope, as the standard library's do (it is unscoped). A clash
+  between an unscoped library and the program, another unscoped library or a C import is a build
+  error that names both declarations, never a silent pick. Scoped is the norm for published
+  libraries; unscoped is meant for a project's own libraries and foundations like the stdlib.
+- **One version per program stays**: two versions of `json` would both be `json::`.
 
-1. **Measure before changing anything** (proposed, phase 1). `kppc --exports` lists a release's
-   top-level names (types, free functions, global variables, namespaces, C imports excluded); the
-   registry stores the list with the release. `kppc add` checks it against the program and the
-   other libraries and refuses with the same message the compiler would give, before editing
-   anything: `json 1.4.0 declares 'Logger' (json/src/log.kpp:5), which logging 2.1.0 also
-   declares (logging/Logger.kpp:3)`. The library page shows the names it claims and the known
-   clashes with other libraries ("does not work with: ...").
-2. **A convention for authors** (proposed, phase 1): public names are specific (`JsonValue`, not
-   `Value`), and helpers are `static` or in an unnamed namespace (file-local, already exempt from
-   the clash check) or in a namespace named after the library (`json::detail`). The registry warns
-   at publish time about generic names on a short list (`Node`, `Item`, `Data`, `Logger`,
-   `Config`, `Error`, `Result`...).
-3. **`internal` declarations** (already floated in design.md as a later option): visible only in
-   the declaring package and its children, exempt from the global check. This removes most
-   clashes, since most of a library's names are helpers. Compiler work (thread A's resolver): a
-   package-visibility flag on top-level declarations; lookup from outside skips them. Estimated
-   1 to 2 weeks. Proposed for phase 2 if phase 1's measurements show clashes in practice.
-4. **Renaming at the point of use** (not proposed): the project description says
-   `logging.Logger as LogSink`. It works, but a name would then mean different things in
-   different programs, which is the context dependency the code packages section rejected; a
-   snippet from the library's documentation would not compile in the program. Listed so that the
-   choice is explicit.
+What the registry does with it:
+1. **The index records `unscoped`** for each release ([kppnet/registry/layout.md](../kppnet/registry/layout.md)),
+   and the library page shows a visible *unscoped* mark next to the license, with a sentence on
+   what it means for the user's program. Changing it in either direction breaks programs (the
+   qualifiers appear or disappear), so publishing refuses the change outside a new major version.
+2. **The clash pre-check is for unscoped releases only.** `kppc --exports` lists a release's
+   top-level names, and the registry stores the list with every release. For an unscoped one,
+   `kpp add` checks the list against the program and the other unscoped libraries and refuses
+   with the message the compiler would give, before editing anything:
+   `logging 2.1.0 is unscoped and declares 'Logger' (logging/Logger.kpp:3), which the program
+   also declares (src/log.kpp:5)`. Its page lists the known clashes with other unscoped
+   libraries ("does not work with: ..."). A scoped release's list is still stored, for the page's
+   exported names and for the major-version check of [Library options](#library-options-kovarex-2026-11-01).
+3. **Clashes with the standard library**: an unscoped library declaring `Pair` cannot be published
+   for a kppc whose stdlib has `Pair`, and the stdlib's new names are checked against the most-used
+   unscoped libraries before a kppc release, so a compiler update does not break programs without
+   notice. Scoped libraries cannot clash with the stdlib.
+4. **Authors of unscoped libraries** are asked to keep names specific; the registry warns at
+   publish time about generic names on a short list (`Node`, `Item`, `Data`, `Logger`, `Config`,
+   `Error`, `Result`...).
 
-The registry also checks **clashes with the standard library** at publish time (a library
-declaring `Pair` cannot be published for a kppc that has `Pair`), and the stdlib's new names are
-checked against the registry's most-used libraries before a kppc release, so a compiler update
-does not break programs silently. It cannot break them silently anyway (the clash is an error),
-but it should not break them at all without notice.
+The options considered before the decision (a naming convention for authors, `internal`
+declarations, renaming at the point of use) are in this file's git history before this section's
+date.
 
 ### C dependencies
 C is the only interop, so many useful libraries are a Kpp face over C code. Three kinds:
@@ -350,7 +359,7 @@ what config values should be provided to the library, with defaults". So the reg
   ([kppnet/registry/layout.md](../kppnet/registry/layout.md)). kpp reads only kpp.net's static
   files.
 - **Phase 2, the service in Kpp** (dogfooding): an HTTP API (index, search, publish, yank,
-  tokens), web pages (library page with readme, versions, dependencies, exported names, options, license,
+  tokens), web pages (library page with readme, versions, dependencies, exported names, options, license, "unscoped" mark,
   "binary" mark, download counts, clash list), a small database (SQLite through C interop), and
   the archive store. It needs from the standard library what it lacks today: sockets, an HTTP
   server, JSON, a SQLite face, time; TLS stays outside (a reverse proxy such as Caddy or
@@ -573,7 +582,7 @@ the index in memory, keeps connections alive and needs no process per request. I
 "a web server in Kpp" true, and the libraries it needs are the ones others will want.
 
 **Libraries, in the order the stages need them.** Each one is a registry library, the first ones
-hosted. Each declares specific top-level names, because of the one global scope.
+hosted. Each is scoped by its name (`json::`, `html::`), as design.md section 16 makes the norm.
 1. `json`: parse and write, typed reflection-driven (de)serialization (section 8's compile-time
    iteration).
 2. `sha256`, with HMAC-SHA-256 for tokens and a constant-time compare. Hashes are needed by the
@@ -661,8 +670,8 @@ accounts use API tokens until then.
 For threads F and E; proposals for their documents, not decisions.
 - **IDE (F)**: libraries appear as top-level packages in the package tree with their version,
   license and a "binary" badge; go to definition opens the library's (read-only) source; a
-  *Libraries* view searches the registry, shows a library's page (readme, exported names, clashes
-  with the current program, dependencies, binary parts), and adds, updates or removes with the
+  *Libraries* view searches the registry, shows a library's page (readme, exported names, the
+  unscoped mark and, for an unscoped one, its clashes with the current program, dependencies, binary parts), and adds, updates or removes with the
   same kppc commands; an available update or a yanked locked version shows as a notice; a clash
   diagnostic offers "show the other declaration".
 - **Visual Studio (E)**: a *Libraries* node under the project listing the locked libraries; menu
@@ -776,7 +785,7 @@ Estimates are in weeks of one thread, assuming thread E's project description ex
 | S3. Kpp HTTP daemon | the `http` library and the site as an NFS daemon; needs sockets and threads on FreeBSD | 3 to 5 after the target |
 | 1. Registry without a service | index repository and archives on kpp.net, CI checks on publish pull requests, MVS, `update`, yanking, `search` over the index, embedded library list in the exe, first libraries: zlib, lua, imgui, json, a Kpp face over sockets | 2 to 3, plus porting the first libraries |
 | 2. The service in Kpp | stdlib networking/HTTP/JSON/SQLite face first (3 to 5 weeks, useful beyond this), then API, accounts, web pages, publish API, tokens, 2FA, download counts | 6 to 10 |
-| 3. Hardening | trusted publishing, transparency log or signed index, advisories and `kppc audit`, typosquat review queue, `internal` declarations if clashes are measured | 4 to 6 |
+| 3. Hardening | trusted publishing, transparency log or signed index, advisories and `kppc audit`, typosquat review queue | 4 to 6 |
 | 4. Tools | IDE Libraries view, VS commands, generated documentation pages per library from reflection, more targets for binary parts, private registry setup | with threads E and F |
 
 The minimal first version is phases 0, 1 and S1 on the hosting of phase H: about 10 weeks, no
@@ -785,9 +794,9 @@ usable by Wube and early users, and it proves the parts that are Kpp-specific (c
 C source parts, MVS with one version) before any server code is written.
 
 ## Risks
-- **Name clashes become the common failure.** If libraries routinely declare the same names,
-  the one global scope is a real cost for users. Phase 1 measures it (the exported-name index
-  over all published releases); `internal` is the fix ready to take.
+- **Unscoped libraries clash.** Library scopes removed the risk for scoped libraries; unscoped
+  ones still share the global scope. The exported-name index over all published releases shows
+  whether unscoped libraries clash in practice, and the page's mark makes the choice visible.
 - **Every library is compiled with every program.** Fine for the front end; code generation and
   LLVM dominate builds, so what matters is how much of a library kppc emits for a program that
   uses a little of it; a big C part (Lua, imgui) compiles once per configuration and is cached.
@@ -811,9 +820,10 @@ C source parts, MVS with one version) before any server code is written.
    sharing.
 2. **Source only, with C source compiled by kppc and prebuilt binaries allowed but flagged?**
    Proposed: yes.
-3. **Name clashes**: the clash pre-check and naming convention now, `internal` declarations
-   later if measured (proposed), or `internal` now, or renaming at the point of use (not
-   proposed)?
+3. **Name clashes**: decided 2026-11-01, kovarex ([design.md](design.md) section 16): a library's
+   names are qualified by its name by default; `unscoped` is the library's choice (the stdlib is),
+   and an unscoped library's clash is a build error. See
+   [Names](#names-library-scopes-decided-2026-11-01).
 4. **Resolution**: minimal version selection (proposed) or newest-compatible as cargo?
 5. **No code runs at build or install time, as a permanent rule** (no build scripts, compile-time
    evaluation without I/O)? Proposed: yes.

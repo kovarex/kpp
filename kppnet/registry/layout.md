@@ -17,7 +17,7 @@ https://kpp.net/registry/
   archives/
     <hh>/<hex>.zip            a release's files; <hex> is its tree hash, <hh> its first two digits
     <hh>/<hex>.manifest       the manifest the tree hash is the SHA-256 of (tree_hash.py)
-    <hh>/<hex>.exports        its top-level names (kppc --exports), for the clash check before download
+    <hh>/<hex>.exports        its top-level names (kppc --exports): the clash check before download, for unscoped releases
   mirror/
     <sha256>/<file name>      third-party files CI and builds download (SDL3-devel-3.4.18-VC.zip...),
                               named by the SHA-256 of the file itself
@@ -40,6 +40,7 @@ https://kpp.net/registry/
       "archive_sha256": "9a1b...",
       "size": 48213,
       "kpp": "0.2",
+      "unscoped": false,
       "dependencies": [{"name": "zlib", "min": "1.3.1"}],
       "options": [
         {"name": "debug", "type": "bool", "default": false, "description": "Checks every call's arguments"},
@@ -76,6 +77,8 @@ Options -Indexes
   with `mv -n`. Only `kpp/latest.json` is replaced, by a rename. A maintainer's upload from
   PC-PRACOVNA may use `rsync --ignore-existing`, which follows the same rule. A release's entry in
   the index changes only to set `yanked` (a reason string).
+- `unscoped` is true when the library's build.kpp says `lib.unscoped = true` (docs/design.md
+  section 16): its names are bare instead of `json::...`. The library page shows it.
 - `options` are the library's build.kpp options for that release (docs/library-registry.md,
   "Library options"): `default` is the option's value as JSON; an option without a default has
   `"required": true` and no `default`.
