@@ -55,10 +55,11 @@ Status (2026-10-31):
     part before `|` against `visualStudio`, any case.
   - `kpp/activeCell` (notification from the server) `{ "target", "configuration" }` after each
     switch, the first check's cell too: for a status bar.
-  - What the clients send (thread E's to build): VS Code and other editors the settings
-    `kpp.target` and `kpp.configuration` (didChangeConfiguration) and a status-bar picker on
-    `kpp/cells` and `kpp/selectCell`; Visual Studio its active solution configuration and startup
-    project, with `kpp/selectCell` when either changes. A cell build.kpp does not have is shown as an error and the checked cell stays.
+  - What the clients send: VS Code the settings `kpp.target` and `kpp.configuration`
+    (didChangeConfiguration), which its status-bar picker on `kpp/cells` sets; other editors the
+    same settings, or `kpp/selectCell`; Visual Studio (its extension, not built yet) its active
+    solution configuration and startup project, with `kpp/selectCell` when either changes. A cell
+    build.kpp does not have is shown as an error and the checked cell stays.
 - **Capabilities:**
   - incremental text sync;
   - pushed diagnostics (`textDocument/publishDiagnostics`, source `kpp`), also for files the
@@ -79,8 +80,11 @@ The extension is in `tools/vscode`; its README covers the details.
   in tools\vscode.
 - **What it adds:** colouring, from the same TextMate grammar Visual Studio uses, and a language
   client that starts `kpp --lsp` for the open folder.
-- **Settings:** `kpp.path`, `kpp.configuration`, `kpp.executable`, `kpp.settings` and
-  `kpp.trace.server`.
+- **Settings:** `kpp.path`, `kpp.configuration`, `kpp.target` (`kpp.executable`, its old name, is
+  still read), `kpp.settings` and `kpp.trace.server`.
+- **The cell:** the status bar shows the target and configuration the code is checked in; a click
+  (or *Kpp: Select the Target and Configuration*) picks another from `kpp/cells` and writes the
+  workspace's `kpp.target` and `kpp.configuration`.
 - **Build, run and debug:** use `kpp --generate-vs-code-files` (build.md).
 
 ## Visual Studio 2022

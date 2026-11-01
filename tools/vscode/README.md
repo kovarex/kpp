@@ -19,13 +19,19 @@ folder.
 ## Settings
 - `kpp.path`: the compiler, when `kpp` is not on the PATH (`C:\kpp\compiler\build\kppc.exe` in a
   checkout).
-- `kpp.configuration`: `debug` (the default) or `release`.
-- `kpp.executable`: one of build.kpp's executables. Unset, it covers all of them.
+- `kpp.configuration`: one of build.kpp's configurations, `debug` by default.
+- `kpp.target`: one of build.kpp's executables. Unset, it covers all of them. (`kpp.executable`, its
+  old name, is still read.)
+
+The status bar shows the target and configuration the code is checked in; clicking it (or
+*Kpp: Select the Target and Configuration*) lists build.kpp's and switches. The server keeps the
+program of each one it checked, so switching back is quick.
 - `kpp.settings`: build.kpp's settings, as `kpp --set NAME=VALUE` gives them:
   `{ "PREBUILT": "D:/Factorio/vs2022/Releasex64" }`.
 - `kpp.trace.server`: `messages` or `verbose` logs the protocol in the *Kpp* output.
 
 ## Commands
+- *Kpp: Select the Target and Configuration*.
 - *Kpp: Restart the Language Server*.
 - *Kpp: Show the Language Server's Output*.
 

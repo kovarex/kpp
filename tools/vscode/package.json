@@ -32,14 +32,19 @@
         },
         "kpp.configuration": {
           "type": "string",
-          "enum": ["debug", "release"],
           "default": "debug",
-          "description": "The build.kpp configuration whose description the language server checks."
+          "markdownDescription": "The build.kpp configuration the language server checks the code in (`debug`, `release`, or another of build.kpp's). *Kpp: Select the Target and Configuration* in the status bar sets it."
+        },
+        "kpp.target": {
+          "type": ["string", "null"],
+          "default": null,
+          "markdownDescription": "The build.kpp target (executable) the language server checks the code in. Null: every target's sources together. *Kpp: Select the Target and Configuration* in the status bar sets it."
         },
         "kpp.executable": {
           "type": ["string", "null"],
           "default": null,
-          "description": "The build.kpp executable whose sources the language server checks. Null: every executable's."
+          "deprecationMessage": "Use kpp.target.",
+          "description": "The old name of kpp.target, still read when kpp.target is null."
         },
         "kpp.settings": {
           "type": "object",
@@ -56,6 +61,7 @@
       }
     },
     "commands": [
+      { "command": "kpp.selectCell", "title": "Kpp: Select the Target and Configuration" },
       { "command": "kpp.restartServer", "title": "Kpp: Restart the Language Server" },
       { "command": "kpp.showOutput", "title": "Kpp: Show the Language Server's Output" }
     ]

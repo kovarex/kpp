@@ -114,6 +114,9 @@ reader(process.stdin, (message) =>
     case 'textDocument/completion':
       reply([]);
       break;
+    case 'kpp/cells':
+      reply({ cells: [{ target: 'main', configuration: 'debug', visualStudio: 'Debug' }], active: { target: null, configuration: 'debug' } });
+      break;
     case 'shutdown':
       reply(null);
       break;

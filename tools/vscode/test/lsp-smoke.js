@@ -2,7 +2,8 @@
 // (`node lsp-smoke.js node stub-server.js`) or the compiler's (`node lsp-smoke.js kppc.exe --lsp`).
 // In a new project (build.kpp, src\main.kpp) it initializes with the agreed initializationOptions,
 // expects the agreed capabilities, opens main.kpp with an undeclared name and expects an error on
-// its line, fixes the line and expects the error gone, asks a hover, and shuts the server down.
+// its line, fixes the line and expects the error gone, asks a hover and the cells (kpp/cells), and
+// shuts the server down.
 // Prints `ok   lsp ...` or `FAIL lsp: ...`; the exit code is the number of failures.
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -90,7 +91,7 @@ async function main()
     rootUri: pathToFileURL(root).href,
     workspaceFolders: [{ uri: pathToFileURL(root).href, name: path.basename(root) }],
     capabilities: { general: { positionEncodings: ['utf-16'] }, textDocument: { publishDiagnostics: {} } },
-    initializationOptions: { configuration: 'debug', executable: null, settings: {} }
+    initializationOptions: { configuration: 'debug', target: null, settings: {} }
   }), 'initialize result');
   const capabilities = (initialized.result || {}).capabilities || {};
   const sync = typeof capabilities.textDocumentSync === 'number' ? capabilities.textDocumentSync : (capabilities.textDocumentSync || {}).change;
@@ -121,6 +122,12 @@ async function main()
   const hover = await within(30000, request('textDocument/hover', { textDocument: { uri: mainUri }, position: { line: 3, character: 10 } }), 'hover');
   if (!hover.result || !hover.result.contents)
     fail(`no hover on answer(): ${JSON.stringify(hover)}`);
+
+  const cells = await within(30000, request('kpp/cells', {}), 'kpp/cells');
+  const list = (cells.result || {}).cells;
+  if (!Array.isArray(list) || list.length === 0 || !list.every((c) => c.target && c.configuration && c.visualStudio) ||
+      !cells.result.active || cells.result.active.configuration !== 'debug')
+    fail(`kpp/cells: ${JSON.stringify(cells)}`);
 
   await within(10000, request('shutdown', null), 'shutdown result');
   serverExit.catch(() => {});
