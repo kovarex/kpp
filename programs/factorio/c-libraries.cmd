@@ -12,7 +12,7 @@ rem FACTORIO\libraries; minizip parses zlib.h), CLIBSRC_NAME (the files converte
 rem FACTORIO\libraries\NAME, or those its sources.txt names: stb_image's two headers, whose
 rem implementations stb_image.cpp compiles) and CLIBNAMES (build.kpp's names of the libraries: a
 rem clib.txt's where it is not the directory's, stb_image's stb).
-set CLIBRARIES=ogg zlib glad zstd minizip
+set CLIBRARIES=ogg zlib glad zstd minizip fontstash
 set CLIBINC=
 for %%l in (%CLIBRARIES%) do for /f "usebackq delims=" %%i in ("%~dp0c-libraries\%%l\includes.txt") do call set CLIBINC=%%CLIBINC%% --cinclude %FACTORIO%\libraries\%%l\%%i
 for %%l in (%CLIBRARIES%) do set CLIBIN_%%l=

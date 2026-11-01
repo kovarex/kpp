@@ -1,0 +1,4 @@
+# What is converted: fontstash.h with its implementation, which fontstash.cpp compiles (defines.txt),
+# and the stb_truetype.h it includes into it.
+fontstash.h
+stb_truetype.h

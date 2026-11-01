@@ -1,0 +1,3 @@
+# What fontstash.cpp defines before it includes fontstash.h: its implementation.
+FONTSTASH_IMPLEMENTATION
+STB_TRUETYPE_IMPLEMENTATION

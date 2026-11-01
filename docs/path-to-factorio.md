@@ -2069,6 +2069,45 @@ paths on Windows, as the game passes them. With ogg, zlib, glad, zstd and minizi
 unit tests pass 9,501/9,501 with their CRCs checked, and the 45 menu maps match, in debug and in
 release.
 
+**fontstash is converted.** It is a header-only library: fontstash.cpp defines
+FONTSTASH_IMPLEMENTATION and includes fontstash.h, which includes stb_truetype.h into it. The game
+compiles that as C++ and imports fontstash.h as C. So the conversion takes the two headers
+(`sources.txt`) with the implementation's defines (`defines.txt`), and the C mode grew:
+- a header given alone is the library's interface, as c-headers.txt's are: the functions it
+  declares get C linkage, also those taking a struct by value (`fonsAddFontSdfMem`'s
+  FONSsdfSettings, 12 bytes, which MS x64 passes as a pointer to a copy, as Kpp does);
+- a C++ overload of an interface function keeps Kpp's linkage (fontstash.h's three-parameter
+  `fonsAddFontSdf`, outside its `extern "C"`).
+
+Its harness (`harness/fontstash.c`) covers every font of data\core\fonts, plain and with the
+game's SDF settings, with a fallback font:
+- texts in six scripts at four sizes, with spacings, blurs and alignments;
+- the metrics, the bounds, the iterator's quads and fonsTextWrapSize;
+- what the render callbacks get: every atlas update's pixels and every draw's vertices;
+- the atlas grown when full, as the game does.
+
+Its output is 3,267 lines over 35 fonts, byte-identical. With ogg, zlib, glad, zstd, minizip and
+fontstash converted, the unit tests pass 9,501/9,501 with their CRCs checked, and the 45 menu maps
+match, in debug and in release. The harnesses of the other five stay byte-identical with these
+rules (their globals now have C linkage).
+
+**stb_image waits for the compiler.** Its implementation is in stb_image.hpp and
+stb_image_write.h, which stb_image.cpp compiles as C++ with its PNG writer deflating through zlib
+(`zlib_compress_stb_adapter`, hand-written in Kpp: `c-libraries/stb_image/added`). The conversion
+takes the two headers like fontstash's, and the C mode grew:
+- a typedef of a function type, `typedef void stbi_write_func(...)`, is written
+  `using stbi_write_func = void(...)` (`language/typedef_of_function_type`, A);
+- a variable a C file defines without static gets C linkage, `= {}` when C leaves it zero:
+  `stbi_write_png_compression_level`, which the game sets;
+- a library define that is a name is written out at its uses (`STBIW_ZLIB_COMPRESS`);
+- `extern "C"` replaces a keyword macro's rewrite of the same word (`STBIWDEF` as `extern`), where
+  the two edits had cancelled.
+
+Its harness (`harness/stb_image.c`) decodes the 524 core images and writes them in every format.
+Its Kpp build waits for two specs:
+- `language/nullptr_cast_to_integer`: stbi__errpuc's `(size_t)(... ? NULL : NULL)`, 25 places (B);
+- `language/conditional_of_two_arrays`: stbiw__encode_png_line's `y ? mapping : firstmap`.
+
 **trio waits for the compiler.** Its array bounds are enumerators of an enum whose flags each
 double the one before. Evaluating it exceeds the evaluator's million steps
 (`language/enum_chain_of_doublings_is_constant`, D).
