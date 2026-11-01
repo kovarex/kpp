@@ -761,6 +761,14 @@ arguments, one after another, with nothing parsed.
   back to exactly the same value (`0.1` is "0.1", `0.1 + 0.2` is "0.30000000000000004"); kovarex,
   2026-11-01: "by default, it should always print all the information, so nothing is lost".
   `fixed(x, n)` is for a chosen number of decimals.
+- **One form, the member, for every type** (kovarex, 2026-11-01: "x.appendTo should be a language
+  feature ... there is just one way to write this, so for example in templates ... it won't need a
+  special case when the type is u32 compared to some class"). `x.appendTo(out)` is valid for every
+  built-in type (integers, f32, f64, bool, char): the language provides it, written once in the
+  stdlib as the built-in's member. An enum's `appendTo` is provided too and writes its enumerator's
+  name (`Direction::north` is "north"; a value that is no enumerator writes `Direction(7)`).
+  There is no free `appendTo` for users: a struct imported from a C header or a class of another
+  library is printed field by field or wrapped.
 - **No silent fallback:** printing, `<<`, `+=` or `Text` with a type that has no `appendTo` is a
   compile error naming the type; a pointer prints only through an explicit `address(p)`.
 - **Localisation** (where the order of the parts changes per language) is not this mechanism: a
