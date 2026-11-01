@@ -1,7 +1,6 @@
 // spec: an unscoped enum's enumerator and a global constant of the same name are two top-level declarations of one name: an error, as two variables of one name are ("top-level names are global, rename one of them"), not one of them silently taking the other's place
 // factorio: zlib converted as C: gzguts.h's `#define COPY 1` (a constant of the conversion) and inflate.h's inflate_mode enumerator COPY, never in one C translation unit; inflate's `state->mode = COPY` stored 1, and its next call returned Z_STREAM_ERROR
-// pending: the constant is taken for the enumerator, and `Mode m = COPY` is 1 (A)
-// error: enumerator_and_constant_of_one_name.kpp:6: error: 'COPY' is declared here and at enumerator_and_constant_of_one_name.kpp:5; top-level names are global, rename one of them
+// error: enumerator_and_constant_of_one_name.kpp:5: error: 'COPY' is declared here and at
 const auto COPY = 1;
 enum Mode { HEAD = 10, COPY, SYNC };
 

@@ -23133,7 +23133,9 @@ namespace
     {
       case NodeKind::ClassDecl: return static_cast<const ClassDecl*>(d)->isDefinition;
       case NodeKind::EnumDecl: return static_cast<const EnumDecl*>(d)->isDefinition;
-      case NodeKind::FunctionDecl: case NodeKind::VariableDecl: case NodeKind::UsingAliasDecl: return true;
+      // (an unscoped enum's enumerator is a name of the scope around its enum, `COPY` beside a
+      // constant COPY: two entities)
+      case NodeKind::FunctionDecl: case NodeKind::VariableDecl: case NodeKind::UsingAliasDecl: case NodeKind::EnumeratorDecl: return true;
       default: return false;
     }
   }
