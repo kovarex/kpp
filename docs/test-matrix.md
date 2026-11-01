@@ -200,6 +200,130 @@ On 2026-10-23 (d0495ebfd8a) the same Debug numbers were 62 s clean, 16 s and 55 
 header's critical path now: its slowest unity object 11.4 s, factorio.lib 4.2 s, the factorio-test.exe
 link 9.9 s (factorio-run.exe 5.9 s).
 
+## Container sizes: u32 against u64 (kppc fe933d5b, Factorio 4c178a5b915, 2026-11-01)
+
+Every stdlib size, count, index and capacity is `ContainerSize` (stdlib/core/Sizes.kpp): u32, or u64
+with `kppc --config sizeBits=64`. kovarex asked whether the width matters on the game, so that one
+String, Vector and so on is enough if it does not. The verdict is that it does not.
+- u64 is as fast as u32, or slightly faster in release: −1.7% on the menu maps and −0.6% in the unit
+  tests. In debug it is level: +0.1% and +0.5%.
+- u64 uses about 1 to 2% more peak commit.
+- The game builds equally fast with either width, and its exe is 1% larger at most.
+- Both widths give the same results as C++: every menu map's checksum matches, and the unit tests'
+  CRCs have 0 mismatches.
+
+**Builds.** One conversion of 4c178a5b915 by kppc fe933d5b (convert.cmd into thread H's scratch:
+headline 0, tests errors 0, every smoke test passes). It was built eight ways: the game and the
+unit tests, debug and release, each at sizeBits 32 and 64. The command is run.cmd's and tests.cmd's
+own kppc line with `--config sizeBits=W` added and a clean output directory (`size\build.cmd W
+release|debug game|tests` in thread H's scratch). Every build has 0 errors and 0 stubs.
+
+**The containers' sizes** (`sizeof`, a small program built at both widths):
+
+| Type | u32 | u64 |
+|---|---:|---:|
+| ContainerSize | 4 | 8 |
+| String | 24 | 32 |
+| WString | 16 | 24 |
+| Vector<int> | 16 | 24 |
+| Deque<int> | 24 | 32 |
+| Map<int, int>, Set<int> | 40 | 48 |
+| HashMap<int, int>, HashSet<int> | 32 | 48 |
+| StringView, List<int>, FastMap<int, int> | 16, 24, 24 | the same |
+
+The elements are the same at both widths, and so are the capacities and allocations: only each
+container's own header grows. Allocation counts were not measured, because nothing in the growth
+policy depends on the width.
+
+### Runtime: the 45 menu maps
+
+`python -I bench-mem.py 3 menu.json u32-release=DIR u64-release=DIR u32-debug=DIR u64-debug=DIR`
+(thread H's scratch). Each map runs for 600 ticks with `--benchmark`, as in the section above. Each
+round runs the four builds one after another on each map, with the order reversed on every other
+round, for three rounds. The total is the sum over the 45 maps of each map's median.
+
+| Build | 45 maps | per round | u64/u32 | per-map u64/u32: median (min to max) | u64 faster on |
+|---|---:|---|---:|---|---:|
+| u32 release | 8,352 ms | 8,375 / 8,301 / 8,377 | | | |
+| u64 release | 8,211 ms | 8,212 / 8,247 / 8,180 | **0.983** | 0.985 (0.943 to 1.034) | 37 of 45 maps |
+| u32 debug | 18,360 ms | 18,371 / 18,434 / 18,246 | | | |
+| u64 debug | 18,376 ms | 18,418 / 18,381 / 18,361 | **1.001** | 1.003 (0.952 to 1.045) | 17 of 45 maps |
+
+All four builds give every map the checksum of the C++ 2.1.25 baseline (menu-checksums.txt), on
+45 of 45 maps.
+
+### Unit tests
+
+Full plain runs, interleaved, with the order swapped every round (`size\unit-rounds.ps1`): three
+rounds in release and two in debug. Every run passes 9,501 of 9,501. The time is the per-test minimum
+over the rounds, summed over the 9,501 tests (`size\minima.py`).
+
+| Build | runs' test times | per-test minima summed | u64/u32 | per-test ratio over 5 ms: median (10th to 90th percentile) |
+|---|---|---:|---:|---|
+| u32 release | 156.3 / 154.6 / 154.9 s | 150.7 s | | |
+| u64 release | 155.0 / 154.9 / 153.6 s | 149.9 s | **0.994** | 0.997 (0.938 to 1.041) |
+| u32 debug | 330.6 / 332.8 s | 326.4 s | | |
+| u64 debug | 332.6 / 333.7 s | 327.9 s | **1.005** | 1.005 (0.939 to 1.069) |
+
+No suite moves by more than 0.34 s. The largest change in release is Multiplayer, 15.85 s at u32
+against 15.52 s at u64. The largest in debug is Simulations, 46.86 s against 47.19 s.
+
+**CRCs.** The tests' cross-build CRC mode compared these builds against C++ Release, whose CRCs
+equal C++ Debug's (above). C++ Release wrote the CRCs (`factorio-test.exe --crc-mode write`,
+9,501 of 9,501 tests, 1.87 MB). Each kppc build then checked its own against them with `--crc-mode
+check`:
+
+| Build checked | Result | Failed checks (CRC mismatches) |
+|---|---|---:|
+| u64 release | 9,501/9,501 | 0 |
+| u64 debug | 9,501/9,501 | 0 |
+| u32 release (the control) | 9,501/9,501 | 0 |
+
+### Memory
+
+Peak working set and peak commit come from GetProcessMemoryInfo on each benchmark process
+(bench-mem.py, the runs above). The peak is about 440 MB on every map at both widths, so it is the
+game's prototypes and sprites, which are loaded before any map, and not the map itself. These menu
+maps are small. The per-map difference compares each map's median over its three rounds:
+
+| | median commit difference, u64 − u32 (min to max over the maps) | median ratio | working set difference |
+|---|---|---:|---:|
+| release | +5.8 MB (−12.3 to +29.4) | 1.013 | +5.5 MB |
+| debug | +8.4 MB (−13.7 to +29.3) | 1.020 | +8.3 MB |
+
+The largest peak in any run is 448 MB at u32 against 456 MB at u64 in release (commit 437 against
+446 MB), and 462 MB against 472 MB in debug. No large save was measured. A map with millions of
+small containers would grow by the header sizes in the table above, and by nothing else.
+
+### Build time and size
+
+Two clean builds of each, interleaved: u32 first in the first round, u64 first in the second. Times
+are the wall time of kppc, including the link.
+
+| Build | u32 | u64 | exe u32 | exe u64 | IR (.ll) u32 | IR u64 |
+|---|---|---|---:|---:|---:|---:|
+| game release | 69.9 / 68.8 s | 67.6 / 68.8 s | 65,590,784 | 66,435,072 (+1.3%) | 758.9 MB | 758.7 MB |
+| game debug | 16.2 / 16.6 s | 16.4 / 21.6 s | 84,110,848 | 84,441,600 (+0.4%) | 877.2 MB | 877.2 MB |
+| tests release | 138.8 / 137.5 s | 138.2 / 137.8 s | 206,733,824 | 207,378,432 (+0.3%) | 2,281.0 MB | 2,281.0 MB |
+| tests debug | 34.4 / 36.2 s | 34.3 / 36.7 s | 239,804,928 | 239,092,736 (−0.3%) | 2,905.6 MB | 2,905.8 MB |
+
+### Where the difference comes from
+
+The width changes which integer conversions are written, not how many. In the game's release IR:
+- `zext i32 … to i64` falls from 54,274 at u32 to 7,401 at u64;
+- `sext i32 … to i64` rises from 52,206 to 102,416;
+- `trunc i64 … to i32` falls from 7,852 to 2,844.
+
+The converted game indexes mostly with `int` (`for (int i = 0; i < v.size(); ++i) v[i]`):
+- At u32, the int becomes a u32 for free and then is zero-extended for the address. LLVM cannot
+  widen a u32 induction variable to 64 bits, because its wraparound is defined.
+- At u64, the int is sign-extended. An `int` loop counter's increment has no signed wrap (nsw), so
+  LLVM's induction-variable widening removes the extension from the loop.
+
+This is the likely source of release's 1.7%, which -O0 does not get; it is not profiled. Neither
+width is slower anywhere that matters: the spread of per-map and per-test ratios is the same on both
+sides of 1.
+
 ## Historical: kppc 9ab96a0e, old source d0495ebfd8a (2026-10-30)
 
 Kept as a record only; 4c178a5b915 above is the current matrix. d0495 is no longer a gate: with the
