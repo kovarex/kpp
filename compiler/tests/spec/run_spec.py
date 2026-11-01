@@ -273,6 +273,9 @@ def main():
         TARGET = args.target
         if not os.path.exists(os.path.join(SYSROOT_LINUX, "usr", "lib", "x86_64-linux-gnu", "libc.so.6")):
             print("no Linux sysroot at", SYSROOT_LINUX, "(tests\\targets.ps1 makes one from WSL)"); return 2
+        # (WSL started once first: its virtual machine, stopped when idle, took more than a program's
+        # 60 s to start under a pool of programs at once)
+        subprocess.run(["wsl.exe", "-e", "true"], capture_output=True, timeout=300)
         EXTRA.extend(["--target", "linux", "--sysroot", SYSROOT_LINUX])
         C_TARGET_FLAGS = ["--target=x86_64-unknown-linux-gnu", "--sysroot=" + SYSROOT_LINUX]
         OUT += "-" + TARGET

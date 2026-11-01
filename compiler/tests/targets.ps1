@@ -42,6 +42,12 @@ if (Build @('--exe', $exe, (Join-Path $src 'hello.kpp')))
   $r = Run $exe @('a', 'b')
   if ($r.out -ne 'hello, world! 2 argument(s), sum 30, windows' -or $r.exit -ne 3) { Fail "windows hello: '$($r.out)', exit $($r.exit)" }
 }
+$exe = Join-Path $work 'imports.exe'
+if (Build @('--exe', $exe, (Join-Path $src 'imports.kpp')))
+{
+  $r = Run $exe @()
+  if ($r.out -ne '2147483647 4' -or $r.exit -ne 0) { Fail "windows imports: '$($r.out)', exit $($r.exit)" }
+}
 $exe = Join-Path $work 'uncaught.exe'
 if (Build @('--exe', $exe, (Join-Path $src 'uncaught.kpp')))
 {
@@ -106,6 +112,18 @@ else
     $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim(), 'a', 'b')
     if ($r.out -ne 'hello, world! 2 argument(s), sum 30, posix' -or $r.exit -ne 3) { Fail "linux hello ($name): '$($r.out)', exit $($r.exit) $($r.err)" }
   }
+  # The target's own headers (glibc's, from the sysroot): C's long 64 bits; and printf's %ld given an
+  # int32 refused, which Windows' 32-bit long takes.
+  $elf = Join-Path $work 'imports.elf'
+  if (Build @('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf, (Join-Path $src 'imports.kpp')))
+  {
+    $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim())
+    if ($r.out -ne '9000000000 8' -or $r.exit -ne 0) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
+  }
+  $bad = Join-Path $work 'long_format.kpp'
+  [IO.File]::WriteAllText($bad, "extern `"C`" int printf(const char* format, ...);`nint main() { int narrow = 6; printf(`"%ld\n`", narrow); return 0; }`n")
+  $r = Run $Kppc @('--quiet', '--target', 'linux', '--sysroot', $sysroot, '--exe', (Join-Path $work 'long_format.elf'), $bad)
+  if ($r.exit -eq 0 -or -not $r.err.Contains('takes a 64-bit integer for "%ld", given int32')) { Fail "linux %ld with an int32: exit $($r.exit), '$($r.err)'" }
   $ll = Join-Path $work 'hello.linux.ll'
   if (Build @('--target', 'linux', '--emit-llvm', $ll, (Join-Path $src 'hello.kpp'))) { CheckIR $ll 'linux' 'x86_64-unknown-linux-gnu' }
   $elf = Join-Path $work 'uncaught.elf'

@@ -1,5 +1,6 @@
 // spec: the SSE operations on 8-, 16- and 64-bit lanes and on the lowest lane, packs, saturating sums, sums of absolute differences, the set, load and store forms, conversions, the rounding mode, a prefetch, and MSVC's _BitScanReverse and __cpuid
 // found linking the converted game: 17 of these were unresolved externals (intrin.h declares them; the code generator emits each one's instructions) and about 60 more are in its DXT and YCoCg compression, Color, Math and CpuIntrinsics
+// target: windows (MSVC's _BitScanReverse beside the SSE operations)
 extern "C" import "intrin.h";
 int main()
 {

@@ -1,4 +1,5 @@
 // spec: importing a C header (`extern "C" import "windows.h";`) and calling into it
+// target: windows (windows.h)
 extern "C" import "windows.h";
 int main()
 {

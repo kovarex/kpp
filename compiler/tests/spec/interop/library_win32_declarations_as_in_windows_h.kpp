@@ -1,6 +1,7 @@
 // spec: the library's Win32 functions (namespace win32) have windows.h's types: each is the same C
 // function as windows.h declares, declared the same way
 // factorio: the game imports windows.h beside the library (its threads, clocks and file system)
+// target: windows (windows.h)
 extern "C" import "windows.h";
 static_assert(isSame<decltype(&win32::AcquireSRWLockExclusive), decltype(&::AcquireSRWLockExclusive)>, "AcquireSRWLockExclusive");
 static_assert(isSame<decltype(&win32::AcquireSRWLockShared), decltype(&::AcquireSRWLockShared)>, "AcquireSRWLockShared");

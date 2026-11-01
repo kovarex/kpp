@@ -10,8 +10,8 @@ extern "C" void* bsearch(const void* key, const void* base, size_t count, size_t
                           int (*compare)(const void*, const void*));
 extern "C" double strtod(const char* str, char** endptr);
 extern "C" float strtof(const char* str, char** endptr);
-extern "C" long strtol(const char* str, char** endptr, int base);
-extern "C" unsigned long strtoul(const char* str, char** endptr, int base);
+extern "C" CLong strtol(const char* str, char** endptr, int base);
+extern "C" CULong strtoul(const char* str, char** endptr, int base);
 extern "C" long long strtoll(const char* str, char** endptr, int base);
 extern "C" unsigned long long strtoull(const char* str, char** endptr, int base);
 extern "C" long double strtold(const char* str, char** endptr);

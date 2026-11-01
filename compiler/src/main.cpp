@@ -838,6 +838,88 @@ namespace
 
   // Collects `extern "C" import "header";` declarations, preprocesses the headers with clang
   // once (cached by content hash in the temp directory) and parses the result as one more file.
+  // An imported C text for an LP64 target (every target but Windows): C's `long` is 64 bits there,
+  // Kpp's `long long` (docs/design.md, "Targets and hosts": whatever Kpp's own `long` becomes, Q1,
+  // the C one in an imported header is the platform's). Each `long` that is not already part of
+  // `long long` or `long double` gets a second one; string and character literals are skipped.
+  std::string widenCLong(const std::string& text)
+  {
+    std::string out;
+    out.reserve(text.size() + text.size() / 64);
+    auto word = [&](size_t i) { return isalnum((unsigned char)text[i]) || text[i] == '_'; };
+    auto nextWord = [&](size_t i) // the identifier after i, past white space
+    {
+      while (i < text.size() && isspace((unsigned char)text[i]))
+        ++i;
+      size_t end = i;
+      while (end < text.size() && word(end))
+        ++end;
+      return std::string_view(text).substr(i, end - i);
+    };
+    bool afterLong = false; // the previous identifier was a `long` (this one may be the second of `long long`)
+    for (size_t i = 0; i < text.size();)
+    {
+      char c = text[i];
+      if (c == '"' || c == '\'')
+      {
+        size_t end = i + 1;
+        while (end < text.size() && text[end] != c && text[end] != '\n')
+          end += text[end] == '\\' ? 2 : 1;
+        end = std::min(end + 1, text.size());
+        out.append(text, i, end - i);
+        i = end;
+        afterLong = false;
+        continue;
+      }
+      if (!word(i))
+      {
+        out += c;
+        afterLong = afterLong && isspace((unsigned char)c);
+        ++i;
+        continue;
+      }
+      size_t end = i;
+      while (end < text.size() && word(end))
+        ++end;
+      std::string_view id = std::string_view(text).substr(i, end - i);
+      out.append(id);
+      if (id == "long" && !afterLong && (i == 0 || !word(i - 1)))
+      {
+        std::string_view next = nextWord(end);
+        if (next != "long" && next != "double")
+          out += " long";
+        afterLong = next == "long";
+      }
+      else
+        afterLong = false;
+      i = end;
+    }
+    return out;
+  }
+
+  // An imported C text for a SysV target: its va_list (clang's __builtin_va_list) is SysV x86-64's,
+  // an array of one register save area (`__va_list_tag[1]`, 24 bytes), which C passes on as a pointer
+  // to it; the resolver's __builtin_va_list is Windows' char*.
+  std::string vaListForSysV(const std::string& text)
+  {
+    const std::string from = "__builtin_va_list", to = "__kpp_va_list";
+    std::string out = "typedef struct __kpp_va_list_tag { unsigned int gp_offset; unsigned int fp_offset; void* overflow_arg_area; "
+                      "void* reg_save_area; } __kpp_va_list[1];\n";
+    out.reserve(text.size() + out.size());
+    auto word = [&](size_t i) { return i < text.size() && (isalnum((unsigned char)text[i]) || text[i] == '_'); };
+    for (size_t i = 0; i < text.size();)
+    {
+      if (text.compare(i, from.size(), from) == 0 && !(i > 0 && word(i - 1)) && !word(i + from.size()))
+      {
+        out += to;
+        i += from.size();
+      }
+      else
+        out += text[i++];
+    }
+    return out;
+  }
+
   void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                       SymbolTable& symbols, const Options& options)
   {
@@ -853,19 +935,11 @@ namespace
         }
     if (headers.empty())
       return;
-    if (!options.target.windows())
-    {
-      // (C's long and wchar_t, the target's headers through a sysroot: docs/design.md, "Targets
-      // and hosts", stage 2)
-      fprintf(stderr, "%s: error: importing C headers for --target %s comes with stage 2 of docs/design.md's \"Targets and hosts\"\n",
-              headers.front().c_str(), options.target.name.c_str());
-      codegenExit = 1;
-      return;
-    }
     auto importStart = std::chrono::steady_clock::now();
     std::string wrapper = "#define WIN32_LEAN_AND_MEAN\n#define NOMINMAX\n#define _USE_MATH_DEFINES\n";
     for (const std::string& h : headers)
-      wrapper += "#include <" + h + ">\n";
+      // (intrin.h is MSVC's: another target's clang has the same SSE intrinsics in immintrin.h)
+      wrapper += !options.target.windows() && h == "intrin.h" ? std::string("#include <immintrin.h>\n#include <x86intrin.h>\n") : "#include <" + h + ">\n";
     // MSVC's intrin.h declares these; clang's has them as builtins it declares itself. The code
     // generator emits each one's instruction (msvcBuiltin).
     if (std::find(headers.begin(), headers.end(), "intrin.h") != headers.end())
@@ -880,14 +954,17 @@ namespace
     // The include directories as absolute paths, in the key and on clang's command line: a relative
     // `--cinclude native\include` names another directory in every worktree.
     std::error_code ec;
-    std::string includeArgs;
+    // Another target's headers: clang preprocesses them for it, from its sysroot (in the key too).
+    std::string includeArgs = targetFlags(options);
+    if (!options.target.windows() && !options.sysroot.empty())
+      includeArgs += " \"--sysroot=" + options.sysroot + "\"";
     for (const std::string& dir : options.cIncludeDirs)
     {
       std::filesystem::path absolute = std::filesystem::absolute(dir, ec);
       includeArgs += " -I\"" + (ec ? dir : absolute.lexically_normal().string()) + "\"";
     }
     uint64_t hash = 1469598103934665603ull;
-    for (unsigned char c : "kpp import 3\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules)
+    for (unsigned char c : "kpp import 4\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules, vaListForSysV)
       hash = (hash ^ c) * 1099511628211ull;
     std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
     std::filesystem::create_directories(cacheDir, ec);
@@ -930,6 +1007,8 @@ namespace
       std::string definesText = readWholeFile(defines);
       std::map<std::string, std::string> expansions = expandMacroCalls(definesText, wrapper, cacheDir / (own + ".x.c"), clang, includeArgs);
       text = readWholeFile(preprocessed) + macroConstants(definesText, expansions);
+      if (!options.target.windows())
+        text = vaListForSysV(widenCLong(text));
       // The import, then its stamps (a reader that finds the import with older stamps checks those:
       // they still match only when the headers, and so the import, are the same).
       std::filesystem::path ownImport = cacheDir / (own + ".i"), ownStamps = cacheDir / (own + ".deps");
@@ -1521,6 +1600,7 @@ namespace
     std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
     build.global = std::make_unique<GlobalScope>(symbols);
     GlobalScope& global = *build.global;
+    global.setCLong64(!options.target.windows()); // (LP64: printf's %ld; docs/design.md, "Targets and hosts")
     for (size_t begin = 0; begin < options.whyAt.size();)
     {
       size_t end = std::min(options.whyAt.find(',', begin), options.whyAt.size());

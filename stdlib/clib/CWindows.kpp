@@ -1,0 +1,14 @@
+requires config::platform == Platform::Windows;
+// What the C runtime of Windows (the UCRT) has its own way (CLinux.kpp, CFreeBSD.kpp for the others).
+
+// C's long and unsigned long: 32 bits on Windows (LLP64). The library's C declarations say CLong
+// where C says long, so that they declare what the platform's C does (docs/design.md, "Targets and
+// hosts").
+using CLong = int;
+using CULong = unsigned int;
+
+// The standard streams: the UCRT's stdio.h's macros call __acrt_iob_func.
+extern "C" FILE* __acrt_iob_func(unsigned index);
+FILE* stdin  = __acrt_iob_func(0);
+FILE* stdout = __acrt_iob_func(1);
+FILE* stderr = __acrt_iob_func(2);

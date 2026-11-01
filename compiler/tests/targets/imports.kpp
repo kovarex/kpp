@@ -1,0 +1,12 @@
+// The target's own C headers (tests\targets.ps1): stdio.h and stdlib.h as the target's C library
+// declares them, C's long as CLong (32 bits on Windows, 64 on Linux and FreeBSD) and printf's %ld
+// taking one.
+extern "C" import "stdio.h";
+extern "C" import "stdlib.h";
+
+int main()
+{
+  CLong big = strtol("9000000000", nullptr, 10); // (saturated to LONG_MAX where long is 32 bits)
+  printf("%ld %d\n", big, int(sizeof(CLong)));
+  return 0;
+}

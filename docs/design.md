@@ -2153,6 +2153,41 @@ All of this goes through the coordinator.
   - The game: one call differs, `SetConsoleCursorPosition(HANDLE, COORD)`. COORD is 4 bytes, so
     the console cursor went to a pointer's bits; it is now passed in a register.
 
+### Stage 2, the target's C headers (2026-11-01)
+
+What follows needs no decision of Q1's. Whatever Kpp's own `long` becomes, C's `long` in an
+imported header is the platform's.
+- **The C import** preprocesses with `--target` and `--sysroot` (both in the cache's key), and
+  reads glibc's own `stdio.h`, `stdlib.h` and `string.h`. They give 20 parse errors (GNU
+  extensions), ignored as Windows' are.
+  - **`long`:** on an LP64 target each C `long` that is not part of `long long` or `long double`
+    becomes `long long` in the imported text (`widenCLong`).
+  - **`va_list`:** clang's `__builtin_va_list` becomes SysV's `__va_list_tag[1]`, 24 bytes of
+    register save area (`vaListForSysV`). Codegen's `va_start`, `va_copy` and `va_end` take its
+    address, or the pointer a parameter holds, and `va_arg` is LLVM's `va_arg` there.
+  - **`intrin.h`:** MSVC's header becomes clang's `immintrin.h` and `x86intrin.h` off Windows: the
+    same SSE intrinsics.
+- **`CLong` and `CULong`:** C's long and unsigned long. They are int32 on Windows and int64
+  elsewhere, in `clib/CWindows.kpp`, `CLinux.kpp` and `CFreeBSD.kpp` (the files once named
+  `CStdio<platform>`, which also hold the standard streams). The library's C declarations with
+  `long` now say `CLong`: `fseek`, `ftell`, `strtol`, `strtoul`, `lround`.
+  - The import found the need itself: glibc's real declarations clashed with the library's
+    32-bit ones ("the C function strtol is declared with two types").
+  - Still `long`, which is Q1's: Win32's declarations (Windows-only, where long is 32 bits) and the
+    library's own 32-bit atomics (`kpp_atomic_*32`).
+- **printf's format check follows the target** (resolver.cpp, `setCLong64`). On LP64, `%ld` takes
+  64 bits, and MSVC's lengths (`%I64d`, `%I32d`, `%Id`, `%w`) are errors: glibc reads `I` as a
+  flag and the digits as a width. A 32-bit `long` given to `%ld` printed garbage silently on Linux
+  before.
+- **Test:** `tests/targets.ps1` gained `imports.kpp`: `strtol("9000000000")` into a `CLong`,
+  printed with `%ld`. It gives `2147483647 4` on Windows (32 bits, saturated) and `9000000000 8` on
+  Linux. An `int` given to `%ld` is refused for Linux.
+- **The spec suite on Linux:** 850 pass, 4 pending, 36 failing, 23 skipped.
+  - Every failure is a later stage's: 16 links of library functions that call Win32 (stage 4),
+    and 20 throws (stage 3).
+  - Skipped as Windows' own: 9 more. Six import `windows.h`; the others use MSVC's
+    `_byteswap_*`, `_BitScanForward`, `__cpuid` and `_alloca`.
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).

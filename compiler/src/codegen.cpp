@@ -12416,6 +12416,27 @@ namespace
       if (n->name.parts.size() != 1)
         return std::nullopt;
       std::string name = sym(n->name.parts[0].symbol);
+      // SysV's va_list (the imported headers' __kpp_va_list, main.cpp's vaListForSysV) is an array of
+      // one register save area, which the intrinsics and va_arg take the address of: a local's own,
+      // a parameter's (decayed to a pointer, as C passes one on) the pointer it holds.
+      auto sysvList = [&](Expr* e)
+      {
+        const Ty* lt = e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+        if (lt && lt->kind == TyKind::Pointer)
+          return rvalue(e).text;
+        return lvalue(e);
+      };
+      if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty && !sh.target.windows())
+      {
+        // `va_arg(list, T)` on SysV: LLVM's va_arg, which reads a scalar from the registers saved
+        // or from the stack as the convention put it.
+        const Ty* t = withCurrentArgs(types.unqualified(types.stripRef(c->ty)));
+        if (isAggregate(t) || t->kind == TyKind::Vector)
+          unsupported(c, "va_arg of a struct or vector on " + sh.target.triple);
+        std::string v = newTemp();
+        fn += "  " + v + " = va_arg ptr " + sysvList(c->args[0]) + ", " + (t->kind == TyKind::Pointer ? std::string("ptr") : llType(t, c)) + "\n";
+        return Value{v, t, false};
+      }
       if (name == "va_arg" && c->args.size() == 2 && c->args[1]->kind == NodeKind::SizeofExpr && c->ty)
       {
         // `va_arg(list, T)` (Parser::parseVaArg): x64 Windows passes each variadic argument in an
@@ -12439,12 +12460,12 @@ namespace
         return std::nullopt;
       if (c->args.size() < (name == "va_start" ? 2u : name == "va_copy" ? 2u : 1u))
         unsupported(c, name + " with too few arguments");
-      std::string list = lvalue(c->args[0]);
+      std::string list = sh.target.windows() ? lvalue(c->args[0]) : sysvList(c->args[0]);
       std::string intrinsic = name == "va_start" ? "@llvm.va_start.p0" : name == "va_end" ? "@llvm.va_end.p0" : "@llvm.va_copy.p0";
       if (declaredNames.claim(intrinsic))
         decls += "declare void " + intrinsic + (name == "va_copy" ? "(ptr, ptr)\n" : "(ptr)\n");
       if (name == "va_copy")
-        fn += "  call void " + intrinsic + "(ptr " + list + ", ptr " + lvalue(c->args[1]) + ")\n";
+        fn += "  call void " + intrinsic + "(ptr " + list + ", ptr " + (sh.target.windows() ? lvalue(c->args[1]) : sysvList(c->args[1])) + ")\n";
       else
         fn += "  call void " + intrinsic + "(ptr " + list + ")\n";
       return Value{"", types.voidType(), false};

@@ -1,5 +1,6 @@
 // spec: MSVC's intrinsics that are instructions, as MSVC and clang-cl give them: _byteswap_ushort/ulong/uint64, the rotations (_rotl, _rotr, _lrotl, _lrotr, _rotl8, _rotr8, _rotl16, _rotr16, _rotl64, _rotr64; the count taken modulo the width, a negative one rotating the other way), __popcnt16/__popcnt/__popcnt64, _BitScanForward/Reverse(64) (with a zero mask: 0 and the index left as it was, which MSVC calls undefined) and __cpuid/__cpuidex
 // for the C libraries (zstd's mem.h and xxhash.c, crc32fast, stb): each an instruction, not a call into the CRT; the expected output is MSVC's and clang-cl's for the same program written in C++
+// target: windows (MSVC's intrinsics: _byteswap_*, _BitScanForward, __cpuid)
 extern "C" import "intrin.h";
 extern "C" import "stdlib.h";
 int main()

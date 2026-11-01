@@ -1,6 +1,0 @@
-requires config::platform == Platform::Windows;
-// The UCRT's standard streams: its stdio.h's macros call __acrt_iob_func.
-extern "C" FILE* __acrt_iob_func(unsigned index);
-FILE* stdin  = __acrt_iob_func(0);
-FILE* stdout = __acrt_iob_func(1);
-FILE* stderr = __acrt_iob_func(2);

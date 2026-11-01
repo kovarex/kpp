@@ -1,5 +1,6 @@
 // spec: `__declspec(align(N))` on a C struct (winnt.h's DECLSPEC_ALIGN: CONTEXT, M128A) is its alignment: alignof is N, and a local of it lands on N bytes (RtlCaptureContext stores into a CONTEXT with aligned SSE moves)
 // factorio: StackWalker::ShowCallstack's local `CONTEXT c; RtlCaptureContext(&c);` crashed with an access violation reading 0xffffffffffffffff when the game logged a stack: the import aligned CONTEXT to 8
+// target: windows (windows.h)
 extern "C" import "windows.h";
 extern "C" import "c_declspec_align.h";
 int capture()

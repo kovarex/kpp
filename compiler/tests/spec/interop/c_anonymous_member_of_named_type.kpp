@@ -1,5 +1,6 @@
 // spec: MS C's anonymous member of a named struct type (`MONITORINFO;` inside MONITORINFOEXW, `SpecPoint2;`): as the first member, its members are the struct's and the layout is C's; anywhere else it is laid out, but its members are not reachable by their names
 // factorio: GraphicsInterfaceDX11 and SDLWindow fill `MONITORINFOEX info; info.cbSize = sizeof(MONITORINFOEX);` for GetMonitorInfo: the import dropped the anonymous MONITORINFO (`MONITORINFO ;` read as a macro statement), so the struct was 64 bytes instead of 104 and cbSize no member (silent: GetMonitorInfo would have written past it)
+// target: windows (windows.h)
 extern "C" import "windows.h";
 extern "C" import "c_anonymous_member_of_named_type.h";
 int main()

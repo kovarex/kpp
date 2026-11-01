@@ -791,6 +791,7 @@ struct GlobalScope::Impl
   std::unordered_map<const FunctionDecl*, std::vector<std::string>> instanceNameErrors;
   std::unordered_set<const FunctionDecl*> emittedFunctions;
   bool codeGenerated = true; // GlobalScope::setCodeGenerated: false, none of emittedFunctions counts
+  bool cLong64 = false;      // GlobalScope::setCLong64: the target's C long is 64 bits (printf's %ld)
   bool emitted(const FunctionDecl* f) const { return codeGenerated && emittedFunctions.count(f); }
   std::atomic<size_t> scopes{1};
   // Draft types: created during Phase 2 for unresolved type names, stored separately from the
@@ -17260,6 +17261,12 @@ struct GlobalScope::Impl
         // The length: none, hh, h, l, ll, L, z, j, t, I, I32, I64, w.
         int bits = 32;
         bool wide = false;
+        if (impl.cLong64 && i < text.size() && (text[i] == 'I' || text[i] == 'w'))
+        {
+          // (glibc's and FreeBSD's printf read `I` as a flag and the digits after it as a width)
+          fail("has MSVC's length \"" + text.substr(start, i - start + 1) + "\", which this target's C library does not read");
+          return;
+        }
         if (text.compare(i, 3, "I64") == 0)
         {
           bits = 64;
@@ -17277,7 +17284,7 @@ struct GlobalScope::Impl
         else if (i < text.size() && strchr("hlLzjtIw", text[i]))
         {
           char l = text[i++];
-          if (l == 'z' || l == 'j' || l == 't' || l == 'I')
+          if (l == 'z' || l == 'j' || l == 't' || l == 'I' || (l == 'l' && impl.cLong64))
             bits = 64;
           wide = l == 'l' || l == 'w';
         }
@@ -22893,6 +22900,11 @@ void GlobalScope::setCodeGenerated(bool generated)
 {
   std::lock_guard lock(impl->checkerErrorsMutex);
   impl->codeGenerated = generated;
+}
+
+void GlobalScope::setCLong64(bool lp64)
+{
+  impl->cLong64 = lp64;
 }
 
 bool GlobalScope::unitlessErrorIn(const std::string& path)
