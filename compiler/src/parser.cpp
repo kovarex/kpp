@@ -1912,6 +1912,8 @@ namespace
         if (inRecovery)
           return;
         first = false;
+        if (d.isFunction && (flags & DF_Typedef))
+          functionTypeOfDeclarator(d, start); // `typedef void WriteFunc(void* context, int size);`: an alias of the function type
         if (d.isFunction)
         {
           finishFunction(start, d.type, d, flags, templ, scope);
@@ -2469,11 +2471,8 @@ namespace
         p->name = d.name.last().symbol;
       if (d.isFunction)
       {
-        FunctionType* f = node<FunctionType>(start);
-        f->result = d.type;
-        f->params = d.params;
-        f->isVariadic = (d.flags & DF_Variadic) != 0;
-        p->type = f;
+        functionTypeOfDeclarator(d, start);
+        p->type = d.type;
       }
       if (accept(P::Assign))
       {
@@ -2488,6 +2487,19 @@ namespace
       else if (at(P::LBrace))
         p->defaultValue = parseBraceInit();
       return p;
+    }
+
+    // A function declarator that declares no function (a parameter `int f(int)`, a typedef's
+    // name): its type becomes the function type, and it is a declarator of that type.
+    void functionTypeOfDeclarator(Declarator& d, uint32_t start)
+    {
+      FunctionType* f = node<FunctionType>(start);
+      f->result = d.type;
+      f->params = d.params;
+      f->isVariadic = (d.flags & DF_Variadic) != 0;
+      d.type = f;
+      d.flags &= ~DF_Variadic;
+      d.isFunction = false;
     }
 
     void finishFunction(uint32_t start, Type* returnType, Declarator& d, uint32_t flags, TemplateHeader templ, Scope scope)

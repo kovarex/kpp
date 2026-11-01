@@ -1,6 +1,5 @@
 // spec: a typedef of a function type, `typedef void WriteFunc(void* context, int size);`, is the alias `using WriteFunc = void(void* context, int size);`: a pointer to it declared, assigned a function and called, as a local and as a member
 // factorio: stb_image_write (converted as C): `typedef void stbi_write_func(void *context, void *data, int size);` and stbi__write_context's `stbi_write_func *func`, called as `s->func(s->context, &c, 1)` in 12 places; the converter writes the using form until this passes
-// pending: "codegen does not support a call that did not resolve to a function (the callee has type <unknown>*) yet" (A)
 typedef void WriteFunc(void* context, int size);
 struct Writer
 {

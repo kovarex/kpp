@@ -1,0 +1,23 @@
+// spec: a typedef of a function type as a class member (`Holder::Op`), as a local, with a C variadic parameter list, and two in one declaration (`typedef int Variadic(const char*, ...), Plain(int);`): each an alias of its function type, a pointer to which is assigned a function and called
+// factorio: none; the forms beside language/typedef_of_function_type's (stb_image_write's stbi_write_func) that C headers write
+typedef int Variadic(const char* format, ...), Plain(int);
+struct Holder
+{
+  typedef int Op(int a, int b);
+  Op* op;
+};
+int add(int a, int b) { return a + b; }
+int mul(int a, int b) { return a * b; }
+int twice(int x) { return 2 * x; }
+int main()
+{
+  typedef int Local(int, int);
+  Local* l = mul;
+  Holder h;
+  h.op = add;
+  Holder::Op* q = add;
+  Plain* p = twice;
+  Variadic* v = printf;
+  v("%d %d %d %d\n", h.op(2, 3), l(4, 5), q(1, 1), p(21));
+  return 0;
+}
