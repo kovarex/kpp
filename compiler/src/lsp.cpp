@@ -6,6 +6,7 @@
 #include "project.hpp"
 #include "source.hpp"
 #include <chrono>
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstdarg>
@@ -882,6 +883,7 @@ namespace
     };
     std::map<std::string, Cell> parkedCells;    // by cellKey
     std::string activeCell;                     // cellKey of the cell checked now ("": no build.kpp's)
+    std::vector<ProjectOption> activeOptions;   // its libraries' options (every target's, for all of them)
     std::vector<std::string> activeArguments;   // what the process's kept build was made with
     std::string announcedCell = "\n";          // the cell kpp/activeCell last named
     size_t keptCells = 4, cellClock = 0;
@@ -1095,11 +1097,23 @@ namespace
           }
           project = wanted;
           key = cellKey(project);
+          activeOptions.clear();
+          for (const ProjectCell& c : cells)
+            if (c.configuration == project.configuration && (project.target.empty() || c.target == project.target))
+              for (const ProjectOption& o : c.options)
+              {
+                bool known = false;
+                for (const ProjectOption& k : activeOptions)
+                  known = known || (k.library == o.library && k.name == o.name);
+                if (!known)
+                  activeOptions.push_back(o);
+              }
           log("the project of %s (build.kpp), %s", workspace.string().c_str(), cellName(project).c_str());
         }
         else
         {
           project = wanted;
+          activeOptions.clear();
           args = {self, workspace.string()};
           log("no build.kpp at or above %s: its files are the program", workspace.string().c_str());
         }
@@ -1484,6 +1498,37 @@ namespace
       return out;
     }
 
+    // A config:: constant in the checked cell: a library option's value, who set it, its default
+    // and description (build.kpp's description, ProjectCell::options); another constant's cell.
+    std::string configNote(const std::string& name)
+    {
+      std::string cell = "the cell *" + cellName(project) + "*";
+      for (const ProjectOption& o : activeOptions)
+      {
+        if (o.library + "::" + o.name != name)
+          continue;
+        std::string setBy = o.setBy; // (build.kpp's path in it from the workspace)
+        std::string folder = workspace.string() + "\\";
+        if (auto at = std::search(setBy.begin(), setBy.end(), folder.begin(), folder.end(), [](char x, char y) { return tolower((unsigned char)x) == tolower((unsigned char)y); });
+            !folder.empty() && at != setBy.end())
+          setBy.erase(at, at + folder.size());
+        std::string note = "`" + o.value + "` in " + cell + ", set by " + setBy + "; ";
+        note += o.required ? "required" : "default `" + o.defaultValue + "`";
+        note += ", " + o.type;
+        if (!o.allowed.empty())
+        {
+          note += ", one of";
+          for (size_t i = 0; i < o.allowed.size(); ++i)
+            note += (i ? ", `" : " `") + o.allowed[i] + "`";
+        }
+        note += ". An option of the library " + o.library + ".";
+        if (!o.description.empty())
+          note += "\n\n" + o.description;
+        return note;
+      }
+      return "As in " + cell + ".";
+    }
+
     Json hover(const Json& params)
     {
       Json result;
@@ -1504,6 +1549,8 @@ namespace
           if (const Ty* ty = static_cast<Expr*>(o->node)->ty)
             where += ", here of type `" + program.global->types().toString(ty, program.symbols) + "`";
         value += where;
+        if (qualified.rfind("config::", 0) == 0 && !activeCell.empty())
+          value += "\n\n" + configNote(qualified.substr(8));
         if (std::string comment = commentAbove(d); !comment.empty())
           value += "\n\n" + comment;
         result = Json::object()

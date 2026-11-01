@@ -391,9 +391,12 @@ as it was. Switching does not restart anything: the checked cell's kept build is
 checked before is incremental; at most `keptCells` (4) are kept, the least recently used dropped. A
 cell's kept build is used only for the arguments it was made with: a change of `settings` or of
 what build.kpp describes checks it from scratch. The open documents' unsaved texts stand in every
-cell. Interface in [editors.md](editors.md), "Cells"; tested by tests/lsp/cells.jsonl. Next, once
-thread E's matrix lands: each cell's `config::` values and where each came from (a configuration's
-constant, a library's `option` default, `configure(Cell&)`), shown by hover on a `config::` name.
+cell. Interface in [editors.md](editors.md), "Cells"; tested by tests/lsp/cells.jsonl. Hover on a `config::`
+name says which cell's value the code sees; on a library's option (build.md, "Library options") it
+gives the value, who set it, the default (or "required"), the type, the allowed values and the
+description, from build.kpp's description of the cell (`ProjectCell::options`); with every target
+checked, the options of all of them. Not done: completing option names in build.kpp (build.kpp
+is not part of the checked program).
 
 Measured on the game (factorio-in-kpp 73c8aeb1, its build.kpp, a scratch copy; scratchpad
 cellsmeasure.py), target factorio: the first check of a cell 10.5 to 10.7 s (debug, then release);

@@ -1,9 +1,11 @@
 // Cells (docs/editors.md, "Cells"), for tests\lsp.ps1 on a copy of tests\lsp\cells: build.kpp has the
-// targets game and tool in debug and release; the game's release cell has an error. $ROOT is the copy's URI.
+// targets game and tool in debug and release; the game's release cell has an error, and the game uses the library sound, setting its option volume. $ROOT is the copy's URI.
 // The first cell is the client's: game, debug. No diagnostics.
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{},"initializationOptions":{"target":"game","configuration":"debug","keptCells":2}}}
 {"jsonrpc":"2.0","method":"initialized","params":{}}
 {"jsonrpc":"2.0","id":2,"method":"kpp/cells","params":{}}
+// A library option in the cell: its value, who set it, its default and description (hover on config::sound::volume).
+{"jsonrpc":"2.0","id":20,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/libraries/sound/src/sound.kpp"},"position":{"line":0,"character":39}}}
 // Visual Studio's solution configuration names the cell: the game's release cell, with its error.
 {"jsonrpc":"2.0","id":3,"method":"kpp/selectCell","params":{"target":"game","configuration":"Release|x64"}}
 // The setting's way: the tool, still release. The game's error goes: the game's files are not the tool's.

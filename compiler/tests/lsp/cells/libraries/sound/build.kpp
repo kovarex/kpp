@@ -1,0 +1,7 @@
+void build(Project& project)
+{
+  Library& sound = project.library("sound");
+  sound.version = "0.1.0";
+  sound.license = "MIT";
+  sound.option("volume", 5, "The loudness, 0 to 10");
+}

@@ -1,5 +1,6 @@
 void build(Project& project)
 {
-  project.executable("game", {"src/common", "src/game"});
+  Executable& game = project.executable("game", {"src/common", "src/game"});
+  game.use("sound").config("volume", 7);
   project.executable("tool", {"src/common", "src/tool"});
 }
