@@ -1,0 +1,229 @@
+// UTF-8 (docs/stdlib/utf8.md): validating a text, decoding and iterating its code points, encoding a
+// code point, counting code points. Bytes that are not UTF-8 decode as U+FFFD, one for each maximal
+// subpart (the Unicode Standard 3.9, "U+FFFD Substitution of Maximal Subparts"; WHATWG's decoder),
+// the same way forwards, backwards and through the iterator.
+
+// A code point with the bytes it took: what utf8Decode and utf8DecodeBefore give.
+struct Utf8Decoded
+{
+  u32 codePoint = 0;      // a scalar value, or U+FFFD for bytes that are not UTF-8
+  ContainerSize length = 0; // 1 to 4: the sequence's bytes, or the maximal subpart's
+  bool valid = false;     // false where U+FFFD replaced bytes that are not UTF-8
+};
+
+// Whether UTF-8 can encode codePoint: U+0000 to U+10FFFF but the surrogates.
+bool isScalarValue(u32 codePoint) { return codePoint <= 0x10FFFF && (codePoint < 0xD800 || codePoint > 0xDFFF); }
+
+// The code point that starts at `at` (at < text.size()). The ranges of the bytes after the first
+// are the Unicode Standard's (3.9, table 3-7): they leave out overlong forms, surrogates and
+// code points past U+10FFFF, so that a sequence that decodes is valid.
+Utf8Decoded utf8Decode(StringView text, ContainerSize at)
+{
+  const uint8_t* bytes = (const uint8_t*)text.data() + at;
+  ContainerSize available = text.size() - at;
+  uint8_t first = bytes[0];
+  Utf8Decoded result;
+  if (first < 0x80)
+  {
+    result.codePoint = first;
+    result.length = 1;
+    result.valid = true;
+    return result;
+  }
+  ContainerSize needed = 0;
+  u32 code = 0;
+  uint8_t low = 0x80, high = 0xBF; // the range of the next byte
+  if (first >= 0xC2 && first <= 0xDF)
+  {
+    needed = 2;
+    code = first & 0x1F;
+  }
+  else if (first >= 0xE0 && first <= 0xEF)
+  {
+    needed = 3;
+    code = first & 0x0F;
+    if (first == 0xE0)
+      low = 0xA0; // (an overlong form below)
+    else if (first == 0xED)
+      high = 0x9F; // (the surrogates above)
+  }
+  else if (first >= 0xF0 && first <= 0xF4)
+  {
+    needed = 4;
+    code = first & 0x07;
+    if (first == 0xF0)
+      low = 0x90;
+    else if (first == 0xF4)
+      high = 0x8F; // (past U+10FFFF above)
+  }
+  else
+  {
+    // A continuation byte, C0, C1 or F5 to FF: a maximal subpart of one byte.
+    result.codePoint = 0xFFFD;
+    result.length = 1;
+    return result;
+  }
+  for (ContainerSize i = 1; i < needed; ++i)
+  {
+    if (i >= available || bytes[i] < low || bytes[i] > high)
+    {
+      // Cut short, or a byte out of range: the bytes so far are the maximal subpart.
+      result.codePoint = 0xFFFD;
+      result.length = i;
+      return result;
+    }
+    code = (code << 6) | (bytes[i] & 0x3F);
+    low = 0x80;
+    high = 0xBF;
+  }
+  result.codePoint = code;
+  result.length = needed;
+  result.valid = true;
+  return result;
+}
+
+// The code point that ends at `at` (0 < at <= text.size()), as decoding forwards meets it. A byte
+// that is no continuation byte always starts a code point, and a code point is at most 4 bytes:
+// so the decoding starts at the last such byte in the 4 before `at` (or 4 back), and walks forward
+// to `at`. Inside a sequence (`at` no position between code points) the part before `at` is
+// U+FFFD, not valid.
+Utf8Decoded utf8DecodeBefore(StringView text, ContainerSize at)
+{
+  assert(at > 0 && at <= text.size()); // (at - 1 below would wrap)
+  const uint8_t* bytes = (const uint8_t*)text.data();
+  ContainerSize start = at - 1;
+  while (start > 0 && at - start < 4 && (bytes[start] & 0xC0) == 0x80)
+    --start;
+  while (true)
+  {
+    Utf8Decoded decoded = utf8Decode(text, start);
+    if (start + decoded.length == at)
+      return decoded;
+    if (start + decoded.length > at)
+    {
+      decoded.codePoint = 0xFFFD;
+      decoded.length = at - start;
+      decoded.valid = false;
+      return decoded;
+    }
+    start += decoded.length;
+  }
+}
+
+// The position of the first byte that starts no valid sequence, or npos when text is valid UTF-8.
+ContainerSize utf8InvalidAt(StringView text)
+{
+  for (ContainerSize at = 0; at < text.size();)
+  {
+    Utf8Decoded decoded = utf8Decode(text, at);
+    if (!decoded.valid)
+      return at;
+    at += decoded.length;
+  }
+  return StringView::npos;
+}
+
+// Whether all of text is valid UTF-8.
+bool isUtf8(StringView text) { return utf8InvalidAt(text) == StringView::npos; }
+
+// How many code points text has (a maximal subpart that is not UTF-8 counts as one).
+ContainerSize utf8Length(StringView text)
+{
+  ContainerSize count = 0;
+  for (ContainerSize at = 0; at < text.size(); at += utf8Decode(text, at).length)
+    ++count;
+  return count;
+}
+
+// Writes the shortest UTF-8 form of a scalar value into out (room for 4 bytes); returns how many
+// bytes it wrote. InvalidArgument for a code point that is no scalar value (nothing is written).
+ContainerSize utf8Encode(u32 codePoint, char* out)
+{
+  if (!isScalarValue(codePoint))
+    throw InvalidArgument(String("not a Unicode scalar value"));
+  if (codePoint < 0x80)
+  {
+    out[0] = char(codePoint);
+    return 1;
+  }
+  if (codePoint < 0x800)
+  {
+    out[0] = char(0xC0 | (codePoint >> 6));
+    out[1] = char(0x80 | (codePoint & 0x3F));
+    return 2;
+  }
+  if (codePoint < 0x10000)
+  {
+    out[0] = char(0xE0 | (codePoint >> 12));
+    out[1] = char(0x80 | ((codePoint >> 6) & 0x3F));
+    out[2] = char(0x80 | (codePoint & 0x3F));
+    return 3;
+  }
+  out[0] = char(0xF0 | (codePoint >> 18));
+  out[1] = char(0x80 | ((codePoint >> 12) & 0x3F));
+  out[2] = char(0x80 | ((codePoint >> 6) & 0x3F));
+  out[3] = char(0x80 | (codePoint & 0x3F));
+  return 4;
+}
+
+// Appends the shortest UTF-8 form of a scalar value; InvalidArgument for anything else.
+void appendUtf8(String& out, u32 codePoint)
+{
+  char bytes[4];
+  ContainerSize length = utf8Encode(codePoint, bytes);
+  out.append(bytes, length);
+}
+
+// The code points of a text in order (utf8CodePoints), U+FFFD for bytes that are not UTF-8. A
+// forward iterator; it also tells the byte position of the current code point and whether it was
+// valid. Invalidated when the text's bytes change.
+struct Utf8CodePointIterator
+{
+  using value_type = u32;
+  using difference_type = ptrdiff_t;
+  using iterator_category = ForwardIteratorTag;
+
+  StringView text;
+  ContainerSize at = 0;
+  Utf8Decoded decoded; // the code point at `at` (none at the end)
+
+  Utf8CodePointIterator() {}
+  Utf8CodePointIterator(StringView text, ContainerSize at) : text(text), at(at)
+  {
+    if (at < text.size())
+      this->decoded = utf8Decode(text, at);
+  }
+
+  u32 operator*() const { return this->decoded.codePoint; }
+  ContainerSize position() const { return this->at; }
+  bool valid() const { return this->decoded.valid; }
+  Utf8CodePointIterator& operator++()
+  {
+    this->at += this->decoded.length;
+    this->decoded = this->at < this->text.size() ? utf8Decode(this->text, this->at) : Utf8Decoded();
+    return *this;
+  }
+  Utf8CodePointIterator operator++(int)
+  {
+    Utf8CodePointIterator before = *this;
+    ++*this;
+    return before;
+  }
+  bool operator==(const Utf8CodePointIterator& other) const { return this->at == other.at; }
+  bool operator!=(const Utf8CodePointIterator& other) const { return this->at != other.at; }
+};
+
+// A range-for over a text's code points: `for (u32 c : utf8CodePoints(text))`.
+struct Utf8CodePoints
+{
+  StringView text;
+  Utf8CodePointIterator begin() const { return Utf8CodePointIterator(this->text, 0); }
+  Utf8CodePointIterator end() const { return Utf8CodePointIterator(this->text, this->text.size()); }
+};
+
+Utf8CodePoints utf8CodePoints(StringView text)
+{
+  Utf8CodePoints points;
+  points.text = text;
+  return points;
+}

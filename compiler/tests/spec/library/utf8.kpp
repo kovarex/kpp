@@ -1,0 +1,60 @@
+// spec: UTF-8 (docs/stdlib/utf8.md): decoding gives U+FFFD for each maximal subpart of bytes that are not UTF-8, as the Unicode Standard's table 3-8 shows (61 F1 80 80 E1 80 C2 62 80 63 80 BF 64 is a, three U+FFFD, b, U+FFFD, c, two U+FFFD, d); overlong forms, surrogates, code points past U+10FFFF and a sequence cut short are not UTF-8; decoding backwards meets the code points decoding forwards does; encoding writes the shortest form and throws InvalidArgument for a code point that is no scalar value; isUtf8, utf8InvalidAt and utf8Length agree with the decoding
+// factorio: none; json, html, markdown and url (libraries/), which each had a copy
+String hex(u32 value)
+{
+  char buffer[16];
+  snprintf(buffer, sizeof(buffer), "%X", value);
+  return String(buffer);
+}
+
+// Every code point forwards ("!" after one that replaced bytes), then backwards from the end.
+void show(StringView text)
+{
+  String forward;
+  for (Utf8CodePointIterator it = utf8CodePoints(text).begin(); it != utf8CodePoints(text).end(); ++it)
+    forward += hex(*it) + (it.valid() ? " " : "! ");
+  String backward;
+  for (ContainerSize at = text.size(); at > 0;)
+  {
+    Utf8Decoded decoded = utf8DecodeBefore(text, at);
+    backward = hex(decoded.codePoint) + (decoded.valid ? " " : "! ") + backward;
+    at -= decoded.length;
+  }
+  println("{}| {} {} {} {}", forward, forward == backward, utf8Length(text), isUtf8(text), utf8InvalidAt(text) == StringView::npos ? String("-") : toString(utf8InvalidAt(text)));
+}
+
+int main()
+{
+  show(StringView("\x61\xF1\x80\x80\xE1\x80\xC2\x62\x80\x63\x80\xBF\x64"));
+  show(StringView("a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80")); // a, U+00E9, U+20AC, U+1F600
+  show(StringView("\xC0\xAF"));                                // an overlong '/'
+  show(StringView("\xE0\x80\x80"));                            // an overlong U+0000
+  show(StringView("\xED\xA0\x80"));                            // the surrogate U+D800
+  show(StringView("\xF4\x90\x80\x80"));                        // U+110000
+  show(StringView("a\xE2\x82"));                               // cut short
+  show(StringView("\xEF\xBF\xBD"));                            // a U+FFFD the text spells: valid
+  Utf8Decoded decoded = utf8Decode(StringView("x\xE2\x82\xAC"), 1);
+  println("{} {} {}", hex(decoded.codePoint), decoded.length, decoded.valid);
+  String encoded;
+  for (u32 c : {0x24u, 0xA2u, 0x20ACu, 0x10348u})
+    appendUtf8(encoded, c);
+  String bytes;
+  for (char c : encoded)
+    bytes += hex((uint8_t)c) + " ";
+  println("{}", bytes);
+  for (u32 bad : {0xD800u, 0x110000u})
+  {
+    try
+    {
+      char out[4];
+      utf8Encode(bad, out);
+      println("encoded");
+    }
+    catch (const InvalidArgument& e)
+    {
+      println("{}: {}", hex(bad), e.what());
+    }
+  }
+  println("{} {} {} {}", isScalarValue(0x10FFFF), isScalarValue(0xDFFF), isScalarValue(0xE000), isScalarValue(0x110000));
+  return 0;
+}

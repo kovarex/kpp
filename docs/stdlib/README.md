@@ -12,7 +12,7 @@ lists it. The specification wins: such a gap is a bug to fix, not a change of th
 
 Files:
 - [Common rules](common.md): sizes, element requirements, invalidation, complexity, errors.
-- [Vector](vector.md), [String](string.md)
+- [Vector](vector.md), [String](string.md), [UTF-8](utf8.md): validating, decoding and encoding UTF-8 text
 - [Map, Set, MultiMap, MultiSet](map.md), [FastMap, FastSet](fastmap.md)
 - [HashMap, HashSet](hashmap.md)
 - [Deque, Queue, Stack](deque.md), [List, ForwardList](list.md), [PriorityQueue](priorityqueue.md)
