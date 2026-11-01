@@ -1,6 +1,5 @@
-// spec: a C-variadic function whose last named parameter is a `const char*` but which is not printf-like reads its arguments by its own format; a call with a string literal there that has no `%` is not checked as printf's, and every argument is passed
+// spec: a C-variadic function whose last named parameter is a `const char*` but which is not printf-like reads its arguments by its own format; no C-variadic call is format-checked (design.md 14), and every argument is passed
 // factorio: stb_image (converted as C): stb_image_write's `stbiw__writef(s, "111 221 2222 11", 0, 0, format, 0, 0, 0, 0, 0, x, y, bits, alpha)` and stbiw__outfile, which write TGA's and BMP's headers by the digits of their format (the converter had dropped the arguments to satisfy the printf check: the headers came out as garbage)
-// pending: "the format of writeFields has fewer conversions than arguments: 7 more"; which variadic functions are printf-like is a design question (a format with a `%`, the functions that pass their va_list to the v*printf family, or a mark on the declaration)
 extern "C" import "stdarg.h";
 
 void writeFieldsV(unsigned char* out, const char* fields, va_list v)

@@ -1702,16 +1702,12 @@ The smallest language that is still Kpp, as the target of the first code generat
   into their storage so, where C++'s construct_at casts). Specs:
   expressions/pointer_of_other_type_is_error, expressions/pointer_conversions_without_cast,
   expressions/function_pointer_of_other_type_is_error.
-- **A printf-like call's format matches its arguments** (decided 2026-10-31; an error). A
-  C-variadic function whose last named parameter is a `const char*` (the C library's printf family,
-  ssprintf, the game's FORMAT_STRING functions; the scanf family, whose conversions take pointers)
-  called with a string literal there: every conversion takes an argument of its type and size
-  (LLP64: `%ld` 32 bits, `%lld`, `%zu`, `%I64d` 64; `*` an int; for scanf a pointer to them, `%lf`
-  a double*), and the arguments are as many as the conversions. Factorio's own mismatches are made explicit
-  by the converter as C++ behaves (`%u` given a uint64 casts it to uint32_t, an extra trailing
-  argument is dropped); a container size passed for `%zu` is a size_t. Specs:
-  language/printf_format_must_match_arguments, language/printf_format_matching_arguments,
-  language/scanf_format_must_match_arguments.
+- **A C-variadic call is never format-checked** (2026-11-01, kovarex, section 14; it replaced
+  "a printf-like call's format matches its arguments", decided 2026-10-31): Kpp code prints through
+  `print`/`toString`, the converter rewrites printf-family calls into them, and what stays variadic
+  is a call at the C boundary or of a converted library's own variadic interface (trio, zlib's
+  gzprintf, stb's writef), passed as written. Specs: language/variadic_with_own_format,
+  language/variadic_calls_are_unchecked, language/printf_format_matching_arguments.
 - **Grammar parseable without name lookup.** Three rules replace C++'s dependence on knowing
   what a name is:
   1. A statement that starts with a (qualified) name followed by `*`, `&`, `&&` chains and then
