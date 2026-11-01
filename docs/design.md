@@ -739,7 +739,9 @@ Python's and Lua's `print`, Go's `fmt.Print`, Nim's `echo`, Abseil's `StrCat`): 
 arguments, one after another, with nothing parsed.
 
 - **Calls:** `print("Hello ", name, " you are ", age, " years old");`. `print(someText)` prints the
-  text as it is, always.
+  text as it is, always. `println` is `print` with a line end. There is no `printf` in Kpp's
+  standard library (kovarex, 2026-11-01); C's `printf` exists only as the imported C function that
+  converted C code calls.
 - **`Text`, the parameter type** (kovarex chose the name): a function that takes text from its
   caller declares `void log(Text text)` and is called as `log("Hello ", name)`, with no
   `log(format(...))` and no variadic template per function. A `Text` refers to the caller's
