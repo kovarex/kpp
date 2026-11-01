@@ -60,7 +60,7 @@ type kpp\CONVERSION.md | findstr /B "Files -"
 rem The C libraries (c-libraries.cmd), each converted on its own by C's rules into kpp\clib\NAME\ (its
 rem report there), then copied into the checkout's libraries\NAME\ and into kpp\NAME\. Their headers
 rem stay C: the checkout has them from resources.cmd, and the builds import them (CLIBINC).
-call c-libraries.cmd
+call "%~dp0c-libraries.cmd" || exit /b 1
 set CINC=%CINC% %CLIBINC%
 set CLIBKPP=
 set CLIBWHOLE=
