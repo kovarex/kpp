@@ -764,7 +764,11 @@ arguments, one after another, with nothing parsed.
   or StringView and the other has `appendTo` (`String s = "x = " + equation;`).
 - **Built in and in the standard library:** every integer, float, `bool`, `char`, `String`,
   `StringView` and container has `appendTo`; formatting options are small objects with it
-  (`hex(x)`, `fixed(t, 2)`, `padded(n, 5)`). `out << 65` appends the text "65"; a character is
+  (kovarex, 2026-11-01, one for every printf specifier the converter meets): `hex(x)`,
+  `hex(x, digits)`, `hexUpper(x)`, `hexUpper(x, digits)`, `octal(x)`, `fixed(x, decimals)`,
+  `significant(x, digits)` (C's `%g`), `scientific(x, digits)` (C's `%e`), `withSign(piece)` (C's
+  `%+`), `alignRight(x, width)` and `alignLeft(x, width)` (fill optional), `zeroPadded(x, width)`
+  (the sign first, as C's `%05d`), `address(p)` (16 uppercase hex digits, as MSVC's `%p`). `out << 65` appends the text "65"; a character is
   appended only from a `char`. A float or double prints, by default, the shortest text that reads
   back to exactly the same value (`0.1` is "0.1", `0.1 + 0.2` is "0.30000000000000004"); kovarex,
   2026-11-01: "by default, it should always print all the information, so nothing is lost".
@@ -784,7 +788,7 @@ arguments, one after another, with nothing parsed.
   compile-time literal format; a non-literal format is a compile error.
 - **Converted code is Kpp too** (kovarex, 2026-11-01: "converting code to kpp is getting kpp code"):
   the converter rewrites every printf-family call, in the game (`ssprintf`, `printf`) and in
-  converted C libraries, into `print`/`println`/`toString`/`<<` with `hex`, `fixed`, `padded` for
+  converted C libraries, into `print`/`println`/`toString`/`<<` with the formatting objects for
   the specifiers; where C++ read a value narrower than its type (`%u` of a 64-bit value) it writes
   the narrowing (`u32(x)`), so the text stays identical (the harnesses and the game's CRCs check
   it). So **no format-string checking exists in the language**: the rule "a printf-like call's
@@ -797,8 +801,8 @@ arguments, one after another, with nothing parsed.
 
 Owners: thread D the language side (`Text` as a parameter type and its lifetime rule, packing a
 call's arguments into it, the missing-`appendTo` error); thread C the library side (`appendTo`
-throughout the stdlib, `operator<<` and `operator+`, `print`, `toString`, `hex`, `fixed`,
-`padded`, docs/stdlib/).
+throughout the stdlib, `operator<<` and `operator+`, `print`, `toString`, and the formatting objects,
+docs/stdlib/).
 
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
