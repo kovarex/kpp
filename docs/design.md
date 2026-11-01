@@ -140,11 +140,17 @@ builds win less unless machine code is cached per function.
 - The game's 2D `Vector` class is `Vector2D` in the conversion, since `Vector` is the library's
   std::vector (decided 2026-10-25; the converter renames the identifier).
 - Sizes are unsigned (kovarex 2026-11-01: "all the sizes should be unsigned not signed"): every
-  size, count, capacity, length, index and position is a `ContainerSize`, `u32` unless
-  `kppc --config sizeBits=64` makes it `u64` (stdlib/core/Sizes.kpp, the one alias, so that both
-  widths can be measured on the game). Differences, offsets and comparison results stay signed.
-  npos is the largest size; past the limit a container throws LengthError
-  (docs/stdlib-conformance.md, "Sizes are 32-bit unsigned").
+  size, count, capacity, length, index and position is a `ContainerSize` (stdlib/core/Sizes.kpp).
+  Differences, offsets and comparison results stay signed. npos is the largest size; past the
+  limit a container throws LengthError (docs/stdlib-conformance.md, "Sizes are unsigned").
+- **Container sizes are u64** (decided 2026-11-01; section 13, "The size width", has the
+  measurement): `ContainerSize` is `u64`, with no switch, so there is one String, one Vector and so
+  on. kovarex's rule: "If it doesn't make a difference, it would be more practical to just have one
+  String/Vector etc". H measured u64 against u32 on the game: release 0.983x on the 45 menu maps
+  and 0.994x on the unit tests, debug 1.001x and 1.005x, the exe +1.3%, peak commit +6 MB, CRCs
+  9,501/9,501 with 0 mismatches against C++ Release. The u32 width and its
+  `kppc --config sizeBits` switch were removed (the option is now an error). String is 32 bytes,
+  Vector 24.
 
 ### 5. Interop: C only
 - Import C headers / C ABI (OS APIs, SDL, Lua, zlib, openssl, curl...).
@@ -639,8 +645,8 @@ target-sized `usize`. kovarex asked: "In standard library, it used often size_t,
 'natural size', which was at the time solving the 32bit versus 64bit architecture switch (that is
 how I saw it). But these days basically everything is 64bit (is it? research). Also research if
 there is any impracticality, if standard library is built specifically around 64 bit types instead
-of the generic size_t." H benchmarks the stdlib with u32 and with u64 sizes on Factorio (C makes it
-a one-line switch).
+of the generic size_t." H benchmarked the stdlib with u32 and with u64 sizes on Factorio (C made it
+a one-line switch, removed with the decision).
 - **Which platforms are 64-bit.** All of the desktops: Windows x64 and arm64; macOS, which has run
   only 64-bit code since 10.15; Linux. In Steam's survey, nearly every Windows and Linux system is
   a 64-bit one (Windows 11 64-bit 70.8% and Windows 10 64-bit 26.7% in December 2025). The consoles

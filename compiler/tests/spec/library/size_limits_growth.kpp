@@ -1,9 +1,9 @@
-// spec: the containers' growth past the size's range: doubling a capacity stops at maxContainerSize (2^32 - 2 with the default 32-bit sizes) instead of wrapping negative; a size sum past maxContainerSize, HashMap's and HashSet's reserve of more than their slots can count and WString's growth there throw LengthError (MSVC's messages: "unordered_map/set too long", "string too long") instead of wrapping (WString's reserve of 2^31 - 1 returned without reserving when sizes were int: needed + 1 wrapped negative)
+// spec: the containers' growth past the size's range: doubling a capacity stops at maxContainerSize (2^64 - 2) instead of wrapping negative; a size sum past maxContainerSize, HashMap's and HashSet's reserve of more than their slots can count and WString's growth there throw LengthError (MSVC's messages: "unordered_map/set too long", "string too long") instead of wrapping (WString's reserve of 2^31 - 1 returned without reserving when sizes were int: needed + 1 wrapped negative; and its reserve of npos when they became u64: needed + 1 wrapped to 0)
 // factorio: none known; sizeSum and grownCapacity are what every container's growth path uses (core/Sizes.kpp)
 int main()
 {
   println("{} {} {}", grownCapacity(0, 1, 4), grownCapacity(100, 101, 4), grownCapacity(100, 500, 4));
-  println("{} {}", grownCapacity(0x80000001, 0x80000002, 4) == maxContainerSize, grownCapacity(maxContainerSize - 1, maxContainerSize, 4) == maxContainerSize);
+  println("{} {}", grownCapacity(maxContainerSize / 2 + 2, maxContainerSize / 2 + 3, 4) == maxContainerSize, grownCapacity(maxContainerSize - 1, maxContainerSize, 4) == maxContainerSize);
   println("{}", sizeSum(maxContainerSize - 1, 1, "sum") == maxContainerSize);
   try
   {
@@ -15,7 +15,7 @@ int main()
   }
   try
   {
-    println("{}", grownCapacity(maxContainerSize, maxContainerSize + 0LL + 1, 4));
+    println("{}", grownCapacity(maxContainerSize, maxContainerSize + 1, 4));
   }
   catch (const LengthError& e)
   {
@@ -34,7 +34,7 @@ int main()
   HashSet<int> set;
   try
   {
-    set.reserve(1700000000);
+    set.reserve(0x7000000000000000); // more than 3/4 of 2^63 slots
     println("reserved");
   }
   catch (const LengthError& e)
@@ -50,6 +50,15 @@ int main()
   catch (const LengthError& e)
   {
     println("wstring: {}, {}", e.what(), wide.size());
+  }
+  try
+  {
+    wide.reserve(WString::npos);
+    println("reserved");
+  }
+  catch (const LengthError& e)
+  {
+    println("wstring npos: {}, {}", e.what(), wide.size());
   }
   return 0;
 }

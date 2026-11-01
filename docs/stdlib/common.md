@@ -6,17 +6,18 @@ These rules hold for every container and algorithm unless its own page says othe
 
 Sizes, counts, capacities, lengths, indices and positions are `ContainerSize`: unsigned, as C++'s
 `size_t`, so `size() - 1` on an empty container is the largest size here as there, and a negative
-`int` passed as a count becomes a huge one. It is `u32`, or `u64` when the program is built with
-`kppc --config sizeBits=64` (stdlib/core/Sizes.kpp, the one place that says which: both widths are
-measured on the game). `npos` is its largest value; a container holds at most one less,
-`maxContainerSize` (2^32 - 2 with 32-bit sizes). A size past that throws LengthError (C++'s
-length_error past max_size()), and memory that cannot be had throws BadAlloc.
+`int` passed as a count becomes a huge one. It is `u64`, as wide as `size_t` (stdlib/core/Sizes.kpp;
+design.md, "Container sizes are u64": one width, so that there is one String and one Vector).
+`npos` is its largest value; a container holds at most one less, `maxContainerSize` (2^64 - 2). A
+size past that throws LengthError (C++'s length_error past max_size()), and memory that cannot be
+had throws BadAlloc, as does a count whose bytes a `size_t` cannot count.
 
 What stays signed is what can be negative: a difference of positions (`difference_type`,
 `ptrdiff_t`, an iterator's `-`), an iterator's offset, and a comparison's result (`compare`).
 
-*Difference from C++*: the width. `size_t` is 64 bits; ContainerSize is 32 unless sizeBits=64,
-so a container of more than 2^32 - 2 elements or bytes throws where C++'s would not.
+*Difference from C++*: the limit. std's max_size() depends on the element (MSVC's vector: PTRDIFF_MAX
+/ sizeof(T)), and a count past it throws length_error; here the limit is maxContainerSize for every
+element type, and a count of elements whose bytes no allocation can hold throws BadAlloc.
 
 ## Element requirements
 

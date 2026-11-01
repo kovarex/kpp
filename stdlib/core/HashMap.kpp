@@ -222,7 +222,7 @@ struct HashTable
     }
     if (firstDeleted != hashNoSlot)
       return firstDeleted;
-    if (((unsigned long long)this->used + 1) * 4 > (unsigned long long)this->capacity * 3)
+    if (this->used + 1 > this->capacity - this->capacity / 4) // past 3/4 (a product could wrap)
       return hashNoSlot;
     return (ContainerSize)i;
   }
@@ -329,7 +329,7 @@ struct HashTable
   {
     if (this->capacity == 0)
       this->rehash(16);
-    else if (((unsigned long long)this->count + 1) * 2 > this->capacity)
+    else if (this->count + 1 > this->capacity / 2)
     {
       if (this->capacity > maxContainerSize / 2)
         throwLengthError("unordered_map/set too long");

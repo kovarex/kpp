@@ -1,5 +1,5 @@
 // spec: the library's sizes are unsigned (ContainerSize), and its loops and subtractions are right at the edges where a signed size went below 0: a backward search that reaches index 0 (and stops there, or on an empty text), a needle longer than the text (no length - count that wraps), npos as "to the end" in substr and erase, the iterator difference of a Deque that is negative, Deque's erase of a range at the front, a heap of 0, 1 and 2 elements, a comparison result that is negative, an extension at a name's first character
-// factorio: every container and string the game uses; the traps of docs/stdlib-conformance.md, "Sizes are 32-bit unsigned"
+// factorio: every container and string the game uses; the traps of docs/stdlib-conformance.md, "Sizes are unsigned"
 int main()
 {
   // Backward searches down to 0, and on nothing.

@@ -14,7 +14,7 @@
 struct String
 {
   // The object's bytes: the heap fields (a pointer and two sizes) and, after them, the mark byte.
-  static const int objectBytes = config::sizeBits == 64 ? 32 : 24;
+  static const int objectBytes = 32;
   static const ContainerSize smallCapacity = objectBytes - 2;
   static const int markIndex = objectBytes - 1;
   static const int largeMark = 0x80;
@@ -539,7 +539,7 @@ struct String
     if (count == 0)
       return *this;
     ContainerSize length = this->size();
-    if ((unsigned long long)length + count > this->capacity()) // the sum cannot wrap
+    if (count > this->capacity() - length) // (length + count could wrap)
     {
       this->appendGrowing(bytes, count);
       return *this;

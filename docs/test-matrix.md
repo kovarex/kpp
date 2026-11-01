@@ -203,8 +203,9 @@ link 9.9 s (factorio-run.exe 5.9 s).
 ## Container sizes: u32 against u64 (kppc fe933d5b, Factorio 4c178a5b915, 2026-11-01)
 
 Every stdlib size, count, index and capacity is `ContainerSize` (stdlib/core/Sizes.kpp): u32, or u64
-with `kppc --config sizeBits=64`. kovarex asked whether the width matters on the game, so that one
-String, Vector and so on is enough if it does not. The verdict is that it does not.
+with `kppc --config sizeBits=64`, when this was measured. kovarex asked whether the width matters on the game, so that one
+String, Vector and so on is enough if it does not. The verdict is that it does not, and ContainerSize
+is now u64 alone, with the switch removed (design.md, "Container sizes are u64").
 - u64 is as fast as u32, or slightly faster in release: −1.7% on the menu maps and −0.6% in the unit
   tests. In debug it is level: +0.1% and +0.5%.
 - u64 uses about 1 to 2% more peak commit.

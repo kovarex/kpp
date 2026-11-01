@@ -1,5 +1,5 @@
 // spec: a constructor template's value parameter whose type is written as an alias (`template<Size N> View(T (&a)[N])`, Size naming unsigned through a class template's member type; `u32` fails the same way) is deduced from the bound of the array argument, as it is when the type is written `unsigned` or `int`
-// factorio: the library's Span(T (&)[N]) and Span's Extent, whose type is the size (stdlib/core/Sizes.kpp's ContainerSize, `typename Conditional<config::sizeBits == 64, u64, u32>::Type`); library/array_span's `Span<const int, 2> fixedRaw = raw;`. Span writes them `unsigned long long` until this passes
+// factorio: the library's Span(T (&)[N]) and Span's Extent, whose type is the size (stdlib/core/Sizes.kpp's ContainerSize, an alias of u64); library/array_span's `Span<const int, 2> fixedRaw = raw;`. Span writes them `unsigned long long` until this passes
 // pending: the constructor is not deduced: "codegen does not support a constructor of View taking 1 arguments yet" (D)
 template<bool B, typename T, typename F>
 struct Choose { using Type = T; };

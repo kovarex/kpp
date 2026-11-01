@@ -6,3 +6,4 @@ grow: container too long
 hash map: unordered_map/set too long, 0
 hash set: unordered_map/set too long
 wstring: string too long, 4
+wstring npos: string too long, 4

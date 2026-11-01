@@ -3290,13 +3290,11 @@ int compile(int argc, char** argv)
     // The build configuration is one more source file: `config::debug`, `config::platform`...
     if (!options.configValues.count("debug"))
       options.configValues["debug"] = parseConfigValue("true");
-    // config::sizeBits: the width of the library's sizes (ContainerSize, stdlib/core/Sizes.kpp), 32
-    // unless `--config sizeBits=64` (docs/stdlib-conformance.md, "Sizes are 32-bit unsigned").
-    if (!options.configValues.count("sizeBits"))
-      options.configValues["sizeBits"] = parseConfigValue("32");
-    else if (options.configValues["sizeBits"].number != 32 && options.configValues["sizeBits"].number != 64)
+    // The library's sizes were 32 or 64 bits by `--config sizeBits` until they became u64 alone
+    // (design.md, "Container sizes are u64"): a command line that still chooses one is told so.
+    if (options.configValues.count("sizeBits"))
     {
-      fprintf(stderr, "--config sizeBits=%s: the library's sizes are 32 or 64 bits\n", options.configValues["sizeBits"].text.c_str());
+      fprintf(stderr, "--config sizeBits: the library's sizes are always 64 bits (ContainerSize is u64)\n");
       return 2;
     }
     // config::platform is the target's.

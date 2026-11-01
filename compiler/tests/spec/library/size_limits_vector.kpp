@@ -1,4 +1,4 @@
-// spec: a Vector holds at most maxContainerSize (2^32 - 2 with the default 32-bit sizes) elements, its sizes being ContainerSize: an insert or construction that would make it longer throws LengthError("vector too long") before it moves or copies an element, as std::vector throws length_error past max_size(), and leaves the vector as it was; a block it cannot allocate throws BadAlloc, as std's operator new, instead of constructing into a null pointer
+// spec: a Vector holds at most maxContainerSize (2^64 - 2) elements, its sizes being ContainerSize: an insert or construction that would make it longer throws LengthError("vector too long") before it moves or copies an element (a range that runs backwards too), as std::vector throws length_error past max_size(), and leaves the vector as it was; a block it cannot allocate throws BadAlloc, as std's operator new, instead of constructing into a null pointer, and so does a block whose bytes a size_t cannot count
 // factorio: none known; the guarantee that a size past the size's range or a failed malloc is an error, not a wrapped length or a write through null
 struct Page
 {
@@ -25,18 +25,30 @@ int main()
   {
     println("insert: {}, {} {} {}", e.what(), numbers.size(), numbers[0], numbers[2]);
   }
-  // A range of 5 G elements, past the largest size: the length is checked before an element is read.
+  // A range that runs backwards: its length is negative, checked before an element is read.
   const char* first = "abc";
   try
   {
-    Vector<char> range(first, first + 5000000000LL);
+    Vector<char> range(first + 3, first);
     println("constructed {}", range.size());
   }
   catch (const LengthError& e)
   {
     println("range: {}", e.what());
   }
-  // 2^32 - 2 elements of 4 KB: 16 TB, which no malloc returns.
+  // 2^40 elements of 4 KB: 4 PB, which no malloc returns; 2^64 - 2 of them, more bytes than a
+  // size_t counts.
+  try
+  {
+    Vector<Page> huge;
+    huge.reserve(ContainerSize(1) << 40);
+    use(huge.data());
+    println("reserved");
+  }
+  catch (const BadAlloc& e)
+  {
+    println("reserve: {}", e.what());
+  }
   try
   {
     Vector<Page> huge;

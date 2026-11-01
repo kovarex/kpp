@@ -19,14 +19,13 @@ the move.
 ## Positions and npos
 
 Indices are sizes (`ContainerSize`, common.md). Searches return the index of the match, or `npos`,
-the largest size (4294967295 with 32-bit sizes), as C++'s npos is the largest value of its size
+the largest size (2^64 - 1), as C++'s npos is the largest value of its size
 type: a search result compares with npos and with sizes as in C++ (`min(s.find(x), s.size())` is
 the size when x is absent, and `s.find(x) < s.size()` is false), and as a count npos (or any count
-past the end) means "to the end". Stored in an `int` it is -1, as C++'s is; stored in a `size_t`
-it stays the largest ContainerSize, not C++'s largest `size_t` (unless sizeBits=64), so compare a
-search result with npos itself (or with a size) rather than with `SIZE_MAX`. (Until 2026-10-29
-npos was -1, which made the game's `Math::min(input.find(separator), input.size())` -1, and its
-localised strings came out as their own suffixes; until 2026-11-01 it was the largest `int`.)
+past the end) means "to the end". Stored in an `int` it is -1 and in a `size_t` it is `SIZE_MAX`, as
+C++'s are. (Until 2026-10-29 npos was -1, which made the game's
+`Math::min(input.find(separator), input.size())` -1, and its localised strings came out as their
+own suffixes; until 2026-11-01 it was the largest `int`, then briefly the largest `u32`.)
 
 ## Members
 

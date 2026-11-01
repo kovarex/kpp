@@ -17,15 +17,15 @@ the converted game. The four listed until 2026-10-29 pass now (language/brace_ar
 templates/forwarding_reference_to_function, language/array_new_and_delete with
 library/unique_array_from_new, classes/reference_bound_through_conversion_operator).
 
-**Sizes are 32-bit unsigned** (core/Sizes.kpp; kovarex 2026-11-01: "all the sizes should be
+**Sizes are unsigned** (core/Sizes.kpp; kovarex 2026-11-01: "all the sizes should be
 unsigned"). Every size, count, capacity, length, index and position is a `ContainerSize`, unsigned
-as std's `size_t`, but 32 bits wide where size_t is 64 (common.md). The width is one alias,
-`ContainerSize`, chosen by `config::sizeBits`: `kppc --config sizeBits=64` makes it u64 and every
-container, String and InitializerList follows, with no other change. String grows from 24 bytes
-to 32 then, so that its heap fields stay clear of the byte that marks a short string. The width is
-measured on the game (D's research); the deviation is only the width. What stays signed is what can be
-negative: differences of positions (`difference_type`, iterator subtraction), iterator offsets,
-comparison results.
+and as wide as std's `size_t`: `u64`, the one width (common.md; design.md, "Container sizes are
+u64", with kovarex's rule and H's measurement of u32 against u64). From 2026-11-01 until that
+decision the sizes were u32, and `kppc --config sizeBits=64` made them u64; the switch is gone and
+the option is an error. String is 32 bytes. What stays signed is what can be negative: differences
+of positions (`difference_type`, iterator subtraction), iterator offsets, comparison results. The
+only deviation left is the limit (common.md): maxContainerSize for every element type, where std's
+max_size() depends on it.
 
 `npos` is the largest size, as std's is the largest size_t. A container holds at most one less,
 `maxContainerSize`, where std's max_size() is far larger. Past it, every path throws LengthError
@@ -40,8 +40,8 @@ it needs:
 - a count from outside the container (strlen, a pointer range, distance) goes through
   checkedSize: LengthError when negative or past the limit;
 - doubling stops at maxContainerSize (grownCapacity);
-- HashMap and HashSet have at most a power of two of slots, half the size range (2^31 with
-  32-bit sizes), which hold 3/4 as many entries;
+- HashMap and HashSet have at most a power of two of slots, half the size range (2^63), which
+  hold 3/4 as many entries;
 - Deque's map has at most maxContainerSize / blockSize() blocks.
 
 `OutStream << const char*` writes a longer C string in pieces, and String's find and rfind of a
@@ -58,7 +58,11 @@ library/unsigned_size_traps:
   the subtraction;
 - PriorityQueue's siftDown loops while a child exists, so `2 * i + 1` cannot wrap;
 - compare() results stay int (WString's `<=>` had turned its result unsigned, where `c < 0`
-  never holds).
+  never holds);
+- with u64 sizes no wider type is left to widen a sum into, so String's append compares count with
+  the room left instead of forming `length + count`, WString's `reserve(npos)` throws instead of
+  wrapping `needed + 1` to 0 (library/size_limits_growth), and HashMap's load checks divide the
+  slot count instead of multiplying the entry count.
 
 The index forms that are Kpp's own (Vector's `insert(index, value)` and `erase(index)`, String's
 `erase(index)`) take an index of any integer type, so that a literal 0 is the index and not a null

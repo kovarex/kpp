@@ -109,14 +109,14 @@ struct WString
   // maxContainerSize; LengthError when they do not fit in it (core/Sizes.kpp).
   void reserve(ContainerSize needed)
   {
-    if ((unsigned long long)needed + 1 <= this->capacity)
-      return;
-    if ((unsigned long long)needed + 1 > maxContainerSize)
+    if (needed >= maxContainerSize) // (needed + 1 is past it, or wraps to 0)
       throwLengthError("string too long");
-    unsigned long long doubled = this->capacity == 0 ? 16 : this->capacity;
-    while (doubled < (unsigned long long)needed + 1)
+    if (needed < this->capacity)
+      return;
+    ContainerSize doubled = this->capacity == 0 ? 16 : this->capacity;
+    while (doubled < needed + 1 && doubled <= maxContainerSize / 2)
       doubled *= 2;
-    ContainerSize newCapacity = doubled > maxContainerSize ? maxContainerSize : (ContainerSize)doubled;
+    ContainerSize newCapacity = doubled < needed + 1 ? maxContainerSize : doubled;
     wchar_t* bigger = allocateArray<wchar_t>(newCapacity);
     if (this->chars)
     {

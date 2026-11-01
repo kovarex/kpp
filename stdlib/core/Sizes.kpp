@@ -1,14 +1,14 @@
-// Container sizes (docs/stdlib-conformance.md, "Sizes are 32-bit unsigned"). Every size, count,
-// capacity, length, index and position the library's containers and strings take or return is a
-// ContainerSize: u32, or u64 with `kppc --config sizeBits=64` (config::sizeBits). This alias is the
-// one place that says which, so that both can be measured on the game.
+// Container sizes (docs/stdlib-conformance.md, "Sizes are unsigned"). Every size, count, capacity,
+// length, index and position the library's containers and strings take or return is a
+// ContainerSize: u64, the one width, so that there is one String and one Vector (design.md,
+// "Container sizes are u64").
 //
 // The largest value is npos, "not found" or "to the end", as std's npos is size_t's largest; the
 // most a container holds is one less, maxContainerSize. A size past it is never a silent wrap:
 // every growth path goes through these, which throw LengthError past maxContainerSize, as std
 // throws length_error past max_size(), with MSVC's message ("vector too long"); and a block malloc
 // cannot give throws BadAlloc, as std's operator new does.
-using ContainerSize = typename Conditional<config::sizeBits == 64, u64, u32>::Type;
+using ContainerSize = u64;
 
 // The largest element count, or byte length, a container holds.
 const ContainerSize maxContainerSize = ContainerSize(-1) - 1;
