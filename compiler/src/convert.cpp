@@ -4157,8 +4157,48 @@ namespace
       return result;
     }
 
-    // The game's classes whose names the library uses, renamed in text that never was tokens.
-    std::string renameGameClasses(const std::string& s) { return renameGameClassNames(s, &counts); }
+    // The game's classes whose names the library uses, renamed in text that never was tokens; in C,
+    // and this file's renamed statics and private names (cStaticRenames) too: trio's math.c names
+    // its ieee_double_shape_type in its EXTRACT_WORDS macros, whose expansions are such text.
+    std::string renameGameClasses(const std::string& s)
+    {
+      std::string renamed = renameGameClassNames(s, &counts);
+      if (!in.c || !cStaticRenames || cStaticRenames->empty())
+        return renamed;
+      std::string out;
+      for (size_t i = 0; i < renamed.size();)
+      {
+        char c = renamed[i];
+        if (c == '"' || (c == '\'' && !isDigitSeparator(renamed, i)))
+        {
+          size_t j = i + 1;
+          while (j < renamed.size() && renamed[j] != c)
+            j += renamed[j] == '\\' ? 2 : 1;
+          j = std::min(j + 1, renamed.size());
+          out.append(renamed, i, j - i);
+          i = j;
+          continue;
+        }
+        if (!(isalpha((unsigned char)c) || c == '_'))
+        {
+          out += c;
+          ++i;
+          continue;
+        }
+        size_t j = i;
+        while (j < renamed.size() && isIdentChar(renamed[j]))
+          ++j;
+        std::string word = renamed.substr(i, j - i);
+        size_t p = out.size();
+        while (p > 0 && out[p - 1] == ' ')
+          --p;
+        bool member = p > 0 && (out[p - 1] == '.' || (out[p - 1] == '>' && p > 1 && out[p - 2] == '-'));
+        auto r = member ? cStaticRenames->end() : cStaticRenames->find(word);
+        out += r != cStaticRenames->end() ? r->second : word;
+        i = j;
+      }
+      return out;
+    }
     // A macro's expansion with the game's classes renamed in the text that came from its body, not in
     // the arguments put in with their rewrites (between \x04 and \x05, which go): their names had the
     // renames of code, in their context (a std::vector there is the library's Vector already, no

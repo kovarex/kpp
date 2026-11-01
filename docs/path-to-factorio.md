@@ -2176,8 +2176,17 @@ WINAPI_FAMILY_PARTITION, which C answers the same. And so that the next library 
 C does not: a C library's `#if` name that nothing the conversion reads defines is an error now
 (kppc exits 1), unless its `c-libraries\NAME\undefined.txt` lists it: the names that check found
 undefined in the C build, and the few it defines whose every `#if` was read and is answered the same
-(the header-only libraries' `__cplusplus`, their `extern "C"` wrappers). trio now waits for
-`interop/c_math_classification_macros` (B): fpclassify, FP_NORMAL and FP_SUBNORMAL through the import.
+(the header-only libraries' `__cplusplus`, their `extern "C"` wrappers). B's 4a797289 took
+`interop/c_math_classification_macros` (fpclassify, FP_NORMAL and FP_SUBNORMAL through the import).
+
+**trio is converted.** Its harness is byte-identical (2,278 lines, the negative zero too). In the game
+its math.c's FreeBSD helper type `ieee_double_shape_type` met Lua's lmathlib.c's, each private to its C
+file: `c-libraries\trio\private-names.txt` renames trio's. Lua and CommonUtil format through it as
+before, now through the converted trio (its functions keep C's linkage: trio.h stays their import).
+The rename reaches into macro expansions too (math.c's EXTRACT_WORDS names the type: before, those
+uses had bound to Lua's type, of the same layout). With ogg, zlib, glad, zstd, minizip, fontstash and
+trio converted, the unit tests pass 9,501/9,501 with their CRCs checked against C++ Debug's, and the
+45 menu maps match, in debug and in release.
 
 No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
 - `language/alloca` and `language/flexible_array_member` (D);
