@@ -37,7 +37,7 @@ after, as a dogfooding target, when the standard library has networking.
 - [Design for Kpp](#design-for-kpp): [what a library is](#what-a-library-is),
   [names](#names-the-one-global-scope), [C dependencies](#c-dependencies),
   [versions and the lockfile](#versions-resolution-and-the-lockfile),
-  [the commands](#the-commands-and-the-project-description),
+  [the commands](#the-commands-and-the-project-description), [library options](#library-options-kovarex-2026-11-01),
   [the service](#the-service), [hosting on kpp.net](#hosting-on-kppnet-decided-2026-10-31-revised-the-same-day),
   [security](#security-and-moderation),
   [mirrors and offline](#mirrors-offline-and-private-registries), [IDE and VS](#ide-and-visual-studio),
@@ -315,10 +315,33 @@ in [What a library is](#what-a-library-is) (authors, summary, homepage, release 
 and build.lock recording, per library, name, version, the tree hash (`sha256-tree:...`, defined by
 [kppnet/registry/tree_hash.py](../kppnet/registry/tree_hash.py)) and the registry it came from.
 
+#### Library options (kovarex, 2026-11-01)
+A library declares its configuration options in its build.kpp, each with a type, a default and a
+description: `lib.option("debug", false, "Checks every call's arguments")`, read in the library's
+code as `config::zlib::debug` (thread E implements it; build.md has the details once it lands).
+kovarex: "when I add new library to my project, I should have some clear way to get noticed of
+what config values should be provided to the library, with defaults". So the registry carries them:
+- **The index lists each release's options**: name, type, default (a JSON value) or *required*
+  for one without a default, and the description
+  ([kppnet/registry/layout.md](../kppnet/registry/layout.md)). `kpp publish` takes them from the
+  library's build.kpp through kpp itself, so the index can never disagree with what the build sees.
+- **The library page** shows an "Options" table for the shown version (name, type, default or
+  *required*, description), next to the exported names, and marks what changed from the previous
+  version.
+- **`kpp add` and `use`** print, after adding, every option of each library newly in the program
+  (indirect ones included): the required ones first, as what the program must set before it
+  builds, then the rest with their defaults. The build's error for a missing required option names
+  the library, the option, its type and its description.
+- **`kpp update`** prints the options that the new versions add, remove or change.
+- **Options follow the version rules.** Within one major version, a release may add options with
+  defaults and change descriptions. Adding a required option, removing or renaming one, changing
+  its type, or changing a default is a break of the programs that use it, so publishing refuses it
+  outside a new major (the same check that compares exported names).
+
 ### The service
 - **Phase 1 needs no server program**: the index is a git repository (`registry-index.git` on
   kpp.net, mirrored to GitHub; one file per library listing its releases: version, tree hash,
-  archive path, dependencies, exported names, yanked), as crates.io's index was a git repository
+  archive path, dependencies, exported names, options, yanked), as crates.io's index was a git repository
   for years. Publishing: a library's repository tags a version; a pull request on the index (on
   GitHub) proposes the release; GitHub Actions builds and tests it with the current kpp and checks
   the manifest, name rules and clashes; a maintainer merges locally and runs `kpp publish`, which
@@ -327,7 +350,7 @@ and build.lock recording, per library, name, version, the tree hash (`sha256-tre
   ([kppnet/registry/layout.md](../kppnet/registry/layout.md)). kpp reads only kpp.net's static
   files.
 - **Phase 2, the service in Kpp** (dogfooding): an HTTP API (index, search, publish, yank,
-  tokens), web pages (library page with readme, versions, dependencies, exported names, license,
+  tokens), web pages (library page with readme, versions, dependencies, exported names, options, license,
   "binary" mark, download counts, clash list), a small database (SQLite through C interop), and
   the archive store. It needs from the standard library what it lacks today: sockets, an HTTP
   server, JSON, a SQLite face, time; TLS stays outside (a reverse proxy such as Caddy or

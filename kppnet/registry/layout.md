@@ -41,6 +41,10 @@ https://kpp.net/registry/
       "size": 48213,
       "kpp": "0.2",
       "dependencies": [{"name": "zlib", "min": "1.3.1"}],
+      "options": [
+        {"name": "debug", "type": "bool", "default": false, "description": "Checks every call's arguments"},
+        {"name": "max_depth", "type": "int", "required": true, "description": "Deepest nesting the parser accepts"}
+      ],
       "published": "2026-11-12T10:31:07Z",
       "commit": "8d0c...",
       "yanked": null
@@ -72,6 +76,9 @@ Options -Indexes
   with `mv -n`. Only `kpp/latest.json` is replaced, by a rename. A maintainer's upload from
   PC-PRACOVNA may use `rsync --ignore-existing`, which follows the same rule. A release's entry in
   the index changes only to set `yanked` (a reason string).
+- `options` are the library's build.kpp options for that release (docs/library-registry.md,
+  "Library options"): `default` is the option's value as JSON; an option without a default has
+  `"required": true` and no `default`.
 - Removal (malware, legal) deletes the archive and keeps the index entry with `"removed": "<reason>"`,
   so the version number is never reused.
 - `tree_hash.py verify` recomputes every archive's hash; the daily backup pull runs it on its copy.
