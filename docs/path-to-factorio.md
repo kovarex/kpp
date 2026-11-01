@@ -2106,11 +2106,24 @@ takes the two headers like fontstash's, and the C mode grew:
 Its harness (`harness/stb_image.c`) decodes the 524 core images and writes them in every format.
 Its Kpp build waits for two specs:
 - `language/nullptr_cast_to_integer`: stbi__errpuc's `(size_t)(... ? NULL : NULL)`, 25 places (B);
-- `language/conditional_of_two_arrays`: stbiw__encode_png_line's `y ? mapping : firstmap`.
+- `language/conditional_of_two_arrays`: stbiw__encode_png_line's `y ? mapping : firstmap` (B).
 
 **trio waits for the compiler.** Its array bounds are enumerators of an enum whose flags each
-double the one before. Evaluating it exceeds the evaluator's million steps
-(`language/enum_chain_of_doublings_is_constant`, D).
+double the one before, which the evaluator now takes (`language/enum_chain_of_doublings_is_constant`,
+D, 5bcdc929). The C mode grew:
+- a library define that is empty goes at its uses, also through another name for it (defines.txt's
+  `TRIO_PUBLIC=`, and triostr.h's `#define TRIO_PUBLIC_STRING TRIO_PUBLIC`), and a `const` after
+  one is no east const (`TRIO_PUBLIC_STRING TRIO_CONST char *`);
+- a printf-style call's 64-bit arguments are no longer written `size_t(...)` in C, where they have
+  their C types (the widening is for the game's container sizes) and a scanf's are pointers
+  (`trio_sscanf(buffer, "%lld", &value)`).
+
+Its harness (`harness/trio.c`) prints integers, strings and doubles (limits, subnormals,
+infinities, NaNs, powers of 2 and 10, pseudo-random bit patterns) in every conversion, Lua's
+formats among them, through each of trio's printf entry points, scans them back with trio_sscanf,
+and reads every number of the game's 2,120 Lua files. Its Kpp build waits for
+`language/conditional_of_two_arrays` (B): TrioWriteNumber's
+`(flags & FLAGS_UPPER) ? internalDigitsUpper : internalDigitsLower`, two places.
 
 No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
 - `language/alloca` and `language/flexible_array_member` (D);

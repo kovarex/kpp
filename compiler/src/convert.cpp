@@ -4570,7 +4570,9 @@ namespace
           counts.add("C names that are C++ keywords renamed");
           continue;
         }
-        if (t.getKind() == TokenKind::String && i > 0 && (toks[i - 1].is(P::LParen) || toks[i - 1].is(P::Comma)) &&
+        // (Not in C: its 64-bit arguments have their C types, and a scanf's are pointers, trio's
+        // `trio_sscanf(buffer, "%lld", &value)`.)
+        if (!in.c && t.getKind() == TokenKind::String && i > 0 && (toks[i - 1].is(P::LParen) || toks[i - 1].is(P::Comma)) &&
             !(i > 0 && toks[i - 1].getKind() == TokenKind::String))
           widenFormatArguments(i);
         if (t.getKind() == TokenKind::Identifier && !fixtureBodies.empty())
@@ -8050,7 +8052,10 @@ namespace
         if (toks[i].getKind() != TokenKind::Identifier || !toks[i + 1].is(Kw::const_) || memberAccessAt(i) ||
             (i > 0 && toks[i - 1].is(P::ColonColon)))
           continue;
-        // (`x const` is no expression in C: a name before const is a type's)
+        // (`x const` is no expression in C: a name before const is a type's, or an empty macro's,
+        // triostr.c's `TRIO_PUBLIC_STRING TRIO_CONST char *`, which is no east const)
+        if (cMacros && cMacros->empty.count(std::string(spelling(i))))
+          continue;
         uint32_t first = i;
         if (i > 0 && (toks[i - 1].is(Kw::struct_) || toks[i - 1].is(Kw::union_) || toks[i - 1].is(Kw::enum_)))
           first = i - 1;
@@ -8800,7 +8805,10 @@ void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolT
 
 namespace
 {
-  CMacros collectCMacros(const std::vector<const std::string*>& configuredTexts)
+  // emptyDefines: the library's defines that are empty (defines.txt's `TRIO_PUBLIC=`), which hold
+  // over its own definitions of them, so that another name for one is empty too (triostr.h's
+  // `#define TRIO_PUBLIC_STRING TRIO_PUBLIC`).
+  CMacros collectCMacros(const std::vector<const std::string*>& configuredTexts, const std::set<std::string>& emptyDefines)
   {
     std::map<std::string, std::set<std::string>> bodies; // name -> "(param) body" or " body", every definition
     for (const std::string* text : configuredTexts)
@@ -8861,6 +8869,8 @@ namespace
         bodies[name].insert(n > p && line[p + name.size()] == '(' ? "(" + params + ") " + body : " " + body);
       }
     }
+    for (const std::string& name : emptyDefines)
+      bodies[name] = {" "};
     static const std::set<std::string> keywords = {"static", "const", "extern", "inline", "volatile", "register"};
     CMacros out;
     for (const auto& [name, defined] : bodies)
@@ -9396,6 +9406,7 @@ struct SourceConfiguration::Impl
   bool cBuild = false;        // with cSources: preprocessed as factorio-in-kpp builds a C library
   MacroTable cDefines;        // then: cLibraryDefines and the library's defines.txt
   std::map<std::string, std::string> cNameDefines; // the defines.txt ones that are a name (STBIW_ZLIB_COMPRESS=zlib_compress_stb_adapter)
+  std::set<std::string> cEmptyDefines;             // the defines.txt ones that are empty (trio's TRIO_PUBLIC=)
   std::vector<std::filesystem::path> paths;
   std::vector<std::string_view> texts;
   std::vector<std::filesystem::path> roots;
@@ -9682,6 +9693,8 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
       if (equals != std::string::npos && equals + 1 < line.size() && (isalpha((unsigned char)line[equals + 1]) || line[equals + 1] == '_') &&
           std::all_of(line.begin() + equals + 1, line.end(), [](char c) { return isIdentChar(c); }))
         impl->cNameDefines[line.substr(0, equals)] = line.substr(equals + 1);
+      if (equals != std::string::npos && equals + 1 == line.size())
+        impl->cEmptyDefines.insert(line.substr(0, equals));
     }
   }
   impl->paths = paths;
@@ -9718,7 +9731,9 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
     for (auto& result : impl->results)
       if (result)
         configured.push_back(&result->configured);
-    impl->cMacros = collectCMacros(configured);
+    // (A library define that is empty goes at its uses, as one its sources define empty: trio's
+    // `TRIO_PUBLIC int trio_printf`, whose own definitions the define leaves out.)
+    impl->cMacros = collectCMacros(configured, impl->cEmptyDefines);
     // C's restrict qualifies a pointer for the optimizer only (xxhash.c's `XXH32_state_t* restrict
     // dstState`): nothing, as Kpp has no restrict
     for (const char* restrictWord : {"restrict", "__restrict", "__restrict__"})
