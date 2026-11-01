@@ -15,6 +15,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
+
+/* zipOpen64 and unzOpen64 take the path wide on Windows (as the game passes it). */
+static const wchar_t* wide(const char* path)
+{
+  static wchar_t buffers[2][4096];
+  static int next = 0;
+  wchar_t* out = buffers[next++ % 2];
+  mbstowcs(out, path, 4095);
+  out[4095] = 0;
+  return out;
+}
 
 static unsigned long long state = 0x9E3779B97F4A7C15ull;
 static unsigned int nextRandom(void)
@@ -75,7 +87,12 @@ static void writeAndRead(const char* path)
   unsigned char* contents[entries];
   uint32_t sizes[entries];
   char names[entries][32];
-  zipFile zip = zipOpen64(path, APPEND_STATUS_CREATE);
+  zipFile zip = zipOpen64(wide(path), APPEND_STATUS_CREATE);
+  if (!zip)
+  {
+    printf("zipOpen64 failed\n");
+    return;
+  }
   for (int k = 0; k < entries; ++k)
   {
     sizes[k] = k == 3 ? 0 : 1 + nextRandom() % (k % 4 == 0 ? 300000 : 20000);
@@ -108,6 +125,11 @@ static void writeAndRead(const char* path)
   int closed = zipClose(zip, "the archive's comment");
 
   FILE* f = fopen(path, "rb");
+  if (!f)
+  {
+    printf("written: %s not there\n", path);
+    return;
+  }
   fseek(f, 0, SEEK_END);
   long length = ftell(f);
   fseek(f, 0, SEEK_SET);
@@ -118,7 +140,12 @@ static void writeAndRead(const char* path)
   free(archive);
 
   int error = 0;
-  unzFile in = unzOpen64(path, &error);
+  unzFile in = unzOpen64(wide(path), &error);
+  if (!in)
+  {
+    printf("unzOpen64 failed: %d\n", error);
+    return;
+  }
   unz_global_info64 global;
   unzGetGlobalInfo64(in, &global);
   char comment[64] = "";
@@ -160,7 +187,7 @@ static void writeAndRead(const char* path)
 static void zipFileListed(const char* path)
 {
   int error = 0;
-  unzFile in = unzOpen64(path, &error);
+  unzFile in = unzOpen64(wide(path), &error);
   if (!in)
   {
     printf("%s: unzOpen64 %d\n", path, error);
