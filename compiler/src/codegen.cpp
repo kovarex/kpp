@@ -929,6 +929,25 @@ namespace
       fn += "  store " + ty + " zeroinitializer, ptr " + addr + "\n";
     }
 
+    // Copies the bytes of an object of type t from src to dst: a struct or an array with a memcpy of
+    // its size, anything else with a load and a store. A struct loaded as one value crashed the
+    // instruction selector as storeZero's did (minizip's `*zi = ziinit;`, a struct holding a 64 KB
+    // buffer). src and dst are the same object or apart (`*p = *p`), as memcpy allows.
+    void copyBytes(const std::string& dst, const std::string& src, const Ty* t, Node* at)
+    {
+      std::string ty = llType(t, at);
+      if (ty[0] == '%' || ty[0] == '[' || ty.compare(0, 2, "<{") == 0)
+      {
+        if (declaredNames.claim("@llvm.memcpy.p0.p0.i64"))
+          decls += "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
+        fn += "  call void @llvm.memcpy.p0.p0.i64(ptr " + dst + ", ptr " + src + ", i64 ptrtoint (ptr getelementptr (" + ty + ", ptr null, i32 1) to i64), i1 false)\n";
+        return;
+      }
+      std::string v = newTemp();
+      fn += "  " + v + " = load " + ty + ", ptr " + src + "\n";
+      fn += "  store " + ty + " " + v + ", ptr " + dst + "\n";
+    }
+
     uint64_t sizeOf(const Ty* t, Node* at = nullptr)
     {
       switch (t->kind)
@@ -4158,9 +4177,7 @@ namespace
       {
         if (isClass(t) && structFor(t, at).empty)
           return; // no bytes to copy (and as a base, none of its own: its byte is the next member's)
-        std::string v = newTemp();
-        fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
-        fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+        copyBytes(dst, src, t, at);
         if (isClass(t))
           storeVptrs(dst, structFor(t, at)); // the source may be of a derived class (a slicing copy)
         return;
@@ -4190,9 +4207,7 @@ namespace
           transferArray(to, from, ft, at, move, false);
         else
         {
-          std::string v = newTemp();
-          fn += "  " + v + " = load " + llType(ft, at) + ", ptr " + from + "\n";
-          fn += "  store " + llType(ft, at) + " " + v + ", ptr " + to + "\n";
+          copyBytes(to, from, ft, at);
         }
       }
     }
@@ -4208,9 +4223,7 @@ namespace
       t = types.unqualified(t);
       if ((!needsDestruction(t, at) && (assign ? assignsBitwise(t, at) : relocatesBitwise(t, at))) || t->count == 0)
       {
-        std::string v = newTemp();
-        fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
-        fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+        copyBytes(dst, src, t, at);
         return;
       }
       auto transferAt = [&](const std::string& index)
@@ -4295,9 +4308,7 @@ namespace
         if (isClass(t) && structFor(t, at).empty)
           return; // no state, and as a base maybe no bytes of its own (the next member's)
         std::vector<std::string> vptrs = loadVptrs(dst, structFor(t, at));
-        std::string v = newTemp();
-        fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src + "\n";
-        fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+        copyBytes(dst, src, t, at);
         restoreVptrs(vptrs);
         return;
       }
@@ -4351,9 +4362,7 @@ namespace
           transferArray(to, from, ft, at, move, true);
         else
         {
-          std::string v = newTemp();
-          fn += "  " + v + " = load " + llType(ft, at) + ", ptr " + from + "\n";
-          fn += "  store " + llType(ft, at) + " " + v + ", ptr " + to + "\n";
+          copyBytes(to, from, ft, at);
         }
       }
     }
@@ -4761,9 +4770,7 @@ namespace
         destroy(src.text, t, at);
         return;
       }
-      std::string v = newTemp();
-      fn += "  " + v + " = load " + llType(t, at) + ", ptr " + src.text + "\n";
-      fn += "  store " + llType(t, at) + " " + v + ", ptr " + dst + "\n";
+      copyBytes(dst, src.text, t, at);
       if (isClass(t) && src.ty && classKey(types.stripRef(src.ty)) != classKey(t))
         storeVptrs(dst, structFor(t, at)); // a temporary of a derived class, sliced
     }
@@ -5578,10 +5585,14 @@ namespace
           transferArray(to, from, ft, at, move, false);
           continue;
         }
-        std::string llt = byValue ? llType(ft, at) : std::string("ptr"); // a scalar, or a pointer: by reference, `this`
-        std::string v = newTemp();
-        fn += "  " + v + " = load " + llt + ", ptr " + from + "\n";
-        fn += "  store " + llt + " " + v + ", ptr " + to + "\n";
+        if (byValue)
+        {
+          copyBytes(to, from, ft, at); // a scalar
+          continue;
+        }
+        std::string v = newTemp(); // a pointer: by reference, `this`
+        fn += "  " + v + " = load ptr, ptr " + from + "\n";
+        fn += "  store ptr " + v + ", ptr " + to + "\n";
       }
     }
 
@@ -5607,9 +5618,7 @@ namespace
         for (size_t i = statementTemps.size(); i-- > 0;)
           if (statementTemps[i].addr == v.text)
             statementTemps.erase(statementTemps.begin() + i);
-        std::string tmp = newTemp();
-        fn += "  " + tmp + " = load " + llType(t, at) + ", ptr " + v.text + "\n";
-        fn += "  store " + llType(t, at) + " " + tmp + ", ptr " + addr + "\n";
+        copyBytes(addr, v.text, t, at);
         return;
       }
       copyClosure(addr, v.text, t, at, v.isTemporary || movable(init));
@@ -17120,9 +17129,7 @@ namespace
         }
         else
         {
-          std::string v = newTemp();
-          fn += "  " + v + " = load " + llType(altTy, at) + ", ptr " + from + "\n";
-          fn += "  store " + llType(altTy, at) + " " + v + ", ptr " + to + "\n";
+          copyBytes(to, from, altTy, at);
         }
       });
     }

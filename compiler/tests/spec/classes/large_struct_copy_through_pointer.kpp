@@ -1,6 +1,5 @@
 // spec: assigning a struct with a large member (a 64 KB array) through a pointer copies it, as any struct assignment does; the code generator copies its bytes (a memcpy), not one first-class value of the whole struct
 // factorio: minizip (converted as C): zip.c's zipOpen4 ends `*zi = ziinit;`, a zip64_internal holding curfile64_info's `uint8_t buffered_data[Z_BUFSIZE]` (65535 bytes)
-// pending: clang crashes in X86 DAG->DAG instruction selection on the function (B)
 struct Inner
 {
   int a;
