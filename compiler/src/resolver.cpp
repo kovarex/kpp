@@ -10597,11 +10597,11 @@ struct GlobalScope::Impl
     return done;
   }
 
-  // build.kpp's description for one configuration (GlobalScope::runBuild, design.md 12): a Project
-  // default-constructed, its configuration the enumerator of that name, build(project) run on it,
-  // then describe(project), whose String's characters are the answer; both destroyed after, so
-  // memory left allocated is an error as in any constant. Nullopt with error, "Build.kpp:12: why",
-  // when that is no constant.
+  // build.kpp's description (GlobalScope::runBuild, design.md 12): a Project default-constructed,
+  // its member configuration (when it has one: projectlib's has none, its build() describes every
+  // configuration) the enumerator of that name, build(project) run on it, then describe(project),
+  // whose String's characters are the answer; both destroyed after, so memory left allocated is an
+  // error as in any constant. Nullopt with error, "Build.kpp:12: why", when that is no constant.
   std::optional<std::string> runBuild(std::string_view configuration, std::string& error)
   {
     auto named = [&](const char* name, NodeKind kind) -> Decl* {
@@ -10624,18 +10624,9 @@ struct GlobalScope::Impl
     auto* configurations = static_cast<EnumDecl*>(named("Configuration", NodeKind::EnumDecl));
     auto* build = static_cast<FunctionDecl*>(named("build", NodeKind::FunctionDecl));
     auto* describe = static_cast<FunctionDecl*>(named("describe", NodeKind::FunctionDecl));
-    if (!project || !configurations || !build || !describe || build->params.size() != 1 || describe->params.size() != 1)
+    if (!project || !build || !describe || build->params.size() != 1 || describe->params.size() != 1)
     {
-      error = "a build description needs one class Project, one enum Configuration, one build(Project&) and one describe(const Project&)";
-      return std::nullopt;
-    }
-    Decl* chosen = nullptr;
-    for (Decl* e : configurations->enumerators)
-      if (e->kind == NodeKind::EnumeratorDecl && symbols.name(static_cast<EnumeratorDecl*>(e)->name) == configuration)
-        chosen = e;
-    if (!chosen)
-    {
-      error = "no configuration named " + std::string(configuration);
+      error = "a build description needs one class Project, one build(Project&) and one describe(const Project&)";
       return std::nullopt;
     }
     const Ty* projectTy = selfType(project);
@@ -10644,10 +10635,22 @@ struct GlobalScope::Impl
     for (size_t i = 0; layout && i < layout->fields.size(); ++i)
       if (layout->fields[i] && !layout->fields[i]->name.empty() && symbols.name(layout->fields[i]->name.last().symbol) == "configuration")
         field = i;
-    if (field == SIZE_MAX)
+    Decl* chosen = nullptr;
+    if (field != SIZE_MAX)
     {
-      error = "Project has no member configuration";
-      return std::nullopt;
+      if (!configurations)
+      {
+        error = "Project has a member configuration and there is no one enum Configuration";
+        return std::nullopt;
+      }
+      for (Decl* e : configurations->enumerators)
+        if (e->kind == NodeKind::EnumeratorDecl && symbols.name(static_cast<EnumeratorDecl*>(e)->name) == configuration)
+          chosen = e;
+      if (!chosen)
+      {
+        error = "no configuration named " + std::string(configuration);
+        return std::nullopt;
+      }
     }
     auto contextOf = [&](FunctionDecl* f) {
       return TypeContext{lexicalScopeOf(f), nullptr, nullptr, f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
@@ -10659,14 +10662,13 @@ struct GlobalScope::Impl
       ConstFrame frame(&env);
       std::optional<ConstValue> object = constConstruct(projectTy, {}, false, 0);
       TypeContext none = contextOf(build);
-      std::optional<ConstValue> tag = object ? constValueOfDecl(chosen, none, 0) : std::nullopt;
-      if (!tag)
+      std::optional<ConstValue> tag = object && chosen ? constValueOfDecl(chosen, none, 0) : std::nullopt;
+      if (!object || (chosen && !tag))
         return std::nullopt;
       env.push_back(constBinding(symbols.intern("project"), *object, projectTy));
       env.back().owns = true;
       ConstPlace whole{&env, 0, {}, projectTy};
-      ConstPlace at{&env, 0, {layout->bases.size() + field}, layout->fieldTypes[field]};
-      if (!constWrite(at, *tag))
+      if (chosen && !constWrite(ConstPlace{&env, 0, {layout->bases.size() + field}, layout->fieldTypes[field]}, *tag))
         return std::nullopt;
       std::vector<std::optional<ConstPlace>> places{whole};
       std::vector<uint8_t> lvalue{1};

@@ -5,19 +5,20 @@
 #include <vector>
 
 // A project described by build.kpp (docs/build.md, "build.kpp"): `kpp` with no sources, in the
-// project's directory or below it, builds its executables (`kpp [names] [--debug|--release]
-// [--run ARGS] [--set NAME=VALUE]`), runs its executables' and libraries' tests (`kpp --test [names]
-// [-- runner arguments]`), writes its IDE files (`--generate-visual-studio-files`,
+// project's directory or below it, builds cells of its targets x configurations matrix (`kpp
+// [targets] [configurations] [--run ARGS] [--set NAME=VALUE] [--config NAME=VALUE]`), runs its
+// executables' and libraries' tests (`kpp --test [names] [-- runner arguments]`), writes its IDE
+// files (`--generate-visual-studio-files`,
 // `--generate-vs-code-files`), and `kpp` alone in a console asks what to do. `kpp new` makes a
 // project. Returns -1 when the arguments are no project's (a build of the sources they name).
 int runProject(int argc, char** argv, CompileFunction compile);
 
 // The arguments a check of the project whose build.kpp is in directory or above it (or is
-// buildFile) compiles with (`kppc --lsp`, docs/ide.md and docs/editors.md): one cell, a configuration
-// of one target (an executable), or a configuration of all targets together (their sources and
-// exclusions with the first one's options), without what only code generation and the link read;
-// args[0] is the compiler. False when there is no build.kpp; true with error set when it does not
-// describe what is asked.
+// buildFile) compiles with (`kppc --lsp`, docs/ide.md and docs/editors.md): one cell, an executable
+// in a configuration (by its name or its Visual Studio name: fastdebug or Fastdebug), or every
+// executable in it together (their sources and exclusions with the first one's options), without
+// what only code generation and the link read; args[0] is the compiler. False when there is no
+// build.kpp; true with error set when it does not describe what is asked.
 struct ProjectCheck
 {
   std::string configuration = "debug", target, buildFile; // target empty: every target

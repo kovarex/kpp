@@ -127,5 +127,68 @@ void build(Project& project)
   if ($code -eq 0 -or $output -notmatch 'the library jsno is not in .*libraries\\jsno') { Fail "a missing library: exit $code`n$output" }
 }
 finally { Pop-Location }
+# Targets x configurations (docs/build.md, its section on them): two targets in debug, release
+# and fastdebug (debug's constants, optimized: no incremental link's .ilk), config constants set for
+# the project, a configuration, a target and one cell (configure), the command line's --config over
+# them all, `kpp TARGET CONFIGURATION` in either order, the Visual Studio solution's configurations,
+# and three errors: a base that is not declared, a target named as a configuration, an unknown name.
+$matrix = Join-Path $work 'matrix'
+New-Item -ItemType Directory -Force "$matrix\src", "$matrix\tests" | Out-Null
+Push-Location $matrix
+try
+{
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"main {} {} {}`", config::debug, config::level, config::steam);`n  return 0;`n}"
+  Set-Content 'tests\tests.kpp' "int main()`n{`n  println(`"tests {} {}`", config::level, config::unit);`n  return 0;`n}"
+  $matrixBuild = @'
+void build(Project& project)
+{
+  project.config("level", 1);
+  project.config("steam", false);
+  Configuration& release = project.configuration("release");
+  release.config("level", 2);
+  Configuration& fast = project.configuration("fastdebug", "debug");
+  fast.optimize = true;
+  fast.config("level", 3);
+  project.executable("main", {"src"});
+  Executable& tests = project.executable("checks", {"src", "tests"});
+  tests.exclude("src/main.kpp");
+  tests.config("unit", true);
+  tests.config("level", 4); // the target's, over the configuration's
+}
+void configure(Cell& cell)
+{
+  if (cell.configuration.name == "release" && cell.target.name == "main")
+    cell.config("steam", true);
+}
+'@
+  Set-Content 'build.kpp' $matrixBuild
+  foreach ($case in @(
+      @(@('main'), 'main true 1 false'),
+      @(@('main', 'release'), 'main false 2 true'),
+      @(@('fastdebug', 'main'), 'main true 3 false'),
+      @(@('checks', 'release'), 'tests 4 true'),
+      @(@('main', 'release', '--config', 'level=9'), 'main false 9 true')))
+  {
+    $output = Kpp ($case[0] + @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne $case[1]) { Fail "kpp $($case[0] -join ' ') --run printed '$($output[-1])', not '$($case[1])'`n$($output -join "`n")" }
+  }
+  if (-not (Test-Path 'build\debug\main.ilk') -or (Test-Path 'build\fastdebug\main.ilk')) { Fail 'fastdebug is not optimized: debug has main.ilk, fastdebug must not' }
+  $output = Kpp @('--no-server', '--generate-visual-studio-files')
+  $solution = Get-Content 'build\visual-studio\matrix.sln' -Raw
+  $project = Get-Content 'build\visual-studio\main.vcxproj' -Raw
+  if ($code -ne 0 -or $solution -notmatch 'Fastdebug\|x64 = Fastdebug\|x64' -or $project -notmatch 'main fastdebug --msvc-diagnostics') { Fail "the solution's configurations`n$($output -join "`n")" }
+  foreach ($case in @(
+      @("void build(Project& project)`n{`n  project.configuration(`"asan`", `"nosuch`");`n}", 'the configuration asan is based on nosuch, which build\.kpp does not declare'),
+      @("void build(Project& project)`n{`n  project.executable(`"release`", {`"src`"});`n}", 'release is a target and a configuration')))
+  {
+    Set-Content 'build.kpp' $case[0]
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch $case[1]) { Fail "a build.kpp error, '$($case[1])': exit $code`n$output" }
+  }
+  Set-Content 'build.kpp' $matrixBuild
+  $output = (Kpp @('nosuch', '--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'describes no target or configuration nosuch \(its configurations: debug release fastdebug\)') { Fail "an unknown name: exit $code`n$output" }
+}
+finally { Pop-Location }
 if ($failed -eq 0) { Write-Output 'ok   project' }
 exit $failed

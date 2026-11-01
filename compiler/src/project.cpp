@@ -29,12 +29,23 @@ namespace
     std::string name, minimum, path;
   };
 
-  // One executable of one configuration, as build.kpp described it (projectlib\Project.kpp's
-  // describe). After resolveUses, roots ends with the used libraries' roots, absolute.
-  struct Program
+  // A named configuration (docs/build.md, "Targets and configurations"), its bases' settings in and the
+  // project's constants and arguments first: what a library's tests and a check without a target
+  // are built with.
+  struct Configuration
   {
     std::string name;
-    std::vector<std::string> roots, excluded, arguments, libraries, cIncludes, links;
+    bool optimize = false, debugInfo = false;
+    std::vector<std::string> configs, clangFlags, arguments;
+  };
+
+  // One cell, an executable in a configuration, as build.kpp described it (projectlib\Project.kpp's
+  // describe, configure(cell) applied). After resolveUses, roots ends with the used libraries'
+  // roots, absolute.
+  struct Program : Configuration
+  {
+    std::string configuration;
+    std::vector<std::string> roots, excluded, libraries, cIncludes, links;
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
     std::vector<Use> uses;
   };
@@ -55,19 +66,20 @@ namespace
     std::vector<std::string> sources, excluded, includes, defines, prebuilt, resources;
   };
 
+  // build.kpp's matrix: its configurations, then its cells, target by target.
   struct Description
   {
-    std::string configuration;
-    bool debugInfo = false;
+    std::vector<Configuration> configurations;
     std::vector<Program> programs;
     std::vector<CLibrary> cLibraries;
     std::vector<KppLibrary> libraries;
+    std::vector<std::string> errors;
   };
 
   struct Request
   {
-    std::vector<std::string> names;          // the executables asked for; none: all
-    std::string configuration = "debug";
+    std::vector<std::string> names;          // the targets and configurations asked for (act sorts them)
+    std::vector<std::string> configurations; // --debug, --release
     std::vector<std::pair<std::string, std::string>> settings;
     std::vector<std::string> passed;         // kppc's own options, given to every build
     bool run = false, test = false, visualStudio = false, vsCode = false, server = true, msvc = false, stop = false;
@@ -149,10 +161,10 @@ namespace
     return s;
   }
 
-  std::vector<Description> parse(const std::string& text)
+  Description parse(const std::string& text)
   {
-    std::vector<Description> result;
-    enum { none, program, cLibrary, library } section = none;
+    Description d;
+    enum { none, configuration, program, cLibrary, library } section = none;
     size_t pos = 0;
     while (pos < text.size())
     {
@@ -165,31 +177,45 @@ namespace
         line.pop_back();
       size_t space = line.find(' ');
       std::string key = line.substr(0, space), value = space == std::string::npos ? "" : line.substr(space + 1);
-      if (key == "configuration")
-        result.push_back({value}), section = none;
-      else if (result.empty())
-        continue;
-      else if (key == "debug-info")
-        result.back().debugInfo = value == "1";
-      else if (key == "executable")
-        result.back().programs.push_back({value}), section = program;
+      if (key == "error")
+        d.errors.push_back(value);
+      else if (key == "configuration")
+        d.configurations.push_back({value}), section = configuration;
+      else if (key == "cell")
+      {
+        size_t blank = value.find(' ');
+        Program p;
+        p.name = value.substr(0, blank);
+        p.configuration = blank == std::string::npos ? "" : value.substr(blank + 1);
+        d.programs.push_back(p), section = program;
+      }
       else if (key == "clibrary")
-        result.back().cLibraries.push_back({value}), section = cLibrary;
+        d.cLibraries.push_back({value}), section = cLibrary;
       else if (key == "kpp-library") // not "library": an executable's link file is that key
-        result.back().libraries.push_back({value}), section = library;
+        d.libraries.push_back({value}), section = library;
       else if (key == "end")
         section = none;
-      else if (section != none && (key == "use" || key == "use-minimum" || key == "use-path"))
+      else if ((section == program || section == library) && (key == "use" || key == "use-minimum" || key == "use-path"))
       {
-        std::vector<Use>& uses = section == program ? result.back().programs.back().uses : result.back().libraries.back().uses;
+        std::vector<Use>& uses = section == program ? d.programs.back().uses : d.libraries.back().uses;
         if (key == "use") uses.push_back({value});
         else if (uses.empty()) continue;
         else if (key == "use-minimum") uses.back().minimum = value;
         else uses.back().path = value;
       }
+      else if ((section == configuration || section == program) &&
+               (key == "optimize" || key == "debug-info" || key == "config" || key == "clang-flag" || key == "argument"))
+      {
+        Configuration& c = section == program ? d.programs.back() : d.configurations.back();
+        if (key == "optimize") c.optimize = value == "1";
+        else if (key == "debug-info") c.debugInfo = value == "1";
+        else if (key == "config") c.configs.push_back(value);
+        else if (key == "clang-flag") c.clangFlags.push_back(value);
+        else c.arguments.push_back(value);
+      }
       else if (section == library)
       {
-        KppLibrary& l = result.back().libraries.back();
+        KppLibrary& l = d.libraries.back();
         if (key == "version") l.version = value;
         else if (key == "license") l.license = value;
         else if (key == "minimum-kpp") l.minimumKpp = value;
@@ -198,7 +224,7 @@ namespace
       }
       else if (section == cLibrary)
       {
-        CLibrary& c = result.back().cLibraries.back();
+        CLibrary& c = d.cLibraries.back();
         if (key == "source") c.sources.push_back(value);
         else if (key == "exclude") c.excluded.push_back(value);
         else if (key == "include") c.includes.push_back(value);
@@ -211,10 +237,9 @@ namespace
         continue;
       else
       {
-        Program& p = result.back().programs.back();
+        Program& p = d.programs.back();
         if (key == "root") p.roots.push_back(value);
         else if (key == "exclude") p.excluded.push_back(value);
-        else if (key == "argument") p.arguments.push_back(value);
         else if (key == "library") p.libraries.push_back(value);
         else if (key == "cinclude") p.cIncludes.push_back(value);
         else if (key == "before-build") p.beforeBuild = value;
@@ -225,7 +250,33 @@ namespace
         else if (key == "link") p.links.push_back(value);
       }
     }
-    return result;
+    return d;
+  }
+
+  const Configuration* findConfiguration(const Description& d, const std::string& name)
+  {
+    for (const Configuration& c : d.configurations)
+      if (c.name == name)
+        return &c;
+    return nullptr;
+  }
+
+  const Program* findCell(const Description& d, const std::string& target, const std::string& configuration)
+  {
+    for (const Program& p : d.programs)
+      if (p.name == target && p.configuration == configuration)
+        return &p;
+    return nullptr;
+  }
+
+  // The targets, in build.kpp's order.
+  std::vector<std::string> targetNames(const Description& d)
+  {
+    std::vector<std::string> names;
+    for (const Program& p : d.programs)
+      if (std::find(names.begin(), names.end(), p.name) == names.end())
+        names.push_back(p.name);
+    return names;
   }
 
   // What command prints on stdout, and its exit code; its stderr goes where this process's does.
@@ -240,13 +291,15 @@ namespace
     return _pclose(pipe);
   }
 
-  // kppc on build.kpp, projectlib and the settings: the interpreter runs build() and describe() for
-  // each configuration (--run-build) and prints the descriptions. Through the compile server unless
-  // --no-server, so that the standard library is not checked again for every build.
+  // kppc on build.kpp, projectlib and the settings: the interpreter runs build() once and
+  // describe(), which runs configure() for every cell (--run-build; projectlib's Project has no
+  // configuration, so the name `matrix` is not used), and prints the description. Through the
+  // compile server unless --no-server, so that the standard library is not checked again for every
+  // build.
   std::vector<std::string> describeArguments(const fs::path& root, const Request& request)
   {
     fs::path self = compilerPath();
-    std::vector<std::string> args = {self.string(), "--quiet", "--run-build", "debug,release"};
+    std::vector<std::string> args = {self.string(), "--quiet", "--run-build", "matrix"};
     if (request.msvc)
       args.push_back("--msvc-diagnostics");
     for (const fs::path& a : {defaultStdlib(self).parent_path() / "projectlib", root / "build.kpp", root / "build" / "kpp" / "settings.kpp"})
@@ -265,9 +318,10 @@ namespace
     return command;
   }
 
-  // build.kpp's description, both configurations (describeCommand). Kept in build\kpp\describe.txt
-  // with a key of everything it depends on, so that a build after no change of them compiles nothing.
-  bool describe(const fs::path& root, const Request& request, std::vector<Description>& out)
+  // build.kpp's description, every cell (describeCommand). Kept in build\kpp\describe.txt with a key
+  // of everything it depends on, so that a build after no change of them compiles nothing. False,
+  // with the errors printed, when it has an error line or names a target and a configuration alike.
+  bool describe(const fs::path& root, const Request& request, Description& out)
   {
     fs::path self = compilerPath();
     fs::path library = defaultStdlib(self).parent_path() / "projectlib";
@@ -291,7 +345,7 @@ namespace
       fwrite(source.data(), 1, source.size(), file);
       fclose(file);
       std::string text;
-      if (runAndRead(describeCommand(root, request), text) != 0 || text.find("configuration") != 0)
+      if (runAndRead(describeCommand(root, request), text) != 0 || text.find("configuration ") == std::string::npos)
       {
         fprintf(stderr, "%s: error: build.kpp did not describe the build (above)\n", (root / "build.kpp").string().c_str());
         return false;
@@ -304,7 +358,17 @@ namespace
         fwrite(keyText.data(), 1, keyText.size(), keyFile), fclose(keyFile);
     }
     out = parse(readText(described));
-    return out.size() == 2;
+    std::string file = (root / "build.kpp").string();
+    for (const std::string& error : out.errors)
+      fprintf(stderr, "%s: error: %s\n", file.c_str(), error.c_str());
+    for (const std::string& target : targetNames(out))
+      if (findConfiguration(out, target))
+      {
+        fprintf(stderr, "%s: error: %s is a target and a configuration; `kpp %s` would not say which\n", file.c_str(),
+                target.c_str(), target.c_str());
+        out.errors.push_back(target);
+      }
+    return out.errors.empty() && !out.configurations.empty();
   }
 
   fs::path rooted(const fs::path& root, const std::string& path)
@@ -341,12 +405,12 @@ namespace
 
   // The libraries uses names (by's build.kpp says use()), each found at its path, or else in the
   // project's libraries/NAME, or else next to by when by is in a directory named libraries (the
-  // libraries of one libraries/ directory use each other), then described (the same configuration
-  // and settings), checked (its version, its minimum kpp), and then the libraries it uses, depth
+  // libraries of one libraries/ directory use each other), then described (the same settings),
+  // checked (its version, its minimum kpp), and then the libraries it uses, depth
   // first. Each library's roots are added to roots once, absolute. A name found in two directories
   // is an error: a program has one copy of each library (the one global scope).
-  bool resolveUses(const fs::path& project, const fs::path& by, const std::vector<Use>& uses, const std::string& configuration,
-                   const Request& request, std::vector<Found>& found, std::vector<std::string>& roots)
+  bool resolveUses(const fs::path& project, const fs::path& by, const std::vector<Use>& uses, const Request& request,
+                   std::vector<Found>& found, std::vector<std::string>& roots)
   {
     std::error_code ec;
     for (const Use& use : uses)
@@ -374,10 +438,9 @@ namespace
       }
       Request serverless = request; // no compile server left running in a library for its description
       serverless.server = false;
-      std::vector<Description> descriptions;
-      if (!describe(directory, serverless, descriptions))
+      Description d;
+      if (!describe(directory, serverless, d))
         return false;
-      const Description& d = descriptions[configuration == "debug" ? 0 : 1];
       const KppLibrary* library = nullptr;
       for (const KppLibrary& l : d.libraries)
         if (l.name == use.name)
@@ -419,36 +482,33 @@ namespace
       found.push_back({use.name, directory, user});
       for (const std::string& r : library->roots)
         roots.push_back(rooted(directory, r).string());
-      if (!resolveUses(project, directory, library->uses, configuration, request, found, roots))
+      if (!resolveUses(project, directory, library->uses, request, found, roots))
         return false;
     }
     return true;
   }
 
   // Every executable's and library's uses (resolveUses), their roots added to its own.
-  bool resolveUses(const fs::path& root, const Request& request, std::vector<Description>& descriptions)
+  bool resolveUses(const fs::path& root, const Request& request, Description& d)
   {
-    for (Description& d : descriptions)
+    for (Program& p : d.programs)
     {
-      for (Program& p : d.programs)
-      {
-        std::vector<Found> found;
-        if (!resolveUses(root, root, p.uses, d.configuration, request, found, p.roots))
-          return false;
-      }
-      for (KppLibrary& l : d.libraries)
-      {
-        std::vector<Found> found = {{l.name, fs::absolute(root).lexically_normal(), (root / "build.kpp").string()}};
-        if (!resolveUses(root, root, l.uses, d.configuration, request, found, l.roots))
-          return false;
-      }
+      std::vector<Found> found;
+      if (!resolveUses(root, root, p.uses, request, found, p.roots))
+        return false;
+    }
+    for (KppLibrary& l : d.libraries)
+    {
+      std::vector<Found> found = {{l.name, fs::absolute(root).lexically_normal(), (root / "build.kpp").string()}};
+      if (!resolveUses(root, root, l.uses, request, found, l.roots))
+        return false;
     }
     return true;
   }
 
-  fs::path exeOf(const fs::path& root, const std::string& configuration, const Program& p)
+  fs::path exeOf(const fs::path& root, const Program& p)
   {
-    return root / "build" / configuration / (p.name + ".exe");
+    return root / "build" / p.configuration / (p.name + ".exe");
   }
 
   std::string withExe(std::string command, const fs::path& exe, const std::string& configuration)
@@ -653,15 +713,27 @@ namespace
     return true;
   }
 
+  // kppc's arguments for one cell: its configuration's options and constants (each config a --config,
+  // in the order the project, the configuration, the target and configure() set them, so that the
+  // later one wins), its own, and then the command line's (`kpp --config N=V` overrides them all).
   std::vector<std::string> buildArguments(const fs::path& root, const Description& d, const Program& p, const Request& request)
   {
     std::vector<std::string> args = {compilerPath().string()};
     if (request.msvc)
       args.push_back("--msvc-diagnostics");
     args.push_back("--quiet");
-    if (d.debugInfo)
+    if (p.debugInfo)
       args.push_back("--debug-info");
-    args.push_back(d.configuration == "debug" ? "--incremental-link" : "--release");
+    args.push_back(p.optimize ? "--optimize" : "--no-optimize");
+    if (!p.optimize)
+      args.push_back("--incremental-link");
+    for (const std::string& c : p.configs)
+      args.push_back("--config"), args.push_back(c);
+    std::string clangFlags;
+    for (const std::string& f : p.clangFlags)
+      clangFlags += (clangFlags.empty() ? "" : " ") + f;
+    if (!clangFlags.empty())
+      args.push_back("--clang-flags"), args.push_back(clangFlags);
     for (const std::string& a : p.arguments)
       args.push_back(a);
     for (const std::string& c : p.cIncludes)
@@ -676,7 +748,7 @@ namespace
       args.push_back("--exclude"), args.push_back(rooted(root, e).string());
     args.insert(args.end(), request.passed.begin(), request.passed.end());
     args.push_back("--exe");
-    args.push_back(exeOf(root, d.configuration, p).string());
+    args.push_back(exeOf(root, p).string());
     for (const std::string& r : p.roots)
       args.push_back(rooted(root, r).string());
     return args;
@@ -684,10 +756,10 @@ namespace
 
   int buildProgram(const fs::path& root, const Description& d, const Program& p, const Request& request, CompileFunction compile)
   {
-    fs::path exe = exeOf(root, d.configuration, p);
+    fs::path exe = exeOf(root, p);
     std::error_code ec;
     fs::create_directories(exe.parent_path(), ec);
-    if (!p.beforeBuild.empty() && system(withExe(p.beforeBuild, exe, d.configuration).c_str()) != 0)
+    if (!p.beforeBuild.empty() && system(withExe(p.beforeBuild, exe, p.configuration).c_str()) != 0)
     {
       fprintf(stderr, "error: %s's before-build command failed: %s\n", p.name.c_str(), p.beforeBuild.c_str());
       return 1;
@@ -708,11 +780,11 @@ namespace
     double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     bool keepGoing = std::find(p.arguments.begin(), p.arguments.end(), "--keep-going") != p.arguments.end();
     if (code == 0)
-      printf("kpp: built %s (%s, %.1f s)\n", exe.string().c_str(), d.configuration.c_str(), seconds);
+      printf("kpp: built %s (%s, %.1f s)\n", exe.string().c_str(), p.configuration.c_str(), seconds);
     else
-      fprintf(stderr, "kpp: %s (%s) failed after %.1f s\n", p.name.c_str(), d.configuration.c_str(), seconds);
+      fprintf(stderr, "kpp: %s (%s) failed after %.1f s\n", p.name.c_str(), p.configuration.c_str(), seconds);
     if (!p.afterBuild.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) &&
-        system(withExe(p.afterBuild, exe, d.configuration).c_str()) != 0)
+        system(withExe(p.afterBuild, exe, p.configuration).c_str()) != 0)
     {
       fprintf(stderr, "error: %s's after-build command failed: %s\n", p.name.c_str(), p.afterBuild.c_str());
       return 1;
@@ -720,9 +792,9 @@ namespace
     return code;
   }
 
-  int runProgram(const fs::path& root, const Description& d, const Program& p, const std::vector<std::string>& extra)
+  int runProgram(const fs::path& root, const Program& p, const std::vector<std::string>& extra)
   {
-    fs::path program = p.debugCommand.empty() ? exeOf(root, d.configuration, p) : rooted(root, p.debugCommand);
+    fs::path program = p.debugCommand.empty() ? exeOf(root, p) : rooted(root, p.debugCommand);
     fs::path directory = p.debugDirectory.empty() ? root : rooted(root, p.debugDirectory);
     std::string command = "cd /d " + quoteArg(directory.string()) + " && " + quoteArg(program.string());
     if (!p.debugArguments.empty())
@@ -732,31 +804,35 @@ namespace
     return system(("\"" + command + "\"").c_str());
   }
 
-  // kpp --test: the tests of the executables and libraries asked for (all when none is named), each
-  // built and run by kppc --test (run.hpp) with its build's options and roots, a library's test
-  // roots too, and the runner's arguments (after `--`). Every one runs; 1 when one failed.
-  int runTests(const fs::path& root, const Description& d, const Request& request)
+  // A library's program in a configuration: the configuration's options, the library's roots and
+  // test roots.
+  Program libraryProgram(const Configuration& c, const KppLibrary& l)
+  {
+    Program p;
+    static_cast<Configuration&>(p) = c;
+    p.name = l.name;
+    p.configuration = c.name;
+    p.roots = l.roots;
+    p.roots.insert(p.roots.end(), l.testRoots.begin(), l.testRoots.end());
+    return p;
+  }
+
+  // kpp --test: the tests of the executables and libraries asked for (all when none is named) in
+  // one configuration, each built and run by kppc --test (run.hpp) with its cell's options and roots,
+  // a library's test roots too, and the runner's arguments (after `--`). Every one runs; 1 when one
+  // failed.
+  int runTests(const fs::path& root, const Description& d, const Configuration& configuration, const std::vector<std::string>& targets,
+               const Request& request)
   {
     std::vector<Program> chosen;
     auto asked = [&](const std::string& name)
-    { return request.names.empty() || std::find(request.names.begin(), request.names.end(), name) != request.names.end(); };
+    { return targets.empty() || std::find(targets.begin(), targets.end(), name) != targets.end(); };
     for (const Program& p : d.programs)
-      if (asked(p.name))
+      if (p.configuration == configuration.name && asked(p.name))
         chosen.push_back(p);
     for (const KppLibrary& l : d.libraries)
       if (asked(l.name))
-      {
-        Program p{l.name};
-        p.roots = l.roots;
-        p.roots.insert(p.roots.end(), l.testRoots.begin(), l.testRoots.end());
-        chosen.push_back(p);
-      }
-    for (const std::string& name : request.names)
-      if (std::none_of(chosen.begin(), chosen.end(), [&](const Program& p) { return p.name == name; }))
-      {
-        fprintf(stderr, "error: build.kpp describes no executable or library %s\n", name.c_str());
-        return 2;
-      }
+        chosen.push_back(libraryProgram(configuration, l));
     int result = 0;
     for (const Program& p : chosen)
     {
@@ -776,7 +852,7 @@ namespace
       for (std::string& a : args)
         argv.push_back(a.data());
       argv.push_back(nullptr);
-      printf("kpp: testing %s (%s)\n", p.name.c_str(), d.configuration.c_str());
+      printf("kpp: testing %s (%s)\n", p.name.c_str(), p.configuration.c_str());
       fflush(stdout);
       if (::runProgram(int(args.size()), argv.data(), int(runIndex)) != 0)
         result = 1;
@@ -784,35 +860,47 @@ namespace
     return result;
   }
 
-  int generate(const fs::path& root, const std::vector<Description>& descriptions, const Request& request)
+  // Visual Studio's name of a configuration: its own with the first letter capital (Debug, Fastdebug).
+  std::string visualStudioName(std::string name)
+  {
+    if (!name.empty() && name[0] >= 'a' && name[0] <= 'z')
+      name[0] = char(name[0] - 'a' + 'A');
+    return name;
+  }
+
+  // One project per target, one solution configuration per named configuration: building builds
+  // that cell.
+  int generate(const fs::path& root, const Description& d, const Request& request)
   {
     fs::path self = compilerPath();
     std::vector<IdeTarget> targets;
-    for (const Program& p : descriptions[0].programs)
+    for (const std::string& name : targetNames(d))
     {
       IdeTarget target;
-      target.name = p.name;
-      for (const std::string& r : p.roots)
-        target.roots.push_back(rooted(root, r));
-      for (const std::string& e : p.excluded)
-        target.excluded.push_back(rooted(root, e));
-      for (const Description& d : descriptions)
+      target.name = name;
+      bool first = true;
+      for (const Configuration& configuration : d.configurations)
       {
-        const Program* q = nullptr;
-        for (const Program& candidate : d.programs)
-          if (candidate.name == p.name)
-            q = &candidate;
+        const Program* q = findCell(d, name, configuration.name);
         if (!q)
           continue;
+        if (first)
+        {
+          for (const std::string& r : q->roots)
+            target.roots.push_back(rooted(root, r));
+          for (const std::string& e : q->excluded)
+            target.excluded.push_back(rooted(root, e));
+          first = false;
+        }
         IdeConfiguration c;
-        c.visualStudioName = d.configuration == "debug" ? "Debug" : "Release";
-        c.name = d.configuration;
-        c.exe = exeOf(root, d.configuration, *q);
+        c.visualStudioName = visualStudioName(configuration.name);
+        c.name = configuration.name;
+        c.exe = exeOf(root, *q);
         // The IDE builds through kpp itself, so that an edit of build.kpp needs no new files.
-        c.buildCommand = "cd /d " + quoteArg(root.string()) + " && " + quoteArg(self.string()) + " " + quoteArg(p.name) +
-                         " --" + d.configuration + " --msvc-diagnostics";
-        for (const auto& [name, value] : request.settings)
-          c.buildCommand += " --set " + quoteArg(name + "=" + value);
+        c.buildCommand = "cd /d " + quoteArg(root.string()) + " && " + quoteArg(self.string()) + " " + quoteArg(name) + " " +
+                         quoteArg(configuration.name) + " --msvc-diagnostics";
+        for (const auto& [setting, value] : request.settings)
+          c.buildCommand += " --set " + quoteArg(setting + "=" + value);
         c.program = q->debugCommand.empty() ? c.exe : rooted(root, q->debugCommand);
         c.arguments = q->debugArguments;
         c.directory = q->debugDirectory.empty() ? root : rooted(root, q->debugDirectory);
@@ -874,43 +962,59 @@ namespace
 
   int act(const fs::path& root, const Request& request, CompileFunction compile)
   {
-    // --stop-server: the compile servers of build.kpp's description and of every executable's
-    // builds. The description's first, and the description then computed without a server, so
-    // that a build.kpp that no longer describes stops its server too.
+    // --stop-server: the compile servers of build.kpp's description and of every cell's builds. The
+    // description's first, and the description then computed without a server, so that a build.kpp
+    // that no longer describes stops its server too.
     if (request.stop)
     {
       invoke(describeArguments(root, request), true, compile, true);
       Request serverless = request;
       serverless.server = false;
-      std::vector<Description> descriptions;
-      if (!describe(root, serverless, descriptions))
+      Description d;
+      if (!describe(root, serverless, d))
         return 1;
-      for (const Description& d : descriptions)
-        for (const Program& p : d.programs)
-          invoke(buildArguments(root, d, p, request), true, compile, true);
+      for (const Program& p : d.programs)
+        invoke(buildArguments(root, d, p, request), true, compile, true);
       return 0;
     }
-    std::vector<Description> descriptions;
-    if (!describe(root, request, descriptions) || !resolveUses(root, request, descriptions))
+    Description d;
+    if (!describe(root, request, d) || !resolveUses(root, request, d))
       return 1;
     if (request.visualStudio || request.vsCode)
-      return generate(root, descriptions, request);
-    const Description& d = descriptions[request.configuration == "debug" ? 0 : 1];
-    if (request.test)
-      return runTests(root, d, request);
-    std::vector<const Program*> chosen;
-    for (const Program& p : d.programs)
-      if (request.names.empty() || std::find(request.names.begin(), request.names.end(), p.name) != request.names.end())
-        chosen.push_back(&p);
+      return generate(root, d, request);
+    // The names: each a configuration's or a target's (a library's, for --test).
+    std::vector<std::string> configurations = request.configurations, targets;
     for (const std::string& name : request.names)
-      if (std::none_of(d.programs.begin(), d.programs.end(), [&](const Program& p) { return p.name == name; }))
+      if (findConfiguration(d, name))
+        configurations.push_back(name);
+      else if (std::any_of(d.programs.begin(), d.programs.end(), [&](const Program& p) { return p.name == name; }) ||
+               (request.test && std::any_of(d.libraries.begin(), d.libraries.end(), [&](const KppLibrary& l) { return l.name == name; })))
+        targets.push_back(name);
+      else
       {
-        fprintf(stderr, "error: build.kpp describes no executable %s\n", name.c_str());
+        std::string known;
+        for (const Configuration& c : d.configurations)
+          known += " " + c.name;
+        fprintf(stderr, "error: build.kpp describes no target or configuration %s (its configurations:%s)\n", name.c_str(), known.c_str());
         return 2;
       }
+    if (configurations.empty())
+      configurations.push_back("debug");
+    if (request.test)
+    {
+      int result = 0;
+      for (const std::string& name : configurations)
+        result = std::max(result, runTests(root, d, *findConfiguration(d, name), targets, request));
+      return result;
+    }
+    std::vector<const Program*> chosen;
+    for (const std::string& configuration : configurations)
+      for (const Program& p : d.programs)
+        if (p.configuration == configuration && (targets.empty() || std::find(targets.begin(), targets.end(), p.name) != targets.end()))
+          chosen.push_back(&p);
     if (request.run && chosen.size() != 1)
     {
-      fprintf(stderr, "error: --run needs one executable; build.kpp describes %zu, name one\n", chosen.size());
+      fprintf(stderr, "error: --run needs one target in one configuration; this names %zu cells\n", chosen.size());
       return 2;
     }
     if (chosen.empty())
@@ -918,7 +1022,7 @@ namespace
     for (const Program* p : chosen)
       if (int code = buildProgram(root, d, *p, request, compile))
         return code;
-    return request.run ? runProgram(root, d, *chosen[0], request.runArguments) : 0;
+    return request.run ? runProgram(root, *chosen[0], request.runArguments) : 0;
   }
 
   // `kpp` alone in a console: the actions, each with the command that does it.
@@ -933,23 +1037,27 @@ namespace
       return ask("> ") == "1" ? newProject(here) : 0;
     }
     Request request;
-    std::vector<Description> descriptions;
-    if (!describe(root, request, descriptions))
+    Description d;
+    if (!describe(root, request, d))
       return 1;
-    std::string first = descriptions[0].programs.empty() ? "" : descriptions[0].programs[0].name;
-    printf("kpp: project %s (%s), executables:", root.filename().string().c_str(), root.string().c_str());
-    for (const Program& p : descriptions[0].programs)
-      printf(" %s", p.name.c_str());
+    std::vector<std::string> targets = targetNames(d);
+    std::string first = targets.empty() ? "" : targets[0];
+    printf("kpp: project %s (%s)\n  targets:", root.filename().string().c_str(), root.string().c_str());
+    for (const std::string& t : targets)
+      printf(" %s", t.c_str());
+    printf("\n  configurations:");
+    for (const Configuration& c : d.configurations)
+      printf(" %s", c.name.c_str());
     printf("\n"
-           "  1  build, debug                     kpp --debug\n"
-           "  2  build, release                   kpp --release\n"
+           "  1  build, debug                     kpp debug\n"
+           "  2  build, release                   kpp release\n"
            "  3  build and run %-18s kpp %s --run\n"
            "  4  write Visual Studio files        kpp --generate-visual-studio-files\n"
            "  5  write VS Code files              kpp --generate-vs-code-files\n"
            "  0  quit\n", first.c_str(), first.c_str());
     std::string answer = ask("> ");
     if (answer == "1" || answer == "2")
-      request.configuration = answer == "1" ? "debug" : "release";
+      request.configurations = {answer == "1" ? "debug" : "release"};
     else if (answer == "3")
       request.run = true, request.names = {first};
     else if (answer == "4")
@@ -977,8 +1085,8 @@ int runProject(int argc, char** argv, CompileFunction compile)
   }
   if (root.empty())
     return -1;
-  // A project's command line names executables, never sources: an argument that is an existing
-  // file or directory makes it a plain build of those sources.
+  // A project's command line names targets and configurations, never sources: an argument that is
+  // an existing file or directory makes it a plain build of those sources.
   Request request;
   bool runner = false; // after --test's `--`: the test runner's arguments
   for (int i = 1; i < argc; ++i)
@@ -992,7 +1100,7 @@ int runProject(int argc, char** argv, CompileFunction compile)
     else if (arg == "--" && request.test)
       runner = true;
     else if (arg == "--debug" || arg == "--release")
-      request.configuration = arg.substr(2);
+      request.configurations.push_back(arg.substr(2));
     else if (arg == "--run")
       request.run = true;
     else if (arg == "--generate-visual-studio-files")
@@ -1044,24 +1152,23 @@ bool projectCells(const std::filesystem::path& directory, const ProjectCheck& ch
   Request request;
   request.server = false;
   request.settings = check.settings;
-  std::vector<Description> descriptions;
-  if (!describe(root, request, descriptions) || !resolveUses(root, request, descriptions))
+  Description d;
+  if (!describe(root, request, d) || !resolveUses(root, request, d))
   {
     error = (root / "build.kpp").string() + " did not describe the build";
     return true;
   }
   cells.clear();
-  // (generate's names: a target's projects are its executable's, Debug and Release its configurations)
-  auto add = [&](const std::string& target)
-  {
-    for (const Description& d : descriptions)
-      cells.push_back({target, d.configuration, d.configuration == "debug" ? "Debug" : "Release"});
-  };
-  for (const Program& p : descriptions[0].programs)
-    add(p.name);
-  if (descriptions[0].programs.empty())
-    for (const KppLibrary& l : descriptions[0].libraries)
-      add(l.name);
+  // Target by target, each in every configuration (generate's projects and solution configurations);
+  // a library project's library in every configuration.
+  std::vector<std::string> targets = targetNames(d);
+  if (targets.empty())
+    for (const KppLibrary& l : d.libraries)
+      targets.push_back(l.name);
+  for (const std::string& target : targets)
+    for (const Configuration& c : d.configurations)
+      if (d.programs.empty() || findCell(d, target, c.name))
+        cells.push_back({target, c.name, visualStudioName(c.name)});
   return true;
 }
 
@@ -1078,42 +1185,41 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
   Request request;
   request.server = false; // no compile server left running in the project for its description
   request.settings = check.settings;
-  std::vector<Description> descriptions;
-  if (!describe(root, request, descriptions) || !resolveUses(root, request, descriptions))
+  Description d;
+  if (!describe(root, request, d) || !resolveUses(root, request, d))
   {
     error = (root / "build.kpp").string() + " did not describe the build";
     return true;
   }
-  const Description* d = nullptr;
-  for (const Description& candidate : descriptions)
-    if (candidate.configuration == check.configuration)
-      d = &candidate;
-  if (!d)
+  // Visual Studio's name of the configuration is accepted too (visualStudioName: Fastdebug).
+  const Configuration* configuration = findConfiguration(d, check.configuration);
+  for (const Configuration& c : d.configurations)
+    if (!configuration && visualStudioName(c.name) == check.configuration)
+      configuration = &c;
+  if (!configuration)
   {
-    error = "build.kpp has no configuration " + check.configuration + " (debug or release)";
+    std::string known;
+    for (const Configuration& c : d.configurations)
+      known += (known.empty() ? "" : ", ") + c.name;
+    error = "build.kpp has no configuration " + check.configuration + " (" + known + ")";
     return true;
   }
-  if (d->programs.empty() && d->libraries.empty())
+  if (d.programs.empty() && d.libraries.empty())
   {
     error = (root / "build.kpp").string() + " describes no executable";
     return true;
   }
-  // One executable, or (none named) the first one's options with every executable's sources; a
-  // library's sources and test sources when the project is a library.
+  // One cell, or (no target named) the first target's cell with every target's sources in that
+  // configuration; a library's sources and test sources when the project is a library.
   Program program;
-  if (d->programs.empty())
+  if (d.programs.empty())
   {
-    program.name = d->libraries[0].name;
-    program.roots = d->libraries[0].roots;
-    program.roots.insert(program.roots.end(), d->libraries[0].testRoots.begin(), d->libraries[0].testRoots.end());
+    program = libraryProgram(*configuration, d.libraries[0]);
     program.arguments.push_back("--tests"); // its test blocks are checked too
   }
   else if (!check.target.empty())
   {
-    const Program* named = nullptr;
-    for (const Program& p : d->programs)
-      if (p.name == check.target)
-        named = &p;
+    const Program* named = findCell(d, check.target, configuration->name);
     if (!named)
     {
       error = "build.kpp describes no executable " + check.target;
@@ -1123,22 +1229,29 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
   }
   else
   {
-    program = d->programs[0];
-    for (size_t k = 1; k < d->programs.size(); ++k)
+    bool first = true;
+    for (const Program& p : d.programs)
     {
+      if (p.configuration != configuration->name)
+        continue;
+      if (first)
+      {
+        program = p, first = false;
+        continue;
+      }
       auto addAll = [](std::vector<std::string>& to, const std::vector<std::string>& from)
       {
         for (const std::string& x : from)
           if (std::find(to.begin(), to.end(), x) == to.end())
             to.push_back(x);
       };
-      addAll(program.roots, d->programs[k].roots);
-      addAll(program.excluded, d->programs[k].excluded);
-      addAll(program.cIncludes, d->programs[k].cIncludes);
+      addAll(program.roots, p.roots);
+      addAll(program.excluded, p.excluded);
+      addAll(program.cIncludes, p.cIncludes);
     }
   }
   // What only code generation and the link read is left out (the executable, the link's options).
-  std::vector<std::string> all = buildArguments(root, *d, program, request);
+  std::vector<std::string> all = buildArguments(root, d, program, request);
   args.clear();
   for (size_t i = 0; i < all.size(); ++i)
     if (all[i] == "--exe" || all[i] == "--lib")

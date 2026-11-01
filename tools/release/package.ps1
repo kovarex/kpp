@@ -21,8 +21,8 @@ Copy-Item "$repository\tools\vs\kpp\Syntaxes\kpp.tmLanguage.json" "$kpp\grammar"
 Kpp $Version$(if ($Commit) { " ($Commit)" })
 
 kpp.exe is the compiler. In a project's directory (one with build.kpp), run kpp for a menu, or
-kpp --debug, kpp --release, kpp NAME --run, kpp --generate-visual-studio-files. kpp new makes a
-project. Documentation: https://github.com/kovarex/kpp/blob/master/docs/build.md
+kpp (every target, debug), kpp release, kpp TARGET CONFIGURATION, kpp TARGET --run,
+kpp --generate-visual-studio-files. kpp new makes a project. Documentation: https://github.com/kovarex/kpp/blob/master/docs/build.md
 
 Needs Visual Studio 2022 (any edition) with "C++ Clang Compiler for Windows": kpp compiles and links
 with its clang and the Windows SDK.

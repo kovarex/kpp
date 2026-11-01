@@ -80,6 +80,7 @@ namespace
     bool showImportErrors = false; // --errors given: list parse errors in imported headers too
     ConfigValues configValues;     // --config name=value, --release; becomes the `config` namespace
     bool debug = true;             // config::debug
+    int optimize = -1;             // --optimize 1, --no-optimize 0, unset -1: clang -O2 (ThinLTO, a whole link) when !debug
     unsigned modules = 0;          // --modules N: IR modules compiled in parallel (0: 2 per thread, 1: one module)
     unsigned codegenThreads = 0;   // --codegen-threads N: threads emitting IR (0: --threads)
     std::string convertDir;        // --convert DIR: write the inputs as Kpp sources there
@@ -136,6 +137,8 @@ namespace
             "  --exclude F   leave out the file F found under the sources (repeatable; build.kpp's exclude)\n"
             "  --config N=V  build configuration constant config::N (bool, integer, enumerator or string)\n"
             "  --release     the same as --config debug=false\n"
+            "  --optimize, --no-optimize  clang -O2 (ThinLTO, a whole link) or -O0, whatever config::debug is\n"
+            "                (default: -O2 when config::debug is false; build.kpp's fastdebug: asserts in, optimized)\n"
             "  --modules N   split the program into N IR modules compiled in parallel (default: four per thread, two in a release build)\n"
             "  --codegen-threads N  threads emitting IR (default: --threads; the IR does not depend on it)\n"
             "  --keep-going  compile and link the IR codegen emitted even when it reported errors (functions with\n"
@@ -316,7 +319,7 @@ namespace
         flags += " \"" + lib + "\"";
       return flags;
     }
-    std::string flags = !options.debug             ? "-Wl,/OPT:REF"
+    std::string flags = options.optimize           ? "-Wl,/OPT:REF"
                         : options.incrementalLink ? "-Wl,/OPT:NOREF -Wl,/INCREMENTAL"
                                                   : "-Wl,/OPT:REF -Wl,/OPT:NOICF";
     flags += " -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
@@ -1053,7 +1056,7 @@ namespace
     // 1.60 to 1.91 s with 64 modules, 1.39 to 1.51 with 128, 1.28 to 1.41 with 256 (its clean build
     // 11.6, 11.4 and 14.5 s; docs/compile-speed.md, "The debug edit loop"). A release build has two
     // (more made its ThinLTO link slower).
-    unsigned perThread = options.debug ? 4 : 2;
+    unsigned perThread = options.optimize ? 2 : 4;
     unsigned modules = options.modules ? options.modules : unsigned(std::min<size_t>(parsed.size(), perThread * std::max(1u, options.threads)));
     if (!options.emitLLVM.empty())
       modules = 1;
@@ -1133,8 +1136,8 @@ namespace
     // link optimises them in parallel with what each needs from the others imported, so that calls
     // into another module's instantiations inline as they do in one module (optimised separately,
     // the library benchmarks in compiler/bench/stdlib ran up to 20 times slower).
-    bool thinLTO = !options.debug && !cg.modules.empty();
-    const char* level = options.debug ? "-O0" : thinLTO ? "-O2 -flto=thin" : "-O2";
+    bool thinLTO = options.optimize && !cg.modules.empty();
+    const char* level = !options.optimize ? "-O0" : thinLTO ? "-O2 -flto=thin" : "-O2";
     // Every function in its own section, so that the linker drops the ones nobody calls (and
     // the libraries they would need): a program pays only for what it uses.
     // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
@@ -3160,6 +3163,8 @@ int compile(int argc, char** argv)
       options.incrementalLink = true;
     else if (arg == "--debug-info")
       options.debugInfo = true;
+    else if (arg == "--optimize" || arg == "--no-optimize")
+      options.optimize = arg == "--optimize";
     else if (arg == "--target" && i + 1 < argc)
     {
       std::string why;
@@ -3345,9 +3350,11 @@ int compile(int argc, char** argv)
       return 2;
     }
     options.debug = options.configValues["debug"].number != 0;
-    if (options.incrementalLink && !options.debug)
+    if (options.optimize < 0)
+      options.optimize = !options.debug;
+    if (options.incrementalLink && options.optimize)
     {
-      fprintf(stderr, "--incremental-link is for a debug build: a release build links whole (ThinLTO)\n");
+      fprintf(stderr, "--incremental-link is for an unoptimized build: an optimized build links whole (ThinLTO)\n");
       return 2;
     }
     if (options.incrementalLink && !options.target.windows())

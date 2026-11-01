@@ -23,6 +23,7 @@ only the choice of kppc's arguments.
 | `--exe F` | the executable; the object cache sits next to it |
 | `--config N=V` | a constant `config::N` (bool, integer, enumerator, string) the code reads with `if constexpr` |
 | `--release` | the same as `--config debug=false` |
+| `--optimize`, `--no-optimize` | clang `-O2` (ThinLTO, a whole link) or `-O0`, whatever `config::debug` is; unset, `-O2` when `config::debug` is false |
 | `--lib F` | passed to the link: a `.lib`, `-lname`, `-Wl,/OPT`, a `.res` |
 | `--cinclude D` | a directory searched by the C headers the code imports |
 | `--clang-flags F` | more flags for clang's compile of the modules (`-fsanitize=address`) |
@@ -32,13 +33,15 @@ only the choice of kppc's arguments.
 | `--server` | build through a persistent compile server ([compile-speed.md](compile-speed.md)) |
 | `--msvc-diagnostics` | errors as `path(line): error: ...`, which Visual Studio's Error List reads |
 
-**The only configuration switch is `config::debug`.** Its default is true. It decides:
+**Two switches: `config::debug` and optimization.** `config::debug` defaults to true, and
+optimization follows it unless `--optimize` or `--no-optimize` says otherwise (build.kpp's
+fastdebug is `config::debug` true, optimized):
 
 | | `config::debug` true (default) | false (`--release`) |
 |---|---|---|
 | `assert` | compiled in | compiles to nothing (`release_assert` stays) |
-| clang | `-O0` | `-O2`, ThinLTO when there are several modules (lld runs the back ends) |
-| link | link.exe, `--incremental-link` allowed | lld, whole program; `--incremental-link` is an error |
+| clang (`--optimize` decides) | `-O0` | `-O2`, ThinLTO when there are several modules (lld runs the back ends) |
+| link (`--optimize` decides) | link.exe, `--incremental-link` allowed | lld, whole program; `--incremental-link` is an error |
 | debug info | only with `--debug-info` (CodeView line tables, a PDB; ee17f9a8) | the same |
 | kppc inlining of trivial functions | on | on |
 
@@ -118,7 +121,8 @@ memory limits: Starlark's sandbox, without a second language.
 
 - **What it is.** kppc compiles `build.kpp` on its own, with the standard library and a small
   `build` package (`Project`, `Executable`, `Step`), and runs its `build` function in the
-  interpreter, once per configuration. The function can compute (loops, functions, the standard
+  interpreter once, for every target and configuration (below, "Targets and configurations"). The
+  function can compute (loops, functions, the standard
   library), but it can only describe: it fills in a `Project`, and kppc builds what that says.
 - **It cannot act.** It cannot read a file, start a process or call C. That is the interpreter's
   existing limit, so no separate sandbox is needed.
@@ -128,8 +132,8 @@ memory limits: Starlark's sandbox, without a second language.
 - **Inputs from outside come only from the command line.** `kpp --set FACTORIO=D:\snapshot` is
   read as `project.setting("FACTORIO", "C:/Factorio")`, so a build depends only on its files and
   its arguments. The arguments are part of the server's key.
-- **Its cost:** the server evaluates it once per configuration and keeps the result until the file
-  changes. To be measured.
+- **Its cost:** about 0.3 s for factorio-in-kpp's (below), and the result is kept until the file
+  changes.
 
 ```cpp
 // build.kpp of programs/factorio
@@ -141,7 +145,7 @@ void build(Project& project)
     project.use("factorio-native");            // libraries/factorio-native
     for (StringView lib : {"SDL3/include", "SDL_Mixer/include", "Lua", "", "curl/include"})
         project.cIncludes.add(path(factorio, "libraries", lib));
-    project.debugInfo = project.configuration == "debug";
+    project.configuration("fastdebug", "debug").optimize = true;
 
     Executable& game = project.executable("factorio", {"src"});
     game.steps.add(Step::copy(game.output, path(project.setting("GAME", "C:/factorio-in-kpp"), "bin/x64")));
@@ -157,21 +161,21 @@ void build(Project& project)
 
   ```
   kpp                     every target, debug
-  kpp --release           every target, release
-  kpp factorio --debug    one target
-  kpp --run factorio      build it, then run it
+  kpp release             every target, release
+  kpp factorio fastdebug  one cell: a target in a configuration
+  kpp factorio --run      build it, then run it
   kpp --test              build and run the tests
   ```
 
-  `--debug` is the default and may be written out. `kpp` is the name kovarex used; it would
+  debug is the default and may be written out (`--debug` and `--release` say the same). `kpp` is the name kovarex used; it would
   replace `kppc` (question 2). A file or directory given on the command line still means what it
   means today: build these sources, with no build.kpp.
 - **Targets.** `project.executable(name, roots)` is one program. It gets the project's settings and
   libraries, plus its own. Each target is a whole program: two executables from one `src/` share
   the front end through the server, but each generates its own code (a cold build of both is
   about twice one). `exclude` leaves files out, so each program has exactly one `main`.
-- **Configurations.** `debug` and `release` are built in. `project.configurations.add("asan", "debug")`
-  adds one based on another.
+- **Configurations.** `debug` and `release` are built in. `project.configuration("asan", "debug")`
+  adds one based on another ("Targets and configurations", below).
 - **Steps** are for what is not compiling Kpp or C: generating code, copying into a game
   directory. A step is a built-in (`Step::copy`) or a Kpp program in the project
   (`Step::run("tools/generate_imgui.kpp", inputs, outputs)`). kppc compiles and runs it with the
@@ -188,10 +192,11 @@ void build(Project& project)
 run_tests.cmd.
 - **The commands.** In a directory with build.kpp, or below one, `kpp` takes executables' names,
   never sources:
-  - `kpp [names] [--debug|--release]` builds them, all of them when none is named;
+  - `kpp [targets] [configurations]` builds those cells, every target when none is named, debug
+    when no configuration is;
   - `kpp NAME --run ARGS` builds and runs one;
   - `--generate-visual-studio-files` and `--generate-vs-code-files` write one solution for all
-    executables, whose builds run `kpp NAME --debug --msvc-diagnostics`, so an edit of build.kpp
+    executables, whose builds run `kpp NAME CONFIGURATION --msvc-diagnostics`, so an edit of build.kpp
     needs no new project files;
   - `--set NAME=VALUE` gives a setting; `--no-server` builds without the compile server, and
     `--stop-server` stops the project's servers;
@@ -199,10 +204,11 @@ run_tests.cmd.
     build.kpp, `src\main.kpp` and a `.gitignore`.
   An argument that is an existing file or directory makes it a plain build of those sources, as
   before.
-- **How build.kpp runs.** kpp runs `kppc --run-build debug,release` on build.kpp, projectlib and a
+- **How build.kpp runs.** kpp runs `kppc --run-build matrix` on build.kpp, projectlib and a
   generated `build\kpp\settings.kpp` (the `--set` values and the project's name), through the
-  compile server. The interpreter (GlobalScope::runBuild) default-constructs a Project, sets its
-  configuration, runs build(project) and then projectlib's `String describe(const Project&)`, and
+  compile server. The interpreter (GlobalScope::runBuild) default-constructs a Project, runs
+  build(project) and then projectlib's `String describe(const Project&)` (which runs configure()
+  for every cell), and
   kppc prints that text, which kpp reads. Nothing is linked or run. An I/O call in build() is an
   error naming it: `build.kpp:4: a call to puts, a C function, which has no body to run at
   compile time`. The result is kept, keyed by build.kpp, projectlib, the settings and kpp itself.
@@ -217,7 +223,7 @@ run_tests.cmd.
   - Steps are `beforeBuild` and `afterBuild` commands of an executable, run by cmd in the
     project's directory.
   - `use()` finds libraries in directories only (below); the registry, build.lock and `kpp add`
-    do not exist yet, and there is no `configurations()` either.
+    do not exist yet.
 
 ### Kpp libraries (working now, 2026-10-31)
 
@@ -384,24 +390,105 @@ factorio/
   *Registry* (read-only) and *Standard Library*.
 - **One-file programs** stay one command: `kpp --run hello.kpp` needs no directory.
 
-### Named configurations
+### Targets and configurations (decided 2026-11-01)
 
-Their contents are thread H's, adopted:
+kovarex, 2026-11-01:
+- "One axis is built targets, libraries etc. Second axis is configuration, aka debug, relase, fast
+  relase, valgrind etc. Each named configuration contains a list of config constant defining it
+  (mainly). When selecting what to build, we select target + configuration, like release tests, or
+  debug main game etc. When it comes to caching, each configuration needs to be separated in the
+  compiler... In visual studio, you have a dropdwon where you select these targets, and which is
+  the context of editing the code (for intellisense, and your language server), and also for what
+  we build."
+- "Consider, that we might want to do things for some specific configurations, like for example.
+  If configuration is SteamRelease and BuildTarget is FactorioMain: do something special (like
+  custom config, or eventually some other code which can do something)".
 
-| | debug | release |
-|---|---|---|
-| `config::debug`, so `assert` | true: asserts in | false: `assert` compiles to nothing, `release_assert` stays |
-| kppc trivial-function inlining | on | on |
-| clang | `-O0` | `-O2` + ThinLTO, lld, its LTO cache |
-| link | incremental allowed | whole |
+**The rule.** A project is a matrix: its targets (executables) are one axis and its named
+configurations the other. One cell, a target in a configuration, is what is built.
 
-Debug info is a field (`project.debugInfo`), not a configuration. Question 1 asks whether release
-should have it by default.
+```cpp
+void build(Project& project)
+{
+  project.config("space_age", true);                    // every cell
+  Configuration& release = project.configuration("release");
+  release.config("packaged_build", true);
+  Configuration& fast = project.configuration("fastdebug", "debug"); // based on debug
+  fast.optimize = true;                                  // asserts in, optimized
+  Executable& game = project.executable("factorio", {"src"});
+  Executable& tests = project.executable("factorio-tests", {"src", "tests"});
+  tests.config("unit_tests", true);                      // this target, every configuration
+}
 
-The converted game has a second axis apart from these: the Factorio defines the converter
-preprocesses with. `game-fastdebug` (_DEBUG, DEBUG, LUA_USE_APICHECK) is the only one today; a
-`game-release` would need a second conversion. It belongs to the conversion, not to kppc's
-configurations, and the two axes never share names.
+// Optional: once per cell, after build().
+void configure(Cell& cell)
+{
+  if (cell.configuration.name == "steam-release" && cell.target.name == "factorio")
+    cell.config("steam", true);
+}
+```
+
+- **build() runs once** and declares the whole matrix as data. Project has no `configuration`
+  member any more: what differs by configuration is in the configuration, or in configure().
+- **Configurations.** `debug` and `release` are built in. `project.configuration(NAME)` returns
+  one (made if new, with no base: not optimized, no debug info, `config::debug` true as kppc's
+  default), `project.configuration(NAME, BASE)` makes one based on another: the base's
+  settings come first, then its own, resolved after build() (a change to debug later in build()
+  reaches fastdebug too). A configuration holds:
+  - `config(NAME, VALUE)`: a `config::` constant (bool, integer or string);
+  - `optimize`: clang -O2 and ThinLTO and a whole link (kppc `--optimize`), or -O0 and an
+    incremental link;
+  - `debugInfo`: line tables and a PDB;
+  - `clangFlag(F)` (kppc `--clang-flags`) and `argument(OPTION)` (any kppc option).
+
+  The built-in two (thread H's contents, adopted):
+
+  | | debug | release |
+  |---|---|---|
+  | `config::debug`, so `assert` | true: asserts in | false: `assert` compiles to nothing, `release_assert` stays |
+  | `optimize` | false: `-O0`, incremental link | true: `-O2` + ThinLTO, lld, a whole link |
+  | `debugInfo` | true | false (question 1) |
+  | kppc trivial-function inlining | on | on |
+- **config constants** are set for the project (`project.config`), for a configuration, for a
+  target (`tests.config`) and for a cell (configure()); each later one overrides: project,
+  configuration, target, cell. The command line's `kpp --config NAME=VALUE` overrides them all.
+  They reach the program as kppc's `--config NAME=VALUE`, so the program reads `config::NAME`.
+- **configure(Cell& cell)** is optional. The interpreter runs it once per cell after build(), on
+  a copy of the cell's target and configuration: `cell.target` and `cell.configuration` are
+  readable and changeable for that cell only (`cell.target.linkFile(...)`,
+  `cell.target.afterBuild(...)`, `cell.configuration.clangFlag(...)`), and `cell.config(NAME, VALUE)`
+  sets a constant for the cell. It still cannot act. A build.kpp without one gets projectlib's,
+  a template that does nothing (a function is chosen over a template). It runs for every cell, not
+  lazily for the ones built: the description is computed once and kept (above), the Visual Studio
+  files and the language server need every cell, and a cell costs little. Measured 2026-11-01 on
+  factorio-in-kpp's build.kpp (`kppc --quiet --run-build matrix projectlib build.kpp
+  build\kpp\settings.kpp`, 15 interleaved rounds, the machine shared with other builds): 272 ms at
+  best with 4 cells (2 targets, debug and release), 299 ms with 6 (fastdebug added).
+- **The command line.** `kpp TARGET CONFIGURATION`, in either order: `kpp factorio-tests release`.
+  A name is a configuration's or a target's, never both (a description naming both is an error).
+  No target: every target; no configuration: debug. Several names build every cell they make;
+  `--debug` and `--release` still mean `debug` and `release`. `kpp --test [names]` runs the tests
+  of those targets and libraries in those configurations. A name that is also an existing file or
+  directory is still a plain build of those sources, so a target is best not named like a
+  directory (`tests`).
+- **Outputs** go to `build/<configuration>/<target>.exe`, with kppc's object cache beside it. A cell's
+  kppc arguments differ from every other cell's (its configuration's options and constants, its
+  output), so each has its own compile server and its own cache: switching from debug to
+  fastdebug and back rebuilds nothing.
+- **Visual Studio** gets one project per target and one solution configuration per named
+  configuration: the dropdown chooses the configuration, the startup project the target, and
+  Build builds that cell (`kpp TARGET CONFIGURATION --msvc-diagnostics`). A configuration's
+  Visual Studio name is its own with a capital first letter (Debug, Fastdebug). The language server
+  checks the code as the chosen cell compiles it (projectCheckArguments takes the configuration by
+  either name, and the target; the editor's side is thread F's).
+- **The converted game's defines** (_DEBUG, LUA_USE_APICHECK) are still the conversion's: the
+  converter preprocesses with them, so they are not a configuration of kpp's. A configuration's
+  `config::` constants are a kpp program's own. factorio-in-kpp's build.kpp has debug, release and
+  fastdebug.
+- **Interpreter gaps found** (pending specs, worked around in projectlib):
+  `language/consteval_struct_copy_assignment` (a struct with a String copied by `=` or a member
+  initializer frees twice), `language/consteval_string_assigned_through_reference` (String's
+  `this != &other` across frames), `language/consteval_emplace_back_result_as_reference_argument`.
 
 ### What it needs, in order
 

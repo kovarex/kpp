@@ -1,0 +1,40 @@
+// spec: a struct with a String member copied by its implicit copy assignment (y = x) and by a constructor's member initializer (a(x)) at compile time keeps both copies, as at run time (`1 1 1 1`)
+// factorio: build.kpp (design.md 12): projectlib's configure(Cell&) gets copies of a target and a configuration (cell.target = target)
+// pending: both are "memory freed twice (first at String.kpp:76)" at compile time; aggregate initialization (Pair p{x, x}) and copy construction (A y = x) work (D)
+extern "C" import "stdio.h";
+struct Named
+{
+  String name;
+};
+struct Made
+{
+  Named a;
+  Made(const Named& x) : a(x) {}
+};
+constexpr int assigned()
+{
+  Named x;
+  x.name = "x";
+  Named y;
+  y = x;
+  return y.name.size() + x.name.size() == 2 ? 1 : 0;
+}
+constexpr int initialized()
+{
+  Named x;
+  x.name = "x";
+  Made m(x);
+  return m.a.name.size();
+}
+static_assert(assigned() == 1);
+static_assert(initialized() == 1);
+int main()
+{
+  Named x;
+  x.name = "x";
+  Named y;
+  y = x;
+  Made m(x);
+  printf("%d %d %d %d\n", assigned(), initialized(), int(y.name.size()), int(m.a.name.size()));
+  return 0;
+}

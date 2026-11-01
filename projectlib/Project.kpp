@@ -1,10 +1,40 @@
 // The types a project's build.kpp uses (docs/build.md, "build.kpp"). kpp compiles build.kpp with this
 // library, the standard library and a generated file (kppSetting and kppProjectName: the command
 // line's settings and the project directory's name), and the compile-time interpreter runs it
-// (kppc --run-build, GlobalScope::runBuild): a Project default-constructed, its configuration set,
-// build(project), then describe(project), whose text kpp reads (project.cpp). So build.kpp can
-// compute but cannot read files, start processes or call C.
-enum class Configuration { debug, release };
+// (kppc --run-build, GlobalScope::runBuild): a Project default-constructed, build(project) once,
+// then describe(project), which runs configure(cell) for every cell and whose text kpp reads
+// (project.cpp). So build.kpp can compute but cannot read files, start processes or call C.
+
+// config:: constants (docs/build.md, "Targets and configurations"), NAME=VALUE in the order set: kppc's
+// --config, where a later one overrides an earlier one.
+void kppConfig(Vector<String>& to, StringView name, StringView value)
+{
+  String item = name;
+  item += "=";
+  item += value;
+  to.push_back(item);
+}
+
+// A named configuration, the matrix's second axis (docs/build.md, "Targets and configurations"):
+// debug and release are built in, Project::configuration makes more. Unset options are its base's;
+// with no base, false.
+struct Configuration
+{
+  String name;
+  String base;               // the configuration it is based on; "": none
+  Optional<bool> optimize;   // clang -O2, ThinLTO and a whole link (kppc --optimize); else -O0, an incremental link
+  Optional<bool> debugInfo;  // line tables and a PDB (kppc --debug-info)
+  Vector<String> configs;    // config:: constants, NAME=VALUE (kppConfig)
+  Vector<String> clangFlags; // kppc's --clang-flags, joined by blanks
+  Vector<String> arguments;  // more kppc options, one per entry
+
+  void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
+  void config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); }
+  void config(StringView name, const char* value) { kppConfig(configs, name, value); }
+  void config(StringView name, StringView value) { kppConfig(configs, name, value); }
+  void clangFlag(StringView flag) { clangFlags.push_back(flag); }
+  void argument(StringView option) { arguments.push_back(option); }
+};
 
 // Where a used library is (Project::use): a directory with its build.kpp, relative to the project's
 // directory or absolute. Without one, use() finds NAME in the project's libraries/NAME (later: the
@@ -37,7 +67,7 @@ void kppUse(Vector<Dependency>& to, StringView name, StringView minimum, StringV
   d.path = path;
 }
 
-// One program the project builds.
+// One program the project builds: a target, the matrix's first axis.
 struct Executable
 {
   String name;
@@ -48,6 +78,7 @@ struct Executable
   Vector<String> cIncludes; // directories the C headers are found in (kppc's --cinclude)
   Vector<String> links;     // the project's C libraries it links (Project::cLibrary), by name
   Vector<Dependency> uses;  // the Kpp libraries it uses besides the project's (use())
+  Vector<String> configs;   // config:: constants of this target, NAME=VALUE (kppConfig)
   String beforeBuildCommand;
   String afterBuildCommand;
   String debugCommand;
@@ -68,6 +99,12 @@ struct Executable
   void link(StringView name) { links.push_back(name); }
   // A Windows library by its name (`gdi32`): kppc's --lib -lgdi32.
   void systemLibrary(StringView name) { libraries.push_back(String("-l") + name); }
+  // A config:: constant in every configuration of this target, over the project's and the
+  // configuration's.
+  void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
+  void config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); }
+  void config(StringView name, const char* value) { kppConfig(configs, name, value); }
+  void config(StringView name, StringView value) { kppConfig(configs, name, value); }
   // A command run before the build, and one after it, in the project's directory; {exe} is the
   // executable, {configuration} the configuration.
   void beforeBuild(StringView command) { beforeBuildCommand = command; }
@@ -82,8 +119,26 @@ struct Executable
   }
 };
 
+// One cell of the matrix, a target in a configuration, as build.kpp's optional configure(Cell&)
+// sees it: copies of both, the configuration with its base's settings in, so that a change is this
+// cell's alone (`cell.target.afterBuild(...)`, `cell.configuration.clangFlag(...)`).
+struct Cell
+{
+  Configuration configuration;
+  Executable target;
+
+  // A config:: constant of this cell, over the target's.
+  void config(StringView name, bool value) { target.config(name, value); }
+  void config(StringView name, i32 value) { target.config(name, value); }
+  void config(StringView name, const char* value) { target.config(name, value); }
+  void config(StringView name, StringView value) { target.config(name, value); }
+};
+
+// What runs when build.kpp has no configure(Cell&): its own, a function, is chosen over a template.
+template <typename C> void configure(C& cell) {}
+
 // A C or C++ library the executables link (docs/build.md, "C and C++ libraries"): kpp compiles its
-// sources with Visual Studio's clang-cl (/O2 /MT in both configurations, as Factorio's prebuilt
+// sources with Visual Studio's clang-cl (/O2 /MT in every configuration, as Factorio's prebuilt
 // libraries are) into build\clib\NAME.lib, or takes prebuilt .lib files as given.
 struct CLibrary
 {
@@ -127,18 +182,17 @@ struct Library
 
 struct Project
 {
-  Configuration configuration = Configuration::debug;
-  // Line tables and a PDB; unset: in the debug configuration only.
-  Optional<bool> debugInfo;
   // For every executable, before its own.
   Vector<String> arguments;
   Vector<String> libraries;
   Vector<String> cIncludes;
   Vector<Dependency> uses;
+  Vector<String> configs; // config:: constants of every cell, under the configuration's and the target's
   // Deques: adding one leaves the references earlier calls returned valid.
   Deque<Executable> executables;
   Deque<CLibrary> cLibraries;
   Deque<Library> kppLibraries;
+  Deque<Configuration> configurations; // the ones build() named; debug and release are there either way
 
   Executable& executable(StringView name, InitializerList<StringView> roots)
   {
@@ -161,6 +215,23 @@ struct Project
     l.name = name;
     return l;
   }
+  // The configuration NAME (debug, release, or one of the project's), made when new.
+  Configuration& configuration(StringView name)
+  {
+    for (Configuration& c : configurations)
+      if (c.name == name)
+        return c;
+    Configuration& c = configurations.emplace_back();
+    c.name = name;
+    return c;
+  }
+  // The configuration NAME based on BASE: BASE's settings, then its own.
+  Configuration& configuration(StringView name, StringView base)
+  {
+    Configuration& c = this->configuration(name);
+    c.base = base;
+    return c;
+  }
   void argument(StringView option) { arguments.push_back(option); }
   // A file the link takes for every executable: a .lib, -lname, a .res (kppc's --lib).
   void linkFile(StringView path) { libraries.push_back(path); }
@@ -170,6 +241,11 @@ struct Project
   // use("json", local("../json")) gives its directory.
   void use(StringView name, StringView minimum = "") { kppUse(uses, name, minimum, ""); }
   void use(StringView name, LibrarySource source) { kppUse(uses, name, "", source.path); }
+  // A config:: constant of every cell.
+  void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
+  void config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); }
+  void config(StringView name, const char* value) { kppConfig(configs, name, value); }
+  void config(StringView name, StringView value) { kppConfig(configs, name, value); }
 
   // A value given on kpp's command line (`kpp --set GAME=D:\game`), or otherwise.
   String setting(StringView name, StringView otherwise) const { return kppSetting(name, otherwise); }
@@ -201,47 +277,161 @@ void kppUses(String& out, const Vector<Dependency>& uses)
   }
 }
 
-// One line per fact, which kpp reads (project.cpp): `configuration debug`, then per executable
-// `executable NAME`, its lines, `end`, then per C library `clibrary NAME`, its lines, `end`, then
-// per Kpp library `kpp-library NAME`, its lines, `end`. A project that describes neither an executable
-// nor a library has one executable: its directory's name, from src.
+void kppAppend(Vector<String>& to, const Vector<String>& from)
+{
+  for (const String& s : from)
+    to.push_back(s);
+}
+
+// configuration with its bases' settings in, the first base's first: into resolved, whose name is
+// the configuration's and base empty. debug and release start from their built-in settings. An error
+// (a base that is not there, a cycle) is an `error` line in out.
+void kppResolve(const Project& project, const Configuration& configuration, Configuration& resolved, String& out)
+{
+  // The chain from configuration to the base that has none.
+  Vector<const Configuration*> chain;
+  chain.push_back(&configuration);
+  String builtIn; // the chain ends at debug or release that build.kpp did not name
+  while (chain.back()->base.size() != 0 && builtIn.size() == 0)
+  {
+    const Configuration* base = nullptr;
+    for (const Configuration& c : project.configurations)
+      if (c.name == chain.back()->base)
+        base = &c;
+    if (!base && (chain.back()->base == "debug" || chain.back()->base == "release"))
+      builtIn = StringView(chain.back()->base);
+    else if (!base)
+    {
+      kppLine(out, "error", String("the configuration ") + chain.back()->name + " is based on " + chain.back()->base +
+                              ", which build.kpp does not declare (project.configuration)");
+      return;
+    }
+    else if (chain.size() > project.configurations.size())
+    {
+      kppLine(out, "error", String("the configuration ") + configuration.name + " is based on itself");
+      return;
+    }
+    else
+      chain.push_back(base);
+  }
+  StringView root = builtIn.size() != 0 ? StringView(builtIn) : StringView(chain.back()->name);
+  if (root == "debug")
+  {
+    resolved.optimize = false;
+    resolved.debugInfo = true;
+    resolved.config("debug", true);
+  }
+  else if (root == "release")
+  {
+    resolved.optimize = true;
+    resolved.debugInfo = false;
+    resolved.config("debug", false);
+  }
+  // (through a StringView: tests/spec/language/consteval_string_assigned_through_reference)
+  resolved.name = StringView(configuration.name);
+  for (u64 i = chain.size(); i > 0; --i)
+  {
+    const Configuration& c = *chain[i - 1];
+    if (c.optimize.has_value())
+      resolved.optimize = c.optimize;
+    if (c.debugInfo.has_value())
+      resolved.debugInfo = c.debugInfo;
+    kppAppend(resolved.configs, c.configs);
+    kppAppend(resolved.clangFlags, c.clangFlags);
+    kppAppend(resolved.arguments, c.arguments);
+  }
+}
+
+// A configuration's own lines: its options and constants, the project's constants first.
+void kppConfigurationLines(String& out, const Project& project, const Configuration& c)
+{
+  kppLine(out, "optimize", c.optimize.value_or(false) ? "1" : "0");
+  kppLine(out, "debug-info", c.debugInfo.value_or(false) ? "1" : "0");
+  kppLines(out, "config", project.configs);
+  kppLines(out, "config", c.configs);
+  kppLines(out, "clang-flag", c.clangFlags);
+}
+
+// One cell: configure(cell) on copies of the target and the resolved configuration, then its lines.
+void kppCell(String& out, const Project& project, const Executable& target, const Configuration& resolved)
+{
+  Cell cell{resolved, target}; // (not assigned: tests/spec/language/consteval_struct_copy_assignment)
+  configure(cell);
+  const Executable& e = cell.target;
+  out += "cell ";
+  out += e.name;
+  out += ' ';
+  out += resolved.name;
+  out += '\n';
+  kppConfigurationLines(out, project, cell.configuration);
+  kppLines(out, "config", e.configs);
+  kppLines(out, "root", e.roots);
+  kppLines(out, "exclude", e.excluded);
+  kppLines(out, "argument", project.arguments);
+  kppLines(out, "argument", cell.configuration.arguments);
+  kppLines(out, "argument", e.arguments);
+  kppLines(out, "library", project.libraries);
+  kppLines(out, "library", e.libraries);
+  kppLines(out, "cinclude", project.cIncludes);
+  kppLines(out, "cinclude", e.cIncludes);
+  kppLine(out, "before-build", e.beforeBuildCommand);
+  kppLine(out, "after-build", e.afterBuildCommand);
+  kppLine(out, "debug-command", e.debugCommand);
+  kppLine(out, "debug-arguments", e.debugArguments);
+  kppLine(out, "debug-directory", e.debugDirectory);
+  kppLines(out, "link", e.links);
+  kppUses(out, project.uses);
+  kppUses(out, e.uses);
+  out += "end\n";
+}
+
+// One line per fact, which kpp reads (project.cpp): per configuration (debug, release, then the
+// project's) `configuration NAME`, its resolved lines, `end`; per cell, target by target,
+// `cell TARGET CONFIGURATION`, its lines, `end`; per C library `clibrary NAME`, its lines, `end`;
+// per Kpp library `kpp-library NAME`, its lines, `end`; `error TEXT` for what build.kpp got wrong.
+// A project that describes neither an executable nor a library has one executable: its directory's
+// name, from src.
 String describe(const Project& project)
 {
-  bool debug = project.configuration == Configuration::debug;
   String out;
-  kppLine(out, "configuration", debug ? "debug" : "release");
-  kppLine(out, "debug-info", project.debugInfo.value_or(debug) ? "1" : "0");
+  Vector<Configuration> resolved;
+  for (StringView builtIn : {"debug", "release"})
+  {
+    bool named = false;
+    for (const Configuration& c : project.configurations)
+      named = named || c.name == builtIn;
+    if (!named)
+    {
+      Configuration c;
+      c.name = builtIn;
+      Configuration& r = resolved.emplace_back();
+      kppResolve(project, c, r, out);
+    }
+  }
+  for (const Configuration& c : project.configurations)
+  {
+    Configuration& r = resolved.emplace_back(); // (bound first: tests/spec/language/consteval_emplace_back_result_as_reference_argument)
+    kppResolve(project, c, r, out);
+  }
+  for (const Configuration& c : resolved)
+  {
+    kppLine(out, "configuration", c.name);
+    kppConfigurationLines(out, project, c);
+    kppLines(out, "argument", project.arguments);
+    kppLines(out, "argument", c.arguments);
+    out += "end\n";
+  }
   if (project.executables.empty() && project.kppLibraries.empty())
   {
-    kppLine(out, "executable", kppProjectName());
-    kppLine(out, "root", "src");
-    kppLines(out, "argument", project.arguments);
-    kppLines(out, "library", project.libraries);
-    kppLines(out, "cinclude", project.cIncludes);
-    kppUses(out, project.uses);
-    out += "end\n";
+    Executable e;
+    e.name = kppProjectName();
+    e.root("src");
+    for (const Configuration& c : resolved)
+      kppCell(out, project, e, c);
   }
   for (const Executable& e : project.executables)
-  {
-    kppLine(out, "executable", e.name);
-    kppLines(out, "root", e.roots);
-    kppLines(out, "exclude", e.excluded);
-    kppLines(out, "argument", project.arguments);
-    kppLines(out, "argument", e.arguments);
-    kppLines(out, "library", project.libraries);
-    kppLines(out, "library", e.libraries);
-    kppLines(out, "cinclude", project.cIncludes);
-    kppLines(out, "cinclude", e.cIncludes);
-    kppLine(out, "before-build", e.beforeBuildCommand);
-    kppLine(out, "after-build", e.afterBuildCommand);
-    kppLine(out, "debug-command", e.debugCommand);
-    kppLine(out, "debug-arguments", e.debugArguments);
-    kppLine(out, "debug-directory", e.debugDirectory);
-    kppLines(out, "link", e.links);
-    kppUses(out, project.uses);
-    kppUses(out, e.uses);
-    out += "end\n";
-  }
+    for (const Configuration& c : resolved)
+      kppCell(out, project, e, c);
   for (const CLibrary& c : project.cLibraries)
   {
     kppLine(out, "clibrary", c.name);

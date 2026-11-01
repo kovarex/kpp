@@ -557,6 +557,20 @@ license, minimum kpp, source roots and test roots, its sources join the program 
 it, and `kpp --test` runs its tests (build.md, "Kpp libraries"). Details, the research behind it
 and what it needs: [build.md](build.md), "The build description".
 
+**Targets and configurations (decided 2026-11-01).** kovarex: "One axis is built targets, libraries
+etc. Second axis is configuration, aka debug, relase, fast relase, valgrind etc. Each named
+configuration contains a list of config constant defining it (mainly). When selecting what to
+build, we select target + configuration". build() runs once and declares the matrix: named
+configurations (`project.configuration("fastdebug", "debug")`, debug and release built in) hold
+`config::` constants, `optimize`, `debugInfo` and compiler options; constants are set for the
+project, a configuration, a target and a cell, the command line's `--config` over them all. `kpp
+TARGET CONFIGURATION` builds one cell into build/<configuration>/<target>.exe, with its own compile
+server and cache. On "If configuration is SteamRelease and BuildTarget is FactorioMain: do
+something special": an optional `void configure(Cell& cell)` runs once per cell on copies of its
+target and configuration. Visual Studio gets one project per target and one solution configuration
+per named configuration; the language server checks the chosen cell. Details:
+[build.md](build.md), "Targets and configurations".
+
 ### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:
 - "Distinct fixed types, deprecate long".
@@ -1372,7 +1386,9 @@ that member is acceptable is a language question for kovarex.
 
 *The driver's entry, 2026-10-31 (E's interface).* `GlobalScope::runBuild(configuration, error)`
 computes a build description in the interpreter, without building an executable: a `Project`
-default-constructed, its `configuration` the enumerator of that name, `build(project)` run, then
+default-constructed, its `configuration` the enumerator of that name (when Project has that
+member: since 2026-11-01 projectlib's has none, and `--run-build matrix` describes every
+configuration at once), `build(project)` run, then
 `describe(project)`, whose String's characters it returns; both are destroyed after, so memory
 left allocated is an error as in any constant. When that is no constant, the error names the
 innermost statement that failed and why ("build.kpp:6: a call to puts, a C function, which has no

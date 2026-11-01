@@ -1,0 +1,27 @@
+// spec: a String assigned from a String reached through a reference parameter works at compile time as at run time: String::operator=(const String&) compares this with &other, two objects of different frames, which are not equal (`1 1`)
+// factorio: build.kpp (design.md 12): projectlib's describe() copied a configuration's name into the resolved one (resolved.name = configuration.name)
+// pending: the comparison `this != &other` of two objects of different frames is "a condition the compiler cannot evaluate yet"; through a StringView (out = StringView(in)) it works (D)
+extern "C" import "stdio.h";
+struct Named
+{
+  String name;
+};
+void copyName(const Named& from, String& to) { to = from.name; }
+constexpr int copied()
+{
+  Named n;
+  n.name = "x";
+  String s;
+  copyName(n, s);
+  return s.size();
+}
+static_assert(copied() == 1);
+int main()
+{
+  Named n;
+  n.name = "x";
+  String s;
+  copyName(n, s);
+  printf("%d %d\n", copied(), int(s.size()));
+  return 0;
+}
