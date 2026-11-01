@@ -347,8 +347,11 @@ util.unscoped = true;                       // its names are bare everywhere, as
 
 - **Scoped by default:** a program or another library names a library's declarations through its
   name, `zlib::compress`; inside the library (its roots and its test roots) they are bare. The
-  name is the qualifier, so it must be an identifier: `project.library("te-xt")` is an error.
-- **`lib.unscoped = true`:** its names are bare everywhere and share the one global scope with the
+  name is the qualifier, so it must be an identifier: `project.library("te-xt")` is an error, and so
+  is a library name that is also a C++ namespace or a top-level name of the program (`zlib::x` would
+  be ambiguous; thread A's check).
+- **`lib.unscoped = true`:** its names are reachable only bare, never as `NAME::x` (its name is for
+  diagnostics only), and share the one global scope with the
   program, the other unscoped libraries and the C imports; a clash is a compile error. The
   standard library is unscoped. Meant for a project's own libraries and foundations; the registry
   shows it on the library's page.
