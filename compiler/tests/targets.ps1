@@ -112,18 +112,22 @@ else
     $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim(), 'a', 'b')
     if ($r.out -ne 'hello, world! 2 argument(s), sum 30, posix' -or $r.exit -ne 3) { Fail "linux hello ($name): '$($r.out)', exit $($r.exit) $($r.err)" }
   }
-  # The target's own headers (glibc's, from the sysroot): C's long 64 bits; and printf's %ld given an
-  # int32 refused, which Windows' 32-bit long takes.
+  # The target's own headers (glibc's, from the sysroot): C's long 64 bits.
   $elf = Join-Path $work 'imports.elf'
   if (Build @('--target', 'linux', '--sysroot', $sysroot, '--exe', $elf, (Join-Path $src 'imports.kpp')))
   {
     $r = Run wsl.exe @('-e', (& wsl.exe -e wslpath -a $elf).Trim())
     if ($r.out -ne '9000000000 8 4 5 1' -or $r.exit -ne 0) { Fail "linux imports: '$($r.out)', exit $($r.exit) $($r.err)" }
   }
-  $bad = Join-Path $work 'long_format.kpp'
-  [IO.File]::WriteAllText($bad, "extern `"C`" int printf(const char* format, ...);`nint main() { int narrow = 6; printf(`"%ld\n`", narrow); return 0; }`n")
-  $r = Run $Kppc @('--quiet', '--target', 'linux', '--sysroot', $sysroot, '--exe', (Join-Path $work 'long_format.elf'), $bad)
-  if ($r.exit -eq 0 -or -not $r.err.Contains('takes a 64-bit integer for "%ld", given int32')) { Fail "linux %ld with an int32: exit $($r.exit), '$($r.err)'" }
+  # C's long is 64 bits on Linux and 32 on Windows, decided at compile time for each target (Q1): the
+  # same static_assert compiles for one and is an error for the other. (C-variadic calls are not
+  # format-checked any more, design.md 14: this replaced a check that printf's %ld refused an int32.)
+  $sized = Join-Path $work 'long_size.kpp'
+  [IO.File]::WriteAllText($sized, "static_assert(sizeof(long) == 8 && sizeof(unsigned long) == 8);`nint main() { return 0; }`n")
+  $r = Run $Kppc @('--quiet', '--target', 'linux', '--sysroot', $sysroot, '--exe', (Join-Path $work 'long_size.elf'), $sized)
+  if ($r.exit -ne 0) { Fail "linux long is 64 bits: exit $($r.exit), '$($r.err)'" }
+  $r = Run $Kppc @('--quiet', '--exe', (Join-Path $work 'long_size.exe'), $sized)
+  if ($r.exit -eq 0 -or -not $r.err.Contains('static assertion failed')) { Fail "windows long is 32 bits: exit $($r.exit), '$($r.err)'" }
   $ll = Join-Path $work 'hello.linux.ll'
   if (Build @('--target', 'linux', '--emit-llvm', $ll, (Join-Path $src 'hello.kpp'))) { CheckIR $ll 'linux' 'x86_64-unknown-linux-gnu' }
   $elf = Join-Path $work 'uncaught.elf'
