@@ -4495,7 +4495,10 @@ namespace
           remove(toks[last + 1].offset, toks[ranges.back().second].offset - toks[last + 1].offset);
           counts.add("printf arguments the format does not read dropped");
         }
-        else if (following > conversions.size())
+        // (Not in C: a C library's variadic function may read its own format, stb_image_write's
+        // `stbiw__writef(s, "111 221 2222 11", 0, 0, format, ...)`, whose arguments are its data;
+        // kppc's format check reports it instead: language/variadic_with_own_format.)
+        else if (following > conversions.size() && !in.c)
         {
           uint32_t from = conversions.empty() ? last + 1 : ranges[conversions.size() - 1].second;
           remove(toks[from].offset, toks[ranges.back().second].offset - toks[from].offset);

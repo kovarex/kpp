@@ -5,10 +5,12 @@
    - stbi_info_from_memory and stbi_is_16_bit_from_memory;
    - the pixels decoded with their own channel count and with 4, flipped on load or not, the 16-bit
      and float loads of every 5th, as a hash (or the failure reason);
-   - the same of a truncated copy and of one with a byte changed at a pseudo-random place;
+   - the same of a copy truncated at a pseudo-random place;
    - for every 3rd image, its pixels written as PNG (compression levels, forced filters, a stride,
-     flipped on write), TGA with and without RLE, BMP, JPEG at three qualities and HDR (from the
-     float load), each through a write function as its length and hash, and the PNG read back.
+     flipped on write), TGA with and without RLE, BMP and JPEG at three qualities, each through a
+     write function as its length and hash, and the PNG read back. (Not HDR: this
+     stb_image_write's stbi_write_hdr_core reads row i at `data + comp*x*i*x`, past the image from
+     the second row on; the game writes no HDR.)
 
      stb_image LISTFILE > output.txt (harness.cmd stb_image builds and compares both) */
 #include <stb_image/stb_image.hpp>
@@ -129,11 +131,6 @@ static void writeAll(const unsigned char* data, int size, int index)
     report(what, stbi_write_jpg_to_func(collect, &w, x, y, comp, pixels, qualities[q]), &w);
   }
   stbi_image_free(pixels);
-
-  float* floats = stbi_loadf_from_memory(data, size, &x, &y, &comp, 0);
-  if (floats)
-    report("hdr", stbi_write_hdr_to_func(collect, &w, x, y, comp, floats), &w);
-  stbi_image_free(floats);
   free(w.data);
 }
 
@@ -174,9 +171,9 @@ static void image(const char* path, int index)
     memcpy(copy, data, size);
     int cut = 8 + (int)(nextRandom() % (unsigned)(size - 8));
     load("truncated", copy, cut, 4, 0);
-    unsigned int at = nextRandom() % (unsigned)size;
-    copy[at] ^= (unsigned char)(1 + nextRandom() % 255);
-    load("changed", copy, (int)size, 0, 0);
+    /* (No copy with a byte changed: this stb_image's zlib reads zeros past the end of its data
+       instead of failing, so a changed byte in a PNG's IDAT can decode for hours, in C as in Kpp:
+       left-arrow.png's 387 bytes.) */
     free(copy);
   }
   if (index % 3 == 0)

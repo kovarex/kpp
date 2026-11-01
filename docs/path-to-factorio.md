@@ -2103,10 +2103,18 @@ takes the two headers like fontstash's, and the C mode grew:
 - `extern "C"` replaces a keyword macro's rewrite of the same word (`STBIWDEF` as `extern`), where
   the two edits had cancelled.
 
-Its harness (`harness/stb_image.c`) decodes the 524 core images and writes them in every format.
-Its Kpp build waits for two specs:
-- `language/nullptr_cast_to_integer`: stbi__errpuc's `(size_t)(... ? NULL : NULL)`, 25 places (B);
-- `language/conditional_of_two_arrays`: stbiw__encode_png_line's `y ? mapping : firstmap` (B).
+Its harness (`harness/stb_image.c`) decodes the 524 core images and their truncated copies and
+writes them as PNG, TGA, BMP and JPEG. Not HDR, and no copy with a byte changed: this stb's
+stbi_write_hdr_core reads row i at `data + comp*x*i*x`, past the image, and its zlib reads zeros
+past the end of its data, so a changed byte in an IDAT can decode for hours (in C as in Kpp; the
+game does neither). B's c06cec46 took the two specs it waited for (`language/nullptr_cast_to_integer`,
+stbi__errpuc's `(size_t)(... ? NULL : NULL)`, 25 places; `language/conditional_of_two_arrays`,
+stbiw__encode_png_line's `y ? mapping : firstmap`). The harness then found TGA's and BMP's headers
+wrong: stbiw__writef and stbiw__outfile read their own format (`"111 221 2222 11"`, the digits
+are byte widths), which kppc checks as printf's, and the converter had dropped the arguments the
+"format" does not read. It drops none in C now (it is for the game's own printf mismatches), so
+kppc reports the three calls, and stb_image waits for `language/variadic_with_own_format`: which
+C-variadic functions are printf-like.
 
 **trio waits for the compiler.** Its array bounds are enumerators of an enum whose flags each
 double the one before, which the evaluator now takes (`language/enum_chain_of_doublings_is_constant`,
