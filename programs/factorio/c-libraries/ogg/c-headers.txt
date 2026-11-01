@@ -1,0 +1,5 @@
+# ogg's interface: these headers stay C, imported by the converted files and by the C libraries
+# that use ogg (vorbis, opusfile, sdl-mixer).
+ogg.h
+os_types.h
+config_types.h
