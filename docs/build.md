@@ -261,8 +261,9 @@ void build(Project& project)
      builds and tests on its own;
   3. later, the registry; now a missing library is an error naming where it looked.
 - **What kpp does with it:** it describes the library's build.kpp (the same configuration and
-  `--set` settings), checks the version and minimumKpp, adds its roots to the executable's, and
-  does the same for the libraries it uses, depth first. One name in two directories is an error: a
+  `--set` settings), checks the version and minimumKpp, adds its roots to the executable's (as the
+  library's, with its scope, once kppc has the lookup: "Library scopes" below), and does the same
+  for the libraries it uses, depth first. One name in two directories is an error: a
   program has one copy of each library. Only the library part of its build.kpp is read: its
   executables and their commands are never built or run, and C libraries (`cLibrary`) in a used
   library are an error until they are supported.
@@ -329,6 +330,45 @@ project.configuration("debug").config("zlib::debug", true);
   itself) and `language/consteval_member_call_on_subscript_result`. Two calls chained on use()'s
   result, `use("zlib").config("a", 1).config("b", 2)`, still fail at compile time ("memory ... is
   never freed"), not yet reduced to a snippet: write one `config()` per statement until D's fix.
+
+#### Library scopes (decided 2026-11-01, design.md 16; the lookup is not in kppc yet)
+
+kovarex, 2026-11-01: "adding library means that I have to change unrelated code to remove
+ambiguity is not nice"; "libraries can decide".
+
+```cpp
+// libraries/zlib/build.kpp: scoped, the default
+Library& zlib = project.library("zlib");   // its users write zlib::compress, zlib::Stream
+
+// libraries/util/build.kpp: a project's own foundation library
+Library& util = project.library("util");
+util.unscoped = true;                       // its names are bare everywhere, as the stdlib's
+```
+
+- **Scoped by default:** a program or another library names a library's declarations through its
+  name, `zlib::compress`; inside the library (its roots and its test roots) they are bare. The
+  name is the qualifier, so it must be an identifier: `project.library("te-xt")` is an error.
+- **`lib.unscoped = true`:** its names are bare everywhere and share the one global scope with the
+  program, the other unscoped libraries and the C imports; a clash is a compile error. The
+  standard library is unscoped. Meant for a project's own libraries and foundations; the registry
+  shows it on the library's page.
+- **Adding a scoped library never changes existing code's meaning.** There is no per-file
+  `using`: a name means the same in every file.
+- **What kpp will give kppc** (agreed with thread A; passed once kppc has the lookup, never
+  earlier, so that no build treats a scoped library as unscoped by accepting the option): per root of
+  each library a cell uses, in resolveUses' order, `--library-root NAME DIR` (scoped) or
+  `--unscoped-library-root NAME DIR`; the program's own roots stay plain arguments. A library's own
+  tests (`kpp --test` in its directory) build its roots and test roots as the program, so its names
+  are bare there; the libraries it uses come as library roots. kpp keeps each cell's libraries with
+  their scopes now (`Program::kppLibraries`, project.cpp) and passes their roots as plain roots
+  until then. Visual Studio's project lists the libraries' files too.
+- **`kpp options`** lists each cell's libraries, `library zlib, scoped: zlib::NAME` or `library
+  util, unscoped: its names are bare`, before their options; the language server gets the same
+  (`ProjectCell::libraries`, project.hpp; `libraries` in `kpp/cells`, editors.md).
+- **Not yet:** the lookup (thread A, with the two options' parsing in kppc). Until it lands, a
+  scoped library's names are still bare and `zlib::compress` does not resolve (the owners:
+  design.md 16). Converted C libraries (zlib, ogg, ...) are scoped by their names, with the
+  converter qualifying the game's calls (thread C).
 
 ### C and C++ libraries (proposed 2026-10-31, not implemented)
 

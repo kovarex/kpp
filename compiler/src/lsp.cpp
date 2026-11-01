@@ -1170,7 +1170,13 @@ namespace
       if (!error.empty())
         log("kpp/cells: %s", error.c_str());
       for (const ProjectCell& c : cells)
-        list.push(Json::object().set("target", c.target).set("configuration", c.configuration).set("visualStudio", c.visualStudio));
+      {
+        Json libraries = Json::array(); // its Kpp libraries, each scoped (NAME::x) or unscoped (design.md 16)
+        for (const ProjectLibrary& l : c.libraries)
+          libraries.push(Json::object().set("name", l.name).set("unscoped", l.unscoped));
+        list.push(Json::object().set("target", c.target).set("configuration", c.configuration).set("visualStudio", c.visualStudio)
+                    .set("libraries", std::move(libraries)));
+      }
       return Json::object().set("cells", std::move(list)).set("active", isProject && !activeCell.empty() ? cellJson(project) : Json(nullptr));
     }
 

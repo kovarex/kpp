@@ -40,9 +40,18 @@ struct ProjectOption
   bool required = false;
   std::vector<std::string> allowed;
 };
+// A Kpp library a cell uses (docs/build.md, "Kpp libraries"; design.md 16): its name, its roots,
+// absolute, and whether it is unscoped (its names bare everywhere) or scoped (others write NAME::x).
+struct ProjectLibrary
+{
+  std::string name;
+  std::vector<std::string> roots;
+  bool unscoped = false;
+};
 struct ProjectCell
 {
   std::string target, configuration, visualStudio;
-  std::vector<ProjectOption> options; // the libraries' options in this cell, library by library
+  std::vector<ProjectOption> options;    // the libraries' options in this cell, library by library
+  std::vector<ProjectLibrary> libraries; // the Kpp libraries it uses, in kppc's order
 };
 bool projectCells(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<ProjectCell>& cells, std::string& error);

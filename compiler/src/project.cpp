@@ -61,8 +61,8 @@ namespace
   };
 
   // One cell, an executable in a configuration, as build.kpp described it (projectlib\Project.kpp's
-  // describe, configure(cell) applied). After resolveUses, roots ends with the used libraries'
-  // roots, absolute.
+  // describe, configure(cell) applied). After resolveUses, kppLibraries holds the libraries it uses,
+  // each with its roots, absolute, and its scope.
   struct Program : Configuration
   {
     std::string configuration;
@@ -70,14 +70,17 @@ namespace
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
     std::vector<Use> uses;
     std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
+    std::vector<ProjectLibrary> kppLibraries; // after resolveUses: the Kpp libraries it uses
   };
 
-  // A Kpp library the project is (Project.kpp's Library). After resolveUses, roots ends with the
-  // roots of the libraries it uses, absolute.
+  // A Kpp library the project is (Project.kpp's Library). After resolveUses, kppLibraries holds the
+  // libraries it uses.
   struct KppLibrary
   {
     std::string name, version, license, minimumKpp;
+    bool unscoped = false; // its names bare everywhere (design.md 16)
     std::vector<std::string> roots, testRoots;
+    std::vector<ProjectLibrary> kppLibraries;
     std::vector<Use> uses;
     std::vector<Option> options;
     std::vector<Found> used; // after resolveUses: itself and the libraries it uses (applyOptions)
@@ -250,6 +253,7 @@ namespace
         if (key == "version") l.version = value;
         else if (key == "license") l.license = value;
         else if (key == "minimum-kpp") l.minimumKpp = value;
+        else if (key == "unscoped") l.unscoped = value == "1";
         else if (key == "root") l.roots.push_back(value);
         else if (key == "test-root") l.testRoots.push_back(value);
         else if (key == "option") l.options.push_back({value});
@@ -406,6 +410,15 @@ namespace
                 target.c_str(), target.c_str());
         out.errors.push_back(target);
       }
+    // A library's name is the qualifier of its names (zlib::compress, design.md 16): an identifier.
+    for (const KppLibrary& l : out.libraries)
+      if (l.name.empty() || isdigit((unsigned char)l.name[0]) ||
+          !std::all_of(l.name.begin(), l.name.end(), [](char c) { return isalnum((unsigned char)c) || c == '_'; }))
+      {
+        fprintf(stderr, "%s: error: the library \"%s\" needs a name that is an identifier: its users write %s::NAME\n",
+                file.c_str(), l.name.c_str(), l.name.c_str());
+        out.errors.push_back(l.name);
+      }
     return out.errors.empty() && !out.configurations.empty();
   }
 
@@ -437,10 +450,10 @@ namespace
   // project's libraries/NAME, or else next to by when by is in a directory named libraries (the
   // libraries of one libraries/ directory use each other), then described (the same settings),
   // checked (its version, its minimum kpp), and then the libraries it uses, depth
-  // first. Each library's roots are added to roots once, absolute. A name found in two directories
-  // is an error: a program has one copy of each library (the one global scope).
+  // first. Each library is added to libraries once, with its roots, absolute, and its scope. A name
+  // found in two directories is an error: a program has one copy of each library.
   bool resolveUses(const fs::path& project, const fs::path& by, const std::vector<Use>& uses, const Request& request,
-                   std::vector<Found>& found, std::vector<std::string>& roots)
+                   std::vector<Found>& found, std::vector<ProjectLibrary>& libraries)
   {
     std::error_code ec;
     for (const Use& use : uses)
@@ -516,9 +529,10 @@ namespace
         continue;
       }
       found.push_back({use.name, directory, user, library->options, configs});
+      ProjectLibrary& used = libraries.emplace_back(ProjectLibrary{use.name, {}, library->unscoped});
       for (const std::string& r : library->roots)
-        roots.push_back(rooted(directory, r).string());
-      if (!resolveUses(project, directory, library->uses, request, found, roots))
+        used.roots.push_back(rooted(directory, r).string());
+      if (!resolveUses(project, directory, library->uses, request, found, libraries))
         return false;
     }
     return true;
@@ -641,7 +655,7 @@ namespace
     return true;
   }
 
-  // Every executable's and library's uses (resolveUses), their roots added to its own, and every
+  // Every executable's and library's uses (resolveUses), the libraries kept with it, and every
   // cell's library options (applyOptions); a library's are applied when its tests are built
   // (libraryProgram).
   bool resolveUses(const fs::path& root, const Request& request, Description& d)
@@ -651,7 +665,7 @@ namespace
     for (Program& p : d.programs)
     {
       std::vector<Found> found;
-      if (!resolveUses(root, root, p.uses, request, found, p.roots))
+      if (!resolveUses(root, root, p.uses, request, found, p.kppLibraries))
         return false;
       for (const Found& f : found)
         if (std::find(allUsed.begin(), allUsed.end(), f.name) == allUsed.end())
@@ -661,7 +675,7 @@ namespace
     for (KppLibrary& l : d.libraries)
     {
       std::vector<Found> found = {{l.name, fs::absolute(root).lexically_normal(), (root / "build.kpp").string(), l.options}};
-      if (!resolveUses(root, root, l.uses, request, found, l.roots))
+      if (!resolveUses(root, root, l.uses, request, found, l.kppLibraries))
         return false;
       l.used = found;
     }
@@ -922,6 +936,12 @@ namespace
     args.push_back(exeOf(root, p).string());
     for (const std::string& r : p.roots)
       args.push_back(rooted(root, r).string());
+    // The Kpp libraries it uses, their roots after its own. Their names and scopes (design.md 16) are
+    // not passed yet: kppc gets --library-root NAME DIR and --unscoped-library-root NAME DIR with
+    // thread A's lookup, and until then a scoped library's names are bare (build.md, "Library scopes").
+    for (const ProjectLibrary& l : p.kppLibraries)
+      for (const std::string& r : l.roots)
+        args.push_back(r);
     return args;
   }
 
@@ -976,10 +996,9 @@ namespace
   }
 
   // A library's program in a configuration: the configuration's options, the library's roots and
-  // test roots.
-  // A library's program in a configuration: the configuration's options, the library's roots and
-  // test roots, and its own options and its libraries' (applyOptions). False, the error printed,
-  // when an option is wrong.
+  // test roots as the program's own (inside the library its names are bare, its tests' too), the
+  // libraries it uses, and its own options and its libraries' (applyOptions). False, the error
+  // printed, when an option is wrong.
   bool libraryProgram(const fs::path& root, const Configuration& c, const KppLibrary& l, const Request& request, Program& p)
   {
     static_cast<Configuration&>(p) = c;
@@ -987,6 +1006,7 @@ namespace
     p.configuration = c.name;
     p.roots = l.roots;
     p.roots.insert(p.roots.end(), l.testRoots.begin(), l.testRoots.end());
+    p.kppLibraries = l.kppLibraries;
     std::vector<std::string> allUsed;
     for (const Found& f : l.used)
       allUsed.push_back(f.name);
@@ -1068,6 +1088,9 @@ namespace
         {
           for (const std::string& r : q->roots)
             target.roots.push_back(rooted(root, r));
+          for (const ProjectLibrary& l : q->kppLibraries)
+            for (const std::string& r : l.roots)
+              target.roots.push_back(rooted(root, r));
           for (const std::string& e : q->excluded)
             target.excluded.push_back(rooted(root, e));
           first = false;
@@ -1192,8 +1215,8 @@ namespace
       for (const Program& p : d.programs)
         if (p.configuration == configuration && (targets.empty() || std::find(targets.begin(), targets.end(), p.name) != targets.end()))
           chosen.push_back(&p);
-    // kpp options: each chosen cell's libraries' options, with their values and who set them (a library
-    // project: its own and its libraries', in each configuration).
+    // kpp options: each chosen cell's libraries, scoped or unscoped, and their options, with their
+    // values and who set them (a library project: its own and its libraries', in each configuration).
     if (request.options)
     {
       std::vector<Program> listed;
@@ -1206,7 +1229,15 @@ namespace
               return 1;
       for (const Program& p : listed)
       {
-        printf("%s %s:%s\n", p.name.c_str(), p.configuration.c_str(), p.options.empty() ? " no library options" : "");
+        // The library this project is (its own tests' program), then the libraries the cell uses.
+        std::vector<ProjectLibrary> libraries = p.kppLibraries;
+        for (const KppLibrary& l : d.libraries)
+          if (d.programs.empty() && l.name == p.name)
+            libraries.insert(libraries.begin(), ProjectLibrary{l.name, {}, l.unscoped});
+        printf("%s %s:%s\n", p.name.c_str(), p.configuration.c_str(), libraries.empty() ? " no libraries" : "");
+        for (const ProjectLibrary& l : libraries)
+          printf(l.unscoped ? "  library %s, unscoped: its names are bare\n" : "  library %s, scoped: %s::NAME\n", l.name.c_str(),
+                 l.name.c_str());
         for (const ProjectOption& o : p.options)
         {
           std::string values;
@@ -1396,7 +1427,7 @@ bool projectCells(const std::filesystem::path& directory, const ProjectCheck& ch
         p = &library;
       }
       if (p)
-        cells.push_back({target, c.name, visualStudioName(c.name), p->options});
+        cells.push_back({target, c.name, visualStudioName(c.name), p->options, p->kppLibraries});
     }
   return true;
 }
@@ -1479,6 +1510,9 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
             to.push_back(x);
       };
       addAll(program.roots, p.roots);
+      for (const ProjectLibrary& l : p.kppLibraries)
+        if (std::none_of(program.kppLibraries.begin(), program.kppLibraries.end(), [&](const ProjectLibrary& k) { return k.name == l.name; }))
+          program.kppLibraries.push_back(l);
       addAll(program.excluded, p.excluded);
       addAll(program.cIncludes, p.cIncludes);
     }

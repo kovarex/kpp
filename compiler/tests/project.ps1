@@ -83,8 +83,9 @@ finally { Pop-Location }
 # next to it there; kpp --test in greet runs its tests and its test roots' with the runner's
 # arguments; a minimum version above greet's, a missing library and a minimum kpp above this one
 # are errors. greet's option suffix (config::greet::suffix): its default, a configuration's value,
-# the command line's, `kpp options`, and three errors: a required option unset, an unknown option,
-# a value not of its type.
+# the command line's, `kpp options` (with greet scoped and text unscoped, design.md 16), and three
+# errors: a required option unset, an unknown option, a value not of its type; a library name that is
+# no identifier is an error.
 $app = Join-Path $work 'app'
 New-Item -ItemType Directory -Force "$app\src", "$app\libraries\greet\src", "$app\libraries\greet\tests", "$app\libraries\text\src" | Out-Null
 Push-Location $app
@@ -108,7 +109,8 @@ void build(Project& project)
   Set-Content 'libraries\greet\build.kpp' $greet
   Set-Content 'libraries\greet\src\greet.kpp' "String greeting(StringView name) { return shout(`"hello`") + name + config::greet::suffix; }`ntest `"greeting`"`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
   Set-Content 'libraries\greet\tests\more.kpp' "test `"greeting twice`"`n{`n  check(greeting(`"b`") == `"hello! b`");`n  check(greeting(`"c`") == `"wrong`");`n}"
-  Set-Content 'libraries\text\build.kpp' "void build(Project& project)`n{`n  Library& text = project.library(`"text`");`n  text.version = `"1.0.0`";`n}"
+  $text = "void build(Project& project)`n{`n  Library& text = project.library(`"text`");`n  text.version = `"1.0.0`";`n  text.unscoped = true;`n}"
+  Set-Content 'libraries\text\build.kpp' $text
   Set-Content 'libraries\text\src\text.kpp' "String shout(StringView s) { String r = s; r += `"! `"; return r; }"
   $output = Kpp @('--no-server')
   $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
@@ -120,6 +122,11 @@ void build(Project& project)
   }
   $output = (Kpp @('options', 'release')) -join "`n"
   if ($code -ne 0 -or $output -notmatch 'greet::suffix = \.  string, default ; set by the configuration release') { Fail "kpp options: exit $code`n$output" }
+  if ($output -notmatch 'library greet, scoped: greet::NAME' -or $output -notmatch 'library text, unscoped: its names are bare') { Fail "kpp options, the libraries' scopes:`n$output" }
+  Set-Content 'libraries\text\build.kpp' "void build(Project& project)`n{`n  Library& text = project.library(`"te-xt`");`n  text.version = `"1.0.0`";`n}"
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'the library "te-xt" needs a name that is an identifier') { Fail "a library named te-xt: exit $code`n$output" }
+  Set-Content 'libraries\text\build.kpp' $text
   foreach ($case in @(
       @('greet.requiredOption("volume", "int", "how loud");', '', 'the library greet needs its option volume \(int: how loud\), which nothing sets for app debug'),
       @('', '  project.config("greet::colour", "red");', 'greet::colour is set by the project \(project.config\), and the library greet has no option colour \(its options: suffix\)'),

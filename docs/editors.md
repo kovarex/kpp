@@ -45,10 +45,11 @@ Status (2026-10-31):
   build.kpp's: the one selected in the editor. The server switches cells without a restart and
   keeps the program of each cell it checked, so switching back is quick.
   - `kpp/cells` (request, no parameters) answers
-    `{ "cells": [{ "target", "configuration", "visualStudio" }], "active": { "target", "configuration" } }`:
+    `{ "cells": [{ "target", "configuration", "visualStudio", "libraries": [{ "name", "unscoped" }] }], "active": { "target", "configuration" } }`:
     every target in every configuration, in build.kpp's order; `visualStudio` is the
-    configuration's name in the generated Visual Studio files (`Debug`). Without a build.kpp the
-    list is empty and `active` null.
+    configuration's name in the generated Visual Studio files (`Debug`); `libraries` the Kpp
+    libraries the cell uses, each scoped (its names are `NAME::x`) or unscoped (design.md 16).
+    Without a build.kpp the list is empty and `active` null.
   - `kpp/selectCell` (request) `{ "target", "configuration" }` makes that cell the checked one and
     answers with it, or with an error (-32803) naming what build.kpp has; the cell then stays.
     `configuration` may be a Visual Studio solution configuration: `Debug|x64` is matched by the
