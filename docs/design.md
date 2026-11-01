@@ -984,7 +984,14 @@ file shorten them again, so the meaning of a short name depends on the file it i
 packages keep the hierarchy those systems give for browsing and drop the part that makes names
 contextual; clashes are prevented by the compiler refusing them instead.
 
-## struct and class (proposed 2026-10-29, not yet decided by kovarex)
+## struct and class (decided 2026-11-01: option 3, with friend)
+
+**Decided** (kovarex, 2026-11-01): option 3, two keywords with a checked meaning ("I like 3, so we
+keep struct and class, and just means more than before"), and `friend` stays ("for now lets keep
+friend"). A struct deriving from a polymorphic class is no value type: it must be a class. Order:
+the struct rule first (the converter turns the 31 game and test structs into classes), then access
+checks as warnings over the converted game, errors once it is clean; the converter keeps the
+game's 438 friend declarations. The analysis follows.
 
 **The question** (kovarex): why are the standard library's types structs (`struct String`), and
 what do two keywords buy when the only difference is that a struct starts public? He uses
