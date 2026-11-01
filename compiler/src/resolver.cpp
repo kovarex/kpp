@@ -5223,6 +5223,17 @@ struct GlobalScope::Impl
     return cached && cached->isKnown() && !types.isDependent(cached) && !mentionsUnknown(cached) ? cached : written;
   }
 
+  // The enumerators' values found so far by the enum evaluations running on this thread
+  // (constValueOfDecl), innermost first.
+  struct EnumeratorValues
+  {
+    const EnumDecl* e;
+    const Ty* type;
+    std::vector<std::pair<const Decl*, ConstValue>> values;
+    const EnumeratorValues* outer;
+  };
+  static thread_local const EnumeratorValues* enumeratorValues;
+
   std::optional<ConstValue> constValueOfDecl(Decl* d, const TypeContext& ctx, int depth, const Subst* classSubst = nullptr)
   {
     if (!d || depth > 96)
@@ -5309,6 +5320,21 @@ struct GlobalScope::Impl
       const Ty* enumType = enumTypeIn(e, classSubst ? classSubst : ctx.subst);
       if (types.isDependent(enumType))
         enumType = types.enumType(e);
+      // An enumerator written from the one before (`F1 = 2 * F0`) asks for it while this loop
+      // computes it: the values found so far answer, so that a chain is evaluated once, not again
+      // for each link (2^n steps).
+      for (const EnumeratorValues* f = enumeratorValues; f; f = f->outer)
+        if (f->e == e && f->type == enumType)
+          for (const auto& [at, value] : f->values)
+            if (at == d)
+              return value;
+      EnumeratorValues found{e, enumType, {}, enumeratorValues};
+      enumeratorValues = &found;
+      struct Pop
+      {
+        EnumeratorValues& f;
+        ~Pop() { enumeratorValues = f.outer; }
+      } pop{found};
       ConstValue next = ConstValue::integer(0, enumType);
       for (Decl* m : e->enumerators)
       {
@@ -5325,6 +5351,7 @@ struct GlobalScope::Impl
         }
         if (cur == d)
           return next;
+        found.values.push_back({cur, next});
         ++next.i;
       }
     }
@@ -23347,6 +23374,7 @@ thread_local const std::vector<Token>* GlobalScope::Impl::fallbackTokens = nullp
 thread_local bool GlobalScope::Impl::exactLayoutOnly = false;
 thread_local bool GlobalScope::Impl::layoutNeeded = false;
 thread_local int GlobalScope::Impl::nameEvaluations = 0;
+thread_local const GlobalScope::Impl::EnumeratorValues* GlobalScope::Impl::enumeratorValues = nullptr;
 thread_local std::string_view GlobalScope::Impl::fallbackText;
 
 const Ty* GlobalScope::typeOfAst(Type* t, Decl* context)
