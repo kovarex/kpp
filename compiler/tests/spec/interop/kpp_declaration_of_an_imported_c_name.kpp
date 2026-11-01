@@ -1,0 +1,18 @@
+// spec: a Kpp declaration of a name an imported C header declares too, a type or a function, is a clash: the two are other entities (other layouts), and neither silently takes the other's place in any file
+// factorio: fontstash (converted as C): stb_truetype.h's fallback rect packer (its own stbrp_context, stbrp_node, stbrp_rect, stbrp_init_target, stbrp_pack_rects, private to fontstash.cpp) took the place of stb_rect_pack.h's, which TextureProcessor imports: TextureProcessor's stbrp_context was stb_truetype's 20 bytes, not stb_rect_pack's
+// pending: no error: in the file that imports the header, SpecPackContext is the Kpp struct (sizeof 20, not 40) (A)
+// error: kpp_declaration_of_an_imported_c_name.kpp:12: error: 'SpecPackContext' is declared by an imported C header too
+// error: kpp_declaration_of_an_imported_c_name.kpp:13: error: 'specPackInit' is declared by an imported C header too
+extern "C" import "kpp_declaration_of_an_imported_c_name.h";
+int usesTheHeader()
+{
+  SpecPackContext context;
+  return int(sizeof(context));
+}
+typedef struct { int width, height, x, y, bottom; } SpecPackContext;
+void specPackInit(SpecPackContext* context, int width, int height) { context->width = width; context->height = height; context->bottom = -1; }
+int main()
+{
+  println("{}", usesTheHeader());
+  return 0;
+}
