@@ -1,15 +1,15 @@
 5 3 [] 10 b
-30 1 abcdefghijklmnopqrstuvwxyzabcd
-22 0 23 1
+40 1 abcdefghijklmnopqrstuvwxyzabcdefghijklmn
+30 0 31 1
 48 abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc
 0123423456756789
-exactly-22-characters!|exactly-22-characters!+more|exactly-23-characters!!|1
+exactly-30-characters!!!!!!!!!|exactly-30-characters!!!!!!!!!+more|exactly-31-characters!!!!!!!!!!|1
 x 1
-4 25 -1 19 3 15
+4 25 18446744073709551615 19 3 15
 needle|eedle|eedle
 >>hello!!! 10
 [] 0 1
-left+exactly-23-characters!!X 1
+left+exactly-31-characters!!!!!!!!!!X 1
 22 first word that is long enough to live on the heap
 0 1 7 8 9 2 3 3 0 0 0 1 1 
 3 22 []

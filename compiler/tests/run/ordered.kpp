@@ -149,7 +149,7 @@ int main()
   auto range = multi.equal_range(2);
   for (auto it = range.first; it != range.second; ++it)
     printf("%s ", it->second.c_str());
-  printf("%d %d %d %d %d\n", multi.count(2), multi.erase(2), multi.size(), bag.count(3), bag.erase(3));
+  printf("%zu %zu %zu %zu %zu\n", multi.count(2), multi.erase(2), multi.size(), bag.count(3), bag.erase(3));
   // String keys and a Set; copies are independent, moves leave the source empty.
   Map<String, String> names;
   for (int i = 0; i < 500; ++i)
@@ -164,7 +164,7 @@ int main()
   for (auto& entry : moved)
     keys.erase(entry.first);
   String first = *keys.begin();
-  printf("%d %d %d %d %s %s %d\n", namesCopy.size(), moved.size(), names.size(), keys.size(), first.c_str(),
+  printf("%zu %zu %zu %zu %s %s %d\n", namesCopy.size(), moved.size(), names.size(), keys.size(), first.c_str(),
          namesCopy.find(String("7"))->second.c_str(), keys.contains(String("9")) ? 1 : 0);
 
   Set<int> small = {5, 3, 9, 1};
@@ -172,6 +172,6 @@ int main()
   small.erase(9);
   for (int v : small)
     printf("%d ", v);
-  printf("%d\n", small.size());
+  printf("%zu\n", small.size());
   return 0;
 }

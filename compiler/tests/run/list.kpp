@@ -87,7 +87,7 @@ int main()
   for (int n : spliced)
     printf("%d ", n);
   List<int> movedList = move(spliced);
-  printf("| %d %d %d %d %d %d %d %d\n", errors, list.size() == reference.size() ? 1 : 0, backwards == list.size() ? 1 : 0, anchorKept ? 1 : 0,
+  printf("| %d %d %d %d %d %zu %zu %zu\n", errors, list.size() == reference.size() ? 1 : 0, backwards == list.size() ? 1 : 0, anchorKept ? 1 : 0,
          *thirtyFive, source.size(), spliced.size(), movedList.size());
   return 0;
 }

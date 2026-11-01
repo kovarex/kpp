@@ -61,7 +61,7 @@ int main()
   v.push_back(move(c));       // move
   v.emplace_back(c);          // copy: forwarding an lvalue
   v.emplace_back(Tracker(7)); // move: forwarding a temporary
-  printf("%d %d %d\n", copies, moves, v.size());
+  printf("%d %d %zu\n", copies, moves, v.size());
   c = b;
   c = move(b);
   printf("%d %d\n", copyAssigns, moveAssigns);
@@ -77,6 +77,6 @@ int main()
   printf("%d %d\n", *owners[0], *owners[1]);
   String s = "text";
   String t = move(s);
-  printf("%d %s\n", s.size(), t.c_str());
+  printf("%zu %s\n", s.size(), t.c_str());
   return 0;
 }

@@ -53,19 +53,19 @@ void moves()
   for (SelfAware& v : values)
     valid += v.valid() ? 1 : 0;
   map.forEach([&](const int& key, SelfAware& v) { valid += v.valid() && v.value == key ? 1 : 0; });
-  printf("%d %d\n", values.size(), valid);
+  printf("%zu %d\n", values.size(), valid);
 }
 
 void strings()
 {
-  // Growing across the 22-character small capacity one character at a time.
+  // Growing across the 30-character small capacity one character at a time.
   String text;
-  for (int i = 0; i < 30; ++i)
+  for (int i = 0; i < 40; ++i)
     text.push_back(char('a' + i % 26));
-  printf("%d %d %s\n", text.size(), text.isLarge() ? 1 : 0, text.c_str());
-  String small("exactly-22-characters!");
-  String large("exactly-23-characters!!");
-  printf("%d %d %d %d\n", small.size(), small.isLarge() ? 1 : 0, large.size(), large.isLarge() ? 1 : 0);
+  printf("%zu %d %s\n", text.size(), text.isLarge() ? 1 : 0, text.c_str());
+  String small("exactly-30-characters!!!!!!!!!");
+  String large("exactly-31-characters!!!!!!!!!!");
+  printf("%zu %d %zu %d\n", small.size(), small.isLarge() ? 1 : 0, large.size(), large.isLarge() ? 1 : 0);
 
   // Appending and inserting a string into itself, small and large.
   String twice("abc");
@@ -73,7 +73,7 @@ void strings()
   twice.append(twice);
   twice.append(twice);
   twice.append(twice);
-  printf("%d %s\n", twice.size(), twice.c_str());
+  printf("%zu %s\n", twice.size(), twice.c_str());
   String inner("0123456789");
   inner.insert(5, inner.c_str() + 2, 6);
   printf("%s\n", inner.c_str());
@@ -88,11 +88,11 @@ void strings()
   String assigned("short");
   assigned = large;
   assigned = String("x");
-  printf("%s %d\n", assigned.c_str(), assigned.size());
+  printf("%s %zu\n", assigned.c_str(), assigned.size());
 
   // Searching.
   String haystack("the needle and the other needle");
-  printf("%d %d %d %d %d %d\n", haystack.find("needle"), haystack.find("needle", 5), haystack.find("pin"), haystack.find('o'),
+  printf("%zu %zu %zu %zu %zu %zu\n", haystack.find("needle"), haystack.find("needle", 5), haystack.find("pin"), haystack.find('o'),
          haystack.find("", 3), haystack.find(String("the"), 1));
   printf("%s|%s|%s\n", haystack.substr(4, 6).c_str(), haystack.substr(26).c_str(), haystack.substr(26, -1).c_str());
 
@@ -101,9 +101,9 @@ void strings()
   edit.erase(5, 6);
   edit.resize(8, '!');
   edit.insert(0, 2, '>');
-  printf("%s %d\n", edit.c_str(), edit.size());
+  printf("%s %zu\n", edit.c_str(), edit.size());
   edit.clear();
-  printf("[%s] %d %d\n", edit.c_str(), edit.size(), edit.empty() ? 1 : 0);
+  printf("[%s] %zu %d\n", edit.c_str(), edit.size(), edit.empty() ? 1 : 0);
   String joined = String("left") + "+" + large + 'X';
   printf("%s %d\n", joined.c_str(), String("abc") < String("abd") ? 1 : 0);
 }
@@ -116,7 +116,7 @@ void vectors()
   for (int i = 0; i < 20; ++i)
     words.push_back(words[0]);
   words.insert(0, words[words.size() - 1]);
-  printf("%d %s\n", words.size(), words[20].c_str());
+  printf("%zu %s\n", words.size(), words[20].c_str());
 
   Vector<int> numbers;
   for (int i = 0; i < 4; ++i)
@@ -133,7 +133,7 @@ void vectors()
   Vector<String> copy = words;
   copy.resize(2);
   copy.resize(3);
-  printf("%d %d [%s]\n", copy.size(), words.size(), copy[2].c_str());
+  printf("%zu %zu [%s]\n", copy.size(), words.size(), copy[2].c_str());
 }
 
 void sorting()
@@ -208,7 +208,7 @@ void hashing()
     for (int i = 0; i < 100; ++i)
       churn.erase(round * 1000 + i);
   }
-  printf("%d %d\n", churn.size(), churn.table.capacity <= 256 ? 1 : 0);
+  printf("%zu %d\n", churn.size(), churn.table.capacity <= 256 ? 1 : 0);
 
   // A copy keeps the deleted markers that later keys' probe paths run through.
   HashMap<String, int> map;
@@ -223,7 +223,7 @@ void hashing()
       found += copy.find(toString(i))->second == i ? 1 : 100000;
   HashMap<String, int> moved = move(copy);
   map.insert_or_assign(String("1"), 11);
-  printf("%d %d %d %d %d\n", found, moved.size(), copy.size(), map.find(String("1"))->second, map.contains(String("3")) ? 1 : 0);
+  printf("%d %zu %zu %d %d\n", found, moved.size(), copy.size(), map.find(String("1"))->second, map.contains(String("3")) ? 1 : 0);
 
   // Aligned pointers as keys.
   Vector<int*> blocks;
@@ -240,7 +240,7 @@ void hashing()
   for (int i = 0; i < 500; i += 2)
     pointers.erase(blocks[i]);
   HashSet<int*> pointersCopy = pointers;
-  printf("%d %d %d\n", present, pointers.size(), pointersCopy.contains(blocks[1]) ? 1 : 0);
+  printf("%d %zu %d\n", present, pointers.size(), pointersCopy.contains(blocks[1]) ? 1 : 0);
   for (int* block : blocks)
     free(block);
 

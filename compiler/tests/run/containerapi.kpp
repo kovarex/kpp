@@ -15,7 +15,7 @@ void vectors()
   range.assign(2, 9);
   Vector<int> listed;
   listed.assign({5, 6});
-  printf("%d %d %d %d %d %d %d %d %d\n", before, range.capacity(), view[0], view.front(), view.back(), range.size(), range[1], listed[1],
+  printf("%d %zu %d %d %d %zu %d %d %zu\n", before, range.capacity(), view[0], view.front(), view.back(), range.size(), range[1], listed[1],
          values.size());
 }
 
@@ -24,7 +24,7 @@ void strings()
   String text("one two one three");
   String other("short");
   text.swap(other);
-  printf("%d %d %d %d %d %d %d %d %s %s\n", other.rfind("one"), other.rfind(String("one"), 7), other.rfind('e', 5), other.rfind("zzz"),
+  printf("%zu %zu %zu %zu %zu %d %d %d %s %s\n", other.rfind("one"), other.rfind(String("one"), 7), other.rfind('e', 5), other.rfind("zzz"),
          other.find_last_of("wt"), String("abc").compare(String("abd")) < 0 ? 1 : 0, String("b").compare("a") > 0 ? 1 : 0,
          String("x").compare(String("x")), text.c_str(), other.substr(0, 3).c_str());
 }
@@ -52,7 +52,7 @@ void maps()
   Map<int, String> merged = {{1, String("one")}, {2, String("other two")}};
   map.merge(merged);
   map.swap(other);
-  printf("%d %s %d %d %d %d %s %d %s %d %d %s %s\n", map.size(), hinted->second.c_str(), reversed, kept ? 1 : 0, back.inserted ? 1 : 0,
+  printf("%zu %s %d %d %d %d %s %zu %s %zu %d %s %s\n", map.size(), hinted->second.c_str(), reversed, kept ? 1 : 0, back.inserted ? 1 : 0,
          refused.inserted ? 1 : 0, refused.node.mapped().c_str(), other.size(), other.find(2)->second.c_str(), merged.size(),
          other.contains(1) ? 1 : 0, map.find(6)->second.c_str(), &map.find(6)->second == address ? "same" : "moved");
 
@@ -69,7 +69,7 @@ void maps()
   bag.insert(bag.begin(), 0);
   for (auto it = multi.rbegin(); it != multi.rend(); ++it)
     printf("%d ", it->second);
-  printf("| %d %d %s %d %d\n", set.size(), otherSet.size(), (*set.rbegin()).c_str(), *bag.begin(), bag.size());
+  printf("| %zu %zu %s %d %zu\n", set.size(), otherSet.size(), (*set.rbegin()).c_str(), *bag.begin(), bag.size());
 
   FastMap<int, int> fast = {{1, 1}, {3, 3}};
   FastMap<int, int> fastOther = {{2, 2}, {3, 30}};
@@ -78,7 +78,7 @@ void maps()
   int fastSum = 0;
   for (auto it = fast.rbegin(); it != fast.rend(); ++it)
     fastSum = fastSum * 10 + it->second;
-  printf("%d %d %d\n", fastSum, fastOther.size(), fastOther.find(3)->second);
+  printf("%d %zu %d\n", fastSum, fastOther.size(), fastOther.find(3)->second);
 }
 
 void hashes()
@@ -96,7 +96,7 @@ void hashes()
   fast.merge(fastOther);
   HashMap<int, String> swapped;
   swapped.swap(map);
-  printf("%d %d %s %d %d %d %d %d\n", swapped.size(), other.size(), other.find(2)->second.c_str(), &swapped.find(3)->second == three ? 1 : 0,
+  printf("%zu %zu %s %d %d %zu %zu %zu\n", swapped.size(), other.size(), other.find(2)->second.c_str(), &swapped.find(3)->second == three ? 1 : 0,
          &swapped.find(1)->second == one ? 1 : 0, map.size(), fast.size(), fastOther.size());
 }
 
@@ -123,7 +123,7 @@ void lists()
   queue.emplace("b");
   queue.push(String("c"));
   queue.emplace(3, 'a');
-  printf("| %d %s %d\n", reversed, queue.top().c_str(), queue.size());
+  printf("| %d %s %zu\n", reversed, queue.top().c_str(), queue.size());
 }
 
 int main()

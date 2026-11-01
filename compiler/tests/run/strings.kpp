@@ -10,7 +10,7 @@ int main()
   greeting += '?';
   String copy = greeting;
   String head = copy.substr(0, 5) + String("...");
-  printf("%s|%s|%d|%d|%d\n", greeting.c_str(), head.c_str(), greeting.size(), greeting.find('K'), greeting == copy ? 1 : 0);
+  printf("%s|%s|%zu|%zu|%d\n", greeting.c_str(), head.c_str(), greeting.size(), greeting.find('K'), greeting == copy ? 1 : 0);
 
   Vector<String> words;
   words.push_back(String("alpha"));
@@ -21,7 +21,7 @@ int main()
   int total = 0;
   for (String& w : wordsCopy)
     total += w.size();
-  printf("%d %d %s %s %d\n", words.size(), wordsCopy.size(), words[0].c_str(), wordsCopy[2].c_str(), total);
+  printf("%zu %zu %s %s %d\n", words.size(), wordsCopy.size(), words[0].c_str(), wordsCopy[2].c_str(), total);
 
   Vector<int> numbers;
   for (int i = 0; i < 5; ++i)
@@ -30,6 +30,6 @@ int main()
   for (int n : numbers)
     sum += n;
   numbers.pop_back();
-  printf("%d %d %d\n", sum, numbers.size(), numbers.back());
+  printf("%d %zu %d\n", sum, numbers.size(), numbers.back());
   return 0;
 }

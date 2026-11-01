@@ -63,7 +63,7 @@ int main()
   items.emplace_back(3);
   items.insert(items.begin() + 1, Item(2));
   Item* next = items.erase(items.begin());
-  printf("%d %d %d %d %d %d %d %d %d %d %d\n", d.count, w.size, best.first, best.second, parts[1].size(), parts[0].size(), m, n, v.size(), *next->value, items.size());
+  printf("%d %d %d %d %zu %zu %d %d %zu %d %zu\n", d.count, w.size, best.first, best.second, parts[1].size(), parts[0].size(), m, n, v.size(), *next->value, items.size());
   String s("abcdef");
   String middle(s.c_str() + 1, s.c_str() + 4);
   Optional<int> maybe;

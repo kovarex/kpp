@@ -41,7 +41,7 @@ int main()
   printf("%d\n", demo::Text::count(s));
   Vector<StringView> parts;
   demo::Text::split(s, parts);
-  printf("%d %d %d\n", parts.size(), parts[1].size(), (int)(parts[2].data() - s.data()));
+  printf("%zu %zu %d\n", parts.size(), parts[1].size(), (int)(parts[2].data() - s.data()));
   demo::Text t;
   t.size = 7;
   printf("%d\n", t.instanceSize());

@@ -12,14 +12,14 @@ int main()
   ages.forEach([&](const String& name, int age) { total += age; });
   int* bob = &ages.find(String("bob"))->second;
   bool hasDan = ages.contains(String("dan"));
-  printf("%d %d %d %d %d\n", ages.size(), total, *bob, hasDan ? 1 : 0, ages.erase(String("bob")) ? 1 : 0);
+  printf("%zu %d %d %d %d\n", ages.size(), total, *bob, hasDan ? 1 : 0, ages.erase(String("bob")) ? 1 : 0);
 
   HashMap<int, String> names;
   for (int i = 0; i < 100; ++i)
     names.insert(i, toString(i * 7));
   HashMap<int, String> copy = names;
   names.erase(50);
-  printf("%d %d %s %s\n", names.size(), copy.size(), copy.find(50)->second.c_str(), names.find(99)->second.c_str());
+  printf("%zu %zu %s %s\n", names.size(), copy.size(), copy.find(50)->second.c_str(), names.find(99)->second.c_str());
 
   Optional<String> maybe;
   Optional<String> some(String("value"));

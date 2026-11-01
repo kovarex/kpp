@@ -46,6 +46,6 @@ int main()
   s.onMove([&n](double v) { n += int(v); });
   for (Function<void(double)>& f : s.moves)
     f(10.0);
-  printf("%d %d %d\n", impl.calls, n, s.moves.size());
+  printf("%d %d %zu\n", impl.calls, n, s.moves.size());
   return 0;
 }

@@ -92,7 +92,7 @@ int main()
   for (int i = 0; i < 1000; ++i)
     stack.push(toString(i));
   bool stackStable = &bottom == &stack.values[0];
-  printf("%d %d %d %d %d %lld %d %s\n", errors, deque.size() == reference.size() ? 1 : 0, stable ? 1 : 0, queue.size(),
+  printf("%d %d %d %zu %d %lld %d %s\n", errors, deque.size() == reference.size() ? 1 : 0, stable ? 1 : 0, queue.size(),
          queue.values.mapLength <= 16 ? 1 : 0, sum, stackStable ? 1 : 0, stack.top().c_str());
   return 0;
 }
