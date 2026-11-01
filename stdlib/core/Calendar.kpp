@@ -163,7 +163,7 @@ String formatHttpDate(const TimePoint<SystemClock>& t)
 struct CalendarReader
 {
   StringView text;
-  int at = 0;
+  ContainerSize at = 0; // a position in text, a size as the library's are
   bool ok = true;
 
   bool atEnd() const { return this->at == this->text.size(); }
@@ -194,7 +194,7 @@ struct CalendarReader
   // The literal, case-sensitive.
   void literal(const char* word)
   {
-    int n = int(strlen(word));
+    ContainerSize n = ContainerSize(strlen(word));
     if (!this->ok || this->at + n > this->text.size() || this->text.substr(this->at, n) != StringView(word))
     {
       this->ok = false;
@@ -208,7 +208,7 @@ struct CalendarReader
   {
     for (int i = 0; i < count && this->ok; ++i)
     {
-      int n = int(strlen(names[i]));
+      ContainerSize n = ContainerSize(strlen(names[i]));
       if (this->at + n <= this->text.size() && this->text.substr(this->at, n) == StringView(names[i]))
       {
         this->at += n;
@@ -304,7 +304,7 @@ Optional<TimePoint<SystemClock>> parseHttpDate(StringView text, const TimePoint<
   CivilTime c;
   int weekday = -1;
   bool twoDigitYear = false;
-  int comma = text.find(',');
+  ContainerSize comma = text.find(',');
   if (comma == 3)
   {
     weekday = r.name(calendarDayNames, 7);
