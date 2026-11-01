@@ -804,6 +804,27 @@ call's arguments into it, the missing-`appendTo` error); thread C the library si
 throughout the stdlib, `operator<<` and `operator+`, `print`, `toString`, and the formatting objects,
 docs/stdlib/).
 
+### 15. File-local names: `private` at file scope (decided 2026-11-01)
+
+kovarex, 2026-11-01: "lets keep the private for per file private". A top-level declaration marked
+`private` (`private const int COPY = 1;`, `private void helper() {...}`, a private type or
+variable) is visible only in the file that declares it:
+- inside its file it hides a global name of the same spelling; two files' `private` names never
+  clash; naming it from another file is a compile error ("helper is private to zlib/inflate.kpp");
+- everything not marked stays global and order-independent, as before.
+
+Why (measured 2026-11-01 by the coordinator, a text scan of top-level declarations): Factorio's
+own source has 125 file-level `static` declarations and 7 anonymous namespaces in 7,191 files, with
+no name repeated across files, so there it marks internal helpers. The 15 C libraries the game
+uses have about 16,900 file-local declarations (`static` functions and variables, `#define` in `.c`
+files) and about 500 names reused across files (SDL3 316, curl 82, jpeg 28, zstd 26, Lua 24), which
+the converter would otherwise rename one by one, again at every upstream update.
+
+The converter maps C's file-level `static` and a `.c` file's own macros (as constants) and C++'s
+anonymous namespaces to it. Owners: thread A the language (resolver, specs), thread C the
+converter. It replaces the renaming lists (`private-names.txt`) and the macros written out as
+values.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
