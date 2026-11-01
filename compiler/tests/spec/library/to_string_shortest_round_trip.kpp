@@ -1,0 +1,14 @@
+// spec: toString of a double or a float is the shortest text that reads back to the same value (design.md 14, kovarex: "it should always print all the information, so nothing is lost"): %g's form at the fewest significant digits that round-trip; infinities and NaN as "inf", "-inf" and "nan", a negative zero as "-0"
+// factorio: std::to_string of a floating value is `%f` in C++ ("0.100000"): the converter writes fixed(x, 6) for those (design.md 14); everything else prints a float in full
+int main()
+{
+  double zero = 0.0;
+  double values[] = {0.1, 0.1 + 0.2, 1.0 / 3, 100.0, 1e21, 1.5e-7, -0.0, 123456789012345678.0, 5e-324,
+                     1.7976931348623157e308, -2.75, 1.0 / zero, -1.0 / zero, zero / zero};
+  for (double value : values)
+    println(toString(value));
+  float floats[] = {0.1f, 1.0f / 3, 16777216.0f, 3.4028235e38f};
+  for (float value : floats)
+    println(toString(value));
+  return 0;
+}

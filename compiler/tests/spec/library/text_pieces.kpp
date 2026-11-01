@@ -1,0 +1,31 @@
+// spec: the formatting pieces of design.md 14, each a value with appendTo: hex and hexUpper (C's %x and %X, the bits of the value's own type, zero-padded to digits), octal (%o), fixed (%.Nf), significant (%.Ng), scientific (%.Ne), withSign (the '+' flag), alignRight and alignLeft (a width with a fill; a longer text is not cut; any piece inside), zeroPadded (the '0' flag, after the sign), address (MSVC's %p); infinities and NaN as toString writes them
+// factorio: what the converted printf specifiers become (the game's 8,173 conversions: %s, %u, %f, %d, %g, %x, %02x, %016llx, %.2f, %3u, %03d, %+.1f, %-*s, %X, %o, %e, %p ...)
+template<typename T>
+String text(const T& piece)
+{
+  String out;
+  piece.appendTo(out);
+  return out;
+}
+
+int main()
+{
+  double zero = 0.0;
+  println(text(hex(255)) + " " + text(hex(-1)) + " " + text(hex(-1LL)) + " " + text(hex(10, 4)) + " " + text(hex((unsigned char)200)) + " " +
+          text(hex((short)-2)) + " " + text(hex(0xDEADBEEFull, 16)) + " " + text(hexUpper(0xBEEF, 8)) + " " + text(octal(0644)) + " " +
+          text(octal(8, 3)));
+  println(text(fixed(3.14159, 2)) + " " + text(fixed(2.5, 0)) + " " + text(fixed(3.5, 0)) + " " + text(fixed(-0.001, 2)) + " " +
+          text(fixed(1.0 / zero, 2)) + " " + text(fixed(1e20, 1)) + " " + text(fixed(0.1, 20)));
+  println(text(significant(1234567.0, 6)) + " " + text(significant(0.0001234, 6)) + " " + text(significant(100.0, 6)) + " " +
+          text(significant(2.0 / 3, 4)) + " " + text(significant(-zero / zero, 6)) + " " + text(scientific(1234.5, 2)) + " " +
+          text(scientific(0.000123, 5)) + " " + text(scientific(-1.0 / zero, 3)));
+  println(text(withSign(fixed(1.25, 1))) + " " + text(withSign(fixed(-1.25, 1))) + " " + text(withSign(significant(0.5, 6))) + " " +
+          text(withSign(42)));
+  println("[" + text(alignRight(42, 5)) + "] [" + text(alignLeft("ab", 5)) + "] [" + text(alignRight("ab", 4, '.')) + "] [" +
+          text(alignRight(12345, 3)) + "] [" + text(alignLeft(fixed(1.5, 1), 6, '_')) + "] [" + text(alignRight(true, 6)) + "] [" +
+          text(alignRight(hex(255), 6)) + "]");
+  println("[" + text(zeroPadded(-5, 4)) + "] [" + text(zeroPadded(7, 3)) + "] [" + text(zeroPadded(withSign(3), 4)) + "] [" +
+          text(zeroPadded(fixed(-1.5, 2), 8)) + "] [" + text(zeroPadded(hex(255), 6)) + "] [" + text(zeroPadded(123456, 3)) + "]");
+  println(text(address(nullptr)) + " " + text(address((const void*)0x1234abcd)));
+  return 0;
+}

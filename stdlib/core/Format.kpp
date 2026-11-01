@@ -50,14 +50,41 @@ String toString(unsigned int value) { return toString((unsigned long long)value)
 String toString(long value) { return toString((long long)value); } // (C's long, a type of its own as in std::to_string)
 String toString(unsigned long value) { return toString((unsigned long long)value); }
 
-String toString(double value)
+// A floating value's text is the shortest that reads back to the same value (design.md 14: all the
+// information, nothing lost): %g's form at the fewest significant digits that round-trip, 0.1 as
+// "0.1", 0.1 + 0.2 as "0.30000000000000004", 1e21 as "1e+21". Infinities and NaN are "inf", "-inf"
+// and "nan" on every platform (MSVC's %g writes "-nan(ind)"); a negative zero is "-0".
+String floatingText(double value, int maxDigits, bool asFloat)
 {
-  char buffer[64];
-  int n = snprintf(buffer, 64, "%g", value);
+  if (value != value)
+    return String("nan");
+  if (value != 0 && value * 0.5 == value)
+    return String(value > 0 ? "inf" : "-inf");
+  char buffer[40];
+  int n = 0;
+  for (int digits = 1; digits <= maxDigits; ++digits)
+  {
+    n = snprintf(buffer, 40, "%.*g", digits, value);
+    double back = strtod(buffer, nullptr);
+    if (asFloat ? (float)back == (float)value : back == value)
+      break;
+  }
+  // (%g at few digits writes 100 as "1e+02": below 1e16, as Python's repr, positionally.)
+  for (int i = 0; i < n; ++i)
+    if (buffer[i] == 'e')
+    {
+      int exponent = (int)strtol(buffer + i + 1, nullptr, 10);
+      if (exponent >= 0 && exponent < 16)
+        n = snprintf(buffer, 40, "%.*g", exponent + 1 > maxDigits ? maxDigits : exponent + 1, value);
+      break;
+    }
   String result;
   result.append(buffer, n);
   return result;
 }
+
+String toString(double value) { return floatingText(value, 17, false); }
+String toString(float value) { return floatingText(value, 9, true); }
 
 String toString(bool value) { return String(value ? "true" : "false"); }
 String toString(const String& text) { return text; }

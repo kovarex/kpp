@@ -31,9 +31,11 @@ Files:
 - [Bitset](bitset.md): a fixed number of bits (std::bitset).
 - [Filesystem](filesystem.md): paths, files and directories (std::filesystem), and the error codes
   they report with (std::error_code, std::errc, std::system_error).
+- [Text](text.md): numbers as text (std::to_string) and the formatting pieces (hex, fixed,
+  significant, alignRight, zeroPadded, address, ...; design.md 14).
 
 Not specified yet: Pair beyond what the maps
-and Tuple use, Array, StringView, formatting, streams, futures and async, and the C library wrappers
+and Tuple use, Array, StringView, the rest of text output (print, Text, `<<`), streams, futures and async, and the C library wrappers
 beyond one rule (2026-10-30): every C function the library declares has the type its C header gives
 it (the UCRT's for the C runtime, windows.h's for Win32), so that a program importing that header
 declares the same function the same way. The C runtime's are global, as in C (`FILE*` streams,

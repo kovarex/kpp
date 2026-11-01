@@ -97,6 +97,13 @@ attached to it, since Kpp has no std::current_exception to capture that one (nor
 std::nested_exception and rethrow_if_nested, which no converted code uses). Its one user is
 UnitTest++'s Test::HandleDesync, which only needs the RuntimeError it throws. 2026-10-29.
 
+**toString of a floating value is its shortest round-trip text, not `%f`** (docs/stdlib/text.md,
+2026-11-01, kovarex: design.md 14). std::to_string(0.1) is `0.100000`; toString(0.1) is `0.1`, and
+toString(0.1 + 0.2) `0.30000000000000004`. The conversion is to write `fixed(x, 6)` for a converted
+std::to_string of a floating value, C++'s text exactly, with the printf rewrite (design.md 14); until
+then the game's 7 functions that do so (all debug drawing and a debug preset file) print the
+shortest text.
+
 ## Missing types and API
 
 None of the members specified in docs/stdlib/ are missing (2026-10-29). One works only for
