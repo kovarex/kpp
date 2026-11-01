@@ -7042,6 +7042,18 @@ namespace
           queueInstantiation(def, args, classTy, name);
         return name;
       }
+      if (def->body && def->file && def->file->isImported && isCFunction(def) && !(def->flags & DF_Variadic))
+      {
+        // A C header's inline function (corecrt_math.h's `__inline long double floorl(long double)`),
+        // which no library need export: its inline definition, under a name of the program's own,
+        // which C lets a call use in place of the external one (C11 6.7.4/7), so that it never
+        // clashes with a library's (legacy_stdio_definitions' vsnprintf). A variadic one (the
+        // printf family, written with the CRT's own va_start) is the library's.
+        std::string own = "@\"kpp.c-inline." + sym(def->name.last().symbol) + "\"";
+        if (claimInstantiation(own))
+          queueInstantiation(def, args, classTy, own);
+        return own;
+      }
       if (!declaredNames.claim(name))
         return name;
       {
@@ -9265,7 +9277,10 @@ namespace
         params += (params.empty() ? "" : ", ") + one;
         p = comma + 2;
       }
-      return "declare " + text.substr(7, nameEnd - 7) + "(" + params + ")";
+      std::string head = text.substr(7, nameEnd - 7);
+      if (head.starts_with("weak_odr "))
+        head.erase(0, 9); // a C header's inline function (a declaration has no linkage)
+      return "declare " + head + "(" + params + ")";
     }
 
     // --stub-missing: a stub for a function used without a definition (ret and params from its
@@ -17997,7 +18012,12 @@ namespace
           params += params.empty() ? "..." : ", ...";
         std::string name = currentFunctionName;
         declaredNames.claim(name);
-        std::string header = "define " + s.returnType + " " + name + "(" + params + ") " + attributeText(f) + "{\nentry:\n";
+        // A C header's inline function (useFunctionOnce: @"kpp.c-inline.NAME") is weak_odr: its home
+        // module's copy is the only one, and ThinLTO dropped a linkonce_odr one that only other
+        // modules called (`undefined symbol: floorl`).
+        bool headerInline = original->file && original->file->isImported;
+        std::string header = std::string("define ") + (headerInline ? "weak_odr " : "") + s.returnType + " " + name + "(" + params + ") " +
+                             attributeText(f) + "{\nentry:\n";
         pushScope();
         size_t slot = 0;
         if (s.hasThis)
