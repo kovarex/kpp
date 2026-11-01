@@ -27,6 +27,8 @@ struct StringView
   ContainerSize size() const { return this->byteCount; }
   ContainerSize length() const { return this->byteCount; }
   const char* data() const { return this->chars; }
+  // Its text, appended (design.md 14: the conversion every type has).
+  void appendTo(String& out) const { out.append(this->chars, this->byteCount); }
   bool empty() const { return this->byteCount == 0; }
   const char& operator[](ContainerSize index) const { return this->chars[index]; }
   const char* begin() const { return this->chars; }

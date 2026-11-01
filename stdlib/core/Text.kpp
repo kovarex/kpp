@@ -47,3 +47,45 @@ void appendCTextPiece(const void* object, String& out)
 {
   out.append(static_cast<const char*>(object));
 }
+
+// The built-in types' appendTo (design.md 14: `x.appendTo(out)` for every type; the compiler
+// resolves the member call on a built-in to these, which only the standard library writes). One for
+// each type, taken exactly: an integer as its digits (u8 and i8 too: a character is appended only
+// from a char), a float or double as its shortest round-trip text, a bool as true or false.
+void appendTo(char value, String& out) { out.append(value); }
+void appendTo(bool value, String& out) { out.append(value ? "true" : "false"); }
+void appendTo(signed char value, String& out) { out.append(toString(int(value))); }
+void appendTo(unsigned char value, String& out) { out.append(toString((unsigned int)value)); }
+void appendTo(short value, String& out) { out.append(toString(int(value))); }
+void appendTo(unsigned short value, String& out) { out.append(toString((unsigned int)value)); }
+void appendTo(int value, String& out) { out.append(toString(value)); }
+void appendTo(unsigned int value, String& out) { out.append(toString(value)); }
+void appendTo(long value, String& out) { out.append(toString(value)); }
+void appendTo(unsigned long value, String& out) { out.append(toString(value)); }
+void appendTo(long long value, String& out) { out.append(toString(value)); }
+void appendTo(unsigned long long value, String& out) { out.append(toString(value)); }
+void appendTo(float value, String& out) { out.append(toString(value)); }
+void appendTo(double value, String& out) { out.append(toString(value)); }
+
+// An enumeration's appendTo (design.md 14): its enumerator's name (`Direction::North` is "North"),
+// or for a value that is no enumerator the enumeration's name and the value (`Direction(7)`). An
+// enumeration with its own appendTo method uses that. The two intrinsics are the compiler's.
+template<typename E>
+const char* kppEnumeratorName(E value);
+template<typename E>
+const char* kppEnumTypeName();
+
+template<typename E>
+  requires isEnum<E>
+void appendTo(E value, String& out)
+{
+  if (const char* name = kppEnumeratorName(value))
+  {
+    out.append(name);
+    return;
+  }
+  out.append(kppEnumTypeName<E>());
+  out.append("(");
+  appendTo(static_cast<UnderlyingType<E>>(value), out);
+  out.append(")");
+}

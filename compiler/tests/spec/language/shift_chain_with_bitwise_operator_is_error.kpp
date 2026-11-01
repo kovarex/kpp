@@ -1,0 +1,15 @@
+// spec: a `<<` chain into a String mixed with `&`, `|` or `^` without parentheses is an error (design.md 14): `out << flags & mask` is `(out << flags) & mask`, since `&` binds looser than `<<`; parenthesized it is the String's own `<<`, and an integer shift mixed with them stays C++'s
+// error: shift_chain_with_bitwise_operator_is_error.kpp:9: error: a << chain into a String mixed with & needs parentheses: `out << (a & b)` (design.md 14)
+// error: shift_chain_with_bitwise_operator_is_error.kpp:10: error: a << chain into a String mixed with | needs parentheses: `out << (a | b)` (design.md 14)
+// error: shift_chain_with_bitwise_operator_is_error.kpp:11: error: a << chain into a String mixed with ^ needs parentheses: `out << (a ^ b)` (design.md 14)
+int main()
+{
+  String out;
+  int flags = 6, mask = 3;
+  out << flags & mask;
+  out << "x" << flags | mask;
+  mask ^ out << flags;
+  out << (flags & mask);
+  int bits = 1 << flags & mask;
+  return bits;
+}

@@ -1,0 +1,14 @@
+// spec: a string literal plus or minus an integer is pointer arithmetic in C++, never text: an error in Kpp (design.md 14, kovarex: with `a + b` making text when a side has appendTo, `"abc" + 1` must not silently point past the first char); a pointer into a literal is written `&"abc"[1]`; two literals added are an error as in C++, said in the type checker
+// error: string_literal_plus_integer_is_error.kpp:8: error: a string literal + an integer is pointer arithmetic, not text: write &"..."[n] for a pointer into it (design.md 14)
+// error: string_literal_plus_integer_is_error.kpp:9: error: a string literal + an integer is pointer arithmetic, not text: write &"..."[n] for a pointer into it (design.md 14)
+// error: string_literal_plus_integer_is_error.kpp:10: error: a string literal - an integer is pointer arithmetic, not text: write &"..."[n] for a pointer into it (design.md 14)
+// error: string_literal_plus_integer_is_error.kpp:12: error: a string literal + a pointer is no text: write StringView("...") + x for text (design.md 14)
+int main()
+{
+  const char* a = "abc" + 1;
+  const char* b = 2 + "abc";
+  const char* c = "abc" - 0;
+  const char* d = &"abc"[1];
+  auto e = "a" + "b";
+  return a == d && b && c ? 0 : 1;
+}

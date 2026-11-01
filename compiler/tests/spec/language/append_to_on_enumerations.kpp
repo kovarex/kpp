@@ -1,0 +1,45 @@
+// spec: an enumeration's appendTo writes its enumerator's name, or for a value that is no enumerator the enumeration's name and the value (design.md 14), for a C++ enum class, an unscoped enum and a Kpp enum, at run time and at compile time; an enum with its own appendTo method uses that; an enum is a piece of a Text (`North Dark Gate Direction(7) own [East is 2]`)
+extern "C" import "stdio.h";
+enum class Direction { North, East, South };
+enum Shade { Dark, Light };
+enum class Kind : u8
+{
+  { Gate, Wall }
+};
+enum class Mood
+{
+  { Calm, Angry }
+  void appendTo(String& out) const { out.append("own"); }
+};
+void show(Text text)
+{
+  String s;
+  text.appendTo(s);
+  printf("[%s]", s.c_str());
+}
+constexpr int length(Direction d)
+{
+  String s;
+  d.appendTo(s);
+  return int(s.size());
+}
+static_assert(length(Direction::South) == 5);
+static_assert(length(Direction(7)) == 12);
+int main()
+{
+  String out;
+  Direction::North.appendTo(out);
+  out.append(" ");
+  Shade s = Dark;
+  s.appendTo(out);
+  out.append(" ");
+  Kind::Gate.appendTo(out);
+  out.append(" ");
+  Direction(7).appendTo(out);
+  out.append(" ");
+  Mood::Calm.appendTo(out);
+  printf("%s ", out.c_str());
+  show(Direction::East, " is ", 2);
+  printf("\n");
+  return 0;
+}

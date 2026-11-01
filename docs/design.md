@@ -903,10 +903,15 @@ for browsing stays as proposed.
 - **The type's conversion (an error naming the type otherwise):**
   - a class: its own or a base's `void appendTo(String& out) const` (a class converting to
     something printable has no appendTo of its own);
-  - a built-in type or an enumeration: the standard library's `appendTo` for that type itself,
-    with no promotion or conversion. How the stdlib writes a built-in's member is open: thread D
-    proposed library-only free `appendTo(T, String&)` functions that `x.appendTo(out)` resolves
-    to, an open question for kovarex;
+  - a built-in type: its `appendTo`, which `x.appendTo(out)` calls as for a class, in a template
+    too (`t.appendTo(out)` with T = u32). The standard library writes it as a free
+    `void appendTo(T value, String& out)` per built-in type in stdlib/core/Text.kpp (decided
+    2026-11-01, the coordinator for kovarex: option (b)). The checker rewrites the member call on a
+    built-in into a call of the library's function taking exactly T, so no promotion makes a u8
+    print through the i32's. An enumeration gets its enumerator's name the same way, or
+    `Direction(7)` for a value that is no enumerator (Text.kpp's template, through the compiler's
+    intrinsics kppEnumeratorName and kppEnumTypeName); one with its own appendTo method uses it.
+    Specs: language/append_to_on_built_in_types, language/append_to_on_enumerations;
   - a free `appendTo` the program writes is an error, as it would never be called;
   - a string literal or an array of chars: C text, to its first zero;
   - a pointer is no piece (the error points to `StringView(p)` or `address(p)`).
@@ -919,6 +924,12 @@ for browsing stays as proposed.
     a function template;
   - a Text not last, defaulted, or a parameter of an `extern "C"` function.
   - Errors inside the library's code are reported at the program's line that asked for it.
+- **Text in `+` and `<<`:** a string literal plus or minus an integer is C++'s pointer
+  arithmetic, never text, so it is an error (`&"abc"[n]` writes the pointer). So is a literal
+  plus a pointer or another literal. A `<<` chain into a String mixed with `&`, `|` or `^`
+  without parentheses (`out << flags & mask`, which is `(out << flags) & mask`) is an error.
+  Specs: language/string_literal_plus_integer_is_error,
+  language/shift_chain_with_bitwise_operator_is_error.
 - **`format` with a literal format:** through C++20 `consteval`, which kppc now enforces. A call
   of a consteval function outside another consteval function, including an implicit consteval
   converting constructor, is evaluated where it is written. One that is no constant (a run-time
@@ -2509,11 +2520,6 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   converted UnitTest++ as native tests.
 
 - **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot and a way to run tests there, Q4 the FreeBSD version, Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
-
-- **How the standard library writes a built-in type's `appendTo`** (section 14, 2026-11-01): (a)
-  member definitions on the built-in's name (`void i32::appendTo(String& out) const`), or (b)
-  library-only free `appendTo(T, String&)` functions that `x.appendTo(out)` resolves to (thread
-  D's proposal: less parser work; a free appendTo a program writes is an error either way).
 
 - **How a build is described** ([build.md](build.md)): debug information in release builds, the
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54

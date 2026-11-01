@@ -1,0 +1,56 @@
+// spec: `x.appendTo(out)` is valid for every built-in type (design.md 14, kovarex: one form, so a template needs no special case for u32): integers as digits (u8 and i8 too, never a character), f32 and f64 as their shortest round-trip text, bool as true/false, char as the character; String and StringView append their text; a template's `t.appendTo(out)` works for T = u32 as for a class; and a built-in is a piece of a Text (`7 -3 200 -5 1.5 0.1 true x ab cd [42 p] 42 u`)
+extern "C" import "stdio.h";
+struct P
+{
+  void appendTo(String& out) const { out.append("p"); }
+};
+template<typename T>
+void twice(const T& value, String& out)
+{
+  value.appendTo(out);
+  out.append(" ");
+}
+void show(Text text)
+{
+  String s;
+  text.appendTo(s);
+  printf("[%s] ", s.c_str());
+}
+int main()
+{
+  String out;
+  int i = 7;
+  i.appendTo(out);
+  out.append(" ");
+  long long negative = -3;
+  negative.appendTo(out);
+  out.append(" ");
+  u8 small = 200;
+  small.appendTo(out);
+  out.append(" ");
+  i8 tiny = -5;
+  tiny.appendTo(out);
+  out.append(" ");
+  float f = 1.5f;
+  f.appendTo(out);
+  out.append(" ");
+  double d = 0.1;
+  d.appendTo(out);
+  out.append(" ");
+  bool b = true;
+  b.appendTo(out);
+  out.append(" ");
+  char c = 'x';
+  c.appendTo(out);
+  out.append(" ");
+  String ab = "ab";
+  ab.appendTo(out);
+  out.append(" ");
+  StringView("cd").appendTo(out);
+  printf("%s ", out.c_str());
+  show(42, " ", P{});
+  String t;
+  twice(u32(42), t);
+  printf("%su\n", t.c_str());
+  return 0;
+}

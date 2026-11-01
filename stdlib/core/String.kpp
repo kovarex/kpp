@@ -119,6 +119,8 @@ struct String
   ContainerSize capacity() const { return this->isLarge() ? this->heapCapacity : String::smallCapacity; }
   bool empty() const { return this->size() == 0; }
   const char* c_str() const { return this->data(); }
+  // Its text, appended (design.md 14: the conversion every type has).
+  void appendTo(String& out) const { out.append(this->data(), this->size()); }
   char* data() { return this->isLarge() ? this->heapChars : this->smallChars; }
   const char* data() const { return this->isLarge() ? this->heapChars : this->smallChars; }
   const char& operator[](ContainerSize index) const { return this->data()[index]; } // a reference, as std::string's: `&s[i]` of a const String

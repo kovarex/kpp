@@ -7165,6 +7165,53 @@ namespace
       return n;
     }
 
+    // The library's enum intrinsics (resolver: intrinsicOf, design.md 14's enum appendTo): the
+    // name of the enumerator a value is, through a switch emitted once per enumeration (null for a
+    // value that is none), and the enumeration's name.
+    Value enumIntrinsic(int which, CallExpr* c)
+    {
+      const Ty* charPointer = types.pointer(types.qualified(types.charType(8, false), true, false));
+      if (which == 2)
+      {
+        const Ty* e = c->templateArgCount ? withCurrentArgs(c->templateArgs[0]) : nullptr;
+        e = e ? types.unqualified(types.stripRef(e)) : nullptr;
+        if (!e || e->kind != TyKind::Enum)
+          unsupported(c, "kppEnumTypeName of no enumeration");
+        return {cStringConstant(types.toString(e, &symbols)), charPointer};
+      }
+      if (c->args.size() != 1)
+        unsupported(c, "kppEnumeratorName with no value");
+      Value v = rvalue(c->args[0]);
+      const Ty* e = v.ty ? types.unqualified(types.stripRef(v.ty)) : nullptr;
+      if (!e || e->kind != TyKind::Enum || !e->decl)
+        unsupported(c, "kppEnumeratorName of no enumeration");
+      Decl* def = global.definitionOf(e->decl);
+      auto* en = static_cast<EnumDecl*>(def ? def : e->decl);
+      std::string k = llType(enumUnderlying(en), c);
+      std::string name = "@\"kpp.enumName." + qualifiedName(en) + "\"";
+      if (declaredNames.claim(name))
+      {
+        emittingShared = true;
+        std::string cases, blocks;
+        int i = 0;
+        for (Decl* d : en->enumerators)
+          if (d->kind == NodeKind::EnumeratorDecl)
+          {
+            auto* x = static_cast<EnumeratorDecl*>(d);
+            std::string l = "e" + std::to_string(i++);
+            cases += "    " + k + " " + std::to_string(enumeratorValue(x)) + ", label %" + l + "\n";
+            blocks += l + ":\n  ret ptr " + cStringConstant(sym(x->name)) + "\n";
+          }
+        shared += "$" + name.substr(1) + " = comdat any\n"
+                  "define linkonce_odr ptr " + name + "(" + k + " %v) comdat {\nentry:\n  switch " + k + " %v, label %other [\n" + cases +
+                  "  ]\n" + blocks + "other:\n  ret ptr null\n}\n";
+        emittingShared = false;
+      }
+      std::string r = newTemp();
+      emitCall(r + " = ", "ptr " + name + "(" + k + " " + v.text + ")", false);
+      return {r, charPointer};
+    }
+
     // The generated `const char* str() const` of a Kpp enum: a switch over the enumerators.
     void emitEnumStr(FunctionDecl* f, const std::string& name)
     {
@@ -12112,6 +12159,9 @@ namespace
       {
         auto* n = static_cast<NameExpr*>(callee);
         Decl* d = n->resolved;
+        if (d && d->kind == NodeKind::FunctionDecl)
+          if (int which = global.intrinsicOf(static_cast<FunctionDecl*>(d)))
+            return enumIntrinsic(which, c);
         if (!d && n->name.parts.size() > 1 && n->name.last().special == 2 && P(n->name.last().opToken) == P::Assign && c->args.size() == 1)
         {
           // `super::operator=(other)` of a class declaring none: its implicit assignment, as the

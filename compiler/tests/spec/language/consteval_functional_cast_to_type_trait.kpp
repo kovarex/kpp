@@ -1,0 +1,14 @@
+// spec: at compile time a functional cast to a built-in trait's type (`UnderlyingType<E>(value)` in a template) converts as at run time, as `static_cast<UnderlyingType<E>>(value)` does (`7 7`)
+// found while making an enum's appendTo (design.md 14) run at compile time
+// pending: the evaluator looks the trait's name up as a function, finds none and gives up (D)
+extern "C" import "stdio.h";
+enum class Direction : u8 { North, East };
+template<typename E>
+constexpr int underlying(E value) { return int(UnderlyingType<E>(value)); }
+static_assert(underlying(Direction(7)) == 7);
+constexpr int seven = underlying(Direction(7));
+int main()
+{
+  printf("%d %d\n", seven, underlying(Direction(7)));
+  return 0;
+}

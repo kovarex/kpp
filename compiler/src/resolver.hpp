@@ -406,6 +406,9 @@ public:
   Decl* definitionOf(Decl* d, const TemplateArgs& classArgs);
   Decl* initializerListDecl();                   // The library's InitializerList class, or null.
   const Ty* textType();                          // The library's Text class (design.md 14), or null.
+  // Which of the library's compiler intrinsics f is (Text.kpp: 1 kppEnumeratorName, 2
+  // kppEnumTypeName), 0 for none: code generation computes their calls.
+  int intrinsicOf(const FunctionDecl* f);
   // How an argument of type t (e: the expression, for a string literal) packed into a Text appends
   // itself (TextPieceKind), looked up from context.
   TextPieceKind textPieceOf(const Expr* e, const Ty* t, Decl* context);

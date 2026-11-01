@@ -7444,6 +7444,20 @@ struct GlobalScope::Impl
         text = constPointerTo(*text, types.pointer(types.qualified(types.charType(8, false), true, false)));
       return text ? constStrlen(*text) : std::nullopt;
     }
+    if (int which = intrinsicOf(f))
+    {
+      // The library's enum intrinsics (Text.kpp): E written, or the type the checker deduced.
+      std::vector<ConstValue> values;
+      if (!constArguments(c->args, ctx, depth, values))
+        return std::nullopt;
+      const Ty* e = c->templateArgCount ? c->templateArgs[0] : !given.empty() ? given[0] : nullptr;
+      if (e && ctx.subst && types.isDependent(e))
+        e = substitute(e, *ctx.subst);
+      Subst bound;
+      if (e && !f->templateParams.empty())
+        bound.pairs.push_back({f->templateParams[0], e});
+      return constIntrinsic(which, f, values, &bound, depth);
+    }
     if (FunctionDecl* def = constDefinition(f); !def || def->body->kind != NodeKind::BlockStmt)
       return constNoBody(f);
     std::vector<ConstValue> values;
@@ -11696,6 +11710,8 @@ struct GlobalScope::Impl
                                      const std::vector<uint8_t>* categories = nullptr, const ConstPlace* selfPlace = nullptr,
                                      std::optional<ConstPlace>* returnPlace = nullptr)
   {
+    if (int which = intrinsicOf(f))
+      return constIntrinsic(which, f, args, fctx.subst, depth);
     // A call of a function taking a Text the walk left as written (a template's own nodes): its
     // arguments from the Text parameter's position on packed here (design.md 14).
     if (size_t k = f->params.size() - 1; namesTextLast(f) && args.size() >= k && !(args.size() == k + 1 && isText(args[k].type)))
@@ -12386,8 +12402,32 @@ struct GlobalScope::Impl
         auto* i = static_cast<IfStmt*>(s);
         if (i->ifConsteval) // `if consteval`: a compile-time evaluation's branch
           return constStatement(i->ifConsteval == 1 ? i->then : i->else_, ctx, env, result, depth + 1);
-        if (i->init)
-          return ConstFlow::Failed;
+        if (i->init || (i->cond && i->cond->kind == NodeKind::DeclStmt))
+        {
+          // `if (init; cond)` and `if (T x = e)`: their variables live through both branches.
+          size_t mark = env.size();
+          if (i->init && constStatement(i->init, ctx, env, result, depth + 1) != ConstFlow::Next)
+            return ConstFlow::Failed;
+          std::optional<bool> cond;
+          if (i->cond && i->cond->kind == NodeKind::DeclStmt)
+          {
+            size_t before = env.size();
+            if (constStatement(static_cast<DeclStmt*>(i->cond), ctx, env, result, depth + 1) != ConstFlow::Next || env.size() != before + 1)
+              return ConstFlow::Failed;
+            const ConstBinding& b = env.back();
+            if (b.aliasEnv)
+              return ConstFlow::Failed; // (a reference declared as the condition)
+            cond = constTruth(b.value, depth + 1);
+          }
+          else
+            cond = condition(i->cond);
+          if (!cond)
+            return ConstFlow::Failed;
+          ConstFlow flow = constStatement(*cond ? i->then : i->else_, ctx, env, result, depth + 1);
+          if (flow == ConstFlow::Failed || !constEndLocals(env, mark, depth))
+            return ConstFlow::Failed;
+          return flow;
+        }
         std::optional<bool> cond = condition(i->cond);
         if (!cond)
           return ConstFlow::Failed;
@@ -13182,6 +13222,48 @@ struct GlobalScope::Impl
     t = t ? types.unqualified(types.stripRef(t)) : nullptr;
     return t && t->kind == TyKind::Class && t->decl && t->decl == textDecl();
   }
+  // The standard library's compiler intrinsics (stdlib/core/Text.kpp), declared without a body:
+  // 1 `kppEnumeratorName(E value)`, the name of the enumerator value is (null for a value that is
+  // none); 2 `kppEnumTypeName<E>()`, the enumeration's name (design.md 14: an enum's appendTo).
+  int intrinsicOf(const FunctionDecl* f)
+  {
+    if (!f || f->body || !f->file || !f->file->isLibrary || f->name.empty() || f->name.last().symbol == UINT32_MAX)
+      return 0;
+    std::string_view n = symbols.name(f->name.last().symbol);
+    return n == "kppEnumeratorName" ? 1 : n == "kppEnumTypeName" ? 2 : 0;
+  }
+  // An intrinsic's value at compile time: args the call's, subst binding E.
+  std::optional<ConstValue> constIntrinsic(int which, FunctionDecl* f, const std::vector<ConstValue>& args, const Subst* subst, int depth)
+  {
+    const Ty* charPointer = types.pointer(types.qualified(types.charType(8, false), true, false));
+    auto text = [&](std::string_view s)
+    {
+      std::vector<ConstValue> chars;
+      for (char c : s)
+        chars.push_back(ConstValue::integer(int64_t(static_cast<signed char>(c)), types.charType(8, false)));
+      chars.push_back(ConstValue::integer(0, types.charType(8, false)));
+      return ConstValue::pointer(charPointer, std::make_shared<const std::vector<ConstValue>>(std::move(chars)), 0);
+    };
+    if (which == 2)
+    {
+      const Ty* e = subst && !f->templateParams.empty() ? subst->find(f->templateParams[0]) : nullptr;
+      if (!e || !e->isKnown() || types.isDependent(e))
+        return std::nullopt;
+      return text(types.toString(types.unqualified(e), &symbols));
+    }
+    if (args.size() != 1 || args[0].kind != ConstValue::Kind::Int || !args[0].type)
+      return std::nullopt;
+    const Ty* e = types.unqualified(types.stripRef(args[0].type));
+    if (e->kind != TyKind::Enum || !e->decl || e->decl->kind != NodeKind::EnumDecl)
+      return std::nullopt;
+    for (Decl* d : static_cast<EnumDecl*>(e->decl)->enumerators)
+      if (d->kind == NodeKind::EnumeratorDecl)
+        if (std::optional<ConstValue> v = constValueOfDecl(d, TypeContext{lexicalScopeOf(e->decl), nullptr, nullptr}, depth + 1);
+            v && v->kind == ConstValue::Kind::Int && v->i == args[0].i)
+          return text(symbols.name(static_cast<EnumeratorDecl*>(d)->name));
+    return ConstValue::integer(0, charPointer);
+  }
+
   // The closures of lambdas that capture a Text, or such a closure (Walker's lambda walk): valid,
   // as a Text is, during the call that made them only.
   std::mutex textClosuresMutex;
@@ -20451,6 +20533,72 @@ struct GlobalScope::Impl
       return t;
     }
 
+    // `x.appendTo(out)` on a built-in type or an enumeration (design.md 14: the member of every
+    // type): an enumeration's own appendTo method if it has one, else the standard library's
+    // `void appendTo(T value, String& out)` for the type, which the program does not write.
+    bool isBuiltinAppendTo(const Ty* t, uint32_t symbol)
+    {
+      if (!t || symbol == UINT32_MAX || symbols.name(symbol) != "appendTo")
+        return false;
+      if (t->kind == TyKind::Enum)
+      {
+        // (a Kpp enum's own appendTo method, in its scope, is called as written)
+        Decl* e = t->decl;
+        Lookup own;
+        return e && !(e->ownScope && impl.lookupInScope(e->ownScope, symbol, own, 0) && own.decl && own.decl->kind == NodeKind::FunctionDecl);
+      }
+      return t->kind == TyKind::Bool || t->kind == TyKind::Char || t->kind == TyKind::Int || t->kind == TyKind::Float;
+    }
+    // The call written as the library function's (`appendTo(x, out)`), so that code generation and
+    // the interpreter see a plain call; typed as such. A walk that does not own the nodes (a
+    // template's own) types it without rewriting: its instances rewrite their copies.
+    const Ty* builtinMemberCall(CallExpr* c, MemberExpr* m, const Ty* base, const Ty* builtin)
+    {
+      std::vector<const Ty*> argTypes{argumentType(m->base, base, types)};
+      for (Expr* a : c->args)
+        argTypes.push_back(argumentType(a, walkExpr(a), types));
+      std::vector<FunctionDecl*> candidates;
+      Lookup l;
+      if (impl.lookupInScope(&impl.root, m->member.last().symbol, l, 0))
+      {
+        if (l.overloads)
+        {
+          for (const Entry& e : *l.overloads)
+            if (e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->file && e.decl->file->isLibrary)
+              candidates.push_back(static_cast<FunctionDecl*>(e.decl));
+        }
+        else if (l.decl && l.decl->kind == NodeKind::FunctionDecl && l.decl->file && l.decl->file->isLibrary)
+          candidates.push_back(static_cast<FunctionDecl*>(l.decl));
+      }
+      bool ambiguous = false;
+      FunctionDecl* f = candidates.empty() ? nullptr : impl.chooseAmong(candidates, argTypes, nullptr, nullptr, ambiguous);
+      const Ty* ft = f ? impl.declaredTypeOf(f, nullptr, 0) : nullptr;
+      const Ty* takes = ft && ft->kind == TyKind::Function && !ft->args.empty() ? types.unqualified(types.stripRef(ft->args[0])) : nullptr;
+      if (!f || ambiguous || !takes || (f->templateParams.empty() && takes != builtin))
+      {
+        // (an exact one only: no promotion makes a u8 print through the i32's)
+        if (!probing && !inGenericTemplate())
+          impl.reportCheckerError(file, m->token, types.toString(builtin, &symbols) + " has no appendTo taking it (design.md 14)");
+        record(m, types.unknown());
+        return unknown(Why::Member);
+      }
+      if (!ownsNodes())
+      {
+        record(m, ft);
+        return ft->inner;
+      }
+      Arena& arena = impl.instanceArena();
+      auto* name = arena.make<NameExpr>();
+      name->kind = NodeKind::NameExpr;
+      name->token = m->token;
+      name->name = m->member;
+      std::vector<Expr*> args{m->base};
+      args.insert(args.end(), c->args.begin(), c->args.end());
+      c->callee = name;
+      c->args = Span<Expr*>{arena.array(args.data(), args.size()), uint32_t(args.size())};
+      return typeOfCallUnpacked(c);
+    }
+
     const Ty* typeOfCallUnpacked(CallExpr* c)
     {
       if (c->callee && c->callee->kind == NodeKind::CallExpr)
@@ -20835,6 +20983,9 @@ struct GlobalScope::Impl
           record(m, types.unknown());
           return unknown(Why::Unsupported);
         }
+        if (const Ty* builtin = types.unqualified(types.stripRef(object)); m->op == P::Dot && m->member.parts.size() == 1 && !last.hasTemplateArgs &&
+                                                                           isBuiltinAppendTo(builtin, symbol))
+          return builtinMemberCall(c, m, base, builtin);
         MemberResult r = memberOf(object, symbol, &m->member, m->token);
         m->resolved = r.decl;
         if ((!r.decl || r.decl->kind != NodeKind::FunctionDecl) && last.special == 2 && P(last.opToken) == P::Assign && c->args.size() == 1)
@@ -21235,6 +21386,64 @@ struct GlobalScope::Impl
       return returnTypeOfCall(f, nullptr, none, nullptr);
     }
 
+    // Two rules of design.md 14 on text. A string literal plus or minus an integer is C++'s pointer
+    // arithmetic, never text: an error (`&"abc"[1]` writes the pointer). A `<<` chain into a String
+    // mixed with `&`, `|` or `^` without parentheses binds as `(out << a) & b`: an error.
+    static Expr* unparenthesized(Expr* e)
+    {
+      while (e && e->kind == NodeKind::ParenExpr)
+        e = static_cast<ParenExpr*>(e)->inner;
+      return e;
+    }
+    void checkTextOperators(BinaryExpr* b, P op, const Ty* l, const Ty* r)
+    {
+      if (probing || inGenericTemplate() || !file)
+        return;
+      auto isLiteral = [](Expr* e)
+      {
+        e = unparenthesized(e);
+        return e && e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String;
+      };
+      auto isInteger = [&](const Ty* t)
+      {
+        t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+        return t && (t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Bool || t->kind == TyKind::Enum);
+      };
+      auto isPointer = [&](const Ty* t)
+      {
+        t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+        return t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array);
+      };
+      if ((op == P::Plus || op == P::Minus) && ((isLiteral(b->lhs) && isPointer(r)) || (isLiteral(b->rhs) && isPointer(l))))
+      {
+        impl.reportCheckerError(file, b->token, std::string("a string literal ") + (op == P::Plus ? "+" : "-") +
+                                                  " a pointer is no text: write StringView(\"...\") + x for text (design.md 14)");
+        return;
+      }
+      if ((op == P::Plus || op == P::Minus) && ((isLiteral(b->lhs) && isInteger(r)) || (isLiteral(b->rhs) && isInteger(l))))
+        impl.reportCheckerError(file, b->token, std::string("a string literal ") + (op == P::Plus ? "+" : "-") +
+                                                  " an integer is pointer arithmetic, not text: write &\"...\"[n] for a pointer into it (design.md 14)");
+      if (op != P::Amp && op != P::Pipe && op != P::Caret)
+        return;
+      Decl* string = impl.libraryDecl("String", NodeKind::ClassDecl);
+      auto intoString = [&](Expr* e)
+      {
+        // (written without parentheses: a ParenExpr around it is the program's own grouping)
+        if (!e || e->kind != NodeKind::BinaryExpr || static_cast<BinaryExpr*>(e)->isKeyword || P(static_cast<BinaryExpr*>(e)->op) != P::Shl)
+          return false;
+        while (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword && P(static_cast<BinaryExpr*>(e)->op) == P::Shl)
+          e = static_cast<BinaryExpr*>(e)->lhs;
+        const Ty* t = e && e->ty ? types.unqualified(types.stripRef(e->ty)) : nullptr;
+        return string && t && t->kind == TyKind::Class && t->decl == string;
+      };
+      if (intoString(b->lhs) || intoString(b->rhs))
+      {
+        const char* o = op == P::Amp ? "&" : op == P::Pipe ? "|" : "^";
+        impl.reportCheckerError(file, b->token, std::string("a << chain into a String mixed with ") + o + " needs parentheses: `out << (a " + o +
+                                                  " b)` (design.md 14)");
+      }
+    }
+
     const Ty* typeOfBinary(BinaryExpr* b)
     {
       const Ty* l = walkExpr(b->lhs);
@@ -21250,6 +21459,7 @@ struct GlobalScope::Impl
       P op = P(b->op);
       if (op == P::Comma)
         return r;
+      checkTextOperators(b, op, l, r);
       const Ty* ls = types.stripRef(l);
       const Ty* rs = types.stripRef(r);
       if (!ls || !rs)
@@ -24222,6 +24432,7 @@ TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArg
 
 Decl* GlobalScope::initializerListDecl() { return impl->initializerListDecl(); }
 const Ty* GlobalScope::textType() { return impl->textType(); }
+int GlobalScope::intrinsicOf(const FunctionDecl* f) { return impl->intrinsicOf(f); }
 TextPieceKind GlobalScope::textPieceOf(const Expr* e, const Ty* t, Decl* context)
 {
   Scope* from = context ? impl->lexicalScopeOf(context) : nullptr;
