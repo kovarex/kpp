@@ -2668,7 +2668,7 @@ namespace
     // The includes of this file that name a converted file beside it (siblingIncludes): removed.
     const std::set<std::string>* siblingIncludes = nullptr;
     const std::set<std::string>* cInterfaceHeaders = nullptr; // overrides/c-headers.txt: included, imported
-    const std::set<std::string>* cInterfaceNames = nullptr;   // the functions those headers declare
+    const std::map<std::string, std::set<size_t>>* cInterfaceNames = nullptr; // the functions those headers declare: their parameter counts
     const std::map<std::string, std::string>* cStaticRenames = nullptr; // C: this file's statics another file declares too
     const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
@@ -7909,6 +7909,18 @@ namespace
         }
       insert(offset, s);
     }
+    // A rewrite of the token at offset, which another rewrite of it (a keyword macro written out:
+    // stb_image_write's `STBIWDEF` as `extern`) would cancel: then it takes that one's place.
+    void cReplace(uint32_t offset, uint32_t length, const std::string& s)
+    {
+      for (Edit& e : edits)
+        if (e.offset == offset && e.length == length)
+        {
+          e.text = s;
+          return;
+        }
+      replace(offset, length, s);
+    }
     // C: this file's own object-like macros, each with the text where it holds (from its #define to
     // its #undef or next #define: divsufsort.c defines STACK_SIZE twice), from the configured text
     // (the definitions of the branches the configuration keeps).
@@ -8107,6 +8119,39 @@ namespace
           cArrayParameters(static_cast<ClassDecl*>(d)->members);
         else if (d->kind == NodeKind::NamespaceDecl)
           cArrayParameters(static_cast<NamespaceDecl*>(d)->decls);
+      }
+    }
+    // C's typedef of a function type, `typedef void stbi_write_func(void *context, void *data, int size);`
+    // (stb_image_write's): `using stbi_write_func = void(void *context, void *data, int size);`, the
+    // form Kpp resolves (language/typedef_of_function_type, pending).
+    void cFunctionTypedefs()
+    {
+      for (uint32_t i = 0; i + 4 < toks.size(); ++i)
+      {
+        if (!toks[i].is(Kw::typedef_))
+          continue;
+        uint32_t name = i + 1;
+        while (name + 1 < toks.size() && !toks[name].is(P::Semi) && !toks[name].is(P::LBrace) && !toks[name].is(P::LParen) &&
+               !(toks[name].getKind() == TokenKind::Identifier && toks[name + 1].is(P::LParen)))
+          ++name;
+        if (name == i + 1 || name + 1 >= toks.size() || toks[name].getKind() != TokenKind::Identifier || !toks[name + 1].is(P::LParen))
+          continue;
+        uint32_t close = name + 1;
+        for (int depth = 0; close < toks.size(); ++close)
+          if (toks[close].is(P::LParen))
+            ++depth;
+          else if (toks[close].is(P::RParen) && --depth == 0)
+            break;
+        if (close + 1 >= toks.size() || !toks[close + 1].is(P::Semi))
+          continue;
+        // (the name as written out: a rename of it moves to the using)
+        std::string spelled(text.substr(toks[name].offset, toks[name].length));
+        for (const Edit& e : edits)
+          if (e.offset == toks[name].offset && e.length == toks[name].length)
+            spelled = e.text;
+        cReplace(toks[i].offset, toks[i].length, "using " + spelled + " =");
+        cReplace(toks[name].offset, toks[name].length, "");
+        counts.add("C typedefs of function types written as using");
       }
     }
     // C's `(U64)(size_t)(oend-op)`, a cast of a cast of a parenthesized expression that the parse
@@ -8374,9 +8419,19 @@ namespace
             counts.add("C functions passing structs by value the interface does not declare kept Kpp's linkage");
             written = true;
           }
+          // A C++ overload of an interface function (fontstash.h, which the game compiles as C++, defines
+          // a fonsAddFontSdf of three parameters besides the interface's of four): C++'s linkage there,
+          // Kpp's here, as C has one function of a name.
+          if (!f->name.empty() && f->name.last().symbol != UINT32_MAX && cInterfaceNames)
+            if (auto declared = cInterfaceNames->find(std::string(symbols.name(f->name.last().symbol)));
+                declared != cInterfaceNames->end() && !declared->second.count(f->params.size()) && !written)
+            {
+              counts.add("C++ overloads of the interface's functions kept Kpp's linkage");
+              written = true;
+            }
           if (!(d->flags & DF_Static) && !written && toks[d->token].is(Kw::extern_))
           {
-            replace(toks[d->token].offset, toks[d->token].length, "extern \"C\""); // (`extern int f(...) {...}`, minizip's)
+            cReplace(toks[d->token].offset, toks[d->token].length, "extern \"C\""); // (`extern int f(...) {...}`, minizip's)
             counts.add("functions given C linkage (C)");
           }
           else if (!(d->flags & DF_Static) && !written)
@@ -8386,10 +8441,49 @@ namespace
           }
         }
         else if (d->kind == NodeKind::VariableDecl)
+        {
           cWalkVariable(d);
+          cVariableLinkage(static_cast<VariableDecl*>(d));
+        }
         else if (d->kind == NodeKind::NamespaceDecl)
           convertC(static_cast<NamespaceDecl*>(d)->decls);
       }
+    }
+    // A variable a C file defines without static (stb_image_write's stbi_write_png_compression_level,
+    // which the game sets through the C header): C linkage, as functions get. A definition without
+    // an initializer (C's tentative one, zero) gets `= {}`, since `extern "C" int x;` declares only.
+    // (Declarations, `extern int x;`, keep theirs: they name the definition either way.)
+    void cVariableLinkage(VariableDecl* v)
+    {
+      if (v->flags & (DF_Static | DF_Extern | DF_ExternC | DF_Typedef) || v->name.empty() || v->structuredBindings.size() ||
+          (v->token >= 2 && toks[v->token - 1].getKind() == TokenKind::String && toks[v->token - 2].is(Kw::extern_)))
+        return;
+      uint32_t end = v->token;
+      int depth = 0;
+      bool several = false;
+      for (; end < toks.size(); ++end)
+      {
+        if (toks[end].is(P::LParen) || toks[end].is(P::LBrace) || toks[end].is(P::LBracket))
+          ++depth;
+        else if (toks[end].is(P::RParen) || toks[end].is(P::RBrace) || toks[end].is(P::RBracket))
+          --depth;
+        else if (depth == 0 && toks[end].is(P::Comma))
+          several = true;
+        else if (depth == 0 && toks[end].is(P::Semi))
+          break;
+      }
+      if (end >= toks.size())
+        return;
+      if (several)
+      {
+        // (C code naming one of them fails to link: Kpp's names differ)
+        counts.add("C variables of several declarators kept Kpp's linkage");
+        return;
+      }
+      cInsertBefore(toks[v->token].offset, "extern \"C\" ");
+      if (!v->init && !v->bracedInit)
+        insert(toks[end].offset, " = {}");
+      counts.add("variables given C linkage (C)");
     }
 
     std::string run()
@@ -8407,6 +8501,7 @@ namespace
         convertC(in.parsed->decls);
         cWestConst();
         cArrayParameters(in.parsed->decls);
+        cFunctionTypedefs();
         cCastChains();
       }
       removeUnparsedDefinitions();
@@ -9300,6 +9395,7 @@ struct SourceConfiguration::Impl
   std::vector<std::filesystem::path> includeDirectories; // with cSources: cIncludeDirectories
   bool cBuild = false;        // with cSources: preprocessed as factorio-in-kpp builds a C library
   MacroTable cDefines;        // then: cLibraryDefines and the library's defines.txt
+  std::map<std::string, std::string> cNameDefines; // the defines.txt ones that are a name (STBIW_ZLIB_COMPRESS=zlib_compress_stb_adapter)
   std::vector<std::filesystem::path> paths;
   std::vector<std::string_view> texts;
   std::vector<std::filesystem::path> roots;
@@ -9583,6 +9679,9 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
       line = line.substr(a, b - a + 1);
       size_t equals = line.find('=');
       impl->cDefines[line.substr(0, equals)] = equals == std::string::npos ? std::string() : line.substr(equals + 1);
+      if (equals != std::string::npos && equals + 1 < line.size() && (isalpha((unsigned char)line[equals + 1]) || line[equals + 1] == '_') &&
+          std::all_of(line.begin() + equals + 1, line.end(), [](char c) { return isIdentChar(c); }))
+        impl->cNameDefines[line.substr(0, equals)] = line.substr(equals + 1);
     }
   }
   impl->paths = paths;
@@ -10108,13 +10207,21 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           cStaticRenames[in][name] = stem + "_" + name;
     }
   }
-  std::set<std::string> cInterfaceNames; // the functions the C interface headers declare
+  std::map<std::string, std::set<size_t>> cInterfaceNames; // the functions the C interface headers declare: their parameter counts
+  // (and a header-only library's: the declarations of a C header given alone, which holds its
+  // implementation, stb_image.hpp's and fontstash.h's, which the game imports as C)
+  std::set<size_t> givenCHeaders;
+  for (const auto& root : roots)
+    if (auto given = inputByPath.find(pathKey(root)); given != inputByPath.end() && inputs[given->second].c &&
+                                                     inputs[given->second].path.extension() != ".c")
+      givenCHeaders.insert(given->second);
   for (const ConvertInput& in : inputs)
-    if (in.parsed && cInterfaceHeaders.count(in.path.filename().string()))
+    if (in.parsed && (cInterfaceHeaders.count(in.path.filename().string()) || givenCHeaders.count(size_t(&in - inputs.data()))))
       for (Decl* d : in.parsed->decls)
         if (d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->name.empty() &&
+            !(givenCHeaders.count(size_t(&in - inputs.data())) && static_cast<FunctionDecl*>(d)->body) &&
             static_cast<FunctionDecl*>(d)->name.last().symbol != UINT32_MAX)
-          cInterfaceNames.insert(std::string(symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol)));
+          cInterfaceNames[std::string(symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol))].insert(static_cast<FunctionDecl*>(d)->params.size());
   std::map<size_t, MacroMap> ownMacros; // a header's macros it leaves defined, read once
   std::map<size_t, std::map<std::string, std::string>> ownObjects; // and its string and name macros
   std::map<size_t, std::map<std::string, std::string>> definedObjects; // every string or name macro it defines
@@ -10542,6 +10649,11 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           if (k != ip->second && std::find(includedInputs[k].begin(), includedInputs[k].end(), ip->second) != includedInputs[k].end())
             for (const auto& [name, body] : visibleObjectMacros(k))
               fc.objectMacros.emplace(name, body);
+      // C: a define of the library's that is a name holds in every file, written out at its uses
+      // (stb_image_write's `STBIW_ZLIB_COMPRESS(data, data_len, out_len, quality)`)
+      if (in.c && configuration)
+        for (const auto& [name, body] : configuration->impl->cNameDefines)
+          fc.objectMacros.emplace(name, body);
       fc.siblingIncludes = &siblingIncludes[ip->second];
       for (const auto& [name, body] : headerObjects)
         if (!knownMacros.count(name)) // the converter's own rewrite (SDL_PRIs64) stands

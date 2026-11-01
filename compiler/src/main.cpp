@@ -46,6 +46,13 @@ namespace
     return n;
   }
 
+  // With --c-sources: a source file of the inputs that is C (stb_image's implementation is a .hpp),
+  // not the configuration's `<config>` nor a .kpp file.
+  bool isCSource(const std::filesystem::path& path)
+  {
+    return path.extension() != ".kpp" && path.string().rfind("<", 0) != 0;
+  }
+
   struct Options
   {
     std::vector<std::filesystem::path> roots;
@@ -1754,7 +1761,7 @@ namespace
     {
       std::vector<ConvertInput> inputs;
       for (size_t i = 0; i < parsed.size(); ++i)
-        inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get(), options.cSources && (files[i].path.extension() == ".c" || files[i].path.extension() == ".h")});
+        inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get(), options.cSources && isCSource(files[i].path)});
       std::vector<std::filesystem::path> roots(options.roots.begin(), options.roots.end());
       std::string summary =
         convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary,
@@ -3418,7 +3425,7 @@ int compile(int argc, char** argv)
     parallelFor(files.size(), options.threads, [&](size_t i)
     {
       results[i] = lex(i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols);
-      if (options.cSources && (files[i].path.extension() == ".c" || files[i].path.extension() == ".h"))
+      if (options.cSources && isCSource(files[i].path))
         cKeywordsAsNames(results[i].tokens, i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols,
                          configuration ? &configuration->cKeywordMacros() : nullptr);
       stats[i].bytes = files[i].text.size();
