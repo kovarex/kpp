@@ -1912,8 +1912,41 @@ to enums, narrowing in initializers, C++ keywords as names, `register`, tentativ
 designated initializers and compound literals as C has them, struct tags and nested structs at file
 scope, `sizeof('a')` 4, `int f()`, `char s[3] = "xyz"`, `_Bool`, goto past an initialization,
 anonymous members, a dropped const. convert.cmd converts the file as C and runs it, and its output
-must be the C build's (`tests/convert_c.expected`). The check is pending until the converter has a C
-mode (thread C).
+must be the C build's (`tests/convert_c.expected`). The check stays pending until the C mode has all
+of them.
+
+**The converter's C mode** (`kppc --convert --c-sources`, 2026-11-01) takes its inputs as C. The
+rules come as the libraries need them; ogg needed three:
+- C++'s keywords that C does not have are names: they lex as identifiers and are written with `_`
+  (`class_`).
+- A void* converted to an object pointer gets the cast Kpp needs (`(unsigned char*)malloc(n)`). The
+  types come from the declarations: variables, parameters, members, typedefs and functions'
+  results. A C library function that returns void* (malloc, realloc, memchr...) is known by name,
+  also through a header's name macro (ogg's `#define _ogg_malloc malloc`).
+- Every function a C file defines without `static` gets `extern "C"`. The C code that calls it by
+  its C name links to it: vorbis, opusfile and sdl-mixer call ogg's functions.
+
+A converted C library keeps its headers as C. The converted files import them and define what they
+declare, and the C libraries that use it import them too. `programs/factorio/c-libraries.cmd` lists
+the converted C libraries. Each has a directory `c-libraries/NAME` holding the conversion's
+overrides (`expand-macros.txt`, the headers whose macros the converted code expands) and
+`includes.txt` (its header directories). convert.cmd converts each one on its own into the checkout
+and into `kpp\`. resources.cmd leaves out only its .c files, and the builds compile it with the game
+instead of linking its .lib.
+
+**ogg is converted** (C mode). Its harness (`harness/ogg.c`) covers:
+- the bit packers in both bit orders: writes of 0 to 32 bits, copies, truncations and alignments,
+  then reads, looks and advances past the end;
+- framing round trips through ogg_stream and ogg_sync, fed in pieces;
+- every .ogg file of data\: 4,539 files, 99,012 pages and 4,111,636 packets.
+
+Its output is 5,578 lines, byte-identical between the two builds. ogg's own
+`oggpack_writecopy_helper` clears the buffer when an aligned copy has to grow it: it tests
+`endbyte + bytes + BUFFER_INCREMENT > storage` for the error. Both builds do that, so the driver
+copies rarely, to keep each round's other writes. With ogg converted (build.kpp: a root and its
+header directories, no `cLibrary`), the game links vorbis, opusfile and sdl-mixer against the
+converted ogg. The unit tests pass 9,501/9,501 with their CRCs checked against C++ Debug's, and the
+45 menu maps match, in debug and in release.
 
 No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
 - `language/alloca` and `language/flexible_array_member` (D);
