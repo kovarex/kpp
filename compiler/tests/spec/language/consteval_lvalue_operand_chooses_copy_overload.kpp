@@ -1,0 +1,47 @@
+// spec: at compile time an lvalue operand chooses the overload run time chooses: `y = x` of an lvalue String copies (x keeps its text) and only `y = move(x)` moves, and an operator or operator() overloaded on `const T&` and `T&&` takes the `const T&` one for an lvalue and the `T&&` one for a temporary (`11 10 222111 222111`)
+// factorio: found with E's pending specs from build.kpp (projectlib): the evaluator chose a class's operator by the operand's type alone, so an lvalue went to `operator=(String&&)` and was emptied
+extern "C" import "stdio.h";
+constexpr int copied()
+{
+  String x;
+  x = "x";
+  String y;
+  y = x;
+  return y.size() * 10 + x.size();
+}
+constexpr int moved()
+{
+  String x;
+  x = "x";
+  String y;
+  y = move(x);
+  return y.size() * 10 + x.size();
+}
+struct Acc
+{
+  int n = 0;
+  int operator<<(const Acc& o) const { return 1; }
+  int operator<<(Acc&& o) const { return 2; }
+};
+struct Fn
+{
+  int operator()(const Acc& a) const { return 10; }
+  int operator()(Acc&& a) const { return 20; }
+};
+int operator+(const Acc& a, const Acc& b) { return 100; }
+int operator+(const Acc& a, Acc&& b) { return 200; }
+constexpr int chosen()
+{
+  Acc a;
+  Acc b;
+  Fn fn;
+  return (a << b) + fn(a) + (a + b) + 1000 * ((a << Acc()) + fn(Acc()) + (a + Acc()));
+}
+static_assert(copied() == 11);
+static_assert(moved() == 10);
+constexpr int results[] = {copied(), moved(), chosen()};
+int main()
+{
+  printf("%d %d %d %d\n", results[0], results[1], results[2], chosen());
+  return 0;
+}

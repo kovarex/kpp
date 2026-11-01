@@ -7000,7 +7000,21 @@ struct GlobalScope::Impl
         }
         continue;
       }
-      std::optional<ConstValue> v = constValue(a, ctx, depth + 1);
+      // `fill(v.emplace_back())`: a member function's non-const reference result run once for its
+      // place, which a reference parameter then refers to (the new element, not a copy of it).
+      std::optional<ConstPlace> called;
+      Expr* bare = a;
+      while (bare && bare->kind == NodeKind::ParenExpr)
+        bare = static_cast<ParenExpr*>(bare)->inner;
+      if (places && bare && bare->kind == NodeKind::CallExpr && bare->ty && bare->ty->kind == TyKind::LRef && bare->ty->inner &&
+          !bare->ty->inner->isConst && static_cast<CallExpr*>(bare)->callee && static_cast<CallExpr*>(bare)->callee->kind == NodeKind::MemberExpr)
+      {
+        constCallPlaceRan = false;
+        called = constPlaceOf(bare, ctx, depth + 1, true);
+        if (!called && constCallPlaceRan)
+          return false; // it ran, and its result is no place the run holds: never run twice
+      }
+      std::optional<ConstValue> v = called ? constPartOrUnset(*called) : constValue(a, ctx, depth + 1);
       if (!v && places && constPure(a))
         if (std::optional<ConstPlace> at = constPlaceOf(a, ctx, depth + 1); at && !constRead(*at))
           v = ConstValue::unset(at->type); // `appendSlot(grown)` of `T* grown;`: a reference to it reads nothing
@@ -7008,7 +7022,7 @@ struct GlobalScope::Impl
         return false;
       values.push_back(*v);
       if (places)
-        places->push_back(constPlaceOf(a, ctx, depth + 1));
+        places->push_back(called ? called : constPlaceOf(a, ctx, depth + 1));
       if (categories)
       {
         Expr* source = nullptr;
@@ -7551,6 +7565,10 @@ struct GlobalScope::Impl
     return nullptr;
   }
 
+  // Set when constCallPlace runs a function (constArguments: a call whose result was no place is
+  // not run again for its value).
+  static thread_local bool constCallPlaceRan;
+
   // A member function returning a reference, run on the object at self for the place its result
   // designates (`result[i]` through operator[], `front()`): `this` refers to self, so that the place
   // is in the caller's object (a write through it reaches the object); nullopt for a result that
@@ -7572,6 +7590,7 @@ struct GlobalScope::Impl
       return std::nullopt;
     std::optional<ConstValue> object = constRead(self);
     std::optional<ConstPlace> out;
+    constCallPlaceRan = constCallPlaceRan || object;
     if (!object || !constRun(f, args, fctx, depth, &object, places, categories, &self, &out) || !out)
       return std::nullopt;
     out->type = returns->inner;
@@ -7806,7 +7825,7 @@ struct GlobalScope::Impl
       if (a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
       {
         Subst subst;
-        if (FunctionDecl* f = constClassOperator(a.type, o, {constTypeOfValue(b)}, subst, depth))
+        if (FunctionDecl* f = constClassOperator(a.type, o, {constOperandType(b, bo)}, subst, depth))
         {
           if (constDefaulted(f))
           {
@@ -7827,7 +7846,7 @@ struct GlobalScope::Impl
           return constCallOn(f, subst, {b}, &self, depth + 1);
         }
       }
-      if (FunctionDecl* f = constFreeFunction(opSymbols[uint32_t(o)], {constTypeOfValue(a), constTypeOfValue(b)}, ctx.scope))
+      if (FunctionDecl* f = constFreeFunction(opSymbols[uint32_t(o)], {constOperandType(a, ao), constOperandType(b, bo)}, ctx.scope))
       {
         if (ao && bo)
         {
@@ -8311,6 +8330,11 @@ struct GlobalScope::Impl
     source = e;
     if (!e)
       return 0;
+    // `y = x`: the left object, an lvalue, as the built-in and the implicit operator= give it (the
+    // walker types the implicit one as the class itself), never a temporary destroyed after the
+    // statement.
+    if (e->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(e)->isKeyword && isAssignmentOperator(P(static_cast<BinaryExpr*>(e)->op)))
+      return 1;
     if (e->kind == NodeKind::NamedCastExpr)
     {
       auto* c = static_cast<NamedCastExpr*>(e);
@@ -8392,6 +8416,92 @@ struct GlobalScope::Impl
       parts.push_back(*e);
     }
     return ConstValue::object(t, std::move(parts));
+  }
+
+  // Whether assigning an object of type t (an array: its elements) runs code: an operator= of its
+  // own or of a part's. Else the assignment writes the value.
+  bool constAssignRunsCode(const Ty* t)
+  {
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    while (t && t->kind == TyKind::Array)
+      t = t->inner ? types.unqualified(t->inner) : nullptr;
+    if (!t || t->kind != TyKind::Class || !t->isKnown() || types.isDependent(t))
+      return false;
+    static thread_local std::unordered_map<const Ty*, bool> known;
+    if (auto it = known.find(t); it != known.end())
+      return it->second;
+    std::optional<bool> copy = assignableFromSelf(t, false, TraitForm::Trivially);
+    std::optional<bool> move = assignableFromSelf(t, true, TraitForm::Trivially);
+    bool runs = (copy && !*copy) || (move && !*move);
+    known.emplace(t, runs);
+    return runs;
+  }
+
+  // The object of type t at place assigned value v, which is at from (if anywhere) with value category
+  // category (0 a prvalue, 1 an lvalue, 2 an xvalue): t's own operator= run on it there, an implicit
+  // or defaulted one member by member, each part assigned as its own type assigns
+  // ([class.copy.assign]: a String member's operator= copies its characters, never its pointer).
+  bool constAssignObject(const ConstPlace& place, const Ty* t, const ConstValue& v, const std::optional<ConstPlace>& from, uint8_t category, int depth)
+  {
+    t = types.unqualified(types.stripRef(t));
+    if (!v.isObject() || !constAssignRunsCode(t))
+      return constWrite(place, v);
+    if (depth > 64)
+      return false;
+    auto partOf = [](const std::optional<ConstPlace>& whole, size_t i, const Ty* type) {
+      std::optional<ConstPlace> part = whole;
+      if (part)
+      {
+        part->path.push_back(i);
+        part->type = type;
+        part->bits = 0;
+      }
+      return part;
+    };
+    if (t->kind == TyKind::Array)
+    {
+      for (size_t i = 0; i < v.parts->size(); ++i)
+        if (!constAssignObject(*partOf(place, i, t->inner), t->inner, (*v.parts)[i], partOf(from, i, t->inner), category, depth + 1))
+          return false;
+      return true;
+    }
+    // The part's own copy or move assignment, as the right operand's category chooses it.
+    Subst subst;
+    ClassDecl* def = classDefinition(t);
+    FunctionDecl* f = nullptr;
+    if (def)
+      for (FunctionDecl* c : constMembersNamed(t, opSymbols[uint32_t(P::Assign)], subst, depth))
+        if (c->params.size() == 1)
+        {
+          int kind = selfParameter(c->params[0], def);
+          if (kind == 3 ? category != 1 : kind != 0 && (category == 1 || !f))
+            f = c;
+        }
+    if (f && (f->flags & DF_Delete))
+      return false;
+    if (f && !constDefaulted(f))
+    {
+      if (!constDefinition(f))
+        return false;
+      std::vector<std::optional<ConstPlace>> places{from};
+      std::vector<uint8_t> categories{category};
+      std::optional<ConstValue> self = constRead(place);
+      return self && constCallOn(f, subst, {v}, &self, depth + 1, &place, &places, &categories);
+    }
+    const ConstClassLayout* layout = constLayoutOf(t, depth);
+    size_t n = layout ? layout->bases.size() + layout->fields.size() : 0;
+    if (!layout || !v.parts || v.parts->size() != n)
+      return false;
+    for (size_t i = 0; i < n; ++i)
+    {
+      const Ty* partType = i < layout->bases.size() ? layout->bases[i] : layout->fieldTypes[i - layout->bases.size()];
+      std::optional<ConstPlace> to = partOf(place, i, partType);
+      if (i >= layout->bases.size())
+        to->bits = 0; // (the value's part is already fitted to a bit field)
+      if (!constAssignObject(*to, partType, (*v.parts)[i], partOf(from, i, partType), category, depth + 1))
+        return false;
+    }
+    return true;
   }
 
   // An object of class t initialised from expression init, a value of t itself, as C++ initialises one:
@@ -9467,7 +9577,13 @@ struct GlobalScope::Impl
       if (args.empty())
         return constEmpty(t, false, depth + 1);
       if (args.size() == 1 && args[0].isObject())
-        return args[0];
+      {
+        // `C(const C&) = default`: member by member, each part copied (moved) as its type copies.
+        const std::optional<ConstPlace> at = places && !places->empty() ? (*places)[0] : std::nullopt;
+        ClassDecl* def = classDefinition(t);
+        bool moving = def && !ctor->params.empty() && selfParameter(ctor->params[0], def) == 3;
+        return constCopyConstruct(t, args[0], at, moving, depth + 1);
+      }
       return std::nullopt;
     }
     const Subst& subst = own ? *own : layout->subst;
@@ -9583,11 +9699,26 @@ struct GlobalScope::Impl
             // `bits(toBits(values))`: a direct-initialization, which an explicit constructor takes
             // too (SmallBitset(uint64_t)); an object of the class, or of one derived from it
             // (sliced), is copied.
+            // `a(x)`: copied (or moved, `a(move(x))`) by the class's copy constructor, an implicit
+            // one member by member.
+            if (std::optional<std::optional<ConstValue>> copied = constCopyInit(init.args[0], tu, fctx, depth + 1))
+              return *copied;
             std::optional<ConstValue> v = constValue(init.args[0], fctx, depth + 1);
             if (!v)
               return std::nullopt;
-            if (v->isObject() && v->type && (types.unqualified(types.stripRef(v->type)) == tu || constBasePath(v->type, tu, 0)))
-              return constConvertTo(v, tu, depth + 1);
+            if (v->isObject() && v->type && types.unqualified(types.stripRef(v->type)) == tu)
+              return v; // a prvalue: the object
+            if (v->isObject() && v->type && constBasePath(v->type, tu, 0))
+            {
+              // Sliced: the base part copied as the base copies (where it is not known: a move,
+              // which would empty it there, is no constant).
+              std::optional<ConstValue> sliced = constConvertTo(v, tu, depth + 1);
+              Expr* source = nullptr;
+              uint8_t category = constCategory(init.args[0], source);
+              if (!sliced || !constCopyRunsCode(tu))
+                return sliced;
+              return category == 2 ? std::nullopt : constCopyConstruct(tu, *sliced, std::nullopt, false, depth + 1);
+            }
             return constConstruct(tu, {*v}, false, depth + 1);
           }
           return constInitialize(target, init.args[0], fctx, depth + 1);
@@ -9697,6 +9828,17 @@ struct GlobalScope::Impl
     std::optional<ConstPlace> place;
     uint8_t category = 1;
   };
+  // An operand's type as overload resolution sees it (argumentType): an lvalue as `T&`, `const T&`
+  // where it is reached as const, so that `a << b` of an lvalue b takes `const Acc&` over `Acc&&`.
+  const Ty* constOperandType(const ConstValue& v, const ConstOperand* o)
+  {
+    const Ty* t = constTypeOfValue(v);
+    if (!o || o->category != 1 || !t || t->isReference() || t->isBraceList())
+      return t;
+    bool readOnly = o->place && !o->place->writable();
+    return types.lref(readOnly ? types.qualified(t, true, false) : t);
+  }
+
   ConstOperand constOperandOf(Expr* e, const ConstValue& v, const TypeContext& ctx, int depth)
   {
     ConstOperand o;
@@ -10882,8 +11024,11 @@ struct GlobalScope::Impl
     if (!constArguments(c->args, ctx, depth, values, &places, &categories))
       return std::nullopt;
     std::vector<const Ty*> argTypes;
-    for (const ConstValue& v : values)
-      argTypes.push_back(constTypeOfValue(v));
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+      ConstOperand o{i < places.size() ? places[i] : std::nullopt, i < categories.size() ? categories[i] : uint8_t(0)};
+      argTypes.push_back(constOperandType(values[i], &o));
+    }
     Subst subst;
     FunctionDecl* call = constClassOperator(self->type, P::LParen, argTypes, subst, depth);
     if (!call || !constDefinition(call))
@@ -11501,8 +11646,11 @@ struct GlobalScope::Impl
     const Ty* target = place->type ? types.unqualified(types.stripRef(place->type)) : nullptr;
     if (target && target->kind == TyKind::Class)
     {
+      // The right operand as overload resolution sees it: an lvalue as `T&` (argumentType), so that
+      // `y = x` copies and only `y = move(x)` moves.
+      const Ty* rightType = b->rhs->ty && b->rhs->ty->isKnown() && !types.isDependent(b->rhs->ty) ? b->rhs->ty : constTypeOfValue(*r);
       Subst subst;
-      FunctionDecl* f = constClassOperator(target, op, {constTypeOfValue(*r)}, subst, depth);
+      FunctionDecl* f = constClassOperator(target, op, {argumentType(b->rhs, rightType, types)}, subst, depth);
       if (f && !constDefaulted(f) && constDefinition(f))
       {
         // Run on the object where it is, the right operand referred to where it is: an lvalue's
@@ -11527,6 +11675,23 @@ struct GlobalScope::Impl
       }
       if (op != P::Assign)
         return std::nullopt; // `a += b` of a class without its operator+=
+      if (f && (f->flags & DF_Delete))
+        return std::nullopt;
+      if (r->isObject() && r->type && types.unqualified(types.stripRef(r->type)) == target && constAssignRunsCode(target))
+      {
+        // An implicit or defaulted operator= (`y = x` of a struct holding a String): member by
+        // member, the right operand's parts referred to where they are (a move empties them).
+        Expr* source = nullptr;
+        uint8_t category = constCategory(b->rhs, source);
+        std::optional<ConstPlace> right;
+        if (category != 0 && constPure(source))
+          right = constPlaceOf(source, ctx, depth + 1);
+        else if (category == 0)
+          right = constMaterialize(*r, r->type);
+        if (!constAssignObject(*place, target, *r, right, category, depth + 1))
+          return std::nullopt;
+        return constRead(*place);
+      }
     }
     std::optional<ConstValue> v = r;
     if (op != P::Assign)
@@ -23387,6 +23552,7 @@ thread_local const std::vector<Token>* GlobalScope::Impl::fallbackTokens = nullp
 thread_local bool GlobalScope::Impl::exactLayoutOnly = false;
 thread_local bool GlobalScope::Impl::layoutNeeded = false;
 thread_local int GlobalScope::Impl::nameEvaluations = 0;
+thread_local bool GlobalScope::Impl::constCallPlaceRan = false;
 thread_local const GlobalScope::Impl::EnumeratorValues* GlobalScope::Impl::enumeratorValues = nullptr;
 thread_local std::string_view GlobalScope::Impl::fallbackText;
 

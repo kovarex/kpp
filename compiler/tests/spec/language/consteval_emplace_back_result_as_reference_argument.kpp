@@ -1,6 +1,5 @@
 // spec: the reference Vector::emplace_back() returns, passed straight to a function's reference parameter, is the new element at compile time as at run time: fill(v.emplace_back()) writes into v[0] (`0 0`)
 // factorio: build.kpp (design.md 12): projectlib's describe() resolved each configuration into resolved.emplace_back()
-// pending: at compile time the call's argument is no constant ("the build description is no constant"); with the reference first bound to a local (Configuration& r = v.emplace_back(); fill(r);) it works (D)
 extern "C" import "stdio.h";
 struct Item
 {
