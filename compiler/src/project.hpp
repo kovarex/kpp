@@ -30,8 +30,19 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
 // target in every configuration, in build.kpp's order; visualStudio is the configuration's name in
 // the generated Visual Studio files (`Debug`), which Visual Studio's client sends. False and true
 // with error as projectCheckArguments.
+// An option of a library a cell uses (docs/build.md, "Kpp libraries"): config::LIBRARY::NAME, its
+// type (bool, int, string), default ("" when required), the cell's value and who set it ("the
+// default", "use(\"zlib\") in ...build.kpp", "the configuration release", "the command line
+// (--config)"), its description and a string option's allowed values (none: any).
+struct ProjectOption
+{
+  std::string library, name, type, defaultValue, value, setBy, description;
+  bool required = false;
+  std::vector<std::string> allowed;
+};
 struct ProjectCell
 {
   std::string target, configuration, visualStudio;
+  std::vector<ProjectOption> options; // the libraries' options in this cell, library by library
 };
 bool projectCells(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<ProjectCell>& cells, std::string& error);

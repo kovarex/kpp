@@ -1,0 +1,44 @@
+// spec: a member function that returns the reference a free function got from Deque::emplace_back, with a member function called on it in the same expression (p.use("a").config("x")), works at compile time as at run time (`1 1`)
+// factorio: build.kpp (design.md 12): projectlib's project.use("zlib").config("debug", true), a library option
+// pending: at compile time "memory allocated at Sizes.kpp:59 is never freed" (the Deque's blocks); with emplace_back in the member function itself it works (D)
+extern "C" import "stdio.h";
+struct Dep
+{
+  String name;
+  Vector<String> configs;
+  Dep& config(StringView n)
+  {
+    String s = n;
+    configs.push_back(s);
+    return *this;
+  }
+};
+Dep& add(Deque<Dep>& to, StringView name)
+{
+  Dep& d = to.emplace_back();
+  d.name = name;
+  return d;
+}
+struct Uses
+{
+  Deque<Dep> uses;
+  Dep& use(StringView name) { return add(uses, name); }
+};
+int chained()
+{
+  Uses p;
+  p.use("a").config("x");
+  return int(p.uses[0].configs.size());
+}
+constexpr int atCompileTime()
+{
+  Uses p;
+  p.use("a").config("x");
+  return int(p.uses[0].configs.size());
+}
+static_assert(atCompileTime() == 1);
+int main()
+{
+  printf("%d %d\n", atCompileTime(), chained());
+  return 0;
+}

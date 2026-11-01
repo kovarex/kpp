@@ -27,6 +27,26 @@ namespace
   struct Use
   {
     std::string name, minimum, path;
+    std::vector<std::string> configs; // its options' values given here (use(...).config): NAME=VALUE
+  };
+
+  // An option a Kpp library declares (Project.kpp's LibraryOption).
+  struct Option
+  {
+    std::string name, type, defaultValue, description;
+    bool required = false;
+    std::vector<std::string> allowed;
+  };
+
+  // One library found for a program: where it is, which build.kpp asked for it first, its options and
+  // the values its users' use() gave them.
+  struct Found
+  {
+    std::string name;
+    std::filesystem::path directory;
+    std::string by;
+    std::vector<Option> options;
+    std::vector<std::pair<std::string, std::string>> configs; // NAME=VALUE, and which use() in which build.kpp
   };
 
   // A named configuration (docs/build.md, "Targets and configurations"), its bases' settings in and the
@@ -37,6 +57,7 @@ namespace
     std::string name;
     bool optimize = false, debugInfo = false;
     std::vector<std::string> configs, clangFlags, arguments;
+    std::vector<std::string> configFrom; // per config, who set it: project, configuration, target, cell, option
   };
 
   // One cell, an executable in a configuration, as build.kpp described it (projectlib\Project.kpp's
@@ -48,6 +69,7 @@ namespace
     std::vector<std::string> roots, excluded, libraries, cIncludes, links;
     std::string beforeBuild, afterBuild, debugCommand, debugArguments, debugDirectory;
     std::vector<Use> uses;
+    std::vector<ProjectOption> options; // after resolveUses: its libraries' options, with their values
   };
 
   // A Kpp library the project is (Project.kpp's Library). After resolveUses, roots ends with the
@@ -57,6 +79,8 @@ namespace
     std::string name, version, license, minimumKpp;
     std::vector<std::string> roots, testRoots;
     std::vector<Use> uses;
+    std::vector<Option> options;
+    std::vector<Found> used; // after resolveUses: itself and the libraries it uses (applyOptions)
   };
 
   // A C or C++ library of the project (Project.kpp's CLibrary).
@@ -83,6 +107,7 @@ namespace
     std::vector<std::pair<std::string, std::string>> settings;
     std::vector<std::string> passed;         // kppc's own options, given to every build
     bool run = false, test = false, visualStudio = false, vsCode = false, server = true, msvc = false, stop = false;
+    bool options = false; // kpp options: list the libraries' options of the cells asked for
     std::vector<std::string> runArguments;   // --run's: the program's; --test's: the runner's
   };
 
@@ -195,12 +220,13 @@ namespace
         d.libraries.push_back({value}), section = library;
       else if (key == "end")
         section = none;
-      else if ((section == program || section == library) && (key == "use" || key == "use-minimum" || key == "use-path"))
+      else if ((section == program || section == library) && (key == "use" || key == "use-minimum" || key == "use-path" || key == "use-config"))
       {
         std::vector<Use>& uses = section == program ? d.programs.back().uses : d.libraries.back().uses;
         if (key == "use") uses.push_back({value});
         else if (uses.empty()) continue;
         else if (key == "use-minimum") uses.back().minimum = value;
+        else if (key == "use-config") uses.back().configs.push_back(value);
         else uses.back().path = value;
       }
       else if ((section == configuration || section == program) &&
@@ -209,7 +235,12 @@ namespace
         Configuration& c = section == program ? d.programs.back() : d.configurations.back();
         if (key == "optimize") c.optimize = value == "1";
         else if (key == "debug-info") c.debugInfo = value == "1";
-        else if (key == "config") c.configs.push_back(value);
+        else if (key == "config") // `config SOURCE NAME=VALUE`
+        {
+          size_t blank = value.find(' ');
+          c.configFrom.push_back(value.substr(0, blank));
+          c.configs.push_back(blank == std::string::npos ? "" : value.substr(blank + 1));
+        }
         else if (key == "clang-flag") c.clangFlags.push_back(value);
         else c.arguments.push_back(value);
       }
@@ -221,6 +252,13 @@ namespace
         else if (key == "minimum-kpp") l.minimumKpp = value;
         else if (key == "root") l.roots.push_back(value);
         else if (key == "test-root") l.testRoots.push_back(value);
+        else if (key == "option") l.options.push_back({value});
+        else if (l.options.empty()) continue;
+        else if (key == "option-type") l.options.back().type = value;
+        else if (key == "option-default") l.options.back().defaultValue = value;
+        else if (key == "option-required") l.options.back().required = true;
+        else if (key == "option-value") l.options.back().allowed.push_back(value);
+        else if (key == "option-description") l.options.back().description = value;
       }
       else if (section == cLibrary)
       {
@@ -395,14 +433,6 @@ namespace
     return true;
   }
 
-  // One library found for a program: where it is, which build.kpp asked for it first.
-  struct Found
-  {
-    std::string name;
-    fs::path directory;
-    std::string by;
-  };
-
   // The libraries uses names (by's build.kpp says use()), each found at its path, or else in the
   // project's libraries/NAME, or else next to by when by is in a directory named libraries (the
   // libraries of one libraries/ directory use each other), then described (the same settings),
@@ -477,9 +507,15 @@ namespace
                 (directory / "build.kpp").string().c_str(), use.name.c_str(), library->minimumKpp.c_str(), kppVersion);
         return false;
       }
+      std::vector<std::pair<std::string, std::string>> configs;
+      for (const std::string& c : use.configs)
+        configs.push_back({c, "use(\"" + use.name + "\") in " + user});
       if (same != found.end())
+      {
+        same->configs.insert(same->configs.end(), configs.begin(), configs.end());
         continue;
-      found.push_back({use.name, directory, user});
+      }
+      found.push_back({use.name, directory, user, library->options, configs});
       for (const std::string& r : library->roots)
         roots.push_back(rooted(directory, r).string());
       if (!resolveUses(project, directory, library->uses, request, found, roots))
@@ -489,19 +525,154 @@ namespace
   }
 
   // Every executable's and library's uses (resolveUses), their roots added to its own.
+  // Who set a config:: constant, for messages and `kpp options`.
+  std::string setBy(const std::string& from, const Program& p)
+  {
+    if (from == "project") return "the project (project.config)";
+    if (from == "configuration") return "the configuration " + p.configuration;
+    if (from == "target") return "the target " + p.name;
+    if (from == "cell") return "configure() for " + p.name + " " + p.configuration;
+    return from;
+  }
+
+  // The options of the libraries a cell uses (used, from resolveUses), each with its value: its
+  // default, then what use() gave, the project, the configuration, the target, configure(), and the
+  // command line (`--config LIB::NAME=VALUE`), the later one winning. Each value is added to the
+  // cell's constants as LIB::NAME, which the library reads as config::LIB::NAME. False with error
+  // for an option nothing sets that has no default, a value of the wrong type or not among the
+  // allowed ones, and a LIB::NAME no used library declares (allUsed: every library some cell
+  // uses, whose options the project's constants may set for the other cells too).
+  bool applyOptions(Program& p, const std::vector<Found>& used, const std::vector<std::string>& allUsed, const Request& request,
+                    std::string& error)
+  {
+    std::vector<std::pair<std::string, std::string>> set; // LIB::NAME=VALUE, who set it; in order
+    for (size_t i = 0; i < p.configs.size(); ++i)
+      if (p.configs[i].find("::") != std::string::npos)
+        set.push_back({p.configs[i], setBy(i < p.configFrom.size() ? p.configFrom[i] : "", p)});
+    for (size_t i = 0; i + 1 < request.passed.size(); ++i)
+      if (request.passed[i] == "--config" && request.passed[i + 1].find("::") != std::string::npos)
+        set.push_back({request.passed[i + 1], "the command line (--config)"});
+    std::string cell = p.name + " " + p.configuration;
+    auto split = [](const std::string& item, std::string& name, std::string& value)
+    {
+      size_t equals = item.find('=');
+      name = item.substr(0, equals);
+      value = equals == std::string::npos ? "" : item.substr(equals + 1);
+    };
+    for (const auto& [item, by] : set)
+    {
+      std::string name, value;
+      split(item, name, value);
+      std::string library = name.substr(0, name.find("::")), option = name.substr(name.find("::") + 2);
+      const Found* f = nullptr;
+      for (const Found& candidate : used)
+        if (candidate.name == library)
+          f = &candidate;
+      if (!f && std::find(allUsed.begin(), allUsed.end(), library) == allUsed.end())
+      {
+        error = name + " is set by " + by + ", and no library " + library + " is used";
+        return false;
+      }
+      if (f && std::none_of(f->options.begin(), f->options.end(), [&](const Option& o) { return o.name == option; }))
+      {
+        std::string known;
+        for (const Option& o : f->options)
+          known += (known.empty() ? "" : ", ") + o.name;
+        error = name + " is set by " + by + ", and the library " + library + " has no option " + option + " (its options: " +
+                (known.empty() ? "none" : known) + ")";
+        return false;
+      }
+    }
+    for (const Found& f : used)
+    {
+      for (const auto& [item, by] : f.configs)
+      {
+        std::string name, value;
+        split(item, name, value);
+        if (std::none_of(f.options.begin(), f.options.end(), [&](const Option& o) { return o.name == name; }))
+        {
+          error = by + " sets " + name + ", and the library " + f.name + " has no option " + name;
+          return false;
+        }
+      }
+      for (const Option& o : f.options)
+      {
+        ProjectOption result{f.name, o.name, o.type, o.defaultValue, o.defaultValue, o.required ? "" : "the default", o.description, o.required, o.allowed};
+        for (const auto& [item, by] : f.configs)
+        {
+          std::string name, value;
+          split(item, name, value);
+          if (name == o.name)
+            result.value = value, result.setBy = by;
+        }
+        for (const auto& [item, by] : set)
+        {
+          std::string name, value;
+          split(item, name, value);
+          if (name == f.name + "::" + o.name)
+            result.value = value, result.setBy = by;
+        }
+        std::string qualified = f.name + "::" + o.name;
+        if (result.setBy.empty())
+        {
+          error = "the library " + f.name + " needs its option " + o.name + " (" + o.type + ": " + o.description + "), which nothing sets for " +
+                  cell + "; set it with use(\"" + f.name + "\").config(\"" + o.name + "\", VALUE), config(\"" + qualified +
+                  "\", VALUE) of the project, a configuration or a target, or kpp --config " + qualified + "=VALUE";
+          return false;
+        }
+        char* end = nullptr;
+        bool ok = o.type == "bool" ? result.value == "true" || result.value == "false"
+                  : o.type == "int" ? (strtoll(result.value.c_str(), &end, 0), !result.value.empty() && end && *end == 0)
+                                    : o.allowed.empty() || std::find(o.allowed.begin(), o.allowed.end(), result.value) != o.allowed.end();
+        if (!ok)
+        {
+          std::string allowed;
+          for (const std::string& a : o.allowed)
+            allowed += (allowed.empty() ? "" : ", ") + a;
+          error = qualified + " is " + result.value + " (set by " + result.setBy + "), which is not " +
+                  (o.type == "bool" ? "true or false" : o.type == "int" ? "an int" : "one of its values: " + allowed);
+          return false;
+        }
+        p.configs.push_back(qualified + "=" + result.value);
+        p.configFrom.push_back("option");
+        p.options.push_back(result);
+      }
+    }
+    return true;
+  }
+
+  // Every executable's and library's uses (resolveUses), their roots added to its own, and every
+  // cell's library options (applyOptions); a library's are applied when its tests are built
+  // (libraryProgram).
   bool resolveUses(const fs::path& root, const Request& request, Description& d)
   {
+    std::vector<std::vector<Found>> founds;
+    std::vector<std::string> allUsed;
     for (Program& p : d.programs)
     {
       std::vector<Found> found;
       if (!resolveUses(root, root, p.uses, request, found, p.roots))
         return false;
+      for (const Found& f : found)
+        if (std::find(allUsed.begin(), allUsed.end(), f.name) == allUsed.end())
+          allUsed.push_back(f.name);
+      founds.push_back(found);
     }
     for (KppLibrary& l : d.libraries)
     {
-      std::vector<Found> found = {{l.name, fs::absolute(root).lexically_normal(), (root / "build.kpp").string()}};
+      std::vector<Found> found = {{l.name, fs::absolute(root).lexically_normal(), (root / "build.kpp").string(), l.options}};
       if (!resolveUses(root, root, l.uses, request, found, l.roots))
         return false;
+      l.used = found;
+    }
+    for (size_t i = 0; i < d.programs.size(); ++i)
+    {
+      std::string error;
+      if (!applyOptions(d.programs[i], founds[i], allUsed, request, error))
+      {
+        fprintf(stderr, "%s: error: %s\n", (root / "build.kpp").string().c_str(), error.c_str());
+        return false;
+      }
     }
     return true;
   }
@@ -806,15 +977,24 @@ namespace
 
   // A library's program in a configuration: the configuration's options, the library's roots and
   // test roots.
-  Program libraryProgram(const Configuration& c, const KppLibrary& l)
+  // A library's program in a configuration: the configuration's options, the library's roots and
+  // test roots, and its own options and its libraries' (applyOptions). False, the error printed,
+  // when an option is wrong.
+  bool libraryProgram(const fs::path& root, const Configuration& c, const KppLibrary& l, const Request& request, Program& p)
   {
-    Program p;
     static_cast<Configuration&>(p) = c;
     p.name = l.name;
     p.configuration = c.name;
     p.roots = l.roots;
     p.roots.insert(p.roots.end(), l.testRoots.begin(), l.testRoots.end());
-    return p;
+    std::vector<std::string> allUsed;
+    for (const Found& f : l.used)
+      allUsed.push_back(f.name);
+    std::string error;
+    if (applyOptions(p, l.used, allUsed, request, error))
+      return true;
+    fprintf(stderr, "%s: error: %s\n", (root / "build.kpp").string().c_str(), error.c_str());
+    return false;
   }
 
   // kpp --test: the tests of the executables and libraries asked for (all when none is named) in
@@ -831,8 +1011,8 @@ namespace
       if (p.configuration == configuration.name && asked(p.name))
         chosen.push_back(p);
     for (const KppLibrary& l : d.libraries)
-      if (asked(l.name))
-        chosen.push_back(libraryProgram(configuration, l));
+      if (asked(l.name) && !libraryProgram(root, configuration, l, request, chosen.emplace_back()))
+        return 1;
     int result = 0;
     for (const Program& p : chosen)
     {
@@ -1012,6 +1192,33 @@ namespace
       for (const Program& p : d.programs)
         if (p.configuration == configuration && (targets.empty() || std::find(targets.begin(), targets.end(), p.name) != targets.end()))
           chosen.push_back(&p);
+    // kpp options: each chosen cell's libraries' options, with their values and who set them (a library
+    // project: its own and its libraries', in each configuration).
+    if (request.options)
+    {
+      std::vector<Program> listed;
+      for (const Program* p : chosen)
+        listed.push_back(*p);
+      if (d.programs.empty())
+        for (const std::string& configuration : configurations)
+          for (const KppLibrary& l : d.libraries)
+            if (!libraryProgram(root, *findConfiguration(d, configuration), l, request, listed.emplace_back()))
+              return 1;
+      for (const Program& p : listed)
+      {
+        printf("%s %s:%s\n", p.name.c_str(), p.configuration.c_str(), p.options.empty() ? " no library options" : "");
+        for (const ProjectOption& o : p.options)
+        {
+          std::string values;
+          for (const std::string& a : o.allowed)
+            values += (values.empty() ? " (" : ", ") + a;
+          printf("  %s::%s = %s  %s%s, %s; set by %s\n    %s\n", o.library.c_str(), o.name.c_str(), o.value.c_str(), o.type.c_str(),
+                 values.empty() ? "" : (values + ")").c_str(), o.required ? "required" : ("default " + o.defaultValue).c_str(),
+                 o.setBy.c_str(), o.description.c_str());
+        }
+      }
+      return 0;
+    }
     if (request.run && chosen.size() != 1)
     {
       fprintf(stderr, "error: --run needs one target in one configuration; this names %zu cells\n", chosen.size());
@@ -1074,8 +1281,11 @@ int runProject(int argc, char** argv, CompileFunction compile)
 {
   if (argc >= 2 && strcmp(argv[1], "new") == 0)
     return newProject(argc >= 3 ? fs::absolute(argv[2]) : fs::current_path());
+  bool options = argc >= 2 && strcmp(argv[1], "options") == 0; // kpp options [targets] [configurations]
+  if (options)
+    --argc, ++argv;
   fs::path root = findProject(fs::current_path());
-  if (argc == 1)
+  if (argc == 1 && !options)
   {
     if (!_isatty(_fileno(stdin)))
       return -1;
@@ -1083,11 +1293,17 @@ int runProject(int argc, char** argv, CompileFunction compile)
       SetCurrentDirectoryW(root.c_str());
     return menu(root, compile);
   }
+  if (root.empty() && options)
+  {
+    fprintf(stderr, "error: kpp options lists a project's library options, and there is no build.kpp here or above\n");
+    return 2;
+  }
   if (root.empty())
     return -1;
   // A project's command line names targets and configurations, never sources: an argument that is
   // an existing file or directory makes it a plain build of those sources.
   Request request;
+  request.options = options;
   bool runner = false; // after --test's `--`: the test runner's arguments
   for (int i = 1; i < argc; ++i)
   {
@@ -1167,8 +1383,21 @@ bool projectCells(const std::filesystem::path& directory, const ProjectCheck& ch
       targets.push_back(l.name);
   for (const std::string& target : targets)
     for (const Configuration& c : d.configurations)
-      if (d.programs.empty() || findCell(d, target, c.name))
-        cells.push_back({target, c.name, visualStudioName(c.name)});
+    {
+      Program library;
+      const Program* p = findCell(d, target, c.name);
+      if (!p && d.programs.empty())
+      {
+        if (!libraryProgram(root, c, d.libraries[0], request, library))
+        {
+          error = (root / "build.kpp").string() + ": an option of the library " + target + " (above)";
+          return true;
+        }
+        p = &library;
+      }
+      if (p)
+        cells.push_back({target, c.name, visualStudioName(c.name), p->options});
+    }
   return true;
 }
 
@@ -1214,7 +1443,11 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
   Program program;
   if (d.programs.empty())
   {
-    program = libraryProgram(*configuration, d.libraries[0]);
+    if (!libraryProgram(root, *configuration, d.libraries[0], request, program))
+    {
+      error = (root / "build.kpp").string() + ": an option of the library " + d.libraries[0].name + " (above)";
+      return true;
+    }
     program.arguments.push_back("--tests"); // its test blocks are checked too
   }
   else if (!check.target.empty())

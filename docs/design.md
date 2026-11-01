@@ -571,6 +571,15 @@ target and configuration. Visual Studio gets one project per target and one solu
 per named configuration; the language server checks the chosen cell. Details:
 [build.md](build.md), "Targets and configurations".
 
+**Library options (decided 2026-11-01).** kovarex: "when I add new library to my project, I should
+have some clear way to get noticed of what config values should be provided to the library, with
+defaults or something." A library's build.kpp declares each option with a type, a default (none:
+required) and a description (`zlib.option("debug", false, "...")`); its code reads
+`config::zlib::debug`. Users set it through `use("zlib").config(...)`, a `zlib::NAME` constant of the
+project, a configuration, a target or a cell, or `--config zlib::NAME=VALUE`. An unset required
+option, an undeclared one and a value of the wrong type are errors; `kpp options` lists each cell's
+values and who set them. Details: [build.md](build.md), "Library options".
+
 ### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:
 - "Distinct fixed types, deprecate long".

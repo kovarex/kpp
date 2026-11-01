@@ -51,17 +51,23 @@ LibrarySource local(StringView path)
 }
 
 // A Kpp library a project, an executable or another library uses: its name, the lowest version it
-// needs ("" for any) and where it is ("" for libraries/NAME).
+// needs ("" for any), where it is ("" for libraries/NAME) and the values of its options given here:
+// `project.use("zlib").config("debug", true)` sets an option the library declares (Library::option).
 struct Dependency
 {
   String name;
   String minimum;
   String path;
+  Vector<String> configs; // its options, NAME=VALUE (kppConfig), without the library's name
+
+  Dependency& config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); return *this; }
+  Dependency& config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); return *this; }
+  Dependency& config(StringView name, const char* value) { kppConfig(configs, name, value); return *this; }
+  Dependency& config(StringView name, StringView value) { kppConfig(configs, name, value); return *this; }
 };
 
-void kppUse(Vector<Dependency>& to, StringView name, StringView minimum, StringView path)
+void kppUse(Dependency& d, StringView name, StringView minimum, StringView path)
 {
-  Dependency& d = to.emplace_back();
   d.name = name;
   d.minimum = minimum;
   d.path = path;
@@ -77,7 +83,7 @@ struct Executable
   Vector<String> libraries; // what the link takes: a .lib, -lname, a .res (kppc's --lib)
   Vector<String> cIncludes; // directories the C headers are found in (kppc's --cinclude)
   Vector<String> links;     // the project's C libraries it links (Project::cLibrary), by name
-  Vector<Dependency> uses;  // the Kpp libraries it uses besides the project's (use())
+  Deque<Dependency> uses;  // the Kpp libraries it uses besides the project's (use())
   Vector<String> configs;   // config:: constants of this target, NAME=VALUE (kppConfig)
   String beforeBuildCommand;
   String afterBuildCommand;
@@ -93,8 +99,18 @@ struct Executable
   void library(StringView path) { libraries.push_back(path); }
   void cInclude(StringView path) { cIncludes.push_back(path); }
   // A Kpp library (Project::use), for this executable only.
-  void use(StringView name, StringView minimum = "") { kppUse(uses, name, minimum, ""); }
-  void use(StringView name, LibrarySource source) { kppUse(uses, name, "", source.path); }
+  Dependency& use(StringView name, StringView minimum = "")
+  {
+    Dependency& d = uses.emplace_back();
+    kppUse(d, name, minimum, "");
+    return d;
+  }
+  Dependency& use(StringView name, LibrarySource source)
+  {
+    Dependency& d = uses.emplace_back();
+    kppUse(d, name, "", source.path);
+    return d;
+  }
   // A C library of the project (Project::cLibrary) by its name.
   void link(StringView name) { links.push_back(name); }
   // A Windows library by its name (`gdi32`): kppc's --lib -lgdi32.
@@ -126,12 +142,13 @@ struct Cell
 {
   Configuration configuration;
   Executable target;
+  Vector<String> configs; // this cell's config:: constants (config()), NAME=VALUE
 
   // A config:: constant of this cell, over the target's.
-  void config(StringView name, bool value) { target.config(name, value); }
-  void config(StringView name, i32 value) { target.config(name, value); }
-  void config(StringView name, const char* value) { target.config(name, value); }
-  void config(StringView name, StringView value) { target.config(name, value); }
+  void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
+  void config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); }
+  void config(StringView name, const char* value) { kppConfig(configs, name, value); }
+  void config(StringView name, StringView value) { kppConfig(configs, name, value); }
 };
 
 // What runs when build.kpp has no configure(Cell&): its own, a function, is chosen over a template.
@@ -160,6 +177,29 @@ struct CLibrary
   void standard(StringView name) { cppStandard = name; }
 };
 
+// An option a Kpp library declares (Library::option): what its code reads as config::LIB::NAME,
+// whose value whatever uses the library gives (use(...).config, or config("LIB::NAME", ...) of the
+// project, a configuration, a target or a cell, or kpp --config LIB::NAME=VALUE); without one, its
+// default; a required option has none, and leaving it unset is an error.
+struct LibraryOption
+{
+  String name;
+  String type;           // bool, int or string
+  String defaultValue;
+  String description;
+  bool required = false;
+  Vector<String> allowed; // a string option's values; none: any
+};
+
+void kppOption(LibraryOption& o, StringView name, StringView type, StringView value, StringView description, bool required)
+{
+  o.name = name;
+  o.type = type;
+  o.defaultValue = value;
+  o.description = description;
+  o.required = required;
+}
+
 // A Kpp library (docs/build.md, "Kpp libraries"): a project without an executable, whose source
 // roots join the program of every executable that uses it. Its build.kpp declares it with
 // project.library(NAME); its tests are `test` blocks under its roots and its test roots, which
@@ -172,12 +212,60 @@ struct Library
   String minimumKpp;        // the lowest kpp version it compiles with, major.minor.patch; "": any
   Vector<String> roots;     // its sources, relative to its directory; none: src
   Vector<String> testRoots; // sources only its own tests build (tests next to the code need none)
-  Vector<Dependency> uses;  // the libraries it uses
+  Deque<Dependency> uses;  // the libraries it uses
+  Deque<LibraryOption> options; // what its users set (a Deque: option() returns a reference)
 
   void root(StringView path) { roots.push_back(path); }
   void test(StringView path) { testRoots.push_back(path); }
-  void use(StringView name, StringView minimum = "") { kppUse(uses, name, minimum, ""); }
-  void use(StringView name, LibrarySource source) { kppUse(uses, name, "", source.path); }
+  // An option with its default: `option("debug", false, "Extra consistency checks")`; a string option
+  // may list the values it can have: `option("mode", "fast", "Its speed", {"fast", "small"})`. Each
+  // returns its LibraryOption. (Each emplaces itself: tests/spec/language/
+  // consteval_returned_deque_reference_chained.)
+  LibraryOption& option(StringView name, bool value, StringView description)
+  {
+    LibraryOption& o = options.emplace_back();
+    kppOption(o, name, "bool", value ? "true" : "false", description, false);
+    return o;
+  }
+  LibraryOption& option(StringView name, i32 value, StringView description)
+  {
+    LibraryOption& o = options.emplace_back();
+    kppOption(o, name, "int", toString(value), description, false);
+    return o;
+  }
+  LibraryOption& option(StringView name, const char* value, StringView description)
+  {
+    LibraryOption& o = options.emplace_back();
+    kppOption(o, name, "string", value, description, false);
+    return o;
+  }
+  LibraryOption& option(StringView name, const char* value, StringView description, InitializerList<StringView> values)
+  {
+    LibraryOption& o = options.emplace_back();
+    kppOption(o, name, "string", value, description, false);
+    for (StringView v : values)
+      o.allowed.push_back(v);
+    return o;
+  }
+  // An option without a default, of type bool, int or string, which every user must set.
+  LibraryOption& requiredOption(StringView name, StringView type, StringView description)
+  {
+    LibraryOption& o = options.emplace_back();
+    kppOption(o, name, type, "", description, true);
+    return o;
+  }
+  Dependency& use(StringView name, StringView minimum = "")
+  {
+    Dependency& d = uses.emplace_back();
+    kppUse(d, name, minimum, "");
+    return d;
+  }
+  Dependency& use(StringView name, LibrarySource source)
+  {
+    Dependency& d = uses.emplace_back();
+    kppUse(d, name, "", source.path);
+    return d;
+  }
 };
 
 struct Project
@@ -186,7 +274,7 @@ struct Project
   Vector<String> arguments;
   Vector<String> libraries;
   Vector<String> cIncludes;
-  Vector<Dependency> uses;
+  Deque<Dependency> uses;
   Vector<String> configs; // config:: constants of every cell, under the configuration's and the target's
   // Deques: adding one leaves the references earlier calls returned valid.
   Deque<Executable> executables;
@@ -239,8 +327,18 @@ struct Project
   // A Kpp library every executable uses (docs/build.md, "Kpp libraries"): use("json") finds it in
   // libraries/json, use("json", "1.4") also states the lowest version that will do, and
   // use("json", local("../json")) gives its directory.
-  void use(StringView name, StringView minimum = "") { kppUse(uses, name, minimum, ""); }
-  void use(StringView name, LibrarySource source) { kppUse(uses, name, "", source.path); }
+  Dependency& use(StringView name, StringView minimum = "")
+  {
+    Dependency& d = uses.emplace_back();
+    kppUse(d, name, minimum, "");
+    return d;
+  }
+  Dependency& use(StringView name, LibrarySource source)
+  {
+    Dependency& d = uses.emplace_back();
+    kppUse(d, name, "", source.path);
+    return d;
+  }
   // A config:: constant of every cell.
   void config(StringView name, bool value) { kppConfig(configs, name, value ? "true" : "false"); }
   void config(StringView name, i32 value) { kppConfig(configs, name, toString(value)); }
@@ -267,13 +365,27 @@ void kppLines(String& out, StringView key, const Vector<String>& values)
     kppLine(out, key, value);
 }
 
-void kppUses(String& out, const Vector<Dependency>& uses)
+void kppUses(String& out, const Deque<Dependency>& uses)
 {
   for (const Dependency& d : uses)
   {
     kppLine(out, "use", d.name);
     kppLine(out, "use-minimum", d.minimum);
     kppLine(out, "use-path", d.path);
+    kppLines(out, "use-config", d.configs);
+  }
+}
+
+// config:: constants with where they were set: `config SOURCE NAME=VALUE`.
+void kppConfigs(String& out, StringView source, const Vector<String>& configs)
+{
+  for (const String& c : configs)
+  {
+    out += "config ";
+    out += source;
+    out += ' ';
+    out += c;
+    out += '\n';
   }
 }
 
@@ -347,8 +459,8 @@ void kppConfigurationLines(String& out, const Project& project, const Configurat
 {
   kppLine(out, "optimize", c.optimize.value_or(false) ? "1" : "0");
   kppLine(out, "debug-info", c.debugInfo.value_or(false) ? "1" : "0");
-  kppLines(out, "config", project.configs);
-  kppLines(out, "config", c.configs);
+  kppConfigs(out, "project", project.configs);
+  kppConfigs(out, "configuration", c.configs);
   kppLines(out, "clang-flag", c.clangFlags);
 }
 
@@ -364,7 +476,8 @@ void kppCell(String& out, const Project& project, const Executable& target, cons
   out += resolved.name;
   out += '\n';
   kppConfigurationLines(out, project, cell.configuration);
-  kppLines(out, "config", e.configs);
+  kppConfigs(out, "target", e.configs);
+  kppConfigs(out, "cell", cell.configs);
   kppLines(out, "root", e.roots);
   kppLines(out, "exclude", e.excluded);
   kppLines(out, "argument", project.arguments);
@@ -454,6 +567,23 @@ String describe(const Project& project)
       kppLine(out, "root", "src");
     kppLines(out, "root", l.roots);
     kppLines(out, "test-root", l.testRoots);
+    // Per option: `option NAME`, its type, its default (none when required: `option-required`), its
+    // values and its description.
+    for (const LibraryOption& o : l.options)
+    {
+      kppLine(out, "option", o.name);
+      kppLine(out, "option-type", o.type);
+      if (o.required)
+        out += "option-required 1\n";
+      else
+      {
+        out += "option-default ";
+        out += o.defaultValue;
+        out += '\n';
+      }
+      kppLines(out, "option-value", o.allowed);
+      kppLine(out, "option-description", o.description);
+    }
     kppUses(out, project.uses);
     kppUses(out, l.uses);
     out += "end\n";

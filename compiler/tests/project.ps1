@@ -82,13 +82,16 @@ finally { Pop-Location }
 # Kpp libraries (docs/build.md, "Kpp libraries"): app uses greet from its libraries\, greet uses text
 # next to it there; kpp --test in greet runs its tests and its test roots' with the runner's
 # arguments; a minimum version above greet's, a missing library and a minimum kpp above this one
-# are errors.
+# are errors. greet's option suffix (config::greet::suffix): its default, a configuration's value,
+# the command line's, `kpp options`, and three errors: a required option unset, an unknown option,
+# a value not of its type.
 $app = Join-Path $work 'app'
 New-Item -ItemType Directory -Force "$app\src", "$app\libraries\greet\src", "$app\libraries\greet\tests", "$app\libraries\text\src" | Out-Null
 Push-Location $app
 try
 {
-  Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.2`");`n}"
+  $appBuild = "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"greet`", `"0.2`");`n  project.configuration(`"release`").config(`"greet::suffix`", `".`");`n}"
+  Set-Content 'build.kpp' $appBuild
   Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", greeting(`"app`"));`n  return 0;`n}"
   $greet = @'
 void build(Project& project)
@@ -99,16 +102,36 @@ void build(Project& project)
   greet.minimumKpp = "0.1.0";
   greet.test("tests");
   greet.use("text");
+  greet.option("suffix", "", "what follows the name");
 }
 '@
   Set-Content 'libraries\greet\build.kpp' $greet
-  Set-Content 'libraries\greet\src\greet.kpp' "String greeting(StringView name) { return shout(`"hello`") + name; }`ntest `"greeting`"`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
+  Set-Content 'libraries\greet\src\greet.kpp' "String greeting(StringView name) { return shout(`"hello`") + name + config::greet::suffix; }`ntest `"greeting`"`n{`n  check(greeting(`"a`") == `"hello! a`");`n}"
   Set-Content 'libraries\greet\tests\more.kpp' "test `"greeting twice`"`n{`n  check(greeting(`"b`") == `"hello! b`");`n  check(greeting(`"c`") == `"wrong`");`n}"
   Set-Content 'libraries\text\build.kpp' "void build(Project& project)`n{`n  Library& text = project.library(`"text`");`n  text.version = `"1.0.0`";`n}"
   Set-Content 'libraries\text\src\text.kpp' "String shout(StringView s) { String r = s; r += `"! `"; return r; }"
   $output = Kpp @('--no-server')
   $printed = if ($code -eq 0) { & '.\build\debug\app.exe' } else { '' }
   if ($code -ne 0 -or "$printed" -ne 'hello! app') { Fail "an executable using a library: exit $code, printed '$printed'`n$($output -join "`n")" }
+  foreach ($case in @(@(@('release'), 'hello! app.'), @(@('--config', 'greet::suffix=?'), 'hello! app?')))
+  {
+    $output = Kpp ($case[0] + @('--no-server', '--run'))
+    if ($code -ne 0 -or $output[-1] -ne $case[1]) { Fail "the option greet::suffix, kpp $($case[0] -join ' '): '$($output[-1])', not '$($case[1])'`n$($output -join "`n")" }
+  }
+  $output = (Kpp @('options', 'release')) -join "`n"
+  if ($code -ne 0 -or $output -notmatch 'greet::suffix = \.  string, default ; set by the configuration release') { Fail "kpp options: exit $code`n$output" }
+  foreach ($case in @(
+      @('greet.requiredOption("volume", "int", "how loud");', '', 'the library greet needs its option volume \(int: how loud\), which nothing sets for app debug'),
+      @('', '  project.config("greet::colour", "red");', 'greet::colour is set by the project \(project.config\), and the library greet has no option colour \(its options: suffix\)'),
+      @('greet.option("times", 1, "how often");', '  project.config("greet::times", "often");', 'greet::times is often \(set by the project \(project.config\)\), which is not an int')))
+  {
+    Set-Content 'libraries\greet\build.kpp' ($greet -replace 'greet.use\("text"\);', "greet.use(`"text`");`n  $($case[0])")
+    Set-Content 'build.kpp' ($appBuild -replace '\}$', "$($case[1])`n}")
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -eq 0 -or $output -notmatch $case[2]) { Fail "a library option's error, '$($case[2])': exit $code`n$output" }
+  }
+  Set-Content 'libraries\greet\build.kpp' $greet
+  Set-Content 'build.kpp' $appBuild
   Push-Location 'libraries\greet'
   $output = (Kpp @('--test', '--no-server')) -join "`n"
   if ($code -ne 1 -or $output -notmatch '2 tests, 1 failed' -or $output -notmatch 'more\.kpp:4:3: check failed') { Fail "kpp --test in a library: exit $code`n$output" }

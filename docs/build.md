@@ -280,6 +280,56 @@ void build(Project& project)
 `Executable::linkFile`; `Executable::library` stays its older name until factorio-in-kpp's
 build.kpp moves).
 
+#### Library options (decided 2026-11-01, working now)
+
+kovarex, 2026-11-01: "when I add new library to my project, I should have some clear way to get
+noticed of what config values should be provided to the library, with defaults or something."
+
+```cpp
+// libraries/zlib/build.kpp
+Library& zlib = project.library("zlib");
+zlib.option("debug", false, "Extra consistency checks (ZLIB_DEBUG)");   // bool, its default
+zlib.option("window", 15, "Window bits");                               // int
+zlib.option("strategy", "default", "Compression strategy", {"default", "filtered", "huffman"});
+zlib.requiredOption("level", "int", "Compression level, 0 to 9");       // no default: users must set it
+
+// the project's build.kpp
+project.use("zlib").config("level", 6);              // for whatever uses it here
+project.configuration("debug").config("zlib::debug", true);
+```
+
+- **A library declares its options** in its build.kpp, each with a type (bool, int, string), a
+  default and a description. A string option may list its values. An option with no default
+  (`requiredOption`) is required.
+- **The library's code reads `config::zlib::debug`,** its own scope, so libraries never collide
+  with each other or with the program's constants. It is an ordinary `config::` constant: in
+  expressions, `if constexpr` and `conditional(...)`, at declaration scope too (kppc's
+  `--config zlib::debug=true`; tests/spec/kpp/config_library_scope).
+- **The user sets one** with `use("zlib").config(NAME, VALUE)`, or as a constant named
+  `zlib::NAME` of the project, a configuration, a target or a cell (`config("zlib::debug", true)`),
+  or with `kpp --config zlib::debug=true`. The later one wins, in that order, over the default.
+- **No silent fallbacks.** These are errors, each naming the build.kpp, the cell and who set the
+  value:
+  - a required option nothing sets (the message names the option, its type, its description and
+    the three ways to set it);
+  - an option the library does not declare (the message lists the ones it does);
+  - a `zlib::` constant when no target uses zlib;
+  - a value not of its type, or not among a string option's values.
+  They are checked for every cell whenever kpp reads the description: building, listing or
+  checking in an editor.
+- **`kpp options [targets] [configurations]`** lists each cell's library options: the value, the
+  type, the default (or "required"), who set it ("the default", `use("zlib") in ...build.kpp`,
+  "the configuration release", "the command line (--config)") and the description. The language
+  server gets the same per cell (`ProjectCell::options`, project.hpp), and the registry lists a
+  release's options (library-registry.md).
+- **A library's own tests** (`kpp --test` in its directory) build with its defaults; a required
+  option needs `--config` there.
+- **Interpreter gaps found** (pending specs for thread D; projectlib is written around them):
+  `language/consteval_returned_deque_reference_chained` (so each `use()` and `option()` emplaces in
+  itself) and `language/consteval_member_call_on_subscript_result`. Two calls chained on use()'s
+  result, `use("zlib").config("a", 1).config("b", 2)`, still fail at compile time ("memory ... is
+  never freed"), not yet reduced to a snippet: write one `config()` per statement until D's fix.
+
 ### C and C++ libraries (proposed 2026-10-31, not implemented)
 
 The case: factorio-in-kpp (C's layout, root-relative) links 18 C/C++ libraries that today come

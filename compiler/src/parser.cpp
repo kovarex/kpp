@@ -1341,11 +1341,15 @@ namespace
         case NodeKind::NameExpr:
         {
           auto* n = static_cast<NameExpr*>(e);
-          if (n->name.parts.size() == 2 && n->name.parts[0].symbol == kwConfig)
+          if (n->name.parts.size() >= 2 && n->name.parts[0].symbol == kwConfig)
           {
             if (!config)
               return std::nullopt;
-            auto it = config->find(std::string(symbols.name(n->name.parts[1].symbol)));
+            // config::NAME, or a library's config::LIB::NAME (--config LIB::NAME=VALUE)
+            std::string name;
+            for (size_t k = 1; k < n->name.parts.size(); ++k)
+              name += (k > 1 ? "::" : "") + std::string(symbols.name(n->name.parts[k].symbol));
+            auto it = config->find(name);
             return it == config->end() ? std::nullopt : std::optional<ConfigValue>(it->second);
           }
           ConfigValue v;
