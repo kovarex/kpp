@@ -3015,6 +3015,33 @@ bool withKeptProgram(const std::function<void(const KeptProgram&)>& f)
   return true;
 }
 
+struct KeptState
+{
+  std::unique_ptr<Build> build;
+  std::string importStamps; // lastImportStamps, which tell its next build whether the C headers changed
+};
+
+std::shared_ptr<KeptState> takeKeptState()
+{
+  std::lock_guard lock(keptMutex);
+  auto state = std::make_shared<KeptState>();
+  state->build = std::move(keptBuild);
+  state->importStamps = std::move(lastImportStamps);
+  lastImportStamps.clear();
+  return state;
+}
+
+void putKeptState(std::shared_ptr<KeptState> state)
+{
+  std::unique_ptr<Build> previous;
+  {
+    std::lock_guard lock(keptMutex);
+    previous = std::move(keptBuild);
+    keptBuild = state ? std::move(state->build) : nullptr;
+    lastImportStamps = state ? std::move(state->importStamps) : std::string();
+  }
+}
+
 int main(int argc, char** argv)
 {
   setvbuf(stdout, nullptr, _IONBF, 0); // progress lines survive a crash

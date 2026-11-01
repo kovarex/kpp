@@ -1,0 +1,5 @@
+int main()
+{
+  println("{}", shared());
+  return 0;
+}

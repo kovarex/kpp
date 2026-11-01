@@ -869,8 +869,22 @@ namespace
     CompileFunction compile = nullptr;
     std::vector<std::string> explicitArguments; // `kppc --lsp OPTIONS SOURCES`
     fs::path workspace;                         // the editor's root folder
-    ProjectCheck project;                       // initializationOptions and workspace/didChangeConfiguration (docs/editors.md)
+    ProjectCheck project;                       // the cell checked: initializationOptions, workspace/didChangeConfiguration, kpp/selectCell (docs/editors.md)
     std::vector<std::string> checkArguments;    // what a check builds (empty: nothing to check)
+    // The cells checked before (a target and a configuration of build.kpp's), each with the build it
+    // kept, so that switching back to one is incremental; the active cell's build is the process's
+    // (main.cpp). At most keptCells in all, the least recently used ones dropped.
+    struct Cell
+    {
+      std::shared_ptr<KeptState> kept;
+      std::vector<std::string> arguments; // what it was built with: kept for those only
+      size_t used = 0;
+    };
+    std::map<std::string, Cell> parkedCells;    // by cellKey
+    std::string activeCell;                     // cellKey of the cell checked now ("": no build.kpp's)
+    std::vector<std::string> activeArguments;   // what the process's kept build was made with
+    std::string announcedCell = "\n";          // the cell kpp/activeCell last named
+    size_t keptCells = 4, cellClock = 0;
     bool checkEachChange = false;
     bool initialized = false, shutdownRequested = false;
     bool dirty = false;                         // a document changed since the last check
@@ -932,19 +946,31 @@ namespace
 
     // What a check builds: the sources and options given after --lsp, else the workspace's build.kpp
     // project, else the workspace folder; always the front end alone, with columns in diagnostics.
-    // The keys of initializationOptions, or of didChangeConfiguration's `kpp` (docs/editors.md).
-    void readOptions(const Json& options)
+    // The keys of initializationOptions, or of didChangeConfiguration's `kpp` (docs/editors.md), into
+    // the cell wanted. `executable` is the old name of `target` (a target named in both: target's);
+    // null in both is every target.
+    void readOptions(const Json& options, ProjectCheck& wanted)
     {
       if (options.kind != Json::Object)
         return;
       if (options["configuration"].kind == Json::String)
-        project.configuration = options["configuration"].text;
+        wanted.configuration = options["configuration"].text;
+      bool targetSent = false;
+      std::string target;
       for (const auto& [name, value] : options.members)
-        if (name == "executable")
-          project.executable = value.kind == Json::String ? value.text : std::string();
+        if (name == "executable" || name == "target")
+        {
+          targetSent = true;
+          if (value.kind == Json::String && (target.empty() || name == "target"))
+            target = value.text;
+        }
+      if (targetSent)
+        wanted.target = target;
+      if (options["keptCells"].kind == Json::Number && options["keptCells"].number >= 1)
+        keptCells = size_t(options["keptCells"].number);
       if (options["settings"].kind == Json::Object)
       {
-        project.settings.clear();
+        wanted.settings.clear();
         for (const auto& [name, value] : options["settings"].members)
         {
           std::string text;
@@ -952,41 +978,128 @@ namespace
             text = value.text;
           else
             write(value, text);
-          project.settings.push_back({name, text});
+          wanted.settings.push_back({name, text});
         }
       }
       if (options["buildFile"].kind == Json::String)
       {
         fs::path fromUri = uriToPath(options["buildFile"].text);
-        project.buildFile = fromUri.empty() ? options["buildFile"].text : fromUri.string();
+        wanted.buildFile = fromUri.empty() ? options["buildFile"].text : fromUri.string();
       }
     }
 
-    void chooseArguments(const char* self)
+    static std::string cellKey(const ProjectCheck& c) { return c.target + "\n" + c.configuration; }
+
+    std::string cellName(const ProjectCheck& c) const
+    {
+      return (c.target.empty() ? std::string("every target") : c.target) + ", " + c.configuration;
+    }
+
+    // The cell wanted as build.kpp names it: its configuration by name, or by its Visual Studio name
+    // (Visual Studio sends its solution configuration, `Debug|x64`), any case; a target and a
+    // configuration build.kpp does not have are an error.
+    bool resolveCell(ProjectCheck& wanted, const std::vector<ProjectCell>& cells, std::string& error)
+    {
+      std::string configuration = wanted.configuration.substr(0, wanted.configuration.find('|'));
+      std::string found, configurations, targets;
+      for (const ProjectCell& c : cells)
+        if (c.configuration == configuration)
+          found = c.configuration;
+      for (const ProjectCell& c : cells)
+        if (found.empty() && (_stricmp(c.visualStudio.c_str(), configuration.c_str()) == 0 || _stricmp(c.configuration.c_str(), configuration.c_str()) == 0))
+          found = c.configuration;
+      bool targetFound = wanted.target.empty(), pairFound = wanted.target.empty() && !found.empty();
+      for (const ProjectCell& c : cells)
+      {
+        if (configurations.find(" " + c.configuration + ",") == std::string::npos)
+          configurations += " " + c.configuration + ",";
+        if (targets.find(" " + c.target + ",") == std::string::npos)
+          targets += " " + c.target + ",";
+        targetFound = targetFound || c.target == wanted.target;
+        pairFound = pairFound || (c.target == wanted.target && c.configuration == found);
+      }
+      if (!configurations.empty())
+        configurations.pop_back();
+      if (!targets.empty())
+        targets.pop_back();
+      if (found.empty())
+        error = "build.kpp has no configuration " + wanted.configuration + " (its configurations:" + configurations + ")";
+      else if (!targetFound)
+        error = "build.kpp has no target " + wanted.target + " (its targets:" + targets + ")";
+      else if (!pairFound)
+        error = "build.kpp has no configuration " + found + " of " + wanted.target;
+      if (!error.empty())
+        return false;
+      wanted.configuration = found;
+      return true;
+    }
+
+    // The active cell becomes key, checked with checkArguments: the active one's kept build is parked,
+    // the new one's put back when it was made with these arguments (a change of settings or of
+    // build.kpp's description builds it from scratch).
+    void enterCell(const std::string& key)
+    {
+      if (key == activeCell && checkArguments == activeArguments)
+        return;
+      std::shared_ptr<KeptState> current = takeKeptState();
+      if (key != activeCell && current && !activeArguments.empty())
+        parkedCells[activeCell] = Cell{std::move(current), activeArguments, ++cellClock};
+      else if (key == activeCell)
+        log("the arguments of the cell changed: it is checked from scratch");
+      current.reset(); // (freed here, if not parked)
+      if (auto c = parkedCells.find(key); c != parkedCells.end())
+      {
+        if (c->second.arguments == checkArguments)
+          putKeptState(std::move(c->second.kept));
+        else
+          log("the arguments of the cell changed since it was checked: it is checked from scratch");
+        parkedCells.erase(c);
+      }
+      while (!parkedCells.empty() && parkedCells.size() + 1 > keptCells)
+      {
+        auto oldest = parkedCells.begin();
+        for (auto c = parkedCells.begin(); c != parkedCells.end(); ++c)
+          if (c->second.used < oldest->second.used)
+            oldest = c;
+        log("the kept build of %s is dropped (keptCells %zu)", oldest->first.substr(0, oldest->first.find('\n')).c_str(), keptCells);
+        parkedCells.erase(oldest);
+      }
+      if (key != activeCell)
+        cache = Cache();
+      activeCell = key;
+      activeArguments = checkArguments;
+      dirty = true;
+    }
+
+    // What a check builds becomes wanted's cell (or the given sources, or the folder). False, with
+    // error set, when build.kpp does not have that cell or does not describe the build: nothing
+    // changes then.
+    bool chooseArguments(const char* self, ProjectCheck wanted, std::string& error)
     {
       std::vector<std::string> args;
+      std::string key;
       if (!explicitArguments.empty())
       {
         args.push_back(self);
         args.insert(args.end(), explicitArguments.begin(), explicitArguments.end());
       }
-      else if (!workspace.empty() || !project.buildFile.empty())
+      else if (!workspace.empty() || !wanted.buildFile.empty())
       {
-        std::string error;
-        if (projectCheckArguments(workspace, project, args, error))
+        std::vector<ProjectCell> cells;
+        if (projectCells(workspace, wanted, cells, error))
         {
-          if (!error.empty())
+          if (!error.empty() || !resolveCell(wanted, cells, error) || (projectCheckArguments(workspace, wanted, args, error), !error.empty()))
           {
             log("%s", error.c_str());
-            showMessage(1, "Kpp: " + error + "; nothing is checked.");
-            checkArguments.clear();
-            return;
+            return false;
           }
-          log("the project of %s (build.kpp), %s%s%s", workspace.string().c_str(), project.configuration.c_str(),
-              project.executable.empty() ? ", every executable" : ", executable ", project.executable.c_str());
+          project = wanted;
+          key = cellKey(project);
+          log("the project of %s (build.kpp), %s", workspace.string().c_str(), cellName(project).c_str());
         }
         else
         {
+          project = wanted;
           args = {self, workspace.string()};
           log("no build.kpp at or above %s: its files are the program", workspace.string().c_str());
         }
@@ -995,7 +1108,8 @@ namespace
       {
         log("no workspace folder and no sources given: nothing is checked");
         checkArguments.clear();
-        return;
+        enterCell("");
+        return true;
       }
       // A check is the front end: what only code generation reads is left out.
       std::vector<std::string> kept;
@@ -1023,6 +1137,27 @@ namespace
       for (const std::string& a : checkArguments)
         line += (line.empty() ? "" : " ") + a;
       log("checks build: %s", line.c_str());
+      enterCell(key);
+      return true;
+    }
+
+    Json cellJson(const ProjectCheck& c)
+    {
+      return Json::object().set("target", c.target.empty() ? Json(nullptr) : Json(c.target)).set("configuration", c.configuration);
+    }
+
+    // kpp/cells: build.kpp's cells and the active one (none without a build.kpp).
+    Json cellList()
+    {
+      Json list = Json::array();
+      std::vector<ProjectCell> cells;
+      std::string error;
+      bool isProject = explicitArguments.empty() && projectCells(workspace, project, cells, error) && error.empty();
+      if (!error.empty())
+        log("kpp/cells: %s", error.c_str());
+      for (const ProjectCell& c : cells)
+        list.push(Json::object().set("target", c.target).set("configuration", c.configuration).set("visualStudio", c.visualStudio));
+      return Json::object().set("cells", std::move(list)).set("active", isProject && !activeCell.empty() ? cellJson(project) : Json(nullptr));
     }
 
     // The diagnostics in what a build printed, by file (overlayKey); lines without a place are logged.
@@ -1097,6 +1232,11 @@ namespace
     {
       dirty = false;
       cache = Cache(); // what it pointed into changes
+      if (!activeCell.empty() && announcedCell != activeCell)
+      {
+        notify("kpp/activeCell", cellJson(project));
+        announcedCell = activeCell;
+      }
       if (checkArguments.empty())
         return;
       auto start = Clock::now();
@@ -2456,8 +2596,14 @@ namespace
           workspace = uriToPath(params["rootUri"].text);
         else if (params["rootPath"].kind == Json::String)
           workspace = params["rootPath"].text;
-        readOptions(params["initializationOptions"]);
-        chooseArguments(self);
+        ProjectCheck wanted = project;
+        readOptions(params["initializationOptions"], wanted);
+        std::string error;
+        if (!chooseArguments(self, wanted, error))
+        {
+          showMessage(1, "Kpp: " + error + "; nothing is checked.");
+          checkArguments.clear();
+        }
         initialized = true;
         respond(id, Json::object()
                       .set("capabilities", capabilities())
@@ -2486,14 +2632,39 @@ namespace
       else if (method == "textDocument/didSave")
       {
         dirty = true; // files changed on disk by others are read again too
-        if (_wcsicmp(uriToPath(params["textDocument"]["uri"].text).filename().c_str(), L"build.kpp") == 0)
-          chooseArguments(self); // the project described again
+        std::string error;
+        if (_wcsicmp(uriToPath(params["textDocument"]["uri"].text).filename().c_str(), L"build.kpp") == 0 &&
+            !chooseArguments(self, project, error)) // the project described again
+        {
+          showMessage(1, "Kpp: " + error + "; nothing is checked.");
+          checkArguments.clear();
+          enterCell("");
+        }
       }
       else if (method == "workspace/didChangeConfiguration")
       {
-        readOptions(params["settings"]["kpp"]);
-        chooseArguments(self);
+        ProjectCheck wanted = project;
+        readOptions(params["settings"]["kpp"], wanted);
+        std::string error;
+        if (!chooseArguments(self, wanted, error))
+          showMessage(1, "Kpp: " + error + "; still checking " + cellName(project) + ".");
         dirty = true;
+      }
+      else if (method == "kpp/cells")
+        respond(id, cellList());
+      else if (method == "kpp/selectCell")
+      {
+        ProjectCheck wanted = project;
+        wanted.target = params["target"].kind == Json::String ? params["target"].text : std::string();
+        if (params["configuration"].kind == Json::String)
+          wanted.configuration = params["configuration"].text;
+        std::string error;
+        if (activeCell.empty())
+          respondError(id, -32803, "no build.kpp: the program has no cells");
+        else if (!chooseArguments(self, wanted, error))
+          respondError(id, -32803, error);
+        else
+          respond(id, cellJson(project));
       }
       else if (method == "textDocument/completion")
         respond(id, completion(params));

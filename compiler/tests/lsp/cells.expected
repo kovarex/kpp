@@ -1,0 +1,19 @@
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"positionEncoding":"utf-16","textDocumentSync":{"openClose":true,"change":2,"save":{"includeText":false}},"hoverProvider":true,"completionProvider":{"triggerCharacters":[".",">",":"]},"signatureHelpProvider":{"triggerCharacters":["(",","]},"renameProvider":{"prepareProvider":true},"semanticTokensProvider":{"legend":{"tokenTypes":["namespace","type","class","enum","struct","typeParameter","parameter","variable","property","enumMember","function","method"],"tokenModifiers":["declaration","defaultLibrary"]},"full":true},"definitionProvider":true,"declarationProvider":true,"referencesProvider":true,"documentSymbolProvider":true,"workspaceSymbolProvider":true},"serverInfo":{"name":"kppc","version":"0.1"}}}
+{"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"game","configuration":"debug"}}
+{"jsonrpc":"2.0","id":2,"result":{"cells":[{"target":"game","configuration":"debug","visualStudio":"Debug"},{"target":"game","configuration":"release","visualStudio":"Release"},{"target":"tool","configuration":"debug","visualStudio":"Debug"},{"target":"tool","configuration":"release","visualStudio":"Release"}],"active":{"target":"game","configuration":"debug"}}}
+{"jsonrpc":"2.0","id":3,"result":{"target":"game","configuration":"release"}}
+{"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"game","configuration":"release"}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"$ROOT/src/game/main.kpp","diagnostics":[{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":13}},"severity":1,"source":"kpp","message":"static assertion failed: \"the game is built in debug only\""}]}}
+{"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"tool","configuration":"release"}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"$ROOT/src/game/main.kpp","diagnostics":[]}}
+{"jsonrpc":"2.0","id":4,"result":{"cells":[{"target":"game","configuration":"debug","visualStudio":"Debug"},{"target":"game","configuration":"release","visualStudio":"Release"},{"target":"tool","configuration":"debug","visualStudio":"Debug"},{"target":"tool","configuration":"release","visualStudio":"Release"}],"active":{"target":"tool","configuration":"release"}}}
+{"jsonrpc":"2.0","method":"window/showMessage","params":{"type":1,"message":"Kpp: build.kpp has no target editor (its targets: game, tool); still checking tool, release."}}
+{"jsonrpc":"2.0","id":5,"error":{"code":-32803,"message":"build.kpp has no configuration profile (its configurations: debug, release)"}}
+{"jsonrpc":"2.0","id":6,"result":{"target":"game","configuration":"release"}}
+{"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"game","configuration":"release"}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"$ROOT/src/game/main.kpp","diagnostics":[{"range":{"start":{"line":1,"character":0},"end":{"line":1,"character":13}},"severity":1,"source":"kpp","message":"static assertion failed: \"the game is built in debug only\""}]}}
+{"jsonrpc":"2.0","id":7,"result":{"target":"tool","configuration":"debug"}}
+{"jsonrpc":"2.0","method":"kpp/activeCell","params":{"target":"tool","configuration":"debug"}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"$ROOT/src/game/main.kpp","diagnostics":[]}}
+{"jsonrpc":"2.0","id":8,"result":{"uri":"$ROOT/src/common/shared.kpp","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":10}}}}
+{"jsonrpc":"2.0","id":99,"result":null}

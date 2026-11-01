@@ -1,0 +1,20 @@
+// Cells (docs/editors.md, "Cells"), for tests\lsp.ps1 on a copy of tests\lsp\cells: build.kpp has the
+// targets game and tool in debug and release; the game's release cell has an error. $ROOT is the copy's URI.
+// The first cell is the client's: game, debug. No diagnostics.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{},"initializationOptions":{"target":"game","configuration":"debug","keptCells":2}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","id":2,"method":"kpp/cells","params":{}}
+// Visual Studio's solution configuration names the cell: the game's release cell, with its error.
+{"jsonrpc":"2.0","id":3,"method":"kpp/selectCell","params":{"target":"game","configuration":"Release|x64"}}
+// The setting's way: the tool, still release. The game's error goes: the game's files are not the tool's.
+{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"kpp":{"target":"tool"}}}}
+{"jsonrpc":"2.0","id":4,"method":"kpp/cells","params":{}}
+// Cells build.kpp does not have are errors; the cell stays.
+{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"kpp":{"target":"editor"}}}}
+{"jsonrpc":"2.0","id":5,"method":"kpp/selectCell","params":{"target":"game","configuration":"profile"}}
+// Back to the game's release cell (kept: two cells at most) and its error, then the tool in debug (by its Visual Studio name).
+{"jsonrpc":"2.0","id":6,"method":"kpp/selectCell","params":{"target":"game","configuration":"release"}}
+{"jsonrpc":"2.0","id":7,"method":"kpp/selectCell","params":{"target":"tool","configuration":"Debug"}}
+{"jsonrpc":"2.0","id":8,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/src/tool/main.kpp"},"position":{"line":2,"character":17}}}
+{"jsonrpc":"2.0","id":99,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

@@ -13,13 +13,24 @@
 int runProject(int argc, char** argv, CompileFunction compile);
 
 // The arguments a check of the project whose build.kpp is in directory or above it (or is
-// buildFile) compiles with (`kppc --lsp`, docs/ide.md and docs/editors.md): one configuration of one
-// executable, or of all of them together (their sources and exclusions with the first one's options),
-// without what only code generation and the link read; args[0] is the compiler. False when there is
-// no build.kpp; true with error set when it does not describe what is asked.
+// buildFile) compiles with (`kppc --lsp`, docs/ide.md and docs/editors.md): one cell, a configuration
+// of one target (an executable), or a configuration of all targets together (their sources and
+// exclusions with the first one's options), without what only code generation and the link read;
+// args[0] is the compiler. False when there is no build.kpp; true with error set when it does not
+// describe what is asked.
 struct ProjectCheck
 {
-  std::string configuration = "debug", executable, buildFile;
+  std::string configuration = "debug", target, buildFile; // target empty: every target
   std::vector<std::pair<std::string, std::string>> settings; // build.kpp's settings (`kpp --set`)
 };
 bool projectCheckArguments(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<std::string>& args, std::string& error);
+
+// The cells a project can be checked in (the language server's picker, docs/editors.md): every
+// target in every configuration, in build.kpp's order; visualStudio is the configuration's name in
+// the generated Visual Studio files (`Debug`), which Visual Studio's client sends. False and true
+// with error as projectCheckArguments.
+struct ProjectCell
+{
+  std::string target, configuration, visualStudio;
+};
+bool projectCells(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<ProjectCell>& cells, std::string& error);

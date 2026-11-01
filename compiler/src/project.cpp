@@ -1031,6 +1031,40 @@ int runProject(int argc, char** argv, CompileFunction compile)
   return act(root, request, compile);
 }
 
+bool projectCells(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<ProjectCell>& cells, std::string& error)
+{
+  fs::path root = check.buildFile.empty() ? findProject(directory) : fs::path(check.buildFile).parent_path();
+  if (root.empty())
+    return false;
+  if (!check.buildFile.empty() && !fs::is_regular_file(check.buildFile))
+  {
+    error = check.buildFile + " does not exist";
+    return true;
+  }
+  Request request;
+  request.server = false;
+  request.settings = check.settings;
+  std::vector<Description> descriptions;
+  if (!describe(root, request, descriptions) || !resolveUses(root, request, descriptions))
+  {
+    error = (root / "build.kpp").string() + " did not describe the build";
+    return true;
+  }
+  cells.clear();
+  // (generate's names: a target's projects are its executable's, Debug and Release its configurations)
+  auto add = [&](const std::string& target)
+  {
+    for (const Description& d : descriptions)
+      cells.push_back({target, d.configuration, d.configuration == "debug" ? "Debug" : "Release"});
+  };
+  for (const Program& p : descriptions[0].programs)
+    add(p.name);
+  if (descriptions[0].programs.empty())
+    for (const KppLibrary& l : descriptions[0].libraries)
+      add(l.name);
+  return true;
+}
+
 bool projectCheckArguments(const std::filesystem::path& directory, const ProjectCheck& check, std::vector<std::string>& args, std::string& error)
 {
   fs::path root = check.buildFile.empty() ? findProject(directory) : fs::path(check.buildFile).parent_path();
@@ -1074,15 +1108,15 @@ bool projectCheckArguments(const std::filesystem::path& directory, const Project
     program.roots.insert(program.roots.end(), d->libraries[0].testRoots.begin(), d->libraries[0].testRoots.end());
     program.arguments.push_back("--tests"); // its test blocks are checked too
   }
-  else if (!check.executable.empty())
+  else if (!check.target.empty())
   {
     const Program* named = nullptr;
     for (const Program& p : d->programs)
-      if (p.name == check.executable)
+      if (p.name == check.target)
         named = &p;
     if (!named)
     {
-      error = "build.kpp describes no executable " + check.executable;
+      error = "build.kpp describes no executable " + check.target;
       return true;
     }
     program = *named;

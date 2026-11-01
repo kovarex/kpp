@@ -26,19 +26,39 @@ Status (2026-10-31):
 
   ```json
   { "configuration": "debug",
-    "executable": null,
+    "target": null,
     "settings": { "PREBUILT": "D:/Factorio/vs2022/Releasex64" },
     "buildFile": "C:/project/build.kpp" }
   ```
 
-  - `configuration`: `debug` (the default) or `release`.
-  - `executable`: one of build.kpp's executables. `null` takes every executable's roots and
-    excludes together.
+  - `configuration` and `target`: the cell (below). `target` is one of build.kpp's executables;
+    `null` takes every executable's roots and excludes together. `executable` is read as `target`
+    too (its old name).
   - `settings`: build.kpp's settings, the `kpp --set` values.
   - `buildFile`: a build.kpp to use instead of the walk up.
 
+  - `keptCells`: how many cells keep their program (4 by default; about 6 GB each on the game).
+
   `workspace/didChangeConfiguration` with `{ "kpp": { the same keys } }` makes the server describe
   the project again. So does saving build.kpp.
+- **Cells.** The code is checked in the context of one cell, a target and a configuration of
+  build.kpp's: the one selected in the editor. The server switches cells without a restart and
+  keeps the program of each cell it checked, so switching back is quick.
+  - `kpp/cells` (request, no parameters) answers
+    `{ "cells": [{ "target", "configuration", "visualStudio" }], "active": { "target", "configuration" } }`:
+    every target in every configuration, in build.kpp's order; `visualStudio` is the
+    configuration's name in the generated Visual Studio files (`Debug`). Without a build.kpp the
+    list is empty and `active` null.
+  - `kpp/selectCell` (request) `{ "target", "configuration" }` makes that cell the checked one and
+    answers with it, or with an error (-32803) naming what build.kpp has; the cell then stays.
+    `configuration` may be a Visual Studio solution configuration: `Debug|x64` is matched by the
+    part before `|` against `visualStudio`, any case.
+  - `kpp/activeCell` (notification from the server) `{ "target", "configuration" }` after each
+    switch, the first check's cell too: for a status bar.
+  - What the clients send (thread E's to build): VS Code and other editors the settings
+    `kpp.target` and `kpp.configuration` (didChangeConfiguration) and a status-bar picker on
+    `kpp/cells` and `kpp/selectCell`; Visual Studio its active solution configuration and startup
+    project, with `kpp/selectCell` when either changes. A cell build.kpp does not have is shown as an error and the checked cell stays.
 - **Capabilities:**
   - incremental text sync;
   - pushed diagnostics (`textDocument/publishDiagnostics`, source `kpp`), also for files the

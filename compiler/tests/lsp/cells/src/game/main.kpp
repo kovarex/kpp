@@ -1,0 +1,8 @@
+// The game's release cell does not compile.
+static_assert(config::debug, "the game is built in debug only");
+
+int main()
+{
+  println("{}", shared());
+  return 0;
+}

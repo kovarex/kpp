@@ -1,6 +1,7 @@
 #pragma once
 #include "server.hpp"
 #include <functional>
+#include <memory>
 #include <vector>
 
 struct ParsedFile;
@@ -25,3 +26,10 @@ struct KeptProgram
   GlobalScope* global = nullptr;
 };
 bool withKeptProgram(const std::function<void(const KeptProgram&)>& f);
+
+// The kept build taken out of the process (main.cpp), none left kept, and put back (replacing and
+// freeing what is kept then; null: none): the language server keeps one per cell it checked (a
+// target and a configuration), so that switching back is incremental.
+struct KeptState;
+std::shared_ptr<KeptState> takeKeptState();
+void putKeptState(std::shared_ptr<KeptState> state);

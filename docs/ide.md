@@ -369,14 +369,37 @@ on its stdin and stdout; its log goes to stderr.
 **Launch**, as thread E's clients start it ([editors.md](editors.md), "The language server", whose
 interface this follows): `kpp --lsp` with no other arguments checks the project of the editor's
 workspace folder: build.kpp, found from the folder up (or `buildFile`), gives the sources and options
-of one configuration (`configuration`, debug by default) of one executable (`executable`), or of all
-of them together (their sources and exclusions with the first one's options), with build.kpp's
-`settings` (`projectCheckArguments`, project.cpp; those four are the keys of initializationOptions
-and of `workspace/didChangeConfiguration`'s `kpp`; saving build.kpp describes the project again).
-Without a build.kpp the folder itself is the program. `kppc --lsp OPTIONS SOURCES` checks exactly
-those (the converted game is checked this way: it has no build.kpp). A check always adds
+of one cell, a configuration (`configuration`, debug by default) of one target (`target`), or of all
+targets together (their sources and exclusions with the first one's options), with build.kpp's
+`settings` (`projectCheckArguments`, project.cpp; those are the keys of initializationOptions and of
+`workspace/didChangeConfiguration`'s `kpp`; saving build.kpp describes the project again). Without
+a build.kpp the folder itself is the program. `kppc --lsp OPTIONS SOURCES` checks exactly those. A
+check always adds
 `--quiet --diagnostic-columns --check` and the standard library; `--exe`, `--emit-llvm` and
 `--server` given are left out (logged). `--lsp-log FILE` writes the log to a file too.
+
+**Cells** (kovarex, 2026-11-01: the configuration selected in the IDE "is the context of editing
+the code"). A cell is a target and a configuration of build.kpp's (`projectCells`, project.cpp);
+the server checks one at a time, the one the client selected: initializationOptions,
+`workspace/didChangeConfiguration` or the request
+`kpp/selectCell`, which answers with the cell or an error; `kpp/cells` lists them for a picker, and
+the notification `kpp/activeCell` names the cell after each switch. Visual Studio sends its
+solution configuration (`Debug|x64`, matched by the generated files' configuration names, any case)
+and its startup project (the target). A cell build.kpp does not have is an error and the cell stays
+as it was. Switching does not restart anything: the checked cell's kept build is parked
+(`takeKeptState`, main.cpp) and the new cell's put back (`putKeptState`), so a switch back to a cell
+checked before is incremental; at most `keptCells` (4) are kept, the least recently used dropped. A
+cell's kept build is used only for the arguments it was made with: a change of `settings` or of
+what build.kpp describes checks it from scratch. The open documents' unsaved texts stand in every
+cell. Interface in [editors.md](editors.md), "Cells"; tested by tests/lsp/cells.jsonl. Next, once
+thread E's matrix lands: each cell's `config::` values and where each came from (a configuration's
+constant, a library's `option` default, `configure(Cell&)`), shown by hover on a `config::` name.
+
+Measured on the game (factorio-in-kpp 73c8aeb1, its build.kpp, a scratch copy; scratchpad
+cellsmeasure.py), target factorio: the first check of a cell 10.5 to 10.7 s (debug, then release);
+switching back to a kept cell 0.12 to 0.15 s (debug) and 1.17 s (release), the switch request itself
+2 ms. Each kept cell of the game holds about 6 GB (the process: 6.2 GB with one cell, 12.3 GB with
+two), so `keptCells` is the memory's limit.
 
 **How it holds the program.** In its own process, through the compile server's machinery
 (`buildInThisProcess`, server.cpp): each check is a build of the kind a compile server runs, kept
