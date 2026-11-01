@@ -87,14 +87,14 @@ template<typename T>
 struct List
 {
   ListLinks sentinel;
-  int length = 0;
+  ContainerSize length = 0;
 
   using iterator = ListIterator<T>;
   using const_iterator = ListIterator<const T>;
   using reverse_iterator = ReverseIterator<iterator>;
   using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
@@ -148,7 +148,7 @@ struct List
     return *this;
   }
 
-  int size() const { return this->length; }
+  ContainerSize size() const { return this->length; }
   bool empty() const { return this->length == 0; }
   // A const List's elements are const through every access, as std::list's.
   T& front() { return ((ListNode<T>*)this->sentinel.next)->value; }
@@ -248,15 +248,15 @@ struct List
   }
 
   // Removes every element equal to value / for which predicate is true; returns how many.
-  int remove(const T& value)
+  ContainerSize remove(const T& value)
   {
     T copy(value); // value may be an element of this list
     return this->removeIf([&](const T& element) { return element == copy; });
   }
   template<typename F>
-  int removeIf(F predicate)
+  ContainerSize removeIf(F predicate)
   {
-    int removed = 0;
+    ContainerSize removed = 0;
     for (ListIterator<T> it = this->begin(); it != this->end();)
       if (predicate(*it))
       {
@@ -268,9 +268,9 @@ struct List
     return removed;
   }
   // Removes each element equal to the one before it; returns how many.
-  int unique()
+  ContainerSize unique()
   {
-    int removed = 0;
+    ContainerSize removed = 0;
     if (this->length < 2)
       return 0;
     ListIterator<T> previous = this->begin();
@@ -313,7 +313,7 @@ struct List
     for (ListLinks* node = this->sentinel.next; node != &this->sentinel; node = node->next)
       nodes.push_back((ListNode<T>*)node);
     stableSort(nodes.begin(), nodes.end(), [&](ListNode<T>* a, ListNode<T>* b) { return less(a->value, b->value); });
-    int length = this->length;
+    ContainerSize length = this->length;
     this->becomeEmpty();
     for (ListNode<T>* node : nodes)
       listLinkBefore(&this->sentinel, node);
@@ -336,7 +336,7 @@ struct List
   }
 
   // Internals.
-  // Its length is an int (core/Sizes.kpp): LengthError past maxContainerSize, BadAlloc when malloc fails.
+  // Its length is a size (core/Sizes.kpp): LengthError past maxContainerSize, BadAlloc when malloc fails.
   ListNode<T>* allocateNode()
   {
     if (this->length == maxContainerSize)

@@ -52,7 +52,7 @@ struct ForwardList
   using iterator = ForwardIterator<T>;
   using const_iterator = ForwardIterator<T>;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
@@ -148,10 +148,10 @@ struct ForwardList
   }
 
   // Removes every element equal to value; returns how many.
-  int remove(const T& value)
+  ContainerSize remove(const T& value)
   {
     T copy(value); // value may be an element
-    int removed = 0;
+    ContainerSize removed = 0;
     ForwardIterator<T> previous = this->before_begin();
     while (previous.node->next)
     {

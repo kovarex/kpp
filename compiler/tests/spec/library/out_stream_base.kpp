@@ -3,7 +3,7 @@
 struct Collected : OutStream
 {
   String text;
-  void writeBytes(const char* data, int count) override { this->text.append(data, count); }
+  void writeBytes(const char* data, ContainerSize count) override { this->text.append(data, count); }
 };
 void report(OutStream& os, int tests, double seconds)
 {

@@ -11,7 +11,7 @@ change.
 
 Members:
 - `Span()`: views nothing (a fixed extent's count stays its extent).
-- `Span(T* items, int count)`, `Span(T* first, T* last)`: those elements.
+- `Span(T* items, ContainerSize count)`, `Span(T* first, T* last)`: those elements.
 - From a Vector, an Array, a plain array (`T[N]`) or a Subrange of pointers whose elements convert
   to T as pointers (U to const U, a derived class to a base): implicit for a span of any length;
   for a fixed extent, explicit from a Vector or a Subrange (whose count must be the extent), and
@@ -27,8 +27,8 @@ Members:
   element out of range is a program error, not checked.
 - `subspan(offset, count)`, `subspan(offset)`, `first(count)`, `last(count)`: Spans of any length
   over a part.
-- `element_type`, `value_type`: T; `size_type`: int; `iterator`, `pointer`: T*.
+- `element_type`, `value_type`: T; `size_type`: ContainerSize; `iterator`, `pointer`: T*.
 
-*Differences from C++*: the count is an int; a Span of a fixed extent stores its count like any
+*Differences from C++*: the count is a ContainerSize (common.md); a Span of a fixed extent stores its count like any
 other (two words where C++ makes it one); the subspan, first and last that take their counts as
 template arguments are not provided.

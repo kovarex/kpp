@@ -26,7 +26,7 @@ Iterators are pointers (`T*`), so "iterator" and "pointer" are invalidated toget
 
 Construction and assignment:
 - `Vector()`: empty, capacity 0, no allocation.
-- `Vector(int count)`: `count` default-constructed elements. `Vector(count, value)`: count copies
+- `Vector(ContainerSize count)`: `count` default-constructed elements. `Vector(count, value)`: count copies
   of value. `Vector(first, last)`: copies of the elements of [first, last), input iterators of
   any kind (pointers, another container's iterators), as `insert(end(), first, last)`; integer
   arguments are a count and a value, never a range.
@@ -82,7 +82,8 @@ Adding and removing:
 Comparison: `==` and `<=>` (common.md): equal with equal elements in order, ordered
 lexicographically.
 
-Kpp additions (not in C++): `insert(int index, value)`, `erase(int index)` taking an index,
+Kpp additions (not in C++): `insert(index, value)`, `erase(index)` taking an index of any integer
+type (so that a literal 0 is the index, not a null position),
 `contains(value)` (linear search with `==`). A Vector converts to `Span<T>` of its elements.
 
 *Difference from C++*: there is no packed `Vector<bool>`; a Vector of bools stores one bool per

@@ -1,5 +1,5 @@
-// spec: a Vector holds at most maxContainerSize (2^31 - 1) elements, its sizes being int: an insert or construction that would make it longer throws LengthError("vector too long") before it moves or copies an element, as std::vector throws length_error past max_size(), and leaves the vector as it was; a block it cannot allocate throws BadAlloc, as std's operator new, instead of constructing into a null pointer
-// factorio: none known; the guarantee that a size past int's range or a failed malloc is an error, not a wrapped length or a write through null
+// spec: a Vector holds at most maxContainerSize (2^32 - 2 with the default 32-bit sizes) elements, its sizes being ContainerSize: an insert or construction that would make it longer throws LengthError("vector too long") before it moves or copies an element, as std::vector throws length_error past max_size(), and leaves the vector as it was; a block it cannot allocate throws BadAlloc, as std's operator new, instead of constructing into a null pointer
+// factorio: none known; the guarantee that a size past the size's range or a failed malloc is an error, not a wrapped length or a write through null
 struct Page
 {
   char bytes[4096];
@@ -17,18 +17,18 @@ int main()
   {
     println("insert: {}, {} {} {}", e.what(), numbers.size(), numbers[0], numbers[2]);
   }
-  // A range of 3 G elements: the length is checked before an element is read.
+  // A range of 5 G elements, past the largest size: the length is checked before an element is read.
   const char* first = "abc";
   try
   {
-    Vector<char> range(first, first + 3000000000LL);
+    Vector<char> range(first, first + 5000000000LL);
     println("constructed {}", range.size());
   }
   catch (const LengthError& e)
   {
     println("range: {}", e.what());
   }
-  // 2^31 - 1 elements of 4 KB: 8 TB, which no malloc returns.
+  // 2^32 - 2 elements of 4 KB: 16 TB, which no malloc returns.
   try
   {
     Vector<Page> huge;

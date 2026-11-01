@@ -4,9 +4,19 @@ These rules hold for every container and algorithm unless its own page says othe
 
 ## Sizes and positions
 
-Sizes, counts and indices are `int` (32 bits, signed). A container holds at most 2^31 - 1
-elements. *Difference from C++*: C++ uses an unsigned `size_t`, so `size() - 1` on an empty
-container is a huge number there and -1 here.
+Sizes, counts, capacities, lengths, indices and positions are `ContainerSize`: unsigned, as C++'s
+`size_t`, so `size() - 1` on an empty container is the largest size here as there, and a negative
+`int` passed as a count becomes a huge one. It is `u32`, or `u64` when the program is built with
+`kppc --config sizeBits=64` (stdlib/core/Sizes.kpp, the one place that says which: both widths are
+measured on the game). `npos` is its largest value; a container holds at most one less,
+`maxContainerSize` (2^32 - 2 with 32-bit sizes). A size past that throws LengthError (C++'s
+length_error past max_size()), and memory that cannot be had throws BadAlloc.
+
+What stays signed is what can be negative: a difference of positions (`difference_type`,
+`ptrdiff_t`, an iterator's `-`), an iterator's offset, and a comparison's result (`compare`).
+
+*Difference from C++*: the width. `size_t` is 64 bits; ContainerSize is 32 unless sizeBits=64,
+so a container of more than 2^32 - 2 elements or bytes throws where C++'s would not.
 
 ## Element requirements
 
@@ -43,7 +53,7 @@ as it is; otherwise a key of another type is converted to the key type once, bef
 
 ## Member types
 
-Every container names its types as members: `value_type` (the element), `size_type` (`int`),
+Every container names its types as members: `value_type` (the element), `size_type` (`ContainerSize`),
 `difference_type` (`ptrdiff_t`), `reference` and `const_reference`, `pointer` and `const_pointer`,
 `iterator` and `const_iterator`, and, where the container has `rbegin()`, `reverse_iterator` and
 `const_reverse_iterator`. The maps and sets also have `key_type` and, for maps, `mapped_type`;

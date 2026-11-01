@@ -17,26 +17,54 @@ the converted game. The four listed until 2026-10-29 pass now (language/brace_ar
 templates/forwarding_reference_to_function, language/array_new_and_delete with
 library/unique_array_from_new, classes/reference_bound_through_conversion_operator).
 
-**Sizes are int** (core/Sizes.kpp, 2026-11-01). The containers count elements and bytes in int, so
-the most any holds is maxContainerSize, 2^31 - 1, where std's max_size() is far larger. Past it,
-every path throws LengthError with MSVC's message ("vector too long", "string too long", "map/set
-too long", "list too long", "unordered_map/set too long", "deque too long"), as std throws
-length_error past max_size(). It throws before an element or byte is copied, and the container is
-left as it was.
+**Sizes are 32-bit unsigned** (core/Sizes.kpp; kovarex 2026-11-01: "all the sizes should be
+unsigned"). Every size, count, capacity, length, index and position is a `ContainerSize`, unsigned
+as std's `size_t`, but 32 bits wide where size_t is 64 (common.md). The width is one alias,
+`ContainerSize`, chosen by `config::sizeBits`: `kppc --config sizeBits=64` makes it u64 and every
+container, String and InitializerList follows, with no other change. String grows from 24 bytes
+to 32 then, so that its heap fields stay clear of the byte that marks a short string. The width is
+measured on the game (D's research); the deviation is only the width. What stays signed is what can be
+negative: differences of positions (`difference_type`, iterator subtraction), iterator offsets,
+comparison results.
+
+`npos` is the largest size, as std's is the largest size_t. A container holds at most one less,
+`maxContainerSize`, where std's max_size() is far larger. Past it, every path throws LengthError
+with MSVC's message ("vector too long", "string too long", "map/set too long", "list too long",
+"unordered_map/set too long", "deque too long"), as std throws length_error past max_size(). It
+throws before an element or byte is copied, and the container is left as it was. A negative count
+converted to a size is past it, as in C++.
 
 A block malloc cannot give throws BadAlloc, as std's operator new does. Each path gets the check
 it needs:
-- a size plus what is added to it goes through sizeSum;
+- a size plus what is added to it goes through sizeSum, which never forms a wrapping sum;
 - a count from outside the container (strlen, a pointer range, distance) goes through
-  checkedSize;
+  checkedSize: LengthError when negative or past the limit;
 - doubling stops at maxContainerSize (grownCapacity);
-- HashMap and HashSet have at most 2^30 slots, which hold about 805 million entries;
+- HashMap and HashSet have at most a power of two of slots, half the size range (2^31 with
+  32-bit sizes), which hold 3/4 as many entries;
 - Deque's map has at most maxContainerSize / blockSize() blocks.
 
 `OutStream << const char*` writes a longer C string in pieces, and String's find and rfind of a
 longer needle return npos.
 
-Until 2026-11-01 these sizes wrapped silently:
+The unsigned traps in the library's own code, fixed with the change and specified in
+library/unsigned_size_traps:
+- backward searches stop at 0 instead of testing `i >= 0` (String's, StringView's and WString's
+  rfind; WString's find_last_of; Bitset's to_string; PriorityQueue's heapify);
+- `length - count` is not formed when count is the larger (WString's find with a longer needle);
+- a negative count no longer means "to the end": npos does, as any count past the end
+  (substr, erase, append of a part);
+- Deque's erase of a range at the front counts down to 0, and an empty range is tested before
+  the subtraction;
+- PriorityQueue's siftDown loops while a child exists, so `2 * i + 1` cannot wrap;
+- compare() results stay int (WString's `<=>` had turned its result unsigned, where `c < 0`
+  never holds).
+
+The index forms that are Kpp's own (Vector's `insert(index, value)` and `erase(index)`, String's
+`erase(index)`) take an index of any integer type, so that a literal 0 is the index and not a null
+position (with a ContainerSize parameter the call was ambiguous).
+
+Until 2026-11-01 the sizes were int, and before that day's checks they wrapped silently:
 - String::append's `length + count` passed its capacity check when it wrapped, and the copy
   wrote past the block;
 - doubling and `count + 1` went negative, malloc's null was written through;
@@ -46,6 +74,12 @@ Until 2026-11-01 these sizes wrapped silently:
 The edges are specified in library/size_limits_string, size_limits_vector and size_limits_growth.
 stableSort throws BadAlloc when malloc cannot give its buffer. std's stable_sort falls back to
 sorting in place instead; that fallback comes when a use needs it.
+
+Two compiler gaps found on the way:
+- Span writes its extent and the counts it deduces from arrays as `unsigned long long`, not
+  ContainerSize, until templates/constructor_deduces_value_of_alias_type passes (D);
+- a stream deriving from OutStream with the old `writeBytes(const char*, int) override` compiled
+  and called the pure virtual function (classes/override_of_nothing_is_error, D).
 
 **Optional** (docs/stdlib/optional.md): not in the specification, kept from the game's own
 Optional until nothing uses them: get(), set(), clear(), operator~, emptyValue().

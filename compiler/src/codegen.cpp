@@ -2251,7 +2251,9 @@ namespace
       if (info.fieldDecls.size() < 2)
         unsupported(at, "an InitializerList class without its two fields");
       fn += "  store ptr " + array + ", ptr " + gep(info.name, list, fieldIndexOf(info, info.fieldDecls[0])) + "\n";
-      fn += "  store i32 " + std::to_string(n) + ", ptr " + gep(info.name, list, fieldIndexOf(info, info.fieldDecls[1])) + "\n";
+      // The count in its field's own type (the library's ContainerSize: u32, or u64 with --config sizeBits=64).
+      uint32_t countField = fieldIndexOf(info, info.fieldDecls[1]);
+      fn += "  store " + llType(info.fieldTypes[countField], at) + " " + std::to_string(n) + ", ptr " + gep(info.name, list, countField) + "\n";
       return list;
     }
 

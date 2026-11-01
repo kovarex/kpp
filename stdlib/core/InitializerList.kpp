@@ -5,15 +5,15 @@ template<typename T>
 struct InitializerList
 {
   const T* items = nullptr;
-  int length = 0;
+  ContainerSize length = 0;
 
   InitializerList() {}
-  InitializerList(const T* items, int length) : items(items), length(length) {}
+  InitializerList(const T* items, ContainerSize length) : items(items), length(length) {}
 
-  int size() const { return this->length; }
+  ContainerSize size() const { return this->length; }
   bool empty() const { return this->length == 0; }
   const T* begin() const { return this->items; }
   const T* end() const { return this->items + this->length; }
   const T* data() const { return this->items; }
-  const T& operator[](int index) const { return this->items[index]; }
+  const T& operator[](ContainerSize index) const { return this->items[index]; }
 };

@@ -134,37 +134,37 @@ namespace filesystem
     // The parts, as offsets into the text: the root name ends at rootNameEnd (a drive `C:` or a
     // server `\\name`), the root directory is the one separator after it, and the relative path
     // starts after every separator there.
-    int rootNameEnd() const
+    ContainerSize rootNameEnd() const
     {
       const WString& t = this->text;
-      int n = t.size();
+      ContainerSize n = t.size();
       if (n >= 2 && t[1] == L':' && ((t[0] >= L'A' && t[0] <= L'Z') || (t[0] >= L'a' && t[0] <= L'z')))
         return 2;
       if (n >= 3 && path::isSeparator(t[0]) && path::isSeparator(t[1]) && !path::isSeparator(t[2]))
       {
-        int i = 3;
+        ContainerSize i = 3;
         while (i < n && !path::isSeparator(t[i]))
           ++i;
         return i;
       }
       return 0;
     }
-    int rootDirectoryEnd() const
+    ContainerSize rootDirectoryEnd() const
     {
-      int i = this->rootNameEnd();
+      ContainerSize i = this->rootNameEnd();
       return i < this->text.size() && path::isSeparator(this->text[i]) ? i + 1 : i;
     }
-    int relativeStart() const
+    ContainerSize relativeStart() const
     {
-      int i = this->rootNameEnd();
+      ContainerSize i = this->rootNameEnd();
       while (i < this->text.size() && path::isSeparator(this->text[i]))
         ++i;
       return i;
     }
-    int filenameStart() const
+    ContainerSize filenameStart() const
     {
-      int start = this->relativeStart();
-      int i = this->text.size();
+      ContainerSize start = this->relativeStart();
+      ContainerSize i = this->text.size();
       while (i > start && !path::isSeparator(this->text[i - 1]))
         --i;
       return i;
@@ -175,7 +175,7 @@ namespace filesystem
     // p follows a separator (none after a root name alone or a trailing separator).
     path& operator/=(const path& p)
     {
-      int otherRootName = p.rootNameEnd();
+      ContainerSize otherRootName = p.rootNameEnd();
       if (p.is_absolute() || (otherRootName > 0 && p.root_name().text != this->root_name().text))
       {
         this->text = p.text;
@@ -290,7 +290,7 @@ namespace filesystem
     path root_name() const { return path(this->text.substr(0, this->rootNameEnd())); }
     path root_directory() const
     {
-      int a = this->rootNameEnd();
+      ContainerSize a = this->rootNameEnd();
       return path(this->text.substr(a, this->rootDirectoryEnd() - a));
     }
     path root_path() const { return path(this->text.substr(0, this->rootDirectoryEnd())); }
@@ -299,10 +299,10 @@ namespace filesystem
     // separators before that element removed.
     path parent_path() const
     {
-      int start = this->relativeStart();
+      ContainerSize start = this->relativeStart();
       if (start == this->text.size())
         return *this;
-      int end = this->filenameStart();
+      ContainerSize end = this->filenameStart();
       while (end > start && path::isSeparator(this->text[end - 1]))
         --end;
       if (end == start)
@@ -315,21 +315,21 @@ namespace filesystem
     path stem() const
     {
       WString name = this->text.substr(this->filenameStart());
-      int dot = path::extensionDot(name);
+      ContainerSize dot = path::extensionDot(name);
       return path(dot == WString::npos ? name : name.substr(0, dot));
     }
     path extension() const
     {
       WString name = this->text.substr(this->filenameStart());
-      int dot = path::extensionDot(name);
+      ContainerSize dot = path::extensionDot(name);
       return path(dot == WString::npos ? WString() : name.substr(dot));
     }
-    static int extensionDot(const WString& name)
+    static ContainerSize extensionDot(const WString& name)
     {
       if (name == L"." || name == L"..")
         return WString::npos;
-      int dot = name.rfind(L'.');
-      return dot <= 0 ? WString::npos : dot;
+      ContainerSize dot = name.rfind(L'.');
+      return dot == 0 ? WString::npos : dot; // (rfind's npos stays npos)
     }
 
     bool empty() const { return this->text.empty(); }
@@ -385,24 +385,24 @@ namespace filesystem
     using iterator_category = BidirectionalIteratorTag;
 
     const path* owner = nullptr;
-    int position = 0; // where the element starts; past the text's end for end()
-    int length = 0;
+    ContainerSize position = 0; // where the element starts; past the text's end for end()
+    ContainerSize length = 0;
     path element;
 
     pathIterator() {}
-    pathIterator(const path* owner, int position, int length) : owner(owner), position(position), length(length)
+    pathIterator(const path* owner, ContainerSize position, ContainerSize length) : owner(owner), position(position), length(length)
     {
       if (owner && position <= owner->text.size())
         this->element = path(owner->text.substr(position, length));
     }
 
     // The element after the one at [position, position + length).
-    static pathIterator after(const path* owner, int position, int length)
+    static pathIterator after(const path* owner, ContainerSize position, ContainerSize length)
     {
       const WString& t = owner->text;
-      int n = t.size();
-      int rootName = owner->rootNameEnd();
-      int rootDirectory = owner->rootDirectoryEnd();
+      ContainerSize n = t.size();
+      ContainerSize rootName = owner->rootNameEnd();
+      ContainerSize rootDirectory = owner->rootDirectoryEnd();
       if (position >= n)
         return pathIterator(owner, n + 1, 0);
       if (position == 0 && length == rootName && rootName > 0)
@@ -413,20 +413,20 @@ namespace filesystem
       }
       if (position == rootName && rootDirectory > rootName && length == 1)
         return pathIterator::filenameAt(owner, owner->relativeStart());
-      int i = position + length;
-      int separators = i;
+      ContainerSize i = position + length;
+      ContainerSize separators = i;
       while (i < n && path::isSeparator(t[i]))
         ++i;
       if (i == n)
         return separators < n ? pathIterator(owner, n, 0) : pathIterator(owner, n + 1, 0);
       return pathIterator::filenameAt(owner, i);
     }
-    static pathIterator filenameAt(const path* owner, int start)
+    static pathIterator filenameAt(const path* owner, ContainerSize start)
     {
       const WString& t = owner->text;
       if (start >= t.size())
         return pathIterator(owner, t.size() + 1, 0);
-      int end = start;
+      ContainerSize end = start;
       while (end < t.size() && !path::isSeparator(t[end]))
         ++end;
       return pathIterator(owner, start, end - start);
@@ -435,7 +435,7 @@ namespace filesystem
     {
       if (owner->text.empty())
         return pathIterator(owner, 1, 0);
-      int rootName = owner->rootNameEnd();
+      ContainerSize rootName = owner->rootNameEnd();
       if (rootName > 0)
         return pathIterator(owner, 0, rootName);
       if (owner->rootDirectoryEnd() > 0)
@@ -544,7 +544,7 @@ namespace filesystem
         c = L'\\';
     if (this->has_root_directory())
       result.push_back(L'\\');
-    for (int i = 0; i < parts.size(); ++i)
+    for (ContainerSize i = 0; i < parts.size(); ++i)
     {
       if (i > 0)
         result.push_back(L'\\');
@@ -1104,11 +1104,11 @@ namespace filesystem
     wchar_t buffer[520];
     unsigned long n = get(520, buffer);
     if (n < 520)
-      return WString(buffer, (int)n);
+      return WString(buffer, (ContainerSize)n);
     WString big;
-    big.resize((int)n);
+    big.resize((ContainerSize)n);
     n = get(n, big.data());
-    big.resize((int)n);
+    big.resize((ContainerSize)n);
     return big;
   }
 
@@ -1126,11 +1126,11 @@ namespace filesystem
       return path();
     }
     if (n < 520)
-      return path(WString(buffer, (int)n));
+      return path(WString(buffer, (ContainerSize)n));
     WString big;
-    big.resize((int)n);
+    big.resize((ContainerSize)n);
     n = win32::GetFullPathNameW(p.c_str(), n, big.data(), nullptr);
-    big.resize((int)n);
+    big.resize((ContainerSize)n);
     return path(big);
   }
   path absolute(const path& p)
@@ -1156,12 +1156,12 @@ namespace filesystem
     unsigned long n = win32::GetFinalPathNameByHandleW(file, buffer, 520, 0);
     WString result;
     if (n > 0 && n < 520)
-      result = WString(buffer, (int)n);
+      result = WString(buffer, (ContainerSize)n);
     else if (n >= 520)
     {
-      result.resize((int)n);
+      result.resize((ContainerSize)n);
       n = win32::GetFinalPathNameByHandleW(file, result.data(), n, 0);
-      result.resize((int)n);
+      result.resize((ContainerSize)n);
     }
     if (n == 0)
       ec = lastError();

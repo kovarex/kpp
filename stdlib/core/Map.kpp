@@ -378,7 +378,7 @@ template<typename E, typename K, typename KeyOf, typename Compare>
 struct RbTree
 {
   RbNodeBase header;
-  int count = 0;
+  ContainerSize count = 0;
   Compare compare;
 
   RbTree() { this->becomeEmpty(); }
@@ -491,7 +491,7 @@ struct RbTree
     }
   }
   template<typename Key>
-  int countOf(const Key& key) const
+  ContainerSize countOf(const Key& key) const
   {
     if constexpr (!isTransparent<Compare> && !isSame<RemoveCvRef<Key>, RemoveCvRef<K>>)
     {
@@ -500,7 +500,7 @@ struct RbTree
     }
     else
     {
-      int n = 0;
+      ContainerSize n = 0;
       for (RbIterator<E> at = this->lowerBound(key); at.node != &this->header && !this->compare(key, RbTree::keyOf(at.node)); ++at)
         ++n;
       return n;
@@ -581,7 +581,7 @@ struct RbTree
   template<typename... Args>
   RbNode<E>* newNode(Args&&... args)
   {
-    if (this->count == maxContainerSize) // its count is an int (core/Sizes.kpp)
+    if (this->count == maxContainerSize) // its count is a size (core/Sizes.kpp)
       throwLengthError("map/set too long");
     RbNode<E>* node = (RbNode<E>*)allocateBytes(sizeof(RbNode<E>));
     new (&node->entry) E(forward<Args>(args)...);
@@ -798,7 +798,7 @@ struct Map
   using iterator = RbIterator<Pair<K, V>>;
   using const_iterator = RbIterator<const Pair<K, V>>;
   using value_type = Pair<K, V>;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = Pair<K, V>&;
   using const_reference = const Pair<K, V>&;
@@ -831,7 +831,7 @@ struct Map
   template<typename It>
   Map(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  int size() const { return this->tree.count; }
+  ContainerSize size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   // A const Map's positions are const_iterators: its entries are not changed through them.
   iterator begin() { return this->tree.begin(); }
@@ -855,9 +855,9 @@ struct Map
   bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
   template<typename Key>
   bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  int count(const K& key) const { return this->contains(key) ? 1 : 0; }
+  ContainerSize count(const K& key) const { return this->contains(key) ? 1 : 0; }
   template<typename Key>
-  int count(const Key& key) const { return this->tree.countOf(key); }
+  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
   iterator lowerBound(const K& key) { return this->tree.lowerBound(key); }
   template<typename Key>
   iterator lowerBound(const Key& key) { return this->tree.lowerBound(key); }
@@ -971,7 +971,7 @@ struct Map
   // Kpp's shorthand: true when the key was new.
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
   // The number of entries removed (0 or 1).
-  int erase(const K& key)
+  ContainerSize erase(const K& key)
   {
     RbIterator<Pair<K, V>> at = this->tree.find(key);
     if (at == this->tree.end())
@@ -1080,7 +1080,7 @@ struct Set
   using iterator = RbIterator<const T>; // a set's elements are its keys: const through every position
   using const_iterator = RbIterator<const T>;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
@@ -1111,7 +1111,7 @@ struct Set
   template<typename It>
   Set(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  int size() const { return this->tree.count; }
+  ContainerSize size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   const_iterator begin() const { return this->tree.begin(); }
   const_iterator end() const { return this->tree.end(); }
@@ -1129,9 +1129,9 @@ struct Set
   bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
   template<typename Key>
   bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  int count(const T& value) const { return this->contains(value) ? 1 : 0; }
+  ContainerSize count(const T& value) const { return this->contains(value) ? 1 : 0; }
   template<typename Key>
-  int count(const Key& key) const { return this->tree.countOf(key); }
+  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
   const_iterator lowerBound(const T& value) const { return this->tree.lowerBound(value); }
   template<typename Key>
   const_iterator lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
@@ -1166,7 +1166,7 @@ struct Set
   template<typename... Args>
   Pair<iterator, bool> emplace(Args&&... args) { return this->tree.emplaceUnique(forward<Args>(args)...); }
   // The number of values removed (0 or 1).
-  int erase(const T& value)
+  ContainerSize erase(const T& value)
   {
     RbIterator<T> at = this->tree.find(value);
     if (at == this->tree.end())
@@ -1273,7 +1273,7 @@ struct MultiMap
   using iterator = RbIterator<Pair<K, V>>;
   using const_iterator = RbIterator<const Pair<K, V>>;
   using value_type = Pair<K, V>;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = Pair<K, V>&;
   using const_reference = const Pair<K, V>&;
@@ -1303,7 +1303,7 @@ struct MultiMap
   template<typename It>
   MultiMap(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  int size() const { return this->tree.count; }
+  ContainerSize size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   iterator begin() { return this->tree.begin(); }
   const_iterator begin() const { return this->tree.begin(); }
@@ -1325,9 +1325,9 @@ struct MultiMap
   bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
   template<typename Key>
   bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  int count(const K& key) const { return this->tree.countOf(key); }
+  ContainerSize count(const K& key) const { return this->tree.countOf(key); }
   template<typename Key>
-  int count(const Key& key) const { return this->tree.countOf(key); }
+  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
   iterator lowerBound(const K& key) { return this->tree.lowerBound(key); }
   const_iterator lowerBound(const K& key) const { return this->tree.lowerBound(key); }
   template<typename Key>
@@ -1365,11 +1365,11 @@ struct MultiMap
   RbIterator<Pair<K, V>> emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
   RbIterator<Pair<K, V>> insert(const K& key, const V& value) { return this->tree.insertEqual(Pair<K, V>(key, value)); }
   // Removes every entry with key; returns how many.
-  int erase(const K& key)
+  ContainerSize erase(const K& key)
   {
     RbIterator<Pair<K, V>> first = this->tree.lowerBound(key);
     RbIterator<Pair<K, V>> last = this->tree.upperBound(key);
-    int removed = 0;
+    ContainerSize removed = 0;
     while (first != last)
     {
       first = this->tree.erase(first);
@@ -1461,7 +1461,7 @@ struct MultiSet
   using iterator = RbIterator<const T>; // a set's elements are its keys: const through every position
   using const_iterator = RbIterator<const T>;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
@@ -1490,7 +1490,7 @@ struct MultiSet
   template<typename It>
   MultiSet(It first, It last, const Compare& compare = Compare()) : tree(compare) { this->insert(first, last); }
 
-  int size() const { return this->tree.count; }
+  ContainerSize size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   const_iterator begin() const { return this->tree.begin(); }
   const_iterator end() const { return this->tree.end(); }
@@ -1507,9 +1507,9 @@ struct MultiSet
   bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
   template<typename Key>
   bool contains(const Key& key) const { return this->tree.find(key) != this->tree.end(); }
-  int count(const T& value) const { return this->tree.countOf(value); }
+  ContainerSize count(const T& value) const { return this->tree.countOf(value); }
   template<typename Key>
-  int count(const Key& key) const { return this->tree.countOf(key); }
+  ContainerSize count(const Key& key) const { return this->tree.countOf(key); }
   const_iterator lowerBound(const T& value) const { return this->tree.lowerBound(value); }
   template<typename Key>
   const_iterator lowerBound(const Key& key) const { return this->tree.lowerBound(key); }
@@ -1531,11 +1531,11 @@ struct MultiSet
   template<typename... Args>
   iterator emplace(Args&&... args) { return this->tree.emplaceEqual(forward<Args>(args)...); }
   // Removes every value equal to value; returns how many.
-  int erase(const T& value)
+  ContainerSize erase(const T& value)
   {
     RbIterator<T> first = this->tree.lowerBound(value);
     RbIterator<T> last = this->tree.upperBound(value);
-    int removed = 0;
+    ContainerSize removed = 0;
     while (first != last)
     {
       first = this->tree.erase(first);

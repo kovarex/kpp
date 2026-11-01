@@ -1,7 +1,7 @@
 # Bitset<N>
 
-What `std::bitset<N>` converts to: N bits, stored in 64-bit words inside the object (no heap).
-Bit 0 is the lowest. Positions are `int`; a position outside [0, N) is a program error, not
+What `std::bitset<N>` converts to (N a ContainerSize): N bits, stored in 64-bit words inside the object (no heap).
+Bit 0 is the lowest. Positions are sizes (ContainerSize, common.md); a position outside [0, N) is a program error, not
 checked (*difference from C++*: `test(pos)` and `set(pos)` there throw out_of_range).
 
 Members:

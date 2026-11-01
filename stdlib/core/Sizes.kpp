@@ -1,42 +1,56 @@
-// Container sizes (docs/stdlib-conformance.md, "Sizes are int"). The containers count elements and
-// bytes in int, so the most any of them holds is maxContainerSize, 2^31 - 1, where std's max_size()
-// is far larger. A size past it is never a silent wrap: every growth path goes through these, which
-// throw LengthError past maxContainerSize, as std throws length_error past max_size(), with MSVC's
-// message ("vector too long"); and a block malloc cannot give throws BadAlloc, as std's operator new
-// does.
+// Container sizes (docs/stdlib-conformance.md, "Sizes are 32-bit unsigned"). Every size, count,
+// capacity, length, index and position the library's containers and strings take or return is a
+// ContainerSize: u32, or u64 with `kppc --config sizeBits=64` (config::sizeBits). This alias is the
+// one place that says which, so that both can be measured on the game.
+//
+// The largest value is npos, "not found" or "to the end", as std's npos is size_t's largest; the
+// most a container holds is one less, maxContainerSize. A size past it is never a silent wrap:
+// every growth path goes through these, which throw LengthError past maxContainerSize, as std
+// throws length_error past max_size(), with MSVC's message ("vector too long"); and a block malloc
+// cannot give throws BadAlloc, as std's operator new does.
+using ContainerSize = typename Conditional<config::sizeBits == 64, u64, u32>::Type;
 
 // The largest element count, or byte length, a container holds.
-const int maxContainerSize = 2147483647;
+const ContainerSize maxContainerSize = ContainerSize(-1) - 1;
 
 [[noreturn]] [[noinline]] void throwLengthError(const char* what) { throw LengthError(String(what)); }
 [[noreturn]] [[noinline]] void throwBadAlloc() { throw BadAlloc(); }
 
 // count as a container size: a count from outside the container (a strlen, a pointer range, a
-// distance, a sum), LengthError when past maxContainerSize. A negative count stays as it is (the
-// containers treat it as none).
-int checkedSize(long long count, const char* what)
+// distance), of any integer type. LengthError when it is negative or past maxContainerSize, as
+// std's length_error for a negative count converted to a size_t past max_size().
+template<typename N>
+ContainerSize checkedSize(N count, const char* what)
 {
-  if (count > maxContainerSize)
+  if constexpr (isSigned<N>)
+  {
+    if (count < 0)
+      throwLengthError(what);
+  }
+  if ((unsigned long long)count > maxContainerSize)
     throwLengthError(what);
-  return (int)count;
+  return (ContainerSize)count;
 }
 
-// a + b as a container size, LengthError past maxContainerSize: a length plus what is added to it.
-int sizeSum(long long a, long long b, const char* what) { return checkedSize(a + b, what); }
+// a + b as a container size, a being one: a length plus what is added to it. LengthError past
+// maxContainerSize (checked without forming the sum, which could wrap).
+ContainerSize sizeSum(ContainerSize a, unsigned long long b, const char* what)
+{
+  if (a > maxContainerSize || b > (unsigned long long)(maxContainerSize - a))
+    throwLengthError(what);
+  return a + (ContainerSize)b;
+}
 
 // The capacity after growing one of capacity to hold needed: doubled, at least needed and minimum,
-// at most maxContainerSize (instead of a doubling past int's range); LengthError when needed is past
-// maxContainerSize.
-int grownCapacity(int capacity, long long needed, int minimum, const char* what = "container too long")
+// at most maxContainerSize (instead of a doubling past the size's range); LengthError when needed
+// is past maxContainerSize.
+ContainerSize grownCapacity(ContainerSize capacity, unsigned long long needed, ContainerSize minimum, const char* what = "container too long")
 {
   if (needed > maxContainerSize)
     throwLengthError(what);
-  long long grown = (long long)capacity * 2;
-  if (grown < minimum)
-    grown = minimum;
-  if (grown < needed)
-    grown = needed;
-  return grown > maxContainerSize ? maxContainerSize : (int)grown;
+  ContainerSize doubled = capacity > maxContainerSize / 2 ? maxContainerSize : capacity * 2;
+  ContainerSize grown = doubled < minimum ? minimum : doubled;
+  return grown < needed ? (ContainerSize)needed : grown;
 }
 
 // malloc of bytes, BadAlloc when it fails (instead of a null pointer the caller writes through).
@@ -48,10 +62,12 @@ void* allocateBytes(size_t bytes)
   return block;
 }
 
-// An uninitialized block for count elements of T (count at most maxContainerSize: no product
-// overflows a size_t), BadAlloc when malloc fails.
+// An uninitialized block for count elements of T, BadAlloc when malloc fails or when count * sizeof(T)
+// does not fit in a size_t (a u64 size of large elements).
 template<typename T>
-T* allocateArray(long long count)
+T* allocateArray(unsigned long long count)
 {
+  if (count != 0 && count > ~(size_t)0 / sizeof(T))
+    throwBadAlloc();
   return (T*)allocateBytes((size_t)count * sizeof(T));
 }

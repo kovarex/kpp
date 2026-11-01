@@ -6,15 +6,15 @@ template<typename T>
 struct Vector
 {
   T* items = nullptr;
-  int length = 0;
-  int allocated = 0; // the capacity: elements that fit in the block
+  ContainerSize length = 0;
+  ContainerSize allocated = 0; // the capacity: elements that fit in the block
 
   using iterator = T*;
   using const_iterator = const T*;
   using reverse_iterator = ReverseIterator<T*>;
   using const_reverse_iterator = ReverseIterator<const T*>;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
@@ -23,12 +23,14 @@ struct Vector
 
   Vector() {}
   // count default-constructed elements.
-  explicit Vector(int count)
+  explicit Vector(ContainerSize count)
   {
     // The elements are made in their place, so T needs no copy or move (as for std::vector(n)):
     // TypeAwareMemoryPool keeps Vectors of SpriteRegistration, which has neither.
-    if (count <= 0)
+    if (count == 0)
       return;
+    if (count > maxContainerSize)
+      throwLengthError("vector too long");
     this->items = allocateArray<T>(count);
     this->allocated = count;
     for (; this->length < count; ++this->length)
@@ -43,7 +45,7 @@ struct Vector
   }
   Vector(const Vector<T>& other) { this->appendCopies(other.items, other.length); }
   // count copies of value.
-  Vector(int count, const T& value) { this->assign(count, value); }
+  Vector(ContainerSize count, const T& value) { this->assign(count, value); }
   // Copies of [first, last).
   Vector(const T* first, const T* last) { this->appendCopies(first, checkedSize(last - first, "vector too long")); }
   // The elements of [first, last), input iterators of any kind (`Vector<TransportLine*>
@@ -93,19 +95,19 @@ struct Vector
     return *this;
   }
 
-  int size() const { return this->length; }
-  int capacity() const { return this->allocated; }
+  ContainerSize size() const { return this->length; }
+  ContainerSize capacity() const { return this->allocated; }
   T* data() { return this->items; }
   const T* data() const { return this->items; }
   bool empty() const { return this->length == 0; }
-  T& operator[](int index) { return this->items[index]; }
-  const T& operator[](int index) const { return this->items[index]; }
+  T& operator[](ContainerSize index) { return this->items[index]; }
+  const T& operator[](ContainerSize index) const { return this->items[index]; }
   // Equal when of the same length with every element equal.
   bool operator==(const Vector& other) const
   {
     if (this->length != other.length)
       return false;
-    for (int i = 0; i < this->length; ++i)
+    for (ContainerSize i = 0; i < this->length; ++i)
       if (!(this->items[i] == other.items[i]))
         return false;
     return true;
@@ -150,12 +152,12 @@ struct Vector
   }
   // Replaces the contents with count copies of value (which may be an element) / with copies of
   // [first, last) (which must not be elements).
-  void assign(int count, const T& value)
+  void assign(ContainerSize count, const T& value)
   {
     T copy(value);
     this->clear();
     this->reserve(count);
-    for (int i = 0; i < count; ++i)
+    for (ContainerSize i = 0; i < count; ++i)
       new (this->items + i) T(copy);
     this->length = count;
   }
@@ -180,9 +182,11 @@ struct Vector
       this->push_back(item);
   }
 
-  // Room for `needed` elements, exactly.
-  void reserve(int needed)
+  // Room for `needed` elements, exactly; LengthError past maxContainerSize.
+  void reserve(ContainerSize needed)
   {
+    if (needed > maxContainerSize)
+      throwLengthError("vector too long");
     if (needed > this->allocated)
       this->moveToBlock(needed);
   }
@@ -213,7 +217,7 @@ struct Vector
   T& front() { return this->items[0]; }
   const T& front() const { return this->items[0]; }
   // New elements are default-constructed (zero for numbers).
-  void resize(int newLength)
+  void resize(ContainerSize newLength)
   {
     if (newLength <= this->length)
     {
@@ -221,12 +225,12 @@ struct Vector
       return;
     }
     this->ensureRoom(newLength);
-    for (int i = this->length; i < newLength; ++i)
+    for (ContainerSize i = this->length; i < newLength; ++i)
       new (this->items + i) T();
     this->length = newLength;
   }
   // New elements are copies of value.
-  void resize(int newLength, const T& value)
+  void resize(ContainerSize newLength, const T& value)
   {
     if (newLength <= this->length)
     {
@@ -235,20 +239,20 @@ struct Vector
     }
     T copy(value); // value may be an element, and the elements may move
     this->ensureRoom(newLength);
-    for (int i = this->length; i < newLength; ++i)
+    for (ContainerSize i = this->length; i < newLength; ++i)
       new (this->items + i) T(copy);
     this->length = newLength;
   }
   // Throws OutOfRange for an index outside [0, size()).
-  T& at(int index)
+  T& at(ContainerSize index)
   {
-    if (index < 0 || index >= this->length)
+    if (index >= this->length)
       throwOutOfRange("Vector::at: index out of range");
     return this->items[index];
   }
-  const T& at(int index) const
+  const T& at(ContainerSize index) const
   {
-    if (index < 0 || index >= this->length)
+    if (index >= this->length)
       throwOutOfRange("Vector::at: index out of range");
     return this->items[index];
   }
@@ -256,13 +260,13 @@ struct Vector
   // const or not).
   T* insert(const T* position, const T& value)
   {
-    int index = int(position - this->items);
+    ContainerSize index = ContainerSize(position - this->items);
     this->insert(index, value);
     return this->items + index;
   }
   T* insert(const T* position, T&& value)
   {
-    int index = int(position - this->items);
+    ContainerSize index = ContainerSize(position - this->items);
     this->insert(index, move(value));
     return this->items + index;
   }
@@ -272,7 +276,7 @@ struct Vector
   template<typename... Args>
   T* emplace(const T* position, Args&&... args)
   {
-    int index = int(position - this->items);
+    ContainerSize index = ContainerSize(position - this->items);
     if (index == this->length)
     {
       this->emplace_back(forward<Args>(args)...);
@@ -282,12 +286,12 @@ struct Vector
   }
   // Inserts count copies of value (which may be an element) before position; returns the
   // position of the first one.
-  T* insert(const T* position, int count, const T& value)
+  T* insert(const T* position, ContainerSize count, const T& value)
   {
     T copy(value);
-    int index = int(position - this->items);
+    ContainerSize index = ContainerSize(position - this->items);
     this->openSlots(index, count);
-    for (int i = 0; i < count; ++i)
+    for (ContainerSize i = 0; i < count; ++i)
       new (this->items + index + i) T(copy);
     return this->items + index;
   }
@@ -298,12 +302,12 @@ struct Vector
   template<typename InputIt> requires (!isIntegral<InputIt>)
   T* insert(const T* position, InputIt first, InputIt last)
   {
-    int index = int(position - this->items);
+    ContainerSize index = ContainerSize(position - this->items);
     if constexpr (isBaseOf<ForwardIteratorTag, typename IteratorTraits<InputIt>::iterator_category>)
     {
-      int count = checkedSize(distance(first, last), "vector too long");
+      ContainerSize count = checkedSize(distance(first, last), "vector too long");
       this->openSlots(index, count);
-      for (int i = 0; i < count; ++i)
+      for (ContainerSize i = 0; i < count; ++i)
       {
         new (this->items + index + i) T(*first);
         ++first;
@@ -311,27 +315,31 @@ struct Vector
     }
     else
     {
-      for (int at = index; first != last; ++first)
+      for (ContainerSize at = index; first != last; ++first)
         this->insert(at++, T(*first));
     }
     return this->items + index;
   }
   // `v.insert(position, {a, b, c})`.
   T* insert(const T* position, InitializerList<T> list) { return this->insert(position, list.begin(), list.end()); }
-  void insert(int index, const T& value)
+  // The index forms take any integer type, so that a literal 0 is the index, not a null position
+  // (with a ContainerSize parameter `v.insert(0, x)` would be ambiguous between the two).
+  template<typename I> requires (isIntegral<I>)
+  void insert(I index, const T& value)
   {
     T copy(value); // value may be an element, which the opening moves
     this->openSlots(index, 1);
     new (this->items + index) T(move(copy));
   }
-  void insert(int index, T&& value)
+  template<typename I> requires (isIntegral<I>)
+  void insert(I index, T&& value)
   {
     this->openSlots(index, 1);
     new (this->items + index) T(move(value));
   }
   // Makes room for count elements at index: the elements from there on move up. The new slots
   // are left unconstructed.
-  void openSlots(int index, int count)
+  void openSlots(ContainerSize index, ContainerSize count)
   {
     // Only at the end the strong guarantee.
     this->ensureRoom(sizeSum(this->length, count, "vector too long"), index == this->length);
@@ -340,18 +348,22 @@ struct Vector
   }
   bool contains(const T& value) const
   {
-    for (int i = 0; i < this->length; ++i)
+    for (ContainerSize i = 0; i < this->length; ++i)
       if (this->items[i] == value)
         return true;
     return false;
   }
+  // Not on an empty vector (its length would wrap to the largest size).
   void pop_back()
   {
+    assert(this->length > 0);
     --this->length;
     this->items[this->length].~T();
   }
   void clear() { this->truncate(0); }
-  void erase(int index)
+  // (Any integer type, as insert's index.)
+  template<typename I> requires (isIntegral<I>)
+  void erase(I index)
   {
     this->items[index].~T();
     relocate(this->items + index, this->items + index + 1, this->length - index - 1);
@@ -361,8 +373,8 @@ struct Vector
   // return, const or not); returns the position of the element after the removed ones.
   T* erase(const T* first, const T* last)
   {
-    int index = int(first - this->items), count = int(last - first);
-    for (int i = 0; i < count; ++i)
+    ContainerSize index = ContainerSize(first - this->items), count = ContainerSize(last - first);
+    for (ContainerSize i = 0; i < count; ++i)
       this->items[index + i].~T();
     relocate(this->items + index, this->items + index + count, this->length - index - count);
     this->length -= count;
@@ -372,19 +384,19 @@ struct Vector
 
   // Internals.
   // Destroys the elements from newLength on.
-  void truncate(int newLength)
+  void truncate(ContainerSize newLength)
   {
-    for (int i = newLength; i < this->length; ++i)
+    for (ContainerSize i = newLength; i < this->length; ++i)
       this->items[i].~T();
     this->length = newLength;
   }
   // Moves the elements into a new block for newCapacity elements.
-  void moveToBlock(int newCapacity, bool strong = true) { this->adoptBlock(allocateArray<T>(newCapacity), newCapacity, strong); }
+  void moveToBlock(ContainerSize newCapacity, bool strong = true) { this->adoptBlock(allocateArray<T>(newCapacity), newCapacity, strong); }
   // Moves the elements into block, which has room for newCapacity, and frees the old one. strong
   // (an append, reserve, shrink_to_fit: std::vector's strong exception guarantee) copies them
   // where the move may throw and a copy exists (move_if_noexcept); an insert before the end moves
   // them, as MSVC's std::vector does (the standard guarantees nothing there).
-  void adoptBlock(T* block, int newCapacity, bool strong = true)
+  void adoptBlock(T* block, ContainerSize newCapacity, bool strong = true)
   {
     if (this->items)
     {
@@ -399,8 +411,8 @@ struct Vector
   }
   // Geometric growth (doubling, at least 4, at most maxContainerSize): n appends cost O(n) element
   // moves in total. LengthError when needed is past maxContainerSize (core/Sizes.kpp).
-  int capacityFor(long long needed) const { return grownCapacity(this->allocated, needed, 4, "vector too long"); }
-  void ensureRoom(int needed, bool strong = true)
+  ContainerSize capacityFor(unsigned long long needed) const { return grownCapacity(this->allocated, needed, 4, "vector too long"); }
+  void ensureRoom(ContainerSize needed, bool strong = true)
   {
     if (needed > this->allocated)
       this->moveToBlock(this->capacityFor(needed), strong);
@@ -415,22 +427,22 @@ struct Vector
       grown = nullptr;
       return this->items + this->length;
     }
-    grown = allocateArray<T>(this->capacityFor((long long)this->length + 1));
+    grown = allocateArray<T>(this->capacityFor((unsigned long long)this->length + 1));
     return grown + this->length;
   }
   void finishAppend(T* grown)
   {
     if (grown)
-      this->adoptBlock(grown, this->capacityFor((long long)this->length + 1));
+      this->adoptBlock(grown, this->capacityFor((unsigned long long)this->length + 1));
     ++this->length;
   }
   // Copy-constructs count elements from source after the last one (exact growth: the copy and
   // assignment of a whole vector).
-  void appendCopies(const T* source, int count)
+  void appendCopies(const T* source, ContainerSize count)
   {
     this->reserve(sizeSum(this->length, count, "vector too long"));
     T* target = this->items + this->length;
-    for (int i = 0; i < count; ++i)
+    for (ContainerSize i = 0; i < count; ++i)
       new (target + i) T(source[i]);
     this->length += count;
   }

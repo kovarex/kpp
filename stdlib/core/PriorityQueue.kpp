@@ -11,7 +11,7 @@ struct PriorityQueue
   using container_type = Container;
   using value_compare = Compare;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using reference = T&;
   using const_reference = const T&;
 
@@ -27,7 +27,7 @@ struct PriorityQueue
     this->makeHeap();
   }
 
-  int size() const { return this->heap.size(); }
+  ContainerSize size() const { return this->heap.size(); }
   bool empty() const { return this->heap.empty(); }
   const T& top() const { return this->heap[0]; }
 
@@ -48,9 +48,11 @@ struct PriorityQueue
     this->siftUp(this->heap.size() - 1);
   }
 
+  // Not on an empty queue (its last index would wrap to the largest size).
   void pop()
   {
-    int last = this->heap.size() - 1;
+    assert(!this->heap.empty());
+    ContainerSize last = this->heap.size() - 1;
     if (last > 0)
       ::swap(this->heap[0], this->heap[last]);
     this->heap.pop_back();
@@ -68,28 +70,28 @@ struct PriorityQueue
   // Internals.
   void makeHeap()
   {
-    for (int i = this->heap.size() / 2 - 1; i >= 0; --i)
+    for (ContainerSize i = this->heap.size() / 2; i-- > 0;) // size / 2 - 1 down to 0
       this->siftDown(i);
   }
-  void siftUp(int i)
+  void siftUp(ContainerSize i)
   {
     while (i > 0)
     {
-      int parent = (i - 1) / 2;
+      ContainerSize parent = (i - 1) / 2;
       if (!this->compare(this->heap[parent], this->heap[i]))
         break;
       ::swap(this->heap[parent], this->heap[i]);
       i = parent;
     }
   }
-  void siftDown(int i)
+  void siftDown(ContainerSize i)
   {
-    int n = this->heap.size();
-    while (true)
+    ContainerSize n = this->heap.size();
+    while (i < n / 2) // while i has a child: then 2 * i + 2 <= n, which cannot wrap
     {
-      int largest = i;
-      int left = 2 * i + 1;
-      int right = 2 * i + 2;
+      ContainerSize largest = i;
+      ContainerSize left = 2 * i + 1;
+      ContainerSize right = 2 * i + 2;
       if (left < n && this->compare(this->heap[largest], this->heap[left]))
         largest = left;
       if (right < n && this->compare(this->heap[largest], this->heap[right]))

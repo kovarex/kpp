@@ -3290,6 +3290,15 @@ int compile(int argc, char** argv)
     // The build configuration is one more source file: `config::debug`, `config::platform`...
     if (!options.configValues.count("debug"))
       options.configValues["debug"] = parseConfigValue("true");
+    // config::sizeBits: the width of the library's sizes (ContainerSize, stdlib/core/Sizes.kpp), 32
+    // unless `--config sizeBits=64` (docs/stdlib-conformance.md, "Sizes are 32-bit unsigned").
+    if (!options.configValues.count("sizeBits"))
+      options.configValues["sizeBits"] = parseConfigValue("32");
+    else if (options.configValues["sizeBits"].number != 32 && options.configValues["sizeBits"].number != 64)
+    {
+      fprintf(stderr, "--config sizeBits=%s: the library's sizes are 32 or 64 bits\n", options.configValues["sizeBits"].text.c_str());
+      return 2;
+    }
     // config::platform is the target's.
     const char* platform = options.target.os == Target::Os::Linux ? "Linux" : options.target.os == Target::Os::FreeBSD ? "FreeBSD" : "Windows";
     if (!options.configValues.count("platform"))

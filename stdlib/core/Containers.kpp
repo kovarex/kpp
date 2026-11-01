@@ -2,7 +2,7 @@
 // Map.kpp.)
 
 // A fixed-size array that knows its size (what std::array converts to).
-template<typename T, int N>
+template<typename T, ContainerSize N>
 struct Array
 {
   T items[N];
@@ -10,27 +10,27 @@ struct Array
   using iterator = T*;
   using const_iterator = const T*;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
   using const_pointer = const T*;
 
-  int size() const { return N; }
+  ContainerSize size() const { return N; }
   bool empty() const { return N == 0; }
-  T& operator[](int index) { return this->items[index]; }
-  const T& operator[](int index) const { return this->items[index]; }
+  T& operator[](ContainerSize index) { return this->items[index]; }
+  const T& operator[](ContainerSize index) const { return this->items[index]; }
   // Throws OutOfRange for an index outside [0, N).
-  T& at(int index)
+  T& at(ContainerSize index)
   {
-    if (index < 0 || index >= N)
+    if (index >= N)
       throwOutOfRange("Array::at: index out of range");
     return this->items[index];
   }
-  const T& at(int index) const
+  const T& at(ContainerSize index) const
   {
-    if (index < 0 || index >= N)
+    if (index >= N)
       throwOutOfRange("Array::at: index out of range");
     return this->items[index];
   }
@@ -54,12 +54,12 @@ struct Array
   const T& back() const { return this->items[N - 1]; }
   void fill(const T& value)
   {
-    for (int i = 0; i < N; ++i)
+    for (ContainerSize i = 0; i < N; ++i)
       this->items[i] = value;
   }
   bool operator==(const Array<T, N>& other) const
   {
-    for (int i = 0; i < N; ++i)
+    for (ContainerSize i = 0; i < N; ++i)
       if (!(this->items[i] == other.items[i]))
         return false;
     return true;
@@ -77,23 +77,23 @@ struct Array<T, 0>
   using iterator = T*;
   using const_iterator = const T*;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
   using pointer = T*;
   using const_pointer = const T*;
 
-  int size() const { return 0; }
+  ContainerSize size() const { return 0; }
   bool empty() const { return true; }
-  T& operator[](int index) { return *this->data(); }
-  const T& operator[](int index) const { return *this->data(); }
-  T& at(int index)
+  T& operator[](ContainerSize index) { return *this->data(); }
+  const T& operator[](ContainerSize index) const { return *this->data(); }
+  T& at(ContainerSize index)
   {
     throwOutOfRange("Array::at: index out of range");
     return *this->data();
   }
-  const T& at(int index) const
+  const T& at(ContainerSize index) const
   {
     throwOutOfRange("Array::at: index out of range");
     return *this->data();
@@ -122,23 +122,26 @@ struct Array<T, 0>
 };
 
 // The extent of a Span whose length is known only when the program runs (std::dynamic_extent).
-constexpr int dynamicExtent = -1;
+constexpr ContainerSize dynamicExtent = ContainerSize(-1);
 
 // A view of contiguous elements (what std::span converts to): a pointer and a count, over an
 // array, a Vector, an Array, a Subrange of pointers or another Span. Extent is the count when it
 // is fixed (std::span<T, N>), dynamicExtent otherwise. Specified in docs/stdlib/span.md.
-template<typename T, int Extent = dynamicExtent>
+// Extent and the counts deduced from arrays are written `unsigned long long`, not ContainerSize,
+// until templates/constructor_deduces_value_of_alias_type passes (a value parameter whose type is
+// an alias is not deduced from an array's bound in a constructor template).
+template<typename T, unsigned long long Extent = dynamicExtent>
 struct Span
 {
-  static constexpr int extent = Extent;
+  static constexpr ContainerSize extent = Extent;
 
   T* items = nullptr;
-  int length = Extent == dynamicExtent ? 0 : Extent;
+  ContainerSize length = Extent == dynamicExtent ? 0 : Extent;
 
   using element_type = T;
   using iterator = T*;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
@@ -146,7 +149,7 @@ struct Span
   using const_pointer = const T*;
 
   Span() {}
-  Span(T* items, int length) : items(items), length(length) {}
+  Span(T* items, ContainerSize length) : items(items), length(length) {}
   Span(T* first, T* last) : items(first), length(checkedSize(last - first, "span too long")) {}
   // From a Vector or an Array, a plain array, a Subrange of pointers: implicit for a span of any
   // length, explicit for a fixed extent (std::span's range constructor), whose count the source's
@@ -159,11 +162,11 @@ struct Span
   explicit Span(Vector<U>& values) : items(values.items), length(values.length) {}
   template<typename U> requires (Extent != dynamicExtent && isConvertible<const U*, T*>)
   explicit Span(const Vector<U>& values) : items(values.items), length(values.length) {}
-  template<typename U, int N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<U*, T*>)
+  template<typename U, ContainerSize N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<U*, T*>)
   implicit Span(Array<U, N>& values) : items(values.data()), length(N) {}
-  template<typename U, int N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<const U*, T*>)
+  template<typename U, ContainerSize N> requires ((Extent == dynamicExtent || N == Extent) && isConvertible<const U*, T*>)
   implicit Span(const Array<U, N>& values) : items(values.data()), length(N) {}
-  template<int N> requires (Extent == dynamicExtent || N == Extent)
+  template<unsigned long long N> requires (Extent == dynamicExtent || N == Extent)
   implicit Span(T (&a)[N]) : items(a), length(N) {}
   template<typename U> requires (Extent == dynamicExtent && isConvertible<U*, T*>)
   implicit Span(const Subrange<U*>& range) : items(range.first), length(checkedSize(range.last - range.first, "span too long")) {}
@@ -171,15 +174,15 @@ struct Span
   explicit Span(const Subrange<U*>& range) : items(range.first), length(checkedSize(range.last - range.first, "span too long")) {}
   // From a span of other elements (T const) or another extent: implicit when the length is sure
   // to fit, explicit from a span of any length to a fixed extent.
-  template<typename U, int N> requires (!(isSame<U, T> && N == Extent) && isConvertible<U*, T*> && (Extent == dynamicExtent || N == Extent))
+  template<typename U, unsigned long long N> requires (!(isSame<U, T> && N == Extent) && isConvertible<U*, T*> && (Extent == dynamicExtent || N == Extent))
   implicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
-  template<typename U, int N> requires (Extent != dynamicExtent && N == dynamicExtent && isConvertible<U*, T*>)
+  template<typename U, unsigned long long N> requires (Extent != dynamicExtent && N == dynamicExtent && isConvertible<U*, T*>)
   explicit Span(const Span<U, N>& other) : items(other.items), length(other.length) {}
 
-  int size() const { return this->length; }
-  int size_bytes() const { return this->length * int(sizeof(T)); }
+  ContainerSize size() const { return this->length; }
+  size_t size_bytes() const { return (size_t)this->length * sizeof(T); }
   bool empty() const { return this->length == 0; }
-  T& operator[](int index) const { return this->items[index]; }
+  T& operator[](ContainerSize index) const { return this->items[index]; }
   T* data() const { return this->items; }
   T* begin() const { return this->items; }
   T* end() const { return this->items + this->length; }
@@ -192,24 +195,24 @@ struct Span
   ReverseIterator<T*> crend() const { return this->rend(); }
   T& front() const { return this->items[0]; }
   T& back() const { return this->items[this->length - 1]; }
-  Span<T> subspan(int offset, int count) const { return Span<T>(this->items + offset, count); }
-  Span<T> subspan(int offset) const { return Span<T>(this->items + offset, this->length - offset); }
-  Span<T> first(int count) const { return Span<T>(this->items, count); }
-  Span<T> last(int count) const { return Span<T>(this->items + this->length - count, count); }
+  Span<T> subspan(ContainerSize offset, ContainerSize count) const { return Span<T>(this->items + offset, count); }
+  Span<T> subspan(ContainerSize offset) const { return Span<T>(this->items + offset, this->length - offset); }
+  Span<T> first(ContainerSize count) const { return Span<T>(this->items, count); }
+  Span<T> last(ContainerSize count) const { return Span<T>(this->items + this->length - count, count); }
 };
 
 // Deduction (std::span's guides): `Span(weights)` of a Vector<float> is a Span<float>, of an Array
 // or a built-in array a Span of its count, of a pointer and a count or of two pointers a Span of
 // any length (NURBS::calcPointWeight's `std::span(this->weights)`).
 template<typename T>
-Span(T*, int) -> Span<T>;
+Span(T*, ContainerSize) -> Span<T>;
 template<typename T>
 Span(T*, T*) -> Span<T>;
-template<typename T, int N>
+template<typename T, unsigned long long N>
 Span(T (&array)[N]) -> Span<T, N>;
-template<typename T, int N>
+template<typename T, ContainerSize N>
 Span(Array<T, N>& values) -> Span<T, N>;
-template<typename T, int N>
+template<typename T, ContainerSize N>
 Span(const Array<T, N>& values) -> Span<const T, N>;
 template<typename T>
 Span(Vector<T>& values) -> Span<T>;

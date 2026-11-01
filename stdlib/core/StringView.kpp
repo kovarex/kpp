@@ -3,32 +3,32 @@
 struct StringView
 {
   const char* chars = nullptr;
-  int byteCount = 0;
+  ContainerSize byteCount = 0;
 
   using iterator = const char*;
   using const_iterator = const char*;
   using value_type = char;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = const char&;
   using const_reference = const char&;
   using pointer = const char*;
   using const_pointer = const char*;
 
-  // Not found, or to the end: the largest int, as C++'s npos is the largest size_t, so that a
+  // Not found, or to the end: the largest size, as C++'s npos is the largest size_t, so that a
   // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
-  static const int npos = 2147483647;
+  static const ContainerSize npos = ContainerSize(-1);
 
   StringView() {}
   implicit StringView(const char* text) : chars(text), byteCount(text ? checkedSize(strlen(text), "string too long") : 0) {}
-  StringView(const char* text, int count) : chars(text), byteCount(count) {}
+  StringView(const char* text, ContainerSize count) : chars(text), byteCount(count) {}
   implicit StringView(const String& text) : chars(text.data()), byteCount(text.size()) {}
 
-  int size() const { return this->byteCount; }
-  int length() const { return this->byteCount; }
+  ContainerSize size() const { return this->byteCount; }
+  ContainerSize length() const { return this->byteCount; }
   const char* data() const { return this->chars; }
   bool empty() const { return this->byteCount == 0; }
-  const char& operator[](int index) const { return this->chars[index]; }
+  const char& operator[](ContainerSize index) const { return this->chars[index]; }
   const char* begin() const { return this->chars; }
   const char* end() const { return this->chars + this->byteCount; }
   const char* cbegin() const { return this->begin(); }
@@ -40,15 +40,15 @@ struct StringView
   char front() const { return this->chars[0]; }
   char back() const { return this->chars[this->byteCount - 1]; }
 
-  StringView substr(int start, int count) const
+  StringView substr(ContainerSize start, ContainerSize count) const
   {
     if (start > this->byteCount)
       start = this->byteCount;
-    if (count < 0 || count > this->byteCount - start)
+    if (count > this->byteCount - start)
       count = this->byteCount - start;
     return StringView(this->chars + start, count);
   }
-  StringView substr(int start) const { return this->substr(start, npos); }
+  StringView substr(ContainerSize start) const { return this->substr(start, npos); }
   // Up to count bytes from pos into dest; the number copied. OutOfRange when pos > size().
   uint64_t copy(char* dest, uint64_t count, uint64_t pos = 0) const
   {
@@ -61,54 +61,56 @@ struct StringView
     return count;
   }
 
-  int find(char c) const
+  ContainerSize find(char c) const
   {
-    for (int i = 0; i < this->byteCount; ++i)
+    for (ContainerSize i = 0; i < this->byteCount; ++i)
       if (this->chars[i] == c)
         return i;
     return npos;
   }
-  int find(StringView needle) const
+  ContainerSize find(StringView needle) const
   {
     if (needle.byteCount == 0)
       return 0;
-    for (int i = 0; i + needle.byteCount <= this->byteCount; ++i)
+    for (ContainerSize i = 0; i + needle.byteCount <= this->byteCount; ++i)
       if (memcmp(this->chars + i, needle.chars, needle.byteCount) == 0)
         return i;
     return npos;
   }
-  int rfind(char c) const
+  ContainerSize rfind(char c) const
   {
-    for (int i = this->byteCount; i-- > 0;)
+    for (ContainerSize i = this->byteCount; i-- > 0;)
       if (this->chars[i] == c)
         return i;
     return npos;
   }
   // The last occurrence starting at or before `from` (anywhere when from is npos), or npos, as
   // String's (DebugTools.cpp's `line.rfind("ghostShimmerConfig.tint", 0) == 0`, a prefix test).
-  int rfind(char c, int from) const
+  ContainerSize rfind(char c, ContainerSize from) const
   {
-    int i = this->byteCount - 1;
-    if (from >= 0 && from < i)
-      i = from;
-    for (; i >= 0; --i)
+    if (this->byteCount == 0)
+      return npos;
+    for (ContainerSize i = from < this->byteCount - 1 ? from : this->byteCount - 1;; --i) // down to 0, which ends it
+    {
       if (this->chars[i] == c)
         return i;
-    return npos;
+      if (i == 0)
+        return npos;
+    }
   }
-  int rfind(StringView needle, int from) const
+  ContainerSize rfind(StringView needle, ContainerSize from) const
   {
-    int i = this->byteCount - needle.byteCount;
-    if (i < 0)
+    if (needle.byteCount > this->byteCount)
       return npos;
-    if (from >= 0 && from < i)
-      i = from;
-    for (; i >= 0; --i)
+    for (ContainerSize i = from < this->byteCount - needle.byteCount ? from : this->byteCount - needle.byteCount;; --i)
+    {
       if (needle.byteCount == 0 || memcmp(this->chars + i, needle.chars, needle.byteCount) == 0)
         return i;
-    return npos;
+      if (i == 0)
+        return npos;
+    }
   }
-  int rfind(StringView needle) const { return this->rfind(needle, npos); }
+  ContainerSize rfind(StringView needle) const { return this->rfind(needle, npos); }
   bool startsWith(StringView prefix) const
   {
     return prefix.byteCount <= this->byteCount && memcmp(this->chars, prefix.chars, prefix.byteCount) == 0;
@@ -117,64 +119,64 @@ struct StringView
   {
     return suffix.byteCount <= this->byteCount && memcmp(this->chars + this->byteCount - suffix.byteCount, suffix.chars, suffix.byteCount) == 0;
   }
-  void removePrefix(int count) { this->chars += count; this->byteCount -= count; }
-  void remove_prefix(int count) { this->removePrefix(count); }
-  void remove_suffix(int count) { this->byteCount -= count; }
+  void removePrefix(ContainerSize count) { this->chars += count; this->byteCount -= count; }
+  void remove_prefix(ContainerSize count) { this->removePrefix(count); }
+  void remove_suffix(ContainerSize count) { this->byteCount -= count; }
   bool starts_with(StringView prefix) const { return this->startsWith(prefix); }
   bool ends_with(StringView suffix) const { return this->endsWith(suffix); }
   // Whether the first (last) character is c (C++20's starts_with(char), TestTranslationCoverage's
   // `view.starts_with('[') && view.ends_with(']')`).
   bool starts_with(char c) const { return this->byteCount > 0 && this->chars[0] == c; }
   bool ends_with(char c) const { return this->byteCount > 0 && this->chars[this->byteCount - 1] == c; }
-  int find_first_of(char c) const { return this->find(c); }
-  int find_first_of(char c, int from) const { return this->find(c, from); }
-  int find_first_of(StringView set, int from) const
+  ContainerSize find_first_of(char c) const { return this->find(c); }
+  ContainerSize find_first_of(char c, ContainerSize from) const { return this->find(c, from); }
+  ContainerSize find_first_of(StringView set, ContainerSize from) const
   {
-    int i = this->substr(from).find_first_of(set);
+    ContainerSize i = this->substr(from).find_first_of(set);
     return i == npos ? npos : i + from;
   }
-  int find(char c, int from) const
+  ContainerSize find(char c, ContainerSize from) const
   {
-    for (int i = from < 0 ? 0 : from; i < this->byteCount; ++i)
+    for (ContainerSize i = from; i < this->byteCount; ++i)
       if (this->chars[i] == c)
         return i;
     return npos;
   }
-  int find_first_of(StringView set) const
+  ContainerSize find_first_of(StringView set) const
   {
-    for (int i = 0; i < this->byteCount; ++i)
-      for (int k = 0; k < set.byteCount; ++k)
+    for (ContainerSize i = 0; i < this->byteCount; ++i)
+      for (ContainerSize k = 0; k < set.byteCount; ++k)
         if (this->chars[i] == set.chars[k])
           return i;
     return npos;
   }
-  int find(StringView needle, int from) const
+  ContainerSize find(StringView needle, ContainerSize from) const
   {
     StringView rest = this->substr(from);
-    int i = rest.find(needle);
+    ContainerSize i = rest.find(needle);
     return i == npos ? npos : i + from;
   }
-  int find_first_of(const char* set) const
+  ContainerSize find_first_of(const char* set) const
   {
-    for (int i = 0; i < this->byteCount; ++i)
-      for (int k = 0; set[k] != 0; ++k)
+    for (ContainerSize i = 0; i < this->byteCount; ++i)
+      for (size_t k = 0; set[k] != 0; ++k)
         if (this->chars[i] == set[k])
           return i;
     return npos;
   }
-  int find_first_not_of(char c) const
+  ContainerSize find_first_not_of(char c) const
   {
-    for (int i = 0; i < this->byteCount; ++i)
+    for (ContainerSize i = 0; i < this->byteCount; ++i)
       if (this->chars[i] != c)
         return i;
     return npos;
   }
-  int find_first_not_of(const char* set) const
+  ContainerSize find_first_not_of(const char* set) const
   {
-    for (int i = 0; i < this->byteCount; ++i)
+    for (ContainerSize i = 0; i < this->byteCount; ++i)
     {
       bool inSet = false;
-      for (int k = 0; set[k] != 0; ++k)
+      for (size_t k = 0; set[k] != 0; ++k)
         if (this->chars[i] == set[k])
           inSet = true;
       if (!inSet)
@@ -182,7 +184,7 @@ struct StringView
     }
     return npos;
   }
-  void removeSuffix(int count) { this->byteCount -= count; }
+  void removeSuffix(ContainerSize count) { this->byteCount -= count; }
 
   bool operator==(StringView other) const
   {
@@ -191,7 +193,7 @@ struct StringView
   bool operator!=(StringView other) const { return !(*this == other); }
   bool operator<(StringView other) const
   {
-    int common = this->byteCount < other.byteCount ? this->byteCount : other.byteCount;
+    ContainerSize common = this->byteCount < other.byteCount ? this->byteCount : other.byteCount;
     int c = common == 0 ? 0 : memcmp(this->chars, other.chars, common);
     return c != 0 ? c < 0 : this->byteCount < other.byteCount;
   }
@@ -213,7 +215,7 @@ String toString(StringView text) { return text.toString(); }
 size_t hashOf(StringView text)
 {
   size_t h = 14695981039346656037ull;
-  for (int i = 0; i < text.byteCount; ++i)
+  for (ContainerSize i = 0; i < text.byteCount; ++i)
     h = (h ^ (size_t)(uint8_t)text.chars[i]) * 1099511628211ull;
   return h;
 }

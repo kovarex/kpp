@@ -1,5 +1,5 @@
 // A fixed-size set of bits (what std::bitset<N> converts to). Specified in docs/stdlib/bitset.md.
-template<int N>
+template<ContainerSize N>
 struct Bitset
 {
   unsigned long long words[(N + 63) / 64] = {};
@@ -9,9 +9,9 @@ struct Bitset
   struct reference
   {
     Bitset<N>* bits;
-    int position;
+    ContainerSize position;
 
-    reference(Bitset<N>* bits, int position) : bits(bits), position(position) {}
+    reference(Bitset<N>* bits, ContainerSize position) : bits(bits), position(position) {}
     reference& operator=(bool value)
     {
       this->bits->set(this->position, value);
@@ -31,23 +31,23 @@ struct Bitset
     }
   };
 
-  bool test(int pos) const { return (this->words[pos / 64] >> (pos % 64)) & 1; }
-  bool operator[](int pos) const { return this->test(pos); }
-  reference operator[](int pos) { return reference(this, pos); }
+  bool test(ContainerSize pos) const { return (this->words[pos / 64] >> (pos % 64)) & 1; }
+  bool operator[](ContainerSize pos) const { return this->test(pos); }
+  reference operator[](ContainerSize pos) { return reference(this, pos); }
 
-  Bitset<N>& set(int pos)
+  Bitset<N>& set(ContainerSize pos)
   {
     this->words[pos / 64] |= 1ull << (pos % 64);
     return *this;
   }
-  Bitset<N>& set(int pos, bool value) { return value ? this->set(pos) : this->reset(pos); }
+  Bitset<N>& set(ContainerSize pos, bool value) { return value ? this->set(pos) : this->reset(pos); }
   Bitset<N>& set()
   {
     for (int i = 0; i < (N + 63) / 64; ++i)
       this->words[i] = ~0ull;
     return this->trim();
   }
-  Bitset<N>& reset(int pos)
+  Bitset<N>& reset(ContainerSize pos)
   {
     this->words[pos / 64] &= ~(1ull << (pos % 64));
     return *this;
@@ -58,7 +58,7 @@ struct Bitset
       this->words[i] = 0;
     return *this;
   }
-  Bitset<N>& flip(int pos)
+  Bitset<N>& flip(ContainerSize pos)
   {
     this->words[pos / 64] ^= 1ull << (pos % 64);
     return *this;
@@ -77,9 +77,9 @@ struct Bitset
     return *this;
   }
 
-  int count() const
+  ContainerSize count() const
   {
-    int total = 0;
+    ContainerSize total = 0;
     for (int i = 0; i < (N + 63) / 64; ++i)
     {
       unsigned long long w = this->words[i];
@@ -92,7 +92,7 @@ struct Bitset
     return total;
   }
 
-  int size() const { return N; }
+  ContainerSize size() const { return N; }
   bool none() const { return this->count() == 0; }
   bool any() const { return !this->none(); }
   bool all() const { return this->count() == N; }
@@ -116,7 +116,7 @@ struct Bitset
   String to_string(char zero = '0', char one = '1') const
   {
     String result;
-    for (int i = N - 1; i >= 0; --i)
+    for (ContainerSize i = N; i-- > 0;) // bit N - 1 down to 0
       result.push_back(this->test(i) ? one : zero);
     return result;
   }
@@ -156,7 +156,7 @@ struct Bitset
     Bitset<N> result;
     int wordShift = shift / 64;
     int bitShift = shift % 64;
-    for (int i = (N + 63) / 64 - 1; i >= 0; --i)
+    for (int i = int((N + 63) / 64) - 1; i >= 0; --i)
     {
       int src = i - wordShift;
       if (src >= 0)

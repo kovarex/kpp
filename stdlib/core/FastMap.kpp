@@ -137,7 +137,7 @@ struct BTree
 {
   BTreeNode<E>* root = nullptr;
   BTreeNode<E>* rightmost = nullptr; // the last leaf: end() is (rightmost, its count)
-  int count = 0;
+  ContainerSize count = 0;
 
   BTree() {}
   BTree(const BTree<E, K, KeyOf>& other) { this->copyFrom(other); }
@@ -234,7 +234,7 @@ struct BTree
   // the way down are split before entering them, so the leaf it ends in has room.
   BTreeIterator<E> insertNew(E&& entry)
   {
-    if (this->count == maxContainerSize) // its count is an int (core/Sizes.kpp)
+    if (this->count == maxContainerSize) // its count is a size (core/Sizes.kpp)
       throwLengthError("map/set too long");
     if (!this->root)
     {
@@ -595,7 +595,7 @@ struct FastMap
   using reverse_iterator = ReverseIterator<iterator>;
   using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = Pair<K, V>;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = Pair<K, V>&;
   using const_reference = const Pair<K, V>&;
@@ -619,7 +619,7 @@ struct FastMap
     return *this;
   }
 
-  int size() const { return this->tree.count; }
+  ContainerSize size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   iterator begin() { return this->tree.begin(); }
   const_iterator begin() const { return this->tree.begin(); }
@@ -633,7 +633,7 @@ struct FastMap
   iterator find(const K& key) { return this->tree.find(key); }
   const_iterator find(const K& key) const { return this->tree.find(key); }
   bool contains(const K& key) const { return this->tree.find(key) != this->tree.end(); }
-  int count(const K& key) const { return this->contains(key) ? 1 : 0; }
+  ContainerSize count(const K& key) const { return this->contains(key) ? 1 : 0; }
   iterator lowerBound(const K& key) { return this->tree.lowerBound(key); }
   const_iterator lowerBound(const K& key) const { return this->tree.lowerBound(key); }
   iterator lower_bound(const K& key) { return this->tree.lowerBound(key); }
@@ -710,7 +710,7 @@ struct FastMap
   bool insert(const K& key, const V& value) { return this->insert(Pair<K, V>(key, value)).second; }
   // The number of entries removed (0 or 1). The key is copied first: it may be one of this
   // map's, which erasing moves.
-  int erase(const K& key)
+  ContainerSize erase(const K& key)
   {
     K copy(key);
     return this->tree.erase(copy) ? 1 : 0;
@@ -774,7 +774,7 @@ struct FastSet
   using reverse_iterator = ReverseIterator<iterator>;
   using const_reverse_iterator = ReverseIterator<const_iterator>;
   using value_type = T;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = T&;
   using const_reference = const T&;
@@ -797,7 +797,7 @@ struct FastSet
     return *this;
   }
 
-  int size() const { return this->tree.count; }
+  ContainerSize size() const { return this->tree.count; }
   bool empty() const { return this->tree.count == 0; }
   const_iterator begin() const { return this->tree.begin(); }
   const_iterator end() const { return this->tree.end(); }
@@ -808,7 +808,7 @@ struct FastSet
 
   const_iterator find(const T& value) const { return this->tree.find(value); }
   bool contains(const T& value) const { return this->tree.find(value) != this->tree.end(); }
-  int count(const T& value) const { return this->contains(value) ? 1 : 0; }
+  ContainerSize count(const T& value) const { return this->contains(value) ? 1 : 0; }
   const_iterator lowerBound(const T& value) const { return this->tree.lowerBound(value); }
   const_iterator lower_bound(const T& value) const { return this->tree.lowerBound(value); }
   const_iterator upperBound(const T& value) const { return this->tree.upperBound(value); }
@@ -827,7 +827,7 @@ struct FastSet
   template<typename... Args>
   Pair<iterator, bool> emplace(Args&&... args) { return this->insert(T(forward<Args>(args)...)); }
   // The number of values removed (0 or 1).
-  int erase(const T& value)
+  ContainerSize erase(const T& value)
   {
     T copy(value);
     return this->tree.erase(copy) ? 1 : 0;

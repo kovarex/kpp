@@ -12,7 +12,7 @@ struct UniqueArray
   UniqueArray() {}
   implicit UniqueArray(nullptr_t) {}
   // count value-initialized elements (std::make_unique<T[]>(count)): numbers are zero.
-  explicit UniqueArray(int count) : pointer(count > 0 ? new T[count]() : nullptr) {}
+  explicit UniqueArray(ContainerSize count) : pointer(count != 0 ? new T[count]() : nullptr) {}
   // Takes over array, made by `new T[n]` (std::unique_ptr<T[]>(array)), or nothing for null.
   explicit UniqueArray(T* array) : pointer(array) {}
   UniqueArray(const UniqueArray<T>& other) = delete;
@@ -33,7 +33,7 @@ struct UniqueArray
   }
 
   T* get() const { return this->pointer; }
-  T& operator[](int index) const { return this->pointer[index]; }
+  T& operator[](ContainerSize index) const { return this->pointer[index]; }
   explicit operator bool() const { return this->pointer != nullptr; }
   bool operator!() const { return this->pointer == nullptr; }
   bool operator==(nullptr_t) const { return this->pointer == nullptr; }
@@ -62,10 +62,10 @@ struct UniqueArray
 };
 
 template<typename T>
-UniqueArray<T> makeUniqueArray(int count) { return UniqueArray<T>(count); }
+UniqueArray<T> makeUniqueArray(ContainerSize count) { return UniqueArray<T>(count); }
 
 // count elements to be overwritten (std::make_unique_for_overwrite<T[]>(n)): default-initialized,
 // which leaves a type that needs no construction (numbers, chars, plain structs) uninitialized
 // instead of zeroed; other types are constructed.
 template<typename T>
-UniqueArray<T> makeUniqueArrayForOverwrite(int count) { return UniqueArray<T>(count > 0 ? new T[count] : nullptr); }
+UniqueArray<T> makeUniqueArrayForOverwrite(ContainerSize count) { return UniqueArray<T>(count != 0 ? new T[count] : nullptr); }

@@ -224,15 +224,15 @@ Tuple<Args&&...> forwardAsTuple(Args&&... args)
 }
 
 // Array is tuple-like too (std::array): `auto [x, y] = array`, tupleSize<Array<T, N>>.
-template<typename T, int N>
-struct TupleSize<Array<T, N>> { static constexpr int value = N; };
-template<int I, typename T, int N>
+template<typename T, ContainerSize N>
+struct TupleSize<Array<T, N>> { static constexpr int value = int(N); };
+template<int I, typename T, ContainerSize N>
 struct TupleElement<I, Array<T, N>> { using Type = T; };
-template<int I, typename T, int N> requires (I >= 0 && I < N)
+template<int I, typename T, ContainerSize N> requires (I >= 0 && I < N)
 T& get(Array<T, N>& a) { return a[I]; }
-template<int I, typename T, int N> requires (I >= 0 && I < N)
+template<int I, typename T, ContainerSize N> requires (I >= 0 && I < N)
 const T& get(const Array<T, N>& a) { return a[I]; }
-template<int I, typename T, int N> requires (I >= 0 && I < N)
+template<int I, typename T, ContainerSize N> requires (I >= 0 && I < N)
 T&& get(Array<T, N>&& a) { return move(a[I]); }
 
 // Pair's members by index (std::get on a pair). Pair is not tuple-like (no TupleSize): a binding

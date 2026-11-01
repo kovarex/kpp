@@ -18,14 +18,15 @@ the move.
 
 ## Positions and npos
 
-Indices are `int`. Searches return the index of the match, or `npos`, the largest `int`
-(2147483647), as C++'s npos is the largest value of its size type: a search result compares with
-npos and with sizes as in C++ (`min(s.find(x), s.size())` is the size when x is absent, and
-`s.find(x) < s.size()` is false), and as a count npos means "to the end". Stored in a `size_t` it
-stays 2147483647, not C++'s largest `size_t`, so compare a search result with npos itself (or
-with a size) rather than with `SIZE_MAX`. (Until 2026-10-29 npos was -1, which made the game's
-`Math::min(input.find(separator), input.size())` -1, and its localised strings came out as their
-own suffixes.)
+Indices are sizes (`ContainerSize`, common.md). Searches return the index of the match, or `npos`,
+the largest size (4294967295 with 32-bit sizes), as C++'s npos is the largest value of its size
+type: a search result compares with npos and with sizes as in C++ (`min(s.find(x), s.size())` is
+the size when x is absent, and `s.find(x) < s.size()` is false), and as a count npos (or any count
+past the end) means "to the end". Stored in an `int` it is -1, as C++'s is; stored in a `size_t`
+it stays the largest ContainerSize, not C++'s largest `size_t` (unless sizeBits=64), so compare a
+search result with npos itself (or with a size) rather than with `SIZE_MAX`. (Until 2026-10-29
+npos was -1, which made the game's `Math::min(input.find(separator), input.size())` -1, and its
+localised strings came out as their own suffixes; until 2026-11-01 it was the largest `int`.)
 
 ## Members
 
@@ -59,7 +60,7 @@ forms that take a position return a position:
 - `assign(text, count)`, `assign(first, last)` (the bytes of a pointer range), `assign(text)`,
   `assign(other)`, `assign(count, c)`: replace the contents (text may point into this String).
 
-Searching (each returns an index or npos; `from` is where the search starts, clamped to 0):
+Searching (each returns an index or npos; `from` is where the search starts):
 - `find(text, from)`, `find(c, from)`: first occurrence at or after from. An empty text is found
   at from when from <= size().
 - `rfind(text, from)`, `rfind(c, from)`: the last occurrence starting at or before from (anywhere
@@ -101,7 +102,7 @@ int's size, as MSVC's.
 A sequence of `wchar_t` (UTF-16 code units on Windows, not checked), what `std::wstring` converts
 to: the text the Windows API takes and gives (`CreateFileW`, command lines, paths). Always followed
 by a zero unit, so `c_str()` is free; stored in a heap block (no short-string storage). Indices
-are `int` and searches return an index or `npos` (the largest `int`), as for String; iterators are `wchar_t*`,
+are sizes and searches return an index or `npos` (the largest size), as for String; iterators are `wchar_t*`,
 invalidated as String's are.
 
 Members, as String's of the same name but in units of wchar_t:

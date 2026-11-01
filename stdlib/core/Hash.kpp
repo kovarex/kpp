@@ -18,7 +18,7 @@ size_t hashOf(unsigned long long value) { return hashBits(value); }
 
 // Eight bytes per step, each word multiplied in, then the murmur3 finalizer: several times
 // faster than byte-at-a-time FNV-1a on keys longer than a few characters.
-size_t hashBytes(const char* bytes, int count)
+size_t hashBytes(const char* bytes, ContainerSize count)
 {
   uint64_t hash = 0x9E3779B97F4A7C15ull ^ (uint64_t)count;
   while (count >= 8)
@@ -31,7 +31,7 @@ size_t hashBytes(const char* bytes, int count)
     count -= 8;
   }
   uint64_t tail = 0;
-  for (int i = 0; i < count; ++i)
+  for (ContainerSize i = 0; i < count; ++i)
     tail = tail | ((uint64_t)(uint8_t)bytes[i] << (8 * i));
   hash = (hash ^ tail) * 0xFF51AFD7ED558CCDull;
   hash = hash ^ (hash >> 33);

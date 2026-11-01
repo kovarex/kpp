@@ -5,17 +5,17 @@
 struct WString
 {
   wchar_t* chars = nullptr;
-  int unitCount = 0;
-  int capacity = 0;
+  ContainerSize unitCount = 0;
+  ContainerSize capacity = 0;
 
-  // Not found, or to the end: the largest int, as C++'s npos is the largest size_t, so that a
+  // Not found, or to the end: the largest size, as C++'s npos is the largest size_t, so that a
   // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
-  static const int npos = 2147483647;
+  static const ContainerSize npos = ContainerSize(-1);
 
   using iterator = wchar_t*;
   using const_iterator = const wchar_t*;
   using value_type = wchar_t;
-  using size_type = int;
+  using size_type = ContainerSize;
   using difference_type = ptrdiff_t;
   using reference = wchar_t&;
   using const_reference = const wchar_t&;
@@ -24,9 +24,9 @@ struct WString
 
   WString() {}
   implicit WString(const wchar_t* text) { this->append(text, WString::lengthOf(text)); }
-  WString(const wchar_t* text, int count) { this->append(text, count); }
+  WString(const wchar_t* text, ContainerSize count) { this->append(text, count); }
   WString(const wchar_t* first, const wchar_t* last) { this->append(first, checkedSize(last - first, "string too long")); }
-  WString(int count, wchar_t c) { this->append(count, c); }
+  WString(ContainerSize count, wchar_t c) { this->append(count, c); }
   WString(const WString& other) { this->append(other.chars, other.unitCount); }
   WString(WString&& other) noexcept : chars(other.chars), unitCount(other.unitCount), capacity(other.capacity)
   {
@@ -68,25 +68,25 @@ struct WString
     return *this;
   }
 
-  static int lengthOf(const wchar_t* text)
+  static ContainerSize lengthOf(const wchar_t* text)
   {
-    long long n = 0;
+    size_t n = 0;
     while (text != nullptr && text[n] != 0)
       ++n;
     return checkedSize(n, "string too long");
   }
 
-  int size() const { return this->unitCount; }
-  int length() const { return this->unitCount; }
+  ContainerSize size() const { return this->unitCount; }
+  ContainerSize length() const { return this->unitCount; }
   bool empty() const { return this->unitCount == 0; }
   const wchar_t* c_str() const { return this->chars ? this->chars : L""; }
   wchar_t* data() { return this->chars; }
   const wchar_t* data() const { return this->c_str(); }
-  wchar_t& operator[](int index) { return this->chars[index]; }
-  const wchar_t& operator[](int index) const { return this->c_str()[index]; }
-  wchar_t& at(int index)
+  wchar_t& operator[](ContainerSize index) { return this->chars[index]; }
+  const wchar_t& operator[](ContainerSize index) const { return this->c_str()[index]; }
+  wchar_t& at(ContainerSize index)
   {
-    if (index < 0 || index >= this->unitCount)
+    if (index >= this->unitCount)
       throw OutOfRange(String("WString::at"));
     return this->chars[index];
   }
@@ -107,16 +107,16 @@ struct WString
 
   // Room for needed units and the terminator: the capacity doubles from 16 until they fit, at most
   // maxContainerSize; LengthError when they do not fit in it (core/Sizes.kpp).
-  void reserve(int needed)
+  void reserve(ContainerSize needed)
   {
-    if ((long long)needed + 1 <= this->capacity)
+    if ((unsigned long long)needed + 1 <= this->capacity)
       return;
-    if ((long long)needed + 1 > maxContainerSize)
+    if ((unsigned long long)needed + 1 > maxContainerSize)
       throwLengthError("string too long");
-    long long doubled = this->capacity == 0 ? 16 : this->capacity;
-    while (doubled < (long long)needed + 1)
+    unsigned long long doubled = this->capacity == 0 ? 16 : this->capacity;
+    while (doubled < (unsigned long long)needed + 1)
       doubled *= 2;
-    int newCapacity = doubled > maxContainerSize ? maxContainerSize : (int)doubled;
+    ContainerSize newCapacity = doubled > maxContainerSize ? maxContainerSize : (ContainerSize)doubled;
     wchar_t* bigger = allocateArray<wchar_t>(newCapacity);
     if (this->chars)
     {
@@ -129,11 +129,11 @@ struct WString
     this->capacity = newCapacity;
   }
   // count units at units appended; units may point into this WString. The appends return the string.
-  WString& append(const wchar_t* units, int count)
+  WString& append(const wchar_t* units, ContainerSize count)
   {
     if (count <= 0)
       return *this;
-    int newLength = sizeSum(this->unitCount, count, "string too long"); // before a unit is copied
+    ContainerSize newLength = sizeSum(this->unitCount, count, "string too long"); // before a unit is copied
     if (this->chars && units >= this->chars && units < this->chars + this->capacity)
     {
       WString copy(units, count);
@@ -147,12 +147,12 @@ struct WString
   }
   WString& append(const wchar_t* text) { return this->append(text, WString::lengthOf(text)); }
   WString& append(const WString& other) { return this->append(other.chars, other.unitCount); }
-  WString& append(int count, wchar_t c)
+  WString& append(ContainerSize count, wchar_t c)
   {
     if (count <= 0)
       return *this;
     this->reserve(sizeSum(this->unitCount, count, "string too long"));
-    for (int i = 0; i < count; ++i)
+    for (ContainerSize i = 0; i < count; ++i)
       this->chars[this->unitCount + i] = c;
     this->unitCount += count;
     this->chars[this->unitCount] = 0;
@@ -164,7 +164,7 @@ struct WString
     --this->unitCount;
     this->chars[this->unitCount] = 0;
   }
-  void resize(int newLength, wchar_t fill)
+  void resize(ContainerSize newLength, wchar_t fill)
   {
     if (newLength < this->unitCount)
     {
@@ -174,20 +174,20 @@ struct WString
     else
       this->append(newLength - this->unitCount, fill);
   }
-  void resize(int newLength) { this->resize(newLength, 0); }
+  void resize(ContainerSize newLength) { this->resize(newLength, 0); }
   void clear()
   {
     this->unitCount = 0;
     if (this->chars)
       this->chars[0] = 0;
   }
-  // Removes count units from index (to the end when count is negative or reaches past it);
+  // Removes count units from index (to the end when count is npos or reaches past it);
   // throws OutOfRange when index is past the end.
-  WString& erase(int index, int count)
+  WString& erase(ContainerSize index, ContainerSize count)
   {
-    if (index < 0 || index > this->unitCount)
+    if (index > this->unitCount)
       throw OutOfRange(String("WString::erase"));
-    if (count < 0 || count > this->unitCount - index)
+    if (count > this->unitCount - index)
       count = this->unitCount - index;
     if (count > 0)
     {
@@ -199,13 +199,13 @@ struct WString
   }
   // Inserts count units before index (ForkTask.cpp puts the executable's path in front of a
   // command line); throws OutOfRange when index is past the end. units may point into this WString.
-  WString& insert(int index, const wchar_t* units, int count)
+  WString& insert(ContainerSize index, const wchar_t* units, ContainerSize count)
   {
-    if (index < 0 || index > this->unitCount)
+    if (index > this->unitCount)
       throw OutOfRange(String("WString::insert"));
     if (count <= 0)
       return *this;
-    int newLength = sizeSum(this->unitCount, count, "string too long"); // before a unit is copied
+    ContainerSize newLength = sizeSum(this->unitCount, count, "string too long"); // before a unit is copied
     if (this->chars && units >= this->chars && units < this->chars + this->capacity)
     {
       WString copy(units, count);
@@ -218,9 +218,9 @@ struct WString
     this->unitCount += count;
     return *this;
   }
-  WString& insert(int index, const wchar_t* text) { return this->insert(index, text, WString::lengthOf(text)); }
-  WString& insert(int index, const WString& text) { return this->insert(index, text.chars, text.unitCount); }
-  WString& insert(int index, int count, wchar_t c)
+  WString& insert(ContainerSize index, const wchar_t* text) { return this->insert(index, text, WString::lengthOf(text)); }
+  WString& insert(ContainerSize index, const WString& text) { return this->insert(index, text.chars, text.unitCount); }
+  WString& insert(ContainerSize index, ContainerSize count, wchar_t c)
   {
     WString units;
     units.append(count, c);
@@ -264,13 +264,13 @@ struct WString
   }
 
   // Searching: each returns the index of the first match at or after from, or npos.
-  int find(const wchar_t* needle, int count, int from) const
+  ContainerSize find(const wchar_t* needle, ContainerSize count, ContainerSize from) const
   {
-    if (from < 0)
-      from = 0;
-    for (int i = from; i <= this->unitCount - count; ++i)
+    if (count > this->unitCount) // (unitCount - count would wrap)
+      return npos;
+    for (ContainerSize i = from; i <= this->unitCount - count; ++i)
     {
-      int k = 0;
+      ContainerSize k = 0;
       while (k < count && this->chars[i + k] == needle[k])
         ++k;
       if (k == count)
@@ -278,60 +278,64 @@ struct WString
     }
     return npos;
   }
-  int find(const wchar_t* needle, int from) const { return this->find(needle, WString::lengthOf(needle), from); }
-  int find(const wchar_t* needle) const { return this->find(needle, 0); }
-  int find(const WString& needle, int from) const { return this->find(needle.c_str(), needle.unitCount, from); }
-  int find(const WString& needle) const { return this->find(needle, 0); }
-  int find(wchar_t c, int from) const { return this->find(&c, 1, from); }
-  int find(wchar_t c) const { return this->find(c, 0); }
+  ContainerSize find(const wchar_t* needle, ContainerSize from) const { return this->find(needle, WString::lengthOf(needle), from); }
+  ContainerSize find(const wchar_t* needle) const { return this->find(needle, 0); }
+  ContainerSize find(const WString& needle, ContainerSize from) const { return this->find(needle.c_str(), needle.unitCount, from); }
+  ContainerSize find(const WString& needle) const { return this->find(needle, 0); }
+  ContainerSize find(wchar_t c, ContainerSize from) const { return this->find(&c, 1, from); }
+  ContainerSize find(wchar_t c) const { return this->find(c, 0); }
   // The last c at or before from (anywhere when from is npos), or npos.
-  int rfind(wchar_t c, int from) const
+  ContainerSize rfind(wchar_t c, ContainerSize from) const
   {
-    int i = from < 0 || from >= this->unitCount ? this->unitCount - 1 : from;
-    for (; i >= 0; --i)
+    if (this->unitCount == 0)
+      return npos;
+    for (ContainerSize i = from < this->unitCount - 1 ? from : this->unitCount - 1;; --i) // down to 0, which ends it
+    {
       if (this->chars[i] == c)
         return i;
-    return npos;
+      if (i == 0)
+        return npos;
+    }
   }
-  int rfind(wchar_t c) const { return this->rfind(c, npos); }
+  ContainerSize rfind(wchar_t c) const { return this->rfind(c, npos); }
   // The first unit at or after from that is in set, or npos.
-  int find_first_of(const wchar_t* set, int from) const
+  ContainerSize find_first_of(const wchar_t* set, ContainerSize from) const
   {
-    for (int i = from < 0 ? 0 : from; i < this->unitCount; ++i)
+    for (ContainerSize i = from; i < this->unitCount; ++i)
       for (const wchar_t* s = set; *s; ++s)
         if (this->chars[i] == *s)
           return i;
     return npos;
   }
-  int find_first_of(const wchar_t* set) const { return this->find_first_of(set, 0); }
+  ContainerSize find_first_of(const wchar_t* set) const { return this->find_first_of(set, 0); }
   // The last unit that is in set, or npos.
-  int find_last_of(const wchar_t* set) const
+  ContainerSize find_last_of(const wchar_t* set) const
   {
-    for (int i = this->unitCount - 1; i >= 0; --i)
+    for (ContainerSize i = this->unitCount; i-- > 0;)
       for (const wchar_t* s = set; *s; ++s)
         if (this->chars[i] == *s)
           return i;
     return npos;
   }
-  int find_last_of(wchar_t c) const { return this->rfind(c); }
+  ContainerSize find_last_of(wchar_t c) const { return this->rfind(c); }
 
-  // count units from start (all the rest when count is negative or runs past the end); throws
+  // count units from start (all the rest when count is npos or runs past the end); throws
   // OutOfRange when start is past the end.
-  WString substr(int start, int count) const
+  WString substr(ContainerSize start, ContainerSize count) const
   {
-    if (start < 0 || start > this->unitCount)
+    if (start > this->unitCount)
       throw OutOfRange(String("WString::substr"));
-    if (count < 0 || count > this->unitCount - start)
+    if (count > this->unitCount - start)
       count = this->unitCount - start;
     return WString(this->c_str() + start, count);
   }
-  WString substr(int start) const { return this->substr(start, npos); }
+  WString substr(ContainerSize start) const { return this->substr(start, npos); }
 
   // Negative, 0 or positive as this sorts before, with or after other, unit by unit.
   int compare(const WString& other) const
   {
-    int n = this->unitCount < other.unitCount ? this->unitCount : other.unitCount;
-    for (int i = 0; i < n; ++i)
+    ContainerSize n = this->unitCount < other.unitCount ? this->unitCount : other.unitCount;
+    for (ContainerSize i = 0; i < n; ++i)
       if (this->chars[i] != other.chars[i])
         return this->chars[i] < other.chars[i] ? -1 : 1;
     return this->unitCount < other.unitCount ? -1 : this->unitCount > other.unitCount ? 1 : 0;

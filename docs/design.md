@@ -139,6 +139,12 @@ builds win less unless machine code is cached per function.
   10-17% on growing a Vector<String>, docs/stdlib-performance.md.)
 - The game's 2D `Vector` class is `Vector2D` in the conversion, since `Vector` is the library's
   std::vector (decided 2026-10-25; the converter renames the identifier).
+- Sizes are unsigned (kovarex 2026-11-01: "all the sizes should be unsigned not signed"): every
+  size, count, capacity, length, index and position is a `ContainerSize`, `u32` unless
+  `kppc --config sizeBits=64` makes it `u64` (stdlib/core/Sizes.kpp, the one alias, so that both
+  widths can be measured on the game). Differences, offsets and comparison results stay signed.
+  npos is the largest size; past the limit a container throws LengthError
+  (docs/stdlib-conformance.md, "Sizes are 32-bit unsigned").
 
 ### 5. Interop: C only
 - Import C headers / C ABI (OS APIs, SDL, Lua, zlib, openssl, curl...).

@@ -1,0 +1,46 @@
+// spec: the library's sizes are unsigned (ContainerSize), and its loops and subtractions are right at the edges where a signed size went below 0: a backward search that reaches index 0 (and stops there, or on an empty text), a needle longer than the text (no length - count that wraps), npos as "to the end" in substr and erase, the iterator difference of a Deque that is negative, Deque's erase of a range at the front, a heap of 0, 1 and 2 elements, a comparison result that is negative, an extension at a name's first character
+// factorio: every container and string the game uses; the traps of docs/stdlib-conformance.md, "Sizes are 32-bit unsigned"
+int main()
+{
+  // Backward searches down to 0, and on nothing.
+  String text = "abcab";
+  String empty;
+  println("{} {} {} {}", text.rfind('a'), text.rfind('a', 2), text.rfind("ab", 0), empty.rfind('a') == String::npos);
+  println("{} {} {}", text.find_last_of("a"), text.find_last_not_of('b'), String("aaa").find_last_not_of('a') == String::npos);
+  StringView view = "xyzx";
+  println("{} {} {}", view.rfind('x', 2), view.rfind(StringView("xy"), 3), StringView().rfind('x') == StringView::npos);
+  WString wide = L"axa";
+  println("{} {} {}", wide.rfind(L'a', 1), wide.find_last_of(L"a"), WString().rfind(L'a') == WString::npos);
+  // A needle longer than the text: npos, no wrapped length - count.
+  println("{} {} {}", text.find("abcabc") == String::npos, view.find(StringView("xyzxx")) == StringView::npos,
+          wide.find(L"axaa") == WString::npos);
+  // npos, or any count past the end, as "to the end".
+  String phrase = "hello world";
+  println("{}|{}|{}", phrase.substr(6), phrase.substr(6, String::npos), phrase.substr(11));
+  String erased = phrase;
+  erased.erase(5);
+  String front = phrase;
+  front.erase(0, 6);
+  println("{}|{}", erased, front);
+  // A Deque: negative iterator differences, a range erased at the front, an empty range.
+  Deque<int> deque;
+  for (int i = 0; i < 6; ++i)
+    deque.push_back(i);
+  println("{} {}", deque.begin() - deque.end(), (deque.end() - 2) - deque.begin());
+  deque.erase(deque.begin() + 1, deque.begin() + 3);
+  deque.erase(deque.begin() + 2, deque.begin() + 2);
+  println("{} {} {} {}", deque.size(), deque[0], deque[1], deque[3]);
+  // Heaps of 0, 1 and 2 elements (heapify counts down from size / 2 - 1).
+  PriorityQueue<int> none;
+  PriorityQueue<int> one;
+  one.push(4);
+  PriorityQueue<int> two;
+  two.push(1);
+  two.push(9);
+  println("{} {} {}", none.empty(), one.top(), two.top());
+  // Comparison results stay signed.
+  println("{} {} {}", String("a").compare(String("b")) < 0, WString(L"a") < WString(L"b"), String("b") > String("a"));
+  // An extension at the name's first character is none.
+  println("{} {}", filesystem::path(".hidden").extension().string().size(), filesystem::path("a.txt").extension().string());
+  return 0;
+}
