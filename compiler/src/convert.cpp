@@ -4344,6 +4344,13 @@ namespace
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
+        if (in.c && t.getKind() == TokenKind::Identifier && lookupKeyword(spelling(i)) != UINT32_MAX)
+        {
+          // A C name that is a C++ keyword (trio's `class`, curl's `new`): Kpp has the keyword.
+          replace(t.offset, t.length, std::string(spelling(i)) + "_");
+          counts.add("C names that are C++ keywords renamed");
+          continue;
+        }
         if (t.getKind() == TokenKind::String && i > 0 && (toks[i - 1].is(P::LParen) || toks[i - 1].is(P::Comma)) &&
             !(i > 0 && toks[i - 1].getKind() == TokenKind::String))
           widenFormatArguments(i);
@@ -7370,6 +7377,483 @@ namespace
       }
     }
 
+    // --- C's rules (ConvertInput::c, kppc --c-sources) ---
+    // C converts a void* to any object pointer implicitly (`unsigned char* p = malloc(n);`,
+    // `b->buffer = ret;`), Kpp only with a cast: the converter writes the cast. The types come from
+    // the declarations the converted files and their headers make; a C library function that
+    // returns void* is known by name, as the converter does not read the C library's headers.
+
+    // The type a typedef names, followed through typedefs; const and volatile kept.
+    Type* cUnaliased(Type* t, int depth = 0) const
+    {
+      while (t && depth++ < 16)
+      {
+        if (t->kind != NodeKind::NamedType)
+          return t;
+        Decl* d = static_cast<NamedType*>(t)->resolved;
+        if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+          t = static_cast<VariableDecl*>(d)->type;
+        else if (d && d->kind == NodeKind::UsingAliasDecl)
+          t = static_cast<UsingAliasDecl*>(d)->type;
+        else
+          return t;
+      }
+      return t;
+    }
+    static Type* cWithoutQualifiers(Type* t)
+    {
+      while (t && t->kind == NodeKind::ConstType)
+        t = static_cast<ConstType*>(t)->inner;
+      return t;
+    }
+    // Whether t is a pointer to void (const or not), or to an object type other than void.
+    bool cIsVoidPointer(Type* t) const
+    {
+      t = cWithoutQualifiers(cUnaliased(t));
+      if (!t || t->kind != NodeKind::PointerType)
+        return false;
+      Type* pointee = cWithoutQualifiers(cUnaliased(static_cast<PointerType*>(t)->pointee));
+      return pointee && pointee->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(pointee)->keyword == Kw::void_;
+    }
+    bool cIsObjectPointer(Type* t) const
+    {
+      Type* bare = cWithoutQualifiers(cUnaliased(t));
+      if (!bare || bare->kind != NodeKind::PointerType || cIsVoidPointer(t))
+        return false;
+      Type* pointee = cWithoutQualifiers(cUnaliased(static_cast<PointerType*>(bare)->pointee));
+      return pointee && pointee->kind != NodeKind::FunctionType;
+    }
+    // A type as Kpp source: what a cast to it writes. Empty for a type this does not spell (a
+    // function pointer).
+    std::string cSpelling(Type* t) const
+    {
+      if (!t)
+        return "";
+      switch (t->kind)
+      {
+        case NodeKind::BuiltinType:
+        {
+          auto* b = static_cast<BuiltinType*>(t);
+          std::string s = b->isUnsigned ? "unsigned " : b->isSigned ? "signed " : "";
+          for (int i = 0; i < b->longCount; ++i)
+            s += "long ";
+          if (b->keyword != Kw::int_ || s.empty())
+            s += std::string(keywordSpelling(b->keyword));
+          else
+            s.pop_back();
+          return s;
+        }
+        case NodeKind::NamedType:
+        {
+          const QualifiedName& name = static_cast<NamedType*>(t)->name;
+          std::string s = name.global ? "::" : "";
+          for (size_t i = 0; i < name.parts.size(); ++i)
+          {
+            if (name.parts[i].hasTemplateArgs || name.parts[i].symbol == UINT32_MAX)
+              return "";
+            std::string part(symbols.name(name.parts[i].symbol));
+            s += (i ? "::" : "") + part + (lookupKeyword(part) != UINT32_MAX ? "_" : ""); // (renamed as the C names are)
+          }
+          return s;
+        }
+        case NodeKind::PointerType:
+        {
+          std::string pointee = cSpelling(static_cast<PointerType*>(t)->pointee);
+          return pointee.empty() ? "" : pointee + "*";
+        }
+        case NodeKind::ConstType:
+        {
+          auto* c = static_cast<ConstType*>(t);
+          std::string inner = cSpelling(c->inner);
+          if (inner.empty())
+            return "";
+          return std::string(c->isConst ? "const " : "") + (c->isVolatile ? "volatile " : "") + inner;
+        }
+        default: return "";
+      }
+    }
+    // The C library's functions that return void*.
+    static bool cReturnsVoidPointer(std::string_view name)
+    {
+      static const std::set<std::string_view> names = {"malloc", "calloc", "realloc", "aligned_alloc", "_aligned_malloc",
+                                                       "_aligned_realloc", "_recalloc", "memchr", "memcpy", "memmove",
+                                                       "memset", "bsearch", "alloca", "_alloca", "_malloca"};
+      return names.count(name) != 0;
+    }
+    // The declared type of what d names: a variable's, a parameter's, a data member's.
+    static Type* cDeclType(Decl* d)
+    {
+      if (!d)
+        return nullptr;
+      if (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef))
+        return static_cast<VariableDecl*>(d)->type;
+      if (d->kind == NodeKind::ParamDecl)
+        return static_cast<ParamDecl*>(d)->type;
+      return nullptr;
+    }
+    // The member named `member` of the struct or union t (a pointer to it with ->), or null.
+    Decl* cMemberOf(Type* t, uint32_t member, bool arrow) const
+    {
+      t = cWithoutQualifiers(cUnaliased(t));
+      if (arrow)
+      {
+        if (!t || (t->kind != NodeKind::PointerType && t->kind != NodeKind::ArrayType))
+          return nullptr;
+        t = cWithoutQualifiers(cUnaliased(t->kind == NodeKind::PointerType ? static_cast<PointerType*>(t)->pointee : static_cast<ArrayType*>(t)->element));
+      }
+      if (!t || t->kind != NodeKind::NamedType)
+        return nullptr;
+      Decl* d = static_cast<NamedType*>(t)->resolved;
+      if (!d || d->kind != NodeKind::ClassDecl)
+        return nullptr;
+      std::function<Decl*(ClassDecl*)> find = [&](ClassDecl* c) -> Decl*
+      {
+        for (Decl* m : c->members)
+        {
+          if (m->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(m)->name.empty() && static_cast<VariableDecl*>(m)->name.last().symbol == member)
+            return m;
+          if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty()) // an anonymous struct or union's members
+            if (Decl* inner = find(static_cast<ClassDecl*>(m)))
+              return inner;
+        }
+        return nullptr;
+      };
+      return find(static_cast<ClassDecl*>(d));
+    }
+    // The type of a C expression, as far as the conversions below need it: null when unknown.
+    Type* cTypeOf(Expr* e)
+    {
+      static BuiltinType voidType = []
+      {
+        BuiltinType v;
+        v.kind = NodeKind::BuiltinType;
+        v.token = 0;
+        v.keyword = Kw::void_;
+        return v;
+      }();
+      static PointerType voidPointer = []
+      {
+        PointerType p;
+        p.kind = NodeKind::PointerType;
+        p.token = 0;
+        p.pointee = &voidType;
+        return p;
+      }();
+      if (!e)
+        return nullptr;
+      switch (e->kind)
+      {
+        case NodeKind::ParenExpr: return cTypeOf(static_cast<ParenExpr*>(e)->inner);
+        case NodeKind::NameExpr: return cDeclType(static_cast<NameExpr*>(e)->resolved);
+        case NodeKind::MemberExpr:
+        {
+          auto* m = static_cast<MemberExpr*>(e);
+          if (Type* t = cDeclType(m->resolved))
+            return t;
+          if (m->member.parts.size() != 1)
+            return nullptr;
+          return cDeclType(cMemberOf(cTypeOf(m->base), m->member.parts[0].symbol, m->op == P::Arrow));
+        }
+        case NodeKind::CallExpr:
+        {
+          Expr* callee = static_cast<CallExpr*>(e)->callee;
+          while (callee->kind == NodeKind::ParenExpr)
+            callee = static_cast<ParenExpr*>(callee)->inner;
+          if (callee->kind != NodeKind::NameExpr)
+            return nullptr;
+          auto* name = static_cast<NameExpr*>(callee);
+          if (name->resolved && name->resolved->kind == NodeKind::FunctionDecl)
+            return static_cast<FunctionDecl*>(name->resolved)->returnType;
+          if (!name->resolved && name->name.parts.size() == 1 && name->name.parts[0].symbol != UINT32_MAX)
+          {
+            // (a header's macro that names the function: ogg's `#define _ogg_malloc malloc`)
+            std::string called(symbols.name(name->name.parts[0].symbol));
+            if (headerAliases)
+              if (auto alias = headerAliases->find(called); alias != headerAliases->end())
+                called = alias->second;
+            if (cReturnsVoidPointer(called))
+              return &voidPointer;
+          }
+          return nullptr;
+        }
+        case NodeKind::CastExpr: return static_cast<CastExpr*>(e)->type;
+        case NodeKind::IndexExpr:
+        {
+          Type* t = cWithoutQualifiers(cUnaliased(cTypeOf(static_cast<IndexExpr*>(e)->base)));
+          return !t ? nullptr : t->kind == NodeKind::PointerType ? static_cast<PointerType*>(t)->pointee : t->kind == NodeKind::ArrayType ? static_cast<ArrayType*>(t)->element : nullptr;
+        }
+        case NodeKind::UnaryExpr:
+        {
+          auto* u = static_cast<UnaryExpr*>(e);
+          if (!u->isKeyword && u->op == uint32_t(P::Star) && !u->postfix)
+          {
+            Type* t = cWithoutQualifiers(cUnaliased(cTypeOf(u->operand)));
+            return t && t->kind == NodeKind::PointerType ? static_cast<PointerType*>(t)->pointee : nullptr;
+          }
+          return nullptr;
+        }
+        case NodeKind::BinaryExpr:
+        {
+          auto* b = static_cast<BinaryExpr*>(e);
+          if (!b->isKeyword && (b->op == uint32_t(P::Assign) || b->op == uint32_t(P::PlusAssign) || b->op == uint32_t(P::MinusAssign)))
+            return cTypeOf(b->lhs);
+          if (!b->isKeyword && (b->op == uint32_t(P::Plus) || b->op == uint32_t(P::Minus)))
+          {
+            // pointer arithmetic keeps the pointer's type (a pointer minus a pointer is no pointer)
+            Type* l = cTypeOf(b->lhs);
+            Type* bare = cWithoutQualifiers(cUnaliased(l));
+            if (bare && bare->kind == NodeKind::PointerType)
+            {
+              Type* r = cWithoutQualifiers(cUnaliased(cTypeOf(b->rhs)));
+              return r && r->kind == NodeKind::PointerType ? nullptr : l;
+            }
+          }
+          return nullptr;
+        }
+        case NodeKind::ConditionalExpr:
+        {
+          auto* c = static_cast<ConditionalExpr*>(e);
+          return cTypeOf(c->then ? c->then : c->cond);
+        }
+        default: return nullptr;
+      }
+    }
+    // Where an expression ends, from its first token: at the `;`, `,` or closing bracket that ends
+    // the initializer, assignment, argument or return value it is.
+    uint32_t cExpressionEnd(uint32_t first) const
+    {
+      int depth = 0;
+      for (uint32_t i = first; i < toks.size(); ++i)
+      {
+        const Token& t = toks[i];
+        if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::LBrace))
+          ++depth;
+        else if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::RBrace))
+        {
+          if (depth == 0)
+            return toks[i].offset;
+          --depth;
+        }
+        else if (depth == 0 && (t.is(P::Semi) || t.is(P::Comma)))
+          return toks[i].offset;
+      }
+      return uint32_t(text.size());
+    }
+    static uint32_t cFirstToken(Expr* e)
+    {
+      for (;;)
+      {
+        if (e->kind == NodeKind::MemberExpr)
+          e = static_cast<MemberExpr*>(e)->base;
+        else if (e->kind == NodeKind::CallExpr)
+          e = static_cast<CallExpr*>(e)->callee;
+        else if (e->kind == NodeKind::IndexExpr)
+          e = static_cast<IndexExpr*>(e)->base;
+        else if (e->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(e)->postfix)
+          e = static_cast<UnaryExpr*>(e)->operand;
+        else if (e->kind == NodeKind::BinaryExpr)
+          e = static_cast<BinaryExpr*>(e)->lhs;
+        else if (e->kind == NodeKind::ConditionalExpr)
+          e = static_cast<ConditionalExpr*>(e)->cond;
+        else
+          return e->token;
+      }
+    }
+    // An insertion before the token at offset, which a rewrite of that token (a header's name macro
+    // written out: `_ogg_malloc` as `malloc`) would cancel: then it goes into the rewrite's text.
+    void cInsertBefore(uint32_t offset, const std::string& s)
+    {
+      for (Edit& e : edits)
+        if (e.offset == offset && e.length > 0)
+        {
+          e.text = s + e.text;
+          return;
+        }
+      insert(offset, s);
+    }
+    // value converted to target as C converts it on assignment: a void* to an object pointer
+    // gets the cast Kpp needs.
+    void cConvert(Expr* value, Type* target)
+    {
+      if (!value || !target || !cIsObjectPointer(target) || !cIsVoidPointer(cTypeOf(value)))
+        return;
+      std::string spelled = cSpelling(target);
+      if (spelled.empty())
+        return;
+      Expr* bare = value;
+      while (bare->kind == NodeKind::ParenExpr)
+        bare = static_cast<ParenExpr*>(bare)->inner;
+      uint32_t first = cFirstToken(value);
+      bool postfix = bare->kind == NodeKind::NameExpr || bare->kind == NodeKind::MemberExpr || bare->kind == NodeKind::CallExpr ||
+                     bare->kind == NodeKind::IndexExpr || value->kind == NodeKind::ParenExpr;
+      cInsertBefore(toks[first].offset, "(" + spelled + ")" + (postfix ? "" : "("));
+      if (!postfix)
+        insert(cExpressionEnd(first), ")");
+      counts.add("void* converted to object pointers with a cast (C)");
+    }
+    void cWalkExprs(Span<Expr*> es)
+    {
+      for (Expr* e : es)
+        cWalkExpr(e);
+    }
+    void cWalkExpr(Expr* e)
+    {
+      if (!e)
+        return;
+      switch (e->kind)
+      {
+        case NodeKind::ParenExpr: cWalkExpr(static_cast<ParenExpr*>(e)->inner); break;
+        case NodeKind::CallExpr:
+        {
+          auto* call = static_cast<CallExpr*>(e);
+          cWalkExpr(call->callee);
+          cWalkExprs(call->args);
+          Expr* callee = call->callee;
+          while (callee->kind == NodeKind::ParenExpr)
+            callee = static_cast<ParenExpr*>(callee)->inner;
+          if (callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(callee)->resolved &&
+              static_cast<NameExpr*>(callee)->resolved->kind == NodeKind::FunctionDecl)
+          {
+            auto* f = static_cast<FunctionDecl*>(static_cast<NameExpr*>(callee)->resolved);
+            for (size_t a = 0; a < call->args.size() && a < f->params.size(); ++a)
+              if (f->params[a]->kind == NodeKind::ParamDecl)
+                cConvert(call->args[a], static_cast<ParamDecl*>(f->params[a])->type);
+          }
+          break;
+        }
+        case NodeKind::IndexExpr:
+          cWalkExpr(static_cast<IndexExpr*>(e)->base);
+          cWalkExprs(static_cast<IndexExpr*>(e)->args);
+          break;
+        case NodeKind::MemberExpr: cWalkExpr(static_cast<MemberExpr*>(e)->base); break;
+        case NodeKind::UnaryExpr: cWalkExpr(static_cast<UnaryExpr*>(e)->operand); break;
+        case NodeKind::BinaryExpr:
+        {
+          auto* b = static_cast<BinaryExpr*>(e);
+          cWalkExpr(b->lhs);
+          cWalkExpr(b->rhs);
+          if (!b->isKeyword && b->op == uint32_t(P::Assign))
+            cConvert(b->rhs, cTypeOf(b->lhs));
+          break;
+        }
+        case NodeKind::ConditionalExpr:
+        {
+          auto* c = static_cast<ConditionalExpr*>(e);
+          cWalkExpr(c->cond);
+          cWalkExpr(c->then);
+          cWalkExpr(c->else_);
+          break;
+        }
+        case NodeKind::CastExpr: cWalkExpr(static_cast<CastExpr*>(e)->operand); break;
+        case NodeKind::SizeofExpr: cWalkExpr(static_cast<SizeofExpr*>(e)->operand); break;
+        case NodeKind::BraceInitExpr: cWalkExprs(static_cast<BraceInitExpr*>(e)->args); break;
+        default: break;
+      }
+    }
+    void cWalkVariable(Decl* d)
+    {
+      if (d->kind != NodeKind::VariableDecl)
+        return;
+      auto* v = static_cast<VariableDecl*>(d);
+      cWalkExpr(v->init);
+      if (!v->bracedInit)
+        cConvert(v->init, v->type);
+    }
+    void cWalkStmt(Stmt* s, FunctionDecl* function)
+    {
+      if (!s)
+        return;
+      auto walkNode = [&](Node* n)
+      {
+        if (!n)
+          return;
+        if (n->kind == NodeKind::DeclStmt)
+          cWalkStmt(static_cast<Stmt*>(n), function);
+        else if (n->kind == NodeKind::VariableDecl)
+          cWalkVariable(static_cast<Decl*>(n));
+        else
+          cWalkExpr(static_cast<Expr*>(n));
+      };
+      switch (s->kind)
+      {
+        case NodeKind::BlockStmt:
+          for (Stmt* inner : static_cast<BlockStmt*>(s)->stmts)
+            cWalkStmt(inner, function);
+          break;
+        case NodeKind::ExprStmt: cWalkExpr(static_cast<ExprStmt*>(s)->expr); break;
+        case NodeKind::DeclStmt:
+          for (Decl* d : static_cast<DeclStmt*>(s)->decls)
+            cWalkVariable(d);
+          break;
+        case NodeKind::IfStmt:
+        {
+          auto* i = static_cast<IfStmt*>(s);
+          cWalkStmt(i->init, function);
+          walkNode(i->cond);
+          cWalkStmt(i->then, function);
+          cWalkStmt(i->else_, function);
+          break;
+        }
+        case NodeKind::ForStmt:
+        {
+          auto* f = static_cast<ForStmt*>(s);
+          cWalkStmt(f->init, function);
+          walkNode(f->cond);
+          cWalkExpr(f->step);
+          cWalkStmt(f->body, function);
+          break;
+        }
+        case NodeKind::WhileStmt:
+          walkNode(static_cast<WhileStmt*>(s)->cond);
+          cWalkStmt(static_cast<WhileStmt*>(s)->body, function);
+          break;
+        case NodeKind::DoStmt:
+          cWalkStmt(static_cast<DoStmt*>(s)->body, function);
+          cWalkExpr(static_cast<DoStmt*>(s)->cond);
+          break;
+        case NodeKind::SwitchStmt:
+        {
+          auto* sw = static_cast<SwitchStmt*>(s);
+          cWalkStmt(sw->init, function);
+          walkNode(sw->cond);
+          cWalkStmt(sw->body, function);
+          break;
+        }
+        case NodeKind::ReturnStmt:
+        {
+          Expr* value = static_cast<ReturnStmt*>(s)->value;
+          cWalkExpr(value);
+          if (function)
+            cConvert(value, function->returnType);
+          break;
+        }
+        default: break;
+      }
+    }
+    void convertC(Span<Decl*> decls)
+    {
+      for (Decl* d : decls)
+      {
+        if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body)
+        {
+          cWalkStmt(static_cast<FunctionDecl*>(d)->body, static_cast<FunctionDecl*>(d));
+          // A function C code calls by its name (vorbis calls ogg's): C linkage, as every function
+          // a C file defines without static has. (Its own flags may say C already: the resolver
+          // gives it the linkage of the header's extern "C" declaration, which Kpp imports.)
+          bool written = d->token >= 2 && toks[d->token - 1].getKind() == TokenKind::String && toks[d->token - 2].is(Kw::extern_);
+          if (!(d->flags & DF_Static) && !written)
+          {
+            cInsertBefore(toks[d->token].offset, "extern \"C\" ");
+            counts.add("functions given C linkage (C)");
+          }
+        }
+        else if (d->kind == NodeKind::VariableDecl)
+          cWalkVariable(d);
+        else if (d->kind == NodeKind::NamespaceDecl)
+          convertC(static_cast<NamespaceDecl*>(d)->decls);
+      }
+    }
+
     std::string run()
     {
       collectScopeRanges(in.parsed->decls, "");
@@ -7380,6 +7864,8 @@ namespace
       convertBlanked();
       convertTokens();
       convertDecls(in.parsed->decls, true);
+      if (in.c)
+        convertC(in.parsed->decls);
       removeUnparsedDefinitions();
       // By offset; at the same offset the longest first, so that a removal cancels the edits inside it.
       auto byOffset = [](const Edit& a, const Edit& b) { return a.offset != b.offset ? a.offset < b.offset : a.length > b.length; };
@@ -7646,6 +8132,25 @@ namespace
     }
     return abs.filename().generic_string();
   }
+}
+
+void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols)
+{
+  // C++'s keywords that C does not have. C's own (and those it has as macros of its headers:
+  // bool, true, false, alignas, static_assert, thread_local, wchar_t) stay keywords.
+  static const Kw cppOnly[] = {Kw::and_, Kw::and_eq_, Kw::bitand_, Kw::bitor_, Kw::catch_, Kw::char8_t_, Kw::class_, Kw::compl_,
+                               Kw::concept_, Kw::consteval_, Kw::constexpr_, Kw::constinit_, Kw::const_cast_, Kw::co_await_,
+                               Kw::co_return_, Kw::co_yield_, Kw::decltype_, Kw::delete_, Kw::dynamic_cast_, Kw::explicit_,
+                               Kw::export_, Kw::friend_, Kw::mutable_, Kw::namespace_, Kw::new_, Kw::noexcept_, Kw::not_,
+                               Kw::not_eq_, Kw::operator_, Kw::or_, Kw::or_eq_, Kw::private_, Kw::protected_, Kw::public_,
+                               Kw::reinterpret_cast_, Kw::requires_, Kw::static_cast_, Kw::template_, Kw::this_, Kw::throw_,
+                               Kw::try_, Kw::typeid_, Kw::typename_, Kw::using_, Kw::virtual_, Kw::xor_, Kw::xor_eq_};
+  for (Token& t : tokens)
+    if (t.getKind() == TokenKind::Keyword && std::find(std::begin(cppOnly), std::end(cppOnly), Kw(t.id)) != std::end(cppOnly))
+    {
+      t.kind = uint32_t(TokenKind::Identifier);
+      t.id = symbols.intern(text.substr(t.offset, t.length));
+    }
 }
 
 // A path as a key: absolute, normalised, lower case (Windows paths ignore case).

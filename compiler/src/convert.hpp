@@ -18,7 +18,15 @@ struct ConvertInput
   std::string_view text;
   const std::vector<Token>* tokens;
   ParsedFile* parsed;
+  // C, not C++ (kppc --c-sources: a C library): written as Kpp by C's rules, where C and C++
+  // differ (programs/factorio/tests/convert_c/rules.c), with every conversion C makes implicitly
+  // made explicit.
+  bool c = false;
 };
+
+// C's names that are C++'s keywords (`class`, `new`, `this`, `template`...): in a C file's tokens
+// they are identifiers, which the converter renames (`class_`).
+void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols);
 
 // Writes one .kpp file per input (a header and its source of the same stem merged into one)
 // under outDir, mirroring the paths below `roots`. A file of the same relative path under

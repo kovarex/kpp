@@ -79,6 +79,7 @@ namespace
     const SourceConfiguration* configuration = nullptr; // converting: the #if branches the front end and the converter keep
     std::string overridesDir;      // --overrides DIR: hand-written files that replace converted ones
     std::string convertBase;       // --convert-base DIR: --convert writes each file at its path below DIR
+    bool cSources = false;         // --c-sources: the inputs are C, not the C++ Factorio compiles Lua as (convert.hpp)
     int repeat = 1;
     bool keepGoing = false;        // --keep-going: compile and link what codegen emitted despite its errors
     bool stubMissing = false;      // --stub-missing (with --keep-going): what was left out aborts with its name when called
@@ -151,6 +152,7 @@ namespace
             "  --convert D   rewrite the C++ inputs as Kpp sources under D (see docs/path-to-factorio.md)\n"
             "  --convert-base B  with --convert: each file at its input's path below B, not below its input\n"
             "                root's name (B\\libraries\\Lua\\lapi.c as D\\libraries\\Lua\\lapi.kpp)\n"
+            "  --c-sources   with --convert: the inputs are C (a C library), converted by C's rules\n"
             "  --server      build through a compile server for these arguments, started if none runs\n"
             "                (docs/compile-speed.md, \"The compile server: protocol\")\n"
             "  --stop-server stop the compile server of the other arguments\n"
@@ -1752,7 +1754,7 @@ namespace
     {
       std::vector<ConvertInput> inputs;
       for (size_t i = 0; i < parsed.size(); ++i)
-        inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get()});
+        inputs.push_back({files[i].path, files[i].text, &lexed[i].tokens, parsed[i].get(), options.cSources && (files[i].path.extension() == ".c" || files[i].path.extension() == ".h")});
       std::vector<std::filesystem::path> roots(options.roots.begin(), options.roots.end());
       std::string summary =
         convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary,
@@ -3172,6 +3174,8 @@ int compile(int argc, char** argv)
       options.overridesDir = argv[++i];
     else if (arg == "--convert-base" && i + 1 < argc)
       options.convertBase = argv[++i];
+    else if (arg == "--c-sources")
+      options.cSources = true;
     else if (arg[0] == '-')
     {
       usage();
@@ -3413,6 +3417,8 @@ int compile(int argc, char** argv)
     parallelFor(files.size(), options.threads, [&](size_t i)
     {
       results[i] = lex(i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols);
+      if (options.cSources && (files[i].path.extension() == ".c" || files[i].path.extension() == ".h"))
+        cKeywordsAsNames(results[i].tokens, i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols);
       stats[i].bytes = files[i].text.size();
       stats[i].tokens = results[i].tokens.size();
       stats[i].lines = results[i].lineCount;
