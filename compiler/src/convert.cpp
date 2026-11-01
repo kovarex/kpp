@@ -4192,6 +4192,15 @@ namespace
           return true;
       }
       Decl* d = named->resolved;
+      // `typename container_type::size_type` (FlatSet's, over a std::vector) and the like, which the
+      // C++ parse does not resolve: a std container's size_type is size_t, its difference_type
+      // ptrdiff_t, whatever width the library's sizes have.
+      if (!d && name.parts.size() >= 2 && name.last().symbol != UINT32_MAX)
+      {
+        std::string_view last = symbols.name(name.last().symbol);
+        if (last == "size_type" || last == "difference_type")
+          return true;
+      }
       if (d && d->kind == NodeKind::UsingAliasDecl)
         return isWideIntegerType(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
       if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
@@ -4217,6 +4226,10 @@ namespace
           return isWideIntegerType(typeOfExpr(e, 0).type);
         case NodeKind::CallExpr:
         {
+          // A std container's size, a size_t in C++ (TestLuaEvents' `%u` of getChunks().size()):
+          // written uint32_t(...), as C++ reads it, whichever width the library's sizes have.
+          if (isStdSizeCall(e))
+            return true;
           Expr* callee = static_cast<CallExpr*>(e)->callee;
           Decl* f = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
                   : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved
@@ -6379,26 +6392,36 @@ namespace
               return isStdContainerType(static_cast<UsingAliasDecl*>(member)->type);
       return false;
     }
-    // `output << x.size()`, `x.length()`, `x.count(k)` of a std container: written size_t(...).
-    void sizeAsSizeT(Expr* e)
+    // Whether e is `x.size()`, `x.length()` or `x.count(k)` of a std container: a size_t in C++
+    // (64 bits), whatever the library's ContainerSize is.
+    bool isStdSizeCall(Expr* e)
     {
       if (!e || e->kind != NodeKind::CallExpr)
-        return;
+        return false;
       auto* call = static_cast<CallExpr*>(e);
       if (call->callee->kind != NodeKind::MemberExpr)
-        return;
+        return false;
       auto* member = static_cast<MemberExpr*>(call->callee);
       if (member->member.parts.size() != 1 || member->member.parts[0].symbol == UINT32_MAX)
-        return;
+        return false;
       std::string_view name = symbols.name(member->member.parts[0].symbol);
       if (!(call->args.size() == 0 && (name == "size" || name == "length")) && !(call->args.size() == 1 && name == "count"))
-        return;
+        return false;
       Expr* base = member->base;
       while (base && base->kind == NodeKind::ParenExpr)
         base = static_cast<ParenExpr*>(base)->inner;
       SeenType type = typeOfExpr(base, 0);
-      if ((member->op == P::Arrow) != type.iterator || !(isStdContainerType(type.type) || returnsStdSizeType(type.type, name)))
+      return (member->op == P::Arrow) == type.iterator && (isStdContainerType(type.type) || returnsStdSizeType(type.type, name));
+    }
+    // `output << x.size()`, `x.length()`, `x.count(k)` of a std container: written size_t(...).
+    void sizeAsSizeT(Expr* e)
+    {
+      if (!isStdSizeCall(e))
         return;
+      auto* call = static_cast<CallExpr*>(e);
+      Expr* base = static_cast<MemberExpr*>(call->callee)->base;
+      while (base && base->kind == NodeKind::ParenExpr)
+        base = static_cast<ParenExpr*>(base)->inner;
       // The call's first token is its base's leftmost one (a CallExpr's own token is its parenthesis),
       // its last the `)` that closes that parenthesis.
       Expr* leftmost = base;
