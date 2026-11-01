@@ -203,7 +203,7 @@ void kppUses(String& out, const Vector<Dependency>& uses)
 
 // One line per fact, which kpp reads (project.cpp): `configuration debug`, then per executable
 // `executable NAME`, its lines, `end`, then per C library `clibrary NAME`, its lines, `end`, then
-// per Kpp library `library NAME`, its lines, `end`. A project that describes neither an executable
+// per Kpp library `kpp-library NAME`, its lines, `end`. A project that describes neither an executable
 // nor a library has one executable: its directory's name, from src.
 String describe(const Project& project)
 {
@@ -256,7 +256,7 @@ String describe(const Project& project)
   }
   for (const Library& l : project.kppLibraries)
   {
-    kppLine(out, "library", l.name);
+    kppLine(out, "kpp-library", l.name);
     kppLine(out, "version", l.version);
     kppLine(out, "license", l.license);
     kppLine(out, "minimum-kpp", l.minimumKpp);

@@ -175,7 +175,7 @@ namespace
         result.back().programs.push_back({value}), section = program;
       else if (key == "clibrary")
         result.back().cLibraries.push_back({value}), section = cLibrary;
-      else if (key == "library")
+      else if (key == "kpp-library") // not "library": an executable's link file is that key
         result.back().libraries.push_back({value}), section = library;
       else if (key == "end")
         section = none;

@@ -52,6 +52,8 @@ void build(Project& project)
   Executable& tests = project.executable("game-tests", {"src", "tests"});
   tests.exclude("src/main.kpp");
   tests.link("plus");
+  tests.systemLibrary("user32"); // a link file before the C include directories in the description
+  tests.cInclude("include");
 }
 '@
   Set-Content 'src\greeting.kpp' 'extern "C" import "greeting.h";'
