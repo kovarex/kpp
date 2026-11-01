@@ -2162,9 +2162,18 @@ D, 5bcdc929). The C mode grew:
 Its harness (`harness/trio.c`) prints integers, strings and doubles (limits, subnormals,
 infinities, NaNs, powers of 2 and 10, pseudo-random bit patterns) in every conversion, Lua's
 formats among them, through each of trio's printf entry points, scans them back with trio_sscanf,
-and reads every number of the game's 2,120 Lua files. Its Kpp build waits for
-`language/conditional_of_two_arrays` (B): TrioWriteNumber's
-`(flags & FLAGS_UPPER) ? internalDigitsUpper : internalDigitsLower`, two places.
+and reads every number of the game's 2,120 Lua files. B's specs took what it waited for
+(`language/conditional_of_two_arrays`, `language/extern_c_definition_after_prototype_with_static_local`,
+`interop/c_header_inline_functions`: floorl and ceill), and its output was then the C build's but for
+one line: a negative zero printed `0`. The conversion had answered two of trionan.c's `#if` lines
+otherwise than C: float.h's `(FLT_RADIX == 2) && (DBL_MAX_EXP == 1024) && (DBL_MANT_DIG == 53)`
+(TRIO_IEEE_754, the sign of zero) and math.h's `defined(fpclassify)` (C99's classification), names
+of headers the converter does not read. The C libraries' build defines have them now; checked so in
+every converted library: each name a conversion took as undefined in an `#if` (its notes) against
+what clang-cl, with the library's flags, defines in each of its source files (`-dM`). The others
+are trio's `defined(INFINITY) && defined(__STDC_IEC_559__)` and glad's and minizip's
+WINAPI_FAMILY_PARTITION, which C answers the same. trio now waits for
+`interop/c_math_classification_macros` (B): fpclassify, FP_NORMAL and FP_SUBNORMAL through the import.
 
 No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
 - `language/alloca` and `language/flexible_array_member` (D);

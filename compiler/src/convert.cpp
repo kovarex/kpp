@@ -251,6 +251,16 @@ namespace
            {"__SIZEOF_LONG_LONG__", "8"}, {"__SIZEOF_INT__", "4"}, {"__SIZEOF_SIZE_T__", "8"}, {"_MSC_VER", "1951"},
            // (trio's triodef.h knows C89 by _MSC_EXTENSIONS: clang-cl does not define __STDC__)
            {"INVALID_HANDLE_VALUE", "((HANDLE)(LONG_PTR)-1)"}, // (handleapi.h: minizip's iowin32.c defines it if it is not)
+           // float.h's, which trionan.c tests (`(FLT_RADIX == 2) && (DBL_MAX_EXP == 1024) && (DBL_MANT_DIG ==
+           // 53)`: TRIO_IEEE_754, without which a negative zero printed as 0), MSVC's long double a double
+           {"FLT_RADIX", "2"}, {"FLT_MANT_DIG", "24"}, {"DBL_MANT_DIG", "53"}, {"LDBL_MANT_DIG", "53"}, {"FLT_DIG", "6"},
+           {"DBL_DIG", "15"}, {"LDBL_DIG", "15"}, {"FLT_MAX_EXP", "128"}, {"DBL_MAX_EXP", "1024"}, {"LDBL_MAX_EXP", "1024"},
+           {"FLT_MIN_EXP", "(-125)"}, {"DBL_MIN_EXP", "(-1021)"}, {"LDBL_MIN_EXP", "(-1021)"}, {"FLT_MAX_10_EXP", "38"},
+           {"DBL_MAX_10_EXP", "308"}, {"LDBL_MAX_10_EXP", "308"},
+           // and math.h's classification macros, for `defined(...)` (trionan.c's `defined(PREDEF_STANDARD_C99) &&
+           // defined(fpclassify)` takes C99's fpclassify and signbit); their bodies are no #if values
+           {"fpclassify", ""}, {"signbit", ""}, {"isnan", ""}, {"isinf", ""}, {"isfinite", ""}, {"isnormal", ""},
+           {"INFINITY", ""}, {"NAN", ""}, {"HUGE_VAL", ""}, {"HUGE_VALF", ""}, {"HUGE_VALL", ""},
            {"_MSC_EXTENSIONS", "1"}, {"_MSC_FULL_VER", "195136260"}, {"_MT", "1"}, {"_INTEGRAL_MAX_BITS", "64"}, {"__STDC_NO_THREADS__", "1"}})
       d[name] = body;
     return d;
