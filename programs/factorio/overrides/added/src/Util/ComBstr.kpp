@@ -3,15 +3,35 @@
 // freed with the object, and passed to COM methods as the BSTR it holds. SystemUtil's WMI query
 // passes `_bstr_t(L"ROOT\\CIMV2")` and `bstr_t("WQL")` (comutil.h's `#define bstr_t _bstr_t`).
 // Copies copy the string, where MSVC's share one reference-counted BSTR; nothing observes the
-// difference but the count of allocations.
+// difference but the count of allocations. A string it cannot allocate throws
+// _com_error(E_OUTOFMEMORY), as MSVC's _bstr_t does (_com_issue_error), which CrashHandler's last
+// handler reports.
 extern "C" import "windows.h";
 extern "C" import "oleauto.h";
+
+// comdef.h's _com_error: what comutil.h's classes throw when a COM call fails, here _bstr_t's
+// E_OUTOFMEMORY. It keeps no IErrorInfo, so Description() is empty, as MSVC's is for an error that
+// came without one.
+class _com_error
+{
+public:
+  explicit _com_error(HRESULT result) : result(result) {}
+  HRESULT Error() const { return this->result; }
+  _bstr_t Description() const { return _bstr_t(); }
+
+private:
+  HRESULT result;
+};
 
 class _bstr_t
 {
 public:
   _bstr_t() {}
-  implicit _bstr_t(const wchar_t* text) : value(text ? SysAllocString(text) : nullptr) {}
+  implicit _bstr_t(const wchar_t* text) : value(text ? SysAllocString(text) : nullptr)
+  {
+    if (text && !this->value)
+      throw _com_error(E_OUTOFMEMORY);
+  }
   implicit _bstr_t(const char* text)
   {
     if (!text)
@@ -20,10 +40,11 @@ public:
     if (length <= 0)
       return;
     this->value = SysAllocStringLen(nullptr, UINT(length - 1));
-    if (this->value)
-      MultiByteToWideChar(CP_ACP, 0, text, -1, this->value, length);
+    if (!this->value)
+      throw _com_error(E_OUTOFMEMORY);
+    MultiByteToWideChar(CP_ACP, 0, text, -1, this->value, length);
   }
-  _bstr_t(const _bstr_t& other) : value(other.value ? SysAllocStringLen(other.value, SysStringLen(other.value)) : nullptr) {}
+  _bstr_t(const _bstr_t& other) : value(_bstr_t::copyOf(other.value)) {}
   _bstr_t(_bstr_t&& other) : value(other.value) { other.value = nullptr; }
   ~_bstr_t() { SysFreeString(this->value); }
 
@@ -31,8 +52,9 @@ public:
   {
     if (this != &other)
     {
+      BSTR copy = _bstr_t::copyOf(other.value);
       SysFreeString(this->value);
-      this->value = other.value ? SysAllocStringLen(other.value, SysStringLen(other.value)) : nullptr;
+      this->value = copy;
     }
     return *this;
   }
@@ -54,6 +76,17 @@ public:
 
 private:
   BSTR value = nullptr;
+
+  // A copy of value, or none for none; _com_error when it cannot be allocated.
+  static BSTR copyOf(BSTR value)
+  {
+    if (!value)
+      return nullptr;
+    BSTR copy = SysAllocStringLen(value, SysStringLen(value));
+    if (!copy)
+      throw _com_error(E_OUTOFMEMORY);
+    return copy;
+  }
 };
 
 using bstr_t = _bstr_t;
