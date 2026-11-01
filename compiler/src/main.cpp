@@ -3396,7 +3396,8 @@ int compile(int argc, char** argv)
         cppFiles.push_back(i);
       }
     configuration = std::make_unique<SourceConfiguration>(cppPaths, cppTexts,
-                                                          std::vector<std::filesystem::path>(options.roots.begin(), options.roots.end()));
+                                                          std::vector<std::filesystem::path>(options.roots.begin(), options.roots.end()),
+                                                          options.cSources, options.overridesDir);
     for (size_t k = 0; k < cppFiles.size(); ++k)
       configured[cppFiles[k]] = configuration->configuredText(k);
     options.configuration = configuration.get();
@@ -3418,7 +3419,8 @@ int compile(int argc, char** argv)
     {
       results[i] = lex(i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols);
       if (options.cSources && (files[i].path.extension() == ".c" || files[i].path.extension() == ".h"))
-        cKeywordsAsNames(results[i].tokens, i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols);
+        cKeywordsAsNames(results[i].tokens, i < configured.size() && !configured[i].empty() ? configured[i] : files[i].text, symbols,
+                         configuration ? &configuration->cKeywordMacros() : nullptr);
       stats[i].bytes = files[i].text.size();
       stats[i].tokens = results[i].tokens.size();
       stats[i].lines = results[i].lineCount;

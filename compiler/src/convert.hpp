@@ -7,6 +7,7 @@
 #include "lexer.hpp"
 #include "resolver.hpp"
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -25,8 +26,10 @@ struct ConvertInput
 };
 
 // C's names that are C++'s keywords (`class`, `new`, `this`, `template`...): in a C file's tokens
-// they are identifiers, which the converter renames (`class_`).
-void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols);
+// they are identifiers, which the converter renames (`class_`). A use of one of keywordMacros (a
+// macro whose body is one keyword) is that keyword, which the converter writes in its place.
+void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolTable& symbols,
+                      const std::map<std::string, std::string>* keywordMacros = nullptr);
 
 // Writes one .kpp file per input (a header and its source of the same stem merged into one)
 // under outDir, mirroring the paths below `roots`. A file of the same relative path under
@@ -38,9 +41,16 @@ void cKeywordsAsNames(std::vector<Token>& tokens, std::string_view text, SymbolT
 class SourceConfiguration
 {
 public:
+  // cSources: the inputs are C (kppc --c-sources), preprocessed as factorio-in-kpp builds a C
+  // library (with overridesDir's defines.txt), and the parse sees through C's macros that are
+  // nothing, one keyword or their argument (cKeywordMacros).
   SourceConfiguration(const std::vector<std::filesystem::path>& paths, const std::vector<std::string_view>& texts,
-                      const std::vector<std::filesystem::path>& roots);
+                      const std::vector<std::filesystem::path>& roots, bool cSources = false,
+                      const std::filesystem::path& overridesDir = {});
   ~SourceConfiguration();
+  // With cSources: the object-like macros whose body is one keyword (zutil.h's `#define local
+  // static`), by name: their uses lex as that keyword (cKeywordsAsNames).
+  const std::map<std::string, std::string>& cKeywordMacros() const;
   // File i's text with the #if branches the configuration drops, and every conditional directive
   // line, blanked (newlines and offsets kept), so that the front end parses the branches that are
   // written out.
