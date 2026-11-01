@@ -66,11 +66,47 @@ plain characters must match, a space matches any run of white space. It returns 
 format matched; the fields read before a mismatch, or a specifier it does not know, keep their
 values.
 
+## Calendar time
+
+UTC only, proleptic Gregorian (year 0 is 1 BC), no time zones and no leap seconds: what web
+timestamps need. `stdlib/core/Calendar.kpp`; the dates are Howard Hinnant's `days_from_civil` and
+`civil_from_days`.
+
+- `CivilTime`: `year`, `month` (1 to 12), `day`, `hour`, `minute`, `second` (0 to 59),
+  `nanosecond`, `weekday` (0 Sunday to 6 Saturday).
+- `toCivilTime(t)`: a SystemClock time point's fields (the nanoseconds a multiple of 100).
+  `fromCivilTime(c)`: the time point, an `Optional` that is empty when a field is out of its range
+  (February 30, hour 24, second 60) or the year outside -29000 to 29000; `weekday` is not read.
+- `daysFromCivil(year, month, day)`: days since 1970-01-01, negative before it.
+  `isLeapYear(year)`, `daysInMonth(year, month)`.
+- `formatRfc3339(t, fractionDigits = 0)`: `2026-11-01T10:31:07Z`, with 0 to 7 digits of the
+  second, truncated (`.123Z`); always `Z`. `formatHttpDate(t)`: RFC 9110's IMF-fixdate,
+  `Sun, 06 Nov 1994 08:49:37 GMT`. Both throw `OutOfRange` for a year outside 0 to 9999, which
+  has no four-digit form, and `formatRfc3339` throws `InvalidArgument` for another number of
+  digits.
+- `parseRfc3339(text)`: RFC 3339's date-time, `YYYY-MM-DDTHH:MM:SS`, an optional fraction of any
+  length (digits past the seventh are dropped: the clock counts 100 ns), then `Z` or `+HH:MM` /
+  `-HH:MM` (`-00:00` is UTC); `t` and `z` may be lowercase. An `Optional`, empty for anything
+  else: **a leap second (`:60`) is rejected**, since SystemClock has none; so are a space for
+  `T`, a missing offset, an offset hour past 23, two-digit years, a date the calendar lacks
+  (`2023-02-29`) and text after the timestamp.
+- `parseHttpDate(text)` and `parseHttpDate(text, now)`: any of RFC 9110 5.6.7's three forms,
+  which a recipient must read: IMF-fixdate, RFC 850 (`Sunday, 06-Nov-94 08:49:37 GMT`) and
+  asctime (`Sun Nov  6 08:49:37 1994`). Case-sensitive, as the RFC's grammar is. RFC 850's
+  two-digit year is in now's century unless that is more than 50 years after now, then in the
+  century before (the RFC's rule; `now` is `SystemClock::now()` unless given). Empty for anything
+  else, for a weekday that is not the date's, and for a leap second.
+
+Tested by spec library/time_calendar (RFC 3339 5.8's examples, RFC 9110's three forms, every
+rejection above, every day of the years 1 to 9999 there and back) and library/time_python_datetime
+(600 random instants against Python's datetime).
+
 Waiting functions take any duration: `thisThread::sleepFor(d)`, a Future's `waitFor(d)`, a
 ConditionVariable's `waitFor(lock, d)`; they wait at least d, rounded up to whole milliseconds.
 
 *Differences from C++*: the common rep of two reps is the type of their sum, which is
 std::common_type's except for two reps of one type narrower than int (two `short` reps give an
 `int` count); `d * n` and `d / n` keep the rep for an integer n where C++ takes the common type of
-the rep and n's type; there are no calendar types, no `file_clock`, `utc_clock` or time zones, and
+the rep and n's type; the calendar is CivilTime and the functions above instead of C++20's
+`year_month_day` family and `std::format` of time points; no `file_clock`, `utc_clock` or time zones, and
 no `round` or `abs` of durations.

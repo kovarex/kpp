@@ -1,0 +1,51 @@
+// spec: calendar time in UTC: civil fields from and to SystemClock time points (proleptic Gregorian, Hinnant's algorithms), RFC 3339 timestamps (its section 5.8 examples; a leap second, a space for 'T', a day the month lacks and other malformed text are rejected with an empty Optional) and HTTP dates (RFC 9110 5.6.7: IMF-fixdate written, all three forms read, a two-digit year as the RFC says, a weekday that does not match the date rejected)
+// factorio: none; the kpp.net site and registry need dates (thread G)
+String show(const Optional<TimePoint<SystemClock>>& t) { return t.hasValue() ? formatRfc3339(t.value(), 7) : String("rejected"); }
+
+int main()
+{
+  // Civil fields.
+  TimePoint<SystemClock> moonLanding = SystemClock::from_time_t(-14182940);
+  CivilTime c = toCivilTime(moonLanding);
+  println("{}-{}-{} {}:{}:{} weekday {}", c.year, c.month, c.day, c.hour, c.minute, c.second, c.weekday);
+  println("{}", formatRfc3339(fromCivilTime(c).value()));
+  CivilTime bad = c;
+  bad.month = 2;
+  bad.day = 30;
+  println("Feb 30: {}", fromCivilTime(bad).hasValue() ? "accepted" : "rejected");
+  println("days {} {} {}", daysFromCivil(1970, 1, 1), daysFromCivil(2000, 3, 1), daysFromCivil(1, 1, 1));
+  println("leap {} {} {} {}", isLeapYear(2000), isLeapYear(1900), isLeapYear(2024), daysInMonth(2023, 2));
+  // Every day from year 1 to 9999 and back.
+  long long first = daysFromCivil(1, 1, 1);
+  long long last = daysFromCivil(9999, 12, 31);
+  int wrong = 0;
+  for (long long d = first; d <= last; ++d)
+  {
+    CivilTime day = toCivilTime(SystemClock::from_time_t(d * 86400));
+    if (daysFromCivil(day.year, day.month, day.day) != d || day.day < 1 || day.day > daysInMonth(day.year, day.month))
+      ++wrong;
+  }
+  println("{} days, {} wrong", last - first + 1, wrong);
+
+  // RFC 3339 5.8.
+  for (const char* text : {"1985-04-12T23:20:50.52Z", "1996-12-19T16:39:57-08:00", "1990-12-31T23:59:60Z", "1990-12-31T15:59:60-08:00",
+                           "1937-01-01T12:00:27.87+00:20"})
+    println("{} -> {}", text, show(parseRfc3339(text)));
+  // Accepted and rejected forms.
+  for (const char* text : {"2026-11-01t10:31:07z", "2026-11-01T10:31:07-00:00", "2026-11-01T10:31:07.123456789Z", "2024-02-29T00:00:00Z",
+                           "2023-02-29T00:00:00Z", "2026-11-01 10:31:07Z", "2026-11-01T10:31:07", "2026-11-01T24:00:00Z",
+                           "2026-13-01T00:00:00Z", "2026-11-01T10:31:07.Z", "2026-11-01T10:31:07+24:00", "26-11-01T10:31:07Z",
+                           "2026-11-01T10:31:07Zjunk"})
+    println("{} -> {}", text, show(parseRfc3339(text)));
+  TimePoint<SystemClock> t = parseRfc3339("2026-11-01T10:31:07.1234567Z").value();
+  println("{} | {} | {} | {}", formatRfc3339(t), formatRfc3339(t, 3), formatRfc3339(t, 7), formatHttpDate(t));
+  println("{}", formatRfc3339(SystemClock::from_time_t(-62135596800)));
+
+  // RFC 9110 5.6.7: one instant in the three forms; a two-digit year is read relative to now.
+  TimePoint<SystemClock> now = parseRfc3339("2026-11-01T00:00:00Z").value();
+  for (const char* text : {"Sun, 06 Nov 1994 08:49:37 GMT", "Sunday, 06-Nov-94 08:49:37 GMT", "Sun Nov  6 08:49:37 1994", "Wednesday, 01-Jan-70 00:00:00 GMT", "Thursday, 01-Jan-70 00:00:00 GMT",
+                           "Saturday, 06-Nov-76 08:49:37 GMT", "Sunday, 06-Nov-76 08:49:37 GMT", "Mon, 06 Nov 1994 08:49:37 GMT", "Sun, 6 Nov 1994 08:49:37 GMT",
+                           "Sun, 06 Nov 1994 08:49:37 UTC", "Sun, 06 Nov 1994 08:49:60 GMT", "sun, 06 nov 1994 08:49:37 GMT", "Sun Nov 06 08:49:37 1994"})
+    println("{} -> {}", text, show(parseHttpDate(text, now)));
+  return 0;
+}
