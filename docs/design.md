@@ -730,6 +730,49 @@ a one-line switch, removed with the decision).
   and the narrowing sites go away. Following kovarex's rule, every size is u64 with no switch:
   section 4's sizes bullet (C's) has the library side.
 
+### 14. Text output: arguments in sequence, `Text`, `appendTo` and `<<` (decided 2026-11-01)
+
+kovarex, 2026-11-01: format strings (`printf`'s `%d`, `format`'s `{}`) are fragile, because a text
+that is not a literal can contain `%` or `{}` ("someone just does printf(someText)"), and C++
+streams are not ideal either. Kpp takes the form most languages chose (Pascal's `writeln`,
+Python's and Lua's `print`, Go's `fmt.Print`, Nim's `echo`, Abseil's `StrCat`): the pieces as
+arguments, one after another, with nothing parsed.
+
+- **Calls:** `print("Hello ", name, " you are ", age, " years old");`. `print(someText)` prints the
+  text as it is, always.
+- **`Text`, the parameter type** (kovarex chose the name): a function that takes text from its
+  caller declares `void log(Text text)` and is called as `log("Hello ", name)`, with no
+  `log(format(...))` and no variadic template per function. A `Text` refers to the caller's
+  arguments, like `StringView`: it is valid during the call only, and storing it (a member, a
+  global, a return value, a capture that outlives the call) is a compile error. Its interface is
+  `text.appendTo(out)` and `toString(text)`; it cannot be iterated (kovarex: the pieces can be of
+  any type, so it is neither useful nor practical).
+- **`appendTo`, the one conversion a type defines:** `void appendTo(String& out) const`. Every
+  other form comes from it: `toString(x)` (a new String), `out += x`, `out << x`, `print`, `Text`.
+  There is no second, String-returning method to write (kovarex: one method, so a deep hierarchy
+  is written in O(n) into one buffer, never O(n^2) through intermediate strings).
+- **`<<` chains appends**, in the direction of Factorio's `Serialiser`/`MapSerialiser` (saving is
+  `<<`; `>>` stays the reading direction, as `MapDeserialiser`'s): `out << left << " = " << right;`
+  calls each piece's `appendTo` on `out` and returns `out`. `+=` stays the single append.
+- **Built in and in the standard library:** every integer, float, `bool`, `char`, `String`,
+  `StringView` and container has `appendTo`; formatting options are small objects with it
+  (`hex(x)`, `fixed(t, 2)`, `padded(n, 5)`). `out << 65` appends the text "65"; a character is
+  appended only from a `char`.
+- **No silent fallback:** printing, `<<`, `+=` or `Text` with a type that has no `appendTo` is a
+  compile error naming the type; a pointer prints only through an explicit `address(p)`.
+- **Localisation** (where the order of the parts changes per language) is not this mechanism: a
+  later localisation library with its own tools (kovarex). `format("{}", ...)` stays only with a
+  compile-time literal format; a non-literal format is a compile error.
+- **C interop:** converted C code keeps C's printf (a variadic function's own format, decision
+  pending: spec `language/variadic_with_own_format`).
+- **Later:** `appendTo` may take a general writer (a file, a socket) besides `String`, so that a
+  large save streams to its destination; nothing above changes.
+
+Owners: thread D the language side (`Text` as a parameter type and its lifetime rule, packing a
+call's arguments into it, the missing-`appendTo` error); thread C the library side (`appendTo`
+throughout the stdlib, `operator<<` and `operator+=`, `print`, `toString`, `hex`, `fixed`,
+`padded`, docs/stdlib/).
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
