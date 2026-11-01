@@ -1,6 +1,5 @@
 // spec: a conditional whose both arms are arrays of one type, `y != 0 ? mapping : firstmap`, is that array (an lvalue, as in C++), and it decays to a pointer to its first element where one is wanted: a pointer initialized from it points into the array chosen; also arrays of one element type and different lengths, which decay in the arms (a pointer)
 // factorio: stb_image_write (converted as C): stbiw__encode_png_line's `int *mymap = (y != 0) ? mapping : firstmap;` of two `static int[5]`, the PNG filter of each row
-// pending: "codegen does not support a conversion from int32* to int32[5] yet" (B or D)
 int pick(int y, int i)
 {
   static int mapping[] = {0, 1, 2, 3, 4};

@@ -1,6 +1,5 @@
 // spec: a C-style cast of nullptr to an integer type is 0 (the cast is a reinterpret_cast, which converts nullptr_t to an integral type as it would (void*)0), also of a conditional whose both sides are nullptr
 // factorio: stb_image (converted as C): stbi__errpuc's `((unsigned char *)(size_t) (stbi__err(x,y)?NULL:NULL))`, the return of 25 failure paths (NULL written nullptr)
-// pending: "codegen does not support a conversion from nullptr_t to uint64 yet" (B)
 int main()
 {
   unsigned long long a = (unsigned long long)nullptr;

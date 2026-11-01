@@ -10286,13 +10286,14 @@ namespace
         fn += "  " + result() + " = inttoptr " + valueT + " " + value + " to ptr\n";
         return {r, to};
       }
-      if (fk == TyKind::Pointer && tk == TyKind::Int)
+      if ((fk == TyKind::Pointer || fk == TyKind::Nullptr) && tk == TyKind::Int)
       {
         // Only a cast turns a pointer into an integer (`(uintptr_t)p`, reinterpret_cast); `int y =
-        // &x;` is an error in C++, and was a silently truncated address here.
+        // &x;` is an error in C++, and was a silently truncated address here. nullptr converts as
+        // (void*)0 does ([expr.reinterpret.cast]/4): stb_image's `(size_t)(cond ? NULL : NULL)`.
         if (!explicitCast)
           fail(at, "a pointer (" + types.toString(from, &symbols) + ") does not convert to " + types.toString(to, &symbols) + " without a cast");
-        fn += "  " + result() + " = ptrtoint ptr " + v.text + " to " + toT + "\n";
+        fn += "  " + result() + " = ptrtoint ptr " + (fk == TyKind::Nullptr ? std::string("null") : v.text) + " to " + toT + "\n";
         return {r, to};
       }
       // SSE vector to scalar: extract lane 0.
@@ -14232,6 +14233,8 @@ namespace
           if (!c->then)
             unsupported(e, "the ?: elvis operator");
           const Ty* t = types.stripRef(e->ty);
+          if (t && t->kind == TyKind::Array && t->inner)
+            t = types.pointer(t->inner); // two arrays of one type: as a value, the chosen one decays (as load's)
           Value cond = convert(rvalue(c->cond), types.boolType(), e);
           std::string tL = newLabel("cond.then"), eL = newLabel("cond.else"), jL = newLabel("cond.end");
           fn += "  br i1 " + cond.text + ", label %" + tL + ", label %" + eL + "\n";
