@@ -2057,11 +2057,21 @@ The drivers of zlib's and ogg's harnesses called `nextRandom` twice in one expre
 C leaves open. zstd's differed between the two builds, so each driver now makes one call a
 statement.
 
-**minizip and trio wait for the compiler.**
-- minizip converts with 0 errors, but clang crashes on its zipOpen4: `*zi = ziinit;` copies a
-  struct with a 64 KB array as one value (`classes/large_struct_copy_through_pointer`, B).
-- trio's array bounds are enumerators of an enum whose flags each double the one before. Evaluating
-  it exceeds the evaluator's million steps (`language/enum_chain_of_doublings_is_constant`, D).
+**minizip is converted**, once codegen copied large structs with a memcpy
+(`classes/large_struct_copy_through_pointer`, B, 12662dba). It parses zlib's interface
+(`inputs.txt`). Its harness (`harness/minizip.c`) covers:
+- three archives written with every compression level, extra fields and comments, then read back
+  in pieces, located and positioned;
+- the 35 saves of tests\, every entry read and checked against its CRC.
+
+Its output is 987 lines, byte-identical. This minizip's `zipOpen64` and `unzOpen64` take wide
+paths on Windows, as the game passes them. With ogg, zlib, glad, zstd and minizip converted, the
+unit tests pass 9,501/9,501 with their CRCs checked, and the 45 menu maps match, in debug and in
+release.
+
+**trio waits for the compiler.** Its array bounds are enumerators of an enum whose flags each
+double the one before. Evaluating it exceeds the evaluator's million steps
+(`language/enum_chain_of_doublings_is_constant`, D).
 
 No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
 - `language/alloca` and `language/flexible_array_member` (D);
