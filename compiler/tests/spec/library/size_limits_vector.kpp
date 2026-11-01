@@ -5,6 +5,14 @@ struct Page
   char bytes[4096];
 };
 
+// The block goes to snprintf, so that the optimizer keeps the allocation: an allocation that
+// nothing uses may be removed (as C++ allows), and then none fails.
+void use(const void* block)
+{
+  char text[32];
+  snprintf(text, sizeof(text), "%p", block);
+}
+
 int main()
 {
   Vector<int> numbers = {1, 2, 3};
@@ -33,6 +41,7 @@ int main()
   {
     Vector<Page> huge;
     huge.reserve(maxContainerSize);
+    use(huge.data());
     println("reserved");
   }
   catch (const BadAlloc& e)
@@ -42,6 +51,7 @@ int main()
   try
   {
     Vector<Page> huge(maxContainerSize);
+    use(huge.data());
     println("constructed");
   }
   catch (const BadAlloc& e)
