@@ -545,6 +545,138 @@ license, minimum kpp, source roots and test roots, its sources join the program 
 it, and `kpp --test` runs its tests (build.md, "Kpp libraries"). Details, the research behind it
 and what it needs: [build.md](build.md), "The build description".
 
+### 13. Integer types and sizes (decided 2026-11-01, the size width open)
+kovarex, 2026-11-01:
+- "Distinct fixed types, deprecate long".
+- "in Factorio, we mostly used the uint32_t and such, so I know what exactly I'm dealing with, it
+  should be the standard and language standard names, in C++ these are just custom made macros. It
+  shouldn't be uint32_t, it should be the simple ones u8, u16, u32, u64, i8, i16, etc".
+- "int, unsigned int, short etc, they become deprecated, I always didn't like that they were so
+  ambigous."
+- "all the sizes should be unsigned not signed".
+- On the size width: decided by measurement on Factorio (below).
+
+**The rule.**
+- **Kpp's integer and floating types are the built-in names** `u8 u16 u32 u64 i8 i16 i32 i64` and
+  `f32 f64`. They are the standard way to write a number in Kpp. Each is one of C++'s types under
+  another name (`u32` is `unsigned int`, `i64` is `long long`, `u8` is `unsigned char`, `f64` is
+  `double`), so C interop, layouts and overloads are C++'s: a converted `f(int)` beside
+  `f(int32_t)` is one function.
+- **C's names are for C interop.** These are `int`, `unsigned`, `short`, `long`, `long long`,
+  `signed char` and `unsigned char` as numbers, and `int8_t` ... `uint64_t`, `size_t`,
+  `ptrdiff_t`, `intptr_t` and `uintptr_t`. They are kept, with C++'s meanings, for the imported C
+  headers and `extern "C"` declarations and blocks (a binding's aliases and C struct mirrors go
+  there too). Elsewhere they are deprecated: `kppc --c-type-warnings` warns at each one, naming
+  Kpp's type, and is never an error. It is opt-in until the converter and the standard library
+  have moved, then on by default; whether it later becomes an error is kovarex's call.
+- **The types are C++'s, distinct** ("Distinct fixed types, deprecate long"). `char`, `signed char`
+  and `unsigned char` are three types, and `int`, `long` and `long long` are three (the Kpp v0
+  section's "Types" has the rules and specs). `long` is as wide as the target's C `long`: 32 bits
+  on Windows, 64 on LP64 targets.
+- **Plain `char` (proposed, kovarex to confirm).** It stays as the text character type (a UTF-8
+  code unit: String's element, literals), which is no C integer name and gets no warning. Code
+  that computes with bytes as numbers writes `u8` or `i8`. The alternative is a new name (`c8`) with
+  `char` deprecated like the rest; it buys nothing a reader needs, and every literal and String API
+  would change.
+- **`bool` stays. `float`/`double` (kovarex to confirm)** are, like the integers, C's spellings of
+  `f32`/`f64`: either deprecated the same way (the converter maps them) or kept as plain synonyms.
+  The game writes them 20,728 times.
+
+**Proposed built-ins, for kovarex to confirm.**
+- **`u128`/`i128`: yes.** LLVM has `i128` on every target. Add, subtract, compare and shift are a
+  few 64-bit instructions on x86-64 and arm64, and multiply is about three. Division and remainder
+  call compiler-rt (`__divti3`, `__udivti3`, `__modti3`): tens of cycles, as in C. clang accepts
+  `__int128` on Windows x64 too, where MSVC has none. Tested here with clang 19 (`clang-cl`):
+  division and remainder are right, but the link needs VS's `clang_rt.builtins-x86_64.lib`, which
+  kppc would add to the link line. No Windows C API takes one, so calls between Kpp functions are
+  Kpp's own. On Windows x64 clang passes an i128 argument by pointer and returns it in xmm0, and
+  LLVM's own library calls followed another convention until recent fixes (LLVM issue 136428).
+  So kppc calls compiler-rt only through clang's lowering, never declares such calls itself, and a
+  spec covers each operation on every target.
+- **`usize`: it exists (as `u64`); what it becomes waits for the size width below.**
+- **`f16` later, not now.** LLVM's `half` is a storage type everywhere. arm64 (every Apple M, and
+  ARMv8.2 and later) has native half arithmetic. x86-64 converts with F16C and computes in float,
+  except with AVX-512 FP16, which is rare. clang's `_Float16` on Windows x64 works but calls
+  compiler-rt's `__extendhfsf2`/`__truncsfhf2` without F16C (tested). It is useful for GPU data;
+  the game keeps its own half packing.
+- **No `bf16`, no `f128`.** bf16 is storage with conversions only (AVX-512 BF16, newer arm64).
+  f128 is soft-float everywhere (compiler-rt's `__addtf3` ..., about a hundred times slower).
+  clang refuses `__float128` on Windows x64 ("not supported on this target", tested), and Apple
+  arm64 has none.
+
+**What the converter does (C), counted in factorio-in-kpp (src, tests and the converted libraries,
+2026-11-01).**
+- `uint32_t` 15,689 → `u32`; `int32_t` 14,017 → `i32`; `uint8_t` 5,453 → `u8`; `uint64_t` 2,135
+  → `u64`; `uint16_t` 1,458 → `u16`; `int64_t` 837 → `i64`; `int8_t` 466 → `i8`; `int16_t` 345 →
+  `i16`.
+- `int` 6,623 → `i32`; `unsigned char` 209 → `u8`; `unsigned int` 72 and `unsigned` 26 → `u32`;
+  `long long` 59 → `i64`; `unsigned long long` 53 → `u64`; `unsigned short` 22 → `u16`; `short`
+  19 → `i16`.
+- `long` 61 and `unsigned long` 24 stay `long` where they meet a C API (COM's LONG, zlib's uLong,
+  GDI+, curl: most of them), else `i32`/`u32`.
+- `size_t` 5,104 → `usize`, `ptrdiff_t` 26 → `i64`, `uintptr_t` 21 → `u64`, `intptr_t` 2 → `i64`.
+- `char` 5,646, `bool` 34,224 and `wchar_t` 753 stay; `float` 10,553 and `double` 10,175 as
+  decided above.
+
+Each rename changes no type, so the IR is unchanged. C's checks are the ones in
+C-integer-names-plan: map the new names back and get the old conversion byte for byte. C names
+stay in the imported headers, the kpp-native shims (C) and `extern "C"` declarations. The standard
+library (C's) writes `int` 983 times, `size_t` 99, `long long` 98, `ptrdiff_t` 92, `unsigned long`
+84 (Win32 bindings, which belong in extern "C"), `uint64_t` 62, `unsigned long long` 48 and
+`uint8_t` 41.
+
+**The size width (research; the recommendation waits for H's measurement).** Containers' sizes
+and indices are unsigned (decided). The open question is their width: `u32`, `u64`, or a
+target-sized `usize`. kovarex asked: "In standard library, it used often size_t, as like the
+'natural size', which was at the time solving the 32bit versus 64bit architecture switch (that is
+how I saw it). But these days basically everything is 64bit (is it? research). Also research if
+there is any impracticality, if standard library is built specifically around 64 bit types instead
+of the generic size_t." H benchmarks the stdlib with u32 and with u64 sizes on Factorio (C makes it
+a one-line switch).
+- **Which platforms are 64-bit.** All of the desktops: Windows x64 and arm64; macOS, which has run
+  only 64-bit code since 10.15; Linux. In Steam's survey, nearly every Windows and Linux system is
+  a 64-bit one (Windows 11 64-bit 70.8% and Windows 10 64-bit 26.7% in December 2025). The consoles
+  are 64-bit: PS4/PS5 and Xbox One/Series are x86-64, Switch and Switch 2 are arm64. So is mobile:
+  iOS since iOS 11, and Google Play has required 64-bit since 2019. The 32-bit ones left:
+  - WebAssembly's wasm32. Memory64 shipped in Chrome 133 and Firefox 134 (early 2025); Safari's
+    status is unclear, and browsers cap a memory at 16 GB.
+  - Microcontrollers (Cortex-M) and old 32-bit ARM Linux, which Kpp does not target.
+- **What 64-bit sizes cost.**
+  - Memory: a Vector is {pointer, size, capacity}, 24 bytes with u64 against 16 with u32. Small
+    containers inside hot objects (an entity's vectors) cost a third more, and so does cache.
+  - Indices stored in data (Factorio's IDs and 32-bit indices) are a separate matter: they stay
+    u16/u32 whatever the containers use.
+  - Loops: a `u32` index on x86-64 must be zero-extended to address memory, and unsigned
+    wrap-around is defined, so LLVM cannot always widen the induction variable or prove a loop
+    finite. That can cost a vectorised loop. A `u64` (or signed) index has neither problem.
+- **What 32-bit sizes cost.** Every container holds at most 4G elements (a 4 GiB byte buffer at
+  most). The game was written against C++'s 64-bit `size_t` (5,104 uses), so with u32 sizes each
+  place that passes a `size_t` to a size parameter narrows implicitly.
+- **Other languages.**
+  - Pointer-sized unsigned: Rust (`usize`, Vec is 24 bytes) and Zig (`usize`).
+  - Pointer-sized signed: Go (`int`, 64 bits) and Swift (`Int`).
+  - 32-bit signed: C# and Java (`int` lengths).
+  - C++ is the pointer-sized unsigned `size_t`, regretted by many (Stroustrup, Sutter, Carruth),
+    hence C++20's `std::ssize`.
+- **Unsigned traps, and how Kpp can help.**
+  - `for (u32 i = n - 1; i >= 0; --i)` never ends.
+  - `size() - 1` of an empty container is the largest value.
+  - `a.size() - b.size() < 0` is never true.
+  - A signed/unsigned comparison converts the signed side.
+
+  Kpp can warn of each: a comparison that is always true or false on an unsigned (`x >= 0`,
+  `x < 0`), an unsigned subtraction compared against 0, and a mixed comparison (as C++20's
+  `std::cmp_less` exists for it). Debug builds could trap a size subtraction that wraps.
+- **What a decision changes.**
+  - u64: one String/Vector everywhere, `usize` = `u64`, and the game's `size_t` maps to `usize`
+    unchanged.
+  - u32: C's switch, the game's narrowing sites, and a 4G limit.
+  - If the measurement shows a difference that matters, there are ways to have both:
+    - a size-type parameter with a default (`Vector<T, u32>`);
+    - separate compact containers (`CompactVector<T>` with u32 sizes, for hot objects);
+    - a per-project setting. That one changes every library's layout, so kpp.net's packages would
+      need a build per setting; it is the worst of the three.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
@@ -1349,15 +1481,39 @@ The smallest language that is still Kpp, as the target of the first code generat
      there `(HANDLE)(LONG_PTR)-1` is two casts as well.
   No `typename` or `template` disambiguators (as in the proposal).
 - **Types.** `bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64`, `f32/f64`, `char` (UTF-8 code unit),
-  pointers, references, arrays, `const`. `int` is an alias of `i32`, `size_t`/`usize` of `u64`
-  (the short names exist in the compiler since 2026-10-24; `f32`/`f64` not yet).
-  The C spellings are sizes, not distinct types: `long` is `int` (x64 Windows, LLP64), `long long`
-  is `i64`, and `f(int)` beside `f(long)` is one function declared twice, where C++ has two
-  overloads (parked 2026-10-29, nothing converted needs them apart; defining both is an error, as
-  any function defined twice: language/function_defined_twice_is_error). Making them distinct would
-  touch the type table (an integer type keyed by spelling as well as size), conversion ranking
-  (int to long an integral conversion, not an identity), template argument identity
-  (`X<long>` and `X<int>` two instances) and codegen's function names (`f(int32)` for both).
+  pointers, references, arrays, `const`. The fixed-size names are what Kpp code writes; each is
+  one of C++'s types under another name: `i8` is `signed char` (`int8_t`), `u8` `unsigned char`
+  (`uint8_t`), `i16`/`u16` `short`, `i32`/`u32` `int` (`int32_t`), `i64`/`u64` `long long`
+  (`int64_t`), `f32` `float`, `f64` `double`; `size_t`/`usize` is `u64` (the integer names since
+  2026-10-24, `f32`/`f64` since 2026-11-01). So a converted `f(int)` beside `f(int32_t)` is one
+  function, as in C++.
+- **Distinct fixed types, deprecate long** (kovarex, 2026-11-01: "Distinct fixed types, deprecate
+  long"; it decides Q1 of "Targets and hosts" below). The integer types are C++'s, with C++'s
+  identities and overloads:
+  - `char`, `signed char` and `unsigned char` are three types (`char` stays signed on every
+    target); `__int8` is `char`, as MSVC has it. `char8_t`, `char16_t`, `char32_t` are types of
+    their own. (`wchar_t` is still `char16_t`: Q2.)
+  - `int`, `long` and `long long` are three types, `unsigned long` and its siblings likewise. So
+    `f(int)` beside `f(long)` is two overloads, `X<int>` and `X<long>` two instances, `1L` a
+    `long`, `int` to `long` an integral conversion (no promotion: a `short` promotes to `int`
+    only), and the usual arithmetic conversions rank `long` between `int` and `long long` (on
+    Windows `1u + 1L` is `unsigned long`, since `long` cannot hold every `unsigned int`).
+  - `long` is C's type, for C interop only: imported headers, `extern "C"` declarations and blocks
+    (a binding's aliases and C struct mirrors go there too), and the standard library's overloads
+    that cover it (`toString(long)`, as `std::to_string` has). Its size follows the target's C ABI:
+    32 bits on Windows, 64 on LP64 targets (`TypeTable::longBits`, set from the target).
+    Elsewhere it is deprecated, as all of C's integer names are (section 13: `kppc
+    --c-type-warnings`). Kpp code writes `i32`/`i64` and `f64` for `long double`.
+
+  Specs language/integer_types_are_distinct (the overloads, identities, literals and conversions
+  of every C++ integer type, against clang's and MSVC's output for the same program) and
+  language/c_type_names_outside_extern_c_warn. In the converted game (factorio-in-kpp, 2026-11-01, IR
+  compared function by function with the names normalised) one call chose another overload, a fix:
+  `toStr(int8_t)` (Util/ToStr.hpp, `std::to_string` of a signed char, which C++ promotes to int)
+  called `toString(char)` and wrote a character; it now writes the number. Otherwise `signed char`
+  parameters, which were `char`, are `int8` in the IR's names, and `Vector<signed char>` beside
+  `Vector<char>` (two instances, as in C++) are new. The game writes `long` in 86 places outside
+  extern "C", 40 of them in the DX11 COM interfaces.
 - **Grammar rules' specs:** rule 1 language/declaration_statement_by_first_tokens, rule 2
   language/no_most_vexing_parse and language/object_declaration_from_variables, rule 3
   templates/variable_template_id_before_operator and language/template_id_or_comparison, rule 4
@@ -1671,7 +1827,7 @@ byte for byte unless a difference is shown to be a fix.
 | Calls between Kpp functions | Kpp's convention: a class through a pointer to a copy, the result slot after `this` | the same | Unchanged everywhere. Scalars get the platform's convention from LLVM's `ccc` and the triple, with no codegen change. A class result keeps its slot after `this`. On AArch64, LLVM's `sret` attribute puts the slot in x8 for C functions only. |
 | `extern "C"` calls with a struct by value | the pointer to a copy (wrong at 8 bytes or less) | SysV: classified into INTEGER/SSE registers up to 16 bytes, larger on the stack (`byval`). AAPCS64: up to 16 bytes in x0-x7, a homogeneous float aggregate of up to 4 members in v0-v3, larger through a pointer to a copy, a result in memory through x8. | A C ABI lowering per target in codegen (MS x64, SysV, AAPCS64), for calls to C and for Kpp functions C calls back. It fixes Windows' small-struct gap too. Specs for each size class on every target. |
 | Varargs | LLVM lowers the calls; `va_list` is `char*` | SysV: `__va_list_tag[1]`. Linux AArch64: a 32-byte struct. Apple arm64: every variadic argument on the stack, `va_list` is `char*`. | LLVM lowers the calls for each triple. `va_list` comes from the target's headers through the C import. Kpp defines no C variadic functions. |
-| `long` | 32 bits | 64 bits in C (LP64) | Q1 below. |
+| `long` | 32 bits | 64 bits in C (LP64) | Q1 below (decided): C's size on each target. |
 | `wchar_t` | 16 bits, UTF-16 | 32 bits | Q2 below. |
 | plain `char` | signed | unsigned on Linux AArch64, signed on Apple arm64 and x86-64 | Kpp's `char` stays signed on every target (Kpp's meaning does not change with the target). An imported C `char` is the same type; a C function that relies on unsigned `char` sees the same bits. |
 | `long double` | = double | x87 80-bit on x86-64 SysV, 128-bit on Linux AArch64, = double on Apple arm64 | Kpp's stays double. An imported C function that takes or returns `long double` is an error where the C type differs. |
@@ -1686,8 +1842,12 @@ byte for byte unless a difference is shown to be a fix.
 | Signing | none needed | macOS arm64 runs only signed code | ld64 and ld64.lld sign ad hoc on arm64 by default. A program shipped to others needs a Developer ID signature and notarization (packaging, thread E). |
 | The runtime's stderr and errno | `__acrt_iob_func(2)`, `_errno()` | `write(2, ...)`; `__errno_location()` on glibc, `__error()` on FreeBSD and macOS | The runtime's few calls go through the platform layer (3). |
 
-- **Q1, `long` (parked question).** On LP64 targets (every target but Windows), C's `long` is 64
-  bits:
+- **Q1, `long`: decided** (kovarex, 2026-11-01, "Distinct fixed types, deprecate long"; the Kpp v0
+  section's "Types" has the rule): `long` is a distinct type with C++'s overload behaviour, for C
+  interop only, as wide as the target's C `long` (option (b) for its size), and deprecated in Kpp
+  code, which writes the fixed-size names. The options as they were put:
+
+  On LP64 targets (every target but Windows), C's `long` is 64 bits:
   - **(a) Kpp's `long` stays 32 bits everywhere.** C's `long` follows the target: the C import
     types an imported header's `long` as 64 bits on LP64, and hand-written bindings say `CLong` or
     `CULong` (stdlib/clib: int32 on Windows, int64 elsewhere). A Kpp program means the same on
@@ -1995,7 +2155,7 @@ All of this goes through the coordinator.
 
 ### Questions for kovarex
 
-- **Q1:** `long` on LP64 targets. (a) is recommended (above).
+- **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).
 - **Q2:** `wchar_t`. (a) is recommended (above).
 - **Q3:** FreeBSD: the version NFS runs (`freebsd-version` there), an OK to download its
   `base.txz` as the sysroot, and how tests run there: a script he runs, SSH access for this
@@ -2032,7 +2192,7 @@ All of this goes through the coordinator.
   `--filter` instead of `--run-test`, Q3 the test runner's isolation and parallelism, Q4 the
   converted UnitTest++ as native tests.
 
-- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets, Q2 `wchar_t`, Q3 a FreeBSD sysroot and a way to run tests there, Q4 the FreeBSD version, Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
+- **Targets and hosts** (the section above, 2026-10-31): Q1 `long` on LP64 targets (decided 2026-11-01), Q2 `wchar_t`, Q3 a FreeBSD sysroot and a way to run tests there, Q4 the FreeBSD version, Q5 CI for macOS and Linux arm64, Q6 the minimum OS versions.
 
 - **How a build is described** ([build.md](build.md)): debug information in release builds, the
   command's name (`kpp`), who builds the C libraries the game links (FASTBuild's April build is 54

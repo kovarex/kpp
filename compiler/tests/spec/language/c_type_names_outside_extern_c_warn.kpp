@@ -1,0 +1,31 @@
+// spec: C's names of the integer types (int, unsigned, short, long, long long, signed and unsigned char, int32_t, size_t ...) are for C interop: with kppc --c-type-warnings, each one written outside extern "C" declarations and blocks, the imported C headers and the standard library is a warning naming Kpp's type (the build goes on); plain char (the text character), double, bool and Kpp's own u32, i64 ... are no C names
+// factorio: kovarex 2026-11-01, "Distinct fixed types, deprecate long", u8 ... i64 as the language's names, "int, unsigned int, short etc, they become deprecated" (design.md section 13)
+// kppc: --c-type-warnings
+// warning: c_type_names_outside_extern_c_warn.kpp:17: warning: long is C's name, for C interop (extern "C"): write i32 (C's long is 32 bits on Windows)
+// warning: c_type_names_outside_extern_c_warn.kpp:18: warning: unsigned long long is C's name, for C interop (extern "C"): write u64
+// warning: c_type_names_outside_extern_c_warn.kpp:20: warning: int is C's name, for C interop (extern "C"): write i32
+// warning: c_type_names_outside_extern_c_warn.kpp:21: warning: unsigned char is C's name, for C interop (extern "C"): write u8
+// warning: c_type_names_outside_extern_c_warn.kpp:22: warning: uint32_t is C's name, for C interop (extern "C"): write u32
+// warning: c_type_names_outside_extern_c_warn.kpp:23: warning: size_t is C's name, for C interop (extern "C"): write usize
+// warning: c_type_names_outside_extern_c_warn.kpp:24: warning: long double is C's name, for C interop (extern "C"): write f64
+extern "C" long labs(long value);
+extern "C"
+{
+  using CULong = unsigned long;
+}
+i64 big = 1;
+long twice(long value) { return value * 2; }
+unsigned long long wide = 2;
+CULong counted = 3;
+int small = 4;
+unsigned char byte = 5;
+uint32_t named = 6;
+size_t length = 7;
+long double half = 0.5;
+char letter = 'k';
+u32 fine = 8;
+i32 main()
+{
+  println("{} {} {} {} {} {} {} {} {} {} {} {}", labs(-5), twice(4), big, wide, counted, small, byte, named, length, half, letter, fine);
+  return 0;
+}

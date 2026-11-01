@@ -11,6 +11,8 @@ WString toWString(long long value)
 
 WString toWString(int value) { return toWString((long long)value); }
 WString toWString(unsigned int value) { return toWString((long long)value); }
+WString toWString(long value) { return toWString((long long)value); }
+WString toWString(unsigned long value) { return toWString((long long)value); }
 
 WString toWString(double value)
 {

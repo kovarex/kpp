@@ -47,6 +47,8 @@ String toString(unsigned long long value)
 
 String toString(int value) { return toString((long long)value); }
 String toString(unsigned int value) { return toString((unsigned long long)value); }
+String toString(long value) { return toString((long long)value); } // (C's long, a type of its own as in std::to_string)
+String toString(unsigned long value) { return toString((unsigned long long)value); }
 
 String toString(double value)
 {

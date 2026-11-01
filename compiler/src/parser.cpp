@@ -859,9 +859,7 @@ namespace
           if (s == "__int64" || s == "__int32" || s == "__int16" || s == "__int8")
           {
             b->keyword = s == "__int64" ? Kw::long_ : s == "__int32" ? Kw::int_ : s == "__int16" ? Kw::short_ : Kw::char_;
-            b->longCount = s == "__int64" ? 2 : 0;
-            if (s == "__int8" && !b->isUnsigned)
-              b->isSigned = true;
+            b->longCount = s == "__int64" ? 2 : 0; // (MSVC's __int8 is char, as `unsigned __int8` is unsigned char)
             advance();
           }
         }

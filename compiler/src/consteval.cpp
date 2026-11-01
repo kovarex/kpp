@@ -146,7 +146,7 @@ ConstArith::IntType ConstArith::intTypeOf(const Ty* t) const
   {
     case TyKind::Bool: return {1, true};
     case TyKind::Char:
-    case TyKind::Int: return {t->bits ? t->bits : uint8_t(32), t->isUnsigned};
+    case TyKind::Int: return {t->bits ? t->bits : uint8_t(32), t->isUnsigned, t->isLong()};
     case TyKind::Enum:
       if (const Ty* u = underlying ? underlying(t) : nullptr; u && u->kind != TyKind::Enum)
         return intTypeOf(u);
@@ -169,7 +169,7 @@ const Ty* ConstArith::tyOf(IntType it)
 {
   if (it.bits == 1)
     return types.boolType();
-  return types.intType(it.bits, it.isUnsigned);
+  return it.isLong ? types.longType(it.isUnsigned) : types.intType(it.bits, it.isUnsigned);
 }
 
 // Integral promotion: anything narrower than int (bool, char, short) computes as int.
@@ -181,10 +181,13 @@ ConstArith::IntType ConstArith::promoted(IntType it) const
 // The usual arithmetic conversions between two promoted integer types.
 ConstArith::IntType ConstArith::common(IntType a, IntType b) const
 {
+  auto rank = [](IntType t) { return t.isLong ? 5 : t.bits <= 8 ? 2 : t.bits <= 16 ? 3 : t.bits <= 32 ? 4 : 6; }; // as TypeTable::integerRank
   if (a.isUnsigned == b.isUnsigned)
-    return a.bits >= b.bits ? a : b;
+    return rank(a) >= rank(b) ? a : b;
   IntType u = a.isUnsigned ? a : b, s = a.isUnsigned ? b : a;
-  return u.bits >= s.bits ? u : s; // a wider signed type holds every value of the unsigned one
+  if (rank(u) >= rank(s))
+    return u;
+  return s.bits > u.bits ? s : IntType{s.bits, true, s.isLong}; // a wider signed type holds every value of the unsigned one
 }
 
 int64_t ConstArith::normalise(int64_t v, IntType it)
@@ -373,16 +376,20 @@ std::optional<ConstValue> ConstArith::literal(TokenKind kind, std::string_view s
     return t.isUnsigned ? (t.bits >= 64 || value < (unsigned __int128)(uint64_t(1) << t.bits))
                         : value <= (unsigned __int128)((uint64_t(1) << (t.bits - 1)) - 1);
   };
+  // ([lex.icon] 3: int, long, long long in order, each unsigned too for a literal that is not
+  // decimal; l starts at long, ll at long long, u takes the unsigned ones.)
+  IntType i{32, false}, ui{32, true}, l{types.longBits, false, true}, ul{types.longBits, true, true}, ll{64, false}, ull{64, true};
   std::vector<IntType> candidates;
   if (z)
     candidates = {IntType{64, u}}; // C++23: size_t, or its signed counterpart
   else if (u)
-    candidates = longs >= 2 || msvc64 ? std::vector<IntType>{{64, true}} : std::vector<IntType>{{32, true}, {64, true}};
+    candidates = longs >= 2 || msvc64 ? std::vector<IntType>{ull} : longs == 1 ? std::vector<IntType>{ul, ull} : std::vector<IntType>{ui, ul, ull};
   else if (longs >= 2 || msvc64)
-    candidates = {{64, false}, {64, true}};
+    candidates = {ll, ull};
+  else if (longs == 1)
+    candidates = base == 10 ? std::vector<IntType>{l, ll, ull} : std::vector<IntType>{l, ul, ll, ull};
   else
-    candidates = base == 10 ? std::vector<IntType>{{32, false}, {64, false}, {64, true}}
-                            : std::vector<IntType>{{32, false}, {32, true}, {64, false}, {64, true}};
+    candidates = base == 10 ? std::vector<IntType>{i, l, ll, ull} : std::vector<IntType>{i, ui, l, ul, ll, ull};
   for (IntType t : candidates)
     if (fits(t))
       return ConstValue::integer(normalise(int64_t(uint64_t(value)), t), tyOf(t));

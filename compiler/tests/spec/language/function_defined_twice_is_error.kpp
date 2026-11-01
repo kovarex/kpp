@@ -1,8 +1,6 @@
-// spec: a function defined twice is an error at the second definition, as in C++ ([basic.def.odr]), also when the two spell one parameter type two ways that Kpp makes one (`long` is `int`, `signed char` is `char`: design.md, "Types"), never two bodies the code generator emits
+// spec: a function defined twice is an error at the second definition, as in C++ ([basic.def.odr]), never two bodies the code generator emits; `long` beside `int` and `signed char` beside `char` are other types, so those are two overloads (language/integer_types_are_distinct)
 // factorio: found by the templates thread comparing overload choices against clang: `int f(int)` beside `int f(long)` reached clang as two definitions of `f(int32)` ("clang rejected module"), and two definitions of one signature likewise
-// error: function_defined_twice_is_error.kpp:7: error: the function twice is defined twice (first at line 6)
-// error: function_defined_twice_is_error.kpp:9: error: the function wide is defined twice (first at line 8)
-// error: function_defined_twice_is_error.kpp:11: error: the function narrow is defined twice (first at line 10)
+// error: function_defined_twice_is_error.kpp:5: error: the function twice is defined twice (first at line 4)
 int twice(int v) { return v; }
 int twice(int v) { return v + 1; }
 int wide(int v) { return 1; }

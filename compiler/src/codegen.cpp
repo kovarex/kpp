@@ -10492,15 +10492,7 @@ namespace
 
     const Ty* commonArithmetic(const Ty* a, const Ty* b)
     {
-      a = promoted(a);
-      b = promoted(b);
-      if (a->kind == TyKind::Float || b->kind == TyKind::Float)
-        return types.floatType(std::max<uint8_t>(a->kind == TyKind::Float ? a->bits : 0, b->kind == TyKind::Float ? b->bits : 0));
-      if (a->kind != TyKind::Int || b->kind != TyKind::Int)
-        return a->kind == TyKind::Int ? a : b;
-      if (a->bits != b->bits)
-        return a->bits > b->bits ? a : b;
-      return types.intType(a->bits, a->isUnsigned || b->isUnsigned);
+      return types.usualArithmetic(promoted(a), promoted(b));
     }
 
     Value load(const std::string& addr, const Ty* ty, Node* at)
@@ -13558,7 +13550,7 @@ namespace
           unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
         bool wide = name.ends_with("64"), reverse = name.starts_with("_BitScanReverse");
         std::string iN = wide ? "i64" : "i32";
-        std::string index = convert(rvalue(c->args[0]), types.pointer(types.intType(32, true)), c).text;
+        std::string index = convert(rvalue(c->args[0]), types.pointer(types.longType(true)), c).text; // (an unsigned long*)
         std::string mask = convert(rvalue(c->args[1]), types.intType(wide ? 64 : 32, true), c).text;
         std::string count = reverse ? "llvm.ctlz." + iN : "llvm.cttz." + iN;
         if (declaredNames.claim("@" + count))

@@ -201,6 +201,7 @@ private:
   {
     uint8_t bits;
     bool isUnsigned;
+    bool isLong = false; // C's long (Ty::isLong): its own rank, between int and long long
   };
   IntType intTypeOf(const Ty* t) const;
   IntType intTypeOf(const ConstValue& v) const;

@@ -58,6 +58,7 @@ namespace
     int showWhy = 0; // --why N
     std::string whyAt; // --why-at FILE:LINE[,FILE:LINE...]
     bool accessWarnings = false; // --access-warnings
+    bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
     std::string exe;      // --exe <path>
@@ -108,6 +109,9 @@ namespace
             "  --access-warnings  warn of private and protected members named outside their class, its derived classes and\n"
             "                its friends, and of structs with a private member, a non-public base or a virtual function\n"
             "                (docs/design.md, \"struct and class\"); no error, no other change\n"
+            "  --c-type-warnings  warn of each C name of an integer type (int, unsigned, short, long, long long, signed\n"
+            "                and unsigned char, int32_t, size_t ...) written outside extern \"C\", the C headers and the\n"
+            "                standard library, naming Kpp's (i32, u64 ...) (docs/design.md, \"Integer types and sizes\"); no error\n"
             "  --quiet       no statistics\n"
             "  --msvc-diagnostics  diagnostics at path(line) instead of path:line, the form Visual Studio's\n"
             "                Error List reads (docs/build.md)\n"
@@ -1304,6 +1308,99 @@ namespace
     return 1 + offset - start;
   }
 
+  // --c-type-warnings: C's names of the integer types (int, unsigned, short, long, long long, signed
+  // and unsigned char, int32_t, size_t ...) are for C interop only (design.md, "Integer types and
+  // sizes"): each one written outside an extern "C" declaration, the C headers and the standard
+  // library is a warning naming Kpp's type (u32, i64 ...). No error: the exit code stays.
+  void warnCTypeNames(const std::vector<SourceFile>& files, const std::vector<LexResult>& lexed, const std::vector<std::unique_ptr<ParsedFile>>& parsed)
+  {
+    static const std::map<std::string_view, const char*> named = {
+      {"int8_t", "i8"},    {"int16_t", "i16"},  {"int32_t", "i32"},  {"int64_t", "i64"},   {"uint8_t", "u8"},   {"uint16_t", "u16"},
+      {"uint32_t", "u32"}, {"uint64_t", "u64"}, {"size_t", "usize"}, {"ptrdiff_t", "i64"}, {"intptr_t", "i64"}, {"uintptr_t", "u64"},
+      {"ssize_t", "i64"},  {"__int8", "i8"},    {"__int16", "i16"},  {"__int32", "i32"},   {"__int64", "i64"}};
+    auto typeKeyword = [](const Token& t) {
+      return t.is(Kw::signed_) || t.is(Kw::unsigned_) || t.is(Kw::short_) || t.is(Kw::int_) || t.is(Kw::long_) || t.is(Kw::char_) || t.is(Kw::double_);
+    };
+    for (size_t i = 0; i < files.size(); ++i)
+    {
+      if (parsed[i]->isImported || parsed[i]->isLibrary)
+        continue;
+      // The token ranges of the extern "C" declarations (each flagged, in a block or not), in order.
+      std::vector<std::pair<uint32_t, uint32_t>> externC;
+      auto collect = [&](auto& self, Span<Decl*> decls) -> void {
+        for (Decl* d : decls)
+          if (d->flags & DF_ExternC)
+            externC.push_back({d->token, std::max(d->endToken, d->token + 1)});
+          else if (d->kind == NodeKind::NamespaceDecl)
+            self(self, static_cast<NamespaceDecl*>(d)->decls);
+      };
+      collect(collect, parsed[i]->decls);
+      std::sort(externC.begin(), externC.end());
+      const std::vector<Token>& tokens = lexed[i].tokens;
+      const std::string& text = files[i].text;
+      auto spell = [&](const Token& t) { return std::string_view(text).substr(t.offset, t.length); };
+      size_t range = 0;
+      for (size_t k = 0; k < tokens.size(); ++k)
+      {
+        while (range < externC.size() && externC[range].second <= k)
+          ++range;
+        if (range < externC.size() && externC[range].first <= k)
+        {
+          k = externC[range].second - 1;
+          continue;
+        }
+        const Token& t = tokens[k];
+        std::string phrase;
+        const char* kpp = nullptr;
+        if (typeKeyword(t))
+        {
+          // A run of type keywords is one type: `unsigned long long`, `long double`, `signed char`.
+          int longs = 0;
+          bool isUnsigned = false, isSigned = false, isShort = false, isChar = false, isDouble = false;
+          size_t e = k;
+          for (; e < tokens.size() && typeKeyword(tokens[e]); ++e)
+          {
+            longs += tokens[e].is(Kw::long_);
+            isUnsigned |= tokens[e].is(Kw::unsigned_);
+            isSigned |= tokens[e].is(Kw::signed_);
+            isShort |= tokens[e].is(Kw::short_);
+            isChar |= tokens[e].is(Kw::char_);
+            isDouble |= tokens[e].is(Kw::double_);
+            phrase += (phrase.empty() ? "" : " ") + std::string(spell(tokens[e]));
+          }
+          if (e < tokens.size() && tokens[e].getKind() == TokenKind::Identifier && named.count(spell(tokens[e])))
+          {
+            phrase += " " + std::string(spell(tokens[e])); // `unsigned __int64`
+            longs = spell(tokens[e]) == "__int64" ? 2 : longs;
+            ++e;
+          }
+          if (isDouble)
+            kpp = longs ? "f64" : nullptr; // (double itself is no integer name)
+          else if (isChar)
+            kpp = isUnsigned ? "u8" : isSigned ? "i8" : nullptr; // (char is the text character)
+          else if (isShort)
+            kpp = isUnsigned ? "u16" : "i16";
+          else if (longs >= 2)
+            kpp = isUnsigned ? "u64" : "i64";
+          else if (longs == 1)
+            kpp = isUnsigned ? "u32 (C's unsigned long is 32 bits on Windows)" : "i32 (C's long is 32 bits on Windows)";
+          else
+            kpp = isUnsigned ? "u32" : "i32";
+          k = e - 1;
+        }
+        else if (t.getKind() == TokenKind::Identifier)
+          if (auto it = named.find(spell(t)); it != named.end())
+          {
+            phrase = it->first;
+            kpp = it->second;
+          }
+        if (kpp)
+          fprintf(stderr, "%s: warning: %s is C's name, for C interop (extern \"C\"): write %s\n",
+                  sourceLocation(files[i].path.string(), lineOf(text, t.offset), columnOf(text, t.offset)).c_str(), phrase.c_str(), kpp);
+      }
+    }
+  }
+
   void runParse(Build& build)
   {
     using Clock = std::chrono::steady_clock;
@@ -1388,6 +1485,8 @@ namespace
           fprintf(stderr, "%s: error: %s (at '%.*s')\n", sourceLocation(files[i].path.string(), lineOf(files[i].text, t.offset), columnOf(files[i].text, t.offset)).c_str(), d.message,
                   int(std::min<uint32_t>(t.length, 30)), files[i].text.data() + t.offset);
         }
+    if (options.cTypeWarnings)
+      warnCTypeNames(files, lexed, parsed);
     // --convert reads C++, whose macro uses the parser does not expand (the converter expands them
     // in the text it writes): its parse errors are shown, and the converted Kpp is what must parse.
     if (build.parseErrors && options.convertDir.empty())
@@ -2978,6 +3077,8 @@ int compile(int argc, char** argv)
       options.whyAt = argv[++i];
     else if (arg == "--access-warnings")
       options.accessWarnings = true;
+    else if (arg == "--c-type-warnings")
+      options.cTypeWarnings = true;
     else if (arg == "--quiet")
       options.quiet = true;
     else if (arg == "--msvc-diagnostics")

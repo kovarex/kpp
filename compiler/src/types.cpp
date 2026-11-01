@@ -158,6 +158,45 @@ const Ty* TypeTable::intType(uint8_t bits, bool isUnsigned)
   return intern(t);
 }
 
+const Ty* TypeTable::longType(bool isUnsigned)
+{
+  Ty t{TyKind::Int};
+  t.bits = longBits;
+  t.isUnsigned = isUnsigned;
+  t.count = 1;
+  return intern(t);
+}
+
+int TypeTable::integerRank(const Ty* t)
+{
+  if (!t || (t->kind != TyKind::Int && t->kind != TyKind::Char && t->kind != TyKind::Bool))
+    return 0;
+  if (t->kind == TyKind::Bool)
+    return 1;
+  if (t->isLong())
+    return 5;
+  return t->bits <= 8 ? 2 : t->bits <= 16 ? 3 : t->bits <= 32 ? 4 : 6;
+}
+
+const Ty* TypeTable::usualArithmetic(const Ty* a, const Ty* b)
+{
+  if (a->kind == TyKind::Float || b->kind == TyKind::Float)
+    return floatType(std::max<uint8_t>(a->kind == TyKind::Float ? a->bits : 0, b->kind == TyKind::Float ? b->bits : 0));
+  if (a->kind != TyKind::Int || b->kind != TyKind::Int)
+    return a->kind == TyKind::Int ? a : b;
+  if (a == b)
+    return a;
+  if (a->isUnsigned == b->isUnsigned)
+    return integerRank(a) >= integerRank(b) ? a : b;
+  const Ty* u = a->isUnsigned ? a : b;
+  const Ty* s = a->isUnsigned ? b : a;
+  if (integerRank(u) >= integerRank(s))
+    return u;
+  if (s->bits > u->bits)
+    return s; // the signed type holds every value of the unsigned one
+  return s->isLong() ? longType(true) : intType(s->bits, true); // its unsigned counterpart
+}
+
 const Ty* TypeTable::charType(uint8_t bits, bool isUnsigned)
 {
   Ty t{TyKind::Char};
@@ -554,6 +593,11 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
     case TyKind::Bool: s += "bool"; break;
     case TyKind::Char: s += t->bits == 8 ? (t->isUnsigned ? "unsigned char" : "char") : t->bits == 16 ? "char16_t" : "char32_t"; break;
     case TyKind::Int:
+      if (t->isLong())
+      {
+        s += t->isUnsigned ? "unsigned long" : "long";
+        break;
+      }
       if (t->isUnsigned)
         s += "u";
       s += "int" + std::to_string(t->bits);

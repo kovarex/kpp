@@ -1405,6 +1405,8 @@ struct GlobalScope::Impl
     add("u32", types.intType(32, true));
     add("u64", types.intType(64, true));
     add("usize", types.sizeType());
+    add("f32", types.floatType(32));
+    add("f64", types.floatType(64));
     add("int16_t", types.intType(16));
     add("int32_t", types.intType(32));
     add("int64_t", types.intType(64));
@@ -1420,7 +1422,7 @@ struct GlobalScope::Impl
     add("__int64", types.intType(64));
     add("__int32", types.intType(32));
     add("__int16", types.intType(16));
-    add("__int8", types.intType(8));
+    add("__int8", types.charType(8)); // MSVC's __int8 is char
     add("ssize_t", types.ptrdiffType());
     add("int_fast32_t", types.intType(32));
     add("uint_fast32_t", types.intType(32, true));
@@ -13164,7 +13166,9 @@ struct GlobalScope::Impl
         {
           case Kw::void_: return types.voidType();
           case Kw::bool_: return types.boolType();
-          case Kw::char_: return types.charType(8, b->isUnsigned);
+          // char, signed char and unsigned char are three types, as in C++; the last two are
+          // int8_t and uint8_t (i8, u8).
+          case Kw::char_: return b->isUnsigned ? types.intType(8, true) : b->isSigned ? types.intType(8) : types.charType(8);
           case Kw::char8_t_: return types.charType(8, true);
           case Kw::char16_t_: return types.charType(16, true);
           case Kw::char32_t_: return types.charType(32, true);
@@ -13173,8 +13177,9 @@ struct GlobalScope::Impl
           case Kw::double_: return types.floatType(64);
           case Kw::short_: return types.intType(16, b->isUnsigned);
           default:
-            // int, long, long long, unsigned, signed: Windows LLP64.
-            return types.intType(b->longCount >= 2 ? 64 : 32, b->isUnsigned);
+            // int, long, long long, unsigned, signed: long a type of its own (C's, sized by the
+            // target), long long 64 bits (i64).
+            return b->longCount == 1 ? types.longType(b->isUnsigned) : types.intType(b->longCount >= 2 ? 64 : 32, b->isUnsigned);
         }
       }
       case NodeKind::NamedType:
@@ -15416,8 +15421,7 @@ struct GlobalScope::Impl
       case TyKind::Char:
         if (isInt(a))
         {
-          bool promotion = p->kind == TyKind::Int && p->bits == 32 && !p->isUnsigned &&
-                           (a->kind == TyKind::Bool || a->kind == TyKind::Char || a->bits < 32);
+          bool promotion = p == types.intType(32) && (a->kind == TyKind::Bool || a->kind == TyKind::Char || a->bits < 32); // to int only, never long
           return promotion ? 2 : 3;
         }
         if (a->kind == TyKind::Float)
@@ -15429,7 +15433,7 @@ struct GlobalScope::Impl
           // An unscoped enumeration promotes to int (C++ [conv.prom] 3), one with a fixed
           // underlying type to that type and to the type that one promotes to ([conv.prom] 4):
           // `enum LuaEventType : uint32_t` to uint32, `enum Small : uint8_t` to uint8 and to int.
-          bool toInt = p->kind == TyKind::Int && p->bits == 32 && !p->isUnsigned;
+          bool toInt = p == types.intType(32);
           const Ty* u = declaredUnderlying(a);
           if (u && !u->isKnown())
             return p->kind == TyKind::Int && p->bits == 32 ? 2 : 3; // not known yet: as before it is
@@ -20210,16 +20214,7 @@ struct GlobalScope::Impl
     {
       a = promote(a);
       b = promote(b);
-      if (a->kind == TyKind::Float || b->kind == TyKind::Float)
-      {
-        uint8_t bits = std::max<uint8_t>(a->kind == TyKind::Float ? a->bits : 0, b->kind == TyKind::Float ? b->bits : 0);
-        return types.floatType(bits);
-      }
-      if (a->kind != TyKind::Int || b->kind != TyKind::Int)
-        return a->kind == TyKind::Int ? a : b;
-      if (a->bits != b->bits)
-        return a->bits > b->bits ? a : b;
-      return types.intType(a->bits, a->isUnsigned || b->isUnsigned);
+      return types.usualArithmetic(a, b);
     }
 
     // Overloaded operator lookup: member of the left operand's class, then free functions in

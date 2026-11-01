@@ -12,7 +12,8 @@ enum class TyKind : uint8_t
   Void,
   Bool,
   Char,    // bits = 8/16/32, isUnsigned
-  Int,     // bits = 8/16/32/64, isUnsigned
+  Int,     // bits = 8/16/32/64, isUnsigned; count = 1 marks C's `long` (TypeTable::longType): a type of its
+           // own beside int and long long, as wide as the target's C long
   Float,   // bits = 32/64
   Nullptr,
   Pointer, // inner
@@ -55,6 +56,7 @@ struct Ty
   bool isIntegral() const { return kind == TyKind::Bool || kind == TyKind::Char || kind == TyKind::Int || kind == TyKind::Enum; }
   bool isKnown() const { return kind != TyKind::Unknown; }
   bool isBraceList() const { return kind == TyKind::Class && count == 1; }
+  bool isLong() const { return kind == TyKind::Int && count == 1; } // `long` or `unsigned long`
 };
 
 class TypeTable
@@ -74,6 +76,15 @@ public:
   const Ty* intType(uint8_t bits = 32, bool isUnsigned = false);
   const Ty* charType(uint8_t bits = 8, bool isUnsigned = false);
   const Ty* floatType(uint8_t bits = 64);
+  // C's `long` and `unsigned long` (design.md, "Types"): distinct from int and long long as in
+  // C++, and as wide as the target's C long (32 bits on Windows, 64 on LP64 targets).
+  const Ty* longType(bool isUnsigned = false);
+  uint8_t longBits = 32;
+  // The integer conversion rank ([conv.rank]): long long above long above int above short above
+  // the 8-bit types; 0 for a type that is no integer.
+  static int integerRank(const Ty* t);
+  // The usual arithmetic conversions ([expr.arith.conv]) of two promoted arithmetic types.
+  const Ty* usualArithmetic(const Ty* a, const Ty* b);
   const Ty* sizeType() { return intType(64, true); }
   const Ty* ptrdiffType() { return intType(64, false); }
 

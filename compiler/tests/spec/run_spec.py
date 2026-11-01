@@ -11,6 +11,8 @@ snippet says what it is about:
                                                   gap that only one configuration shows)
     // error: static assertion failed            (the program must not compile, and the compiler's
                                                   output must say this; one line per expected error)
+    // warning: long is C's type                 (the program compiles, runs and prints its .expected, and the
+                                                  compiler's output says this; one line per expected warning)
     // run: alpha "two words"                    (built and run in one step by `kppc --run snippet ARGS`)
     // test: --filter parse                      (the snippet's tests run by `kppc --test snippet -- ARGS`, from
                                                   the snippet's directory: the paths printed are its name)
@@ -78,17 +80,17 @@ AREA_TITLES = {
 
 
 def header(path):
-    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "run": None, "test": None, "exit": None, "kppc": "",
-            "target": None}
+    info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "warnings": [], "run": None, "test": None,
+            "exit": None, "kppc": "", "target": None}
     with open(path, encoding="utf-8") as f:
         for line in f:
-            m = re.match(r"//\s*(spec|factorio|pending|error|run|test|exit|kppc|target):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending|error|warning|run|test|exit|kppc|target):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
                 continue
-            if m.group(1) == "error":
-                info["errors"].append(m.group(2).strip())
+            if m.group(1) in ("error", "warning"):
+                info[m.group(1) + "s"].append(m.group(2).strip())
             else:
                 info[m.group(1)] = m.group(2).strip()
     return info
@@ -161,6 +163,10 @@ def run_one(path):
     reported = next((l.strip() for l in (c.stdout + c.stderr).splitlines() if ": error:" in l), None)
     if reported:
         result["status"] = "FAIL"; result["note"] = "the build exited 0 but reported " + reported[reported.find(": error:") + 2:]
+        return finish(result)
+    missing = [w for w in info["warnings"] if w not in c.stdout + c.stderr]
+    if missing:
+        result["status"] = "FAIL"; result["note"] = f"no warning `{missing[0]}`"
         return finish(result)
     try:
         r = subprocess.run(run_program(exe), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
