@@ -757,7 +757,10 @@ arguments, one after another, with nothing parsed.
 - **Built in and in the standard library:** every integer, float, `bool`, `char`, `String`,
   `StringView` and container has `appendTo`; formatting options are small objects with it
   (`hex(x)`, `fixed(t, 2)`, `padded(n, 5)`). `out << 65` appends the text "65"; a character is
-  appended only from a `char`.
+  appended only from a `char`. A float or double prints, by default, the shortest text that reads
+  back to exactly the same value (`0.1` is "0.1", `0.1 + 0.2` is "0.30000000000000004"); kovarex,
+  2026-11-01: "by default, it should always print all the information, so nothing is lost".
+  `fixed(x, n)` is for a chosen number of decimals.
 - **No silent fallback:** printing, `<<`, `+=` or `Text` with a type that has no `appendTo` is a
   compile error naming the type; a pointer prints only through an explicit `address(p)`.
 - **Localisation** (where the order of the parts changes per language) is not this mechanism: a
