@@ -2012,6 +2012,51 @@ these directories keep their C headers), the unit tests pass 9,501/9,501 with th
 and the 45 menu maps match, in debug and in release. The game draws through D3D, so the menu maps do
 not reach glad; its harness does.
 
+**zstd is converted** (2026-11-01). It needed more of the C mode:
+- **The library's include directories are the conversion's too:** zstd's files include `"mem.h"`
+  from `common\`.
+- **A configured import:** `c-headers.txt` says `zstd.h kpp_zstd.h`. zstd's files define
+  `ZSTD_STATIC_LINKING_ONLY` before including zstd.h, and Kpp's import has no defines. So an
+  include of zstd.h imports `kpp_zstd.h`, which defines the macro and includes zstd.h.
+  `c-libraries/zstd` holds that header, and the converter writes it beside zstd.h. The builds add
+  the converted directory to their C includes, and resources.cmd keeps `kpp_*.h` there.
+- **More macros the parse sees through:**
+  - several storage words, through other macros and attributes (`MEM_STATIC`,
+    `FORCE_INLINE_TEMPLATE`);
+  - a multiplication after a number (`16 KB`);
+  - `restrict`.
+- **A file's own object macros by the range they hold in:** divsufsort.c defines `STACK_SIZE`
+  twice. Their bodies are rescanned for function-like macros (`MAX`), and an `#undef` of an
+  included macro ends it. zstd_common.c `#undef`s the alias `ZSTD_isError`, which had made the
+  function a call of itself.
+- **Clashing statics are renamed:** a .c file's static whose name another file of the library
+  declares gets its file's name (cover.c's and fastcover.c's `g_displayLevel`).
+- **Includes of the library's own converted headers are removed, whatever their name:** the game's
+  rule took zstd_internal.h for zstd's interface by its prefix.
+- **A function passing structs by value keeps Kpp's linkage** if no interface header declares it
+  (COVER_computeEpochs). Kpp's C-callable functions pass no struct values yet.
+- **Two compiler gaps the converter works around, each with a pending spec:**
+  - consts after a type's name (`U32 const x`) are written first, for
+    `language/east_const_after_type_name` (A);
+  - array parameters are written as pointers, for `language/array_parameter_is_pointer` (D):
+    zstd's `ZSTD_blockCompressor` type.
+
+  `(T1)(T2)(x)` becomes `(T1)((T2)(x))`.
+
+zstd's harness (`harness/zstd.c`) covers:
+- every .lua file and core PNG of data\ at levels -5 to 19;
+- streaming in pieces with flushes, checksums, window logs and long-distance matching;
+- a dictionary trained from 400 files and used through a CDict and a DDict on 1,000 more;
+- damaged frames.
+
+Its output is 2,658 lines over 2,643 files, byte-identical. With ogg, zlib, glad and zstd
+converted, the unit tests pass 9,501/9,501 with their CRCs checked, and the 45 menu maps match, in
+debug and in release.
+
+The drivers of zlib's and ogg's harnesses called `nextRandom` twice in one expression, whose order
+C leaves open. zstd's differed between the two builds, so each driver now makes one call a
+statement.
+
 **minizip and trio wait for the compiler.**
 - minizip converts with 0 errors, but clang crashes on its zipOpen4: `*zi = ziinit;` copies a
   struct with a 64 KB array as one value (`classes/large_struct_copy_through_pointer`, B).
