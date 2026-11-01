@@ -63,7 +63,9 @@ static void packer(int big, int round)
     if (choice < 33)
     {
       int bits = (int)choice;
-      unsigned long value = ((unsigned long)nextRandom() << 16) ^ nextRandom();
+      /* (one nextRandom a statement: C leaves the order of an expression's operands open) */
+      unsigned long high = (unsigned long)nextRandom() << 16;
+      unsigned long value = high ^ nextRandom();
       if (bits < 32)
         value &= (1ul << bits) - 1;
       if (big)
@@ -193,8 +195,14 @@ static void framing(int round)
   for (i = 0; i < packets; ++i)
   {
     unsigned int kind = nextRandom() % 5;
-    long size = kind == 0 ? (long)(nextRandom() % 600) : kind == 1 ? 255 * (long)(1 + nextRandom() % 4) - 1 + (long)(nextRandom() % 3)
-              : kind == 2 ? (long)(nextRandom() % 70000) : (long)(nextRandom() % 4000);
+    long size;
+    if (kind == 1)
+    {
+      long lacings = (long)(1 + nextRandom() % 4);
+      size = 255 * lacings - 1 + (long)(nextRandom() % 3);
+    }
+    else
+      size = kind == 0 ? (long)(nextRandom() % 600) : kind == 2 ? (long)(nextRandom() % 70000) : (long)(nextRandom() % 4000);
     long k;
     sizes[i] = size;
     data[i] = (unsigned char*)malloc(size + 1);

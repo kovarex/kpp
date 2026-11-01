@@ -251,7 +251,11 @@ static void streams(void)
     unsigned char* stream = deflateWith(text, 20000, 6, k % 2 ? 31 : 15, 8, Z_DEFAULT_STRATEGY, 0, NULL, 0, &streamLength, &drc);
     cut = k < 3 ? streamLength - 1 - nextRandom() % 50 : streamLength;
     if (k >= 3)
-      stream[nextRandom() % streamLength] ^= (unsigned char)(1 + nextRandom() % 255);
+    {
+      /* (one nextRandom a statement: C leaves the order of an expression's operands open) */
+      size_t at = nextRandom() % streamLength;
+      stream[at] ^= (unsigned char)(1 + nextRandom() % 255);
+    }
     unsigned char* out = inflateWith(stream, cut, k % 2 ? 31 : 15, NULL, 0, 20000, &outLength, &irc);
     printf("damaged %d: %lu of %lu bytes, inflate %d, %lu out, crc %08lx\n", k, (unsigned long)cut, (unsigned long)streamLength, irc,
            (unsigned long)outLength, crc32(0, out, (uInt)outLength));

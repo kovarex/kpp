@@ -9,7 +9,7 @@ rem Called by convert.cmd, link-settings.cmd and tests.cmd; needs FACTORIO. Sets
 rem names), CLIBINC (a --cinclude for each header directory) and CLIBIN_NAME (the other C interfaces a
 rem library uses, parsed with it and not written: c-libraries\NAME\inputs.txt, paths below
 rem FACTORIO\libraries; minizip parses zlib.h).
-set CLIBRARIES=ogg zlib glad
+set CLIBRARIES=ogg zlib glad zstd
 set CLIBINC=
 for %%l in (%CLIBRARIES%) do for /f "usebackq delims=" %%i in ("%~dp0c-libraries\%%l\includes.txt") do call set CLIBINC=%%CLIBINC%% --cinclude %FACTORIO%\libraries\%%l\%%i
 for %%l in (%CLIBRARIES%) do set CLIBIN_%%l=

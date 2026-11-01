@@ -45,6 +45,8 @@ set KLINKS=
 if exist c-libraries\%NAME%\links.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\links.txt") do call set CLINKS=%%CLINKS%% "%CONVERSION%\build\clib\%%i.lib"& call set KLINKS=%%KLINKS%% --lib "%CONVERSION%\build\clib\%%i.lib"
 if exist c-libraries\%NAME%\inputs.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\inputs.txt") do call set CINPUTS=%%CINPUTS%% "%FACTORIO%\libraries\%%i"
 if exist c-libraries\%NAME% set CMODE=--c-sources --overrides c-libraries\%NAME%
+rem (and the conversion's own headers: the configured imports c-headers.txt names, zstd's kpp_zstd.h)
+if exist c-libraries\%NAME% set CINC=%CINC% --cinclude %OUT%\converted\%NAME%
 if exist c-libraries\%NAME%\includes.txt for /f "usebackq delims=" %%i in ("c-libraries\%NAME%\includes.txt") do call set CINC=%%CINC%% --cinclude "%FACTORIO%\libraries\%NAME%\%%i"& call set CLINC=%%CLINC%% /I"%CONVERSION%\libraries\%NAME%\%%i"
 if exist %OUT% rd /s /q %OUT%
 mkdir %OUT%\driver

@@ -1,0 +1,4 @@
+# zstd's interface: these headers stay C, imported by the converted files and by the game.
+# zstd.h is imported through kpp_zstd.h, as zstd's files include it: with its static linking API.
+zstd.h kpp_zstd.h
+zstd_errors.h

@@ -1,0 +1,7 @@
+# zstd's files define these before their includes of zstd.h, zdict.h, fse.h, huf.h and xxhash.h,
+# whose static linking sections they open; the configuration preprocesses the headers on their own.
+ZSTD_STATIC_LINKING_ONLY
+ZDICT_STATIC_LINKING_ONLY
+FSE_STATIC_LINKING_ONLY
+HUF_STATIC_LINKING_ONLY
+XXH_STATIC_LINKING_ONLY

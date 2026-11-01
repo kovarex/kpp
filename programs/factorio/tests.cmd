@@ -76,6 +76,7 @@ call native\build.cmd >nul || exit /b 1
 call "%HERE%link-settings.cmd"
 set CLIBWHOLE=
 for %%l in (%CLIBRARIES%) do call set CLIBWHOLE=%%CLIBWHOLE%% %CONVERSION%\libraries\%%l
+for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude %CONVERSION%\libraries\%%l
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe
 %KPPC% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\crc32fast %CLIBWHOLE% %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt

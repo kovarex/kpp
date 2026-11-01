@@ -26,7 +26,8 @@ if exist "%WHOLE%\libraries" for /d %%d in ("%WHOLE%\libraries\*") do (
   if !KEEP!==0 rd /s /q "%%d"
 )
 rem (dir, not for /r: for /r's directory cannot be another for's variable, and then it lists nothing.)
-for %%d in (%CONVERTED%) do if exist "%WHOLE%\libraries\%%d" for /f "delims=" %%f in ('dir /s /b /a-d "%WHOLE%\libraries\%%d"') do if /i not "%%~xf"==".kpp" del /q "%%f"
+rem (The converter's own C headers stay too: a C library's configured imports, zstd's kpp_zstd.h.)
+for %%d in (%CONVERTED%) do if exist "%WHOLE%\libraries\%%d" for /f "delims=" %%f in ('dir /s /b /a-d "%WHOLE%\libraries\%%d"') do if /i not "%%~xf"==".kpp" call :keep "%%f"
 if exist "%WHOLE%\tests" for /r "%WHOLE%\tests" %%f in (*) do if /i not "%%~xf"==".kpp" del /q "%%f"
 endlocal
 rem A pathspec's * also matches /: libraries/Lua/*.c is every .c file below libraries/Lua.
@@ -36,3 +37,11 @@ for %%d in (%CLIBRARIES%) do call set EXCLUDE=%%EXCLUDE%% ":(exclude)libraries/%
 if not exist "%WHOLE%" mkdir "%WHOLE%"
 git -C %FACTORIO% archive HEAD -- data shaders libraries tests version.txt %EXCLUDE% | %SystemRoot%\System32\tar.exe -x -f - -C "%WHOLE%" || exit /b 1
 for /f %%h in ('git -C %FACTORIO% rev-parse --short HEAD') do echo resources: %FACTORIO% %%h into %WHOLE%
+goto :eof
+
+rem A file of a converted library's directory: deleted, unless the converter wrote it (kpp_*.h).
+:keep
+set KEEPNAME=%~nx1
+if /i "%KEEPNAME:~0,4%"=="kpp_" goto :eof
+del /q %1
+goto :eof

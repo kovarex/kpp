@@ -12,6 +12,7 @@ rem The C libraries converted to Kpp (c-libraries.cmd) are compiled with the gam
 rem as convert.cmd writes them), not linked, and their headers imported.
 call "%~dp0c-libraries.cmd"
 set CINC=%CINC% %CLIBINC%
+for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude kpp\%%l
 set CLIBKPP=
 for %%l in (%CLIBRARIES%) do call set CLIBKPP=%%CLIBKPP%% kpp\%%l
 set L=C:\Factorio\vs2022\Releasex64

@@ -74,6 +74,8 @@ for %%l in (%CLIBRARIES%) do (
   call set CLIBKPP=%%CLIBKPP%% kpp\%%l
   call set CLIBWHOLE=%%CLIBWHOLE%% %WHOLE%\libraries\%%l
 )
+rem (and their own headers: the configured imports, zstd's kpp_zstd.h)
+for %%l in (%CLIBRARIES%) do call set CINC=%%CINC%% --cinclude kpp\%%l
 echo C libraries converted: %CLIBRARIES%
 rem Remove stale top-level directories left by older conversions (the converter now writes src\
 rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).
