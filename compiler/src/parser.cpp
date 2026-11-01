@@ -1915,6 +1915,11 @@ namespace
         parseDeclarator(d, scope);
         if (inRecovery)
           return;
+        // `Buf;`, `const Buf*;`: a type and no name declares nothing, which C++ makes ill-formed
+        // ([dcl.dcl]); an unnamed bitfield (`int : 3;`) and a structured binding are declarations.
+        if (first && d.name.empty() && !d.isFunction && !d.bitfield && d.structuredBindings.empty() && scope != Scope::Local &&
+            !conditionMode && !cMode)
+          out.diagnostics.push_back({start, "the declaration declares nothing"});
         first = false;
         if (d.isFunction && (flags & DF_Typedef))
           functionTypeOfDeclarator(d, start); // `typedef void WriteFunc(void* context, int size);`: an alias of the function type

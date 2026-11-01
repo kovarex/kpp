@@ -1,0 +1,21 @@
+// spec: a declaration of a type with no name after it (`Buf;`, `const Buf;`, `Buf*;`) declares nothing: an error at namespace scope, in a namespace and in a class, as C++ makes it ill-formed ([dcl.dcl]: only a class's or an enum's declaration may leave the declarator out); `struct Buf;` and `enum class E;` still declare their type
+// factorio: none; C's conversion left `stbtt__buf;` alone at file scope (from an anonymous struct), which compiled with no error
+// error: declaration_without_a_declarator_is_error.kpp:8: error: the declaration declares nothing
+// error: declaration_without_a_declarator_is_error.kpp:9: error: the declaration declares nothing
+// error: declaration_without_a_declarator_is_error.kpp:12: error: the declaration declares nothing
+// error: declaration_without_a_declarator_is_error.kpp:17: error: the declaration declares nothing
+struct Buf { int x; };
+Buf;
+const Buf*;
+namespace Storage
+{
+  Buf;
+}
+struct Holder
+{
+  int y;
+  Buf;
+};
+struct Later;
+struct Later { int z; };
+int main() { return 0; }
