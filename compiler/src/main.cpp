@@ -74,6 +74,16 @@ namespace
     std::filesystem::path conversionLibrary; // the library --convert keeps the program's names apart from
     bool noStd = false;
     std::filesystem::path libraryRoot; // the standard library's directory, when it joins the program
+    // --library-root NAME DIR and --unscoped-library-root NAME DIR (design.md 16): the files under DIR
+    // (or the file DIR) are the library NAME's, whose top-level names a program writes NAME::name
+    // unless it is unscoped. Repeatable; one library may have several roots (its tests').
+    struct LibraryRoot
+    {
+      std::string name;
+      std::filesystem::path dir;
+      bool scoped = true;
+    };
+    std::vector<LibraryRoot> libraryRoots;
     std::vector<std::string> cIncludeDirs; // --cinclude DIR, for imported C headers
     std::vector<std::string> libs;         // --lib FILE: libraries linked into the executable
     std::vector<std::string> excluded;     // --exclude FILE: a file under the roots left out
@@ -132,6 +142,9 @@ namespace
             "  --lsp [OPTIONS SOURCES]  a language server for an editor, on stdin and stdout (docs/ide.md)\n"
             "  --std DIR     standard library sources (default: stdlib next to the compiler)\n"
             "  --no-std      compile without the standard library\n"
+            "  --library-root NAME DIR  the sources DIR (a directory or a file) are the library NAME's, whose\n"
+            "                names are written NAME::name outside it (repeatable; design.md 16)\n"
+            "  --unscoped-library-root NAME DIR  the same for an unscoped library: its names are bare everywhere\n"
             "  --cinclude D  directory searched by imported C headers (repeatable)\n"
             "  --lib F       a library (.lib) linked into the executable (repeatable)\n"
             "  --exclude F   leave out the file F found under the sources (repeatable; build.kpp's exclude)\n"
@@ -237,6 +250,7 @@ namespace
     std::vector<std::unique_ptr<ParsedFile>> parsed;
     std::unique_ptr<GlobalScope> global;
     std::vector<ResolveStats> stats;
+    std::vector<int> fileLibrary; // (files[i]'s: its options.libraryRoots entry, -1 for the program's; the files the driver adds are the program's)
     // What the reports print that a later build of the kept program cannot recompute.
     std::string importsLine, indexLine;
     double indexTime = 0, finishTime = 0; // (the index line again, when a later build changed the entries)
@@ -1477,6 +1491,13 @@ namespace
         parsed[i]->index = uint32_t(i);
         std::string library = options.libraryRoot.string();
         parsed[i]->isLibrary = !library.empty() && parsed[i]->path.compare(0, library.size(), library) == 0;
+        if (i < build.fileLibrary.size() && build.fileLibrary[i] >= 0)
+        {
+          const Options::LibraryRoot& root = options.libraryRoots[size_t(build.fileLibrary[i])];
+          parsed[i]->library = root.name;
+          if (root.scoped)
+            parsed[i]->libraryScope = symbols.intern(root.name);
+        }
         parseFile(round == 0 ? lexed[i].tokens : tokens[i], files[i].text, symbols, *parsed[i], false, &options.configValues);
       });
       double t = seconds(Clock::now() - start);
@@ -1946,6 +1967,8 @@ namespace
     out.parsed->path = old.path;
     out.parsed->index = old.index;
     out.parsed->isLibrary = old.isLibrary;
+    out.parsed->library = old.library;
+    out.parsed->libraryScope = old.libraryScope;
     parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
     if (out.lexed.errorCount)
       return why = "the new text has lexical errors", false;
@@ -2376,6 +2399,8 @@ namespace
     out.parsed->path = old.path;
     out.parsed->index = old.index;
     out.parsed->isLibrary = old.isLibrary;
+    out.parsed->library = old.library;
+    out.parsed->libraryScope = old.libraryScope;
     parseFile(out.tokens, out.text, *kept.symbols, *out.parsed, false, &kept.options.configValues);
     if (!out.parsed->diagnostics.empty() || out.lexed.errorCount)
       return why = "the new text has errors", false;
@@ -2523,6 +2548,13 @@ namespace
     for (const DeclaredFunction* d : removed)
       if (d->f->filePrivate)
         return why = "a removed function is private to its file", false;
+    // A scoped library's top-level function is in the library's namespace, whose declaration only a
+    // whole index makes (design.md 16).
+    if (out.parsed->libraryScope != UINT32_MAX)
+      for (const auto* list : {&added, &removed})
+        for (const DeclaredFunction* d : *list)
+          if (!d->container)
+            return why = "an added or removed function is a top-level one of a scoped library", false;
     for (const DeclaredFunction* d : removed)
       out.removed.push_back({d->f, d->container});
     for (const DeclaredMember* d : addedMembers)
@@ -3220,6 +3252,11 @@ int compile(int argc, char** argv)
       options.libs.push_back(argv[++i]);
     else if (arg == "--exclude" && i + 1 < argc)
       options.excluded.push_back(argv[++i]);
+    else if ((arg == "--library-root" || arg == "--unscoped-library-root") && i + 2 < argc)
+    {
+      options.libraryRoots.push_back({argv[i + 1], argv[i + 2], arg == "--library-root"});
+      i += 2;
+    }
     else if (arg == "--config" && i + 1 < argc)
     {
       std::string item = argv[++i];
@@ -3253,10 +3290,34 @@ int compile(int argc, char** argv)
     else
       options.roots.push_back(arg);
   }
-  if (options.roots.empty())
+  if (options.roots.empty() && options.libraryRoots.empty())
   {
     usage();
     return 2;
+  }
+  // A library's name is the qualifier its names are written with: an identifier, and one library
+  // is scoped or not, whichever of its roots says it.
+  for (const Options::LibraryRoot& l : options.libraryRoots)
+  {
+    bool identifier = !l.name.empty() && !std::isdigit(static_cast<unsigned char>(l.name[0])) &&
+                      std::all_of(l.name.begin(), l.name.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; });
+    if (!identifier || lookupKeyword(l.name) != UINT32_MAX)
+    {
+      fprintf(stderr, "error: the library name '%s' is not an identifier\n", l.name.c_str());
+      return 1;
+    }
+    std::error_code ec;
+    if (!std::filesystem::exists(l.dir, ec))
+    {
+      fprintf(stderr, "error: the library %s's root %s does not exist\n", l.name.c_str(), l.dir.string().c_str());
+      return 1;
+    }
+    for (const Options::LibraryRoot& other : options.libraryRoots)
+      if (other.name == l.name && other.scoped != l.scoped)
+      {
+        fprintf(stderr, "error: the library %s is given both as --library-root and as --unscoped-library-root\n", l.name.c_str());
+        return 1;
+      }
   }
   if (options.threads == 0)
     options.threads = 1;
@@ -3288,11 +3349,21 @@ int compile(int argc, char** argv)
   auto startCollect = Clock::now();
   std::vector<std::filesystem::path> paths;
   std::vector<FileStamp> stamps; // (paths[i]'s)
-  for (const auto& root : options.roots)
+  std::vector<int> pathLibrary;  // (paths[i]'s: the index of its options.libraryRoots entry, -1 for the program's)
+  auto collect = [&](const std::filesystem::path& root, int library)
   {
     auto found = collectFiles(root, options.extensions, &stamps);
     paths.insert(paths.end(), found.begin(), found.end());
-  }
+    pathLibrary.resize(paths.size(), library);
+  };
+  // The standard library first, then the libraries in the order given, then the program.
+  size_t stdRoots = options.libraryRoot.empty() ? 0 : 1;
+  for (size_t i = 0; i < stdRoots; ++i)
+    collect(options.roots[i], -1);
+  for (size_t i = 0; i < options.libraryRoots.size(); ++i)
+    collect(options.libraryRoots[i].dir, int(i));
+  for (size_t i = stdRoots; i < options.roots.size(); ++i)
+    collect(options.roots[i], -1);
   // --exclude: files under the roots that are not part of this program (another program's main).
   for (const std::string& excluded : options.excluded)
   {
@@ -3303,6 +3374,7 @@ int compile(int argc, char** argv)
       if (std::filesystem::absolute(paths[i], ec).lexically_normal() != file)
       {
         paths[kept] = std::move(paths[i]);
+        pathLibrary[kept] = pathLibrary[i];
         stamps[kept++] = stamps[i];
       }
     if (kept == paths.size())
@@ -3311,6 +3383,7 @@ int compile(int argc, char** argv)
       return 1;
     }
     paths.resize(kept);
+    pathLibrary.resize(kept);
     stamps.resize(kept);
   }
   // A compile server's builds run one at a time up to the point each keeps what it made, so that a
@@ -3321,6 +3394,7 @@ int compile(int argc, char** argv)
     keptLock.lock();
   auto build = std::make_unique<Build>();
   build->files.resize(paths.size());
+  build->fileLibrary = pathLibrary;
   std::vector<SourceFile>& files = build->files;
   files.reserve(paths.size() + 3); // the configuration, the test runner and the imported C headers
   std::atomic<uint64_t> totalBytes{0};

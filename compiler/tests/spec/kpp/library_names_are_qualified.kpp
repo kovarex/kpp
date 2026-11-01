@@ -1,0 +1,13 @@
+// spec: a scoped library's top-level names are qualified by the library's name (design.md 16): the program writes zlib::compress, zlib::Stream, zlib::Mode::best, zlib::twice<int>, zlib::detail::depth; inside the library they are bare, its private names are its files', and argument-dependent lookup finds a library class's functions
+// factorio: none yet; the converted C libraries (zlib, ogg, ...) are to be scoped by their names, the converter qualifying the game's calls into them
+int compress(int n) { return -n; }
+int main()
+{
+  zlib::Stream s;
+  s.feed(2);
+  println("{} {} {}", zlib::compress(5), compress(5), s.total);
+  println("{} {} {}", zlib::level, int(zlib::Mode::best), zlib::twice<int>(21));
+  println("{} {} {}", zlib::withHelper(), zlib::detail::depth(), zlib::depthOf());
+  println("{}", describe(s));
+  return 0;
+}

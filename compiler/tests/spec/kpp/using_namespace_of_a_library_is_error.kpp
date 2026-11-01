@@ -1,0 +1,17 @@
+// spec: a library's names are not brought in by a using-directive or a namespace alias (design.md 16: no per-file imports or aliases), at the top level, in a namespace or in a function
+// factorio: none yet
+// error: using_namespace_of_a_library_is_error.kpp:7: error: 'zlib' is a library: its names are written zlib::name
+// error: using_namespace_of_a_library_is_error.kpp:8: error: 'zlib' is a library: its names are written zlib::name
+// error: using_namespace_of_a_library_is_error.kpp:11: error: 'zlib' is a library: its names are written zlib::name
+// error: using_namespace_of_a_library_is_error.kpp:15: error: 'zlib' is a library: its names are written zlib::name
+using namespace zlib;
+namespace z = zlib;
+namespace Tools
+{
+  using namespace zlib;
+}
+int main()
+{
+  using namespace zlib;
+  return zlib::compress(1);
+}

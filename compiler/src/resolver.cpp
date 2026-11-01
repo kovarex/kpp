@@ -482,6 +482,7 @@ struct Scope
   Decl* owner; // Null for the global namespace; one of possibly several NamespaceDecls otherwise.
   uint32_t name = UINT32_MAX;
   const ParsedFile* privateTo = nullptr; // a file's private names (design.md 15): that file
+  bool library = false; // a scoped library's names, the namespace of its name (design.md 16)
   uint32_t id = nextScopeId.fetch_add(1, std::memory_order_relaxed); // what a lookup in it is recorded with (memberName)
 
   // Symbol table, sharded for the heavily shared namespace scopes.
@@ -682,6 +683,9 @@ struct GlobalScope::Impl
   Scope root{ScopeKind::Namespace, nullptr, nullptr, 256};
   std::mutex deferredMutex;
   std::vector<std::pair<const ParsedFile*, Scope*>> privateScopes; // each file's private names (design.md 15), as indexFile made them
+  std::vector<Scope*> libraryScopes; // each scoped library's names (design.md 16), by name once the index is finished
+  std::vector<NamespaceDecl*> programNamespaces; // the top-level namespace blocks of the files of no scoped library
+  std::unordered_set<uint32_t> unscopedLibraries; // the unscoped libraries' names, which qualify nothing (design.md 16)
   std::vector<std::pair<Decl*, Scope*>> deferredQualified; // Out-of-line class/enum definitions.
   std::vector<std::pair<FunctionDecl*, Scope*>> deferredFunctions; // Out-of-line member function definitions.
   std::vector<std::pair<VariableDecl*, Scope*>> deferredVariables; // Out-of-line static data member definitions.
@@ -2196,9 +2200,10 @@ struct GlobalScope::Impl
   {
     for (Decl* p = d ? d->parent : nullptr; p; p = p->parent)
       if (p->ownScope)
-        return p->ownScope;
+        return p == p->file->libraryNamespace && p->file->privateScope ? p->file->privateScope : p->ownScope;
     // A top-level declaration of a file with private names is in the file's view of the global
-    // scope: those names first (design.md 15), whichever file's walk asks.
+    // scope: those names first (design.md 15), whichever file's walk asks. (A scoped library's file
+    // sees its private names before the library's, design.md 16: the namespace above.)
     return d && d->file && d->file->privateScope ? d->file->privateScope : &root;
   }
 
@@ -2516,9 +2521,10 @@ struct GlobalScope::Impl
     std::vector<std::pair<Scope*, Scope*>> nominated; // (the namespace their names are visible in, the nominated namespace)
     for (Scope* s = context; s; s = s->parent)
     {
-      // The file's private names (design.md 15) hide the global ones of the same spelling.
-      if (s == &root)
-        if (Scope* own = privateScopeFor(context); own && lookupInScope(own, symbol, out, depth, false) && found(out))
+      // The file's private names (design.md 15) hide the global ones of the same spelling (in a
+      // scoped library's file, the library's: design.md 16).
+      if (s == &root || s->library)
+        if (Scope* own = privateScopeFor(context); own && own->parent == s && lookupInScope(own, symbol, out, depth, false) && found(out))
           return out;
       if (!usingsTried && s->kind == ScopeKind::Namespace)
       {
@@ -3036,8 +3042,8 @@ struct GlobalScope::Impl
   // lookup from context is made for (design.md 15), which hide the global ones there.
   bool lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth)
   {
-    if (s == &root)
-      if (Scope* own = privateScopeFor(context); own && lookupInScope(own, symbol, out, depth, false))
+    if (s == &root || s->library)
+      if (Scope* own = privateScopeFor(context); own && own->parent == s && lookupInScope(own, symbol, out, depth, false))
         return true;
     return lookupInScope(s, symbol, out, depth);
   }
@@ -17866,9 +17872,42 @@ struct GlobalScope::Impl
     // dependentCall: the name is called with an argument whose type depends on a parameter (or is
     // not known).
     const NameExpr* undeclaredLater = nullptr; // a subscript's lone index name, judged by the subscript (a typed union's tag)
+    // A scoped library's names are written NAME::name (design.md 16): no using-directive or
+    // namespace alias brings them in.
+    void checkNotLibrary(const QualifiedName& name, uint32_t token)
+    {
+      if (name.empty() || !file || probing || activeSubst)
+        return;
+      Lookup l = impl.lookupQualified(name, scope, &locals, 0);
+      if (l.scope && l.scope->library && l.decl && l.decl->kind == NodeKind::NamespaceDecl)
+      {
+        std::string library(symbols.name(l.scope->name));
+        impl.reportCheckerError(file, token, "'" + library + "' is a library: its names are written " + library + "::name, never brought in by a using-directive or a namespace alias (design.md 16)");
+      }
+    }
+    void checkNotLibrary(const Type* type, uint32_t token)
+    {
+      if (type && type->kind == NodeKind::NamedType)
+        checkNotLibrary(static_cast<const NamedType*>(type)->name, token);
+    }
+
     void reportUndeclared(const QualifiedName& name, uint32_t token, const NameExpr* at = nullptr, bool dependentCall = false)
     {
-      if ((at && at == undeclaredLater) || !file || file->isImported || probing || name.parts.size() != 1 || name.parts[0].symbol == UINT32_MAX)
+      if ((at && at == undeclaredLater) || !file || file->isImported || probing || name.parts.empty() || name.parts[0].symbol == UINT32_MAX)
+        return;
+      // `util::LIMIT` of an unscoped library util, whose names are bare (design.md 16).
+      if (name.parts.size() > 1 && !name.global && !name.typeQualifier && impl.unscopedLibraries.count(name.parts[0].symbol) &&
+          impl.lookupUnqualified(name.parts[0].symbol, scope, &locals, 0, true).found == Found::No)
+      {
+        std::string library(symbols.name(name.parts[0].symbol));
+        std::string message = "'" + library + "' is an unscoped library: its names are written bare, never " + library + "::name (design.md 16)";
+        if (activeSubst)
+          reportInInstance(token, message);
+        else if (!inGenericTemplate())
+          impl.reportCheckerError(file, token, message);
+        return;
+      }
+      if (name.parts.size() != 1)
         return; // (the C import's inline bodies name the C compiler's builtins: codegen's to judge, if emitted)
       // What the code generator implements by name, macros of the C headers: va_start and its kin,
       // the SSE intrinsics and their _MM_ helpers (one it does not implement is its error).
@@ -17879,6 +17918,13 @@ struct GlobalScope::Impl
       std::string message = "'" + std::string(spelled) + "' is not declared";
       if (const ParsedFile* owner = impl.filePrivateTo(name.parts[0].symbol, file))
         message = "'" + std::string(spelled) + "' is private to " + owner->path;
+      else
+        for (Scope* library : impl.libraryScopes)
+          if (library->find(name.parts[0].symbol))
+          {
+            message += "; did you mean " + std::string(symbols.name(library->name)) + "::" + std::string(spelled) + "?";
+            break;
+          }
       if (activeSubst)
       {
         reportInInstance(token, message);
@@ -22281,7 +22327,10 @@ struct GlobalScope::Impl
           break;
         }
         case NodeKind::ParamDecl: walkParam(static_cast<ParamDecl*>(d)); break;
-        case NodeKind::UsingAliasDecl: walkType(static_cast<UsingAliasDecl*>(d)->type); break;
+        case NodeKind::UsingAliasDecl:
+          checkNotLibrary(static_cast<UsingAliasDecl*>(d)->type, d->token);
+          walkType(static_cast<UsingAliasDecl*>(d)->type);
+          break;
         case NodeKind::UsingNameDecl:
         {
           auto* u = static_cast<UsingNameDecl*>(d);
@@ -22298,6 +22347,7 @@ struct GlobalScope::Impl
         case NodeKind::UsingDirectiveDecl:
         {
           auto* u = static_cast<UsingDirectiveDecl*>(d);
+          checkNotLibrary(u->name, u->token);
           Lookup l = impl.lookupQualified(u->name, scope, &locals, 0);
           if (l.found == Found::No)
           {
@@ -22370,8 +22420,14 @@ struct GlobalScope::Impl
               locals.push(static_cast<EnumeratorDecl*>(en)->name, en);
           break;
         }
-        case NodeKind::UsingAliasDecl: locals.push(static_cast<UsingAliasDecl*>(d)->name, d); break;
-        case NodeKind::UsingDirectiveDecl: locals.push(LocalStack::usingDirective, d); break; // `using namespace Helpers;`
+        case NodeKind::UsingAliasDecl:
+          checkNotLibrary(static_cast<UsingAliasDecl*>(d)->type, d->token);
+          locals.push(static_cast<UsingAliasDecl*>(d)->name, d);
+          break;
+        case NodeKind::UsingDirectiveDecl: // `using namespace Helpers;`
+          checkNotLibrary(static_cast<UsingDirectiveDecl*>(d)->name, d->token);
+          locals.push(LocalStack::usingDirective, d);
+          break;
         case NodeKind::UsingNameDecl:
         {
           // `using Graphics::Architecture;` in a block: the name it brings in, for the block.
@@ -23600,17 +23656,67 @@ void GlobalScope::indexFile(ParsedFile& file)
 {
   // A file's private names (design.md 15) are a scope of their own, which the lookups made for the
   // file reach before the global one (privateScopeFor); every other declaration is global.
+  // A scoped library's file (design.md 16) is as if its top level were in a namespace of the
+  // library's name, which its top-level declarations get for their parent: the library's names are
+  // NAME::name to everyone else, and bare inside it.
+  Scope* top = &impl->root;
+  if (file.libraryScope != UINT32_MAX)
+  {
+    if (!file.libraryNamespace)
+    {
+      NamespaceDecl* ns = file.arena.make<NamespaceDecl>();
+      ns->kind = NodeKind::NamespaceDecl;
+      ns->token = 0;
+      ns->file = &file;
+      ns->name = file.libraryScope;
+      NamePart* part = file.arena.make<NamePart>();
+      part->symbol = file.libraryScope;
+      ns->nested.parts.data = part;
+      ns->nested.parts.count = 1;
+      file.libraryNamespace = ns;
+    }
+    NamespaceDecl* ns = file.libraryNamespace;
+    ns->decls = file.decls;
+    for (Decl* d : file.decls)
+      d->parent = ns;
+    top = impl->root.getOrCreateNamespace(file.libraryScope, ns);
+    ns->ownScope = top;
+    std::lock_guard lock(impl->deferredMutex);
+    if (!top->library)
+    {
+      top->library = true; // (whichever namespace of the name came first: the program's is an error, topLevelClashes)
+      impl->libraryScopes.push_back(top);
+    }
+  }
+  else
+  {
+    if (!file.library.empty())
+    {
+      uint32_t name = impl->symbols.intern(file.library);
+      std::lock_guard lock(impl->deferredMutex);
+      impl->unscopedLibraries.insert(name);
+    }
+    std::vector<NamespaceDecl*> blocks;
+    for (Decl* d : file.decls)
+      if (d->kind == NodeKind::NamespaceDecl && static_cast<NamespaceDecl*>(d)->name != UINT32_MAX)
+        blocks.push_back(static_cast<NamespaceDecl*>(d));
+    if (!blocks.empty())
+    {
+      std::lock_guard lock(impl->deferredMutex);
+      impl->programNamespaces.insert(impl->programNamespaces.end(), blocks.begin(), blocks.end());
+    }
+  }
   file.privateScope = nullptr;
   for (Decl* d : file.decls)
     if (d->filePrivate && !file.privateScope)
     {
-      file.privateScope = new Scope(ScopeKind::Namespace, &impl->root, nullptr, 8);
+      file.privateScope = new Scope(ScopeKind::Namespace, top, nullptr, 8);
       file.privateScope->privateTo = &file;
       std::lock_guard lock(impl->deferredMutex);
       impl->privateScopes.push_back({&file, file.privateScope});
     }
   for (Decl* d : file.decls)
-    impl->indexDecl(d, d->filePrivate ? file.privateScope : &impl->root);
+    impl->indexDecl(d, d->filePrivate ? file.privateScope : top);
   if (!file.castCandidates.empty())
   {
     std::lock_guard lock(impl->deferredMutex);
@@ -23710,6 +23816,10 @@ void GlobalScope::finishIndex()
   std::unordered_set<Scope*> seen;
   impl->sortEntries(&impl->root, seen);
   std::sort(impl->privateScopes.begin(), impl->privateScopes.end(), [](const auto& a, const auto& b) { return a.first->index < b.first->index; });
+  std::sort(impl->libraryScopes.begin(), impl->libraryScopes.end(),
+            [&](const Scope* a, const Scope* b) { return impl->symbols.name(a->name) < impl->symbols.name(b->name); });
+  std::sort(impl->programNamespaces.begin(), impl->programNamespaces.end(),
+            [](const NamespaceDecl* a, const NamespaceDecl* b) { return std::make_pair(a->file->index, a->token) < std::make_pair(b->file->index, b->token); });
   for (auto& [file, own] : impl->privateScopes)
     impl->sortEntries(own, seen);
   impl->collectTemplateParamNames(&impl->root);
@@ -24039,6 +24149,8 @@ void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens
   Impl::Walker walker(*impl, stats, tokens, text);
   walker.file = &file;
   FileOfLookups walkedFile(&file);
+  if (file.libraryNamespace && file.libraryNamespace->ownScope)
+    walker.scope = file.libraryNamespace->ownScope; // a scoped library's top level (design.md 16)
   walker.walkDecls(file.decls);
 }
 
@@ -24260,7 +24372,9 @@ std::vector<std::string> GlobalScope::topLevelClashes()
     std::string text = whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) + "' is declared here and " +
                        (other->file->isLibrary  ? "in the standard library (" + whereIs(other) + ")"
                         : other->file->isImported ? "in the imported C headers (" + whereIs(other) + ")"
-                                                  : "at " + whereIs(other));
+                        : !other->file->library.empty() && other->file->library != d->file->library
+                          ? "in the library " + other->file->library + " (" + whereIs(other) + ")"
+                          : "at " + whereIs(other));
     if (other->file->isImported)
       text += "; a C header's names are the program's, rename the program's";
     else if (fileLocal(d) || fileLocal(other))
@@ -24269,6 +24383,27 @@ std::vector<std::string> GlobalScope::topLevelClashes()
       text += "; top-level names are global, rename one of them";
     out.push_back(text);
   };
+  // A scoped library's name is what its names are qualified with (design.md 16): no other
+  // declaration has it at the top level, and no namespace of the program opens it (its names would
+  // join the library's).
+  auto libraryNameTaken = [&](const Decl* d, const Scope* library)
+  {
+    std::string name(impl->symbols.name(library->name));
+    out.push_back(whereIs(d) + ": error: '" + name + "' is the name of the library " + name +
+                  ", which qualifies its names (design.md 16); rename the program's");
+  };
+  for (const Scope* library : impl->libraryScopes)
+    if (const std::vector<Entry>* entries = root.find(library->name))
+      for (const Entry& e : *entries)
+        if (e.decl->kind != NodeKind::NamespaceDecl)
+          libraryNameTaken(e.decl, library);
+  for (const NamespaceDecl* ns : impl->programNamespaces)
+    for (const Scope* s = ns->ownScope; s && s != &root; s = s->parent)
+      if (s->library)
+      {
+        libraryNameTaken(ns, s);
+        break;
+      }
   // The global namespace and every namespace in it (each one scope however many blocks open it):
   // a namespace's members are names of the program as the global ones are.
   std::vector<Scope*> namespaces{&root};
@@ -24298,8 +24433,10 @@ std::vector<std::string> GlobalScope::topLevelClashes()
         for (const Entry& e : entries)
           if (e.decl->file && !e.decl->file->isLibrary && !e.decl->file->isImported && claimsTopLevelName(e.decl))
             program.push_back(e.decl);
-        std::sort(program.begin(), program.end(),
-                  [](const Decl* a, const Decl* b) { return std::make_pair(std::string_view(a->file->path), a->token) < std::make_pair(std::string_view(b->file->path), b->token); });
+        // (an unscoped library's first: the program's is the one in the error, design.md 16)
+        std::sort(program.begin(), program.end(), [](const Decl* a, const Decl* b)
+                  { return std::make_tuple(a->file->library.empty(), std::string_view(a->file->path), a->token) <
+                           std::make_tuple(b->file->library.empty(), std::string_view(b->file->path), b->token); });
         // The imported C headers' (`extern "C" import`) of the name, which every file sees as the
         // program's own are.
         std::vector<const Decl*> imported;

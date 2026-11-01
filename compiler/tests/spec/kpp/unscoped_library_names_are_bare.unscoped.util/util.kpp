@@ -1,0 +1,4 @@
+// The unscoped library util of unscoped_library_names_are_bare.kpp.
+struct Range { int low, high; };
+const int LIMIT = 64;
+int clampTo(int v, Range r) { return v < r.low ? r.low : v > r.high ? r.high : v; }

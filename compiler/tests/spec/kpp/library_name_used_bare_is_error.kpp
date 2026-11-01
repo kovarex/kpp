@@ -1,0 +1,11 @@
+// spec: a scoped library's name written bare outside the library is not declared, and the error names the qualified one (design.md 16: "did you mean zlib::compress?"), for a function, a type and a constant
+// factorio: none yet
+// error: library_name_used_bare_is_error.kpp:8: error: 'compress' is not declared; did you mean zlib::compress?
+// error: library_name_used_bare_is_error.kpp:9: error: 'Stream' is not declared; did you mean zlib::Stream?
+// error: library_name_used_bare_is_error.kpp:10: error: 'level' is not declared; did you mean zlib::level?
+int main()
+{
+  int a = compress(1);
+  Stream s;
+  return a + level;
+}

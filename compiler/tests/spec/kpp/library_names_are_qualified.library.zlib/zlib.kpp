@@ -1,0 +1,24 @@
+// The library zlib of library_names_are_qualified.kpp: its names bare, in any order.
+struct Stream
+{
+  int total = 0;
+  void feed(int n) { total += checksum(n); }
+};
+int checksum(int n) { return n * 3 + level; }
+const int level = 1;
+enum class Mode { fast, best };
+template<typename T> T twice(T v) { return v + v; }
+int compress(int n)
+{
+  Stream s;
+  s.feed(n);
+  return s.total + int(Mode::best);
+}
+private int helper() { return 7; }
+int withHelper() { return helper() + twice(1); }
+namespace detail
+{
+  int depth() { return 4; }
+}
+int depthOf() { return detail::depth() * 10; }
+int describe(const Stream& s) { return s.total * 100; }

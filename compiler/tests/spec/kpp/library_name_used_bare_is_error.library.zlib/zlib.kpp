@@ -1,0 +1,4 @@
+// The library zlib of library_name_used_bare_is_error.kpp.
+struct Stream { int total = 0; };
+const int level = 1;
+int compress(int n) { return n + level; }

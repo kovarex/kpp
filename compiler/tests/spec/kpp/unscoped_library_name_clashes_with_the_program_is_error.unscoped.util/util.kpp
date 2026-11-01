@@ -1,0 +1,3 @@
+// The unscoped library util of unscoped_library_name_clashes_with_the_program_is_error.kpp.
+int area(int side) { return side * 4; }
+struct Point { double x, y; };

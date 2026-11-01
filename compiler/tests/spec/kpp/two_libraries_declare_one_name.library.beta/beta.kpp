@@ -1,0 +1,15 @@
+// The library beta of two_libraries_declare_one_name.kpp: alpha's names again, and alpha's qualified.
+int counter = 20;
+int version() { return 2; }
+struct Node
+{
+  int id() const;
+  virtual int kind() const { return 200; }
+};
+int Node::id() const { return counter + version(); }
+template<typename T> struct Box
+{
+  T value;
+  T get() const { return value + T(version()); }
+};
+int fromAlpha() { return alpha::version() * 1000; }

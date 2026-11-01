@@ -1,0 +1,4 @@
+// spec: inside one scoped library two declarations of one name in two of its files are the global-clash error (design.md 16), as two of the program's are
+// factorio: none yet
+// error: 'window' is declared here and at
+int main() { return zlib::window; }

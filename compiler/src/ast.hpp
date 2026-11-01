@@ -409,6 +409,12 @@ struct ParsedFile
   bool isImported = false; // Preprocessed C declarations, not user code.
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
   Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
+  // The library it is a file of (design.md 16; set by the driver): its name, empty for the program's
+  // files and the standard library's; for a scoped library also the name's symbol, and the namespace
+  // of that name its top-level declarations are in (the resolver's index makes it, their parent).
+  std::string library;
+  uint32_t libraryScope = UINT32_MAX;
+  struct NamespaceDecl* libraryNamespace = nullptr;
   uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files, closure names.
   std::vector<Diagnostic> diagnostics;
   // `(HANDLE) -1`, `(T) *p`, parsed as `(name) op x`, with the declaration it is in: a cast when the
@@ -432,7 +438,7 @@ struct ParsedFile
 inline std::string filePrivatePrefix(const Decl* d)
 {
   const Decl* top = d;
-  while (top && top->parent)
+  while (top && top->parent && !(top->file && top->parent == (const Decl*)top->file->libraryNamespace))
     top = top->parent;
   if (!top || !top->filePrivate || !top->file)
     return std::string();

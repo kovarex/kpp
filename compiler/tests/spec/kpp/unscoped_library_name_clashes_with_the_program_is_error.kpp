@@ -1,0 +1,7 @@
+// spec: an unscoped library's names share the one global scope (design.md 16): one the program also declares is the global-clash error, which names the library, and a function of the same parameters is defined twice
+// factorio: none yet
+// error: unscoped_library_name_clashes_with_the_program_is_error.kpp:6: error: 'Point' is declared here and in the library util
+// error: unscoped_library_name_clashes_with_the_program_is_error.kpp:5: error: the function area is defined twice
+int area(int side) { return side * side; }
+struct Point { int x, y; };
+int main() { return area(3); }

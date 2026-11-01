@@ -1,0 +1,8 @@
+// spec: an unscoped library's names are bare everywhere (design.md 16: `lib.unscoped = true`, as the standard library is), and its name qualifies nothing
+// factorio: none yet; the game's CommonUtil, if it becomes an unscoped library
+int main()
+{
+  Range r{2, 9};
+  println("{} {} {}", clampTo(12, r), clampTo(-1, r), LIMIT);
+  return 0;
+}

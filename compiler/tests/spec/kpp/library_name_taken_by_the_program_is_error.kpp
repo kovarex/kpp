@@ -1,0 +1,10 @@
+// spec: a scoped library's name is the program's qualifier for it (design.md 16): a namespace of the program or a global of that name is an error, never a silent merge with the library's names
+// factorio: none yet
+// error: library_name_taken_by_the_program_is_error.kpp:5: error: 'zlib' is the name of the library zlib
+// error: library_name_taken_by_the_program_is_error.kpp:9: error: 'zlib' is the name of the library zlib
+namespace zlib
+{
+  int extra() { return 2; }
+}
+int zlib = 3;
+int main() { return zlib::compress(1); }

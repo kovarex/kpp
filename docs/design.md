@@ -884,6 +884,35 @@ once thread A's lookup parses them, build.md "Library scopes"); thread C the std
 registry's docs. This supersedes the "distinct names" answer below for libraries; the package tree
 for browsing stays as proposed.
 
+As built (thread A, 2026-11-02; specs `kpp/library_*`, `kpp/two_libraries_*`, `kpp/unscoped_*`,
+`kpp/using_namespace_of_a_library_is_error`):
+- kppc takes `--library-root NAME DIR` and `--unscoped-library-root NAME DIR`, both repeatable (one
+  library may have several roots, its tests' among them); DIR may be a file, `--exclude` applies,
+  the positional roots are the program. NAME must be an identifier and no keyword; one NAME given
+  both scoped and unscoped is an error. Files are ordered the standard library first, then the
+  libraries in the order given, then the program. A build of a library's roots alone needs no
+  positional root.
+- A scoped library's files are as if their top level were inside `namespace NAME { }`: their
+  top-level declarations have that namespace for parent, so lookup inside the library finds its
+  names bare, the program finds them as `NAME::name`, argument-dependent lookup finds a library
+  class's functions (a key's `hashOf`), and the IR's symbols and types carry `NAME::`, so two
+  libraries' functions, globals, classes, vtables and template instances of one name stay apart.
+  An `extern "C"` function keeps its C name. `::name` in a library is the global scope's name,
+  not the library's.
+- `private` in a library's file (section 15) works as in the program's: its private names hide the
+  library's own of the same spelling in that file.
+- A bare use of a scoped library's name outside it is "'compress' is not declared; did you mean
+  zlib::compress?". A declaration of the program that has a scoped library's name at the top
+  level, or a namespace of the program that opens it (`namespace zlib { }`, `namespace zlib::x`),
+  is "'zlib' is the name of the library zlib, which qualifies its names"; `using namespace zlib;`
+  and `namespace z = zlib;`, anywhere, are "'zlib' is a library: its names are written
+  zlib::name". Two declarations of one name in one scoped library are the usual clash.
+- An unscoped library's names are the global scope's, as the program's are; its name is for the
+  diagnostics alone (`zlib::x` does not reach an unscoped library). A clash with the program's says
+  "declared here and in the library util (PATH)"; the program's declaration is the one reported.
+- The compile server rebuilds in full when a scoped library gains or loses a top-level function
+  (its namespace comes from a whole index); body edits stay incremental.
+
 **The language side as built (thread D, 2026-11-01; specs `language/text_*`):**
 
 - **What a Text is:** stdlib/core/Text.kpp, which the compiler builds directly as it does

@@ -1,0 +1,2 @@
+// The unscoped library util of unscoped_library_name_qualifies_nothing_is_error.kpp.
+const int LIMIT = 64;

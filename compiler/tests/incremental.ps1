@@ -11,6 +11,11 @@ if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 $src = Join-Path $work 'src'
 New-Item -ItemType Directory -Force $src | Out-Null
 Copy-Item "$PSScriptRoot\incremental\*.kpp" $src
+# A scoped library of the program (design.md 16), its names written ilib::name: the last steps edit it.
+$lib = Join-Path $work 'lib'
+New-Item -ItemType Directory -Force $lib | Out-Null
+Set-Content (Join-Path $lib 'ilib.kpp') "int libValue() { return 1; }`nstruct LibBox { int v = 2; int get() const { return v + libValue(); } };"
+$libRoot = @('--library-root', 'ilib', $lib) # (before the sources: the server's log names a build by its last argument)
 $Kppc = (Resolve-Path $Kppc).Path
 $failed = 0
 $started = Get-Date
@@ -89,7 +94,11 @@ $steps = @(
   @{ name = 'a file with a private overload added (its own file''s alone)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Set-Content (Join-Path $src 'privates.kpp') "private int scale(double v) { return 9; }`nint privateUser() { return scale(1.5); }" } },
   @{ name = 'the private overload made global'; expect = '7 44 9 103 12 11 7 6 16 9 5 8 15 9 17 23 89 344 15 12'; edit = { Edit 'privates.kpp' 'private int scale(double v)' 'int scale(double v)' } },
   @{ name = 'made private again'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Edit 'privates.kpp' 'int scale(double v)' 'private int scale(double v)' } },
-  @{ name = 'the file of private names removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Remove-Item (Join-Path $src 'privates.kpp') } }
+  @{ name = 'the file of private names removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Remove-Item (Join-Path $src 'privates.kpp') } },
+  @{ name = 'a file naming a scoped library''s names added'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Set-Content (Join-Path $src 'libuser.kpp') "int libUser() { ilib::LibBox b; return b.get() + ilib::libValue(); }" } },
+  @{ name = 'a scoped library''s function body edited'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Edit '..\lib\ilib.kpp' 'int libValue() { return 1; }' 'int libValue() { return 4; }' } },
+  @{ name = 'a top-level function added to the scoped library (a whole index: its namespace)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Edit '..\lib\ilib.kpp' 'int libValue() { return 4; }' "int libValue() { return 4; }`nint libThird() { return 3; }" } },
+  @{ name = 'that function made private to its library file'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Edit '..\lib\ilib.kpp' 'int libThird()' 'private int libThird()' } }
 )
 $n = 0
 foreach ($step in $steps)
@@ -100,9 +109,9 @@ foreach ($step in $steps)
   $fresh = Join-Path $work "fresh.$n.ll"
   $exe = Join-Path $work 'server.exe'
   # The server's IR is written to one path every step (its arguments, so its server, stay the same).
-  $s = Build @('--server', '--verify-incremental', '--emit-llvm', (Join-Path $work 'server.ll'), $src) "server.$n"
+  $s = Build ($libRoot + @('--server', '--verify-incremental', '--emit-llvm', (Join-Path $work 'server.ll'), $src)) "server.$n"
   Copy-Item (Join-Path $work 'server.ll') $ir
-  $f = Build @('--emit-llvm', (Join-Path $work 'fresh.ll'), $src) "fresh.$n"
+  $f = Build ($libRoot + @('--emit-llvm', (Join-Path $work 'fresh.ll'), $src)) "fresh.$n"
   Copy-Item (Join-Path $work 'fresh.ll') $fresh
   $ok = $true
   if ($s.exit -ne $f.exit) { $ok = $false; "FAIL incremental ${n} ($($step.name)): exit $($s.exit) through the server, $($f.exit) fresh" }
@@ -114,7 +123,7 @@ foreach ($step in $steps)
   if ((Get-FileHash $ir).Hash -ne (Get-FileHash $fresh).Hash) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the IR differs" }
   # The same request again, nothing changed: the server sends the kept build's output again (step
   # 3a) and, with --verify-incremental, checks it against a build from scratch.
-  $r = Build @('--server', '--verify-incremental', '--emit-llvm', (Join-Path $work 'server.ll'), $src) "replay.$n"
+  $r = Build ($libRoot + @('--server', '--verify-incremental', '--emit-llvm', (Join-Path $work 'server.ll'), $src)) "replay.$n"
   if ($r.exit -ne $f.exit) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the replay's exit $($r.exit), fresh $($f.exit)" }
   foreach ($part in 'out', 'err')
   {
@@ -122,7 +131,7 @@ foreach ($step in $steps)
     if ($d) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the replay's $part differs"; $d | Select-Object -First 4 | ForEach-Object { "  $($_.SideIndicator) $($_.InputObject)" } }
   }
   if ((Get-FileHash (Join-Path $work 'server.ll')).Hash -ne (Get-FileHash $fresh).Hash) { $ok = $false; "FAIL incremental ${n} ($($step.name)): the IR after the replay differs" }
-  $b = Build @('--server', '--verify-incremental', '--exe', $exe, $src) "exe.$n"
+  $b = Build ($libRoot + @('--server', '--verify-incremental', '--exe', $exe, $src)) "exe.$n"
   $printed = if ($b.exit -eq 0) { (& $exe) -join ' ' } else { "(build exit $($b.exit))" }
   if ($printed -ne $step.expect) { $ok = $false; "FAIL incremental ${n} ($($step.name)): printed '$printed', expected '$($step.expect)'" }
   if ($ok) { "ok   incremental $n ($($step.name))" } else { $failed++ }

@@ -1,0 +1,2 @@
+// Another file of the library zlib of library_declares_a_name_twice_is_error.kpp.
+int window = 16;

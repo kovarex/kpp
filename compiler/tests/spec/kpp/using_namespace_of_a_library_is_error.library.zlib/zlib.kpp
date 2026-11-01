@@ -1,0 +1,2 @@
+// The library zlib of using_namespace_of_a_library_is_error.kpp.
+int compress(int n) { return n; }

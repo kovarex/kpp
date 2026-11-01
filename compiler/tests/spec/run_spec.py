@@ -27,6 +27,8 @@ A <name>.c next to a snippet is a C library of its own: compiled with clang and 
 snippet's executable (`--lib`), for what only a real C object shows (the variables it defines).
 A <name>.files directory next to a snippet holds more Kpp files of its program, compiled with it,
 for what only several files show (a name private to its file); they are no snippets themselves.
+A <name>.library.NAME directory is a library of the snippet's program, scoped by NAME (`--library-root
+NAME DIR`, design.md 16), and a <name>.unscoped.NAME directory an unscoped one (`--unscoped-library-root`).
 
     python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info]
 
@@ -139,6 +141,7 @@ def run_one(path):
         return finish(run_command(path, info, libs, expected_path, result))
     companions = os.path.splitext(path)[0] + ".files"
     sources = [path, companions] if os.path.isdir(companions) else [path]
+    sources += library_roots(path)
     try:
         c = subprocess.run([KPPC, "--quiet", *EXTRA, *shlex.split(info["kppc"]), *libs, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
@@ -181,6 +184,22 @@ def run_one(path):
         return finish(result)
     compare(r.stdout, expected_path, result)
     return finish(result)
+
+
+def library_roots(path):
+    """The kppc options of a snippet's library directories, <name>.library.NAME and <name>.unscoped.NAME."""
+    folder, stem = os.path.split(os.path.splitext(path)[0])
+    options = []
+    for entry in sorted(os.listdir(folder)):
+        for kind, flag in ((".library.", "--library-root"), (".unscoped.", "--unscoped-library-root")):
+            if entry.startswith(stem + kind) and os.path.isdir(os.path.join(folder, entry)):
+                options += [flag, entry[len(stem) + len(kind):], os.path.join(folder, entry)]
+    return options
+
+
+def is_companion(directory):
+    """Whether a directory is (in) a snippet's companion: its .files, or one of its libraries."""
+    return any(re.search(r"\.(files|library\.\w+|unscoped\.\w+)$", part) for part in os.path.relpath(directory, HERE).split(os.sep))
 
 
 def run_command(path, info, libs, expected_path, result):
@@ -288,7 +307,7 @@ def main():
         print("no compiler at", KPPC); return 2
     os.makedirs(OUT, exist_ok=True)
     files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(HERE) for f in fn
-                   if f.endswith(".kpp") and not dp.endswith(".files") and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
+                   if f.endswith(".kpp") and not is_companion(dp) and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(run_one, files))

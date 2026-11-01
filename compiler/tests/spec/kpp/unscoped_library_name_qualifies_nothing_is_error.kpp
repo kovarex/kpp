@@ -1,0 +1,7 @@
+// spec: an unscoped library's name qualifies nothing (design.md 16: it is for the diagnostics alone): util::LIMIT is an error that says its names are bare
+// factorio: none yet
+// error: unscoped_library_name_qualifies_nothing_is_error.kpp:6: error: 'util' is an unscoped library: its names are written bare, never util::name
+int main()
+{
+  return util::LIMIT;
+}
