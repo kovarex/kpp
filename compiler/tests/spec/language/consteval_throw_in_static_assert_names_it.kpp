@@ -1,0 +1,22 @@
+// spec: a static_assert whose condition reaches a throw says what is thrown and where, as a constexpr variable does (language/consteval_throw_names_its_message): a string literal's text, or the exception's type and message
+// factorio: none; asked for by thread G with the constexpr variable case, for libraries that check their input at compile time
+// error: consteval_throw_in_static_assert_names_it.kpp:17: error: static assertion whose condition is no constant: it throws "a digit is at most 9" (consteval_throw_in_static_assert_names_it.kpp:9)
+// error: consteval_throw_in_static_assert_names_it.kpp:18: error: static assertion whose condition is no constant: it throws LogicError("an empty name") (consteval_throw_in_static_assert_names_it.kpp:15)
+constexpr int digit(int v)
+{
+  if (v <= 9)
+    return v;
+  throw "a digit is at most 9";
+}
+constexpr int length(const char* name)
+{
+  if (name[0])
+    return 1;
+  throw LogicError(String("an empty name"));
+}
+static_assert(digit(12) == 12);
+static_assert(length("") == 1);
+int main()
+{
+  return 0;
+}

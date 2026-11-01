@@ -6477,6 +6477,9 @@ struct GlobalScope::Impl
         }
         return failed ? std::nullopt : value;
       }
+      case NodeKind::ThrowExpr:
+        constWhy() = constThrown(static_cast<ThrowExpr*>(e), ctx, depth); // (no constant: C++ rejects a throw in one)
+        return std::nullopt;
       case NodeKind::SizeofExpr:
       {
         auto* s = static_cast<SizeofExpr*>(e);
@@ -10238,6 +10241,63 @@ struct GlobalScope::Impl
     ConstTemps() { constTempList() = &list; }
     ~ConstTemps() { constTempList() = outer; }
   };
+
+  // What a throw in a constant evaluation throws, and where, as the reason it is no constant:
+  // `it throws RuntimeError("a negative value") (Html.kpp:12)`, the message read through the
+  // object's what(); a string literal's text; `it rethrows` for `throw;`.
+  std::string constThrown(ThrowExpr* t, const TypeContext& ctx, int depth)
+  {
+    std::string where = " (" + constWhereText(constHere(t)) + ")";
+    Expr* operand = t->operand;
+    while (operand && operand->kind == NodeKind::ParenExpr)
+      operand = static_cast<ParenExpr*>(operand)->inner;
+    if (!operand)
+      return "it rethrows" + where;
+    // The characters a const char* points to, up to the null (nullopt when it is no string the
+    // evaluation holds).
+    auto text = [&](const ConstValue& p) -> std::optional<std::string> {
+      std::string out;
+      for (int64_t i = 0; i < 4096; ++i)
+      {
+        std::optional<ConstValue> at = p.isAddress() ? constAddressMove(p, i, depth + 1) : constPointerArith(P::Plus, p, ConstValue::integer(i, types.intType()));
+        std::optional<ConstValue> c = at ? (at->isAddress() ? constReadTarget(*at, depth + 1) : constDeref(*at)) : std::nullopt;
+        if (!c || c->kind != ConstValue::Kind::Int)
+          return std::nullopt;
+        if (c->i == 0)
+          return out;
+        out.push_back(char(c->i));
+      }
+      return out + "...";
+    };
+    if (operand->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(operand)->literalKind == TokenKind::String)
+      if (std::optional<ConstValue> chars = constString(static_cast<LiteralExpr*>(operand), ctx); chars && chars->parts)
+      {
+        std::string out;
+        for (const ConstValue& c : *chars->parts)
+          if (c.kind == ConstValue::Kind::Int && c.i != 0)
+            out.push_back(char(c.i));
+        return "it throws \"" + out + "\"" + where;
+      }
+    std::optional<ConstValue> v = constValue(operand, ctx, depth + 1);
+    if (!v)
+      return "it throws an exception the evaluator cannot build" + where;
+    const Ty* type = v->type ? types.unqualified(types.stripRef(v->type)) : nullptr;
+    if (!type || type->kind != TyKind::Class || !v->isObject())
+      return "it throws " + (v->kind == ConstValue::Kind::Int ? std::to_string(v->i) : std::string("a value")) + where;
+    std::string name = types.toString(type, &symbols);
+    std::optional<ConstPlace> place = constMaterialize(*v, type);
+    Subst subst;
+    for (FunctionDecl* f : constMembersNamed(type, symbols.intern("what"), subst, depth + 1))
+      if (f->params.empty())
+      {
+        std::optional<ConstValue> self = place ? constRead(*place) : v;
+        std::optional<ConstValue> p = constCallOn(f, subst, {}, &self, depth + 1, place ? &*place : nullptr);
+        if (std::optional<std::string> message = p && (p->isAddress() || p->kind == ConstValue::Kind::Pointer) ? text(*p) : std::nullopt)
+          return "it throws " + name + "(\"" + *message + "\")" + where;
+        break;
+      }
+    return "it throws " + name + where;
+  }
 
   // A temporary of class t holding v, destroyed when the full expression ends: its place, or
   // nullopt where no full expression is being evaluated.
