@@ -23290,54 +23290,65 @@ std::vector<std::string> GlobalScope::topLevelClashes()
       text += "; top-level names are global, rename one of them";
     out.push_back(text);
   };
-  for (uint32_t i = 0; i < root.shardCount; ++i)
-    for (const auto& [symbol, entries] : root.shards[i].map)
-    {
-      if (entries.size() < 2)
-        continue;
-      const Decl* library = nullptr;
-      for (const Entry& e : entries)
-        if (!library && e.decl->file && e.decl->file->isLibrary && claimsTopLevelName(e.decl))
-          library = e.decl;
-      // The program's own declarations of the name, in source order (the order of indexing varies).
-      std::vector<const Decl*> program;
-      for (const Entry& e : entries)
-        if (e.decl->file && !e.decl->file->isLibrary && !e.decl->file->isImported && claimsTopLevelName(e.decl))
-          program.push_back(e.decl);
-      std::sort(program.begin(), program.end(),
-                [](const Decl* a, const Decl* b) { return std::make_pair(std::string_view(a->file->path), a->token) < std::make_pair(std::string_view(b->file->path), b->token); });
-      for (size_t k = 0; k < program.size(); ++k)
+  // The global namespace and every namespace in it (each one scope however many blocks open it):
+  // a namespace's members are names of the program as the global ones are.
+  std::vector<Scope*> namespaces{&root};
+  std::unordered_set<Scope*> listed{&root};
+  for (size_t n = 0; n < namespaces.size(); ++n)
+    for (uint32_t i = 0; i < namespaces[n]->shardCount; ++i)
+      for (const auto& [symbol, entries] : namespaces[n]->shards[i].map)
+        for (const Entry& e : entries)
+          if (e.scope && e.scope->kind == ScopeKind::Namespace && e.scope->parent == namespaces[n] && listed.insert(e.scope).second)
+            namespaces.push_back(e.scope);
+  for (Scope* scope : namespaces)
+    for (uint32_t i = 0; i < scope->shardCount; ++i)
+      for (const auto& [symbol, entries] : scope->shards[i].map)
       {
-        const Decl* d = program[k];
-        if (library)
+        if (entries.size() < 2)
+          continue;
+        const Decl* library = nullptr;
+        for (const Entry& e : entries)
+          if (!library && e.decl->file && e.decl->file->isLibrary && claimsTopLevelName(e.decl))
+            library = e.decl;
+        // The program's own declarations of the name, in source order (the order of indexing varies).
+        std::vector<const Decl*> program;
+        for (const Entry& e : entries)
+          if (e.decl->file && !e.decl->file->isLibrary && !e.decl->file->isImported && claimsTopLevelName(e.decl))
+            program.push_back(e.decl);
+        std::sort(program.begin(), program.end(),
+                  [](const Decl* a, const Decl* b) { return std::make_pair(std::string_view(a->file->path), a->token) < std::make_pair(std::string_view(b->file->path), b->token); });
+        for (size_t k = 0; k < program.size(); ++k)
         {
-          if (library->kind == NodeKind::FunctionDecl && d->kind == NodeKind::FunctionDecl)
+          const Decl* d = program[k];
+          if (library)
           {
-            // Overloads of one function; but the parameters of one of the library's is that function
-            // declared again (`gcd(long long, long long)`), which the program cannot have twice.
-            for (const Entry& l : entries)
-              if (l.decl->kind == NodeKind::FunctionDecl && l.decl->file && l.decl->file->isLibrary && claimsTopLevelName(l.decl) &&
-                  sameParameters(static_cast<FunctionDecl*>(l.decl), static_cast<FunctionDecl*>(const_cast<Decl*>(d))))
-              {
-                out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) +
-                              "' with these parameters is defined here and in the standard library (" + whereIs(l.decl) +
-                              "); top-level names are global, rename one of them");
-                break;
-              }
+            if (library->kind == NodeKind::FunctionDecl && d->kind == NodeKind::FunctionDecl)
+            {
+              // Overloads of one function; but the parameters of one of the library's is that function
+              // declared again (`gcd(long long, long long)`), which the program cannot have twice.
+              for (const Entry& l : entries)
+                if (l.decl->kind == NodeKind::FunctionDecl && l.decl->file && l.decl->file->isLibrary && claimsTopLevelName(l.decl) &&
+                    sameParameters(static_cast<FunctionDecl*>(l.decl), static_cast<FunctionDecl*>(const_cast<Decl*>(d))))
+                {
+                  out.push_back(whereIs(d) + ": error: '" + std::string(impl->symbols.name(symbol)) +
+                                "' with these parameters is defined here and in the standard library (" + whereIs(l.decl) +
+                                "); top-level names are global, rename one of them");
+                  break;
+                }
+              continue;
+            }
+            clash(d, symbol, library);
             continue;
           }
-          clash(d, symbol, library);
-          continue;
+          // Two of the program's: the second is the error, at the first that is another entity.
+          for (size_t j = 0; j < k; ++j)
+            if (!together(program[j], d))
+            {
+              clash(d, symbol, program[j]);
+              break;
+            }
         }
-        // Two of the program's: the second is the error, at the first that is another entity.
-        for (size_t j = 0; j < k; ++j)
-          if (!together(program[j], d))
-          {
-            clash(d, symbol, program[j]);
-            break;
-          }
       }
-    }
   std::sort(out.begin(), out.end());
   return out;
 }

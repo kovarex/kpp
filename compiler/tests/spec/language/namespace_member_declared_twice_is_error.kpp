@@ -1,0 +1,21 @@
+// spec: a namespace's members follow the top-level rule: two declarations of one name in one namespace (two constants, or a constant and an unscoped enum's enumerator) are an error ("top-level names are global, rename one of them"), not the first silently taking the other's place
+// factorio: none; found beside language/enumerator_and_constant_of_one_name, whose check looked at the global namespace only
+// error: namespace_member_declared_twice_is_error.kpp:8: error: 'COPY' is declared here and at
+// error: namespace_member_declared_twice_is_error.kpp:13: error: 'LIMIT' is declared here and at
+namespace Inflate
+{
+  const auto COPY = 1;
+  enum Mode { HEAD = 10, COPY, SYNC };
+}
+namespace Inflate::Window
+{
+  const auto LIMIT = 1;
+  const auto LIMIT = 2;
+}
+
+int main()
+{
+  Inflate::Mode m = Inflate::COPY;
+  println("{} {}", (int)m, Inflate::Window::LIMIT);
+  return 0;
+}
