@@ -17,7 +17,7 @@ int main()
          StringUtil::endsWith(StringView("prefix_rest"), StringView("rest")) ? 1 : 0,
          StringUtil::contains(StringView("prefix_rest"), StringView("fix_")) ? 1 : 0);
   Vector<String> parts = StringUtil::splitBySingleDelimiter(String(","), StringView("a,bc,,def"));
-  printf("%d:", parts.size());
+  printf("%zu:", parts.size());
   for (int i = 0; i < parts.size(); ++i)
     printf(" [%s]", parts[i].c_str());
   printf("\n");
@@ -45,9 +45,9 @@ int main()
 
   // UTF-8 <-> UTF-16 through the Windows API (the hand-written override)
   WString wide = StringUtil::widen(String("h\xC3\xA9llo"));
-  printf("%d %d\n", wide.size(), (int)wide[1]);
+  printf("%zu %d\n", wide.size(), (int)wide[1]);
   String narrow = StringUtil::narrow(wide);
-  printf("%s %d\n", narrow.c_str(), narrow.size());
+  printf("%s %zu\n", narrow.c_str(), narrow.size());
 
   // Math: the fast approximations and fdlibm's pow, through bitCast instead of unions
   printf("%.3f %.3f %.3f\n", Math::log2(8.0f), Math::exp2f(3.0f), Math::powPrecise(2.0, 0.5));

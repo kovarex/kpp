@@ -78,6 +78,6 @@ int main()
   label.setText(String("Hello Agui")); // a text change inside a Gui schedules the label's resize for the next logic step
   gui.logic(true);
   printf("label %d x %d\n", label.getWidth(), label.getHeight());
-  printf("top %d x %d, children %d\n", gui.getTop()->getWidth(), gui.getTop()->getHeight(), gui.getTop()->getChildren().size());
+  printf("top %d x %d, children %zu\n", gui.getTop()->getWidth(), gui.getTop()->getHeight(), gui.getTop()->getChildren().size());
   return 0;
 }
