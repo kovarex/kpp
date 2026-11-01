@@ -81,11 +81,21 @@ inline bool isLvalueExpression(const Expr* e)
   }
 }
 
+// A narrow string literal's type as C++ has it, an lvalue of const char[N] (adjacent literals
+// joined, the terminating zero counted; the walk types the literal as the pointer it decays to):
+// a `const T&` parameter deduces T = char[N] from it. Null for any other expression, a wide
+// literal or one whose tokens are not at hand.
+const Ty* stringLiteralArray(const Expr* e, const Ty* t, TypeTable& types);
+
 // The type an argument expression presents to overload resolution: an lvalue of a non-reference
 // type is an lvalue reference to it, so that `T&&` parameters take only temporaries and `move(x)`
-// (C++ rules); `t` is the expression's type, or one element of a pack it expands.
+// (C++ rules); `t` is the expression's type, or one element of a pack it expands. A string
+// literal presents its array (stringLiteralArray).
 inline const Ty* argumentType(const Expr* e, const Ty* t, TypeTable& types)
 {
+  if (e && t && t->kind == TyKind::Pointer && (e->kind == NodeKind::LiteralExpr || e->kind == NodeKind::ParenExpr))
+    if (const Ty* array = stringLiteralArray(e, t, types))
+      return types.lref(array);
   if (!t || !t->isKnown() || t->kind == TyKind::Pack || !isLvalueExpression(e))
     return t;
   if (t->kind == TyKind::RRef)

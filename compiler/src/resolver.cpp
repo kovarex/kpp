@@ -96,6 +96,33 @@ void ResolveStats::add(const ResolveStats& o)
   }
 }
 
+const Ty* stringLiteralArray(const Expr* e, const Ty* t, TypeTable& types)
+{
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<const ParenExpr*>(e)->inner;
+  if (!e || e->kind != NodeKind::LiteralExpr || !t || t->kind != TyKind::Pointer || !t->inner)
+    return nullptr;
+  auto* l = static_cast<const LiteralExpr*>(e);
+  const ParsedFile* pf = l->file;
+  if (l->literalKind != TokenKind::String || !pf || !pf->tokens || l->token >= pf->tokens->size())
+    return nullptr;
+  const Ty* element = types.unqualified(t->inner);
+  if (element->kind != TyKind::Char || element->bits != 8)
+    return nullptr; // u"", U"", L"": not decoded here
+  std::string bytes;
+  for (size_t i = l->token; i < pf->tokens->size() && (*pf->tokens)[i].getKind() == TokenKind::String; ++i)
+  {
+    std::string spliced;
+    std::string_view spelled = tokenSpelling(pf->text, (*pf->tokens)[i], spliced);
+    size_t quote = spelled.rfind('"');
+    if (quote != std::string_view::npos && quote + 1 < spelled.size())
+      spelled = spelled.substr(0, quote + 1); // (`"..."sv`: the chars the quotes hold)
+    if (!decodeNarrowString(spelled, bytes))
+      return nullptr;
+  }
+  return types.array(t->inner, uint32_t(bytes.size() + 1));
+}
+
 std::string whyReport(const ResolveStats& total, SymbolTable& symbols, int perCause)
 {
   static const char* causes[] = {"none", "name", "object type", "member", "overload", "deduction", "auto return",
@@ -3746,6 +3773,15 @@ struct GlobalScope::Impl
         return false;
       if (a.size() == 1)
         return defaultConstructible(a[0]); // (`int&` is not: a reference binds something)
+      if (a[0]->isReference())
+      {
+        // `T& r(declval<Arg>())`: whether the reference binds the argument, an lvalue for a
+        // reference Arg and an xvalue otherwise (`isConstructible<char (&)[4], char (&)[4]>`, a
+        // Tuple element forwardAsTuple gives; `int&` binds no int&&).
+        if (a.size() != 2 || !a[1])
+          return false;
+        return conversionRank(a[1]->isReference() ? a[1] : types.rref(a[1]), a[0]) < NotViable;
+      }
       const Ty* t = types.unqualified(types.stripRef(a[0]));
       std::vector<const Ty*> args(a.begin() + 1, a.end());
       bool copy = args.size() == 1 && types.unqualified(types.stripRef(args[0])) == t;
@@ -13332,9 +13368,13 @@ struct GlobalScope::Impl
             for (Decl* p : cls->templateParams)
               if (auto* tp = static_cast<TemplateParamDecl*>(p); !tp->isType && !tp->isPack && tp->name == n.parts[0].symbol)
                 bound = p;
+      // Each element deduces as a function's argument does (C++20 [over.match.class.deduct]): a
+      // member not a reference decays it, so `Array{"a", "bc"}` holds const char*, as std::array's
+      // deduction guide has it.
+      auto passed = [&](const Ty* member, const Ty* arg) { return member->isReference() || !arg ? arg : types.decay(arg); };
       if (!bound)
       {
-        deduce(fieldTy, argTypes[next], d);
+        deduce(fieldTy, passed(fieldTy, argTypes[next]), d);
         checks.push_back({argTypes[next++], fieldTy});
         continue;
       }
@@ -13342,7 +13382,7 @@ struct GlobalScope::Impl
       int64_t count = int64_t(argTypes.size() - next);
       for (; next < argTypes.size(); ++next)
       {
-        deduce(fieldTy->inner, argTypes[next], d);
+        deduce(fieldTy->inner, passed(fieldTy->inner, argTypes[next]), d);
         checks.push_back({argTypes[next], fieldTy->inner});
       }
       auto* tp = static_cast<TemplateParamDecl*>(bound);
@@ -14680,6 +14720,18 @@ struct GlobalScope::Impl
   }
 
   // Structural template argument deduction: binds parameters of `pattern` from `arg`.
+  // An array's qualifiers are its elements' ([basic.type.qualifier] 3): what a pattern's const (or
+  // volatile) takes off its argument comes off the elements, so `const T&` against a const char[2]
+  // lvalue (a string literal) makes T char[2], as C++ deduces.
+  const Ty* arrayQualifiersOff(const Ty* a, bool isConst, bool isVolatile)
+  {
+    if (!a || a->kind != TyKind::Array || !a->inner || (!isConst && !isVolatile))
+      return a;
+    const Ty* e = a->inner->kind == TyKind::Array ? arrayQualifiersOff(a->inner, isConst, isVolatile)
+                  : types.qualified(types.unqualified(a->inner), a->inner->isConst && !isConst, a->inner->isVolatile && !isVolatile);
+    return e == a->inner ? a : types.array(e, a->count);
+  }
+
   void deduce(const Ty* pattern, const Ty* arg, Subst& out, int depth = 0)
   {
     if (!pattern || !arg || depth > 16 || !arg->isKnown())
@@ -14740,6 +14792,8 @@ struct GlobalScope::Impl
         const Ty* bound = depth == 0 ? types.decay(arg) : types.stripRef(arg);
         if (depth > 0 && bound && (pattern->isConst || pattern->isVolatile))
           bound = types.qualified(types.unqualified(bound), bound->isConst && !pattern->isConst, bound->isVolatile && !pattern->isVolatile);
+        if (depth > 0 && bound && bound->kind == TyKind::Array)
+          bound = arrayQualifiersOff(bound, pattern->isConst, pattern->isVolatile);
         out.pairs.push_back({pattern->decl, bound});
       }
       return;
@@ -14758,6 +14812,8 @@ struct GlobalScope::Impl
         if (!out.find(pattern->inner->decl))
         {
           const Ty* bound = pattern->inner->isConst ? types.unqualified(a) : a;
+          if (bound->kind == TyKind::Array)
+            bound = arrayQualifiersOff(bound, pattern->inner->isConst, pattern->inner->isVolatile);
           if (forwarding && arg->kind == TyKind::LRef)
             bound = types.lref(a);
           out.pairs.push_back({pattern->inner->decl, bound});

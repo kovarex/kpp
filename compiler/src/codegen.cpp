@@ -8139,6 +8139,10 @@ namespace
     {
       if (pt && pt->isReference())
       {
+        // `f("abc")` with `f(const char (&)[4])`, or `const T&` with T = char[4]: the literal's own
+        // chars (the checker types it as the pointer it decays to, which is their address).
+        if (types.unqualified(types.stripRef(pt))->kind == TyKind::Array && stringLiteralArray(arg, arg->ty, types))
+          return "ptr " + rvalue(arg).text;
         if (isAggregate(types.stripRef(pt)))
         {
           const Ty* cls = types.stripRef(pt);

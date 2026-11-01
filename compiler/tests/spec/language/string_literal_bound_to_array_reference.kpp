@@ -1,0 +1,18 @@
+// spec: a string literal binds a reference to an array of its chars: `const char (&)[4]` written out, a `const T&` deducing T = char[4], and a forwarding reference kept in a struct, each reading the literal's own chars (`[abc] [abc] [xyz] [hi]`)
+// found while making a string literal deduce an array (templates/string_literal_deduces_array_by_reference): the reference was bound to a slot holding the pointer to the chars, so the callee read the pointer's bytes as text (also with the array reference written out, before that change)
+extern "C" import "stdio.h";
+template<typename T> void p(const T& v) { printf("[%s] ", v); }
+template<typename T> struct Hold { const T& v; };
+template<typename T> Hold<T> hold(const T& v) { return Hold<T>{v}; }
+template<typename T> void forwarded(T&& v) { printf("[%s]", v); }
+void q(const char (&v)[4]) { printf("[%s] ", v); }
+int main()
+{
+  p("abc");
+  q("abc");
+  auto h = hold("xyz");
+  printf("[%s] ", h.v);
+  forwarded("hi");
+  printf("\n");
+  return 0;
+}

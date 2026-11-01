@@ -183,6 +183,11 @@ struct Pair
   }
 };
 
+// Deduction (std::pair's guide): each value as a by-value argument, so `Pair{"name", 3}` holds a
+// const char*, not the literal's array.
+template<typename A, typename B>
+Pair(A, B) -> Pair<A, B>;
+
 // What makePair stores for an argument of type T (std::unwrap_ref_decay_t): T decayed (without
 // reference and const, an array or a function as a pointer), and a ReferenceWrapper<U> as U&.
 template<typename T>

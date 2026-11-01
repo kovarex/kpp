@@ -1,0 +1,25 @@
+// spec: isConstructible<T&, Arg> (std::is_constructible) asks whether the reference binds declval<Arg>(), an lvalue for a reference Arg and an xvalue otherwise: an array reference binds an array lvalue, `int&` binds no rvalue, `const int&` and `int&&` bind one, a base reference a derived object; so forwardAsTuple of an array builds a Tuple holding a reference to it (`xyz 2`)
+// found while making a string literal deduce an array: Tuple's forwarding constructor requires isConstructible<H, UH&&>, which was false for H = char (&)[4] (the reference stripped, then an array asked to convert to an array), so `forwardAsTuple(buffer, 2)` had no constructor (also before that change)
+extern "C" import "stdio.h";
+using A4 = char[4];
+struct Base {};
+struct Derived : Base {};
+static_assert(isConstructible<A4&, A4&>);
+static_assert(isConstructible<const A4&, A4&>);
+static_assert(!isConstructible<A4&, const A4&>);
+static_assert(isConstructible<int&, int&>);
+static_assert(!isConstructible<int&, int>);
+static_assert(!isConstructible<int&, int&&>);
+static_assert(isConstructible<const int&, int>);
+static_assert(isConstructible<int&&, int>);
+static_assert(!isConstructible<int&&, int&>);
+static_assert(isConstructible<Base&, Derived&>);
+static_assert(!isConstructible<Derived&, Base&>);
+static_assert(isConstructible<const String&, const char*>);
+int main()
+{
+  char buffer[4] = "xyz";
+  auto t = forwardAsTuple(buffer, 2);
+  printf("%s %d\n", get<0>(t), get<1>(t));
+  return 0;
+}

@@ -1,0 +1,24 @@
+// spec: a string literal is an lvalue of type const char[N] (C++ [lex.string]): a reference parameter `const T&` deduces T = char[N] (the parameter's const is the elements', [basic.type.qualifier] 3; so for a const char array variable), a forwarding `T&&` deduces const char(&)[N], and only a by-value `T` decays it to const char* (`7 7 8 4 7 1 1 1`)
+// found while packing Text arguments (design.md 14): TextPiece's `template<typename T> TextPiece(const T&)` was given T = const char* for "Point ", so sizeof(T) was 8 where C++ has 7
+// factorio: UnitTest++'s CheckStartsWith(const Actual&, const Prefix&) asks isArray<Prefix> && isSame<RemoveExtent<Prefix>, char> of CHECK_STARTS_WITH(result, "{") (TestPump, TestLocalisation)
+extern "C" import "stdio.h";
+template<typename T> int sizeByReference(const T& value) { return int(sizeof(T)); }
+template<typename T> int sizeForwarded(T&& value) { return int(sizeof(value)); }
+template<typename T> int sizeByValue(T value) { return int(sizeof(T)); }
+template<typename T> int charArray(const T& value) { return isArray<T> && isSame<RemoveExtent<T>, char> ? 1 : 0; }
+using ConstChars3 = const char[3];
+template<typename T> int constCharArray(T&& value) { return isSame<RemoveReference<T>, ConstChars3> ? 1 : 0; }
+struct Piece
+{
+  int n = 0;
+  template<typename T>
+  Piece(const T& value) : n(int(sizeof(T))) {}
+};
+int main()
+{
+  Piece p = "abc";
+  const char fixed[3] = "ab";
+  printf("%d %d %d %d %d %d %d %d\n", sizeByReference("abcdef"), sizeForwarded("abcdef"), sizeByValue("abcdef"), p.n, Piece("abcdef").n, charArray("{"),
+         charArray(fixed), constCharArray(fixed));
+  return 0;
+}
