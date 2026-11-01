@@ -74,9 +74,11 @@ if %BASELINEDEBUG%==1 set EXE=C:\Factorio\bin\Debugx64vs2022\factorio-test.exe
 if %BASELINE%==1 goto run
 call native\build.cmd >nul || exit /b 1
 call "%HERE%link-settings.cmd"
+set CLIBWHOLE=
+for %%l in (%CLIBRARIES%) do call set CLIBWHOLE=%%CLIBWHOLE%% %CONVERSION%\libraries\%%l
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -Wl,/MAP --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if exist %OUT%\factorio-test.exe del %OUT%\factorio-test.exe
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\crc32fast %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %LIBS% %SANITIZE% --exe %OUT%\factorio-test.exe %CONVERSION%\libraries\CommonUtil %CONVERSION%\libraries\Agui %CONVERSION%\libraries\cxxopts %CONVERSION%\libraries\StackWalker %CONVERSION%\libraries\Lua %CONVERSION%\libraries\crc32fast %CLIBWHOLE% %CONVERSION%\libraries\UnitTest++ %CONVERSION%\src %CONVERSION%\tests > %OUT%\build.txt 2> %OUT%\build-errors.txt
 echo == %OUT%\factorio-test.exe, built by kppc (exit %errorlevel%) from %CONVERSION% with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" %OUT%\build.txt
 %SystemRoot%\System32\find.exe /c /v "" %OUT%\build-errors.txt

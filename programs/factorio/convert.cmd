@@ -57,6 +57,24 @@ rem any more) would still be compiled.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua crc32fast src) do if exist kpp\%%d rd /s /q kpp\%%d
 %KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || exit /b 1
 type kpp\CONVERSION.md | findstr /B "Files -"
+rem The C libraries (c-libraries.cmd), each converted on its own by C's rules into kpp\clib\NAME\ (its
+rem report there), then copied into the checkout's libraries\NAME\ and into kpp\NAME\. Their headers
+rem stay C: the checkout has them from resources.cmd, and the builds import them (CLIBINC).
+call c-libraries.cmd
+set CINC=%CINC% %CLIBINC%
+set CLIBKPP=
+set CLIBWHOLE=
+if exist kpp\clib rd /s /q kpp\clib
+for %%l in (%CLIBRARIES%) do (
+  %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h %FACTORIO%\libraries\%%l || exit /b 1
+  if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
+  xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l "%WHOLE%\libraries\%%l" >nul
+  if exist kpp\%%l rd /s /q kpp\%%l
+  xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l kpp\%%l >nul
+  call set CLIBKPP=%%CLIBKPP%% kpp\%%l
+  call set CLIBWHOLE=%%CLIBWHOLE%% %WHOLE%\libraries\%%l
+)
+echo C libraries converted: %CLIBRARIES%
 rem Remove stale top-level directories left by older conversions (the converter now writes src\
 rem files under kpp\src\; a stale kpp\Map\ would shadow the correctly renamed kpp\src\Map\).
 rem Keep CommonUtil, Agui, Util (from the libraries and the smoke tests) and src itself.
@@ -74,9 +92,10 @@ if exist kpp\src\Util xcopy /s /y /q /i kpp\src\Util kpp\Util >nul
 rem Copy stubs for types that are outside the converted subset but needed for codegen.
 if exist stubs\kpp xcopy /s /y /q stubs\kpp kpp\ >nul
 rem The headline number (docs/path-to-factorio.md, "The headline number: how it is measured"):
-rem stderr lines of the full build of exactly CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast and src, not the kpp\Util copy.
-echo == full-src codegen errors: kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast kpp\src (all errors in kpp\full-errors.txt)
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast kpp\src 2> kpp\full-errors.txt
+rem stderr lines of the full build of exactly CommonUtil, Agui, cxxopts, StackWalker, Lua, crc32fast, the C
+rem libraries and src, not the kpp\Util copy.
+echo == full-src codegen errors: kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast%CLIBKPP% kpp\src (all errors in kpp\full-errors.txt)
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\full.ll kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src 2> kpp\full-errors.txt
 set FULLRC=%errorlevel%
 rem System32's find: a Unix find earlier on the PATH (Git's) would walk the disk instead.
 %SystemRoot%\System32\find.exe /c /v "" kpp\full-errors.txt
@@ -87,7 +106,7 @@ rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each
 rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
 echo == tests codegen errors: %WHOLE% with UnitTest++ and tests (all errors in kpp\tests-errors.txt)
 set L=%WHOLE%\libraries
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
 set TESTSRC=%errorlevel%
 %SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
 if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %TESTSRC%)

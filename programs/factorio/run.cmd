@@ -47,7 +47,7 @@ rem the objects that changed (0.6 s instead of 2.3). So the executable is never 
 rem link's own line in build.txt ("+ link ... (exit 0)") says whether it linked.
 set LIBS=%LIBS% --lib -Wl,/DEBUG --lib -ldbghelp --lib -Wl,/INCLUDE:kpp_crash_report_install
 if not exist %RUNDIR% mkdir %RUNDIR%
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %MODE% %LIBS% %KPPC_EXTRA% --exe %RUNDIR%\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast kpp\src > %RUNDIR%\build.txt 2> %RUNDIR%\build-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --keep-going --stub-missing %MODE% %LIBS% %KPPC_EXTRA% --exe %RUNDIR%\factorio.exe kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWalker kpp\Lua kpp\crc32fast %CLIBKPP% kpp\src > %RUNDIR%\build.txt 2> %RUNDIR%\build-errors.txt
 echo == %GAME%\bin\x64\factorio.exe, built by kppc (exit %errorlevel%) with --stub-missing:
 %SystemRoot%\System32\findstr.exe /b /c:"stubs:" %RUNDIR%\build.txt
 %SystemRoot%\System32\find.exe /c /v "" %RUNDIR%\build-errors.txt

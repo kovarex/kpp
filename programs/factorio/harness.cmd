@@ -11,7 +11,11 @@ rem   `kpp factorio` builds in the factorio-in-kpp checkout CONVERSION (C:\facto
 rem   given), clang-cl with the library's own flags (so it runs before the library's swap: after it,
 rem   build.kpp builds no NAME.lib);
 rem - converted by kppc --convert together with the library's sources (FACTORIO\libraries\NAME),
-rem   and compiled by kppc.
+rem   and compiled by kppc. A C library has a directory c-libraries\NAME: it is converted by C's
+rem   rules (--c-sources), with c-libraries\NAME as the conversion's overrides (its
+rem   expand-macros.txt names the headers whose macros the converted code expands), and its headers
+rem   stay C imports, found in the directories c-libraries\NAME\includes.txt names (below
+rem   FACTORIO\libraries\NAME).
 rem Both run on the same inputs, the files under CONVERSION that harness\NAME.inputs names (one
 rem `dir` pattern per line, such as data\*.ogg), and their outputs must be byte-identical.
 rem Everything is written to kpp\harness\NAME. Exit 0 only when the outputs match.
@@ -30,6 +34,10 @@ if not exist %DRIVER% (echo no harness\%NAME%.cpp or .c& exit /b 2)
 set CLIBRARY=%CONVERSION%\build\clib\%NAME%.lib
 if not exist "%CLIBRARY%" (echo %CLIBRARY% is missing: build it with `kpp factorio` in %CONVERSION%& exit /b 2)
 set OUT=kpp\harness\%NAME%
+set CMODE=
+set CINC=
+if exist c-libraries\%NAME% set CMODE=--c-sources --overrides c-libraries\%NAME%
+if exist c-libraries\%NAME%\includes.txt for /f "usebackq delims=" %%i in ("c-libraries\%NAME%\includes.txt") do call set CINC=%%CINC%% --cinclude "%FACTORIO%\libraries\%NAME%\%%i"
 if exist %OUT% rd /s /q %OUT%
 mkdir %OUT%\driver
 
@@ -44,12 +52,14 @@ rem them in flags.txt), linked with the library build.kpp built.
 rem Without its /c, for one command that compiles and links (with the same /vctoolsdir).
 set /p FLAGS=<"%CONVERSION%\build\clib\%NAME%\flags.txt"
 set FLAGS=%FLAGS:/c =%
+rem (a driver in C: the library's C++ standard flag is no C one)
+if /i "%DRIVER:~-2%"==".c" set FLAGS=%FLAGS:/std:c++20=%
 "%CLANGCL%" %FLAGS% /I"%CONVERSION%\libraries" -fuse-ld=lld /Fo%OUT%\ /Fe%OUT%\c.exe %DRIVER% "%CLIBRARY%" > %OUT%\c-build.txt 2>&1 || (type %OUT%\c-build.txt& exit /b 1)
 
 rem The Kpp build: the driver and the library converted together, then compiled.
 copy /y %DRIVER% %OUT%\driver\ > nul
-%KPPC% --no-std --quiet --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %FACTORIO%\libraries\%NAME% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
-%KPPC% --std ..\..\stdlib --quiet --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
+%KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %FACTORIO%\libraries\%NAME% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPPC% --std ..\..\stdlib --quiet %CINC% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
 
 %OUT%\c.exe %OUT%\inputs.txt > %OUT%\c-output.txt 2> %OUT%\c-errors.txt
 set CEXIT=%errorlevel%

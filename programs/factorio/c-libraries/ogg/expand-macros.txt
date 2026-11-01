@@ -1,0 +1,3 @@
+# ogg's C headers: os_types.h names the allocator ogg calls (`#define _ogg_malloc malloc`), and
+# the converted code calls it by that name.
+C:\Factorio\libraries\ogg\include\ogg\os_types.h
