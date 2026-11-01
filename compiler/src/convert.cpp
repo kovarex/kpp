@@ -44,6 +44,13 @@ namespace
     // object-like whose body is a `*` among empty macros and calling conventions: glad.h's
     // `#define APIENTRYP APIENTRY *` in `typedef void (APIENTRYP PFNGLCLEARPROC)(GLbitfield mask);`
     std::set<std::string> pointer;
+    // object-like whose body is storage words only, other macros of them and attributes resolved:
+    // zstd's `#define MEM_STATIC static __inline`, `FORCE_INLINE_TEMPLATE static INLINE_KEYWORD
+    // FORCE_INLINE_ATTR`; the words, normalized (`static inline`)
+    std::map<std::string, std::string> storage;
+    // object-like whose body is a multiplication by a parenthesized constant, used after a number:
+    // zstd's `#define KB *(1 <<10)` in `16 KB`; the body
+    std::map<std::string, std::string> postfix;
   };
 
   // Default arguments of a function's parameters, by index, as source text: carried from a
@@ -2661,6 +2668,9 @@ namespace
     // The includes of this file that name a converted file beside it (siblingIncludes): removed.
     const std::set<std::string>* siblingIncludes = nullptr;
     const std::set<std::string>* cInterfaceHeaders = nullptr; // overrides/c-headers.txt: included, imported
+    const std::set<std::string>* cInterfaceNames = nullptr;   // the functions those headers declare
+    const std::map<std::string, std::string>* cStaticRenames = nullptr; // C: this file's statics another file declares too
+    const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
     const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
     // The std names this file brought in with a using-declaration (XmlTestReporter.cpp's `using
@@ -3507,6 +3517,9 @@ namespace
                                                                                  {"stb_image/stb_dxt.h", "kpp_stb_dxt.h"}};
             auto configured = configuredImports.find(header);
             std::string imported = configured != configuredImports.end() ? configured->second : cLibrary || cInterface || sysHeader ? header : lowered;
+            if (cInterface && cConfiguredImports)
+              if (auto c = cConfiguredImports->find(base); c != cConfiguredImports->end())
+                imported = c->second;
             std::string imports = "extern \"C\" import \"" + imported + "\";";
             if (!importedCommon)
             {
@@ -3538,6 +3551,8 @@ namespace
               endLocalMacro(name, offset);
               if (auto range = ownMacroRanges.find(name); range != ownMacroRanges.end() && range->second.second == UINT32_MAX)
                 range->second.second = offset;
+              else if (range == ownMacroRanges.end())
+                ownMacroRanges[name] = {0, offset}; // an included header's, until here (zstd_common.c's `#undef ZSTD_isError`)
             }
           }
           counts.add("#" + word + " removed");
@@ -3882,6 +3897,20 @@ namespace
                 counts.add("asserts in expressions put in lambdas");
                 continue;
               }
+            }
+            if (in.c && cWrittenOutMacros && cWrittenOutMacros->count("*"))
+              if (const std::string* own = cOwnObjectAt(name, useOffset))
+              {
+                next += *own;
+                changed = true;
+                i = j;
+                continue;
+              }
+            if (in.c && cStaticRenames && cStaticRenames->count(name) && !(i > 0 && (result[i - 1] == '.' || result[i - 1] == '>')))
+            {
+              next += cStaticRenames->at(name);
+              i = j;
+              continue;
             }
             if (in.c && !objectMacros.empty())
               if (auto object = objectMacros.find(name); object != objectMacros.end() && macroHoldsAt(object->first, useOffset))
@@ -4518,6 +4547,13 @@ namespace
             continue;
           }
         }
+        if (in.c && cStaticRenames && t.getKind() == TokenKind::Identifier && !memberAccessAt(i) && !inClassBody(t.offset))
+          if (auto renamed = cStaticRenames->find(std::string(spelling(i))); renamed != cStaticRenames->end())
+          {
+            replace(t.offset, t.length, renamed->second);
+            counts.add("C statics another file declares too renamed with their file's name");
+            continue;
+          }
         if (in.c && t.getKind() == TokenKind::Identifier && spelling(i) == "config" && !memberAccessAt(i) && !inClassBody(t.offset))
         {
           // Kpp's build configuration is the namespace `config` (config::debug): zlib's
@@ -4695,12 +4731,20 @@ namespace
         // A string macro or a macro that is a qualified name is its text wherever it is used: macros
         // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
         // namespace), and only literals concatenate (`"\n" UTF8_BULLET " "`).
+        if (in.c && cWrittenOutMacros && cWrittenOutMacros->count("*") && t.getKind() == TokenKind::Identifier && !(i > 0 && toks[i - 1].is(P::ColonColon)))
+          if (const std::string* own = cOwnObjectAt(std::string(spelling(i)), t.offset))
+          {
+            // C: this file's own macro in force here (one of several definitions of the name)
+            replace(t.offset, t.length, rescanMacros(cExpandedObject(*own, t.offset), t.offset));
+            counts.add("C macro constants written out at their uses");
+            continue;
+          }
         // (In C a macro is one after `.` too: zlib's `tree[n].Freq` is `tree[n].fc.freq`.)
         if (t.getKind() == TokenKind::Identifier && !objectMacros.empty() &&
             !(i > 0 && (((toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)) && !in.c) || toks[i - 1].is(P::ColonColon))))
           if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset))
           {
-            replace(t.offset, t.length, in.c ? cExpandedObject(macro->second, t.offset) : macro->second);
+            replace(t.offset, t.length, in.c ? rescanMacros(cExpandedObject(macro->second, t.offset), t.offset) : macro->second);
             counts.add(isStringLiterals(macro->second)                                       ? "string macros written out"
                        : isQualifiedName(macro->second) || isAliasMacro(macro->first, macro->second) ? "name macros written out"
                                                                                                       : "spliced macros written out");
@@ -7865,6 +7909,85 @@ namespace
         }
       insert(offset, s);
     }
+    // C: this file's own object-like macros, each with the text where it holds (from its #define to
+    // its #undef or next #define: divsufsort.c defines STACK_SIZE twice), from the configured text
+    // (the definitions of the branches the configuration keeps).
+    struct COwnObject
+    {
+      std::string name, body;
+      uint32_t from, to;
+    };
+    std::vector<COwnObject> cOwnObjects;
+    bool cOwnObjectsRead = false;
+    const std::string* cOwnObjectAt(const std::string& name, uint32_t offset)
+    {
+      if (!cOwnObjectsRead)
+      {
+        cOwnObjectsRead = true;
+        std::string_view t = preprocessed ? std::string_view(preprocessed->configured) : text;
+        std::map<std::string, size_t> open;
+        for (size_t at = 0; at < t.size();)
+        {
+          size_t end = t.find('\n', at);
+          if (end == std::string_view::npos)
+            end = t.size();
+          size_t lineStart = at;
+          std::string line(t.substr(at, end - at));
+          while (!line.empty() && (line.back() == '\\' || (line.back() == '\r' && line.size() > 1 && line[line.size() - 2] == '\\')) && end < t.size())
+          {
+            line.erase(line.find_last_of('\\'));
+            size_t next = t.find('\n', end + 1);
+            if (next == std::string_view::npos)
+              next = t.size();
+            line += " " + std::string(t.substr(end + 1, next - end - 1));
+            end = next;
+          }
+          at = end + 1;
+          size_t p = line.find_first_not_of(" \t");
+          if (p == std::string::npos || line[p] != '#')
+            continue;
+          p = line.find_first_not_of(" \t", p + 1);
+          if (p == std::string::npos)
+            continue;
+          bool define = line.compare(p, 6, "define") == 0, undef = line.compare(p, 5, "undef") == 0;
+          if (!define && !undef)
+            continue;
+          p = line.find_first_not_of(" \t", p + (define ? 6 : 5));
+          if (p == std::string::npos)
+            continue;
+          size_t n = p;
+          while (n < line.size() && isIdentChar(line[n]))
+            ++n;
+          std::string name = line.substr(p, n - p);
+          if (auto o = open.find(name); o != open.end())
+          {
+            cOwnObjects[o->second].to = uint32_t(lineStart);
+            open.erase(o);
+          }
+          if (!define || (n < line.size() && line[n] == '('))
+            continue;
+          std::string body = line.substr(n);
+          for (size_t c = body.find("/*"); c != std::string::npos; c = body.find("/*", c))
+          {
+            size_t e = body.find("*/", c + 2);
+            body.replace(c, (e == std::string::npos ? body.size() : e + 2) - c, " ");
+          }
+          if (size_t c = body.find("//"); c != std::string::npos)
+            body.erase(c);
+          size_t a = body.find_first_not_of(" \t\r"), b = body.find_last_not_of(" \t\r");
+          body = a == std::string::npos ? std::string() : body.substr(a, b - a + 1);
+          if (body.empty())
+            continue;
+          open[name] = cOwnObjects.size();
+          cOwnObjects.push_back({name, body, uint32_t(end), UINT32_MAX});
+        }
+      }
+      const std::string* found = nullptr;
+      for (const COwnObject& o : cOwnObjects)
+        if (o.name == name && o.from <= offset && offset < o.to)
+          found = &o.body;
+      return found;
+    }
     // C: a written-out macro's body with the object macros it names written out too, as the
     // preprocessor rescans (inftrees.h's `#define ENOUGH (ENOUGH_LENS+ENOUGH_DISTS)`).
     std::string cExpandedObject(const std::string& body, uint32_t useOffset, int depth = 0)
@@ -7890,8 +8013,12 @@ namespace
             ++j;
           std::string name = body.substr(i, j - i);
           auto macro = objectMacros.find(name);
-          if (macro != objectMacros.end() && macro->second != body && macroHoldsAt(macro->first, useOffset))
+          if (const std::string* own = cOwnObjectAt(name, useOffset); own && *own != body && cWrittenOutMacros && cWrittenOutMacros->count("*"))
+            out += cExpandedObject(*own, useOffset, depth + 1);
+          else if (macro != objectMacros.end() && macro->second != body && macroHoldsAt(macro->first, useOffset))
             out += cExpandedObject(macro->second, useOffset, depth + 1);
+          else if (cStaticRenames && cStaticRenames->count(name))
+            out += cStaticRenames->at(name);
           else
             out += name;
           i = j;
@@ -7900,6 +8027,116 @@ namespace
         out += body[i++];
       }
       return out;
+    }
+    // C's `U32 const x`, `ZSTD_window_t const window`, `struct S const* s` (zstd writes its consts
+    // after the type): `const U32 x`, the const first, as Kpp's parse reads it after a type's name
+    // only so (language/east_const_after_type_name, pending).
+    void cWestConst()
+    {
+      for (uint32_t i = 0; i + 2 < toks.size(); ++i)
+      {
+        if (toks[i].getKind() != TokenKind::Identifier || !toks[i + 1].is(Kw::const_) || memberAccessAt(i) ||
+            (i > 0 && toks[i - 1].is(P::ColonColon)))
+          continue;
+        // (`x const` is no expression in C: a name before const is a type's)
+        uint32_t first = i;
+        if (i > 0 && (toks[i - 1].is(Kw::struct_) || toks[i - 1].is(Kw::union_) || toks[i - 1].is(Kw::enum_)))
+          first = i - 1;
+        cInsertBefore(toks[first].offset, "const ");
+        remove(endOffset(i), endOffset(i + 1) - endOffset(i));
+        counts.add("C's consts after a type's name written before it");
+      }
+    }
+    // C's array parameters are pointers (`U32 rep[ZSTD_REP_NUM]` is `U32* rep`): written so, in
+    // function declarations and in function types (zstd's ZSTD_blockCompressor), where Kpp keeps the
+    // array (language/array_parameter_is_pointer, pending).
+    void cArrayParameter(Decl* param)
+    {
+      if (param->kind != NodeKind::ParamDecl)
+        return;
+      auto* p = static_cast<ParamDecl*>(param);
+      cArrayParametersIn(p->type);
+      if (!p->type || p->type->kind != NodeKind::ArrayType || p->name == UINT32_MAX)
+        return;
+      for (uint32_t k = p->token; k + 1 < toks.size() && !toks[k].is(P::Comma) && !toks[k].is(P::RParen); ++k)
+        if (toks[k].getKind() == TokenKind::Identifier && toks[k].id == p->name && toks[k + 1].is(P::LBracket))
+        {
+          uint32_t close = k + 1;
+          int depth = 0;
+          for (; close < toks.size(); ++close)
+            if (toks[close].is(P::LBracket))
+              ++depth;
+            else if (toks[close].is(P::RBracket) && --depth == 0)
+              break;
+          if (close >= toks.size() || toks[close + 1].is(P::LBracket)) // (an array of arrays: left alone)
+            return;
+          cInsertBefore(toks[k].offset, "*");
+          remove(endOffset(k), endOffset(close) - endOffset(k));
+          counts.add("C array parameters written as pointers");
+          return;
+        }
+    }
+    void cArrayParametersIn(Type* t)
+    {
+      for (int depth = 0; t && depth < 16; ++depth)
+      {
+        if (t->kind == NodeKind::PointerType)
+          t = static_cast<PointerType*>(t)->pointee;
+        else if (t->kind == NodeKind::ConstType)
+          t = static_cast<ConstType*>(t)->inner;
+        else if (t->kind == NodeKind::FunctionType)
+        {
+          for (Decl* param : static_cast<FunctionType*>(t)->params)
+            cArrayParameter(param);
+          return;
+        }
+        else
+          return;
+      }
+    }
+    void cArrayParameters(Span<Decl*> decls)
+    {
+      for (Decl* d : decls)
+      {
+        if (d->kind == NodeKind::FunctionDecl)
+          for (Decl* param : static_cast<FunctionDecl*>(d)->params)
+            cArrayParameter(param);
+        else if (d->kind == NodeKind::VariableDecl)
+          cArrayParametersIn(static_cast<VariableDecl*>(d)->type);
+        else if (d->kind == NodeKind::ClassDecl)
+          cArrayParameters(static_cast<ClassDecl*>(d)->members);
+        else if (d->kind == NodeKind::NamespaceDecl)
+          cArrayParameters(static_cast<NamespaceDecl*>(d)->decls);
+      }
+    }
+    // C's `(U64)(size_t)(oend-op)`, a cast of a cast of a parenthesized expression that the parse
+    // may not have read as casts (size_t is no declared name for it): Kpp reads `(T)(x)` before `(`
+    // as a cast of the whole postfix expression, so the inner cast gets parentheses of its own:
+    // `(U64)((size_t)(oend-op))`.
+    void cCastChains()
+    {
+      for (uint32_t i = 0; i + 8 < toks.size(); ++i)
+      {
+        if (!toks[i].is(P::LParen) || toks[i + 1].getKind() != TokenKind::Identifier || !toks[i + 2].is(P::RParen) || !toks[i + 3].is(P::LParen) ||
+            toks[i + 4].getKind() != TokenKind::Identifier || !toks[i + 5].is(P::RParen) || !toks[i + 6].is(P::LParen))
+          continue;
+        // (`f(a)(b)(c)` is calls: the first group must follow no name or `)`)
+        if (i > 0 && (toks[i - 1].getKind() == TokenKind::Identifier || toks[i - 1].is(P::RParen) || toks[i - 1].is(P::RBracket)))
+          continue;
+        int depth = 0;
+        for (uint32_t k = i + 6; k < toks.size(); ++k)
+          if (toks[k].is(P::LParen))
+            ++depth;
+          else if (toks[k].is(P::RParen) && --depth == 0)
+          {
+            if (k + 1 < toks.size() && (toks[k + 1].is(P::Dot) || toks[k + 1].is(P::Arrow) || toks[k + 1].is(P::LBracket) || toks[k + 1].is(P::LParen)))
+              break; // (a postfix after it: the chain means something else)
+            cInsertBefore(toks[i + 3].offset, "(");
+            insert(endOffset(k), ")");
+            counts.add("C casts of casts parenthesized");
+            break;
+          }
+      }
     }
     // Whether offset is directly inside a struct's or union's body (a member's declaration).
     bool inClassBody(uint32_t offset) const
@@ -8016,7 +8253,12 @@ namespace
           cWalkExpr(c->else_);
           break;
         }
-        case NodeKind::CastExpr: cWalkExpr(static_cast<CastExpr*>(e)->operand); break;
+        case NodeKind::CastExpr:
+        {
+          auto* cast = static_cast<CastExpr*>(e);
+          cWalkExpr(cast->operand);
+          break;
+        }
         case NodeKind::SizeofExpr: cWalkExpr(static_cast<SizeofExpr*>(e)->operand); break;
         case NodeKind::BraceInitExpr: cWalkExprs(static_cast<BraceInitExpr*>(e)->args); break;
         default: break;
@@ -8113,6 +8355,25 @@ namespace
           // a C file defines without static has. (Its own flags may say C already: the resolver
           // gives it the linkage of the header's extern "C" declaration, which Kpp imports.)
           bool written = d->token >= 2 && toks[d->token - 1].getKind() == TokenKind::String && toks[d->token - 2].is(Kw::extern_);
+          // A function that takes or returns a struct by value, which no interface header of the
+          // library declares (cover.c's COVER_computeEpochs): the converted files are its only
+          // callers, and it keeps Kpp's linkage (Kpp's C-callable functions pass no struct values).
+          auto byValue = [&](Type* t)
+          {
+            t = cWithoutQualifiers(cUnaliased(t));
+            return t && t->kind == NodeKind::NamedType && static_cast<NamedType*>(t)->resolved &&
+                   static_cast<NamedType*>(t)->resolved->kind == NodeKind::ClassDecl;
+          };
+          auto* f = static_cast<FunctionDecl*>(d);
+          bool structValue = byValue(f->returnType);
+          for (Decl* param : f->params)
+            structValue = structValue || (param->kind == NodeKind::ParamDecl && byValue(static_cast<ParamDecl*>(param)->type));
+          if (structValue && !f->name.empty() && f->name.last().symbol != UINT32_MAX &&
+              !(cInterfaceNames && cInterfaceNames->count(std::string(symbols.name(f->name.last().symbol)))))
+          {
+            counts.add("C functions passing structs by value the interface does not declare kept Kpp's linkage");
+            written = true;
+          }
           if (!(d->flags & DF_Static) && !written && toks[d->token].is(Kw::extern_))
           {
             replace(toks[d->token].offset, toks[d->token].length, "extern \"C\""); // (`extern int f(...) {...}`, minizip's)
@@ -8142,7 +8403,12 @@ namespace
       convertTokens();
       convertDecls(in.parsed->decls, true);
       if (in.c)
+      {
         convertC(in.parsed->decls);
+        cWestConst();
+        cArrayParameters(in.parsed->decls);
+        cCastChains();
+      }
       removeUnparsedDefinitions();
       // By offset; at the same offset the longest first, so that a removal cancels the edits inside it.
       auto byOffset = [](const Edit& a, const Edit& b) { return a.offset != b.offset ? a.offset < b.offset : a.length > b.length; };
@@ -8584,6 +8850,93 @@ namespace
         a = comma + 1;
       }
     }
+    // storage words, through other macros and past attributes (one word: a keyword macro; none:
+    // an empty one)
+    {
+      std::function<bool(const std::string&, std::vector<std::string>&, int)> words = [&](const std::string& body, std::vector<std::string>& out,
+                                                                                            int depth) -> bool
+      {
+        static const std::map<std::string, std::string> storageWords = {
+          {"static", "static"}, {"extern", "extern"}, {"inline", "inline"}, {"__inline", "inline"}, {"__inline__", "inline"},
+          {"__forceinline", "inline"}, {"const", "const"}, {"volatile", "volatile"}, {"register", "register"}};
+        for (size_t k = 0; k < body.size();)
+        {
+          if (body[k] == ' ' || body[k] == '\t')
+          {
+            ++k;
+            continue;
+          }
+          if (!isIdentChar(body[k]))
+            return false;
+          size_t e = k;
+          while (e < body.size() && isIdentChar(body[e]))
+            ++e;
+          std::string word = body.substr(k, e - k);
+          k = e;
+          if (word == "__attribute__" || word == "__declspec")
+          {
+            // its parenthesized argument goes with it
+            while (k < body.size() && body[k] == ' ')
+              ++k;
+            if (k >= body.size() || body[k] != '(')
+              return false;
+            int depth2 = 0;
+            for (; k < body.size(); ++k)
+            {
+              if (body[k] == '(')
+                ++depth2;
+              else if (body[k] == ')' && --depth2 == 0)
+              {
+                ++k;
+                break;
+              }
+            }
+            continue;
+          }
+          if (auto w = storageWords.find(word); w != storageWords.end())
+          {
+            if (std::find(out.begin(), out.end(), w->second) == out.end())
+              out.push_back(w->second);
+            continue;
+          }
+          auto other = bodies.find(word);
+          if (depth > 8 || other == bodies.end() || other->second.size() != 1 || (*other->second.begin())[0] != ' ' ||
+              !words(other->second.begin()->substr(1), out, depth + 1))
+            return false;
+        }
+        return true;
+      };
+      for (const auto& [name, defined] : bodies)
+      {
+        if (defined.size() != 1 || (*defined.begin())[0] != ' ')
+          continue;
+        std::vector<std::string> found;
+        if (!words(defined.begin()->substr(1), found, 0))
+          continue;
+        if (found.empty())
+          out.empty.insert(name);
+        else if (found.size() == 1)
+          out.keyword[name] = found[0];
+        else
+        {
+          // static first, as C writes it
+          std::stable_sort(found.begin(), found.end(), [](const std::string& a, const std::string& b) { return a == "static" && b != "static"; });
+          std::string joined;
+          for (const std::string& w : found)
+            joined += (joined.empty() ? "" : " ") + w;
+          out.storage[name] = joined;
+        }
+      }
+    }
+    // `*(...)`
+    for (const auto& [name, defined] : bodies)
+      if (defined.size() == 1 && (*defined.begin())[0] == ' ')
+      {
+        std::string body = defined.begin()->substr(1);
+        if (body.size() > 3 && body[0] == '*' && body.find_first_not_of(" ", 1) != std::string::npos && body[body.find_first_not_of(" ", 1)] == '(' &&
+            body.back() == ')')
+          out.postfix[name] = body;
+      }
     // a `*` among empty macros and calling conventions
     for (const auto& [name, defined] : bodies)
     {
@@ -8617,6 +8970,42 @@ namespace
         out.dropFirst.insert(name);
     return out;
   }
+}
+
+// A C library's include directories (its overrides' includes.txt, directories below its root, as
+// build.kpp's include() gives them: zstd's common\), where its files' includes are found too
+// (`#include "mem.h"` in compress\zstd_compress.c).
+static std::vector<std::filesystem::path> cIncludeDirectories(const std::filesystem::path& overridesDir,
+                                                              const std::vector<std::filesystem::path>& roots)
+{
+  std::vector<std::filesystem::path> out;
+  if (overridesDir.empty())
+    return out;
+  std::string list;
+  if (FILE* f = fopen((overridesDir / "includes.txt").string().c_str(), "rb"))
+  {
+    char buffer[4096];
+    size_t n;
+    while ((n = fread(buffer, 1, sizeof buffer, f)) > 0)
+      list.append(buffer, n);
+    fclose(f);
+  }
+  std::error_code ec;
+  for (size_t pos = 0; pos < list.size();)
+  {
+    size_t end = list.find('\n', pos);
+    if (end == std::string::npos)
+      end = list.size();
+    std::string line = list.substr(pos, end - pos);
+    pos = end + 1;
+    size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
+    if (a == std::string::npos || line[a] == '#')
+      continue;
+    for (const auto& root : roots)
+      if (std::filesystem::is_directory(root, ec))
+        out.push_back((root / line.substr(a, b - a + 1)).lexically_normal());
+  }
+  return out;
 }
 
 // A path as a key: absolute, normalised, lower case (Windows paths ignore case).
@@ -8791,6 +9180,28 @@ static void blankForParse(Preprocessed& p, const CMacros* cMacros = nullptr)
     }
     else if (cMacros && cMacros->empty.count(name) && !call && !(i > 0 && (t[i - 1] == '.' || t[i - 1] == '>')))
       blank(i, end, ""); // (C: FAR, ZEXPORT)
+    else if (auto storage = cMacros ? cMacros->storage.find(name) : decltype(cMacros->storage.end()){};
+             cMacros && storage != cMacros->storage.end() && !call)
+    {
+      // C: `MEM_STATIC` is `static inline`: the parse reads the words that fit in the name's place
+      // (`static`), the conversion writes them all
+      blank(i, end, storage->second);
+      std::string fits;
+      for (size_t a = 0; a <= storage->second.size();)
+      {
+        size_t space = storage->second.find(' ', a);
+        if (space == std::string::npos)
+          space = storage->second.size();
+        if (space > end - i)
+          break;
+        fits = storage->second.substr(0, space);
+        a = space + 1;
+      }
+      t.replace(i, fits.size(), fits);
+    }
+    else if (auto postfix = cMacros ? cMacros->postfix.find(name) : decltype(cMacros->postfix.end()){};
+             cMacros && postfix != cMacros->postfix.end() && !call)
+      blank(i, end, " " + postfix->second); // (C: `16 KB` is 16 for the parse, `16 *(1 <<10)` written)
     else if (cMacros && cMacros->pointer.count(name) && !call)
     {
       blank(i, end, "*"); // (C: glad's APIENTRYP)
@@ -8886,6 +9297,7 @@ static void blankForParse(Preprocessed& p, const CMacros* cMacros = nullptr)
 struct SourceConfiguration::Impl
 {
   CMacros cMacros; // with cSources
+  std::vector<std::filesystem::path> includeDirectories; // with cSources: cIncludeDirectories
   bool cBuild = false;        // with cSources: preprocessed as factorio-in-kpp builds a C library
   MacroTable cDefines;        // then: cLibraryDefines and the library's defines.txt
   std::vector<std::filesystem::path> paths;
@@ -8907,6 +9319,8 @@ struct SourceConfiguration::Impl
       candidates.push_back(root / spelled);
       candidates.push_back(root.parent_path() / spelled);
     }
+    for (const auto& directory : includeDirectories)
+      candidates.push_back(directory / spelled);
     for (const auto& c : candidates)
       if (auto it = byPath.find(pathKeyOf(c)); it != byPath.end() && it->second != i)
         return it->second;
@@ -9142,6 +9556,7 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
 {
   if (cSources)
   {
+    impl->includeDirectories = cIncludeDirectories(overridesDir, roots);
     impl->cBuild = true;
     impl->cDefines = cLibraryDefines();
     // The library's own: `NAME` or `NAME=VALUE` a line, as build.kpp's define() gives them.
@@ -9205,6 +9620,10 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
       if (result)
         configured.push_back(&result->configured);
     impl->cMacros = collectCMacros(configured);
+    // C's restrict qualifies a pointer for the optimizer only (xxhash.c's `XXH32_state_t* restrict
+    // dstState`): nothing, as Kpp has no restrict
+    for (const char* restrictWord : {"restrict", "__restrict", "__restrict__"})
+      impl->cMacros.empty.insert(restrictWord);
   }
   for (auto& result : impl->results)
     if (result)
@@ -9360,6 +9779,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   // A C library's interface (overrides/c-headers.txt, file names: zlib's zlib.h and zconf.h): headers
   // that stay C. They are parsed with the library, not written, and an include of one imports it.
   std::set<std::string> cInterfaceHeaders;
+  // `zstd.h kpp_zstd.h`: an include of zstd.h imports kpp_zstd.h, a header of the overrides that
+  // configures it as the library's files do before their includes (`#define
+  // ZSTD_STATIC_LINKING_ONLY`), written beside the converted files: Kpp's import has no defines.
+  std::map<std::string, std::string> cConfiguredImports;
   if (!overridesDir.empty())
   {
     std::string headersList;
@@ -9373,7 +9796,14 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         pos = end + 1;
         size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
         if (a != std::string::npos && line[a] != '#')
-          cInterfaceHeaders.insert(line.substr(a, b - a + 1));
+        {
+          std::string entry = line.substr(a, b - a + 1);
+          size_t space = entry.find_first_of(" \t");
+          std::string header = entry.substr(0, space);
+          cInterfaceHeaders.insert(header);
+          if (space != std::string::npos)
+            cConfiguredImports[header] = entry.substr(entry.find_first_not_of(" \t", space));
+        }
       }
   }
   if (!overridesDir.empty())
@@ -9446,6 +9876,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   for (size_t k = 0; k < inputs.size(); ++k)
     if (inputs[k].parsed && !inputs[k].parsed->isImported && inputs[k].path.string().rfind("<", 0) != 0)
       inputByPath[pathKey(inputs[k].path)] = k;
+  const std::vector<std::filesystem::path> cIncludes = cIncludeDirectories(overridesDir, roots); // (C libraries)
   std::vector<std::vector<size_t>> includedInputs(inputs.size());
   std::vector<std::set<std::string>> externalIncludes(inputs.size()); // the file names of the other includes
   // The includes written as a file of the including file's own directory that is converted too (Lua's
@@ -9501,6 +9932,9 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         candidates.push_back(root / name);
         candidates.push_back(root.parent_path() / name);
       }
+      if (inputs[k].c)
+        for (const auto& directory : cIncludes)
+          candidates.push_back(directory / name);
       bool converted = false;
       for (const auto& c : candidates)
         if (auto it = inputByPath.find(pathKey(c)); it != inputByPath.end() && it->second != k)
@@ -9508,6 +9942,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
           includedInputs[k].push_back(it->second);
           converted = true;
           if (&c == &candidates[0] && !name.has_parent_path())
+            siblingIncludes[k].insert(name.string());
+          // (C: any converted file of the library, by whatever name: zstd's "zstd_internal.h", which
+          // the game's rule would take for zstd's interface by its prefix)
+          else if (inputs[k].c && !cInterfaceHeaders.count(name.filename().string()))
             siblingIncludes[k].insert(name.string());
           break;
         }
@@ -9631,6 +10069,52 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       cWrittenOutMacros.insert("*");
       break;
     }
+  // C: a .c file's static (its own) whose name another file of the library declares too (cover.c's
+  // and fastcover.c's g_displayLevel, cover.c's prime4bytes and zstd_compress_internal.h's): renamed
+  // with its file's name in that file (cover_g_displayLevel), as Kpp gives a name one entity.
+  std::map<const ConvertInput*, std::map<std::string, std::string>> cStaticRenames;
+  {
+    std::map<std::string, std::vector<const ConvertInput*>> declaredBy;
+    std::map<const ConvertInput*, std::set<std::string>> statics;
+    for (const ConvertInput& in : inputs)
+    {
+      if (!in.c || !in.parsed)
+        continue;
+      for (Decl* d : in.parsed->decls)
+      {
+        std::string name;
+        if (d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->name.empty() && static_cast<FunctionDecl*>(d)->name.last().symbol != UINT32_MAX)
+          name = std::string(symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol));
+        else if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty() &&
+                 static_cast<VariableDecl*>(d)->name.last().symbol != UINT32_MAX)
+          name = std::string(symbols.name(static_cast<VariableDecl*>(d)->name.last().symbol));
+        if (name.empty())
+          continue;
+        auto& by = declaredBy[name];
+        if (std::find(by.begin(), by.end(), &in) == by.end())
+          by.push_back(&in);
+        if ((d->flags & DF_Static) && in.path.extension() == ".c")
+          statics[&in].insert(name);
+      }
+    }
+    for (const auto& [in, names] : statics)
+    {
+      std::string stem = in->path.stem().string();
+      for (char& ch : stem)
+        if (!isIdentChar(ch))
+          ch = '_';
+      for (const std::string& name : names)
+        if (declaredBy[name].size() > 1)
+          cStaticRenames[in][name] = stem + "_" + name;
+    }
+  }
+  std::set<std::string> cInterfaceNames; // the functions the C interface headers declare
+  for (const ConvertInput& in : inputs)
+    if (in.parsed && cInterfaceHeaders.count(in.path.filename().string()))
+      for (Decl* d : in.parsed->decls)
+        if (d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->name.empty() &&
+            static_cast<FunctionDecl*>(d)->name.last().symbol != UINT32_MAX)
+          cInterfaceNames.insert(std::string(symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol)));
   std::map<size_t, MacroMap> ownMacros; // a header's macros it leaves defined, read once
   std::map<size_t, std::map<std::string, std::string>> ownObjects; // and its string and name macros
   std::map<size_t, std::map<std::string, std::string>> definedObjects; // every string or name macro it defines
@@ -10023,6 +10507,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
     fc.cInterfaceHeaders = &cInterfaceHeaders;
+    fc.cInterfaceNames = &cInterfaceNames;
+    if (auto renames = cStaticRenames.find(&in); renames != cStaticRenames.end())
+      fc.cStaticRenames = &renames->second;
+    fc.cConfiguredImports = &cConfiguredImports;
     fc.cWrittenOutMacros = &cWrittenOutMacros;
     fc.leftOutFiles = &leftOutFiles;
     fc.functionMacroNames = &functionMacroNames;
@@ -10107,6 +10595,38 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         return it->second + key.substr(slash);
     return key;
   };
+  // The configured imports' headers (c-headers.txt), beside the library's converted files.
+  for (const auto& [header, configured] : cConfiguredImports)
+  {
+    std::string text;
+    if (!readFile(overridesDir / configured, text))
+    {
+      fprintf(stderr, "convert: %s: no %s for c-headers.txt's `%s %s`\n", overridesDir.generic_string().c_str(), configured.c_str(), header.c_str(),
+              configured.c_str());
+      continue;
+    }
+    std::error_code ec;
+    // (beside the header it configures: zstd.h's directory)
+    std::vector<std::filesystem::path> beside;
+    for (const ConvertInput& in : inputs)
+      if (in.path.filename().string() == header)
+        beside.push_back(in.path.parent_path());
+    for (const auto& root : roots)
+      beside.push_back(root);
+    for (const auto& directory : beside)
+      if (std::filesystem::is_directory(directory, ec))
+      {
+        std::filesystem::path outPath = outDir / outputKey(relativeTo(directory / configured, roots));
+        std::filesystem::create_directories(outPath.parent_path(), ec);
+        if (FILE* f = fopen(outPath.string().c_str(), "wb"))
+        {
+          fwrite(text.data(), 1, text.size(), f);
+          fclose(f);
+        }
+        total.add("configured imports written (c-headers.txt)");
+        break;
+      }
+  }
   std::string report = "# Conversion report\n\n";
   size_t files = 0;
   for (auto& [key, pieces] : outputs)
