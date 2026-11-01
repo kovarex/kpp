@@ -1,0 +1,25 @@
+// stb_image.cpp's zlib_compress_stb_adapter, written by hand: stb_image.cpp is the game's C++ file
+// that compiles the two headers' implementations (the conversion takes its defines from
+// c-libraries\stb_image\defines.txt), and its STBIW_ZLIB_COMPRESS, which stb_image_write deflates
+// PNGs with, is this function: zlib's compress2 at the writer's quality.
+extern "C" import "stdlib.h";
+
+extern "C" int compress2(unsigned char* dest, unsigned long* destLen, const unsigned char* source, unsigned long sourceLen, int level);
+extern "C" unsigned long compressBound(unsigned long sourceLen);
+
+extern "C" unsigned char* zlib_compress_stb_adapter(unsigned char* data, int data_len, int* out_len, int quality)
+{
+  unsigned long requiredSize = compressBound((unsigned long)data_len);
+  void* outData = malloc(requiredSize);
+
+  int code = compress2((unsigned char*)outData, &requiredSize, data, (unsigned long)data_len, quality);
+  if (code != 0)
+  {
+    free(outData);
+    *out_len = 0;
+    return nullptr;
+  }
+  *out_len = (int)requiredSize;
+
+  return (unsigned char*)outData;
+}

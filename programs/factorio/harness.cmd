@@ -33,7 +33,10 @@ set CLANGCL=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llv
 set DRIVER=harness\%NAME%.cpp
 if not exist %DRIVER% set DRIVER=harness\%NAME%.c
 if not exist %DRIVER% (echo no harness\%NAME%.cpp or .c& exit /b 2)
-set CLIBRARY=%CONVERSION%\build\clib\%NAME%.lib
+rem (build.kpp's name of the library: c-libraries\NAME\clib.txt where it is not NAME, stb_image's stb)
+set CLIB=%NAME%
+if exist c-libraries\%NAME%\clib.txt for /f "usebackq eol=# delims=" %%n in ("c-libraries\%NAME%\clib.txt") do set CLIB=%%n
+set CLIBRARY=%CONVERSION%\build\clib\%CLIB%.lib
 if not exist "%CLIBRARY%" (echo %CLIBRARY% is missing: build it with `kpp factorio` in %CONVERSION%& exit /b 2)
 set OUT=kpp\harness\%NAME%
 set CMODE=
@@ -45,6 +48,10 @@ set KLINKS=
 if exist c-libraries\%NAME%\links.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\links.txt") do call set CLINKS=%%CLINKS%% "%CONVERSION%\build\clib\%%i.lib"& call set KLINKS=%%KLINKS%% --lib "%CONVERSION%\build\clib\%%i.lib"
 if exist c-libraries\%NAME%\inputs.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\inputs.txt") do call set CINPUTS=%%CINPUTS%% "%FACTORIO%\libraries\%%i"
 if exist c-libraries\%NAME% set CMODE=--c-sources --overrides c-libraries\%NAME%
+rem (the library's sources: its directory, or the files its sources.txt names, stb_image's two headers)
+set CSOURCES=%FACTORIO%\libraries\%NAME%
+if exist c-libraries\%NAME%\sources.txt set CSOURCES=
+if exist c-libraries\%NAME%\sources.txt for /f "usebackq eol=# delims=" %%i in ("c-libraries\%NAME%\sources.txt") do call set CSOURCES=%%CSOURCES%% "%FACTORIO%\libraries\%NAME%\%%i"
 rem (and the conversion's own headers: the configured imports c-headers.txt names, zstd's kpp_zstd.h)
 if exist c-libraries\%NAME% set CINC=%CINC% --cinclude %OUT%\converted\%NAME%
 if exist c-libraries\%NAME%\includes.txt for /f "usebackq delims=" %%i in ("c-libraries\%NAME%\includes.txt") do call set CINC=%%CINC%% --cinclude "%FACTORIO%\libraries\%NAME%\%%i"& call set CLINC=%%CLINC%% /I"%CONVERSION%\libraries\%NAME%\%%i"
@@ -55,12 +62,13 @@ rem The inputs: one list of files, the same for both builds.
 if exist %OUT%\inputs.txt del %OUT%\inputs.txt
 type nul > %OUT%\inputs.txt
 if exist harness\%NAME%.inputs for /f "usebackq delims=" %%p in ("harness\%NAME%.inputs") do dir /s /b /a-d /on "%CONVERSION%\%%p" >> %OUT%\inputs.txt 2>nul
-for /f %%n in ('find /c /v "" ^< %OUT%\inputs.txt') do echo == %NAME%: %%n input files
+rem (System32's find: a Unix find earlier on the PATH, Git's, would walk the disk instead)
+for /f %%n in ('%SystemRoot%\System32\find.exe /c /v "" ^< %OUT%\inputs.txt') do echo == %NAME%: %%n input files
 
 rem The C or C++ build: the driver compiled with the library's flags (build.kpp's, as kpp recorded
 rem them in flags.txt), linked with the library build.kpp built.
 rem Without its /c, for one command that compiles and links (with the same /vctoolsdir).
-set /p FLAGS=<"%CONVERSION%\build\clib\%NAME%\flags.txt"
+set /p FLAGS=<"%CONVERSION%\build\clib\%CLIB%\flags.txt"
 set FLAGS=%FLAGS:/c =%
 rem (a driver in C: the library's C++ standard flag is no C one)
 if /i "%DRIVER:~-2%"==".c" set FLAGS=%FLAGS:/std:c++20=%
@@ -68,14 +76,14 @@ if /i "%DRIVER:~-2%"==".c" set FLAGS=%FLAGS:/std:c++20=%
 
 rem The Kpp build: the driver and the library converted together, then compiled.
 copy /y %DRIVER% %OUT%\driver\ > nul
-%KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %FACTORIO%\libraries\%NAME% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
+%KPPC% --no-std --quiet %CMODE% --convert %OUT%\converted --ext .cpp,.hpp,.h,.kpp,.c %OUT%\driver %CSOURCES% %CINPUTS% > %OUT%\convert.txt 2>&1 || (type %OUT%\convert.txt& exit /b 1)
 %KPPC% --std ..\..\stdlib --quiet %CINC% %KLINKS% --exe %OUT%\kpp.exe %OUT%\converted > %OUT%\kpp-build.txt 2>&1 || (type %OUT%\kpp-build.txt& exit /b 1)
 
 %OUT%\c.exe %OUT%\inputs.txt > %OUT%\c-output.txt 2> %OUT%\c-errors.txt
 set CEXIT=%errorlevel%
 %OUT%\kpp.exe %OUT%\inputs.txt > %OUT%\kpp-output.txt 2> %OUT%\kpp-errors.txt
 set KEXIT=%errorlevel%
-for /f %%n in ('find /c /v "" ^< %OUT%\c-output.txt') do set LINES=%%n
+for /f %%n in ('%SystemRoot%\System32\find.exe /c /v "" ^< %OUT%\c-output.txt') do set LINES=%%n
 fc /b %OUT%\c-output.txt %OUT%\kpp-output.txt > nul
 if errorlevel 1 (
   echo == %NAME%: OUTPUTS DIFFER ^(exit %CEXIT% and %KEXIT%^): %OUT%\c-output.txt, %OUT%\kpp-output.txt

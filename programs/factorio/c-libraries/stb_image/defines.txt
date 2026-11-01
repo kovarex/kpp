@@ -1,0 +1,5 @@
+# What stb_image.cpp defines before it includes the two headers: their implementations, and
+# stb_image_write's deflate through zlib (zlib_compress_stb_adapter, given by hand in Kpp).
+STB_IMAGE_IMPLEMENTATION
+STB_IMAGE_WRITE_IMPLEMENTATION
+STBIW_ZLIB_COMPRESS=zlib_compress_stb_adapter

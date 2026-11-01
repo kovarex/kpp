@@ -1,0 +1,5 @@
+# What is converted: the two headers whose implementations stb_image.cpp compiles (its defines in
+# defines.txt). stb_image.cpp itself is C++ and is written by hand: added\libraries\stb_image.
+# stb_dxt.h and stb_image_resize.h are the game's own files' (kpp-native's header_only.c).
+stb_image.hpp
+stb_image_write.h

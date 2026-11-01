@@ -12,7 +12,7 @@ if not defined FACTORIO set FACTORIO=C:\Factorio
 set WHOLE=C:\factorio-in-kpp
 if not "%~1"=="" set WHOLE=%~1
 rem The libraries convert.cmd converts, and the shims it copies (libraries\kpp-native). Of a C library
-rem converted to Kpp (c-libraries.cmd) only the .c files are left out: its headers stay C.
+rem converted to Kpp (c-libraries.cmd) only the .c and .cpp files are left out: its headers stay C.
 call "%~dp0c-libraries.cmd"
 set CONVERTED=CommonUtil Agui cxxopts StackWalker Lua crc32fast UnitTest++ %CLIBRARIES%
 rem Fresh every run: a file Factorio no longer has would stay. Every file of these directories but
@@ -33,7 +33,7 @@ endlocal
 rem A pathspec's * also matches /: libraries/Lua/*.c is every .c file below libraries/Lua.
 set EXCLUDE=
 for %%d in (libraries/CommonUtil libraries/Agui libraries/cxxopts libraries/StackWalker libraries/Lua libraries/crc32fast libraries/UnitTest++ tests) do for %%e in (c h cpp hpp) do call set EXCLUDE=%%EXCLUDE%% ":(exclude)%%d/*.%%e"
-for %%d in (%CLIBRARIES%) do call set EXCLUDE=%%EXCLUDE%% ":(exclude)libraries/%%d/*.c"
+for %%d in (%CLIBRARIES%) do call set EXCLUDE=%%EXCLUDE%% ":(exclude)libraries/%%d/*.c" ":(exclude)libraries/%%d/*.cpp"
 if not exist "%WHOLE%" mkdir "%WHOLE%"
 git -C %FACTORIO% archive HEAD -- data shaders libraries tests version.txt %EXCLUDE% | %SystemRoot%\System32\tar.exe -x -f - -C "%WHOLE%" || exit /b 1
 for /f %%h in ('git -C %FACTORIO% rev-parse --short HEAD') do echo resources: %FACTORIO% %%h into %WHOLE%

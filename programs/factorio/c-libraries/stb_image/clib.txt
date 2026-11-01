@@ -1,0 +1,2 @@
+# build.kpp's name of the library.
+stb

@@ -27,6 +27,6 @@ goto :eof
 
 rem A C library's .lib on the link line, unless it is converted (c-libraries.cmd).
 :link
-for %%c in (%CLIBRARIES%) do if /i "%~1"=="%%c" goto :eof
+for %%c in (%CLIBNAMES%) do if /i "%~1"=="%%c" goto :eof
 set LIBS=%LIBS% --lib %L%\%~1.lib
 goto :eof

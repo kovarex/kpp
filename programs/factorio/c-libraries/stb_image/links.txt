@@ -1,0 +1,2 @@
+# The C libraries both of the harness's builds link: the C zlib (stb_image_write deflates through it).
+zlib
