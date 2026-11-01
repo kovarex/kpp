@@ -1,0 +1,33 @@
+// spec: `private` on every kind of top-level declaration: a class with members defined out of line, a class template, a function template, an enum and an enum class, an alias, a constexpr constant and a variable; each the file's own, beside another file's global of the same name and another shape
+// factorio: the game's anonymous namespaces hold classes and templates (Atlas.cpp, AtlasBuilder.cpp, PipelineStateObjectOpenGL.cpp), which the converter maps to `private`
+private struct Packer
+{
+  int width = 0;
+  int add(int w);
+};
+int Packer::add(int w)
+{
+  width += w;
+  return width;
+}
+private template<typename T> struct Box
+{
+  T value;
+  T twice() const { return value + value; }
+};
+private template<typename T> T largest(T a, T b) { return a < b ? b : a; }
+private enum Shade { Light = 1, Dark = 2 };
+private enum class Mode { Fast = 7, Slow = 8 };
+private using Count = short;
+private constexpr int ROWS = 4;
+private int created = 0;
+int main()
+{
+  Packer p;
+  p.add(3);
+  Box<int> b{21};
+  created += ROWS;
+  println("{} {} {} {} {} {} {}", p.add(4), b.twice(), largest(5, 9), int(Dark), int(Mode::Slow), sizeof(Count), created);
+  println("{}", otherShapes());
+  return 0;
+}

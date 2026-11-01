@@ -202,6 +202,7 @@ struct Decl : Node
   uint8_t attributes = 0;     // ATTR_* bits.
   uint32_t endToken = 0;      // One past the declaration's last token (set when the parser finishes it).
   uint8_t builtin = 0;        // BUILTIN_*: a member the compiler generates (no body/initializer in the AST).
+  bool filePrivate = false;   // `private` at file scope (design.md 15): a name its own file alone sees.
 };
 
 struct LambdaExpr;
@@ -405,6 +406,7 @@ struct ParsedFile
   std::string path; // Set by the driver, for diagnostics.
   bool isImported = false; // Preprocessed C declarations, not user code.
   bool isLibrary = false;  // The standard library's sources (set by the driver): the top-level names they claim are reserved.
+  Scope* privateScope = nullptr; // Its `private` top-level names (design.md 15), set by the resolver's index.
   uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files, closure names.
   std::vector<Diagnostic> diagnostics;
   // `(HANDLE) -1`, `(T) *p`, parsed as `(name) op x`, with the declaration it is in: a cast when the
@@ -421,3 +423,24 @@ struct ParsedFile
   // bodies too, so the parse statistics report what a parse of the file as it is now allocates.
   size_t arenaBytesReported = 0;
 };
+
+// What tells apart the entities two files declare private under one name (design.md 15), put
+// before a qualified name (a symbol's, a type's in the IR): "<file name>@<hash of its path>::" for
+// a private top-level declaration and what is declared in it, else nothing.
+inline std::string filePrivatePrefix(const Decl* d)
+{
+  const Decl* top = d;
+  while (top && top->parent)
+    top = top->parent;
+  if (!top || !top->filePrivate || !top->file)
+    return std::string();
+  const std::string& path = top->file->path;
+  uint32_t hash = 2166136261u;
+  for (unsigned char c : path)
+    hash = (hash ^ c) * 16777619u;
+  static const char digits[] = "0123456789abcdef";
+  std::string tag = path.substr(path.find_last_of("/\\") + 1) + "@";
+  for (int shift = 28; shift >= 0; shift -= 4)
+    tag += digits[(hash >> shift) & 15];
+  return tag + "::";
+}

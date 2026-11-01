@@ -1,0 +1,11 @@
+// spec: naming another file's `private` name is an error that says whose it is (design.md 15: "helper is private to zlib/inflate.kpp"), for a function, a type and a constant
+// factorio: none yet; the converted C libraries' `static` names, once private, are named only in their own files
+// error: private_name_from_another_file_is_error.kpp:8: error: 'secret' is private to
+// error: private_name_from_another_file_is_error.kpp:9: error: 'Hidden' is private to
+// error: private_name_from_another_file_is_error.kpp:10: error: 'LIMIT' is private to
+int main()
+{
+  int a = secret();
+  Hidden h;
+  return a + LIMIT;
+}

@@ -83,7 +83,13 @@ $steps = @(
   @{ name = 'another body edited while the error stays'; expect = '(build exit 1)'; edit = { Edit 'locals.kpp' '+ depth(0); }' '+ depth(1); }' } },
   @{ name = 'the error fixed (the modules changed meanwhile assembled)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Edit 'holders.kpp' 'Frame f; int* bad = 5; return' 'Frame f; return' } },
   @{ name = 'new file'; expect = '7 44 1 103 12 11 7 6 16 1 5 8 15 1 17 23 89 344 15 12'; edit = { Set-Content (Join-Path $src 'extra.kpp') 'int scale(double v) { return 1; }' } },
-  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } }
+  @{ name = 'file removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Remove-Item (Join-Path $src 'extra.kpp') } },
+  # A name private to its file (design.md 15): the file's own overload, which no other file sees,
+  # made global (every file's calls of scale(double) take it) and private again.
+  @{ name = 'a file with a private overload added (its own file''s alone)'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Set-Content (Join-Path $src 'privates.kpp') "private int scale(double v) { return 9; }`nint privateUser() { return scale(1.5); }" } },
+  @{ name = 'the private overload made global'; expect = '7 44 9 103 12 11 7 6 16 9 5 8 15 9 17 23 89 344 15 12'; edit = { Edit 'privates.kpp' 'private int scale(double v)' 'int scale(double v)' } },
+  @{ name = 'made private again'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Edit 'privates.kpp' 'int scale(double v)' 'private int scale(double v)' } },
+  @{ name = 'the file of private names removed'; expect = '7 44 44 103 12 11 7 6 16 44 5 8 15 44 17 23 89 344 15 12'; edit = { Remove-Item (Join-Path $src 'privates.kpp') } }
 )
 $n = 0
 foreach ($step in $steps)

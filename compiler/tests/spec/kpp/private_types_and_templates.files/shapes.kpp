@@ -1,0 +1,14 @@
+// Globals of private_types_and_templates.kpp's private names, of other shapes.
+struct Packer { long long a, b; };
+template<typename T> struct Box { T first, second; };
+template<typename T> T largest(T a, T b, T c) { return a + b + c; }
+enum Shade { Pale = 10, Light = 11 };
+enum class Mode { Fast = 70 };
+using Count = long long;
+constexpr int ROWS = 40;
+int created = 1000;
+int otherShapes()
+{
+  Box<char> b{'a', 'b'};
+  return int(sizeof(Packer)) + int(sizeof(b)) + largest(1, 2, 3) + int(Light) + int(Mode::Fast) + int(sizeof(Count)) + ROWS + created;
+}

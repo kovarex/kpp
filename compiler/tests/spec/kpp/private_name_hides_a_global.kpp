@@ -1,0 +1,20 @@
+// spec: a top-level declaration marked `private` is the file's own (design.md 15): in its file it hides a global name of the same spelling, from the file's functions, its global classes' members, its namespaces' functions and `::name`, while every other file sees the global
+// factorio: C's file-level `static` (16,900 file-local declarations in the 15 C libraries, design.md 15) and the game's 7 anonymous namespaces, which the converter maps to `private`
+private const int LIMIT = 1;
+private int describe() { return 10; }
+private struct Item { int a; };
+struct Gauge
+{
+  int read() const { return describe() + LIMIT; }
+};
+namespace Tools
+{
+  int twice() { return 2 * describe(); }
+}
+int main()
+{
+  Gauge g;
+  println("{} {} {} {} {} {}", LIMIT, describe(), sizeof(Item), g.read(), Tools::twice(), ::describe());
+  println("{}", fromOther());
+  return 0;
+}

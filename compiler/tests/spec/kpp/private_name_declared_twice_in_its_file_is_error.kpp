@@ -1,0 +1,12 @@
+// spec: two declarations of one name private to one file are a clash, as two globals are ("top-level names are global"): a file's private names are one scope of their own; and `private` is for a file's top-level names: inside a namespace it is an error, not a global name
+// factorio: none; the rule beside kpp/private_names_of_two_files_do_not_clash
+// error: private_name_declared_twice_in_its_file_is_error.kpp:7: error: 'PARTS' is declared here and at
+// error: private_name_declared_twice_in_its_file_is_error.kpp:10: error: private is for a file's top-level declarations
+private const int PARTS = 3;
+private int helper() { return 1; }
+private int PARTS() { return 4; }
+namespace Inner
+{
+  private int nested() { return 2; }
+}
+int main() { return helper(); }

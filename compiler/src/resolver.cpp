@@ -238,6 +238,26 @@ static thread_local DependencyList* recordingInto = nullptr;
 // checked again takes back what it reported (Impl::forgetErrorsOf), one that is not keeps it.
 static thread_local const void* reportingUnit = nullptr;
 
+// The file this thread's lookups are made for (null: none known): its private names (design.md 15)
+// are found before the global ones. Set by what walks or types a declaration (FileOfLookups).
+static thread_local const ParsedFile* lookupFile = nullptr;
+
+namespace
+{
+  struct FileOfLookups
+  {
+    const ParsedFile* saved;
+    explicit FileOfLookups(const ParsedFile* file) : saved(lookupFile)
+    {
+      if (file)
+        lookupFile = file;
+    }
+    ~FileOfLookups() { lookupFile = saved; }
+    FileOfLookups(const FileOfLookups&) = delete;
+    FileOfLookups& operator=(const FileOfLookups&) = delete;
+  };
+}
+
 // A cached computation's reads, collected (CollectUses): kind 0 is a name (its RecordedName in
 // what's bits), else a use.
 using CollectedUse = std::pair<uint8_t, const void*>;
@@ -434,6 +454,7 @@ struct Scope
   Scope* parent;
   Decl* owner; // Null for the global namespace; one of possibly several NamespaceDecls otherwise.
   uint32_t name = UINT32_MAX;
+  const ParsedFile* privateTo = nullptr; // a file's private names (design.md 15): that file
   uint32_t id = nextScopeId.fetch_add(1, std::memory_order_relaxed); // what a lookup in it is recorded with (memberName)
 
   // Symbol table, sharded for the heavily shared namespace scopes.
@@ -633,6 +654,7 @@ struct GlobalScope::Impl
   };
   Scope root{ScopeKind::Namespace, nullptr, nullptr, 256};
   std::mutex deferredMutex;
+  std::vector<std::pair<const ParsedFile*, Scope*>> privateScopes; // each file's private names (design.md 15), as indexFile made them
   std::vector<std::pair<Decl*, Scope*>> deferredQualified; // Out-of-line class/enum definitions.
   std::vector<std::pair<FunctionDecl*, Scope*>> deferredFunctions; // Out-of-line member function definitions.
   std::vector<std::pair<VariableDecl*, Scope*>> deferredVariables; // Out-of-line static data member definitions.
@@ -1475,6 +1497,7 @@ struct GlobalScope::Impl
   {
     for (auto& [f, context] : deferredFunctions)
     {
+      FileOfLookups ofFile(f->file);
       QualifiedName qualifier = f->name;
       qualifier.parts.count -= 1;
       LocalStack params;
@@ -2116,12 +2139,40 @@ struct GlobalScope::Impl
     return *best;
   }
 
+  // The private names (design.md 15) of the file a lookup from context is made for: that of the
+  // innermost private scope, class or enum around context, else the thread's (lookupFile: a
+  // namespace's scope is every file's).
+  Scope* privateScopeFor(Scope* context)
+  {
+    const ParsedFile* file = nullptr;
+    for (Scope* s = context; !file && s; s = s->parent)
+      if (s->privateTo)
+        file = s->privateTo;
+      else if (s->owner && s->owner->kind != NodeKind::NamespaceDecl)
+        file = s->owner->file;
+    if (!file)
+      file = lookupFile;
+    return file ? file->privateScope : nullptr;
+  }
+
+  // Another file than from's that declares symbol private (design.md 15), the first in file order,
+  // for the error of naming it (null: none).
+  const ParsedFile* filePrivateTo(uint32_t symbol, const ParsedFile* from)
+  {
+    for (auto& [file, own] : privateScopes)
+      if (file != from && own->find(symbol))
+        return file;
+    return nullptr;
+  }
+
   Scope* lexicalScopeOf(Decl* d)
   {
     for (Decl* p = d ? d->parent : nullptr; p; p = p->parent)
       if (p->ownScope)
         return p->ownScope;
-    return &root;
+    // A top-level declaration of a file with private names is in the file's view of the global
+    // scope: those names first (design.md 15), whichever file's walk asks.
+    return d && d->file && d->file->privateScope ? d->file->privateScope : &root;
   }
 
   // Resolves a type to the scope it denotes (class/enum/namespace scope), following aliases.
@@ -2438,6 +2489,10 @@ struct GlobalScope::Impl
     std::vector<std::pair<Scope*, Scope*>> nominated; // (the namespace their names are visible in, the nominated namespace)
     for (Scope* s = context; s; s = s->parent)
     {
+      // The file's private names (design.md 15) hide the global ones of the same spelling.
+      if (s == &root)
+        if (Scope* own = privateScopeFor(context); own && lookupInScope(own, symbol, out, depth, false) && found(out))
+          return out;
       if (!usingsTried && s->kind == ScopeKind::Namespace)
       {
         usingsTried = true;
@@ -2950,6 +3005,16 @@ struct GlobalScope::Impl
     return l;
   }
 
+  // A lookup in s, and in the global scope (`::helper`) first in the private names of the file the
+  // lookup from context is made for (design.md 15), which hide the global ones there.
+  bool lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth)
+  {
+    if (s == &root)
+      if (Scope* own = privateScopeFor(context); own && lookupInScope(own, symbol, out, depth, false))
+        return true;
+    return lookupInScope(s, symbol, out, depth);
+  }
+
   Lookup lookupWritten(const QualifiedName& name, Scope* context, const LocalStack* locals, int depth, const Subst* subst = nullptr)
   {
     Lookup out;
@@ -2985,7 +3050,7 @@ struct GlobalScope::Impl
         if (!last)
           return {};
         if (current)
-          lookupInScope(current, part.symbol, out, depth);
+          lookupInScopeOrPrivate(current, context, part.symbol, out, depth);
         else
           out = lookupUnqualified(part.symbol, context, locals, depth);
         return out;
@@ -2998,7 +3063,7 @@ struct GlobalScope::Impl
         uint32_t symbol = opSymbols[part.opToken];
         out = Lookup{};
         if (current)
-          lookupInScope(current, symbol, out, depth);
+          lookupInScopeOrPrivate(current, context, symbol, out, depth);
         else
           out = lookupUnqualified(symbol, context, locals, depth);
         return out;
@@ -3018,7 +3083,7 @@ struct GlobalScope::Impl
       Lookup step;
       if (current)
       {
-        if (!lookupInScope(current, part.symbol, step, depth))
+        if (!lookupInScopeOrPrivate(current, context, part.symbol, step, depth))
           return {};
       }
       else
@@ -16365,6 +16430,7 @@ struct GlobalScope::Impl
     ResolveStats scratch;
     Walker probe(*this, scratch, *file->tokens, file->text);
     probe.file = file;
+    FileOfLookups walkedFile(file);
     probe.scope = lexicalScopeOf(owner);
     probe.activeSubst = &s;
     probe.probing = true;
@@ -16407,6 +16473,7 @@ struct GlobalScope::Impl
     ResolveStats scratch;
     Walker probe(*this, scratch, *tokens, text);
     probe.file = f ? f->file : nullptr;
+    FileOfLookups walkedFile(f ? f->file : nullptr);
     probe.scope = ctx.scope;
     probe.activeSubst = ctx.subst;
     if (ctx.locals)
@@ -17385,6 +17452,8 @@ struct GlobalScope::Impl
           spelled.starts_with("_MM_"))
         return;
       std::string message = "'" + std::string(spelled) + "' is not declared";
+      if (const ParsedFile* owner = impl.filePrivateTo(name.parts[0].symbol, file))
+        message = "'" + std::string(spelled) + "' is private to " + owner->path;
       if (activeSubst)
       {
         reportInInstance(token, message);
@@ -18027,6 +18096,7 @@ struct GlobalScope::Impl
       local.collectWhy = stats.collectWhy;
       Walker sub(impl, local, *file->tokens, file->text);
       sub.file = file;
+      FileOfLookups walkedFile(file);
       sub.scope = bodyScope;
       sub.thisType = bodyThis;
       sub.activeSubst = &subst;
@@ -18071,6 +18141,7 @@ struct GlobalScope::Impl
       mine.collectWhy = sub.stats.collectWhy;
       Walker member(impl, mine, sub.tokens, sub.text);
       member.file = sub.file;
+      FileOfLookups walkedFile(sub.file);
       member.scope = sub.scope;
       member.thisType = sub.thisType;
       member.activeSubst = &merged;
@@ -20927,6 +20998,7 @@ struct GlobalScope::Impl
         ResolveStats scratch;
         Walker probe(impl, scratch, tokens, text);
         probe.file = file;
+        FileOfLookups walkedFile(file);
         probe.scope = scope;
         probe.locals = locals;
         probe.activeSubst = activeSubst;
@@ -22582,6 +22654,7 @@ struct GlobalScope::Impl
     }
     Walker sub(*this, local, *env.tokens, env.text);
     sub.file = env.file;
+    FileOfLookups walkedFile(env.file);
     sub.scope = env.scope;
     sub.thisType = env.thisType;
     sub.activeSubst = &full;
@@ -22816,6 +22889,7 @@ struct GlobalScope::Impl
       local->collectWhy = dw->into->collectWhy;
       Walker w(*this, *local, *dw->file->tokens, dw->file->text);
       w.file = dw->file;
+      FileOfLookups walkedFile(dw->file);
       w.scope = dw->scope;
       w.thisType = dw->thisType;
       w.locals.items = dw->locals;
@@ -22840,6 +22914,7 @@ struct GlobalScope::Impl
       ResolveStats scratch;
       Walker w(*this, scratch, *ft.def->file->tokens, ft.def->file->text);
       w.file = ft.def->file;
+      FileOfLookups walkedFile(ft.def->file);
       w.scope = ft.bodyScope;
       w.runFunctionInstance(inst, ft);
       return;
@@ -22850,6 +22925,7 @@ struct GlobalScope::Impl
     ResolveStats scratch;
     Walker w(*this, scratch, *c->file->tokens, c->file->text);
     w.file = c->file;
+    FileOfLookups walkedFile(c->file);
     w.scope = c->ownScope;
     w.instantiationDepth = t.depth;
     Subst subst = substFor(t.classTy);
@@ -22894,7 +22970,19 @@ GlobalScope::~GlobalScope()
 
 void GlobalScope::indexFile(ParsedFile& file)
 {
-  impl->indexDecls(file.decls, &impl->root);
+  // A file's private names (design.md 15) are a scope of their own, which the lookups made for the
+  // file reach before the global one (privateScopeFor); every other declaration is global.
+  file.privateScope = nullptr;
+  for (Decl* d : file.decls)
+    if (d->filePrivate && !file.privateScope)
+    {
+      file.privateScope = new Scope(ScopeKind::Namespace, &impl->root, nullptr, 8);
+      file.privateScope->privateTo = &file;
+      std::lock_guard lock(impl->deferredMutex);
+      impl->privateScopes.push_back({&file, file.privateScope});
+    }
+  for (Decl* d : file.decls)
+    impl->indexDecl(d, d->filePrivate ? file.privateScope : &impl->root);
   if (!file.castCandidates.empty())
   {
     std::lock_guard lock(impl->deferredMutex);
@@ -22917,6 +23005,7 @@ void GlobalScope::finishIndex()
     pending.swap(impl->deferredQualified);
     for (auto& [d, context] : pending)
     {
+      FileOfLookups ofFile(d->file);
       const QualifiedName& name = d->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(d)->name
                                                                  : static_cast<EnumDecl*>(d)->name;
       QualifiedName qualifier = name;
@@ -22944,6 +23033,7 @@ void GlobalScope::finishIndex()
   // Attach out-of-line static data member definitions to the declarations in their classes.
   for (auto& [v, context] : impl->deferredVariables)
   {
+    FileOfLookups ofFile(v->file);
     QualifiedName qualifier = v->name;
     qualifier.parts.count -= 1;
     LocalStack params;
@@ -22991,6 +23081,9 @@ void GlobalScope::finishIndex()
   impl->deferredVariables.clear();
   std::unordered_set<Scope*> seen;
   impl->sortEntries(&impl->root, seen);
+  std::sort(impl->privateScopes.begin(), impl->privateScopes.end(), [](const auto& a, const auto& b) { return a.first->index < b.first->index; });
+  for (auto& [file, own] : impl->privateScopes)
+    impl->sortEntries(own, seen);
   impl->collectTemplateParamNames(&impl->root);
   // `using enum E;` in classes and namespaces: resolved here, single-threaded, so that the
   // parallel lookups only read them.
@@ -23014,6 +23107,7 @@ void GlobalScope::finishIndex()
   std::stable_sort(impl->deferredGuides.begin(), impl->deferredGuides.end(), byDecl);
   for (auto& [g, context] : impl->deferredGuides)
   {
+    FileOfLookups ofFile(g->file);
     Lookup l = impl->lookupQualified(g->name, context, nullptr, 0);
     Decl* cls = l.overloads ? Impl::primaryOf(*l.overloads) : l.decl;
     if (!cls || cls->kind != NodeKind::ClassDecl || cls->templateParams.empty() || !g->target)
@@ -23037,13 +23131,19 @@ void GlobalScope::finishIndex()
   // `constexpr Pair<int, Mode> five(a, m);`: an object when a and m are variables.
   std::stable_sort(impl->objectCandidates.begin(), impl->objectCandidates.end(), byDecl);
   for (auto& [f, context] : impl->objectCandidates)
+  {
+    FileOfLookups ofFile(f->file);
     impl->objectFromFunctionDeclaration(f, context);
+  }
   impl->objectCandidates.clear();
   // `(HANDLE) -1`: a cast when HANDLE is a type (every type name is known now, no walk has begun).
   std::stable_sort(impl->castFiles.begin(), impl->castFiles.end(), [](ParsedFile* a, ParsedFile* b) { return a->index < b->index; });
   for (ParsedFile* file : impl->castFiles)
+  {
+    FileOfLookups ofFile(file);
     for (auto& [b, where] : file->castCandidates)
       impl->castFromBinary(b, where);
+  }
   impl->castFiles.clear();
   // A later declaration of an extern "C" function with its parameter types is that function, with
   // C linkage; an overload (`float sqrtf2(float)` beside C's `double sqrtf2(double)`) is not.
@@ -23310,6 +23410,7 @@ void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens
 {
   Impl::Walker walker(*impl, stats, tokens, text);
   walker.file = &file;
+  FileOfLookups walkedFile(&file);
   walker.walkDecls(file.decls);
 }
 
@@ -23550,6 +23651,10 @@ std::vector<std::string> GlobalScope::topLevelClashes()
         for (const Entry& e : entries)
           if (e.scope && e.scope->kind == ScopeKind::Namespace && e.scope->parent == namespaces[n] && listed.insert(e.scope).second)
             namespaces.push_back(e.scope);
+  // Each file's private names (design.md 15), among themselves: they hide the global ones and never
+  // meet another file's.
+  for (auto& [file, own] : impl->privateScopes)
+    namespaces.push_back(own);
   for (Scope* scope : namespaces)
     for (uint32_t i = 0; i < scope->shardCount; ++i)
       for (const auto& [symbol, entries] : scope->shards[i].map)
@@ -23919,7 +24024,8 @@ std::string GlobalScope::qualifiedName(Decl* d)
         parts.push_back(n);
     }
   }
-  std::string result;
+  // (a member defined out of line, `int Packer::add(int)`, is its class's: private when it is)
+  std::string result = filePrivatePrefix(owningClass(d) ? owningClass(d) : d);
   for (size_t i = parts.size(); i-- > 0;)
     result += parts[i] + "::";
   return result + own(d);
@@ -24172,6 +24278,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   Subst subst = toSubst(args);
   ResolveStats scratch;
   Impl::Walker w(impl, scratch, *f->file->tokens, f->file->text);
+  FileOfLookups walkedFile(f->file);
   w.retypingElements = retypingElements;
   w.keepConstexprBranches = keepBranches;
   if (!args.elementPacks.empty())
@@ -24311,6 +24418,7 @@ Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args
   record->init = copy;
   ResolveStats scratch;
   Impl::Walker w(impl, scratch, *v->file->tokens, v->file->text);
+  FileOfLookups walkedFile(v->file);
   for (Decl* p = v; p; p = p->parent)
     for (Decl* tp : p->templateParams)
       w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
@@ -24839,6 +24947,7 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       mine.collectWhy = rc.collectWhy;
       Impl::Walker member(*impl, mine, *rc.file->tokens, rc.file->text);
       member.file = rc.file;
+      FileOfLookups walkedFile(rc.file);
       member.scope = rc.scope;
       member.thisType = rc.thisType;
       member.activeSubst = &rc.subst;
@@ -24889,6 +24998,7 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       ResolveStats scratch;
       Impl::Walker w(*impl, scratch, *f->tokens, f->text);
       w.file = f;
+      FileOfLookups walkedFile(f);
       w.runFunctionInstance(r, task); // (the record keeps a new Recheck, the same)
     }
     if (r->deducedReturn != deducedBefore)

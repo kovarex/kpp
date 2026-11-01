@@ -1461,7 +1461,24 @@ namespace
       size_t mark = scratch.size();
       uint32_t start = pos;
       pendingAlignment = nullptr; // an alignas belongs to the declaration it is written in, never the next one
+      // `private int helper();` at file scope: the declaration's names are its file's own (design.md 15).
+      bool filePrivate = false;
+      if (scope == Scope::Namespace && at(Kw::private_) && !at(P::Colon, 1))
+      {
+        if (currentParent || cMode)
+          out.diagnostics.push_back({pos, "private is for a file's top-level declarations, not a namespace's"});
+        filePrivate = !currentParent && !cMode;
+        advance();
+      }
       parseDeclarationInner(scope, {});
+      if (filePrivate && !inRecovery)
+        for (size_t i = mark; i < scratch.size(); ++i)
+        {
+          Decl* d = static_cast<Decl*>(scratch[i]);
+          if (d->kind == NodeKind::NamespaceDecl || d->kind == NodeKind::ImportDecl || (d->flags & DF_ExternC))
+            out.diagnostics.push_back({d->token, "a private declaration declares a name of its file: no namespace, import or extern \"C\""});
+          d->filePrivate = true;
+        }
       if (inRecovery)
       {
         scratch.resize(mark);

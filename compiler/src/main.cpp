@@ -2515,6 +2515,14 @@ namespace
       for (const DeclaredFunction* d : added)
         if (where == d->f)
           return why = "an added function has a cast to rewrite", false;
+    // A private one's name is in its file's private scope, which only a whole index makes (a name
+    // made private or global is one of these: removed as the one, added as the other).
+    for (const DeclaredFunction* d : added)
+      if (d->f->filePrivate)
+        return why = "an added function is private to its file", false;
+    for (const DeclaredFunction* d : removed)
+      if (d->f->filePrivate)
+        return why = "a removed function is private to its file", false;
     for (const DeclaredFunction* d : removed)
       out.removed.push_back({d->f, d->container});
     for (const DeclaredMember* d : addedMembers)

@@ -1,0 +1,29 @@
+// spec: two files' private class templates and function templates of one name instantiated with the same arguments, and private classes of one name with virtual functions and a static data member, are each file's own (their instances, vtables and statics apart); a global template calling its file's private helper does so wherever it is instantiated, beside another file's private helper of that name
+// factorio: the converted C libraries' file-local helpers (design.md 15), called from macros-turned-templates and from functions the game's files instantiate
+private template<typename T> struct Box
+{
+  T value;
+  T get() const { return value + 1; }
+};
+private template<typename T> T scale(T x) { return x * 2; }
+private struct Shape
+{
+  static int made;
+  virtual int sides() const { return 3; }
+};
+int Shape::made = 7;
+private int helper() { return 5; }
+template<typename T> T withHelper(T x) { return x + T(helper()); }
+int fromHere()
+{
+  Box<int> b{10};
+  Shape s;
+  const Shape& r = s;
+  return b.get() + scale(3) + r.sides() + Shape::made;
+}
+int main()
+{
+  println("{} {}", fromHere(), fromThere());
+  println("{} {}", withHelper(100), viaOther());
+  return 0;
+}

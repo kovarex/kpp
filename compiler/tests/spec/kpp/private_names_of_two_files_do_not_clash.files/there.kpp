@@ -1,0 +1,10 @@
+// The same private names as private_names_of_two_files_do_not_clash.kpp, other entities.
+private int helper() { return 100; }
+private const int SCALE = 3;
+private int counter = 50;
+private struct Node { int a, b, c, d; };
+int fromThere()
+{
+  counter += 10;
+  return helper() * SCALE + counter + int(sizeof(Node));
+}

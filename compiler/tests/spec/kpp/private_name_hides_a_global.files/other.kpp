@@ -1,0 +1,5 @@
+// The globals private_name_hides_a_global.kpp's privates hide there.
+const int LIMIT = 100;
+int describe() { return 1000; }
+struct Item { int a, b, c; };
+int fromOther() { return LIMIT + describe() + int(sizeof(Item)); }

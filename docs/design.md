@@ -825,6 +825,28 @@ anonymous namespaces to it. Owners: thread A the language (resolver, specs), thr
 converter. It replaces the renaming lists (`private-names.txt`) and the macros written out as
 values.
 
+As built (thread A, 2026-11-01; specs `kpp/private_*`):
+- `private` goes before the whole declaration (`private template<typename T> struct Box {...};`)
+  and applies to every name it declares: a function, a variable or constant, a class, an enum, an
+  alias, a template. A member defined out of line (`int Packer::add(int)`) is its class's.
+- Only in the global namespace: `private` inside a namespace is an error ("private is for a file's
+  top-level declarations, not a namespace's"; the game's 7 anonymous namespaces are all at file
+  scope), and so is a private namespace, import or `extern "C"` declaration.
+- A file's private names are a scope of their own. A lookup made for the file (from its functions,
+  its global classes' members, its namespaces' functions, and `::name`) finds them before the
+  global scope, so they hide a global or standard-library name of the same spelling there. A global
+  template whose body calls its file's private helper calls that helper wherever it is
+  instantiated.
+- Two private declarations of one name in one file are the usual clash ("top-level names are
+  global"); two files' never meet. Naming another file's private name is "'helper' is private to
+  PATH".
+- In the IR a private entity's symbols and types carry its file (`inflate.kpp@<hash of the
+  path>::helper`), so two files' private functions, globals, classes, vtables and template
+  instances of one name stay apart.
+- The compile server rebuilds in full when a function made private or global is added or removed
+  (the private scope comes from a whole index); body edits in a file with private names stay
+  incremental.
+
 ### 16. Library scopes: qualified by default, a library may be unscoped (decided 2026-11-01)
 
 kovarex, 2026-11-01: "adding library means that I have to change unrelated code to remove

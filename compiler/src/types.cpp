@@ -585,7 +585,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       snprintf(at, sizeof at, "@%u", d->token); // the token it is declared at
       name += at;
     }
-    return name;
+    return filePrivatePrefix(d) + name; // (two files' private classes of one name: design.md 15)
   };
   switch (t->kind)
   {

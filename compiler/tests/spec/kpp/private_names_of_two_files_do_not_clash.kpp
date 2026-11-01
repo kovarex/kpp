@@ -1,0 +1,17 @@
+// spec: two files' `private` names of one spelling never clash (design.md 15): each file has its own function, constant, variable and type of the name, with its own layout, and the program has both
+// factorio: SDL3 reuses 316 file-local names across its files, curl 82, jpeg 28, zstd 26, Lua 24 (design.md 15), which the converter renamed one by one before
+private int helper() { return 1; }
+private const int SCALE = 2;
+private int counter = 5;
+private struct Node { int a; };
+int fromHere()
+{
+  counter += 1;
+  return helper() * SCALE + counter + int(sizeof(Node));
+}
+int main()
+{
+  println("{} {}", fromHere(), fromThere());
+  println("{} {}", fromHere(), fromThere());
+  return 0;
+}

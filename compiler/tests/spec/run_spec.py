@@ -25,6 +25,8 @@ specification of what kppc can and cannot do yet, with the first compiler compla
 
 A <name>.c next to a snippet is a C library of its own: compiled with clang and linked into the
 snippet's executable (`--lib`), for what only a real C object shows (the variables it defines).
+A <name>.files directory next to a snippet holds more Kpp files of its program, compiled with it,
+for what only several files show (a name private to its file); they are no snippets themselves.
 
     python compiler\\tests\\spec\\run_spec.py [--filter TEXT] [--jobs N] [--no-doc] [--release] [--debug-info]
 
@@ -135,8 +137,10 @@ def run_one(path):
         libs = ["--lib", obj]
     if info["run"] is not None or info["test"] is not None:
         return finish(run_command(path, info, libs, expected_path, result))
+    companions = os.path.splitext(path)[0] + ".files"
+    sources = [path, companions] if os.path.isdir(companions) else [path]
     try:
-        c = subprocess.run([KPPC, "--quiet", *EXTRA, *shlex.split(info["kppc"]), *libs, "--exe", exe, path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        c = subprocess.run([KPPC, "--quiet", *EXTRA, *shlex.split(info["kppc"]), *libs, "--exe", exe, *sources], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except subprocess.TimeoutExpired:
         result["status"] = "FAIL"; result["note"] = "compiler timed out"; return finish(result)
     if info["errors"]:
@@ -284,7 +288,7 @@ def main():
         print("no compiler at", KPPC); return 2
     os.makedirs(OUT, exist_ok=True)
     files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(HERE) for f in fn
-                   if f.endswith(".kpp") and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
+                   if f.endswith(".kpp") and not dp.endswith(".files") and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(run_one, files))
