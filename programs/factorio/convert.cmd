@@ -106,7 +106,7 @@ rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each
 rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
 echo == tests codegen errors: %WHOLE% with UnitTest++ and tests (all errors in kpp\tests-errors.txt)
 set L=%WHOLE%\libraries
-%KPPC% --std ..\..\stdlib %CINC% --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
+%KPPC% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
 set TESTSRC=%errorlevel%
 %SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
 if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %TESTSRC%)
