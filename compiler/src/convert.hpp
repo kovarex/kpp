@@ -68,3 +68,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
                          const std::vector<std::filesystem::path>& roots, const std::filesystem::path& outDir,
                          const std::filesystem::path& overridesDir = {}, const SourceConfiguration* configuration = nullptr,
                          const std::filesystem::path& libraryDir = {}, const std::filesystem::path& baseDir = {});
+// The errors the last convertToKpp found that leave its output wrong, which it printed: C, an #if
+// name that nothing defines and the library's c-libraries\NAME\undefined.txt does not list. kppc
+// exits 1.
+int convertErrorCount();

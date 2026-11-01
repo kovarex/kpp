@@ -1787,6 +1787,8 @@ namespace
         convertToKpp(inputs, global, symbols, roots, options.convertDir, options.overridesDir, options.configuration, options.conversionLibrary,
                      options.convertBase);
       report("convert: %s\n%s", options.convertDir.c_str(), summary.c_str());
+      if (convertErrorCount())
+        codegenExit = 1;
       reportAccessWarnings(build); // over the C++ the conversion read, its friends still declared
     }
     for (size_t i = 0; i < top.size() && int(i) < options.showUnresolved; ++i)

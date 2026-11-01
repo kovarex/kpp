@@ -594,6 +594,7 @@ namespace
     std::string configured;                              // the text, the dropped lines and every conditional directive blanked
     std::vector<std::pair<uint32_t, uint32_t>> dropped;  // the [begin, end) offsets of the lines the configuration drops
     std::vector<std::pair<uint32_t, std::string>> notes; // the #if lines that test a symbol nothing defines, with a TODO text
+    std::vector<std::set<std::string>> noteNames;        // and those symbols, a set per note
     MacroTable defined;                                  // the object-like macros it leaves defined beyond the build's (its includes' too)
     std::set<std::string> undefined;                     // the build's or its includes' macros it #undefs
     // What blankForParse took out of `configured` for the parse: [offset, offset + length) of the
@@ -651,6 +652,7 @@ namespace
         for (const std::string& name : undefined)
           names += (names.empty() ? "" : ", ") + name;
         out.notes.push_back({at, line + ": " + names + " defined by no build flag and no converted file it includes, so undefined"});
+        out.noteNames.push_back(undefined);
       }
       return value;
     };
@@ -786,7 +788,10 @@ namespace
           table[name] = body;
           out.undefined.erase(name);
           if (name == pendingGuard && pendingNote != SIZE_MAX && pendingNote < out.notes.size())
+          {
             out.notes.erase(out.notes.begin() + pendingNote);
+            out.noteNames.erase(out.noteNames.begin() + pendingNote);
+          }
         }
       }
       else if (word == "undef")
@@ -9489,6 +9494,7 @@ struct SourceConfiguration::Impl
   std::set<std::string> cPrivateNames;             // private-names.txt: names the library keeps to its files (stb_truetype's stbrp_*)
   std::map<std::string, std::string> cIncluderHeaders; // includer-headers.txt: a header, by file name -> the header its includers include first
   MacroTable cLibraryBase;                         // cDefines without the library's defines.txt: how the program's imports see its headers
+  std::set<std::string> cKnownUndefined;           // undefined.txt: the #if names the library's C build leaves undefined
 
   // A header as the program imports it (C: without the library's own defines, its *_IMPLEMENTATION
   // switches): the configured text, the branches it leaves out blank.
@@ -9867,6 +9873,32 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
         }
       }
   }
+  // The #if names nothing defines that the library's C build leaves undefined too, one a line,
+  // checked against clang-cl's -dM of each of its source files with the library's flags: any other
+  // is an error (convertToKpp), as the converter does not read the C runtime's and Windows' headers
+  // (trionan.c's FLT_RADIX, DBL_MAX_EXP and DBL_MANT_DIG were taken as undefined: a negative zero
+  // printed 0).
+  if (cSources && !overridesDir.empty())
+    if (FILE* f = fopen((overridesDir / "undefined.txt").string().c_str(), "rb"))
+    {
+      std::string names;
+      char buffer[4096];
+      size_t n;
+      while ((n = fread(buffer, 1, sizeof buffer, f)) > 0)
+        names.append(buffer, n);
+      fclose(f);
+      for (size_t pos = 0; pos < names.size();)
+      {
+        size_t end = names.find('\n', pos);
+        if (end == std::string::npos)
+          end = names.size();
+        std::string line = names.substr(pos, end - pos);
+        pos = end + 1;
+        size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
+        if (a != std::string::npos && line[a] != '#')
+          impl->cKnownUndefined.insert(line.substr(a, b - a + 1));
+      }
+    }
   impl->paths = paths;
   impl->texts = texts;
   impl->roots = roots;
@@ -10035,6 +10067,12 @@ std::set<std::string> libraryTypeNames(const std::filesystem::path& libraryDir)
     }
   }
   return names;
+}
+
+static int convertErrors = 0;
+int convertErrorCount()
+{
+  return convertErrors;
 }
 
 std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& global, const SymbolTable& symbols,
@@ -10273,6 +10311,31 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
   // ShaderProgram.hpp (the OpenGL renderer's) names the namespace VertexLayout as a type,
   // ItemStackChangeWatcher.hpp assigns an ItemWithQualityID to an ItemID. The includes are read
   // from the text, those in dropped #if branches too, so no header that may be included goes.
+  // C: an #if name that nothing defines is undefined only where the library's undefined.txt says
+  // the C build leaves it so; any other is an error, an #if the conversion may answer otherwise than C.
+  convertErrors = 0;
+  if (configuration && configuration->impl->cBuild)
+  {
+    std::map<std::string, std::string> unknown; // name -> where first
+    for (size_t k = 0; k < inputs.size(); ++k)
+      if (inputs[k].c && configuration->impl->results[k])
+      {
+        const Preprocessed& p = *configuration->impl->results[k];
+        for (size_t n = 0; n < p.noteNames.size() && n < p.notes.size(); ++n)
+          for (const std::string& name : p.noteNames[n])
+            if (!configuration->impl->cKnownUndefined.count(name) && !unknown.count(name))
+            {
+              size_t at = std::min<size_t>(p.notes[n].first, inputs[k].text.size());
+              unknown[name] = inputs[k].path.string() + ":" + std::to_string(1 + std::count(inputs[k].text.begin(), inputs[k].text.begin() + at, '\n'));
+            }
+      }
+    for (const auto& [name, where] : unknown)
+    {
+      fprintf(stderr, "%s: error: an #if tests %s, which nothing the conversion reads defines and the library's undefined.txt does not list\n",
+              where.c_str(), name.c_str());
+      ++convertErrors;
+    }
+  }
   std::vector<bool> reached(inputs.size(), false);
   {
     std::vector<size_t> work;

@@ -1,0 +1,13 @@
+# The #if names this library's conversion takes as undefined, which nothing it reads defines; any
+# other is an error (kppc --convert). Each is undefined in the C build too: clang-cl's -dM of each
+# source file with the library's flags (build.kpp's, flags.txt) has none of them
+# (docs/path-to-factorio.md, "Converting the C libraries").
+FONS_STATIC
+FONS_USE_FREETYPE
+STBTT_vmove
+STB_RECT_PACK_VERSION
+stbtt_uint8
+stbtt_vertex
+# Defined in the C build, but every #if testing it is answered the same:
+# __cplusplus: the C++ build compiles fontstash.cpp as C++; fontstash.h's and stb_truetype.h's `#ifdef __cplusplus` are `extern "C" {` and its `}`: C linkage, which the conversion gives
+__cplusplus

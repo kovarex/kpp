@@ -1,0 +1,26 @@
+# The #if names this library's conversion takes as undefined, which nothing it reads defines; any
+# other is an error (kppc --convert). Each is undefined in the C build too: clang-cl's -dM of each
+# source file with the library's flags (build.kpp's, flags.txt) has none of them
+# (docs/path-to-factorio.md, "Converting the C libraries").
+STBI_FAILURE_USERMSG
+STBI_NEON
+STBI_NO_FAILURE_STRINGS
+STBI_NO_LINEAR
+STBI_NO_STDIO
+STBI_ONLY_BMP
+STBI_ONLY_GIF
+STBI_ONLY_HDR
+STBI_ONLY_JPEG
+STBI_ONLY_PIC
+STBI_ONLY_PNG
+STBI_ONLY_PNM
+STBI_ONLY_PSD
+STBI_ONLY_TGA
+STBI_ONLY_ZLIB
+STBI_WRITE_NO_STDIO
+STB_IMAGE_STATIC
+STB_IMAGE_WRITE_STATIC
+__MINGW32__
+# Defined in the C build, but every #if testing it is answered the same:
+# __cplusplus: the C++ build compiles stb_image.cpp as C++; stb_image.hpp's and stb_image_write.h's `#ifdef __cplusplus` are `extern "C"` (blocks and STBI_EXTERN, STBIWDEF): C linkage, which the conversion gives
+__cplusplus

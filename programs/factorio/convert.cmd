@@ -66,7 +66,7 @@ set CLIBKPP=
 set CLIBWHOLE=
 if exist kpp\clib rd /s /q kpp\clib
 for %%l in (%CLIBRARIES%) do (
-  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || exit /b 1
+  call %KPPC% --no-std --quiet --c-sources --overrides c-libraries\%%l --convert kpp\clib\%%l --convert-base %FACTORIO% --ext .c,.h,.hpp %%CLIBSRC_%%l%% %%CLIBIN_%%l%% || goto :clibfailed
   if exist "%WHOLE%\libraries\%%l" del /s /q "%WHOLE%\libraries\%%l\*.kpp" >nul
   xcopy /s /y /q /i kpp\clib\%%l\libraries\%%l "%WHOLE%\libraries\%%l" >nul
   if exist kpp\%%l rd /s /q kpp\%%l
@@ -179,3 +179,9 @@ if exist kpp\convert_c.exe del kpp\convert_c.exe
 set CRULESOK=0
 if exist kpp\convert_c.exe (kpp\convert_c.exe > kpp\convert_c.out.txt 2>&1 && fc /w kpp\convert_c.out.txt tests\convert_c.expected > nul && set CRULESOK=1)
 if %CRULES%==pending (if %CRULESOK%==1 (echo C rules: FIXED while pending: remove the pending mark& exit /b 1) else (echo C rules: pending, kpp\convert_c.log)) else (if %CRULESOK%==1 (echo C rules: output as expected) else (echo C rules: OUTPUT DIFFERS, kpp\convert_c.log& exit /b 1))
+rem (A C library's conversion that fails: `call ... || exit /b 1` inside the loop above leaves the
+rem exit code 0 when convert.cmd runs as `cmd /c convert.cmd`; a top-level exit sets it.)
+goto :eof
+:clibfailed
+echo convert: a C library's conversion failed
+exit /b 1

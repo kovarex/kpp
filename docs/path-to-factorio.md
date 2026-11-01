@@ -2172,7 +2172,11 @@ of headers the converter does not read. The C libraries' build defines have them
 every converted library: each name a conversion took as undefined in an `#if` (its notes) against
 what clang-cl, with the library's flags, defines in each of its source files (`-dM`). The others
 are trio's `defined(INFINITY) && defined(__STDC_IEC_559__)` and glad's and minizip's
-WINAPI_FAMILY_PARTITION, which C answers the same. trio now waits for
+WINAPI_FAMILY_PARTITION, which C answers the same. And so that the next library cannot take a branch
+C does not: a C library's `#if` name that nothing the conversion reads defines is an error now
+(kppc exits 1), unless its `c-libraries\NAME\undefined.txt` lists it: the names that check found
+undefined in the C build, and the few it defines whose every `#if` was read and is answered the same
+(the header-only libraries' `__cplusplus`, their `extern "C"` wrappers). trio now waits for
 `interop/c_math_classification_macros` (B): fpclassify, FP_NORMAL and FP_SUBNORMAL through the import.
 
 No inline assembly is reached in any of the 18 on x64 Windows. Pending specs:
