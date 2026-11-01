@@ -1,0 +1,21 @@
+// spec: a function declared first without a linkage and then defined `extern "C"` is one function, the C one, also when its body has a static local: calls bind to it, wherever they are
+// factorio: trio (converted as C): trionan.h's `double trio_nan(void);` before trionan.c's `extern "C" double trio_nan(void) { static double nan_value = 0.0; ... }`, called by trio.c
+// pending: the call is to the prototype's Kpp name, which is never defined or declared: "use of undefined value '@cachedValue()'" (clang rejects the module); without the static local, or without the prototype, it links (B)
+double cachedValue();
+double plainValue();
+
+extern "C" double cachedValue()
+{
+  static double cached = 0.0;
+  if (cached == 0.0)
+    cached = 1.5;
+  return cached;
+}
+
+extern "C" double plainValue() { return 2.5; }
+
+int main()
+{
+  println("{} {}", cachedValue(), plainValue());
+  return 0;
+}
