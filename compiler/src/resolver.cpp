@@ -2067,12 +2067,16 @@ struct GlobalScope::Impl
                 variableDefinitions[e.decl] = definition;
           // `extern "C" TValue* index2addr(lua_State*, int);` then `TValue* index2addr(...) {...}`:
           // a later declaration of a function declared extern "C" with the same parameter types
-          // (finishIndex compares them) is that function, with its C linkage (as C++ has it).
+          // (finishIndex compares them) is that function, with its C linkage (as C++ has it). So is
+          // an earlier one: `double trio_nan();` then `extern "C" double trio_nan() {...}` (trio
+          // converted as C, where nothing has a linkage) is one function, C's, where C++ calls two
+          // linkages of one function ill-formed ([dcl.link]/5); calls to the prototype named a
+          // mangled function nothing defined.
           for (const Entry& c : entries)
             if (c.decl && c.decl->kind == NodeKind::FunctionDecl && (c.decl->flags & DF_ExternC))
               for (const Entry& e : entries)
                 if (e.decl && e.decl != c.decl && e.decl->kind == NodeKind::FunctionDecl && !(e.decl->flags & DF_ExternC) &&
-                    declaredBefore(c.decl, e.decl) && e.decl->templateParams.empty() &&
+                    e.decl->templateParams.empty() &&
                     static_cast<FunctionDecl*>(e.decl)->params.size() == static_cast<FunctionDecl*>(c.decl)->params.size())
                   externCRedeclarations.push_back({static_cast<FunctionDecl*>(c.decl), static_cast<FunctionDecl*>(e.decl)});
         }
