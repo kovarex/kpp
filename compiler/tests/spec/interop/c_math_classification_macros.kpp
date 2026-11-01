@@ -1,6 +1,5 @@
 // spec: math.h's classification macros are usable through the C import as C uses them: fpclassify, signbit, isnan, isinf, and the FP_* constants the UCRT defines (FP_NORMAL is (-1), FP_SUBNORMAL (-2))
 // factorio: trio (converted as C): trionan.c's c99_fpclassify_and_signbit, which its `#if defined(PREDEF_STANDARD_C99) && defined(fpclassify)` selects in the C build, `switch (fpclassify(number)) { case FP_NAN: ... case FP_SUBNORMAL: ... }`
-// pending: "'fpclassify' is not declared", "'FP_NORMAL' is not declared", "'FP_SUBNORMAL' is not declared" (signbit, isnan, isinf and FP_NAN, FP_INFINITE, FP_ZERO import) (B)
 extern "C" import "math.h";
 int main()
 {

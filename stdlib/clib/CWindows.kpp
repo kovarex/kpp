@@ -6,3 +6,12 @@ extern "C" FILE* __acrt_iob_func(unsigned index);
 FILE* stdin  = __acrt_iob_func(0);
 FILE* stdout = __acrt_iob_func(1);
 FILE* stderr = __acrt_iob_func(2);
+
+// math.h's fpclassify, a macro that calls the UCRT's classifiers, whose results are its FP_NAN,
+// FP_INFINITE, FP_NORMAL (-1), FP_SUBNORMAL (-2) and FP_ZERO (isnan and the others: core/Math.kpp).
+extern "C" short _dclass(double value);
+extern "C" short _fdclass(float value);
+int fpclassify(double value) { return _dclass(value); }
+int fpclassify(float value) { return _fdclass(value); }
+template<typename T> requires isIntegral<T>
+int fpclassify(T value) { return _dclass(double(value)); }

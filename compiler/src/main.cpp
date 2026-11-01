@@ -678,6 +678,9 @@ namespace
         floatTypes[line.substr(8, nameEnd - 8)] = body.back() == 'f' || body.back() == 'F' ? "float" : "double";
         continue;
       }
+      // A negative one in parentheses is plain too (corecrt_math.h's `_FINITE (-1)`, which FP_NORMAL names).
+      if (body.size() > 3 && body.front() == '(' && body.back() == ')' && body[1] == '-')
+        body = body.substr(2, body.size() - 3);
       if (body.empty() || !isdigit((unsigned char)body[0]) || body.find_first_not_of("0123456789xXabcdefABCDEFuUlLi") != std::string::npos ||
           (body.find('i') != std::string::npos && body.find("i64") == std::string::npos && body.find("i32") == std::string::npos) ||
           (body.find_first_of("xX") == std::string::npos && body.find_first_of("abcdefABCDEF") != std::string::npos))
@@ -934,7 +937,7 @@ namespace
       includeArgs += " -I\"" + (ec ? dir : absolute.lexically_normal().string()) + "\"";
     }
     uint64_t hash = 1469598103934665603ull;
-    for (unsigned char c : "kpp import 5\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules, vaListForSysV)
+    for (unsigned char c : "kpp import 6\n" + wrapper + includeArgs) // the version of what the cache holds (macroConstants' rules, vaListForSysV)
       hash = (hash ^ c) * 1099511628211ull;
     std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
     std::filesystem::create_directories(cacheDir, ec);
