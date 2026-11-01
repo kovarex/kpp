@@ -551,7 +551,7 @@ license, minimum kpp, source roots and test roots, its sources join the program 
 it, and `kpp --test` runs its tests (build.md, "Kpp libraries"). Details, the research behind it
 and what it needs: [build.md](build.md), "The build description".
 
-### 13. Integer types and sizes (decided 2026-11-01, the size width open)
+### 13. Integer types and sizes (decided 2026-11-01)
 kovarex, 2026-11-01:
 - "Distinct fixed types, deprecate long".
 - "in Factorio, we mostly used the uint32_t and such, so I know what exactly I'm dealing with, it
@@ -560,7 +560,8 @@ kovarex, 2026-11-01:
 - "int, unsigned int, short etc, they become deprecated, I always didn't like that they were so
   ambigous."
 - "all the sizes should be unsigned not signed".
-- On the size width: decided by measurement on Factorio (below).
+- On the size width, decided by measurement on Factorio: "If it doesn't make a difference... just
+  have one String/Vector". It made none: sizes are u64 (below).
 
 **The rule.**
 - **Kpp's integer and floating types are the built-in names** `u8 u16 u32 u64 i8 i16 i32 i64` and
@@ -599,7 +600,8 @@ kovarex, 2026-11-01:
   LLVM's own library calls followed another convention until recent fixes (LLVM issue 136428).
   So kppc calls compiler-rt only through clang's lowering, never declares such calls itself, and a
   spec covers each operation on every target.
-- **`usize`: it exists (as `u64`); what it becomes waits for the size width below.**
+- **`usize` is `u64`**, the width of every size (below), so the game's `size_t` maps to `usize`
+  with no type change.
 - **`f16` later, not now.** LLVM's `half` is a storage type everywhere. arm64 (every Apple M, and
   ARMv8.2 and later) has native half arithmetic. x86-64 converts with F16C and computes in float,
   except with AVX-512 FP16, which is rare. clang's `_Float16` on Windows x64 works but calls
@@ -631,8 +633,8 @@ library (C's) writes `int` 983 times, `size_t` 99, `long long` 98, `ptrdiff_t` 9
 84 (Win32 bindings, which belong in extern "C"), `uint64_t` 62, `unsigned long long` 48 and
 `uint8_t` 41.
 
-**The size width (research; the recommendation waits for H's measurement).** Containers' sizes
-and indices are unsigned (decided). The open question is their width: `u32`, `u64`, or a
+**The size width (decided 2026-11-01: u64, one String/Vector, by measurement).** Containers' sizes
+and indices are unsigned (decided). The question was their width: `u32`, `u64`, or a
 target-sized `usize`. kovarex asked: "In standard library, it used often size_t, as like the
 'natural size', which was at the time solving the 32bit versus 64bit architecture switch (that is
 how I saw it). But these days basically everything is 64bit (is it? research). Also research if
@@ -677,11 +679,27 @@ a one-line switch).
   - u64: one String/Vector everywhere, `usize` = `u64`, and the game's `size_t` maps to `usize`
     unchanged.
   - u32: C's switch, the game's narrowing sites, and a 4G limit.
-  - If the measurement shows a difference that matters, there are ways to have both:
+  - Had the measurement shown a difference that matters, there were ways to have both:
     - a size-type parameter with a default (`Vector<T, u32>`);
     - separate compact containers (`CompactVector<T>` with u32 sizes, for hot objects);
     - a per-project setting. That one changes every library's layout, so kpp.net's packages would
       need a build per setting; it is the worst of the three.
+- **The measurement** (H, kppc fe933d5b on Factorio 4c178a5b915; method and tables in
+  [test-matrix.md, "Container sizes: u32 against u64"](test-matrix.md#container-sizes-u32-against-u64-kppc-fe933d5b-factorio-4c178a5b915-2026-11-01)).
+  u64 against u32, with the same results as C++ at both widths (45/45 map checksums, 9,501/9,501
+  unit-test CRCs):
+  - time: release 0.983× on the 45 menu maps and 0.994× in the unit tests; debug 1.001× and 1.005×;
+  - size: the exe +1.3% in release; peak commit +5.8 MB (median, release) of about 440 MB;
+  - each container's header grows by the size fields (Vector 16 → 24 bytes, String 24 → 32), and
+    nothing else does;
+  - the reason u64 is not slower: the game indexes with `int`. At u32 that int becomes a u32 and is
+    zero-extended for the address, which LLVM cannot hoist out of the loop (u32 wraps); at u64 it is
+    sign-extended from an nsw counter, which induction-variable widening removes. `zext i32 to i64`
+    in the release IR falls from 54,274 to 7,401.
+
+  So the memory cost above is real but small, the loop cost goes the other way, and the 4G limit
+  and the narrowing sites go away. Following kovarex's rule, every size is u64 with no switch:
+  section 4's sizes bullet (C's) has the library side.
 
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
