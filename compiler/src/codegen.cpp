@@ -1393,6 +1393,10 @@ namespace
           if (m->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(m)->alignment)
             align = std::max(align, alignmentValue(static_cast<VariableDecl*>(m)->alignment, c, args, "the member " + memberName(m), at));
         }
+        // A [[packed]] union (ImmutableString's, in a packed class: MSVC's #pragma pack(1)) is as
+        // large as its largest member, aligned to 1: no padding up to a member's alignment.
+        if (c->attributes & ATTR_Packed)
+          align = 1;
         // The storage: integers of the union's alignment, up to i128 (LLVM's most aligned integer);
         // a member aligned to more (OptionalOwningStorage of an alignas(64) class) makes the union
         // over-aligned, its objects then aligned with `align`.

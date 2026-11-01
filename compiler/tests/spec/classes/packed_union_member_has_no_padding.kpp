@@ -1,0 +1,24 @@
+// spec: a [[packed]] anonymous union in a [[packed]] class is as large as its largest member, with no padding to the alignment of a member that needs 8 (MSVC's #pragma pack(1)): a union of a 16-byte pointer pair and 23 chars is 23 bytes, and with a one-byte flag after it the class is 24
+// factorio: Util/ImmutableString.hpp's ImmutableStringTemplate<N>, whose destructor asserts sizeof == N; PropertyTree::StringType is ImmutableStringTemplate<max(sizeof(Vector<PropertyTree>), 17)>, 24 when the library's sizes are 64-bit (`--config sizeBits=64`), and the assert failed with 25
+struct PointerPair
+{
+  void* first;
+  void* second;
+};
+
+struct [[packed]] Immutable
+{
+  union [[packed]]
+  {
+    PointerPair pair;
+    char shortText[23];
+  };
+  unsigned char flag;
+};
+
+int main()
+{
+  Immutable value;
+  println("{} {}", (int)sizeof(Immutable), (int)((char*)&value.flag - (char*)&value));
+  return 0;
+}
