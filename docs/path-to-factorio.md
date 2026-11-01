@@ -2111,6 +2111,19 @@ stbrp_init_target and stbrp_pack_rects (kpp-native's header_only.c, the same C o
 build's). TextureProcessor's own packing stays unchecked against C++: it runs only when the game
 compresses textures on the GPU, with graphics.
 
+**One source for each entity** (A's clash check, b719c5ea, found 78 names the converted game declared
+twice). fontstash.h and stb_truetype.h stay C imports (`c-libraries\fontstash\c-headers.txt`), as
+the game imports them; a header given alone that the library's defines configure otherwise than
+its import (FONTSTASH_IMPLEMENTATION) is converted without what its import declares: the header as
+the program imports it, without defines.txt, is the interface, its declarations go to their `;`,
+and the converted file imports the header itself (131 declarations). The three stbtt_PackFontRanges*
+functions take the fallback's stbrp_rect and join the private names. The others:
+- minizip's crypt.h `#if ZLIB_VERNUM < 0x1270` (its own z_crc_t) was evaluated without zlib.h's
+  macros, which every includer includes first: `c-libraries\minizip\includer-headers.txt`
+  (`crypt.h zlib.h`) configures a header with what such a provider leaves defined;
+- zlib's inflate.h enumerator OS, beside an imported constant OS: `c-libraries\zlib\private-names.txt`;
+- StackWalker's `#ifndef INVALID_FILE_ATTRIBUTES`: the converter's Windows SDK defines have it.
+
 **stb_image waits for the compiler.** Its implementation is in stb_image.hpp and
 stb_image_write.h, which stb_image.cpp compiles as C++ with its PNG writer deflating through zlib
 (`zlib_compress_stb_adapter`, hand-written in Kpp: `c-libraries/stb_image/added`). The conversion

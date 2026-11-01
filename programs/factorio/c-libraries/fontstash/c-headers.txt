@@ -1,0 +1,5 @@
+# fontstash's interface: these headers stay C, imported by the game (FontStashFactorio) and by the
+# converted files; the conversion of each, given alone with its *_IMPLEMENTATION define, keeps what
+# the import does not declare (the implementation) and imports the header itself.
+fontstash.h
+stb_truetype.h

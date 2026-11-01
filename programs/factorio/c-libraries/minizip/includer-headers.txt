@@ -1,0 +1,4 @@
+# Headers whose #if lines test a macro of a header they do not include, which each of their includers
+# includes before them: HEADER PROVIDER, by file name. crypt.h's `#if ZLIB_VERNUM < 0x1270` (its own
+# z_crc_t, which zlib.h has since 1.2.7): crypt.c, unzip.c and zip.c include zlib.h first.
+crypt.h zlib.h

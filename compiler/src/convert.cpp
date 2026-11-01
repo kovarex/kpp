@@ -220,7 +220,9 @@ namespace
     {"_WIN32_WINNT_NT4", "0x0400"}, {"_WIN32_WINNT_WIN2K", "0x0500"}, {"_WIN32_WINNT_WINXP", "0x0501"}, {"_WIN32_WINNT_WS03", "0x0502"},
     {"_WIN32_WINNT_VISTA", "0x0600"}, {"_WIN32_WINNT_LONGHORN", "0x0600"}, {"_WIN32_WINNT_WIN7", "0x0601"}, {"_WIN32_WINNT_WIN8", "0x0602"},
     {"_WIN32_WINNT_WINBLUE", "0x0603"}, {"_WIN32_WINNT_WINTHRESHOLD", "0x0A00"}, {"_WIN32_WINNT_WIN10", "0x0A00"},
-    {"ENABLE_VIRTUAL_TERMINAL_PROCESSING", "0x0004"}, {"DISABLE_NEWLINE_AUTO_RETURN", "0x0008"}, {"GUID_DEFINED", ""}};
+    {"ENABLE_VIRTUAL_TERMINAL_PROCESSING", "0x0004"}, {"DISABLE_NEWLINE_AUTO_RETURN", "0x0008"}, {"GUID_DEFINED", ""},
+    // (fileapi.h: StackWalker.cpp defines it `#ifndef INVALID_FILE_ATTRIBUTES`, for VC5/6)
+    {"INVALID_FILE_ATTRIBUTES", "((DWORD)-1)"}};
   // The build a C library converted as C (kppc --c-sources) is preprocessed as: factorio-in-kpp's
   // build.kpp compiles the C libraries with clang-cl as C, release (/O2 /DNDEBUG), with Factorio's
   // global defines (its fromSource); no C++ and no debug build's names. MSVC's x64 predefines, and
@@ -2671,6 +2673,9 @@ namespace
     const std::map<std::string, std::set<size_t>>* cInterfaceNames = nullptr; // the functions those headers declare: their parameter counts
     const std::map<std::string, std::string>* cStaticRenames = nullptr; // C: this file's statics another file declares too
     bool cGivenHeader = false; // C: a header given alone, which holds a header-only library's implementation (stb_truetype.h)
+    // C: a header given alone that c-headers.txt keeps as C, which the program imports (fontstash.h):
+    // its text as the import configures it. What that leaves in is the import's, and goes.
+    const std::string* cInterfaceText = nullptr;
     const std::set<std::string>* cPrivateNames = nullptr; // C: the library's private-names.txt (stb_truetype's stbrp_*)
     const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
@@ -8408,8 +8413,42 @@ namespace
     }
     void convertC(Span<Decl*> decls)
     {
+      if (cInterfaceText)
+      {
+        // The header imports itself: its interface is the C import's, one entity for the program
+        // (the game imports fontstash.h; its FONSparams, FONSflags and prototypes were declared twice).
+        cInsertBefore(0, "extern \"C\" import \"" + in.path.filename().string() + "\";\n");
+        counts.add("C headers given alone that stay C imports: importing themselves");
+      }
       for (Decl* d : decls)
       {
+        if (cInterfaceText && !(d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body) && d->token < toks.size())
+        {
+          const Token& name = toks[d->token];
+          if (name.offset + name.length <= cInterfaceText->size() &&
+              cInterfaceText->compare(name.offset, name.length, text.substr(name.offset, name.length)) == 0)
+          {
+            // The whole declaration, to its `;`: `typedef struct { ... } stbtt__buf;`'s name and the
+            // `;` after an enum's braces too.
+            uint32_t start = declStart(d), k = d->token;
+            while (k > 0 && toks[k - 1].offset >= start)
+              --k;
+            int depth = 0;
+            for (; k < toks.size(); ++k)
+            {
+              if (toks[k].is(P::LBrace))
+                ++depth;
+              else if (toks[k].is(P::RBrace))
+                --depth;
+              else if (toks[k].is(P::Semi) && depth == 0)
+                break;
+            }
+            uint32_t end = k < toks.size() ? endOffset(k) : endOffset(toks.size() - 1);
+            remove(start, lineEndAfter(end) - start);
+            counts.add("C declarations the header's import gives removed");
+            continue;
+          }
+        }
         if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body)
         {
           cWalkStmt(static_cast<FunctionDecl*>(d)->body, static_cast<FunctionDecl*>(d));
@@ -9438,6 +9477,19 @@ struct SourceConfiguration::Impl
   std::map<std::string, std::string> cNameDefines; // the defines.txt ones that are a name (STBIW_ZLIB_COMPRESS=zlib_compress_stb_adapter)
   std::set<std::string> cEmptyDefines;             // the defines.txt ones that are empty (trio's TRIO_PUBLIC=)
   std::set<std::string> cPrivateNames;             // private-names.txt: names the library keeps to its files (stb_truetype's stbrp_*)
+  std::map<std::string, std::string> cIncluderHeaders; // includer-headers.txt: a header, by file name -> the header its includers include first
+  MacroTable cLibraryBase;                         // cDefines without the library's defines.txt: how the program's imports see its headers
+
+  // A header as the program imports it (C: without the library's own defines, its *_IMPLEMENTATION
+  // switches): the configured text, the branches it leaves out blank.
+  std::string interfaceConfigured(size_t i)
+  {
+    return preprocessText(texts[i], [&](const std::string& name) -> const Preprocessed*
+    {
+      size_t j = resolve(i, name);
+      return j == SIZE_MAX ? nullptr : of(j);
+    }, &defines, &cLibraryBase).configured;
+  }
   std::vector<std::filesystem::path> paths;
   std::vector<std::string_view> texts;
   std::vector<std::filesystem::path> roots;
@@ -9472,11 +9524,33 @@ struct SourceConfiguration::Impl
     if (state[i] == 1)
       return nullptr;
     state[i] = 1;
+    // (C: a header its includers give a provider's macros first, includer-headers.txt: configured
+    // with them.)
+    MacroTable withProvider;
+    const MacroTable* base = cBuild ? &cDefines : nullptr;
+    if (cBuild)
+      if (auto ih = cIncluderHeaders.find(paths[i].filename().string()); ih != cIncluderHeaders.end())
+      {
+        size_t provider = SIZE_MAX;
+        for (size_t k = 0; k < paths.size(); ++k)
+          if (paths[k].filename().string() == ih->second)
+            provider = k;
+        const Preprocessed* p = provider == SIZE_MAX ? nullptr : of(provider);
+        if (!p)
+          fprintf(stderr, "convert: %s's includer header %s is no input (includer-headers.txt)\n", paths[i].string().c_str(), ih->second.c_str());
+        else
+        {
+          withProvider = cDefines;
+          for (const auto& [name, body] : p->defined)
+            withProvider[name] = body;
+          base = &withProvider;
+        }
+      }
     auto result = std::make_unique<Preprocessed>(preprocessText(texts[i], [&](const std::string& name) -> const Preprocessed*
     {
       size_t j = resolve(i, name);
       return j == SIZE_MAX ? nullptr : of(j);
-    }, &defines, cBuild ? &cDefines : nullptr));
+    }, &defines, base));
     results[i] = std::move(result);
     state[i] = 2;
     return results[i].get();
@@ -9697,6 +9771,7 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
     impl->includeDirectories = cIncludeDirectories(overridesDir, roots);
     impl->cBuild = true;
     impl->cDefines = cLibraryDefines();
+    impl->cLibraryBase = impl->cDefines;
     // The library's own: `NAME` or `NAME=VALUE` a line, as build.kpp's define() gives them.
     std::string list;
     if (!overridesDir.empty())
@@ -9750,6 +9825,35 @@ SourceConfiguration::SourceConfiguration(const std::vector<std::filesystem::path
           size_t a = line.find_first_not_of(" \t\r"), b = line.find_last_not_of(" \t\r");
           if (a != std::string::npos && line[a] != '#')
             impl->cPrivateNames.insert(line.substr(a, b - a + 1));
+        }
+      }
+    // Headers whose #if lines test a macro of a header they do not include, which each of their
+    // includers includes before them, `HEADER PROVIDER` a line by file name: minizip's crypt.h tests
+    // zlib.h's ZLIB_VERNUM (`#if ZLIB_VERNUM < 0x1270`, its own z_crc_t), and crypt.c, unzip.c and
+    // zip.c include zlib.h first. The header is configured with what the provider leaves defined.
+    if (!overridesDir.empty())
+      if (FILE* f = fopen((overridesDir / "includer-headers.txt").string().c_str(), "rb"))
+      {
+        std::string lines;
+        char buffer[4096];
+        size_t n;
+        while ((n = fread(buffer, 1, sizeof buffer, f)) > 0)
+          lines.append(buffer, n);
+        fclose(f);
+        for (size_t pos = 0; pos < lines.size();)
+        {
+          size_t end = lines.find('\n', pos);
+          if (end == std::string::npos)
+            end = lines.size();
+          std::string line = lines.substr(pos, end - pos);
+          pos = end + 1;
+          size_t a = line.find_first_not_of(" \t\r");
+          if (a == std::string::npos || line[a] == '#')
+            continue;
+          size_t space = line.find_first_of(" \t", a), b = space == std::string::npos ? space : line.find_first_not_of(" \t", space);
+          size_t c = b == std::string::npos ? b : line.find_last_not_of(" \t\r");
+          if (b != std::string::npos)
+            impl->cIncluderHeaders[line.substr(a, space - a)] = line.substr(b, c - b + 1);
         }
       }
   }
@@ -10693,16 +10797,45 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       total.add("headers no file includes left out");
       continue;
     }
+    // (A header given alone that the library's defines configure otherwise than its import holds a
+    // header-only library's implementation, fontstash.h's under FONTSTASH_IMPLEMENTATION: converted,
+    // without what its import declares. zlib.h, given to minizip's conversion, stays C.)
+    std::string interfaceText;
     if (cInterfaceHeaders.count(in.path.filename().string()))
     {
-      total.add("the C library's interface headers kept as C (c-headers.txt)");
-      continue;
+      size_t index = size_t(&in - inputs.data());
+      const Preprocessed* full = configuration && givenCHeaders.count(index) ? configuration->impl->of(index) : nullptr;
+      if (full)
+        interfaceText = configuration->impl->interfaceConfigured(index);
+      // (By the lines each keeps: the parse's blanking, `FAR` in zconf.h's typedefs, is no branch.)
+      auto keptLines = [](const std::string& t)
+      {
+        std::vector<bool> kept;
+        bool any = false;
+        for (char c : t)
+          if (c == '\n')
+          {
+            kept.push_back(any);
+            any = false;
+          }
+          else if (!isspace((unsigned char)c))
+            any = true;
+        kept.push_back(any);
+        return kept;
+      };
+      if (!full || keptLines(interfaceText) == keptLines(full->configured))
+      {
+        total.add("the C library's interface headers kept as C (c-headers.txt)");
+        continue;
+      }
     }
     std::string key = rel.substr(0, rel.size() - ext.size()) + ".kpp";
     FileConverter fc(in, global, symbols);
     fc.cInterfaceHeaders = &cInterfaceHeaders;
     fc.cInterfaceNames = &cInterfaceNames;
     fc.cGivenHeader = givenCHeaders.count(size_t(&in - inputs.data())) > 0;
+    if (!interfaceText.empty())
+      fc.cInterfaceText = &interfaceText;
     if (configuration)
       fc.cPrivateNames = &configuration->impl->cPrivateNames;
     if (auto renames = cStaticRenames.find(&in); renames != cStaticRenames.end())

@@ -1,0 +1,4 @@
+# Names zlib keeps to its own files that the program declares too, renamed with their file's name
+# (inflate_OS): inflate.h's inflate_mode enumerator OS (the gzip header's OS byte), beside an imported
+# `const char* OS` (a header's macro the C import makes a constant).
+OS
