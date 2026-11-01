@@ -1971,6 +1971,28 @@ All of this goes through the coordinator.
     - 16 link library functions that call Win32 (stage 4);
     - 17 throw, which aborts (stage 3).
 
+### Stage 2, the C calling convention for structs by value (2026-11-01)
+
+- **Calls of C functions** (`extern "C"`, or an imported header's) pass and return a struct by value
+  as the target's C does (codegen's `cPassing`):
+  - **MS x64:** a struct of 1, 2, 4 or 8 bytes is one integer, both ways. Others are a pointer to a
+    copy and a result slot, as before.
+  - **SysV x86-64:** a struct of up to 16 bytes goes in one or two registers by its eightbytes,
+    INTEGER where an integer or pointer lies, SSE where only floats do (`float`, `<2 x float>`,
+    `double`). That holds while enough registers are left; otherwise the whole struct goes on the
+    stack (`byval`), as clang does. Larger, packed or unaligned ones go on the stack, and their
+    results through the slot.
+
+  The `declare` lines carry the same types. A Kpp *definition* of a C-callable function that takes
+  or returns a struct where C passes it differently is an error until it is needed.
+- **Spec:** interop/c_structs_by_value, against clang's C for every size class both ways,
+  including registers running out. It passes on Windows and on Linux.
+- **Before, on Windows**, every struct went as a pointer to a copy, which is MS x64's rule only
+  above 8 bytes:
+  - Windows IR over 908 spec snippets: only the new one differs.
+  - The game: one call differs, `SetConsoleCursorPosition(HANDLE, COORD)`. COORD is 4 bytes, so
+    the console cursor went to a pointer's bits; it is now passed in a register.
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets. (a) is recommended (above).

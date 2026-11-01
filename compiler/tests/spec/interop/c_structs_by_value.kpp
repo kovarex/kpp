@@ -1,0 +1,65 @@
+// spec: a C function's struct by value, argument and result, passed as the target's C passes it (MS x64: a struct of 1, 2, 4 or 8 bytes in a register, others through memory; SysV x86-64: up to 16 bytes in INTEGER or SSE registers by its eightbytes, others on the stack, and on the stack whole when its registers ran out), against clang's C (c_structs_by_value.c); before 2026-11-01 Kpp passed every struct as a pointer to a copy, MS x64's way only above 8 bytes
+// factorio: the C libraries' small structs by value (SDL_Color, SDL_FPoint, lua_Debug fields are pointers)
+struct S1 { char a; };
+struct S2 { short a; };
+struct S3 { char a, b, c; };
+struct S4 { int a; };
+struct S8 { int a, b; };
+struct F2 { float x, y; };
+struct D1 { double x; };
+struct S12 { int a, b, c; };
+struct DI { double x; int y; };
+struct F3 { float x, y, z; };
+struct D2 { double x, y; };
+struct IF { int a; float b; };
+struct S24 { long long a, b, c; };
+
+extern "C" int takeS1(S1 s);
+extern "C" int takeS2(S2 s);
+extern "C" int takeS3(S3 s);
+extern "C" int takeS4(S4 s);
+extern "C" int takeS8(S8 s);
+extern "C" double takeF2(F2 s);
+extern "C" double takeD1(D1 s);
+extern "C" int takeS12(S12 s);
+extern "C" double takeDI(DI s);
+extern "C" double takeF3(F3 s);
+extern "C" double takeD2(D2 s);
+extern "C" double takeIF(IF s);
+extern "C" long long takeS24(S24 s);
+extern "C" long long afterFive(int a, int b, int c, int d, int e, S12 s, int f);
+extern "C" double afterSeven(double a, double b, double c, double d, double e, double f, double g, D2 s);
+extern "C" double mixed(int a, DI s, float b, S8 t);
+extern "C" S1 makeS1(int a);
+extern "C" S3 makeS3(int a);
+extern "C" S8 makeS8(int a);
+extern "C" F2 makeF2(float x);
+extern "C" S12 makeS12(int a);
+extern "C" DI makeDI(double x);
+extern "C" F3 makeF3(float x);
+extern "C" D2 makeD2(double x);
+extern "C" IF makeIF(int a);
+extern "C" S24 makeS24(long long a);
+
+int main()
+{
+  println("{} {} {} {} {}", takeS1(S1{7}), takeS2(S2{300}), takeS3(S3{1, 2, 3}), takeS4(S4{40000}), takeS8(S8{4, 5}));
+  println("{} {} {} {} {} {} {}", takeF2(F2{1.5f, 2.5f}), takeD1(D1{3.25}), takeS12(S12{1, 2, 3}), takeDI(DI{1.5, 7}), takeF3(F3{1, 2, 3}), takeD2(D2{4, 5}),
+          takeIF(IF{6, 0.5f}));
+  println("{} {} {}", takeS24(S24{1, 2, 3}), afterFive(1, 2, 3, 4, 5, S12{6, 7, 8}, 9), afterSeven(1, 2, 3, 4, 5, 6, 7, D2{8, 9}));
+  println("{}", mixed(1, DI{2, 3}, 4.0f, S8{5, 6}));
+  S1 s1 = makeS1(9);
+  S3 s3 = makeS3(10);
+  S8 s8 = makeS8(11);
+  F2 f2 = makeF2(1.25f);
+  S12 s12 = makeS12(12);
+  DI di = makeDI(2.5);
+  F3 f3 = makeF3(0.5f);
+  D2 d2 = makeD2(6);
+  IF i2 = makeIF(8);
+  S24 s24 = makeS24(13);
+  println("{} {} {} {} {} {} {} {}", int(s1.a), int(s3.a), int(s3.b), int(s3.c), s8.a, s8.b, f2.x, f2.y);
+  println("{} {} {} {} {} {} {} {} {} {} {}", s12.a, s12.b, s12.c, di.x, di.y, f3.x, f3.y, f3.z, d2.x, d2.y, i2.b);
+  println("{} {} {} {}", i2.a, s24.a, s24.b, s24.c);
+  return 0;
+}
