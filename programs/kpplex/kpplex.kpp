@@ -562,10 +562,10 @@ int main(int argc, char** argv)
   double t2 = now();
 
   double lexTime = t2 - t1;
-  printf("files:   %d\n", texts.size());
+  printf("files:   %zu\n", texts.size());
   printf("bytes:   %llu (%.1f MB)\n", bytes, (double)bytes / 1000000.0);
   printf("lines:   %llu\n", lines);
-  printf("tokens:  %d\n", tokens.size());
+  printf("tokens:  %zu\n", tokens.size());
   printf("symbols: %d distinct identifiers\n", symbols.size() - (int)keywordCount);
   printf("errors:  %llu\n", errors);
   printf("read:    %.3f s\n", t1 - t0);
