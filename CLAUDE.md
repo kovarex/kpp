@@ -46,7 +46,11 @@ Decided by kovarex; every thread follows them.
   converted code gets a pending snippet before it is fixed. A pending snippet that starts passing
   fails the run.
 - One thread per worktree, under C:\kpp-sandbox (see its README.md). C:\kpp stays clean master.
-  Never create top-level directories in C:\. Rebase onto origin/master; push fast-forward only when
+  Never create top-level directories in C:\. Disk is shared: keep scratch\<thread> under ~15 GB
+  (reuse fixed directory names, delete a measurement's build trees and IR dumps once its numbers
+  are written down; kovarex found 900+ GB in C:\kpp-sandbox on 2026-11-01). Delete with
+  `cmd /c rd /s /q`, never PowerShell `Remove-Item -Recurse`, which can follow a junction into
+  C:\Factorio. Rebase onto origin/master; push fast-forward only when
   `run_tests.cmd` and `spec.cmd` pass (and the game still runs, for codegen). A change that can
   alter the converted game also needs `convert.cmd`: headline 0, tests errors 0
   (kpp\tests-errors.txt: every one is a stubbed test function) and every smoke test. Commit small, push
