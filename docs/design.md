@@ -825,6 +825,41 @@ anonymous namespaces to it. Owners: thread A the language (resolver, specs), thr
 converter. It replaces the renaming lists (`private-names.txt`) and the macros written out as
 values.
 
+### 16. Library scopes: qualified by default, a library may be unscoped (decided 2026-11-01)
+
+kovarex, 2026-11-01: "adding library means that I have to change unrelated code to remove
+ambiguity is not nice"; "when I read zlib::close, I instantly know what is going on, compared to
+close"; "libraries can decide. The good standard for libraries like zlib, etc, would be to be
+scoped ... std (or core) of kpp would be marked unscoped, but someone can make a library which is
+unscoped if they wanted."
+
+- **A library's names are qualified by its name by default:** a program or another library writes
+  `zlib::compress`, `json::Value`. Inside the library its own names are bare. The qualifier is the
+  library's name (`project.library(NAME)`, the registry name), so it is unique.
+- **A library may declare itself unscoped** in its build.kpp (`lib.unscoped = true`): its names are
+  bare everywhere, as today. The standard library is unscoped, so `String`, `Vector` and `print`
+  stay plain. An unscoped library's names share the one global scope: a clash with the program,
+  another unscoped library or a C import is the compile error of "One global scope" below, at
+  build time, never a silent pick.
+- **Adding a scoped library never changes the meaning of existing code**, and never makes it
+  ambiguous: its names are reachable only through its qualifier.
+- **No per-file imports or aliases** (`using namespace zlib` does not exist for libraries): a
+  snippet means the same in every file of the program, as before.
+- **Unchanged:** the program's own names, imported C headers (C has no scopes) and C++ namespaces
+  written in code stay as they are; `private` (section 15) still makes a name file-local; inside one
+  library, two declarations of one name are the global-clash error.
+- **For the registry:** scoped is the norm for published libraries; unscoped is shown on the
+  library's page and is meant for a project's own libraries and foundations like the stdlib.
+- **For converted code:** each converted library (zlib, ogg, ...) is scoped by its name, and the
+  converter qualifies the game's calls into it (`zlib::inflate`), while its C ABI symbols keep their
+  C names for C callers. Whether Factorio's own CommonUtil, Agui and Util are scoped is decided when
+  they become libraries.
+
+Owners: thread A lookup and the errors; thread E `unscoped` and the qualifier in build.kpp's
+description; thread C the stdlib marked unscoped and the converter's qualification; thread I the
+registry's docs. This supersedes the "distinct names" answer below for libraries; the package tree
+for browsing stays as proposed.
+
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
 **Goal.** A big codebase needs a structure above the class, so that a reader can find
