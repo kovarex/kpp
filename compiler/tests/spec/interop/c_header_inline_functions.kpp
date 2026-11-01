@@ -1,0 +1,12 @@
+// spec: a function an imported C header defines inline (the UCRT's corecrt_math.h `__inline long double floorl(long double)`, `__inline float fabsf(float)`), which no library exports, is callable: the import compiles its body
+// factorio: trio (converted as C): trio.c's trio_floor and trio_ceil are floorl and ceill (TRIO_FEATURE_FLOAT with long double), in TrioWriteDouble
+// pending: the calls link to symbols nothing defines: "unresolved external symbol floorl", "ceill", "fabsf" (lld-link)
+extern "C" import "math.h";
+int main()
+{
+  double a = floorl(2.5);
+  double b = ceill(2.5);
+  float c = fabsf(-1.5f);
+  println("{} {} {}", a, b, c);
+  return 0;
+}
