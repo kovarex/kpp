@@ -40,6 +40,37 @@ headline is 0 and the game links: the other threads run that one.
   (from origin/master d9080751); the conversions of the current source are written there, uncommitted. C:\factorio-in-kpp
   (the main clone) is untouched: ~2,385 stale modified files, behind origin.
 
+## Where factorio-in-kpp is going (kovarex, 2026-11-01)
+
+> "factorio-in-kpp will mainly become a branch in official wube/factorio repository, and
+> eventually (hopefully) become the main master branch of Factorio repository"
+
+That is why factorio-in-kpp is laid out as Factorio's repository (src\, tests\, libraries\ at the
+root). What it implies:
+
+1. **Until the switch, the branch tracks Factorio's master.** The conversion can be run again
+   against any Factorio commit: convert.cmd for the Kpp, resources.cmd for the rest, and every
+   factorio-in-kpp commit names the Factorio commit it came from. The branch follows master by
+   converting each new commit and committing the result.
+2. **At the switch, development moves to the Kpp sources.** The C++ stops being the source, and the
+   converter becomes a migration tool that runs once more, at the switch. What stays C or C++
+   then is libraries\ that are not converted yet, built by build.kpp as their own C++ build builds
+   them.
+3. **Before that, every parity gate holds, as today's do:**
+   - headline 0 and tests errors 0;
+   - the unit tests pass 9,501 of 9,501 with no CRC mismatch against C++, in debug and release;
+   - the menu maps match C++;
+   - every platform Wube ships builds and runs;
+   - build and edit times are no worse than the C++ build's;
+   - debugging works in Visual Studio as it does for C++.
+
+   Still missing for that:
+   - the Linux and macOS targets (B is on them: `--target linux` runs hello world under WSL);
+   - the console platforms;
+   - the C libraries converted to Kpp, or kept as C deliberately ("Converting the C libraries"
+     below);
+   - the measurements of build and edit times on the whole game against the C++ build.
+
 ## Where kppc is
 
 - **Front end.** Parses 99.54% of Factorio's files and types 77% of the expressions and 78% of
