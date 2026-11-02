@@ -153,14 +153,16 @@ struct SystemError : RuntimeError
 // Exception pointers (std::exception_ptr): a shared handle to a copy of an exception, thrown again
 // where it is needed (Promise::setException, then Future::get on another thread). Copies of an
 // ExceptionPtr refer to the same exception object; an empty one refers to none.
-struct ExceptionHolderBase
+class ExceptionHolderBase
 {
+public:
   virtual ~ExceptionHolderBase() {}
   virtual void rethrow() const = 0;
 };
 template<typename E>
-struct ExceptionHolder : ExceptionHolderBase
+class ExceptionHolder : public ExceptionHolderBase
 {
+public:
   E exception;
   explicit ExceptionHolder(const E& exception) : exception(exception) {}
   void rethrow() const override { throw this->exception; }

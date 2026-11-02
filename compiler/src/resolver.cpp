@@ -4869,6 +4869,7 @@ struct GlobalScope::Impl
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
 
   bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
+  bool structRuleErrors = false; // kppc --struct-rule: its breaks are errors (the parser's, a struct deriving from a polymorphic class)
   std::mutex accessMutex;
   // A use of a private or protected member that its code may not name, by its warning (`path:line:
   // warning: ...`), each once: a template's instances share the uses of their template.
@@ -5126,10 +5127,13 @@ struct GlobalScope::Impl
     return false;
   }
 
-  bool polymorphicBase(ClassDecl* c, int depth)
+  bool polymorphicBase(ClassDecl* c, int depth) { return polymorphicBaseOf(c, depth); }
+
+  // The base of c (a direct one) that declares a virtual function or has a base that does, or null.
+  ClassDecl* polymorphicBaseOf(ClassDecl* c, int depth)
   {
     if (depth > 16)
-      return false;
+      return nullptr;
     for (const ClassDecl::Base& b : c->bases)
     {
       Decl* d = b.type && b.type->kind == NodeKind::NamedType ? static_cast<NamedType*>(b.type)->resolved : nullptr;
@@ -5137,10 +5141,10 @@ struct GlobalScope::Impl
         continue;
       if (Scope* s = scopeOfEntry(Entry{d, nullptr}, 0); s && s->owner && s->owner->kind == NodeKind::ClassDecl)
         d = s->owner;
-      if (declaresVirtual(static_cast<ClassDecl*>(d)) || polymorphicBase(static_cast<ClassDecl*>(d), depth + 1))
-        return true;
+      if (declaresVirtual(static_cast<ClassDecl*>(d)) || polymorphicBaseOf(static_cast<ClassDecl*>(d), depth + 1))
+        return static_cast<ClassDecl*>(d);
     }
-    return false;
+    return nullptr;
   }
 
   void structRule(Span<Decl*> decls, std::vector<std::string>& out, StructCounts& counts)
@@ -22263,6 +22267,15 @@ struct GlobalScope::Impl
               impl.reportCheckerError(file, b.type->token, "virtual base classes are not supported (" + base + ", a base of " + of + ")");
             }
           }
+          // A struct is a public value type (design.md "struct and class"): one deriving from a
+          // polymorphic class is none (its own virtual functions the parser reports).
+          if (impl.structRuleErrors && c->keyword == Kw::struct_ && c->isDefinition && !c->isClosure && !c->isTypedUnion && !activeSubst && !probing && file &&
+              !file->isImported &&
+              !Impl::declaresVirtual(c))
+            if (ClassDecl* base = impl.polymorphicBaseOf(c, 0))
+              impl.reportCheckerError(file, c->token, "struct " + (c->name.empty() ? std::string("(anonymous)") : impl.namePartText(c->name.last())) +
+                                                          " derives from " + (base->name.empty() ? std::string("a") : impl.namePartText(base->name.last()) + ",") +
+                                                          " a polymorphic class (a struct is a public value type, design.md \"struct and class\"): make it a class");
           if (c->ownScope)
             scope = c->ownScope;
           else if (c->name.parts.size() > 1)
@@ -24320,6 +24333,9 @@ void GlobalScope::resolveFile(ParsedFile& file, const std::vector<Token>& tokens
   FileOfLookups walkedFile(&file);
   if (file.libraryNamespace && file.libraryNamespace->ownScope)
     walker.scope = file.libraryNamespace->ownScope; // a scoped library's top level (design.md 16)
+  if (impl->structRuleErrors)
+    for (const Diagnostic& d : file.structRule)
+      impl->reportCheckerError(&file, d.token, d.message);
   walker.walkDecls(file.decls);
 }
 
@@ -26432,6 +26448,7 @@ GlobalScope::InstantiationStats GlobalScope::instantiationStats() const
 }
 
 void GlobalScope::enableAccessWarnings() { impl->accessWarnings = true; }
+void GlobalScope::enableStructRule() { impl->structRuleErrors = true; }
 
 std::vector<std::string> GlobalScope::accessReport(const std::vector<ParsedFile*>& files, std::string& summary)
 {

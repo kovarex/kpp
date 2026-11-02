@@ -417,6 +417,9 @@ struct ParsedFile
   struct NamespaceDecl* libraryNamespace = nullptr;
   uint32_t index = 0;      // Position in the driver's file list (the library first): declaration order across files, closure names.
   std::vector<Diagnostic> diagnostics;
+  // The struct rule's breaks in it (design.md "struct and class": a struct is a public value type),
+  // which the resolver reports as errors under kppc --struct-rule.
+  std::vector<Diagnostic> structRule;
   // `(HANDLE) -1`, `(T) *p`, parsed as `(name) op x`, with the declaration it is in: a cast when the
   // name is a type, rewritten as one by the resolver's finishIndex.
   std::vector<std::pair<BinaryExpr*, Decl*>> castCandidates;

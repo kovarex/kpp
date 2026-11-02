@@ -271,6 +271,14 @@ namespace
         error("a line splice in this string is not supported");
     }
 
+    // In the body of a struct written in Kpp (design.md "struct and class": a public value type);
+    // C's structs (imported headers) are C's.
+    bool inStruct() const
+    {
+      return !cMode && currentParent && currentParent->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(currentParent)->keyword == Kw::struct_ &&
+             !static_cast<const ClassDecl*>(currentParent)->isTypedUnion;
+    }
+
     void error(const char* message)
     {
       if (inRecovery)
@@ -1641,6 +1649,8 @@ namespace
       {
         if (at(P::Colon, 1))
         {
+          if (!at(Kw::public_) && inStruct())
+            out.structRule.push_back({pos, "a struct's members are all public (a struct is a public value type, design.md \"struct and class\"): make it a class"});
           currentAccess = at(Kw::public_) ? Access::Public : at(Kw::private_) ? Access::Private : Access::Protected;
           advance();
           advance();
@@ -3361,6 +3371,8 @@ namespace
           base.access = Access::Default;
           for (;;)
           {
+            if (keyword == Kw::struct_ && !cMode && (at(Kw::private_) || at(Kw::protected_)))
+              out.structRule.push_back({pos, "a struct's bases are all public (a struct is a public value type, design.md \"struct and class\"): make it a class"});
             if (accept(Kw::virtual_)) base.isVirtual = true;
             else if (accept(Kw::public_)) base.access = Access::Public;
             else if (accept(Kw::private_)) base.access = Access::Private;
@@ -3397,6 +3409,10 @@ namespace
       classMembersMark = savedMembersMark;
       implicitEquality(mark);
       c->members = makeSpan<Decl*>(mark);
+      if (keyword == Kw::struct_ && !cMode)
+        for (Decl* m : c->members)
+          if (m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Virtual | DF_Override | DF_Final | DF_Pure)) && !(m->flags & DF_Friend))
+            out.structRule.push_back({m->token, "a struct has no virtual functions (a struct is a public value type, design.md \"struct and class\"): make it a class"});
       currentParent = savedParent;
       currentAccess = savedAccess;
       currentClassName = savedClassName;

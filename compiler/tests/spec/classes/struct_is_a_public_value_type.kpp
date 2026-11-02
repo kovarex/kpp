@@ -1,0 +1,31 @@
+// spec: what a struct may have as a public value type (design.md "struct and class", option 3): constructors, a destructor, methods, operators, static members, nested types, a public: label, a friend declaration, public bases that are not polymorphic, as a template and inside a function; none of it an error
+// factorio: 982 structs of the game's C++, 96% of them public data with at most constructors and methods; the standard library's 231
+// kppc: --struct-rule
+struct Base { int id = 7; };
+template<class T>
+struct Box : public Base
+{
+  T value;
+  static int count;
+  enum class Kind { Small, Large };
+  struct Inner { int depth = 2; };
+  Box(T v) : value(v) {}
+  ~Box() {}
+  T get() const { return this->value; }
+  bool operator==(const Box& other) const { return this->value == other.value; }
+  friend int peekId(const Box<int>& b);
+public:
+  Kind kind() const { return this->value > 10 ? Kind::Large : Kind::Small; }
+};
+template<class T>
+int Box<T>::count = 3;
+int peekId(const Box<int>& b) { return b.id; }
+int main()
+{
+  struct Local { int a = 5; int twice() const { return this->a * 2; } };
+  Box<int> a(4), b(4);
+  Box<int>::Inner inner;
+  Local local;
+  println(a.get(), " ", a == b, " ", Box<int>::count, " ", int(a.kind()), " ", inner.depth, " ", local.twice(), " ", peekId(a));
+  return 0;
+}

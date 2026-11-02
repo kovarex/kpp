@@ -1,0 +1,24 @@
+// spec: a struct is a public value type (design.md "struct and class", option 3): a private: or protected: section in it is an error naming the fix, make it a class
+// factorio: 26 of the game's structs (VulkanImpl, Filesystem's Path, InputState's KeyState...), which the converter writes as classes with public: first
+// kppc: --struct-rule
+// error: struct_private_member_is_error.kpp:9: error: a struct's members are all public (a struct is a public value type, design.md "struct and class"): make it a class
+// error: struct_private_member_is_error.kpp:15: error: a struct's members are all public (a struct is a public value type, design.md "struct and class"): make it a class
+struct Counter
+{
+  int value = 0;
+private:
+  int hidden = 1;
+};
+struct Node
+{
+  Node* next = nullptr;
+protected:
+  int depth = 0;
+};
+int main()
+{
+  Counter c;
+  Node n;
+  println(c.value, " ", n.next == nullptr);
+  return 0;
+}

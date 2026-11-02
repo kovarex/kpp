@@ -69,8 +69,9 @@ struct InFileStream
 // XmlTestReporter writes its report to the stream it is given, the tests' an OutFileStream). A
 // stream writes the bytes (writeBytes); `<<` writes text, a char as itself and numbers as
 // std::ostream's defaults do (%d, %u, %lld, %llu, %g), and endl a newline.
-struct OutStream
+class OutStream
 {
+public:
   virtual ~OutStream() {}
   virtual void writeBytes(const char* data, ContainerSize count) = 0;
   // count bytes from data, as they are (std::ostream::write; TestBitmapUtil dumps a pointer's bytes).
@@ -140,8 +141,9 @@ OutStream& operator<<(OutStream& s, EndlTag)
   return s;
 }
 
-struct OutFileStream : OutStream
+class OutFileStream : public OutStream
 {
+public:
   FILE* handle = nullptr;
 
   void writeBytes(const char* data, ContainerSize count) override { this->write(data, count); }

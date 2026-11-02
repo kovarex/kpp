@@ -1,0 +1,28 @@
+// spec: a struct is a public value type (design.md "struct and class", option 3): a virtual function in it (virtual, a pure one, an override or a virtual destructor) is an error naming the fix, make it a class
+// factorio: DebugTools' value structs, AsyncScenarioSaver's Observer; the standard library's OutStream, OutFileStream, ExceptionHolderBase and ExceptionHolder
+// kppc: --struct-rule
+// error: struct_virtual_function_is_error.kpp:15: error: a struct has no virtual functions (a struct is a public value type, design.md "struct and class"): make it a class
+// error: struct_virtual_function_is_error.kpp:16: error: a struct has no virtual functions (a struct is a public value type, design.md "struct and class"): make it a class
+// error: struct_virtual_function_is_error.kpp:21: error: a struct has no virtual functions (a struct is a public value type, design.md "struct and class"): make it a class
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual int area() const { return 0; }
+};
+struct Visitor
+{
+  virtual void visit(int value) {}
+  virtual ~Visitor() {}
+};
+struct Square : Shape
+{
+  int side = 2;
+  int area() const override { return this->side * this->side; }
+};
+int main()
+{
+  Square s;
+  println(s.area());
+  return 0;
+}

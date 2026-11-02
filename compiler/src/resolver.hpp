@@ -241,6 +241,11 @@ public:
   // note for each use a friend declaration allows and for each friend declaration, and in summary
   // their counts.
   void enableAccessWarnings();
+  // The struct rule as errors (kppc --struct-rule; design.md "struct and class"): a struct with a
+  // private or protected section, a base that is not public or a virtual function, or deriving from
+  // a polymorphic class. Before the resolve. The default once the converter writes such structs as
+  // classes.
+  void enableStructRule();
   std::vector<std::string> accessReport(const std::vector<ParsedFile*>& files, std::string& summary);
   // A static_assert in the body of a template instance's function is checked only if the program
   // uses that function, as C++ instantiates a member or function template only where it is used:
