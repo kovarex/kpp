@@ -17,7 +17,7 @@ Factorio already has (see [Status](#status)).
   | Edit of one function | 22 to 29 s | about 1.5 s |
   | Edit of an inline function used across the game | 51 to 59 s | about 1.6 s |
   | Clean build of the game | 57 to 61 s | about 10 to 12 s |
-  | Whole build of factorio.exe, every library included | 50 s | 28 s |
+  | Whole build of factorio.exe, every library included | 50 s | 22 s |
 
   The last row is a whole build including all the C and C++ libraries the game links, both on one
   machine (kovarex's second one). How these are measured: [docs/compile-speed.md](docs/compile-speed.md),
