@@ -14,7 +14,7 @@ struct SiteOptions
   String commit;                                   // the repository's commit, named in every page's footer
 };
 
-constexpr HtmlTemplate sitePage(R"(<!DOCTYPE html>
+constexpr html::HtmlTemplate sitePage(R"(<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -32,10 +32,10 @@ constexpr HtmlTemplate sitePage(R"(<!DOCTYPE html>
 </html>
 )");
 
-constexpr HtmlTemplate siteDocumentItem(R"(<li><a href="{{link}}">{{title}}</a> <span class="path">{{path}}</span></li>
+constexpr html::HtmlTemplate siteDocumentItem(R"(<li><a href="{{link}}">{{title}}</a> <span class="path">{{path}}</span></li>
 )");
 
-constexpr HtmlTemplate siteHome(R"(<h1>Kpp</h1>
+constexpr html::HtmlTemplate siteHome(R"(<h1>Kpp</h1>
 <p>A C++-like language and its compiler, designed for order-of-magnitude faster builds.</p>
 <h2 id="documentation">Documentation</h2>
 <ul class="documents">
@@ -44,10 +44,10 @@ constexpr HtmlTemplate siteHome(R"(<h1>Kpp</h1>
 <p><a href="libraries/index.html">The libraries</a>: the official ones, and those published to the registry.</p>
 )");
 
-constexpr HtmlTemplate siteLibraryItem(R"(<tr><td><a href="{{link}}">{{name}}</a></td><td>{{version}}</td><td>{{summary}}</td></tr>
+constexpr html::HtmlTemplate siteLibraryItem(R"(<tr><td><a href="{{link}}">{{name}}</a></td><td>{{version}}</td><td>{{summary}}</td></tr>
 )");
 
-constexpr HtmlTemplate siteLibraryList(R"(<h1>Libraries</h1>
+constexpr html::HtmlTemplate siteLibraryList(R"(<h1>Libraries</h1>
 <p>Search: <input id="search" type="search" placeholder="name"></p>
 <table class="libraries">
 <thead><tr><th>Library</th><th>Latest release</th><th>What</th></tr></thead>
@@ -57,24 +57,24 @@ constexpr HtmlTemplate siteLibraryList(R"(<h1>Libraries</h1>
 <script src="search.js"></script>
 )");
 
-constexpr HtmlTemplate siteReleaseRow(R"(<tr><td>{{version}}</td><td>{{published}}</td><td>{{kpp}}</td><td><a href="{{archive}}">archive</a></td><td><code>{{tree}}</code></td><td>{{yanked}}</td></tr>
+constexpr html::HtmlTemplate siteReleaseRow(R"(<tr><td>{{version}}</td><td>{{published}}</td><td>{{kpp}}</td><td><a href="{{archive}}">archive</a></td><td><code>{{tree}}</code></td><td>{{yanked}}</td></tr>
 )");
 
-constexpr HtmlTemplate siteLibraryPage(R"(<p class="breadcrumb"><a href="index.html">Libraries</a></p>
+constexpr html::HtmlTemplate siteLibraryPage(R"(<p class="breadcrumb"><a href="index.html">Libraries</a></p>
 <h1>{{name}}</h1>
 <h2>Releases</h2>
 {{releases}}
 {{readme}}
 )");
 
-constexpr HtmlTemplate siteReleaseTable(R"(<table class="releases">
+constexpr html::HtmlTemplate siteReleaseTable(R"(<table class="releases">
 <thead><tr><th>Version</th><th>Published</th><th>Kpp</th><th>Files</th><th>Tree hash</th><th>Yanked</th></tr></thead>
 <tbody>
 {{rows}}</tbody>
 </table>
 )");
 
-constexpr HtmlTemplate siteNotPublished(R"(<p>Not published to the registry yet: it is in the kpp repository's <a href="{{link}}">libraries/{{name}}</a>.</p>
+constexpr html::HtmlTemplate siteNotPublished(R"(<p>Not published to the registry yet: it is in the kpp repository's <a href="{{link}}">libraries/{{name}}</a>.</p>
 )");
 
 const char* siteStyle = R"(body { font-family: system-ui, sans-serif; max-width: 52em; margin: 0 auto; padding: 0 1em; line-height: 1.5; color: #1b1b1b; }
@@ -148,40 +148,40 @@ struct Site
       return destination;
     if (destination[0] == '#')
     {
-      this->anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(page), urlDecode(StringView(destination).substr(1))});
+      this->anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(page), url::urlDecode(StringView(destination).substr(1))});
       return destination;
     }
-    Url reference;
+    url::Url reference;
     try
     {
-      reference = parseUrl(destination);
+      reference = url::parseUrl(destination);
     }
-    catch (const UrlError& e)
+    catch (const url::UrlError& e)
     {
       this->warn(page, format("a link that is not a URL, kept as it is: {} ({})", destination, e.message));
       return destination;
     }
     if (!reference.isRelative() || reference.hasAuthority || reference.path.empty())
       return destination;
-    Url target = resolveUrl(parseUrl("file:///" + urlEncodePath(page)), reference);
-    String file = urlDecode(StringView(target.path).substr(1));
+    url::Url target = url::resolveUrl(url::parseUrl("file:///" + url::urlEncodePath(page)), reference);
+    String file = url::urlDecode(StringView(target.path).substr(1));
     String fragment = reference.hasFragment ? "#" + reference.fragment : String();
     String trimmed = file.endsWith("/") ? String(StringView(file).substr(0, file.size() - 1)) : file;
     if (this->isPage(trimmed))
     {
       if (reference.hasFragment)
-        this->anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(trimmed), urlDecode(reference.fragment)});
-      return urlEncodePath(siteRelativeLink(page, siteHtmlPath(trimmed))) + fragment;
+        this->anchorLinks.push_back(SiteAnchorLink{String(page), siteHtmlPath(trimmed), url::urlDecode(reference.fragment)});
+      return url::urlEncodePath(siteRelativeLink(page, siteHtmlPath(trimmed))) + fragment;
     }
     if (siteIsFile(this->path(trimmed)))
-      return this->options.sourceUrl + "/blob/master/" + urlEncodePath(trimmed) + fragment;
+      return this->options.sourceUrl + "/blob/master/" + url::urlEncodePath(trimmed) + fragment;
     if (trimmed.empty() || siteIsDirectory(this->path(trimmed)))
-      return this->options.sourceUrl + "/tree/master/" + urlEncodePath(trimmed) + fragment;
+      return this->options.sourceUrl + "/tree/master/" + url::urlEncodePath(trimmed) + fragment;
     this->warn(page, format("a link to {}, which is not in the repository", file));
     return destination;
   }
 
-  String pageHtml(StringView sitePath, StringView title, const SafeHtml& content)
+  String pageHtml(StringView sitePath, StringView title, const html::SafeHtml& content)
   {
     return sitePage
       .render({{"title", String(title) + " - Kpp"},
@@ -192,13 +192,13 @@ struct Site
       .html;
   }
 
-  SafeHtml renderMarkdown(StringView page, StringView text)
+  html::SafeHtml renderMarkdown(StringView page, StringView text)
   {
-    MarkdownOptions markdown;
+    markdown::MarkdownOptions markdown;
     markdown.tables = true;
     markdown.headingIds = true;
     markdown.rewriteLink = [this, page](const String& destination) -> String { return this->rewriteLink(page, destination); };
-    return SafeHtml::trusted(markdownToHtml(text, markdown));
+    return html::SafeHtml::trusted(markdown::markdownToHtml(text, markdown));
   }
 
   void run()
@@ -209,7 +209,7 @@ struct Site
         throw SiteError(format("{} is not a directory of the repository {}", root, this->options.repository));
       siteFindMarkdown(this->options.repository, root, this->pages);
     }
-    SafeHtml documents;
+    html::SafeHtml documents;
     for (const String& page : this->pages)
     {
       String text = siteReadFile(this->path(page));
@@ -220,7 +220,7 @@ struct Site
       this->htmlPaths.push_back(html);
       this->htmlTexts.push_back(pageHtml);
       if (page.startsWith("docs/"))
-        documents.append(siteDocumentItem.render({{"link", urlEncodePath(html)}, {"title", title}, {"path", page}}));
+        documents.append(siteDocumentItem.render({{"link", url::urlEncodePath(html)}, {"title", title}, {"path", page}}));
     }
     this->write("index.html", this->pageHtml("index.html", "Kpp", siteHome.render({{"documents", documents}})));
     this->write("style.css", siteStyle);
@@ -239,7 +239,7 @@ struct Site
           html = &this->htmlTexts[i];
       if (!html)
         continue;
-      String id = " id=\"" + htmlEscape(link.anchor) + "\"";
+      String id = " id=\"" + html::htmlEscape(link.anchor) + "\"";
       if (html->find(id) == String::npos)
         this->warn(link.page, format("a link to #{} in {}, which has no such heading", link.anchor, link.target));
     }
@@ -254,7 +254,7 @@ struct Site
       for (const filesystem::directory_entry& entry : filesystem::directory_iterator(filesystem::path(this->path("libraries"))))
         if (entry.is_directory() && siteIsFile(this->path("libraries/" + entry.path().filename().string() + "/build.kpp")))
           names.push_back(entry.path().filename().string());
-    Vector<JsonValue> index;
+    Vector<json::JsonValue> index;
     if (!this->options.registry.empty())
     {
       String directory = this->options.registry + "/index";
@@ -265,7 +265,7 @@ struct Site
         String file = entry.path().filename().string();
         if (!file.endsWith(".json") || file == "config.json")
           continue;
-        JsonValue library = parseJson(siteReadFile(directory + "/" + file));
+        json::JsonValue library = json::parseJson(siteReadFile(directory + "/" + file));
         String name = library["name"].asString();
         if (StringView(file) != StringView(name + ".json"))
           throw SiteError(format("{}/{} names the library {}", directory, file, name));
@@ -278,41 +278,41 @@ struct Site
       }
     }
     sort(names.begin(), names.end());
-    SafeHtml rows;
-    JsonValue search = JsonValue::array();
+    html::SafeHtml rows;
+    json::JsonValue search = json::JsonValue::array();
     for (const String& name : names)
     {
-      const JsonValue* entry = nullptr;
-      for (const JsonValue& library : index)
+      const json::JsonValue* entry = nullptr;
+      for (const json::JsonValue& library : index)
         if (library["name"].asString() == name)
           entry = &library;
       String latest = entry ? siteLatestVersion(*entry) : String();
       String readme = this->path("libraries/" + name + "/README.md");
       String summary = siteIsFile(readme) ? siteSummary(siteReadFile(readme)) : String();
       String page = "libraries/" + name + ".html";
-      rows.append(siteLibraryItem.render({{"link", urlEncode(name) + ".html"}, {"name", name}, {"version", latest.empty() ? String("not published") : latest}, {"summary", summary}}));
-      JsonValue item;
+      rows.append(siteLibraryItem.render({{"link", url::urlEncode(name) + ".html"}, {"name", name}, {"version", latest.empty() ? String("not published") : latest}, {"summary", summary}}));
+      json::JsonValue item;
       item.set("name", name);
       item.set("version", latest);
       item.set("summary", summary);
       search.push(item);
-      SafeHtml releases = entry ? this->releaseTable(*entry) : siteNotPublished.render({{"link", this->options.sourceUrl + "/tree/master/libraries/" + urlEncode(name)}, {"name", name}});
-      SafeHtml readmeHtml = siteIsFile(readme) ? this->renderMarkdown("libraries/" + name + "/README.md", siteReadFile(readme)) : SafeHtml();
+      html::SafeHtml releases = entry ? this->releaseTable(*entry) : siteNotPublished.render({{"link", this->options.sourceUrl + "/tree/master/libraries/" + url::urlEncode(name)}, {"name", name}});
+      html::SafeHtml readmeHtml = siteIsFile(readme) ? this->renderMarkdown("libraries/" + name + "/README.md", siteReadFile(readme)) : html::SafeHtml();
       this->write(page, this->pageHtml(page, name, siteLibraryPage.render({{"name", name}, {"releases", releases}, {"readme", readmeHtml}})));
     }
     this->write("libraries/index.html", this->pageHtml("libraries/index.html", "Libraries", siteLibraryList.render({{"rows", rows}})));
-    this->write("libraries/search.json", writeJson(search));
+    this->write("libraries/search.json", json::writeJson(search));
     this->write("libraries/search.js", siteSearchScript);
   }
 
-  SafeHtml releaseTable(const JsonValue& library)
+  html::SafeHtml releaseTable(const json::JsonValue& library)
   {
-    SafeHtml rows;
-    const JsonValue& releases = library["releases"];
+    html::SafeHtml rows;
+    const json::JsonValue& releases = library["releases"];
     for (int i = releases.size() - 1; i >= 0; --i)
     {
-      const JsonValue& r = releases[i];
-      const JsonValue* yanked = r.find("yanked");
+      const json::JsonValue& r = releases[i];
+      const json::JsonValue* yanked = r.find("yanked");
       rows.append(siteReleaseRow.render({{"version", r["version"].asString()},
                                           {"published", r["published"].asString()},
                                           {"kpp", r["kpp"].asString()},
@@ -325,12 +325,12 @@ struct Site
 };
 
 // The newest release that is not yanked, or "".
-String siteLatestVersion(const JsonValue& library)
+String siteLatestVersion(const json::JsonValue& library)
 {
-  const JsonValue& releases = library["releases"];
+  const json::JsonValue& releases = library["releases"];
   for (int i = releases.size() - 1; i >= 0; --i)
   {
-    const JsonValue* yanked = releases[i].find("yanked");
+    const json::JsonValue* yanked = releases[i].find("yanked");
     if (!yanked || yanked->isNull())
       return releases[i]["version"].asString();
   }

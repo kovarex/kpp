@@ -21,7 +21,7 @@ test "titles and summaries"
 
 test "a library's releases"
 {
-  JsonValue library = parseJson(R"({"name": "x", "releases": [
+  json::JsonValue library = json::parseJson(R"({"name": "x", "releases": [
     {"version": "1.0.0", "tree": "sha256-tree:aa", "archive": "archives/aa/aa.zip", "kpp": "0.1.0", "published": "2026-11-01T00:00:00Z", "yanked": null},
     {"version": "1.1.0", "tree": "sha256-tree:bb", "archive": "archives/bb/bb.zip", "kpp": "0.1.0", "published": "2026-11-02T00:00:00Z", "yanked": "broken"}]})");
   check(siteLatestVersion(library) == "1.0.0");
