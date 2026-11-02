@@ -13,6 +13,14 @@ struct Boxed
 // again, and the added overload's walk reads its name too; codegen must emit the overload once.
 int depth(int n) { return n > 0 ? depth(n - 1) + 1 : 0; }
 
+// A class held only as an array member (CellRow's cells, a global's: no function lays it out) once
+// another function's local of it goes: its layout stays, as a build from scratch lays it out for CellRow's.
+struct RowCell { int v; };
+struct CellRow { RowCell cells[2]; int n; };
+CellRow row{};
+int viaRow() { return row.n; }
+int usesCell() { RowCell c{}; return c.v; }
+
 int localSizes() { auto a = unitDepth(); Boxed b(unitHeight()); return int(sizeof(a)) * 10 + int(sizeof(b.v)) + depth(0); }
 
 // An instance checked by the index (matching an out-of-line definition to its declaration runs

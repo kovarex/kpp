@@ -43,7 +43,7 @@ int viaHolders()
 int viaLambda()
 {
   auto scaled = [](auto v) { int r = scale(v); return r; };
-  return scaled(4.5) + viaPlain(0) + viaTemplate() + viaHolders();
+  return scaled(4.5) + viaPlain(0) + viaTemplate() + viaHolders() + viaRow() + usesCell();
 }
 
 // A global whose initializer holds lambdas: a lambda added before them in this file renumbers them,

@@ -20655,14 +20655,20 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
       for (const Shared::Definition& d : sh.definitions[k])
         for (const Ty* t : d.layouts)
           unusedLayouts.erase(t);
+    // (a field's class, also one held in an array: `RowCell cells[2]`)
+    auto held = [&](const Ty* f)
+    {
+      while (f && f->kind == TyKind::Array)
+        f = f->inner;
+      if (f)
+        unusedLayouts.erase(e.types.unqualified(f));
+    };
     for (auto& [key, info] : sh.structs)
       for (const Ty* f : info.fieldTypes)
-        if (f)
-          unusedLayouts.erase(e.types.unqualified(f));
+        held(f);
     for (auto& [t, info] : sh.closures)
       for (const Ty* f : info.fieldTypes)
-        if (f)
-          unusedLayouts.erase(e.types.unqualified(f));
+        held(f);
     if (!unusedLayouts.empty())
     {
       std::unordered_set<const StructInfo*> gone;

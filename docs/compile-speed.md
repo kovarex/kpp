@@ -1400,7 +1400,7 @@ text where it sorts among the type lines and the type index is made again, no lo
 added to the shared declarations, the program generated in full" (a module takes the type lines it
 names: only those naming it change); and a layout only the dropped definitions used, which no
 definition, layout or closure uses now, is dropped (a build from scratch never lays it out, nor counts
-it). The edit test: the class template argument deduction step incremental (it was a build from
+it; a layout's field held in an array counts as held, `RowCell cells[2]`, B's review). The edit test: the class template argument deduction step incremental (it was a build from
 scratch), and a local of a class instance the program did not have added and taken out (codegen in full
 before).
 
