@@ -1323,7 +1323,7 @@ namespace
       cg = rebuildLLVM(*build.codegen, build.changedBodies, build.addedFunctions, build.removedFunctions, build.changedLayouts, build.instancesOf,
                        build.changedGlobals, rebuilt);
       logBuildNote(!rebuilt              ? "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full"
-                   : !cg.errors.empty() ? "codegen: the session kept across " + std::to_string(cg.errors.size()) + " error(s), " +
+                   : cg.failed()        ? "codegen: the session kept across " + std::to_string(cg.errors.size() + cg.hiddenErrors) + " error(s), " +
                                               std::to_string(cg.emittedAgain) + " function(s) emitted again"
                                         : "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
                                               " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again");
@@ -1342,7 +1342,7 @@ namespace
     double t = seconds(Clock::now() - start);
     // Errors assemble no module; a session kept across them keeps the sizes of the modules the last
     // build without errors assembled (it assembles the others once the errors are gone).
-    if (cg.modules.empty() && !cg.errors.empty() && build.codegen)
+    if (cg.modules.empty() && cg.failed() && build.codegen)
     {
       if (build.moduleBytes.size() != modules)
         build.moduleBytes.assign(modules, 0);

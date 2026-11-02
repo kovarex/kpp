@@ -1,0 +1,10 @@
+// tests\stubs.ps1: built with --keep-going --stub-missing despite broken.kpp's error, the program runs
+// up to its call of broken, whose stub names it and aborts.
+int main(int argc, char**)
+{
+  println("before");
+  if (argc > 1)
+    return broken(argc);
+  println("after");
+  return 0;
+}

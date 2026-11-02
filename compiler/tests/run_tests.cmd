@@ -156,6 +156,10 @@ rem And through clang (tests\verifier.ps1): its -fverify-intermediate-code rejec
 rem release build and a debug build, for windows and windows-gnu, never compiling it or hanging on it.
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\verifier.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "verifier") else (call :ok)
+rem --keep-going --stub-missing with an error the checker reported (tests\stubs.ps1): the function it
+rem left out is a stub in the module that calls it, in one module, four and a release build.
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\stubs.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "stubs") else (call :ok)
 rem --debug-info: the line tables in the PDB (tests\debuginfo.ps1, docs/debugging.md).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\debuginfo.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "debug info") else (call :ok)

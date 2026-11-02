@@ -616,6 +616,10 @@ namespace
     // after the emission), which a later build cannot emit again on its own.
     std::unordered_map<std::string, FunctionDecl*> erroring;
     bool unattributedErrors = false;
+    // The failures not shown (error's shown false: each follows from an error the checker reported):
+    // failures all the same, for every decision that asks whether codegen failed (errors holds the
+    // shown ones only).
+    size_t hiddenErrors = 0;
     bool& mallocDeclared = sh.mallocDeclared;
     std::atomic<bool>& usesExceptions = sh.usesExceptions;
     std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
@@ -782,6 +786,8 @@ namespace
     {
       if (shown)
         errors.push_back(locationOf(at, currentFile, true) + ": error: " + message); // every codegen error is labelled, the gaps too
+      else
+        ++hiddenErrors;
       // A program function's own emission (not an instance's, a lambda's operator on demand, a
       // global's constructor or a shared text it happens to emit first): the function emitted again
       // gives the error again, at its place then.
@@ -19285,6 +19291,10 @@ static std::string declareUndefined(const std::string& text, const std::unordere
   std::vector<std::string> sorted(used.begin(), used.end());
   std::sort(sorted.begin(), sorted.end());
   std::string out = sorted.empty() ? "" : "\n; left out by codegen errors (--keep-going)\n";
+  // The stubs' runtime is a shared function, which a debug build of several modules defines in one
+  // home module: the others declare it for their stubs (made after their declarations were).
+  if (stubs && !sorted.empty() && !known.count("@kpp_missing"))
+    out += "declare void @kpp_missing(ptr)\n";
   for (const std::string& name : sorted)
     if (stubs)
     {
@@ -19695,7 +19705,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   {
     bool anyErrors = false;
     for (auto& em : emitters)
-      anyErrors = anyErrors || !em->errors.empty();
+      anyErrors = anyErrors || !em->errors.empty() || em->hiddenErrors;
     for (auto& [t, info] : sh.closures)
       if (!info.laidOut && !info.structName.empty())
       {
@@ -19739,11 +19749,14 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   {
     result.errors.insert(result.errors.end(), em->errors.begin(), em->errors.end());
     result.failedFunctions.insert(result.failedFunctions.end(), em->failedFunctions.begin(), em->failedFunctions.end());
+    result.hiddenErrors += em->hiddenErrors;
   }
   std::sort(result.errors.begin(), result.errors.end());
   std::sort(result.failedFunctions.begin(), result.failedFunctions.end());
   if (outOfMemory)
     result.errors.push_back("codegen: out of memory after " + std::to_string(emitted) + " functions");
+  // Whether anything failed, shown or not: what an error left out is left out either way.
+  const bool failed = result.failed();
   result.functions = sh.functions;
   // Each shared function (a destructor helper, a runtime function) is defined in one home module,
   // hash(name) % moduleCount like a function, and declared by the modules that use it (moduleText's
@@ -19827,12 +19840,12 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // and assembles the modules once it has no errors. Not when a failure is remembered for every use
   // (a layout's, a closure's, a global's), a lambda got a placeholder, or the IR is assembled
   // despite the errors (--keep-going).
-  bool keptAcrossErrors = keep && !result.errors.empty() && !despiteErrors && !outOfMemory && !placeholders && sh.failuresRemembered == 0 &&
+  bool keptAcrossErrors = keep && failed && !despiteErrors && !outOfMemory && !placeholders && sh.failuresRemembered == 0 &&
                           std::none_of(emitters.begin(), emitters.end(), [](const std::unique_ptr<Emitter>& em) { return em->unattributedErrors; });
   if (keptAcrossErrors)
     for (auto& em : emitters)
       sh.erroring.insert(em->erroring.begin(), em->erroring.end());
-  bool keepTexts = ((checkRebuild && result.errors.empty()) || (keep && (result.errors.empty() || keptAcrossErrors))) && sh.moduleCount > 1;
+  bool keepTexts = ((checkRebuild && !failed) || (keep && (!failed || keptAcrossErrors))) && sh.moduleCount > 1;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     // The definitions in the order SharedText puts entries: by their text.
@@ -19851,7 +19864,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
-  if (!result.errors.empty() && !despiteErrors)
+  if (failed && !despiteErrors)
   {
     if (keepTexts)
     {
@@ -19894,7 +19907,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     result.ir.append(std::move(e.body.text));
     if (sh.debugInfo)
       result.ir += debugModuleTailFor(sh.target);
-    if (!result.errors.empty())
+    if (failed)
     {
       std::unordered_set<std::string> stubbed;
       result.ir += declareUndefined(result.ir, sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
@@ -19925,7 +19938,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
           std::vector<Shared::Definition>().swap(sh.definitions[k]);
         std::string().swap(sh.moduleDecls[k].text);
       }
-      if (!result.errors.empty())
+      if (failed)
         result.modules[k] += declareUndefined(result.modules[k], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[k]);
     }
   };
@@ -20365,6 +20378,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     em->failedAt.clear();
     em->erroring.clear();
     em->unattributedErrors = false;
+    em->hiddenErrors = 0;
   }
   // Level by level as the build emitted them: the functions of depth d with the first uses those of
   // depth d - 1 asked for, after all of those (a closure's call operator goes to the function that
@@ -20477,12 +20491,12 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   bool errors = false;
   std::unordered_map<std::string, FunctionDecl*> erroring;
   for (auto& em : emitters)
-    if (!em->errors.empty() || em->unattributedErrors)
+    if (!em->errors.empty() || em->unattributedErrors || em->hiddenErrors)
     {
       errors = true;
       if (em->unattributedErrors || sh.despiteErrors || sh.failuresRemembered)
       {
-        out.declined = "an error: " + cut(em->errors.empty() ? std::string("(gone)") : em->errors.front());
+        out.declined = "an error: " + cut(!em->errors.empty() ? em->errors.front() : em->hiddenErrors ? std::string("(one following from a checker error)") : std::string("(gone)"));
         return out;
       }
       erroring.insert(em->erroring.begin(), em->erroring.end());
@@ -20598,6 +20612,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     {
       out.errors.insert(out.errors.end(), em->errors.begin(), em->errors.end());
       out.failedFunctions.insert(out.failedFunctions.end(), em->failedFunctions.begin(), em->failedFunctions.end());
+      out.hiddenErrors += em->hiddenErrors;
     }
     std::sort(out.errors.begin(), out.errors.end());
     std::sort(out.failedFunctions.begin(), out.failedFunctions.end());

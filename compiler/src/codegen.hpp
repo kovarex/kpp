@@ -13,6 +13,7 @@ struct CodegenResult
   std::string ir;                   // the whole program as one module (moduleCount == 1)
   std::vector<std::string> modules; // or one module per group of files, each complete on its own
   std::vector<std::string> errors; // "file:line: message"
+  size_t hiddenErrors = 0;         // failures not in errors: each follows from an error the checker reported (not shown again)
   std::vector<std::string> failedFunctions; // IR names of the functions an error left out
   size_t stubs = 0;                 // with stubMissing: functions left out that are stubs aborting when called
   size_t functions = 0;
@@ -21,6 +22,9 @@ struct CodegenResult
   size_t emittedAgain = 0;          // rebuildLLVM: the functions it emitted (the changed and added ones, those that inlined a changed body, first uses)
   std::string declined;             // rebuildLLVM: why it did not rebuild (rebuilt false), for the server's log
   size_t instanceAssertsChecked = 0; // the class template instances whose static_asserts it checked (GlobalScope::checkerErrors)
+  // Whether codegen failed, its failures shown or not: a function a hidden one left out is left out
+  // too (declared or stubbed with --keep-going, emitted again by a compile server's next build).
+  bool failed() const { return !errors.empty() || hiddenErrors != 0; }
 };
 
 // Codegen's state kept between builds by the compile server (docs/compile-speed.md, step 5b): the

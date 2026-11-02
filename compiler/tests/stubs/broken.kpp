@@ -1,0 +1,3 @@
+// tests\stubs.ps1: broken's body names something declared nowhere (the checker's error), so codegen
+// leaves broken out; main, in its own file and so in a module of its own, calls it.
+int broken(int v) { return undefinedName(v); }
