@@ -24565,6 +24565,16 @@ bool GlobalScope::checkerErrorIn(const FunctionDecl* f)
   return false;
 }
 
+bool GlobalScope::checkerErrorWithin(const ParsedFile* file, uint32_t from, uint32_t to)
+{
+  std::lock_guard lock(impl->checkerErrorsMutex);
+  for (const auto& [e, units] : impl->checkerErrorSet)
+    if (auto it = impl->checkerErrorPlaces.find(e); it != impl->checkerErrorPlaces.end() && it->second.first == file && it->second.second >= from &&
+                                                     it->second.second <= to)
+      return true;
+  return false;
+}
+
 bool GlobalScope::undeclaredReported(const std::string& name)
 {
   std::string said = "'" + name + "' is not declared";

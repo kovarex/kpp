@@ -267,6 +267,9 @@ public:
   // Whether the checker reported an error in f's text (its signature or body), or in f, an instance's
   // copy: a value of unknown type the code generator meets in f follows from it.
   bool checkerErrorIn(const FunctionDecl* f);
+  // Whether the checker reported an error at a token of file from `from` to `to` (both included):
+  // the code generator's failure on an expression holding it follows from that error.
+  bool checkerErrorWithin(const ParsedFile* file, uint32_t from, uint32_t to);
   // Whether the checker reported "'name' is not declared" somewhere (an undeclared type the code
   // generator meets in a layout: its own error would only follow from that one).
   bool undeclaredReported(const std::string& name);

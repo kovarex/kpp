@@ -13,3 +13,7 @@ int main()
   int x = "s";
   return x + gap();
 }
+// A call of an undeclared name, and a call given one: the checker's errors alone, never the code
+// generator's failure on the calls that hold them (an editor showed both).
+int called() { undefinedCall(1); return 0; }
+int given() { println("x ", missingValue); return 0; }

@@ -1,4 +1,5 @@
 #include "codegen.hpp"
+#include "ast_walk.hpp"
 #include "consteval.hpp"
 #include "source.hpp"
 #include <map>
@@ -826,13 +827,32 @@ namespace
       if (!currentFunctionName.empty())
         where = " (in " + currentFunctionName + (currentRequestedBy.empty() ? "" : ", requested by " + currentRequestedBy) + ")";
       // A value of unknown type in a function the checker reported an error in (`auto v = p.size()`
-      // on an undeclared type's p) follows from that error too.
-      if (shown && message.find("unknown type") != std::string::npos && global.checkerErrorIn(checkerChecked))
+      // on an undeclared type's p) follows from that error too; and so does any failure on an
+      // expression that holds an error the checker reported (`undefinedName(1)`, a call given
+      // `NOT_A_NAME`): the build fails with that error already, and this one only repeats it (an
+      // editor showed both). A failure elsewhere in the same function is shown.
+      if (shown && ((message.find("unknown type") != std::string::npos && global.checkerErrorIn(checkerChecked)) || holdsCheckerError(at)))
         shown = false;
       lastFailure = message;
       lastFailureShown = shown;
       error(at, message + where, shown);
       throw Unsupported{};
+    }
+    // Whether node at is an expression that holds an error the checker reported: one at a token from
+    // its first to its last (its subtree's), in the file being emitted. Only an expression (a call,
+    // an argument, a conversion): a failure on a declaration (a local array whose length the checker
+    // found no constant) is the code generator's own consequence, and stays shown.
+    bool holdsCheckerError(Node* at)
+    {
+      if (!at || at->kind < NodeKind::NameExpr || at->kind > NodeKind::ParenExpr || !currentFile || !global.checkerErrorIn(checkerChecked))
+        return false;
+      uint32_t first = at->token, last = at->token;
+      forEachNode(at, [&](Node* n)
+      {
+        first = std::min(first, n->token);
+        last = std::max(last, n->token);
+      });
+      return global.checkerErrorWithin(currentFile, first, last);
     }
     // A construct the code generator cannot translate yet.
     [[noreturn]] void unsupported(Node* at, const std::string& what, bool shown = true) { fail(at, "codegen does not support " + what + " yet", shown); }
