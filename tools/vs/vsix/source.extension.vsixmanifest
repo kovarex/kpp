@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+  <Metadata>
+    <Identity Id="kpp.0b6c2d3e-6f0a-4d38-9a51-3c2b7a0f5e41" Version="0.1.0" Language="en-US" Publisher="kovarex" />
+    <DisplayName>kpp</DisplayName>
+    <Description xml:space="preserve">The kpp language: colouring, and IntelliSense (errors, go to definition and declaration, hover, completion, references) from the kpp compiler's language server, kpp --lsp.</Description>
+    <MoreInfo>https://github.com/kovarex/kpp/blob/master/docs/editors.md</MoreInfo>
+    <Tags>kpp</Tags>
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.14,)">
+      <ProductArchitecture>amd64</ProductArchitecture>
+    </InstallationTarget>
+  </Installation>
+  <Prerequisites>
+    <Prerequisite Id="Microsoft.VisualStudio.Component.CoreEditor" Version="[17.14,)" DisplayName="Visual Studio core editor" />
+  </Prerequisites>
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="File" Path="Kpp.VisualStudio.dll" />
+    <Asset Type="Microsoft.VisualStudio.VsPackage" d:Source="File" Path="kpp.pkgdef" />
+  </Assets>
+</PackageManifest>

@@ -28,7 +28,8 @@ arguments or adding a file. Once build.kpp exists, the arguments come from it.
   - `--before-build CMD`, `--after-build CMD`: commands around the build, where `{exe}` is the
     configuration's executable and `{configuration}` its name. With `--keep-going` the
     after-build command runs even when the build fails.
-- **Colouring in Visual Studio:** run `tools\vs\install.cmd` once, then restart Visual Studio. It
+- **IntelliSense and colouring in Visual Studio:** the extension kpp-vs.vsix (`vsix\README.md`).
+- **Colouring alone in Visual Studio,** without the extension: run `tools\vs\install.cmd` once, then restart Visual Studio. It
   links the TextMate grammar `kpp\Syntaxes\kpp.tmLanguage.json` into
   `%USERPROFILE%\.vs\Extensions\kpp`.
 

@@ -1,0 +1,5 @@
+[$RootKey$\TextMate\Repositories]
+"kpp"="$PackageFolder$\Grammars"
+
+[$RootKey$\TextMate\LanguageConfiguration\GrammarMapping]
+"source.kpp"="$PackageFolder$\LanguageConfiguration\language-configuration.json"

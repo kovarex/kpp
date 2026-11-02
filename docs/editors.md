@@ -11,8 +11,9 @@ Status (2026-10-31):
 - The VS Code extension is ready and checked in a real VS Code 1.144 (2026-11-02, see "VS Code"):
   errors, completion, go to definition, hover with config:: values, and switching cells, on
   tests\lsp\cells and on factorio-in-kpp.
-- The Visual Studio extension is not built yet: the VS SDK workload and the .NET 8 SDK are not
-  installed.
+- The Visual Studio extension, kpp-vs.vsix (tools\vs\vsix), is checked in a real Visual Studio
+  17.14 (2026-11-02, see "Visual Studio 2022"): colouring, go to definition, go to declaration
+  and errors, on tests\lsp\cells and on factorio-in-kpp.
 
 ## The language server
 
@@ -107,22 +108,33 @@ The extension is in `tools/vscode`; its README covers the details.
 
 ## Visual Studio 2022
 
-**Visual Studio has no setting that starts a language server: an extension (VSIX) has to provide
-it.** Two ways exist:
-1. **VisualStudio.Extensibility** (Visual Studio 17.9 and later). An out-of-process .NET extension
-   declares a `LanguageServerProvider` for `.kpp` files and returns the `kpp --lsp` process's
-   streams. It works in Open Folder mode and in solutions. This is the current API and the one to
-   use.
-2. **The older in-process API.** A VSIX exports an `ILanguageClient`
-   (Microsoft.VisualStudio.LanguageServer.Client).
-
-Either way, building a VSIX needs the "Visual Studio extension development" workload (the VS SDK)
-and a .NET SDK. Neither is installed on PC-PRACOVNA, so the VSIX waits for kovarex's go-ahead
-(question 1 below).
-
-What works today without it:
-- **Colouring:** `tools\vs\install.cmd`.
-- **Errors in the Error List:** the build of the generated solution (build.md).
+**kpp-vs.vsix** (`tools\vs\vsix`, its README has the details) is the extension: colouring, from the
+TextMate grammar it bundles, and IntelliSense from `kpp --lsp`. Install it by double-clicking
+kpp-vs.vsix (`tools\vs\vsix\build.cmd` makes it; it needs the .NET 8 SDK), then restart Visual
+Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
+- **What it gives:** errors as squiggles and in the Error List, go to definition (F12,
+  Edit.GoToDefinition), go to declaration (Ctrl+F12, Edit.GoToDeclaration), hover, completion and
+  references.
+- **Go to declaration:** Visual Studio's language client sends `textDocument/definition` for
+  Edit.GoToDefinition but leaves Edit.GoToDeclaration unavailable. The extension handles that
+  command in .kpp editors: it sends `textDocument/declaration` itself and opens the answer.
+- **Why in-process:** that handler needs to send the server a request of its own. The in-process
+  client (`ILanguageClient`, Microsoft.VisualStudio.LanguageServer.Client) allows it through
+  `ILanguageClientCustomMessage2`. VisualStudio.Extensibility's out-of-process
+  `LanguageServerProvider` does not, so the first build, which used it, had no go to declaration.
+- **Checked in Visual Studio 17.14.42** by `tools\vs\vsix\test.ps1`, in the experimental instance on
+  copies of the projects, opened as folders (2026-11-02):
+  - tests\lsp\cells, from `println(shared())` in src\game\main.kpp: go to definition reaches
+    src\common\shared.kpp:1 in 12.0 s (the server's first check included), go to declaration the
+    same in 0.5 s. A typed error is in the Error List after 1.2 s and gone 2.4 s after undo.
+  - factorio-in-kpp e4cfd9ba, from `super::setSize` in VideoBitmapDX11.kpp:77: go to definition
+    reaches VideoBitmap.kpp:134 (the out-of-line body) in 40.5 s, the server's first check taking
+    32.0 s of it; go to declaration reaches VideoBitmap.kpp:20 (the declaration in the class) in
+    0.6 s. A typed error is in the Error List after 16.7 s and gone 35.4 s after undo (checks of
+    15.5 and 22.6 s).
+  - In a folder, the server checks every target at once (no cell is chosen), which on the game
+    is factorio and factorio-test together: 32 s for the first check where VS Code's `factorio`
+    takes 15 s.
 
 ## Other editors
 
@@ -202,12 +214,3 @@ Community editions too):
 2. For colouring: *Settings > Editor > TextMate Bundles*, then *+*. Pick tools\vscode after
    `npm run grammar`, or the `extension` directory of kpp.vsix unzipped. JetBrains reads a VS Code
    extension's grammar from it.
-
-## Questions for kovarex
-
-1. **Installing the tools** (allowed by kovarex, relayed by the coordinator 2026-10-31). E's session
-   permissions refused the install commands, so they still need running, by kovarex or on his
-   direct instruction in E's session:
-   - VS Code: installed by kovarex (2026-11-02);
-   - the .NET 8 SDK: `winget install --id Microsoft.DotNet.SDK.8 -e`;
-   - the "Visual Studio extension development" workload, added with the Visual Studio Installer.

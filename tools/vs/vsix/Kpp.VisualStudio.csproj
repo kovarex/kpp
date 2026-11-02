@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- kpp-vs.vsix (README.md): Visual Studio's language client for .kpp files, Edit.GoToDeclaration for
+       them, and the TextMate grammar and language configuration kpp.pkgdef registers. In-process:
+       Visual Studio's own LSP client leaves Edit.GoToDeclaration unavailable, and only the in-process
+       client (ILanguageClientCustomMessage2) lets an extension send the server a request of its own. -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Kpp.VisualStudio</RootNamespace>
+    <AssemblyName>Kpp.VisualStudio</AssemblyName>
+    <VssdkCompatibleExtension>true</VssdkCompatibleExtension>
+    <GeneratePkgDefFile>false</GeneratePkgDefFile>
+    <IncludeDebugSymbolsInVSIX>false</IncludeDebugSymbolsInVSIX>
+    <TargetVsixContainerName>kpp-vs.vsix</TargetVsixContainerName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.ComponentModel.Composition" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Visual Studio has these assemblies: compiled against, not shipped. -->
+    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.LanguageServer.Client" Version="17.14.60" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.Extensibility.Build" Version="17.14.40608" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The grammar Visual Studio and VS Code share, and VS Code's language configuration (comments,
+         brackets, indentation), from where they are kept. -->
+    <Content Include="..\kpp\Syntaxes\kpp.tmLanguage.json" Link="Grammars\kpp.tmLanguage.json" IncludeInVSIX="true" />
+    <Content Include="..\..\vscode\language-configuration.json" Link="LanguageConfiguration\language-configuration.json" IncludeInVSIX="true" />
+    <Content Include="kpp.pkgdef" IncludeInVSIX="true" />
+  </ItemGroup>
+</Project>
