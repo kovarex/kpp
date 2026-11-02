@@ -126,7 +126,9 @@ struct Executable
   void beforeBuild(StringView command) { beforeBuildCommand = command; }
   void afterBuild(StringView command) { afterBuildCommand = command; }
   // What Run and the debugger start, when not the executable itself: the command, its arguments and
-  // the directory it starts in.
+  // the directory it starts in; {exe} and {configuration} are expanded in each, as in the build steps.
+  // A name per configuration that is not the configuration's own (Factorio's bin\Releasex64) is
+  // configure(Cell&)'s: `cell.target.debug(...)` with a name made from cell.configuration.name.
   void debug(StringView command, StringView arguments = "", StringView directory = "")
   {
     debugCommand = command;

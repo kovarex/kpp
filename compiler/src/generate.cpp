@@ -489,9 +489,10 @@ int generateProjectFiles(int argc, char** argv)
     if (!g.afterBuild.empty())
       command += (keepGoing ? " & " : " && ") + step(g.afterBuild, ide.exe, ide.name);
     ide.buildCommand = command;
-    ide.program = g.debugCommand.empty() ? ide.exe : fs::absolute(g.debugCommand);
-    ide.arguments = g.debugArguments;
-    ide.directory = g.debugDirectory.empty() ? cwd : fs::absolute(g.debugDirectory);
+    // What the debugger starts, {exe} and {configuration} expanded as in the steps.
+    ide.program = g.debugCommand.empty() ? ide.exe : fs::absolute(step(g.debugCommand, ide.exe, ide.name));
+    ide.arguments = step(g.debugArguments, ide.exe, ide.name);
+    ide.directory = g.debugDirectory.empty() ? cwd : fs::absolute(step(g.debugDirectory, ide.exe, ide.name));
     target.configurations.push_back(ide);
   }
   return writeIdeFiles(g.visualStudio, g.vsCode, target.name, cwd, {target}, stdlib, g.extensions) ? 0 : 1;

@@ -1035,13 +1035,30 @@ namespace
     return code;
   }
 
+  // What Run and the debugger start (Executable::debug): the program, its arguments and its directory,
+  // {exe} and {configuration} expanded as in the build steps (a configuration's own copy of the game,
+  // bin\Releasex64\factorio.exe).
+  struct Launch
+  {
+    fs::path program, directory;
+    std::string arguments;
+  };
+  Launch launchOf(const fs::path& root, const Program& p)
+  {
+    fs::path exe = exeOf(root, p);
+    Launch l;
+    l.program = p.debugCommand.empty() ? exe : rooted(root, withExe(p.debugCommand, exe, p.configuration));
+    l.directory = p.debugDirectory.empty() ? root : rooted(root, withExe(p.debugDirectory, exe, p.configuration));
+    l.arguments = withExe(p.debugArguments, exe, p.configuration);
+    return l;
+  }
+
   int runProgram(const fs::path& root, const Program& p, const std::vector<std::string>& extra)
   {
-    fs::path program = p.debugCommand.empty() ? exeOf(root, p) : rooted(root, p.debugCommand);
-    fs::path directory = p.debugDirectory.empty() ? root : rooted(root, p.debugDirectory);
-    std::string command = "cd /d " + quoteArg(directory.string()) + " && " + quoteArg(program.string());
-    if (!p.debugArguments.empty())
-      command += " " + p.debugArguments;
+    Launch l = launchOf(root, p);
+    std::string command = "cd /d " + quoteArg(l.directory.string()) + " && " + quoteArg(l.program.string());
+    if (!l.arguments.empty())
+      command += " " + l.arguments;
     for (const std::string& a : extra)
       command += " " + quoteArg(a);
     return system(("\"" + command + "\"").c_str());
@@ -1160,9 +1177,10 @@ namespace
                          quoteArg(configuration.name) + " --msvc-diagnostics";
         for (const auto& [setting, value] : request.settings)
           c.buildCommand += " --set " + quoteArg(setting + "=" + value);
-        c.program = q->debugCommand.empty() ? c.exe : rooted(root, q->debugCommand);
-        c.arguments = q->debugArguments;
-        c.directory = q->debugDirectory.empty() ? root : rooted(root, q->debugDirectory);
+        Launch l = launchOf(root, *q);
+        c.program = l.program;
+        c.arguments = l.arguments;
+        c.directory = l.directory;
         target.configurations.push_back(c);
       }
       targets.push_back(target);

@@ -216,7 +216,13 @@ run_tests.cmd.
   (`project.cInclude(project.setting("ROOT", "C:/x") + "/include")`), and executables and C
   libraries are Deques, so the reference `executable()` returns stays valid. Commands are set by
   methods: `game.afterBuild("copy ...")`, `game.debug(command, arguments, directory)`,
-  `library.standard("c++20")`.
+  `library.standard("c++20")`. `{exe}` (the configuration's executable) and `{configuration}` are
+  expanded in the steps, and in debug()'s command, arguments and directory as well (2026-11-02).
+  `kpp NAME --run`, F5 in the generated Visual Studio project and VS Code's launch.json then start
+  each configuration's own program: `game.debug("copies/{configuration}/game.exe")`. A name per
+  configuration that is not the configuration's own is made in configure(Cell&), below. Factorio's
+  `bin\Releasex64` is one, made as `"bin/" + name + "/factorio.exe"` from
+  `cell.configuration.name`. tests/project.ps1 checks both.
 - **Measured** on a `kpp new` project (2026-10-31, PC-PRACOVNA): the first `kpp --debug` took
   1.9 s (compiling build.kpp and the program); with nothing changed it took 0.2 s.
 - **What version 0 lacks:**
@@ -620,7 +626,8 @@ executable in `build\<configuration>\`. They build through the compile server wi
 `--msvc-diagnostics`. Sources are passed as absolute paths, so errors carry absolute paths: the
 IDE opens a relative path against the project file's directory, which is not the build's.
 Options that build.kpp's targets and steps will give later:
-- `--debug-command`, `--debug-arguments`, `--debug-directory`: what the debugger starts;
+- `--debug-command`, `--debug-arguments`, `--debug-directory`: what the debugger starts, with
+  `{exe}` and `{configuration}` in them too;
 - `--before-build` and `--after-build`: commands around the build, with `{exe}` and
   `{configuration}` in them.
 

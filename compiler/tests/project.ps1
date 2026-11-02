@@ -203,11 +203,22 @@ void build(Project& project)
   tests.exclude("src/main.kpp");
   tests.config("unit", true);
   tests.config("level", 4); // the target's, over the configuration's
+  // Run and the debugger start a copy in a directory per configuration: {configuration} in debug().
+  tests.afterBuild("cmd /c \"if not exist copies\\{configuration} mkdir copies\\{configuration}\" && copy /y \"{exe}\" copies\\{configuration}\\ >nul");
+  tests.debug("copies/{configuration}/checks.exe", "", "copies/{configuration}");
 }
 void configure(Cell& cell)
 {
   if (cell.configuration.name == "release" && cell.target.name == "main")
     cell.config("steam", true);
+  // Factorio's layout, a name per configuration that is not the configuration's own (bin\Releasex64):
+  // made here, for the build step and the debugger alike.
+  if (cell.target.name == "main")
+  {
+    String name = String(cell.configuration.name == "debug" ? "Debug" : cell.configuration.name == "release" ? "Release" : "FastDebug") + "x64";
+    cell.target.afterBuild("cmd /c \"if not exist bin\\" + name + " mkdir bin\\" + name + "\" && copy /y \"{exe}\" bin\\" + name + "\\ >nul");
+    cell.target.debug("bin/" + name + "/main.exe");
+  }
 }
 '@
   Set-Content 'build.kpp' $matrixBuild
@@ -226,6 +237,21 @@ void configure(Cell& cell)
   $solution = Get-Content 'build\visual-studio\matrix.sln' -Raw
   $project = Get-Content 'build\visual-studio\main.vcxproj' -Raw
   if ($code -ne 0 -or $solution -notmatch 'Fastdebug\|x64 = Fastdebug\|x64' -or $project -notmatch 'main fastdebug --msvc-diagnostics') { Fail "the solution's configurations`n$($output -join "`n")" }
+  # Each configuration's debugger starts its own copy: configure(Cell&)'s name, debug()'s {configuration}.
+  foreach ($copy in 'bin\Debugx64\main.exe', 'bin\Releasex64\main.exe', 'bin\FastDebugx64\main.exe', 'copies\release\checks.exe')
+  {
+    if (-not (Test-Path $copy)) { Fail "no ${copy}: the after-build step did not copy it" }
+  }
+  $matrixPath = (Resolve-Path $matrix).Path
+  foreach ($expected in @(
+      @('main.vcxproj', 'Release', "<LocalDebuggerCommand>$([regex]::Escape("$matrixPath\bin\Releasex64\main.exe"))</LocalDebuggerCommand>"),
+      @('main.vcxproj', 'Fastdebug', "<LocalDebuggerCommand>$([regex]::Escape("$matrixPath\bin\FastDebugx64\main.exe"))</LocalDebuggerCommand>"),
+      @('checks.vcxproj', 'Release', "<LocalDebuggerCommand>$([regex]::Escape("$matrixPath\copies\release\checks.exe"))</LocalDebuggerCommand>\s*<LocalDebuggerCommandArguments></LocalDebuggerCommandArguments>\s*<LocalDebuggerWorkingDirectory>$([regex]::Escape("$matrixPath\copies\release"))</LocalDebuggerWorkingDirectory>")))
+  {
+    $text = Get-Content "build\visual-studio\$($expected[0])" -Raw
+    $group = [regex]::Match($text, "(?s)<PropertyGroup Condition=`"'\`$\(Configuration\)' == '$($expected[1])'`">.*?</PropertyGroup>").Value
+    if ($group -notmatch $expected[2]) { Fail "$($expected[0]) $($expected[1]) does not debug $($expected[2])`n$group" }
+  }
   foreach ($case in @(
       @("void build(Project& project)`n{`n  project.configuration(`"asan`", `"nosuch`");`n}", 'the configuration asan is based on nosuch, which build\.kpp does not declare'),
       @("void build(Project& project)`n{`n  project.executable(`"release`", {`"src`"});`n}", 'release is a target and a configuration')))
