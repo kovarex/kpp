@@ -373,6 +373,21 @@ namespace
     // A release build's modules [0, importableModules) hold the short definitions emitted in the
     // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
     unsigned importableModules = 0;
+    // A debug build's linkonce_odr globals of the shared declarations (constants, string literals,
+    // static data), each defined in one module, its home (a hash of its name), and declared
+    // `external` in the other modules that name it (prepareModuleTexts, moduleText). Every module
+    // defined every one before: 1.57 million definitions of the game's 64,779, a quarter of its IR,
+    // compiled 128 times and thrown away by the linker 127 times.
+    struct HomedGlobal
+    {
+      unsigned home;
+      std::string declaration; // `@name = external [thread_local] global|constant TYPE[, align N]`
+    };
+    bool homeGlobals = false;
+    std::unordered_map<std::string_view, HomedGlobal> homedGlobals; // by `@name`, a view into decls
+    std::unordered_map<std::string_view, unsigned> homedComdats;     // `$name` -> its global's home
+    std::vector<std::vector<std::string_view>> homeNames;            // per module: the names its homed globals' initializers use
+    std::vector<std::string_view> namedByShared;                     // the names the shared lines every module keeps use
     std::vector<std::vector<const Definition*>> placedHere; // per module: the definitions placed in it
     std::vector<std::string> placedDecls;                    // per module: what they name from where they were emitted
     std::unordered_map<std::string, unsigned> placedIn;      // a placed definition's name -> its module
@@ -9510,6 +9525,61 @@ namespace
       }
     }
 
+    // The length of the LLVM type at the start of text: a bracketed aggregate (`[4 x i32]`, `{ i32,
+    // ptr }`, `<{ ... }>`) to its matching close, else one word (`i32`, `ptr`, `%struct.<hash>`).
+    static size_t typeLengthIn(std::string_view text)
+    {
+      if (text.empty())
+        return 0;
+      if (text[0] != '[' && text[0] != '{' && text[0] != '<')
+        return std::min(text.find(' '), text.size());
+      int open = 0;
+      for (size_t i = 0; i < text.size(); ++i)
+      {
+        char c = text[i];
+        if (c == '[' || c == '{' || c == '<')
+          ++open;
+        else if (c == ']' || c == '}' || c == '>')
+          if (--open == 0)
+            return i + 1;
+      }
+      return text.size();
+    }
+    // A shared `@name = linkonce_odr [unnamed_addr] [thread_local] global|constant TYPE INIT, comdat
+    // [, align N]` line as the external declaration of the same global; empty for any other line.
+    static std::string externalDeclarationOf(std::string_view line, std::string_view& name)
+    {
+      static constexpr std::string_view mark = " = linkonce_odr ";
+      size_t eq = line.find(mark);
+      if (eq == std::string_view::npos || line.empty() || line[0] != '@' || line.find(", comdat") == std::string_view::npos)
+        return {};
+      name = line.substr(0, eq);
+      std::string_view rest = line.substr(eq + mark.size());
+      if (rest.starts_with("unnamed_addr "))
+        rest.remove_prefix(13);
+      bool tls = rest.starts_with("thread_local ");
+      if (tls)
+        rest.remove_prefix(13);
+      std::string_view kind = rest.starts_with("global ") ? "global" : rest.starts_with("constant ") ? "constant" : "";
+      if (kind.empty())
+        return {};
+      rest.remove_prefix(kind.size() + 1);
+      size_t typeLength = typeLengthIn(rest);
+      std::string declaration = std::string(name) + " = external " + (tls ? "thread_local " : "") + std::string(kind) + " " + std::string(rest.substr(0, typeLength));
+      if (size_t align = line.rfind(", align "); align != std::string_view::npos && align > eq &&
+          line.find_first_not_of("0123456789", align + 8) == std::string_view::npos)
+        declaration += line.substr(align);
+      return declaration;
+    }
+    // The stable home of a global: FNV-1a of its name.
+    static unsigned homeOf(std::string_view name, unsigned modules)
+    {
+      uint64_t h = 1469598103934665603ull;
+      for (unsigned char c : name)
+        h = (h ^ c) * 1099511628211ull;
+      return unsigned(h % modules);
+    }
+
     // A type definition line of the shared declarations (`%struct.<hash> = type {...}`, `%closure...`).
     static bool isTypeLine(std::string_view line) { return !line.empty() && line[0] == '%' && line.find(" = type ") != std::string_view::npos; }
 
@@ -9567,6 +9637,101 @@ namespace
           if (auto it = sh.typeIndex.find(name); it != sh.typeIndex.end())
             t.uses.push_back(it->second);
         });
+      // A debug build's homed globals (Shared::homeGlobals). (A release build's ThinLTO imports
+      // constants into the modules that read them: not changed here. With --debug-info a global's
+      // line can carry metadata.)
+      sh.homeGlobals = moduleCount > 1 && sh.importableModules == 0 && !sh.debugInfo;
+      // (Again after a server's layout edit rewrote type lines in decls: the views below are into it.)
+      sh.homedGlobals.clear();
+      sh.homedComdats.clear();
+      sh.namedByShared.clear();
+      sh.homeNames.clear();
+      if (!sh.homeGlobals)
+        return;
+      sh.homeNames.assign(moduleCount, {});
+      for (size_t pos = 0; pos < text.size();)
+      {
+        size_t end = text.find('\n', pos);
+        if (end == std::string_view::npos)
+          end = text.size();
+        std::string_view line = text.substr(pos, end - pos);
+        pos = end + 1;
+        std::string_view name;
+        if (std::string declaration = externalDeclarationOf(line, name); !declaration.empty())
+        {
+          unsigned home = homeOf(name, moduleCount);
+          sh.homedGlobals.emplace(name, Shared::HomedGlobal{home, std::move(declaration)});
+          sh.homedComdats.emplace(name.substr(1), home); // (its `$` line names it without the `@`)
+          std::string_view initializer = line.substr(name.size());
+          irNamesIn(initializer, [&](size_t at, size_t length) { sh.homeNames[home].push_back(initializer.substr(at, length)); });
+        }
+        else if (!line.empty() && line[0] != '$' && line[0] != '%')
+          irNamesIn(line, [&](size_t at, size_t length) { sh.namedByShared.push_back(line.substr(at, length)); });
+      }
+    }
+
+    // The shared declarations of module k (declsFor) with the homed globals as module k has them:
+    // defined where k is their home, declared where k names them (its texts, as moduleText found
+    // them in seen; its homed globals' initializers; the lines every module keeps), else left out.
+    std::string homedDeclsFor(unsigned k, const std::string& decls, const std::unordered_set<std::string>& seen)
+    {
+      std::unordered_set<std::string_view> needed;
+      auto need = [&](std::string_view name)
+      {
+        if (auto it = sh.homedGlobals.find(name); it != sh.homedGlobals.end() && it->second.home != k)
+          needed.insert(it->first);
+      };
+      for (const std::string& name : seen)
+        need(name);
+      for (std::string_view name : sh.homeNames[k])
+        need(name);
+      for (std::string_view name : sh.namedByShared)
+        need(name);
+      std::string out;
+      out.reserve(decls.size());
+      for (size_t pos = 0; pos < decls.size();)
+      {
+        size_t end = decls.find('\n', pos);
+        if (end == std::string::npos)
+          end = decls.size();
+        std::string_view line(decls.data() + pos, end - pos);
+        pos = end + 1;
+        if (!line.empty() && line[0] == '$')
+        {
+          // `$name = comdat any`: the homed global's comdat only where it is defined
+          size_t eq = line.find(" = comdat ");
+          if (eq != std::string_view::npos)
+            if (auto it = sh.homedComdats.find(line.substr(1, eq - 1)); it != sh.homedComdats.end() && it->second != k)
+              continue;
+        }
+        else if (!line.empty() && line[0] == '@')
+        {
+          size_t eq = line.find(" = ");
+          if (eq != std::string_view::npos)
+            if (auto it = sh.homedGlobals.find(line.substr(0, eq)); it != sh.homedGlobals.end())
+            {
+              if (it->second.home == k)
+              {
+                // The one definition: weak_odr, not linkonce_odr, which an optimizer drops where its
+                // own module does not read it (a debug build with --optimize: the other modules'
+                // declarations were then left undefined), as the destructor helpers' homes are.
+                static constexpr std::string_view linkonce = " = linkonce_odr ";
+                out.append(line.substr(0, eq));
+                out += " = weak_odr ";
+                out.append(line.substr(eq + linkonce.size()));
+              }
+              else if (needed.count(it->first))
+                out += it->second.declaration;
+              else
+                continue;
+              out += '\n';
+              continue;
+            }
+        }
+        out.append(line);
+        out += '\n';
+      }
+      return out;
     }
 
     // A release build's placement (Shared::importableModules). ThinLTO imports short functions into
@@ -10017,6 +10182,8 @@ namespace
       for (const std::string& name : sh.sharedReferences)
         if (const unsigned* in = sh.moduleDefining(name); in && *in != k && !already.count(name) && seen.insert(name).second)
           declare(name);
+      if (sh.homeGlobals)
+        decls = homedDeclsFor(k, decls, seen);
       // The type definitions the module names, and those they name in turn (every module had all of
       // the game's 24 k), in the shared declarations' order.
       std::vector<char> used(sh.typeLines.size(), 0);
