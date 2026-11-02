@@ -18,6 +18,9 @@ rem mismatches made explicit (tests\convert_formats\formats.cpp), whose conversi
 rem C++ builds print, and the rules where C and C++ differ (tests\convert_c\rules.c, pending), whose
 rem conversion as C prints what its C build prints.
 rem Hand-written parts are in overrides\.
+rem The last line sums it up, and the exit code agrees with it: `convert: ALL PASSED (headline 0, tests
+rem errors 0, smoke tests 11/11, C rules pending)` and 0; or `convert: FAILED: STEP` (the first step
+rem that failed; the run stops there) or `convert: FAILED: headline 3, tests errors 0 (...)` and 1.
 setlocal
 rem The Factorio source tree read (src, libraries, tests, data): C:\Factorio unless FACTORIO names another,
 rem as a snapshot of an older commit taken with git archive. Its prebuilt libraries and executables
@@ -25,6 +28,8 @@ rem (vs2022\, bin\) are always C:\Factorio's.
 if not defined FACTORIO set FACTORIO=C:\Factorio
 cd /d "%~dp0"
 set KPPC=..\..\compiler\build\kppc.exe
+set SMOKES=0
+set STEP=the whole conversion
 set SRC=%FACTORIO%\src
 set WHOLE=C:\factorio-in-kpp
 if not "%~1"=="" set WHOLE=%~1
@@ -38,8 +43,9 @@ rem no file includes any more, as ShaderProgram.hpp) would stay in the tree and 
 rem conversion's files only: tests\ and the libraries keep resources.cmd's (saves, READMEs).
 if exist "%WHOLE%\src" rd /s /q "%WHOLE%\src"
 for %%d in (libraries\CommonUtil libraries\Agui libraries\cxxopts libraries\StackWalker libraries\Lua libraries\crc32fast libraries\UnitTest++ tests) do if exist "%WHOLE%\%%d" del /s /q "%WHOLE%\%%d\*.kpp" >nul
-%KPPC% --no-std --quiet --convert %WHOLE% --convert-base %FACTORIO% %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || exit /b 1
+%KPPC% --no-std --quiet --convert %WHOLE% --convert-base %FACTORIO% %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% %FACTORIO%\libraries\UnitTest++ %FACTORIO%\tests || goto :failed
 type %WHOLE%\CONVERSION.md | findstr /B "Files"
+set STEP=the shims for the checkout
 rem The shims, for the build of the checkout (its build.kpp): the sources native\build.cmd compiles,
 rem with the headers they include from Factorio's src\ (which the checkout has as Kpp only) and the
 rem manifest and icons factorio.rc names, at paths relative to libraries\kpp-native.
@@ -48,19 +54,21 @@ if exist "%NATIVE%" rd /s /q "%NATIVE%"
 mkdir "%NATIVE%\include\LED\Logitech\Includes"
 for %%f in (native\*.c native\*.cpp) do copy /y %%f "%NATIVE%" >nul
 xcopy /y /q native\include "%NATIVE%\include" >nul
-copy /y %FACTORIO%\src\LED\Logitech\Includes\LogitechLEDLib.h "%NATIVE%\include\LED\Logitech\Includes" >nul || exit /b 1
-copy /y %FACTORIO%\fastbuild\win\Factorio.manifest "%NATIVE%" >nul || exit /b 1
-powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C:/Factorio/fastbuild/win/', '').Replace('C:/Factorio/', '../../') | Set-Content -NoNewline -Encoding ascii '%NATIVE%\factorio.rc'" || exit /b 1
+copy /y %FACTORIO%\src\LED\Logitech\Includes\LogitechLEDLib.h "%NATIVE%\include\LED\Logitech\Includes" >nul || goto :failed
+copy /y %FACTORIO%\fastbuild\win\Factorio.manifest "%NATIVE%" >nul || goto :failed
+powershell -NoProfile -Command "(Get-Content -Raw native\factorio.rc).Replace('C:/Factorio/fastbuild/win/', '').Replace('C:/Factorio/', '../../') | Set-Content -NoNewline -Encoding ascii '%NATIVE%\factorio.rc'" || goto :failed
+set STEP=the conversion into kpp\
 set CINC=--cinclude %FACTORIO%\libraries\SDL3\include --cinclude %FACTORIO%\libraries\SDL_Mixer\include --cinclude %FACTORIO%\libraries\Lua --cinclude %FACTORIO%\libraries --cinclude %FACTORIO%\libraries\curl\include --cinclude %FACTORIO%\libraries\glad\include --cinclude %FACTORIO%\libraries\trio --cinclude native\include
 rem Fresh every run: a file an older conversion wrote and this one does not (a header no file includes
 rem any more) would still be compiled.
 for %%d in (CommonUtil Agui cxxopts StackWalker Lua crc32fast src) do if exist kpp\%%d rd /s /q kpp\%%d
-%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || exit /b 1
+%KPPC% --no-std --quiet --convert kpp %EXT% --overrides overrides %FACTORIO%\libraries\CommonUtil %FACTORIO%\libraries\Agui %FACTORIO%\libraries\cxxopts %FACTORIO%\libraries\StackWalker %LUA% %FACTORIO%\libraries\crc32fast %SRC% || goto :failed
 type kpp\CONVERSION.md | findstr /B "Files -"
 rem The C libraries (c-libraries.cmd), each converted on its own by C's rules into kpp\clib\NAME\ (its
 rem report there), then copied into the checkout's libraries\NAME\ and into kpp\NAME\. Their headers
 rem stay C: the checkout has them from resources.cmd, and the builds import them (CLIBINC).
-call "%~dp0c-libraries.cmd" || exit /b 1
+set STEP=the C libraries
+call "%~dp0c-libraries.cmd" || goto :failed
 set CINC=%CINC% %CLIBINC%
 set CLIBKPP=
 set CLIBWHOLE=
@@ -101,8 +109,9 @@ echo == full-src codegen errors: kpp\CommonUtil kpp\Agui kpp\cxxopts kpp\StackWa
 set FULLRC=%errorlevel%
 rem System32's find: a Unix find earlier on the PATH (Git's) would walk the disk instead.
 %SystemRoot%\System32\find.exe /c /v "" kpp\full-errors.txt
-if not "%FULLRC%"=="0" if not "%FULLRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %FULLRC%)
-findstr /c:"importing C headers failed" kpp\full-errors.txt >nul && echo NOT A VALID COUNT: importing the C headers failed, see kpp\full-errors.txt
+for /f %%n in ('type kpp\full-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set HEADLINE=%%n
+if not "%FULLRC%"=="0" if not "%FULLRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %FULLRC%)& set HEADLINE=not valid ^(kppc exit %FULLRC%^)
+findstr /c:"importing C headers failed" kpp\full-errors.txt >nul && (echo NOT A VALID COUNT: importing the C headers failed, see kpp\full-errors.txt& set HEADLINE=not valid, importing the C headers failed)
 rem The tests' count, a gate as the headline is (0): the same errors in the whole conversion
 rem (%WHOLE%) with UnitTest++ and the tests, which the headline leaves out. Each is a function that
 rem tests.cmd's --stub-missing build makes a stub of, so a test would not run what C++ runs.
@@ -111,63 +120,76 @@ set L=%WHOLE%\libraries
 %KPPC% --std ..\..\stdlib %CINC% --ext .kpp --errors 0 --unresolved 0 --emit-llvm kpp\tests-full.ll %L%\CommonUtil %L%\Agui %L%\cxxopts %L%\StackWalker %L%\Lua %L%\crc32fast %CLIBWHOLE% %L%\UnitTest++ %WHOLE%\src %WHOLE%\tests 2> kpp\tests-errors.txt
 set TESTSRC=%errorlevel%
 %SystemRoot%\System32\find.exe /c /v "" kpp\tests-errors.txt
-if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %TESTSRC%)
+for /f %%n in ('type kpp\tests-errors.txt ^| %SystemRoot%\System32\find.exe /c /v ""') do set TESTSERRORS=%%n
+if not "%TESTSRC%"=="0" if not "%TESTSRC%"=="1" echo NOT A VALID COUNT: kppc crashed (exit %TESTSRC%)& set TESTSERRORS=not valid ^(kppc exit %TESTSRC%^)
+set "STEP=smoke test"
 echo == smoke test: tests\smoke.kpp against the converted CommonUtil (SystemClipboard stubbed: the real one needs SDL)
 setlocal EnableDelayedExpansion
 set FILES=
 for %%f in (kpp\CommonUtil\*.kpp) do if not %%~nf==SystemClipboard set FILES=!FILES! %%f
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
 kpp\smoke.exe > kpp\smoke.out.txt
-fc /w kpp\smoke.out.txt tests\smoke.expected > nul && echo smoke test: output as expected || (echo smoke test: OUTPUT DIFFERS & fc /w kpp\smoke.out.txt tests\smoke.expected & exit /b 1)
+fc /w kpp\smoke.out.txt tests\smoke.expected > nul && (echo smoke test: output as expected& set /a SMOKES+=1) || (echo smoke test: OUTPUT DIFFERS & fc /w kpp\smoke.out.txt tests\smoke.expected & goto :failed)
+set "STEP=Agui smoke test"
 echo == Agui smoke test: tests\agui_smoke.kpp against the converted Agui (Void backend)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\agui_smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\stubs\AguiGameWidgets.kpp kpp\Agui tests\agui_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\agui_smoke.exe !FILES! tests\stubs\SystemClipboard.kpp tests\stubs\AguiGameWidgets.kpp kpp\Agui tests\agui_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
 kpp\agui_smoke.exe > kpp\agui_smoke.out.txt
-fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected > nul && echo agui smoke test: output as expected || (echo agui smoke test: OUTPUT DIFFERS & fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected & exit /b 1)
+fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected > nul && (echo agui smoke test: output as expected& set /a SMOKES+=1) || (echo agui smoke test: OUTPUT DIFFERS & fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected & goto :failed)
+set "STEP=Util smoke test"
 echo == Util smoke test: tests\util_smoke.kpp against the converted Util subset (containers, sorting, the math expression evaluator; Logging, Util helpers, Math, FloatCast, GameRuntimeError and prefetch stubbed)
 set UFILES=
 for %%f in (kpp\Util\Container\*.kpp) do if not %%~nf==ExtendedBitBuffer set UFILES=!UFILES! %%f
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp tests\stubs\UtilTemplateNames.kpp kpp\src\Util\ReleaseAssert.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\src\TypeTraitsExtensions.kpp kpp\src\Graphics\BitmapFormat.kpp kpp\src\Noise\NoiseRegisterIndex.kpp tests\util_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp tests\stubs\UtilTemplateNames.kpp kpp\src\Util\ReleaseAssert.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\src\TypeTraitsExtensions.kpp kpp\src\Graphics\BitmapFormat.kpp kpp\src\Noise\NoiseRegisterIndex.kpp tests\util_smoke.kpp --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
 kpp\util_smoke.exe > kpp\util_smoke.out.txt
-fc /w kpp\util_smoke.out.txt tests\util_smoke.expected > nul && echo util smoke test: output as expected || (echo util smoke test: OUTPUT DIFFERS & fc /w kpp\util_smoke.out.txt tests\util_smoke.expected & exit /b 1)
+fc /w kpp\util_smoke.out.txt tests\util_smoke.expected > nul && (echo util smoke test: output as expected& set /a SMOKES+=1) || (echo util smoke test: OUTPUT DIFFERS & fc /w kpp\util_smoke.out.txt tests\util_smoke.expected & goto :failed)
+set "STEP=imgui smoke test"
 echo == imgui smoke test: tests\imgui_smoke.kpp through kpp\src\Debug\ImGui.kpp and native\imgui_c.cpp with the game's imgui.lib (the same frames as tests\imgui_smoke.cpp, whose output is the expected one)
-call native\build.cmd >nul || exit /b 1
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\imgui_smoke.exe kpp\src\Debug\ImGui.kpp tests\imgui_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\imgui.lib --lib -luser32 --lib -limm32 || exit /b 1
+call native\build.cmd >nul || goto :failed
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\imgui_smoke.exe kpp\src\Debug\ImGui.kpp tests\imgui_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\imgui.lib --lib -luser32 --lib -limm32 || goto :failed
 kpp\imgui_smoke.exe > kpp\imgui_smoke.out.txt
-fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected > nul && echo imgui smoke test: output as expected || (echo imgui smoke test: OUTPUT DIFFERS & fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected & exit /b 1)
+fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected > nul && (echo imgui smoke test: output as expected& set /a SMOKES+=1) || (echo imgui smoke test: OUTPUT DIFFERS & fc /w kpp\imgui_smoke.out.txt tests\imgui_smoke.expected & goto :failed)
+set "STEP=glm smoke test"
 echo == glm smoke test: tests\glm_smoke.kpp through the glm port in kpp\src\API\glm.kpp (bit for bit what tests\glm_smoke.cpp computes with glm itself)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\glm_smoke.exe kpp\src\API\glm.kpp tests\glm_smoke.kpp || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\glm_smoke.exe kpp\src\API\glm.kpp tests\glm_smoke.kpp || goto :failed
 kpp\glm_smoke.exe > kpp\glm_smoke.out.txt
-fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected > nul && echo glm smoke test: output as expected || (echo glm smoke test: OUTPUT DIFFERS & fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected & exit /b 1)
+fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected > nul && (echo glm smoke test: output as expected& set /a SMOKES+=1) || (echo glm smoke test: OUTPUT DIFFERS & fc /w kpp\glm_smoke.out.txt tests\glm_smoke.expected & goto :failed)
+set "STEP=Lua compatibility check"
 echo == Lua compatibility check: tests\lua_compat.lua run by the converted Lua (tests\lua_compat.kpp with kpp\Lua) prints what the game's lua.lib prints (tests\lua_compat.expected, from tests\lua_compat.cpp)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_compat.exe tests\lua_compat.kpp kpp\Lua --lib C:\Factorio\vs2022\Releasex64\trio.lib || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\lua_compat.exe tests\lua_compat.kpp kpp\Lua --lib C:\Factorio\vs2022\Releasex64\trio.lib || goto :failed
 kpp\lua_compat.exe tests\lua_compat.lua > kpp\lua_compat.out.txt
-fc /w kpp\lua_compat.out.txt tests\lua_compat.expected > nul && echo Lua compatibility check: output as expected || (echo Lua compatibility check: OUTPUT DIFFERS & fc /w kpp\lua_compat.out.txt tests\lua_compat.expected & exit /b 1)
+fc /w kpp\lua_compat.out.txt tests\lua_compat.expected > nul && (echo Lua compatibility check: output as expected& set /a SMOKES+=1) || (echo Lua compatibility check: OUTPUT DIFFERS & fc /w kpp\lua_compat.out.txt tests\lua_compat.expected & goto :failed)
+set "STEP=GDI+ smoke test"
 echo == GDI+ smoke test: tests\gdiplus_smoke.kpp through kpp\src\Graphics\GdiplusClasses.kpp and gdiplus.dll (the layouts and results of tests\gdiplus_smoke.cpp, the same against the SDK's gdiplus.h)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\gdiplus_smoke.exe kpp\src\Graphics\GdiplusClasses.kpp kpp\src\Graphics\DX11\ComInterfaces.kpp tests\gdiplus_smoke.kpp --lib -lgdiplus --lib -lshlwapi || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\gdiplus_smoke.exe kpp\src\Graphics\GdiplusClasses.kpp kpp\src\Graphics\DX11\ComInterfaces.kpp tests\gdiplus_smoke.kpp --lib -lgdiplus --lib -lshlwapi || goto :failed
 kpp\gdiplus_smoke.exe > kpp\gdiplus_smoke.out.txt
-fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected > nul && echo GDI+ smoke test: output as expected || (echo GDI+ smoke test: OUTPUT DIFFERS & fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected & exit /b 1)
+fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected > nul && (echo GDI+ smoke test: output as expected& set /a SMOKES+=1) || (echo GDI+ smoke test: OUTPUT DIFFERS & fc /w kpp\gdiplus_smoke.out.txt tests\gdiplus_smoke.expected & goto :failed)
+set "STEP=regex smoke test"
 echo == regex smoke test: tests\regex_smoke.kpp through kpp\src\Util\RegexUtil.kpp and native\re2_c.cpp with the game's re2.lib (RE2's own results: skipped groups, typed targets, Consume, Replace)
-%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\regex_smoke.exe kpp\src\Util\RegexUtil.kpp tests\regex_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\re2.lib || exit /b 1
+%KPPC% --std ..\..\stdlib %CINC% --quiet --exe kpp\regex_smoke.exe kpp\src\Util\RegexUtil.kpp tests\regex_smoke.kpp --lib native\build\factorio-native.lib --lib C:\Factorio\vs2022\Releasex64\re2.lib || goto :failed
 kpp\regex_smoke.exe > kpp\regex_smoke.out.txt
-fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected > nul && echo regex smoke test: output as expected || (echo regex smoke test: OUTPUT DIFFERS & fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected & exit /b 1)
+fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected > nul && (echo regex smoke test: output as expected& set /a SMOKES+=1) || (echo regex smoke test: OUTPUT DIFFERS & fc /w kpp\regex_smoke.out.txt tests\regex_smoke.expected & goto :failed)
+set "STEP=size widths"
 echo == size widths: tests\convert_sizes\sizes.cpp, converted and run, writes the bytes C++ writes for each std container size a serialiser takes (tests\convert_sizes.expected, from the C++ build of the same file)
 if exist kpp\convert_sizes rd /s /q kpp\convert_sizes
-%KPPC% --no-std --quiet --convert kpp\convert_sizes --ext .cpp tests\convert_sizes || exit /b 1
-%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_sizes.exe kpp\convert_sizes || exit /b 1
+%KPPC% --no-std --quiet --convert kpp\convert_sizes --ext .cpp tests\convert_sizes || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_sizes.exe kpp\convert_sizes || goto :failed
 kpp\convert_sizes.exe > kpp\convert_sizes.out.txt
-fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected > nul && echo size widths: output as expected || (echo size widths: OUTPUT DIFFERS & fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected & exit /b 1)
+fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected > nul && (echo size widths: output as expected& set /a SMOKES+=1) || (echo size widths: OUTPUT DIFFERS & fc /w kpp\convert_sizes.out.txt tests\convert_sizes.expected & goto :failed)
+set "STEP=variants"
 echo == variants: tests\convert_variant\variant.cpp, std::variant as the game uses it, converted to a typed union and run, prints what its C++ build prints (tests\convert_variant.expected)
 if exist kpp\convert_variant rd /s /q kpp\convert_variant
-%KPPC% --no-std --quiet --convert kpp\convert_variant --ext .cpp tests\convert_variant || exit /b 1
-%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_variant.exe kpp\convert_variant || exit /b 1
+%KPPC% --no-std --quiet --convert kpp\convert_variant --ext .cpp tests\convert_variant || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_variant.exe kpp\convert_variant || goto :failed
 kpp\convert_variant.exe > kpp\convert_variant.out.txt
-fc /w kpp\convert_variant.out.txt tests\convert_variant.expected > nul && echo variants: output as expected || (echo variants: OUTPUT DIFFERS & fc /w kpp\convert_variant.out.txt tests\convert_variant.expected & exit /b 1)
+fc /w kpp\convert_variant.out.txt tests\convert_variant.expected > nul && (echo variants: output as expected& set /a SMOKES+=1) || (echo variants: OUTPUT DIFFERS & fc /w kpp\convert_variant.out.txt tests\convert_variant.expected & goto :failed)
+set "STEP=printf formats"
 echo == printf formats: tests\convert_formats\formats.cpp, Factorio's own 64-bit arguments read as 32 bits and extra arguments, converted and run, prints what its C++ build prints (tests\convert_formats.expected) and passes the format check
 if exist kpp\convert_formats rd /s /q kpp\convert_formats
-%KPPC% --no-std --quiet --convert kpp\convert_formats --ext .cpp tests\convert_formats || exit /b 1
-%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_formats.exe kpp\convert_formats || exit /b 1
+%KPPC% --no-std --quiet --convert kpp\convert_formats --ext .cpp tests\convert_formats || goto :failed
+%KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_formats.exe kpp\convert_formats || goto :failed
 kpp\convert_formats.exe > kpp\convert_formats.out.txt
-fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && echo printf formats: output as expected || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & exit /b 1)
+fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && (echo printf formats: output as expected& set /a SMOKES+=1) || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & goto :failed)
+set "STEP=C rules"
 echo == C rules: tests\convert_c\rules.c, where C and C++ differ (void* conversions, designated initializers, compound literals, C++ keywords as names...), converted as C and run, prints what its C build prints (tests\convert_c.expected)
 rem Pending until the converter's C mode exists (docs/path-to-factorio.md, "Converting the C libraries"):
 rem it is reported, not failed, and a pass while pending fails the run, as spec.cmd's pending snippets do.
@@ -178,10 +200,20 @@ if exist kpp\convert_c.exe del kpp\convert_c.exe
 %KPPC% --std ..\..\stdlib --quiet --exe kpp\convert_c.exe kpp\convert_c >> kpp\convert_c.log 2>&1
 set CRULESOK=0
 if exist kpp\convert_c.exe (kpp\convert_c.exe > kpp\convert_c.out.txt 2>&1 && fc /w kpp\convert_c.out.txt tests\convert_c.expected > nul && set CRULESOK=1)
-if %CRULES%==pending (if %CRULESOK%==1 (echo C rules: FIXED while pending: remove the pending mark& exit /b 1) else (echo C rules: pending, kpp\convert_c.log)) else (if %CRULESOK%==1 (echo C rules: output as expected) else (echo C rules: OUTPUT DIFFERS, kpp\convert_c.log& exit /b 1))
-rem (A C library's conversion that fails: `call ... || exit /b 1` inside the loop above leaves the
-rem exit code 0 when convert.cmd runs as `cmd /c convert.cmd`; a top-level exit sets it.)
-goto :eof
+if %CRULES%==pending (if %CRULESOK%==1 (echo C rules: FIXED while pending: remove the pending mark& goto :failed) else (echo C rules: pending, kpp\convert_c.log)) else (if %CRULESOK%==1 (echo C rules: output as expected) else (echo C rules: OUTPUT DIFFERS, kpp\convert_c.log& goto :failed))
+rem The one line that says whether everything passed: the headline and the tests' count are gates (0).
+set SUMMARY=headline %HEADLINE%, tests errors %TESTSERRORS%, smoke tests %SMOKES%/11, C rules %CRULES%
+if not "%HEADLINE%"=="0" goto :countsfailed
+if not "%TESTSERRORS%"=="0" goto :countsfailed
+echo convert: ALL PASSED (%SUMMARY%)
+exit /b 0
+:countsfailed
+echo convert: FAILED: headline %HEADLINE%, tests errors %TESTSERRORS% (%SUMMARY%)
+exit /b 1
 :clibfailed
 echo convert: a C library's conversion failed
+:failed
+rem (A top-level exit: a failing `call ... || exit /b 1` inside the C libraries' loop would leave the
+rem exit code 0 when convert.cmd runs as `cmd /c convert.cmd`.)
+echo convert: FAILED: %STEP%
 exit /b 1

@@ -295,7 +295,8 @@ def main():
     if args.target:
         TARGET = args.target
         if not os.path.exists(os.path.join(SYSROOT_LINUX, "usr", "lib", "x86_64-linux-gnu", "libc.so.6")):
-            print("no Linux sysroot at", SYSROOT_LINUX, "(tests\\targets.ps1 makes one from WSL)"); return 2
+            print("no Linux sysroot at", SYSROOT_LINUX, "(tests\\targets.ps1 makes one from WSL)")
+            print("spec: FAILED: no Linux sysroot"); return 2
         # (WSL started once first: its virtual machine, stopped when idle, took more than a program's
         # 60 s to start under a pool of programs at once)
         subprocess.run(["wsl.exe", "-e", "true"], capture_output=True, timeout=300)
@@ -304,7 +305,8 @@ def main():
         OUT += "-" + TARGET
         args.no_doc = True
     if not os.path.exists(KPPC):
-        print("no compiler at", KPPC); return 2
+        print("no compiler at", KPPC)
+        print("spec: FAILED: no compiler"); return 2
     os.makedirs(OUT, exist_ok=True)
     files = sorted(os.path.join(dp, f) for dp, dn, fn in os.walk(HERE) for f in fn
                    if f.endswith(".kpp") and not is_companion(dp) and args.filter in os.path.relpath(os.path.join(dp, f), HERE).replace("\\", "/"))
@@ -326,7 +328,19 @@ def main():
     if not args.no_doc and not args.filter:
         write_doc(results, elapsed)
         print("wrote", os.path.relpath(DOC, ROOT))
-    return 1 if counts["FAIL"] or counts["fixed"] else 0
+    # The one line that says whether everything passed (a pending snippet passing is a failure: its
+    # mark must go), and the exit code says the same:
+    #   spec: ALL PASSED (898 pass, 2 pending)
+    #   spec: 2 FAILED: types/enum_size, fixed lambdas/capture (897 pass, 1 pending, 1 failing, 1 fixed)
+    summary = f"{counts['pass']} pass, {counts['pending']} pending" + (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "")
+    bad = [f"{r['area']}/{r['name']}" for r in results if r["status"] == "FAIL"] + \
+          [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"]
+    if bad:
+        shown = ", ".join(bad[:10]) + (f", and {len(bad) - 10} more" if len(bad) > 10 else "")
+        print(f"spec: {len(bad)} FAILED: {shown} ({summary}, {counts['FAIL']} failing, {counts['fixed']} fixed)")
+        return 1
+    print(f"spec: ALL PASSED ({summary})")
+    return 0
 
 
 if __name__ == "__main__":
