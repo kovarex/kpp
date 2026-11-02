@@ -98,23 +98,30 @@ end;
 // to add {app} as written.
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  Dir: string;
+  Dir, Old: string;
   FindRec: TFindRec;
-  Differs: Boolean;
 begin
   if CurStep <> ssInstall then
     exit;
   Dir := ExpandConstant('{app}');
-  Differs := False;
+  Old := '';
   if FindFirst(Dir, FindRec) then
   begin
-    Differs := FindRec.Name <> ExtractFileName(Dir);
+    if FindRec.Name <> ExtractFileName(Dir) then
+      Old := ExtractFilePath(Dir) + FindRec.Name;
     FindClose(FindRec);
   end;
-  if Differs then
+  if Old <> '' then
   begin
-    if not (RenameFile(Dir, Dir + '.renaming') and RenameFile(Dir + '.renaming', Dir)) then
-      Log('Could not rename ' + Dir + ' to its lower-case name');
+    // Halfway (the temporary name taken, the new one refused), the folder goes back to its old name,
+    // so that the install updates it rather than a new, empty one.
+    if not RenameFile(Old, Dir + '.renaming') then
+      Log('Could not rename ' + Old + ' to ' + Dir + ': it keeps its name')
+    else if not RenameFile(Dir + '.renaming', Dir) then
+    begin
+      Log('Could not rename ' + Dir + '.renaming to ' + Dir + ': back to ' + Old);
+      RenameFile(Dir + '.renaming', Old);
+    end;
     RemoveFromPath(Dir);
   end;
 end;
