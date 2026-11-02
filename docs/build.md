@@ -1068,18 +1068,19 @@ run but bill each runner's checkout and 2-minute kppc build again.
 Measured on the public repository's windows-2022 runners (4 CPUs, 2026-11-02), from the first
 job's start to the run's end, a push run (debug spec):
 
-| | one job (run 164, a840908e) | parallel jobs, caches warm (run 192, f79d7624) |
-|---|---|---|
-| build | 56 s | 62 s job: LLVM 1 s (cached), kppc 35 s (ccache: 17 of 19 compiles hit) |
-| run_tests | 269 s | 260 s job, beside the spec |
-| spec (debug) | 229 s | 4 shards at once, 59 to 74 s per job (spec itself 40 to 55 s) |
-| package, publish | 121 s, 95 s | 255 s job (package 73 s, upload 159 s) |
-| **the run** | **13 min 43 s** | **9 min 43 s** |
+| | one job (run 164, a840908e) | parallel jobs, caches warm (run 192, f79d7624) | run_tests in halves, package beside the tests (run 201, 44d0f0fa) |
+|---|---|---|---|
+| build | 56 s | 62 s job: LLVM 1 s (cached), kppc 35 s (ccache: 17 of 19 compiles hit) | 51 s job |
+| run_tests | 269 s | 260 s job, beside the spec | 2 jobs: 137 s and 115 s |
+| spec (debug) | 229 s | 4 shards at once, 59 to 74 s per job (spec itself 40 to 55 s) | 54 to 78 s per job |
+| package | 121 s | in the publish job: 73 s | 111 s job, beside the tests |
+| publish | 95 s | 255 s job (with the package; upload 159 s) | 190 s job (the artifact's download, upload 165 s) |
+| **the run** | **13 min 43 s** | **9 min 43 s** | **6 min 23 s** |
 
 The first parallel runs, before the caches held anything, took longer in their build job: D's
 LLVM step downloads and unpacks the 845 MB archive in 56 to 65 s, and kppc's clean build takes 91 s
-(run 191, 9 min 47 s in all). Now the run is build, then run_tests, then the publish job; GitHub's
-upload of the three files (about 120 MB) alone varies from 95 s to 3 min 40 s.
+(run 191, 9 min 47 s in all). Now the run is build, then run_tests' longer half, then publish, half
+of it GitHub's upload of the three files (about 146 MB), which alone varies from 95 s to 3 min 40 s.
 
 ## Questions for kovarex
 
