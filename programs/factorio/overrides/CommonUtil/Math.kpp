@@ -1,5 +1,7 @@
 // Hand-written replacements for the parts of Math that used anonymous unions for float bit
 // patterns and fdlibm's word-access macros. Everything else in Math is the converted original.
+// The functions marked "Stolen from ... fastapprox" are Paul Mineiro's fastapprox, Copyright (C)
+// 2012 Paul Mineiro, under its BSD license (programs/factorio/licenses/fastapprox-LICENSE.txt).
 namespace Math
 {
   // fdlibm's access to the two 32-bit halves of a double, as functions instead of macros.

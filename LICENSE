@@ -252,6 +252,8 @@ The license above does not cover these; each keeps its own terms:
     Copyright (c) 2005 - 2017 G-Truc Creation
     (programs/factorio/licenses/glm-LICENSE.txt);
   - overrides/CommonUtil/Math.kpp includes fdlibm code under Sun Microsystems'
-    notice, kept in the file.
+    notice, kept in the file, and fastapprox code under its BSD license,
+    Copyright (C) 2012 Paul Mineiro
+    (programs/factorio/licenses/fastapprox-LICENSE.txt).
 
 A file that carries its own copyright or license notice is under that notice.
