@@ -871,10 +871,18 @@ As converted (thread C, 2026-11-02; the C libraries' harnesses byte-identical):
 - A header's own names stay global: `private` would keep them from the files that include it.
   private-names.txt stays for those (zlib's inflate.h enumerator `OS`, beside an imported `OS`;
   stb_truetype.h's fallback packer types `stbrp_*`), renamed with their file's name as before.
-- Not yet: a `.c` file's macro constants (still written out at their uses), the game's anonymous
-  namespaces and file-level `static` (C++), and declarations the converter's parse does not read
-  (zstd_compress.c's ZSTD_encodeSequences family, after a parse error at `FSE_CTable const*`),
-  which keep their `static`.
+- A `.c` file's own object-like macro that is a number the same at every use is a
+  `private const auto` of its file, its uses its name: defined once (not #undef'd), at file
+  scope, its body (the header macros it names written out, as the preprocessor rescans) a literal,
+  a negative one or parenthesized as a whole, holding a number, no string and no name but its
+  file's other such constants and type words (`sizeof(int)`). 107 in the C libraries (zstd 47,
+  minizip 27, zlib 16, trio 14, glad 3). The rest stay written out at their uses: `#define SIZE
+  1024*1024` (`x / SIZE` would change), strings (sizeof), bodies naming a variable (the use's local
+  in C), macros defined twice, and every header's macro (each library's interface: its home is the
+  library's scope, section 16, once the converted libraries are scoped).
+- Not yet: the game's anonymous namespaces and file-level `static` (C++), and declarations the
+  converter's parse does not read (zstd_compress.c's ZSTD_encodeSequences family, after a parse
+  error at `FSE_CTable const*`), which keep their `static`.
 
 ### 16. Library scopes: qualified by default, a library may be unscoped (decided 2026-11-01)
 

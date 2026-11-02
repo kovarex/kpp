@@ -3195,6 +3195,12 @@ namespace
           }
         }
       }
+      if (!functionLike)
+        if (const std::string* value = cOwnConstant(name))
+        {
+          counts.add("C macro constants of a .c file written private constants");
+          return line.substr(0, line.find('#')) + "private const auto " + name + " = " + *value + ";" + trailing;
+        }
       if (!functionLike && body == name)
       {
         // Crypto.cpp's `#define fileno fileno` (so that curl's `#ifndef fileno` declares nothing):
@@ -3925,7 +3931,7 @@ namespace
                 continue;
               }
             }
-            if (in.c && cWrittenOutMacros && cWrittenOutMacros->count("*"))
+            if (in.c && cWrittenOutMacros && cWrittenOutMacros->count("*") && !cOwnConstant(name))
               if (const std::string* own = cOwnObjectAt(name, useOffset))
               {
                 next += *own;
@@ -3940,7 +3946,7 @@ namespace
               continue;
             }
             if (in.c && !objectMacros.empty())
-              if (auto object = objectMacros.find(name); object != objectMacros.end() && macroHoldsAt(object->first, useOffset))
+              if (auto object = objectMacros.find(name); object != objectMacros.end() && macroHoldsAt(object->first, useOffset) && !cOwnConstant(name))
               {
                 // C: an object macro inside an expansion too, after `.` as well (`tree[n].Freq` in
                 // trees.c's smaller(tree, n, m, depth))
@@ -4109,7 +4115,7 @@ namespace
                 (!(j < result.size() && result[j] == '(') || isAliasMacro(om->first, om->second)) &&
                 !(i > 0 && (result[i - 1] == '.' || (result[i - 1] == '>' && i > 1 && result[i - 2] == '-') ||
                             (result[i - 1] == ':' && i > 1 && result[i - 2] == ':'))) &&
-                macroHoldsAt(om->first, useOffset))
+                macroHoldsAt(om->first, useOffset) && !cOwnConstant(om->first))
             {
               next += om->second;
               changed = true;
@@ -4806,7 +4812,8 @@ namespace
         // A string macro or a macro that is a qualified name is its text wherever it is used: macros
         // know no scopes (the constant the conversion makes of UTF8_BULLET is inside StringUtil's
         // namespace), and only literals concatenate (`"\n" UTF8_BULLET " "`).
-        if (in.c && cWrittenOutMacros && cWrittenOutMacros->count("*") && t.getKind() == TokenKind::Identifier && !(i > 0 && toks[i - 1].is(P::ColonColon)))
+        if (in.c && cWrittenOutMacros && cWrittenOutMacros->count("*") && t.getKind() == TokenKind::Identifier && !(i > 0 && toks[i - 1].is(P::ColonColon)) &&
+            !cOwnConstant(std::string(spelling(i))))
           if (const std::string* own = cOwnObjectAt(std::string(spelling(i)), t.offset))
           {
             // C: this file's own macro in force here (one of several definitions of the name)
@@ -4817,7 +4824,8 @@ namespace
         // (In C a macro is one after `.` too: zlib's `tree[n].Freq` is `tree[n].fc.freq`.)
         if (t.getKind() == TokenKind::Identifier && !objectMacros.empty() &&
             !(i > 0 && (((toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow)) && !in.c) || toks[i - 1].is(P::ColonColon))))
-          if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset))
+          if (auto macro = objectMacros.find(std::string(spelling(i))); macro != objectMacros.end() && macroHoldsAt(macro->first, t.offset) &&
+              !cOwnConstant(macro->first))
           {
             replace(t.offset, t.length, in.c ? rescanMacros(cExpandedObject(macro->second, t.offset), t.offset) : macro->second);
             counts.add(isStringLiterals(macro->second)                                       ? "string macros written out"
@@ -8371,7 +8379,9 @@ namespace
             ++j;
           std::string name = body.substr(i, j - i);
           auto macro = objectMacros.find(name);
-          if (const std::string* own = cOwnObjectAt(name, useOffset); own && *own != body && cWrittenOutMacros && cWrittenOutMacros->count("*"))
+          if (cOwnConstant(name))
+            out += name;
+          else if (const std::string* own = cOwnObjectAt(name, useOffset); own && *own != body && cWrittenOutMacros && cWrittenOutMacros->count("*"))
             out += cExpandedObject(*own, useOffset, depth + 1);
           else if (macro != objectMacros.end() && macro->second != body && macroHoldsAt(macro->first, useOffset))
             out += cExpandedObject(macro->second, useOffset, depth + 1);
@@ -8385,6 +8395,113 @@ namespace
         out += body[i++];
       }
       return out;
+    }
+    // C: an object-like macro a .c file defines once, at file scope, whose value is a number the
+    // same at every use: a `private const auto` of its file (design.md 15) instead of its text
+    // written out at its uses. Its body, with the header macros it names written out (as the
+    // preprocessor rescans), is a literal, a negative one or parenthesized (so `x / SIZE` means
+    // what it did), with no string (sizeof would differ) and no name but this file's other such
+    // constants and type words (a variable it named would be the use's local in C, a global here).
+    std::map<std::string, std::string> cOwnConstants; // name -> its value's text ("" once found not to be one)
+    std::vector<std::pair<uint32_t, uint32_t>> cTopLevelRanges;
+    bool cTopLevelRangesRead = false;
+    const std::string* cOwnConstant(const std::string& name, int depth = 0)
+    {
+      if (!in.c || in.path.extension() != ".c" || !cWrittenOutMacros || !cWrittenOutMacros->count("*") || depth > 16)
+        return nullptr;
+      if (knownFunctionMacros.count(name))
+        return nullptr; // (trio's FORMAT_STRING, a SAL annotation's name too, whose #define is not read as one)
+      if (auto known = cOwnConstants.find(name); known != cOwnConstants.end())
+        return known->second.empty() ? nullptr : &known->second;
+      cOwnConstants[name] = std::string(); // (also while its body is checked: a cycle is no constant)
+      cOwnObjectAt(std::string(), 0);
+      const COwnObject* own = nullptr;
+      for (const COwnObject& o : cOwnObjects)
+        if (o.name == name)
+        {
+          if (own)
+            return nullptr; // defined twice
+          own = &o;
+        }
+      if (!own || own->to != UINT32_MAX)
+        return nullptr;
+      if (!cTopLevelRangesRead && in.parsed)
+      {
+        cTopLevelRangesRead = true;
+        for (Decl* d : in.parsed->decls)
+          if (d->endToken > d->token && d->endToken <= toks.size())
+            cTopLevelRanges.push_back({toks[d->token].offset, endOffset(d->endToken - 1)});
+      }
+      for (const auto& [from, to] : cTopLevelRanges)
+        if (from <= own->from && own->from < to)
+          return nullptr; // in a function or a struct
+      // the body, header macros written out
+      std::string value;
+      std::string body = own->body;
+      int expansions = 0;
+      static const std::set<std::string> typeWords = {"sizeof", "unsigned", "signed", "int", "long", "short", "char", "float", "double", "void"};
+      for (size_t i = 0; i < body.size();)
+      {
+        char c = body[i];
+        if (c == '"')
+          return nullptr;
+        if (isdigit((unsigned char)c) || (c == '.' && i + 1 < body.size() && isdigit((unsigned char)body[i + 1])))
+        {
+          size_t j = i;
+          while (j < body.size() && (isIdentChar(body[j]) || body[j] == '.' ||
+                                     ((body[j] == '+' || body[j] == '-') && (body[j - 1] == 'e' || body[j - 1] == 'E') && !(body[i] == '0' && j > i + 1 && (body[i + 1] == 'x' || body[i + 1] == 'X')))))
+            ++j;
+          value += body.substr(i, j - i);
+          i = j;
+          continue;
+        }
+        if (isalpha((unsigned char)c) || c == '_')
+        {
+          size_t j = i;
+          while (j < body.size() && isIdentChar(body[j]))
+            ++j;
+          std::string word = body.substr(i, j - i);
+          i = j;
+          if (typeWords.count(word))
+            value += word;
+          else if (cOwnConstant(word, depth + 1))
+            value += word;
+          else if (auto macro = objectMacros.find(word); macro != objectMacros.end() && macroHoldsAt(macro->first, own->from) && ++expansions < 64)
+          {
+            // (a header's macro: its text in its place, checked as this one's; as the
+            // preprocessor substitutes it, without parentheses of its own)
+            body = body.substr(0, i - word.size()) + macro->second + body.substr(i);
+            i -= word.size();
+          }
+          else
+            return nullptr;
+          continue;
+        }
+        if (!strchr(" 	()+-*/%<>|&~!^", c))
+          return nullptr;
+        value += c;
+        ++i;
+      }
+      // a literal, a negative one, or parenthesized as a whole
+      size_t a = value.find_first_not_of(" 	"), b = value.find_last_not_of(" 	");
+      if (a == std::string::npos)
+        return nullptr;
+      value = value.substr(a, b - a + 1);
+      bool atom = value.find_first_of(" 	()+*/%<>|&~!^") == std::string::npos &&
+                  value.find('-', 1) == std::string::npos;
+      bool wrapped = value.front() == '(' && value.back() == ')';
+      if (wrapped)
+        for (size_t k = 0, open = 0; k < value.size(); ++k)
+        {
+          open += value[k] == '(';
+          open -= value[k] == ')';
+          if (open == 0 && k + 1 < value.size())
+            wrapped = false;
+        }
+      if ((!atom && !wrapped) || value.find_first_of("0123456789") == std::string::npos)
+        return nullptr;
+      cOwnConstants[name] = value;
+      return &cOwnConstants[name];
     }
     // C's `U32 const x`, `ZSTD_window_t const window`, `struct S const* s` (zstd writes its consts
     // after the type): `const U32 x`, the const first, as Kpp's parse reads it after a type's name
