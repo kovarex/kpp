@@ -1,4 +1,0 @@
-# Names trio keeps to its own files that the program declares too, renamed with their file's name
-# (math_ieee_double_shape_type): math.c's FreeBSD helper type, which Lua's lmathlib.c defines too, each
-# private to its C file.
-ieee_double_shape_type

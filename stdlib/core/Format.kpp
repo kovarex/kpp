@@ -200,12 +200,7 @@ struct FormatString
     if (pieces != this->holes)
     {
       String message("format: ");
-      // (append, not <<: the compile-time evaluator builds this String, and it does not evaluate
-      // `<<` of pieces)
-      message.append(toString(this->holes));
-      message.append(" {} for ");
-      message.append(toString(pieces));
-      message.append(pieces == 1 ? " piece" : " pieces");
+      message << this->holes << " {} for " << pieces << StringView(pieces == 1 ? " piece" : " pieces");
       throw LogicError(message);
     }
   }

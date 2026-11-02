@@ -2691,7 +2691,12 @@ namespace
     // C: a header given alone that c-headers.txt keeps as C, which the program imports (fontstash.h):
     // its text as the import configures it. What that leaves in is the import's, and goes.
     const std::string* cInterfaceText = nullptr;
-    const std::set<std::string>* cPrivateNames = nullptr; // C: the library's private-names.txt (stb_truetype's stbrp_*)
+    const std::set<std::string>* cPrivateNames = nullptr; // C: the library's private-names.txt (zlib's inflate.h OS)
+    // C: the names this .c file (or C header given alone) keeps to itself, written `private`
+    // (design.md 15), and the declaration starts that have it already (`typedef struct {...} X;` is
+    // two declarations)
+    const std::set<std::string>* cPrivate = nullptr;
+    std::set<uint32_t> cPrivateAt;
     const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
     const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
@@ -8182,6 +8187,74 @@ namespace
         }
       insert(offset, s);
     }
+    // C: a top-level declaration of a name its file keeps to itself (cPrivate): `private` before the
+    // whole declaration and its `static` gone, also a `static` a keyword macro writes (zstd's
+    // FORCE_INLINE_TEMPLATE, `static inline`), which drops the word from that rewrite.
+    std::string cDeclName(Decl* d) const
+    {
+      const QualifiedName* name = d->kind == NodeKind::FunctionDecl ? &static_cast<FunctionDecl*>(d)->name
+                                : d->kind == NodeKind::VariableDecl ? &static_cast<VariableDecl*>(d)->name
+                                : d->kind == NodeKind::ClassDecl    ? &static_cast<ClassDecl*>(d)->name
+                                : d->kind == NodeKind::EnumDecl     ? &static_cast<EnumDecl*>(d)->name
+                                                                    : nullptr;
+      if (!name || name->empty() || name->last().symbol == UINT32_MAX)
+        return {};
+      return std::string(symbols.name(name->last().symbol));
+    }
+    void cMakePrivate(Decl* d)
+    {
+      std::string name = cDeclName(d);
+      bool anonymousEnum = d->kind == NodeKind::EnumDecl && name.empty();
+      if (!cPrivate || (name.empty() && !anonymousEnum) || !(anonymousEnum ? cPrivate->count("") : cPrivate->count(name)))
+        return;
+      // (not a function's prototype or a type's forward declaration: the conversion removes those,
+      // Kpp needs none)
+      if ((d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->body) ||
+          (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->isDefinition) ||
+          (d->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(d)->isDefinition))
+        return;
+      uint32_t start = declStart(d);
+      while (start < text.size() && (text[start] == ' ' || text[start] == '\t'))
+        ++start;
+      if (!cPrivateAt.insert(start).second)
+        return;
+      uint32_t k = d->token;
+      while (k > 0 && toks[k - 1].offset >= start)
+        --k;
+      for (; k < toks.size() && !toks[k].is(P::LParen) && !toks[k].is(P::Assign) && !toks[k].is(P::LBrace) && !toks[k].is(P::Semi); ++k)
+        if (toks[k].is(Kw::static_))
+        {
+          bool rewritten = false;
+          for (Edit& e : edits)
+            if (e.offset == toks[k].offset && e.length > 0)
+            {
+              // (a keyword macro's words: `static inline` -> `inline`)
+              std::string words;
+              for (size_t a = 0; a < e.text.size();)
+              {
+                size_t b = e.text.find(' ', a);
+                if (b == std::string::npos)
+                  b = e.text.size();
+                if (e.text.compare(a, b - a, "static") != 0)
+                  words += (words.empty() ? "" : " ") + e.text.substr(a, b - a);
+                a = b + 1;
+              }
+              e.text = words;
+              rewritten = true;
+              break;
+            }
+          if (!rewritten)
+          {
+            uint32_t end = endOffset(k);
+            while (end < text.size() && (text[end] == ' ' || text[end] == '\t'))
+              ++end;
+            remove(toks[k].offset, end - toks[k].offset);
+          }
+          break;
+        }
+      cInsertBefore(start, "private ");
+      counts.add("C names kept to their file written private");
+    }
     // A rewrite of the token at offset, which another rewrite of it (a keyword macro written out:
     // stb_image_write's `STBIWDEF` as `extern`) would cancel: then it takes that one's place.
     void cReplace(uint32_t offset, uint32_t length, const std::string& s)
@@ -8703,6 +8776,7 @@ namespace
             continue;
           }
         }
+        cMakePrivate(d);
         if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body)
         {
           cWalkStmt(static_cast<FunctionDecl*>(d)->body, static_cast<FunctionDecl*>(d));
@@ -8734,6 +8808,11 @@ namespace
           // (stb_truetype's stbtt_PackFontRangesGatherRects takes its fallback's stbrp_rect, the
           // imported fontstash.h stb_rect_pack's), which C allows only across translation units: it
           // keeps Kpp's linkage.
+          if (cPrivate && cPrivate->count(cDeclName(d)) && !written)
+          {
+            counts.add("C functions kept to their file kept Kpp's linkage");
+            written = true;
+          }
           if (cPrivateNames && !cPrivateNames->empty() && !written)
           {
             uint32_t k = d->token;
@@ -10655,46 +10734,12 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       cWrittenOutMacros.insert("*");
       break;
     }
-  // C: a .c file's static (its own) whose name another file of the library declares too (cover.c's
-  // and fastcover.c's g_displayLevel, cover.c's prime4bytes and zstd_compress_internal.h's): renamed
-  // with its file's name in that file (cover_g_displayLevel), as Kpp gives a name one entity.
+  // C: the library's private names (private-names.txt), renamed with their file's name in each of
+  // its files that uses one (inflate_OS): names a header of the library declares, which `private`
+  // (a file's own) cannot keep to the files that include it. (A .c file's statics and types are
+  // `private`, cPrivate below.)
   std::map<const ConvertInput*, std::map<std::string, std::string>> cStaticRenames;
   {
-    std::map<std::string, std::vector<const ConvertInput*>> declaredBy;
-    std::map<const ConvertInput*, std::set<std::string>> statics;
-    for (const ConvertInput& in : inputs)
-    {
-      if (!in.c || !in.parsed)
-        continue;
-      for (Decl* d : in.parsed->decls)
-      {
-        std::string name;
-        if (d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->name.empty() && static_cast<FunctionDecl*>(d)->name.last().symbol != UINT32_MAX)
-          name = std::string(symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol));
-        else if (d->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(d)->name.empty() &&
-                 static_cast<VariableDecl*>(d)->name.last().symbol != UINT32_MAX)
-          name = std::string(symbols.name(static_cast<VariableDecl*>(d)->name.last().symbol));
-        if (name.empty())
-          continue;
-        auto& by = declaredBy[name];
-        if (std::find(by.begin(), by.end(), &in) == by.end())
-          by.push_back(&in);
-        if ((d->flags & DF_Static) && in.path.extension() == ".c")
-          statics[&in].insert(name);
-      }
-    }
-    for (const auto& [in, names] : statics)
-    {
-      std::string stem = in->path.stem().string();
-      for (char& ch : stem)
-        if (!isIdentChar(ch))
-          ch = '_';
-      for (const std::string& name : names)
-        if (declaredBy[name].size() > 1)
-          cStaticRenames[in][name] = stem + "_" + name;
-    }
-    // And the library's private names (private-names.txt), in each of its files that uses one:
-    // stb_truetype_stbrp_init_target.
     if (configuration)
       for (const ConvertInput& in : inputs)
       {
@@ -10718,6 +10763,92 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     if (auto given = inputByPath.find(pathKey(root)); given != inputByPath.end() && inputs[given->second].c &&
                                                      inputs[given->second].path.extension() != ".c")
       givenCHeaders.insert(given->second);
+  // C: what each .c file keeps to itself, written `private` (design.md 15): its statics (C's
+  // file-level static: cover.c's and fastcover.c's g_displayLevel), the types it defines that no
+  // header of the library declares (trio's math.c ieee_double_shape_type, beside Lua's
+  // lmathlib.c's), its anonymous enums ("" in the set), and the functions whose declarations name
+  // such a type. A C header given alone (a header-only library's implementation, stb_truetype.h):
+  // its statics (its fallback packer's stbrp_init_target); its types may be its C interface's.
+  std::map<const ConvertInput*, std::set<std::string>> cPrivate;
+  {
+    auto declName = [&](Decl* d) -> std::string
+    {
+      const QualifiedName* name = d->kind == NodeKind::FunctionDecl ? &static_cast<FunctionDecl*>(d)->name
+                                : d->kind == NodeKind::VariableDecl ? &static_cast<VariableDecl*>(d)->name
+                                : d->kind == NodeKind::ClassDecl    ? &static_cast<ClassDecl*>(d)->name
+                                : d->kind == NodeKind::EnumDecl     ? &static_cast<EnumDecl*>(d)->name
+                                                                    : nullptr;
+      if (!name || name->empty() || name->last().symbol == UINT32_MAX)
+        return {};
+      return std::string(symbols.name(name->last().symbol));
+    };
+    // every name the library's headers spell: what they declare, and a struct a .c file defines that
+    // they name (zstd.h's `typedef struct ZSTD_CDict_s ZSTD_CDict;`, deflate.h's
+    // `struct static_tree_desc_s`), which is theirs then
+    std::set<std::string> headerNames;
+    for (size_t i = 0; i < inputs.size(); ++i)
+      if (inputs[i].c && inputs[i].tokens && inputs[i].path.extension() != ".c" && !givenCHeaders.count(i))
+        for (const Token& t : *inputs[i].tokens)
+          if (t.getKind() == TokenKind::Identifier)
+            headerNames.insert(std::string(inputs[i].text.substr(t.offset, t.length)));
+    std::function<bool(Type*, const std::set<std::string>&, int)> names = [&](Type* t, const std::set<std::string>& types, int depth)
+    {
+      while (t && depth < 16)
+      {
+        ++depth;
+        if (t->kind == NodeKind::PointerType)
+          t = static_cast<PointerType*>(t)->pointee;
+        else if (t->kind == NodeKind::ConstType)
+          t = static_cast<ConstType*>(t)->inner;
+        else if (t->kind == NodeKind::LRefType)
+          t = static_cast<LRefType*>(t)->referenced;
+        else if (t->kind == NodeKind::ArrayType)
+          t = static_cast<ArrayType*>(t)->element;
+        else
+          break;
+      }
+      return t && t->kind == NodeKind::NamedType && !static_cast<NamedType*>(t)->name.empty() &&
+             static_cast<NamedType*>(t)->name.last().symbol != UINT32_MAX &&
+             types.count(std::string(symbols.name(static_cast<NamedType*>(t)->name.last().symbol)));
+    };
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+      const ConvertInput& in = inputs[i];
+      bool given = givenCHeaders.count(i) > 0;
+      if (!in.c || !in.parsed || (in.path.extension() != ".c" && !given))
+        continue;
+      std::set<std::string>& own = cPrivate[&in];
+      std::set<std::string> types;
+      for (Decl* d : in.parsed->decls)
+      {
+        std::string name = declName(d);
+        if ((d->flags & DF_Static) && (d->kind == NodeKind::FunctionDecl || d->kind == NodeKind::VariableDecl) && !name.empty())
+          own.insert(name);
+        else if (!given && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl ||
+                            (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+        {
+          if (!name.empty() && !headerNames.count(name))
+          {
+            own.insert(name);
+            types.insert(name);
+          }
+          else if (name.empty() && d->kind == NodeKind::EnumDecl)
+            own.insert("");
+        }
+      }
+      if (!types.empty())
+        for (Decl* d : in.parsed->decls)
+          if (d->kind == NodeKind::FunctionDecl && !(d->flags & DF_Static))
+          {
+            auto* f = static_cast<FunctionDecl*>(d);
+            bool named = names(f->returnType, types, 0);
+            for (Decl* param : f->params)
+              named = named || (param->kind == NodeKind::ParamDecl && names(static_cast<ParamDecl*>(param)->type, types, 0));
+            if (named && !declName(d).empty())
+              own.insert(declName(d));
+          }
+    }
+  }
   for (const ConvertInput& in : inputs)
     if (in.parsed && (cInterfaceHeaders.count(in.path.filename().string()) || givenCHeaders.count(size_t(&in - inputs.data()))))
       for (Decl* d : in.parsed->decls)
@@ -11152,6 +11283,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
       fc.cPrivateNames = &configuration->impl->cPrivateNames;
     if (auto renames = cStaticRenames.find(&in); renames != cStaticRenames.end())
       fc.cStaticRenames = &renames->second;
+    if (auto own = cPrivate.find(&in); own != cPrivate.end())
+      fc.cPrivate = &own->second;
     fc.cConfiguredImports = &cConfiguredImports;
     fc.cWrittenOutMacros = &cWrittenOutMacros;
     fc.leftOutFiles = &leftOutFiles;

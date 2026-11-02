@@ -859,6 +859,23 @@ As built (thread A, 2026-11-01; specs `kpp/private_*`):
   (the private scope comes from a whole index); body edits in a file with private names stay
   incremental.
 
+As converted (thread C, 2026-11-02; the C libraries' harnesses byte-identical):
+- A `.c` file's top-level `static` functions and variables are `private` (the `static` goes, also
+  one a keyword macro writes: zstd's `FORCE_INLINE_TEMPLATE` is `private inline`); so are the types
+  it defines that no header of its library spells (trio's math.c `ieee_double_shape_type`), its
+  anonymous enums, and its functions whose declarations name such a type. 1,317 declarations in
+  the 8 converted C libraries; the renames of statics with their file's name are gone (cover.c's
+  `g_displayLevel` was `cover_g_displayLevel`).
+- A C header given alone (a header-only library's implementation, stb_truetype.h): its statics.
+  Its types stay global, since they may be its C interface's.
+- A header's own names stay global: `private` would keep them from the files that include it.
+  private-names.txt stays for those (zlib's inflate.h enumerator `OS`, beside an imported `OS`;
+  stb_truetype.h's fallback packer types `stbrp_*`), renamed with their file's name as before.
+- Not yet: a `.c` file's macro constants (still written out at their uses), the game's anonymous
+  namespaces and file-level `static` (C++), and declarations the converter's parse does not read
+  (zstd_compress.c's ZSTD_encodeSequences family, after a parse error at `FSE_CTable const*`),
+  which keep their `static`.
+
 ### 16. Library scopes: qualified by default, a library may be unscoped (decided 2026-11-01)
 
 kovarex, 2026-11-01: "adding library means that I have to change unrelated code to remove
