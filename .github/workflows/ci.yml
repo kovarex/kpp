@@ -43,9 +43,11 @@ jobs:
     env:
       # ccache 4.10.2 (pinned, SHA-256 checked) compiles through a cache kept by actions/cache, keyed on
       # the compiler's sources; a checkout gives every file a new time, so Ninja alone rebuilds all.
+      # (Cached directories are under runner.workspace, the checkout's parent: actions/cache refuses a
+      # path with "..".)
       CCACHE_URL: https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-windows-x86_64.zip
       CCACHE_SHA256: 6252f081876a9a9f700fae13a5aec5d0d486b28261d7f1f72ac11c7ad9df4da9
-      CCACHE_DIR: ${{ github.workspace }}\..\ccache
+      CCACHE_DIR: ${{ runner.workspace }}\ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_MAXSIZE: 500M
     steps:
@@ -58,7 +60,7 @@ jobs:
       - name: Compiler cache
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}\..\ccache
+          path: ${{ runner.workspace }}\ccache
           key: ccache-${{ hashFiles('compiler/src/**', 'compiler/CMakeLists.txt', 'compiler/*.cmake') }}
           restore-keys: ccache-
 
@@ -68,7 +70,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
           [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
-          $dir = "${{ github.workspace }}\..\ccache-tool"
+          $dir = "${{ runner.workspace }}\ccache-tool"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Invoke-WebRequest $env:CCACHE_URL -OutFile "$dir\ccache.zip" -UseBasicParsing
           $hash = (Get-FileHash -Algorithm SHA256 "$dir\ccache.zip").Hash.ToLowerInvariant()
@@ -93,7 +95,7 @@ jobs:
       - name: LLVM cache
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}\..\llvm\${{ steps.llvm-pin.outputs.sha256 }}
+          path: ${{ runner.workspace }}\llvm\${{ steps.llvm-pin.outputs.sha256 }}
           key: llvm-${{ steps.llvm-pin.outputs.sha256 }}
 
       # LLVM's libraries for the back end inside kppc (compiler\llvm.ps1: the pinned release, its
@@ -103,7 +105,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $llvm = powershell -NoProfile -ExecutionPolicy Bypass -File compiler\llvm.ps1 -Out "${{ github.workspace }}\..\llvm" | Select-Object -Last 1
+          $llvm = powershell -NoProfile -ExecutionPolicy Bypass -File compiler\llvm.ps1 -Out "${{ runner.workspace }}\llvm" | Select-Object -Last 1
           if ($LASTEXITCODE -ne 0) { throw 'compiler\llvm.ps1 failed' }
           "KPP_LLVM_DIR=$llvm" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
 
@@ -178,7 +180,7 @@ jobs:
       SDL_NAME: SDL3-devel-3.4.18-VC.zip
       SDL_SHA256: 78d84602ae616cfe26b33a73b7d3b9b6b56e8a6650e53d92c9c6ca938f747acd
       SDL_FALLBACK: https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip
-      KPP_SDL_INCLUDE: ${{ github.workspace }}\..\sdl\SDL3-3.4.18\include
+      KPP_SDL_INCLUDE: ${{ runner.workspace }}\sdl\SDL3-3.4.18\include
     steps:
       - uses: actions/checkout@v4
 
@@ -190,7 +192,7 @@ jobs:
       - name: SDL3 cache
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}\..\sdl
+          path: ${{ runner.workspace }}\sdl
           key: sdl-${{ env.SDL_SHA256 }}
 
       # kpp.net's registry store is written over SSH by tools/release/publish.ps1 (docs/build.md,
@@ -205,7 +207,7 @@ jobs:
           KPP_NET_KNOWN_HOSTS: ${{ vars.KPP_NET_KNOWN_HOSTS }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $dir = "${{ github.workspace }}\..\sdl"
+          $dir = "${{ runner.workspace }}\sdl"
           if (-not (Test-Path "$env:KPP_SDL_INCLUDE\SDL3\SDL.h")) {
             New-Item -ItemType Directory -Force $dir | Out-Null
             [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
