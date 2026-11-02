@@ -1,470 +1,266 @@
-# Lets make C++ great
-The motivation is to create a version of C++ which solves some of the biggest issues we have.
+# kpp - C++, but better
 
-## Issues
- - Stupid slow compilation times.
- - Stupid bloat of #include definitions and forward declarations.
- - The need to re-parse and recompile all the files we touch from scratch as we work.
- - No tight integration (fast and reliable) of the compiled code structure and the editor features.
- - Missing some basic syntactic sugar (mentioned below).
- - No option to be able to edit the code without the need to think about files or cpp/hpp coupling.
- - Limited support of multiplatform compilers (this leads to the never ending clashes between different compiler quirks when doing multiplatform development)
- - const corectness implied code duplication
+kpp aims to be very close to C++, while fixing its biggest shortcomings. Existing C++ programmers
+should feel at home, and existing C++ code should convert to kpp mostly automatically: the whole of
+Factorio already has (see [Status](#status)).
 
-## The goal
-The goal is to make the new version of C++ very simple to pick-up by existing C++ programmers, and to make it reasonably easy to convert existing codebases to it, while being able to use all the existing C++ libraries easily.
+**[Getting started](docs/getting-started.md)**: install kpp, build a first program, build a project.
 
-# Changes
-- [Compilation changes](compilation/index.md)
-- [Real enum class](#real-enum-class)
-- [*this* is a reference](#this-is-a-reference)
-- [Required this](#required-this)
-- [Required override](#required-override)
-- [Implicit explicit, Explicit implicit](#implicit-explicit-explicit-implicit)
-- [Default break in switch](#default-break-in-switch)
-- [Abort on wrong enum value in switch by default](#abort-on-wrong-enum-value-in-switch-by-default)
-- [Typed union](#typed-union)
-- [Safe navigation operator (?->)](#safe-navigation-operator)
-- [Elvis operator](#elvis-operator)
-- [Const deduplication](#const-deduplication)
-- [Named parameter passing](#named-parameter-passing)
-- [Type based parameter resolution](#type-based-parameter-resolution)
-- [Don't require typename for dependent types](#dont-require-typename-for-dependent-types)
-- [Test tools](#test-tools)
-- [accumulate](#accumulate)
+## What kpp fixes
 
-# The adaptation cost
-- [Using existing libraries](#using-existing-libraries)
-- [Converting existing code](#converting-existing-code)
-- [IDE support](#ide-support)
+- **Compile times.** One persistent, multithreaded compiler sees the whole program at once: every
+  file is parsed once, every template instantiated once, and an edit rebuilds only what it touched.
+  Factorio converted to kpp, against its own C++ build on the same machine (debug, 32 threads):
 
-## Real enum class
-This is mainly about allowing enums to have member methods. There are currently ways to *almost* achieve it by some tricks, but they are not perfect, and require a lot of  ugly boilerplate.
+  | | C++ (MSVC, FASTBuild) | kpp |
+  |---|---:|---:|
+  | Edit of one function | 22 to 29 s | about 1.5 s |
+  | Edit of an inline function used across the game | 51 to 59 s | about 1.6 s |
+  | Clean build of the game | 57 to 61 s | about 10 to 12 s |
+  | Whole build of factorio.exe, every library included | 50 s | 28 s |
 
-Here is a typical simplified example of the current typical implenetation of enum-like class in C++
-```
-class Direction
-{
-public:
-  enum class Enum : uint8_t
+  The last row is a whole build including all the C and C++ libraries the game links, both on one
+  machine (kovarex's second one). How these are measured: [docs/compile-speed.md](docs/compile-speed.md),
+  [docs/codegen-speed.md](docs/codegen-speed.md), [docs/test-matrix.md](docs/test-matrix.md).
+- **Disk use.** Factorio's C++ build directory holds more than 16 GB of object files. The kpp debug
+  build of the same game is about 1.5 GB in all, executable and debug information included, and
+  shrinks further as the compiler keeps more in memory instead of on disk.
+- **Memory.** No translation unit re-parses the same headers, so the compiler holds each declaration
+  once instead of once per file. (Measured comparison to come.)
+- **No includes, no forward declarations.** Every top-level name is visible in every file, in any
+  order; there are no headers, no `.hpp`/`.cpp` pairs, and code can move between files freely.
+  `private` keeps a name inside its file, and libraries keep their names behind their own
+  qualifier (`zlib::compress`) unless they choose otherwise.
+- **The editor knows what the compiler knows.** The compiler itself is the language server
+  (`kpp --lsp`), so completion, errors and navigation in VS Code, Visual Studio and other editors come
+  from the same compilation, in the configuration you build.
+- **One compiler everywhere.** The same compiler and standard library on every platform, no
+  per-compiler quirks. kpp runs on Windows today and builds for Windows, Linux and FreeBSD from there.
+  A release is self-contained: it compiles and links without Visual Studio or a Windows SDK.
+- **No silent surprises.** An unsupported construct is a compile error, never a guess: a `struct` is a
+  checked public value type, a `class` checks access, two declarations of one name are an error.
+- **A build described in kpp.** `build.kpp` is ordinary kpp code, run by the compiler: targets,
+  configurations, library options and a hook for the special cases, with no second build language.
+
+## The language
+
+kpp is C++ with a few rules changed and a few things added. Everything in this section works today;
+what is decided but not built yet is under [Planned](#planned).
+
+### Safer by default
+
+- **Exhaustive `switch` on an enum.** A `switch` without `default` must name every value, or it does
+  not compile; a value outside them (a corrupted byte, a bad cast) aborts at run time instead of
+  falling out of the switch.
+- **No format strings.** `println("x = ", x)` prints its arguments in sequence; a type becomes text
+  through its `appendTo`, and a pointer prints only through `address(p)`.
+
+### Less boilerplate
+
+- **Enums with methods.** The values go in an inner block; the enum also has `count`,
+  `values` (for iteration), `str()` and `fromStr()`, generated, or written by hand to replace them.
+
+  ```cpp
+  enum class Direction : u8
   {
-    North = 0,
-    East = 1,
-    South = 2,
-    West = 3,
-    None = 4
+    { North, East, South, West }
+    bool isVertical() const { return this == North || this == South; }
+    Direction opposite() const
+    {
+      switch (this) // no default
+      {
+        case North: return South;
+        case East: return West;
+        case South: return North;
+        case West: return East;
+      }
+    }
   };
-  static constexpr uint8_t COUNT = 5;
 
-  // Trick to move the enum definitions to scope of Direction, so the usage isn't Direction::Enum::North, but Direction::North.
-  static constexpr Enum North = Enum::North;
-  static constexpr Enum East = Enum::East;
-  static constexpr Enum South = Enum::South;
-  static constexpr Enum West = Enum::West;
-  static constexpr Enum None = Enum::None;
-  constexpr Direction() = default;
-  constexpr Direction(Enum value) : value(value) {}
-  bool operator==(const Enum value) const { return this->value == value; }
-  bool operator==(const Direction& direction) const { return this->value == direction.value; }
-  bool operator!=(const Enum value) const { return this->value != value; }
-  bool operator!=(const Direction& direction) const { return this->value != direction.value; }
-  operator Enum() const { return this->value; }
-  explicit operator bool() const { return this->value != Enum::None; }
-  Enum getEnum() const { return Enum(this->value); }
-  const char* str() const;
-  constexpr bool isVertical() const { return this->value == North || this->value == South; }
-
-  static const std::array<Direction, 4> all;
-private:
-  Direction value = Direction::None;
-};
-```
-
-The problems I would like to solve:
-1. The duplication of the value definitions for nicer scope
-2. The need of custom constructors and operators as the value is inside
-3. The need to specify and fill allDirections for nice iteration of all enum values
-4. Even with all the boilerplate, some of the expressions don't really work as if it was enum with classes, for example
-
-```
-Direction foo(bool useParameter, Direction input)
-{
-  return useParameter ? input : Direction::North; // some compilers have problem with this, as one result is the class Direction, and one is the enum
-}
-```
-
-Instead, we would use the proposed syntax:
-
-```
-enum class Direction : uint8_t
-{
+  int main()
   {
-    North = 0,
-    East = 1,
-    South = 2,
-    West = 3,
-    None = 4
+    for (Direction d : Direction::values)  // North true South, East false West, ...
+      println(StringView(d.str()), " ", d.isVertical(), " ", StringView(d.opposite().str()));
+    println(Direction::count, " ", Direction::fromStr("West").has_value());  // 4 true
+    return 0;
   }
-  constexpr bool isVertical() const { return this->value == North || this->value == South; }
-  constexpr explicit operator bool() const { return this->value != Enum::None; }
-};
-```
+  ```
+- **Typed unions.** `union enum` is an enum whose every value carries a value of its own
+  type, without std::variant's templates: constructed from a value of one of its types, read with
+  `p[Name]` (checked against the tag), switched on exhaustively, compared and copied as
+  std::variant is.
 
-1. The class and the enum is the same thing, and member functions are allowed to be defined.
-2. The str method has default implementation which returns "North", "East", "South", "West" and "None" values, custom implementation can be provided.
-3. There will be a way to iterate all the values naturally, probably by letting the compiler auto-generate the static all property (or something else dunno)
-
-This means, that all the standard ways to work with it would be possible:
-
-The most frequent motivation, the for each loop
-```
-for (Direction direction : Direction::all)
-  printf("%s", direction.str());
-```
-
-or basically any iterator based algorithms like `std::find_if(Direction::all.begin(), Direction::all.end(), [](Direction direction){ return direction.isVertical(); });`
-
-
-## *this* is a reference
-The only real reason why *this* isn't a reference is historical, as *this* was added before references were a thing.
-We are used to write `this->`, but it doesn't make sense, as you can't change the value of *this*, and it shouldn't be nullptr. You can currently call member methods on nulllptr *this*, but I consider it a corner case, and some compilers actually treat the `this == nullptr` comparison to be invalid.
-This would make any usage of custom operators on *this* nicer, and make it more unified with rest of the code, where reference means that you can't change the value and it can't be nullptr.
-
-I don't like to write
-`(*this)[7]` (operator [] on *this* object) or `!*this` (negation of operator bool on this object)
-
-Lets write it this way now:
-`this[7]` and `!this`
-
-## Required *this*
-Simple as that, currently writing `this->x` is optional, we learned to put it into our code standards for a good reason. It is really useful to know, that we talk about x in the current class, and not a local or global variable.
-
-It tends to happen, that adding a local variable can suddenly change the existing code in an unexpected way when the *this* is ommited.
-
-## Required override
-Adding the override keyword to methods that are overriding a base class method is currently optional, but some of the compilers are able to identify when its ommited and emit a warning.
-This shouldn't be even a warning, lets make it always required.
-
-## Implicit explicit, explicit implicit
-We have learned to put make almost all of the construcotrs and bool operators to be explicit, as otherwise, very unexpected things tends to happen otherwise.
-So all constructors and conversion operators would be explicit by default, and "implicit" would have to be specified for the current default behaviour.
-
-## Default break in switch
-Missing break in swithc statements is one of the more annoyin gotchas in code like this:
-
-```
-void Position::move(Direction direction)
-{
-  switch (direction)
+  ```cpp
+  union enum Property : u8
   {
-    case Direction::North: this->y--; // oups missing break makes this behave differently than planned
-    case Direction::East: this->x++;
-    case Direction::South: this->y++;
-    case Direction::West: this->x--;
-  }
-}
-```
-The fallthrough mechanics is useful from time to time, but is much less frequent, even the fact, that some compilers now require you to add [[fallthrough]] when you forget a break shows that this is an issue.
-
-So the proposal would be, that when you actually want a fallthrough, you have to explicitelly state it.
-```
-// alternative implementation of Direction::isVertical
-Direction::isVertical()
-{
-  switch (this)
-  {
-    case Direction::North: fallthrough;
-    case Direction::South: return true;
-    case Direction::East: fallthrough;
-    case Direction::West: return false;
-  }
-}
-```
-
-## Abort on wrong enum value in switch by default
-In the above example of Direction::isVertical, we have to do some kind of error handling to make the compiler happy, and to make sure it crashes if there is a different (unsupported) value in the enum.
-
-If switch doesn't contain a default, it would:
-1. Compile Error if not all of the values are mentioned (warning in most compilers)
-2. Runtime abort (throw?) when invalid enum value is present
-
-## Typed union
-We are aware, that std::variant exist, but it has some problems.
-1. The template magic behind it makes any bigger variant so unfriendly to compile times, that we avoid it on purpose. (I have an experience, where a single boost variant with 200+ elements in a header file consumed more than 40% of compilation time of a big project)
-2. The most typical usage of union is in tandem with enum class, which leads to a typical ugly boilierplate around it to make work.
-
-This is basically just extension of how the enum works, but every value has associated union type value.
-```
-// type definition
-union enum
-{
-  {
-    {int, Integer}, // the important part is, that the type and enum definitions are defined together
-    {double, Double},
-    {std::string, String},
-    {std::string, Comment}
-  }
-
-  std::string str(); // as our enum class, this allows to have methods
-};
-
-...
-
-std::string Property::str()
-{
-  switch (this)
-  {
-    case Integer: return ssprintf("%d", this[Integer]);
-    case Double: return ssprintf("%g", this[Integer]);
-    case String: return this[String];
-    case Comment: return ssprintf("//%s", this[Comment]);
-  }
-};
-
-...
-
-Property property;
-property[Integer] = 5;
-property[String] = "hello";
-property[Comment] = "This is a comment";
-
-if (property == Property::Integer)
-  printf("%d", property[Integer]);
-```
-
-If the [] operator is used with wrong type, it would either throw, or return an empty value, but obviously, there would be more specific methods.
-
-# Safe navigation operator
-https://en.wikipedia.org/wiki/Safe_navigation_operator
-
-For expressions without return value, the usage is pretty straightforward.
-
-instead of
-```
-if (a)
-  if (B* b = a->b)
-    b->foo();
-```
-do
-```
-a?->b?->foo();
-```
-
-This would work for any types that are convertible to bool, so pointers and objects with bool operator would work.
-
-Usage in expressions that return value are also possible
-
-Instead of
-```
-B* getB(A* a)
-{
-  if (!a)
-    return nullptr;
-  return a->b;
-}
-```
-
-We could write:
-```
-B* getB(A* a)
-{
-  return a?->b;
-}
-```
-
-The return value of the chain is always related to the last thing in the chain, there are 2 requirements for this to be possible to use:
-1. The final type needs to have a default value (in case of pointer it is nullptr, otherwise, the default constructor)
-2. All the values in the chain need to be convertible to bool (as above)
-
-# Elvis operator
-https://en.wikipedia.org/wiki/Elvis_operator
-
-Instead of writing:
-``` return a ? a : b;```
-we could write
-``` return a ?: b;```
-
-This is especially useful when `a` is an expression.
-
-# Const deduplication
-The *const* mechanics in C++ often implies code duplication or ugly hacks.
-
-### Method const duplication
-Very often, we end up with duplicate methods like this, for retrieving *const* and non-const versions of the data based on the const-ness of the parent object:
-
-```
-class A
-{
-public:
-  const B* getB() const { return b; }
-  B* getB() { return b; }
-private:
-  B* b;
-}
-```
-
-### Class const duplication
-Typical example are iterators, which have to be duplicated also in the standard library, for example:
-
-`std::vector::iterator`
-`std::vector::const_iterator`
-
-The std uses template magic to partially deduplicate it, but is not a nice read.
-
-So we could have a keyword *both_const*, which would be basically  mapped to the same value (*const* or non const) in the whole context of the method based on the current usage.
-```
-class A
-{
-public:
-  both_const B* getB() both_const { return b; }
-private:
-  B* b;
-};
-```
-
-For the class scope deduplication, we could use the keyword *class_const*, which would be used by this
-```
-class iterator
-{
-  class_const X& operator*() const { return *x; }
-  class_const X* x;
-};
-```
-This basically means, that we defined 2 types by this one definition (as with templates), one has const in in the place of all class_const, and one nothing, and they could be accessed like this:
-
-```
-iterator a;
-iterator::const b; // as const_iterator, so you can move it, but not the value it points to
-const iterator a; // you can't move it, but you can change the value
-const iterator::const b; // as const const_iterator you can't move it nor change the value
-```
-When the iterator is retrieved from the container, we can use the *both_const* mechanism to specify which *subtype* of the iterator is to be returned to deduplicate even the begin/end methods.
-
-```
-class Container
-{
-  iterator::both_const begin() both_const { return iterator::both_const(data); }
-  X* data;
-};
-```
-
-Both of the class_const and both_const can be used to specify type.
-
-In this example, we use the class_const of A to specify which const variant of B should be used for the b property.
-```
-class A
-{
-  class B
-  {
-    class_const int* x;
+    { {int, Integer}, {double, Double}, {String, Text} }
   };
-  B::class_const b;
-};
-```
 
-TODO:
-1. There still needs to be some syntax to allow some methods to be used only in const or non-const version of the class
-2. Consider having some constexpr if to check even inside methods
-3. 
-### Simplier final code deduplication
-Since the compiler would know that both of the variants are close together, it could have easier time to deduplicate the const/non const variants if possible.
+  String describe(const Property& p)
+  {
+    switch (p)
+    {
+      case Property::Integer: return format("int {}", p[Property::Integer]);
+      case Property::Double: return format("double {}", p[Property::Double]);
+      case Property::Text: return format("text {}", p[Property::Text]);
+    }
+  }
 
-# Named parameter passing
-It would allow to specify which of the parameters with default values are specified in a function call.
+  int main()
+  {
+    Property p = 5;                       // the alternative of an int: Integer
+    println(describe(p));                 // int 5
+    p[Property::Text] = String("hello");  // destroys the int, holds a String
+    println(describe(p));                 // text hello
+    return 0;
+  }
+  ```
+- **Reflection.** `for constexpr` over `members(T)` (or a typed union's
+  `alternatives(U)`) writes code once for every member, which replaces the macros and the
+  hand-written lists that save, load or show a class:
 
-So with this function:
-```
-int foo(int a = 1, int b = 2, int c = 3);
-```
+  ```cpp
+  struct Settings
+  {
+    int width = 640;
+    bool fullscreen = false;
+  };
 
-We could call it like this:
-```
-int foo(b : 3, c : 4);
-```
+  template<typename T>
+  String describe(const T& object)
+  {
+    String result;
+    for constexpr (auto m : members(T))
+      result << format("{}={} ", StringView(m.name), object.[m]);
+    return result;
+  }
 
-The main advantages:
-1. More readable code, especially when the parameters are bools or numbers
-2. Deduplication, as having to pass the default value of *a* to be able to pass be basically duplicates the the definition of the default value
-3. Shorter code
+  int main()
+  {
+    println(describe(Settings()));  // width=640 fullscreen=false
+    return 0;
+  }
+  ```
+  The same `for constexpr` iterates a list of types (`types<A, B, C>`) or of constants. There is no
+  preprocessor: `config` constants with `if constexpr`, `assert`, and these loops replace macros.
+- **No `typename` or `template` disambiguators**: the compiler knows what a dependent name
+  is.
 
-# Type based parameter resolution
-Related to the previous, but based on type overloading
+  ```cpp
+  template<typename Container>
+  Container::value_type first(const Container& container) { return container[0]; }
 
-The function would have these parameters
-```
-int foo(A a = A(1), B b = B(2), C c = C(3));
-```
+  int main()
+  {
+    Vector<int> numbers;
+    numbers.push_back(7);
+    println(first(numbers));  // 7
+    return 0;
+  }
+  ```
 
-Since A, B, C are different types, we can use the type resolution to figure out how to call the method without specifying the parameter name
-```
-foo(B(3), C(4));
-```
+### Tests
 
-# Don't require typename for dependent types
-Not all compilers need that, so lets just not require it ever.
-Same with the weird " template " word coming out of nowhere, just because the compiler can't figure it out.
-https://en.cppreference.com/w/cpp/language/dependent_name
+- **Tests in the language.** A `test` sits next to the code it tests, inside a class too
+  (where it sees private members); `check` reports the expression, where it is and its operands'
+  values, and goes on; `require` ends the test. Without `--test` tests cost nothing.
 
-# Test tools
-We should have ways to bring the test as close to the actual code as possible, and some standardised way to run/select the tests.
+  ```cpp
+  int square(int x) { return x * x; }
 
-On the class levels, we might just have specially marked static methods testing the class related logic, ideally we would have a switch to disable/enable showing
-these to avoid seeing bloat when discovering code structure.
+  test "square"
+  {
+    check(square(3) == 9);
+    check(square(-2) == 4);
+  }
 
-We need a standrdised test dependency system.
+  int main()
+  {
+    println(square(4));
+    return 0;
+  }
+  ```
+  `kpp --test` builds and runs them (`--filter TEXT`, `--list`, `--report FILE`).
 
-C++ code coverage tools are either expensive, or very basic, so it would be nice to have this as a standard part of the compiler.
+### Existing code
 
-# accumulate
-We tend to have class of methods, which are virtual, but are meant to accumulate the code from all the levels of the hierarchy, for example the save method.
+- **C libraries.** `extern "C" import "header.h";` anywhere in the program imports a C
+  header, its constants included. C++ libraries are used through a thin C wrapper or converted:
+  kpp calls only C.
 
-```
-class A
-{
-public:
-  virtual void save(Serialiser& output) const { output << x; }
-  int x;
-};
+  ```cpp
+  extern "C" import "math.h";
 
-class B
-{
-  using super = A;
-public:
-  virtual void save(Serialiser& output) const override { super::save(output); output << y; }
-  int y;
-};
-```
+  int main()
+  {
+    println(sqrt(2.0));
+    return 0;
+  }
+  ```
+- **Converting C++.** The compiler's `--convert DIR` rewrites C++ sources as kpp: the includes go,
+  macros are replaced by kpp's constructs or expanded, and the rest stays as it was; C sources
+  convert with `--c-sources`. It handles the C++ Factorio is written in (see [Status](#status)).
 
-The equivalent syntax would be:
+## Planned
 
-```
-class A
-{
-public:
-  accumulate void save(Serialiser& output) const { output << x; }
-  int x;
-};
+Decided, and not built yet:
 
-class B
-{
-public:
-  accumulate void save(Serialiser& output) const override { output << y; }
-  int y;
-};
-```
-We don't have to call the super::save(output), but we also don't need to define the super, as we use this idiom almost exclusively to create these accumulated calls.
+- **No implicit fallthrough.** Every `case` ends with an implicit `break`; falling through is
+  written `fallthrough;` (accepted today as C++'s `[[fallthrough]];`, while `switch` keeps C++'s
+  rules).
+- **Explicit by default.** A constructor or conversion operator converts implicitly only when marked
+  `implicit` (`implicit Celsius(double degrees)`). The keyword is accepted today, but an unmarked
+  constructor still converts, as in C++.
+- **Required `this->`**, so that adding a local or a global never changes what an existing line
+  means.
+- **Required `override`** on every function that overrides a virtual one.
+- **`this` is a reference**: `this[7]`, `!this`, `this.x`. (Inside an enum's methods `this` already
+  is the value.)
+- **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
+  `a->b` are set, and as an expression gives the last member's default value when one is not;
+  `a ?: b` is `a ? a : b` with `a` evaluated once.
+- **One definition for const and non-const**: `both_const` writes a getter once for both
+  constnesses (`both_const B* getB() both_const`), `class_const` a class once for both (an iterator
+  and its const iterator). The exact rules are not written down yet.
+- **Named arguments**, passing only the defaults you change, by name; the syntax is not chosen yet.
+- **Linux and macOS as hosts, macOS as a target** ([design.md](docs/design.md), "Targets and
+  hosts").
+- **Factorio on the bundled toolchain.** The game still builds with an installed Visual Studio
+  (`--toolchain msvc`) because it links C++ libraries built the Visual Studio way; it moves to
+  kpp's own toolchain as they are converted or rebuilt (design.md 17).
+- **Streaming code generation**: LLVM inside the compiler, each thread handing its functions
+  straight to the back end instead of writing IR text for clang to read again; estimated at a few
+  seconds off a clean debug build of the game ([docs/codegen-speed.md](docs/codegen-speed.md)).
+- **The library registry on kpp.net**: `kpp add zlib`, versions locked by content hash, library
+  options listed when you add one ([docs/library-registry.md](docs/library-registry.md)).
+- **A localisation library**, with its own tools, for text whose word order changes per language.
 
-# Using existing libraries
-Based on what is mentioned in the [compilation changes](compilation/index.md) section, it might be possible to make it quite easy to use the existing libraries as is.
-We could have a backwards-compatibile compilation mode which compiles the libraries in the old and slow way to generate our sombol-tree, which could be cached and used for compilation of our projects.
+Under consideration, not decided:
 
-# Converting existing code
-The cost of converting existing code would depend on the way the code is written, but for the typical cases, I can imagine that the conversion could be mostly automated.
-1. Changing this to be required is probably going to be a lot of changes, but could be automated.
-2. The same for changing this to be a reference.
-3. Include removal is probably the easy part, as long as the program doesn't use #includes in some smart way, to introduce different sets of symbols or macros to the scope
-4. With the global scope approach, it could happen that there could be clashes of symbols that were previously in separate cpp files.
+- **kpp's own IDE** on top of the language server ([docs/ide.md](docs/ide.md)).
+- **Access levels between `private` and public**, for example a member visible to its own
+  directory or subsystem, where C++ code uses `friend` today.
+- **Choosing a default argument by its type**: `foo(B(3), C(4))` for `foo(A a = ..., B b = ...,
+  C c = ...)`.
+- **`accumulate`**: a virtual function that runs every level of the hierarchy without calling
+  `super::`. Reflection already writes save and load once for every class.
+- **Code coverage** in the compiler.
 
-# IDE support
-This one is tricky, as there are lots of IDES out there and we can't control them.
-Yet, I can imagine that if the compiler is very performant, and provides some kind of API to the IDE to be able to understand the code without doing its own compilation in the background, the adaptation could be reasonably easy. I have no idea how much is this doable by some extensions, and how much it would require direct cooperations with the IDE creators.
+## Status
+
+kpp is young, under heavy development, and changes every day; releases are numbered
+`0.MINOR.PATCH`.
+
+- The compiler (lexer, parser, resolver, type checker, templates, compile-time evaluation, code
+  generation through LLVM) and its own standard library work on real programs.
+- **Factorio 2.1.25 is converted to kpp** and runs: its 9,501 unit tests pass with the same results,
+  checked step by step against the C++ build's (CRCs), and its 45 menu maps replay identically, in
+  debug and release. Its C libraries (zlib, zstd, ogg, stb_image, ...) are being converted too.
+- Every construct the compiler supports has a test in `compiler/tests/spec/`; the decided rules are in
+  [docs/design.md](docs/design.md).
+
+## License
+
+kpp, its standard library and its official libraries are Apache-2.0 WITH LLVM-exception
+([LICENSE](LICENSE)): use them freely, also commercially; programs you build with kpp carry no
+obligation from it. Contributions are signed off ([CONTRIBUTING.md](CONTRIBUTING.md)).
