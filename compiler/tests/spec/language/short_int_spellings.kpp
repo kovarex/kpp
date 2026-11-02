@@ -1,0 +1,11 @@
+// spec: `short int`, `signed short int` and `unsigned short int` are the 16-bit short and unsigned short, as `short` and `int short` already are; through a C import too (glibc's uint16_t is `unsigned short int`, so ntohs and htons returned 32 bits on Linux)
+// factorio: none; found by thread G for libraries/net on Linux (ntohs gave port 16809728)
+// pending: `short int` and `unsigned short int` are 4-byte ints, in Kpp source and in C imports (`declare i32 @ntohs(i32)`)
+int main()
+{
+  short int a = (short int)40000;
+  signed short int b = (signed short int)40000;
+  unsigned short int c = (unsigned short int)70000;
+  println(format("{} {} {} {} {} {}", (int)sizeof(short int), (int)sizeof(signed short int), (int)sizeof(unsigned short int), (int)a, (int)b, (int)c));
+  return 0;
+}
