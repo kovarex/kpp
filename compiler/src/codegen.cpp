@@ -2306,7 +2306,7 @@ namespace
       auto piece = [&](Expr* value)
       {
         const Ty* t = value->ty ? withCurrentArgs(value->ty) : nullptr;
-        TextPieceKind kind = global.textPieceOf(value, t, currentFunction);
+        TextPieceKind kind = global.textPieceOf(value, t);
         if (!kind.thunk)
           unsupported(value, kind.error.empty() ? "a piece of a Text of no known type" : kind.error);
         // Its address: a string literal's chars, an lvalue's own object, a temporary otherwise.
@@ -3932,8 +3932,9 @@ namespace
       return convert(asUnit, valueTy, at);
     }
 
-    // Writes a bit field: the other bits of the storage unit stay as they are.
-    void storeBitfield(Value v, const std::string& addr, const BitfieldInfo& bits, const Ty* memberTy, Node* at)
+    // Writes a bit field v, already of the member's type: the other bits of the storage unit stay
+    // as they are.
+    void storeBitfield(Value v, const std::string& addr, const BitfieldInfo& bits, Node* at)
     {
       std::string unitLl = llType(bits.unit, at);
       Value asUnit = convert(v, bits.unit, at);
@@ -3984,12 +3985,12 @@ namespace
             unsupported(where, "a bit field initialised with a list of several values");
           e = list->args[0];
         }
-        storeBitfield(convert(rvalue(e), memberTy, where), fieldAddr, bits, memberTy, where);
+        storeBitfield(convert(rvalue(e), memberTy, where), fieldAddr, bits, where);
       };
       if (value)
         withSingleElement(value, at, [&](Expr* one) { storeInto(one, at); });
       else if (explicitInit)
-        storeBitfield(Value{"0", bits.unit, false}, fieldAddr, bits, memberTy, at);
+        storeBitfield(Value{"0", bits.unit, false}, fieldAddr, bits, at);
       else if (v->init)
         withMemberInitializer(addr, t, v, [&](Expr* init) { storeInto(init, v); });
     }
@@ -14983,7 +14984,7 @@ namespace
         Value updated = arithmetic(op == P::PlusPlus ? P::Plus : P::Minus, old, Value{"1", types.intType(32)}, u);
         if (bits)
         {
-          storeBitfield(convert(updated, ot, u), addr, *bits, ot, u);
+          storeBitfield(convert(updated, ot, u), addr, *bits, u);
           return u->postfix ? old : loadBitfield(addr, *bits, ot, u);
         }
         store(updated, addr, ot, u);
@@ -15354,7 +15355,7 @@ namespace
         }
         if (bits)
         {
-          storeBitfield(convert(rhs, t, b), addr, *bits, t, b);
+          storeBitfield(convert(rhs, t, b), addr, *bits, b);
           return loadBitfield(addr, *bits, t, b); // the field's value, wrapped to its width
         }
         store(rhs, addr, t, b);
@@ -17338,7 +17339,7 @@ namespace
     // Runs part(k) in a block of its own for the alternative k both typed unions at a and b hold,
     // their tags known equal; the blocks go on to done.
     template<typename F>
-    void forEachHeldAlternative(ClassDecl* c, const Ty* t, const Value& tag, const std::string& done, Node* at, F&& part)
+    void forEachHeldAlternative(ClassDecl* c, const Value& tag, const std::string& done, Node* at, F&& part)
     {
       std::vector<int64_t> tags = alternativeTags(c);
       if (tags.size() != c->alternatives.size())
@@ -17377,7 +17378,7 @@ namespace
       fn += "  br i1 " + same + ", label %" + held + ", label %" + done + "\n";
       blockTerminated = true;
       startBlock(held);
-      forEachHeldAlternative(c, t, ta, done, at, [&](size_t k) {
+      forEachHeldAlternative(c, ta, done, at, [&](size_t k) {
         Value e = partsEqual(alternativeAddress(c, t, a, k, at), alternativeAddress(c, t, b, k, at), alternativeType(c, t, k, at), at);
         fn += "  store i1 " + e.text + ", ptr " + slot + "\n";
       });
@@ -17405,7 +17406,7 @@ namespace
       blockTerminated = true;
       startBlock(held);
       fn += "  store i8 0, ptr " + slot + "\n";
-      forEachHeldAlternative(c, t, ta, done, at, [&](size_t k) {
+      forEachHeldAlternative(c, ta, done, at, [&](size_t k) {
         Value o = orderOfParts(alternativeAddress(c, t, a, k, at), alternativeAddress(c, t, b, k, at), alternativeType(c, t, k, at), at);
         fn += "  store i8 " + o.text + ", ptr " + slot + "\n";
       });

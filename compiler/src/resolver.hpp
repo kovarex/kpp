@@ -410,8 +410,8 @@ public:
   // kppEnumTypeName), 0 for none: code generation computes their calls.
   int intrinsicOf(const FunctionDecl* f);
   // How an argument of type t (e: the expression, for a string literal) packed into a Text appends
-  // itself (TextPieceKind), looked up from context.
-  TextPieceKind textPieceOf(const Expr* e, const Ty* t, Decl* context);
+  // itself (TextPieceKind): by its type alone, wherever the call is.
+  TextPieceKind textPieceOf(const Expr* e, const Ty* t);
   Decl* typeInfoDecl();                         // The library's TypeInfo class (what typeid yields), or null.
   Decl* enumFromStrDecl();                       // The library's enumFromStr<E>(const char*) template (E::fromStr lowers to it), or null.
   Decl* strongOrderingDecl();                    // The library's strong_ordering class (what `a <=> b` yields), or null.

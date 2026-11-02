@@ -800,11 +800,13 @@ struct GlobalScope::Impl
     uint32_t symbol = functionSymbol(f->name);
     if (const std::vector<Entry>* entries = scope->find(symbol))
       for (Entry& e : const_cast<std::vector<Entry>&>(*entries))
+      {
         if (e.decl == f)
           e.decl = v;
         else if (scope->kind == ScopeKind::Namespace && e.decl && e.decl->kind == NodeKind::VariableDecl &&
                  (e.decl->flags & DF_Extern) && !static_cast<VariableDecl*>(e.decl)->init && !variableDefinitions.count(e.decl))
           variableDefinitions[e.decl] = v; // `extern Box box;` before it: its definition (as sortEntries links)
+      }
     Span<Decl*> siblings = f->parent && f->parent->kind == NodeKind::NamespaceDecl ? static_cast<NamespaceDecl*>(f->parent)->decls
                            : f->file ? f->file->decls : Span<Decl*>{};
     for (Decl*& sibling : siblings)
@@ -3318,7 +3320,6 @@ struct GlobalScope::Impl
     // copies an lvalue it cannot alias, nor `this`.
     bool owns = false;
   };
-  struct ConstPlace;
   struct TypeContext
   {
     Scope* scope;
@@ -10628,7 +10629,7 @@ struct GlobalScope::Impl
       if (const Ty* array = type ? types.unqualified(types.stripRef(type)) : nullptr;
           array && array->kind == TyKind::Array && !array->count && v.isObject() && v.parts)
         type = types.array(array->inner, uint32_t(v.parts->size())); // a string literal's chars, `const char[]` as it reads
-      TextPieceKind kind = textPieceOf(nullptr, type, &root);
+      TextPieceKind kind = textPieceOf(nullptr, type);
       if (!kind.thunk)
       {
         if (constWhy().empty())
@@ -13350,7 +13351,7 @@ struct GlobalScope::Impl
   // function the Text calls for it (Text.kpp) and the type it is instantiated for (none for C
   // text), or why the argument can be no piece, an error naming the type. An argument whose type
   // is not known yet (a template's own walk) has neither: its instance decides.
-  TextPieceKind textPieceOf(const Expr* e, const Ty* given, Scope* from)
+  TextPieceKind textPieceOf(const Expr* e, const Ty* given)
   {
     TextPieceKind out;
     const Ty* t = given ? types.unqualified(types.stripRef(given)) : nullptr;
@@ -20414,7 +20415,7 @@ struct GlobalScope::Impl
       bool known = true;
       auto check = [&](Expr* a, const Ty* t)
       {
-        TextPieceKind piece = impl.textPieceOf(a, t, scope);
+        TextPieceKind piece = impl.textPieceOf(a, t);
         if (!piece.error.empty())
         {
           if (!probing)
@@ -24580,11 +24581,7 @@ TemplateArgs GlobalScope::definitionArgs(Decl* def, const TemplateArgs& classArg
 Decl* GlobalScope::initializerListDecl() { return impl->initializerListDecl(); }
 const Ty* GlobalScope::textType() { return impl->textType(); }
 int GlobalScope::intrinsicOf(const FunctionDecl* f) { return impl->intrinsicOf(f); }
-TextPieceKind GlobalScope::textPieceOf(const Expr* e, const Ty* t, Decl* context)
-{
-  Scope* from = context ? impl->lexicalScopeOf(context) : nullptr;
-  return impl->textPieceOf(e, t, from ? from : &impl->root);
-}
+TextPieceKind GlobalScope::textPieceOf(const Expr* e, const Ty* t) { return impl->textPieceOf(e, t); }
 Decl* GlobalScope::typeInfoDecl() { return impl->typeInfoDecl(); }
 Decl* GlobalScope::enumFromStrDecl() { return impl->enumFromStrDecl(); }
 Decl* GlobalScope::strongOrderingDecl() { return impl->strongOrderingDecl(); }

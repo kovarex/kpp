@@ -3002,7 +3002,7 @@ namespace
     // names the tag value), a `tag` member and an anonymous union of one storage member per
     // alternative; the type checker and code generator add the tag-aware operations (p[Integer],
     // p == Integer, switch (p), construction, copying, destruction).
-    bool parseTypedUnion(Scope scope, uint32_t flags, TemplateHeader templ)
+    bool parseTypedUnion(uint32_t flags, TemplateHeader templ)
     {
       uint32_t start = pos;
       advance(); // union
@@ -3285,7 +3285,7 @@ namespace
     bool parseClassOrElaborated(Scope scope, uint32_t flags, TemplateHeader templ)
     {
       if (at(Kw::union_) && at(Kw::enum_, 1))
-        return parseTypedUnion(scope, flags, templ);
+        return parseTypedUnion(flags, templ);
       uint32_t start = pos;
       uint32_t save = pos;
       // A const read before the keyword: the declarators' after a definition; the type's, when
