@@ -1350,13 +1350,12 @@ or protected member, a base that is not public, a virtual function, a polymorphi
 across files), local structs in function bodies included. The game and its tests: 37 (31 with a
 private or protected member, 4 with a polymorphic base, 2 with a virtual function), 9 bases written
 public; `kppc --struct-rule` passes over the converted game and tests. The converter keeps the game's
-409 friend declarations (it removed them all before): the access warnings over the converted game
-went from 2,071 to 8. Its 32 hidden friends are still rewritten as before (21 member operators, 11
-moved to namespace scope, where 7 of the 8 warnings are): kpp's hidden friends are not yet found
-through an argument of a nested enum (NotificationData's `Flags operator|`) nor made for a class
-nested in a class template (RectangleUnionLogic<P>::IntervalPoint's operator<), specs
-classes/hidden_friend_of_nested_enum and classes/hidden_friend_in_nested_class_of_template, which A's
-b4239284 passes: the converter keeps them as written next.
+409 friend declarations (it removed them all before) and its 32 hidden friends as written (it made
+21 of them member operators and moved 11 to namespace scope before; A's b4239284 finds them through a
+nested enum and makes them for a class nested in a class template: NotificationData's `Flags
+operator|`, RectangleUnionLogic<P>::IntervalPoint's operator<). The access warnings over the converted
+game went from 2,071 to 2, both LuaBinder naming LuaDebugAdapter's private luaIndex in a requires (a
+silent difference from C++, spec classes/requires_expression_checks_access, D's).
 
 **Hidden friends (thread A, 2026-11-02), as C++ has them.** A friend function defined in its class
 is a function of the class's namespace that no ordinary lookup finds: only argument-dependent lookup,

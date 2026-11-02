@@ -3065,16 +3065,6 @@ namespace
       const LocalMacro* macro;
     };
     std::vector<LocalMacroUse> localMacroUses;
-    // A hidden friend defined in a class that moves out to namespace scope (run() renders it once
-    // the edits inside it are known): text[begin, end) goes to `at`, after `header`, with the names
-    // it found in the class's scope (nested types) qualified; [begin, removeEnd) goes.
-    struct MovedFriend
-    {
-      uint32_t begin, end, removeEnd, at;
-      std::string header;
-      std::map<std::string, std::string> qualify; // bare name -> qualified name
-    };
-    std::vector<MovedFriend> movedFriends;
     std::vector<ClassDecl*> classStack; // the classes whose members convertDecls is in, outermost first
     // The identifiers of allocator arguments dropped from std container types (convertTokens), by
     // offset: a template parameter used only there goes from its header too (dropAllocatorParameters).
@@ -7046,22 +7036,15 @@ namespace
           counts.add("replaced by the override file");
           continue;
         }
-        if ((d->flags & DF_Friend) && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && !classStack.empty())
-        {
-          // A hidden friend, defined inside the class, becomes a member operator or moves out to
-          // namespace scope, body and all: kpp's hidden friends are not yet found through a nested
-          // enum's argument (NotificationData's `Flags operator|(Flags, Flags)`) nor made for a class
-          // nested in a class template (RectangleUnionLogic<P>::IntervalPoint's operator<); specs
-          // classes/hidden_friend_of_nested_enum and hidden_friend_in_nested_class_of_template.
-          if (!convertHiddenFriend(static_cast<FunctionDecl*>(d)))
-            continue;
-        }
-        else if ((d->flags & DF_Friend) && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::FunctionDecl))
+        if ((d->flags & DF_Friend) && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::FunctionDecl))
         {
           // kpp keeps friend (design.md "struct and class", kovarex 2026-11-01): a friend class or
-          // function as the C++ declares it.
-          counts.add("friend declarations kept");
-          continue;
+          // function as the C++ declares it, and a hidden friend, defined in its class, as C++ has it
+          // (found by argument-dependent lookup, through a nested enum or class too).
+          bool hidden = d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body;
+          counts.add(hidden ? "hidden friends kept" : "friend declarations kept");
+          if (!hidden)
+            continue;
         }
         if (d->kind == NodeKind::DeductionGuideDecl)
         {
@@ -7350,135 +7333,6 @@ namespace
           default: break;
         }
       }
-    }
-
-    // A hidden friend of the innermost class on classStack (`friend bool operator==(const A& a,
-    // const A& b) { ... }`). An operator whose first parameter is that class becomes a member
-    // operator: the first parameter goes, its uses read (*this), and the member is const unless the
-    // parameter was a non-const reference; returns true, and the caller converts it as a member.
-    // Anything else moves after the outermost class as a function at namespace scope (a function
-    // template with the parameters of a class template that its signature names); returns false.
-    bool convertHiddenFriend(FunctionDecl* f)
-    {
-      ClassDecl* cls = classStack.back();
-      // `friend` is among the specifiers, before or after the declaration's first token.
-      uint32_t from = f->token;
-      while (from > 0 && !(toks[from - 1].is(P::Semi) || toks[from - 1].is(P::LBrace) || toks[from - 1].is(P::RBrace) || toks[from - 1].is(P::Colon)))
-        --from;
-      uint32_t friendToken = UINT32_MAX;
-      for (uint32_t k = from; k < toks.size() && !toks[k].is(P::LParen) && !toks[k].is(P::LBrace); ++k)
-        if (spelling(k) == "friend")
-        {
-          friendToken = k;
-          break;
-        }
-      bool nested = classStack.size() > 1;
-      bool inTemplate = false;
-      for (ClassDecl* c : classStack)
-        inTemplate = inTemplate || c->isTemplate;
-      if (friendToken == UINT32_MAX || f->params.empty() || f->endToken <= f->token || cls->name.empty())
-      {
-        todo(toks[f->token].offset, "a hidden friend the converter cannot place: left out");
-        removeDecl(f);
-        counts.add("friend declarations removed");
-        return false;
-      }
-
-      auto* first = static_cast<ParamDecl*>(f->params[0]);
-      Type* t = first->type;
-      bool reference = t && t->kind == NodeKind::LRefType;
-      if (reference)
-        t = static_cast<LRefType*>(t)->referenced;
-      bool isConst = t && t->kind == NodeKind::ConstType;
-      if (isConst)
-        t = static_cast<ConstType*>(t)->inner;
-      bool ofClass = t && t->kind == NodeKind::NamedType && !static_cast<NamedType*>(t)->name.empty() &&
-                     static_cast<NamedType*>(t)->name.last().symbol == cls->name.last().symbol;
-      bool isOperator = !f->name.empty() && f->name.last().special == 2;
-      if (isOperator && f->params.size() == 2 && ofClass && first->name != UINT32_MAX)
-      {
-        uint32_t comma = parameterEndIn(toks, first->token);
-        uint32_t close = parameterEndIn(toks, f->params[f->params.size() - 1]->token);
-        if (comma != UINT32_MAX && toks[comma].is(P::Comma) && close != UINT32_MAX)
-        {
-          remove(toks[friendToken].offset, toks[friendToken + 1].offset - toks[friendToken].offset);
-          remove(toks[first->token].offset, toks[comma + 1].offset - toks[first->token].offset);
-          if (isConst || !reference)
-            insert(endOffset(close), " const");
-          std::string_view self = symbols.name(first->name);
-          for (uint32_t k = f->body->token; k < f->endToken; ++k)
-            if (toks[k].getKind() == TokenKind::Identifier && spelling(k) == self &&
-                !(toks[k - 1].is(P::Dot) || toks[k - 1].is(P::Arrow) || toks[k - 1].is(P::ColonColon)))
-              replace(toks[k].offset, toks[k].length, "(*this)");
-          counts.add("hidden friend operators made members");
-          return true;
-        }
-      }
-      // Moved out, a friend of a class nested in a class template would be a function template
-      // whose parameters its signature cannot deduce (`RectangleUnionLogic<P>::IntervalPoint`).
-      if (nested && inTemplate)
-      {
-        todo(toks[f->token].offset, "a hidden friend the converter cannot place: left out");
-        removeDecl(f);
-        counts.add("friend declarations removed");
-        return false;
-      }
-      remove(toks[friendToken].offset, toks[friendToken + 1].offset - toks[friendToken].offset);
-
-      MovedFriend moved;
-      moved.begin = declStart(f);
-      moved.end = endOffset(f->endToken - 1);
-      moved.removeEnd = lineEndAfter(moved.end);
-      ClassDecl* outer = classStack.front();
-      uint32_t last = outer->endToken - 1;
-      if (!toks[last].is(P::Semi) && last + 1 < toks.size() && toks[last + 1].is(P::Semi))
-        ++last;
-      moved.at = endOffset(last);
-      if (cls->isTemplate)
-      {
-        // The class template's parameters that the signature names (others cannot be deduced).
-        std::string_view signature = text.substr(moved.begin, toks[f->body->token].offset - moved.begin);
-        std::string params;
-        for (Decl* p : cls->templateParams)
-        {
-          auto* tp = static_cast<TemplateParamDecl*>(p);
-          if (tp->name == UINT32_MAX || !containsWord(signature, symbols.name(tp->name)))
-            continue;
-          uint32_t end = templateParameterEnd(tp->token);
-          uint32_t stop = tp->token;
-          while (stop < end && !toks[stop].is(P::Assign))
-            ++stop;
-          std::string param(text.substr(toks[tp->token].offset, endOffset(stop - 1) - toks[tp->token].offset));
-          params += (params.empty() ? "" : ", ") + param;
-        }
-        moved.header = "template<" + params + ">\n";
-      }
-      // In the class, the friend saw the classes' nested types (and a nested class itself) by their
-      // bare names; at namespace scope they need the classes' names in front.
-      std::string chain;
-      for (ClassDecl* c : classStack)
-      {
-        std::string outerChain = chain;
-        chain += (chain.empty() ? "" : "::") + nameText(c->name, symbols);
-        if (!outerChain.empty())
-          moved.qualify[std::string(symbols.name(c->name.last().symbol))] = chain;
-        for (Decl* m : c->members)
-        {
-          uint32_t name = UINT32_MAX;
-          if (m->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(m)->name.empty())
-            name = static_cast<ClassDecl*>(m)->name.last().symbol;
-          else if (m->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(m)->name.empty())
-            name = static_cast<EnumDecl*>(m)->name.last().symbol;
-          else if (m->kind == NodeKind::UsingAliasDecl)
-            name = static_cast<UsingAliasDecl*>(m)->name;
-          if (name != UINT32_MAX)
-            moved.qualify[std::string(symbols.name(name))] = chain + "::" + std::string(symbols.name(name));
-        }
-      }
-      movedFriends.push_back(moved);
-      walkStmt(f->body, nullptr); // not a member: no this->
-      counts.add("hidden friends moved to namespace scope");
-      return false;
     }
 
     // A std::variant alias or member of this file (one of `variants`): what run() turns into a union enum.
@@ -10429,46 +10283,6 @@ namespace
           }
           edits.push_back({use.begin, use.end - use.begin, replacement});
           counts.add("std::" + use.kind + " on a union enum");
-        }
-        std::stable_sort(edits.begin(), edits.end(), byOffset);
-      }
-      // Hidden friends that move out of their class, likewise with the edits inside them.
-      if (!movedFriends.empty())
-      {
-        for (const MovedFriend& m : movedFriends)
-        {
-          std::string rendered = applyEdits(edits, m.begin, m.end);
-          rendered.erase(0, rendered.find_first_not_of(" \t"));
-          // The class-scope names, where nothing qualifies them already (`::`, `.`, `->` before).
-          std::string moved;
-          for (size_t i = 0; i < rendered.size();)
-          {
-            char c = rendered[i];
-            if (c == '"' || (c == '\'' && !isDigitSeparator(rendered, i)))
-            {
-              size_t j = i + 1;
-              while (j < rendered.size() && rendered[j] != c)
-                j += rendered[j] == '\\' ? 2 : 1;
-              moved.append(rendered, i, j + 1 - i);
-              i = j + 1;
-              continue;
-            }
-            if (isIdentChar(c) && (i == 0 || !isIdentChar(rendered[i - 1])))
-            {
-              size_t j = i;
-              while (j < rendered.size() && isIdentChar(rendered[j]))
-                ++j;
-              auto q = m.qualify.find(rendered.substr(i, j - i));
-              bool qualifiedAlready = i >= 1 && (rendered[i - 1] == ':' || rendered[i - 1] == '.' || rendered[i - 1] == '>');
-              moved += q != m.qualify.end() && !qualifiedAlready ? q->second : rendered.substr(i, j - i);
-              i = j;
-              continue;
-            }
-            moved += c;
-            ++i;
-          }
-          edits.push_back({m.begin, m.removeEnd - m.begin, ""});
-          edits.push_back({m.at, 0, "\n" + m.header + moved});
         }
         std::stable_sort(edits.begin(), edits.end(), byOffset);
       }
