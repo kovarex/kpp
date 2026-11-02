@@ -1447,12 +1447,14 @@ namespace
     std::mutex moduleFailuresMutex;
     start = Clock::now();
     // LLVM's back end in this process when kppc has it (src/backend.cpp, docs/codegen-speed.md): a
-    // debug build's module for Windows (windows or windows-gnu) compiled from its text in memory, no
-    // IR file written, no clang started. A release build (ThinLTO, lld), Linux, --clang-flags and
-    // --debug-info (their objects not yet compared with clang's) stay clang's; so does any build with
+    // debug build's module for Windows (windows or windows-gnu, with --debug-info too) compiled from
+    // its text in memory, no IR file written, no clang started. Its objects are clang's apart from
+    // what names the compiler in CodeView (S_COMPILE3's back-end version, LF_BUILDINFO's tool and
+    // command line, which kppc leaves empty). A release build (ThinLTO, lld), Linux and --clang-flags
+    // (their objects not compared with clang's) stay clang's; so does any build with
     // KPP_BACKEND=clang (the comparison).
     const char* backendChoice = getenv("KPP_BACKEND");
-    bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() && !options.debugInfo &&
+    bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() &&
                      !(backendChoice && std::string(backendChoice) == "clang");
     // KPP_TEST_BROKEN_MODULE=K (run_tests' "rejected module"): module K gets a function LLVM's verifier
     // rejects (a use its definition does not dominate), as an IR bug of kppc's would be.
