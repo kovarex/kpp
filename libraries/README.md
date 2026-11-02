@@ -20,6 +20,8 @@ leaves the directory's build.kpp out); and `compiler\tests\run_tests.cmd` runs e
 | [html](html/README.md) | escaping; templates escaped by context, checked at compile time | its own tests (no published suite) |
 | [url](url/README.md) | URLs (RFC 3986): parsing, resolving, percent-encoding, query strings | RFC 3986's 42 resolution examples, Python's urllib.parse |
 | [markdown](markdown/README.md) | CommonMark 0.31.2 to HTML, GitHub's tables and heading ids | all 655 CommonMark spec examples and the GFM spec's 8 table examples (conformance/run.cmd, fetched: CC-BY-SA) |
+| [bcrypt](bcrypt/README.md) | the password hash of PHP's `password_hash()`: `$2y$`/`$2b$` hash and verify | crypt_blowfish's vectors, 38 hashes from PHP 8.3's `crypt()` |
+| [net](net/README.md) | TCP connections and listeners (Winsock, BSD sockets) | loopback tests on Windows |
 
 **License**: Apache-2.0 WITH LLVM-exception, as all of kpp ([LICENSE](../LICENSE),
 [CONTRIBUTING.md](../CONTRIBUTING.md)); each build.kpp says so. Third-party code and data keep

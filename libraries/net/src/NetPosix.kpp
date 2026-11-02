@@ -1,0 +1,148 @@
+requires config::platform == Platform::FreeBSD || config::platform == Platform::Linux;
+// The sockets of FreeBSD and Linux: BSD sockets in the C library.
+extern "C" import "sys/types.h";
+extern "C" import "sys/socket.h";
+extern "C" import "sys/time.h";
+extern "C" import "netinet/in.h";
+extern "C" import "netdb.h";
+extern "C" import "unistd.h";
+extern "C" import "string.h";
+extern "C" import "errno.h";
+
+// errno, a macro of a function the C library names its own way.
+extern "C" int* __error();
+extern "C" int* __errno_location();
+int netErrno()
+{
+  if constexpr (config::platform == Platform::FreeBSD)
+    return *__error();
+  else
+    return *__errno_location();
+}
+
+[[noreturn]] void netFail(StringView what)
+{
+  int code = netErrno();
+  if (code == EAGAIN || code == EWOULDBLOCK)
+    throw NetError(format("{}: timed out", what));
+  throw NetError(format("{}: {} (errno {})", what, StringView(strerror(code)), code));
+}
+
+addrinfo* netResolve(StringView host, int port, bool passive)
+{
+  addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+  if (passive)
+    hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST;
+  String name(host);
+  String service = format("{}", port);
+  addrinfo* found = nullptr;
+  int result = getaddrinfo(name.c_str(), service.c_str(), &hints, &found);
+  if (result != 0)
+    throw NetError(format("cannot resolve {}: {}", host, StringView(gai_strerror(result))));
+  return found;
+}
+
+int64_t netConnect(StringView host, int port)
+{
+  addrinfo* found = netResolve(host, port, false);
+  int code = 0;
+  for (addrinfo* a = found; a != nullptr; a = a->ai_next)
+  {
+    int s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+    if (s < 0)
+    {
+      code = netErrno();
+      continue;
+    }
+    if (connect(s, a->ai_addr, a->ai_addrlen) == 0)
+    {
+      freeaddrinfo(found);
+      return s;
+    }
+    code = netErrno();
+    close(s);
+  }
+  freeaddrinfo(found);
+  throw NetError(format("cannot connect to {} port {}: {} (errno {})", host, port, StringView(strerror(code)), code));
+}
+
+int64_t netListen(StringView address, int port)
+{
+  addrinfo* found = netResolve(address, port, true);
+  int s = socket(found->ai_family, found->ai_socktype, found->ai_protocol);
+  if (s < 0)
+  {
+    freeaddrinfo(found);
+    netFail("socket");
+  }
+  // A restarted server can take its port back at once.
+  int reuse = 1;
+  setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+  if (bind(s, found->ai_addr, found->ai_addrlen) != 0 || listen(s, SOMAXCONN) != 0)
+  {
+    int code = netErrno();
+    freeaddrinfo(found);
+    close(s);
+    throw NetError(format("cannot listen on {} port {}: {} (errno {})", address, port, StringView(strerror(code)), code));
+  }
+  freeaddrinfo(found);
+  return s;
+}
+
+int netLocalPort(int64_t handle)
+{
+  sockaddr_storage address;
+  socklen_t length = sizeof(address);
+  if (getsockname((int)handle, (sockaddr*)&address, &length) != 0)
+    netFail("getsockname");
+  if (address.ss_family == AF_INET6)
+    return netPortOf(&((sockaddr_in6*)&address)->sin6_port);
+  return netPortOf(&((sockaddr_in*)&address)->sin_port);
+}
+
+int64_t netAccept(int64_t handle)
+{
+  int s = accept((int)handle, nullptr, nullptr);
+  if (s < 0)
+    netFail("accept");
+  return s;
+}
+
+int64_t netSend(int64_t handle, const char* data, int64_t length)
+{
+  // MSG_NOSIGNAL: a closed connection is an error here, not a SIGPIPE that ends the program.
+  ssize_t sent = send((int)handle, data, (size_t)length, MSG_NOSIGNAL);
+  if (sent < 0)
+    netFail("send");
+  return sent;
+}
+
+int64_t netReceive(int64_t handle, char* buffer, int64_t capacity)
+{
+  ssize_t got = recv((int)handle, buffer, (size_t)capacity, 0);
+  if (got < 0)
+    netFail("recv");
+  return got;
+}
+
+void netSetTimeout(int64_t handle, int milliseconds)
+{
+  timeval value;
+  value.tv_sec = milliseconds / 1000;
+  value.tv_usec = (milliseconds % 1000) * 1000;
+  if (setsockopt((int)handle, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof(value)) != 0 ||
+      setsockopt((int)handle, SOL_SOCKET, SO_SNDTIMEO, &value, sizeof(value)) != 0)
+    netFail("setsockopt");
+}
+
+void netShutdownWrite(int64_t handle)
+{
+  if (shutdown((int)handle, SHUT_WR) != 0)
+    netFail("shutdown");
+}
+
+void netClose(int64_t handle) { close((int)handle); }

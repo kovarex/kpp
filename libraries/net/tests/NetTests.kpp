@@ -1,0 +1,71 @@
+// net over the loopback: a listener and a connection in one thread (the kernel's buffers hold
+// what is written before the other side reads it).
+
+test "a connection both ways"
+{
+  TcpListener listener = TcpListener::listen("127.0.0.1", 0);
+  int port = listener.port();
+  check(port > 0);
+  TcpStream client = TcpStream::connect("127.0.0.1", port);
+  TcpStream server = listener.accept();
+  client.write("hello, ");
+  client.write("server");
+  check(server.readExactly(13) == "hello, server");
+  String big;
+  for (int i = 0; i < 100000; ++i)
+    big.append(char('a' + i % 26));
+  server.write(big);
+  server.shutdownWrite();
+  check(client.readAll() == big);
+  client.close();
+  check(!client.isOpen());
+}
+
+test "a timeout"
+{
+  TcpListener listener = TcpListener::listen("127.0.0.1", 0);
+  TcpStream client = TcpStream::connect("localhost", listener.port());
+  TcpStream server = listener.accept();
+  client.setTimeout(100);
+  bool timedOut = false;
+  try
+  {
+    char buffer[16];
+    client.read(buffer, 16);
+  }
+  catch (const NetError& e)
+  {
+    timedOut = String(e.what()).find("timed out") != String::npos;
+  }
+  check(timedOut);
+}
+
+test "errors"
+{
+  // A port nobody listens on: take one, then close it.
+  int port = 0;
+  {
+    TcpListener listener = TcpListener::listen("127.0.0.1", 0);
+    port = listener.port();
+  }
+  bool refused = false;
+  try { TcpStream::connect("127.0.0.1", port); } catch (const NetError& e) { refused = true; }
+  check(refused);
+  bool unresolved = false;
+  try { TcpStream::connect("no-such-host.invalid", 80); } catch (const NetError& e) { unresolved = true; }
+  check(unresolved);
+  TcpStream closed;
+  bool threw = false;
+  try { closed.write("x"); } catch (const NetError& e) { threw = true; }
+  check(threw);
+  // The connection closing early.
+  TcpListener listener = TcpListener::listen("127.0.0.1", 0);
+  TcpStream client = TcpStream::connect("127.0.0.1", listener.port());
+  {
+    TcpStream server = listener.accept();
+    server.write("abc");
+  }
+  bool short_ = false;
+  try { client.readExactly(10); } catch (const NetError& e) { short_ = true; }
+  check(short_);
+}

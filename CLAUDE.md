@@ -18,7 +18,7 @@ simple templates, own standard library, C-only interop.
   transliteration and `run.cmd` timing both on the Factorio corpus).
 - `kppnet/`: the kpp.net hosting kit (site, registry, git hosting; nothing deployed by threads);
   `kppnet/site/`: kppsite, the static site generator in kpp.
-- `libraries/`: the official kpp libraries (json, sha256, base64, html, markdown, url), each a
+- `libraries/`: the official kpp libraries (json, sha256, base64, html, markdown, url, bcrypt, net), each a
   library project with its tests; run_tests.cmd tests them all.
 - `tools/`: editor integration (VS, VS Code), release packaging. `projectlib/`: build.kpp's package.
 
