@@ -1,0 +1,23 @@
+// spec: a real enum's generated `count` is a value as a piece of a Text, as anywhere: `println(Direction::count)` prints the number of values
+// found in compiler/tests/run/enums.kpp with design.md 14's migration: `println(Direction::count, " values of ", ...)` printed `0 values` (silent: a constant with no object, the piece read 0)
+// pending: "a real enum's count as a Text piece reads 0" (silent miscompile)
+enum class Direction : uint8_t
+{
+  { North, East, South, West, None }
+};
+enum class Plain
+{
+  { A, B, C }
+};
+extern "C" int puts(const char* text);
+String text(Text pieces)
+{
+  String out;
+  pieces.appendTo(out);
+  return out;
+}
+int main()
+{
+  puts(text(Direction::count, " ", Plain::count).c_str());
+  return 0;
+}
