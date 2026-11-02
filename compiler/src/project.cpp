@@ -748,6 +748,36 @@ namespace
     return ec ? fs::file_time_type::max() : t;
   }
 
+  // What a resource script reads: the files next to it (a header it includes, an icon, a manifest)
+  // and every file it names in quotes, from its directory, wherever that is (factorio-in-kpp's
+  // factorio.rc names its icon in ../../data). A quoted name that is no file (a version string) adds
+  // nothing.
+  std::vector<fs::path> resourceInputs(const fs::path& script)
+  {
+    std::vector<fs::path> inputs;
+    std::error_code ec;
+    for (const fs::directory_entry& entry : fs::directory_iterator(script.parent_path(), ec))
+      if (entry.is_regular_file())
+        inputs.push_back(entry.path());
+    std::string text = readText(script);
+    for (size_t at = text.find('"'); at != std::string::npos; at = text.find('"', at + 1))
+    {
+      size_t end = text.find('"', at + 1);
+      if (end == std::string::npos)
+        break;
+      std::string name = text.substr(at + 1, end - at - 1);
+      at = end;
+      for (size_t slash = name.find("\\\\"); slash != std::string::npos; slash = name.find("\\\\", slash + 1))
+        name.erase(slash, 1); // (a C string's "..\\icon.ico")
+      if (name.empty() || name.find_first_of("\r\n*?<>|") != std::string::npos)
+        continue;
+      fs::path named = script.parent_path() / fs::path(name);
+      if (fs::is_regular_file(named, ec))
+        inputs.push_back(named);
+    }
+    return inputs;
+  }
+
   // Whether object depends only on files older than itself: the source and the headers clang
   // named in its dependency file (-MD). times keeps each file's time for the build: the 641 objects of
   // factorio-in-kpp's libraries name the same headers (the SDK's, SDL's) about 100,000 times in all.
@@ -801,6 +831,7 @@ namespace
     std::vector<std::string> commands;    // the objects' compiles, then the resources' (llvm-rc)
     size_t compiles = 0;                  // how many of commands are the objects'
     std::vector<fs::path> objects, logs, scripts; // scripts: the resources', by command after the compiles
+    std::vector<fs::path> resources;      // the .res files those commands write, in the same order
     std::string stamp;                    // what the objects are built with (flags.txt)
     bool gnu = false, archive = false;    // archive: the objects changed, or the library is not there
     std::unique_ptr<std::atomic<bool>[]> failed; // by command
@@ -883,16 +914,17 @@ namespace
     for (const std::string& rc : c.resources)
     {
       fs::path script = rooted(root, rc), res = job.directory / (script.stem().string() + ".res");
-      // A resource script names files next to it (icons, a manifest): rebuilt when any is newer.
+      // Rebuilt when any file it reads is newer (resourceInputs).
       bool fresh = fs::exists(res, ec);
-      for (const fs::directory_entry& entry : fs::directory_iterator(script.parent_path(), ec))
-        if (entry.is_regular_file() && modified(entry.path()) > modified(res))
+      for (const fs::path& input : resourceInputs(script))
+        if (modified(input) > modified(res))
           fresh = false;
       if (fresh)
         continue;
       job.commands.push_back("\"cd /d " + quoteArg(script.parent_path().string()) + " && " + quoteArg((tools / "llvm-rc.exe").string()) +
                              " /nologo /fo " + quoteArg(res.string()) + " " + quoteArg(script.string()) + "\"");
       job.scripts.push_back(script);
+      job.resources.push_back(res);
     }
     job.failed.reset(new std::atomic<bool>[job.commands.size()]());
     return true;
@@ -936,6 +968,9 @@ namespace
         if (job.failed[k])
         {
           fprintf(stderr, "%s: error: llvm-rc could not compile it\n", job.scripts[k - job.compiles].string().c_str());
+          // What a failed llvm-rc wrote is no resource file (it leaves the resources before the one it
+          // failed on): never one the next build takes as made, newer than its script, and links.
+          fs::remove(job.resources[k - job.compiles], ec);
           ok = false;
         }
       if (failed)

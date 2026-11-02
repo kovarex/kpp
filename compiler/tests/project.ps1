@@ -82,6 +82,27 @@ void build(Project& project)
   }
 
   $good = Get-Content 'build.kpp' -Raw
+  # A C library's resource script (llvm-rc) naming a file next to it and one outside its directory, as
+  # factorio-in-kpp's names its icon in ..\..\data. With the outside one missing the build fails, and
+  # what llvm-rc wrote before it failed is no .res that the next build takes as made (it was linked,
+  # and lld-link failed on it: "Stream Error"). Then there: the next build compiles the script again,
+  # and its .res has that file's bytes; then changed: again.
+  Set-Content 'libs\plus\plus.rc' "1 RCDATA `"first.bin`"`n2 RCDATA `"../../data/second.bin`""
+  Set-Content -LiteralPath 'libs\plus\first.bin' -Value 'KPP-FIRST' -NoNewline # (named: -NoNewline first swaps path and value)
+  Set-Content 'build.kpp' ($good -replace 'plus\.define\("PLUS=1"\);', "plus.define(`"PLUS=1`");`n  plus.resource(`"libs/plus/plus.rc`");")
+  $res = 'build\clib\plus\plus.res'
+  $output = Kpp @('--debug', '--no-server', '--set', "INCLUDE_ROOT=$root")
+  if ($code -eq 0 -or ($output -join "`n") -notmatch 'plus\.rc: error: llvm-rc could not compile it') { Fail "a resource script naming a missing file: exit $code`n$($output -join "`n")" }
+  elseif (Test-Path $res) { Fail "a resource script naming a missing file left $res ($((Get-Item $res).Length) bytes) for the next build" }
+  New-Item -ItemType Directory -Force 'data' | Out-Null
+  foreach ($marker in 'KPP-SECOND-ONE', 'KPP-SECOND-TWO')
+  {
+    Set-Content -LiteralPath 'data\second.bin' -Value $marker -NoNewline
+    $output = Kpp @('--debug', '--no-server', '--set', "INCLUDE_ROOT=$root")
+    $bytes = if (Test-Path $res) { [IO.File]::ReadAllText((Resolve-Path $res).Path, [Text.Encoding]::ASCII) } else { '' }
+    if ($code -ne 0 -or -not $bytes.Contains($marker)) { Fail "the resource script's file outside its directory, now ${marker}: exit $code, in ${res}: $($bytes.Contains($marker))`n$($output -join "`n")" }
+  }
+  Set-Content 'build.kpp' $good
   Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"x`", {undefinedName});`n}"
   $output = Kpp @('--no-server')
   if ($code -eq 0 -or ($output -join "`n") -notmatch "build\.kpp:3: error: ") { Fail "a build.kpp with an error: exit $code`n$($output -join "`n")" }
