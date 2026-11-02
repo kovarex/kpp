@@ -121,7 +121,9 @@ namespace
     const Ty* unit; // the storage unit's (integer) type
   };
 
-  // A lambda's closure: one struct per lambda, fields for the captures, one function.
+  // A lambda's closure: one struct per lambda, fields for the captures, one function. It does not
+  // change once laid out: other emitters copy it without the lock (Shared::finalClosures, closureFor's
+  // callers). What is known only later, the function the lambda is written in, is a ClosureWriter.
   struct ClosureInfo
   {
     std::string structName;
@@ -129,11 +131,19 @@ namespace
     std::vector<bool> byRef;
     std::vector<Expr*> inits;          // init-captures: the initializer (null for other captures)
     std::vector<const Ty*> fieldTypes; // pointee type for references and `this`
-    const Ty* enclosingClass = nullptr;
     std::string functionName;
-    std::string writtenIn; // the function the lambda is written in (its call operator's requester in diagnostics)
     bool laidOut = false; // captures and fields known (read where the lambda is written); before that only the struct's name exists
     std::string failure;  // why laying it out failed where it is written, if it did
+  };
+  // The function a lambda is written in, recorded whenever it comes, often after the closure was laid
+  // out and read by others: by its closure's writer (makeClosure) or by its call operator's emission on
+  // demand. Kept apart from the ClosureInfo and read under the lock: written into the laid-out closure,
+  // a copy racing with the write read a string being assigned (kppc crashed, 0xC0000005, in 6 to 8 of
+  // 160 builds of 1,000 functions returning lambdas, each called beside it; tests\concurrency.ps1).
+  struct ClosureWriter
+  {
+    const Ty* enclosingClass = nullptr; // what `this` in its body points to
+    std::string writtenIn;              // the function it is written in (its call operator's requester in diagnostics)
   };
 
   struct Instantiation
@@ -336,6 +346,7 @@ namespace
     NameSet declaredNames;                               // IR names with a declare/define line
     std::atomic<size_t> functions{0};                    // functions defined (result.functions once done)
     std::unordered_map<const Ty*, ClosureInfo> closures; // keyed by the lambda type (one per enclosing instantiation)
+    std::unordered_map<const Ty*, ClosureWriter> closureWriters; // by the (unqualified) lambda type
     std::unordered_set<const Ty*> closuresEmitted;       // lambdas whose call operator is emitted (or being emitted)
     std::unordered_set<std::string> lambdaInstances;     // call operators of generic lambdas emitted so far, by IR name
     NameSet requested;                                   // instantiated names queued or emitted
@@ -5626,8 +5637,6 @@ namespace
       info.laidOut = true;
       decls += line;
       ClosureInfo& published = closures[t];
-      info.enclosingClass = published.enclosingClass; // set by the writer (makeClosure), whenever it comes
-      info.writtenIn = published.writtenIn;
       published = std::move(info);
       return published;
     }
@@ -5788,14 +5797,12 @@ namespace
         // The function the lambda is written in: its class is what `this` in the body points to,
         // its name the requester the operator's diagnostics give.
         auto lock = sharedLock();
-        ClosureInfo& shared = closures[types.unqualified(t)];
-        if (shared.writtenIn.empty())
+        ClosureWriter& writer = sh.closureWriters[types.unqualified(t)];
+        if (writer.writtenIn.empty())
         {
-          shared.writtenIn = currentFunctionName;
-          shared.enclosingClass = currentClassTy;
+          writer.writtenIn = currentFunctionName;
+          writer.enclosingClass = currentClassTy;
         }
-        info.writtenIn = shared.writtenIn;
-        info.enclosingClass = shared.enclosingClass;
       }
       // This lambda's own captures, field by field (in a private copy of an instantiation they name
       // the copy's locals; the layout was read from the instantiation's).
@@ -6051,9 +6058,18 @@ namespace
     // function's state is saved and restored around it. callTy: the operator's type (parameters
     // and result); name: its IR name; args: for an instantiation of a generic lambda, the
     // enclosing instantiation's arguments plus its own, which declarations in the body are typed under.
+    // The function a lambda is written in, as far as it is known yet (Shared::closureWriters).
+    ClosureWriter closureWriterOf(const Ty* t)
+    {
+      auto lock = sharedLock();
+      auto it = sh.closureWriters.find(types.unqualified(t));
+      return it == sh.closureWriters.end() ? ClosureWriter{} : it->second;
+    }
+
     void emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, const std::string& name, const TemplateArgs* args)
     {
       ClosureInfo info = closureFor(t, l);
+      ClosureWriter writer = closureWriterOf(t);
       FunctionState saved = saveState();
       const TemplateArgs* savedArgs = currentArgs;
       ParsedFile* savedFile = currentFile;
@@ -6063,7 +6079,7 @@ namespace
       // Its diagnostics name the function it is written in as the requester, not the function that
       // happened to emit it first.
       NameRestore requesterRestore{currentRequestedBy, currentRequestedBy};
-      currentRequestedBy = info.writtenIn;
+      currentRequestedBy = writer.writtenIn;
       struct ContextRestore
       {
         Decl*& lambda;
@@ -6104,7 +6120,7 @@ namespace
       if (!currentReturn->isKnown())
         currentReturn = types.pointer(types.voidType());
       sretAddr.clear();
-      currentClassTy = info.enclosingClass;
+      currentClassTy = writer.enclosingClass;
       try
       {
         Signature s = lambdaSignatureOf(callTy, l);
@@ -6212,9 +6228,9 @@ namespace
         auto lock = sharedLock();
         if (!sh.closuresEmitted.insert(t).second)
           return;
-        ClosureInfo& shared = closures[types.unqualified(t)];
-        if (!shared.enclosingClass && ownerClass && ownerClass->kind == NodeKind::ClassDecl)
-          shared.enclosingClass = types.classType(ownerClass, {}); // what `this` in the body points to
+        ClosureWriter& recorded = sh.closureWriters[types.unqualified(t)];
+        if (!recorded.enclosingClass && ownerClass && ownerClass->kind == NodeKind::ClassDecl)
+          recorded.enclosingClass = types.classType(ownerClass, {}); // what `this` in the body points to
       }
       // Placed and owned as if its writer had made it, whichever caller needs it first (callers of one
       // level are emitted at once): in the writer's module, belonging to the writer. An edit of the
@@ -19758,7 +19774,9 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     for (auto& [name, lambda] : sh.closureCalls)
       if (!sh.definedIn.count(name))
       {
-        const std::string& writer = sh.closures[lambda].writtenIn;
+        std::string writer;
+        if (auto recorded = sh.closureWriters.find(lambda); recorded != sh.closureWriters.end())
+          writer = recorded->second.writtenIn;
         if (!writer.empty() && failed.count(writer))
           continue;
         e.currentFile = lambda->decl->file;
@@ -20256,7 +20274,7 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
     if (!t || depth > 8)
       return false;
     if (e.isLambda(t))
-      if (auto c = sh.closures.find(e.types.unqualified(t)); c != sh.closures.end() && owners.count(c->second.writtenIn))
+      if (auto writer = sh.closureWriters.find(e.types.unqualified(t)); writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn))
         return true;
     if (oldClosure(t->inner, depth + 1))
       return true;
@@ -20361,8 +20379,8 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
         if (defs[i].closure && !removedNames.count(defs[i].owner))
         {
           // (not the old lambda's of a writer emitted again: the new lambda's operator is emitted by its first use)
-          auto closure = sh.closures.find(defs[i].closure);
-          if (closure == sh.closures.end() || !owners.count(closure->second.writtenIn))
+          auto writer = sh.closureWriters.find(defs[i].closure);
+          if (writer == sh.closureWriters.end() || !owners.count(writer->second.writtenIn))
             operators.push_back({defs[i].name, defs[i].closure, defs[i].callType});
         }
         was.definitions.push_back(std::move(defs[i].text));
@@ -20398,7 +20416,8 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // So do the types made from such a closure (`Holder<closure>`, a std::function's implementation).
   std::unordered_set<const Ty*> droppedClosures;
   for (auto& [t, info] : sh.closures)
-    if (droppedNames.count(info.functionName) || owners.count(info.writtenIn)) // (a generic lambda's operators are instances: by its writer)
+    if (auto writer = sh.closureWriters.find(t);
+        droppedNames.count(info.functionName) || (writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn))) // (a generic lambda's operators are instances: by its writer)
     {
       sh.closuresEmitted.erase(t);
       droppedClosures.insert(t);

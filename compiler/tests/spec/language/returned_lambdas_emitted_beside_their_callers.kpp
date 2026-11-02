@@ -1,0 +1,23 @@
+// spec: functions that return lambdas, each beside a function that holds the closure and calls it: the function a lambda is written in and its caller are emitted at once, on two threads, and every closure is built and called (`112`)
+// found by thread C: one full spec run crashed in language/lambda_returned_by_value (0xC0000005), a closure copied while the function its lambda is written in was recorded into it; tests\concurrency.ps1 builds 1,000 such pairs 160 times at -j 32
+auto make0(int s) { return [s](int x) { return x + s + 0; }; }
+int use0() { auto f = make0(1); return f(2) + f(3); }
+auto make1(int s) { return [s](int x) { return x + s + 1; }; }
+int use1() { auto f = make1(1); return f(2) + f(3); }
+auto make2(int s) { return [s](int x) { return x + s + 2; }; }
+int use2() { auto f = make2(1); return f(2) + f(3); }
+auto make3(int s) { return [s](int x) { return x + s + 3; }; }
+int use3() { auto f = make3(1); return f(2) + f(3); }
+auto make4(int s) { return [s](int x) { return x + s + 4; }; }
+int use4() { auto f = make4(1); return f(2) + f(3); }
+auto make5(int s) { return [s](int x) { return x + s + 5; }; }
+int use5() { auto f = make5(1); return f(2) + f(3); }
+auto make6(int s) { return [s](int x) { return x + s + 6; }; }
+int use6() { auto f = make6(1); return f(2) + f(3); }
+auto make7(int s) { return [s](int x) { return x + s + 7; }; }
+int use7() { auto f = make7(1); return f(2) + f(3); }
+int main()
+{
+  println(use0() + use1() + use2() + use3() + use4() + use5() + use6() + use7());
+  return 0;
+}
