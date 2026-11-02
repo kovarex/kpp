@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- kpp-vs.vsix (README.md): Visual Studio's language client for .kpp files, Edit.GoToDeclaration for
+  <!-- kpp-visualstudio.vsix (README.md): Visual Studio's language client for .kpp files, Edit.GoToDeclaration for
        them, and the TextMate grammar and language configuration kpp.pkgdef registers. In-process:
        Visual Studio's own LSP client leaves Edit.GoToDeclaration unavailable, and only the in-process
        client (ILanguageClientCustomMessage2) lets an extension send the server a request of its own. -->
@@ -14,7 +14,7 @@
     <VssdkCompatibleExtension>true</VssdkCompatibleExtension>
     <GeneratePkgDefFile>false</GeneratePkgDefFile>
     <IncludeDebugSymbolsInVSIX>false</IncludeDebugSymbolsInVSIX>
-    <TargetVsixContainerName>kpp-vs.vsix</TargetVsixContainerName>
+    <TargetVsixContainerName>kpp-visualstudio.vsix</TargetVsixContainerName>
   </PropertyGroup>
 
   <ItemGroup>

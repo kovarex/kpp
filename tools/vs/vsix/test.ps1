@@ -1,4 +1,4 @@
-# kpp-vs.vsix in a real Visual Studio (tools/vs/vsix/README.md): installs it into the experimental
+# kpp-visualstudio.vsix in a real Visual Studio (tools/vs/vsix/README.md): installs it into the experimental
 # instance (/rootsuffix Exp, a profile of its own), opens a copy of a project as a folder, and drives
 # Visual Studio through DTE: Edit.GoToDefinition and Edit.GoToDeclaration (where the caret lands), an
 # error typed into a file (the Error List), and a screenshot of the window. Prints one line per check.
@@ -17,7 +17,7 @@ param(
   [Parameter(Mandatory)][string]$Definition,
   [string]$Declaration,
   [string]$Kppc, # default: the checkout's compiler\build\kppc.exe
-  [string]$Vsix, # default: tools\vs\kpp-vs.vsix (build.cmd)
+  [string]$Vsix, # default: tools\vs\kpp-visualstudio.vsix (build.cmd)
   [string]$Work, # default: compiler\build\vs: the project's copy, the log, the screenshot
   [int]$Timeout = 120,
   [switch]$Solution,
@@ -28,7 +28,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $checkout = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 if (-not $Kppc) { $Kppc = "$checkout\compiler\build\kppc.exe" }
-if (-not $Vsix) { $Vsix = "$checkout\tools\vs\kpp-vs.vsix" }
+if (-not $Vsix) { $Vsix = "$checkout\tools\vs\kpp-visualstudio.vsix" }
 if (-not $Work) { $Work = "$checkout\compiler\build\vs" }
 if (-not $Declaration) { $Declaration = $Definition }
 New-Item -ItemType Directory -Force $Work | Out-Null
@@ -44,11 +44,9 @@ function Check($what, $ok, $detail)
 # Into the experimental instance only: the user's own Visual Studio is not touched.
 $p = Start-Process "$ide\VSIXInstaller.exe" -ArgumentList '/quiet', '/rootSuffix:Exp', "`"$((Resolve-Path $Vsix).Path)`"" -PassThru -Wait
 Check 'VSIXInstaller /rootSuffix:Exp' ($p.ExitCode -eq 0) "exit $($p.ExitCode)"
-# The experimental instance's pkgdefs read again and its MEF cache rebuilt, so the new build's parts load.
+# The experimental instance's pkgdefs and MEF cache brought up to date, so the new build's parts load.
 $p = Start-Process "$ide\devenv.exe" -ArgumentList '/rootsuffix', 'Exp', '/updateconfiguration' -PassThru -Wait
 Check 'devenv /rootsuffix Exp /updateconfiguration' ($p.ExitCode -eq 0) "exit $($p.ExitCode)"
-Get-ChildItem "$env:LOCALAPPDATA\Microsoft\VisualStudio" -Directory -Filter '17.0_*Exp' | ForEach-Object {
-  if (Test-Path "$($_.FullName)\ComponentModelCache") { cmd /c "rd /s /q `"$($_.FullName)\ComponentModelCache`"" } }
 
 # A test's Visual Studio still open on the copy would get the files opened below.
 $open = Get-CimInstance Win32_Process -Filter "Name='devenv.exe'" | Where-Object { $_.CommandLine -like "*/rootsuffix Exp*$Work*" }

@@ -11,7 +11,7 @@ Status (2026-10-31):
 - The VS Code extension is ready and checked in a real VS Code 1.144 (2026-11-02, see "VS Code"):
   errors, completion, go to definition, hover with config:: values, and switching cells, on
   tests\lsp\cells and on factorio-in-kpp.
-- The Visual Studio extension, kpp-vs.vsix (tools\vs\vsix), is checked in a real Visual Studio
+- The Visual Studio extension, kpp-visualstudio.vsix (tools\vs\vsix), is checked in a real Visual Studio
   17.14 (2026-11-02, see "Visual Studio 2022"): colouring, go to definition, go to declaration
   and errors, on tests\lsp\cells and on factorio-in-kpp.
 
@@ -108,9 +108,9 @@ The extension is in `tools/vscode`; its README covers the details.
 
 ## Visual Studio 2022
 
-**kpp-vs.vsix** (`tools\vs\vsix`, its README has the details) is the extension: colouring, from the
+**kpp-visualstudio.vsix** (`tools\vs\vsix`, its README has the details) is the extension: colouring, from the
 TextMate grammar it bundles, and IntelliSense from `kpp --lsp`. Install it by double-clicking
-kpp-vs.vsix (`tools\vs\vsix\build.cmd` makes it; it needs the .NET 8 SDK), then restart Visual
+kpp-visualstudio.vsix (`tools\vs\vsix\build.cmd` makes it; it needs the .NET 8 SDK), then restart Visual
 Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
 - **What it gives:** errors as squiggles and in the Error List, go to definition (F12,
   Edit.GoToDefinition), go to declaration (Ctrl+F12, Edit.GoToDeclaration), hover, completion and
@@ -136,6 +136,10 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
     in the cell *game, debug*; go to definition in 5.3 s, go to declaration in 0.6 s. The
     configuration Release shows the game's static_assert error after 2.7 s. The startup project
     tool clears it after 2.4 s, and game in Debug is clean after 1.3 s.
+  - factorio-in-kpp as its generated solution (2 projects, 9339 files): the server starts in
+    *factorio, debug*. Go to definition takes 33.3 s with the first check (22.9 s, beside
+    Visual Studio loading the solution), go to declaration 0.6 s. A typed error is in the Error
+    List after 3.9 s and gone 3.7 s after undo (checks of 0.8 and 1.0 s).
   - In a folder, the server checks every target at once (no cell is chosen), which on the game
     is factorio and factorio-test together: 32 s for the first check where VS Code's `factorio`
     takes 15 s.

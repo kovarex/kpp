@@ -1,5 +1,5 @@
 @echo off
-rem Builds tools\vs\kpp-vs.vsix, the kpp extension for Visual Studio 2022 (tools/vs/vsix/README.md), with
+rem Builds tools\vs\kpp-visualstudio.vsix, the kpp extension for Visual Studio 2022 (tools/vs/vsix/README.md), with
 rem Visual Studio's MSBuild. Needs the .NET 8 SDK and the "Visual Studio extension development" workload.
 setlocal
 set VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe
@@ -19,7 +19,7 @@ for %%X in ("%DOTNET%") do set MSBuildSDKsPath=%%~dpXsdk\%SDKVERSION%\Sdks
 set MSBuildEnableWorkloadResolver=false
 "%MSBUILD%" "%~dp0KppVisualStudio.csproj" -restore -p:Configuration=Release -v:minimal -nologo || exit /b 1
 set OUT=
-for /r "%~dp0bin\Release" %%f in (kpp-vs.vsix) do if exist "%%f" set OUT=%%f
-if not defined OUT echo build.cmd: the build wrote no kpp-vs.vsix & exit /b 1
-copy /y "%OUT%" "%~dp0..\kpp-vs.vsix" >nul || exit /b 1
-echo build.cmd: wrote %~dp0..\kpp-vs.vsix
+for /r "%~dp0bin\Release" %%f in (kpp-visualstudio.vsix) do if exist "%%f" set OUT=%%f
+if not defined OUT echo build.cmd: the build wrote no kpp-visualstudio.vsix & exit /b 1
+copy /y "%OUT%" "%~dp0..\kpp-visualstudio.vsix" >nul || exit /b 1
+echo build.cmd: wrote %~dp0..\kpp-visualstudio.vsix
