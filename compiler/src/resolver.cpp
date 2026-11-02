@@ -25790,25 +25790,36 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
 {
   std::unordered_set<const void*> changed(sources.begin(), sources.end());
   std::vector<Impl::InstanceRecord*> stale;
+  // An instance codegen made (late) is taken out of the table instead of checked again, with the
+  // instances codegen made whose checks used it: codegen asks for them again and they are made anew
+  // from the bodies as they are, as in a build from scratch (where codegen makes them). Among them
+  // the copy of a plain function the evaluator ran for codegen (a constant a global's initializer
+  // or a body folds): until 2026-11-02 such a copy made every edit of the function a build from
+  // scratch (the game's MapPosition::operator+, the wide edit: 1.9 s -> 20 to 60 s).
+  std::unordered_set<const Impl::InstanceRecord*> drop;
   for (Impl::InstanceShard& shard : impl->instanceShards)
   {
     std::lock_guard lock(shard.mutex);
     for (auto& [key, record] : shard.map)
       if ((record->recheck && changed.count(record->recheck->source)) || changed.count(record->of))
       {
-        if (record->late || record->state.load() != 2)
-          return why = "an instance of a changed template that only codegen made", false;
-        if (!record->recheck)
-          return why = "an instance of a changed function with no record of how it was checked", false;
-        stale.push_back(record.get());
+        if (record->state.load() != 2)
+          return why = "an instance of a changed function not finished" +
+                       (record->of ? ": " + impl->accessName(const_cast<Decl*>(record->of)) + " (" + Impl::locationOf(record->of->file, record->of->token) + ")"
+                                   : std::string()),
+                 false;
+        if (record->late)
+          drop.insert(record.get());
+        else if (!record->recheck)
+          return why = "an instance of a changed function with no record of how it was checked" +
+                       (record->of ? ": " + impl->accessName(const_cast<Decl*>(record->of)) : std::string()),
+                 false;
+        else
+          stale.push_back(record.get());
       }
   }
   // The instances whose recorded reads met the change (invalidateReaders), checked again from their
-  // templates' bodies as they are.
-  // One that codegen made (late) is taken out of the table instead, with the instances codegen made
-  // whose checks used it: codegen, which then runs in full, asks for them again and they are made
-  // anew, as in a build from scratch (where codegen makes them).
-  std::unordered_set<const Impl::InstanceRecord*> drop;
+  // templates' bodies as they are; a late one dropped, as above.
   size_t unrecorded = 0, unfinished = 0;
   for (const void* r : readers)
   {
