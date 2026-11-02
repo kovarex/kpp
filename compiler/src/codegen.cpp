@@ -9860,10 +9860,10 @@ namespace
           if (auto it = sh.typeIndex.find(name); it != sh.typeIndex.end())
             t.uses.push_back(it->second);
         });
-      // A debug build's homed globals (Shared::homeGlobals). (A release build's ThinLTO imports
-      // constants into the modules that read them: not changed here. With --debug-info a global's
-      // line can carry metadata.)
-      sh.homeGlobals = moduleCount > 1 && sh.importableModules == 0 && !sh.debugInfo;
+      // A debug build's homed globals (Shared::homeGlobals), with debug info too: its line tables
+      // (DICompileUnit's LineTablesOnly) put no metadata on a global's line. (A release build's ThinLTO
+      // imports constants into the modules that read them: not changed here.)
+      sh.homeGlobals = moduleCount > 1 && sh.importableModules == 0;
       // (Again after a server's layout edit rewrote type lines in decls: the views below are into it.)
       sh.homedGlobals.clear();
       sh.homedComdats.clear();

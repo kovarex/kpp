@@ -1,0 +1,43 @@
+// spec: a debug build with debug info (`--debug-info`, line tables and a PDB) across several modules defines each linkonce_odr global of the shared declarations in one module only (its home) and reads it from the others, as a debug build without debug info does: line tables put no metadata on a global (16 constants, each read by its own instance of a template in whichever module the instance lands) (`120`)
+// kppc: --debug-info --modules 4
+extern "C" int printf(const char* format, ...);
+const int c0[2] = {0, 1};
+const int c1[2] = {1, 1};
+const int c2[2] = {2, 1};
+const int c3[2] = {3, 1};
+const int c4[2] = {4, 1};
+const int c5[2] = {5, 1};
+const int c6[2] = {6, 1};
+const int c7[2] = {7, 1};
+const int c8[2] = {8, 1};
+const int c9[2] = {9, 1};
+const int c10[2] = {10, 1};
+const int c11[2] = {11, 1};
+const int c12[2] = {12, 1};
+const int c13[2] = {13, 1};
+const int c14[2] = {14, 1};
+const int c15[2] = {15, 1};
+template<int N> struct Reader;
+template<> struct Reader<0> { static int read(int i) { return c0[i]; } };
+template<> struct Reader<1> { static int read(int i) { return c1[i]; } };
+template<> struct Reader<2> { static int read(int i) { return c2[i]; } };
+template<> struct Reader<3> { static int read(int i) { return c3[i]; } };
+template<> struct Reader<4> { static int read(int i) { return c4[i]; } };
+template<> struct Reader<5> { static int read(int i) { return c5[i]; } };
+template<> struct Reader<6> { static int read(int i) { return c6[i]; } };
+template<> struct Reader<7> { static int read(int i) { return c7[i]; } };
+template<> struct Reader<8> { static int read(int i) { return c8[i]; } };
+template<> struct Reader<9> { static int read(int i) { return c9[i]; } };
+template<> struct Reader<10> { static int read(int i) { return c10[i]; } };
+template<> struct Reader<11> { static int read(int i) { return c11[i]; } };
+template<> struct Reader<12> { static int read(int i) { return c12[i]; } };
+template<> struct Reader<13> { static int read(int i) { return c13[i]; } };
+template<> struct Reader<14> { static int read(int i) { return c14[i]; } };
+template<> struct Reader<15> { static int read(int i) { return c15[i]; } };
+template<int N> int sum(int i) { return Reader<N>::read(i) + sum<N - 1>(i); }
+template<> int sum<-1>(int i) { return 0; }
+int main(int argc, char** argv)
+{
+  printf("%d\n", sum<15>(argc - 1));
+  return 0;
+}
