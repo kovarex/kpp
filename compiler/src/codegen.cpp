@@ -8005,8 +8005,10 @@ namespace
       if (global.isExternC(f))
         if (std::optional<Value> v = atomicBuiltin(f, callArgs, at))
           return *v;
-      if (f->flags & DF_Constructor) // (--access-warnings: the checker does not choose constructors)
-        global.checkConstructorAccess(f, implicitConstructionOf ? implicitConstructionOf : typingContext(), implicitConstructionOf ? implicitConstructionOf : at);
+      if (f->flags & DF_Constructor) // (access: the checker does not choose constructors)
+        if (std::string denied = global.checkConstructorAccess(f, implicitConstructionOf ? implicitConstructionOf : typingContext(), implicitConstructionOf ? implicitConstructionOf : at);
+            !denied.empty())
+          error(at, denied); // (at the construction: an implicit one's names the class whose constructor it is)
       if (f->flags & DF_Default)
         return defaultedCall(f, classTy, thisArg, callArgs, at);
       if (!conditionHolds(f))

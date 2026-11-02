@@ -51,7 +51,8 @@ for %%f in (tests\run\*.kpp) do (
 )
 echo %PASS% passed, %FAIL% failed
 set /a E2E=PASS+FAIL
-rem --access-warnings (docs/design.md, "struct and class"): the warnings and notes on tests\access\access.kpp.
+rem Access (docs/design.md, "struct and class"): the errors of the uses it denies, and with --access-warnings
+rem the notes of those friends allow, on tests\access\access.kpp.
 %KPPC% --quiet --access-warnings --exe build\tests\access.exe tests\access\access.kpp 2> build\tests\access.all.txt > nul
 %SystemRoot%\System32\findstr.exe /b /c:"tests\access\access.kpp" build\tests\access.all.txt > build\tests\access.warnings.txt
 fc /w build\tests\access.warnings.txt tests\access\access.expected > nul

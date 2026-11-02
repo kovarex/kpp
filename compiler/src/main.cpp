@@ -1932,6 +1932,8 @@ namespace
     // (docs/compile-speed.md, step 3), so that no file drags its instances onto one thread.
     if (options.accessWarnings)
       global.enableAccessWarnings();
+    if (options.convertDir.empty())
+      global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)
     if (options.structRule && options.convertDir.empty()) // (not the C++ a conversion reads, whose structs may break it)
       global.enableStructRule();
     global.resolveAll(parsed.size(), options.threads, [&](size_t i) { global.resolveFile(*parsed[i], lexed[i].tokens, files[i].text, stats[i]); });

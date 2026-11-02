@@ -1,11 +1,9 @@
-// spec: the access checks cover the constructors code calls (direct initialization, default construction, `new`): a private or protected constructor named outside its class, its derived classes and its friends is a warning; a static member, a friend class, a derived class's base initializer and the implicit construction of a derived class (its base's protected constructor) may call one
-// factorio: EditorAction's private constructors called by EditorActionTestCreator, UnitGroup's by Commander, EnumItems::iterator's by EnumItems: each a friend in the C++ (98 uses in the converted game and its tests while the converter removes friends)
-// kppc: --access-warnings
-// warning: constructor_access_warnings.kpp:22: note: Secret::Secret is private, named in Keeper::keep, which a friend class declaration allows
-// warning: constructor_access_warnings.kpp:45: warning: Secret::Secret is private, named in the function main
-// warning: constructor_access_warnings.kpp:46: warning: Secret::Secret is private, named in the function main
-// warning: constructor_access_warnings.kpp:47: warning: Secret::Secret is private, named in the function main
-// warning: constructor_access_warnings.kpp:48: warning: Base::Base is protected, named in the function main
+// spec: the access checks cover the constructors code calls (direct initialization, default construction, `new`): a private or protected constructor named outside its class, its derived classes and its friends is an error; a static member, a friend class, a derived class's base initializer and the implicit construction of a derived class (its base's protected constructor) may call one
+// factorio: EditorAction's private constructors called by EditorActionTestCreator, UnitGroup's by Commander, EnumItems::iterator's by EnumItems: each a friend in the C++ (98 uses in the converted game and its tests while the converter removed friends)
+// error: constructor_access_warnings.kpp:43: error: Secret::Secret is private, named in the function main
+// error: constructor_access_warnings.kpp:44: error: Secret::Secret is private, named in the function main
+// error: constructor_access_warnings.kpp:45: error: Secret::Secret is private, named in the function main
+// error: constructor_access_warnings.kpp:46: error: Base::Base is protected, named in the function main
 class Secret
 {
   int v;

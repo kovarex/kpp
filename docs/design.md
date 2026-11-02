@@ -1493,6 +1493,17 @@ constructors in EditorActionTestCreator 81 times, HeatBuffer's, UnitGroup's in C
 iterator's...), each one a friend of the C++ the converter removes; none less. Spec
 classes/constructor_access_warnings.
 
+**Access checks, step 3: errors (thread A, 2026-11-02, as decided: errors once the converted game is
+clean).** With the converter keeping the game's 409 friend declarations and its hidden friends as
+written (C), `--access-warnings` over the game, its tests and its C libraries reports 0 uses (2,161
+that 319 of the friend declarations allow). So a use of a private or protected member its code may
+not name is an error by default: in a function's or variable's walk a checker error of that walk (a
+compile server's walk again takes it back when it is fixed), a constructor's from codegen as its error
+in the function emitting the call (its emission again takes it back). `--access-warnings` still adds
+the notes of the uses friends allow and the counts. A conversion's resolve of the C++ does not check
+(its friends, and the quirks of reading C++ above). Specs classes/access_violation_is_error and
+constructor_access_warnings (now errors); the access test of run_tests prints them as errors.
+
 ## Instantiations own their typed bodies (decided 2026-10-28: a copy per instantiation)
 
 **Today.** A template's body exists once, in the parsed tree. Whatever types it for a set of

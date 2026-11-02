@@ -244,8 +244,12 @@ public:
   void enableAccessWarnings();
   // A constructor codegen calls in the code of `in` (the function or the global's initializer being
   // emitted), at node at: checked as a use of the member it is (the checker does not choose
-  // constructors, codegen does). Nothing without enableAccessWarnings().
-  void checkConstructorAccess(FunctionDecl* ctor, Decl* in, Node* at);
+  // constructors, codegen does). With access errors on, what it denies, the error codegen reports;
+  // else empty (a warning of the report with enableAccessWarnings()).
+  std::string checkConstructorAccess(FunctionDecl* ctor, Decl* in, Node* at);
+  // A use of a private or protected member its code may not name is an error (design.md "struct and
+  // class": the default, not for a conversion's C++). Before the resolve.
+  void enableAccessErrors();
   // The struct rule as errors (kppc --struct-rule; design.md "struct and class"): a struct with a
   // private or protected section, a base that is not public or a virtual function, or deriving from
   // a polymorphic class. Before the resolve. The default once the converter writes such structs as

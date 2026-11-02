@@ -1,0 +1,33 @@
+// spec: a use of a private or protected member its code may not name is an error (design.md "struct and class": access checks, the default once the converted game has none): a private data member read outside its class, a protected member named outside its class and the classes deriving from it, a private function called; a friend, the class itself and a derived class (protected) may name them
+// factorio: none left (the game's 2,071 uses were each a friend's, now kept as written; 0 over the game and its tests)
+// error: access_violation_is_error.kpp:29: error: Account::balance is private, named in the function main
+// error: access_violation_is_error.kpp:30: error: Account::fee is protected, named in the function main
+// error: access_violation_is_error.kpp:31: error: Account::helper is private, named in the function main
+class Account
+{
+  int balance = 3;
+  int helper() { return 1; }
+protected:
+  int fee = 1;
+public:
+  int get() { return this->balance + this->helper(); }
+  friend class Auditor;
+};
+class Auditor
+{
+public:
+  int audit(Account& a) { return a.balance + a.helper(); }
+};
+class Premium : public Account
+{
+public:
+  int myFee() { return this->fee; }
+};
+int main()
+{
+  Account a;
+  int x = a.balance;
+  int y = a.fee;
+  int z = a.helper();
+  return x + y + z;
+}

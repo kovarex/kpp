@@ -5012,6 +5012,7 @@ struct GlobalScope::Impl
   // ---------------- access checking, warnings only (design.md, "struct and class") ----------------
 
   bool accessWarnings = false; // kppc --access-warnings: checkAccessIn after every walked function and variable
+  bool accessErrors = false;   // design.md "struct and class": a denied use is an error (the default; not a conversion's)
   bool structRuleErrors = false; // kppc --struct-rule: its breaks are errors (the parser's, a struct deriving from a polymorphic class)
   std::mutex accessMutex;
   // A use of a private or protected member that its code may not name, by its warning (`path:line:
@@ -5207,13 +5208,14 @@ struct GlobalScope::Impl
   }
 
   // A use of the declaration used at node at, in the code of d (fn: the function it is in, if any)
-  // whose context classes are context: a warning when accessOf denies it, a note when a friend
-  // declaration allows it.
-  void checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming, const Ty* self = nullptr)
+  // whose context classes are context: what accessOf denies (`Account::balance is private, named in
+  // the function thief`), else empty; a warning of the report too unless access errors are on, a
+  // note when a friend declaration allows it.
+  std::string checkAccessUse(Decl* used, Node* at, Decl* d, FunctionDecl* fn, const std::vector<Scope*>& context, Scope* naming, const Ty* self = nullptr)
   {
     AccessDecision a = accessOf(used, fn, context, naming, self);
     if (!a.member)
-      return; // (allowed without a friend)
+      return {}; // (allowed without a friend)
     Decl* member = a.member;
     bool isProtected = a.isProtected;
     std::string where = locationOf(d->file, at->token);
@@ -5232,8 +5234,10 @@ struct GlobalScope::Impl
       accessFriendUses.insert(where + ": note: " + use + ", which a friend " + (f->kind == NodeKind::ClassDecl ? "class" : "function") +
                               " declaration allows");
       accessFriendsUsed.insert(f);
-      return;
+      return {};
     }
+    if (accessErrors)
+      return use;
     const char* kind = member->kind == NodeKind::VariableDecl     ? ((member->flags & DF_Static) ? "static data member" : "data member")
                        : member->kind == NodeKind::FunctionDecl   ? "function"
                        : member->kind == NodeKind::EnumDecl && used != member ? "enumerator"
@@ -5241,6 +5245,7 @@ struct GlobalScope::Impl
     std::string message = where + ": warning: " + use;
     std::lock_guard lock(accessMutex);
     accessViolations.emplace(std::move(message), AccessViolation{accessGroup(d->file), isProtected, kind});
+    return use;
   }
 
   // The object `a->b` names b of, for the access checks: a pointer's pointee, or what a class's
@@ -5325,7 +5330,8 @@ struct GlobalScope::Impl
       }
       Scope* naming;
       if (Decl* used = usedAt(n, naming))
-        checkAccessUse(used, n, d, fn, context, naming, self);
+        if (std::string denied = checkAccessUse(used, n, d, fn, context, naming, self); !denied.empty() && accessErrors)
+          reportCheckerError(d->file, n->token, denied); // (the walk's unit's: a walk again takes it back)
     });
   }
 
@@ -22800,7 +22806,7 @@ struct GlobalScope::Impl
           bodyOf = f;
           walkStmt(f->body);
           bodyOf = savedBodyOf;
-          if (impl.accessWarnings && !probing && !retypingElements)
+          if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements)
           {
             // In an instance of a class template, the instance: its bases are as its arguments make them.
             const Ty* self = nullptr;
@@ -22844,7 +22850,7 @@ struct GlobalScope::Impl
             scope = semanticScopeFor(v->name);
           const Ty* initTy = walkExpr(v->init);
           scope = saved;
-          if (impl.accessWarnings && !probing && !retypingElements && !bodyOf && returnFrames.empty())
+          if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements && !bodyOf && returnFrames.empty())
             impl.checkAccessIn(v); // (a local, also a lambda's in a member initializer: with the function it is in)
           // Deduce `auto` now that the initializer is typed, and cache it on the declaration.
           const Ty* declared = impl.declaredTypeOf(v, activeSubst, 0);
@@ -24664,14 +24670,17 @@ void GlobalScope::setCodeGenerated(bool generated)
   impl->codeGenerated = generated;
 }
 
-void GlobalScope::checkConstructorAccess(FunctionDecl* ctor, Decl* in, Node* at)
+std::string GlobalScope::checkConstructorAccess(FunctionDecl* ctor, Decl* in, Node* at)
 {
-  if (!impl->accessWarnings || !ctor || !in || !at || !in->file)
-    return;
+  if ((!impl->accessWarnings && !impl->accessErrors) || !ctor || !in || !at || !in->file)
+    return {};
   std::vector<Scope*> context;
   impl->accessContext(in, context);
-  impl->checkAccessUse(ctor, at, in, in->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(in) : nullptr, context, nullptr);
+  std::string denied = impl->checkAccessUse(ctor, at, in, in->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(in) : nullptr, context, nullptr);
+  return impl->accessErrors ? denied : std::string();
 }
+
+void GlobalScope::enableAccessErrors() { impl->accessErrors = true; }
 
 void GlobalScope::setConverting(bool converting) { impl->converting = converting; }
 
