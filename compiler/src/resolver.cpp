@@ -20584,7 +20584,24 @@ struct GlobalScope::Impl
         packText(c->args, f, c->token);
       }
       else if (d && t && (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+      {
+        // In a requirement (`requires { StringView(value); }`), a class built from arguments none of
+        // its constructors takes is no well-formed expression: the requirement fails, never holds
+        // because the cast has the class's type whatever the constructors.
+        if (probing && !c->args.empty() && types.unqualified(t)->kind == TyKind::Class && !types.isDependent(t))
+        {
+          std::vector<const Ty*> traitArgs{t};
+          bool known = true;
+          for (const Ty* a : argTypesOf(c->args))
+          {
+            known = known && a && a->isKnown() && !types.isDependent(a);
+            traitArgs.push_back(a);
+          }
+          if (known && impl.traitValue("isConstructible", traitArgs) == false)
+            return unknown(Why::Overload);
+        }
         packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`
+      }
       else if (callee)
         packTextThrough(c->args, callee->ty, c->token); // `log("a", b)` with `auto log = [](Text text) {...}` or a function pointer
       return t;

@@ -1,0 +1,25 @@
+// spec: a requirement that builds a class from arguments (`StringView(value)`, `FromInt("x")`) holds only when one of the class's constructors takes them: a functional cast is not well-formed just because it has the class's type (`0 1 1 0 / 1 0`)
+extern "C" import "stdio.h";
+struct Opaque
+{
+  int x = 0;
+};
+struct FromInt
+{
+  FromInt(int) {}
+};
+template<typename T>
+bool makesView(const T& value)
+{
+  if constexpr (requires { StringView(value); })
+    return true;
+  else
+    return false;
+}
+template<typename T> constexpr bool fromInt = requires (const T& value) { FromInt(value); };
+int main()
+{
+  const char* text = "b";
+  printf("%d %d %d %d / %d %d\n", int(makesView(Opaque{1})), int(makesView("a")), int(makesView(text)), int(makesView(3)), int(fromInt<short>), int(fromInt<const char*>));
+  return 0;
+}
