@@ -160,6 +160,20 @@ void build(Project& project)
   Set-Content 'build.kpp' "void build(Project& project)`n{`n  project.executable(`"app`", {`"src`"});`n  project.use(`"jsno`");`n}"
   $output = (Kpp @('--no-server')) -join "`n"
   if ($code -eq 0 -or $output -notmatch 'the library jsno is not in .*libraries\\jsno') { Fail "a missing library: exit $code`n$output" }
+  # A converted library's shape: root(".") (its own build.kpp is not one of its sources) and C
+  # headers beside its Kpp, which the cell's --ext .kpp leaves out of the library's roots too.
+  New-Item -ItemType Directory -Force 'libraries\conv' | Out-Null
+  Set-Content 'libraries\conv\build.kpp' "void build(Project& project)`n{`n  Library& conv = project.library(`"conv`");`n  conv.version = `"1.0.0`";`n  conv.root(`".`");`n}"
+  Set-Content 'libraries\conv\conv.kpp' "int twice(int x) { return 2 * x; }"
+  Set-Content 'libraries\conv\conv.h' "this is a C header, not Kpp"
+  Set-Content 'src\main.kpp' "int main()`n{`n  println(`"{}`", conv::twice(21));`n  return 0;`n}"
+  $convApp = "void build(Project& project)`n{`n  Executable& app = project.executable(`"app`", {`"src`"});`n  app.use(`"conv`");`n  app.argument(`"--ext`");`n  app.argument(`".kpp`");`n}"
+  Set-Content 'build.kpp' $convApp
+  $output = Kpp @('--no-server', '--run')
+  if ($code -ne 0 -or $output[-1] -ne '42') { Fail "a library rooted at its directory with C headers, --ext .kpp: exit $code`n$($output -join "`n")" }
+  Set-Content 'build.kpp' ($convApp -replace '(?m)^  app\.argument.*\r?\n', '')
+  $output = (Kpp @('--no-server')) -join "`n"
+  if ($code -eq 0 -or $output -notmatch 'conv\.h') { Fail "without --ext .kpp, the library's C header is a source (an error in conv.h): exit $code`n$output" }
 }
 finally { Pop-Location }
 # Targets x configurations (docs/build.md, its section on them): two targets in debug, release

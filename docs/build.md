@@ -262,7 +262,10 @@ void build(Project& project)
   3. later, the registry; now a missing library is an error naming where it looked.
 - **What kpp does with it:** it describes the library's build.kpp (the same configuration and
   `--set` settings), checks the version and minimumKpp, gives kppc its roots as the library's, with
-  its scope ("Library scopes" below), and does the same for the libraries it uses, depth first. One name in two directories is an error: a
+  its scope ("Library scopes" below), and does the same for the libraries it uses, depth first. A
+  library rooted at its own directory (`root(".")`, a converted C library's) keeps its build.kpp out
+  of its sources (kpp passes `--exclude`); the cell's kppc options apply to its roots too, so a cell's
+  `--ext .kpp` leaves out the C headers beside a converted library's Kpp. One name in two directories is an error: a
   program has one copy of each library. Only the library part of its build.kpp is read: its
   executables and their commands are never built or run, and C libraries (`cLibrary`) in a used
   library are an error until they are supported.

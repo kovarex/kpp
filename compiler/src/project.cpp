@@ -530,8 +530,18 @@ namespace
       }
       found.push_back({use.name, directory, user, library->options, configs});
       ProjectLibrary& used = libraries.emplace_back(ProjectLibrary{use.name, {}, library->unscoped});
+      fs::path buildFile = directory / "build.kpp";
       for (const std::string& r : library->roots)
-        used.roots.push_back(rooted(directory, r).string());
+      {
+        fs::path at = rooted(directory, r).lexically_normal();
+        used.roots.push_back(at.string());
+        // A root that holds the library's directory (`root(".")`, a converted library's) would take
+        // its build.kpp for a source.
+        fs::path inside = buildFile.lexically_relative(at);
+        if (!inside.empty() && *inside.begin() != ".." &&
+            std::find(used.excluded.begin(), used.excluded.end(), buildFile.string()) == used.excluded.end())
+          used.excluded.push_back(buildFile.string());
+      }
       if (!resolveUses(project, directory, library->uses, request, found, libraries))
         return false;
     }
@@ -934,8 +944,12 @@ namespace
     // The Kpp libraries it uses, root by root with their names and scopes (design.md 16), before --exe:
     // kpp --test takes what follows it as the sources.
     for (const ProjectLibrary& l : p.kppLibraries)
+    {
       for (const std::string& r : l.roots)
         args.push_back(l.unscoped ? "--unscoped-library-root" : "--library-root"), args.push_back(l.name), args.push_back(r);
+      for (const std::string& e : l.excluded)
+        args.push_back("--exclude"), args.push_back(e);
+    }
     args.insert(args.end(), request.passed.begin(), request.passed.end());
     args.push_back("--exe");
     args.push_back(exeOf(root, p).string());
@@ -1088,8 +1102,12 @@ namespace
           for (const std::string& r : q->roots)
             target.roots.push_back(rooted(root, r));
           for (const ProjectLibrary& l : q->kppLibraries)
+          {
             for (const std::string& r : l.roots)
               target.roots.push_back(rooted(root, r));
+            for (const std::string& e : l.excluded)
+              target.excluded.push_back(rooted(root, e));
+          }
           for (const std::string& e : q->excluded)
             target.excluded.push_back(rooted(root, e));
           first = false;

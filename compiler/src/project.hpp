@@ -47,6 +47,7 @@ struct ProjectLibrary
   std::string name;
   std::vector<std::string> roots;
   bool unscoped = false;
+  std::vector<std::string> excluded; // files under its roots that are not its sources: its build.kpp
 };
 struct ProjectCell
 {
