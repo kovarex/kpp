@@ -2,7 +2,7 @@
 
 TCP for kpp: connections (`TcpStream`) and listeners (`TcpListener`), over Winsock on Windows and
 BSD sockets on FreeBSD and Linux. The first user is a MariaDB client for gorating.com's move to
-Kpp; an HTTP server comes later. No TLS: a reverse proxy (NFS's front end) or a C library does that.
+kpp; an HTTP server comes later. No TLS: a reverse proxy (NFS's front end) or a C library does that.
 
 ```cpp
 TcpStream connection = TcpStream::connect("127.0.0.1", 3307);

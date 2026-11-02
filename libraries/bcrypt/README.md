@@ -2,7 +2,7 @@
 
 The bcrypt password hash ([Provos and Mazières, 1999](https://www.usenix.org/legacy/events/usenix99/provos/provos.pdf)),
 in the form PHP's `password_hash()` writes by default: `$2y$10$` then 22 characters of salt and 31
-of hash. Written for gorating.com's move from PHP to Kpp, whose users' passwords are such hashes.
+of hash. Written for gorating.com's move from PHP to kpp, whose users' passwords are such hashes.
 
 ```cpp
 if (bcryptVerify(password, user.passwordHash))   // throws BcryptError on a hash it cannot read
@@ -49,5 +49,5 @@ Blowfish's tables are pi's hexadecimal digits, computed by `python generate_tabl
 (src/BlowfishTables.kpp).
 
 **Speed** (one hash at cost 10, 10 verifications each, three interleaved rounds on PC-PRACOVNA):
-Kpp `--release` 35, 39, 36 ms; Kpp debug 49, 48, 43 ms; PHP 8.3.27's `password_verify` 40, 44,
+kpp `--release` 35, 39, 36 ms; kpp debug 49, 48, 43 ms; PHP 8.3.27's `password_verify` 40, 44,
 37 ms.
