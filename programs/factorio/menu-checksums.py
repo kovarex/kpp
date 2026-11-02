@@ -4,11 +4,12 @@ a build of the converted game's --benchmark, and the checksum it prints after th
 C++ build's, which menu-checksums.txt keeps (docs/path-to-factorio.md, "The menu simulations against
 the C++ build").
 
-  python -I menu-checksums.py GAME_DIR [--only NAME[,NAME...]]
+  python -I menu-checksums.py GAME_DIR [--bin FOLDER] [--only NAME[,NAME...]]
   python -I menu-checksums.py --baseline [--ticks N]
 
-GAME_DIR is laid out as run.cmd lays out C:\\factorio-in-kpp: bin\\x64\\factorio.exe, with the
-config-path.cfg next to it that names its write directory. The games run one at a time (a write
+GAME_DIR is laid out as build.kpp and run.cmd lay out C:\\factorio-in-kpp: bin\\FOLDER\\factorio.exe
+(Debugx64 by default; Releasex64, FastDebugx64), with config-path.cfg in GAME_DIR naming its config\\,
+whose write directory is GAME_DIR itself, as in C:\\Factorio. The games run one at a time (a write
 directory's lock allows one game). The mods of that write directory count: menu-checksums.txt also
 keeps the C++ run's prototype list checksum, and a map whose run printed another one is reported as
 not comparable instead of as different (run.cmd's test_mod, a scratch mod).
@@ -76,7 +77,7 @@ def baseline(ticks):
     print('%d maps into %s' % (len(lines), REFERENCE))
 
 
-def check(game, only):
+def check(game, folder, only):
     reference, ticks, prototypes = {}, None, None
     for line in open(REFERENCE, encoding='utf-8'):
         words = line.split()
@@ -88,7 +89,7 @@ def check(game, only):
             prototypes = words[1]
         else:
             reference[words[0]] = words[1]
-    exe_dir = os.path.join(game, 'bin', 'x64')
+    exe_dir = os.path.join(game, 'bin', folder)
     exe = os.path.join(exe_dir, 'factorio.exe')
     if not os.path.exists(exe):
         sys.exit('no game at %s' % exe)
@@ -120,7 +121,8 @@ def check(game, only):
 
 def main():
     parser = argparse.ArgumentParser(description='The menu simulations\' checksums against the C++ build.')
-    parser.add_argument('game', nargs='?', help='the converted game\'s directory (bin\\x64\\factorio.exe)')
+    parser.add_argument('game', nargs='?', help='the converted game\'s directory (bin\\FOLDER\\factorio.exe)')
+    parser.add_argument('--bin', default='Debugx64', help='the configuration\'s folder below bin\\ (Debugx64, Releasex64, FastDebugx64)')
     parser.add_argument('--baseline', action='store_true', help='measure the C++ build into menu-checksums.txt')
     parser.add_argument('--ticks', type=int, default=600, help='ticks per map for --baseline (default 600)')
     parser.add_argument('--only', help='comma-separated map names')
@@ -131,7 +133,7 @@ def main():
         return 0
     if not args.game:
         parser.error('give the game directory, or --baseline')
-    return check(args.game, set(args.only.split(',')) if args.only else None)
+    return check(args.game, args.bin, set(args.only.split(',')) if args.only else None)
 
 
 if __name__ == '__main__':

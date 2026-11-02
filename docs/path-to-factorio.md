@@ -1027,14 +1027,17 @@ functions on them; and iphlpapi for UDPSocket's GetIpAddrTable.
 `programs/factorio/run.cmd [game arguments]` builds the converted tree as link.cmd does and runs
 it: `run.cmd --version`, `run.cmd --dump-data`, or no arguments for a normal start.
 
-- **Where it runs.** factorio.exe goes to `C:\factorio-in-kpp\bin\x64\`, where the C++ build puts its
-  own relative to the data, so the game's path discovery works unchanged and reads
-  `C:\factorio-in-kpp\data`. run.cmd writes `C:\factorio-in-kpp\config-path.cfg`
-  (`use-system-read-write-data-directories=false`) and `run\config\config.ini` when they are
-  missing, so config, log and saves go to `C:\factorio-in-kpp\run\`: never `%APPDATA%\Factorio`,
-  never C:\Factorio. bin\, run\ and config-path.cfg are not part of that repository.
+- **Where it runs.** factorio.exe goes to a folder per configuration, named as Factorio's
+  (`bin\Debugx64vs2022`): `C:\factorio-in-kpp\bin\Debugx64\`, `bin\Releasex64\` and
+  `bin\FastDebugx64\` (build.kpp; run.cmd the first two), where the C++ build puts its own relative
+  to the data, so the game's path discovery works unchanged and reads `C:\factorio-in-kpp\data`.
+  build.kpp and run.cmd write `C:\factorio-in-kpp\config-path.cfg` naming `config\`
+  (`use-system-read-write-data-directories=false`) and `config\config.ini` (when missing), whose
+  write directory is the repository's root, as C:\Factorio's is: config\, saves\, mods\ and the log
+  go there, never to `%APPDATA%\Factorio` nor to C:\Factorio, and the repository ignores them
+  (2026-11-02, kovarex; before, they went to `run\`).
 - **The reference** is the C++ FastDebug build's log, `C:\Factorio\factorio-current.log`; the
-  converted game's is `C:\factorio-in-kpp\run\factorio-current.log`.
+  converted game's is `C:\factorio-in-kpp\factorio-current.log`.
 - **Stubs, a bring-up tool.** run.cmd compiles with `--keep-going --stub-missing`. Every function
   the code generator left out (it failed, or it is used and nothing defines it) becomes a stub that
   prints its qualified name and source line and aborts, so the game links and runs up to the first
@@ -1245,7 +1248,7 @@ UniqueArray one pointer).
 28. **The menu maps, headless.** The main menu picks one of 19 menu simulations at random, so each
     is loaded on its own with the game's benchmark mode: `factorio.exe --no-crash-handler
     --benchmark data\base\menu-simulations\<map>.zip --benchmark-ticks 10` from
-    C:\factorio-in-kpp\bin\x64 (seconds each). On the way to the first ones: a lambda's default
+    C:\factorio-in-kpp\bin\x64, now bin\Debugx64 (seconds each). On the way to the first ones: a lambda's default
     arguments (language/lambda_default_argument), an implicit copy constructor that calls a base's
     own (classes/implicit_copy_calls_base_copy_constructor), closures copied and destroyed capture
     by capture (language/closure_copies_and_destroys_captures), and the IR made byte-identical
