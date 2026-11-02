@@ -20494,21 +20494,28 @@ struct GlobalScope::Impl
           return true;
       return false;
     }
-    void checkImmediate(FunctionDecl* f, uint32_t token, const std::function<std::optional<ConstValue>()>& evaluate)
+    // Whether an immediate evaluation fails here (why: the evaluator's reason); not when it needs a
+    // class layout, which is code generation's to know: not decided here.
+    bool immediateFails(const std::function<std::optional<ConstValue>()>& evaluate, std::string& why)
     {
-      if (!f || !(f->flags & DF_Consteval) || probing || inGenericTemplate() || insideConsteval() || f->name.empty() || !file)
-        return;
       bool outerExact = impl.exactLayoutOnly, outerNeeded = impl.layoutNeeded;
       impl.exactLayoutOnly = true;
       impl.layoutNeeded = false;
       impl.constWhy().clear();
       std::optional<ConstValue> v = evaluate();
-      std::string why = v ? std::string() : impl.constWhy();
+      why = v ? std::string() : impl.constWhy();
       bool needed = impl.layoutNeeded;
       impl.exactLayoutOnly = outerExact;
       impl.layoutNeeded = outerNeeded;
-      if (v || needed)
-        return; // (a class layout it needs is code generation's to know: not decided here)
+      return !v && !needed;
+    }
+    void checkImmediate(FunctionDecl* f, uint32_t token, const std::function<std::optional<ConstValue>()>& evaluate)
+    {
+      if (!f || !(f->flags & DF_Consteval) || probing || inGenericTemplate() || insideConsteval() || f->name.empty() || !file)
+        return;
+      std::string why;
+      if (!immediateFails(evaluate, why))
+        return;
       std::string name = f->name.last().symbol != UINT32_MAX ? std::string(symbols.name(f->name.last().symbol)) : std::string("operator");
       if (f->flags & DF_Constructor)
         name += "::" + name;
@@ -20551,6 +20558,109 @@ struct GlobalScope::Impl
       });
     }
 
+    // The piece count a call gives its Text parameter at k (a pack expansion its elements); SIZE_MAX
+    // when it is not known here (the Text passed through, a pack's element in a pattern).
+    size_t pieceCount(Span<Expr*> args, size_t k)
+    {
+      if (args.size() == k + 1 && args[k] &&
+          ((args[k]->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(args[k])->text) || (args[k]->ty && impl.isText(args[k]->ty))))
+        return SIZE_MAX;
+      size_t n = 0;
+      for (size_t i = k; i < args.size(); ++i)
+      {
+        Expr* a = args[i];
+        if (!a || isEmptyExpansion(a))
+          continue;
+        bool expansion = a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
+                         P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis;
+        if (a->ty && a->ty->kind == TyKind::Pack)
+        {
+          if (!expansion)
+            return SIZE_MAX;
+          n += a->ty->args.size();
+        }
+        else if (expansion || !a->ty || !a->ty->isKnown())
+          return SIZE_MAX;
+        else
+          ++n;
+      }
+      return n;
+    }
+
+    // design.md 14: a parameter whose class has `consteval void checkPieces(ContainerSize pieces)
+    // const`, right before a Text parameter (format's FormatString), is checked against the pieces
+    // at every call: checkPieces runs on the argument's constant value with the call's piece count,
+    // and a failure (a throw) is a compile error at the call. An argument that is no constant here
+    // (a FormatString parameter passed on) is not checked: its own call was.
+    void checkTextPieces(FunctionDecl* f, const Ty* ft, Span<Expr*> args)
+    {
+      if (probing || inGenericTemplate() || insideConsteval() || !file || !ft || ft->kind != TyKind::Function)
+        return;
+      size_t k = impl.textParameterOf(impl.declaredTypeOf(f, nullptr, 0));
+      if (k == SIZE_MAX || k == 0 || k > ft->args.size() || args.size() < k)
+        return;
+      const Ty* cls = types.unqualified(types.stripRef(ft->args[k - 1]));
+      if (!cls || cls->kind != TyKind::Class || types.isDependent(cls) || !cls->isKnown())
+        return;
+      Scope* s = impl.classScopeOf(cls);
+      if (!s || !s->owner || s->owner->kind != NodeKind::ClassDecl)
+        return;
+      if (checkPiecesSymbol == UINT32_MAX)
+        checkPiecesSymbol = impl.symbols.intern("checkPieces");
+      FunctionDecl* check = nullptr;
+      std::vector<FunctionDecl*> ctors;
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(s->owner)))
+        if (m->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(m)->name.empty() && static_cast<FunctionDecl*>(m)->name.last().symbol == checkPiecesSymbol)
+          check = static_cast<FunctionDecl*>(m);
+        else if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Delete))
+          ctors.push_back(static_cast<FunctionDecl*>(m));
+      Expr* arg = args[k - 1];
+      if (!check || !arg)
+        return;
+      if (!(check->flags & DF_Consteval) || check->params.size() != 1)
+      {
+        reportTextError(arg->token, "checkPieces of " + types.toString(cls, &symbols) + " is not `consteval void checkPieces(ContainerSize pieces) const` (design.md 14)");
+        return;
+      }
+      size_t n = pieceCount(args, k);
+      if (n == SIZE_MAX)
+        return;
+      Subst subst = impl.substFor(cls);
+      const Ty* countTy = impl.declaredTypeOf(check->params[0], subst.empty() ? nullptr : &subst, 0);
+      // One evaluation builds the argument's object and runs checkPieces on it, so that what the
+      // object or a thrown exception holds (a message built in a String) lives until the end.
+      bool built = false;
+      std::string why;
+      bool fails = immediateFails([&]() -> std::optional<ConstValue>
+      {
+        return impl.constOutermost([&]() -> std::optional<ConstValue>
+        {
+          std::optional<ConstValue> value = impl.constValue(arg, ctx(), 0);
+          if (!value)
+            return std::nullopt;
+          if (arg->ty && types.unqualified(types.stripRef(arg->ty)) != cls)
+          {
+            bool ambiguous = false;
+            FunctionDecl* ctor = impl.chooseAmong(ctors, {argumentType(arg, arg->ty, types)}, subst.empty() ? nullptr : &subst, nullptr, ambiguous);
+            if (!ctor || ambiguous)
+              return std::nullopt;
+            value = impl.constRunConstructor(ctor, cls, {*value}, 0);
+            if (!value)
+              return std::nullopt;
+          }
+          built = true;
+          std::optional<ConstValue> self = value;
+          return impl.constCallOn(check, subst, {ConstValue::integer(int64_t(n), countTy)}, &self, 0);
+        }, 0);
+      }, why);
+      // (an argument that is no constant here is not checked; a consteval constructor's own failure
+      // is reported by its check)
+      if (fails && built)
+        reportTextError(arg->token, types.toString(cls, &symbols) + " does not take " + std::to_string(n) + (n == 1 ? " piece" : " pieces") +
+                                        (why.empty() ? std::string() : ": " + why) + " (design.md 14)");
+    }
+    uint32_t checkPiecesSymbol = UINT32_MAX;
+
     // The constructor of cls a call with these arguments runs when one of cls's takes a Text, else null.
     FunctionDecl* textConstructor(const Ty* cls, Span<Expr*> args)
     {
@@ -20587,11 +20697,30 @@ struct GlobalScope::Impl
       {
         auto* f = static_cast<FunctionDecl*>(d);
         if (const Ty* ft = impl.declaredTypeOf(f, nullptr, 0); ft && ft->kind == TyKind::Function)
+        {
           for (size_t i = 0; i < c->args.size() && i < ft->args.size(); ++i)
-          {
             checkClosureTo(c->args[i], ft->args[i], c->args[i]->token);
-            checkImmediateConversion(c->args[i], ft->args[i]);
+          // A function template's parameters as this call's instance has them (`CountedFormat<sizeof...(A)>`
+          // for A = int, String: CountedFormat<2>), its deduced arguments substituted, never as declared;
+          // those before a parameter pack only (they are the arguments at their positions), and none
+          // while the call's arguments are not deduced.
+          size_t checked = c->args.size();
+          if (!f->templateParams.empty())
+          {
+            Subst deduced;
+            for (size_t i = 0; i < c->templateArgCount && i < f->templateParams.size(); ++i)
+              deduced.pairs.push_back({f->templateParams[i], c->templateArgs[i]});
+            ft = deduced.pairs.size() == f->templateParams.size() ? impl.declaredTypeOf(f, &deduced, 0) : nullptr;
+            if (ft && (ft->kind != TyKind::Function || types.isDependent(ft)))
+              ft = nullptr;
+            for (size_t i = 0; i < f->params.size(); ++i)
+              if (static_cast<ParamDecl*>(f->params[i])->isPack)
+                checked = std::min(checked, i);
           }
+          for (size_t i = 0; ft && i < checked && i < ft->args.size(); ++i)
+            checkImmediateConversion(c->args[i], ft->args[i]);
+          checkTextPieces(f, ft, c->args);
+        }
         checkImmediate(f, c->token, [&] { return impl.constValue(c, ctx(), 0); });
         packText(c->args, f, c->token);
       }

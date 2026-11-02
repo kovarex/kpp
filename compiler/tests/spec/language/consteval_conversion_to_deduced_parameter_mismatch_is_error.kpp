@@ -1,0 +1,25 @@
+// spec: an implicit consteval constructor converting to a deduced function template's parameter (`Counted<sizeof...(A)>`) that throws for the call's deduced arguments is a compile error at the call, never a throw at run time
+// error: consteval_conversion_to_deduced_parameter_mismatch_is_error.kpp:24: error: the call of consteval Counted::Counted is no constant: it throws LogicError("mismatch") (consteval_conversion_to_deduced_parameter_mismatch_is_error.kpp:14)
+template<int N>
+struct Counted
+{
+  const char* pattern;
+  consteval implicit Counted(const char* pattern) : pattern(pattern)
+  {
+    int holes = 0;
+    for (const char* p = pattern; *p != 0; ++p)
+      if (p[0] == '{' && p[1] == '}')
+        ++holes;
+    if (holes != N)
+      throw LogicError("mismatch");
+  }
+};
+template<typename... A>
+int takeMany(Counted<sizeof...(A)> c, const A&... args)
+{
+  return int(sizeof...(A));
+}
+int main()
+{
+  return takeMany("{}", 1, 2);
+}

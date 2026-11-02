@@ -976,6 +976,19 @@ As built (thread A, 2026-11-02; specs `kpp/library_*`, `kpp/two_libraries_*`, `k
   argument, a throw) is an error naming the function. The library's
   `consteval implicit FormatString(const char*)` makes `format(runtimeText, x)` an error, and
   its constructor can reject a malformed pattern.
+- **Pieces against the format (2026-11-02):** a parameter whose class has
+  `consteval void checkPieces(ContainerSize pieces) const`, right before a Text parameter, is
+  checked at every call: checkPieces runs at compile time on the argument's constant value with
+  the call's piece count (a pack expansion counts its elements, per instantiation), and a throw is
+  an error at the call naming the class, the count and the message. So `format("{} {}", a)` never
+  compiles once FormatString counts its `{}` and declares checkPieces. An argument that is no
+  constant there (a FormatString parameter passed on to format) is not checked again: the call
+  that built it was. Chosen over C++'s `format_string<Args...>` (a FormatString<N> parameter of a
+  template format), which would make every format call a template instance (the coordinator's
+  ruling). A consteval conversion to a deduced function template's parameter
+  (`CountedFormat<sizeof...(A)>`) is evaluated for the call's deduced arguments.
+  Specs: language/text_check_pieces, language/text_check_pieces_mismatch_is_error,
+  language/consteval_conversion_to_deduced_parameter(_mismatch_is_error).
 
 ### 17. A self-contained release (decided 2026-11-02)
 

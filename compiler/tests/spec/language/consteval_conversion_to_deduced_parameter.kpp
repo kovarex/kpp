@@ -1,0 +1,33 @@
+// spec: an implicit consteval constructor converting an argument to a function template's parameter whose class depends on the deduced arguments (`CountedFormat<sizeof...(A)>`) runs for the call's deduced arguments, so a correct call compiles (`1x`)
+// found by C's attempt at a counted format (format's {} against its arguments): "the call of consteval CountedFormat::CountedFormat is no constant" on a correct call, its N read as declared
+extern "C" int puts(const char* text);
+template<int N>
+struct CountedFormat
+{
+  const char* pattern;
+  consteval implicit CountedFormat(const char* pattern) : pattern(pattern)
+  {
+    int holes = 0;
+    for (const char* p = pattern; *p != 0; ++p)
+      if (p[0] == '{' && p[1] == '}')
+        ++holes;
+    if (holes != N)
+      throw LogicError("format: the {} and the pieces do not pair up");
+  }
+};
+String formatPieces(const char* pattern, Text args)
+{
+  String out;
+  args.appendTo(out);
+  return out;
+}
+template<typename... A>
+String myFormat(CountedFormat<sizeof...(A)> pattern, const A&... args)
+{
+  return formatPieces(pattern.pattern, args...);
+}
+int main()
+{
+  puts(myFormat("{} and {}", 1, String("x")).c_str());
+  return 0;
+}

@@ -1,0 +1,52 @@
+// spec: a parameter whose class has `consteval void checkPieces(ContainerSize pieces) const`, right before a Text parameter (format's FormatString), is checked at compile time against the call's piece count, a pack expansion counting its elements per instantiation; calls whose pieces pair up with the pattern compile, and a pattern passed on as a parameter is not checked again (design.md 14) (`1 and 2` / `none` / `3 4` / `5`)
+extern "C" int puts(const char* text);
+struct Pattern
+{
+  const char* text;
+  int holes = 0;
+  consteval implicit Pattern(const char* text) : text(text)
+  {
+    for (const char* p = text; *p != 0; ++p)
+      if (p[0] == '{' && p[1] == '}')
+        ++holes;
+  }
+  consteval void checkPieces(ContainerSize pieces) const
+  {
+    if (pieces != ContainerSize(holes))
+      throw LogicError("the {} and the pieces do not pair up");
+  }
+};
+// (each {} replaced by the next piece)
+String fill(Pattern pattern, Text pieces)
+{
+  String out;
+  const char* p = pattern.text;
+  ContainerSize next = 0;
+  while (*p != 0)
+    if (p[0] == '{' && p[1] == '}')
+    {
+      const TextPiece& piece = pieces.pieces[next++];
+      piece.append(piece.object, out);
+      p += 2;
+    }
+    else
+      out.append(*p++);
+  return out;
+}
+template<typename... A>
+String relay(const A&... args)
+{
+  return fill("{} {}", args...);
+}
+String passOn(Pattern pattern, int value)
+{
+  return fill(pattern, value);
+}
+int main()
+{
+  puts(fill("{} and {}", 1, 2).c_str());
+  puts(fill("none").c_str());
+  puts(relay(3, 4).c_str());
+  puts(passOn("{}", 5).c_str());
+  return 0;
+}
