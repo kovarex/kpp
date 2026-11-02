@@ -995,6 +995,19 @@ nothing else installed: no Visual Studio, no Build Tools, no Windows SDK.
 - Staged: first clang and lld bundled (the Windows SDK still needed), then the headers, import
   libraries and runtime. Thread B owns it, with C for the stdlib's C runtime use and E for the
   installer and package.
+- Any host builds any target (kovarex, 2026-11-02): the bundled lld links every format, and each
+  target's headers and libraries are laid out side by side (Windows from MinGW-w64, Linux, FreeBSD's
+  base, macOS later), so `--target` works from Windows, Linux or macOS alike; tests still run on the
+  target.
+- Less Microsoft-specific tooling is preferred (kovarex: "I personally prefer needing less microsoft
+  related stuff than more"): the destination leans to the GNU dialect on Windows too (the Itanium
+  exception model and DWARF, which Linux and macOS need anyway), reached in steps; the game keeps an
+  explicit `--toolchain msvc` until its Visual Studio-built C++ libraries are converted or rebuilt.
+- Measured before deciding (kovarex: "incremental rebuild time is one of the most critical parts of
+  the kpp advantage over C++"): the game's debug leaf-edit and wide-edit rebuild with lld against
+  today's incremental link.exe, the release link, release run time (menu maps, unit tests) of the
+  MSVC and the GNU dialect, and executable and debug-info sizes. A slower edit loop keeps the
+  incremental link.exe as an explicit debug option, never a silent switch.
 
 ## Code packages (proposed 2026-10-27, not yet decided by kovarex)
 
