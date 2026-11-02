@@ -172,10 +172,13 @@ String operator+(const T& left, StringView right)
 }
 
 // format's pattern: a compile-time literal (design.md 14: a format that is not a literal is no
-// format), each {} the place of the next piece; a { without its } or a } alone is a compile error.
+// format), each {} the place of the next piece; a { without its } or a } alone is a compile error,
+// and so is a call whose pieces are not one per {} (checkPieces, which the compiler runs at every
+// call with the call's piece count: `format("{} {}", a)` does not compile).
 struct FormatString
 {
   const char* pattern;
+  ContainerSize holes = 0;
 
   consteval implicit FormatString(const char* pattern) : pattern(pattern)
   {
@@ -185,26 +188,41 @@ struct FormatString
       {
         if (p[1] != '}')
           throw LogicError("format: a { without its }");
+        ++this->holes;
         ++p;
       }
       else if (*p == '}')
         throw LogicError("format: a } without its {");
     }
   }
+  consteval void checkPieces(ContainerSize pieces) const
+  {
+    if (pieces != this->holes)
+    {
+      String message("format: ");
+      // (append, not <<: the compile-time evaluator builds this String, and it does not evaluate
+      // `<<` of pieces)
+      message.append(toString(this->holes));
+      message.append(" {} for ");
+      message.append(toString(pieces));
+      message.append(pieces == 1 ? " piece" : " pieces");
+      throw LogicError(message);
+    }
+  }
 };
 
-// The pattern with each {} replaced by the next piece's text. A {} without a piece, or a piece
-// without its {}, throws LogicError (no silent text: CLAUDE.md).
+// The pattern with each {} replaced by the next piece's text. The compiler has paired them up
+// (checkPieces); a FormatString passed on as a parameter is checked at the call that made it, and
+// release_assert backs that up.
 String format(FormatString pattern, Text args)
 {
+  release_assert(pattern.holes == args.count);
   String out;
   ContainerSize next = 0;
   for (const char* p = pattern.pattern; *p != 0; ++p)
   {
     if (p[0] == '{' && p[1] == '}')
     {
-      if (next == args.count)
-        throw LogicError("format: more {} than pieces");
       args.pieces[next].append(args.pieces[next].object, out);
       ++next;
       ++p;
@@ -212,7 +230,5 @@ String format(FormatString pattern, Text args)
     else
       out.append(*p);
   }
-  if (next != args.count)
-    throw LogicError("format: more pieces than {}");
   return out;
 }

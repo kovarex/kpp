@@ -58,8 +58,9 @@ Infinities and NaN are `inf`, `-inf` and `nan` in every floating piece, on every
 - `print(pieces...)`, `println(pieces...)` (a newline after): the text on standard output.
   `toString(pieces...)`: the text as a String. `format(pattern, pieces...)`: each `{}` of the
   pattern replaced by the next piece, the pattern checked when compiling (a `{` without its `}`
-  is an error), as many `{}` as pieces or LogicError; `{{` and `}}` are no escapes: a text with
-  braces of its own is written in pieces.
+  is an error), and so is a call whose pieces are not one per `{}` (`format("{} has {}", name)`:
+  "FormatString does not take 1 piece: it throws LogicError("format: 2 {} for 1 piece")"); `{{`
+  and `}}` are no escapes: a text with braces of its own is written in pieces.
 - `a + b`, one side a String or a StringView: a new String of both texts.
 - C text is no piece: `StringView(p)` is a `const char*`'s text, `address(p)` its address.
 - **A piece refers to its object; it is read when the text is written**, after every argument of
