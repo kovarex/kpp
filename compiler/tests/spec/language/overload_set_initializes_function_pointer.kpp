@@ -1,0 +1,21 @@
+// spec: a name of several functions initializing or assigned to a function pointer variable is the overload of the pointer's type (C++'s address of an overloaded function, [over.over]): `AreaFn f = Shape::area;` with area(int) and area(const char*) takes area(const char*), written alone and with `&`
+// factorio: none found yet; found beside the access checks (NoiseExpressionParser passes such a name as an argument, which works: language/overload_set_as_function_pointer)
+// pending: the first overload is taken: "a pointer (int32(int32)*) does not convert to int32(const char*)* without a cast" (owner: the coordinator assigns; overloads are D's)
+class Shape
+{
+public:
+  static int area(int side) { return side * side; }
+  static int area(const char* name) { return 5; }
+};
+int twice(int x) { return 2 * x; }
+int twice(double x) { return 3; }
+using AreaFn = int (*)(const char*);
+int main()
+{
+  AreaFn f = Shape::area;
+  AreaFn g = &Shape::area;
+  int (*h)(double) = twice;
+  h = &twice;
+  println(f("x"), " ", g("y"), " ", h(1.5));
+  return 0;
+}
