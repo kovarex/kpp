@@ -2124,7 +2124,7 @@ functions take the fallback's stbrp_rect and join the private names. The others:
 - zlib's inflate.h enumerator OS, beside an imported constant OS: `c-libraries\zlib\private-names.txt`;
 - StackWalker's `#ifndef INVALID_FILE_ATTRIBUTES`: the converter's Windows SDK defines have it.
 
-**stb_image waits for the compiler.** Its implementation is in stb_image.hpp and
+**stb_image is converted** (it waited for the compiler). Its implementation is in stb_image.hpp and
 stb_image_write.h, which stb_image.cpp compiles as C++ with its PNG writer deflating through zlib
 (`zlib_compress_stb_adapter`, hand-written in Kpp: `c-libraries/stb_image/added`). The conversion
 takes the two headers like fontstash's, and the C mode grew:
@@ -2148,6 +2148,16 @@ are byte widths), which kppc checks as printf's, and the converter had dropped t
 "format" does not read. It drops none in C now (it is for the game's own printf mismatches), so
 kppc reports the three calls, and stb_image waits for `language/variadic_with_own_format`: which
 C-variadic functions are printf-like.
+
+kovarex retired the printf check (design.md 14, D's 958c39bd: a C-variadic call is never
+format-checked), and stb_image's harness is byte-identical (4,230 lines). Like fontstash's, its two
+headers stay C imports (`c-libraries\stb_image\c-headers.txt`): the game imports them (MemoryBitmap,
+SpriteLoaders), and their conversion keeps only the implementation. The `/alternatename` pragma in
+`native\header_only.c` goes: the converted stb_image_write defines `stbi_write_png_compression_level`
+under C's name, which the game sets. With the eight converted libraries
+(ogg, zlib, glad, zstd, minizip, fontstash, trio, stb_image) the unit tests pass 9,501/9,501 in
+release and 9,500/9,501 in debug with their CRCs checked against C++ Debug's (the one, MultiplayerRandomConnections, fails
+only under load, as test-matrix.md records, and passed 3 of 3 alone), and the 45 menu maps match, in debug and in release.
 
 **trio waits for the compiler.** Its array bounds are enumerators of an enum whose flags each
 double the one before, which the evaluator now takes (`language/enum_chain_of_doublings_is_constant`,
