@@ -730,6 +730,36 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   runs use the account's Actions minutes (Windows minutes count double) and its releases are
   visible only to its collaborators.
 
+### The toolchain (design.md 17, stage 1)
+
+A release is to carry its own back end (design.md 17, decided 2026-11-02). Stage 1 is clang and
+lld; the Windows SDK and MSVC's libraries still come from an installed Visual Studio or Build Tools.
+- **The bundled toolchain** is `bin\` next to kpp.exe, from the official LLVM 19.1.7 release
+  (clang+llvm-19.1.7-x86_64-pc-windows-msvc, Apache-2.0 WITH LLVM-exception): clang.exe, lld-link.exe,
+  ld.lld.exe (other targets), llvm-lib.exe and llvm-rc.exe (a project's C libraries and resources),
+  and `lib\clang\19\` (clang's headers, clang_rt.builtins-x86_64.lib). About 215 MB unpacked.
+  clang-cl is `clang --driver-mode=cl`.
+- **Which one a build uses:** `--toolchain bundled` or `--toolchain msvc` (Visual Studio's clang,
+  found by vswhere), and an error when that one is not there, never the other in its place.
+  Without it: KPP_CLANG, else the installation's `bin\` when it has one, else Visual Studio's. The
+  build's report says which (`toolchain: ...`). A compile server takes `bin\` next to its client's
+  kpp.exe.
+- **The link:** the bundled toolchain links with lld-link, debug builds too. `--incremental-link`
+  (link.exe `/INCREMENTAL`, the debug edit loop's link) is Visual Studio's: with the bundled
+  toolchain it is an error, and a project's debug build leaves it out. Measured on the converted
+  game (2026-11-02, the compile server's leaf and wide edits and each link alone, interleaved):
+  lld-link's debug link with a PDB takes 5.7 to 9.7 s,
+  80% of it merging the 5.2 M type records of the Visual Studio-built libraries' debug information
+  (the PDB 485 MB, link.exe's 77 MB), against 0.4 to 1.5 s for link.exe's incremental relink; without
+  a PDB lld-link takes 1.1 to 1.4 s. So the game keeps `--toolchain msvc` and `--incremental-link`.
+  The release link (ThinLTO, lld-link either way) is the same with 19.1.5 and 19.1.7: 52.9 to 66.6
+  against 53.6 to 74.9 s on a busy machine, the executable 44.0 MB both.
+- **A limit of stage 1:** the bundled clang has no Visual Studio of its own, so a project's C++
+  sources (a C library's .cpp) take the newest MSVC's STL, which may want a newer clang (Build
+  Tools 18's wants clang 20). C sources and Kpp programs are not affected.
+- tests\toolchain.ps1 builds through an installation made of kppc and Visual Studio's clang and
+  lld-link: `bin\` by default, `--toolchain msvc`, the errors, and a project's debug link.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` (thread H, 2026-10-31) runs kpp's tests on a windows-2022 runner,

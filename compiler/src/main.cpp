@@ -105,6 +105,7 @@ namespace
     bool noInline = false;         // --no-inline: every call stays a call (no trivial callee emitted in its caller)
     std::string clangFlags;        // --clang-flags: more flags for compiling the modules (-fsanitize=address)
     bool incrementalLink = false;  // --incremental-link: a debug build's link redoes only the objects that changed
+    std::string toolchain;         // --toolchain bundled|msvc: which clang and linker (source.hpp's selectToolchain)
     bool debugInfo = false;        // --debug-info: line tables (docs/debugging.md)
     bool check = false;            // --check: codegen's errors too, nothing written (`kppc --lsp`'s checks)
     Target target;                 // --target: the platform the program is built for (Windows x64 by default)
@@ -170,6 +171,10 @@ namespace
             "  --incremental-link  a debug build links incrementally (link.exe /INCREMENTAL): the next link redoes\n"
             "                only the objects that changed, as long as the executable and its .ilk stay; every\n"
             "                function is kept (/OPT:NOREF)\n"
+            "  --toolchain T  bundled: the installation's own clang and lld-link (bin\\, the default where it has\n"
+            "                one); msvc: Visual Studio's clang and link.exe (the default otherwise, and what\n"
+            "                --incremental-link needs). The Windows SDK and MSVC's libraries are Visual\n"
+            "                Studio's either way (design.md 17, stage 1)\n"
             "  --debug-info  line tables in the objects (CodeView) and a .pdb next to the executable: a debugger\n"
             "                steps through the Kpp source (docs/debugging.md)\n"
             "  --target T    build for T: windows (the default), linux, freebsd, or a triple (docs/design.md,\n"
@@ -341,6 +346,8 @@ namespace
                         : options.incrementalLink ? "-Wl,/OPT:NOREF -Wl,/INCREMENTAL"
                                                   : "-Wl,/OPT:REF -Wl,/OPT:NOICF";
     flags += " -llegacy_stdio_definitions -luser32 -ladvapi32 -lshell32 -lole32 -lws2_32";
+    if (bundledToolchain()) // its lld-link (Visual Studio's link.exe is clang's default)
+      flags += " -fuse-ld=lld";
     if (wideEntry)
       flags += " -Wl,/ENTRY:wmainCRTStartup";
     if (options.debugInfo)
@@ -1220,6 +1227,9 @@ namespace
       return true;
     };
     std::string clang = clangPath();
+    report("toolchain: %s (%s)\n", clang.c_str(), bundledToolchain()            ? "bundled: links with lld-link"
+                                                               : options.target.windows() ? "Visual Studio's: links with link.exe, with lld-link under ThinLTO"
+                                                                                          : "links with ld.lld");
     // A release build of several modules is a ThinLTO build: the modules become bitcode, and the
     // link optimises them in parallel with what each needs from the others imported, so that calls
     // into another module's instantiations inline as they do in one module (optimised separately,
@@ -3281,6 +3291,8 @@ int compile(int argc, char** argv)
       options.cIncludeDirs.push_back(argv[++i]);
     else if (arg == "--incremental-link")
       options.incrementalLink = true;
+    else if (arg == "--toolchain" && i + 1 < argc)
+      options.toolchain = argv[++i];
     else if (arg == "--debug-info")
       options.debugInfo = true;
     else if (arg == "--optimize" || arg == "--no-optimize")
@@ -3522,6 +3534,17 @@ int compile(int argc, char** argv)
     if (options.incrementalLink && !options.target.windows())
     {
       fprintf(stderr, "--incremental-link is link.exe's, for --target windows\n");
+      return 2;
+    }
+    if (std::string error = selectToolchain(argv[0], options.toolchain); !error.empty())
+    {
+      fprintf(stderr, "%s\n", error.c_str());
+      return 2;
+    }
+    if (options.incrementalLink && bundledToolchain())
+    {
+      fprintf(stderr, "--incremental-link is Visual Studio's link.exe's, which the bundled toolchain does not have (its lld-link "
+                      "links whole): add --toolchain msvc\n");
       return 2;
     }
     SourceFile config;

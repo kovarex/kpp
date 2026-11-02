@@ -48,7 +48,16 @@ std::string sourceLocation(const std::string& path, size_t line, size_t column =
 std::filesystem::path compilerPath();
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
 
-// The clang kppc compiles and links with: KPP_CLANG, else the clang of the newest Visual Studio
-// with its Clang component, any edition (vswhere), else Community 2022's. clang-cl, llvm-lib and
-// llvm-rc are next to it.
+// The clang kppc compiles and links with (docs/build.md, "The toolchain"): --toolchain's choice
+// (selectToolchain), else KPP_CLANG, else an installation's own (bin\clang.exe next to kpp.exe, the
+// bundled toolchain: clang, lld-link, ld.lld, llvm-lib and llvm-rc of LLVM 19.1.7), else the clang of
+// the newest Visual Studio with its Clang component, any edition (vswhere), else Community 2022's.
+// lld-link, llvm-lib and llvm-rc are next to it.
 std::string clangPath();
+// --toolchain bundled|msvc for the compiler at `compiler` (argv[0]: the client's, in a compile
+// server): bundled is bin\ next to it, msvc Visual Studio's clang; empty is the default above. The
+// error, if the one named is not there (never the other one in its place).
+std::string selectToolchain(const std::filesystem::path& compiler, const std::string& toolchain);
+// Whether clangPath() is the bundled toolchain's: its links are lld-link's (Visual Studio's link.exe
+// is not part of it).
+bool bundledToolchain();

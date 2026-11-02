@@ -132,10 +132,69 @@ std::filesystem::path defaultStdlib(const std::filesystem::path& compiler)
   return (directory / ".." / ".." / "stdlib").lexically_normal();
 }
 
+namespace
+{
+  std::string chosenClang; // --toolchain's (selectToolchain), for this build
+  bool chosenBundled = false;
+
+  std::filesystem::path bundledClang(const std::filesystem::path& compiler) { return compiler.parent_path() / "bin" / "clang.exe"; }
+
+  std::string visualStudioClang();
+}
+
+std::string selectToolchain(const std::filesystem::path& compiler, const std::string& toolchain)
+{
+  chosenClang.clear();
+  chosenBundled = false;
+  std::error_code ec;
+  if (toolchain == "bundled")
+  {
+    std::filesystem::path clang = bundledClang(compiler);
+    if (!std::filesystem::exists(clang, ec))
+      return "--toolchain bundled: this installation has no " + clang.string();
+    chosenClang = clang.string();
+    chosenBundled = true;
+  }
+  else if (toolchain == "msvc")
+  {
+    chosenClang = visualStudioClang();
+    if (!std::filesystem::exists(chosenClang, ec))
+      return "--toolchain msvc: no Visual Studio with its Clang component (\"C++ Clang Compiler for Windows\") was found";
+  }
+  else if (!toolchain.empty())
+    return "--toolchain takes bundled or msvc, not '" + toolchain + "'";
+  else if (!getenv("KPP_CLANG") && std::filesystem::exists(bundledClang(compiler), ec))
+  {
+    chosenClang = bundledClang(compiler).string();
+    chosenBundled = true;
+  }
+  return "";
+}
+
+bool bundledToolchain()
+{
+  if (!chosenClang.empty())
+    return chosenBundled;
+  std::error_code ec;
+  return !getenv("KPP_CLANG") && std::filesystem::exists(bundledClang(compilerPath()), ec);
+}
+
 std::string clangPath()
 {
+  if (!chosenClang.empty())
+    return chosenClang;
   if (const char* clangEnv = getenv("KPP_CLANG"))
     return clangEnv;
+  std::error_code ec;
+  if (std::filesystem::path bundled = bundledClang(compilerPath()); std::filesystem::exists(bundled, ec))
+    return bundled.string();
+  return visualStudioClang();
+}
+
+namespace
+{
+std::string visualStudioClang()
+{
   static const std::string found = []
   {
     std::string fallback = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe";
@@ -154,4 +213,5 @@ std::string clangPath()
     return !installation.empty() && std::filesystem::exists(clang, ec) ? clang.string() : fallback;
   }();
   return found;
+}
 }

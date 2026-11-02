@@ -809,9 +809,10 @@ namespace
       // library's includes and defines; no warnings, since the code is the library's own.
       std::string flags = "/nologo /c /O2 /MT /DNDEBUG /w";
       // The MSVC headers and libraries of clang's own Visual Studio: on its own, clang-cl takes the
-      // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20).
+      // newest installed, whose STL may require a newer clang (Build Tools 18's wants clang 20). The
+      // bundled clang has no Visual Studio of its own: it takes the newest (design.md 17, stage 1).
       fs::path installation = tools.parent_path().parent_path().parent_path().parent_path().parent_path();
-      std::string version = readText(installation / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt");
+      std::string version = bundledToolchain() ? std::string() : readText(installation / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt");
       while (!version.empty() && (version.back() == '\n' || version.back() == '\r' || version.back() == ' '))
         version.pop_back();
       if (!version.empty() && fs::is_directory(installation / "VC" / "Tools" / "MSVC" / version, ec))
@@ -837,7 +838,8 @@ namespace
           continue;
         bool cpp = source.extension() != ".c";
         logs.push_back(directory / (stem + ".log"));
-        commands.push_back("\"" + quoteArg((tools / "clang-cl.exe").string()) + " " + flags + (cpp ? cppFlags : "") +
+        // clang-cl is clang in its cl mode (the bundled toolchain has clang.exe alone).
+        commands.push_back("\"" + quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") +
                            " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
                            " " + quoteArg(source.string()) + " > " + quoteArg(logs.back().string()) + " 2>&1\"");
       }
@@ -920,7 +922,14 @@ namespace
     if (p.debugInfo)
       args.push_back("--debug-info");
     args.push_back(p.optimize ? "--optimize" : "--no-optimize");
-    if (!p.optimize)
+    // An unoptimized build links incrementally with Visual Studio's link.exe; the bundled toolchain's
+    // lld-link links whole (the last --toolchain of build.kpp's and the command line's decides).
+    std::string toolchain;
+    for (const std::vector<std::string>* list : {&p.arguments, &request.passed})
+      for (size_t i = 0; i + 1 < list->size(); ++i)
+        if ((*list)[i] == "--toolchain")
+          toolchain = (*list)[i + 1];
+    if (!p.optimize && (toolchain.empty() ? !bundledToolchain() : toolchain != "bundled"))
       args.push_back("--incremental-link");
     for (const std::string& c : p.configs)
       args.push_back("--config"), args.push_back(c);

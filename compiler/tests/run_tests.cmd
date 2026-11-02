@@ -137,6 +137,9 @@ rem --target (tests\targets.ps1, docs/design.md "Targets and hosts"): Windows, F
 rem Linux built here and run under WSL (skipped without WSL).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\targets.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "targets") else (call :ok)
+rem --toolchain: an installation's bin\ by default, Visual Studio's on request (tests\toolchain.ps1).
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\toolchain.ps1 -Kppc %KPPC%
+if errorlevel 1 (call :fail "toolchain") else (call :ok)
 rem The C import cache keys an import on the toolchain's environment (tests\importcache.ps1).
 powershell -NoProfile -ExecutionPolicy Bypass -File tests\importcache.ps1 -Kppc %KPPC%
 if errorlevel 1 (call :fail "import cache") else (call :ok)
