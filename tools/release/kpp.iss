@@ -4,6 +4,10 @@
 ; system PATH; the uninstaller takes it off again. When VS Code is found (`code` on the PATH), it
 ; offers to install the extension kpp.vsix into it, as the user who started the installer. It warns
 ; when no Visual Studio with its Clang component is found, which kpp compiles and links with.
+; ExecAndCaptureOutput (the Visual Studio check) is Inno Setup 6.4's.
+#if Ver < EncodeVer(6, 4, 0)
+  #error Inno Setup 6.4 or later is needed
+#endif
 #ifndef Version
   #define Version "0.0.0"
 #endif
@@ -55,23 +59,82 @@ begin
   Result := Exec(ExpandConstant('{cmd}'), '/c where code.cmd', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
 end;
 
+// vswhere's output lines (trimmed, empty ones dropped) for Params, through ExecAndCaptureOutput:
+// no cmd, no redirection into a file. False when vswhere could not be run or failed; Reason then
+// says how.
+function Vswhere(const Locator, Params: string; var Lines: TArrayOfString; var Reason: string): Boolean;
+var
+  Code, I, N: Integer;
+  Output: TExecOutput;
+begin
+  SetArrayLength(Lines, 0);
+  Result := False;
+  if not ExecAndCaptureOutput(Locator, Params, '', SW_HIDE, ewWaitUntilTerminated, Code, Output) then
+    Reason := 'it could not be run: ' + SysErrorMessage(Code)
+  else if Code <> 0 then
+    Reason := 'it failed with exit code ' + IntToStr(Code)
+  else if Output.Error then
+    Reason := 'its output could not be read'
+  else
+    Result := True;
+  if not Result then
+    exit;
+  N := 0;
+  for I := 0 to GetArrayLength(Output.StdOut) - 1 do
+    if Trim(Output.StdOut[I]) <> '' then
+    begin
+      SetArrayLength(Lines, N + 1);
+      Lines[N] := Trim(Output.StdOut[I]);
+      N := N + 1;
+    end;
+end;
+
+// kpp's own search (clangPath in compiler/src/source.cpp): the newest Visual Studio, any edition,
+// with the component Microsoft.VisualStudio.Component.VC.Llvm.Clang, and its
+// VC\Tools\Llvm\x64\bin\clang.exe. When there is none, the warning names what was looked for and
+// what was found.
 function InitializeSetup(): Boolean;
 var
-  Vswhere, Output: string;
-  Code: Integer;
-  Lines: TArrayOfString;
+  Locator, Found, Reason, Clang: string;
+  Lines, All: TArrayOfString;
+  I: Integer;
 begin
   Result := True;
-  Vswhere := ExpandConstant('{commonpf32}\Microsoft Visual Studio\Installer\vswhere.exe');
-  Output := ExpandConstant('{tmp}\kpp-vswhere.txt');
-  if FileExists(Vswhere) and
-     Exec(ExpandConstant('{cmd}'), '/c ""' + Vswhere + '" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath > "' + Output + '""',
-          '', SW_HIDE, ewWaitUntilTerminated, Code) and
-     LoadStringsFromFile(Output, Lines) and (GetArrayLength(Lines) > 0) and (Trim(Lines[0]) <> '') then
-    exit;
-  Result := MsgBox('Kpp compiles and links with Visual Studio 2022''s clang, and no Visual Studio with ' +
-                   '"C++ Clang Compiler for Windows" was found. Install it with the Visual Studio Installer ' +
-                   '(Individual components). Install Kpp anyway?', mbConfirmation, MB_YESNO) = IDYES;
+  Locator := ExpandConstant('{commonpf32}\Microsoft Visual Studio\Installer\vswhere.exe');
+  if not FileExists(Locator) then
+    Found := 'Visual Studio''s locator ' + Locator + ' does not exist: no Visual Studio is installed.'
+  else if not Vswhere(Locator, '-latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath', Lines, Reason) then
+    Found := 'Asking ' + Locator + ' failed: ' + Reason + '.'
+  else
+  begin
+    if GetArrayLength(Lines) > 0 then
+    begin
+      Clang := AddBackslash(Lines[0]) + 'VC\Tools\Llvm\x64\bin\clang.exe';
+      if FileExists(Clang) then
+        exit;
+      Found := 'Visual Studio in ' + Lines[0] + ' has the component, but ' + Clang + ' does not exist.';
+    end
+    else
+    begin
+      Found := 'No Visual Studio has the component.';
+      if Vswhere(Locator, '-products * -property installationPath', All, Reason) then
+      begin
+        if GetArrayLength(All) = 0 then
+          Found := Found + ' Visual Studio''s locator lists no installation.'
+        else
+        begin
+          Found := Found + ' The installations are:';
+          for I := 0 to GetArrayLength(All) - 1 do
+            Found := Found + #13#10 + '  ' + All[I];
+        end;
+      end;
+    end;
+  end;
+  Result := MsgBox('Kpp compiles and links with the clang of a Visual Studio that has the component ' +
+                   '"C++ Clang Compiler for Windows" (Microsoft.VisualStudio.Component.VC.Llvm.Clang). ' +
+                   'Setup looked for one with ' + Locator + ':' + #13#10#13#10 + Found + #13#10#13#10 +
+                   'Add the component with the Visual Studio Installer (Modify, Individual components) to ' +
+                   'Visual Studio 2022 or its Build Tools. Install Kpp anyway?', mbConfirmation, MB_YESNO) = IDYES;
 end;
 
 procedure RemoveFromPath(Directory: string);

@@ -708,7 +708,13 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
 - **`tools/release/kpp.iss`** is the installer:
   - it installs into Program Files\Kpp and adds that directory to the system PATH (the
     uninstaller removes it);
-  - it warns when vswhere finds no Visual Studio with the Clang component.
+  - it warns when vswhere finds no Visual Studio with the Clang component, the way kpp looks for
+    clang (the newest with Microsoft.VisualStudio.Component.VC.Llvm.Clang, and its
+    VC\Tools\Llvm\x64\bin\clang.exe). The warning names the vswhere it asked and what it found:
+    no vswhere, vswhere failing, the installation without clang.exe, or every installation when
+    none has the component. It runs vswhere through ExecAndCaptureOutput (Inno Setup 6.4 or later),
+    with no cmd and no temporary file: ci.120's check, through `cmd /c` with a redirection,
+    warned for kovarex although the same query finds 2022 Community on PC-PRACOVNA (2026-11-02).
   Not yet built or run on PC-PRACOVNA, which has no Inno Setup.
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
   builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
