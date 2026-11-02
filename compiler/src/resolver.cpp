@@ -20436,6 +20436,16 @@ struct GlobalScope::Impl
           known = false;
           continue;
         }
+        bool expansion = a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
+                         P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis;
+        if (a->ty && a->ty->kind == TyKind::Pack && !expansion)
+        {
+          // `(r.append(text(rest)), ...)`: one element of the pack per expansion of the pattern, typed
+          // (and its overload chosen: text(int) before text(Text)) where the pattern expands, never
+          // the whole pack packed into one Text.
+          known = false;
+          continue;
+        }
         if (a->ty && a->ty->kind == TyKind::Pack)
           for (const Ty* e : a->ty->args)
             check(a, e);
