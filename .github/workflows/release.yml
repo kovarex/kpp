@@ -50,7 +50,7 @@ jobs:
           prerelease: true
           body: |
             Built from ${{ github.sha }}. Install with kpp-0.1.${{ github.run_number }}-setup.exe (Program Files\Kpp, on PATH), or unzip kpp-0.1.${{ github.run_number }}.zip anywhere.
-            Needs Visual Studio 2022 with "C++ Clang Compiler for Windows".
+            Needs nothing else: it brings its own toolchain (llvm-mingw: clang, lld, MinGW-w64), and its programs use only Windows' own DLLs.
             kpp.vsix is the VS Code extension (the installer offers it; or code --install-extension kpp.vsix).
           files: |
             build/release/kpp-0.1.${{ github.run_number }}.zip

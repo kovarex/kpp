@@ -698,29 +698,36 @@ install. `install.cmd` links it there.
 kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a Kpp release, run
 `kpp` in the project's root, and build or generate Visual Studio files from there.
 - **A release** is `kpp.exe` (kppc under the name users type), `stdlib\`, `projectlib\`, the
-  TextMate grammar and a README. kpp finds `stdlib\` and `projectlib\` next to itself, and clang in
-  the newest Visual Studio with the Clang component, any edition (vswhere). So an installation
-  needs Visual Studio 2022 with "C++ Clang Compiler for Windows", which also supplies the linker
-  and the Windows SDK.
-- **`tools/release/package.ps1 -Version V`** packages a built kppc into `build\release\`. Its
-  smoke test runs `kpp new` and `kpp --no-server --run` with the packaged kpp outside the
-  repository. It then writes the zip, and the installer when Inno Setup 6 is installed.
-- **`tools/release/kpp.iss`** is the installer:
-  - it installs into Program Files\Kpp and adds that directory to the system PATH (the
-    uninstaller removes it);
-  - it warns when vswhere finds no Visual Studio with the Clang component, the way kpp looks for
-    clang (the newest with Microsoft.VisualStudio.Component.VC.Llvm.Clang, and its
-    VC\Tools\Llvm\x64\bin\clang.exe). The warning names the vswhere it asked and what it found:
-    no vswhere, vswhere failing, the installation without clang.exe, or every installation when
-    none has the component. It runs vswhere through ExecAndCaptureOutput (Inno Setup 6.4 or later),
-    with no cmd and no temporary file: ci.120's check, through `cmd /c` with a redirection,
-    warned for kovarex although the same query finds 2022 Community on PC-PRACOVNA (2026-11-02).
-    A /SUPPRESSMSGBOXES install answers the warning Yes (SuppressibleMsgBox) and logs its text.
-  Tested on PC-PRACOVNA (2026-11-02) with Inno Setup 6.7.4 installed portable in a thread's
-  scratch, through a copy with lowest privileges whose setup aborts after the check: the check
-  passes (2022 Community), and with a component name that does not exist it lists the three
-  installations. ci.120's old check passed there too, unelevated; the elevated run kovarex saw
-  warn is not reproduced.
+  bundled toolchain (below), the TextMate grammar, kpp.vsix and a README. kpp finds `stdlib\`,
+  `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
+  Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
+  Studio's clang on request, as the game's build does).
+- **The bundled toolchain in a release** is llvm-mingw's x86-64 part at its own relative paths, so
+  clang finds the rest from its `bin\`: `bin\` (clang.exe, clang-19.exe, ld.lld.exe, llvm-ar.exe,
+  llvm-rc.exe, llvm-dlltool.exe, libLLVM-19.dll, libclang-cpp.dll, libc++.dll, libunwind.dll and the
+  two .cfg files), `include\`, `lib\clang\19\include\`,
+  `lib\clang\19\lib\windows\libclang_rt.builtins-x86_64.a`, `x86_64-w64-mingw32\lib\` and
+  `x86_64-w64-mingw32\share\mingw32\` (MinGW-w64's COPYING files). Also included:
+  `LICENSE-llvm-mingw.txt` (the archive's LICENSE.TXT) and `NOTICE-toolchain.txt`, which gives each
+  part's licence. The i686, armv7 and aarch64 trees, python, lldb, clangd and clang-tidy are left
+  out.
+- **`tools/release/package.ps1 -Version V`** packages a built kppc into `build\release\`. It takes
+  the toolchain from `tools\sysroot\llvm-mingw.ps1` (pinned, SHA-256 checked, unpacked once into
+  build\llvm-mingw). Its smoke test runs `kpp new` and `kpp --no-server --run` with the packaged kpp
+  outside the repository, as on a machine without Visual Studio: PATH cut to System32 and the
+  Windows directory, with no INCLUDE, LIB, LIBPATH or KPP_CLANG. It checks three things:
+  - the link response file has `--target=x86_64-w64-windows-gnu` and `-fuse-ld=lld` (a project
+    build is `--quiet`, so it has no toolchain line, and only the bundled toolchain builds
+    windows-gnu);
+  - the output;
+  - that the program imports only Windows' own DLLs (llvm-objdump from the unpacked llvm-mingw,
+    not shipped).
+
+  It then writes the zip, and the installer when Inno Setup 6 is installed (`-IsccPath` names an
+  ISCC elsewhere).
+- **`tools/release/kpp.iss`** is the installer. It installs into Program Files\Kpp and adds that
+  directory to the system PATH (the uninstaller removes it). It checks for nothing: until stage 2,
+  it warned when no Visual Studio with the Clang component was found.
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
   builds kppc on a windows-2022 runner, packages it, and publishes the zip and installer as the
   prerelease `build-<run number>`, version 0.1.<run number>. It ran on every master commit from
