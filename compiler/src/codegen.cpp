@@ -8495,6 +8495,7 @@ namespace
       return d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->bitfield;
     }
 
+
     std::string scalarReferenceTarget(const Ty* refTy, Expr* value, Node* at)
     {
       auto scalar = [](const Ty* t)
@@ -10744,6 +10745,35 @@ namespace
       return slot;
     }
 
+    // A variable template's object for the arguments of its use n (`&hasBegin<Vector<int>>`, a
+    // reference bound to it): a constant global per argument list, holding the value the use folds
+    // to (its rvalue). Never one global named by the template alone: that would be every
+    // instance's, its initializer evaluated without the arguments (`hasBegin<Vector<int>>` read
+    // false). Only a const one: a mutable instance would need its own storage, built at startup.
+    bool isConstValue(VariableDecl* v)
+    {
+      if (v->flags & DF_Constexpr)
+        return true; // (a concept too: a constexpr bool without a written type)
+      const Ty* t = declType(v);
+      return t && !t->isReference() && t->isConst;
+    }
+    std::string variableTemplateObject(NameExpr* n, VariableDecl* v, Node* at)
+    {
+      if (!isConstValue(v))
+        unsupported(at, "a variable template that is not a const value (" + qualifiedName(v) + ")");
+      std::string spelled;
+      for (const auto& pair : variableTemplateArgs(n, v, at).pairs)
+        spelled += (spelled.empty() ? "" : ", ") + irString(pair.second);
+      std::string name = "@\"" + qualifiedName(v) + "<" + spelled + ">\"";
+      Value value = rvalue(n);
+      if (declaredNames.claim(name))
+      {
+        decls += "$" + name.substr(1) + " = comdat any\n";
+        decls += name + " = linkonce_odr constant " + llType(value.ty, at) + " " + value.text + ", comdat\n";
+      }
+      return name;
+    }
+
     std::string lvalue(Expr* e)
     {
       if (++recursionDepth > 128)
@@ -10758,6 +10788,8 @@ namespace
         {
           auto* n = static_cast<NameExpr*>(e);
           Decl* d = n->resolved;
+          if (!d && n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && e->ty && e->ty->kind == TyKind::Bool)
+            break; // a builtin trait (`isSame<int, int>`, left unresolved, typed bool) bound to a reference: its value goes to a temporary (below)
           if (!d)
             unsupported(e, "an unresolved name (" + sym(n->name.last().symbol) + ")", !(n->name.parts.size() == 1 && global.undeclaredReported(sym(n->name.last().symbol))));
           if (d->kind == NodeKind::VariableDecl)
@@ -10782,6 +10814,8 @@ namespace
                 unsupported(e, "a member used outside a method");
               return memberObject(currentClassTy, d, thisPointer(e), e); // `r = v` with r a reference member
             }
+            if (!d->templateParams.empty())
+              return variableTemplateObject(n, static_cast<VariableDecl*>(d), e);
             return globalAddress(static_cast<VariableDecl*>(d), e, qualifierClass(e, e));
           }
           if (d->kind == NodeKind::EnumeratorDecl)
@@ -14022,6 +14056,8 @@ namespace
             const Ty* t = types.stripRef(declType(d));
             if (!d->templateParams.empty())
             {
+              if (!isConstValue(static_cast<VariableDecl*>(d)))
+                unsupported(e, "a variable template that is not a const value (" + qualifiedName(d) + ")");
               // A variable template: its value for these arguments, a constant (`pi_v<double>` a
               // floating one), of the type the use has; while that is still the template's (`T`),
               // of the type the evaluator gave the value, the declared one for these arguments.

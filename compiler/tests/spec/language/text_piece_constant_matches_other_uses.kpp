@@ -1,0 +1,61 @@
+// spec: a constant given as a Text piece is the value the same expression has everywhere else: kept in a variable, bound to a const reference, read through its address (a variable template's object, one per argument list) and checked by static_assert, each also the value written here, for builtin traits, variable templates (a requires-expression's, a sizeof's, a pack's), config:: constants, a constexpr global and an enumerator (`15 same`)
+// kppc: --config zlib::debug=true --config zlib::level=7
+extern "C" import "stdio.h";
+struct Plain { int a; };
+enum class Shade { light, dark };
+template<typename... T> constexpr int countOf = sizeof...(T);
+template<typename T> constexpr bool hasBegin = requires (T& t) { t.begin(); };
+template<typename T> constexpr unsigned long long bytes = sizeof(T);
+template<typename T> constexpr bool fits = sizeof(T) <= 4;
+constexpr int answer = 6 * 7;
+int compared = 0;
+template<typename T>
+String written(const T& value)
+{
+  String s;
+  value.appendTo(s);
+  return s;
+}
+void check(const char* expected, const String& kept, const String& bound, const String& read, Text piece)
+{
+  String s;
+  piece.appendTo(s);
+  ++compared;
+  if (s != expected || kept != expected || bound != expected || read != expected)
+    printf("differs: %s: piece %s, kept %s, bound %s, read %s\n", expected, s.c_str(), kept.c_str(), bound.c_str(), read.c_str());
+}
+// The value kept in a variable, bound to a reference and read through the address of its object, against the piece.
+template<typename T>
+void compare(const char* expected, T kept, const T& bound, const T* object, Text piece)
+{
+  check(expected, written(kept), written(bound), written(*object), piece);
+}
+static_assert(isSame<int, int> && !isSame<int, long> && hasBegin<Vector<int>> && !hasBegin<int> && fits<int> && !fits<double>);
+static_assert(countOf<int, char, double> == 3 && countOf<> == 0 && bytes<double> == 8 && bytes<Plain> == 4 && answer == 42);
+static_assert(config::zlib::debug && config::zlib::level == 7);
+int main()
+{
+  bool same = isSame<int, int>;
+  check("true", written(same), written<bool>(isSame<int, int>), written(*&same), isSame<int, int>);
+  bool differ = isSame<int, long>;
+  check("false", written(differ), written<bool>(isSame<int, long>), written(*&differ), isSame<int, long>);
+  compare<bool>("true", hasBegin<Vector<int>>, hasBegin<Vector<int>>, &hasBegin<Vector<int>>, hasBegin<Vector<int>>);
+  compare<bool>("false", hasBegin<int>, hasBegin<int>, &hasBegin<int>, hasBegin<int>);
+  compare<bool>("true", fits<int>, fits<int>, &fits<int>, fits<int>);
+  compare<bool>("false", fits<double>, fits<double>, &fits<double>, fits<double>);
+  compare<int>("3", countOf<int, char, double>, countOf<int, char, double>, &countOf<int, char, double>, countOf<int, char, double>);
+  compare<int>("0", countOf<>, countOf<>, &countOf<>, countOf<>);
+  compare<unsigned long long>("8", bytes<double>, bytes<double>, &bytes<double>, bytes<double>);
+  compare<unsigned long long>("4", bytes<Plain>, bytes<Plain>, &bytes<Plain>, bytes<Plain>);
+  compare<int>("42", answer, answer, &answer, answer);
+  bool debug = config::zlib::debug;
+  check("true", written(debug), written<bool>(config::zlib::debug), written(*&debug), config::zlib::debug);
+  int level = config::zlib::level;
+  check("7", written(level), written<int>(config::zlib::level), written(*&level), config::zlib::level);
+  Shade shade = Shade::dark;
+  check("dark", written(shade), written<Shade>(Shade::dark), written(*&shade), Shade::dark);
+  // (two instances, two objects; the same instance, one)
+  check("true", written(&hasBegin<int> != (const bool*)&hasBegin<Vector<int>>), written(&countOf<int> == &countOf<int>), written(&bytes<char> != &bytes<short>), true);
+  printf("%d same\n", compared);
+  return 0;
+}

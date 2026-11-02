@@ -87,6 +87,12 @@ builds win less unless machine code is cached per function.
   T without str()) is false, as C++'s substitution failure is. A clause naming something not
   declared is a compile error, and so is a clause that cannot be evaluated once every argument is
   known: never a silent pass. While an argument is still dependent the clause waits.
+- Variable templates (2026-11-02): a use is the instance's value, the initializer evaluated for
+  the use's arguments. Its object (`&hasBegin<C>`, a reference or a Text piece bound to it) is a
+  constant global per argument list holding that value; a builtin trait (`isSame<A, B>`) has none,
+  and a reference binds a temporary. A variable template that is not a const value is a compile
+  error until it gets its own storage per argument list (one global named by the template alone
+  read `hasBegin<Vector<int>>` as false).
 - Instantiation depth (implementation limit, 2026-10-28, open to change by kovarex): a function
   instantiation requested through a chain of more than 64 instantiations, each asked for by the
   previous one's body, is an error naming the last two. Without a limit, a template that

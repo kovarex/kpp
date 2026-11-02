@@ -1,0 +1,19 @@
+// spec: a builtin trait's value (`isSame<int, int>`), a variable template's and a config:: constant are Text pieces like any other value, a bool appended as `true`/`false`, an integer as its number; a constexpr bool variable template defined by a requires-expression is its value, true where the requirements hold (`true false true 3` / `true false` / `true 7`)
+// kppc: --config zlib::debug=true --config zlib::level=7
+extern "C" import "stdio.h";
+struct Plain { int a; };
+template<typename... T> constexpr int countOf = sizeof...(T);
+template<typename T> constexpr bool hasBegin = requires (T& t) { t.begin(); };
+void show(Text text)
+{
+  String s;
+  text.appendTo(s);
+  printf("%s\n", s.c_str());
+}
+int main()
+{
+  show(isSame<int, int>, " ", isSame<int, long>, " ", isTriviallyCopyable<Plain>, " ", countOf<int, char, double>);
+  show(hasBegin<Vector<int>>, " ", hasBegin<int>);
+  show(config::zlib::debug, " ", config::zlib::level);
+  return 0;
+}
