@@ -13,3 +13,6 @@ int totalArea(const Vector<Shape>& shapes)
     sum += s.area();
   return sum;
 }
+
+namespace units { int scale = 2; }
+int scaled(int x) { return x * units::scale; }

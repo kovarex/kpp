@@ -3,7 +3,8 @@
 # on a copy of its program; every message the server sends back must be the line of
 # tests\lsp\NAME.expected in the same place. $ROOT stands for the copy's URI both ways.
 # session: tests\lsp\program, the requests and diagnostics. cells: tests\lsp\cells, a build.kpp's
-# targets and configurations, switched between (docs/editors.md, "Cells").
+# targets and configurations, switched between (docs/editors.md, "Cells"). Both are started with --stdio,
+# as VS Code starts it. failed: a check that fails without a diagnostic is shown (window/showMessage).
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$Kppc = "$PSScriptRoot\..\build\kppc.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
@@ -14,10 +15,12 @@ $work = (Resolve-Path $work).Path
 $Kppc = (Resolve-Path $Kppc).Path
 $failed = 0
 
-foreach ($session in @(@{ Name = 'session'; Program = 'program' }, @{ Name = 'cells'; Program = 'cells' }))
+foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio' }, @{ Name = 'cells'; Program = 'cells'; Args = '--stdio' },
+                      @{ Name = 'failed'; Program = 'program'; Args = '--no-such-option' }))
 {
   $name = $session.Name
   $program = Join-Path $work $session.Program
+  if (Test-Path $program) { Remove-Item -Recurse -Force $program }
   Copy-Item "$PSScriptRoot\lsp\$($session.Program)" $program -Recurse
 
   # The URI as the server writes it (lsp.cpp, pathToUri): file:///c%3A/dir/dir, the drive lowercase.
@@ -39,7 +42,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program' }, @{ Name = 'ce
   [IO.File]::WriteAllBytes($inPath, $request.ToArray())
   Push-Location $work
   $ErrorActionPreference = 'Continue'
-  cmd /c "`"$Kppc`" --lsp --check-each-change < `"$inPath`" > `"$outPath`" 2> `"$logPath`""
+  cmd /c "`"$Kppc`" --lsp $($session.Args) --check-each-change < `"$inPath`" > `"$outPath`" 2> `"$logPath`""
   $exitCode = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   Pop-Location

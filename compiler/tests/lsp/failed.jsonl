@@ -1,0 +1,8 @@
+// A check that fails without a diagnostic, for tests\lsp.ps1 (kppc --lsp --no-such-option): the
+// editor is told once (window/showMessage), not again while the same failure stands.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"int main() { return 0; }\n"}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"text":"int main() { return 1; }\n"}]}}
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

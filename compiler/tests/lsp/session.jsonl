@@ -14,6 +14,9 @@
 {"jsonrpc":"2.0","id":17,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"}}}
 {"jsonrpc":"2.0","id":18,"method":"workspace/symbol","params":{"query":"totalArea"}}
 {"jsonrpc":"2.0","id":19,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":1,"character":0}}}
+// A qualifier (`units` in `units::scale`) is the namespace, with no type: the type is the whole name's.
+{"jsonrpc":"2.0","id":90,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":17,"character":32}}}
+{"jsonrpc":"2.0","id":91,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/shapes.kpp"},"position":{"line":17,"character":39}}}
 // Rename: prepareRename's range, the edits of a local, a function and a class (its uses as a template
 // argument too), and the refusals: a name a member already has, no name, the standard library's.
 {"jsonrpc":"2.0","id":40,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":9}}}

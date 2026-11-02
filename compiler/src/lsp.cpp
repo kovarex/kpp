@@ -886,6 +886,7 @@ namespace
     std::vector<ProjectOption> activeOptions;   // its libraries' options (every target's, for all of them)
     std::vector<std::string> activeArguments;   // what the process's kept build was made with
     std::string announcedCell = "\n";          // the cell kpp/activeCell last named
+    std::string shownFailure;                   // the diagnostic-less failure last shown (check)
     size_t keptCells = 4, cellClock = 0;
     bool checkEachChange = false;
     bool initialized = false, shutdownRequested = false;
@@ -1300,6 +1301,22 @@ namespace
           notify("textDocument/publishDiagnostics", p.value());
         }
       published = std::move(now);
+      // A check that fails without a diagnostic (an argument it does not take, a library it cannot
+      // find) would leave the editor showing a clean program: it is told, once per failure.
+      std::string failure;
+      if (code != 0 && count == 0)
+      {
+        std::string text = err + out;
+        size_t from = text.find_first_not_of(" \r\n");
+        failure = from == std::string::npos ? "exit " + std::to_string(code)
+                                            : text.substr(from, text.find_first_of("\r\n", from) - from);
+      }
+      if (failure != shownFailure)
+      {
+        if (!failure.empty())
+          showMessage(1, "kpp: the check failed with no diagnostic: " + failure);
+        shownFailure = failure;
+      }
       log("check %zu: %.3f s, exit %d, %zu diagnostics in %zu files", checks, seconds, code, count, published.size());
       for (const std::string& note : notes)
         log("  %s", note.c_str());
@@ -1550,8 +1567,10 @@ namespace
         std::string qualified = program.global->qualifiedName(d);
         if (!qualified.empty() && d->kind != NodeKind::ParamDecl && !(d->kind == NodeKind::VariableDecl && d->parent && d->parent->kind == NodeKind::FunctionDecl))
           where += " `" + qualified + "`";
-        // An expression's type where the name is one (a function's name typed as its call's result is not shown).
-        if (!o->declaration && (o->node->kind == NodeKind::NameExpr || o->node->kind == NodeKind::MemberExpr) && d->kind != NodeKind::FunctionDecl)
+        // An expression's type where the name is one (a function's name typed as its call's result is not
+        // shown, nor a qualifier's: `Entity` in `Entity::count` is the class, the type is count's).
+        if (!o->declaration && (o->node->kind == NodeKind::NameExpr || o->node->kind == NodeKind::MemberExpr) && d->kind != NodeKind::FunctionDecl &&
+            d->kind != NodeKind::NamespaceDecl && d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl)
           if (const Ty* ty = static_cast<Expr*>(o->node)->ty)
             where += ", here of type `" + program.global->types().toString(ty, program.symbols) + "`";
         value += where;
@@ -2762,6 +2781,15 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
     std::string arg = argv[i];
     if (arg == "--lsp")
       continue;
+    // The transport options of LSP's "Implementation Considerations": stdin and stdout is the one
+    // this server has (vscode-languageclient adds --stdio for it), the others are refused.
+    if (arg == "--stdio")
+      continue;
+    if (arg == "--pipe" || arg.rfind("--pipe=", 0) == 0 || arg.rfind("--socket", 0) == 0 || arg == "--node-ipc")
+    {
+      fprintf(stderr, "kppc --lsp: %s is not supported: the language server talks on stdin and stdout (--stdio)\n", arg.c_str());
+      return 2;
+    }
     if (arg == "--check-each-change")
       server.checkEachChange = true;
     else if (arg == "--lsp-log" && i + 1 < argc)
