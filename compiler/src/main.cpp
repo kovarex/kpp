@@ -3703,6 +3703,18 @@ int compile(int argc, char** argv)
     paths.insert(paths.end(), found.begin(), found.end());
     pathLibrary.resize(paths.size(), library);
   };
+  // A path given that names no file or directory: an error naming it, not a failure of the listing.
+  {
+    std::vector<std::filesystem::path> given(options.roots.begin(), options.roots.end());
+    for (const auto& library : options.libraryRoots)
+      given.push_back(library.dir);
+    for (const std::filesystem::path& root : given)
+      if (std::error_code ec; !std::filesystem::exists(root, ec))
+      {
+        fprintf(stderr, "error: %s: no such file or directory\n", root.string().c_str());
+        return 1;
+      }
+  }
   // The standard library first, then the libraries in the order given, then the program.
   size_t stdRoots = options.libraryRoot.empty() ? 0 : 1;
   for (size_t i = 0; i < stdRoots; ++i)

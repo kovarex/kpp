@@ -92,6 +92,22 @@ if errorlevel 1 (
   echo ok   clashes
   call :ok
 )
+rem An input path that names no file or directory: an error naming it and exit 1, not a crash in the
+rem listing of the sources ("fatal: recursive_directory_iterator ...").
+%KPPC% --quiet --exe build\tests\missing.exe tests\no-such-input > build\tests\missing.out.txt 2>&1
+set RC=!errorlevel!
+%SystemRoot%\System32\findstr.exe /c:"error: tests\no-such-input: no such file or directory" build\tests\missing.out.txt > nul
+if errorlevel 1 (
+  echo FAIL missing input: build\tests\missing.out.txt does not name tests\no-such-input
+  type build\tests\missing.out.txt
+  call :fail "missing input"
+) else if !RC! neq 1 (
+  echo FAIL missing input: exit !RC!, 1 expected
+  call :fail "missing input"
+) else (
+  echo ok   missing input
+  call :ok
+)
 rem build.kpp at compile time (docs/design.md 12, GlobalScope::runBuild): the description of each
 rem configuration, computed by the interpreter with Vector and String; a build() that calls C is an
 rem error at its line.
