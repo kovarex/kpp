@@ -1,0 +1,74 @@
+// spec: a generic lambda names a static local of the function it is written in, and an instance (a template the lambda is passed to) calls it first, in a build of 64 modules (and the release suite's): the call operator, emitted where that instance is, reads and writes the one static the function does, whichever module each is in (`6 12 26 32 46 52 66 72 86 92 106 112`)
+// factorio: none known; found reviewing streaming's pieces (step 4): a non-generic lambda's call operator is placed and owned as its writer's (emitCallOperatorOnDemand) and works at any module count
+// pending: the operator is emitted with its first caller, an instance placed by its name's hash, and the static is `internal` in its writer's module: "use of undefined value '@"counted0()::calls.N"'", clang rejects that module (master at --modules 64 and 128, debug and release; 1 and 4 happened to share a module) (B)
+// kppc: --modules 64
+template<typename F> int apply(F f) { return f(2); }
+
+// Each: the function's own update of its static, the operator's (through apply), then the sum of the
+// two reads: the same object, so twice the value the operator left.
+int counted0()
+{
+  static int calls = 0;
+  calls = calls + 1;
+  auto g = [](auto x) { calls = calls + x; return calls; };
+  int seen = apply(g);
+  return seen + calls;
+}
+int counted1()
+{
+  static int calls = 10;
+  calls = calls + 1;
+  auto g = [](auto x) { calls = calls + x; return calls; };
+  int seen = apply(g);
+  return seen + calls;
+}
+int counted2()
+{
+  static int calls = 20;
+  calls = calls + 1;
+  auto g = [](auto x) { calls = calls + x; return calls; };
+  int seen = apply(g);
+  return seen + calls;
+}
+int counted3()
+{
+  static int calls = 30;
+  calls = calls + 1;
+  auto g = [](auto x) { calls = calls + x; return calls; };
+  int seen = apply(g);
+  return seen + calls;
+}
+int counted4()
+{
+  static int calls = 40;
+  calls = calls + 1;
+  auto g = [](auto x) { calls = calls + x; return calls; };
+  int seen = apply(g);
+  return seen + calls;
+}
+int counted5()
+{
+  static int calls = 50;
+  calls = calls + 1;
+  auto g = [](auto x) { calls = calls + x; return calls; };
+  int seen = apply(g);
+  return seen + calls;
+}
+
+int main()
+{
+  int a0 = counted0();
+  int b0 = counted0();
+  int a1 = counted1();
+  int b1 = counted1();
+  int a2 = counted2();
+  int b2 = counted2();
+  int a3 = counted3();
+  int b3 = counted3();
+  int a4 = counted4();
+  int b4 = counted4();
+  int a5 = counted5();
+  int b5 = counted5();
+  println(a0, " ", b0, " ", a1, " ", b1, " ", a2, " ", b2, " ", a3, " ", b3, " ", a4, " ", b4, " ", a5, " ", b5);
+  return 0;
+}

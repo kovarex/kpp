@@ -1,0 +1,80 @@
+// spec: a generic lambda names a static local of the member function it is written in, a static initialized at the function's first call (with its guard), and an instance (a template calling the lambda twice) calls it first, in a build of 128 modules (and the release suite's): the call operator, emitted where that instance is, reads and writes the one static the member function does (`308 317 338 347 368 377 398 407 428 437 458 467`)
+// factorio: none known; with language/generic_lambda_reads_writers_static_local (64 modules, free functions)
+// pending: the operator is emitted with its first caller, an instance placed by its name's hash, and the static is `internal` in its writer's module: "use of undefined value '@"Tally::count0()::total.N"'", clang rejects that module (B)
+// kppc: --modules 128
+template<typename F> int twice(F f) { return f(1) + f(1); }
+
+int start(int k) { return 100 + 10 * k; }
+
+// Each: the static initialized once (start), the member function's own update, two of the operator's
+// (through twice), then the sum of the reads: the same object throughout.
+struct Tally
+{
+  int count0()
+  {
+    static int total = start(0);
+    total = total + 1;
+    auto bump = [](auto step) { total = total + step; return total; };
+    int seen = twice(bump);
+    return seen + total;
+  }
+  int count1()
+  {
+    static int total = start(1);
+    total = total + 1;
+    auto bump = [](auto step) { total = total + step; return total; };
+    int seen = twice(bump);
+    return seen + total;
+  }
+  int count2()
+  {
+    static int total = start(2);
+    total = total + 1;
+    auto bump = [](auto step) { total = total + step; return total; };
+    int seen = twice(bump);
+    return seen + total;
+  }
+  int count3()
+  {
+    static int total = start(3);
+    total = total + 1;
+    auto bump = [](auto step) { total = total + step; return total; };
+    int seen = twice(bump);
+    return seen + total;
+  }
+  int count4()
+  {
+    static int total = start(4);
+    total = total + 1;
+    auto bump = [](auto step) { total = total + step; return total; };
+    int seen = twice(bump);
+    return seen + total;
+  }
+  int count5()
+  {
+    static int total = start(5);
+    total = total + 1;
+    auto bump = [](auto step) { total = total + step; return total; };
+    int seen = twice(bump);
+    return seen + total;
+  }
+};
+
+int main()
+{
+  Tally t;
+  int a0 = t.count0();
+  int b0 = t.count0();
+  int a1 = t.count1();
+  int b1 = t.count1();
+  int a2 = t.count2();
+  int b2 = t.count2();
+  int a3 = t.count3();
+  int b3 = t.count3();
+  int a4 = t.count4();
+  int b4 = t.count4();
+  int a5 = t.count5();
+  int b5 = t.count5();
+  println(a0, " ", b0, " ", a1, " ", b1, " ", a2, " ", b2, " ", a3, " ", b3, " ", a4, " ", b4, " ", a5, " ", b5);
+  return 0;
+}
